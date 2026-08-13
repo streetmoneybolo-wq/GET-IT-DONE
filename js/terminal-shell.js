@@ -104,6 +104,16 @@
         root.classList.add('tv2-integrated');                  // collapse V2's empty slots
         document.body.classList.add('tv2-integrated-on');      // NOW hide legacy tab bar + re-skin
         integrated = true;
+        // Fix the legacy overflow (shell renders wider than its container and gets
+        // clipped, hiding "Trader sentiment"). Inline !important because a legacy
+        // stylesheet rule of equal weight loads later and beats external CSS.
+        [['.sml-shell'], ['.sml-pro-terminal'], ['.sml-pro-quote']].forEach(function (s) {
+          var el = document.querySelector(s[0]);
+          if (el) { el.style.setProperty('width', '100%', 'important'); el.style.setProperty('max-width', '100%', 'important'); el.style.setProperty('min-width', '0', 'important'); }
+        });
+        var pq = document.querySelector('.sml-pro-quote');
+        if (pq) pq.style.setProperty('overflow-x', 'auto', 'important'); // safety valve on narrow screens
+        try { window.dispatchEvent(new Event('resize')); } catch (e) {}  // let the chart re-measure
         // sync the legacy's active view with whatever V2 tab is selected
         var cur = root.querySelector('.tv2-tab[aria-selected="true"]');
         if (cur) { var lb = legacyTabs[PROXY[cur.getAttribute('data-tab')]]; if (lb) { try { lb.click(); } catch (e) {} } }
