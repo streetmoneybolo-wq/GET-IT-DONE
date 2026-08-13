@@ -124,7 +124,7 @@
             '<a href="/" style="color:#38F58A;text-decoration:none">Feed</a><a href="/markets/" style="color:#93A4B8;text-decoration:none">Markets</a><a href="/live/" style="color:#93A4B8;text-decoration:none">Live</a><a href="/n/" style="color:#93A4B8;text-decoration:none">Letters</a>' +
           '</div>' +
           '<a href="/go-live/" style="padding:9px 20px;border-radius:999px;text-decoration:none;font-size:13px;white-space:nowrap;'+GBTN+'">Go Live</a>' +
-          avatarHTML(36) +
+          '<div id="sml-hf-me-top" role="button" aria-label="Account menu" style="cursor:pointer;flex:none">'+avatarHTML(36)+'</div>' +
         '</div>' +
         '<div style="border-top:1px solid rgba(0,0,0,.6);overflow:hidden;background:linear-gradient(180deg,#060A11,#0B1119)"><div class="tape-row" style="display:flex;width:max-content;animation:smlHfTape 30s linear infinite;padding:7px 0">'+tapeCells()+tapeCells()+'</div></div>' +
       '</div>' +
@@ -132,7 +132,7 @@
       '<div id="sml-hf-grid" style="max-width:1360px;margin:0 auto;padding:24px;display:grid;grid-template-columns:250px minmax(0,1fr) 290px;gap:22px;align-items:start">' +
         // left rail
         '<div id="sml-hf-left" style="position:sticky;top:118px;display:flex;flex-direction:column;gap:16px">' +
-          '<div style="'+CARD+'padding:18px"><div style="display:flex;align-items:center;gap:12px">'+avatarHTML(46,'#22E07A',4)+'<div><div style="font-weight:700;font-size:14.5px">'+esc(meName)+'</div><div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#38F58A"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A"></span>Signed in</div></div></div></div>' +
+          '<div style="'+CARD+'padding:18px"><div style="display:flex;align-items:center;gap:12px"><div id="sml-hf-me-card" role="button" aria-label="Account menu" style="cursor:pointer;flex:none">'+avatarHTML(46,'#22E07A',4)+'</div><div><div style="font-weight:700;font-size:14.5px">'+esc(meName)+'</div><div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#38F58A"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A"></span>Signed in</div></div></div></div>' +
           '<div style="display:flex;flex-direction:column;gap:2px">'+navItems()+'</div>' +
           '<div style="'+CARD+'padding:16px"><div style="display:flex;align-items:center;margin-bottom:12px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.12em;color:#6B7C90">MY WATCHLIST</span><button id="sml-hf-watch-edit" style="margin-left:auto;padding:3px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,#1C2734,#111926);color:#6B7C90;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;cursor:pointer">edit</button></div>' +
           '<div id="sml-hf-watch-add" style="display:none;gap:6px;margin-bottom:12px"><input id="sml-hf-watch-inp" placeholder="Add ticker, e.g. NVDA" maxlength="6" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:9px;padding:7px 11px;color:#E6EDF5;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;outline:none;text-transform:uppercase"><button id="sml-hf-watch-addbtn" style="flex:none;padding:0 14px;border-radius:9px;font-size:11.5px;'+GBTN+'">Add</button></div>' +
@@ -174,6 +174,44 @@
       if (del) { wl = watchSyms().filter(function(x){ return x !== del; }); saveWl(); renderWatch(); }
     });
     shell.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' && ev.target && ev.target.id === 'sml-hf-watch-inp') { ev.preventDefault(); addTicker(); } });
+
+    // ---- account menu: the site's existing avatar menu, opened from our avatars ----
+    // Links are harvested from the original feed header (hidden under the skin), so
+    // My profile / Settings / the nonce'd Sign out are the site's REAL urls.
+    function harvestMenu(){
+      var out=[], top=host.querySelector('.oh-top'); if(!top) return out;
+      var KNOWN=['home','my profile','creator studio','go live','settings','customize profile'];
+      top.querySelectorAll('a').forEach(function(a){
+        var t=(a.textContent||'').replace(/\s+/g,' ').trim(), hf=a.getAttribute('href')||''; if(!hf) return;
+        if(/action=logout/.test(hf)||/^(sign|log)\s?out$/i.test(t)){ out.push({l:'Sign out',h:hf,k:'out'}); return; }
+        var lt=t.toLowerCase();
+        if(KNOWN.indexOf(lt)>=0) out.push({l:t,h:hf,k:lt});
+      });
+      var seen={}; return out.filter(function(x){ if(seen[x.k]) return false; seen[x.k]=1; return true; });
+    }
+    function menuIcon(k){
+      var P={'home':'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10','my profile':'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 8.5c1.4-3.6 5-5 8-5s6.6 1.4 8 5','creator studio':'M4 6h16M4 12h16M4 18h16M9 4v4M15 10v4M7 16v4','go live':'M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3.5v11L15 14','settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8-3-1.8-.6.4-1.9-1.6-1.6-1.9.4L14.5 6h-5L8.9 7.9 7 7.5 5.4 9.1l.4 1.9L4 12l1.8.6-.4 1.9 1.6 1.6 1.9-.4 1.6 1.8h5l.6-1.8 1.9.4 1.6-1.6-.4-1.9L20 12Z','customize profile':'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 6l3 3','out':'M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M9 12h11m-3-3 3 3-3 3'};
+      return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="'+(P[k]||P['home'])+'"/></svg>';
+    }
+    function closeMeMenu(){ var p=document.getElementById('sml-hf-memenu'); if(p) p.remove(); }
+    function openMeMenu(){
+      if(document.getElementById('sml-hf-memenu')){ closeMeMenu(); return; }
+      var m=harvestMenu();
+      if(!m.length) m=[{l:'Home',h:'/',k:'home'},{l:'My profile',h:'#',k:'my profile'},{l:'Creator Studio',h:'/creator-studio/',k:'creator studio'},{l:'Go live',h:'/go-live/',k:'go live'},{l:'Customize profile',h:'/customize-profile/',k:'customize profile'},{l:'Sign out',h:'/wp-login.php?action=logout',k:'out'}];
+      var handle=''; m.forEach(function(it){ if(it.k==='my profile'){ var hm=it.h.match(/\/([a-z0-9_\-]+)\/?$/i); if(hm) handle='@'+hm[1]; } });
+      var SEP={'creator studio':1,'settings':1,'out':1}, rows='';
+      m.forEach(function(it){
+        if(SEP[it.k]) rows+='<div style="height:1px;background:rgba(255,255,255,.09);margin:7px 0"></div>';
+        rows+='<a href="'+esc(it.h)+'" style="display:flex;align-items:center;gap:13px;padding:11px 14px;border-radius:11px;text-decoration:none;font-size:14.5px;font-weight:600;color:'+(it.k==='out'?'#F2495C':'#E6EDF5')+'" onmouseover="this.style.background=\'rgba(255,255,255,.06)\'" onmouseout="this.style.background=\'transparent\'">'+menuIcon(it.k)+'<span>'+esc(it.l)+'</span>'+(it.k==='go live'?'<span style="margin-left:auto;width:9px;height:9px;border-radius:50%;background:#F23645;box-shadow:0 0 8px rgba(242,54,69,.8)"></span>':'')+'</a>';
+      });
+      var p=document.createElement('div'); p.id='sml-hf-memenu';
+      p.style.cssText='position:fixed;top:64px;right:24px;z-index:2147483002;width:282px;padding:10px;border-radius:18px;background:linear-gradient(180deg,#10151C,#0A0E14);border:1px solid rgba(255,255,255,.1);box-shadow:0 30px 70px -20px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.08);font-family:\'Inter\',system-ui,sans-serif';
+      p.innerHTML='<div style="padding:12px 14px 10px"><div style="font-weight:700;font-size:15.5px;color:#E6EDF5">'+esc(meName)+'</div>'+(handle?'<div style="font-size:12.5px;color:#7E8A96;margin-top:2px">'+esc(handle)+'</div>':'')+'</div><div style="height:1px;background:rgba(255,255,255,.09);margin:0 0 7px"></div>'+rows;
+      document.body.appendChild(p);
+    }
+    ['sml-hf-me-top','sml-hf-me-card'].forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('click', function(ev){ ev.stopPropagation(); openMeMenu(); }); });
+    document.addEventListener('click', function(ev){ var p=document.getElementById('sml-hf-memenu'); if(p && !p.contains(ev.target)) closeMeMenu(); });
+    document.addEventListener('keydown', function(ev){ if(ev.key==='Escape') closeMeMenu(); });
 
     // Presence: heartbeat + online rings on story circles (green = online, dim = offline).
     // Endpoints ship in the CDN-loader WP snippet; until it's updated, rings stay default.
