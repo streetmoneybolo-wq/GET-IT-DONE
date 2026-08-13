@@ -101,17 +101,18 @@
 #sml-tv2-root.tv2.tv2-integrated .tv2-preview-note{display:none}
 #sml-tv2-root.tv2.tv2-integrated{padding-bottom:0;margin-bottom:0}
 
-/* the V2 tab bar replaces the legacy one visually (buttons stay clickable via JS) */
-body.tv2-preview-on .sml-pro-tabs{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
+/* the V2 tab bar replaces the legacy one visually — ONLY once integration succeeded
+   (body.tv2-integrated-on is added by JS after the legacy terminal exists) */
+body.tv2-integrated-on .sml-pro-tabs{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 
-/* ---- Direction B re-skin of the live terminal, in place (preview only) ---- */
-body.tv2-preview-on .sml-terminal,
-body.tv2-preview-on .sml-pro-terminal{background:#080c11!important;color:#e6edf3}
-body.tv2-preview-on .sml-pro-terminal .sml-panel,
-body.tv2-preview-on .sml-pro-terminal .sml-pro-chart-panel,
-body.tv2-preview-on .sml-pro-terminal .sml-pro-panel{
+/* ---- Direction B re-skin of the live terminal, in place (integrated preview only) ---- */
+body.tv2-integrated-on .sml-terminal,
+body.tv2-integrated-on .sml-pro-terminal{background:#080c11!important;color:#e6edf3}
+body.tv2-integrated-on .sml-pro-terminal .sml-panel,
+body.tv2-integrated-on .sml-pro-terminal .sml-pro-chart-panel,
+body.tv2-integrated-on .sml-pro-terminal .sml-pro-panel{
   background:#0f151d!important;border:1px solid rgba(255,255,255,.10)!important;border-radius:12px}
-body.tv2-preview-on #sml-ws{background:transparent!important}
-body.tv2-preview-on #sml-ws-left,
-body.tv2-preview-on #sml-ws-mid,
-body.tv2-preview-on #sml-ws-rail{background:transparent!important}
+body.tv2-integrated-on #sml-ws{background:transparent!important}
+body.tv2-integrated-on #sml-ws-left,
+body.tv2-integrated-on #sml-ws-mid,
+body.tv2-integrated-on #sml-ws-rail{background:transparent!important}

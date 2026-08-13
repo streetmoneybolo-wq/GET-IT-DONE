@@ -88,18 +88,27 @@
     // hidden TradingView IFRAME fallback) — moving either kills them. So V2 sits
     // ABOVE the legacy terminal, its tabs PROXY the legacy .sml-pro-tabs buttons
     // (all lazy-mount logic stays the legacy code's), and CSS re-skins in place.
-    var legacyTerm = document.querySelector('.sml-terminal');
-    var legacyTabs = {};
-    [].forEach.call(document.querySelectorAll('.sml-pro-tabs button'), function (b) {
-      legacyTabs[(b.textContent || '').trim().toLowerCase()] = b;
-    });
     var PROXY = { overview: 'overview', options: 'options', research: 'research', news: 'news' };
+    var legacyTabs = {};
     var integrated = false;
-    if (legacyTerm && legacyTabs.overview) {
-      legacyTerm.parentNode.insertBefore(root, legacyTerm);   // root has no iframes — safe to place
-      root.classList.add('tv2-integrated');                    // CSS collapses V2's empty slots, re-skins legacy
-      integrated = true;
-    }
+    // The legacy terminal renders after DOMContentLoaded — poll for it (up to ~12s)
+    // and only integrate (and only hide its tab bar) once it actually exists.
+    var tryInt = 0;
+    var intTimer = setInterval(function () {
+      var legacyTerm = document.querySelector('.sml-terminal');
+      var btns = document.querySelectorAll('.sml-pro-tabs button');
+      if (legacyTerm && btns.length) {
+        clearInterval(intTimer);
+        [].forEach.call(btns, function (b) { legacyTabs[(b.textContent || '').trim().toLowerCase()] = b; });
+        legacyTerm.parentNode.insertBefore(root, legacyTerm); // root has no iframes — safe to place
+        root.classList.add('tv2-integrated');                  // collapse V2's empty slots
+        document.body.classList.add('tv2-integrated-on');      // NOW hide legacy tab bar + re-skin
+        integrated = true;
+        // sync the legacy's active view with whatever V2 tab is selected
+        var cur = root.querySelector('.tv2-tab[aria-selected="true"]');
+        if (cur) { var lb = legacyTabs[PROXY[cur.getAttribute('data-tab')]]; if (lb) { try { lb.click(); } catch (e) {} } }
+      } else if (++tryInt > 40) { clearInterval(intTimer); } // give up gracefully — plain shell remains
+    }, 300);
 
     // ---- wire the tabs to the controller (with keyboard support) ----
     var tabEls = [].slice.call(root.querySelectorAll('.tv2-tab'));
