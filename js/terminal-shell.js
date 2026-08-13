@@ -118,37 +118,8 @@
     T.on('symbol', function (ctx) { if (input && document.activeElement !== input) input.value = ctx.symbol; });
 
     activate('overview');
-
-    // ---- Phase 2: relocate EXISTING live modules into the V2 slots ----
-    // We move the already-booted element by id (it keeps its own IDs, listeners,
-    // data connections). One instance only; the legacy #sml-ws stays hidden as the
-    // safety net until every mount is verified. No new data connection is opened.
-    function fillSlot(slotName, sourceId) {
-      var slot = root.querySelector('.tv2-slot[data-slot="' + slotName + '"]');
-      var src = document.getElementById(sourceId);
-      if (!slot || !src) return false;
-      if (slot.contains(src)) return true;      // already mounted — idempotent
-      slot.innerHTML = '';                       // drop the Phase 1 placeholder
-      slot.classList.add('tv2-slot-filled');
-      slot.appendChild(src);
-      return true;
-    }
-    var MOUNTS = [
-      ['chart', 'sml-tv-chart'], ['market-position', 'sml-mp'], ['heatmap', 'sml-terminal-heatmap'],
-      ['quotes', 'sml-side-quotes'], ['alerts', 'sml-side-alerts'], ['videos', 'sml-side-videos'],
-      ['sponsored', 'sml-ad-slot'], ['voice', 'live-voice-room'], ['feed', 'sml-lf'],
-      ['options-chain', 'sml-opt-host'], ['research', 'sml-side-profile'],
-    ];
-    function mountModules() {
-      var done = 0;
-      MOUNTS.forEach(function (p) { if (fillSlot(p[0], p[1])) done++; });
-      // charts/canvases were sized while inside the hidden #sml-ws — force a re-measure.
-      try { window.dispatchEvent(new Event('resize')); } catch (e) {}
-      return done;
-    }
-    // Modules boot at different times; re-run a few times to catch late ones, then stop.
-    mountModules();
-    [350, 900, 1800, 3200].forEach(function (t) { setTimeout(mountModules, t); });
+    // Phase 2 module relocation intentionally removed pending a safer, verified,
+    // one-module-at-a-time approach. Phase 1 shell renders empty slots only.
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
