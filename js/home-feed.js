@@ -10,6 +10,9 @@
 (function () {
   'use strict';
   var GREEN = '#38F58A';
+  // Shadow-banned groups: never build them into the My Groups module.
+  var SML_BANNED_SLUGS = ['the-options-plug','spy-spy-highflyers'];
+  function SML_BANNED_GROUP(slug, name){ slug=String(slug||'').toLowerCase(); if(SML_BANNED_SLUGS.indexOf(slug)>=0) return true; return /options?\s*plug|spy.?spy.?highfly/i.test(String(name||'')); }
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 
@@ -97,7 +100,7 @@
     while (authors.length < 6) authors.push({name:['Loop Desk','Momentum','Small Caps','Options Flow','Chart Room','Swing Trades'][authors.length]||'Loop',img:'',href:'',slug:''});
     // per-user groups from the feed's own (hidden) right rail; logos merged in async from /groups/
     var myGroups = [];
-    try { host.querySelectorAll('.oh-right a[href*="/groups/"]').forEach(function(a){ var hf=a.getAttribute('href')||''; var m=hf.match(/\/groups\/([a-z0-9-]+)/i); if(!m) return; var im=a.querySelector('img'); var src=im?(im.getAttribute('data-src')||im.getAttribute('src')||''):''; var nm=(a.textContent||'').replace(/\s+/g,' ').trim(); if(!nm&&im) nm=(im.getAttribute('alt')||'').replace(/\s*group logo\s*/i,'').trim(); if(!nm||nm.length>48) return; if(/options?\s*plug/i.test(nm)||/options?-?plug/i.test(m[1])) return; if(!myGroups.some(function(g){return g.slug===m[1];})) myGroups.push({slug:m[1],name:nm,href:hf,img:src}); }); } catch(e){}
+    try { host.querySelectorAll('.oh-right a[href*="/groups/"]').forEach(function(a){ var hf=a.getAttribute('href')||''; var m=hf.match(/\/groups\/([a-z0-9-]+)/i); if(!m) return; var im=a.querySelector('img'); var src=im?(im.getAttribute('data-src')||im.getAttribute('src')||''):''; var nm=(a.textContent||'').replace(/\s+/g,' ').trim(); if(!nm&&im) nm=(im.getAttribute('alt')||'').replace(/\s*group logo\s*/i,'').trim(); if(!nm||nm.length>48) return; if(SML_BANNED_GROUP(m[1],nm)) return; if(!myGroups.some(function(g){return g.slug===m[1];})) myGroups.push({slug:m[1],name:nm,href:hf,img:src}); }); } catch(e){}
 
     var CARD = 'background:linear-gradient(168deg,#1A2431 0%,#121A26 45%,#0C121C 100%);border:1px solid rgba(255,255,255,.07);border-top-color:rgba(255,255,255,.18);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 14px 28px -12px rgba(0,0,0,.75),0 34px 60px -30px rgba(0,0,0,.9);';
     var GBTN = 'border:1px solid rgba(20,170,90,.9);background:linear-gradient(180deg,#6BFFB0 0%,#38F58A 46%,#17BC64 100%);color:#03120A;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.65),inset 0 -2px 0 rgba(0,0,0,.28),0 6px 14px -5px rgba(56,245,138,.5),0 2px 3px rgba(0,0,0,.55);';
@@ -473,7 +476,7 @@
         var slug = m[1]; var im = a.querySelector('img'); var src = im ? (im.getAttribute('data-src') || im.getAttribute('src') || '') : '';
         var nm = im ? (im.getAttribute('alt') || '').replace(/\s*group logo\s*/i, '').trim() : '';
         if (!nm) nm = (a.textContent || '').replace(/\s+/g, ' ').trim();
-        if (/options?\s*plug/i.test(nm) || /options?-?plug/i.test(slug)) return;
+        if (SML_BANNED_GROUP(slug, nm)) return;
         if (src && !map[slug]) map[slug] = src;
         if (nm && nm.length <= 48 && !dir.some(function(g){ return g.slug === slug; })) dir.push({ slug: slug, name: nm, href: hf, img: src });
       });
