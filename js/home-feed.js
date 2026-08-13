@@ -97,7 +97,7 @@
     while (authors.length < 6) authors.push({name:['Loop Desk','Momentum','Small Caps','Options Flow','Chart Room','Swing Trades'][authors.length]||'Loop',img:'',href:'',slug:''});
     // per-user groups from the feed's own (hidden) right rail; logos merged in async from /groups/
     var myGroups = [];
-    try { host.querySelectorAll('.oh-right a[href*="/groups/"]').forEach(function(a){ var hf=a.getAttribute('href')||''; var m=hf.match(/\/groups\/([a-z0-9-]+)/i); if(!m) return; var im=a.querySelector('img'); var src=im?(im.getAttribute('data-src')||im.getAttribute('src')||''):''; var nm=(a.textContent||'').replace(/\s+/g,' ').trim(); if(!nm&&im) nm=(im.getAttribute('alt')||'').replace(/\s*group logo\s*/i,'').trim(); if(!nm||nm.length>48) return; if(!myGroups.some(function(g){return g.slug===m[1];})) myGroups.push({slug:m[1],name:nm,href:hf,img:src}); }); } catch(e){}
+    try { host.querySelectorAll('.oh-right a[href*="/groups/"]').forEach(function(a){ var hf=a.getAttribute('href')||''; var m=hf.match(/\/groups\/([a-z0-9-]+)/i); if(!m) return; var im=a.querySelector('img'); var src=im?(im.getAttribute('data-src')||im.getAttribute('src')||''):''; var nm=(a.textContent||'').replace(/\s+/g,' ').trim(); if(!nm&&im) nm=(im.getAttribute('alt')||'').replace(/\s*group logo\s*/i,'').trim(); if(!nm||nm.length>48) return; if(/options?\s*plug/i.test(nm)||/options?-?plug/i.test(m[1])) return; if(!myGroups.some(function(g){return g.slug===m[1];})) myGroups.push({slug:m[1],name:nm,href:hf,img:src}); }); } catch(e){}
 
     var CARD = 'background:linear-gradient(168deg,#1A2431 0%,#121A26 45%,#0C121C 100%);border:1px solid rgba(255,255,255,.07);border-top-color:rgba(255,255,255,.18);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 14px 28px -12px rgba(0,0,0,.75),0 34px 60px -30px rgba(0,0,0,.9);';
     var GBTN = 'border:1px solid rgba(20,170,90,.9);background:linear-gradient(180deg,#6BFFB0 0%,#38F58A 46%,#17BC64 100%);color:#03120A;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.65),inset 0 -2px 0 rgba(0,0,0,.28),0 6px 14px -5px rgba(56,245,138,.5),0 2px 3px rgba(0,0,0,.55);';
@@ -117,7 +117,9 @@
     function renderWatch(){ var el=document.getElementById('sml-hf-watch-list'); if(el){ el.innerHTML=watchRows(); applyQuotes(); } var ab=document.getElementById('sml-hf-watch-add'); if(ab) ab.style.display=wEdit?'flex':'none'; var eb=document.getElementById('sml-hf-watch-edit'); if(eb){ eb.textContent=wEdit?'done':'edit'; eb.style.color=wEdit?'#38F58A':'#6B7C90'; eb.style.borderColor=wEdit?'rgba(56,245,138,.5)':'rgba(255,255,255,.12)'; } }
     function addTicker(){ var inp=document.getElementById('sml-hf-watch-inp'); if(!inp) return; var v=String(inp.value||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); inp.value=''; if(!v||v.length>6) return; var cur=watchSyms().slice(); if(cur.indexOf(v)<0) cur.unshift(v); wl=cur.slice(0,12); saveWl(); if(SYMS.indexOf(v)<0) SYMS.push(v); renderWatch(); pollQuotes(); inp.focus(); }
     function storyItems(){ return authors.slice(0,7).map(function(a){var ring='0 0 0 2px #0B131F,0 0 0 4px rgba(34,224,122,.7)'; var pres=a.slug?' data-pres="'+esc(a.slug)+'"':''; var av=a.img?'<img src="'+esc(a.img)+'" alt="'+esc(a.name)+'" loading="lazy"'+pres+' style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+ring+'">':'<div'+pres+' style="width:56px;height:56px;border-radius:50%;background:linear-gradient(160deg,#26343F,#0D141D);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#38F58A;box-shadow:inset 0 2px 0 rgba(255,255,255,.22),'+ring+'">'+esc(initialsOf(a.name))+'</div>'; var inner=av+'<span style="font-size:10px;color:#93A4B8;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.name)+'</span>'; var st='display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;flex:none;text-decoration:none;color:inherit'; return a.href?'<a href="'+esc(a.href)+'" style="'+st+'">'+inner+'</a>':'<div style="'+st+'">'+inner+'</div>';}).join(''); }
-    function feedTabs(){ return ['For You','Following','Live'].map(function(t,i){var on=i===0;return '<button style="padding:8px 20px;border-radius:999px;border:1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)')+';background:'+(on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)')+';color:'+(on?'#38F58A':'#93A4B8')+';font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">'+t+'</button>';}).join(''); }
+    var curTab='foryou';
+    function feedTabs(){ return [['foryou','For You'],['following','Following'],['live','Live']].map(function(t){var on=curTab===t[0];return '<button data-tab="'+t[0]+'" style="padding:8px 20px;border-radius:999px;border:1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)')+';background:'+(on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)')+';color:'+(on?'#38F58A':'#93A4B8')+';font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">'+t[1]+'</button>';}).join(''); }
+    function styleTabs(){ var w=document.getElementById('sml-hf-tabs'); if(!w) return; w.querySelectorAll('button[data-tab]').forEach(function(b){ var on=b.getAttribute('data-tab')===curTab; b.style.border='1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)'); b.style.background=on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)'; b.style.color=on?'#38F58A':'#93A4B8'; }); }
     function snapRows(){ return syms.slice(0,3).map(function(s,i){return '<div style="padding:10px 13px 12px;border-top:1px solid rgba(56,245,138,.14);cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:26px;flex:none;position:relative;display:block"><img src="'+LOGO_URL+esc(s)+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" style="width:26px;height:26px;border-radius:6px;object-fit:contain;background:rgba(255,255,255,.06);border:1px solid rgba(56,245,138,.3);display:block"><span style="display:none;position:absolute;inset:0;border-radius:6px;align-items:center;justify-content:center;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:10px;color:#38F58A;background:linear-gradient(180deg,rgba(56,245,138,.16),rgba(56,245,138,.03));border:1px solid rgba(56,245,138,.3)">'+esc(s.slice(0,2))+'</span></span><span style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:20px;line-height:1;letter-spacing:-.6px;color:#CFDAE4">$'+esc(s)+'</span><span data-q="'+esc(s)+'" data-qf="last" style="margin-left:auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#6B7C90">—</span></div><div style="display:flex;gap:6px;margin-top:3px;font-size:10.5px"><span data-q="'+esc(s)+'" data-qf="pct" style="color:#6B7C90;font-weight:600">—</span><span style="color:#6B7C90;margin-left:auto;flex:none">$'+esc(s)+'</span></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(56,245,138,.14)">'+[['CHANGE','chg'],['VOLUME','vol'],['PREV CLOSE','pc']].map(function(m){return '<div><div style="font-family:\'IBM Plex Mono\',monospace;font-size:7.5px;letter-spacing:.12em;color:#7E93A6">'+m[0]+'</div><div data-q="'+esc(s)+'" data-qf="'+m[1]+'" style="font-size:12px;font-weight:600;color:#6B7C90">—</div></div>';}).join('')+'</div></div>';}).join(''); }
     var GCOLORS=['#22E07A','#3d8bfd','#ffb020','#b98cff','#ff6b81','#4dd0e1'];
     function groupRow(g,i){ var icon=g.img?'<img src="'+esc(g.img)+'" alt="" loading="lazy" style="width:28px;height:28px;border-radius:9px;flex:none;object-fit:cover;background:#0A1017">':'<span style="width:28px;height:28px;border-radius:9px;flex:none;background:'+GCOLORS[i%GCOLORS.length]+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#03120A">'+esc(g.name.slice(0,2))+'</span>'; return '<a href="'+esc(g.href||'/groups/')+'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:11px;background:linear-gradient(180deg,#141D29,#0A1017);border:1px solid rgba(0,0,0,.5);border-top-color:rgba(255,255,255,.1);cursor:pointer;text-decoration:none;color:#E6EDF5"><span style="display:contents">'+icon+'</span><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(g.name)+'</span><span style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#38F58A;flex:none">open</span></a>'; }
@@ -154,7 +156,7 @@
         '<div style="min-width:0">' +
           '<div style="display:flex;gap:14px;margin-bottom:18px;overflow-x:auto;padding:2px">'+storyItems()+'</div>' +
           '<div style="'+CARD+'border-radius:18px;padding:16px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">'+avatarHTML(40)+'<input placeholder="What\'s on the tape? Use $TICKER to tag…" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:11px 18px;color:#E6EDF5;font-size:13px;outline:none;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><a href="/?compose=1" style="padding:10px 22px;border-radius:999px;text-decoration:none;font-size:13px;flex:none;'+GBTN+'">Post</a></div>' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:18px">'+feedTabs()+'<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A;animation:smlHfGlow 2s ease-in-out infinite"></span>live</div></div>' +
+          '<div id="sml-hf-tabs" style="display:flex;align-items:center;gap:8px;margin-bottom:18px">'+feedTabs()+'<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A;animation:smlHfGlow 2s ease-in-out infinite"></span>live</div></div>' +
           // LIVE hero
           '<a href="/live/" style="display:block;text-decoration:none;color:inherit;position:relative;border-radius:20px;overflow:hidden;margin-bottom:20px;background:linear-gradient(155deg,#123B27 0%,#132132 46%,#0B111A 100%);border:1px solid rgba(56,245,138,.22);border-top-color:rgba(140,255,200,.42);box-shadow:inset 0 1px 0 rgba(190,255,222,.28),0 22px 40px -18px rgba(0,0,0,.85),0 0 50px -18px rgba(56,245,138,.35)"><div style="padding:22px 24px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;background:#F23645;color:#fff;font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.08em"><span style="width:5px;height:5px;border-radius:50%;background:#fff"></span>LIVE NOW</span></div><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:26px;line-height:1.15;letter-spacing:-.4px;margin-bottom:8px">Market Open Desk — momentum names on watch</div><div style="font-size:13.5px;color:#93A4B8">Live with the Loop desk.</div></div></a>' +
           // real feed slot
@@ -180,6 +182,8 @@
     // Watchlist edit controls (event delegation — rows re-render).
     shell.addEventListener('click', function(ev){
       var b = ev.target && ev.target.closest ? ev.target.closest('button') : null; if (!b) return;
+      var tb = b.getAttribute('data-tab');
+      if (tb){ curTab = tb; styleTabs(); if (tb === 'following') loadFollowSet(dedupeFeed); else if (tb === 'live') buildLiveGrid(); dedupeFeed(); return; }
       if (b.id === 'sml-hf-watch-edit') { wEdit = !wEdit; renderWatch(); var i=document.getElementById('sml-hf-watch-inp'); if (wEdit && i) i.focus(); return; }
       if (b.id === 'sml-hf-watch-addbtn') { addTicker(); return; }
       var del = b.getAttribute('data-wdel');
@@ -257,8 +261,10 @@
       tr.innerHTML = st.items.map(function(it){ return '<div class="sml-rh-item"><a href="'+esc(it.link)+'"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16.5px;line-height:1.3;color:#E6EDF5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+it.title+'</div></a><div style="display:flex;align-items:center;gap:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span>'+esc(rhFmtDate(it.date))+'</span><a href="'+esc(it.link)+'" style="color:#38F58A;font-weight:600">Read →</a></div></div>'; }).join('');
       rhGo(card, st, st.i || 0, true);
     }
-    function rhOpen(card){
-      if (card.__rhPanel){ card.__rhPanel.classList.add('on'); return; }
+    // Resolve a card's rail data (cached per query so many cards share fetches).
+    var rhCache = {};
+    function rhResolve(card, cb){
+      if (card.__rhData){ cb(card.__rhData.items, card.__rhData.label); return; }
       var text = card.innerText || '';
       var tick = (text.match(/\$([A-Z]{1,5})\b/)||[])[1];
       var an = ((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
@@ -274,8 +280,33 @@
       var title = hEl ? (hEl.textContent||'') : '';
       var topic = title.replace(/[^A-Za-z0-9$ ]/g,' ').split(/\s+/).filter(function(w){ return w.length>3 && !/^(this|that|with|from|will|have|been|after|about|says|over|into|their|would|could|these|those|when|what|where|more|than)$/i.test(w); }).slice(0,3).join(' ');
       var label = isNews ? (tick ? ('MORE ON $'+tick) : 'MORE LIKE THIS') : ('MORE FROM '+(an||'THIS TRADER').toUpperCase());
+      var ck = isNews ? ('s:'+(tick||topic||'stocks')) : ('a:'+((asm&&asm[1])||an));
+      function finish(arr){
+        var items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date }; }).slice(0,10);
+        card.__rhData = { items: items, label: label };
+        cb(items, label);
+      }
+      if (rhCache[ck]){ finish(rhCache[ck]); return; }
+      var save = function(arr){ rhCache[ck] = arr || []; finish(arr); };
+      var base = '/wp-json/wp/v2/';
+      function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); }
+      if (isNews){
+        // News article -> more articles on the same stock (or same topic if no ticker).
+        searchBy(tick || topic || 'stocks').then(save).catch(function(){ save([]); });
+      }
+      else if (asm){
+        // User post -> ALWAYS that user's latest posts (ticker mentions don't change this).
+        fetch(base+'users?slug='+encodeURIComponent(asm[1])+'&_fields=id').then(function(r){ return r.json(); })
+          .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); })
+          .then(function(arr){ if (arr && arr.length) save(arr); else return searchBy(an).then(save); })
+          .catch(function(){ searchBy(an).then(save).catch(function(){ save([]); }); });
+      }
+      else { searchBy(an || tick || 'stocks').then(save).catch(function(){ save([]); }); }
+    }
+    function rhOpen(card){
+      if (card.__rhPanel){ card.__rhPanel.classList.add('on'); return; }
       var p = document.createElement('div'); p.className='sml-rh-panel';
-      p.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:12px 18px 8px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.14em;color:#38F58A">'+esc(label)+'</span><span class="sml-rh-count" style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#6B7C90"></span><button class="sml-rh-nav sml-rh-x" title="Back" style="font-size:12px">✕</button></div>'
+      p.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:12px 18px 8px"><span class="sml-rh-label" style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.14em;color:#38F58A"></span><span class="sml-rh-count" style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#6B7C90"></span><button class="sml-rh-nav sml-rh-x" title="Back" style="font-size:12px">✕</button></div>'
         + '<div style="flex:1;overflow:hidden;position:relative"><div class="sml-rh-track"><div class="sml-rh-item"><div style="font-size:13px;color:#6B7C90">Loading…</div></div></div></div>'
         + '<div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 0 12px"><button class="sml-rh-nav sml-rh-prev">‹</button><button class="sml-rh-nav sml-rh-next">›</button></div>';
       card.appendChild(p);
@@ -285,21 +316,10 @@
       p.querySelector('.sml-rh-x').addEventListener('click', function(){ p.classList.remove('on'); });
       p.querySelector('.sml-rh-prev').addEventListener('click', function(){ rhGo(card, st, st.i-1); });
       p.querySelector('.sml-rh-next').addEventListener('click', function(){ rhGo(card, st, st.i+1); });
-      var base = '/wp-json/wp/v2/';
-      function gotPosts(arr){ st.items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date }; }).slice(0,10); rhRender(card, st); }
-      function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); }
-      if (isNews){
-        // News article -> more articles on the same stock (or same topic if no ticker).
-        searchBy(tick || topic || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); });
-      }
-      else if (asm){
-        // User post -> ALWAYS that user's latest posts (ticker mentions don't change this).
-        fetch(base+'users?slug='+encodeURIComponent(asm[1])+'&_fields=id').then(function(r){ return r.json(); })
-          .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); })
-          .then(function(arr){ if (arr && arr.length) gotPosts(arr); else return searchBy(an).then(gotPosts); })
-          .catch(function(){ searchBy(an).then(gotPosts).catch(function(){ gotPosts([]); }); });
-      }
-      else { searchBy(an || tick || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); }); }
+      rhResolve(card, function(items, label){
+        var lab = p.querySelector('.sml-rh-label'); if (lab) lab.textContent = label;
+        st.items = items; rhRender(card, st);
+      });
     }
     function attachRh(card){
       if (card.querySelector('.sml-rh-btn')) return;
@@ -307,7 +327,10 @@
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
       card.appendChild(b);
     }
-    host.querySelectorAll('.oh-post').forEach(attachRh);
+    // Only add the arrow when there IS more to see: prefetch each card's rail
+    // (staggered, cached) and attach the arrow only if items came back.
+    function armRh(card, delay){ setTimeout(function(){ rhResolve(card, function(items){ if (items.length) attachRh(card); }); }, delay); }
+    (function(){ var i = 0; host.querySelectorAll('.oh-post').forEach(function(card){ armRh(card, 350 * i++); }); })();
 
     // ---- feed hygiene: one card per user per content type ----
     // A user may appear again only with a DIFFERENT kind of activity (photo /
@@ -322,16 +345,98 @@
       for (var i=0;i<imgs.length;i++){ if (!imgs[i].classList.contains('oh-post-avatar')) return 'photo'; }
       return 'post';
     }
+    // Nonce for the site's own authed REST routes (harvested from its inline boot scripts).
+    var RNONCE='';
+    try { var scs=document.querySelectorAll('script:not([src])'); for (var si=0; si<scs.length; si++){ var sm=(scs[si].textContent||'').match(/["'](?:nonce|restNonce|rest_nonce|_wpnonce|wpNonce)["']\s*[:=]\s*["']([A-Za-z0-9]{8,12})["']/); if (sm){ RNONCE=sm[1]; break; } } } catch(e){}
+    function api(u){ var h={}; if (RNONCE) h['X-WP-Nonce']=RNONCE; return fetch(u,{credentials:'same-origin',headers:h}).then(function(r){ if(!r.ok) throw r.status; return r.json(); }); }
+
+    // Following = the viewer's friends + anyone they follow (site's own APIs).
+    var fSet=null, fLoading=false;
+    function loadFollowSet(cb){
+      if (fSet){ cb(); return; } if (fLoading) return; fLoading=true;
+      fSet={};
+      var me=(window.SML_ME&&window.SML_ME.id)||0;
+      var done=function(){ fLoading=false; cb(); };
+      if (!me){ done(); return; }
+      var add=function(f){ var h=String(f.handle||f.slug||'').toLowerCase(); if(h) fSet[h]=1; if(f.name) fSet['n:'+String(f.name).toLowerCase()]=1; };
+      var tasks=[ api('/wp-json/sml-friends/v1/friends/'+me).then(function(d){ (d.friends||[]).forEach(add); }).catch(function(){}) ];
+      ['/wp-json/sml-members/v1/follow?user_id='+me,'/wp-json/sml-members/v1/follow?scope=following'].forEach(function(u){
+        tasks.push(api(u).then(function(d){ (d.following||d.follows||d.users||d.items||[]).forEach(add); }).catch(function(){}));
+      });
+      Promise.all(tasks).then(done,done);
+    }
+
+    // One visibility engine: dedupe (one card per user per content type; news
+    // exempt) + the active tab's filter. Live tab swaps the feed for the grid.
     function dedupeFeed(){
-      var seen = {};
+      var live = curTab==='live';
+      var lg=document.getElementById('sml-hf-livegrid'); if (lg) lg.style.display=live?'grid':'none';
+      host.style.display=live?'none':'';
+      if (live) return;
+      var seen={}, any=false;
       host.querySelectorAll('.oh-post').forEach(function(card){
-        var an = ((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim().toLowerCase();
-        if (!an || /^(stock\s*market\s*loop|sml(\s*news)?)$/.test(an)) { return; }
-        var key = an + '|' + cardType(card);
-        if (seen[key]) { card.style.display = 'none'; card.setAttribute('data-sml-dup','1'); }
-        else { seen[key] = 1; if (card.getAttribute('data-sml-dup')) { card.style.display=''; card.removeAttribute('data-sml-dup'); } }
+        var an=((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
+        var lan=an.toLowerCase();
+        var isNewsA=/^(stock\s*market\s*loop|sml(\s*news)?)$/.test(lan);
+        var show=true;
+        if (!isNewsA && lan){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
+        if (show && curTab==='following'){
+          if (isNewsA) show=false;
+          else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan])); }
+        }
+        card.style.display=show?'':'none'; if (show) any=true;
+      });
+      var es=document.getElementById('sml-hf-emptyfollow');
+      if (curTab==='following' && !any){
+        if (!es){ es=document.createElement('div'); es.id='sml-hf-emptyfollow'; es.style.cssText='padding:44px 20px;text-align:center;color:#93A4B8;font-size:14px;line-height:1.6'; es.innerHTML='No posts from your people yet.<br>Follow traders and add friends to build this feed.'; host.appendChild(es); }
+        es.style.display='block';
+      } else if (es){ es.style.display='none'; }
+    }
+
+    // Facebook-style comment attribution: "Alice commented on Bob's post".
+    function fbComments(){
+      host.querySelectorAll('.oh-post').forEach(function(card){
+        if (card.getAttribute('data-sml-fb')) return; card.setAttribute('data-sml-fb','1');
+        if (cardType(card)!=='comment') return;
+        var aEl=card.querySelector('.oh-post-author'); if (!aEl) return;
+        var ahf=aEl.getAttribute('href')||'', target=null;
+        card.querySelectorAll('a').forEach(function(l){
+          if (target||l===aEl||aEl.contains(l)) return;
+          var hf=l.getAttribute('href')||'';
+          if (hf&&hf!==ahf&&/^(?:https?:\/\/[^\/]+)?\/[a-z0-9_\-]+\/?$/i.test(hf)&&!/\/(groups?|watch|live|creator-studio|go-live|markets|settings|n)\b/i.test(hf)){
+            var t=(l.textContent||'').replace(/\s+/g,' ').trim(); if (t&&t.length<40) target={name:t,href:hf};
+          }
+        });
+        var nameEl=card.querySelector('.oh-post-author-name'); if (!nameEl||!nameEl.parentNode) return;
+        var span=document.createElement('span'); span.style.cssText='font-weight:400;color:#93A4B8;font-size:12.5px';
+        span.innerHTML=' commented on '+(target?('<a href="'+esc(target.href)+'" style="color:#CFDAE4;font-weight:600;text-decoration:none">'+esc(target.name)+'</a>’s'):'a')+' post';
+        nameEl.parentNode.insertBefore(span, nameEl.nextSibling);
       });
     }
+
+    // Live tab: current live streams with watch pages (site API, /live/ scrape fallback).
+    function buildLiveGrid(){
+      var lg=document.getElementById('sml-hf-livegrid');
+      if (!lg){ lg=document.createElement('div'); lg.id='sml-hf-livegrid'; lg.style.cssText='display:none;grid-template-columns:1fr 1fr;gap:14px'; var fs=document.getElementById('sml-hf-feedslot'); fs.parentNode.insertBefore(lg, fs); }
+      lg.innerHTML='<div style="grid-column:1/-1;color:#6B7C90;font-size:13px;padding:16px">Checking who’s live…</div>';
+      function render(items){
+        if (!items.length){ lg.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 16px;color:#93A4B8"><div style="font-size:15px;margin-bottom:14px">No one is live right now.</div><a href="/go-live/" style="padding:10px 26px;border-radius:999px;text-decoration:none;font-size:13px;'+GBTN+'">Be the first — Go Live</a></div>'; return; }
+        lg.innerHTML=items.map(function(it){ return '<a href="'+esc(it.url)+'" style="display:block;text-decoration:none;color:inherit;border-radius:16px;overflow:hidden;position:relative;background:linear-gradient(160deg,#16202C,#0B111A);border:1px solid rgba(242,54,69,.35)">'+(it.img?'<img src="'+esc(it.img)+'" style="width:100%;height:122px;object-fit:cover;display:block">':'<div style="height:122px;display:flex;align-items:center;justify-content:center;font-size:34px">📺</div>')+'<span style="position:absolute;top:10px;left:10px;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#F23645;color:#fff;font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700"><span style="width:5px;height:5px;border-radius:50%;background:#fff"></span>LIVE</span><div style="padding:10px 12px"><div style="font-weight:600;font-size:13.5px;color:#E6EDF5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.title||it.name||'Live stream')+'</div>'+(it.name&&it.title?'<div style="font-size:11px;color:#93A4B8">'+esc(it.name)+'</div>':'')+'</div></a>'; }).join('');
+      }
+      api('/wp-json/sml-live/v1/slots').then(function(d){
+        var arr=d.slots||d.streams||d.items||d;
+        if (!Array.isArray(arr)) arr=Object.keys(arr||{}).map(function(k){ return arr[k]; }).filter(function(x){ return x&&typeof x==='object'; });
+        render(arr.filter(function(s){ return s&&(s.live||s.is_live||s.active||s.status==='live'); }).map(function(s){ return { title:s.title||s.stream_title||'', name:s.name||s.display_name||s.handle||'', url:s.watch_url||s.url||(s.handle?('/watch/'+s.handle+'/'):'/live/'), img:s.thumbnail||s.image||'' }; }));
+      }).catch(function(){
+        fetch('/live/',{credentials:'same-origin'}).then(function(r){ return r.text(); }).then(function(html){
+          var doc=new DOMParser().parseFromString(html,'text/html'); var items=[], seenL={};
+          doc.querySelectorAll('a[href*="/watch"]').forEach(function(a){ var hf=a.getAttribute('href')||''; if (!hf||seenL[hf]) return; seenL[hf]=1; var im=a.querySelector('img'); items.push({ title:(a.textContent||'').replace(/\s+/g,' ').trim().slice(0,60), name:'', url:hf, img:im?(im.getAttribute('src')||''):'' }); });
+          render(items.slice(0,8));
+        }).catch(function(){ render([]); });
+      });
+    }
+
+    fbComments();
     dedupeFeed();
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
@@ -351,9 +456,9 @@
           node.style.animation = 'smlHfNew .6s ease';
           main.insertBefore(node, main.firstChild);
           feedSeen[cardKeyOf(node)] = 1;
-          attachRh(node);
+          armRh(node, 250 * (fresh.length - i));
         }
-        dedupeFeed(); applyQuotes();
+        fbComments(); dedupeFeed(); applyQuotes();
       }).catch(function(){});
     }
     setInterval(pollFeed, 45000);
@@ -368,6 +473,7 @@
         var slug = m[1]; var im = a.querySelector('img'); var src = im ? (im.getAttribute('data-src') || im.getAttribute('src') || '') : '';
         var nm = im ? (im.getAttribute('alt') || '').replace(/\s*group logo\s*/i, '').trim() : '';
         if (!nm) nm = (a.textContent || '').replace(/\s+/g, ' ').trim();
+        if (/options?\s*plug/i.test(nm) || /options?-?plug/i.test(slug)) return;
         if (src && !map[slug]) map[slug] = src;
         if (nm && nm.length <= 48 && !dir.some(function(g){ return g.slug === slug; })) dir.push({ slug: slug, name: nm, href: hf, img: src });
       });
