@@ -15,7 +15,7 @@
 
   // ---- live quotes (moomoo OpenD bridge -> Render /api/quotes) ----
   // Stays on "—" until the bridge is up; never fabricates a number.
-  var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', LOGO_URL='https://stockmarketloop-loop-kick.onrender.com/api/logo/', BRAND_IMG='https://stockmarketloop.com/wp-content/uploads/2026/08/LOOP_LOGO.png', AJAX_URL='/wp-admin/admin-ajax.php', Q={}, qTimer=null, SYMS=[];
+  var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', LOGO_URL='https://stockmarketloop-loop-kick.onrender.com/api/logo/', BRAND_IMG='https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@3560eef3c519/img/loop-logo.png', AJAX_URL='/wp-admin/admin-ajax.php', Q={}, qTimer=null, SYMS=[];
   function fmtP(v){return v==null?'—':'$'+(Math.abs(Number(v))>=1000?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toFixed(2));}
   function fmtPct(v){return v==null?'—':(v>=0?'▲ +':'▼ ')+Number(v).toFixed(2)+'%';}
   function fmtChg(v){return v==null?'—':(v>=0?'+':'')+Number(v).toFixed(2);}
@@ -117,7 +117,7 @@
       // header
       '<div style="position:sticky;top:0;z-index:50;background:linear-gradient(180deg,rgba(20,30,44,.92),rgba(9,15,24,.9));backdrop-filter:blur(16px) saturate(140%);border-bottom:1px solid rgba(0,0,0,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 14px 34px -14px rgba(0,0,0,.9)">' +
         '<div style="max-width:1360px;margin:0 auto;display:flex;align-items:center;gap:20px;padding:0 24px;height:60px">' +
-          '<a href="/" aria-label="StockMarketLoop" style="display:flex;align-items:center;flex:none;text-decoration:none"><img src="'+BRAND_IMG+'" alt="StockMarketLoop" style="height:40px;width:auto;display:block"></a>' +
+          '<a href="/" aria-label="StockMarketLoop" style="display:flex;align-items:center;flex:none;text-decoration:none"><img src="'+BRAND_IMG+'" alt="StockMarketLoop" style="height:46px;width:auto;display:block"></a>' +
           '<div style="flex:1;max-width:460px;display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#080E17,#121B27);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:8px 16px;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><span style="color:#6B7C90;font-size:13px">⌕</span><input placeholder="Search a ticker, e.g. NVDA" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#E6EDF5;font-size:13px"></div>' +
           '<div style="flex:1"></div>' +
           '<div style="display:flex;gap:18px;font-size:13.5px;font-weight:500;color:#93A4B8">' +
