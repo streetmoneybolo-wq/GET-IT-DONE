@@ -116,9 +116,15 @@
     try { var wraw=localStorage.getItem(WKEY); if(wraw){ wl=JSON.parse(wraw); if(!Object.prototype.toString.call(wl).match(/Array/)) wl=null; } } catch(e){}
     function watchSyms(){ return (wl&&wl.length?wl:syms.slice(0,6)); }
     function saveWl(){ try{ localStorage.setItem(WKEY,JSON.stringify(wl||[])); }catch(e){} }
+    // Account sync: persist the watchlist to the logged-in user's SML account
+    // (falls back to localStorage-only when logged out / no nonce).
+    var WL_API='/wp-json/sml-members/v1/watchlist';
+    function wlNonce(){ try{ return (window.SML_ME && window.SMLHomeFeedEngagement && SMLHomeFeedEngagement.nonce) || ''; }catch(e){ return ''; } }
+    function wlSync(symbol, action){ var n=wlNonce(); if(!n) return; fetch(WL_API,{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:symbol,action:action})}).catch(function(){}); }
+    function loadAccountWatchlist(){ var n=wlNonce(); if(!n) return; fetch(WL_API,{credentials:'same-origin',headers:{'X-WP-Nonce':n}}).then(function(r){return r.json();}).then(function(d){ if(d&&d.watchlist&&d.watchlist.length){ wl=d.watchlist.slice(0,12).map(function(s){return String(s).toUpperCase();}); saveWl(); wl.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); renderWatch(); pollQuotes(); } }).catch(function(){}); }
     function watchRows(){ return watchSyms().map(function(s){return '<div style="display:flex;align-items:center;gap:8px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;cursor:pointer"><span style="color:#38F58A;font-weight:600;width:56px">$'+esc(s)+'</span><span data-q="'+esc(s)+'" data-qf="last" style="color:#6B7C90;margin-left:auto">—</span><span data-q="'+esc(s)+'" data-qf="pct" style="color:#6B7C90;width:66px;text-align:right">—</span>'+(wEdit?'<button data-wdel="'+esc(s)+'" title="Remove" style="flex:none;width:20px;height:20px;border-radius:6px;border:1px solid rgba(242,73,92,.45);background:rgba(242,73,92,.12);color:#F2495C;font-size:11px;line-height:1;cursor:pointer;padding:0">✕</button>':'')+'</div>';}).join(''); }
     function renderWatch(){ var el=document.getElementById('sml-hf-watch-list'); if(el){ el.innerHTML=watchRows(); applyQuotes(); } var ab=document.getElementById('sml-hf-watch-add'); if(ab) ab.style.display=wEdit?'flex':'none'; var eb=document.getElementById('sml-hf-watch-edit'); if(eb){ eb.textContent=wEdit?'done':'edit'; eb.style.color=wEdit?'#38F58A':'#6B7C90'; eb.style.borderColor=wEdit?'rgba(56,245,138,.5)':'rgba(255,255,255,.12)'; } }
-    function addTicker(){ var inp=document.getElementById('sml-hf-watch-inp'); if(!inp) return; var v=String(inp.value||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); inp.value=''; if(!v||v.length>6) return; var cur=watchSyms().slice(); if(cur.indexOf(v)<0) cur.unshift(v); wl=cur.slice(0,12); saveWl(); if(SYMS.indexOf(v)<0) SYMS.push(v); renderWatch(); pollQuotes(); inp.focus(); }
+    function addTicker(){ var inp=document.getElementById('sml-hf-watch-inp'); if(!inp) return; var v=String(inp.value||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); inp.value=''; if(!v||v.length>6) return; var cur=watchSyms().slice(); if(cur.indexOf(v)<0){ cur.unshift(v); wlSync(v,'add'); } wl=cur.slice(0,12); saveWl(); if(SYMS.indexOf(v)<0) SYMS.push(v); renderWatch(); pollQuotes(); inp.focus(); }
     function storyItems(){ return authors.slice(0,7).map(function(a){var ring='0 0 0 2px #0B131F,0 0 0 4px rgba(34,224,122,.7)'; var pres=a.slug?' data-pres="'+esc(a.slug)+'"':''; var av=a.img?'<img src="'+esc(a.img)+'" alt="'+esc(a.name)+'" loading="lazy"'+pres+' style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+ring+'">':'<div'+pres+' style="width:56px;height:56px;border-radius:50%;background:linear-gradient(160deg,#26343F,#0D141D);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#38F58A;box-shadow:inset 0 2px 0 rgba(255,255,255,.22),'+ring+'">'+esc(initialsOf(a.name))+'</div>'; var inner=av+'<span style="font-size:10px;color:#93A4B8;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.name)+'</span>'; var st='display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;flex:none;text-decoration:none;color:inherit'; return a.href?'<a href="'+esc(a.href)+'" style="'+st+'">'+inner+'</a>':'<div style="'+st+'">'+inner+'</div>';}).join(''); }
     var curTab='foryou';
     function feedTabs(){ return [['foryou','For You'],['following','Following'],['live','Live']].map(function(t){var on=curTab===t[0];return '<button data-tab="'+t[0]+'" style="padding:8px 20px;border-radius:999px;border:1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)')+';background:'+(on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)')+';color:'+(on?'#38F58A':'#93A4B8')+';font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">'+t[1]+'</button>';}).join(''); }
@@ -181,6 +187,7 @@
 
     // Start live-quote polling (fills tape / watchlist / snapshot; "—" while offline).
     pollQuotes(); if (qTimer) clearInterval(qTimer); qTimer = setInterval(pollQuotes, 5000);
+    loadAccountWatchlist(); // pull the user's saved watchlist from their account
 
     // Watchlist edit controls (event delegation — rows re-render).
     shell.addEventListener('click', function(ev){
@@ -190,7 +197,7 @@
       if (b.id === 'sml-hf-watch-edit') { wEdit = !wEdit; renderWatch(); var i=document.getElementById('sml-hf-watch-inp'); if (wEdit && i) i.focus(); return; }
       if (b.id === 'sml-hf-watch-addbtn') { addTicker(); return; }
       var del = b.getAttribute('data-wdel');
-      if (del) { wl = watchSyms().filter(function(x){ return x !== del; }); saveWl(); renderWatch(); }
+      if (del) { wl = watchSyms().filter(function(x){ return x !== del; }); saveWl(); wlSync(del, 'remove'); renderWatch(); }
     });
     shell.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' && ev.target && ev.target.id === 'sml-hf-watch-inp') { ev.preventDefault(); addTicker(); } });
 
