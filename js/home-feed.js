@@ -74,6 +74,7 @@
         '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
         '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
+        '@keyframes smlHfNew{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}' +
         '@keyframes smlHfGlow{0%,100%{opacity:.5}50%{opacity:1}}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
       document.head.appendChild(st);
@@ -300,12 +301,62 @@
       }
       else { searchBy(an || tick || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); }); }
     }
-    host.querySelectorAll('.oh-post').forEach(function(card){
+    function attachRh(card){
       if (card.querySelector('.sml-rh-btn')) return;
       var b = document.createElement('button'); b.className='sml-rh-btn'; b.innerHTML='›'; b.title='More like this';
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
       card.appendChild(b);
-    });
+    }
+    host.querySelectorAll('.oh-post').forEach(attachRh);
+
+    // ---- feed hygiene: one card per user per content type ----
+    // A user may appear again only with a DIFFERENT kind of activity (photo /
+    // video / comment / liked post / text post). The site's own news account is
+    // exempt so the news flow never collapses.
+    function cardType(card){
+      var meta = ((card.querySelector('.oh-meta')||{}).textContent||'').toLowerCase();
+      if (/comment|repl/.test(meta)) return 'comment';
+      if (/\blik/.test(meta)) return 'like';
+      if (card.querySelector('video,iframe')) return 'video';
+      var imgs = card.querySelectorAll('img');
+      for (var i=0;i<imgs.length;i++){ if (!imgs[i].classList.contains('oh-post-avatar')) return 'photo'; }
+      return 'post';
+    }
+    function dedupeFeed(){
+      var seen = {};
+      host.querySelectorAll('.oh-post').forEach(function(card){
+        var an = ((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim().toLowerCase();
+        if (!an || /^(stock\s*market\s*loop|sml(\s*news)?)$/.test(an)) { return; }
+        var key = an + '|' + cardType(card);
+        if (seen[key]) { card.style.display = 'none'; card.setAttribute('data-sml-dup','1'); }
+        else { seen[key] = 1; if (card.getAttribute('data-sml-dup')) { card.style.display=''; card.removeAttribute('data-sml-dup'); } }
+      });
+    }
+    dedupeFeed();
+
+    // ---- live feed: poll for new posts and slide them in (no reload) ----
+    var feedSeen = {};
+    function cardKeyOf(card){ var a = card.querySelector('h2 a'); if (a && a.getAttribute('href')) return a.getAttribute('href'); return 'x:' + ((card.innerText||'').replace(/\s+/g,' ').slice(0,140)); }
+    host.querySelectorAll('.oh-post').forEach(function(c){ feedSeen[cardKeyOf(c)] = 1; });
+    function pollFeed(){
+      fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
+        if (html.indexOf('sml-optimized-home') < 0) return;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var fresh = [];
+        doc.querySelectorAll('#sml-optimized-home .oh-post').forEach(function(c){ if (!feedSeen[cardKeyOf(c)]) fresh.push(c); });
+        if (!fresh.length) return;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+        for (var i = fresh.length - 1; i >= 0; i--) {
+          var node = document.importNode(fresh[i], true);
+          node.style.animation = 'smlHfNew .6s ease';
+          main.insertBefore(node, main.firstChild);
+          feedSeen[cardKeyOf(node)] = 1;
+          attachRh(node);
+        }
+        dedupeFeed(); applyQuotes();
+      }).catch(function(){});
+    }
+    setInterval(pollFeed, 45000);
 
     // Real group logos from the public /groups/ directory: fill logos for the
     // user's harvested groups (matched by slug); if none were harvested, show
