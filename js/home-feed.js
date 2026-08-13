@@ -62,6 +62,17 @@
         '#sml-optimized-home .sml-sth-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;}' +
         // Responsive: collapse rails on narrow screens.
         '@media(max-width:1080px){#sml-hf-grid{grid-template-columns:1fr !important;}#sml-hf-left,#sml-hf-right{display:none !important;}}' +
+        // Rabbit-hole reveal: right-edge arrow on each post opens a looping mini-carousel.
+        '#sml-optimized-home .oh-post{overflow:visible;}' +
+        '.sml-rh-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid rgba(56,245,138,.4);background:linear-gradient(180deg,rgba(28,39,52,.96),rgba(17,25,38,.96));color:#38F58A;font-size:17px;font-weight:700;cursor:pointer;z-index:5;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px -4px rgba(0,0,0,.8);transition:transform .15s,box-shadow .15s;padding:0;line-height:1;}' +
+        '.sml-rh-btn:hover{transform:translateY(-50%) scale(1.12);box-shadow:0 0 18px -4px rgba(56,245,138,.65);}' +
+        '.sml-rh-panel{position:absolute;inset:0;z-index:6;border-radius:18px;overflow:hidden;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(56,245,138,.3);display:flex;flex-direction:column;opacity:0;transform:translateX(26px);pointer-events:none;transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .25s ease;}' +
+        '.sml-rh-panel.on{opacity:1;transform:translateX(0);pointer-events:auto;}' +
+        '.sml-rh-track{display:flex;flex:1;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
+        '.sml-rh-item{min-width:100%;padding:14px 22px;display:flex;flex-direction:column;justify-content:center;gap:7px;}' +
+        '.sml-rh-item a{text-decoration:none;}' +
+        '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
+        '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
         '@keyframes smlHfGlow{0%,100%{opacity:.5}50%{opacity:1}}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
@@ -229,6 +240,62 @@
     }
     beat(); setInterval(beat, 60000);
     pollPresence(); setInterval(pollPresence, 60000);
+
+    // ---- rabbit hole: right arrow on each post reveals a looping rail of more ----
+    // User posts -> author's recent posts; ticker/news cards -> recent articles on
+    // that stock. The rail wraps around endlessly (1..N then back to 1).
+    function rhFmtDate(d){ try { return new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric'}); } catch(e){ return ''; } }
+    function rhGo(card, st, i, instant){
+      var n = st.items.length || 1; i = ((i % n) + n) % n; st.i = i;
+      var tr = card.__rhTrack; if (tr){ if (instant){ tr.style.transition='none'; tr.style.transform='translateX(-'+(i*100)+'%)'; void tr.offsetWidth; tr.style.transition=''; } else { tr.style.transform='translateX(-'+(i*100)+'%)'; } }
+      if (card.__rhCount) card.__rhCount.textContent = st.items.length ? ((i+1)+' / '+st.items.length+' ∞') : '';
+    }
+    function rhRender(card, st){
+      var tr = card.__rhTrack; if (!tr) return;
+      if (!st.items.length){ tr.innerHTML='<div class="sml-rh-item"><div style="font-size:13.5px;color:#93A4B8">Nothing more here yet — keep scrolling the feed.</div></div>'; if(card.__rhCount) card.__rhCount.textContent=''; return; }
+      tr.innerHTML = st.items.map(function(it){ return '<div class="sml-rh-item"><a href="'+esc(it.link)+'"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16.5px;line-height:1.3;color:#E6EDF5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+it.title+'</div></a><div style="display:flex;align-items:center;gap:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span>'+esc(rhFmtDate(it.date))+'</span><a href="'+esc(it.link)+'" style="color:#38F58A;font-weight:600">Read →</a></div></div>'; }).join('');
+      rhGo(card, st, st.i || 0, true);
+    }
+    function rhOpen(card){
+      if (card.__rhPanel){ card.__rhPanel.classList.add('on'); return; }
+      var text = card.innerText || '';
+      var tick = (text.match(/\$([A-Z]{1,5})\b/)||[])[1];
+      var an = ((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
+      var aEl = card.querySelector('.oh-post-author');
+      var ahref = aEl ? (aEl.getAttribute('href')||'') : '';
+      var asm = ahref.match(/^(?:https?:\/\/[^\/]+)?\/([a-z0-9_\-]+)\/?$/i);
+      var hEl = card.querySelector('h2 a');
+      var cur = hEl ? (hEl.getAttribute('href')||'') : '';
+      var label = tick ? ('MORE ON $'+tick) : ('MORE FROM '+(an||'THIS TRADER').toUpperCase());
+      var p = document.createElement('div'); p.className='sml-rh-panel';
+      p.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:12px 18px 8px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.14em;color:#38F58A">'+esc(label)+'</span><span class="sml-rh-count" style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#6B7C90"></span><button class="sml-rh-nav sml-rh-x" title="Back" style="font-size:12px">✕</button></div>'
+        + '<div style="flex:1;overflow:hidden;position:relative"><div class="sml-rh-track"><div class="sml-rh-item"><div style="font-size:13px;color:#6B7C90">Loading…</div></div></div></div>'
+        + '<div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 0 12px"><button class="sml-rh-nav sml-rh-prev">‹</button><button class="sml-rh-nav sml-rh-next">›</button></div>';
+      card.appendChild(p);
+      card.__rhPanel = p; card.__rhTrack = p.querySelector('.sml-rh-track'); card.__rhCount = p.querySelector('.sml-rh-count');
+      var st = { items: [], i: 0 }; card.__rhState = st;
+      requestAnimationFrame(function(){ p.classList.add('on'); });
+      p.querySelector('.sml-rh-x').addEventListener('click', function(){ p.classList.remove('on'); });
+      p.querySelector('.sml-rh-prev').addEventListener('click', function(){ rhGo(card, st, st.i-1); });
+      p.querySelector('.sml-rh-next').addEventListener('click', function(){ rhGo(card, st, st.i+1); });
+      var base = '/wp-json/wp/v2/';
+      function gotPosts(arr){ st.items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date }; }).slice(0,10); rhRender(card, st); }
+      function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); }
+      if (tick){ searchBy(tick).then(gotPosts).catch(function(){ gotPosts([]); }); }
+      else if (asm){
+        fetch(base+'users?slug='+encodeURIComponent(asm[1])+'&_fields=id').then(function(r){ return r.json(); })
+          .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); })
+          .then(function(arr){ if (arr && arr.length) gotPosts(arr); else return searchBy(an).then(gotPosts); })
+          .catch(function(){ searchBy(an).then(gotPosts).catch(function(){ gotPosts([]); }); });
+      }
+      else { searchBy(an || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); }); }
+    }
+    host.querySelectorAll('.oh-post').forEach(function(card){
+      if (card.querySelector('.sml-rh-btn')) return;
+      var b = document.createElement('button'); b.className='sml-rh-btn'; b.innerHTML='›'; b.title='More like this';
+      b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
+      card.appendChild(b);
+    });
 
     // Real group logos from the public /groups/ directory: fill logos for the
     // user's harvested groups (matched by slug); if none were harvested, show
