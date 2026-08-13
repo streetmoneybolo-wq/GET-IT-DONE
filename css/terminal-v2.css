@@ -116,3 +116,21 @@ body.tv2-integrated-on #sml-ws{background:transparent!important}
 body.tv2-integrated-on #sml-ws-left,
 body.tv2-integrated-on #sml-ws-mid,
 body.tv2-integrated-on #sml-ws-rail{background:transparent!important}
+
+/* ---- polish: shift the module cards from legacy navy/blue to Direction B black/green ---- */
+body.tv2-integrated-on{background:#080c11}
+body.tv2-integrated-on .entry-content,
+body.tv2-integrated-on .wp-site-blocks{background:#080c11!important}
+/* side cards (Live Quotes / Alert Box / Videos), technicals gauge, market position, community feed */
+body.tv2-integrated-on .sml-sc,
+body.tv2-integrated-on .sml-tech,
+body.tv2-integrated-on #sml-mp,
+body.tv2-integrated-on #sml-lf{
+  background:#0f151d!important;border-color:rgba(255,255,255,.10)!important}
+body.tv2-integrated-on .sml-sc{border-radius:12px!important}
+/* keep the Alert Box's intentional highlight border, just re-hue it to the accent */
+body.tv2-integrated-on #sml-side-alerts{border-color:rgba(47,227,138,.45)!important}
+/* header sponsored slot: dress it as a proper panel instead of a floating dark box */
+body.tv2-integrated-on .sml-uads-header{
+  background:#0f151d!important;border:1px solid rgba(255,255,255,.10)!important;border-radius:12px!important;padding:8px!important}
+body.tv2-integrated-on .wp-block-spacer{height:14px!important}
