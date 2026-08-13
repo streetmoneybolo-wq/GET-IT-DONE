@@ -1,0 +1,90 @@
+/*!
+ * SML Ticker Terminal V2 — scoped layout (Phase 1 shell).
+ * Everything is namespaced under .tv2 so it can never leak into the rest of the
+ * page. Direction B grid, tokenized, responsive (>=1200 / 768-1199 / <768),
+ * accessible focus, reduced-motion aware. No hard 1440px floor.
+ */
+#sml-tv2-root.tv2{
+  --tv2-bg:#080c11; --tv2-surface:#0f151d; --tv2-surface2:#0c1219; --tv2-line:rgba(255,255,255,.10);
+  --tv2-ink:#e6edf3; --tv2-ink-soft:#93a2af; --tv2-ink-faint:#6a7783;
+  --tv2-acc:#2fe38a; --tv2-acc-ink:#04120b; --tv2-acc-wash:rgba(47,227,138,.10);
+  --tv2-up:#2fe38a; --tv2-down:#f2495c;
+  --tv2-mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --tv2-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --tv2-gap:14px; --tv2-radius:12px;
+  box-sizing:border-box; width:100%; max-width:1440px; margin:0 auto; padding:14px;
+  background:var(--tv2-bg); color:var(--tv2-ink); font-family:var(--tv2-sans); font-size:15px; line-height:1.5;
+}
+#sml-tv2-root.tv2 *{box-sizing:border-box}
+#sml-tv2-root.tv2 button{font-family:inherit;cursor:pointer}
+#sml-tv2-root.tv2 :focus-visible{outline:2px solid var(--tv2-acc);outline-offset:2px;border-radius:6px}
+
+/* header */
+.tv2 .tv2-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 14px;border:1px solid var(--tv2-line);border-radius:var(--tv2-radius);
+  background:linear-gradient(180deg,var(--tv2-acc-wash),transparent 60%),var(--tv2-surface);margin-bottom:var(--tv2-gap)}
+.tv2 .tv2-brand{font-family:var(--tv2-mono);font-size:13px;letter-spacing:.22em;color:var(--tv2-acc);text-decoration:none;font-weight:700;flex:none}
+.tv2 .tv2-search{flex:1;min-width:180px}
+.tv2 .tv2-search input{width:100%;background:var(--tv2-surface2);border:1px solid var(--tv2-line);
+  border-radius:999px;padding:9px 16px;color:var(--tv2-ink);font-size:14px;outline:none}
+.tv2 .tv2-search input::placeholder{color:var(--tv2-ink-faint)}
+.tv2 .tv2-watchstrip{flex:2;min-width:160px;overflow:hidden}
+.tv2 .tv2-add{flex:none;border:1px solid var(--tv2-acc);background:var(--tv2-acc-wash);color:var(--tv2-acc);
+  border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600}
+
+/* identity row */
+.tv2 .tv2-identity{display:grid;grid-template-columns:1.4fr 1fr 2fr;gap:var(--tv2-gap);margin-bottom:var(--tv2-gap)}
+.tv2 .tv2-identity>div{border:1px solid var(--tv2-line);border-radius:var(--tv2-radius);background:var(--tv2-surface);padding:12px 14px;min-height:64px}
+
+/* tabs */
+.tv2 .tv2-tabs{display:flex;gap:6px;margin-bottom:var(--tv2-gap);border-bottom:1px solid var(--tv2-line);padding-bottom:2px;overflow-x:auto}
+.tv2 .tv2-tab{border:none;background:transparent;color:var(--tv2-ink-soft);font-size:14px;font-weight:600;
+  padding:10px 18px;border-radius:8px 8px 0 0;white-space:nowrap;min-height:44px}
+.tv2 .tv2-tab[aria-selected="true"]{color:var(--tv2-acc);background:var(--tv2-acc-wash);
+  box-shadow:inset 0 -2px 0 var(--tv2-acc)}
+.tv2 .tv2-tab:hover{color:var(--tv2-ink)}
+
+/* body grid */
+.tv2 .tv2-body{display:grid;grid-template-columns:56px minmax(0,1fr) 300px;gap:var(--tv2-gap);align-items:start}
+.tv2 .tv2-rail{border:1px solid var(--tv2-line);border-radius:var(--tv2-radius);background:var(--tv2-surface);
+  min-height:300px;position:sticky;top:14px}
+.tv2 .tv2-work{min-width:0;display:flex;flex-direction:column;gap:var(--tv2-gap)}
+.tv2 .tv2-panel{display:flex;flex-direction:column;gap:var(--tv2-gap)}
+.tv2 .tv2-context{display:flex;flex-direction:column;gap:var(--tv2-gap);position:sticky;top:14px}
+
+/* lower strip */
+.tv2 .tv2-lower{display:grid;grid-template-columns:1fr 1fr;gap:var(--tv2-gap);margin-top:var(--tv2-gap)}
+
+/* labeled empty slot (Phase 1 placeholder) */
+.tv2 .tv2-slot{position:relative;border:1px dashed var(--tv2-line);border-radius:10px;background:var(--tv2-surface2);
+  min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:14px;text-align:center}
+.tv2 [data-slot="chart"]{min-height:320px}
+.tv2 [data-slot="market-position"]{min-height:180px}
+.tv2 [data-slot="options-chain"],.tv2 [data-slot="research"],.tv2 [data-slot="news"]{min-height:360px}
+.tv2 .tv2-slot-tag{font-family:var(--tv2-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tv2-acc)}
+.tv2 .tv2-slot-note{font-size:12px;color:var(--tv2-ink-faint)}
+
+.tv2 .tv2-preview-note{margin-top:16px;padding:10px 14px;border:1px solid var(--tv2-line);border-left:3px solid var(--tv2-acc);
+  border-radius:8px;background:var(--tv2-acc-wash);color:var(--tv2-ink-soft);font-size:12.5px;font-family:var(--tv2-mono)}
+
+/* responsive: 768-1199 -> collapse rail, context below */
+@media(max-width:1199px){
+  .tv2 .tv2-body{grid-template-columns:minmax(0,1fr)}
+  .tv2 .tv2-rail{display:none}
+  .tv2 .tv2-context{position:static;flex-direction:row;flex-wrap:wrap}
+  .tv2 .tv2-context>.tv2-slot{flex:1 1 220px}
+}
+/* responsive: <768 -> single column, sticky tabs */
+@media(max-width:767px){
+  #sml-tv2-root.tv2{padding:10px}
+  .tv2 .tv2-identity{grid-template-columns:1fr}
+  .tv2 .tv2-lower{grid-template-columns:1fr}
+  .tv2 .tv2-tabs{position:sticky;top:0;z-index:5;background:var(--tv2-bg);padding-top:6px}
+  .tv2 .tv2-context{flex-direction:column}
+}
+
+@media(prefers-reduced-motion:reduce){#sml-tv2-root.tv2 *{transition:none!important;animation:none!important}}
+
+/* when V2 preview is active, hide the legacy terminal + its repair scripts' targets (admin preview only) */
+body.tv2-preview-on #sml-ws,
+body.tv2-preview-on .sml-terminal-structure-guard-root{display:none!important}
