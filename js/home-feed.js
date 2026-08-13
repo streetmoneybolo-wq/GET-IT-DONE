@@ -266,7 +266,13 @@
       var asm = ahref.match(/^(?:https?:\/\/[^\/]+)?\/([a-z0-9_\-]+)\/?$/i);
       var hEl = card.querySelector('h2 a');
       var cur = hEl ? (hEl.getAttribute('href')||'') : '';
-      var label = tick ? ('MORE ON $'+tick) : ('MORE FROM '+(an||'THIS TRADER').toUpperCase());
+      // A card is a NEWS article only when it's posted by the site's own news
+      // account. Every member post — even one tagging $TICKERs — is a USER post
+      // and reveals that user's latest posts.
+      var isNews = /^(stock\s*market\s*loop|sml(\s*news)?)$/i.test(an);
+      var title = hEl ? (hEl.textContent||'') : '';
+      var topic = title.replace(/[^A-Za-z0-9$ ]/g,' ').split(/\s+/).filter(function(w){ return w.length>3 && !/^(this|that|with|from|will|have|been|after|about|says|over|into|their|would|could|these|those|when|what|where|more|than)$/i.test(w); }).slice(0,3).join(' ');
+      var label = isNews ? (tick ? ('MORE ON $'+tick) : 'MORE LIKE THIS') : ('MORE FROM '+(an||'THIS TRADER').toUpperCase());
       var p = document.createElement('div'); p.className='sml-rh-panel';
       p.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:12px 18px 8px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.14em;color:#38F58A">'+esc(label)+'</span><span class="sml-rh-count" style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#6B7C90"></span><button class="sml-rh-nav sml-rh-x" title="Back" style="font-size:12px">✕</button></div>'
         + '<div style="flex:1;overflow:hidden;position:relative"><div class="sml-rh-track"><div class="sml-rh-item"><div style="font-size:13px;color:#6B7C90">Loading…</div></div></div></div>'
@@ -281,14 +287,18 @@
       var base = '/wp-json/wp/v2/';
       function gotPosts(arr){ st.items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date }; }).slice(0,10); rhRender(card, st); }
       function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); }
-      if (tick){ searchBy(tick).then(gotPosts).catch(function(){ gotPosts([]); }); }
+      if (isNews){
+        // News article -> more articles on the same stock (or same topic if no ticker).
+        searchBy(tick || topic || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); });
+      }
       else if (asm){
+        // User post -> ALWAYS that user's latest posts (ticker mentions don't change this).
         fetch(base+'users?slug='+encodeURIComponent(asm[1])+'&_fields=id').then(function(r){ return r.json(); })
           .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); })
           .then(function(arr){ if (arr && arr.length) gotPosts(arr); else return searchBy(an).then(gotPosts); })
           .catch(function(){ searchBy(an).then(gotPosts).catch(function(){ gotPosts([]); }); });
       }
-      else { searchBy(an || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); }); }
+      else { searchBy(an || tick || 'stocks').then(gotPosts).catch(function(){ gotPosts([]); }); }
     }
     host.querySelectorAll('.oh-post').forEach(function(card){
       if (card.querySelector('.sml-rh-btn')) return;
