@@ -63,6 +63,10 @@
 .tv2 [data-slot="options-chain"],.tv2 [data-slot="research"],.tv2 [data-slot="news"]{min-height:360px}
 .tv2 .tv2-slot-tag{font-family:var(--tv2-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--tv2-acc)}
 .tv2 .tv2-slot-note{font-size:12px;color:var(--tv2-ink-faint)}
+/* a slot that now holds a real mounted module: drop the placeholder chrome */
+.tv2 .tv2-slot.tv2-slot-filled{border:1px solid var(--tv2-line);background:var(--tv2-surface);
+  align-items:stretch;justify-content:flex-start;text-align:left;padding:0;min-height:0;overflow:hidden}
+.tv2 .tv2-slot.tv2-slot-filled>*{width:100%}
 
 .tv2 .tv2-preview-note{margin-top:16px;padding:10px 14px;border:1px solid var(--tv2-line);border-left:3px solid var(--tv2-acc);
   border-radius:8px;background:var(--tv2-acc-wash);color:var(--tv2-ink-soft);font-size:12.5px;font-family:var(--tv2-mono)}
