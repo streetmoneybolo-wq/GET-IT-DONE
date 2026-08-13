@@ -15,14 +15,14 @@
 
   // ---- live quotes (moomoo OpenD bridge -> Render /api/quotes) ----
   // Stays on "—" until the bridge is up; never fabricates a number.
-  var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', Q={}, qTimer=null;
+  var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', Q={}, qTimer=null, SYMS=[];
   function fmtP(v){return v==null?'—':'$'+(Math.abs(Number(v))>=1000?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toFixed(2));}
   function fmtPct(v){return v==null?'—':(v>=0?'▲ +':'▼ ')+Number(v).toFixed(2)+'%';}
   function fmtChg(v){return v==null?'—':(v>=0?'+':'')+Number(v).toFixed(2);}
   function fmtVol(v){if(v==null)return'—';v=Number(v);return v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(v);}
   function qColor(v){return v==null?'#6B7C90':(v>=0?'#38F58A':'#F2495C');}
   function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var d=Q[el.getAttribute('data-q')]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); }
-  function pollQuotes(){ fetch(QUOTES_URL,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
+  function pollQuotes(){ var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
 
   function boot() {
     var host = document.getElementById('sml-optimized-home');
@@ -72,6 +72,7 @@
     var syms = [];
     try { (host.innerText.match(/\$[A-Z]{1,5}\b/g)||[]).forEach(function(s){s=s.replace('$','');if(syms.indexOf(s)<0)syms.push(s);}); } catch(e){}
     if (syms.length < 6) syms = syms.concat(['SPY','QQQ','NVDA','AAPL','TSLA','MSFT','AMD','META','AMZN','SCKT','ILLR','MRAM']).filter(function(v,i,a){return a.indexOf(v)===i;});
+    SYMS = syms.slice(); // symbols the modules render -> ask the quotes API for exactly these
     // profile identity from the page
     var meName = 'You', meInit = 'You';
     try { var og=(document.querySelector('meta[property="og:title"]')||{}).content||''; var au=host.querySelector('.oh-post-author-name'); meName = (au&&au.textContent.trim()) || og.split(/\s*[|—(]/)[0].trim() || 'You'; meInit = meName.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase(); } catch(e){}
