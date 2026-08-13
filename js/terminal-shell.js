@@ -82,6 +82,25 @@
       '<div class="tv2-lower">' + slot('heatmap', 'ticker heat map') + slot('feed', 'live ticker feed') + '</div>' +
       '<div class="tv2-preview-note">Phase 1 preview — layout &amp; symbol controller only. Slots are empty until Phase 2 mounts the live modules. Public terminal is unaffected.</div>';
 
+    // ---- integrate with the LIVE terminal (verified approach, no DOM moves) ----
+    // The legacy terminal (.sml-terminal > .sml-pro-*) already has the Direction B
+    // structure: tabs + chart + rails. The chart is a LoopCharts canvas (and a
+    // hidden TradingView IFRAME fallback) — moving either kills them. So V2 sits
+    // ABOVE the legacy terminal, its tabs PROXY the legacy .sml-pro-tabs buttons
+    // (all lazy-mount logic stays the legacy code's), and CSS re-skins in place.
+    var legacyTerm = document.querySelector('.sml-terminal');
+    var legacyTabs = {};
+    [].forEach.call(document.querySelectorAll('.sml-pro-tabs button'), function (b) {
+      legacyTabs[(b.textContent || '').trim().toLowerCase()] = b;
+    });
+    var PROXY = { overview: 'overview', options: 'options', research: 'research', news: 'news' };
+    var integrated = false;
+    if (legacyTerm && legacyTabs.overview) {
+      legacyTerm.parentNode.insertBefore(root, legacyTerm);   // root has no iframes — safe to place
+      root.classList.add('tv2-integrated');                    // CSS collapses V2's empty slots, re-skins legacy
+      integrated = true;
+    }
+
     // ---- wire the tabs to the controller (with keyboard support) ----
     var tabEls = [].slice.call(root.querySelectorAll('.tv2-tab'));
     function activate(id, focus) {
@@ -93,6 +112,8 @@
         if (panel) panel.hidden = !on;
         if (on && focus) b.focus();
       });
+      // drive the legacy view (programmatic .click() works even when the bar is hidden)
+      if (integrated) { var lb = legacyTabs[PROXY[id]]; if (lb) { try { lb.click(); } catch (e) {} } }
       T.showTab(id);
     }
     tabEls.forEach(function (b, i) {
@@ -112,7 +133,17 @@
     var input = root.querySelector('#tv2-search-input');
     if (form && input) {
       input.value = T.symbol;
-      form.addEventListener('submit', function (e) { e.preventDefault(); if (input.value.trim()) T.setSymbol(input.value); });
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var v = String(input.value || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+        if (!v) return;
+        if (integrated) {
+          // The legacy terminal is server-keyed to ?symbol= — navigate (keeping the
+          // preview flag) so every module re-renders through its own real path.
+          try { var u = new URL(location.href); u.searchParams.set('symbol', v); u.searchParams.set('tv2', '1'); location.href = u.toString(); return; } catch (err) {}
+        }
+        T.setSymbol(v);
+      });
     }
     // reflect symbol changes from anywhere back into the field
     T.on('symbol', function (ctx) { if (input && document.activeElement !== input) input.value = ctx.symbol; });

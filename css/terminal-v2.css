@@ -89,6 +89,29 @@
 
 @media(prefers-reduced-motion:reduce){#sml-tv2-root.tv2 *{transition:none!important;animation:none!important}}
 
-/* when V2 preview is active, hide the legacy terminal + its repair scripts' targets (admin preview only) */
-body.tv2-preview-on #sml-ws,
-body.tv2-preview-on .sml-terminal-structure-guard-root{display:none!important}
+/* ============ INTEGRATED MODE (Phase 2, verified approach) ============
+   V2 chrome sits ABOVE the live legacy terminal; nothing in the legacy DOM is
+   moved (the chart is a canvas + a TradingView IFRAME — moving kills them).
+   V2 tabs proxy the legacy .sml-pro-tabs buttons; CSS re-skins in place. */
+
+/* collapse V2's own empty scaffolding when integrated with the live terminal */
+#sml-tv2-root.tv2.tv2-integrated .tv2-body,
+#sml-tv2-root.tv2.tv2-integrated .tv2-lower,
+#sml-tv2-root.tv2.tv2-integrated .tv2-identity,
+#sml-tv2-root.tv2.tv2-integrated .tv2-preview-note{display:none}
+#sml-tv2-root.tv2.tv2-integrated{padding-bottom:0;margin-bottom:0}
+
+/* the V2 tab bar replaces the legacy one visually (buttons stay clickable via JS) */
+body.tv2-preview-on .sml-pro-tabs{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
+
+/* ---- Direction B re-skin of the live terminal, in place (preview only) ---- */
+body.tv2-preview-on .sml-terminal,
+body.tv2-preview-on .sml-pro-terminal{background:#080c11!important;color:#e6edf3}
+body.tv2-preview-on .sml-pro-terminal .sml-panel,
+body.tv2-preview-on .sml-pro-terminal .sml-pro-chart-panel,
+body.tv2-preview-on .sml-pro-terminal .sml-pro-panel{
+  background:#0f151d!important;border:1px solid rgba(255,255,255,.10)!important;border-radius:12px}
+body.tv2-preview-on #sml-ws{background:transparent!important}
+body.tv2-preview-on #sml-ws-left,
+body.tv2-preview-on #sml-ws-mid,
+body.tv2-preview-on #sml-ws-rail{background:transparent!important}
