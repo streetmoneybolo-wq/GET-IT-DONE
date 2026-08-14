@@ -87,7 +87,8 @@
     /* ===== main column ===== */
     '<div class="slw-main">' +
       '<div class="slw-player"><div class="slw-frame">' +
-        '<div class="slw-frame-ph"><span class="t1">LIVE STREAM</span><span class="t2">player mounts here in Phase 2 — slot playback / YouTube Live</span></div>' +
+        '<div class="slw-media" id="slw-media"></div>' +
+        '<div class="slw-frame-ph" id="slw-ph"><span class="t1">CHECKING THE DESK…</span><span class="t2">looking for a live source</span></div>' +
         '<div class="slw-scanlines"></div><div class="slw-vignette"></div><div class="slw-scan"></div>' +
         '<div class="slw-sweepwrap"><div class="slw-sweep"></div></div>' +
         '<div class="slw-topchips"><div class="slw-livechip"><span class="d"></span><span>LIVE</span></div>' +
@@ -611,7 +612,7 @@
     el('#slw-gear').classList.toggle('on', S.vidSet);
     if (!S.vidSet) { el('#slw-menu').innerHTML = ''; return; }
     var resList = [['Auto', 'adaptive'], ['1080p60', 'source'], ['720p60', ''], ['480p', ''], ['360p', '']];
-    el('#slw-menu').innerHTML = '<div class="slw-menu"><div class="mh"><b>Settings</b><span>source 1080p60</span></div>' +
+    el('#slw-menu').innerHTML = '<div class="slw-menu"><div class="mh"><b>Settings</b><span>' + (window.__slwSrcNote || 'no source yet') + '</span></div>' +
       '<div class="sec"><span>QUALITY</span></div>' +
       resList.map(function (r, i) {
         return '<div class="row' + (i === S.res ? ' sel' : '') + '" data-res="' + i + '"><span class="ck">✓</span><span class="nm">' + r[0] + '</span><span class="nt">' + r[1] + '</span></div>';
@@ -829,18 +830,193 @@
   }
   paintQ();
 
+  /* ---------- Phase 2: real player (slot playback → YouTube fallback → offline) ---------- */
+  var P = { mode: 'none', yt: null, video: null, dur: 0, cur: 0, playing: false, muted: true, ytId: null, hlsUrl: null };
+  function qs(name) { var m = location.search.match(new RegExp('[?&]' + name + '=([^&]+)')); return m ? decodeURIComponent(m[1]) : null; }
+  var HANDLE = (qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
+  var media = el('#slw-media'), ph = el('#slw-ph');
+
+  /* click shield: clicks on the video toggle play through OUR controls */
+  var shield = document.createElement('div');
+  shield.style.cssText = 'position:absolute;inset:0;cursor:pointer;z-index:1';
+  media.parentNode.insertBefore(shield, media.nextSibling);
+  shield.addEventListener('click', function () { if (P.mode !== 'none') togglePlay(); });
+
+  function phState(t1, t2) { ph.classList.remove('hide'); ph.querySelector('.t1').textContent = t1; ph.querySelector('.t2').textContent = t2; }
+  function phHide() { ph.classList.add('hide'); }
+  function setSourceNote(n) { window.__slwSrcNote = n; var mh = root.querySelector('.slw-menu .mh span'); if (mh) mh.textContent = n; }
+  function paintPlayBtn() {
+    var b = el('#slw-play');
+    b.textContent = P.playing ? '❚❚' : '▶';
+    b.classList.toggle('play', !P.playing);
+  }
+  function paintVolBtn() {
+    var v = el('#slw-vol');
+    v.className = 'slw-vol' + (P.muted ? ' muted' : '');
+    v.innerHTML = P.muted ? '<span class="g">◂✕</span><span class="ml">MUTED · TAP FOR SOUND</span>' : '<span class="g">◂))</span><span class="bar"><i></i></span>';
+  }
+  function togglePlay() {
+    if (P.mode === 'yt' && P.yt) { P.playing ? P.yt.pauseVideo() : P.yt.playVideo(); }
+    else if (P.mode === 'slot' && P.video) { P.playing ? P.video.pause() : P.video.play(); }
+  }
+  function toggleMute() {
+    if (P.mode === 'yt' && P.yt) { P.muted ? P.yt.unMute() : P.yt.mute(); P.muted = !P.muted; }
+    else if (P.mode === 'slot' && P.video) { P.video.muted = !P.video.muted; P.muted = P.video.muted; }
+    paintVolBtn();
+  }
+  /* real controls take over the sim buttons once a source mounts */
+  el('#slw-play').onclick = function () {
+    if (P.mode === 'none') { /* sim */
+      S.playing = !S.playing;
+      var b = el('#slw-play');
+      b.textContent = S.playing ? '❚❚' : '▶';
+      b.classList.toggle('play', !S.playing);
+      if (S.playing) { S.mk = false; el('#slw-markers').style.display = 'none'; }
+      return;
+    }
+    togglePlay();
+  };
+  el('#slw-vol').onclick = function () {
+    if (P.mode === 'none') {
+      S.muted = !S.muted;
+      el('#slw-vol').className = 'slw-vol' + (S.muted ? ' muted' : '');
+      el('#slw-vol').innerHTML = S.muted ? '<span class="g">◂✕</span><span class="ml">MUTED</span>' : '<span class="g">◂))</span><span class="bar"><i></i></span>';
+      return;
+    }
+    toggleMute();
+  };
+  /* LIVE LOOP chip snaps to the live edge; progress bar seeks in the DVR window */
+  root.querySelector('.slw-loopchip').style.cursor = 'pointer';
+  root.querySelector('.slw-loopchip').addEventListener('click', function () {
+    if (P.mode === 'yt' && P.yt && P.dur) P.yt.seekTo(P.dur, true);
+    else if (P.mode === 'slot' && P.video && P.video.seekable && P.video.seekable.length) P.video.currentTime = P.video.seekable.end(P.video.seekable.length - 1);
+  });
+  root.querySelector('.slw-prog').addEventListener('click', function (e) {
+    if (P.mode === 'none' || !P.dur) return;
+    var r = e.currentTarget.getBoundingClientRect();
+    var frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    if (P.mode === 'yt' && P.yt) P.yt.seekTo(frac * P.dur, true);
+    else if (P.mode === 'slot' && P.video) P.video.currentTime = frac * P.dur;
+  });
+
+  function mountYT(id) {
+    if (P.mode === 'yt' && P.ytId === id) return;
+    teardown();
+    P.mode = 'yt'; P.ytId = id;
+    media.innerHTML = '<div id="slw-yt"></div>';
+    phState('CONNECTING…', 'YouTube Live · ' + id);
+    var boot = function () {
+      P.yt = new YT.Player('slw-yt', {
+        videoId: id,
+        playerVars: { autoplay: 1, mute: 1, controls: 0, playsinline: 1, rel: 0, modestbranding: 1, enablejsapi: 1, origin: location.origin },
+        events: {
+          onReady: function () { phHide(); P.muted = true; paintVolBtn(); setSourceNote('source: YouTube Live'); el('#slw-viewers').textContent = '—'; },
+          onStateChange: function (ev) {
+            P.playing = ev.data === 1;
+            paintPlayBtn();
+          },
+          onError: function () { teardown(); offline('The stream link did not load.'); }
+        }
+      });
+    };
+    if (window.YT && window.YT.Player) boot();
+    else {
+      window.onYouTubeIframeAPIReady = boot;
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        var s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+      }
+    }
+  }
+  function mountSlot(url) {
+    if (P.mode === 'slot' && P.hlsUrl === url) return;
+    teardown();
+    P.mode = 'slot'; P.hlsUrl = url;
+    phState('CONNECTING…', 'Loop stream');
+    var v = document.createElement('video');
+    v.muted = true; v.autoplay = true; v.playsInline = true;
+    media.innerHTML = ''; media.appendChild(v);
+    P.video = v;
+    v.addEventListener('playing', function () { P.playing = true; phHide(); paintPlayBtn(); setSourceNote('source: Loop stream'); el('#slw-viewers').textContent = '—'; });
+    v.addEventListener('pause', function () { P.playing = false; paintPlayBtn(); });
+    v.addEventListener('error', function () { teardown(); resolveYT(); });
+    var isHls = /\.m3u8($|\?)/.test(url);
+    if (isHls && !v.canPlayType('application/vnd.apple.mpegurl')) {
+      var go = function () {
+        if (window.Hls && window.Hls.isSupported()) { var h = new Hls(); h.loadSource(url); h.attachMedia(v); }
+        else v.src = url;
+      };
+      if (window.Hls) go();
+      else { var hs = document.createElement('script'); hs.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js'; hs.onload = go; document.head.appendChild(hs); }
+    } else v.src = url;
+    P.muted = true; paintVolBtn();
+  }
+  function teardown() {
+    if (P.yt && P.yt.destroy) try { P.yt.destroy(); } catch (e) {}
+    P.yt = null; P.video = null; P.mode = 'none'; P.dur = 0; P.playing = false;
+    media.innerHTML = '';
+  }
+  function offline(reason) {
+    phState('NOT LIVE RIGHT NOW', (reason ? reason + ' ' : '') + 'Latest streams are below — follow to get the next alert.');
+    el('#slw-viewers').textContent = '—';
+  }
+  var ytResolved = null, ytResolving = false;
+  function resolveYT() {
+    var forced = qs('yt');
+    if (forced) { mountYT(forced.replace(/[^A-Za-z0-9_-]/g, '')); return; }
+    if (ytResolved) { mountYT(ytResolved); return; }
+    if (ytResolving) return;
+    ytResolving = true;
+    /* the SEO watch page carries the host's current YouTube Live link — reuse it */
+    fetch('/watch/', { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (t) {
+      ytResolving = false;
+      var m = t.match(/youtube\.com\/(?:live\/|watch\?v=|embed\/)([A-Za-z0-9_-]{8,14})/);
+      if (m) { ytResolved = m[1]; mountYT(m[1]); }
+      else offline('');
+    }).catch(function () { ytResolving = false; offline(''); });
+  }
+  function pollFeeds() {
+    fetch('/wp-json/sml-live/v1/feeds/' + HANDLE, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var slot = d && d.live && (d.slots || []).filter(function (s2) { return s2.live && s2.playback; })[0];
+        if (slot) { mountSlot(slot.playback); return; }
+        if (P.mode === 'slot') { teardown(); }
+        if (P.mode === 'none') resolveYT();
+      })
+      .catch(function () { if (P.mode === 'none') resolveYT(); });
+  }
+  pollFeeds();
+  setInterval(pollFeeds, 20000);
+  /* real clock + progress once a source is mounted */
+  setInterval(function () {
+    if (P.mode === 'none') return;
+    var cur = 0, dur = 0;
+    if (P.mode === 'yt' && P.yt && P.yt.getCurrentTime) { cur = P.yt.getCurrentTime() || 0; dur = P.yt.getDuration() || 0; }
+    else if (P.mode === 'slot' && P.video) { cur = P.video.currentTime || 0; dur = (P.video.seekable && P.video.seekable.length) ? P.video.seekable.end(P.video.seekable.length - 1) : (P.video.duration || 0); }
+    P.cur = cur; P.dur = dur;
+    el('#slw-clock').textContent = hms(Math.floor(cur));
+    el('#slw-elapsed').textContent = hms(Math.floor(cur));
+    if (dur > 0) {
+      var pct = Math.max(0, Math.min(100, cur / dur * 100)) * 0.96;
+      el('#slw-pfill').style.width = pct.toFixed(2) + '%';
+      el('#slw-phead').style.left = pct.toFixed(2) + '%';
+    }
+  }, 1000);
+
   /* ---------- timers ---------- */
   renderFeed();
   setInterval(function () {
     S.tick++;
     if (S.playing) S.t++;
-    S.viewers = Math.max(1200, S.viewers + Math.round((Math.random() - 0.42) * 14));
-    el('#slw-clock').textContent = hms(S.t);
-    el('#slw-elapsed').textContent = hms(S.t);
-    el('#slw-viewers').textContent = S.viewers.toLocaleString();
-    var pct = 62 + (S.t % 240) / 240 * 34;
-    el('#slw-pfill').style.width = pct.toFixed(2) + '%';
-    el('#slw-phead').style.left = pct.toFixed(2) + '%';
+    if (P.mode === 'none') { /* sim clock/progress only until a real source mounts */
+      S.viewers = Math.max(1200, S.viewers + Math.round((Math.random() - 0.42) * 14));
+      el('#slw-clock').textContent = hms(S.t);
+      el('#slw-elapsed').textContent = hms(S.t);
+      el('#slw-viewers').textContent = S.viewers.toLocaleString();
+      var pct = 62 + (S.t % 240) / 240 * 34;
+      el('#slw-pfill').style.width = pct.toFixed(2) + '%';
+      el('#slw-phead').style.left = pct.toFixed(2) + '%';
+    }
     /* tomato warm-up */
     if (S.tomWarm > 0) {
       S.tomWarm--;

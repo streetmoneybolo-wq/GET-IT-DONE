@@ -95,7 +95,12 @@ body.slw-on{background:#04060a !important}
 /* ---- player ---- */
 .slw-player{position:relative;border-radius:18px;overflow:hidden;border:1px solid #16202b;background:#070b10;box-shadow:0 40px 90px -40px rgba(0,255,136,.22),0 0 0 1px rgba(0,255,136,.05)}
 .slw-frame{position:relative;width:100%;padding-bottom:56.25%}
+.slw-media{position:absolute;inset:0;background:#000}
+.slw-media iframe,.slw-media video{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+.slw-media:empty{display:none}
 .slw-frame-ph{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 38%,#0d1824,#070b10 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.slw-frame-ph.hide{display:none}
+.slw-frame-ph .t2{max-width:70%;text-align:center;line-height:1.5}
 .slw-frame-ph .t1{font:800 12px/1 Archivo,sans-serif;letter-spacing:.22em;color:#26333f}
 .slw-frame-ph .t2{font:400 10px/1 Archivo,sans-serif;color:#1c2833}
 .slw-scanlines{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 3px)}
@@ -103,14 +108,14 @@ body.slw-on{background:#04060a !important}
 .slw-scan{position:absolute;left:0;right:0;height:120px;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(0,255,136,.07),transparent);animation:slwScan 7s linear infinite}
 .slw-sweepwrap{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .slw-sweep{position:absolute;top:0;bottom:0;width:34%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.055),transparent);animation:slwSweep 6.5s ease-in-out infinite}
-.slw-topchips{position:absolute;top:18px;left:20px;display:flex;align-items:center;gap:10px}
+.slw-topchips{position:absolute;top:18px;left:20px;display:flex;align-items:center;gap:10px;z-index:5}
 .slw-livechip{display:flex;align-items:center;gap:8px;background:#ff2e66;border-radius:6px;padding:7px 11px;animation:slwLiveRing 2.6s ease-out infinite}
 .slw-livechip .d{width:6px;height:6px;border-radius:50%;background:#fff;animation:slwPulseDot 1.2s ease-in-out infinite}
 .slw-livechip span{font:800 10px/1 Archivo,sans-serif;letter-spacing:.16em;color:#fff}
 .slw-viewchip{display:flex;align-items:center;gap:7px;background:rgba(6,10,16,.88);border:1px solid #1c2833;border-radius:6px;padding:7px 11px}
 .slw-viewchip .n{font:600 11px/1 'IBM Plex Mono',monospace;color:#e6edf3}
 .slw-viewchip .w{font:500 10px/1 Archivo,sans-serif;color:#8fa3b5}
-.slw-titleblk{position:absolute;left:20px;bottom:88px;display:flex;flex-direction:column;gap:9px;max-width:64%}
+.slw-titleblk{position:absolute;left:20px;bottom:88px;display:flex;flex-direction:column;gap:9px;max-width:64%;z-index:4}
 .slw-titleblk .ep{display:flex;align-items:center;gap:8px}
 .slw-titleblk .ep i{height:3px;width:26px;background:#00ff88;display:block}
 .slw-titleblk .ep span{font:700 10px/1 Archivo,sans-serif;letter-spacing:.18em;color:#00ff88}
@@ -155,7 +160,7 @@ body.slw-on{background:#04060a !important}
 .slw-ch.on .n{color:#fff}
 
 /* control bar */
-.slw-ctl{position:absolute;left:0;right:0;bottom:0;padding:14px 20px 16px;background:linear-gradient(180deg,transparent,rgba(3,5,9,.94) 42%)}
+.slw-ctl{position:absolute;left:0;right:0;bottom:0;padding:14px 20px 16px;background:linear-gradient(180deg,transparent,rgba(3,5,9,.94) 42%);z-index:5}
 .slw-prog{position:relative;height:5px;border-radius:3px;background:#1a2530;margin-bottom:13px;cursor:pointer}
 .slw-prog .buf{position:absolute;left:0;top:0;bottom:0;width:96%;border-radius:3px;background:#26333f}
 .slw-prog .fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,#0a5c3c,#00ff88)}
