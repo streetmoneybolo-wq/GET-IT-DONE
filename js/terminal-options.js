@@ -47,6 +47,10 @@
   function fetchChain(exp) {
     var u = '/wp-json/sml-members/v1/market-data/options?symbol=' + SYM + (exp ? '&expiration=' + exp : '');
     return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      // REST error (e.g. "The market-data plan does not authorize this dataset")
+      // → surface the endpoint's own words, never an empty fake chain
+      if (d && d.code && d.message) { st.err = d.message; st.expirations = []; st.contracts = []; return; }
+      st.err = '';
       st.expirations = d.expirations || [];
       st.exp = d.expiration || exp;
       st.contracts = (d.contracts || []).filter(function (c) { return c && c.strike; });
@@ -74,9 +78,18 @@
           '<div class="pxchg3 ' + (up ? 'gpos' : 'gneg') + '">' + (st.chg == null ? '' : ((up ? '+' : '') + f2(st.chg) + ' (' + (up ? '+' : '') + f2(st.pct) + '%)')) + '</div></div>' +
         '</div><div class="hR">' +
           '<div class="stat3"><div class="sl">Expiration</div><div class="sv">' + esc(st.exp || '—') + '</div><div class="sv2">' + (st.sel ? daysToExp() + ' days out' : (st.contracts.length + ' contracts')) + '</div></div>' +
-          '<div class="stat3"><div class="sl">Session</div><div class="sv"><span class="dot on"></span> Chain loaded</div><div class="sv2">' + (st.note ? 'model mode' : 'live marks') + '</div></div>' +
+          '<div class="stat3"><div class="sl">Session</div><div class="sv"><span class="dot on"></span> ' + (st.contracts.length ? 'Chain loaded' : 'Chain unavailable') + '</div><div class="sv2">' + (st.contracts.length ? (st.note ? 'model mode' : 'live marks') : 'this session') + '</div></div>' +
         '</div></div>' +
-        (st.note ? '<div class="subline orng" style="padding:0 4px 8px">' + esc(st.note) + '</div>' : '') +
+        (st.note ? '<div class="subline orng" style="padding:0 4px 8px">' + esc(st.note) + '</div>' : '');
+    if (!st.contracts.length) {
+      // no chain for this symbol on this session — say exactly why, show nothing fake
+      html += '<div class="empty" style="padding:28px 16px;text-align:center">' +
+        esc(st.err || 'No option contracts were returned for this symbol on this session.') +
+        '<div style="margin-top:8px;font-size:11px;color:#7f93b5">Signed-in members may have access to this chain.</div></div></div>';
+      view.innerHTML = html;
+      return;
+    }
+    html +=
         '<div class="explab vfl">Expirations</div><div class="expbar" data-o-exp></div>' +
         '<div class="chwrap"><table><thead>' +
           '<tr><th class="hcalls" colspan="4">CALLS</th><th class="hstrike">STRIKE</th><th class="hputs" colspan="4">PUTS</th></tr>' +
