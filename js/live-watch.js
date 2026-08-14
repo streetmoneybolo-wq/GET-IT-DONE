@@ -1826,13 +1826,30 @@
       }
     }).catch(function () {});
   }
-  /* real orbit: creator-set images, boxless — the section stays hidden until photos exist */
+  /* real orbit: creator images live in the MEDIA LIBRARY tagged by title prefix
+     "sml-orbit-{handle}" — public wp/v2/media read, zero custom PHP needed.
+     caption field = orbit caption, description field = optional link. */
+  var ORB_TAG = 'sml-orbit-' + HANDLE;
+  function orbStrip(s2) { var d = document.createElement('div'); d.innerHTML = s2 || ''; return (d.textContent || '').trim(); }
+  function orbLink(s2) { var m = orbStrip(s2).match(/https:\/\/\S+/); return m ? m[0] : ''; }
+  function orbFetch(creds) {
+    var opts = { credentials: 'same-origin' };
+    if (creds && NONCE) opts.headers = { 'X-WP-Nonce': NONCE };
+    return fetch('/wp-json/wp/v2/media?search=' + encodeURIComponent(ORB_TAG) + '&per_page=30&_fields=id,title,caption,description,source_url', opts)
+      .then(function (r) { return r.json(); })
+      .then(function (list) {
+        if (!Array.isArray(list)) return [];
+        return list.filter(function (m) { return m && m.source_url && m.title && String(m.title.rendered || '').indexOf(ORB_TAG) === 0; })
+          .sort(function (a, b) { return String(a.title.rendered).localeCompare(String(b.title.rendered)); })
+          .slice(0, 10)
+          .map(function (m) { return { id: m.id, img: m.source_url, title: orbStrip(m.caption && m.caption.rendered), sub: '', link: orbLink(m.description && m.description.rendered) }; });
+      });
+  }
   function loadOrbit() {
     if (SIM) return;
-    api('/sml-lw/v1/orbit?handle=' + HANDLE).then(function (res) {
-      var items = ((res.j && res.j.items) || []).filter(function (x) { return x && x.img && /^https:/.test(x.img); }).slice(0, 10);
+    orbFetch(false).then(function (items) {
       if (items.length) {
-        buildOrbit(items.map(function (x) { return { img: x.img, title: x.title || '', sub: x.sub || '', link: x.link || '' }; }));
+        buildOrbit(items);
         root.querySelector('.slw-orbit-sec').style.display = '';
       } else {
         root.querySelector('.slw-orbit-sec').style.display = 'none';
@@ -1854,7 +1871,7 @@
         inp.oninput = function () { mgr[+inp.getAttribute('data-i')][inp.getAttribute('data-f')] = inp.value; };
       });
       Array.prototype.forEach.call(box.querySelectorAll('.rm'), function (b) {
-        b.onclick = function () { mgr.splice(+b.getAttribute('data-i'), 1); paint(); };
+        b.onclick = function () { var gone = mgr.splice(+b.getAttribute('data-i'), 1)[0]; if (gone && gone.id) removed.push(gone.id); paint(); };
       });
     };
     el('#slw-modal-mount').innerHTML = '<div class="slw-modal" id="slw-omgr"><div class="slw-modal-c">' +
@@ -1864,10 +1881,8 @@
       '<span class="slw-orbmgr-note" id="slw-omgr-st"></span></div>' +
       '<div style="display:flex;gap:9px;justify-content:flex-end"><button class="slw-btn2" id="slw-omgr-x2">Cancel</button>' +
       '<button class="slw-rematch" id="slw-omgr-save">Save orbit</button></div></div></div>';
-    api('/sml-lw/v1/orbit?handle=' + HANDLE).then(function (res) {
-      mgr = ((res.j && res.j.items) || []).slice(0, 10);
-      paint();
-    }).catch(function () { paint(); });
+    var removed = [];
+    orbFetch(true).then(function (items) { mgr = items; paint(); }).catch(function () { paint(); });
     var close = function () { el('#slw-modal-mount').innerHTML = ''; };
     el('#slw-omgr-x').onclick = close;
     el('#slw-omgr-x2').onclick = close;
@@ -1881,19 +1896,26 @@
       fetch('/wp-json/wp/v2/media', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': NONCE }, body: fd })
         .then(function (r) { return r.json(); })
         .then(function (j) {
-          if (j && j.source_url) { mgr.push({ img: j.source_url, title: '', sub: '', link: '' }); paint(); el('#slw-omgr-st').textContent = ''; }
-          else el('#slw-omgr-st').textContent = (j && j.message) || 'Upload failed.';
+          if (!j || !j.source_url || !j.id) { el('#slw-omgr-st').textContent = (j && j.message) || 'Upload failed.'; return; }
+          /* tag the attachment as an orbit slot — the public page finds it by this title */
+          return fetch('/wp-json/wp/v2/media/' + j.id, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE }, body: JSON.stringify({ title: ORB_TAG + '-' + Date.now() }) })
+            .then(function () { mgr.push({ id: j.id, img: j.source_url, title: '', sub: '', link: '' }); paint(); el('#slw-omgr-st').textContent = ''; });
         }).catch(function () { el('#slw-omgr-st').textContent = 'Upload failed — check your connection.'; });
       el('#slw-omgr-file').value = '';
     };
     el('#slw-omgr-save').onclick = function () {
       el('#slw-omgr-st').textContent = 'Saving…';
-      fetch('/wp-json/sml-lw/v1/orbit', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-WP-Nonce': NONCE }, body: 'handle=' + encodeURIComponent(HANDLE) + '&items=' + encodeURIComponent(JSON.stringify(mgr)) })
-        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-        .then(function (res) {
-          if (res.ok) { close(); loadOrbit(); }
-          else el('#slw-omgr-st').textContent = (res.j && res.j.message) || 'Save failed — is the api snippet up to date?';
-        }).catch(function () { el('#slw-omgr-st').textContent = 'Save failed — check your connection.'; });
+      var jobs = [];
+      mgr.forEach(function (m) {
+        if (!m.id) return;
+        jobs.push(fetch('/wp-json/wp/v2/media/' + m.id, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE }, body: JSON.stringify({ caption: m.title || '', description: m.link || '' }) }));
+      });
+      /* removing a slot just untags the attachment — the file stays in the library */
+      removed.forEach(function (id) {
+        jobs.push(fetch('/wp-json/wp/v2/media/' + id, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE }, body: JSON.stringify({ title: 'orbit-removed-' + Date.now() }) }));
+      });
+      Promise.all(jobs).then(function () { close(); loadOrbit(); })
+        .catch(function () { el('#slw-omgr-st').textContent = 'Save failed — check your connection.'; });
     };
   }
   if (el('#slw-orbbtn')) el('#slw-orbbtn').onclick = openOrbMgr;
