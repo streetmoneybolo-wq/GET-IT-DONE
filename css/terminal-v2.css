@@ -66,3 +66,11 @@ body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
 @media (max-width:899px){
   body.tv2-artifact-on #sml-tv2-root [data-tv2-frame]{padding-left:0!important;padding-right:0!important}
 }
+
+/* wide screens: the design's row returns, but the fixed widths we flattened
+   were what sized it — recreate the proportions with flex (main grows, rail 396) */
+@media (min-width:1200px){
+  body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="zbody"]{display:flex!important;flex-direction:row!important}
+  body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="main"]{flex:1 1 0%!important}
+  body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="rail"]{flex:0 0 396px!important;width:396px!important;max-width:396px!important}
+}
