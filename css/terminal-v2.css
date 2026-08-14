@@ -25,3 +25,29 @@ body.tv2-heatmap-off #sml-mp [title*="Position Overview"],
 body.tv2-preview-on #sml-mp [title="Heat Map"],
 body.tv2-preview-on #sml-mp [title*="Heat"],
 body.tv2-preview-on #sml-mp [title*="Position Overview"]{display:none!important}
+
+/* ---------- RESPONSIVE: the captured design is a fixed 1440px frame ----------
+   terminal-shell.js tags the anonymous wrapper chain [data-tv2-frame] and the
+   zones [data-tv2-zone]. Flatten the fixed widths to fluid, then stack below
+   1200px. The chart/MP engines re-measure on window.resize (proven live). */
+body.tv2-artifact-on #sml-tv2-root [data-tv2-frame],
+body.tv2-artifact-on #sml-tv2-root [data-tv2-zone]{
+  width:auto!important;max-width:100%!important;min-width:0!important;
+}
+body.tv2-artifact-on [data-tv2-zone="strip"]{flex-wrap:wrap!important;height:auto!important}
+body.tv2-artifact-on [data-tv2-zone] > *{min-width:0}
+
+@media (max-width:1199px){
+  body.tv2-artifact-on [data-tv2-zone="zbody"]{display:flex!important;flex-direction:column!important}
+  body.tv2-artifact-on [data-tv2-zone="main"],
+  body.tv2-artifact-on [data-tv2-zone="rail"]{width:100%!important;flex:0 0 auto!important}
+}
+@media (max-width:899px){
+  body.tv2-artifact-on [data-tv2-zone="header"]{flex-wrap:wrap!important;height:auto!important;row-gap:8px}
+  body.tv2-artifact-on [data-tv2-zone="tabs"]{overflow-x:auto}
+}
+@media (max-width:767px){
+  body.tv2-artifact-on [data-tv2-view]{padding:12px!important}
+  body.tv2-artifact-on [data-tv2-zone="main"],
+  body.tv2-artifact-on [data-tv2-zone="rail"]{padding-left:0!important;padding-right:0!important}
+}

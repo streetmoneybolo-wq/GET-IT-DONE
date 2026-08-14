@@ -14,3 +14,15 @@
 #sml-opt2 td.cs.pm{color:#7fe6a9 !important;}
 #sml-opt2 td.ps.pm{color:#ff8a95 !important;}
 #sml-opt2 .tk3 .sml-ticker-mention{color:inherit !important;text-decoration:none !important;pointer-events:none;}
+
+/* ---- responsive: the original module was desktop-only; stack the panes ---- */
+@media (max-width:1100px){
+  #sml-opt2 .panes3{grid-template-columns:1fr 1fr!important}
+  #sml-opt2 .pane.gold{grid-column:1/-1}
+}
+@media (max-width:760px){
+  #sml-opt2 .panes3{grid-template-columns:1fr!important}
+  #sml-opt2 .hdr3{flex-wrap:wrap;row-gap:10px}
+  #sml-opt2 .gcal{grid-template-columns:repeat(3,1fr)!important}
+  #sml-opt2 .ginfo{grid-template-columns:1fr 1fr!important}
+}

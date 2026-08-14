@@ -34,6 +34,24 @@
       .then(function (html) {
         root.innerHTML = html;
         document.body.classList.add('tv2-artifact-on'); // hides the legacy terminal (CSS)
+        // Tag the captured wrapper chain + zones so responsive CSS can address
+        // them — the captured divs carry NO classes (one has width:1440px inline
+        // to the design's fixed frame). Attributes only; structure untouched, so
+        // the other phase scripts' zone resolution keeps working.
+        try {
+          var el = root.querySelector(':scope > :last-child');
+          while (el) {
+            el.setAttribute('data-tv2-frame', '1');
+            if (el.children.length !== 1) break;
+            el = el.children[0];
+          }
+          if (el && el.children.length >= 4) {
+            ['header', 'strip', 'tabs', 'zbody'].forEach(function (n, i) { el.children[i].setAttribute('data-tv2-zone', n); });
+            var bz = el.children[3];
+            if (bz.children[0]) bz.children[0].setAttribute('data-tv2-zone', 'main');
+            if (bz.children[1]) bz.children[1].setAttribute('data-tv2-zone', 'rail');
+          }
+        } catch (e) {}
         // place the shell where the terminal was, so page flow reads naturally
         var legacy = document.querySelector('.sml-terminal');
         if (legacy && legacy.parentNode) legacy.parentNode.insertBefore(root, legacy);
