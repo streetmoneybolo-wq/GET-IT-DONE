@@ -54,9 +54,35 @@
       if (done.chart) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
     }
 
-    // MAIN[1] = feed card ← #sml-lf
+    // MAIN[1] = feed card ← #sml-lf. The design card keeps ITS header; the legacy
+    // module's own "Live Feed" header is hidden so there is exactly ONE title.
     var lf = document.getElementById('sml-lf');
-    if (!done.lf && lf && main.children[1]) { done.lf = adopt(cardBody(main.children[1], true), lf); }
+    if (!done.lf && lf && main.children[1]) {
+      done.lf = adopt(cardBody(main.children[1], true), lf);
+      if (done.lf) {
+        var oldHead = lf.querySelector('.lf-head');
+        if (oldHead) oldHead.style.display = 'none';
+        // ---- Live Voice Room as a button in the feed card ----
+        var tvr = document.querySelector('.sml-tvr-slot') || document.getElementById('live-voice-room');
+        if (tvr) {
+          tvr.style.display = 'none'; tvr.style.width = '100%';
+          main.children[1].appendChild(tvr);
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = '🎙 Join Live Voice Room';
+          btn.style.cssText = 'margin:10px 16px;padding:9px 20px;border-radius:999px;border:1px solid #134a33;' +
+            'background:linear-gradient(180deg,#00ff88,#00c86b);color:#04120b;font:600 13px Archivo,sans-serif;cursor:pointer';
+          btn.addEventListener('click', function () {
+            var open = tvr.style.display === 'none';
+            tvr.style.display = open ? 'block' : 'none';
+            btn.textContent = open ? '🎙 Hide Voice Room' : '🎙 Join Live Voice Room';
+            if (open) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
+          });
+          // place the button right under the card header, above the stream
+          main.children[1].insertBefore(btn, lf);
+        }
+      }
+    }
     // MAIN[3] = sponsored ← #sml-ad-slot
     var ad = document.getElementById('sml-ad-slot');
     if (!done.ad && ad && main.children[3]) { done.ad = adopt(cardBody(main.children[3], true), ad); }
