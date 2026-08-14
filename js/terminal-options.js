@@ -189,7 +189,15 @@
       if (showOpt && !view.__loaded) {
         view.__loaded = true;
         view.innerHTML = '<div style="font:400 12px ' + css + ';color:#8fa3b5">Loading the ' + SYM + ' chain…</div>';
-        Promise.all([fetchQuote(), fetchChain(null)]).then(function () { render(view); }).catch(function () {
+        Promise.all([fetchQuote(), fetchChain(null)]).then(function () {
+          // if the feed defaulted to an EXPIRED expiry, jump to the nearest future one
+          var today = new Date().toISOString().slice(0, 10);
+          if (st.exp && st.exp < today) {
+            var next = (st.expirations || []).filter(function (x) { return x >= today; })[0];
+            if (next) return fetchChain(next).then(function () { render(view); });
+          }
+          render(view);
+        }).catch(function () {
           view.innerHTML = '<div style="font:400 12px ' + css + ';color:#ffb454">The options feed didn’t respond — try again shortly.</div>';
           view.__loaded = false;
         });
