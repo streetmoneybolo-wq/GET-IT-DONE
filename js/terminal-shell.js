@@ -37,6 +37,8 @@
         // place the shell where the terminal was, so page flow reads naturally
         var legacy = document.querySelector('.sml-terminal');
         if (legacy && legacy.parentNode) legacy.parentNode.insertBefore(root, legacy);
+        // Phase B: wire real data into the shell
+        var d = document.createElement('script'); d.src = base + 'js/terminal-data.js'; document.body.appendChild(d);
       })
       .catch(function () { /* fetch failed → leave the legacy terminal untouched */ });
   }
