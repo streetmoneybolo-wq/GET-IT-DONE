@@ -11,6 +11,8 @@
   /* re-parent to a direct <body> child so the takeover CSS can hide everything else */
   if (root.parentNode !== document.body) document.body.appendChild(root);
   document.body.classList.add('slw-on');
+  /* ?sim=1 keeps the full design demo (sample chat etc.); default is real data */
+  var SIM = /[?&]sim=1/.test(location.search);
 
   /* ---------- sample data (verbatim from the design handoff) ---------- */
   var ACCENTS = ['#00ff88', '#00ccff', '#ffb454', '#ff7a45', '#ff2e66'];
@@ -44,11 +46,13 @@
     gView: 'lobby', gGame: 0, ttt: ['', '', '', '', '', '', '', '', ''], tttTurn: 'X', tttDone: '', tttLine: [], tttLeft: 30,
     recPage: 0, recAt: 0, camScene: 'idle', matchSeq: 0, endedSeq: -1
   };
-  SEED.forEach(function (m, i) { S.msgs.push({ id: 'seed' + i, ini: m[0], h: m[1], tx: m[2], at: (28 - i * 3) + 'm', replies: [] }); });
-  var addR = function (mi, arr) { S.msgs[mi].replies = arr.map(function (r, j) { return { ini: r[0], h: r[1], tx: r[2], at: (14 - j * 4) + 'm' }; }); };
-  addR(2, [['QV', 'quantvega', 'Same fill. That level keeps printing.'], ['JT', 'jettape', 'Trailing under 770.56 too, thanks.'], ['BK', 'breakoutkid', 'Adds working all morning.'], ['HZ', 'hedgezoo', 'Careful into the print though.']]);
-  addR(0, [['SB', 'swingbias', 'VWAP hold is the whole story today.'], ['RT', 'ratiotrader', 'Same read on QQQ.']]);
-  addR(3, [['MW', 'marketwatchdog', 'Hedging, not conviction. Agreed.'], ['LN', 'longonly', 'Where do you see that data?'], ['QV', 'quantvega', 'FINRA daily files, linked in my bio.']]);
+  if (SIM) {
+    SEED.forEach(function (m, i) { S.msgs.push({ id: 'seed' + i, ini: m[0], h: m[1], tx: m[2], at: (28 - i * 3) + 'm', replies: [] }); });
+    var addR = function (mi, arr) { S.msgs[mi].replies = arr.map(function (r, j) { return { ini: r[0], h: r[1], tx: r[2], at: (14 - j * 4) + 'm' }; }); };
+    addR(2, [['QV', 'quantvega', 'Same fill. That level keeps printing.'], ['JT', 'jettape', 'Trailing under 770.56 too, thanks.'], ['BK', 'breakoutkid', 'Adds working all morning.'], ['HZ', 'hedgezoo', 'Careful into the print though.']]);
+    addR(0, [['SB', 'swingbias', 'VWAP hold is the whole story today.'], ['RT', 'ratiotrader', 'Same read on QQQ.']]);
+    addR(3, [['MW', 'marketwatchdog', 'Hedging, not conviction. Agreed.'], ['LN', 'longonly', 'Where do you see that data?'], ['QV', 'quantvega', 'FINRA daily files, linked in my bio.']]);
+  }
 
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function hms(n) { var h = Math.floor(n / 3600), m = Math.floor((n % 3600) / 60), s = n % 60, p = function (v) { return String(v).padStart(2, '0'); }; return h + ':' + p(m) + ':' + p(s); }
@@ -179,9 +183,10 @@
         '<div id="slw-pane-0"><div class="slw-pinned"><b>PINNED</b><span>Levels for today: 771.30 / 773.33 / 748.22</span></div>' +
           '<div class="slw-sent"><b>STREAM SENTIMENT</b><span class="bar"><i></i></span><span class="pct">68% bullish</span></div>' +
           '<div class="slw-topthreads" id="slw-tt"><div class="hd"><b>🔥 TOP THREADS</b><span>the 3 busiest conversations, pinned</span></div><div id="slw-tt-rows"></div></div>' +
-          '<div class="slw-feed" id="slw-feed"><div class="slw-feed-inner" id="slw-feed-inner"></div></div>' +
+          '<div class="slw-feed" id="slw-feed"><div class="slw-chat-empty" id="slw-chat-empty" style="display:none">No messages yet — say something to the room.</div><div class="slw-feed-inner" id="slw-feed-inner"></div></div>' +
           '<div class="slw-thread" id="slw-thread"></div>' +
-          '<div class="slw-composer" id="slw-composer"><div class="in"><span>Say something to the room</span></div><button class="slw-send">Send</button></div></div>' +
+          '<div class="slw-gaterow" id="slw-gaterow" style="display:none"></div>' +
+          '<div class="slw-composer" id="slw-composer"><input class="cin" id="slw-cin" type="text" maxlength="500" placeholder="Say something to the room" autocomplete="off"><button class="slw-send" id="slw-csend">Send</button></div></div>' +
 
         /* speak */
         '<div id="slw-pane-1" style="display:none">' +
@@ -229,7 +234,7 @@
         /* play */
         '<div id="slw-pane-4" style="display:none"><span aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)" id="slw-glive"></span>' +
           '<div class="slw-play-h"><div class="t"><b>▦ WATCH &amp; PLAY</b><span>24 live tables</span></div>' +
-            '<div class="g"><span class="slw-gate">ACCESS UNLOCKED · HOLD 495+ LB</span><span class="rank">Rank <b>#214</b> · 31W · streak 4</span></div>' +
+            '<div class="g"><span class="slw-gate" id="slw-pgate">ACCESS UNLOCKED · HOLD 495+ LB</span><span class="rank" id="slw-prank">Rank <b>#214</b> · 31W · streak 4</span></div>' +
             '<span class="fn">Free games while the stream runs — the video never pauses. Nothing is staked or deducted.</span></div>' +
           '<div class="slw-lobby" id="slw-glob"><div class="slw-gtiles">' + GAMES.map(function (g, i) {
             return '<div class="slw-gtile"><div class="top"><span class="slw-gbadge" style="color:' + g[2] + ';background:' + GACC[g[2]] + ';text-shadow:0 0 8px ' + g[2] + '66">' + g[1] + '</span><span class="lv">' + g[5] + '</span></div>' +
@@ -281,7 +286,8 @@
         '<span class="tx">' + esc(m.tx) + '</span></div></div>';
     }
     var rl = (m.replies || []).length;
-    return '<div class="slw-msg" data-id="' + m.id + '"><div class="av" style="' + avStyle(i) + '">' + m.ini + '</div><div class="bd">' +
+    var avExtra = (m.avatar && /^https:\/\//.test(m.avatar)) ? ';background-image:url(' + esc(m.avatar) + ');background-size:cover;background-position:center' : '';
+    return '<div class="slw-msg" data-id="' + m.id + '"><div class="av" style="' + avStyle(i) + avExtra + '">' + (avExtra ? '' : m.ini) + '</div><div class="bd">' +
       '<div class="hd"><span class="hn" style="' + avStyle(i) + '">@' + m.h + '</span><span class="at">' + m.at + '</span>' +
       '<button class="rp" data-th="' + m.id + '">↩ Reply</button></div>' +
       '<span class="tx">' + esc(m.tx) + '</span>' +
@@ -1003,6 +1009,183 @@
     }
   }, 1000);
 
+  /* ---------- Phase 3: real chat + wallet + gates + Q&A ---------- */
+  var NONCE = (window.wpApiSettings || {}).nonce || '';
+  function api(path, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    opts.headers = opts.headers || {};
+    if (NONCE) opts.headers['X-WP-Nonce'] = NONCE;
+    if (opts.body && !opts.headers['Content-Type']) opts.headers['Content-Type'] = 'application/json';
+    return fetch('/wp-json' + path, opts).then(function (r) {
+      return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; });
+    });
+  }
+  function relTime(s2) {
+    var t = Date.parse(String(s2).replace(' ', 'T'));
+    if (isNaN(t)) return 'now';
+    var d = Math.max(0, (Date.now() - t) / 1000);
+    if (d < 60) return 'now';
+    if (d < 3600) return Math.floor(d / 60) + 'm';
+    if (d < 86400) return Math.floor(d / 3600) + 'h';
+    return Math.floor(d / 86400) + 'd';
+  }
+  if (!SIM) {
+    root.classList.add('slw-real');           /* hides sim-only reply/thread affordances */
+    el('#slw-tt').style.display = 'none';     /* top threads return when the room has them */
+    root.querySelector('.slw-sent').style.display = 'none'; /* sentiment lands with the economy phase */
+    el('#slw-chat-empty').style.display = '';
+  }
+  var seen = {}, chatCursor = '';
+  function mapMsg(m) {
+    var name = String(m.handle || m.user || m.name || m.author || 'member').replace(/^@/, '');
+    var text = String(m.message || m.text || m.body || '');
+    var id = 'r' + String(m.id != null ? m.id : (m.at || m.time || m.created || '') + name + text.slice(0, 12));
+    return { id: id, rawId: m.id, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
+  }
+  function pollChat() {
+    if (SIM || document.hidden || S.chatHold) return;
+    /* full-window fetch + client dedupe — the `after` param's semantics are unverified,
+       and 50 rows every 2.5s is a trivial payload */
+    api('/sml-live-chat/v1/room/' + HANDLE + '/messages?limit=50').then(function (res) {
+      var list = (res.j && (res.j.messages || res.j.items)) || [];
+      var added = false;
+      list.forEach(function (raw) {
+        var m = mapMsg(raw);
+        if (seen[m.id]) return;
+        seen[m.id] = 1;
+        S.msgs.push(m);
+        added = true;
+        if (raw.id != null) chatCursor = String(raw.id);
+      });
+      if (added) { S.msgs = S.msgs.slice(-24); renderFeed(); }
+      el('#slw-chat-empty').style.display = S.msgs.length ? 'none' : '';
+    }).catch(function () {});
+  }
+  /* composer: live gate states from the wallet */
+  var gateState = null;
+  function paintComposer() {
+    if (SIM) return;
+    var row = el('#slw-gaterow'), input = el('#slw-cin'), btn = el('#slw-csend');
+    var g = gateState;
+    if (!g) { input.disabled = true; btn.disabled = true; return; }
+    if (!g.loggedIn) {
+      row.style.display = '';
+      row.innerHTML = 'Sign in to join live chat. <a href="/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname + location.search) + '">Sign in</a>';
+      input.disabled = true; btn.disabled = true; return;
+    }
+    var c = g.chat;
+    if (c && !c.open) {
+      row.style.display = '';
+      row.innerHTML = 'Live chat opens at ' + c.need + ' Loop Bucks — you’re ' + c.short + ' short. <span title="' + esc(c.why || '') + '">How to earn</span>';
+      input.disabled = true; btn.disabled = true; return;
+    }
+    row.style.display = 'none';
+    input.disabled = false; btn.disabled = false;
+  }
+  var sendBusy = false;
+  function sendChat() {
+    if (SIM || sendBusy) return;
+    var input = el('#slw-cin'), v = input.value.trim();
+    if (!v) return;
+    sendBusy = true;
+    el('#slw-csend').textContent = '…';
+    var done = function (ok, msg) {
+      sendBusy = false;
+      el('#slw-csend').textContent = 'Send';
+      if (ok) { input.value = ''; chatCursor = ''; pollChat(); }
+      else if (msg) {
+        var row = el('#slw-gaterow');
+        row.style.display = '';
+        row.textContent = msg;
+        setTimeout(function () { paintComposer(); }, 4000);
+      }
+    };
+    var post = function (body) {
+      return api('/sml-live-chat/v1/room/' + HANDLE + '/messages', { method: 'POST', body: JSON.stringify(body) });
+    };
+    post({ message: v }).then(function (res) {
+      if (res.ok) return done(true);
+      /* field-name fallback: server said "empty" but we sent message → try text */
+      if (res.j && res.j.code === 'sml_empty_message') {
+        return post({ text: v }).then(function (r2) { done(r2.ok, r2.ok ? null : (r2.j && r2.j.message) || 'Message did not send — try again.'); });
+      }
+      done(false, (res.j && res.j.message) || 'Message did not send — try again.');
+    }).catch(function () { done(false, 'Message did not send — check your connection.'); });
+  }
+  el('#slw-csend').onclick = sendChat;
+  el('#slw-cin').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendChat(); });
+  /* wallet chip + gates (Speak balance, chat gate, Play gate) */
+  function loadWallet() {
+    api('/sml-lb/v1/gates').then(function (res) {
+      var g = res.j || {};
+      gateState = { loggedIn: !!g.loggedIn, chat: g.gates && g.gates.live_comment, games: g.gates && g.gates.games };
+      paintComposer();
+      var pg = el('#slw-pgate');
+      if (gateState.games) {
+        if (gateState.games.open) { pg.textContent = 'ACCESS UNLOCKED · HOLD 495+ LB'; }
+        else {
+          pg.textContent = 'HOLD ' + gateState.games.need + '+ LB TO UNLOCK · you’re ' + gateState.games.short + ' short';
+          pg.style.color = '#ffb454'; pg.style.borderColor = '#3a2c12'; pg.style.background = '#150f05';
+        }
+      }
+      if (!gateState.loggedIn) el('#slw-bucks').textContent = '— LB';
+    }).catch(function () {});
+    api('/sml-lb/v1/me').then(function (res) {
+      if (res.j && typeof res.j.balance === 'number' && gateState && gateState.loggedIn) {
+        el('#slw-bucks').textContent = res.j.balance.toLocaleString() + ' LB';
+        if (res.j.rank) el('#slw-prank').innerHTML = 'Rank <b>#' + res.j.rank + '</b> by Loop Bucks';
+      }
+    }).catch(function () {});
+  }
+  /* Q&A tab on sml-engage */
+  function renderQA(list) {
+    var pane = el('#slw-pane-2');
+    var rows = (list || []).map(function (q3) {
+      var votes = q3.votes != null ? q3.votes : (q3.upvotes != null ? q3.upvotes : 0);
+      var text = q3.text || q3.question || q3.body || '';
+      var who = q3.who || q3.author || q3.handle || '';
+      var st = String(q3.state || q3.status || 'QUEUED').toUpperCase();
+      return '<div class="slw-q"><div class="vote"><span class="a">▲</span><span class="n">' + votes + '</span></div><div class="bd"><span class="tx">' + esc(text) + '</span><div class="mt"><span class="who">' + esc(who) + '</span><span class="st ' + st.toLowerCase() + '">' + esc(st) + '</span></div></div></div>';
+    }).join('');
+    if (!rows) rows = '<div class="slw-chat-empty" style="display:block">No questions yet. Ask the first — the host answers between trades.</div>';
+    pane.innerHTML = rows +
+      '<div class="slw-q-comp"><input class="cin" id="slw-qin" type="text" maxlength="300" placeholder="Ask the desk a question" autocomplete="off"><button class="slw-send" id="slw-qsend">Ask</button></div>';
+    el('#slw-qsend').onclick = askQ;
+    el('#slw-qin').addEventListener('keydown', function (e) { if (e.key === 'Enter') askQ(); });
+  }
+  function askQ() {
+    var input = el('#slw-qin'), v = input.value.trim();
+    if (!v) return;
+    var tryBodies = [{ question: v }, { text: v }, { message: v }], i = 0;
+    var attempt = function () {
+      if (i >= tryBodies.length) return;
+      api('/sml-engage/v1/ask/' + HANDLE, { method: 'POST', body: JSON.stringify(tryBodies[i++]) }).then(function (res) {
+        if (res.ok) { input.value = ''; pollQA(true); }
+        else if (res.status === 400) attempt();
+      }).catch(function () {});
+    };
+    attempt();
+  }
+  function pollQA(force) {
+    if (SIM || (document.hidden && !force)) return;
+    if (S.tab !== 2 && !force) return;
+    api('/sml-engage/v1/live/' + HANDLE).then(function (res) {
+      if (res.j) renderQA(res.j.questions || []);
+    }).catch(function () {});
+  }
+  if (!SIM) {
+    renderQA([]);
+    loadWallet();
+    pollChat();
+    setInterval(pollChat, 2500);
+    setInterval(pollQA, 15000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { chatCursor = ''; pollChat(); loadWallet(); } });
+    Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
+      b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 2) pollQA(true); });
+    });
+  }
+
   /* ---------- timers ---------- */
   renderFeed();
   setInterval(function () {
@@ -1092,9 +1275,10 @@
     el('#slw-recmeta').textContent = (S.recPage + 1) + ' / 2 · Next 5 in ' + Math.floor(rl / 60) + ':' + String(rl % 60).padStart(2, '0');
   }, 1000);
 
-  /* chat cadence ~2.6s, hold on hover, no back-to-back repeats */
+  /* SIM ONLY: sample chat cadence ~2.6s, hold on hover, no back-to-back repeats */
   var lastI = -1, lastTop = -1;
   setInterval(function () {
+    if (!SIM) return;
     if (S.chatHold || S.thread !== null) return;
     var toThread = Math.random() < 0.3, i;
     do { i = Math.floor(Math.random() * POOL.length); } while (POOL.length > 1 && (i === lastI || (!toThread && i === lastTop)));
