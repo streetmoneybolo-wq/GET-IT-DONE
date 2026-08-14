@@ -11,8 +11,11 @@
   /* re-parent to a direct <body> child so the takeover CSS can hide everything else */
   if (root.parentNode !== document.body) document.body.appendChild(root);
   document.body.classList.add('slw-on');
-  /* ?sim=1 keeps the full design demo (sample chat etc.); default is real data */
-  var SIM = /[?&]sim=1/.test(location.search);
+  /* ADMIN: set by the go-live snippet (window.SML_LW_ADMIN); under the old admin-only
+     preview snippet the global is absent and every viewer IS an admin. */
+  var ADMIN = (typeof window.SML_LW_ADMIN !== 'undefined') ? !!window.SML_LW_ADMIN : true;
+  /* ?sim=1 keeps the full design demo (sample chat etc.) — admins only; default is real data */
+  var SIM = ADMIN && /[?&]sim=1/.test(location.search);
 
   /* ---------- sample data (verbatim from the design handoff) ---------- */
   var ACCENTS = ['#00ff88', '#00ccff', '#ffb454', '#ff7a45', '#ff2e66'];
@@ -65,6 +68,7 @@
   /* ---------- markup ---------- */
   function tapeCells() {
     return TAPE.map(function (q) {
+      if (!SIM) return '<div class="slw-tq" data-sym="' + q[0] + '"><span class="s">$' + q[0] + '</span><span class="p">—</span><span class="c">—</span></div>';
       return '<div class="slw-tq"><span class="s">$' + q[0] + '</span><span class="p">' + q[1].toFixed(2) + '</span><span class="c' + (q[2] < 0 ? ' dn' : '') + '">' + (q[2] >= 0 ? '+' : '') + q[2].toFixed(2) + '%</span></div>';
     }).join('');
   }
@@ -270,10 +274,10 @@
     /* lightbox + modal mounts */
     '<div id="slw-lb-mount"></div><div id="slw-modal-mount"></div>' +
 
-    /* preview banner */
-    '<div class="slw-banner"><b>LIVE WATCH PREVIEW</b><span>sample data · admin only</span>' +
+    /* admin-only banner (scenario switcher rides along) */
+    (ADMIN ? '<div class="slw-banner"><b>LIVE WATCH' + (typeof window.SML_LW_ADMIN !== 'undefined' ? '' : ' PREVIEW') + '</b><span>admin tools</span>' +
       '<select id="slw-scene"><option value="idle">cam: idle (closed)</option><option value="cam">cam: host cam live</option><option value="wait">cam: viewer waiting</option><option value="call">cam: incoming call</option><option value="dial">cam: calling out</option></select>' +
-      '<a href="?lw=0">exit</a></div>';
+      '<a href="?lw=0">exit</a></div>' : '');
 
   /* ---------- module renderers ---------- */
   var feedInner = el('#slw-feed-inner');
@@ -414,6 +418,7 @@
 
   /* recommended */
   function renderRec() {
+    if (!SIM) return; /* real mode renders via loadRec */
     el('#slw-rec-rows').innerHTML = REC.slice(S.recPage * 5, S.recPage * 5 + 5).map(function (v) {
       var live = v[3] === 1;
       return '<div class="slw-rv"><div class="th"><div class="ar"></div><div class="ph"><span>THUMB</span></div>' +
@@ -781,8 +786,8 @@
   el('#slw-tlobby').onclick = gLobby;
   el('#slw-trematch').onclick = startTTT;
 
-  /* cam scenarios (preview switcher) */
-  el('#slw-scene').onchange = function () {
+  /* cam scenarios (admin switcher; absent for public viewers) */
+  if (el('#slw-scene')) el('#slw-scene').onchange = function () {
     var v = el('#slw-scene').value;
     S.camScene = v;
     el('#slw-cam').classList.toggle('show', v !== 'idle');
@@ -808,10 +813,42 @@
     for (i = 0; i < 40; i++) { v += rnd() * 8 + (up ? -0.28 : 0.28); v = Math.max(6, Math.min(58, v)); pts.push(v); }
     return pts;
   }
+  var QR = {}; /* real quote cache per symbol */
+  function fmtVol(v) {
+    if (v == null || isNaN(v)) return '—';
+    if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+    return String(v);
+  }
+  function pollQuote() {
+    if (SIM || document.hidden) return;
+    api('/sml/v1/quote?symbol=' + qSym).then(function (res) {
+      var j = res.j || {};
+      if (typeof j.current === 'number') { QR[qSym] = j; paintQ(); }
+    }).catch(function () {});
+  }
   function paintQ() {
-    var qi = QI[qSym], up = qi[2] >= 0, col = up ? '#00e07a' : '#ff4757';
+    var qi = QI[qSym];
     el('#slw-qsym').textContent = '$' + qSym;
     el('#slw-qname').textContent = qi[0];
+    if (!SIM) {
+      var r = QR[qSym];
+      var up2 = r && r.percentChange >= 0;
+      el('#slw-qpx').textContent = r ? r.current.toFixed(2) : '—';
+      var c2 = el('#slw-qchg');
+      c2.textContent = r ? ((up2 ? '+' : '') + r.percentChange.toFixed(2) + '% ' + (up2 ? '▲' : '▼')) : '—';
+      c2.className = 'c' + (r && !up2 ? ' dn' : '');
+      el('#slw-qopen').textContent = r && r.open != null ? Number(r.open).toFixed(2) : '—';
+      el('#slw-qhigh').textContent = r && r.high != null ? Number(r.high).toFixed(2) : '—';
+      el('#slw-qlow').textContent = r && r.low != null ? Number(r.low).toFixed(2) : '—';
+      el('#slw-qvol').textContent = r ? fmtVol(r.volume) : '—';
+      Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
+        b.classList.toggle('on', b.getAttribute('data-q') === qSym);
+      });
+      return;
+    }
+    var up = qi[2] >= 0, col = up ? '#00e07a' : '#ff4757';
     var drift = Math.sin(S.tick / 4) * 0.06;
     var px = qi[1] + drift;
     el('#slw-qpx').textContent = px.toFixed(2);
@@ -998,7 +1035,13 @@
   setInterval(function () {
     if (P.mode === 'none') return;
     var cur = 0, dur = 0;
-    if (P.mode === 'yt' && P.yt && P.yt.getCurrentTime) { cur = P.yt.getCurrentTime() || 0; dur = P.yt.getDuration() || 0; }
+    if (P.mode === 'yt' && P.yt && P.yt.getCurrentTime) {
+      cur = P.yt.getCurrentTime() || 0; dur = P.yt.getDuration() || 0;
+      if (!SIM && !P.titleSet && P.yt.getVideoData) {
+        var vd = P.yt.getVideoData();
+        if (vd && vd.title) { root.querySelector('.slw-titleblk h1').textContent = vd.title; P.titleSet = true; }
+      }
+    }
     else if (P.mode === 'slot' && P.video) { cur = P.video.currentTime || 0; dur = (P.video.seekable && P.video.seekable.length) ? P.video.seekable.end(P.video.seekable.length - 1) : (P.video.duration || 0); }
     P.cur = cur; P.dur = dur;
     el('#slw-clock').textContent = hms(Math.floor(cur));
@@ -1654,6 +1697,109 @@
     setInterval(loadLobby, 10000);
   }
 
+  /* ---------- Phase 7: public hardening — no sample content in real mode ---------- */
+  var QUOTES_URL = 'https://stockmarketloop-loop-kick.onrender.com/api/quotes';
+  function pollTape() {
+    if (SIM || document.hidden) return;
+    var syms = TAPE.map(function (q) { return q[0]; });
+    fetch(QUOTES_URL + '?symbols=' + encodeURIComponent(syms.join(',')), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.quotes) return;
+      Array.prototype.forEach.call(root.querySelectorAll('.slw-tq[data-sym]'), function (cell) {
+        var q = d.quotes[cell.getAttribute('data-sym')];
+        if (!q) return;
+        var last = q.lastTrade && q.lastTrade.p;
+        var pct = q.todaysChangePerc;
+        if (last != null) cell.querySelector('.p').textContent = Number(last).toFixed(2);
+        if (pct != null) {
+          var c = cell.querySelector('.c');
+          c.textContent = (pct >= 0 ? '+' : '') + Number(pct).toFixed(2) + '%';
+          c.className = 'c' + (pct < 0 ? ' dn' : '');
+        }
+      });
+    }).catch(function () {});
+  }
+  function hardenPublic() {
+    if (SIM) return;
+    /* sample-only modules go dark until their real sources exist */
+    root.querySelector('.slw-pinned').style.display = 'none';               /* no pin backend yet */
+    el('#slw-pmarks').style.display = 'none';                              /* sample chapter marks */
+    root.querySelector('.slw-orbit-sec').style.display = 'none';           /* photos land with creator settings */
+    /* qcard: honest fields only */
+    root.querySelector('.slw-qcard svg').style.display = 'none';           /* synthetic sparkline */
+    root.querySelector('.slw-qcard-x').style.display = 'none';
+    root.querySelector('.slw-qcard').style.height = 'auto';
+    root.querySelector('.slw-vsync span:last-child').textContent = 'DESK FOCUS';
+    el('#slw-qheard').textContent = '🎙 Tap a dot to switch the desk ticker';
+    /* title block: real identity, no sample episode */
+    root.querySelector('.slw-titleblk .ep span').textContent = 'LIVE FROM THE DESK';
+    root.querySelector('.slw-titleblk h1').textContent = 'Live on Stock Market Loop';
+    root.querySelector('.slw-titleblk .who .nm').textContent = '';
+    /* about card: real creator fills in; sample bio/followers/affiliates hidden */
+    root.querySelector('.slw-about-desc').style.display = 'none';
+    root.querySelector('.slw-affrow').style.display = 'none';
+    el('#slw-sub').style.display = 'none';                                 /* follow backend lands with P7 settings */
+    root.querySelector('.slw-about-id .fo').textContent = '';
+    /* boost: honest coming state (arena backend is the next build) */
+    el('#slw-pane-3').innerHTML = '<div class="slw-boost-h"><div class="l"><div class="t"><b>⚡ BOOST ARENA</b><span class="live">LIVE ONLY</span></div>' +
+      '<span class="sub">Share the stream, earn Loop Bucks</span></div></div>' +
+      '<div class="slw-chat-empty" style="display:block;padding:26px 16px">Boost rounds are coming. When the host opens one, verified shares pay out right here.</div>';
+    /* recommended: real uploads or nothing */
+    loadRec();
+    pollTape();
+    pollQuote();
+    setInterval(pollTape, 15000);
+    setInterval(pollQuote, 8000);
+    Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
+      b.addEventListener('click', pollQuote);
+    });
+  }
+  function loadRec() {
+    var mount = el('#slw-rec-rows');
+    el('#slw-recmeta').textContent = '';
+    api('/sml-media/v1/feed').then(function (res) {
+      var items = (res.j && (res.j.items || res.j.feed || res.j.media)) || [];
+      if (!items.length) throw new Error('empty');
+      renderRecReal(items.slice(0, 5).map(function (it) {
+        return { title: it.title || it.caption || 'Watch', url: it.url || it.link || it.permalink || '#', thumb: it.thumbnail || it.thumb || it.image || '', meta: it.author || it.handle || '' };
+      }));
+    }).catch(function () {
+      fetch('/wp-json/wp/v2/posts?per_page=5&_fields=title,link,date', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (posts) {
+        if (!posts || !posts.length) { root.querySelector('.slw-rec').style.display = 'none'; return; }
+        renderRecReal(posts.map(function (p) {
+          return { title: (p.title && p.title.rendered) || 'Read', url: p.link, thumb: '', meta: (p.date || '').slice(0, 10) };
+        }));
+      }).catch(function () { root.querySelector('.slw-rec').style.display = 'none'; });
+    });
+  }
+  function renderRecReal(items) {
+    el('#slw-rec-rows').innerHTML = items.map(function (v) {
+      return '<a class="slw-rv" href="' + esc(v.url) + '" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph"' + (v.thumb && /^https:/.test(v.thumb) ? ' style="background-image:url(' + esc(v.thumb) + ');background-size:cover;background-position:center"' : '') + '>' + (v.thumb ? '' : '<span>LOOP</span>') + '</div></div>' +
+        '<div class="bd"><span class="tt">' + esc(String(v.title).replace(/<[^>]*>/g, '')) + '</span><div class="mt"><span class="d"></span><span>' + esc(v.meta) + '</span></div></div></a>';
+    }).join('');
+  }
+  /* real creator identity for the title + about blocks */
+  function loadCreator() {
+    if (SIM) return;
+    api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
+      var c = res.j && res.j.creator;
+      if (!c) return;
+      root.querySelector('.slw-titleblk .who .nm').textContent = c.name + ' · @' + c.handle;
+      root.querySelector('.slw-about-id .nm').innerHTML = esc(c.name) + ' <small>· @' + esc(c.handle) + '</small>';
+      var av = root.querySelector('.slw-avatar');
+      av.textContent = (c.name || c.handle || 'SL').slice(0, 2).toUpperCase();
+    }).catch(function () {});
+    api('/sml-lb/v1/card/' + HANDLE).then(function (res) {
+      var j = res.j || {};
+      var url = j.avatar || (j.profile && j.profile.avatar) || '';
+      if (url && /^https:/.test(url)) {
+        var av = root.querySelector('.slw-avatar');
+        av.style.background = '#0d1a15 url(' + url + ') center/cover';
+        av.textContent = '';
+      }
+    }).catch(function () {});
+  }
+  if (!SIM) { hardenPublic(); loadCreator(); }
+
   /* ---------- timers ---------- */
   renderFeed();
   setInterval(function () {
@@ -1685,13 +1831,13 @@
     var showingDisc = Math.abs(S.aboutDeg / 180) % 2 === 1;
     if (!showingDisc && S.tick > 0 && S.tick % 900 === 0) { S.aboutDeg += 180; S.aboutAuto = S.tick; paintFlip(); }
     else if (showingDisc && S.aboutAuto > 0 && S.tick - S.aboutAuto >= 30) { S.aboutDeg += 180; S.aboutAuto = 0; paintFlip(); }
-    /* voice-synced qcard rotation every 9s */
-    if (S.tick - qHeard >= 9) {
+    /* voice-synced qcard rotation every 9s — SIM only (real detection isn't built) */
+    if (SIM && S.tick - qHeard >= 9) {
       var pool = Q5.filter(function (x) { return x !== qSym; });
       qSym = pool[Math.floor(Math.random() * pool.length)];
       qHeard = S.tick;
     }
-    paintQ();
+    if (SIM) paintQ();
     /* orbit drift: one card every 5s */
     if (S.oPlaying && !S.oHover && !S.oLightbox && !document.hidden) {
       var step = 360 / N;
@@ -1735,12 +1881,14 @@
       el('#slw-callv').textContent = cv; el('#slw-dialv').textContent = cv;
       el('#slw-dials').textContent = 4 + (S.tick % 22);
     }
-    /* recommended pagination every 3min */
-    if (S.tick - S.recAt >= 180) {
-      S.recPage = (S.recPage + 1) % 2; S.recAt = S.tick; renderRec();
+    /* recommended pagination every 3min — SIM only (real rail is loadRec's) */
+    if (SIM) {
+      if (S.tick - S.recAt >= 180) {
+        S.recPage = (S.recPage + 1) % 2; S.recAt = S.tick; renderRec();
+      }
+      var rl = Math.max(0, 180 - (S.tick - S.recAt));
+      el('#slw-recmeta').textContent = (S.recPage + 1) + ' / 2 · Next 5 in ' + Math.floor(rl / 60) + ':' + String(rl % 60).padStart(2, '0');
     }
-    var rl = Math.max(0, 180 - (S.tick - S.recAt));
-    el('#slw-recmeta').textContent = (S.recPage + 1) + ' / 2 · Next 5 in ' + Math.floor(rl / 60) + ':' + String(rl % 60).padStart(2, '0');
   }, 1000);
 
   /* SIM ONLY: sample chat cadence ~2.6s, hold on hover, no back-to-back repeats */
