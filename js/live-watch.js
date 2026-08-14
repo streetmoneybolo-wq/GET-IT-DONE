@@ -14,8 +14,9 @@
   /* ADMIN: set by the go-live snippet (window.SML_LW_ADMIN); under the old admin-only
      preview snippet the global is absent and every viewer IS an admin. */
   var ADMIN = (typeof window.SML_LW_ADMIN !== 'undefined') ? !!window.SML_LW_ADMIN : true;
-  /* ?sim=1 keeps the full design demo (sample chat etc.) — admins only; default is real data */
-  var SIM = ADMIN && /[?&]sim=1/.test(location.search);
+  /* ?sim=1 keeps the full design demo (sample chat etc.) — admins only; default is real data.
+     window.SML_LW_FORCE_SIM powers the standalone showcase artifact. */
+  var SIM = (ADMIN && /[?&]sim=1/.test(location.search)) || !!window.SML_LW_FORCE_SIM;
 
   /* ---------- sample data (verbatim from the design handoff) ---------- */
   var ACCENTS = ['#00ff88', '#00ccff', '#ffb454', '#ff7a45', '#ff2e66'];
@@ -1029,8 +1030,12 @@
       })
       .catch(function () { if (P.mode === 'none') resolveYT(); });
   }
-  pollFeeds();
-  setInterval(pollFeeds, 20000);
+  if (window.SML_LW_FORCE_SIM) {
+    phState('LIVE STREAM', 'demo frame — the live page at stockmarketloop.com/live carries the real broadcast');
+  } else {
+    pollFeeds();
+    setInterval(pollFeeds, 20000);
+  }
   /* real clock + progress once a source is mounted */
   setInterval(function () {
     if (P.mode === 'none') return;
