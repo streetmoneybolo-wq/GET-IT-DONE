@@ -44,9 +44,10 @@
       if (t === '$SPY') e.textContent = '$' + SYM;
       else if (t.indexOf('$SPY') >= 0 && t.length < 90) e.textContent = t.split('$SPY').join('$' + SYM);
     });
+    var nameEl = findLeaf(strip, /State Street SPDR|ETF Trust/i) || findLeaf(strip, /^[A-Z][A-Za-z0-9 .,&'()-]{8,60}$/);
+    setTxt(nameEl, '—'); // captured sample name must not survive for other symbols
     fetch('/wp-json/sml/v1/ticker-card?symbol=' + SYM).then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.name || d.name === d.symbol) return;
-      var nameEl = findLeaf(strip, /State Street SPDR|ETF Trust/i) || findLeaf(strip, /^[A-Z][A-Za-z0-9 .,&'()-]{8,60}$/);
       setTxt(nameEl, d.name);
     }).catch(function () {});
 
@@ -67,6 +68,16 @@
     grab(rail, /^High$/, 'qHigh'); grab(rail, /^Low$/, 'qLow'); grab(rail, /^Open$/, 'qOpen');
     grab(rail, /^Volume$/, 'qVolume'); grab(rail, /^Prev close$/, 'qPrev'); grab(rail, /^Last$/, 'qLast');
     grab(rail, /^(Avg \(VWAP\)|VWAP|Avg)$/i, 'qVwap'); grab(rail, /^Bid$/, 'qBid'); grab(rail, /^Ask$/, 'qAsk');
+
+    // The design's captured sample numbers must NEVER pass as data: blank every
+    // discovered slot NOW — only a real quote response repaints them, so invalid
+    // tickers and failed fetches show honest dashes, not the capture-day price.
+    Object.keys(slots).forEach(function (k) {
+      var el = slots[k]; if (!el) return;
+      if (k === 'prevInline') el.textContent = 'Prev close —';
+      else if (k === 'bidask') el.textContent = '— / —';
+      else el.textContent = '—';
+    });
 
     // ---- live quote: one poller, stale-aware, never fabricates ----
     function apply(q) {
