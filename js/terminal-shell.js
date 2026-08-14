@@ -114,6 +114,30 @@
         var pq = document.querySelector('.sml-pro-quote');
         if (pq) pq.style.setProperty('overflow-x', 'auto', 'important'); // safety valve on narrow screens
         try { window.dispatchEvent(new Event('resize')); } catch (e) {}  // let the chart re-measure
+        // Direction B's slim left rail: tab shortcuts + jump-to-section anchors.
+        if (!document.getElementById('sml-tv2-rail')) {
+          var rail = document.createElement('nav'); rail.id = 'sml-tv2-rail'; rail.setAttribute('aria-label', 'Terminal shortcuts');
+          var items = [
+            ['OVR', 'tab', 'overview'], ['OPT', 'tab', 'options'], ['RES', 'tab', 'research'], ['NWS', 'tab', 'news'],
+            ['MP', 'goto', 'sml-mp'], ['HEAT', 'goto', 'sml-terminal-heatmap'], ['FEED', 'goto', 'sml-lf'],
+          ];
+          items.forEach(function (it) {
+            var b = document.createElement('button'); b.type = 'button'; b.textContent = it[0];
+            b.setAttribute('data-rail', it[1] + ':' + it[2]);
+            b.addEventListener('click', function () {
+              if (it[1] === 'tab') { var t = root.querySelector('.tv2-tab[data-tab="' + it[2] + '"]'); if (t) t.click(); }
+              else { var el = document.getElementById(it[2]); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+            });
+            rail.appendChild(b);
+          });
+          document.body.appendChild(rail);
+          T.on('tab', function (id) {
+            [].forEach.call(rail.querySelectorAll('button'), function (b) {
+              b.classList.toggle('on', b.getAttribute('data-rail') === 'tab:' + id);
+            });
+          });
+          var first = rail.querySelector('button'); if (first) first.classList.add('on');
+        }
         // sync the legacy's active view with whatever V2 tab is selected
         var cur = root.querySelector('.tv2-tab[aria-selected="true"]');
         if (cur) { var lb = legacyTabs[PROXY[cur.getAttribute('data-tab')]]; if (lb) { try { lb.click(); } catch (e) {} } }

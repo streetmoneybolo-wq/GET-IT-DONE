@@ -101,62 +101,106 @@
 #sml-tv2-root.tv2.tv2-integrated .tv2-preview-note{display:none}
 #sml-tv2-root.tv2.tv2-integrated{padding-bottom:0;margin-bottom:0}
 
+/* integrated chrome adopts the prototype's exact tokens and slims down (mock's thin bar) */
+#sml-tv2-root.tv2.tv2-integrated{
+  --tv2-bg:#04060a;--tv2-surface:#0d141c;--tv2-surface2:#080c12;--tv2-surface3:#131c26;
+  --tv2-line:#16202b;--tv2-acc:#00ff88;--tv2-acc-ink:#04120b;--tv2-acc-wash:rgba(0,255,136,.10);
+  --tv2-ink:#e6edf3;--tv2-ink-soft:#8fa3b5;--tv2-ink-faint:#5d7085;
+  background:transparent;padding-top:6px}
+#sml-tv2-root.tv2.tv2-integrated .tv2-head{padding:7px 12px;margin-bottom:10px}
+#sml-tv2-root.tv2.tv2-integrated .tv2-search input{padding:7px 14px;font-size:13px}
+#sml-tv2-root.tv2.tv2-integrated .tv2-add{padding:6px 13px;font-size:12px}
+#sml-tv2-root.tv2.tv2-integrated .tv2-tabs{margin-bottom:10px}
+#sml-tv2-root.tv2.tv2-integrated .tv2-tab{padding:8px 16px;min-height:38px;font-size:13px}
+
 /* the V2 tab bar replaces the legacy one visually — ONLY once integration succeeded
    (body.tv2-integrated-on is added by JS after the legacy terminal exists) */
 body.tv2-integrated-on .sml-pro-tabs{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
 
-/* ---- Direction B re-skin of the live terminal, in place (integrated preview only) ---- */
+/* ---- Direction B re-skin, EXACT prototype tokens (chart engine untouched) ----
+   ground #04060a · panel #0d141c · card #131c26 · border #16202b · head #080c12
+   accent #00ff88 · red #ff4757 · cyan #00ccff (Alert Box) · ink #e6edf3
+   muted #8fa3b5 · faint #5d7085 */
+body.tv2-integrated-on{background:#04060a}
+body.tv2-integrated-on .entry-content,
+body.tv2-integrated-on .wp-site-blocks{background:#04060a!important}
 body.tv2-integrated-on .sml-terminal,
-body.tv2-integrated-on .sml-pro-terminal{background:#080c11!important;color:#e6edf3}
+body.tv2-integrated-on .sml-pro-terminal{background:#04060a!important;color:#e6edf3}
 body.tv2-integrated-on .sml-pro-terminal .sml-panel,
 body.tv2-integrated-on .sml-pro-terminal .sml-pro-chart-panel,
 body.tv2-integrated-on .sml-pro-terminal .sml-pro-panel{
-  background:#0f151d!important;border:1px solid rgba(255,255,255,.10)!important;border-radius:12px}
+  background:#0d141c!important;border:1px solid #16202b!important;border-radius:10px}
 body.tv2-integrated-on #sml-ws{background:transparent!important}
 body.tv2-integrated-on #sml-ws-left,
 body.tv2-integrated-on #sml-ws-mid,
 body.tv2-integrated-on #sml-ws-rail{background:transparent!important}
 
-/* ---- polish: shift the module cards from legacy navy/blue to Direction B black/green ---- */
-body.tv2-integrated-on{background:#080c11}
-body.tv2-integrated-on .entry-content,
-body.tv2-integrated-on .wp-site-blocks{background:#080c11!important}
-/* side cards (Live Quotes / Alert Box / Videos), technicals gauge, market position, community feed */
+/* module cards (selectors verified against the live-extraction DOM manifest;
+   .sml-lc-stage — the chart engine's stage — is deliberately NEVER targeted) */
 body.tv2-integrated-on .sml-sc,
 body.tv2-integrated-on .sml-tech,
+body.tv2-integrated-on .sml-ticker-summary,
+body.tv2-integrated-on #sml-opt,
+body.tv2-integrated-on [data-sml-options-earnings-panel],
 body.tv2-integrated-on #sml-mp,
 body.tv2-integrated-on #sml-lf{
-  background:#0f151d!important;border-color:rgba(255,255,255,.10)!important}
-body.tv2-integrated-on .sml-sc{border-radius:12px!important}
-/* keep the Alert Box's intentional highlight border, just re-hue it to the accent */
-body.tv2-integrated-on #sml-side-alerts{border-color:rgba(47,227,138,.45)!important}
-/* header sponsored slot: dress it as a proper panel instead of a floating dark box */
+  background:#0d141c!important;border:1px solid #16202b!important;border-radius:10px!important}
+/* header sponsored slot as a matching panel */
 body.tv2-integrated-on .sml-uads-header{
-  background:#0f151d!important;border:1px solid rgba(255,255,255,.10)!important;border-radius:12px!important;padding:8px!important}
+  background:#0d141c!important;border:1px solid #16202b!important;border-radius:10px!important;padding:8px!important}
 body.tv2-integrated-on .wp-block-spacer{height:14px!important}
 
-/* ---- Direction B card language: mono uppercase headers with the green tick ---- */
+/* the quote strip: each stat as a bordered cell with a tiny mono label (mock style) */
+body.tv2-integrated-on .sml-pro-quote{background:#080c12!important;border:1px solid #16202b!important;border-radius:10px;padding:8px!important;gap:8px!important}
+body.tv2-integrated-on .sml-pro-quote>*{background:#0d141c;border:1px solid #16202b;border-radius:8px;padding:8px 12px}
+
+/* card language: mono uppercase headers with the green tick */
 body.tv2-integrated-on .sml-sc>.h,
 body.tv2-integrated-on .sml-tech>.h,
 body.tv2-integrated-on .sml-panel-head,
 body.tv2-integrated-on #sml-lf .lf-head{
   font-family:ui-monospace,Menlo,Consolas,monospace!important;font-size:10px!important;
-  letter-spacing:.16em!important;text-transform:uppercase!important;color:#93a2af!important;
-  background:#0c1219!important;border-bottom:1px solid rgba(255,255,255,.08)!important;
+  letter-spacing:.16em!important;text-transform:uppercase!important;color:#8fa3b5!important;
+  background:#080c12!important;border-bottom:1px solid #16202b!important;
   padding:9px 12px!important;display:flex!important;align-items:center!important;gap:8px!important}
 body.tv2-integrated-on .sml-sc>.h::before,
 body.tv2-integrated-on .sml-tech>.h::before,
 body.tv2-integrated-on .sml-panel-head::before,
 body.tv2-integrated-on #sml-lf .lf-head::before{
-  content:"";display:inline-block;width:3px;height:12px;background:#2fe38a;border-radius:2px;flex:none}
-/* controls become quiet dark pills that light up on hover */
+  content:"";display:inline-block;width:3px;height:12px;background:#00ff88;border-radius:2px;flex:none}
+
+/* controls: quiet dark pills, green on hover (mock) */
 body.tv2-integrated-on .sml-panel button,
 body.tv2-integrated-on .sml-sc button{
-  background:#10161d!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:8px!important;color:#93a2af!important}
+  background:#131c26!important;border:1px solid #1c2833!important;border-radius:8px!important;color:#8fa3b5!important}
 body.tv2-integrated-on .sml-panel button:hover,
-body.tv2-integrated-on .sml-sc button:hover{border-color:rgba(47,227,138,.5)!important;color:#e6edf3!important}
-/* the Alert Box keeps its highlight status — re-hued from legacy blue to the accent */
-body.tv2-integrated-on #sml-side-alerts{background:#0f151d!important;border-color:rgba(47,227,138,.45)!important}
+body.tv2-integrated-on .sml-sc button:hover{border-color:#00ff8880!important;color:#e6edf3!important}
+
+/* ALERT BOX — the mock keeps this CYAN-tinted, not green */
+body.tv2-integrated-on #sml-side-alerts{background:#0a141d!important;border:1px solid #1b3a4d!important}
 body.tv2-integrated-on #sml-side-alerts .h,
 body.tv2-integrated-on #sml-side-alerts>.h{
-  background:rgba(47,227,138,.08)!important;color:#2fe38a!important;border-bottom:1px solid rgba(47,227,138,.25)!important}
+  background:rgba(0,204,255,.07)!important;color:#00ccff!important;border-bottom:1px solid #1b3a4d!important}
+body.tv2-integrated-on #sml-side-alerts .h::before,
+body.tv2-integrated-on #sml-side-alerts>.h::before{background:#00ccff!important}
+
+/* LIVE TRADING ROOM (voice): green-forward card like the mock */
+body.tv2-integrated-on #live-voice-room{background:#0d141c!important;border:1px solid #134a33!important;border-radius:10px!important}
+
+/* community feed tab pills (mock's bottom feed) */
+body.tv2-integrated-on #sml-lf .sml-tct-tabs button{
+  background:#131c26!important;border:1px solid #1c2833!important;border-radius:999px!important;color:#8fa3b5!important}
+body.tv2-integrated-on #sml-lf .sml-tct-tabs button[aria-selected="true"],
+body.tv2-integrated-on #sml-lf .sml-tct-tabs button.active,
+body.tv2-integrated-on #sml-lf .sml-tct-tabs button.is-active{
+  background:#e6edf3!important;color:#04060a!important;border-color:#e6edf3!important}
+
+/* ---- left icon rail (mock's slim rail), desktop only; built by the shell ---- */
+#sml-tv2-rail{position:fixed;left:10px;top:120px;z-index:60;display:flex;flex-direction:column;gap:6px;
+  background:#0d141c;border:1px solid #16202b;border-radius:10px;padding:8px 5px;width:44px}
+#sml-tv2-rail button{display:block;width:34px;padding:8px 0;border:none;border-radius:7px;background:transparent;
+  color:#5d7085;font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.06em;cursor:pointer;text-align:center;line-height:1.2}
+#sml-tv2-rail button:hover{background:#131c26;color:#e6edf3}
+#sml-tv2-rail button.on{background:rgba(0,255,136,.12);color:#00ff88}
+@media(max-width:1199px){#sml-tv2-rail{display:none}}
+@media(min-width:1200px){body.tv2-integrated-on .sml-terminal,#sml-tv2-root.tv2.tv2-integrated{margin-left:56px!important}}
