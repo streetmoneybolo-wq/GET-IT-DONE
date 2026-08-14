@@ -39,6 +39,8 @@
         if (legacy && legacy.parentNode) legacy.parentNode.insertBefore(root, legacy);
         // Phase B: wire real data into the shell
         var d = document.createElement('script'); d.src = base + 'js/terminal-data.js'; document.body.appendChild(d);
+        // Phase C: adopt the booted legacy modules into the shell's cards
+        var a = document.createElement('script'); a.src = base + 'js/terminal-adopt.js'; document.body.appendChild(a);
       })
       .catch(function () { /* fetch failed → leave the legacy terminal untouched */ });
   }
