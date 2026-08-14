@@ -569,6 +569,7 @@
 
   /* tomato */
   function paintTomBtn() {
+    if (!SIM) return; /* real mode paints from the sml-lw API (paintTomReal) */
     var active = S.tomWarm > 0 && S.tomLeft > 0;
     var b = el('#slw-tom');
     b.classList.toggle('off', !active);
@@ -1184,6 +1185,139 @@
     Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
       b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 2) pollQA(true); });
     });
+  }
+
+  /* ---------- Phase 4: economy — real like, tomato API, share, presence ---------- */
+  var LIVE_PAGE_ID = 3540; /* /live/ WP page — the like/react target for the stream */
+  function loadLikes() {
+    if (SIM) return;
+    api('/sml-reactions/v1/summary?content_type=long_video&content_id=' + LIVE_PAGE_ID).then(function (res) {
+      var j = res.j || {};
+      var counts = j.counts || j.totals || j.summary || {};
+      var likeN = counts.like != null ? counts.like : (typeof j.like === 'number' ? j.like : null);
+      if (likeN != null) el('#slw-likes').textContent = Number(likeN).toLocaleString();
+      var mine = j.mine || j.my_reaction || j.user_reaction || '';
+      S.liked = mine === 'like';
+      el('#slw-like').classList.toggle('on', S.liked);
+    }).catch(function () {});
+  }
+  if (!SIM) {
+    el('#slw-likes').textContent = '0';
+    el('#slw-likers').style.display = 'none';
+    el('#slw-like').onclick = function () {
+      api('/sml-reactions/v1/react', { method: 'POST', body: JSON.stringify({ content_type: 'long_video', content_id: LIVE_PAGE_ID, reaction: 'like' }) })
+        .then(function (res) {
+          if (res.ok) { S.liked = !S.liked; el('#slw-like').classList.toggle('on', S.liked); loadLikes(); }
+          else if (res.status === 401) flashGate('Sign in to like the stream.');
+        }).catch(function () {});
+    };
+    loadLikes();
+  }
+  function flashGate(msg) {
+    var row = el('#slw-gaterow');
+    row.style.display = '';
+    row.textContent = msg;
+    setTimeout(function () { paintComposer(); }, 4000);
+  }
+  /* tomato: real allowances + debit through the sml-lw API (deploys with the api snippet) */
+  var TOM = { price: TOM_PRICE, open: false, left: 0, ready: false };
+  function loadTomato() {
+    if (SIM) return;
+    api('/sml-lw/v1/tomato/state?handle=' + HANDLE).then(function (res) {
+      if (!res.ok || !res.j || res.j.code) { paintTomReal(); return; } /* api snippet not pasted yet */
+      TOM.ready = true;
+      TOM.price = res.j.price || TOM_PRICE;
+      TOM.open = !!res.j.open;
+      TOM.left = res.j.leftStream || 0;
+      TOM.leftWeek = res.j.leftWeek;
+      TOM.loggedIn = !!res.j.loggedIn;
+      paintTomReal();
+    }).catch(function () { paintTomReal(); });
+  }
+  function paintTomReal() {
+    if (SIM) return;
+    var b = el('#slw-tom');
+    if (!TOM.ready) {
+      b.classList.add('off');
+      el('#slw-tom-lbl').textContent = '';
+      el('#slw-tom-ct').textContent = 'soon';
+      b.title = 'Tomatoes arrive with the API snippet.';
+      return;
+    }
+    b.classList.toggle('off', !TOM.open);
+    el('#slw-tom-lbl').textContent = TOM.open ? 'Toss tomato' : '';
+    el('#slw-tom-ct').textContent = TOM.open ? TOM.left + '/3' : (TOM.leftWeek === 0 ? '9/9 this week' : (TOM.loggedIn ? 'none left · 3 of 3 tossed' : 'sign in'));
+    b.title = TOM.open ? '' : "3 a stream, 9 a week, they don't stack";
+  }
+  if (!SIM) {
+    el('#slw-tom').onclick = function () {
+      if (!TOM.ready || !TOM.open || S.tomStage !== 'idle') return;
+      S.tomStage = 'compose';
+      el('#slw-tom-pop').innerHTML = '<div class="slw-tom-pop"><div class="hd"><b>🍅 TOSS A TOMATO</b><span class="wc">' + TOM.left + ' left</span></div>' +
+        '<span class="rules">No sub needed · ' + TOM.left + " left this stream · 9 a week max, they don't stack</span>" +
+        '<div class="price"><span class="lb">' + TOM.price.toLocaleString() + ' LB</span><span class="sp">set by the streamer<br>50% to the streamer · 50% to Loop</span></div>' +
+        '<input type="text" maxlength="60" id="slw-tnote" placeholder="Pin a note to it — 60 letters max">' +
+        '<div class="ft"><span class="cnt" id="slw-tcnt">0/60</span><div class="btns">' +
+        '<button class="slw-tom-cancel" id="slw-tcancel">Cancel</button>' +
+        '<button class="slw-tom-go" id="slw-tgo">TOSS! 🍅 · ' + TOM.price.toLocaleString() + ' LB</button></div></div></div>';
+      el('#slw-tnote').oninput = function () { el('#slw-tcnt').textContent = el('#slw-tnote').value.length + '/60'; };
+      el('#slw-tcancel').onclick = function () { S.tomStage = 'idle'; el('#slw-tom-pop').innerHTML = ''; };
+      el('#slw-tgo').onclick = function () {
+        var note = el('#slw-tnote').value.slice(0, 60);
+        el('#slw-tgo').disabled = true;
+        api('/sml-lw/v1/tomato', { method: 'POST', body: JSON.stringify({ handle: HANDLE, note: note }) }).then(function (res) {
+          el('#slw-tom-pop').innerHTML = '';
+          S.tomStage = 'idle';
+          if (res.ok && res.j && res.j.ok) {
+            TOM.left = res.j.leftStream; TOM.open = TOM.left > 0 && res.j.leftWeek > 0;
+            paintTomReal();
+            S.tomNote = note;
+            playTomato(note);
+            el('#slw-bucks').textContent = Number(res.j.balance).toLocaleString() + ' LB';
+            pollChat();
+          } else {
+            flashGate((res.j && res.j.message) || 'The tomato did not fly — try again.');
+          }
+        }).catch(function () { el('#slw-tom-pop').innerHTML = ''; S.tomStage = 'idle'; flashGate('The tomato did not fly — check your connection.'); });
+      };
+    };
+    loadTomato();
+  }
+  function playTomato(note) {
+    var layer = el('#slw-tom-layer');
+    layer.innerHTML = '<div class="slw-tom-fly"><span>🍅</span></div>';
+    setTimeout(function () {
+      layer.innerHTML = '<div class="slw-tom-splat"><div class="blob"><div class="b1"></div><div class="d1"></div><div class="d2"></div><span class="tm">🍅</span></div></div>' + tomCard();
+      setTimeout(function () { var sp = layer.querySelector('.slw-tom-splat'); if (sp) sp.remove(); }, 1500);
+      setTimeout(function () { layer.innerHTML = ''; S.tomNote = ''; }, 15000);
+    }, 1150);
+  }
+  /* share: web-share / copy-link, morph animation preserved */
+  if (!SIM) {
+    el('#slw-share').onclick = function () {
+      var url = location.origin + '/live/';
+      var after = function () { S.shared = true; S.shareAnim = 0; paintShare(); el('#slw-share').querySelector('.slw-facepile') && (el('#slw-share').querySelector('.slw-facepile').style.display = 'none'); };
+      if (navigator.share) navigator.share({ title: 'Live on Stock Market Loop', url: url }).then(after).catch(function () {});
+      else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { after(); flashGate('Stream link copied — paste it anywhere.'); });
+    };
+  }
+  /* presence: heartbeat while watching; real viewer count */
+  function beat() {
+    if (SIM || document.hidden) return;
+    api('/sml-lw/v1/presence', { method: 'POST', body: JSON.stringify({ handle: HANDLE }) }).then(function (res) {
+      if (res.ok && res.j && typeof res.j.count === 'number' && res.j.count > 0) el('#slw-viewers').textContent = res.j.count.toLocaleString();
+    }).catch(function () {});
+  }
+  function pollPresence() {
+    if (SIM || document.hidden) return;
+    api('/sml-lw/v1/presence?handle=' + HANDLE).then(function (res) {
+      if (res.ok && res.j && typeof res.j.count === 'number' && res.j.count > 0) el('#slw-viewers').textContent = res.j.count.toLocaleString();
+    }).catch(function () {});
+  }
+  if (!SIM) {
+    beat();
+    setInterval(beat, 45000);
+    setInterval(pollPresence, 20000);
   }
 
   /* ---------- timers ---------- */
