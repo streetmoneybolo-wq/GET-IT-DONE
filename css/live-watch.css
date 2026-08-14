@@ -357,6 +357,19 @@ body.slw-on{background:#04060a !important}
 .slw-ring-persp{position:absolute;inset:0;perspective:1650px}
 .slw-ring{position:absolute;left:50%;top:45%;width:0;height:0;transform-style:preserve-3d}
 .slw-ocard{position:absolute;width:304px;height:304px;left:-152px;top:-152px;border-radius:14px;cursor:pointer;overflow:hidden}
+/* boxless media cards: the 304px square only anchors the 3D ring math — the image
+   itself floats free at natural aspect, whole image always visible, may overlap */
+.slw-ocard.img{overflow:visible;border-radius:0;background:transparent}
+.slw-ocard.img .oimg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:170%;max-height:110%;width:auto;height:auto;display:block;border-radius:10px;filter:drop-shadow(0 26px 44px rgba(0,0,0,.8))}
+.slw-ocard.img.active .oimg{filter:drop-shadow(0 26px 44px rgba(0,0,0,.8)) drop-shadow(0 0 22px rgba(0,255,136,.35))}
+.slw-ocard.img .ocap{position:absolute;left:50%;bottom:-40px;transform:translateX(-50%);white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;display:none;background:rgba(6,10,16,.92);border:1px solid #1c2833;border-radius:16px;padding:8px 13px;font:600 10px/1 Archivo,sans-serif;color:#c7d6e3}
+.slw-ocard.img.active .ocap{display:block}
+/* orbit manager (admin) */
+.slw-orbmgr-row{display:flex;align-items:center;gap:9px;border:1px solid #16202b;border-radius:9px;background:#0b1119;padding:8px 10px}
+.slw-orbmgr-row .th{width:64px;height:40px;flex:none;border-radius:6px;background:#101821 center/contain no-repeat;border:1px solid #1c2833}
+.slw-orbmgr-row input{flex:1;min-width:0;border:1px solid #1c2833;border-radius:6px;padding:8px 10px;background:#0a0f16;color:#e6edf3;font:400 11px/1 Archivo,sans-serif;outline:none}
+.slw-orbmgr-row .rm{font:600 11px/1 Archivo,sans-serif;color:#ff859f;background:#1a0810;border:1px solid #3d1524;border-radius:6px;padding:8px 10px;cursor:pointer;flex:none}
+.slw-orbmgr-note{font:400 10px/1.5 Archivo,sans-serif;color:#5d7085}
 .slw-ocard .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#101a28,#0a1018 60%,#0d1420);border:1px dashed #1c2833;border-radius:14px}
 .slw-ocard .ph span{font:600 11px/1.4 Archivo,sans-serif;color:#3d4c5a;text-align:center;padding:0 20px}
 .slw-ocard .cap{position:absolute;left:0;right:0;bottom:0;display:none;flex-direction:column;gap:4px;padding:26px 13px 12px;background:linear-gradient(180deg,transparent,rgba(3,5,9,.9))}

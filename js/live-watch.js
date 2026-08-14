@@ -278,6 +278,7 @@
     /* admin-only banner (scenario switcher rides along) */
     (ADMIN ? '<div class="slw-banner"><b>LIVE WATCH' + (typeof window.SML_LW_ADMIN !== 'undefined' ? '' : ' PREVIEW') + '</b><span>admin tools</span>' +
       '<select id="slw-scene"><option value="idle">cam: idle (closed)</option><option value="cam">cam: host cam live</option><option value="wait">cam: viewer waiting</option><option value="call">cam: incoming call</option><option value="dial">cam: calling out</option></select>' +
+      '<button class="slw-x" id="slw-orbbtn" style="padding:6px 9px;font-size:9px">orbit images</button>' +
       '<a href="?lw=0">exit</a></div>' : '');
 
   /* ---------- module renderers ---------- */
@@ -432,13 +433,34 @@
 
   /* orbit */
   var ringEl = el('#slw-ring');
-  var N = ORBIT.length, R = Math.max(290, N * 56);
-  ringEl.innerHTML = ORBIT.map(function (o, i) {
-    return '<div class="slw-ocard" data-oi="' + i + '" role="button" aria-label="' + esc(o[0]) + ' — image ' + (i + 1) + ' of ' + N + '">' +
-      '<div class="ph"><span>Image or GIF ' + (i + 1) + '<br>— creator photo slot —</span></div>' +
-      '<div class="cap"><b>' + esc(o[0]) + '</b><span>' + esc(o[1]) + '</span></div></div>';
-  }).join('');
+  var OITEMS = ORBIT.map(function (o) { return { img: '', title: o[0], sub: o[1], link: '' }; });
+  var N = OITEMS.length, R = Math.max(290, N * 56);
   var ocards = ringEl.children;
+  function buildOrbit(items) {
+    OITEMS = items;
+    N = Math.max(1, OITEMS.length);
+    R = Math.max(290, N * 56);
+    S.oIdx = 0; S.oAngle = 0;
+    ringEl.innerHTML = OITEMS.map(function (o, i) {
+      var media = o.img
+        ? '<img class="oimg" src="' + esc(o.img) + '" alt="' + esc(o.title || 'Host image') + '">' +
+          (o.title ? '<span class="ocap">' + esc(o.title) + '</span>' : '')
+        : '<div class="ph"><span>Image or GIF ' + (i + 1) + '<br>— creator photo slot —</span></div>' +
+          '<div class="cap"><b>' + esc(o.title) + '</b><span>' + esc(o.sub) + '</span></div>';
+      return '<div class="slw-ocard' + (o.img ? ' img' : '') + '" data-oi="' + i + '" role="button" aria-label="' + esc(o.title || 'Host image') + ' — image ' + (i + 1) + ' of ' + N + '">' + media + '</div>';
+    }).join('');
+    ocards = ringEl.children;
+    Array.prototype.forEach.call(ocards, function (c) {
+      c.onclick = function () {
+        var i = +c.getAttribute('data-oi');
+        if (i === S.oIdx) { openLightbox(); return; }
+        var delta = ((i - S.oIdx) % N + N) % N;
+        if (delta > N / 2) delta -= N;
+        orbStep(delta);
+      };
+    });
+    orbitPaint(false);
+  }
   function orbitPaint(smooth) {
     for (var i = 0; i < N; i++) {
       var a = ((((i * (360 / N) - S.oAngle) % 360) + 540) % 360) - 180;
@@ -451,12 +473,16 @@
       c.style.zIndex = Math.round(d * 100);
       var active = i === S.oIdx;
       c.classList.toggle('active', active);
-      c.style.boxShadow = active ? '0 30px 70px -24px rgba(0,255,136,.45), 0 0 0 1px rgba(0,255,136,.28)' : '0 20px 50px -30px rgba(0,0,0,.9)';
+      /* boxless image cards carry their own drop-shadow — a box glow would redraw the frame */
+      c.style.boxShadow = c.classList.contains('img') ? 'none' : (active ? '0 30px 70px -24px rgba(0,255,136,.45), 0 0 0 1px rgba(0,255,136,.28)' : '0 20px 50px -30px rgba(0,0,0,.9)');
     }
+    var cur = OITEMS[S.oIdx] || { title: '', sub: '', link: '' };
     el('#slw-ocount').textContent = (S.oIdx + 1) + ' / ' + N;
     el('#slw-ocount2').textContent = (S.oIdx + 1) + ' / ' + N;
-    el('#slw-otitle').textContent = ORBIT[S.oIdx][0];
-    el('#slw-osub').textContent = ORBIT[S.oIdx][1];
+    el('#slw-otitle').textContent = cur.title || '';
+    el('#slw-osub').textContent = cur.sub || '';
+    var lk = root.querySelector('.slw-orbit-cap .slw-openlink');
+    if (lk) { lk.style.display = cur.link ? '' : 'none'; if (cur.link) lk.href = cur.link; }
   }
   function orbStep(dir) {
     var step = 360 / N, k = Math.round(S.oAngle / step) + dir;
@@ -464,7 +490,6 @@
     S.oIdx = ((k % N) + N) % N;
     orbitPaint(false);
   }
-  orbitPaint(false);
   el('#slw-oprev').onclick = function () { orbStep(-1); };
   el('#slw-onext').onclick = function () { orbStep(1); };
   el('#slw-opause').onclick = function () {
@@ -481,27 +506,23 @@
     orbitEl.__acc = (orbitEl.__acc || 0) + e.deltaY;
     if (Math.abs(orbitEl.__acc) > 55) { orbStep(orbitEl.__acc > 0 ? 1 : -1); orbitEl.__acc = 0; }
   }, { passive: false });
-  Array.prototype.forEach.call(ocards, function (c) {
-    c.onclick = function () {
-      var i = +c.getAttribute('data-oi');
-      if (i === S.oIdx) { openLightbox(); return; }
-      var delta = ((i - S.oIdx) % N + N) % N;
-      if (delta > N / 2) delta -= N;
-      orbStep(delta);
-    };
-  });
   function openLightbox() {
     S.oLightbox = true;
+    var cur = OITEMS[S.oIdx] || { img: '', title: '', sub: '', link: '' };
+    var media = cur.img
+      ? '<img src="' + esc(cur.img) + '" alt="' + esc(cur.title || 'Host image') + '" style="max-width:min(82vw,900px);max-height:70vh;width:auto;height:auto;display:block;border-radius:12px;filter:drop-shadow(0 30px 60px rgba(0,0,0,.85))">'
+      : '<div class="slw-lb-img"><span>Creator image or GIF</span></div>';
     el('#slw-lb-mount').innerHTML = '<div class="slw-lb" id="slw-lb"><div class="slw-lb-row">' +
-      '<button class="slw-lb-nav" id="slw-lbp">‹</button><div class="slw-lb-img"><span>Creator image or GIF</span></div><button class="slw-lb-nav" id="slw-lbn">›</button></div>' +
-      '<div class="slw-lb-cap"><b>' + esc(ORBIT[S.oIdx][0]) + '</b><span>' + esc(ORBIT[S.oIdx][1]) + ' · ' + (S.oIdx + 1) + ' / ' + N + '</span></div>' +
-      '<div class="slw-lb-btns"><a class="slw-lb-open" href="#" target="_blank" rel="noopener">Open link ↗</a><button class="slw-btn2" id="slw-lbx">Close (Esc)</button></div></div>';
+      '<button class="slw-lb-nav" id="slw-lbp">‹</button>' + media + '<button class="slw-lb-nav" id="slw-lbn">›</button></div>' +
+      '<div class="slw-lb-cap"><b>' + esc(cur.title || '') + '</b><span>' + esc(cur.sub || '') + (cur.sub ? ' · ' : '') + (S.oIdx + 1) + ' / ' + N + '</span></div>' +
+      '<div class="slw-lb-btns">' + (cur.link ? '<a class="slw-lb-open" href="' + esc(cur.link) + '" target="_blank" rel="noopener">Open link ↗</a>' : '') + '<button class="slw-btn2" id="slw-lbx">Close (Esc)</button></div></div>';
     el('#slw-lbx').onclick = closeLightbox;
     el('#slw-lbp').onclick = function () { orbStep(-1); openLightbox(); };
     el('#slw-lbn').onclick = function () { orbStep(1); openLightbox(); };
   }
   function closeLightbox() { S.oLightbox = false; el('#slw-lb-mount').innerHTML = ''; }
   el('#slw-oenlarge').onclick = openLightbox;
+  buildOrbit(OITEMS);
   window.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { closeLightbox(); closeModal(); return; }
     var owns = S.oLightbox || S.oHover || orbitEl.contains(document.activeElement);
@@ -1805,7 +1826,79 @@
       }
     }).catch(function () {});
   }
-  if (!SIM) { hardenPublic(); loadCreator(); }
+  /* real orbit: creator-set images, boxless — the section stays hidden until photos exist */
+  function loadOrbit() {
+    if (SIM) return;
+    api('/sml-lw/v1/orbit?handle=' + HANDLE).then(function (res) {
+      var items = ((res.j && res.j.items) || []).filter(function (x) { return x && x.img && /^https:/.test(x.img); }).slice(0, 10);
+      if (items.length) {
+        buildOrbit(items.map(function (x) { return { img: x.img, title: x.title || '', sub: x.sub || '', link: x.link || '' }; }));
+        root.querySelector('.slw-orbit-sec').style.display = '';
+      } else {
+        root.querySelector('.slw-orbit-sec').style.display = 'none';
+      }
+    }).catch(function () {});
+  }
+  /* admin orbit manager: upload via wp/v2/media, save the list via sml-lw/v1/orbit */
+  function openOrbMgr() {
+    var mgr = [];
+    var paint = function () {
+      var box = el('#slw-omgr-list');
+      box.innerHTML = mgr.map(function (m, i) {
+        return '<div class="slw-orbmgr-row"><span class="th" style="background-image:url(' + esc(m.img) + ')"></span>' +
+          '<input data-f="title" data-i="' + i + '" placeholder="caption (optional)" value="' + esc(m.title || '') + '">' +
+          '<input data-f="link" data-i="' + i + '" placeholder="link https:// (optional)" value="' + esc(m.link || '') + '">' +
+          '<button class="rm" data-i="' + i + '">✕</button></div>';
+      }).join('') || '<span class="slw-orbmgr-note">No orbit images yet — add up to 10. Full image always shows, boxless, GIFs play.</span>';
+      Array.prototype.forEach.call(box.querySelectorAll('input'), function (inp) {
+        inp.oninput = function () { mgr[+inp.getAttribute('data-i')][inp.getAttribute('data-f')] = inp.value; };
+      });
+      Array.prototype.forEach.call(box.querySelectorAll('.rm'), function (b) {
+        b.onclick = function () { mgr.splice(+b.getAttribute('data-i'), 1); paint(); };
+      });
+    };
+    el('#slw-modal-mount').innerHTML = '<div class="slw-modal" id="slw-omgr"><div class="slw-modal-c">' +
+      '<div class="slw-modal-h"><b>Orbit images</b><button class="slw-x" id="slw-omgr-x">Close ✕</button></div>' +
+      '<div id="slw-omgr-list" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto"></div>' +
+      '<div style="display:flex;gap:9px;align-items:center"><input type="file" id="slw-omgr-file" accept="image/*" style="color:#8fa3b5;font:400 11px/1 Archivo,sans-serif">' +
+      '<span class="slw-orbmgr-note" id="slw-omgr-st"></span></div>' +
+      '<div style="display:flex;gap:9px;justify-content:flex-end"><button class="slw-btn2" id="slw-omgr-x2">Cancel</button>' +
+      '<button class="slw-rematch" id="slw-omgr-save">Save orbit</button></div></div></div>';
+    api('/sml-lw/v1/orbit?handle=' + HANDLE).then(function (res) {
+      mgr = ((res.j && res.j.items) || []).slice(0, 10);
+      paint();
+    }).catch(function () { paint(); });
+    var close = function () { el('#slw-modal-mount').innerHTML = ''; };
+    el('#slw-omgr-x').onclick = close;
+    el('#slw-omgr-x2').onclick = close;
+    el('#slw-omgr-file').onchange = function () {
+      var f = el('#slw-omgr-file').files[0];
+      if (!f) return;
+      if (mgr.length >= 10) { el('#slw-omgr-st').textContent = '10 is the max — remove one first.'; return; }
+      el('#slw-omgr-st').textContent = 'Uploading…';
+      var fd = new FormData();
+      fd.append('file', f);
+      fetch('/wp-json/wp/v2/media', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': NONCE }, body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.source_url) { mgr.push({ img: j.source_url, title: '', sub: '', link: '' }); paint(); el('#slw-omgr-st').textContent = ''; }
+          else el('#slw-omgr-st').textContent = (j && j.message) || 'Upload failed.';
+        }).catch(function () { el('#slw-omgr-st').textContent = 'Upload failed — check your connection.'; });
+      el('#slw-omgr-file').value = '';
+    };
+    el('#slw-omgr-save').onclick = function () {
+      el('#slw-omgr-st').textContent = 'Saving…';
+      fetch('/wp-json/sml-lw/v1/orbit', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-WP-Nonce': NONCE }, body: 'handle=' + encodeURIComponent(HANDLE) + '&items=' + encodeURIComponent(JSON.stringify(mgr)) })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (res.ok) { close(); loadOrbit(); }
+          else el('#slw-omgr-st').textContent = (res.j && res.j.message) || 'Save failed — is the api snippet up to date?';
+        }).catch(function () { el('#slw-omgr-st').textContent = 'Save failed — check your connection.'; });
+    };
+  }
+  if (el('#slw-orbbtn')) el('#slw-orbbtn').onclick = openOrbMgr;
+
+  if (!SIM) { hardenPublic(); loadCreator(); loadOrbit(); }
 
   /* ---------- timers ---------- */
   renderFeed();
