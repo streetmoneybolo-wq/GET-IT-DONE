@@ -1470,6 +1470,190 @@
     pollVoiceQueue();
   }
 
+  /* ---------- Phase 6: Play tab on the real games service (sml-games) ---------- */
+  var G = { mode: 'lobby', tableId: 0, version: -1, game: '', practice: false, catalogue: [], pollT: 0 };
+  var GLYPHS = { tictactoe: ['✕◯', '#00ff88'], connect4: ['●●', '#00ccff'], checkers: ['◉', '#ff7a45'], chess: ['♞', '#c7d6e3'], spades: ['♠', '#7d8cff'], blackjack: ['♣', '#ffb454'] };
+  function sendArena(glyph, text, eid) {
+    /* one deterministic poster per event id keeps the room single-voiced */
+    if (!gateState || !gateState.loggedIn) return;
+    api('/sml-live-chat/v1/room/' + HANDLE + '/messages', { method: 'POST', body: JSON.stringify({ message: glyph + ' ' + text }) }).then(function () { pollChat(); }).catch(function () {});
+  }
+  function renderLobbyReal(j) {
+    G.catalogue = j.catalogue || [];
+    var scoresYou = {};
+    (j.scores || []).forEach(function (s2) { if (s2 && s2.game) scoresYou[s2.game] = s2; });
+    el('#slw-glob').innerHTML =
+      '<div class="slw-gtiles">' + G.catalogue.map(function (g) {
+        var gl = GLYPHS[g.key] || ['▦', '#8fa3b5'];
+        var rec = scoresYou[g.key];
+        var recTx = rec ? ((rec.wins || 0) + 'W · ' + (rec.losses || 0) + 'L') : 'no matches yet';
+        return '<div class="slw-gtile"><div class="top"><span class="slw-gbadge" style="color:' + gl[1] + ';background:' + (GACC[gl[1]] || '#0b1119') + ';text-shadow:0 0 8px ' + gl[1] + '66">' + gl[0] + '</span><span class="lv">' + g.seats + ' seats</span></div>' +
+          '<span class="nm">' + esc(g.label) + '</span><span class="mt">' + esc(g.blurb || '') + '</span><span class="rec">' + recTx + '</span>' +
+          '<button class="slw-gcta' + (g.key === 'tictactoe' ? ' primary' : '') + '" data-gkey="' + g.key + '">' + (g.key === 'tictactoe' ? 'Quick play' : 'Open a table') + '</button></div>';
+      }).join('') + '</div>' +
+      '<div class="slw-gopen"><div class="hd"><b>OPEN TABLES</b><span style="font:500 9px/1 \'IBM Plex Mono\',monospace;color:#5d7085">' + (j.tables || []).length + ' open</span></div>' +
+      ((j.tables || []).filter(function (t) { return t.status === 'waiting'; }).map(function (t) {
+        var gl = GLYPHS[t.game] || ['▦', '#8fa3b5'];
+        var host = (t.players || []).map(function (p) { return p && (p.handle || p.name); }).filter(Boolean)[0] || 'open seat';
+        return '<div class="slw-gtable"><div class="l"><span class="bg" style="color:' + gl[1] + ';background:' + (GACC[gl[1]] || '#0b1119') + '">' + gl[0] + '</span><div class="bd"><span class="nm">' + esc(t.label || t.game) + ' · ' + (t.players || []).length + '/' + (t.seatCount || 2) + ' seats</span><span class="hs">@' + esc(String(host).replace(/^@/, '')) + '</span></div></div><button class="slw-gjoin" data-join="' + t.id + '">Join</button></div>';
+      }).join('') || '<div class="slw-chat-empty" style="display:block">No open tables — start one and the room sees it.</div>') + '</div>';
+    Array.prototype.forEach.call(el('#slw-glob').querySelectorAll('.slw-gcta'), function (b) {
+      b.onclick = function () { startServerGame(b.getAttribute('data-gkey')); };
+    });
+    Array.prototype.forEach.call(el('#slw-glob').querySelectorAll('.slw-gjoin'), function (b) {
+      b.onclick = function () { joinTable(+b.getAttribute('data-join')); };
+    });
+  }
+  function loadLobby() {
+    if (SIM || document.hidden || S.tab !== 4 || G.mode !== 'lobby') return;
+    api('/sml-games/v1/lobby').then(function (res) { if (res.j && res.j.catalogue) renderLobbyReal(res.j); }).catch(function () {});
+  }
+  function gShow(view) {
+    el('#slw-glob').style.display = view === 'lobby' ? '' : 'none';
+    el('#slw-gwait').classList.toggle('show', view === 'wait');
+    el('#slw-gmatch').classList.toggle('show', view === 'match');
+    G.mode = view;
+  }
+  function startServerGame(key) {
+    vFormG('/sml-games/v1/matchmake', { game: key }).then(function (res) {
+      if (!res.ok) { gErr((res.j && res.j.message) || 'Could not open a table.'); return; }
+      var t = (res.j && (res.j.table || res.j)) || {};
+      if (t.id) { adoptTable(t); }
+      else { api('/sml-games/v1/lobby').then(function (r2) {
+        var mine = ((r2.j && r2.j.tables) || []).filter(function (x) { return x.yourSeat != null && x.yourSeat !== false; })[0];
+        if (mine) adoptTable(mine); else gErr('The table did not open — try again.');
+      }); }
+    }).catch(function () { gErr('Could not reach the games desk.'); });
+  }
+  function joinTable(id) {
+    vFormG('/sml-games/v1/tables/' + id + '/join', {}).then(function (res) {
+      if (!res.ok) { gErr((res.j && res.j.message) || 'Could not join that table.'); return; }
+      adoptTable((res.j && (res.j.table || res.j)) || { id: id });
+    });
+  }
+  function vFormG(path, bodyObj) {
+    var body = Object.keys(bodyObj).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(bodyObj[k]); }).join('&');
+    return fetch('/wp-json' + path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-WP-Nonce': NONCE }, body: body })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); });
+  }
+  function gErr(msg) { el('#slw-glive').textContent = msg; flashGate(msg); }
+  function adoptTable(t) {
+    G.tableId = t.id; G.game = t.game || G.game; G.version = -1; G.practice = false;
+    clearInterval(G.pollT);
+    G.pollT = setInterval(pollTable, 1500);
+    paintTable(t);
+    pollTable();
+  }
+  function leaveTable() {
+    clearInterval(G.pollT);
+    if (G.tableId && !G.practice) vFormG('/sml-games/v1/tables/' + G.tableId + '/leave', {});
+    G.tableId = 0; G.practice = false;
+    gShow('lobby');
+    loadLobby();
+  }
+  function pollTable() {
+    if (!G.tableId || document.hidden) return;
+    api('/sml-games/v1/tables/' + G.tableId).then(function (res) {
+      var t = res.j && (res.j.table || res.j);
+      if (!t || !t.id) { leaveTable(); return; }
+      if (t.version === G.version) return;
+      G.version = t.version;
+      paintTable(t);
+    }).catch(function () {});
+  }
+  function paintTable(t) {
+    var st = t.status || 'waiting';
+    if (st === 'waiting') {
+      gShow('wait');
+      el('#slw-gwname').textContent = (t.label || t.game || 'Table') + ' table created';
+      var gl = GLYPHS[t.game] || ['▦', '#8fa3b5'];
+      var bg = el('#slw-gwbadge');
+      bg.textContent = gl[0]; bg.style.color = gl[1]; bg.style.background = GACC[gl[1]] || '#0b1119';
+      var codeEl = el('#slw-gwait').querySelector('.code b');
+      if (codeEl && t.joinCode) codeEl.textContent = t.joinCode;
+      if (t.canStart) {
+        var wrap = el('#slw-gwait');
+        if (!wrap.querySelector('.slw-gstart')) {
+          var sb = document.createElement('button');
+          sb.className = 'slw-rematch slw-gstart';
+          sb.textContent = 'Start the match';
+          sb.onclick = function () { vFormG('/sml-games/v1/tables/' + G.tableId + '/start', {}).then(pollTable); };
+          wrap.insertBefore(sb, wrap.querySelector('#slw-gwback'));
+        }
+      }
+      return;
+    }
+    if (t.game === 'tictactoe') { gShow('match'); paintServerTTT(t); return; }
+    /* non-TTT boards land next update — the table itself is live */
+    gShow('wait');
+    el('#slw-gwname').textContent = (t.label || t.game) + ' — match running';
+    el('#slw-gwait').querySelector('.n').textContent = 'The board UI for this game lands in the next update. The table is live on the server.';
+  }
+  function paintServerTTT(t) {
+    var cells = [];
+    var raw = t.state;
+    if (raw && raw.board) raw = raw.board;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+    for (var i = 0; i < 9; i++) {
+      var v = raw && raw[i] != null ? raw[i] : '';
+      if (v === 0 || v === '0') v = t.yourSeat === 0 ? 'X' : 'O';
+      else if (v === 1 || v === '1') v = t.yourSeat === 1 ? 'X' : 'O';
+      cells.push(v === 'X' || v === 'x' ? 'X' : (v === 'O' || v === 'o' ? 'O' : ''));
+    }
+    var b = el('#slw-ttt');
+    b.innerHTML = cells.map(function (m, i) {
+      return '<button class="slw-cell' + (m === 'X' ? ' x' : m === 'O' ? ' o' : '') + '" data-scell="' + i + '">' + (m === 'X' ? '✕' : m === 'O' ? '◯' : '') + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(b.children, function (c) {
+      c.onclick = function () {
+        if (!t.yourTurn || t.winner != null && t.winner !== '') return;
+        var i = +c.getAttribute('data-scell');
+        if (cells[i]) return;
+        var attempt = function (names, k) {
+          if (k >= names.length) return;
+          var body = {}; body[names[k]] = i;
+          vFormG('/sml-games/v1/tables/' + G.tableId + '/move', body).then(function (res) {
+            if (res.ok) { pollTable(); }
+            else if (res.status === 400) attempt(names, k + 1);
+            else gErr((res.j && res.j.message) || 'Move refused.');
+          });
+        };
+        attempt(['move', 'cell', 'index', 'position'], 0);
+      };
+    });
+    el('#slw-tclk').style.display = 'none'; /* server owns timing */
+    var opp = (t.players || []).filter(function (p) { return p && p.handle && p.handle !== ((VC.elig && VC.elig.handle) || ''); }).map(function (p) { return p.handle; });
+    el('#slw-chipopp').querySelector('.n').textContent = '@' + String(opp[opp.length - 1] || 'opponent').replace(/^@/, '');
+    var stat = el('#slw-tstat');
+    var done = t.winner != null && t.winner !== '';
+    el('#slw-tbtns').classList.toggle('show', done);
+    el('#slw-chipyou').classList.toggle('on', !!t.yourTurn && !done);
+    el('#slw-chipopp').classList.toggle('on', !t.yourTurn && !done);
+    if (done) {
+      var meWon = t.winner === 'you' || t.winner === t.yourSeat || (t.winner && t.winner.id && VC.elig && t.winner.id === VC.elig.user_id);
+      stat.textContent = t.winner === 'draw' ? 'Draw — nobody blinked.' : (meWon ? 'You win the match! 🏁' : 'They take it.');
+      stat.className = 'slw-ttt-status' + (meWon ? ' win' : t.winner === 'draw' ? '' : ' lose');
+      if (meWon) sendArena('🏁', 'won a Tic-Tac-Toe match in the arena', 'm' + G.tableId + '-end');
+      clearInterval(G.pollT);
+      api('/sml-games/v1/scores').then(function () {});
+    } else {
+      stat.textContent = t.yourTurn ? 'Your move — place an ✕' : 'Waiting on the other seat…';
+      stat.className = 'slw-ttt-status';
+    }
+  }
+  if (!SIM) {
+    /* rebind lobby/match chrome; practice bot stays available through the sim engine */
+    el('#slw-gwback').onclick = leaveTable;
+    el('#slw-gback').onclick = leaveTable;
+    el('#slw-gforfeit').onclick = leaveTable;
+    el('#slw-tlobby').onclick = leaveTable;
+    el('#slw-trematch').onclick = function () { if (G.game) startServerGame(G.game); };
+    Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
+      b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 4) loadLobby(); });
+    });
+    setInterval(loadLobby, 10000);
+  }
+
   /* ---------- timers ---------- */
   renderFeed();
   setInterval(function () {
