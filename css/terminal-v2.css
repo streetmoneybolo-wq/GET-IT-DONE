@@ -51,3 +51,8 @@ body.tv2-artifact-on [data-tv2-zone] > *{min-width:0}
   body.tv2-artifact-on [data-tv2-zone="main"],
   body.tv2-artifact-on [data-tv2-zone="rail"]{padding-left:0!important;padding-right:0!important}
 }
+
+/* the captured shell centers its zones — stretch them to full width */
+body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
+/* legacy market-summary section (outside the terminal) overflows narrow viewports */
+body.tv2-heatmap-off .sml-ticker-summary{max-width:100%!important;box-sizing:border-box!important}
