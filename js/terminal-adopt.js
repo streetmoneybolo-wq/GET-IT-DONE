@@ -12,7 +12,7 @@
  */
 (function () {
   'use strict';
-  if (!/[?&]tv2=1(&|$)/.test(location.search)) return;
+  if (window.SML_TV2_LIVE !== 1 && !/[?&]tv2=1(&|$)/.test(location.search)) return; // live flag or explicit preview
 
   function cardBody(card, keepHeader) {
     // hide the card's sample content (keep header row), return the card as mount target

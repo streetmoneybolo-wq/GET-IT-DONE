@@ -10,8 +10,12 @@
   'use strict';
   document.body.classList.add('tv2-heatmap-off'); // heat map stays off everywhere
 
+  // LIVE MODE: the WPCode go-live snippet sets window.SML_TV2_LIVE=1 for every
+  // visitor on /stock-chart/. Without the flag, ?tv2=1 remains the explicit
+  // preview opt-in. ?tv2=0 is the escape hatch (the snippet also bails server-side).
   var params = new URLSearchParams(location.search);
-  if (params.get('tv2') !== '1') return; // artifact preview is explicit opt-in
+  var LIVE = (window.SML_TV2_LIVE === 1) && params.get('tv2') !== '0';
+  if (!LIVE && params.get('tv2') !== '1') return;
 
   // Derive the pinned CDN base from this script's own URL (commit-pinned by the loader).
   var self = document.currentScript || document.getElementById('sml-tv2-shell') ||
@@ -34,6 +38,11 @@
       .then(function (html) {
         root.innerHTML = html;
         document.body.classList.add('tv2-artifact-on'); // hides the legacy terminal (CSS)
+        // the PREVIEW banner is a dev aid — never show it to live visitors
+        if (window.SML_TV2_LIVE === 1) {
+          var ban = root.querySelector(':scope > div');
+          if (ban && /PREVIEW/.test(ban.textContent || '')) ban.style.display = 'none';
+        }
         // Tag the captured wrapper chain + zones so responsive CSS can address
         // them — the captured divs carry NO classes (one has width:1440px inline
         // to the design's fixed frame). Attributes only; structure untouched, so
