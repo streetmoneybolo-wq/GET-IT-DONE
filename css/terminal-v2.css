@@ -195,31 +195,29 @@ body.tv2-integrated-on #sml-lf .sml-tct-tabs button.active,
 body.tv2-integrated-on #sml-lf .sml-tct-tabs button.is-active{
   background:#e6edf3!important;color:#04060a!important;border-color:#e6edf3!important}
 
-/* ---- THE MOCK'S LAYOUT, exact module order ----
-   #sml-ws's wrapper columns get display:contents so every module is an
-   individually-placed grid item (no DOM moves; wrappers verified to contain
-   exactly: mid = quotes + sentiment · rail = alerts + videos + sponsored ·
-   tvr-slot = trading room). Right rail order matches the reference precisely:
-   LIVE QUOTES → SENTIMENT → ALERT BOX → TRADING ROOM → VIDEOS + SPONSORED (2-up). */
-body.tv2-integrated-on #sml-ws{display:grid!important;grid-template-columns:minmax(0,1fr) 153px 153px!important;gap:14px!important;align-items:start!important}
-body.tv2-integrated-on #sml-ws-left{grid-column:1!important;grid-row:1 / span 6!important;min-width:0!important;width:auto!important;float:none!important}
+/* ---- ARTIFACT LAYOUT (measured from the rendered reference) ----
+   body = flex [ MAIN flex:1 | RAIL 396px ], gap 16, padding 16/24.
+   MAIN: chart (anchored) → live feed → sponsored.
+   RAIL: alert box → quotes → signals → market position (+ room/videos kept).
+   The shell MOVES the move-safe modules; the chart is never reparented. */
+body.tv2-integrated-on .sml-pro-overview-main{display:flex!important;gap:16px!important;align-items:flex-start!important;padding:16px 24px 24px!important}
+body.tv2-integrated-on .sml-pro-chart-panel{flex:1 1 auto!important;min-width:0!important;width:auto!important;display:flex!important;flex-direction:column!important;gap:16px!important}
+body.tv2-integrated-on #tv2-siderail{flex:0 0 396px!important;width:396px!important;display:flex!important;flex-direction:column!important;gap:16px!important}
+body.tv2-integrated-on .sml-pro-panel{display:none!important} /* legacy empty side panel */
+/* workspace back to a single clean column; emptied wrappers vanish */
+body.tv2-integrated-on #sml-ws{display:block!important}
+body.tv2-integrated-on #sml-ws-left{width:auto!important;float:none!important;min-width:0!important}
+body.tv2-integrated-on #sml-ws-mid:empty,
+body.tv2-integrated-on #sml-ws-rail:empty{display:none!important}
 body.tv2-integrated-on #sml-ws-mid,
-body.tv2-integrated-on #sml-ws-rail{display:contents!important}
-body.tv2-integrated-on #sml-side-quotes{grid-column:2 / span 2!important;grid-row:1!important;width:auto!important}
-body.tv2-integrated-on #sml-ws .sml-tech{grid-column:2 / span 2!important;grid-row:2!important;width:auto!important}
-body.tv2-integrated-on #sml-side-alerts{grid-column:2 / span 2!important;grid-row:3!important;width:auto!important}
-body.tv2-integrated-on #sml-ws .sml-tvr-slot{grid-column:2 / span 2!important;grid-row:4!important;width:auto!important}
-body.tv2-integrated-on #sml-side-videos{grid-column:2!important;grid-row:5!important;width:auto!important}
-body.tv2-integrated-on #sml-ad-slot{grid-column:3!important;grid-row:5!important;width:auto!important}
+body.tv2-integrated-on #sml-ws-rail{width:auto!important;float:none!important}
+/* moved modules fill their new homes cleanly */
+body.tv2-integrated-on #tv2-siderail>*{width:auto!important;margin:0!important}
+body.tv2-integrated-on .sml-pro-chart-panel>#sml-lf,
+body.tv2-integrated-on .sml-pro-chart-panel>#sml-ad-slot{width:auto!important;margin:0!important}
 @media(max-width:1199px){
-  body.tv2-integrated-on #sml-ws{grid-template-columns:1fr!important}
-  body.tv2-integrated-on #sml-ws-left,
-  body.tv2-integrated-on #sml-side-quotes,
-  body.tv2-integrated-on #sml-ws .sml-tech,
-  body.tv2-integrated-on #sml-side-alerts,
-  body.tv2-integrated-on #sml-ws .sml-tvr-slot,
-  body.tv2-integrated-on #sml-side-videos,
-  body.tv2-integrated-on #sml-ad-slot{grid-column:1!important;grid-row:auto!important}
+  body.tv2-integrated-on .sml-pro-overview-main{flex-direction:column!important;padding:12px!important}
+  body.tv2-integrated-on #tv2-siderail{flex:1 1 auto!important;width:100%!important}
 }
 
 /* ---- Heat Map removed from the terminal entirely (user decision) ----
@@ -233,12 +231,4 @@ body.tv2-integrated-on #sml-mp [title="Heat Map"],
 body.tv2-integrated-on #sml-mp [title*="Heat"],
 body.tv2-integrated-on #sml-mp [title*="Position Overview"]{display:none!important}
 
-/* ---- left icon rail (mock's slim rail), desktop only; built by the shell ---- */
-#sml-tv2-rail{position:fixed;left:10px;top:120px;z-index:60;display:flex;flex-direction:column;gap:6px;
-  background:#0d141c;border:1px solid #16202b;border-radius:10px;padding:8px 5px;width:44px}
-#sml-tv2-rail button{display:block;width:34px;padding:8px 0;border:none;border-radius:7px;background:transparent;
-  color:#5d7085;font-family:ui-monospace,Menlo,monospace;font-size:8.5px;letter-spacing:.06em;cursor:pointer;text-align:center;line-height:1.2}
-#sml-tv2-rail button:hover{background:#131c26;color:#e6edf3}
-#sml-tv2-rail button.on{background:rgba(0,255,136,.12);color:#00ff88}
-@media(max-width:1199px){#sml-tv2-rail{display:none}}
-@media(min-width:1200px){body.tv2-integrated-on .sml-terminal,#sml-tv2-root.tv2.tv2-integrated{margin-left:56px!important}}
+/* (icon rail removed — the current rendered artifact has no left rail) */

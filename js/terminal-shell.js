@@ -114,30 +114,42 @@
         var pq = document.querySelector('.sml-pro-quote');
         if (pq) pq.style.setProperty('overflow-x', 'auto', 'important'); // safety valve on narrow screens
         try { window.dispatchEvent(new Event('resize')); } catch (e) {}  // let the chart re-measure
-        // Direction B's slim left rail: tab shortcuts + jump-to-section anchors.
-        if (!document.getElementById('sml-tv2-rail')) {
-          var rail = document.createElement('nav'); rail.id = 'sml-tv2-rail'; rail.setAttribute('aria-label', 'Terminal shortcuts');
-          var items = [
-            ['OVR', 'tab', 'overview'], ['OPT', 'tab', 'options'], ['RES', 'tab', 'research'], ['NWS', 'tab', 'news'],
-            ['MP', 'goto', 'sml-mp'], ['FEED', 'goto', 'sml-lf'], // HEAT removed — heat map retired from the terminal
-          ];
-          items.forEach(function (it) {
-            var b = document.createElement('button'); b.type = 'button'; b.textContent = it[0];
-            b.setAttribute('data-rail', it[1] + ':' + it[2]);
-            b.addEventListener('click', function () {
-              if (it[1] === 'tab') { var t = root.querySelector('.tv2-tab[data-tab="' + it[2] + '"]'); if (t) t.click(); }
-              else { var el = document.getElementById(it[2]); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-            });
-            rail.appendChild(b);
-          });
-          document.body.appendChild(rail);
-          T.on('tab', function (id) {
-            [].forEach.call(rail.querySelectorAll('button'), function (b) {
-              b.classList.toggle('on', b.getAttribute('data-rail') === 'tab:' + id);
-            });
-          });
-          var first = rail.querySelector('button'); if (first) first.classList.add('on');
+        // ---- ARTIFACT LAYOUT BUILD ----
+        // Rendered-artifact geometry: body = flex [ MAIN flex:1 | RAIL 396px ], gap 16.
+        //   MAIN: chart (anchored — never moved) → live feed → sponsored.
+        //   RAIL: alert box → quotes → signals(tech) → market position.
+        // Modules verified move-safe (MP canvas bitmap + feed composer tested live);
+        // the chart and its ancestors are never reparented. Voice room + videos are
+        // not in the artifact but must not lose functionality → appended after rail.
+        function mountArtifactLayout() {
+          var main = document.querySelector('.sml-pro-overview-main');
+          var chartPanel = document.querySelector('.sml-pro-chart-panel');
+          if (!main || !chartPanel) return;
+          var railEl = document.getElementById('tv2-siderail');
+          if (!railEl) {
+            railEl = document.createElement('aside'); railEl.id = 'tv2-siderail'; railEl.setAttribute('aria-label', 'Terminal context');
+            main.appendChild(railEl);
+          }
+          function into(target, id, sel) {
+            var el = sel ? document.querySelector(sel) : document.getElementById(id);
+            if (el && !target.contains(el)) target.appendChild(el);
+            return !!el;
+          }
+          // RAIL — artifact order
+          into(railEl, 'sml-side-alerts');
+          into(railEl, 'sml-side-quotes');
+          into(railEl, null, '#sml-ws .sml-tech, .sml-tech');
+          into(railEl, 'sml-mp');
+          // functionality kept (not in artifact): trading room + videos at rail end
+          into(railEl, null, '.sml-tvr-slot');
+          into(railEl, 'sml-side-videos');
+          // MAIN — feed then sponsored, after the chart workspace
+          into(chartPanel, 'sml-lf');
+          into(chartPanel, 'sml-ad-slot');
+          try { window.dispatchEvent(new Event('resize')); } catch (e) {}
         }
+        mountArtifactLayout();
+        [1200, 2800, 5200].forEach(function (t) { setTimeout(mountArtifactLayout, t); }); // catch late-booting modules
         // sync the legacy's active view with whatever V2 tab is selected
         var cur = root.querySelector('.tv2-tab[aria-selected="true"]');
         if (cur) { var lb = legacyTabs[PROXY[cur.getAttribute('data-tab')]]; if (lb) { try { lb.click(); } catch (e) {} } }
