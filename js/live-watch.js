@@ -848,8 +848,8 @@
   media.parentNode.insertBefore(shield, media.nextSibling);
   shield.addEventListener('click', function () { if (P.mode !== 'none') togglePlay(); });
 
-  function phState(t1, t2) { ph.classList.remove('hide'); ph.querySelector('.t1').textContent = t1; ph.querySelector('.t2').textContent = t2; }
-  function phHide() { ph.classList.add('hide'); }
+  function phState(t1, t2) { ph.classList.remove('hide'); ph.parentNode.classList.remove('clear'); ph.querySelector('.t1').textContent = t1; ph.querySelector('.t2').textContent = t2; }
+  function phHide() { ph.classList.add('hide'); ph.parentNode.classList.add('clear'); }
   function setSourceNote(n) { window.__slwSrcNote = n; var mh = root.querySelector('.slw-menu .mh span'); if (mh) mh.textContent = n; }
   function paintPlayBtn() {
     var b = el('#slw-play');

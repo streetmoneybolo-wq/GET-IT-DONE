@@ -103,6 +103,9 @@ body.slw-on{background:#04060a !important}
 .slw-frame-ph .t2{max-width:70%;text-align:center;line-height:1.5}
 .slw-frame-ph .t1{font:800 12px/1 Archivo,sans-serif;letter-spacing:.22em;color:#26333f}
 .slw-frame-ph .t2{font:400 10px/1 Archivo,sans-serif;color:#1c2833}
+/* the film-grain treatment only dresses the EMPTY frame — a mounted stream shows
+   crystal clear, no scanlines/vignette/sweep over real video */
+.slw-frame.clear .slw-scanlines, .slw-frame.clear .slw-vignette, .slw-frame.clear .slw-scan, .slw-frame.clear .slw-sweepwrap{display:none}
 .slw-scanlines{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 3px)}
 .slw-vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 40%,rgba(2,4,7,.72) 100%)}
 .slw-scan{position:absolute;left:0;right:0;height:120px;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(0,255,136,.07),transparent);animation:slwScan 7s linear infinite}
