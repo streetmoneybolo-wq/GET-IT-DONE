@@ -223,7 +223,7 @@
       // axis labels
       g.fillStyle = '#7f93b5'; g.font = '10px ui-monospace,monospace';
       g.fillText('$' + max.toFixed(0), 2, 22); g.fillText('$0', 2, H - 20);
-      g.fillText('today', 34, H - 6); g.fillText(esc(c.expiration), W - 78, H - 6);
+      g.fillText('today', 34, H - 6); g.fillText(st.exp || '', W - 78, H - 6);
     }
   }
 
