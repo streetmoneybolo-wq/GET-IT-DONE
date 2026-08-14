@@ -247,17 +247,74 @@
       lk.href = BASE + 'css/terminal-options.css'; document.head.appendChild(lk);
     }
 
-    var view = document.createElement('div');
+    // one view container per non-Overview tab; Overview = the artifact body itself
+    var views = {};
+    ['Options', 'Research', 'News'].forEach(function (n) {
+      var v = document.createElement('div');
+      v.setAttribute('data-tv2-view', n.toLowerCase());
+      v.style.cssText = 'display:none;padding:16px 24px 24px';
+      body.parentNode.insertBefore(v, body.nextSibling);
+      views[n] = v;
+    });
+    var view = views.Options;
     view.setAttribute('data-tv2-options-view', '1');
-    view.style.cssText = 'display:none;padding:16px 24px 24px';
-    body.parentNode.insertBefore(view, body.nextSibling);
+
+    // adopted legacy views must stay visible even if the legacy tab controller
+    // later writes inline display:none (stylesheet !important beats inline)
+    var stg = document.createElement('style');
+    stg.textContent =
+      '[data-tv2-view] .sml-pro-view{display:block!important}' +
+      '[data-tv2-view="research"] .tv2-rgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;align-items:start}' +
+      '@media(max-width:1100px){[data-tv2-view="research"] .tv2-rgrid{grid-template-columns:1fr}}' +
+      '[data-tv2-view] .tv2-rcard{background:#0d141c;border:1px solid #16202b;border-radius:12px;padding:14px 16px;min-width:0}' +
+      '[data-tv2-view] #sml-profile-host{max-width:none!important;margin:0!important}';
+    document.head.appendChild(stg);
+
+    function legacyTab(rx) {
+      var bs = [].slice.call(document.querySelectorAll('.sml-pro-tabs button'));
+      return bs.filter(function (b) { return rx.test((b.textContent || '').trim()); })[0] || null;
+    }
+    // click the legacy tab so its module lazy-mounts, then move the mounted
+    // element into the design container (retry ~6s; adopt whatever state exists)
+    function adoptLegacy(clickRx, getEl, readyFn, target) {
+      var b = legacyTab(clickRx);
+      if (b) { try { b.click(); } catch (e) {} }
+      var n = 0, t = setInterval(function () {
+        var el = getEl();
+        if (el && (readyFn(el) || n > 24)) { clearInterval(t); target.appendChild(el); }
+        else if (++n > 30) clearInterval(t);
+      }, 250);
+    }
+    function loadResearch(v) {
+      v.innerHTML = '<div class="tv2-rgrid">' +
+        '<div class="tv2-rcard" data-r-tech></div>' +
+        '<div class="tv2-rcard" data-r-prof></div></div>';
+      // Technical Sentiment gauge: already booted, idle in the hidden legacy rail
+      var g = document.getElementById('sml-tech-host');
+      if (g) v.querySelector('[data-r-tech]').appendChild(g);
+      else v.querySelector('[data-r-tech]').style.display = 'none';
+      // Company Profile: the legacy Research view (adopt the WHOLE view — the
+      // moveprofile observer keeps #sml-profile-host inside it, so no tug-of-war)
+      adoptLegacy(/^Research$/i,
+        function () { return document.querySelector('.sml-terminal .sml-pro-view[data-pro-view="technicals"]'); },
+        function (el) { return !!el.querySelector('#sml-profile-host .sml-cp'); },
+        v.querySelector('[data-r-prof]'));
+    }
+    function loadNews(v) {
+      v.innerHTML = '<div class="tv2-rcard" data-n-host></div>';
+      adoptLegacy(/^News$/i,
+        function () { return document.querySelector('.sml-terminal .sml-pro-view[data-pro-view="news"]'); },
+        function (el) { return !!el.querySelector('.sml-pro-panel'); },
+        v.querySelector('[data-n-host]'));
+    }
 
     function activate(name) {
-      var showOpt = name === 'Options';
-      body.style.display = showOpt ? 'none' : '';
-      view.style.display = showOpt ? 'block' : 'none';
+      body.style.display = (name === 'Overview') ? '' : 'none';
+      Object.keys(views).forEach(function (n) { views[n].style.display = (n === name) ? 'block' : 'none'; });
       Object.keys(labels).forEach(function (k) { labels[k].style.color = (k === name) ? '#00ff88' : ''; labels[k].style.cursor = 'pointer'; });
-      if (showOpt && !view.__loaded) {
+      if (name === 'Research' && !views.Research.__loaded) { views.Research.__loaded = true; loadResearch(views.Research); }
+      if (name === 'News' && !views.News.__loaded) { views.News.__loaded = true; loadNews(views.News); }
+      if (name === 'Options' && !view.__loaded) {
         view.__loaded = true;
         view.innerHTML = '<div style="font:400 12px ui-monospace,monospace;color:#8fa3b5">Loading the ' + SYM + ' chain…</div>';
         Promise.all([fetchQuote(), fetchChain(null)]).then(function () {
@@ -275,7 +332,7 @@
     }
     Object.keys(labels).forEach(function (k) {
       labels[k].style.cursor = 'pointer';
-      labels[k].addEventListener('click', function () { if (k === 'Options' || k === 'Overview') activate(k); });
+      labels[k].addEventListener('click', function () { activate(k); });
     });
     return true;
   }

@@ -126,6 +126,12 @@
         }
       }
     }
+    // MAIN[2] = the design's sample news card — sample articles can't ship, and
+    // the real news module lives in the News tab; hide (guard: never hide a card
+    // that an adopted module already moved into)
+    if (!done.newsCard && main.children[2] && !main.children[2].querySelector('#sml-lf,#sml-ws-left,#sml-ad-slot')) {
+      main.children[2].style.display = 'none'; done.newsCard = true;
+    }
     // MAIN[3] = sponsored ← #sml-ad-slot
     var ad = document.getElementById('sml-ad-slot');
     if (!done.ad && ad && main.children[3]) { done.ad = adopt(cardBody(main.children[3], true), ad); }
@@ -146,7 +152,7 @@
     if (done.chart && !done.banner) {
       var ban = root.querySelector(':scope > div');
       if (ban && /PREVIEW/.test(ban.textContent || '')) {
-        ban.textContent = 'PREVIEW — live chart, quote, feed, market position, alerts and ads are REAL. Remaining: tabs (Options/Research/News), responsiveness, rollout QA.';
+        ban.textContent = 'PREVIEW — chart, quote, feed, market position, alerts, ads and the Options / Research / News tabs are all REAL. Remaining: responsiveness + rollout QA.';
         done.banner = true;
       }
     }
