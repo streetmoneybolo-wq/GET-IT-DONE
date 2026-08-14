@@ -66,8 +66,11 @@
     slots.change = findLeaf(strip, /^[+−-][0-9.,]+ \([+−-]?[0-9.,]+%\)$/);
     // rail "Quotes" card
     grab(rail, /^High$/, 'qHigh'); grab(rail, /^Low$/, 'qLow'); grab(rail, /^Open$/, 'qOpen');
-    grab(rail, /^Volume$/, 'qVolume'); grab(rail, /^Prev close$/, 'qPrev'); grab(rail, /^Last$/, 'qLast');
-    grab(rail, /^(Avg \(VWAP\)|VWAP|Avg)$/i, 'qVwap'); grab(rail, /^Bid$/, 'qBid'); grab(rail, /^Ask$/, 'qAsk');
+    grab(rail, /^Volume$/i, 'qVolume'); grab(rail, /^Prev\.? ?close$/i, 'qPrev'); grab(rail, /^Last$/i, 'qLast');
+    grab(rail, /^(Avg \(VWAP\)|VWAP|Avg)$/i, 'qVwap'); grab(rail, /^Bid$/i, 'qBid'); grab(rail, /^Ask$/i, 'qAsk');
+    // design-only cells with no live data owner — discovered so the blanking
+    // pass below turns their capture-day samples into permanent honest dashes
+    grab(rail, /^Turnover$/i, 'xTurnover'); grab(rail, /^(Mkt|Mkr)\.? ?Cap$/i, 'xMktCap'); grab(rail, /^Shares( Out)?$/i, 'xShares');
 
     // The design's captured sample numbers must NEVER pass as data: blank every
     // discovered slot NOW — only a real quote response repaints them, so invalid
