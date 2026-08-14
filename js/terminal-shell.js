@@ -119,7 +119,7 @@
           var rail = document.createElement('nav'); rail.id = 'sml-tv2-rail'; rail.setAttribute('aria-label', 'Terminal shortcuts');
           var items = [
             ['OVR', 'tab', 'overview'], ['OPT', 'tab', 'options'], ['RES', 'tab', 'research'], ['NWS', 'tab', 'news'],
-            ['MP', 'goto', 'sml-mp'], ['HEAT', 'goto', 'sml-terminal-heatmap'], ['FEED', 'goto', 'sml-lf'],
+            ['MP', 'goto', 'sml-mp'], ['FEED', 'goto', 'sml-lf'], // HEAT removed — heat map retired from the terminal
           ];
           items.forEach(function (it) {
             var b = document.createElement('button'); b.type = 'button'; b.textContent = it[0];
