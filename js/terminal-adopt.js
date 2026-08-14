@@ -33,7 +33,9 @@
   function run() {
     var root = document.getElementById('sml-tv2-root');
     if (!root || root.getAttribute('data-artifact') !== '1' || root.children.length < 2) return false;
+    // the captured markup wraps the zones — descend through single-child wrappers
     var shell = root.querySelector(':scope > :last-child');
+    while (shell && shell.children.length === 1) shell = shell.children[0];
     if (!shell || shell.children.length < 4) return false;
     var body = shell.children[3];
     var main = body.children[0], rail = body.children[1];

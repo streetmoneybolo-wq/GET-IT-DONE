@@ -32,7 +32,8 @@
 
   function boot(root) {
     var shell = root.querySelector(':scope > :last-child') || root;
-    var zones = shell.children.length >= 4 ? shell : root; // [header, strip, tabs, body]
+    while (shell && shell.children.length === 1) shell = shell.children[0]; // unwrap capture nesting
+    var zones = (shell && shell.children.length >= 4) ? shell : root;       // [header, strip, tabs, body]
     var strip = zones.children[1] || root;
     var body = zones.children[3] || root;
     var rail = body.children[1] || body;
