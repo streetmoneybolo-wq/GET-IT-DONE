@@ -62,24 +62,67 @@
       if (done.lf) {
         var oldHead = lf.querySelector('.lf-head');
         if (oldHead) oldHead.style.display = 'none';
-        // ---- Live Voice Room as a button in the feed card ----
-        var tvr = document.querySelector('.sml-tvr-slot') || document.getElementById('live-voice-room');
-        if (tvr) {
-          tvr.style.display = 'none'; tvr.style.width = '100%';
-          main.children[1].appendChild(tvr);
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = '🎙 Join Live Voice Room';
-          btn.style.cssText = 'margin:10px 16px;padding:9px 20px;border-radius:999px;border:1px solid #134a33;' +
-            'background:linear-gradient(180deg,#00ff88,#00c86b);color:#04120b;font:600 13px Archivo,sans-serif;cursor:pointer';
-          btn.addEventListener('click', function () {
-            var open = tvr.style.display === 'none';
-            tvr.style.display = open ? 'block' : 'none';
-            btn.textContent = open ? '🎙 Hide Voice Room' : '🎙 Join Live Voice Room';
-            if (open) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
+        // ---- "Voice Room" as a 5th SOURCE TAB (like moomoo/Stocktwits/Webull).
+        // The legacy #live-voice-room UI is NEVER shown; it stays booted+hidden and
+        // this NEW design-matched panel proxies its controls (the old system does
+        // the real join/heartbeat/media work).
+        var tabRow = lf.querySelector('.sml-tct-tabs');
+        var legacyRoom = document.getElementById('live-voice-room');
+        if (tabRow && legacyRoom && !lf.querySelector('[data-tv2-voice-tab]')) {
+          var proto = tabRow.querySelector('button');
+          var vtab = proto ? proto.cloneNode(false) : document.createElement('button');
+          vtab.textContent = '🎙 Voice Room';
+          vtab.setAttribute('data-tv2-voice-tab', '1');
+          vtab.classList.remove('active', 'is-active'); vtab.removeAttribute('aria-selected');
+          tabRow.appendChild(vtab);
+
+          // my panel, design tokens; controls proxy the hidden legacy buttons
+          var panel = document.createElement('div');
+          panel.setAttribute('data-tv2-voice-panel', '1');
+          panel.style.cssText = 'display:none;padding:18px 16px;background:#0d141c;border:1px solid #134a33;border-radius:10px;margin:12px 0';
+          panel.innerHTML =
+            '<div style="font:600 13px Archivo,sans-serif;color:#e6edf3;margin-bottom:4px">Live Voice Room</div>' +
+            '<div data-v-status style="font:400 11px/1.5 \'IBM Plex Mono\',monospace;color:#8fa3b5;margin-bottom:12px">Connecting to the room system…</div>' +
+            '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+              '<button data-v="join" style="padding:8px 20px;border-radius:999px;border:1px solid #134a33;background:linear-gradient(180deg,#00ff88,#00c86b);color:#04120b;font:600 12px Archivo,sans-serif;cursor:pointer">Join</button>' +
+              '<button data-v="listen" style="padding:8px 18px;border-radius:999px;border:1px solid #1c2833;background:#131c26;color:#8fa3b5;font:600 12px Archivo,sans-serif;cursor:pointer">Listen only</button>' +
+              '<button data-v="mute" style="padding:8px 18px;border-radius:999px;border:1px solid #1c2833;background:#131c26;color:#8fa3b5;font:600 12px Archivo,sans-serif;cursor:pointer">Mute</button>' +
+              '<button data-v="leave" style="padding:8px 18px;border-radius:999px;border:1px solid #4a1d24;background:#1a0d10;color:#ff4757;font:600 12px Archivo,sans-serif;cursor:pointer">Leave</button>' +
+            '</div>';
+          var stream = lf.querySelector('.lf-stream'), composer = lf.querySelector('.lf-composer'), status = lf.querySelector('.sml-tct-status');
+          (stream && stream.parentNode ? stream.parentNode : lf).insertBefore(panel, stream || null);
+
+          function legacyBtn(rx) {
+            var bs = [].slice.call(legacyRoom.querySelectorAll('button, [role="button"], a'));
+            return bs.find(function (b) { return rx.test((b.textContent || '').trim()); }) || null;
+          }
+          var statusTimer = null;
+          function mirrorStatus() {
+            var el = panel.querySelector('[data-v-status]');
+            var t = (legacyRoom.innerText || '').replace(/\s+/g, ' ').trim();
+            el.textContent = t ? t.slice(0, 140) : 'Room idle.';
+          }
+          function showVoice(on) {
+            panel.style.display = on ? 'block' : 'none';
+            if (stream) stream.style.display = on ? 'none' : '';
+            if (composer) composer.style.display = on ? 'none' : '';
+            if (status) status.style.display = on ? 'none' : '';
+            vtab.style.background = on ? 'rgba(0,255,136,.14)' : '';
+            vtab.style.color = on ? '#00ff88' : '';
+            if (on) { mirrorStatus(); statusTimer = setInterval(mirrorStatus, 1500); }
+            else if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+          }
+          vtab.addEventListener('click', function () { showVoice(panel.style.display === 'none'); });
+          [].forEach.call(tabRow.querySelectorAll('button'), function (b) {
+            if (b !== vtab) b.addEventListener('click', function () { showVoice(false); });
           });
-          // place the button right under the card header, above the stream
-          main.children[1].insertBefore(btn, lf);
+          panel.addEventListener('click', function (ev) {
+            var b = ev.target.closest ? ev.target.closest('button[data-v]') : null; if (!b) return;
+            var map = { join: /join/i, listen: /listen/i, mute: /mute|unmute/i, leave: /leave|exit/i };
+            var lb = legacyBtn(map[b.getAttribute('data-v')]);
+            if (lb) { try { lb.click(); } catch (e) {} setTimeout(mirrorStatus, 400); }
+            else { var st = panel.querySelector('[data-v-status]'); st.textContent = 'That control isn’t available right now (the room system hasn’t offered it yet).'; }
+          });
         }
       }
     }
