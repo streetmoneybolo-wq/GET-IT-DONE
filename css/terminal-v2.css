@@ -34,6 +34,8 @@ body.tv2-artifact-on #sml-tv2-root [data-tv2-frame],
 body.tv2-artifact-on #sml-tv2-root [data-tv2-zone]{
   width:auto!important;max-width:100%!important;min-width:0!important;
 }
+/* one captured wrapper is a flex row — its child shrink-fits; block the chain */
+body.tv2-artifact-on #sml-tv2-root [data-tv2-frame]{display:block!important}
 body.tv2-artifact-on [data-tv2-zone="strip"]{flex-wrap:wrap!important;height:auto!important}
 body.tv2-artifact-on [data-tv2-zone] > *{min-width:0}
 
@@ -54,5 +56,8 @@ body.tv2-artifact-on [data-tv2-zone] > *{min-width:0}
 
 /* the captured shell centers its zones — stretch them to full width */
 body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
-/* legacy market-summary section (outside the terminal) overflows narrow viewports */
-body.tv2-heatmap-off .sml-ticker-summary{max-width:100%!important;box-sizing:border-box!important}
+/* legacy market-summary section (outside the terminal): the theme's negative
+   right margin (full-bleed trick) overflows narrow viewports — clamp it there */
+@media (max-width:1199px){
+  body.tv2-heatmap-off .sml-ticker-summary{margin-left:0!important;margin-right:0!important;max-width:100%!important;box-sizing:border-box!important}
+}
