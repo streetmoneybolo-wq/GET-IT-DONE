@@ -43,6 +43,17 @@
 
     var done = root.__adopted || (root.__adopted = {});
 
+    // MAIN[0] = chart card ← #sml-ws-left (the REAL LoopCharts chart column:
+    // controls + stage + alert layers). Verified live: canvases re-measure and
+    // the engine redraws after the move; the hidden TradingView fallback iframe
+    // rides along (its background reload is harmless). Mock candles + mock
+    // control row are hidden — the real controls come with the module.
+    var wsl = document.getElementById('sml-ws-left');
+    if (!done.chart && wsl && wsl.querySelector('canvas') && main.children[0]) {
+      done.chart = adopt(cardBody(main.children[0], false), wsl);
+      if (done.chart) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
+    }
+
     // MAIN[1] = feed card ← #sml-lf
     var lf = document.getElementById('sml-lf');
     if (!done.lf && lf && main.children[1]) { done.lf = adopt(cardBody(main.children[1], true), lf); }
@@ -62,7 +73,15 @@
     // RAIL[3] = short-sale: no live data owner → hide rather than show fake FINRA numbers
     if (rail.children[3] && !done.ss) { rail.children[3].style.display = 'none'; done.ss = true; }
 
-    return !!(done.lf && done.mp);
+    // banner reflects the true state once the chart is in
+    if (done.chart && !done.banner) {
+      var ban = root.querySelector(':scope > div');
+      if (ban && /PREVIEW/.test(ban.textContent || '')) {
+        ban.textContent = 'PREVIEW — live chart, quote, feed, market position, alerts and ads are REAL. Remaining: tabs (Options/Research/News), responsiveness, rollout QA.';
+        done.banner = true;
+      }
+    }
+    return !!(done.lf && done.mp && done.chart);
   }
 
   var tries = 0;
