@@ -8,9 +8,18 @@
 #sml-lw-root a:hover{color:#7affc0}
 #sml-lw-root button{font-family:Archivo,system-ui,sans-serif}
 
-/* page takeover while preview is on */
-body.slw-on #page, body.slw-on .site, body.slw-on #wpadminbar ~ #page, body.slw-on .wp-site-blocks{display:none !important}
+/* page takeover while preview is on: live-watch.js re-parents #sml-lw-root to be a
+   direct child of <body>, then this rule hides everything else (theme page, footer,
+   floating launchers) — the admin bar stays. Applies to late-appended nodes too. */
+body.slw-on > :not(#sml-lw-root):not(#wpadminbar){display:none !important}
 body.slw-on{background:#04060a !important}
+
+/* the site's ticker-mention linkifier wraps $SYM text in anchors sitewide —
+   keep the links functional but force the design's colors */
+#sml-lw-root .slw-tq a, #sml-lw-root .slw-tq a *{color:inherit !important;text-decoration:none !important;border-bottom:none !important}
+#sml-lw-root .slw-titleblk h1 a, #sml-lw-root .slw-titleblk h1 a *{color:#00ff88 !important;text-decoration:none !important}
+#sml-lw-root .slw-qcard a, #sml-lw-root .slw-qcard a *{color:inherit !important;text-decoration:none !important}
+#sml-lw-root .slw-orbit-cap a, #sml-lw-root .slw-ocard .cap a, #sml-lw-root .slw-msg a, #sml-lw-root .slw-pinned a, #sml-lw-root .slw-tt a{color:inherit !important;text-decoration:none !important}
 
 /* ---- keyframes (verbatim from the design) ---- */
 @keyframes slwPulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.82)}}
@@ -57,9 +66,9 @@ body.slw-on{background:#04060a !important}
 .slw-dot{width:7px;height:7px;border-radius:50%;background:#00ff88;animation:slwPulseDot 2.4s ease-in-out infinite}
 .slw-logo-live span{font:700 10px/1 Archivo,sans-serif;letter-spacing:.16em;color:#8fa3b5}
 .slw-nav-links{display:flex;align-items:center;gap:4px}
-.slw-nav-links a{font:600 12px/1 Archivo,sans-serif;color:#5d7085;padding:9px 14px;border-radius:8px}
-.slw-nav-links a:hover{color:#e6edf3}
-.slw-nav-links a.on{color:#e6edf3;background:#101c26}
+#sml-lw-root .slw-nav-links a{font:600 12px/1 Archivo,sans-serif;color:#5d7085;padding:9px 14px;border-radius:8px}
+#sml-lw-root .slw-nav-links a:hover{color:#e6edf3}
+#sml-lw-root .slw-nav-links a.on{color:#e6edf3;background:#101c26}
 .slw-nav-r{display:flex;align-items:center;gap:12px}
 .slw-search{display:flex;align-items:center;gap:9px;border:1px solid #131c26;border-radius:8px;background:#0b1119;padding:9px 13px}
 .slw-search .q{font:500 11px/1 'IBM Plex Mono',monospace;color:#4c5d6d}

@@ -8,6 +8,8 @@
   var root = document.getElementById('sml-lw-root');
   if (!root || root.__slwBooted) return;
   root.__slwBooted = true;
+  /* re-parent to a direct <body> child so the takeover CSS can hide everything else */
+  if (root.parentNode !== document.body) document.body.appendChild(root);
   document.body.classList.add('slw-on');
 
   /* ---------- sample data (verbatim from the design handoff) ---------- */
@@ -288,6 +290,8 @@
   function renderFeed() {
     var last = S.msgs.slice(-7);
     feedInner.innerHTML = last.map(function (m, i) { return msgHTML(m, i); }).join('');
+    /* only the newest row plays the entry animation — re-renders must not replay it */
+    for (var k = 0; k < feedInner.children.length - 1; k++) feedInner.children[k].style.animation = 'none';
     renderTop();
   }
   function renderTop() {
