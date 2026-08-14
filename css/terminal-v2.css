@@ -14,6 +14,11 @@ body.tv2-preview-on #sml-hm,
 body.tv2-preview-on #sml-terminal-heatmap{display:none!important}
 body.tv2-heatmap-off #sml-mp .mptrack,
 body.tv2-preview-on #sml-mp .mptrack{transform:none!important}
+/* artifact preview mode: the design shell replaces the legacy terminal visually;
+   the legacy stays booted (hidden) so its modules/data mount in later phases */
+body.tv2-artifact-on .sml-terminal{display:none!important}
+#sml-tv2-root{max-width:100%;overflow-x:auto}
+
 body.tv2-heatmap-off #sml-mp [title="Heat Map"],
 body.tv2-heatmap-off #sml-mp [title*="Heat"],
 body.tv2-heatmap-off #sml-mp [title*="Position Overview"],
