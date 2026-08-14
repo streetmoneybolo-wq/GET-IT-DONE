@@ -195,6 +195,26 @@ body.tv2-integrated-on #sml-lf .sml-tct-tabs button.active,
 body.tv2-integrated-on #sml-lf .sml-tct-tabs button.is-active{
   background:#e6edf3!important;color:#04060a!important;border-color:#e6edf3!important}
 
+/* ---- THE MOCK'S LAYOUT: big main column + one stacked right rail ----
+   Pure CSS Grid re-placement of #sml-ws's four existing sibling children
+   (verified in the live-extraction DOM): ws-left = chart + market position,
+   ws-mid = quotes + sentiment, ws-rail = alerts/videos/sponsored,
+   .sml-tvr-slot = trading room. NO DOM node moves — the chart resizes itself
+   (verified live: canvas re-rendered at the new width). */
+body.tv2-integrated-on #sml-ws{display:grid!important;grid-template-columns:minmax(0,1fr) 320px!important;gap:14px!important;align-items:start!important}
+body.tv2-integrated-on #sml-ws-left{grid-column:1!important;grid-row:1 / span 3!important;min-width:0!important;width:auto!important;float:none!important}
+body.tv2-integrated-on #sml-ws-mid{grid-column:2!important;grid-row:1!important;display:flex!important;flex-direction:column!important;gap:14px!important;width:auto!important;float:none!important}
+body.tv2-integrated-on #sml-ws-rail{grid-column:2!important;grid-row:2!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:14px!important;width:auto!important;float:none!important}
+body.tv2-integrated-on #sml-ws-rail #sml-side-alerts{grid-column:1 / -1!important}
+body.tv2-integrated-on #sml-ws .sml-tvr-slot{grid-column:2!important;grid-row:3!important;width:auto!important}
+@media(max-width:1199px){
+  body.tv2-integrated-on #sml-ws{grid-template-columns:1fr!important}
+  body.tv2-integrated-on #sml-ws-left,
+  body.tv2-integrated-on #sml-ws-mid,
+  body.tv2-integrated-on #sml-ws-rail,
+  body.tv2-integrated-on #sml-ws .sml-tvr-slot{grid-column:1!important;grid-row:auto!important}
+}
+
 /* ---- left icon rail (mock's slim rail), desktop only; built by the shell ---- */
 #sml-tv2-rail{position:fixed;left:10px;top:120px;z-index:60;display:flex;flex-direction:column;gap:6px;
   background:#0d141c;border:1px solid #16202b;border-radius:10px;padding:8px 5px;width:44px}
