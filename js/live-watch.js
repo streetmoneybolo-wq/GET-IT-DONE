@@ -1173,13 +1173,14 @@
           pg.style.color = '#ffb454'; pg.style.borderColor = '#3a2c12'; pg.style.background = '#150f05';
         }
       }
-      if (!gateState.loggedIn) el('#slw-bucks').textContent = '— LB';
-    }).catch(function () {});
-    api('/sml-lb/v1/me').then(function (res) {
-      if (res.j && typeof res.j.balance === 'number' && gateState && gateState.loggedIn) {
-        el('#slw-bucks').textContent = res.j.balance.toLocaleString() + ' LB';
-        if (res.j.rank) el('#slw-prank').innerHTML = 'Rank <b>#' + res.j.rank + '</b> by Loop Bucks';
-      }
+      if (!gateState.loggedIn) { el('#slw-bucks').textContent = '— LB'; return; }
+      /* balance AFTER the gate resolves — the /me shape can't distinguish anon from broke */
+      api('/sml-lb/v1/me').then(function (res2) {
+        if (res2.j && typeof res2.j.balance === 'number') {
+          el('#slw-bucks').textContent = res2.j.balance.toLocaleString() + ' LB';
+          if (res2.j.rank) el('#slw-prank').innerHTML = 'Rank <b>#' + res2.j.rank + '</b> by Loop Bucks';
+        }
+      }).catch(function () {});
     }).catch(function () {});
   }
   /* Q&A tab on sml-engage */
@@ -1224,7 +1225,7 @@
     pollChat();
     setInterval(pollChat, 2500);
     setInterval(pollQA, 15000);
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) { chatCursor = ''; pollChat(); loadWallet(); } });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { chatCursor = ''; pollChat(); loadWallet(); if (typeof pollTape === 'function') { pollTape(); pollQuote(); } } });
     Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
       b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 2) pollQA(true); });
     });
@@ -1707,8 +1708,9 @@
       Array.prototype.forEach.call(root.querySelectorAll('.slw-tq[data-sym]'), function (cell) {
         var q = d.quotes[cell.getAttribute('data-sym')];
         if (!q) return;
-        var last = q.lastTrade && q.lastTrade.p;
-        var pct = q.todaysChangePerc;
+        /* the Render service serves a flat {last,pct}; raw polygon nests lastTrade.p */
+        var last = q.last != null ? q.last : (q.lastTrade && q.lastTrade.p);
+        var pct = q.pct != null ? q.pct : q.todaysChangePerc;
         if (last != null) cell.querySelector('.p').textContent = Number(last).toFixed(2);
         if (pct != null) {
           var c = cell.querySelector('.c');
