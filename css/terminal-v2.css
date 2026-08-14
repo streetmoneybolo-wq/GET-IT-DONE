@@ -61,3 +61,8 @@ body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
 @media (max-width:1199px){
   body.tv2-heatmap-off .sml-ticker-summary{margin-left:0!important;margin-right:0!important;max-width:100%!important;box-sizing:border-box!important}
 }
+
+/* mobile: drop the design's 56px page gutters; zones keep their own padding */
+@media (max-width:899px){
+  body.tv2-artifact-on #sml-tv2-root [data-tv2-frame]{padding-left:0!important;padding-right:0!important}
+}

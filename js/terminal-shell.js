@@ -55,6 +55,22 @@
         // place the shell where the terminal was, so page flow reads naturally
         var legacy = document.querySelector('.sml-terminal');
         if (legacy && legacy.parentNode) legacy.parentNode.insertBefore(root, legacy);
+        // The theme gives .sml-ticker-summary a negative full-bleed right margin
+        // (rule lives in a cross-origin sheet, unbeatable by specificity) — on
+        // narrow viewports it overflows the page; clamp inline (beats everything).
+        function clampSummary() {
+          var sm = document.querySelector('.sml-ticker-summary');
+          if (!sm) return;
+          if (window.innerWidth < 1200) {
+            sm.style.setProperty('margin-right', '0', 'important');
+            sm.style.setProperty('max-width', '100%', 'important');
+          } else {
+            sm.style.removeProperty('margin-right');
+            sm.style.removeProperty('max-width');
+          }
+        }
+        clampSummary();
+        window.addEventListener('resize', clampSummary);
         // Phase B: wire real data into the shell
         var d = document.createElement('script'); d.src = base + 'js/terminal-data.js'; document.body.appendChild(d);
         // Phase C: adopt the booted legacy modules into the shell's cards
