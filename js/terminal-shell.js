@@ -41,6 +41,8 @@
         var d = document.createElement('script'); d.src = base + 'js/terminal-data.js'; document.body.appendChild(d);
         // Phase C: adopt the booted legacy modules into the shell's cards
         var a = document.createElement('script'); a.src = base + 'js/terminal-adopt.js'; document.body.appendChild(a);
+        // Options tab: chain + what-if calculator
+        var o = document.createElement('script'); o.src = base + 'js/terminal-options.js'; document.body.appendChild(o);
       })
       .catch(function () { /* fetch failed → leave the legacy terminal untouched */ });
   }
