@@ -56,7 +56,11 @@
       if (exp && st.exp !== exp) st.note = 'Feed served ' + st.exp + '. ' + st.note;
     });
   }
-  function daysToExp() { if (!st.sel) return 0; return Math.max(0, Math.ceil((new Date(st.sel.expiration + 'T21:00:00Z') - Date.now()) / 864e5)); }
+  // model horizon = the expiration the user PICKED in the pill bar (the chain is
+  // displayed under that header). If the feed served a different expiry's marks
+  // (anon sessions ignore the param), market-derived numbers are suppressed.
+  function daysToExp() { if (!st.exp) return 0; return Math.max(0, Math.ceil((new Date(st.exp + 'T21:00:00Z') - Date.now()) / 864e5)); }
+  function expMatch() { return !!(st.sel && st.sel.expiration === st.exp); }
 
   /* ---------- render: original layout ---------- */
   function render(view) {
@@ -91,9 +95,8 @@
     // expiry pills
     var bar = view.querySelector('[data-o-exp]');
     var today = new Date().toISOString().slice(0, 10);
-    st.expirations.forEach(function (x) {
+    st.expirations.filter(function (x) { return x >= today || x === st.exp; }).forEach(function (x) {
       var b = document.createElement('button'); b.textContent = x; if (x === st.exp) b.className = 'on';
-      if (x < today) b.classList.add('tdy');
       b.addEventListener('click', function () { fetchChain(x).then(function () { st.sel = null; st.dayT = null; render(view); }); });
       bar.appendChild(b);
     });
@@ -107,11 +110,13 @@
       strikes.sort(function (a, b) { return Math.abs(a - st.spot) - Math.abs(b - st.spot); });
       strikes = strikes.slice(0, 50).sort(function (a, b) { return a - b; });
     }
+    var atmK = null;
+    if (st.spot) strikes.forEach(function (k) { if (atmK == null || Math.abs(k - st.spot) < Math.abs(atmK - st.spot)) atmK = k; });
     strikes.forEach(function (k) {
       var c = byStrike[k].call, p = byStrike[k].put;
       var tr = document.createElement('tr');
       var cls = [];
-      if (st.spot) { if (k < st.spot) cls.push('itmC'); if (k > st.spot) cls.push('itmP'); if (Math.abs(k - st.spot) < st.spot * 0.0035) cls.push('atm'); }
+      if (st.spot) { if (k < st.spot) cls.push('itmC'); if (k > st.spot) cls.push('itmP'); if (k === atmK) cls.push('atm'); }
       tr.className = cls.join(' ');
       function v(x) { return x == null ? '—' : f2(x); }
       tr.innerHTML =
@@ -150,12 +155,13 @@
     var out = bs(c.type, S, c.strike, st.dayT / 365, st.iv);
     var intr = c.type === 'call' ? Math.max(0, S - c.strike) : Math.max(0, c.strike - S);
     var timeVal = Math.max(0, out.price - intr);
-    var mid = (mk(c.bid) && mk(c.ask)) ? (c.bid + c.ask) / 2 : mk(c.last);
+    // market comparisons only when the served contract really is this expiry
+    var mid = expMatch() ? ((mk(c.bid) && mk(c.ask)) ? (c.bid + c.ask) / 2 : mk(c.last)) : null;
     var edge = mid ? ((out.price - mid) / mid * 100) : null;
     var scrubDate = new Date(Date.now() + (D - st.dayT) * 864e5).toISOString().slice(0, 10);
 
     pane.innerHTML =
-      '<div class="ph"><span>⚡ ' + esc(SYM) + ' ' + esc(c.expiration) + ' ' + (c.type === 'call' ? 'CALL' : 'PUT') + ' $' + c.strike + '</span><img src="' + LOGO + '" style="height:20px"></div>' +
+      '<div class="ph"><span>⚡ ' + esc(SYM) + ' ' + esc(st.exp) + ' ' + (c.type === 'call' ? 'CALL' : 'PUT') + ' $' + c.strike + '</span><img src="' + LOGO + '" style="height:20px"></div>' +
       '<div class="bigv" data-g-price>$' + f2(out.price) + '</div>' +
       '<div class="subline">theoretical value at $' + f2(S) + ' on ' + scrubDate + (edge != null ? ' · <b class="' + (edge > 0 ? 'gpos' : 'gneg') + '">model ' + (edge > 0 ? '+' : '') + edge.toFixed(1) + '% vs market $' + f2(mid) + '</b>' : '') + '</div>' +
       '<div class="gcal">' +
@@ -183,11 +189,12 @@
 
     // metrics cards
     if (metrics) {
+      var m = expMatch(); // never show another expiry's marks as this contract's
       metrics.innerHTML =
-        '<div class="k6 blu"><div><div class="v">' + (mk(c.iv) ? (c.iv * 100).toFixed(1) + '%' : '—') + '</div><div class="l">MARKET IV</div></div></div>' +
+        '<div class="k6 blu"><div><div class="v">' + (m && mk(c.iv) ? (c.iv * 100).toFixed(1) + '%' : '—') + '</div><div class="l">MARKET IV</div></div></div>' +
         '<div class="k6 ' + (edge == null ? 'blu' : (edge > 0 ? 'grn' : 'red')) + '"><div><div class="v">' + (edge == null ? '—' : (edge > 0 ? '+' : '') + edge.toFixed(1) + '%') + '</div><div class="l">MODEL VS MKT</div></div></div>' +
-        '<div class="k6 grn"><div><div class="v">' + (mk(c.volume) != null && c.volume ? c.volume : '—') + '</div><div class="l">VOLUME</div></div></div>' +
-        '<div class="k6 blu"><div><div class="v">' + (mk(c.open_interest) != null && c.open_interest ? c.open_interest : '—') + '</div><div class="l">OPEN INT</div></div></div>';
+        '<div class="k6 grn"><div><div class="v">' + (m && c.volume ? c.volume : '—') + '</div><div class="l">VOLUME</div></div></div>' +
+        '<div class="k6 blu"><div><div class="v">' + (m && c.open_interest ? c.open_interest : '—') + '</div><div class="l">OPEN INT</div></div></div>';
     }
 
     // decay curve
