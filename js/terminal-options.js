@@ -264,6 +264,9 @@
     var stg = document.createElement('style');
     stg.textContent =
       '[data-tv2-view] .sml-pro-view{display:block!important}' +
+      // the legacy page kills this panel as a live-feed duplicate; inside the
+      // News tab it IS the content — un-kill it here only (scope outranks their !important)
+      '[data-tv2-view] .sml-pro-panel.sml-lf-kill{display:block!important}' +
       '[data-tv2-view="research"] .tv2-rgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;align-items:start}' +
       '@media(max-width:1100px){[data-tv2-view="research"] .tv2-rgrid{grid-template-columns:1fr}}' +
       '[data-tv2-view] .tv2-rcard{background:#0d141c;border:1px solid #16202b;border-radius:12px;padding:14px 16px;min-width:0}' +
