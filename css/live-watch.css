@@ -557,6 +557,7 @@ body.slw-on{background:#04060a !important}
 .slw-vpass .bal span{font:500 10px/1 Archivo,sans-serif;color:#5d7085}
 .slw-vpass .bal b{font:700 12px/1 'IBM Plex Mono',monospace;color:#ffb454;letter-spacing:0}
 .slw-vbody{display:flex;flex-direction:column;gap:12px;padding:16px 18px}
+.slw-verr{font:500 10px/1.5 Archivo,sans-serif;color:#ff859f;border:1px solid #3d1524;background:#1a0810;border-radius:8px;padding:9px 12px}
 .slw-vbody .intro{font:400 11px/1.6 Archivo,sans-serif;color:#8fa3b5;text-wrap:pretty}
 .slw-tiers{display:flex;flex-direction:column;gap:8px}
 .slw-tier{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-radius:10px;cursor:pointer;background:#0b1119;border:1px solid #16202b}

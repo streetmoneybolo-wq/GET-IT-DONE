@@ -1320,6 +1320,156 @@
     setInterval(pollPresence, 20000);
   }
 
+  /* ---------- Phase 5: Speak tab on the real voice engine (sml-voice) ---------- */
+  var VC = { elig: null, tierSlug: 'silver', busy: false, micStream: null, micRaf: 0 };
+  function vErr(msg) {
+    var b = el('#slw-vidle');
+    var e2 = b.querySelector('.slw-verr');
+    if (!e2) { e2 = document.createElement('div'); e2.className = 'slw-verr'; b.insertBefore(e2, b.firstChild); }
+    e2.textContent = msg;
+    setTimeout(function () { if (e2.parentNode) e2.parentNode.removeChild(e2); }, 6000);
+  }
+  function vForm(bodyObj, path) {
+    var body = Object.keys(bodyObj).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(bodyObj[k]); }).join('&');
+    return fetch('/wp-json' + path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-WP-Nonce': NONCE }, body: body })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); });
+  }
+  function renderSpeakReal() {
+    var e2 = VC.elig;
+    if (!e2) return;
+    /* tier rows from the live engine */
+    var wrap = el('#slw-tiers');
+    wrap.innerHTML = (e2.tiers || []).map(function (t) {
+      var locked = !t.loop_bucks; /* sponsor tier: cash-priced, invite only */
+      var on = t.slug === VC.tierSlug;
+      var note = (t.priority ? 'Priority ' + t.priority : 'Standard queue') + (t.members_only ? ' · members only' : '');
+      var cost = locked ? ('$' + Math.round((t.amount_cents || 0) / 100) + ' · invite only') : t.loop_bucks.toLocaleString() + ' LB';
+      return '<div class="slw-tier' + (on ? ' on' : '') + (locked ? ' locked' : '') + '" data-slug="' + t.slug + '"><div class="l"><span class="dot"></span>' +
+        '<div style="display:flex;flex-direction:column;gap:4px"><span class="nm">' + esc(t.label) + '</span><span class="nt">' + esc(note) + '</span></div></div>' +
+        '<div class="r"><span class="pr">' + cost + '</span><span class="sc">' + t.seconds + 's on air</span></div></div>';
+    }).join('');
+    Array.prototype.forEach.call(wrap.children, function (n) {
+      n.onclick = function () {
+        var slug = n.getAttribute('data-slug');
+        var t = (e2.tiers || []).filter(function (x) { return x.slug === slug; })[0];
+        if (!t || !t.loop_bucks) return;
+        VC.tierSlug = slug;
+        renderSpeakReal();
+      };
+    });
+    var t = (e2.tiers || []).filter(function (x) { return x.slug === VC.tierSlug; })[0];
+    if (t) el('#slw-vreq').textContent = 'Request to speak · ' + t.loop_bucks.toLocaleString() + ' LB';
+    /* stage */
+    var idle = el('#slw-vidle'), qv = el('#slw-vqueue');
+    if (e2.banned) { idle.style.display = ''; qv.classList.remove('show'); vErr('You are blocked from the voice line' + (e2.ban_reason ? ': ' + e2.ban_reason : '.')); return; }
+    if (e2.queue_position > 0) {
+      idle.style.display = 'none';
+      qv.classList.add('show');
+      el('#slw-qpos').textContent = '#' + e2.queue_position;
+      var tt = (e2.tiers || []).filter(function (x) { return x.slug === VC.tierSlug; })[0];
+      el('#slw-qtier').textContent = (tt ? tt.label : 'Voice') + ' pass' + (tt ? ' · ' + tt.seconds + 's' : '');
+      startMic();
+    } else {
+      idle.style.display = '';
+      qv.classList.remove('show');
+      stopMic();
+    }
+  }
+  function loadElig() {
+    if (SIM || document.hidden) return;
+    api('/sml-voice/v1/eligibility?room_id=' + HANDLE).then(function (res) {
+      if (res.j && typeof res.j.logged_in !== 'undefined') { VC.elig = res.j; renderSpeakReal(); }
+    }).catch(function () {});
+  }
+  function buyAndRequest() {
+    if (VC.busy || !VC.elig) return;
+    if (!VC.elig.logged_in) { vErr('Sign in to request the mic.'); return; }
+    VC.busy = true;
+    el('#slw-vreq').disabled = true;
+    var finish = function (msg) {
+      VC.busy = false;
+      el('#slw-vreq').disabled = false;
+      if (msg) vErr(msg);
+      loadElig();
+    };
+    /* reuse an unused pass when one exists, else buy the tier pass */
+    var tok = (VC.elig.tokens || []).filter(function (x) { return (x.tier || x.slug) === VC.tierSlug && !x.used; })[0];
+    var reqWith = function (token) {
+      vForm({ room_id: HANDLE, token: token || '', pass: token || '' }, '/sml-voice/v1/request').then(function (res) {
+        if (res.ok) finish();
+        else finish((res.j && res.j.message) || 'The request did not go through.');
+      }).catch(function () { finish('The request did not go through — check your connection.'); });
+    };
+    if (tok && (tok.token || tok.key || tok.id)) { reqWith(tok.token || tok.key || tok.id); return; }
+    vForm({ room_id: HANDLE, tier: VC.tierSlug }, '/sml-voice/v1/superchat').then(function (res) {
+      if (!res.ok) { finish((res.j && res.j.message) || 'Could not buy the pass.'); return; }
+      var j = res.j || {};
+      var token = j.token || j.pass || (j.pass_id != null ? j.pass_id : '') || (j.id != null ? j.id : '');
+      loadWallet();
+      reqWith(token);
+    }).catch(function () { finish('Could not buy the pass — check your connection.'); });
+  }
+  function cancelVoice() {
+    vForm({ room_id: HANDLE, queue_id: (VC.elig && VC.elig.queue_id) || '' }, '/sml-voice/v1/cancel').then(function () { stopMic(); loadElig(); loadWallet(); });
+  }
+  /* real mic meter + readiness */
+  function startMic() {
+    if (VC.micStream || !navigator.mediaDevices) return;
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
+      VC.micStream = stream;
+      vForm({ room_id: HANDLE, ready: 1 }, '/sml-voice/v1/mic-ready');
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var src = ctx.createMediaStreamSource(stream);
+      var an = ctx.createAnalyser();
+      an.fftSize = 64;
+      src.connect(an);
+      var data = new Uint8Array(an.frequencyBinCount);
+      var bars = root.querySelectorAll('#slw-micbars i');
+      var tick2 = function () {
+        if (!VC.micStream) return;
+        an.getByteFrequencyData(data);
+        for (var i = 0; i < bars.length; i++) {
+          var v = data[Math.floor(i * data.length / bars.length)] / 255;
+          bars[i].style.height = (4 + v * 18).toFixed(1) + 'px';
+        }
+        VC.micRaf = requestAnimationFrame(tick2);
+      };
+      tick2();
+    }).catch(function () {
+      vErr('Your mic is blocked. Allow the microphone in your browser, then request again.');
+    });
+  }
+  function stopMic() {
+    if (VC.micRaf) cancelAnimationFrame(VC.micRaf);
+    VC.micRaf = 0;
+    if (VC.micStream) { VC.micStream.getTracks().forEach(function (t) { t.stop(); }); VC.micStream = null; }
+  }
+  /* queue-driven "requested to speak" strip — visible to every viewer, per the design */
+  function pollVoiceQueue() {
+    if (SIM || document.hidden) return;
+    api('/sml-voice/v1/queue?room_id=' + HANDLE).then(function (res) {
+      var q2 = (res.j && res.j.queue) || [];
+      var w = el('#slw-wait');
+      if (q2.length && S.camScene === 'idle') {
+        var first = q2[0] || {};
+        var who = first.handle || first.user || first.name || 'a viewer';
+        w.querySelector('.tx').innerHTML = '<b>@' + esc(String(who).replace(/^@/, '')) + '</b> requested to speak · waiting for the host — the stream keeps rolling';
+        w.querySelector('.av').textContent = String(who).replace(/^@/, '').slice(0, 2).toUpperCase();
+        w.classList.add('show');
+      } else if (S.camScene === 'idle') {
+        w.classList.remove('show');
+      }
+    }).catch(function () {});
+  }
+  if (!SIM) {
+    el('#slw-vreq').onclick = buyAndRequest;
+    el('#slw-vleave').onclick = function () { cancelVoice(); };
+    loadElig();
+    setInterval(loadElig, 6000);
+    setInterval(pollVoiceQueue, 6000);
+    pollVoiceQueue();
+  }
+
   /* ---------- timers ---------- */
   renderFeed();
   setInterval(function () {
