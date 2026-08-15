@@ -2006,8 +2006,12 @@
     var d = BOOST.d;
     if (!d || !d.open) return;
     if (!gateState || !gateState.loggedIn) { flashGate('Sign in to boost the stream and earn Loop Bucks.'); return; }
+    var UTM_MEDIUM = ['reddit', 'x', 'facebook', 'bluesky', 'threads', 'stocktwits', 'linkedin', 'moomoo', 'instagram'];
     vFormG('/sml-lw/v1/boost/share', { handle: HANDLE, platform: i }).then(function (res) {
       if (!res.ok || !res.j || !res.j.url) { flashGate((res.j && res.j.message) || 'Could not open the share.'); return; }
+      /* GA4 (Site Kit) reads these on arrival — Realtime report shows the traffic live,
+         full per-round campaign reports consolidate on Google's side */
+      res.j.url += '&utm_source=boost&utm_medium=' + UTM_MEDIUM[i] + '&utm_campaign=boost-' + encodeURIComponent((BOOST.d && BOOST.d.roundId) || 'round');
       var intent = INTENTS[i];
       if (intent) {
         window.open(intent(res.j.url, res.j.text), '_blank', 'noopener');
