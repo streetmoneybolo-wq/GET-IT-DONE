@@ -1971,6 +1971,24 @@
         '<div class="slw-bstats"><div class="slw-bstat"><b>' + me.shares.length + '</b><span>SHARES</span></div>' +
         '<div class="slw-bstat"><b class="cy">' + Number(me.clicks).toLocaleString() + '</b><span>LINK CLICKS</span></div>' +
         '<div class="slw-bstat gold"><b>' + Number(me.lb).toLocaleString() + '</b><span>LB EARNED</span></div></div></div>' +
+        (function () {
+          /* live per-platform click analytics — server counts every tracked arrival by platform */
+          var pl = d.platforms || {};
+          var tot = 0, rows2 = [];
+          PLATS.forEach(function (p, i) {
+            var n = +(pl[i] || pl[String(i)] || 0);
+            if (n > 0) { rows2.push([p[0], p[2], n]); tot += n; }
+          });
+          if (!tot) return '';
+          rows2.sort(function (a, b) { return b[2] - a[2]; });
+          return '<div class="slw-lead-h"><b>WHERE THE CLICKS COME FROM</b><div class="upd"><i></i><span>LIVE</span></div></div>' +
+            '<div style="display:flex;flex-direction:column;gap:5px;padding:0 16px 10px">' + rows2.map(function (r2) {
+              var pct = Math.round(r2[2] / tot * 100);
+              return '<div style="display:flex;align-items:center;gap:8px"><span style="font:600 9px/1 Archivo,sans-serif;color:#c7d6e3;width:74px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r2[0]) + '</span>' +
+                '<span style="flex:1;height:5px;border-radius:3px;background:#1a2530;overflow:hidden"><i style="display:block;height:100%;width:' + pct + '%;background:' + r2[1] + '"></i></span>' +
+                '<span style="font:600 9px/1 \'IBM Plex Mono\',monospace;color:#8fa3b5;width:52px;text-align:right;flex:none">' + r2[2].toLocaleString() + ' · ' + pct + '%</span></div>';
+            }).join('') + '</div>';
+        })() +
         '<div class="slw-lead-h"><b>LIVE LEADERBOARD</b><div class="upd"><i></i><span>UPDATING</span></div></div>' +
         '<div class="slw-lead-cols"><span>#</span><span>BOOSTER</span><span class="r">SHR</span><span class="r">CLK</span><span class="r">LB</span></div>' +
         rows +
