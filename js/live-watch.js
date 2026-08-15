@@ -228,11 +228,11 @@
           '<div class="slw-boost-share"><div class="hd"><b>SHARE TO EARN</b><span id="slw-actn">0 / 9</span></div>' +
             '<div class="slw-plats" id="slw-plats"></div>' +
             '<div class="slw-allnine"><div class="hd"><span>ALL-9 BONUS</span><b>+1,000 LB</b></div><div class="bar"><i id="slw-a9"></i></div></div>' +
-            '<div class="slw-bstats"><div class="slw-bstat"><b id="slw-aimp">0</b><span>IMPRESSIONS</span></div>' +
-            '<div class="slw-bstat"><b class="cy" id="slw-aclick">0</b><span>CLICKS</span></div>' +
+            '<div class="slw-bstats"><div class="slw-bstat"><b id="slw-ashr">0</b><span>SHARES</span></div>' +
+            '<div class="slw-bstat"><b class="cy" id="slw-aimp">0</b><span>LINK CLICKS</span></div>' +
             '<div class="slw-bstat gold"><b id="slw-aearn">0</b><span>LB EARNED</span></div></div></div>' +
           '<div class="slw-lead-h"><b>LIVE LEADERBOARD</b><div class="upd"><i></i><span>UPDATING</span></div></div>' +
-          '<div class="slw-lead-cols"><span>#</span><span>BOOSTER</span><span class="r">SHR</span><span class="r">IMPR</span><span class="r">LB</span></div>' +
+          '<div class="slw-lead-cols"><span>#</span><span>BOOSTER</span><span class="r">SHR</span><span class="r">CLK</span><span class="r">LB</span></div>' +
           '<div id="slw-aboard"></div>' +
           '<span class="slw-boost-fn">Set by the host: ' + ARENA.duration + ' round. Shares are verified by link tracking before Loop Bucks land. Top 3 paid.</span></div>' +
 
@@ -394,8 +394,8 @@
     var myLb = S.aShared.length * ARENA.perShare + (S.aShared.length === 9 ? ARENA.allNine : 0);
     el('#slw-actn').textContent = S.aShared.length + ' / 9';
     el('#slw-a9').style.width = (S.aShared.length / 9 * 100).toFixed(0) + '%';
+    el('#slw-ashr').textContent = S.aShared.length;
     el('#slw-aimp').textContent = S.aImpr.toLocaleString();
-    el('#slw-aclick').textContent = S.aClicks.toLocaleString();
     el('#slw-aearn').textContent = myLb.toLocaleString();
     var am = Math.floor(S.aLeft / 60), asx = S.aLeft % 60;
     var clk = el('#slw-aclk');
