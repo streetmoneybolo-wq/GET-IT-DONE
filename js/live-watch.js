@@ -1767,10 +1767,8 @@
     root.querySelector('.slw-affrow').style.display = 'none';
     el('#slw-sub').style.display = 'none';                                 /* follow backend lands with P7 settings */
     root.querySelector('.slw-about-id .fo').textContent = '';
-    /* boost: honest coming state (arena backend is the next build) */
-    el('#slw-pane-3').innerHTML = '<div class="slw-boost-h"><div class="l"><div class="t"><b>⚡ BOOST ARENA</b><span class="live">LIVE ONLY</span></div>' +
-      '<span class="sub">Share the stream, earn Loop Bucks</span></div></div>' +
-      '<div class="slw-chat-empty" style="display:block;padding:26px 16px">Boost rounds are coming. When the host opens one, verified shares pay out right here.</div>';
+    /* boost: live arena on the sml-lw boost routes */
+    initBoostReal();
     /* recommended: real uploads or nothing */
     loadRec();
     pollTape();
@@ -1920,6 +1918,119 @@
   }
   if (el('#slw-orbbtn')) el('#slw-orbbtn').onclick = openOrbMgr;
 
+  /* ---------- Boost Arena (real): rounds + tracked links + click-verified payouts ---------- */
+  var BOOST = { d: null };
+  /* share intent per platform index; null = copy-link mode */
+  var INTENTS = [
+    function (u, t) { return 'https://www.reddit.com/submit?url=' + encodeURIComponent(u) + '&title=' + encodeURIComponent(t); },
+    function (u, t) { return 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(u) + '&text=' + encodeURIComponent(t); },
+    function (u) { return 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(u); },
+    function (u, t) { return 'https://bsky.app/intent/compose?text=' + encodeURIComponent(t + ' ' + u); },
+    function (u, t) { return 'https://www.threads.net/intent/post?text=' + encodeURIComponent(t + ' ' + u); },
+    null, /* Stocktwits — copy */
+    function (u) { return 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(u); },
+    null, /* Moomoo — copy */
+    null  /* Instagram — copy */
+  ];
+  function loadBoost() {
+    if (SIM || document.hidden) return;
+    api('/sml-lw/v1/boost?handle=' + HANDLE).then(function (res) {
+      if (res.j) { BOOST.d = res.j; renderBoostReal(); }
+    }).catch(function () {});
+  }
+  function boostClock() {
+    var d = BOOST.d;
+    if (!d || !d.open) return '0:00';
+    var left = Math.max(0, d.endsAt - Math.floor(Date.now() / 1000));
+    return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+  }
+  function renderBoostReal() {
+    if (SIM) return;
+    var d = BOOST.d || { open: false };
+    var pane = el('#slw-pane-3');
+    var me = d.me || { shares: [], clicks: 0, lb: 0 };
+    var head = '<div class="slw-boost-h"><div class="l"><div class="t"><b>⚡ BOOST ARENA</b><span class="live">LIVE ONLY</span></div>' +
+      '<span class="sub">' + (d.open ? '+' + d.perShare + ' LB per verified share · winner +' + Number(d.winnerBonus).toLocaleString() + ' LB' : 'Share the stream, earn Loop Bucks') + '</span></div>' +
+      '<div class="r"><span class="k">' + (d.open ? 'TIME LEFT' : (d.board ? 'ENDED' : '')) + '</span><span class="v' + (d.open ? '' : ' ended') + '" id="slw-bclk">' + boostClock() + '</span></div></div>';
+    var over = (!d.open && d.winnerName) ? '<div class="slw-boost-over show"><b>ROUND OVER</b><span><b>' + esc(d.winnerName) + '</b> takes the bonus.</span></div>' : '';
+    var body = '';
+    if (d.open || (d.board && d.board.length)) {
+      var plats = PLATS.map(function (p, i) {
+        var done = me.shares.indexOf(i) >= 0 || me.shares.indexOf(String(i)) >= 0;
+        var locked = !d.open;
+        return '<button class="slw-plat' + (done ? ' done' : '') + '" data-bplat="' + i + '"' + (locked && !done ? ' style="opacity:.45;cursor:default"' : '') + '>' +
+          '<span class="mk" style="color:' + p[2] + '">' + p[1] + '</span><span class="nm">' + p[0] + '</span>' +
+          '<span class="st">' + (done ? '✓ SHARED' : (locked ? 'CLOSED' : '+' + d.perShare + ' LB')) + '</span></button>';
+      }).join('');
+      var rows = (d.board || []).map(function (e, i) {
+        return '<div class="slw-brow' + (i % 2 ? ' alt' : '') + '"><span class="rk' + (i === 0 ? ' top' : (i < 3 ? ' t3' : '')) + '">' + (i + 1) + '</span>' +
+          '<span class="nm">' + esc(e.name) + '</span><span class="v">' + e.shares + '/9</span><span class="v w">' + Number(e.clicks).toLocaleString() + '</span><span class="lb">' + Number(e.lb).toLocaleString() + '</span></div>';
+      }).join('') || '<div class="slw-chat-empty" style="display:block">No boosters yet — first share takes the lead.</div>';
+      body = '<div class="slw-boost-share"><div class="hd"><b>SHARE TO EARN</b><span>' + me.shares.length + ' / 9</span></div>' +
+        '<div class="slw-plats">' + plats + '</div>' +
+        '<div class="slw-bstats"><div class="slw-bstat"><b>' + me.shares.length + '</b><span>SHARES</span></div>' +
+        '<div class="slw-bstat"><b class="cy">' + Number(me.clicks).toLocaleString() + '</b><span>LINK CLICKS</span></div>' +
+        '<div class="slw-bstat gold"><b>' + Number(me.lb).toLocaleString() + '</b><span>LB EARNED</span></div></div></div>' +
+        '<div class="slw-lead-h"><b>LIVE LEADERBOARD</b><div class="upd"><i></i><span>UPDATING</span></div></div>' +
+        '<div class="slw-lead-cols"><span>#</span><span>BOOSTER</span><span class="r">SHR</span><span class="r">CLK</span><span class="r">LB</span></div>' +
+        rows +
+        '<span class="slw-boost-fn">Loop Bucks land when someone actually opens your link — shares are verified by link tracking. Winner paid at round close.</span>';
+    } else {
+      body = '<div class="slw-chat-empty" style="display:block;padding:26px 16px">No Boost round is open. When the host starts one, verified shares pay out right here.</div>';
+    }
+    var adminCtl = '';
+    if (ADMIN) {
+      adminCtl = d.open
+        ? '<div style="display:flex;gap:8px;padding:10px 16px 14px"><button class="slw-forfeit" id="slw-bclose" style="flex:1;padding:11px 0">Close the round &amp; pay the winner</button></div>'
+        : '<div style="display:flex;gap:6px;align-items:center;padding:10px 16px 14px;flex-wrap:wrap">' +
+          '<input id="slw-bmin" type="number" min="1" max="120" value="10" title="minutes" style="width:52px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
+          '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">min</span>' +
+          '<input id="slw-bper" type="number" min="0" max="5000" value="250" title="LB per share" style="width:62px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
+          '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">LB/share</span>' +
+          '<input id="slw-bwin" type="number" min="0" max="100000" value="5000" title="winner bonus" style="width:70px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
+          '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">winner</span>' +
+          '<button class="slw-rematch" id="slw-bopen" style="flex:1;min-width:110px">⚡ Open a round</button></div>';
+    }
+    pane.innerHTML = head + over + body + adminCtl;
+    Array.prototype.forEach.call(pane.querySelectorAll('[data-bplat]'), function (b) {
+      b.onclick = function () { shareBoost(+b.getAttribute('data-bplat')); };
+    });
+    if (el('#slw-bopen')) el('#slw-bopen').onclick = function () {
+      vFormG('/sml-lw/v1/boost/open', { handle: HANDLE, minutes: +el('#slw-bmin').value || 10, per_share: +el('#slw-bper').value || 250, winner: +el('#slw-bwin').value || 5000 }).then(function () { loadBoost(); });
+    };
+    if (el('#slw-bclose')) el('#slw-bclose').onclick = function () {
+      vFormG('/sml-lw/v1/boost/close', { handle: HANDLE }).then(function () { loadBoost(); });
+    };
+  }
+  function shareBoost(i) {
+    var d = BOOST.d;
+    if (!d || !d.open) return;
+    if (!gateState || !gateState.loggedIn) { flashGate('Sign in to boost the stream and earn Loop Bucks.'); return; }
+    vFormG('/sml-lw/v1/boost/share', { handle: HANDLE, platform: i }).then(function (res) {
+      if (!res.ok || !res.j || !res.j.url) { flashGate((res.j && res.j.message) || 'Could not open the share.'); return; }
+      var intent = INTENTS[i];
+      if (intent) {
+        window.open(intent(res.j.url, res.j.text), '_blank', 'noopener');
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(res.j.text + ' ' + res.j.url);
+        flashGate('Your tracked link is copied — paste it on ' + PLATS[i][0] + '. LB lands when someone opens it.');
+      }
+      loadBoost();
+    }).catch(function () {});
+  }
+  function initBoostReal() {
+    loadBoost();
+    setInterval(loadBoost, 10000);
+    Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
+      b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 3) loadBoost(); });
+    });
+    /* arrivals through a tracked link count as the verified click */
+    var bcode = qs('b');
+    if (bcode) {
+      vFormG('/sml-lw/v1/boost/click', { code: bcode, handle: HANDLE }).catch(function () {});
+    }
+  }
+
   if (!SIM) { hardenPublic(); loadCreator(); loadOrbit(); }
 
   /* ---------- timers ---------- */
@@ -1975,7 +2086,15 @@
       tc.classList.toggle('warn', S.tttLeft <= 5);
       if (S.tttLeft <= 0) tttEnd({ w: 'time', line: [] });
     }
-    /* boost countdown + rival drift */
+    /* real boost round clock */
+    if (!SIM && BOOST.d && BOOST.d.open) {
+      var bc = el('#slw-bclk');
+      if (bc) {
+        bc.textContent = boostClock();
+        if (BOOST.d.endsAt - Math.floor(Date.now() / 1000) <= 0) loadBoost();
+      }
+    }
+    /* boost countdown + rival drift (SIM demo) */
     if (S.aLeft > 0) {
       S.aLeft--;
       if (S.tick % 2 === 0) S.aRivals = S.aRivals.map(function (r) { return [r[0], r[1] + Math.floor(Math.random() * 9), r[2] + (Math.random() < 0.3 ? 1 : 0)]; });
