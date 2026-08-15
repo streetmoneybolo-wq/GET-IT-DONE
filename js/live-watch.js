@@ -906,7 +906,7 @@
   var shield = document.createElement('div');
   shield.style.cssText = 'position:absolute;inset:0;cursor:pointer;z-index:1';
   media.parentNode.insertBefore(shield, media.nextSibling);
-  shield.addEventListener('click', function () { if (P.mode !== 'none') togglePlay(); });
+  shield.addEventListener('click', function () { if (P.mode !== 'none' && P.mode !== 'multi') togglePlay(); });
 
   function phState(t1, t2) { ph.classList.remove('hide'); ph.parentNode.classList.remove('clear'); ph.querySelector('.t1').textContent = t1; ph.querySelector('.t2').textContent = t2; }
   function phHide() { ph.classList.add('hide'); ph.parentNode.classList.add('clear'); }
@@ -921,11 +921,33 @@
     v.className = 'slw-vol' + (P.muted ? ' muted' : '');
     v.innerHTML = P.muted ? '<span class="g">◂✕</span><span class="ml">MUTED · TAP FOR SOUND</span>' : '<span class="g">◂))</span><span class="bar"><i></i></span>';
   }
+  function multiCmd(fn) {
+    /* drive every screen: postMessage to YT iframes, direct to <video> */
+    Array.prototype.forEach.call(media.querySelectorAll('.slw-scr'), function (sc) {
+      var isMain = sc.classList.contains('main');
+      var ifr = sc.querySelector('iframe'), v = sc.querySelector('video');
+      fn(isMain, ifr, v);
+    });
+  }
+  function ytPost(ifr, func, args) {
+    if (ifr && ifr.contentWindow) ifr.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*');
+  }
   function togglePlay() {
+    if (P.mode === 'multi') {
+      P.playing = !P.playing;
+      multiCmd(function (isMain, ifr, v) { if (ifr) ytPost(ifr, P.playing ? 'playVideo' : 'pauseVideo'); if (v) { P.playing ? v.play().catch(function () {}) : v.pause(); } });
+      paintPlayBtn(); return;
+    }
     if (P.mode === 'yt' && P.yt) { P.playing ? P.yt.pauseVideo() : P.yt.playVideo(); }
     else if (P.mode === 'slot' && P.video) { P.playing ? P.video.pause() : P.video.play(); }
   }
   function toggleMute() {
+    if (P.mode === 'multi') {
+      P.muted = !P.muted;
+      /* mute toggles the MAIN screen only — side screens stay muted by design */
+      multiCmd(function (isMain, ifr, v) { if (!isMain) return; if (ifr) ytPost(ifr, P.muted ? 'mute' : 'unMute'); if (v) v.muted = P.muted; });
+      paintVolBtn(); return;
+    }
     if (P.mode === 'yt' && P.yt) { P.muted ? P.yt.unMute() : P.yt.mute(); P.muted = !P.muted; }
     else if (P.mode === 'slot' && P.video) { P.video.muted = !P.video.muted; P.muted = P.video.muted; }
     paintVolBtn();
@@ -1036,15 +1058,110 @@
     fetch('/watch/', { credentials: 'same-origin' }).then(function (r) { return r.text(); }).then(function (t) {
       ytResolving = false;
       var m = t.match(/youtube\.com\/(?:live\/|watch\?v=|embed\/)([A-Za-z0-9_-]{8,14})/);
-      if (m) { ytResolved = m[1]; mountYT(m[1]); }
+      if (m) {
+        ytResolved = m[1];
+        /* creator-pinned extra screens ride alongside the resolved primary */
+        var extra = (typeof extraScreens === 'function') ? extraScreens() : [];
+        if (extra.length) { mountMulti([{ kind: 'yt', id: m[1], label: 'SCREEN 1' }].concat(extra).slice(0, 3)); return; }
+        mountYT(m[1]);
+      }
       else offline('');
     }).catch(function () { ytResolving = false; offline(''); });
   }
+  /* ---------- multi-screen (2–3 sources): one owns audio, tap a side screen to promote ---------- */
+  var MS = { on: false, sources: [], mainIdx: 0, layout: 3, key: '' };
+  var frameEl = root.querySelector('.slw-frame');
+  var LAYOUTS = [3, 2, 1];
+  function screenHTML(src, i, isMain) {
+    var media = src.kind === 'yt'
+      ? '<iframe src="https://www.youtube-nocookie.com/embed/' + esc(src.id) + '?autoplay=1&mute=' + (isMain ? 0 : 1) + '&controls=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1" allow="autoplay; encrypted-media; picture-in-picture" title="' + esc(src.label) + '"></iframe>'
+      : '<video src="' + esc(src.url) + '" autoplay playsinline ' + (isMain ? '' : 'muted ') + '></video>';
+    var sideClass = '';
+    if (!isMain) { var sideN = 0; for (var k = 0; k < MS.sources.length; k++) { if (k === MS.mainIdx) continue; if (k === i) break; sideN++; } sideClass = sideN === 1 ? ' side2' : ' side1'; }
+    return '<div class="slw-scr' + (isMain ? ' main' : sideClass) + '" data-scr="' + i + '">' + media +
+      '<span class="tag">' + (isMain ? '<i></i>' : '') + esc(src.label) + '</span>' +
+      '<span class="aud">' + (isMain ? '◂)) audio' : 'muted') + '</span>' +
+      (isMain ? '' : '<button class="promote" title="Watch this screen big"><span>WATCH BIG ↗</span></button>') + '</div>';
+  }
+  function mountMulti(sources) {
+    var key = sources.map(function (s2) { return s2.kind + ':' + (s2.id || s2.url); }).join('|');
+    if (MS.on && MS.key === key) return;
+    teardown();
+    P.mode = 'multi';
+    MS.on = true; MS.key = key; MS.sources = sources;
+    if (MS.mainIdx >= sources.length) MS.mainIdx = 0;
+    paintMulti();
+    phHide();
+    setSourceNote('source: ' + sources.length + '-screen stream');
+    var lb = el('#slw-laybtn'); if (lb) { lb.classList.add('show'); lb.textContent = 'LAYOUT ' + MS.layout + '-UP'; }
+    S.playing = true; P.playing = true; paintPlayBtn();
+    /* main starts with audio on (a user gesture opened the page); browsers may still gate it —
+       the volume button reads the truth and unmutes on tap */
+    P.muted = false; paintVolBtn();
+    /* the click shield must not sit over the promote buttons */
+    shield.style.display = 'none';
+  }
+  var _unmountMultiExtra = function () { shield.style.display = ''; };
+  function paintMulti() {
+    frameEl.classList.add('multi', 'clear');
+    frameEl.classList.remove('lay1', 'lay2', 'lay3');
+    frameEl.classList.add('lay' + Math.min(MS.layout, MS.sources.length));
+    media.innerHTML = MS.sources.map(function (s2, i) { return screenHTML(s2, i, i === MS.mainIdx); }).join('');
+    Array.prototype.forEach.call(media.querySelectorAll('.promote'), function (b) {
+      b.onclick = function () {
+        MS.mainIdx = +b.parentNode.getAttribute('data-scr');
+        paintMulti();
+      };
+    });
+  }
+  function unmountMulti() {
+    if (!MS.on) return;
+    MS.on = false; MS.key = '';
+    _unmountMultiExtra();
+    frameEl.classList.remove('multi', 'lay1', 'lay2', 'lay3');
+    var lb = el('#slw-laybtn'); if (lb) lb.classList.remove('show');
+    media.innerHTML = '';
+    P.mode = 'none';
+  }
+  /* layout cycle button rides in the control bar */
+  (function () {
+    var host = root.querySelector('.slw-ctl-l');
+    if (!host) return;
+    var b = document.createElement('button');
+    b.className = 'slw-laybtn'; b.id = 'slw-laybtn'; b.textContent = 'LAYOUT 3-UP';
+    host.appendChild(b);
+    b.onclick = function () {
+      var i = LAYOUTS.indexOf(MS.layout);
+      MS.layout = LAYOUTS[(i + 1) % LAYOUTS.length];
+      b.textContent = 'LAYOUT ' + MS.layout + '-UP';
+      if (MS.on) paintMulti();
+    };
+  })();
+  /* creator-pinned extra screens: media-library-free, stored as WP option via the orbit-style tag trick is
+     overkill — for now ?screens=ytid1,ytid2 (admin testing) + slot playbacks; the settings UI lands with P7 */
+  function extraScreens() {
+    var q2 = qs('screens');
+    if (!q2) return [];
+    return q2.split(',').map(function (x, i) { x = x.replace(/[^A-Za-z0-9_-]/g, ''); return x ? { kind: 'yt', id: x, label: 'SCREEN ' + (i + 2) } : null; }).filter(Boolean).slice(0, 2);
+  }
+  var _origTeardown = teardown;
+  teardown = function () { unmountMulti(); _origTeardown(); };
+
   function pollFeeds() {
     fetch('/wp-json/sml-live/v1/feeds/' + HANDLE, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        var slot = d && d.live && (d.slots || []).filter(function (s2) { return s2.live && s2.playback; })[0];
+        var live = (d && d.live) ? (d.slots || []).filter(function (s2) { return s2.live && s2.playback; }) : [];
+        var extra = extraScreens();
+        /* multi-screen: 2+ live slots, or a primary + creator-pinned screens */
+        if (live.length >= 2 || (live.length >= 1 && extra.length) || (extra.length && (ytResolved || qs('yt')))) {
+          var sources = live.slice(0, 3).map(function (s2, i) { return { kind: 'slot', url: s2.playback, label: 'SCREEN ' + (i + 1) }; });
+          if (!sources.length) { var yid = qs('yt') || ytResolved; if (yid) sources.push({ kind: 'yt', id: yid.replace(/[^A-Za-z0-9_-]/g, ''), label: 'SCREEN 1' }); }
+          sources = sources.concat(extra).slice(0, 3);
+          if (sources.length >= 2) { mountMulti(sources); return; }
+        }
+        if (MS.on) unmountMulti();
+        var slot = live[0];
         if (slot) { mountSlot(slot.playback); return; }
         if (P.mode === 'slot') { teardown(); }
         if (P.mode === 'none') resolveYT();
@@ -1060,6 +1177,15 @@
   /* real clock + progress once a source is mounted */
   setInterval(function () {
     if (P.mode === 'none') return;
+    if (P.mode === 'multi') {
+      /* multi: no single seekable timeline — show elapsed watch time, live-edge progress */
+      MS.t = (MS.t || 0) + (P.playing ? 1 : 0);
+      el('#slw-clock').textContent = hms(MS.t);
+      el('#slw-elapsed').textContent = hms(MS.t);
+      el('#slw-pfill').style.width = '96%';
+      el('#slw-phead').style.left = '96%';
+      return;
+    }
     var cur = 0, dur = 0;
     if (P.mode === 'yt' && P.yt && P.yt.getCurrentTime) {
       cur = P.yt.getCurrentTime() || 0; dur = P.yt.getDuration() || 0;
