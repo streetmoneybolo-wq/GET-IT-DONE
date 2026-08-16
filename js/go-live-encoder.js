@@ -100,34 +100,35 @@
 
   /* ---------- poll ---------- */
   var seenSeq = 0;
+  /* TRUTH ORDER: the HLS playlist (real video bytes on the ingest server) > feeds slot >
+     status.is_live. During live testing /status reported is_live:false with a stale
+     timestamp while feeds+playlist were live — so status is used for the ingest URL only. */
   function poll() {
     if (document.hidden) return;
+    state.lastCheck = Date.now();
     api('/sml-live/v1/status').then(function (res) {
-      state.lastCheck = Date.now();
-      if (!res.j || res.status >= 400) { state.err = res.status === 401 || res.status === 403 ? 'Sign in as the streamer to see encoder status.' : 'Status endpoint unavailable (' + res.status + ').'; state.live = false; paint(); return; }
+      if (res.j && res.j.ingest_url) state.ingest = res.j.ingest_url;
+      if (res.status === 401 || res.status === 403) state.err = 'Sign in as the streamer to see encoder status.';
+    }).catch(function () {});
+    api('/sml-live/v1/feeds/' + HANDLE).then(function (f) {
       state.err = '';
-      state.ingest = res.j.ingest_url || state.ingest;
-      var wasLive = state.live;
-      state.live = !!res.j.is_live;
-      if (state.live) {
-        var t = Date.parse(String(res.j.live_started_at || '').replace(' ', 'T') + 'Z');
-        state.since = isNaN(t) ? (state.since || Date.now() / 1000) : t / 1000;
-        if (!wasLive) seenSeq++;
-        state.seq = seenSeq || 1;
-      } else { state.segs = 0; state.height = 0; }
-      /* playlist depth = proof of actual video flowing, not just a handshake */
-      return api('/sml-live/v1/feeds/' + HANDLE).then(function (f) {
-        var slot = f.j && (f.j.slots || []).filter(function (s) { return s.live && s.playback; })[0];
-        if (!slot) { state.playback = ''; state.segs = 0; paint(); return; }
-        state.playback = slot.playback;
-        return fetch(slot.playback, { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (txt) {
-          var segs = (txt.match(/\.ts\b/g) || []).length;
-          state.segs = segs;
-          if (segs && !state.height) probeHeight(slot.playback);
-          paint();
-        }).catch(function () { paint(); });
-      });
-    }).catch(function () { state.err = 'Could not reach the site.'; state.lastCheck = Date.now(); paint(); });
+      var slot = f.j && (f.j.slots || []).filter(function (s) { return s.live && s.playback; })[0];
+      if (!slot) { setLive(false); paint(); return; }
+      state.playback = slot.playback;
+      return fetch(slot.playback, { cache: 'no-store' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (txt) {
+        var segs = (txt.match(/\.ts\b/g) || []).length;
+        state.segs = segs;
+        setLive(segs > 0);
+        if (segs && !state.height) probeHeight(slot.playback);
+        paint();
+      }).catch(function () { setLive(false); paint(); });
+    }).catch(function () { state.err = 'Could not reach the site.'; setLive(false); paint(); });
+  }
+  function setLive(on) {
+    var was = state.live;
+    state.live = on;
+    if (on && !was) { state.since = Date.now() / 1000; seenSeq++; state.seq = seenSeq; }
+    if (!on) { state.segs = 0; state.height = 0; }
   }
   /* height read once per stream via a hidden probe player */
   function probeHeight(url) {
