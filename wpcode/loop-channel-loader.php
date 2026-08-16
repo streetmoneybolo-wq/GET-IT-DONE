@@ -40,4 +40,10 @@ if ( ! function_exists( 'sml_ch_loader_active' ) ) {
 	}
 
 	add_action( 'init', static function () { if ( sml_ch_loader_active() ) { ob_start( 'sml_ch_loader_ob' ); } }, 0 );
+	add_action( 'template_redirect', static function () {
+		if ( ! sml_ch_loader_active() ) { return; }
+		global $wp_query;
+		if ( $wp_query ) { $wp_query->is_404 = false; }
+		status_header( 200 );
+	}, 0 );
 }
