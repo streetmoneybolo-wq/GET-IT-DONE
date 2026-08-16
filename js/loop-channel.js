@@ -69,6 +69,7 @@
       '<div class="lch-content">' +
         '<div id="ch-hero"></div>' +
         '<div class="lch-soon" id="ch-latest-soon">Latest content orbital and community land in the next build phase.</div>' +
+        '<div id="ch-nl"></div>' +
       '</div>' +
     '</div>' +
     (ADMIN ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>P1 preview</span><a href="?ch=0">exit</a></div>' : '');
@@ -157,5 +158,43 @@
     }).catch(function () {});
   }
 
-  loadIdentity(); loadHomeGroup(); loadLinks(); loadHero();
+  /* ---------- newsletter: sml-loopletters/v1/issues is genuinely creator-scoped
+     and public (404s "no such publication" rather than 401 when a creator hasn't
+     set one up — confirmed via curl, not a guess). Hides cleanly when there's
+     nothing real to show instead of rendering a fake empty state. */
+  function nlField(it, names, fallback) {
+    for (var i = 0; i < names.length; i++) { if (it[names[i]] != null && it[names[i]] !== '') return it[names[i]]; }
+    return fallback;
+  }
+  function loadNewsletter() {
+    if (!HANDLE) return;
+    api('/sml-loopletters/v1/issues?handle=' + encodeURIComponent(HANDLE)).then(function (res) {
+      var issues = (res.j && (res.j.issues || res.j.items || res.j.letters)) || [];
+      if (!issues.length) return;
+      var base = res.j.base || res.j.home_url || res.j.url || '';
+      issues = issues.slice(0, 7);
+      var cards = issues.map(function (it) {
+        var url = nlField(it, ['url', 'permalink', 'link'], base || '#');
+        var cover = nlField(it, ['cover', 'image', 'thumbnail'], '');
+        var title = nlField(it, ['title', 'subject', 'name'], 'Untitled issue');
+        var date = nlField(it, ['date', 'published', 'sent_at', 'created'], '');
+        var tag = nlField(it, ['topic', 'tag', 'category'], '');
+        return '<a class="lch-nl-card" href="' + esc(url) + '" target="_blank" rel="noopener"><div class="lch-nl-cover"' + (cover && /^https:/.test(cover) ? ' style="background-image:url(' + esc(cover) + ')"' : '') + '></div>' +
+          '<span class="tt">' + esc(title) + '</span><span class="dt">' + esc(date) + (tag ? ' · ' + esc(tag) : '') + '</span></a>';
+      }).join('');
+      el('#ch-nl').innerHTML = '<div class="lch-nl"><div class="lch-nl-h"><span class="t">▮ NEWSLETTER</span><span class="meta">' + issues.length + ' issues</span><div class="rule"></div>' +
+        (base ? '<a class="lch-nl-more" href="' + esc(base) + '" target="_blank" rel="noopener">🚪 See more</a>' : '') +
+        '<button class="lch-nl-sub" id="ch-nlsub">✉ Subscribe</button></div>' +
+        '<div class="lch-nl-row">' + cards + '</div></div>';
+      var subbed = false;
+      el('#ch-nlsub').onclick = function () {
+        if (!ME) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
+        api('/sml-loopletters/v1/subscribe', { method: 'POST', body: JSON.stringify({ handle: HANDLE }) }).then(function (r) {
+          if (r.ok) { subbed = true; var b = el('#ch-nlsub'); b.classList.add('on'); b.textContent = '✓ Subscribed'; }
+        });
+      };
+    }).catch(function () {});
+  }
+
+  loadIdentity(); loadHomeGroup(); loadLinks(); loadHero(); loadNewsletter();
 })();

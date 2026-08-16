@@ -4,11 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Loop Channel — local shell test</title>
-<link rel="stylesheet" href="css/loop-channel.css">
+<link rel="stylesheet" href="/css/loop-channel.css">
 <style>body{margin:0;background:#04060a}</style>
 </head>
 <body>
 <div id="sml-ch-root" aria-label="Loop Channel"></div>
-<script src="js/loop-channel.js"></script>
+<script>
+/* local-only mock: fakes a /channel/{handle}/ path + canned API responses so
+   the shell can be visually QA'd without a live WordPress session. Never
+   shipped — this file only loads the mock when ?mock=1 is present. */
+if (location.search.indexOf('mock=1') !== -1) {
+  var origFetch = window.fetch;
+  window.fetch = function (url, opts) {
+    if (/sml-live\/v1\/feeds/.test(url)) return Promise.resolve(new Response(JSON.stringify({ live: true, creator: { name: 'Ray Dolo', handle: 'raydolo' } })));
+    if (/sml-lw\/v1\/presence/.test(url)) return Promise.resolve(new Response(JSON.stringify({ count: 412 })));
+    if (/sml-lb\/v1\/card/.test(url)) return Promise.resolve(new Response(JSON.stringify({ profile: { photo: '' } })));
+    if (/sml-members\/v1\/follow/.test(url)) return Promise.resolve(new Response(JSON.stringify({ followers: 48213, following: false })));
+    if (/sml-loopletters\/v1\/issues/.test(url)) return Promise.resolve(new Response(JSON.stringify({ issues: [
+      { title: 'CPI week playbook', date: '2026-08-01', topic: 'Macro' },
+      { title: 'Gamma squeeze anatomy', date: '2026-07-24', topic: '0DTE' },
+      { title: 'Reading the tape, not the news', date: '2026-07-17', topic: 'Levels' }
+    ] })));
+    return origFetch ? origFetch(url, opts) : Promise.reject(new Error('no fetch'));
+  };
+}
+</script>
+<script src="/js/loop-channel.js"></script>
 </body>
 </html>
