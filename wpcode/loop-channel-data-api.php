@@ -20,24 +20,23 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 	function sml_channel_user_by_handle( $handle ) {
 		$handle = sml_channel_clean_handle( $handle );
 		if ( '' === $handle ) { return false; }
-
 		$query = new WP_User_Query(
 			array(
 				'number'     => 1,
 				'count_total'=> false,
-				'meta_key'   => 'sml_public_handle',
+				'meta_key'   => 'sml_channel_handle',
 				'meta_value' => $handle,
 			)
 		);
 		$users = $query->get_results();
-		if ( ! empty( $users[0] ) ) { return $users[0]; }
-
-		$user = get_user_by( 'slug', $handle );
-		if ( ! $user ) { $user = get_user_by( 'login', $handle ); }
-		return $user ?: false;
+		return ! empty( $users[0] ) ? $users[0] : false;
 	}
 
 	function sml_channel_handle_for_user( $user_id ) {
+		return sml_channel_clean_handle( get_user_meta( $user_id, 'sml_channel_handle', true ) );
+	}
+
+	function sml_channel_profile_handle_for_user( $user_id ) {
 		if ( function_exists( 'sml_members_public_handle' ) ) {
 			return sml_members_public_handle( $user_id );
 		}
@@ -45,6 +44,29 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		if ( $public ) { return sml_channel_clean_handle( $public ); }
 		$user = get_userdata( $user_id );
 		return $user ? sml_channel_clean_handle( $user->user_nicename ?: $user->user_login ) : '';
+	}
+
+	function sml_channel_profile_handle_owner( $handle ) {
+		$handle = sml_channel_clean_handle( $handle );
+		if ( '' === $handle ) { return false; }
+		$query = new WP_User_Query( array(
+			'number' => 1, 'count_total' => false,
+			'meta_key' => 'sml_public_handle', 'meta_value' => $handle,
+		) );
+		$users = $query->get_results();
+		if ( ! empty( $users[0] ) ) { return $users[0]; }
+		$user = get_user_by( 'slug', $handle );
+		if ( ! $user ) { $user = get_user_by( 'login', $handle ); }
+		return $user ?: false;
+	}
+
+	function sml_channel_handle_available( $handle, $user_id = 0 ) {
+		$handle = sml_channel_clean_handle( $handle );
+		if ( '' === $handle ) { return false; }
+		/* The two namespaces are intentionally disjoint, including for one user. */
+		if ( sml_channel_profile_handle_owner( $handle ) ) { return false; }
+		$owner = sml_channel_user_by_handle( $handle );
+		return ! $owner || (int) $owner->ID === (int) $user_id;
 	}
 
 	function sml_channel_iso_date( $value ) {
@@ -159,15 +181,41 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		$user = sml_channel_user_by_handle( $request['handle'] );
 		if ( ! $user ) { return new WP_Error( 'sml_channel_not_found', 'Creator not found.', array( 'status' => 404 ) ); }
 		$handle = sml_channel_handle_for_user( $user->ID );
+		$profile_handle = sml_channel_profile_handle_for_user( $user->ID );
 		$creator = $user->display_name;
 		$videos = sml_channel_videos( $user->ID, $creator, $handle );
 		$posts = sml_channel_posts( $user->ID );
 		return rest_ensure_response( array(
-			'creator' => array( 'id' => (int) $user->ID, 'name' => $creator, 'handle' => $handle ),
+			'creator' => array( 'id' => (int) $user->ID, 'name' => $creator, 'handle' => $handle, 'profile_handle' => $profile_handle ),
 			'stats' => array( 'videos' => count( $videos ), 'views' => array_sum( wp_list_pluck( $videos, 'views' ) ), 'posts' => count( $posts ) ),
 			'videos' => $videos,
 			'posts' => $posts,
 		) );
+	}
+
+	function sml_channel_rest_handle_availability( WP_REST_Request $request ) {
+		$handle = sml_channel_clean_handle( $request->get_param( 'handle' ) );
+		if ( '' === $handle ) { return new WP_Error( 'sml_channel_invalid_handle', 'Enter a valid channel handle.', array( 'status' => 400 ) ); }
+		$available = sml_channel_handle_available( $handle, get_current_user_id() );
+		return rest_ensure_response( array( 'handle' => $handle, 'available' => $available, 'is_available' => $available ) );
+	}
+
+	function sml_channel_rest_save_handle( WP_REST_Request $request ) {
+		$user_id = get_current_user_id();
+		$raw = (string) $request->get_param( 'handle' );
+		$handle = sml_channel_clean_handle( $raw );
+		if ( '' === trim( $raw ) ) {
+			delete_user_meta( $user_id, 'sml_channel_handle' );
+			return rest_ensure_response( array( 'saved' => true, 'enabled' => false, 'handle' => '', 'url' => '' ) );
+		}
+		if ( '' === $handle || $handle !== strtolower( ltrim( trim( $raw ), '@' ) ) ) {
+			return new WP_Error( 'sml_channel_invalid_handle', 'Use only letters, numbers, underscores, or periods.', array( 'status' => 400 ) );
+		}
+		if ( ! sml_channel_handle_available( $handle, $user_id ) ) {
+			return new WP_Error( 'sml_channel_handle_taken', 'That handle is unavailable in the channel or profile namespace.', array( 'status' => 409 ) );
+		}
+		update_user_meta( $user_id, 'sml_channel_handle', $handle );
+		return rest_ensure_response( array( 'saved' => true, 'enabled' => true, 'handle' => $handle, 'url' => home_url( '/channel/' . rawurlencode( $handle ) . '/' ) ) );
 	}
 
 	add_action( 'rest_api_init', static function () {
@@ -175,5 +223,28 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 			'methods' => WP_REST_Server::READABLE, 'callback' => 'sml_channel_rest_get', 'permission_callback' => '__return_true',
 			'args' => array( 'handle' => array( 'required' => true, 'sanitize_callback' => 'sml_channel_clean_handle' ) ),
 		) );
+		register_rest_route( 'sml-channel/v1', '/handle-availability', array(
+			'methods' => WP_REST_Server::READABLE, 'callback' => 'sml_channel_rest_handle_availability',
+			'permission_callback' => 'is_user_logged_in',
+			'args' => array( 'handle' => array( 'required' => true, 'sanitize_callback' => 'sml_channel_clean_handle' ) ),
+		) );
+		register_rest_route( 'sml-channel/v1', '/handle', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_save_handle',
+			'permission_callback' => 'is_user_logged_in',
+		) );
 	} );
+
+	/* Keep the existing profile-handle availability response aware of opted-in
+	 * channel handles, so a future profile claim cannot create a collision. */
+	add_filter( 'rest_post_dispatch', static function ( $response, $server, $request ) {
+		if ( '/sml-members/v1/handle-availability' !== $request->get_route() ) { return $response; }
+		$handle = sml_channel_clean_handle( $request->get_param( 'handle' ) );
+		if ( '' === $handle || ! sml_channel_user_by_handle( $handle ) ) { return $response; }
+		$response = rest_ensure_response( $response );
+		$data = (array) $response->get_data();
+		$data['available'] = false;
+		$data['is_available'] = false;
+		$response->set_data( $data );
+		return $response;
+	}, 10, 3 );
 }

@@ -13,6 +13,7 @@
   var NONCE = window.SML_CH_NONCE || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
   var ME = window.SML_CH_ME || null;
   var HANDLE = (location.pathname.match(/\/channel\/([A-Za-z0-9_.]+)\/?/) || [])[1] || '';
+  var PROFILE_HANDLE = '';
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function el(sel) { return root.querySelector(sel); }
@@ -75,16 +76,17 @@
     (ADMIN ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>admin tools</span><a href="?ch=0">exit</a></div>' : '');
 
   /* ---------- identity: same sources the watch pages already use ---------- */
-  function loadIdentity() {
-    if (!HANDLE) return;
-    api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
+  function loadIdentity(profileHandle) {
+    if (!profileHandle) return;
+    PROFILE_HANDLE = profileHandle;
+    api('/sml-live/v1/feeds/' + encodeURIComponent(profileHandle)).then(function (res) {
       var c = res.j && res.j.creator;
       var live = !!(res.j && res.j.live);
       el('#ch-live').style.display = live ? '' : 'none';
       el('#ch-golive').style.display = 'none'; /* owner-only, decided in a later phase once we can detect ownership */
       if (c && c.name) { el('#ch-name').textContent = c.name; }
     }).catch(function () {});
-    api('/sml-lb/v1/card/' + HANDLE).then(function (res) {
+    api('/sml-lb/v1/card/' + encodeURIComponent(profileHandle)).then(function (res) {
       var j = res.j || {};
       var url = (j.profile && j.profile.photo) || j.photo || j.avatar || (j.profile && j.profile.avatar) || '';
       if (url && /^https:/.test(url)) {
@@ -95,7 +97,7 @@
     /* follow relationship + count: sml-members/v1/follow — shape unverified without
        a live session, so this is best-effort and stays honestly blank on failure
        rather than guessing a number. Revisit once admin browser access confirms it. */
-    api('/sml-members/v1/follow?handle=' + encodeURIComponent(HANDLE)).then(function (res) {
+    api('/sml-members/v1/follow?handle=' + encodeURIComponent(profileHandle)).then(function (res) {
       var j = res.j || {};
       var count = j.followers != null ? j.followers : (j.count != null ? j.count : null);
       if (count != null) el('#ch-followers').textContent = fmt(count);
@@ -110,8 +112,9 @@
   }
   el('#ch-sub').onclick = function () {
     if (!ME) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
+    if (!PROFILE_HANDLE) return;
     var on = el('#ch-sub').classList.contains('on');
-    api('/sml-members/v1/follow', { method: 'POST', body: JSON.stringify({ handle: HANDLE, follow: !on }) })
+    api('/sml-members/v1/follow', { method: 'POST', body: JSON.stringify({ handle: PROFILE_HANDLE, follow: !on }) })
       .then(function (res) { if (res.ok) paintSub(!on); });
   };
 
@@ -218,12 +221,16 @@
   }
   function loadChannelContent() {
     if (!HANDLE) return;
-    Promise.all([api('/sml-channel/v1/channel/' + encodeURIComponent(HANDLE)), api('/sml-live/v1/feeds/' + encodeURIComponent(HANDLE))]).then(function (all) {
-      var channel = all[0].ok ? (all[0].j || {}) : {}; var feed = all[1].ok ? (all[1].j || {}) : {};
+    api('/sml-channel/v1/channel/' + encodeURIComponent(HANDLE)).then(function (channelRes) {
+      if (!channelRes.ok) throw new Error('channel unavailable');
+      var channel = channelRes.j || {}; var creator = channel.creator || {};
+      var profileHandle = creator.profile_handle || '';
       var videos = Array.isArray(channel.videos) ? channel.videos : []; var posts = Array.isArray(channel.posts) ? channel.posts : [];
-      if (channel.creator && channel.creator.name) document.title = channel.creator.name + ' | Loop Channel';
+      if (creator.name) { document.title = creator.name + ' | Loop Channel'; el('#ch-name').textContent = creator.name; }
+      loadIdentity(profileHandle); loadNewsletter(profileHandle);
       var stats = channel.stats || {}; if (stats.videos != null) el('#ch-videos').textContent = fmt(stats.videos); if (stats.views != null) el('#ch-views').textContent = fmt(stats.views);
-      renderOrbit(videos); renderCommunity(posts); return loadHero(feed, videos[0]);
+      renderOrbit(videos); renderCommunity(posts);
+      return profileHandle ? api('/sml-live/v1/feeds/' + encodeURIComponent(profileHandle)).then(function (feedRes) { return loadHero(feedRes.ok ? (feedRes.j || {}) : {}, videos[0]); }) : loadHero({}, videos[0]);
     }).catch(function () { el('#ch-sync').textContent = '● CHANNEL FEED UNAVAILABLE'; });
   }
 
@@ -235,9 +242,9 @@
     for (var i = 0; i < names.length; i++) { if (it[names[i]] != null && it[names[i]] !== '') return it[names[i]]; }
     return fallback;
   }
-  function loadNewsletter() {
-    if (!HANDLE) return;
-    api('/sml-loopletters/v1/issues?handle=' + encodeURIComponent(HANDLE)).then(function (res) {
+  function loadNewsletter(profileHandle) {
+    if (!profileHandle) return;
+    api('/sml-loopletters/v1/issues?handle=' + encodeURIComponent(profileHandle)).then(function (res) {
       var issues = (res.j && (res.j.issues || res.j.items || res.j.letters)) || [];
       if (!issues.length) return;
       var base = res.j.base || res.j.home_url || res.j.url || '';
@@ -258,7 +265,7 @@
       var subbed = false;
       el('#ch-nlsub').onclick = function () {
         if (!ME) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
-        api('/sml-loopletters/v1/subscribe', { method: 'POST', body: JSON.stringify({ handle: HANDLE }) }).then(function (r) {
+        api('/sml-loopletters/v1/subscribe', { method: 'POST', body: JSON.stringify({ handle: profileHandle }) }).then(function (r) {
           if (r.ok) { subbed = true; var b = el('#ch-nlsub'); b.classList.add('on'); b.textContent = '✓ Subscribed'; }
         });
       };
@@ -267,7 +274,7 @@
 
   /* ---------- Channel Studio drawer ----------
      Real, confirmed-working right now: channel name (sml-display-name/v1/save)
-     and handle availability checking (sml-members/v1/handle-availability).
+     plus the separate Loop Channel handle endpoints (sml-channel/v1).
      Theme + Links attempt sml-social-profile/v1/settings (GET+POST both exist,
      but the field shape is unverified — no live session to confirm against —
      so saves there are best-effort and surfaced honestly if they fail.
@@ -284,7 +291,7 @@
     aff1Label: '', aff1Url: '', aff2Label: '', aff2Url: '',
     modRole: 'Mod', mods: [], modDraft: '',
     bw: [], bwDraft: '', bl: [], blDraft: '',
-    chName: '', chHandle: HANDLE, handleNote: '', nameNote: ''
+    chName: '', chHandle: (ME && ME.handle) || '', handleNote: '', nameNote: ''
   };
   function applyTheme() {
     root.style.setProperty('--accent', ST.accent);
@@ -318,8 +325,8 @@
         '<span class="lch-pending">this tab has no storage backend yet on the site — nothing here persists past a page refresh. Flagging so it doesn\'t look silently broken.</span>';
     } else {
       body = '<div class="lch-f-group"><span class="lch-f-label">CHANNEL NAME</span><input class="lch-f-input" id="ch-namein" value="' + esc(ST.chName) + '"><span class="lch-f-note">' + esc(ST.nameNote) + '</span></div>' +
-        '<div class="lch-f-group"><span class="lch-f-label">@ HANDLE</span><input class="lch-f-input mono" id="ch-handlein" value="' + esc(ST.chHandle) + '"><span class="lch-f-note' + (ST.handleNote.indexOf('taken') > -1 ? ' warn' : '') + '">' + esc(ST.handleNote) + '</span></div>' +
-        '<span class="lch-pending">handle-availability checking is real (sml-members/v1/handle-availability). Actually saving a changed handle needs a write endpoint that isn\'t confirmed yet — checking only, for now.</span>';
+        '<div class="lch-f-group"><span class="lch-f-label">@ LOOP CHANNEL HANDLE</span><div class="lch-f-row"><input class="lch-f-input mono" id="ch-handlein" value="' + esc(ST.chHandle) + '" placeholder="Choose a separate channel handle"><button class="lch-f-add" id="ch-handlesave">Save</button></div><span class="lch-f-note' + (ST.handleNote.indexOf('taken') > -1 || ST.handleNote.indexOf('unavailable') > -1 ? ' warn' : '') + '">' + esc(ST.handleNote) + '</span></div>' +
+        '<span class="lch-pending">Your Loop Channel handle is separate from your profile handle. Clearing and saving it disables your channel.</span>';
     }
     return '<div class="lch-scrim" id="ch-scrim"></div><div class="lch-studio">' +
       '<div class="lch-studio-h"><div><span class="t">✎ Channel studio</span><span class="s">admin preview · viewers never see this</span></div><button class="lch-studio-x" id="ch-studio-x">✕</button></div>' +
@@ -368,14 +375,27 @@
         ST.chHandle = el('#ch-handlein').value.trim();
         clearTimeout(handleTimer);
         handleTimer = setTimeout(function () {
-          if (!ST.chHandle) return;
-          api('/sml-members/v1/handle-availability?handle=' + encodeURIComponent(ST.chHandle)).then(function (r) {
+          if (!ST.chHandle) { ST.handleNote = 'Save an empty handle to disable your channel.'; renderStudio(); return; }
+          api('/sml-channel/v1/handle-availability?handle=' + encodeURIComponent(ST.chHandle)).then(function (r) {
             var j = r.j || {};
             var avail = j.available != null ? j.available : j.is_available;
-            ST.handleNote = ST.chHandle === HANDLE ? 'This is your current handle.' : (avail ? 'Available.' : 'That handle is taken.');
+            ST.handleNote = ST.chHandle === ((ME && ME.handle) || '') ? 'This is your current channel handle.' : (avail ? 'Available.' : 'That handle is unavailable.');
             renderStudio();
           });
         }, 400);
+      };
+      el('#ch-handlesave').onclick = function () {
+        ST.chHandle = el('#ch-handlein').value.trim();
+        ST.handleNote = 'Saving…'; renderStudio();
+        api('/sml-channel/v1/handle', { method: 'POST', body: JSON.stringify({ handle: ST.chHandle }) }).then(function (r) {
+          if (!r.ok) { ST.handleNote = (r.j && r.j.message) || 'Could not save the channel handle.'; renderStudio(); return; }
+          var saved = (r.j && r.j.handle) || '';
+          if (ME) ME.handle = saved;
+          ST.chHandle = saved;
+          ST.handleNote = saved ? 'Saved. Opening your channel preview…' : 'Channel disabled.';
+          renderStudio();
+          if (saved) window.location.assign('/channel/' + encodeURIComponent(saved) + '/?ch=1');
+        });
       };
     }
   }
@@ -393,5 +413,5 @@
   function studioEsc(e) { if (e.key === 'Escape') closeStudio(); }
   el('#ch-edit').onclick = openStudio;
 
-  loadIdentity(); loadHomeGroup(); loadLinks(); loadChannelContent(); loadNewsletter();
+  loadHomeGroup(); loadLinks(); loadChannelContent();
 })();

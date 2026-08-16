@@ -11,8 +11,7 @@ if ( ! function_exists( 'sml_ch_loader_active' ) ) {
 		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 		if ( false !== strpos( $uri, '/wp-json' ) || false !== strpos( $uri, '/wp-admin' ) ) { return false; }
 		if ( ! preg_match( '#/channel/[A-Za-z0-9_.]+/?(?:\?|$)#', $uri ) ) { return false; }
-		if ( isset( $_GET['ch'] ) && '1' === $_GET['ch'] ) { return current_user_can( 'manage_options' ); }
-		return true;
+		return current_user_can( 'manage_options' );
 	}
 
 	function sml_ch_loader_ref() { return function_exists( 'sml_cdn_resolve_ref' ) ? sml_cdn_resolve_ref() : 'main'; }
@@ -23,8 +22,7 @@ if ( ! function_exists( 'sml_ch_loader_active' ) ) {
 		$me = is_user_logged_in() ? wp_get_current_user() : null;
 		$me_handle = '';
 		if ( $me ) {
-			if ( function_exists( 'sml_members_public_handle' ) ) { $me_handle = sml_members_public_handle( $me->ID ); }
-			else { $me_handle = get_user_meta( $me->ID, 'sml_public_handle', true ) ?: $me->user_nicename; }
+			$me_handle = get_user_meta( $me->ID, 'sml_channel_handle', true );
 		}
 		$config = array( 'id' => $me ? (int) $me->ID : 0, 'handle' => sanitize_key( $me_handle ) );
 		return '<link rel="stylesheet" id="sml-ch-css" href="' . esc_url( $base . 'css/loop-channel.css' ) . '">'
