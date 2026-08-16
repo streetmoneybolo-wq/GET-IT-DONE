@@ -1,0 +1,179 @@
+/**
+ * SML Loop Channel — public creator-scoped content API.
+ *
+ * WPCode setup: PHP snippet, Auto Insert / Run Everywhere.
+ * Route: GET /wp-json/sml-channel/v1/channel/{handle}
+ *
+ * This is intentionally a read-only adapter over existing stores. It does not
+ * create a second video or post database and it never exposes non-public video
+ * visibility states.
+ */
+if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
+	function sml_channel_clean_handle( $handle ) {
+		if ( function_exists( 'sml_members_clean_public_handle' ) ) {
+			return sml_members_clean_public_handle( $handle );
+		}
+		$handle = strtolower( ltrim( sanitize_text_field( (string) $handle ), '@' ) );
+		return substr( preg_replace( '/[^a-z0-9_.]/', '', $handle ), 0, 30 );
+	}
+
+	function sml_channel_user_by_handle( $handle ) {
+		$handle = sml_channel_clean_handle( $handle );
+		if ( '' === $handle ) { return false; }
+
+		$query = new WP_User_Query(
+			array(
+				'number'     => 1,
+				'count_total'=> false,
+				'meta_key'   => 'sml_public_handle',
+				'meta_value' => $handle,
+			)
+		);
+		$users = $query->get_results();
+		if ( ! empty( $users[0] ) ) { return $users[0]; }
+
+		$user = get_user_by( 'slug', $handle );
+		if ( ! $user ) { $user = get_user_by( 'login', $handle ); }
+		return $user ?: false;
+	}
+
+	function sml_channel_handle_for_user( $user_id ) {
+		if ( function_exists( 'sml_members_public_handle' ) ) {
+			return sml_members_public_handle( $user_id );
+		}
+		$public = get_user_meta( $user_id, 'sml_public_handle', true );
+		if ( $public ) { return sml_channel_clean_handle( $public ); }
+		$user = get_userdata( $user_id );
+		return $user ? sml_channel_clean_handle( $user->user_nicename ?: $user->user_login ) : '';
+	}
+
+	function sml_channel_iso_date( $value ) {
+		$time = is_numeric( $value ) ? (int) $value : strtotime( (string) $value );
+		return $time ? gmdate( 'c', $time ) : '';
+	}
+
+	function sml_channel_video_card( $video, $creator, $handle ) {
+		$id = isset( $video['id'] ) ? sanitize_key( $video['id'] ) : '';
+		if ( '' === $id ) { return null; }
+		$watch_url = isset( $video['watch_url'] ) ? esc_url_raw( $video['watch_url'] ) : '';
+		if ( '' === $watch_url ) { $watch_url = home_url( '/watch/' . rawurlencode( $id ) . '/' ); }
+		$views = isset( $video['views'] ) ? max( 0, (int) $video['views'] ) : 0;
+		$duration = isset( $video['duration'] ) ? max( 0, (int) $video['duration'] ) : 0;
+		$created = isset( $video['created_at'] ) ? sml_channel_iso_date( $video['created_at'] ) : '';
+		return array(
+			'id'          => $id,
+			'title'       => sanitize_text_field( isset( $video['title'] ) ? $video['title'] : '' ),
+			'description' => wp_strip_all_tags( isset( $video['description'] ) ? $video['description'] : '' ),
+			'watch_url'   => $watch_url,
+			'thumbnail'   => esc_url_raw( isset( $video['thumbnail_url'] ) ? $video['thumbnail_url'] : '' ),
+			'creator'     => $creator,
+			'handle'      => $handle,
+			'ticker'      => sanitize_text_field( isset( $video['ticker'] ) ? $video['ticker'] : '' ),
+			'views'       => $views,
+			'views_label' => number_format_i18n( $views ) . ' views',
+			'duration'    => function_exists( 'sml_vus_duration_label' ) ? sml_vus_duration_label( $duration ) : ( $duration ? gmdate( $duration >= 3600 ? 'G:i:s' : 'i:s', $duration ) : '' ),
+			'created_at'  => $created,
+		);
+	}
+
+	function sml_channel_videos( $user_id, $creator, $handle ) {
+		$library = function_exists( 'sml_video_upload_studio_library' ) ? sml_video_upload_studio_library() : get_option( 'sml_video_upload_studio_library', array() );
+		if ( ! is_array( $library ) ) { return array(); }
+		$rows = array();
+		foreach ( $library as $video ) {
+			if ( ! is_array( $video ) || (int) ( $video['author_id'] ?? 0 ) !== (int) $user_id ) { continue; }
+			if ( 'public' !== strtolower( (string) ( $video['visibility'] ?? '' ) ) ) { continue; }
+			if ( ! empty( $video['schedule_at'] ) && strtotime( (string) $video['schedule_at'] ) > current_time( 'timestamp', true ) ) { continue; }
+			$card = sml_channel_video_card( $video, $creator, $handle );
+			if ( $card ) { $rows[] = $card; }
+		}
+		usort( $rows, static function ( $a, $b ) { return strcmp( (string) $b['created_at'], (string) $a['created_at'] ); } );
+		return array_slice( $rows, 0, 100 );
+	}
+
+	function sml_channel_wp_posts( $user_id ) {
+		$types = array( 'post' );
+		foreach ( array( 'sml_video', 'sml_alert', 'sml_question', 'sml_group_post', 'sml_chart_post', 'sml_live_stream', 'sml_news' ) as $type ) {
+			if ( post_type_exists( $type ) ) { $types[] = $type; }
+		}
+		$q = new WP_Query( array( 'post_type' => $types, 'post_status' => 'publish', 'author' => (int) $user_id, 'posts_per_page' => 20, 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true ) );
+		$rows = array();
+		foreach ( $q->posts as $post ) {
+			$rows[] = array(
+				'id'      => 'wp-' . $post->ID,
+				'kind'    => $post->post_type,
+				'title'   => get_the_title( $post ),
+				'body'    => wp_strip_all_tags( get_the_excerpt( $post ) ?: wp_trim_words( $post->post_content, 48 ) ),
+				'url'     => get_permalink( $post ),
+				'date'    => get_post_time( 'c', true, $post ),
+				'image'   => get_the_post_thumbnail_url( $post, 'large' ) ?: '',
+				'tickers' => function_exists( 'sml_sth_symbols' ) ? sml_sth_symbols( $post->post_title . ' ' . $post->post_content ) : array(),
+				'metrics' => function_exists( 'sml_sth_metric' ) ? sml_sth_metric( $post->ID ) : array(),
+			);
+		}
+		return $rows;
+	}
+
+	function sml_channel_member_posts( $user_id ) {
+		$rows = array();
+		if ( function_exists( 'sml_members_profile_chart_posts' ) ) {
+			foreach ( (array) sml_members_profile_chart_posts( $user_id, 20 ) as $post ) {
+				$rows[] = array(
+					'id' => 'chart-' . sanitize_key( (string) ( $post['id'] ?? '' ) ), 'kind' => 'chart_post',
+					'title' => '', 'body' => wp_strip_all_tags( (string) ( $post['text'] ?? '' ) ), 'url' => esc_url_raw( (string) ( $post['url'] ?? '' ) ),
+					'date' => sml_channel_iso_date( $post['date'] ?? '' ), 'image' => esc_url_raw( (string) ( $post['image'] ?? $post['chart_url'] ?? '' ) ),
+					'tickers' => array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $post['tickers'] ?? array() ) ) ) ),
+					'metrics' => array( 'likes' => max( 0, (int) ( $post['like_count'] ?? 0 ) ) ),
+				);
+			}
+		}
+		if ( function_exists( 'sml_members_user_stream_posts' ) ) {
+			foreach ( (array) sml_members_user_stream_posts( $user_id, 20 ) as $post ) {
+				$tickers = array_values( array_filter( array_map( 'sanitize_text_field', (array) ( $post['tickers'] ?? array() ) ) ) );
+				$url = ! empty( $post['url'] ) ? esc_url_raw( $post['url'] ) : ( ! empty( $tickers[0] ) ? home_url( '/stock-chart/?symbol=' . rawurlencode( $tickers[0] ) . '#comments' ) : '' );
+				$rows[] = array(
+					'id' => 'stream-' . sanitize_key( (string) ( $post['id'] ?? $post['comment_ID'] ?? '' ) ), 'kind' => 'stream_post',
+					'title' => '', 'body' => wp_strip_all_tags( (string) ( $post['text'] ?? $post['body'] ?? $post['comment_content'] ?? '' ) ),
+					'url' => $url, 'date' => sml_channel_iso_date( $post['date'] ?? $post['comment_date_gmt'] ?? '' ),
+					'image' => esc_url_raw( (string) ( $post['image'] ?? '' ) ), 'tickers' => $tickers,
+					'metrics' => array( 'likes' => max( 0, (int) ( $post['like_count'] ?? 0 ) ) ),
+				);
+			}
+		}
+		return $rows;
+	}
+
+	function sml_channel_posts( $user_id ) {
+		$rows = array_merge( sml_channel_wp_posts( $user_id ), sml_channel_member_posts( $user_id ) );
+		$seen = array();
+		$rows = array_values( array_filter( $rows, static function ( $row ) use ( &$seen ) {
+			$key = (string) ( $row['id'] ?? '' );
+			if ( '' === $key || isset( $seen[ $key ] ) ) { return false; }
+			$seen[ $key ] = true; return true;
+		} ) );
+		usort( $rows, static function ( $a, $b ) { return strcmp( (string) ( $b['date'] ?? '' ), (string) ( $a['date'] ?? '' ) ); } );
+		return array_slice( $rows, 0, 20 );
+	}
+
+	function sml_channel_rest_get( WP_REST_Request $request ) {
+		$user = sml_channel_user_by_handle( $request['handle'] );
+		if ( ! $user ) { return new WP_Error( 'sml_channel_not_found', 'Creator not found.', array( 'status' => 404 ) ); }
+		$handle = sml_channel_handle_for_user( $user->ID );
+		$creator = $user->display_name;
+		$videos = sml_channel_videos( $user->ID, $creator, $handle );
+		$posts = sml_channel_posts( $user->ID );
+		return rest_ensure_response( array(
+			'creator' => array( 'id' => (int) $user->ID, 'name' => $creator, 'handle' => $handle ),
+			'stats' => array( 'videos' => count( $videos ), 'views' => array_sum( wp_list_pluck( $videos, 'views' ) ), 'posts' => count( $posts ) ),
+			'videos' => $videos,
+			'posts' => $posts,
+		) );
+	}
+
+	add_action( 'rest_api_init', static function () {
+		register_rest_route( 'sml-channel/v1', '/channel/(?P<handle>[a-zA-Z0-9_.]+)', array(
+			'methods' => WP_REST_Server::READABLE, 'callback' => 'sml_channel_rest_get', 'permission_callback' => '__return_true',
+			'args' => array( 'handle' => array( 'required' => true, 'sanitize_callback' => 'sml_channel_clean_handle' ) ),
+		) );
+	} );
+}

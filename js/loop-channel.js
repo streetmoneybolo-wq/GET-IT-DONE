@@ -1,17 +1,15 @@
-/* SML Loop Channel — P1 shell (admin preview ?ch=1)
+/* SML Loop Channel — creator profile/hub
    Mounts on /channel/{handle}/ pages. Separate page/root from the Immersive
    Profile (which stays at /{handle}/) — see the routing decision in project
-   memory. Reuses css/loop-channel.css. P1 scope: nav + sidebar identity card
-   (real avatar/name/handle via the same sources live-watch.js uses) + links
-   module + home-group card (honestly gated, no fabricated data). Hero,
-   content orbital, community, newsletter and the Channel Studio drawer land
-   in later phases. */
+   memory. Reuses css/loop-channel.css. Identity, live/latest hero, creator-
+   scoped video orbit, community, newsletter and Channel Studio all render
+   from confirmed public APIs or deliberately hide when real data is absent. */
 (function () {
   'use strict';
   var root = document.getElementById('sml-ch-root');
   if (!root || root.__booted) return;
   root.__booted = true;
-  var ADMIN = (typeof window.SML_CH_ADMIN !== 'undefined') ? !!window.SML_CH_ADMIN : true;
+  var ADMIN = (typeof window.SML_CH_ADMIN !== 'undefined') ? !!window.SML_CH_ADMIN : false;
   var NONCE = window.SML_CH_NONCE || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
   var ME = window.SML_CH_ME || null;
   var HANDLE = (location.pathname.match(/\/channel\/([A-Za-z0-9_.]+)\/?/) || [])[1] || '';
@@ -68,12 +66,13 @@
 
       '<div class="lch-content">' +
         '<div id="ch-hero"></div>' +
-        '<div class="lch-soon" id="ch-latest-soon">Latest content orbital and community land in the next build phase.</div>' +
+        '<div id="ch-orbit"></div>' +
+        '<div id="ch-community"></div>' +
         '<div id="ch-nl"></div>' +
       '</div>' +
     '</div>' +
     '<div id="ch-studio-mount"></div>' +
-    (ADMIN ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>P1 preview</span><a href="?ch=0">exit</a></div>' : '');
+    (ADMIN ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>admin tools</span><a href="?ch=0">exit</a></div>' : '');
 
   /* ---------- identity: same sources the watch pages already use ---------- */
   function loadIdentity() {
@@ -138,25 +137,93 @@
     if (socials || banners) el('#ch-links').style.display = '';
   }
 
-  /* ---------- hero: live case only for now — real feeds + presence data exist.
-     "Latest video" fallback and the content orbital need a creator-scoped video
-     list endpoint that doesn't exist yet in the public API surface (checked:
-     the rail endpoint ignores handle/creator params and returns one global
-     feed; no wp/v2 video post type is registered). Left as the placeholder
-     below until that's found or built. */
-  function loadHero() {
-    if (!HANDLE) return;
-    api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
-      if (!res.j || !res.j.live) return;
-      api('/sml-lw/v1/presence?handle=' + HANDLE).then(function (pres) {
+  /* ---------- creator content: one public, author-scoped adapter over the
+     real video library + existing community stores. Nothing here falls back
+     to the global rail because that would misattribute another creator's work. */
+  function ago(value) {
+    var t = Date.parse(value || ''); if (!t) return '';
+    var s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 60) return 'now'; if (s < 3600) return Math.floor(s / 60) + 'm';
+    if (s < 86400) return Math.floor(s / 3600) + 'h'; if (s < 604800) return Math.floor(s / 86400) + 'd';
+    return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function safeImage(url) { return url && /^https:\/\//i.test(url) ? url : ''; }
+  function videoHero(video) {
+    if (!video) return;
+    var bg = safeImage(video.thumbnail);
+    el('#ch-hero').innerHTML = '<a class="lch-hero latest" href="' + esc(video.watch_url) + '"><div class="lch-hero-box"><div class="lch-hero-bg"' +
+      (bg ? ' style="background-image:url(&quot;' + esc(bg) + '&quot;)"' : '') + '></div><div class="lch-hero-shade"></div>' +
+      '<div class="lch-hero-badge latest"><span>NEW VIDEO</span></div><span class="lch-hero-meta">' + esc(video.views_label || '') + '</span>' +
+      '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(video.title || 'Watch video') + '</span><span class="lch-hero-cta">WATCH →</span></div></div></a>';
+  }
+  function loadHero(feed, latest) {
+    if (feed && feed.live) {
+      return api('/sml-lw/v1/presence?handle=' + encodeURIComponent(HANDLE)).then(function (pres) {
         var n = (pres.j && pres.j.count) || 0;
         el('#ch-hero').innerHTML = '<a class="lch-hero live" href="/live/"><div class="lch-hero-box"><div class="lch-hero-bg"></div>' +
-          '<div class="lch-hero-badge"><span class="dot"></span><span>LIVE</span></div>' +
-          '<span class="lch-hero-meta">' + n + ' watching</span>' +
+          '<div class="lch-hero-badge"><span class="dot"></span><span>LIVE</span></div><span class="lch-hero-meta">' + n + ' watching</span>' +
           '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(el('#ch-name').textContent || HANDLE) + ' is live on Stock Market Loop</span>' +
           '<span class="lch-hero-cta">JOIN STREAM →</span></div></div></a>';
-      }).catch(function () {});
-    }).catch(function () {});
+      });
+    }
+    videoHero(latest);
+    return Promise.resolve();
+  }
+  function renderOrbit(videos) {
+    var mount = el('#ch-orbit');
+    if (!videos.length) { mount.innerHTML = ''; return; }
+    var active = 0;
+    mount.innerHTML = '<section class="lch-orbit"><div class="lch-section-h"><span class="t">▮ LATEST CONTENT</span><span class="meta">' + videos.length + ' videos</span><div class="rule"></div></div>' +
+      '<div class="lch-orbit-stage"><div class="lch-orbit-ring">' + videos.slice(0, 10).map(function (v, i) {
+        var bg = safeImage(v.thumbnail);
+        return '<a class="lch-orbit-card" data-orbit="' + i + '" href="' + esc(v.watch_url) + '" aria-label="' + esc(v.title) + '"><span class="pic"' +
+          (bg ? ' style="background-image:url(&quot;' + esc(bg) + '&quot;)"' : '') + '></span><span class="shade"></span><span class="dur">' + esc(v.duration || '') + '</span>' +
+          '<span class="copy"><b>' + esc(v.title || 'Untitled video') + '</b><small>' + esc(v.views_label || '') + (v.created_at ? ' · ' + esc(ago(v.created_at)) : '') + '</small></span></a>';
+      }).join('') + '</div><button class="lch-orbit-arrow prev" type="button" aria-label="Previous video">‹</button><button class="lch-orbit-arrow next" type="button" aria-label="Next video">›</button></div>' +
+      '<div class="lch-orbit-status"><b></b><span></span></div></section>';
+    var cards = Array.prototype.slice.call(mount.querySelectorAll('.lch-orbit-card'));
+    function paint() {
+      var count = cards.length;
+      cards.forEach(function (card, i) {
+        var delta = i - active;
+        if (delta > count / 2) delta -= count; if (delta < -count / 2) delta += count;
+        var angle = delta * Math.min(42, 300 / count);
+        card.style.setProperty('--orbit-angle', angle + 'deg');
+        card.style.setProperty('--orbit-depth', (Math.abs(delta) * -58) + 'px');
+        card.classList.toggle('on', delta === 0); card.tabIndex = delta === 0 ? 0 : -1;
+      });
+      var v = videos[active]; mount.querySelector('.lch-orbit-status b').textContent = v.title || 'Untitled video';
+      mount.querySelector('.lch-orbit-status span').textContent = (v.views_label || '') + (v.created_at ? ' · ' + ago(v.created_at) : '');
+    }
+    function move(by) { active = (active + by + cards.length) % cards.length; paint(); }
+    mount.querySelector('.prev').onclick = function () { move(-1); }; mount.querySelector('.next').onclick = function () { move(1); };
+    cards.forEach(function (card, i) { card.onclick = function (e) { if (i !== active) { e.preventDefault(); active = i; paint(); } }; });
+    mount.onkeydown = function (e) { if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1); } if (e.key === 'ArrowRight') { e.preventDefault(); move(1); } };
+    paint();
+  }
+  function renderCommunity(posts) {
+    var mount = el('#ch-community');
+    if (!posts.length) { mount.innerHTML = ''; return; }
+    mount.innerHTML = '<section class="lch-community"><div class="lch-section-h"><span class="t">▮ COMMUNITY</span><span class="meta">latest posts</span><div class="rule"></div></div><div class="lch-post-grid">' +
+      posts.slice(0, 8).map(function (p) {
+        var tags = (p.tickers || []).slice(0, 4).map(function (t) { return '<span>$' + esc(String(t).replace(/^\$/, '')) + '</span>'; }).join('');
+        var likes = p.metrics && (p.metrics.likes != null ? p.metrics.likes : p.metrics.like_count);
+        var image = safeImage(p.image);
+        var body = p.body || ''; var inner = '<span class="kind">' + esc(String(p.kind || 'post').replace(/_/g, ' ')) + '</span><time>' + esc(ago(p.date)) + '</time>' +
+          (image ? '<span class="image" style="background-image:url(&quot;' + esc(image) + '&quot;)"></span>' : '') +
+          (p.title ? '<b class="title">' + esc(p.title) + '</b>' : '') + (body ? '<span class="body">' + esc(body) + '</span>' : '') +
+          (tags ? '<span class="tickers">' + tags + '</span>' : '') + (likes != null ? '<span class="metrics">♥ ' + fmt(likes) + '</span>' : '');
+        return p.url ? '<a class="lch-post" href="' + esc(p.url) + '">' + inner + '</a>' : '<article class="lch-post">' + inner + '</article>';
+      }).join('') + '</div></section>';
+  }
+  function loadChannelContent() {
+    if (!HANDLE) return;
+    Promise.all([api('/sml-channel/v1/channel/' + encodeURIComponent(HANDLE)), api('/sml-live/v1/feeds/' + encodeURIComponent(HANDLE))]).then(function (all) {
+      var channel = all[0].ok ? (all[0].j || {}) : {}; var feed = all[1].ok ? (all[1].j || {}) : {};
+      var videos = Array.isArray(channel.videos) ? channel.videos : []; var posts = Array.isArray(channel.posts) ? channel.posts : [];
+      var stats = channel.stats || {}; if (stats.videos != null) el('#ch-videos').textContent = fmt(stats.videos); if (stats.views != null) el('#ch-views').textContent = fmt(stats.views);
+      renderOrbit(videos); renderCommunity(posts); return loadHero(feed, videos[0]);
+    }).catch(function () { el('#ch-sync').textContent = '● CHANNEL FEED UNAVAILABLE'; });
   }
 
   /* ---------- newsletter: sml-loopletters/v1/issues is genuinely creator-scoped
@@ -325,5 +392,5 @@
   function studioEsc(e) { if (e.key === 'Escape') closeStudio(); }
   el('#ch-edit').onclick = openStudio;
 
-  loadIdentity(); loadHomeGroup(); loadLinks(); loadHero(); loadNewsletter();
+  loadIdentity(); loadHomeGroup(); loadLinks(); loadChannelContent(); loadNewsletter();
 })();
