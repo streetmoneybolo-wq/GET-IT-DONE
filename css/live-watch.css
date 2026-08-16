@@ -846,6 +846,11 @@ body.slw-on{background:#04060a !important}
 /* ==== VOD (uploaded video) watch page — forked from the live page ==== */
 .slw-vod .slw-frame-ph{display:none}
 .slw-vod .slw-media video{object-fit:contain;background:#000}
+/* poster art can be loud — a bottom scrim keeps the title block legible before play;
+   it fades once the video is actually playing (frame.playing) */
+.slw-vod .slw-frame::after{content:"";position:absolute;left:0;right:0;bottom:0;height:52%;background:linear-gradient(180deg,transparent,rgba(3,5,9,.55) 40%,rgba(3,5,9,.9));pointer-events:none;z-index:3;transition:opacity .4s ease}
+.slw-vod .slw-frame.playing::after{opacity:0}
+.slw-vod .slw-sub{text-decoration:none;display:inline-flex;align-items:center}
 .slw-upchip{display:flex;align-items:center;gap:8px;background:rgba(6,10,16,.88);border:1px solid #134a33;border-radius:6px;padding:7px 11px}
 .slw-upchip span{font:800 10px/1 Archivo,sans-serif;letter-spacing:.16em;color:#00ff88}
 .slw-vodclock{font:800 15px/1 'IBM Plex Mono',monospace;color:#00ff88;letter-spacing:.02em;text-shadow:0 0 10px rgba(0,255,136,.4);white-space:nowrap}

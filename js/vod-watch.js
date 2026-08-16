@@ -99,7 +99,7 @@
       '<div class="slw-inforow"><div class="slw-aboutwrap" style="flex:1 1 100%"><div class="slw-aboutflip" id="vw-flip">' +
         '<div class="slw-about"><div class="slw-about-h"><div class="slw-avatar" id="vw-av">' + esc((VID.creator || 'SL').slice(0, 2).toUpperCase()) + '</div>' +
           '<div class="slw-about-id"><span class="nm" id="vw-cname">' + esc(VID.creator || 'Stock Market Loop') + '</span><span class="fo" id="vw-cmeta"></span></div>' +
-          '<a class="slw-sub" id="vw-profile" href="#" style="display:none;text-decoration:none">View channel</a></div>' +
+          '<a class="slw-sub" id="vw-profile" href="#" style="display:none;text-decoration:none;color:#04060a">View channel →</a></div>' +
         '<span class="slw-about-desc" id="vw-desc">' + esc(VID.desc) + '</span>' +
         '<div class="slw-about-f"><span class="cap">ABOUT THIS VIDEO</span><div class="ctl"><button class="slw-more" id="vw-more">More</button><span class="hint">disclaimer</span><button class="slw-flipbtn" data-flip="-1">‹</button><button class="slw-flipbtn" data-flip="1">›</button></div></div></div>' +
         '<div class="slw-about back"><div class="slw-disc-h"><b>DISCLAIMER</b><span>uploaded content</span></div>' +
@@ -138,8 +138,9 @@
   function paintPlay() { var b = el('#vw-play'); b.textContent = playing ? '❚❚' : '▶'; b.classList.toggle('play', !playing); }
   el('#vw-play').onclick = function () { if (v.paused) v.play().catch(function () {}); else v.pause(); };
   media.addEventListener('click', function () { if (v.paused) v.play().catch(function () {}); else v.pause(); });
-  v.addEventListener('play', function () { playing = true; paintPlay(); });
-  v.addEventListener('pause', function () { playing = false; paintPlay(); });
+  var frameEl = el('.slw-frame');
+  v.addEventListener('play', function () { playing = true; paintPlay(); frameEl.classList.add('playing'); });
+  v.addEventListener('pause', function () { playing = false; paintPlay(); frameEl.classList.remove('playing'); });
   v.addEventListener('loadedmetadata', function () { if (isFinite(v.duration)) { VID.duration = v.duration; el('#vw-dur').textContent = hms(v.duration); el('#vw-dur2').textContent = hms(v.duration); } });
   v.addEventListener('timeupdate', function () {
     var d = v.duration || VID.duration || 0;
