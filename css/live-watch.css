@@ -11,7 +11,17 @@
 /* page takeover while preview is on: live-watch.js re-parents #sml-lw-root to be a
    direct child of <body>, then this rule hides everything else (theme page, footer,
    floating launchers) — the admin bar stays. Applies to late-appended nodes too. */
-body.slw-on > :not(#sml-lw-root):not(#wpadminbar){display:none !important}
+body.slw-on > :not(#sml-lw-root):not(#sml-vw-root):not(#wpadminbar){display:none !important}
+#sml-vw-root{font-family:Archivo,system-ui,sans-serif;color:#e6edf3;background:#04060a;min-height:100vh;padding:0 0 72px;overflow:hidden;position:relative;z-index:1}
+#sml-vw-root *{box-sizing:border-box}
+#sml-vw-root a{color:#00ff88;text-decoration:none}
+#sml-vw-root button{font-family:Archivo,system-ui,sans-serif}
+#sml-vw-root .slw-nav-links a{font:600 12px/1 Archivo,sans-serif;color:#5d7085;padding:9px 14px;border-radius:8px}
+#sml-vw-root .slw-nav-links a.on{color:#e6edf3;background:#101c26}
+#sml-vw-root .slw-titleblk h1 a, #sml-vw-root .slw-cmt a, #sml-vw-root .slw-rv{color:inherit !important;text-decoration:none !important}
+#sml-vw-root a.slw-openlink{color:#00ff88 !important}
+#sml-vw-root .slw-rec-h .r a{color:#5d7085 !important}
+#sml-vw-root .slw-cm-gate a{color:#ffb454 !important;font-weight:600}
 body.slw-on{background:#04060a !important}
 
 /* the site's ticker-mention linkifier wraps $SYM text in anchors sitewide —
