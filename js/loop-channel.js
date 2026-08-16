@@ -67,7 +67,8 @@
       '</div>' +
 
       '<div class="lch-content">' +
-        '<div class="lch-soon">Hero, latest content and community land in the next build phase.</div>' +
+        '<div id="ch-hero"></div>' +
+        '<div class="lch-soon" id="ch-latest-soon">Latest content orbital and community land in the next build phase.</div>' +
       '</div>' +
     '</div>' +
     (ADMIN ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>P1 preview</span><a href="?ch=0">exit</a></div>' : '');
@@ -135,5 +136,26 @@
     if (socials || banners) el('#ch-links').style.display = '';
   }
 
-  loadIdentity(); loadHomeGroup(); loadLinks();
+  /* ---------- hero: live case only for now — real feeds + presence data exist.
+     "Latest video" fallback and the content orbital need a creator-scoped video
+     list endpoint that doesn't exist yet in the public API surface (checked:
+     the rail endpoint ignores handle/creator params and returns one global
+     feed; no wp/v2 video post type is registered). Left as the placeholder
+     below until that's found or built. */
+  function loadHero() {
+    if (!HANDLE) return;
+    api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
+      if (!res.j || !res.j.live) return;
+      api('/sml-lw/v1/presence?handle=' + HANDLE).then(function (pres) {
+        var n = (pres.j && pres.j.count) || 0;
+        el('#ch-hero').innerHTML = '<a class="lch-hero live" href="/live/"><div class="lch-hero-box"><div class="lch-hero-bg"></div>' +
+          '<div class="lch-hero-badge"><span class="dot"></span><span>LIVE</span></div>' +
+          '<span class="lch-hero-meta">' + n + ' watching</span>' +
+          '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(el('#ch-name').textContent || HANDLE) + ' is live on Stock Market Loop</span>' +
+          '<span class="lch-hero-cta">JOIN STREAM →</span></div></div></a>';
+      }).catch(function () {});
+    }).catch(function () {});
+  }
+
+  loadIdentity(); loadHomeGroup(); loadLinks(); loadHero();
 })();
