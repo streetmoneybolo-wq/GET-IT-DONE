@@ -2,6 +2,10 @@
    Recreated from design handoff "Watch Page.dc.html" — tokens/keyframes verbatim.
    Everything scoped under #sml-lw-root with .slw- classes. */
 
+/* design fonts — pulled in here (not the WPCode loader) so both the live and VOD
+   pages get them from one place, and neither can silently ship without it again */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 #sml-lw-root{font-family:Archivo,system-ui,sans-serif;color:#e6edf3;background:#04060a;min-height:100vh;padding:0 0 72px;overflow:hidden;position:relative;z-index:1}
 #sml-lw-root *{box-sizing:border-box}
 #sml-lw-root a{color:#00ff88;text-decoration:none}
