@@ -1942,7 +1942,7 @@
     }).catch(function () {});
     api('/sml-lb/v1/card/' + HANDLE).then(function (res) {
       var j = res.j || {};
-      var url = j.avatar || (j.profile && j.profile.avatar) || '';
+      var url = (j.profile && j.profile.photo) || j.photo || j.avatar || (j.profile && j.profile.avatar) || '';
       if (url && /^https:/.test(url)) {
         var av = root.querySelector('.slw-avatar');
         av.style.background = '#0d1a15 url(' + url + ') center/cover';
