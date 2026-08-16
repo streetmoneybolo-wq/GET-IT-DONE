@@ -60,11 +60,31 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		return $user ?: false;
 	}
 
+	function sml_channel_profile_handle_available( $handle ) {
+		$handle = sml_channel_clean_handle( $handle );
+		if ( '' === $handle ) { return false; }
+		$routes = rest_get_server()->get_routes();
+		$route = '/sml-members/v1/handle-availability';
+		if ( ! empty( $routes[ $route ] ) ) {
+			foreach ( $routes[ $route ] as $handler ) {
+				if ( empty( $handler['callback'] ) || ! is_callable( $handler['callback'] ) ) { continue; }
+				$check = new WP_REST_Request( 'GET', $route );
+				$check->set_param( 'handle', $handle );
+				$result = call_user_func( $handler['callback'], $check );
+				if ( is_wp_error( $result ) ) { return false; }
+				$data = (array) rest_ensure_response( $result )->get_data();
+				if ( array_key_exists( 'available', $data ) ) { return (bool) $data['available']; }
+				if ( array_key_exists( 'is_available', $data ) ) { return (bool) $data['is_available']; }
+			}
+		}
+		return ! sml_channel_profile_handle_owner( $handle );
+	}
+
 	function sml_channel_handle_available( $handle, $user_id = 0 ) {
 		$handle = sml_channel_clean_handle( $handle );
 		if ( '' === $handle ) { return false; }
 		/* The two namespaces are intentionally disjoint, including for one user. */
-		if ( sml_channel_profile_handle_owner( $handle ) ) { return false; }
+		if ( ! sml_channel_profile_handle_available( $handle ) ) { return false; }
 		$owner = sml_channel_user_by_handle( $handle );
 		return ! $owner || (int) $owner->ID === (int) $user_id;
 	}
@@ -237,6 +257,11 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 	/* Keep the existing profile-handle availability response aware of opted-in
 	 * channel handles, so a future profile claim cannot create a collision. */
 	add_filter( 'rest_post_dispatch', static function ( $response, $server, $request ) {
+		if ( 0 === strpos( $request->get_route(), '/sml-channel/v1/' ) ) {
+			$response = rest_ensure_response( $response );
+			$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+			$response->header( 'Pragma', 'no-cache' );
+		}
 		if ( '/sml-members/v1/handle-availability' !== $request->get_route() ) { return $response; }
 		$handle = sml_channel_clean_handle( $request->get_param( 'handle' ) );
 		if ( '' === $handle || ! sml_channel_user_by_handle( $handle ) ) { return $response; }
