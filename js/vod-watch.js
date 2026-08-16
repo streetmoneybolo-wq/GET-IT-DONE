@@ -107,6 +107,21 @@
         '<div class="slw-about-f"><button class="slw-x" id="vw-more2">More</button><div class="ctl"><span class="hint">about</span><button class="slw-flipbtn" data-flip="-1">‹</button><button class="slw-flipbtn" data-flip="1">›</button></div></div></div>' +
       '</div></div></div>' +
 
+      /* orbit ("From the host") — real photos, same media-library tagging as the live page */
+      '<div class="slw-orbit-sec" id="vw-orbit-sec" style="display:none"><div class="oh"><span class="l">From the host</span><span class="r" id="vw-ocount2">— / —</span></div>' +
+        '<div class="slw-orbit" id="vw-orbit" tabindex="0" role="region" aria-label="Host photos — use the left and right arrow keys to rotate">' +
+          '<div class="slw-neb1"></div><div class="slw-neb2"></div><div class="slw-stars1"></div><div class="slw-stars2"></div><div class="slw-floor"></div>' +
+          '<div class="slw-astroB"></div><div class="slw-astroC"></div>' +
+          '<div class="slw-ring-persp"><div class="slw-ring" id="vw-ring"></div></div>' +
+          '<div class="slw-astroA"></div>' +
+          '<div class="slw-orbit-ctl"><button class="slw-orb-nav" id="vw-oprev" title="Previous image">‹</button>' +
+          '<button class="slw-orb-pause" id="vw-opause" title="Pause rotation">❚❚ Pause</button>' +
+          '<button class="slw-orb-nav" id="vw-onext" title="Next image">›</button>' +
+          '<span class="slw-orb-count" id="vw-ocount">— / —</span></div></div>' +
+        '<div class="slw-orbit-cap"><div class="l"><b id="vw-otitle"></b><span id="vw-osub"></span></div>' +
+        '<div class="r"><button class="slw-btn2" id="vw-oenlarge">Enlarge</button><a class="slw-openlink" href="#" target="_blank" rel="noopener">Open link ↗</a></div></div>' +
+      '</div>' +
+
       /* comments */
       '<div class="slw-cm" id="vw-cm"><div class="slw-cm-h"><div class="l"><b>Comments</b><span id="vw-cmcount">—</span></div>' +
         '<div class="r"><button class="slw-cm-sort on" data-sort="top">Top</button><button class="slw-cm-sort" data-sort="new">Newest</button></div></div>' +
@@ -124,7 +139,7 @@
       '<div id="vw-hg"></div>' +
     '</div>' +
     '</div></div>' +
-    '<div id="vw-modal"></div>' +
+    '<div id="vw-lb-mount"></div><div id="vw-modal"></div>' +
     (ADMIN ? '<div class="slw-banner"><b>VOD WATCH</b><span>admin tools</span><a href="?vw=0">exit</a></div>' : '');
 
   /* ---------- player: adopt the page's video source ---------- */
@@ -172,6 +187,113 @@
     el('#vw-modal-bg').onclick = function (e) { if (e.target.id === 'vw-modal-bg') el('#vw-modal').innerHTML = ''; };
   }
   el('#vw-more').onclick = openModal; el('#vw-more2').onclick = openModal;
+
+  /* ---------- orbit ("From the host") — real photos via WP media library, tagged sml-orbit-{creator handle} ---------- */
+  var S = { oIdx: 0, oAngle: 0, oPlaying: true, oHover: false, oLightbox: false };
+  var ringEl = el('#vw-ring');
+  var OITEMS = [], N = 1, R = 290, ocards = ringEl.children;
+  function buildOrbit(items) {
+    OITEMS = items; N = Math.max(1, OITEMS.length); R = Math.max(290, N * 56);
+    S.oIdx = 0; S.oAngle = 0;
+    ringEl.innerHTML = OITEMS.map(function (o, i) {
+      var media = '<img class="oimg" src="' + esc(o.img) + '" alt="' + esc(o.title || 'Host image') + '">' + (o.title ? '<span class="ocap">' + esc(o.title) + '</span>' : '');
+      return '<div class="slw-ocard img" data-oi="' + i + '" role="button" aria-label="' + esc(o.title || 'Host image') + ' — image ' + (i + 1) + ' of ' + N + '">' + media + '</div>';
+    }).join('');
+    ocards = ringEl.children;
+    Array.prototype.forEach.call(ocards, function (c) {
+      c.onclick = function () {
+        var i = +c.getAttribute('data-oi');
+        if (i === S.oIdx) { openLightbox(); return; }
+        var delta = ((i - S.oIdx) % N + N) % N; if (delta > N / 2) delta -= N;
+        orbStep(delta);
+      };
+    });
+    orbitPaint(false);
+  }
+  function orbitPaint(smooth) {
+    for (var i = 0; i < N; i++) {
+      var a = ((((i * (360 / N) - S.oAngle) % 360) + 540) % 360) - 180;
+      var d = (Math.cos(a * Math.PI / 180) + 1) / 2;
+      var c = ocards[i]; if (!c) continue;
+      c.style.transition = smooth ? 'transform 1.05s linear, opacity 1.05s linear, box-shadow 1.05s linear, filter 1.05s linear' : 'transform .8s cubic-bezier(.22,.7,.25,1), opacity .8s ease, box-shadow .8s ease, filter .8s ease';
+      c.style.transform = 'rotateY(' + a.toFixed(2) + 'deg) translateZ(' + R + 'px) rotateY(' + (-a * 0.62).toFixed(2) + 'deg) scale(' + (0.74 + 0.26 * d).toFixed(3) + ')';
+      c.style.opacity = (0.22 + 0.78 * d).toFixed(2);
+      c.style.filter = 'saturate(' + (0.6 + 0.4 * d).toFixed(2) + ') blur(' + ((1 - d) * 1.1).toFixed(2) + 'px)';
+      c.style.zIndex = Math.round(d * 100);
+      c.classList.toggle('active', i === S.oIdx);
+      c.style.boxShadow = 'none';
+    }
+    var cur = OITEMS[S.oIdx] || { title: '', sub: '', link: '' };
+    el('#vw-ocount').textContent = (S.oIdx + 1) + ' / ' + N;
+    el('#vw-ocount2').textContent = (S.oIdx + 1) + ' / ' + N;
+    el('#vw-otitle').textContent = cur.title || '';
+    el('#vw-osub').textContent = cur.sub || '';
+    var lk = root.querySelector('.slw-orbit-cap .slw-openlink');
+    if (lk) { lk.style.display = cur.link ? '' : 'none'; if (cur.link) lk.href = cur.link; }
+  }
+  function orbStep(dir) {
+    var step = 360 / N, k = Math.round(S.oAngle / step) + dir;
+    S.oAngle = k * step; S.oIdx = ((k % N) + N) % N;
+    orbitPaint(false);
+  }
+  el('#vw-oprev').onclick = function () { orbStep(-1); };
+  el('#vw-onext').onclick = function () { orbStep(1); };
+  el('#vw-opause').onclick = function () {
+    S.oPlaying = !S.oPlaying; var b = el('#vw-opause');
+    b.classList.toggle('paused', !S.oPlaying); b.innerHTML = S.oPlaying ? '❚❚ Pause' : '▶ Play';
+  };
+  var orbitEl = el('#vw-orbit');
+  orbitEl.addEventListener('mouseenter', function () { S.oHover = true; });
+  orbitEl.addEventListener('mouseleave', function () { S.oHover = false; });
+  orbitEl.addEventListener('wheel', function (e) {
+    e.preventDefault(); orbitEl.__acc = (orbitEl.__acc || 0) + e.deltaY;
+    if (Math.abs(orbitEl.__acc) > 55) { orbStep(orbitEl.__acc > 0 ? 1 : -1); orbitEl.__acc = 0; }
+  }, { passive: false });
+  function openLightbox() {
+    S.oLightbox = true;
+    var cur = OITEMS[S.oIdx] || { img: '', title: '', sub: '', link: '' };
+    var media = '<img src="' + esc(cur.img) + '" alt="' + esc(cur.title || 'Host image') + '" style="max-width:min(82vw,900px);max-height:70vh;width:auto;height:auto;display:block;border-radius:12px;filter:drop-shadow(0 30px 60px rgba(0,0,0,.85))">';
+    el('#vw-lb-mount').innerHTML = '<div class="slw-lb" id="vw-lb"><div class="slw-lb-row">' +
+      '<button class="slw-lb-nav" id="vw-lbp">‹</button>' + media + '<button class="slw-lb-nav" id="vw-lbn">›</button></div>' +
+      '<div class="slw-lb-cap"><b>' + esc(cur.title || '') + '</b><span>' + esc(cur.sub || '') + (cur.sub ? ' · ' : '') + (S.oIdx + 1) + ' / ' + N + '</span></div>' +
+      '<div class="slw-lb-btns">' + (cur.link ? '<a class="slw-lb-open" href="' + esc(cur.link) + '" target="_blank" rel="noopener">Open link ↗</a>' : '') + '<button class="slw-btn2" id="vw-lbx">Close (Esc)</button></div></div>';
+    el('#vw-lbx').onclick = closeLightbox;
+    el('#vw-lbp').onclick = function () { orbStep(-1); openLightbox(); };
+    el('#vw-lbn').onclick = function () { orbStep(1); openLightbox(); };
+  }
+  function closeLightbox() { S.oLightbox = false; el('#vw-lb-mount').innerHTML = ''; }
+  el('#vw-oenlarge').onclick = openLightbox;
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeLightbox(); return; }
+    var owns = S.oLightbox || S.oHover || orbitEl.contains(document.activeElement);
+    if (!owns) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); orbStep(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); orbStep(1); }
+  });
+  setInterval(function () {
+    if (S.oPlaying && !S.oHover && !S.oLightbox && !document.hidden && N > 1) {
+      var step = 360 / N; S.oAngle += step / 5;
+      S.oIdx = ((Math.round(S.oAngle / step) % N) + N) % N;
+      orbitPaint(true);
+    }
+  }, 1000);
+  function orbStrip(s2) { var d = document.createElement('div'); d.innerHTML = s2 || ''; return (d.textContent || '').trim(); }
+  function orbLink(s2) { var m = orbStrip(s2).match(/https:\/\/\S+/); return m ? m[0] : ''; }
+  function loadOrbitFor(handle) {
+    if (!handle || loadOrbitFor.done === handle) return;
+    loadOrbitFor.done = handle;
+    var tag = 'sml-orbit-' + handle;
+    fetch('/wp-json/wp/v2/media?search=' + encodeURIComponent(tag) + '&per_page=30&_fields=id,title,caption,description,source_url', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (list) {
+        if (!Array.isArray(list)) return;
+        var items = list.filter(function (m) { return m && m.source_url && m.title && String(m.title.rendered || '').indexOf(tag) === 0; })
+          .sort(function (a, b) { return String(a.title.rendered).localeCompare(String(b.title.rendered)); })
+          .slice(0, 10)
+          .map(function (m) { return { id: m.id, img: m.source_url, title: orbStrip(m.caption && m.caption.rendered), sub: '', link: orbLink(m.description && m.description.rendered) }; });
+        if (items.length) { buildOrbit(items); el('#vw-orbit-sec').style.display = ''; }
+      }).catch(function () {});
+  }
 
   /* ---------- like + share (reaction engine, long_video set) ---------- */
   var liked = false, CID = null; /* content_id resolves from the rail (numeric id) or falls back to the video slug hash */
@@ -283,7 +405,7 @@
       if (me) {
         if (me.views != null) el('#vw-views').textContent = Number(me.views).toLocaleString();
         if (me.creator) { VID.creator = me.creator; el('#vw-who').textContent = me.creator; el('#vw-cname').textContent = me.creator; el('#vw-av').textContent = me.creator.slice(0, 2).toUpperCase(); }
-        if (me.handle) { el('#vw-cmeta').textContent = '@' + me.handle + (me.ago ? ' · uploaded ' + me.ago : ''); }
+        if (me.handle) { el('#vw-cmeta').textContent = '@' + me.handle + (me.ago ? ' · uploaded ' + me.ago : ''); loadOrbitFor(me.handle); }
         if (me.profile_url) { var p = el('#vw-profile'); p.href = me.profile_url; p.style.display = ''; }
         if (me.ticker) { var t = el('#vw-term'); t.textContent = 'Open $' + String(me.ticker).replace(/^\$/, '') + ' terminal →'; t.style.display = ''; t.onclick = function () { location.href = '/stock-chart/?symbol=' + encodeURIComponent(String(me.ticker).replace(/^\$/, '')); }; }
         if (me.duration && !VID.duration) { el('#vw-dur').textContent = me.duration; el('#vw-dur2').textContent = me.duration; }
