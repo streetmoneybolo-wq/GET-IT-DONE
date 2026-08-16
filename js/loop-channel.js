@@ -221,6 +221,7 @@
     Promise.all([api('/sml-channel/v1/channel/' + encodeURIComponent(HANDLE)), api('/sml-live/v1/feeds/' + encodeURIComponent(HANDLE))]).then(function (all) {
       var channel = all[0].ok ? (all[0].j || {}) : {}; var feed = all[1].ok ? (all[1].j || {}) : {};
       var videos = Array.isArray(channel.videos) ? channel.videos : []; var posts = Array.isArray(channel.posts) ? channel.posts : [];
+      if (channel.creator && channel.creator.name) document.title = channel.creator.name + ' | Loop Channel';
       var stats = channel.stats || {}; if (stats.videos != null) el('#ch-videos').textContent = fmt(stats.videos); if (stats.views != null) el('#ch-views').textContent = fmt(stats.views);
       renderOrbit(videos); renderCommunity(posts); return loadHero(feed, videos[0]);
     }).catch(function () { el('#ch-sync').textContent = '● CHANNEL FEED UNAVAILABLE'; });

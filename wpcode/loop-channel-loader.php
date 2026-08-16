@@ -46,4 +46,7 @@ if ( ! function_exists( 'sml_ch_loader_active' ) ) {
 		if ( $wp_query ) { $wp_query->is_404 = false; }
 		status_header( 200 );
 	}, 0 );
+	add_filter( 'pre_get_document_title', static function ( $title ) {
+		return sml_ch_loader_active() ? 'Loop Channel | Stock Market Loop' : $title;
+	}, 99 );
 }
