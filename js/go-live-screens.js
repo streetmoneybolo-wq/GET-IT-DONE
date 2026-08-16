@@ -40,6 +40,7 @@
   function ensureCard() {
     if (card && card.isConnected) return card;
     var encCard = q('#sml-gl-encoder');
+    if (encCard && !encCard.isConnected) encCard = null; /* orphaned by a re-render — anchor on the row instead */
     var row = findRow('encoder');
     if (!encCard && !row) return null;
     card = document.createElement('div');
@@ -119,7 +120,12 @@
   var tries = 0;
   var boot = setInterval(function () {
     tries++;
-    if (findRow('encoder')) { clearInterval(boot); loadKeys(); pollLive(); setInterval(pollLive, 5000); }
+    if (findRow('encoder')) {
+      clearInterval(boot); loadKeys(); pollLive(); setInterval(pollLive, 5000);
+      /* the Creator Studio wizard re-renders the health panel (step changes, previews) and
+         orphans injected cards — re-mount whenever ours falls out of the document */
+      setInterval(function () { if (!card || !card.isConnected) paint(); }, 1000);
+    }
     else if (tries > 60) clearInterval(boot);
   }, 500);
 })();
