@@ -5,6 +5,9 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;700&family=Rajdhani:wght@500;700&family=Orbitron:wght@400;700&family=Exo+2:wght@400;700&family=Chakra+Petch:wght@400;700&family=Oxanium:wght@400;700&family=Sora:wght@400;700&family=Manrope:wght@400;700&family=Outfit:wght@400;700&family=Barlow:wght@400;700&family=Saira:wght@400;700&family=Kanit:wght@400;700&family=Play:wght@400;700&family=Syne:wght@400;700&family=Unbounded:wght@400;700&family=Michroma&family=Audiowide&display=swap');
 
+body.lch-on > :not(#sml-ch-root):not(#wpadminbar){display:none !important}
+body.lch-on{margin:0;background:#04060a !important}
+
 #sml-ch-root{--accent:#00ff88;--chfont:Archivo,system-ui,sans-serif;min-height:100vh;background:radial-gradient(1100px 460px at 75% -120px,#0a1420 0%,#04060a 55%);color:#e6edf3;font-family:var(--chfont);position:relative}
 #sml-ch-root *{box-sizing:border-box}
 #sml-ch-root a{color:#00ccff;text-decoration:none}
