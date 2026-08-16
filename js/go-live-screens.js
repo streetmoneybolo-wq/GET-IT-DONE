@@ -39,14 +39,19 @@
   var card;
   function ensureCard() {
     if (card && card.isConnected) return card;
-    var enc = q('#sml-gl-encoder') || findRow('encoder');
-    if (!enc) return null;
-    var host = q('#sml-gl-encoder') ? q('#sml-gl-encoder').parentElement : enc.parentElement.parentElement;
+    var encCard = q('#sml-gl-encoder');
+    var row = findRow('encoder');
+    if (!encCard && !row) return null;
     card = document.createElement('div');
     card.id = 'sml-gl-screens';
     card.style.cssText = 'margin:0 0 12px;border-radius:12px;border:1px solid #1c2833;background:linear-gradient(180deg,#0d151f,#0a0f16);padding:12px 14px;display:flex;flex-direction:column;gap:10px;font-family:inherit';
-    var anchor = q('#sml-gl-encoder');
-    if (anchor && anchor.nextSibling) host.insertBefore(card, anchor.nextSibling); else host.appendChild(card);
+    if (encCard) {
+      /* right after the encoder card */
+      encCard.insertAdjacentElement('afterend', card);
+    } else {
+      /* encoder script absent: sit above the health rows */
+      row.parentElement.insertAdjacentElement('beforebegin', card);
+    }
     return card;
   }
   function paint() {
