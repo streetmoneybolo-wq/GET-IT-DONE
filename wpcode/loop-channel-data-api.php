@@ -63,20 +63,15 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 	function sml_channel_profile_handle_available( $handle ) {
 		$handle = sml_channel_clean_handle( $handle );
 		if ( '' === $handle ) { return false; }
-		$routes = rest_get_server()->get_routes();
 		$route = '/sml-members/v1/handle-availability';
-		if ( ! empty( $routes[ $route ] ) ) {
-			foreach ( $routes[ $route ] as $handler ) {
-				if ( empty( $handler['callback'] ) || ! is_callable( $handler['callback'] ) ) { continue; }
-				$check = new WP_REST_Request( 'GET', $route );
-				$check->set_param( 'handle', $handle );
-				$result = call_user_func( $handler['callback'], $check );
-				if ( is_wp_error( $result ) ) { return false; }
-				$data = (array) rest_ensure_response( $result )->get_data();
-				if ( array_key_exists( 'available', $data ) ) { return (bool) $data['available']; }
-				if ( array_key_exists( 'is_available', $data ) ) { return (bool) $data['is_available']; }
-			}
-		}
+		$check = new WP_REST_Request( 'GET', $route );
+		$check->set_param( 'handle', $handle );
+		$check->set_param( '_sml_channel_namespace_check', 1 );
+		$result = rest_do_request( $check );
+		if ( is_wp_error( $result ) || $result->get_status() >= 400 ) { return false; }
+		$data = (array) $result->get_data();
+		if ( array_key_exists( 'available', $data ) ) { return (bool) $data['available']; }
+		if ( array_key_exists( 'is_available', $data ) ) { return (bool) $data['is_available']; }
 		return ! sml_channel_profile_handle_owner( $handle );
 	}
 
@@ -263,6 +258,7 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 			$response->header( 'Pragma', 'no-cache' );
 		}
 		if ( '/sml-members/v1/handle-availability' !== $request->get_route() ) { return $response; }
+		if ( $request->get_param( '_sml_channel_namespace_check' ) ) { return $response; }
 		$handle = sml_channel_clean_handle( $request->get_param( 'handle' ) );
 		if ( '' === $handle || ! sml_channel_user_by_handle( $handle ) ) { return $response; }
 		$response = rest_ensure_response( $response );
