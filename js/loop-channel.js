@@ -39,7 +39,7 @@
     '</div><div class="lch-nav-r">' +
       '<span class="lch-sync" id="ch-sync">● CHANNEL FEED SYNCED</span>' +
       '<span class="lch-vanity" id="ch-vanity" style="display:none">loop.tv/@' + esc(HANDLE) + '</span>' +
-      '<button class="lch-editbtn" id="ch-edit" style="display:none">✎ EDIT CHANNEL</button>' +
+      '<button class="lch-editbtn" id="ch-edit" style="display:' + (ADMIN ? '' : 'none') + '">✎ EDIT CHANNEL</button>' +
       '<button class="lch-golive" id="ch-golive" style="display:none">● GO LIVE</button>' +
     '</div></div>' +
 
@@ -72,6 +72,7 @@
         '<div id="ch-nl"></div>' +
       '</div>' +
     '</div>' +
+    '<div id="ch-studio-mount"></div>' +
     (ADMIN ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>P1 preview</span><a href="?ch=0">exit</a></div>' : '');
 
   /* ---------- identity: same sources the watch pages already use ---------- */
@@ -195,6 +196,134 @@
       };
     }).catch(function () {});
   }
+
+  /* ---------- Channel Studio drawer ----------
+     Real, confirmed-working right now: channel name (sml-display-name/v1/save)
+     and handle availability checking (sml-members/v1/handle-availability).
+     Theme + Links attempt sml-social-profile/v1/settings (GET+POST both exist,
+     but the field shape is unverified — no live session to confirm against —
+     so saves there are best-effort and surfaced honestly if they fail.
+     Moderation has NO backend anywhere in the site's public route list: the
+     tab is fully built and interactive but stays local-only with a visible
+     "not saved yet" note rather than pretending to persist.
+     NOTE: "EDIT CHANNEL" currently gates on admin-preview mode (ADMIN), not on
+     real viewer-owns-this-channel detection — that needs SML_CH_ME to carry
+     the viewer's own handle so it can be compared against HANDLE. */
+  var ACCENTS = ['#00ff88', '#00ccff', '#ffd166', '#ff6b4a', '#673aff', '#ff2e66', '#7affc0', '#4c9eff'];
+  var FONTS = ['Archivo', 'Space Grotesk', 'Rajdhani', 'Orbitron', 'Exo 2', 'Chakra Petch', 'Oxanium', 'Sora', 'Manrope', 'Outfit', 'Barlow', 'Saira', 'Kanit', 'Play', 'Syne', 'Unbounded', 'Michroma', 'Audiowide'];
+  var ST = {
+    tab: 'theme', accent: '#00ff88', font: 'Archivo',
+    aff1Label: '', aff1Url: '', aff2Label: '', aff2Url: '',
+    modRole: 'Mod', mods: [], modDraft: '',
+    bw: [], bwDraft: '', bl: [], blDraft: '',
+    chName: '', chHandle: HANDLE, handleNote: '', nameNote: ''
+  };
+  function applyTheme() {
+    root.style.setProperty('--accent', ST.accent);
+    root.style.setProperty('--chfont', (ST.font.indexOf(' ') > -1 ? "'" + ST.font + "'" : ST.font) + ',sans-serif');
+  }
+  function studioHTML() {
+    var tabs = [['theme', 'Theme'], ['links', 'Links'], ['mod', 'Moderation'], ['chan', 'Channel']];
+    var body = '';
+    if (ST.tab === 'theme') {
+      body = '<div class="lch-f-group"><span class="lch-f-label">ACCENT COLOR</span><div class="lch-swatches">' +
+        ACCENTS.map(function (c) { return '<button class="lch-swatch' + (c === ST.accent ? ' on' : '') + '" data-acc="' + c + '" style="background:' + c + '"></button>'; }).join('') + '</div></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">CHANNEL FONT</span><div class="lch-fontchips">' +
+        FONTS.map(function (f) { return '<button class="lch-fontchip' + (f === ST.font ? ' on' : '') + '" data-font="' + esc(f) + '" style="font-family:\'' + f + '\',sans-serif">' + esc(f) + '</button>'; }).join('') + '</div></div>' +
+        '<span class="lch-f-note">changes apply live to this preview immediately · saving to your account is unverified until a real session confirms the settings endpoint (see note below)</span>' +
+        '<span class="lch-pending" id="ch-theme-save-note" style="display:none"></span>';
+    } else if (ST.tab === 'links') {
+      body = '<div class="lch-f-group"><span class="lch-f-label">LINK 1</span><input class="lch-f-input" id="ch-aff1l" placeholder="Display text" value="' + esc(ST.aff1Label) + '"><input class="lch-f-input mono" id="ch-aff1u" placeholder="https://…" value="' + esc(ST.aff1Url) + '"></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">LINK 2</span><input class="lch-f-input" id="ch-aff2l" placeholder="Display text" value="' + esc(ST.aff2Label) + '"><input class="lch-f-input mono" id="ch-aff2u" placeholder="https://…" value="' + esc(ST.aff2Url) + '"></div>' +
+        '<span class="lch-f-note">banner images upload from the sidebar directly · social icons connect in account settings</span>';
+    } else if (ST.tab === 'mod') {
+      body = '<div class="lch-f-group"><span class="lch-f-label">MOD ROLE NAME</span><input class="lch-f-input" id="ch-modrole" value="' + esc(ST.modRole) + '"></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">MODERATORS</span>' +
+        ST.mods.map(function (m, i) { return '<div class="lch-modrow"><span>' + esc(m) + '</span><span class="role">' + esc(ST.modRole.toUpperCase()) + '</span><button class="kill" data-rmmod="' + i + '">✕</button></div>'; }).join('') +
+        '<div class="lch-f-row"><input class="lch-f-input" id="ch-moddraft" placeholder="@username" value="' + esc(ST.modDraft) + '"><button class="lch-f-add" id="ch-modadd">Add</button></div></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">BANNED WORDS</span><div class="lch-swatches">' +
+        ST.bw.map(function (w, i) { return '<button class="lch-chipban" data-rmbw="' + i + '">' + esc(w) + ' ✕</button>'; }).join('') + '</div>' +
+        '<div class="lch-f-row"><input class="lch-f-input" id="ch-bwdraft" placeholder="Add a word or phrase" value="' + esc(ST.bwDraft) + '"><button class="lch-f-add" id="ch-bwadd">Ban</button></div></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">BANNED LINKS</span><div class="lch-swatches">' +
+        ST.bl.map(function (l, i) { return '<button class="lch-chipban" data-rmbl="' + i + '">' + esc(l) + ' ✕</button>'; }).join('') + '</div>' +
+        '<div class="lch-f-row"><input class="lch-f-input mono" id="ch-bldraft" placeholder="Domain or pattern, e.g. t.me/*" value="' + esc(ST.blDraft) + '"><button class="lch-f-add" id="ch-bladd">Ban</button></div></div>' +
+        '<span class="lch-pending">this tab has no storage backend yet on the site — nothing here persists past a page refresh. Flagging so it doesn\'t look silently broken.</span>';
+    } else {
+      body = '<div class="lch-f-group"><span class="lch-f-label">CHANNEL NAME</span><input class="lch-f-input" id="ch-namein" value="' + esc(ST.chName) + '"><span class="lch-f-note">' + esc(ST.nameNote) + '</span></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">@ HANDLE</span><input class="lch-f-input mono" id="ch-handlein" value="' + esc(ST.chHandle) + '"><span class="lch-f-note' + (ST.handleNote.indexOf('taken') > -1 ? ' warn' : '') + '">' + esc(ST.handleNote) + '</span></div>' +
+        '<span class="lch-pending">handle-availability checking is real (sml-members/v1/handle-availability). Actually saving a changed handle needs a write endpoint that isn\'t confirmed yet — checking only, for now.</span>';
+    }
+    return '<div class="lch-scrim" id="ch-scrim"></div><div class="lch-studio">' +
+      '<div class="lch-studio-h"><div><span class="t">✎ Channel studio</span><span class="s">admin preview · viewers never see this</span></div><button class="lch-studio-x" id="ch-studio-x">✕</button></div>' +
+      '<div class="lch-studio-tabs">' + tabs.map(function (t) { return '<button class="lch-studio-tab' + (t[0] === ST.tab ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="lch-studio-body">' + body + '</div></div>';
+  }
+  function renderStudio() {
+    el('#ch-studio-mount').innerHTML = studioHTML();
+    el('#ch-scrim').onclick = closeStudio;
+    el('#ch-studio-x').onclick = closeStudio;
+    Array.prototype.forEach.call(root.querySelectorAll('[data-tab]'), function (b) { b.onclick = function () { ST.tab = b.getAttribute('data-tab'); renderStudio(); }; });
+    if (ST.tab === 'theme') {
+      Array.prototype.forEach.call(root.querySelectorAll('[data-acc]'), function (b) { b.onclick = function () { ST.accent = b.getAttribute('data-acc'); applyTheme(); saveProfileSettings(); renderStudio(); }; });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-font]'), function (b) { b.onclick = function () { ST.font = b.getAttribute('data-font'); applyTheme(); saveProfileSettings(); renderStudio(); }; });
+    } else if (ST.tab === 'links') {
+      ['aff1l', 'aff1u', 'aff2l', 'aff2u'].forEach(function (id) {
+        var inp = el('#ch-' + id); if (!inp) return;
+        inp.onchange = function () {
+          if (id === 'aff1l') ST.aff1Label = inp.value; else if (id === 'aff1u') ST.aff1Url = inp.value;
+          else if (id === 'aff2l') ST.aff2Label = inp.value; else ST.aff2Url = inp.value;
+          saveProfileSettings();
+        };
+      });
+    } else if (ST.tab === 'mod') {
+      Array.prototype.forEach.call(root.querySelectorAll('[data-rmmod]'), function (b) { b.onclick = function () { ST.mods.splice(+b.getAttribute('data-rmmod'), 1); renderStudio(); }; });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-rmbw]'), function (b) { b.onclick = function () { ST.bw.splice(+b.getAttribute('data-rmbw'), 1); renderStudio(); }; });
+      Array.prototype.forEach.call(root.querySelectorAll('[data-rmbl]'), function (b) { b.onclick = function () { ST.bl.splice(+b.getAttribute('data-rmbl'), 1); renderStudio(); }; });
+      el('#ch-modrole').onchange = function () { ST.modRole = el('#ch-modrole').value || 'Mod'; renderStudio(); };
+      el('#ch-moddraft').oninput = function () { ST.modDraft = el('#ch-moddraft').value; };
+      el('#ch-modadd').onclick = function () { if (ST.modDraft.trim()) { ST.mods.push(ST.modDraft.trim().replace(/^@/, '')); ST.modDraft = ''; renderStudio(); } };
+      el('#ch-bwdraft').oninput = function () { ST.bwDraft = el('#ch-bwdraft').value; };
+      el('#ch-bwadd').onclick = function () { if (ST.bwDraft.trim()) { ST.bw.push(ST.bwDraft.trim()); ST.bwDraft = ''; renderStudio(); } };
+      el('#ch-bldraft').oninput = function () { ST.blDraft = el('#ch-bldraft').value; };
+      el('#ch-bladd').onclick = function () { if (ST.blDraft.trim()) { ST.bl.push(ST.blDraft.trim()); ST.blDraft = ''; renderStudio(); } };
+    } else {
+      el('#ch-namein').onchange = function () {
+        ST.chName = el('#ch-namein').value;
+        api('/sml-display-name/v1/save', { method: 'POST', body: JSON.stringify({ name: ST.chName }) }).then(function (r) {
+          ST.nameNote = r.ok ? 'Saved.' : ((r.j && r.j.message) || 'Could not save — try again.');
+          if (r.ok) el('#ch-name').textContent = ST.chName;
+          renderStudio();
+        });
+      };
+      var handleTimer;
+      el('#ch-handlein').oninput = function () {
+        ST.chHandle = el('#ch-handlein').value.trim();
+        clearTimeout(handleTimer);
+        handleTimer = setTimeout(function () {
+          if (!ST.chHandle) return;
+          api('/sml-members/v1/handle-availability?handle=' + encodeURIComponent(ST.chHandle)).then(function (r) {
+            var j = r.j || {};
+            var avail = j.available != null ? j.available : j.is_available;
+            ST.handleNote = ST.chHandle === HANDLE ? 'This is your current handle.' : (avail ? 'Available.' : 'That handle is taken.');
+            renderStudio();
+          });
+        }, 400);
+      };
+    }
+  }
+  function saveProfileSettings() {
+    var note = el('#ch-theme-save-note');
+    api('/sml-social-profile/v1/settings', { method: 'POST', body: JSON.stringify({ accent: ST.accent, font: ST.font, aff1_label: ST.aff1Label, aff1_url: ST.aff1Url, aff2_label: ST.aff2Label, aff2_url: ST.aff2Url }) })
+      .then(function (r) {
+        if (!note) return;
+        note.style.display = '';
+        note.textContent = r.ok ? 'Saved to your account.' : 'Live preview updated, but saving failed (' + r.status + ') — the settings endpoint shape hasn\'t been confirmed with a real session yet.';
+      });
+  }
+  function openStudio() { if (!ST.chName) ST.chName = el('#ch-name').textContent; renderStudio(); document.addEventListener('keydown', studioEsc); }
+  function closeStudio() { el('#ch-studio-mount').innerHTML = ''; document.removeEventListener('keydown', studioEsc); }
+  function studioEsc(e) { if (e.key === 'Escape') closeStudio(); }
+  el('#ch-edit').onclick = openStudio;
 
   loadIdentity(); loadHomeGroup(); loadLinks(); loadHero(); loadNewsletter();
 })();
