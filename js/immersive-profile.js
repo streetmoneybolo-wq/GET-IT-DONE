@@ -448,6 +448,13 @@
     var contactOptIn = lsGet('sml-contact-optin', (cfg.contact && cfg.contact.optIn === false) ? '0' : '1') !== '0';
     var beatSens = parseFloat(lsGet('sml-beat-sens', cfg.beatSensitivity));
     if (!(beatSens >= 0.5 && beatSens <= 2)) beatSens = (cfg.beatSensitivity >= 0.5 && cfg.beatSensitivity <= 2) ? cfg.beatSensitivity : 1;
+    var reactiveComponents = lsJSON('sml-immersive-components', null);
+    var allReactiveComponents = ['background', 'banner', 'avatar', 'cards', 'orbital_photos', 'orbital_videos'];
+    if (!Array.isArray(reactiveComponents)) reactiveComponents = allReactiveComponents.slice();
+    function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
+    window.addEventListener('sml-immersive-components', function (event) {
+      if (event && Array.isArray(event.detail)) reactiveComponents = event.detail.slice();
+    });
     var editMode = false, screen = 0, enlarged = null;
     var videos = [null, null, null], gvids = [null, null, null, null, null, null], gphotoLocal = {};
     var pickIdx = 0, pickKind = 'ovideo';
@@ -800,14 +807,15 @@
       if (vStage && vStage.style.height !== vH) vStage.style.height = vH;
       if (pStage && pStage.parentElement) pStage.parentElement.style.flexBasis = orbSize('photo') > 380 ? '100%' : '';
       if (vStage && vStage.parentElement) vStage.parentElement.style.flexBasis = orbSize('video') > 380 ? '100%' : '';
-      var tilePulse = 1 + kick * m * 0.09 + bass * m * 0.05;
+      var photoTilePulse = reacts('orbital_photos') ? (1 + kick * m * 0.09 + bass * m * 0.05) : 1;
+      var videoTilePulse = reacts('orbital_videos') ? (1 + kick * m * 0.09 + bass * m * 0.05) : 1;
       if (pRing) {
         pRing.style.transform = 'scale(' + pScale.toFixed(3) + ') rotateY(' + orbAngle.toFixed(2) + 'deg)';
-        for (var pi = 0; pi < pRing.children.length; pi++) { var pbig = enlarged && enlarged.ring === 'photo' && enlarged.i === pi; var pf = (pbig ? Math.min(1.85 / pScale, 1.85) : (itemScales.photo[pi] || 1)) * tilePulse; pRing.children[pi].style.transform = 'rotateY(' + (pi * 60) + 'deg) translateZ(165px) scale(' + pf.toFixed(3) + ')'; pRing.children[pi].style.zIndex = pbig ? '5' : ''; }
+        for (var pi = 0; pi < pRing.children.length; pi++) { var pbig = enlarged && enlarged.ring === 'photo' && enlarged.i === pi; var pf = (pbig ? Math.min(1.85 / pScale, 1.85) : (itemScales.photo[pi] || 1)) * photoTilePulse; pRing.children[pi].style.transform = 'rotateY(' + (pi * 60) + 'deg) translateZ(165px) scale(' + pf.toFixed(3) + ')'; pRing.children[pi].style.zIndex = pbig ? '5' : ''; }
       }
       if (vRing) {
         vRing.style.transform = 'scale(' + vScale.toFixed(3) + ') rotateY(' + angV.toFixed(2) + 'deg)';
-        for (var vi = 0; vi < vRing.children.length; vi++) { var vbig = enlarged && enlarged.ring === 'video' && enlarged.i === vi; var vf = (vbig ? Math.min(1.85 / vScale, 1.85) : (itemScales.video[vi] || 1)) * tilePulse; vRing.children[vi].style.transform = 'rotateY(' + (vi * 120) + 'deg) translateZ(150px) scale(' + vf.toFixed(3) + ')'; vRing.children[vi].style.zIndex = vbig ? '5' : ''; }
+        for (var vi = 0; vi < vRing.children.length; vi++) { var vbig = enlarged && enlarged.ring === 'video' && enlarged.i === vi; var vf = (vbig ? Math.min(1.85 / vScale, 1.85) : (itemScales.video[vi] || 1)) * videoTilePulse; vRing.children[vi].style.transform = 'rotateY(' + (vi * 120) + 'deg) translateZ(150px) scale(' + vf.toFixed(3) + ')'; vRing.children[vi].style.zIndex = vbig ? '5' : ''; }
       }
 
       // world carousel
