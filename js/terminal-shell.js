@@ -86,6 +86,8 @@
         var a = document.createElement('script'); a.src = base + 'js/terminal-adopt.js'; document.body.appendChild(a);
         // Options tab: chain + what-if calculator
         var o = document.createElement('script'); o.src = base + 'js/terminal-options.js'; document.body.appendChild(o);
+        // Market Position v2: new card under the chart, replaces the legacy #sml-mp module
+        var mp2 = document.createElement('script'); mp2.src = base + 'js/terminal-mp2.js'; document.body.appendChild(mp2);
       })
       .catch(function () { /* fetch failed → leave the legacy terminal untouched */ });
   }

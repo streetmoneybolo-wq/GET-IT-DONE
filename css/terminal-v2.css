@@ -82,12 +82,36 @@ body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
    (extra .tv2-hidden class = higher specificity than either). */
 body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="zbody"].tv2-hidden{display:none!important}
 
-/* Market Position's own module renders a ~900px-tall volume-profile canvas
-   (.mp-prof, fixed-height 430px chart) alongside a compact stat-card column
-   covering the same info (profit ratio, resistance, avg cost, support, degree
-   of overlap) — scrolling a card was a band-aid; dropping the redundant tall
-   canvas gets it back to ~610px with zero scroll and no data lost. Forcing
-   the grid to one column stops the now-empty second track from leaving a
-   blank gap beside the remaining content. */
-body.tv2-artifact-on #sml-mp .mp-prof{display:none!important}
-body.tv2-artifact-on #sml-mp .grid{grid-template-columns:1fr!important}
+/* Market Position: the legacy module's own layout couldn't be made to fit
+   well (930px two-column canvas, no real fix short of hiding half of it) —
+   replaced outright with a new card (terminal-mp2.js) built from the real
+   sml/v1/market-position API and inserted directly under the chart. Legacy
+   module no longer gets adopted anywhere; keep it fully out of the page
+   wherever it naturally renders. */
+body.tv2-artifact-on #sml-mp{display:none!important}
+
+/* Market Position v2 — new card, styled straight from the design handoff
+   (Ticker Terminal Export.html, "Market position" card) */
+.tv2-mp2{border:1px solid #16202b;border-radius:10px;background:#080c12;overflow:hidden}
+.tv2-mp2-h{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #131c26}
+.tv2-mp2-h .t{font:700 12px/1 Archivo,sans-serif;color:#e6edf3}
+.tv2-mp2-h .d{font:500 10px/1 'IBM Plex Mono',monospace;color:#5d7085}
+.tv2-mp2-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.tv2-mp2-chart{position:relative;height:190px}
+.tv2-mp2-bar{position:absolute;left:0;border-radius:0 2px 2px 0;opacity:.92}
+.tv2-mp2-line{position:absolute;left:0;right:0;border-top:1px dashed}
+.tv2-mp2-line span{position:absolute;right:0;font:500 9px/1 'IBM Plex Mono',monospace;white-space:nowrap}
+.tv2-mp2-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tv2-mp2-stat{border:1px solid;border-radius:8px;background:#0b1119;padding:14px;display:flex;flex-direction:column;gap:7px}
+.tv2-mp2-stat .v{font:700 20px/1 'IBM Plex Mono',monospace}
+.tv2-mp2-stat .k{font:500 10px/1 Archivo,sans-serif;color:#8fa3b5}
+.tv2-mp2-lean{margin:0;font:400 11px/1.6 Archivo,sans-serif;color:#a9bccd;text-wrap:pretty}
+.tv2-mp2-lean b{font-weight:700}
+.tv2-mp2-ov{display:flex;flex-direction:column;gap:9px;border-top:1px solid #131c26;padding-top:12px}
+.tv2-mp2-ov-h{display:flex;align-items:center;justify-content:space-between}
+.tv2-mp2-ov-h .k{font:500 11px/1 Archivo,sans-serif;color:#8fa3b5}
+.tv2-mp2-ov-h .v{font:700 15px/1 'IBM Plex Mono',monospace;color:#00ccff}
+.tv2-mp2-ov-bar{height:6px;border-radius:3px;background:#131c26;overflow:hidden}
+.tv2-mp2-ov-bar i{display:block;height:100%;background:linear-gradient(90deg,#0a5c86,#00ccff)}
+.tv2-mp2-ov-note{font:400 10px/1.5 Archivo,sans-serif;color:#4c5d6d}
+.tv2-mp2-empty{padding:24px 16px;font:400 11px/1.6 'IBM Plex Mono',monospace;color:#5d7085;text-align:center}
