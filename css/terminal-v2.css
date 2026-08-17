@@ -74,3 +74,15 @@ body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
   body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="main"]{flex:1 1 0%!important}
   body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="rail"]{flex:0 0 396px!important;width:396px!important;max-width:396px!important}
 }
+
+/* the two zbody display:flex!important rules above (one per breakpoint) started
+   beating terminal-options.js's inline display:none when switching to Options/
+   Research/News — the view rendered on top of a still-visible Overview body
+   instead of replacing it. This rule outranks both regardless of viewport
+   (extra .tv2-hidden class = higher specificity than either). */
+body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="zbody"].tv2-hidden{display:none!important}
+
+/* Market Position's own module CSS renders a ~900px-tall two-column chart —
+   fine in its original wide layout, but it dwarfs every other rail card here
+   and dominates the page. Cap and let it scroll internally instead. */
+body.tv2-artifact-on #sml-mp{max-height:520px!important;overflow-y:auto!important}

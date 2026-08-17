@@ -325,7 +325,13 @@
     }
 
     function activate(name) {
+      /* the responsive pass added display:flex!important to zbody at every
+         breakpoint (terminal-v2.css), which started beating this inline
+         display:none — tab switches stopped actually hiding Overview and the
+         two views rendered stacked. The .tv2-hidden class carries a matching
+         !important override with equal-or-greater specificity. */
       body.style.display = (name === 'Overview') ? '' : 'none';
+      body.classList.toggle('tv2-hidden', name !== 'Overview');
       Object.keys(views).forEach(function (n) { views[n].style.display = (n === name) ? 'block' : 'none'; });
       Object.keys(labels).forEach(function (k) { labels[k].style.color = (k === name) ? '#00ff88' : ''; labels[k].style.cursor = 'pointer'; });
       if (name === 'Research' && !views.Research.__loaded) { views.Research.__loaded = true; loadResearch(views.Research); }
