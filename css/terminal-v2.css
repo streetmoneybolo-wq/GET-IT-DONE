@@ -82,7 +82,12 @@ body.tv2-artifact-on [data-tv2-zone]{align-self:stretch!important}
    (extra .tv2-hidden class = higher specificity than either). */
 body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="zbody"].tv2-hidden{display:none!important}
 
-/* Market Position's own module CSS renders a ~900px-tall two-column chart —
-   fine in its original wide layout, but it dwarfs every other rail card here
-   and dominates the page. Cap and let it scroll internally instead. */
-body.tv2-artifact-on #sml-mp{max-height:520px!important;overflow-y:auto!important}
+/* Market Position's own module renders a ~900px-tall volume-profile canvas
+   (.mp-prof, fixed-height 430px chart) alongside a compact stat-card column
+   covering the same info (profit ratio, resistance, avg cost, support, degree
+   of overlap) — scrolling a card was a band-aid; dropping the redundant tall
+   canvas gets it back to ~610px with zero scroll and no data lost. Forcing
+   the grid to one column stops the now-empty second track from leaving a
+   blank gap beside the remaining content. */
+body.tv2-artifact-on #sml-mp .mp-prof{display:none!important}
+body.tv2-artifact-on #sml-mp .grid{grid-template-columns:1fr!important}
