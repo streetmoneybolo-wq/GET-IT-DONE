@@ -132,19 +132,22 @@
     if (!done.newsCard && main.children[2] && !main.children[2].querySelector('#sml-lf,#sml-ws-left,#sml-ad-slot')) {
       main.children[2].style.display = 'none'; done.newsCard = true;
     }
-    // MAIN[3] = sponsored ← #sml-ad-slot
-    var ad = document.getElementById('sml-ad-slot');
-    if (!done.ad && ad && main.children[3]) { done.ad = adopt(cardBody(main.children[3], true), ad); }
+    // swapped at user request: MP is a tall two-column chart that suits the
+    // wide main column better; sponsored is a compact 970x90 leaderboard that
+    // fits the narrow rail fine.
+    // MAIN[3] = market position ← #sml-mp
+    var mp = document.getElementById('sml-mp');
+    if (!done.mp && mp && main.children[3]) {
+      done.mp = adopt(cardBody(main.children[3], true), mp);
+      if (done.mp) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
+    }
     // RAIL[0] = alert card ← #sml-alert-list (fall back to whole side module's list)
     var al = document.getElementById('sml-alert-list') ||
              (document.getElementById('sml-side-alerts') && document.getElementById('sml-side-alerts').querySelector('.b, ul, ol'));
     if (!done.al && al && rail.children[0]) { done.al = adopt(rail.children[0], al); }
-    // RAIL[2] = market position ← #sml-mp
-    var mp = document.getElementById('sml-mp');
-    if (!done.mp && mp && rail.children[2]) {
-      done.mp = adopt(cardBody(rail.children[2], true), mp);
-      if (done.mp) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
-    }
+    // RAIL[2] = sponsored ← #sml-ad-slot
+    var ad = document.getElementById('sml-ad-slot');
+    if (!done.ad && ad && rail.children[2]) { done.ad = adopt(cardBody(rail.children[2], true), ad); }
     // RAIL[3] = short-sale: no live data owner → hide rather than show fake FINRA numbers
     if (rail.children[3] && !done.ss) { rail.children[3].style.display = 'none'; done.ss = true; }
 
