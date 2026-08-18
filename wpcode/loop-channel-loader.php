@@ -1,16 +1,51 @@
 /**
  * SML Loop Channel — public /channel/{handle}/ loader.
  * WPCode setup: PHP snippet, Auto Insert / Run Everywhere.
- * Escape hatch: ?ch=0. Admin-only preview gate: ?ch=1.
+ * Escape hatch: ?ch=0.
  * ROLLBACK: deactivate this snippet.
+ *
+ * Gate (2026-08-18): a channel page renders publicly ONLY when {handle}
+ * resolves to a real, deliberately created channel — i.e. some user has
+ * that exact value in sml_channel_handle (set only via /create-channel/).
+ * Lookup is on the channel-handle namespace alone; it never falls back to
+ * profile handles (sml_public_handle) — the two must never cross-resolve.
+ * Handles that resolve to no channel stay a normal 404 for everyone.
+ * Admins additionally see any /channel/... URL for preview.
+ *
+ * History: this used to be `return current_user_can('manage_options')` —
+ * the emergency lockdown from when channels went live for every account
+ * with no opt-in. Once /create-channel/ became the only way to set
+ * sml_channel_handle, that blanket lockdown was hiding real, opted-in
+ * channels from every non-admin (404 for the creator's own audience).
  */
 if ( ! function_exists( 'sml_ch_loader_active' ) ) {
+	function sml_ch_loader_requested_handle() {
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		if ( false !== strpos( $uri, '/wp-json' ) || false !== strpos( $uri, '/wp-admin' ) ) { return ''; }
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		return preg_match( '#^/channel/([A-Za-z0-9_.]+)/?$#', $path, $m ) ? strtolower( $m[1] ) : '';
+	}
+
+	function sml_ch_loader_channel_exists( $handle ) {
+		static $cache = array();
+		if ( '' === $handle ) { return false; }
+		if ( isset( $cache[ $handle ] ) ) { return $cache[ $handle ]; }
+		if ( function_exists( 'sml_channel_user_by_handle' ) ) {
+			$cache[ $handle ] = (bool) sml_channel_user_by_handle( $handle );
+			return $cache[ $handle ];
+		}
+		/* data API not loaded (snippet order) — same lookup, same namespace, no profile-handle fallback */
+		$q = new WP_User_Query( array( 'number' => 1, 'count_total' => false, 'fields' => 'ID', 'meta_key' => 'sml_channel_handle', 'meta_value' => $handle ) );
+		$cache[ $handle ] = ! empty( $q->get_results() );
+		return $cache[ $handle ];
+	}
+
 	function sml_ch_loader_active() {
 		if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { return false; }
 		if ( isset( $_GET['ch'] ) && '0' === $_GET['ch'] ) { return false; }
-		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-		if ( false !== strpos( $uri, '/wp-json' ) || false !== strpos( $uri, '/wp-admin' ) ) { return false; }
-		if ( ! preg_match( '#/channel/[A-Za-z0-9_.]+/?(?:\?|$)#', $uri ) ) { return false; }
+		$handle = sml_ch_loader_requested_handle();
+		if ( '' === $handle ) { return false; }
+		if ( sml_ch_loader_channel_exists( $handle ) ) { return true; }
 		return current_user_can( 'manage_options' );
 	}
 
