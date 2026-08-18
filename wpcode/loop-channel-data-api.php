@@ -210,6 +210,59 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		return array_slice( $rows, 0, 20 );
 	}
 
+	/* ---------- channel appearance + profile (the "Loop Channel" design is the
+	   default layout for EVERY channel; the creator's own theme/images/links are
+	   stored per user and served to every viewer). Storage:
+	     sml_channel_name / _tagline / _about / _links / _avatar_id / _banner_id /
+	     _created_at  — written by /create-channel/ (create-channel-api.php)
+	     sml_channel_settings — array: accent, font, aff (2 x {label,url}),
+	                            home_group {url,name}, moderation {role,mods,words,links}
+	     sml_channel_{backdrop|aff1|aff2|group}_id — attachment ids (media route below) */
+	function sml_channel_accents() { return array( '#00ff88', '#00ccff', '#ffd166', '#ff6b4a', '#673aff', '#ff2e66', '#7affc0', '#4c9eff' ); }
+	function sml_channel_fonts() { return array( 'Archivo', 'Space Grotesk', 'Rajdhani', 'Orbitron', 'Exo 2', 'Chakra Petch', 'Oxanium', 'Sora', 'Manrope', 'Outfit', 'Barlow', 'Saira', 'Kanit', 'Play', 'Syne', 'Unbounded', 'Michroma', 'Audiowide' ); }
+	function sml_channel_media_kinds() { return array( 'avatar', 'banner', 'backdrop', 'aff1', 'aff2', 'group' ); }
+	function sml_channel_media_url( $id, $size = 'large' ) {
+		$id = (int) $id; if ( ! $id ) { return ''; }
+		$u = wp_get_attachment_image_url( $id, $size );
+		return $u ? $u : (string) wp_get_attachment_url( $id );
+	}
+	function sml_channel_settings( $user_id ) {
+		$s = get_user_meta( $user_id, 'sml_channel_settings', true );
+		$s = is_array( $s ) ? $s : array();
+		$aff = isset( $s['aff'] ) && is_array( $s['aff'] ) ? $s['aff'] : array();
+		$mod = isset( $s['moderation'] ) && is_array( $s['moderation'] ) ? $s['moderation'] : array();
+		$hg  = isset( $s['home_group'] ) && is_array( $s['home_group'] ) ? $s['home_group'] : array();
+		return array(
+			'accent'     => ( isset( $s['accent'] ) && in_array( $s['accent'], sml_channel_accents(), true ) ) ? $s['accent'] : '#00ff88',
+			'font'       => ( isset( $s['font'] ) && in_array( $s['font'], sml_channel_fonts(), true ) ) ? $s['font'] : 'Archivo',
+			'aff'        => array(
+				array( 'label' => (string) ( $aff[0]['label'] ?? '' ), 'url' => (string) ( $aff[0]['url'] ?? '' ), 'image' => sml_channel_media_url( get_user_meta( $user_id, 'sml_channel_aff1_id', true ) ) ),
+				array( 'label' => (string) ( $aff[1]['label'] ?? '' ), 'url' => (string) ( $aff[1]['url'] ?? '' ), 'image' => sml_channel_media_url( get_user_meta( $user_id, 'sml_channel_aff2_id', true ) ) ),
+			),
+			'home_group' => array( 'url' => (string) ( $hg['url'] ?? '' ), 'name' => (string) ( $hg['name'] ?? '' ), 'members' => (string) ( $hg['members'] ?? '' ), 'image' => sml_channel_media_url( get_user_meta( $user_id, 'sml_channel_group_id', true ) ) ),
+			'moderation' => array(
+				'role'  => (string) ( $mod['role'] ?? 'Mod' ),
+				'mods'  => array_values( array_map( 'strval', (array) ( $mod['mods'] ?? array() ) ) ),
+				'words' => array_values( array_map( 'strval', (array) ( $mod['words'] ?? array() ) ) ),
+				'links' => array_values( array_map( 'strval', (array) ( $mod['links'] ?? array() ) ) ),
+			),
+		);
+	}
+	function sml_channel_profile( $user ) {
+		$links = get_user_meta( $user->ID, 'sml_channel_links', true );
+		$links = is_array( $links ) ? $links : array();
+		return array(
+			'name'       => (string) ( get_user_meta( $user->ID, 'sml_channel_name', true ) ?: $user->display_name ),
+			'tagline'    => (string) get_user_meta( $user->ID, 'sml_channel_tagline', true ),
+			'about'      => (string) get_user_meta( $user->ID, 'sml_channel_about', true ),
+			'links'      => array( 'site' => (string) ( $links['site'] ?? '' ), 'x' => (string) ( $links['x'] ?? '' ), 'youtube' => (string) ( $links['youtube'] ?? '' ) ),
+			'avatar'     => sml_channel_media_url( get_user_meta( $user->ID, 'sml_channel_avatar_id', true ), 'medium' ),
+			'banner'     => sml_channel_media_url( get_user_meta( $user->ID, 'sml_channel_banner_id', true ) ),
+			'backdrop'   => sml_channel_media_url( get_user_meta( $user->ID, 'sml_channel_backdrop_id', true ) ),
+			'created_at' => (string) get_user_meta( $user->ID, 'sml_channel_created_at', true ),
+		);
+	}
+
 	function sml_channel_rest_get( WP_REST_Request $request ) {
 		$user = sml_channel_user_by_handle( $request['handle'] );
 		if ( ! $user ) { return new WP_Error( 'sml_channel_not_found', 'Creator not found.', array( 'status' => 404 ) ); }
@@ -218,12 +271,99 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		$creator = $user->display_name;
 		$videos = sml_channel_videos( $user->ID, $creator, $handle );
 		$posts = sml_channel_posts( $user->ID );
+		$owner = get_current_user_id() && (int) get_current_user_id() === (int) $user->ID;
+		$settings = sml_channel_settings( $user->ID );
+		if ( ! $owner ) { unset( $settings['moderation'] ); } /* mod config is creator-only */
 		return rest_ensure_response( array(
 			'creator' => array( 'id' => (int) $user->ID, 'name' => $creator, 'handle' => $handle, 'profile_handle' => $profile_handle ),
+			'owner'   => (bool) $owner,
+			'profile' => sml_channel_profile( $user ),
+			'appearance' => $settings,
 			'stats' => array( 'videos' => count( $videos ), 'views' => array_sum( wp_list_pluck( $videos, 'views' ) ), 'posts' => count( $posts ) ),
 			'videos' => $videos,
 			'posts' => $posts,
 		) );
+	}
+
+	/* owner-only: the caller must currently own a channel handle */
+	function sml_channel_owner_uid() {
+		$uid = get_current_user_id();
+		if ( ! $uid ) { return 0; }
+		return '' !== sml_channel_handle_for_user( $uid ) ? $uid : 0;
+	}
+	function sml_channel_rest_save_settings( WP_REST_Request $request ) {
+		$uid = sml_channel_owner_uid();
+		if ( ! $uid ) { return new WP_Error( 'sml_channel_no_channel', 'Create a Loop Channel first.', array( 'status' => 403 ) ); }
+		$cur = get_user_meta( $uid, 'sml_channel_settings', true ); $cur = is_array( $cur ) ? $cur : array();
+		$p = $request->get_json_params(); $p = is_array( $p ) ? $p : array();
+
+		if ( array_key_exists( 'accent', $p ) ) { $a = (string) $p['accent']; if ( in_array( $a, sml_channel_accents(), true ) ) { $cur['accent'] = $a; } }
+		if ( array_key_exists( 'font', $p ) ) { $f = (string) $p['font']; if ( in_array( $f, sml_channel_fonts(), true ) ) { $cur['font'] = $f; } }
+		if ( array_key_exists( 'aff', $p ) && is_array( $p['aff'] ) ) {
+			$aff = array();
+			for ( $i = 0; $i < 2; $i++ ) {
+				$row = isset( $p['aff'][ $i ] ) && is_array( $p['aff'][ $i ] ) ? $p['aff'][ $i ] : array();
+				$url = isset( $row['url'] ) ? esc_url_raw( (string) $row['url'], array( 'http', 'https' ) ) : '';
+				$aff[] = array( 'label' => mb_substr( sanitize_text_field( (string) ( $row['label'] ?? '' ) ), 0, 80 ), 'url' => $url );
+			}
+			$cur['aff'] = $aff;
+		}
+		if ( array_key_exists( 'home_group', $p ) && is_array( $p['home_group'] ) ) {
+			$hg = $p['home_group'];
+			$url = isset( $hg['url'] ) ? (string) $hg['url'] : '';
+			if ( '' !== $url && ! preg_match( '#^https?://#i', $url ) ) { $url = home_url( '/' . ltrim( $url, '/' ) ); }
+			$cur['home_group'] = array( 'url' => esc_url_raw( $url, array( 'http', 'https' ) ), 'name' => mb_substr( sanitize_text_field( (string) ( $hg['name'] ?? '' ) ), 0, 60 ), 'members' => mb_substr( sanitize_text_field( (string) ( $hg['members'] ?? '' ) ), 0, 20 ) );
+		}
+		if ( array_key_exists( 'moderation', $p ) && is_array( $p['moderation'] ) ) {
+			$m = $p['moderation'];
+			$list = static function ( $v, $max, $len ) { $out = array(); foreach ( (array) $v as $x ) { $x = mb_substr( sanitize_text_field( (string) $x ), 0, $len ); if ( '' !== $x ) { $out[] = $x; } if ( count( $out ) >= $max ) { break; } } return array_values( array_unique( $out ) ); };
+			$cur['moderation'] = array(
+				'role'  => mb_substr( sanitize_text_field( (string) ( $m['role'] ?? 'Mod' ) ), 0, 30 ) ?: 'Mod',
+				'mods'  => $list( $m['mods'] ?? array(), 50, 40 ),
+				'words' => $list( $m['words'] ?? array(), 200, 60 ),
+				'links' => $list( $m['links'] ?? array(), 200, 100 ),
+			);
+		}
+		update_user_meta( $uid, 'sml_channel_settings', $cur );
+
+		/* profile text fields share storage with /create-channel/ */
+		if ( array_key_exists( 'name', $p ) ) { $n = mb_substr( sanitize_text_field( (string) $p['name'] ), 0, 60 ); if ( '' !== $n ) { update_user_meta( $uid, 'sml_channel_name', $n ); } }
+		if ( array_key_exists( 'tagline', $p ) ) { update_user_meta( $uid, 'sml_channel_tagline', mb_substr( sanitize_text_field( (string) $p['tagline'] ), 0, 120 ) ); }
+		if ( array_key_exists( 'about', $p ) ) { update_user_meta( $uid, 'sml_channel_about', mb_substr( sanitize_textarea_field( (string) $p['about'] ), 0, 600 ) ); }
+		if ( array_key_exists( 'links', $p ) && is_array( $p['links'] ) ) {
+			$links = array();
+			foreach ( array( 'site', 'x', 'youtube' ) as $k ) {
+				$v = isset( $p['links'][ $k ] ) ? trim( (string) $p['links'][ $k ] ) : '';
+				if ( '' === $v ) { continue; }
+				$links[ $k ] = preg_match( '#^https?://#i', $v ) ? esc_url_raw( $v, array( 'http', 'https' ) ) : mb_substr( sanitize_text_field( $v ), 0, 120 );
+			}
+			update_user_meta( $uid, 'sml_channel_links', $links );
+		}
+		$user = get_userdata( $uid );
+		return rest_ensure_response( array( 'ok' => true, 'appearance' => sml_channel_settings( $uid ), 'profile' => sml_channel_profile( $user ) ) );
+	}
+
+	/* POST multipart {file, kind} or JSON {kind, remove:true}. GIFs allowed (design: "GIFs autoplay"). */
+	function sml_channel_rest_media( WP_REST_Request $request ) {
+		$uid = sml_channel_owner_uid();
+		if ( ! $uid ) { return new WP_Error( 'sml_channel_no_channel', 'Create a Loop Channel first.', array( 'status' => 403 ) ); }
+		$kind = sanitize_key( (string) $request->get_param( 'kind' ) );
+		if ( ! in_array( $kind, sml_channel_media_kinds(), true ) ) { return new WP_Error( 'sml_channel_bad_kind', 'Unknown image slot.', array( 'status' => 400 ) ); }
+		$meta_key = 'sml_channel_' . $kind . '_id';
+		if ( $request->get_param( 'remove' ) ) {
+			delete_user_meta( $uid, $meta_key );
+			return rest_ensure_response( array( 'ok' => true, 'kind' => $kind, 'url' => '' ) );
+		}
+		$files = $request->get_file_params();
+		if ( empty( $files['file'] ) ) { return new WP_Error( 'sml_channel_no_file', 'Choose an image.', array( 'status' => 400 ) ); }
+		if ( (int) ( $files['file']['size'] ?? 0 ) > 8 * 1024 * 1024 ) { return new WP_Error( 'sml_channel_too_big', 'Keep images under 8 MB.', array( 'status' => 413 ) ); }
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$id = media_handle_upload( 'file', 0, array( 'post_title' => 'Loop Channel ' . $kind ), array( 'test_form' => false, 'mimes' => array( 'jpg|jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif' ) ) );
+		if ( is_wp_error( $id ) ) { return new WP_Error( 'sml_channel_upload_failed', $id->get_error_message(), array( 'status' => 400 ) ); }
+		update_user_meta( $uid, $meta_key, (int) $id );
+		return rest_ensure_response( array( 'ok' => true, 'kind' => $kind, 'id' => (int) $id, 'url' => sml_channel_media_url( $id, 'avatar' === $kind ? 'medium' : 'large' ) ) );
 	}
 
 	function sml_channel_rest_handle_availability( WP_REST_Request $request ) {
@@ -263,6 +403,14 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		) );
 		register_rest_route( 'sml-channel/v1', '/handle', array(
 			'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_save_handle',
+			'permission_callback' => 'is_user_logged_in',
+		) );
+		register_rest_route( 'sml-channel/v1', '/settings', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_save_settings',
+			'permission_callback' => 'is_user_logged_in',
+		) );
+		register_rest_route( 'sml-channel/v1', '/media', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_media',
 			'permission_callback' => 'is_user_logged_in',
 		) );
 	} );

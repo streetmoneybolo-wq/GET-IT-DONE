@@ -225,3 +225,32 @@ body.lch-on{margin:0;background:#04060a !important}
 @media (prefers-reduced-motion:reduce){
   .lch-orbit-card,.lch-post{transition:none}.lch-avring,.lch-logo-live .dot,.lch-avlive,.lch-hero-badge .dot{animation:none}
 }
+
+/* ---- default-for-all-users additions (2026-08-18): tagline, ABOUT, owner
+   image slots, drawer extras. Owner-only affordances are gated on .lch-owner. ---- */
+.lch-idname .tg{font:400 10px/1.4 var(--chfont);color:#8fa3b5;text-align:center;max-width:240px;text-wrap:pretty}
+.lch-golive{text-decoration:none;display:inline-block}
+.lch-about{display:flex;flex-direction:column;gap:10px;max-width:640px}
+.lch-section-h .t.muted{color:#5d7085}
+.lch-about-body{margin:0;font:400 12px/1.65 var(--chfont);color:#aebccb;text-wrap:pretty;white-space:pre-line}
+.lch-about-body .tag{color:var(--accent);font-weight:600}
+.lch-about-meta{font:400 9px/1 'IBM Plex Mono',monospace;color:#4c5d6d}
+.lch-muted{color:#4c5d6d;font-style:italic}
+.lch-f-input:is(textarea){resize:vertical;line-height:1.5;min-height:84px;font-size:11px}
+.lch-f-add.ghost{color:#8fa3b5;background:#0a121b;border:1px solid #1c2833}
+.lch-f-add.ghost:hover{color:var(--accent);border-color:var(--accent)}
+/* image slots — passive for viewers, interactive for the owner */
+.lch-slot{transition:box-shadow .15s}
+.lch-owner .lch-slot{cursor:pointer}
+.lch-owner .lch-slot.empty::after{content:attr(data-ph);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font:500 9px/1.3 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#4c5d6d;border:1px dashed #2a3a49;border-radius:inherit;background:rgba(10,18,27,.35);pointer-events:none}
+.lch-owner .lch-av.lch-slot.empty::after{font-size:8px;border-radius:50%}
+.lch-owner .lch-slot:hover{box-shadow:inset 0 0 0 1px var(--accent)}
+.lch-owner .lch-slot.drag{box-shadow:inset 0 0 0 2px var(--accent);filter:brightness(1.15)}
+.lch-slot.busy{opacity:.55;animation:pulseDot 1s ease-in-out infinite}
+/* backdrop stays at z 0 under the fade; for the owner, clicks/drops in the card's
+   empty areas fall through to it while avatar/name/buttons stay interactive */
+.lch-idcard-fade{pointer-events:none}
+.lch-owner .lch-idcard-in{pointer-events:none}
+.lch-owner .lch-idcard-in > *{pointer-events:auto}
+.lch-owner .lch-idcard-bg.lch-slot.empty{opacity:1}
+.lch-owner .lch-idcard-bg.lch-slot.empty::after{align-items:flex-start;padding-top:6px;background:none;border-style:none;color:#3d4f5f}
