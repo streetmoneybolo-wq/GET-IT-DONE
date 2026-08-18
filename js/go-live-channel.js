@@ -68,7 +68,7 @@
   var tries = 0;
   var boot = setInterval(function () {
     tries++;
-    if (findRow('encoder')) { clearInterval(boot); paint(); load(); }
+    if (findRow('encoder')) { clearInterval(boot); paint(); load(); setInterval(function () { if (!card || !card.isConnected) paint(); }, 1000); }
     else if (tries > 60) clearInterval(boot);
   }, 500);
 })();
