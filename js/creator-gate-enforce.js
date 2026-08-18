@@ -27,7 +27,7 @@
     if (old) old.remove();
     var o = document.createElement('div');
     o.id = 'sml-cg-block';
-    o.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#04060a;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif';
+    o.style.cssText = 'position:fixed;inset:0;z-index:2147482000;background:#04060a;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif';
     o.innerHTML =
       '<div style="max-width:420px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px">' +
       '<span style="font:700 9px/1 Archivo,sans-serif;letter-spacing:.14em;color:#5d7085">CREATOR REQUIREMENT</span>' +
@@ -48,7 +48,7 @@
     if (old) old.remove();
     var o = document.createElement('div');
     o.id = 'sml-cg-block';
-    o.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#04060a;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif';
+    o.style.cssText = 'position:fixed;inset:0;z-index:2147482000;background:#04060a;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif';
     o.innerHTML = '<div style="text-align:center"><span style="font:700 10px/1 Archivo,sans-serif;letter-spacing:.14em;color:#5d7085">CHECKING CREATOR ACCESS</span></div>';
     document.documentElement.appendChild(o);
     if (document.body) document.body.style.overflow = 'hidden';

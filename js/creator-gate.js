@@ -61,7 +61,7 @@
   }
 
   /* ---------- modal shell ---------- */
-  var CSS = '#sml-cg-overlay{position:fixed;inset:0;z-index:2147483000;background:rgba(2,4,8,.8);display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif}' +
+  var CSS = '#sml-cg-overlay{position:fixed;inset:0;z-index:2147483100;background:rgba(2,4,8,.8);display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif}' +
     '#sml-cg-modal{width:420px;max-width:100%;max-height:88vh;overflow-y:auto;background:#070b10;border:1px solid #16202b;border-radius:14px;padding:22px}' +
     '.sml-cg-h{font:800 15px/1 Archivo,sans-serif;color:#e6edf3;margin:0 0 4px}' +
     '.sml-cg-sub{font:400 11px/1.5 Archivo,sans-serif;color:#5d7085;margin:0 0 18px}' +
@@ -93,7 +93,12 @@
     if (!LOGGED_IN) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
     openModal('<p style="color:#5d7085;font:400 12px/1 Archivo,sans-serif">Loading…</p>');
     api('/sml-creator-gate/v1/status').then(function (res) {
-      if (!res.ok) { openModal('<p class="sml-cg-h">Couldn’t load your account status</p><p class="sml-cg-sub">Try again in a moment.</p><button class="sml-cg-cancel" onclick="document.getElementById(\'sml-cg-overlay\').remove()">Close</button>'); return; }
+      if (!res.ok) {
+        // bound in JS, not an inline onclick attribute — inline handlers are blocked by CSP on some pages
+        openModal('<p class="sml-cg-h">Couldn’t load your account status</p><p class="sml-cg-sub">Try again in a moment.</p><button class="sml-cg-cancel" id="sml-cg-errclose">Close</button>');
+        var ec = el('sml-cg-errclose'); if (ec) ec.onclick = closeModal;
+        return;
+      }
       var j = res.j || {};
       if (!j.registered) renderRegistration(kind);
       else if ((kind === 'channel' && j.hasChannel) || (kind === 'letter' && j.hasLetter)) {
