@@ -32,7 +32,7 @@
       '<div style="max-width:420px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px">' +
       '<span style="font:700 9px/1 Archivo,sans-serif;letter-spacing:.14em;color:#5d7085">CREATOR REQUIREMENT</span>' +
       '<h2 style="font:800 20px/1.3 Archivo,sans-serif;color:#e6edf3;margin:0">' + label + '</h2>' +
-      '<p style="font:400 12px/1.6 Archivo,sans-serif;color:#8fa3b5;margin:0">This is a one-time setup — name, date of birth, city, state, phone, and email, then pick a handle.</p>' +
+      '<p style="font:400 12px/1.6 Archivo,sans-serif;color:#8fa3b5;margin:0">Pick a handle to get started.</p>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">' +
       '<button id="sml-cg-block-channel" style="font:700 12px/1 Archivo,sans-serif;color:#04060a;background:#00ff88;border:none;border-radius:8px;padding:14px 22px;cursor:pointer">' + (needsRegistration ? 'Register + create Channel' : 'Create a Loop Channel') + '</button>' +
       (allowLetter ? '<button id="sml-cg-block-letter" style="font:700 12px/1 Archivo,sans-serif;color:#e6edf3;background:#101923;border:1px solid #2a3a49;border-radius:8px;padding:14px 22px;cursor:pointer">' + (needsRegistration ? 'Register + create Letter' : 'Create a Loop Letter') + '</button>' : '') +
@@ -89,12 +89,16 @@
       }
       if (!res.ok) { verificationFailure(); return; }
       var j = res.j || {};
+      /* URGENT (2026-08-18): no longer gating on j.registered — the
+         registration step it referred to (name/DOB/city/state/phone) was
+         removed from the client flow, see creator-gate.js. Gating on it here
+         too would have permanently locked out anyone who creates a Channel
+         or Letter, since nothing sets it true anymore. Entitlement alone. */
       var entitlement = NEEDS_CHANNEL_ONLY ? !!j.hasChannel : !!(j.hasChannel || j.hasLetter);
-      if (j.registered && entitlement) { allowPage(); return; }
+      if (entitlement) { allowPage(); return; }
       var showGate = function () {
         var label = NEEDS_CHANNEL_ONLY ? 'You need a Loop Channel to continue' : 'You need a Loop Channel or Loop Letter to continue';
-        if (!j.registered) label = 'Complete creator registration to continue';
-        blockingOverlay(label, !j.registered, !NEEDS_CHANNEL_ONLY);
+        blockingOverlay(label, false, !NEEDS_CHANNEL_ONLY);
         ensureCreatorGateJs(function () {
           var channel = document.getElementById('sml-cg-block-channel');
           var letter = document.getElementById('sml-cg-block-letter');

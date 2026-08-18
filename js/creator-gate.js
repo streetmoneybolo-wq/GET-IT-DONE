@@ -100,54 +100,21 @@
         return;
       }
       var j = res.j || {};
-      if (!j.registered) renderRegistration(kind);
-      else if ((kind === 'channel' && j.hasChannel) || (kind === 'letter' && j.hasLetter)) {
+      /* URGENT (2026-08-18): the name/DOB/city/state/phone registration step
+         was removed — it collected real personal data under a flow the real
+         design (Create Loop Channel.dc.html) doesn't call for at all. That
+         design only wants a verified email at channel-creation time; DOB/
+         phone/address belong in a future monetization Settings screen, not
+         here. Skip straight to the handle step until that's rebuilt properly. */
+      if ((kind === 'channel' && j.hasChannel) || (kind === 'letter' && j.hasLetter)) {
         window.location.href = kind === 'channel' ? '/channel/' + encodeURIComponent(j.channelHandle) + '/?ch=1' : '/creator-studio/loop-letters/write/';
       } else renderHandleStep(kind, j.creatorName || '');
     });
   }
 
-  function renderRegistration(kind) {
-    openModal(
-      '<h3 class="sml-cg-h">Complete your creator profile</h3>' +
-      '<p class="sml-cg-sub">Required once, before your first Loop ' + (kind === 'letter' ? 'Letter' : 'Channel') + '.</p>' +
-      '<div class="sml-cg-row"><label>FULL NAME</label><input id="sml-cg-name" type="text" autocomplete="name"></div>' +
-      '<div class="sml-cg-row2">' +
-        '<div class="sml-cg-row"><label>DATE OF BIRTH</label><input id="sml-cg-dob" type="date"></div>' +
-        '<div class="sml-cg-row"><label>PHONE</label><input id="sml-cg-phone" type="tel" autocomplete="tel"></div>' +
-      '</div>' +
-      '<div class="sml-cg-row2">' +
-        '<div class="sml-cg-row"><label>CITY</label><input id="sml-cg-city" type="text" autocomplete="address-level2"></div>' +
-        '<div class="sml-cg-row"><label>STATE</label><input id="sml-cg-state" type="text" autocomplete="address-level1"></div>' +
-      '</div>' +
-      '<div class="sml-cg-row"><label>EMAIL</label><input id="sml-cg-email" type="email" autocomplete="email"></div>' +
-      '<div class="sml-cg-err" id="sml-cg-regerr"></div>' +
-      '<div class="sml-cg-btns"><button class="sml-cg-cancel" id="sml-cg-regcancel">Cancel</button><button class="sml-cg-primary" id="sml-cg-regsubmit">Continue</button></div>'
-    );
-    el('sml-cg-regcancel').onclick = closeModal;
-    el('sml-cg-regsubmit').onclick = function () {
-      var body = {
-        name: el('sml-cg-name').value.trim(), dob: el('sml-cg-dob').value,
-        city: el('sml-cg-city').value.trim(), state: el('sml-cg-state').value.trim(),
-        phone: el('sml-cg-phone').value.trim(), email: el('sml-cg-email').value.trim()
-      };
-      var btn = el('sml-cg-regsubmit'); btn.disabled = true; btn.textContent = 'Saving…';
-      api('/sml-creator-gate/v1/register', { method: 'POST', body: JSON.stringify(body) }).then(function (res) {
-        btn.disabled = false; btn.textContent = 'Continue';
-        if (res.ok) {
-          api('/sml-creator-gate/v1/status').then(function (next) {
-            var s = next.j || {};
-            if (next.ok && ((kind === 'channel' && s.hasChannel) || (kind === 'letter' && s.hasLetter))) {
-              window.location.reload();
-              return;
-            }
-            renderHandleStep(kind, s.creatorName || body.name);
-          });
-        }
-        else el('sml-cg-regerr').textContent = (res.j && res.j.message) || 'Could not save — check the fields above.';
-      });
-    };
-  }
+  /* renderRegistration (name/DOB/city/state/phone) removed 2026-08-18 — see
+     the note in startFlow(). Was here; check git history if the monetization
+     Settings screen work later needs to reuse any of this. */
 
   function renderHandleStep(kind, creatorName) {
     var isChannel = kind === 'channel';
