@@ -16,7 +16,7 @@
   try { path = decodeURIComponent(location.pathname); } catch (e) { path = location.pathname; }
   path = path.toLowerCase().replace(/\/{2,}/g, '/').replace(/\/?$/, '/');
   var NEEDS_CHANNEL_ONLY = /^\/(go-live|upload-video)\//.test(path);
-  var NEEDS_EITHER = /^\/creator-studio\//.test(path);
+  var NEEDS_EITHER = /^\/creator-studio\//.test(path) && !/^\/creator-studio\/analytics\//.test(path); // analytics scopes itself per user
   if (!NEEDS_CHANNEL_ONLY && !NEEDS_EITHER) return;
 
   var loader = document.getElementById('sml-cg-js');

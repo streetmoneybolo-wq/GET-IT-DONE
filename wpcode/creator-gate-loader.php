@@ -30,6 +30,9 @@ if ( ! function_exists( 'sml_cg_loader_is_gated_path' ) ) {
 	function sml_cg_loader_gate_kind() {
 		$path = sml_cg_loader_norm_path();
 		if ( preg_match( '#^/(go-live|upload-video)/#', $path ) ) { return 'channel'; }
+		// the analytics dashboard scopes itself per user (group members without a
+		// Channel/Letter still see their group analytics) — never gated
+		if ( preg_match( '#^/creator-studio/analytics/#', $path ) ) { return ''; }
 		if ( preg_match( '#^/creator-studio/#', $path ) ) { return 'either'; }
 		return '';
 	}
