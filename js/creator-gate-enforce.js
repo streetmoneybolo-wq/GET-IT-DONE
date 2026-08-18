@@ -9,9 +9,14 @@
   if (window.__smlCreatorGateEnforceBooted) return;
   window.__smlCreatorGateEnforceBooted = true;
 
-  var path = location.pathname.replace(/\/?$/, '/');
-  var NEEDS_CHANNEL_ONLY = /\/(go-live|upload-video)\//.test(path);
-  var NEEDS_EITHER = /\/creator-studio\//.test(path);
+  // Normalize before matching (audit 2026-08-18: /Upload-Video/, /go-live//,
+  // percent-encoded variants were served WITHOUT the gate). Same rules as the
+  // loader snippet: decode, lowercase, collapse slashes, ensure trailing slash.
+  var path;
+  try { path = decodeURIComponent(location.pathname); } catch (e) { path = location.pathname; }
+  path = path.toLowerCase().replace(/\/{2,}/g, '/').replace(/\/?$/, '/');
+  var NEEDS_CHANNEL_ONLY = /^\/(go-live|upload-video)\//.test(path);
+  var NEEDS_EITHER = /^\/creator-studio\//.test(path);
   if (!NEEDS_CHANNEL_ONLY && !NEEDS_EITHER) return;
 
   var loader = document.getElementById('sml-cg-js');
@@ -39,8 +44,27 @@
       '</div>' +
       '<a href="/" style="font:600 11px/1 Archivo,sans-serif;color:#5d7085;text-decoration:none">← Back to home</a>' +
       '</div>';
+    o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-label', label); o.tabIndex = -1;
     document.documentElement.appendChild(o);
     document.body.style.overflow = 'hidden';
+    trapFocus(o);
+    var first = o.querySelector('button, a'); if (first) { try { first.focus(); } catch (e) {} }
+  }
+  // keep keyboard/AT users inside the gate (the page underneath stays in the DOM)
+  var trapHandler = null;
+  function trapFocus(o) {
+    if (trapHandler) document.removeEventListener('keydown', trapHandler, true);
+    trapHandler = function (e) {
+      if (e.key !== 'Tab' || !document.getElementById('sml-cg-block')) return;
+      var modal = document.getElementById('sml-cg-overlay');
+      var scope = modal || o;
+      var f = [].filter.call(scope.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'), function (x) { return !x.disabled && x.offsetParent !== null; });
+      if (!f.length) { e.preventDefault(); return; }
+      var i = f.indexOf(document.activeElement);
+      if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+    };
+    document.addEventListener('keydown', trapHandler, true);
   }
 
   function checkingOverlay() {
@@ -59,6 +83,7 @@
     var old = document.getElementById('sml-cg-block');
     if (old) old.remove();
     if (document.body) document.body.style.overflow = '';
+    if (trapHandler) { document.removeEventListener('keydown', trapHandler, true); trapHandler = null; }
     document.documentElement.dataset.smlCgEnforce = 'allowed';
   }
 
@@ -87,7 +112,12 @@
         window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.href);
         return;
       }
+      if (res.status === 403 && res.j && /nonce/i.test(res.j.code || '') && !sessionStorage.getItem('sml-cg-nonce-retry')) {
+        // stale/foreign nonce (page cache) — a reload issues a fresh one; retry once
+        sessionStorage.setItem('sml-cg-nonce-retry', '1'); window.location.reload(); return;
+      }
       if (!res.ok) { verificationFailure(); return; }
+      sessionStorage.removeItem('sml-cg-nonce-retry');
       var j = res.j || {};
       /* URGENT (2026-08-18): no longer gating on j.registered — the
          registration step it referred to (name/DOB/city/state/phone) was
@@ -116,4 +146,6 @@
   checkingOverlay();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check, { once: true });
   else check();
+  // back/forward cache restore: entitlement may have changed (channel just created) — re-check
+  window.addEventListener('pageshow', function (e) { if (e.persisted) { checkingOverlay(); check(); } });
 })();

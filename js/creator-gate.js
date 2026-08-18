@@ -26,39 +26,61 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function el(id) { return document.getElementById(id); }
 
-  /* ---------- dropdown injection: target the verified live account menu,
-     with defensive fallbacks for templates that render an older shell. ---------- */
-  function findAccountMenu() {
-    var exact = document.querySelector('.sml-acct[data-sml-acct] .sml-acct__menu[role="menu"]');
-    if (exact) return { trigger: exact.parentElement && exact.parentElement.querySelector('.sml-acct__btn'), menu: exact };
-    var candidates = document.querySelectorAll('[aria-label*="Account" i], [aria-label*="account menu" i], .sml-account-menu, .account-menu, [data-account-menu]');
-    for (var i = 0; i < candidates.length; i++) {
-      var c = candidates[i];
-      var menu = c.tagName === 'UL' || c.tagName === 'DIV' ? c : (c.nextElementSibling || c.closest('[role="menu"]'));
-      if (menu) return { trigger: c, menu: menu };
-    }
-    return null;
+  /* ---------- dropdown injection ----------
+     Audit 2026-08-18: the old fallback accepted ANY element whose aria-label
+     mentioned "Account" as the menu — on the Home Feed homepage that is the
+     avatar BUTTON, so the links were injected inside the button, unstyled;
+     and on the Creator Studio shell (no menu at all) a floating "CREATOR" box
+     was pinned bottom-left forever. Now: only real menu containers, no
+     floating box, and we watch for menus that are built on demand
+     (Home Feed builds #sml-hf-memenu when the avatar is clicked). ---------- */
+  var MENU_SELECTORS = [
+    '.sml-acct[data-sml-acct] .sml-acct__menu[role="menu"]', // theme launcher (server-printed in wp_footer)
+    '#sml-hf-memenu',                                        // Home Feed popover (built on demand)
+    '[role="menu"][aria-label*="account" i]',
+    '.sml-account-menu', '.account-menu', '[data-account-menu]'
+  ];
+  function findAccountMenus() {
+    var out = [];
+    MENU_SELECTORS.forEach(function (sel) {
+      [].forEach.call(document.querySelectorAll(sel), function (m) {
+        // never a trigger: buttons/links/anything role=button
+        if (m.tagName === 'BUTTON' || m.tagName === 'A' || m.getAttribute('role') === 'button') return;
+        if (out.indexOf(m) === -1) out.push(m);
+      });
+    });
+    return out;
   }
-  function injectMenuItems() {
-    if (el('sml-cg-open-channel') || !LOGGED_IN) return;
-    var found = findAccountMenu();
-    var items =
-      '<div class="sml-acct__sep" data-sml-cg-sep></div>' +
-      '<a href="#" id="sml-cg-open-channel" class="sml-acct__item" role="menuitem"><span class="sml-acct__label">Create a Loop Channel</span></a>' +
-      '<a href="#" id="sml-cg-open-letter" class="sml-acct__item" role="menuitem"><span class="sml-acct__label">Create a Loop Letter</span></a>';
-    if (found && found.menu) {
-      found.menu.insertAdjacentHTML('beforeend', items);
-    } else {
-      var btn = document.createElement('div');
-      btn.id = 'sml-cg-fallback';
-      btn.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:99999;background:#0a121b;border:1px solid #1c2833;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;font-family:Archivo,sans-serif';
-      btn.innerHTML = '<span style="font:700 9px/1 Archivo,sans-serif;letter-spacing:.1em;color:#5d7085;padding:0 4px">CREATOR</span>' + items;
-      document.body.appendChild(btn);
-    }
-    var chLink = el('sml-cg-open-channel'), ltLink = el('sml-cg-open-letter');
-    if (chLink) chLink.onclick = function (e) { e.preventDefault(); startFlow('channel'); };
-    if (ltLink) ltLink.onclick = function (e) { e.preventDefault(); startFlow('letter'); };
+  function closeHostMenu(menu) {
+    // best effort: the launcher toggles is-open/open + aria-expanded on its trigger
+    try {
+      menu.classList.remove('is-open', 'open', 'active');
+      var host = menu.closest('.sml-acct, [data-sml-acct], .sml-hf-me') || menu.parentElement;
+      var trig = host && host.querySelector('[aria-expanded="true"]');
+      if (trig) trig.setAttribute('aria-expanded', 'false');
+      if (menu.id === 'sml-hf-memenu') { menu.style.display = 'none'; }
+    } catch (e) {}
   }
+  function injectInto(menu) {
+    if (!LOGGED_IN || menu.querySelector('[data-sml-cg-item]')) return;
+    // adopt the host menu's own item look so we match wherever we land
+    var proto = menu.querySelector('a[role="menuitem"], a, button');
+    var cls = proto ? (proto.className || '') : 'sml-acct__item';
+    var sepProto = menu.querySelector('.sml-acct__sep, hr, [role="separator"]');
+    var sep = sepProto ? sepProto.cloneNode(false) : document.createElement('div');
+    if (!sepProto) sep.className = 'sml-acct__sep';
+    sep.setAttribute('data-sml-cg-item', 'sep');
+    var mk = function (label, kind) {
+      var a = document.createElement('a'); a.href = '#'; a.className = cls; a.setAttribute('role', 'menuitem'); a.setAttribute('data-sml-cg-item', kind);
+      var span = document.createElement('span'); span.className = 'sml-acct__label'; span.textContent = label; a.appendChild(span);
+      a.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); closeHostMenu(menu); startFlow(kind); });
+      return a;
+    };
+    menu.appendChild(sep);
+    menu.appendChild(mk('Create a Loop Channel', 'channel'));
+    menu.appendChild(mk('Create a Loop Letter', 'letter'));
+  }
+  function injectMenuItems() { findAccountMenus().forEach(injectInto); }
 
   /* ---------- modal shell ---------- */
   var CSS = '#sml-cg-overlay{position:fixed;inset:0;z-index:2147483100;background:rgba(2,4,8,.8);display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif}' +
@@ -79,13 +101,35 @@
     '.sml-cg-handlein span{font:600 13px/1 \'IBM Plex Mono\',monospace;color:#4c5d6d;padding:12px 2px 12px 12px}' +
     '.sml-cg-handlein input{border:none;background:none;color:#7ae6ff;font:600 13px/1 \'IBM Plex Mono\',monospace;padding:12px 12px 12px 2px}';
   function ensureCSS() { if (!document.getElementById('sml-cg-css')) { var s = document.createElement('style'); s.id = 'sml-cg-css'; s.textContent = CSS; document.head.appendChild(s); } }
-  function closeModal() { var o = el('sml-cg-overlay'); if (o) o.remove(); }
+  var lastFocus = null;
+  function closeModal() {
+    var o = el('sml-cg-overlay'); if (o) o.remove();
+    document.removeEventListener('keydown', modalKeys, true);
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+    lastFocus = null;
+  }
+  function modalKeys(e) {
+    var o = el('sml-cg-overlay'); if (!o) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(); return; }
+    if (e.key !== 'Tab') return;
+    var f = [].filter.call(o.querySelectorAll('button, a[href], input, select, textarea'), function (x) { return !x.disabled && x.offsetParent !== null; });
+    if (!f.length) { e.preventDefault(); return; }
+    var i = f.indexOf(document.activeElement);
+    if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+  }
   function openModal(html) {
-    ensureCSS(); closeModal();
+    ensureCSS();
+    if (!el('sml-cg-overlay')) lastFocus = document.activeElement;
+    var prev = el('sml-cg-overlay'); if (prev) prev.remove();
     var o = document.createElement('div'); o.id = 'sml-cg-overlay';
+    o.setAttribute('role', 'dialog'); o.setAttribute('aria-modal', 'true'); o.tabIndex = -1;
     o.innerHTML = '<div id="sml-cg-modal">' + html + '</div>';
     o.onclick = function (e) { if (e.target === o) closeModal(); };
     document.body.appendChild(o);
+    document.removeEventListener('keydown', modalKeys, true);
+    document.addEventListener('keydown', modalKeys, true);
+    var first = o.querySelector('input, select, textarea, button'); if (first) { try { first.focus(); } catch (e) {} }
   }
 
   /* ---------- flow ---------- */
@@ -97,6 +141,10 @@
     if (kind === 'channel') { window.location.href = '/create-channel/'; return; }
     openModal('<p style="color:#5d7085;font:400 12px/1 Archivo,sans-serif">Loading…</p>');
     api('/sml-creator-gate/v1/status').then(function (res) {
+      if (res.status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
+      if (res.status === 403 && res.j && /nonce/i.test(res.j.code || '') && !sessionStorage.getItem('sml-cg-nonce-retry')) {
+        sessionStorage.setItem('sml-cg-nonce-retry', '1'); window.location.reload(); return; // stale nonce (page cache) -> fresh one
+      }
       if (!res.ok) {
         // bound in JS, not an inline onclick attribute — inline handlers are blocked by CSP on some pages
         openModal('<p class="sml-cg-h">Couldn’t load your account status</p><p class="sml-cg-sub">Try again in a moment.</p><button class="sml-cg-cancel" id="sml-cg-errclose">Close</button>');
@@ -187,7 +235,19 @@
   var tries = 0;
   var t = setInterval(function () {
     tries++;
-    if (document.body) { clearInterval(t); injectMenuItems(); }
+    if (document.body) { clearInterval(t); injectMenuItems(); watchMenus(); }
     else if (tries > 60) clearInterval(t);
   }, 300);
+  function watchMenus() {
+    // menus that appear later (Home Feed builds its popover on click; theme
+    // launcher prints late) - re-run on DOM additions, debounced; stays cheap
+    // because injectInto() is a no-op once a menu carries our items.
+    if (!('MutationObserver' in window)) { setTimeout(injectMenuItems, 2000); setTimeout(injectMenuItems, 6000); return; }
+    var pending = null;
+    var mo = new MutationObserver(function () {
+      if (pending) return;
+      pending = setTimeout(function () { pending = null; injectMenuItems(); }, 120);
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
 })();
