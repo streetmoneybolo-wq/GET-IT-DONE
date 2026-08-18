@@ -63,11 +63,29 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 	function sml_channel_profile_handle_available( $handle ) {
 		$handle = sml_channel_clean_handle( $handle );
 		if ( '' === $handle ) { return false; }
-		$route = '/sml-members/v1/handle-availability';
-		$check = new WP_REST_Request( 'GET', $route );
-		$check->set_param( 'handle', $handle );
-		$check->set_param( '_sml_channel_namespace_check', 1 );
-		$result = rest_do_request( $check );
+		$ask = static function () use ( $handle ) {
+			$check = new WP_REST_Request( 'GET', '/sml-members/v1/handle-availability' );
+			$check->set_param( 'handle', $handle );
+			$check->set_param( '_sml_channel_namespace_check', 1 );
+			return rest_do_request( $check );
+		};
+		$result = $ask();
+		if ( ! is_wp_error( $result ) && 403 === (int) $result->get_status() ) {
+			$data = (array) $result->get_data();
+			if ( isset( $data['code'] ) && 'sml_handle_locked' === $data['code'] ) {
+				/* FIX 2026-08-18: for every signed-in member the profile service answers
+				   403 "Handles are locked after signup" — a statement about the CALLER's
+				   own profile handle, not about the handle being asked about. Failing
+				   closed on it made EVERY channel handle read as taken, site-wide, so no
+				   creator could ever claim one (and the Creator Gate then locked them all
+				   out of Go Live / Upload). Ask again exactly the way signup does —
+				   anonymously — so the real availability rules answer. Any other error
+				   still fails closed. */
+				$uid = get_current_user_id();
+				wp_set_current_user( 0 );
+				try { $result = $ask(); } finally { wp_set_current_user( $uid ); }
+			}
+		}
 		if ( is_wp_error( $result ) || $result->get_status() >= 400 ) { return false; }
 		$data = (array) $result->get_data();
 		if ( array_key_exists( 'available', $data ) ) { return (bool) $data['available']; }
