@@ -45,7 +45,8 @@
     if (!encCard && !row) return null;
     card = document.createElement('div');
     card.id = 'sml-gl-screens';
-    card.style.cssText = 'margin:0 0 12px;border-radius:12px;border:1px solid #1c2833;background:linear-gradient(180deg,#0d151f,#0a0f16);padding:12px 14px;display:flex;flex-direction:column;gap:10px;font-family:inherit';
+    /* span both columns of the .gl-health grid — see go-live-encoder.js */
+    card.style.cssText = 'grid-column:1/-1;min-width:0;margin:0 0 12px;border-radius:12px;border:1px solid #1c2833;background:linear-gradient(180deg,#0d151f,#0a0f16);padding:12px 14px;display:flex;flex-direction:column;gap:10px;font-family:inherit';
     if (encCard) {
       /* right after the encoder card */
       encCard.insertAdjacentElement('afterend', card);

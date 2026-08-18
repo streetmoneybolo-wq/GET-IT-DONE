@@ -45,7 +45,10 @@
     var host = row.parentElement;
     card = document.createElement('div');
     card.id = 'sml-gl-encoder';
-    card.style.cssText = 'margin:0 0 12px;border-radius:12px;border:1px solid #1c2833;background:linear-gradient(180deg,#0d151f,#0a0f16);padding:12px 14px;display:flex;flex-direction:column;gap:8px;font-family:inherit';
+    /* .gl-health is a 2-col grid (rows | gauge). Without spanning both columns this
+       card auto-flows into one cell, squeezing the native rows into the narrow gauge
+       column and scrambling the whole panel. */
+    card.style.cssText = 'grid-column:1/-1;min-width:0;margin:0 0 12px;border-radius:12px;border:1px solid #1c2833;background:linear-gradient(180deg,#0d151f,#0a0f16);padding:12px 14px;display:flex;flex-direction:column;gap:8px;font-family:inherit';
     host.parentElement.insertBefore(card, host);
     return card;
   }
