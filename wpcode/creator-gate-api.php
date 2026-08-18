@@ -7,11 +7,8 @@
  *
  * Stores NEW personal data (name/DOB/city/state/phone/email) as user-meta —
  * this did not exist anywhere on the site before. Kept intentionally minimal:
- * this snippet only owns registration + the "do they have a channel" check.
- * It does NOT create Loop Letters — that goes straight to the real
- * sml-loopletters/v1/settings endpoint from the client, since guessing that
- * plugin's internal field names server-side, where a wrong guess is harder
- * to catch, is worse than letting the client see the real error.
+ * this snippet owns registration and authoritative Channel/Letter status.
+ * Creation still goes through each feature's existing REST endpoint.
  */
 if ( ! function_exists( 'sml_cg_sanitize_phone' ) ) {
 	function sml_cg_sanitize_phone( $phone ) {
@@ -31,6 +28,7 @@ if ( ! function_exists( 'sml_cg_sanitize_phone' ) ) {
 		$uid = get_current_user_id();
 		if ( ! $uid ) { return new WP_Error( 'sml_cg_login_required', 'Sign in required.', array( 'status' => 401 ) ); }
 		$handle = get_user_meta( $uid, 'sml_channel_handle', true );
+		$letter_handle = get_user_meta( $uid, 'smll_handle', true );
 		$reg = array(
 			'name'  => get_user_meta( $uid, 'sml_cg_name', true ),
 			'dob'   => get_user_meta( $uid, 'sml_cg_dob', true ),
@@ -44,7 +42,9 @@ if ( ! function_exists( 'sml_cg_sanitize_phone' ) ) {
 			'registered'    => $registered,
 			'hasChannel'    => ! empty( $handle ),
 			'channelHandle' => $handle ?: '',
-			'reg'           => $registered ? $reg : null,
+			'hasLetter'     => ! empty( $letter_handle ),
+			'letterHandle'  => $letter_handle ?: '',
+			'creatorName'   => $registered ? $reg['name'] : '',
 		) );
 	}
 

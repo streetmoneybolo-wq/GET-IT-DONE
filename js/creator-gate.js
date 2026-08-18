@@ -4,10 +4,9 @@
    "Create a Loop Letter." Either starts full registration (name/DOB/city/
    state/phone/email — brand-new data, didn't exist anywhere before) if not
    already done, then the specific handle-claim step.
-   Channel creation reuses the same real sml-channel/v1 endpoints proven on
-   /go-live/. Letter creation calls sml-loopletters/v1 directly — best-effort
-   field name (handle), no plugin source to confirm it against, so real
-   server errors are surfaced verbatim rather than swallowed. */
+   Channel creation reuses the real sml-channel/v1 endpoints. Letter creation
+   uses the verified sml-loopletters/v1 settings contract (name + handle) and
+   then opens the existing Loop Letter writer. */
 (function () {
   'use strict';
   if (window.__smlCreatorGateBooted) return;
@@ -26,10 +25,11 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function el(id) { return document.getElementById(id); }
 
-  /* ---------- dropdown injection: no confirmed selector for the account
-     menu, so search defensively for common patterns; if none match, fall
-     back to a floating button so the feature stays reachable. ---------- */
+  /* ---------- dropdown injection: target the verified live account menu,
+     with defensive fallbacks for templates that render an older shell. ---------- */
   function findAccountMenu() {
+    var exact = document.querySelector('.sml-acct[data-sml-acct] .sml-acct__menu[role="menu"]');
+    if (exact) return { trigger: exact.parentElement && exact.parentElement.querySelector('.sml-acct__btn'), menu: exact };
     var candidates = document.querySelectorAll('[aria-label*="Account" i], [aria-label*="account menu" i], .sml-account-menu, .account-menu, [data-account-menu]');
     for (var i = 0; i < candidates.length; i++) {
       var c = candidates[i];
@@ -39,10 +39,12 @@
     return null;
   }
   function injectMenuItems() {
+    if (el('sml-cg-open-channel') || !LOGGED_IN) return;
     var found = findAccountMenu();
     var items =
-      '<a href="#" id="sml-cg-open-channel" style="display:block;padding:10px 16px;font:600 12px/1 Archivo,sans-serif;color:inherit;text-decoration:none;cursor:pointer">+ Create a Loop Channel</a>' +
-      '<a href="#" id="sml-cg-open-letter" style="display:block;padding:10px 16px;font:600 12px/1 Archivo,sans-serif;color:inherit;text-decoration:none;cursor:pointer">+ Create a Loop Letter</a>';
+      '<div class="sml-acct__sep" data-sml-cg-sep></div>' +
+      '<a href="#" id="sml-cg-open-channel" class="sml-acct__item" role="menuitem"><span class="sml-acct__label">Create a Loop Channel</span></a>' +
+      '<a href="#" id="sml-cg-open-letter" class="sml-acct__item" role="menuitem"><span class="sml-acct__label">Create a Loop Letter</span></a>';
     if (found && found.menu) {
       found.menu.insertAdjacentHTML('beforeend', items);
     } else {
@@ -93,7 +95,9 @@
       if (!res.ok) { openModal('<p class="sml-cg-h">Couldn’t load your account status</p><p class="sml-cg-sub">Try again in a moment.</p><button class="sml-cg-cancel" onclick="document.getElementById(\'sml-cg-overlay\').remove()">Close</button>'); return; }
       var j = res.j || {};
       if (!j.registered) renderRegistration(kind);
-      else renderHandleStep(kind);
+      else if ((kind === 'channel' && j.hasChannel) || (kind === 'letter' && j.hasLetter)) {
+        window.location.href = kind === 'channel' ? '/channel/' + encodeURIComponent(j.channelHandle) + '/?ch=1' : '/creator-studio/loop-letters/write/';
+      } else renderHandleStep(kind, j.creatorName || '');
     });
   }
 
@@ -124,13 +128,22 @@
       var btn = el('sml-cg-regsubmit'); btn.disabled = true; btn.textContent = 'Saving…';
       api('/sml-creator-gate/v1/register', { method: 'POST', body: JSON.stringify(body) }).then(function (res) {
         btn.disabled = false; btn.textContent = 'Continue';
-        if (res.ok) renderHandleStep(kind);
+        if (res.ok) {
+          api('/sml-creator-gate/v1/status').then(function (next) {
+            var s = next.j || {};
+            if (next.ok && ((kind === 'channel' && s.hasChannel) || (kind === 'letter' && s.hasLetter))) {
+              window.location.reload();
+              return;
+            }
+            renderHandleStep(kind, s.creatorName || body.name);
+          });
+        }
         else el('sml-cg-regerr').textContent = (res.j && res.j.message) || 'Could not save — check the fields above.';
       });
     };
   }
 
-  function renderHandleStep(kind) {
+  function renderHandleStep(kind, creatorName) {
     var isChannel = kind === 'channel';
     var title = isChannel ? 'Create your Loop Channel' : 'Create your Loop Letter';
     var checkPath = isChannel ? '/sml-channel/v1/handle-availability' : '/sml-loopletters/v1/handle-available';
@@ -138,6 +151,7 @@
     openModal(
       '<h3 class="sml-cg-h">' + title + '</h3>' +
       '<p class="sml-cg-sub">Pick a handle' + (isChannel ? ' — separate from your profile handle' : '') + '.</p>' +
+      (isChannel ? '' : '<div class="sml-cg-row"><label>PUBLICATION NAME</label><input id="sml-cg-letter-name" type="text" maxlength="60" value="' + esc(creatorName || '') + '" placeholder="Your newsletter name"></div>') +
       '<div class="sml-cg-handlein"><span>@</span><input id="sml-cg-handle" type="text" placeholder="yourhandle" maxlength="30"></div>' +
       '<div class="sml-cg-avail" id="sml-cg-avail"></div>' +
       '<div class="sml-cg-err" id="sml-cg-handleerr"></div>' +
@@ -166,12 +180,23 @@
       if (!status.ok) return;
       var h = el('sml-cg-handle').value.trim().replace(/^@/, '');
       var btn = this; btn.disabled = true; btn.textContent = 'Creating…';
-      api(savePath, { method: 'POST', body: JSON.stringify({ handle: h }) }).then(function (res) {
+      var payload = { handle: h };
+      if (!isChannel) {
+        payload.name = (el('sml-cg-letter-name').value || '').trim();
+        payload.tagline = '';
+        payload.topics = [];
+        payload.cadence = 'weekly';
+        payload.visibility = 'public';
+        if (!payload.name) {
+          btn.disabled = false; btn.textContent = 'Create';
+          el('sml-cg-handleerr').textContent = 'Enter a publication name.';
+          return;
+        }
+      }
+      api(savePath, { method: 'POST', body: JSON.stringify(payload) }).then(function (res) {
         if (res.ok) {
           if (isChannel) { window.location.href = '/channel/' + encodeURIComponent(h) + '/?ch=1'; }
-          else {
-            openModal('<h3 class="sml-cg-h">✓ Loop Letter created</h3><p class="sml-cg-sub">@' + esc(h) + ' is set up. This flow doesn’t have a confirmed settings-page URL to send you to yet — check your account area for it.</p><button class="sml-cg-cancel" onclick="document.getElementById(\'sml-cg-overlay\').remove()">Close</button>');
-          }
+          else { window.location.href = '/creator-studio/loop-letters/write/'; }
         } else {
           btn.disabled = false; btn.textContent = 'Create';
           el('sml-cg-handleerr').textContent = (res.j && res.j.message) || 'Could not create — the server said: ' + (res.status || 'unknown error') + '.';

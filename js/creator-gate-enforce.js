@@ -21,7 +21,7 @@
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); });
   }
 
-  function blockingOverlay(label, cta) {
+  function blockingOverlay(label, needsRegistration, allowLetter) {
     var o = document.createElement('div');
     o.id = 'sml-cg-block';
     o.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#04060a;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif';
@@ -30,7 +30,10 @@
       '<span style="font:700 9px/1 Archivo,sans-serif;letter-spacing:.14em;color:#5d7085">CREATOR REQUIREMENT</span>' +
       '<h2 style="font:800 20px/1.3 Archivo,sans-serif;color:#e6edf3;margin:0">' + label + '</h2>' +
       '<p style="font:400 12px/1.6 Archivo,sans-serif;color:#8fa3b5;margin:0">This is a one-time setup — name, date of birth, city, state, phone, and email, then pick a handle.</p>' +
-      '<button id="sml-cg-block-cta" style="font:700 12px/1 Archivo,sans-serif;color:#04060a;background:#00ff88;border:none;border-radius:8px;padding:14px 22px;cursor:pointer">' + cta + '</button>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">' +
+      '<button id="sml-cg-block-channel" style="font:700 12px/1 Archivo,sans-serif;color:#04060a;background:#00ff88;border:none;border-radius:8px;padding:14px 22px;cursor:pointer">' + (needsRegistration ? 'Register + create Channel' : 'Create a Loop Channel') + '</button>' +
+      (allowLetter ? '<button id="sml-cg-block-letter" style="font:700 12px/1 Archivo,sans-serif;color:#e6edf3;background:#101923;border:1px solid #2a3a49;border-radius:8px;padding:14px 22px;cursor:pointer">' + (needsRegistration ? 'Register + create Letter' : 'Create a Loop Letter') + '</button>' : '') +
+      '</div>' +
       '<a href="/" style="font:600 11px/1 Archivo,sans-serif;color:#5d7085;text-decoration:none">← Back to home</a>' +
       '</div>';
     document.documentElement.appendChild(o);
@@ -48,16 +51,10 @@
     document.head.appendChild(s);
   }
 
-  /* hasLetter has no server-side check in sml-creator-gate/v1/status (that
-     endpoint only knows sml_channel_handle) — checked here directly against
-     the real loopletters endpoint instead of guessing its storage. */
-  function hasLetter() {
-    return api('/sml-loopletters/v1/settings').then(function (res) {
-      if (!res.ok || !res.j) return false;
-      var j = res.j;
-      var handle = j.handle || (j.publication && j.publication.handle) || (j.settings && j.settings.handle);
-      return !!handle;
-    }).catch(function () { return false; });
+  function verificationFailure() {
+    blockingOverlay('We could not verify your creator access', false, false);
+    var ch = document.getElementById('sml-cg-block-channel');
+    if (ch) { ch.textContent = 'Retry'; ch.onclick = function () { window.location.reload(); }; }
   }
 
   function check() {
@@ -66,22 +63,23 @@
         window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.href);
         return;
       }
-      if (!res.ok) return; // status check itself failed — fail open rather than lock everyone out on an outage
+      if (!res.ok) { verificationFailure(); return; }
       var j = res.j || {};
-      if (j.hasChannel) return; // channel alone satisfies both requirements
-      var afterLetterCheck = function (letter) {
-        var ok = NEEDS_CHANNEL_ONLY ? false : letter;
-        if (ok) return;
+      var entitlement = NEEDS_CHANNEL_ONLY ? !!j.hasChannel : !!(j.hasChannel || j.hasLetter);
+      if (j.registered && entitlement) return;
+      var showGate = function () {
         var label = NEEDS_CHANNEL_ONLY ? 'You need a Loop Channel to continue' : 'You need a Loop Channel or Loop Letter to continue';
-        blockingOverlay(label, NEEDS_CHANNEL_ONLY ? 'Create a Loop Channel' : 'Create a Loop Channel or Letter');
+        if (!j.registered) label = 'Complete creator registration to continue';
+        blockingOverlay(label, !j.registered, !NEEDS_CHANNEL_ONLY);
         ensureCreatorGateJs(function () {
-          var btn = document.getElementById('sml-cg-block-cta');
-          if (btn) btn.onclick = function () { if (window.__smlCreatorGateStart) window.__smlCreatorGateStart('channel'); };
+          var channel = document.getElementById('sml-cg-block-channel');
+          var letter = document.getElementById('sml-cg-block-letter');
+          if (channel) channel.onclick = function () { if (window.__smlCreatorGateStart) window.__smlCreatorGateStart('channel'); };
+          if (letter) letter.onclick = function () { if (window.__smlCreatorGateStart) window.__smlCreatorGateStart('letter'); };
         });
       };
-      if (NEEDS_CHANNEL_ONLY) afterLetterCheck(false);
-      else hasLetter().then(afterLetterCheck);
-    }).catch(function () {}); // network failure — fail open, don't lock out on a blip
+      showGate();
+    }).catch(verificationFailure);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check);
