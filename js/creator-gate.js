@@ -26,6 +26,70 @@
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function el(id) { return document.getElementById(id); }
 
+  /* ---------- creator shortcuts in the signed-in home navigation ----------
+     The primary items are rendered by home-feed.js after this file may have
+     loaded, so these are applied idempotently and retried as the shell mounts.
+     Never show a shortcut from a guessed profile/login handle: status is backed
+     by the dedicated channel/Letter meta fields. ---------- */
+  function hrefPath(a) {
+    try { return new URL(a.getAttribute('href') || '', location.origin).pathname.replace(/\/+$/, '') || '/'; }
+    catch (e) { return ''; }
+  }
+  function findHomeNavLink(path) {
+    var rail = document.getElementById('sml-hf-left');
+    if (!rail) return null;
+    var links = rail.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      if (hrefPath(links[i]) === path) return links[i];
+    }
+    return null;
+  }
+  function shortcutMarkup(id, label, href) {
+    var a = document.createElement('a');
+    a.id = id;
+    a.href = href;
+    a.setAttribute('data-sml-cg-shortcut', '1');
+    a.style.cssText = 'display:flex;align-items:center;gap:9px;margin:-1px 8px 3px 38px;padding:7px 11px;border-left:2px solid rgba(56,245,138,.55);border-radius:0 9px 9px 0;color:#7ae6ff;text-decoration:none;background:rgba(56,245,138,.035);font:700 10px/1.2 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase';
+    a.innerHTML = '<span aria-hidden="true" style="width:6px;height:6px;border-radius:50%;background:#38F58A;box-shadow:0 0 9px rgba(56,245,138,.75)"></span><span>' + esc(label) + '</span>';
+    a.onmouseenter = function () { a.style.background = 'rgba(56,245,138,.11)'; a.style.color = '#E6EDF5'; };
+    a.onmouseleave = function () { a.style.background = 'rgba(56,245,138,.035)'; a.style.color = '#7ae6ff'; };
+    return a;
+  }
+  function injectCreatorShortcuts(status) {
+    status = status || {};
+    var watch = findHomeNavLink('/watch');
+    var letters = findHomeNavLink('/n');
+    var channel = el('sml-cg-my-channel');
+    var letter = el('sml-cg-my-letter');
+
+    if (status.hasChannel && status.channelHandle && watch) {
+      if (!channel) channel = shortcutMarkup('sml-cg-my-channel', 'My Channel', '/channel/' + encodeURIComponent(status.channelHandle) + '/');
+      watch.insertAdjacentElement('afterend', channel);
+    } else if (channel) channel.remove();
+
+    if (status.hasLetter && status.letterHandle && letters) {
+      /* The confirmed owner workspace is the writer route. The public /n/
+         surface does not currently expose a verified per-handle permalink. */
+      if (!letter) letter = shortcutMarkup('sml-cg-my-letter', 'My Loop Letter', '/creator-studio/loop-letters/write/');
+      letters.insertAdjacentElement('afterend', letter);
+    } else if (letter) letter.remove();
+
+    return (!status.hasChannel || !!el('sml-cg-my-channel')) && (!status.hasLetter || !!el('sml-cg-my-letter'));
+  }
+  function loadCreatorShortcuts() {
+    if (!LOGGED_IN) return;
+    api('/sml-creator-gate/v1/status').then(function (res) {
+      if (!res.ok || !res.j) return;
+      var status = res.j;
+      var attempts = 0;
+      var timer = setInterval(function () {
+        attempts++;
+        if (injectCreatorShortcuts(status) || attempts >= 40) clearInterval(timer);
+      }, 250);
+      injectCreatorShortcuts(status);
+    });
+  }
+
   /* ---------- dropdown injection ----------
      Audit 2026-08-18: the old fallback accepted ANY element whose aria-label
      mentioned "Account" as the menu — on the Home Feed homepage that is the
@@ -231,6 +295,8 @@
   }
 
   window.__smlCreatorGateStart = startFlow; /* exposed for the enforcement script's CTA */
+
+  loadCreatorShortcuts();
 
   var tries = 0;
   var t = setInterval(function () {
