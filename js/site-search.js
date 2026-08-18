@@ -111,7 +111,9 @@
     return '<section class="sml-ss-section" data-section="' + key + '"' + (show ? '' : ' hidden') + '><h2 class="sml-ss-title">' + title + '<span class="sml-ss-count">' + rows.length + '</span></h2>' + (rows.length ? '<div class="sml-ss-grid">' + rows.map(renderer).join('') + '</div>' : '<div class="sml-ss-empty">No matching ' + title.toLowerCase() + ' found.</div>') + '</section>';
   }
   function render() {
-    var d = state.data || {}, g = d.groups || {}, sym = d.symbol || String(d.query || '').replace(/^\$/,'').toUpperCase();
+    // The API only sets symbol when the query is a real ticker-shaped term.
+    // Do not turn a person/topic search such as "grandmaster" into a fake ticker.
+    var d = state.data || {}, g = d.groups || {}, sym = d.symbol || '';
     var intents = sym ? '<div class="sml-ss-intents"><a class="sml-ss-intent" href="/stock-chart/?symbol=' + encodeURIComponent(sym) + '"><b>$' + esc(sym) + ' Quote</b><span>OPEN TICKER TERMINAL</span></a><button class="sml-ss-intent" data-intent="videos"><b>$' + esc(sym) + ' Videos</b><span>LATEST WATCH PAGES</span></button><button class="sml-ss-intent" data-intent="news"><b>$' + esc(sym) + ' News</b><span>ARTICLES + LOOP LETTERS</span></button><button class="sml-ss-intent" data-intent="people"><b>People</b><span>NAMES + @HANDLES</span></button></div>' : '';
     el('#sml-ss-body').innerHTML = intents +
       section('quotes','Quotes',g.quotes || [],cardQuote) +
