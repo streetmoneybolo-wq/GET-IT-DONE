@@ -76,12 +76,12 @@
     return out + '</svg>';
   }
   function dlabel(s) { var d = String(s.date || ''); var m = d.match(/^\d{4}-(\d{2})-(\d{2})/); if (!m) return d; return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parseInt(m[1], 10) - 1] + ' ' + parseInt(m[2], 10); }
-  function delta(series, key) {
+  function delta(series, key, total) {
     // honest comparison inside the 28-day window: last 14 days vs the 14 before
     if (!series || series.length < 4) return '';
     var half = Math.floor(series.length / 2), a = 0, b = 0;
     series.slice(half).forEach(function (s) { a += n(s[key]); }); series.slice(0, half).forEach(function (s) { b += n(s[key]); });
-    if (!a && !b) return '<div class="ca-delta flat">no activity yet in this window</div>';
+    if (!a && !b) return '<div class="ca-delta flat">' + (n(total) > 0 ? 'daily breakdown not reported for this metric' : 'no activity yet in this window') + '</div>';
     if (!b) return '<div class="ca-delta">▲ new activity · last ' + (series.length - half) + ' days</div>';
     var p = (a - b) / b * 100; var up = p >= 0;
     return '<div class="ca-delta' + (up ? '' : ' down') + '">' + (up ? '▲ +' : '▼ ') + p.toFixed(1) + '% · last ' + (series.length - half) + ' days vs prior ' + half + '</div>';
@@ -167,9 +167,9 @@
 
     // KPI row (real: views / impressions / engagement over 28 days, from the realtime series)
     var kpis = '<div class="ca-grid ca-g3">' +
-      kpi('Views (28 days)', fmt(ov.views), delta(series, 'views'), spark(series.map(function (s) { return n(s.views); }), CSS_ACC), 'refreshes 60 s') +
-      kpi('Impressions (28 days)', fmt(ov.impressions), delta(series, 'impressions'), spark(series.map(function (s) { return n(s.impressions); }), CSS_C2), 'CTR ' + pct(ov.ctr)) +
-      kpi('Engagement (28 days)', fmt(ov.engagement), delta(series, 'engagement'), spark(series.map(function (s) { return n(s.engagement); }), CSS_C4), 'likes · comments · saves') +
+      kpi('Views (28 days)', fmt(ov.views), delta(series, 'views', ov.views), spark(series.map(function (s) { return n(s.views); }), CSS_ACC), 'refreshes 60 s') +
+      kpi('Impressions (28 days)', fmt(ov.impressions), delta(series, 'impressions', ov.impressions), spark(series.map(function (s) { return n(s.impressions); }), CSS_C2), 'CTR ' + pct(ov.ctr)) +
+      kpi('Engagement (28 days)', fmt(ov.engagement), delta(series, 'engagement', ov.engagement), spark(series.map(function (s) { return n(s.engagement); }), CSS_C4), 'likes · comments · saves') +
       '</div>';
 
     // audience row: map (GA4 — not connected) | live now (real) + top countries (not connected)
