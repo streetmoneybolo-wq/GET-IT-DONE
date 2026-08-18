@@ -91,6 +91,10 @@
   /* ---------- flow ---------- */
   function startFlow(kind) {
     if (!LOGGED_IN) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
+    // Channel creation lives on its own page now (/create-channel/ — the "Create
+    // Loop Channel" design: registration + channel together, then → /go-live/).
+    // If the creator already has a channel, the page itself sends them on.
+    if (kind === 'channel') { window.location.href = '/create-channel/'; return; }
     openModal('<p style="color:#5d7085;font:400 12px/1 Archivo,sans-serif">Loading…</p>');
     api('/sml-creator-gate/v1/status').then(function (res) {
       if (!res.ok) {

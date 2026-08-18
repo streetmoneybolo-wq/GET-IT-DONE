@@ -99,10 +99,13 @@
       var showGate = function () {
         var label = NEEDS_CHANNEL_ONLY ? 'You need a Loop Channel to continue' : 'You need a Loop Channel or Loop Letter to continue';
         blockingOverlay(label, false, !NEEDS_CHANNEL_ONLY);
+        // Channel: the dedicated /create-channel/ page (design "Create Loop Channel":
+        // verified email + name + handle + about + links + agreements, then → /go-live/).
+        // Letter: the in-place modal flow.
+        var channel = document.getElementById('sml-cg-block-channel');
+        if (channel) channel.onclick = function () { window.location.href = '/create-channel/'; };
         ensureCreatorGateJs(function () {
-          var channel = document.getElementById('sml-cg-block-channel');
           var letter = document.getElementById('sml-cg-block-letter');
-          if (channel) channel.onclick = function () { if (window.__smlCreatorGateStart) window.__smlCreatorGateStart('channel'); };
           if (letter) letter.onclick = function () { if (window.__smlCreatorGateStart) window.__smlCreatorGateStart('letter'); };
         });
       };
