@@ -23,9 +23,11 @@ if ( ! function_exists( 'sml_cg_loader_is_gated_path' ) ) {
 
 	function sml_cg_loader_markup() {
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( sml_cg_loader_ref() ) . '/js/';
-		$config = '<script id="sml-cg-config">window.SML_CG_NONCE=' . wp_json_encode( wp_create_nonce( 'wp_rest' ) )
+		$nonce = wp_create_nonce( 'wp_rest' );
+		$config = '<script id="sml-cg-config">window.SML_CG_NONCE=' . wp_json_encode( $nonce )
 			. ';window.SML_CG_ME=' . ( is_user_logged_in() ? 'true' : 'false' ) . ';</script>';
-		$scripts = '<script id="sml-cg-js" src="' . esc_url( $base . 'creator-gate.js' ) . '"></script>';
+		$scripts = '<script id="sml-cg-js" data-nonce="' . esc_attr( $nonce ) . '" data-me="'
+			. ( is_user_logged_in() ? '1' : '0' ) . '" src="' . esc_url( $base . 'creator-gate.js' ) . '"></script>';
 		if ( sml_cg_loader_is_gated_path() ) {
 			$scripts .= '<script id="sml-cg-enforce-js" src="' . esc_url( $base . 'creator-gate-enforce.js' ) . '"></script>';
 		}

@@ -14,7 +14,8 @@
   var NEEDS_EITHER = /\/creator-studio\//.test(path);
   if (!NEEDS_CHANNEL_ONLY && !NEEDS_EITHER) return;
 
-  var NONCE = (window.wpApiSettings && window.wpApiSettings.nonce) || window.SML_CG_NONCE || '';
+  var loader = document.getElementById('sml-cg-js');
+  var NONCE = (window.wpApiSettings && window.wpApiSettings.nonce) || window.SML_CG_NONCE || (loader && loader.dataset.nonce) || '';
   function api(path) {
     var h = {}; if (NONCE) h['X-WP-Nonce'] = NONCE;
     return fetch('/wp-json' + path, { credentials: 'same-origin', headers: h, cache: 'no-store' })

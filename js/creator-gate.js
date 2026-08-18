@@ -12,8 +12,9 @@
   if (window.__smlCreatorGateBooted) return;
   window.__smlCreatorGateBooted = true;
 
-  var NONCE = (window.wpApiSettings && window.wpApiSettings.nonce) || window.SML_CG_NONCE || '';
-  var LOGGED_IN = !!(window.SML_CG_ME || (window.wpApiSettings && window.wpApiSettings.nonce));
+  var loader = document.getElementById('sml-cg-js');
+  var NONCE = (window.wpApiSettings && window.wpApiSettings.nonce) || window.SML_CG_NONCE || (loader && loader.dataset.nonce) || '';
+  var LOGGED_IN = !!(window.SML_CG_ME || (loader && loader.dataset.me === '1') || (window.wpApiSettings && window.wpApiSettings.nonce));
 
   function api(path, opts) {
     opts = opts || {}; opts.credentials = 'same-origin'; opts.headers = opts.headers || {};
