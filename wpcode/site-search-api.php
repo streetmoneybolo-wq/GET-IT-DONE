@@ -111,11 +111,15 @@ if ( ! function_exists( 'sml_ss_clean_query' ) ) {
 	}
 
 	function sml_ss_news( $query ) {
+		$is_ticker = (bool) preg_match( '/^\$?[A-Za-z]{1,6}$/', trim( (string) $query ) );
+		$ticker    = strtoupper( ltrim( trim( (string) $query ), '$' ) );
 		$posts = new WP_Query( array(
 			'post_type'           => 'post',
 			'post_status'         => 'publish',
 			's'                   => $query,
-			'posts_per_page'      => 8,
+			// Pull a wider candidate set for ticker searches, then reject loose
+			// substring matches such as AMC inside an unrelated word.
+			'posts_per_page'      => $is_ticker ? 30 : 8,
 			'orderby'             => 'date',
 			'order'               => 'DESC',
 			'ignore_sticky_posts' => true,
@@ -123,6 +127,11 @@ if ( ! function_exists( 'sml_ss_clean_query' ) ) {
 		) );
 		$out = array();
 		foreach ( $posts->posts as $post ) {
+			if ( $is_ticker ) {
+				$haystack = strtoupper( wp_strip_all_tags( get_the_title( $post ) . ' ' . $post->post_excerpt . ' ' . $post->post_content ) );
+				$pattern  = '/(?:^|[^A-Z0-9])\$?' . preg_quote( $ticker, '/' ) . '(?:[^A-Z0-9]|$)/';
+				if ( ! preg_match( $pattern, $haystack ) ) { continue; }
+			}
 			$out[] = array(
 				'id'      => (int) $post->ID,
 				'title'   => sml_ss_text( get_the_title( $post ) ),
@@ -131,6 +140,7 @@ if ( ! function_exists( 'sml_ss_clean_query' ) ) {
 				'image'   => (string) get_the_post_thumbnail_url( $post, 'medium' ),
 				'date'    => get_the_date( 'M j, Y', $post ),
 			);
+			if ( count( $out ) >= 8 ) { break; }
 		}
 		return $out;
 	}
