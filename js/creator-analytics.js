@@ -327,7 +327,7 @@
       '<div class="ca-kind"><b>Pending review</b><div class="n">' + money((sh.lifecycle || {}).pendingUsd) + '</div><div class="ca-sub">' + fmt((sh.lifecycle || {}).pendingReviews) + ' locked review snapshots</div></div>' +
       '<div class="ca-kind"><b>Shadow approved</b><div class="n">' + money((sh.lifecycle || {}).approvedUsd) + '</div><div class="ca-sub">' + fmt((sh.lifecycle || {}).approvedReviews) + ' approvals · not payable</div></div>' +
       '<div class="ca-kind"><b>Safety checks</b><div class="n">' + fmt(sh.entries) + '</div><div class="ca-sub">immutable entries · ' + fmt(sh.excluded) + ' excluded · ' + fmt(sh.reversals) + ' reversals</div></div>' +
-      '</div><div class="ca-note">Coverage now: verified group-ad events. Video and internal-ad sources remain excluded until their event-level contracts exist. This module cannot write to Loop Wallet or issue a payout.</div></div>' :
+      '</div><div class="ca-note">Coverage now: verified group-ad events. Video: ' + esc((((sh.sourceReadiness || {}).videoAds || {}).status) || 'not connected') + '. Internal ads: ' + esc((((sh.sourceReadiness || {}).internalAds || {}).status) || 'not connected') + '. Unsupported revenue is quarantined and cannot enter review, Loop Wallet, or payouts.</div></div>' :
       '<div class="ca-card"><h3>Monetization reconciliation<span class="ca-fresh">not connected</span></h3>' + empty('Shadow ledger is unavailable', 'No earnings will be approved or paid until reconciliation is available.') + '</div>';
 
     root.innerHTML = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + health + kpis + audience + kindsCard + groupsCard + contentRow + (lettersCard || '') + shadowCard + revCard +

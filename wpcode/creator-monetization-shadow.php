@@ -35,6 +35,33 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		return min( 100, max( 0, (float) apply_filters( 'sml_creator_shadow_share_percent', 80.0 ) ) );
 	}
 
+	function sml_creator_shadow_table_exists( $table ) {
+		global $wpdb;
+		return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
+	}
+
+	function sml_creator_shadow_source_readiness() {
+		global $wpdb;
+		$group = sml_creator_shadow_group_table();
+		$video = $wpdb->prefix . 'sml_video_daily_metrics';
+		$internal = $wpdb->prefix . 'sml_revenue_records';
+		$group_exists = sml_creator_shadow_table_exists( $group );
+		$video_exists = sml_creator_shadow_table_exists( $video );
+		$internal_exists = sml_creator_shadow_table_exists( $internal );
+		$verified_group = $group_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$group} WHERE is_verified=1" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$video_rows = $video_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$video} WHERE revenue<>0" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$video_total = $video_exists ? (float) $wpdb->get_var( "SELECT COALESCE(SUM(revenue),0) FROM {$video}" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$internal_rows = $internal_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$internal}" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$internal_total = $internal_exists ? (int) $wpdb->get_var( "SELECT COALESCE(SUM(revenue_cents),0) FROM {$internal}" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return array(
+			'checkedAt' => gmdate( 'c' ),
+			'groupAds' => array( 'supported' => $group_exists, 'status' => $group_exists ? 'connected' : 'missing', 'verifiedEvents' => $verified_group, 'reason' => $group_exists ? 'Verified event-level contract is active.' : 'Verified group event table is missing.' ),
+			'videoAds' => array( 'supported' => false, 'status' => $video_rows > 0 ? 'quarantined' : 'waiting_for_contract', 'unverifiedRevenueRows' => $video_rows, 'unverifiedRevenueUsd' => round( $video_total, 2 ), 'reason' => 'Daily video revenue is aggregate-only and has no verification or provider-event identity.' ),
+			'internalAds' => array( 'supported' => false, 'status' => $internal_rows > 0 ? 'quarantined' : 'waiting_for_records', 'unverifiedRecords' => $internal_rows, 'unverifiedRevenueUsd' => round( $internal_total / 100, 2 ), 'reason' => 'Internal revenue records are excluded until live provider statuses and settlement semantics can be verified.' ),
+			'quarantineActive' => $video_rows > 0 || $internal_rows > 0,
+		);
+	}
+
 	function sml_creator_shadow_install() {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -171,6 +198,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		}
 		$stats['syncedAt'] = gmdate( 'c' );
 		update_option( 'sml_creator_shadow_last_sync', $stats, false );
+		update_option( 'sml_creator_shadow_source_readiness', sml_creator_shadow_source_readiness(), false );
 		return $stats;
 	}
 
@@ -218,6 +246,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			'mode' => 'shadow', 'payoutsEnabled' => false, 'walletWritesEnabled' => false,
 			'creatorSharePercent' => sml_creator_shadow_share_percent(), 'platformSharePercent' => 100 - sml_creator_shadow_share_percent(),
 			'coverage' => array( 'groupAds' => true, 'videoAds' => false, 'internalAds' => false ),
+			'sourceReadiness' => sml_creator_shadow_source_readiness(),
 			'entries' => (int) ( $row['entries'] ?? 0 ), 'excluded' => (int) ( $row['excluded'] ?? 0 ), 'reversals' => (int) ( $row['reversals'] ?? 0 ),
 			'grossUsd' => round( (int) ( $row['gross_cents'] ?? 0 ) / 100, 2 ),
 			'sourceCreatorUsd' => round( (int) ( $row['source_creator_cents'] ?? 0 ) / 100, 2 ),
@@ -300,6 +329,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		global $wpdb;
 		sml_creator_shadow_maybe_sync();
 		$ledger = sml_creator_shadow_table(); $reviews = sml_creator_shadow_review_table(); $items = sml_creator_shadow_review_item_table();
+		$readiness = sml_creator_shadow_source_readiness();
 		$creators = $wpdb->get_results( "SELECT l.creator_id, COUNT(*) ledger_entries,
 			SUM(CASE WHEN i.ledger_id IS NULL AND l.status IN ('shadow_verified','shadow_reversal') THEN 1 ELSE 0 END) unreviewed_entries,
 			COALESCE(SUM(CASE WHEN i.ledger_id IS NULL AND l.status IN ('shadow_verified','shadow_reversal') THEN l.shadow_creator_cents ELSE 0 END),0) unreviewed_cents,
@@ -312,6 +342,12 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			<style>.sml-shadow-admin .sml-lock{padding:14px 16px;border-left:4px solid #d63638;background:#fff;margin:14px 0}.sml-shadow-admin .sml-ok{border-left-color:#00a32a}.sml-shadow-admin table{margin-top:16px}.sml-shadow-admin td,.sml-shadow-admin th{vertical-align:middle}.sml-shadow-admin .money{font-variant-numeric:tabular-nums;text-align:right}.sml-shadow-admin .danger{color:#b32d2e;font-weight:700}.sml-shadow-admin .actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sml-shadow-admin input[type=text]{max-width:260px}</style>
 			<div class="sml-lock"><strong>Shadow mode:</strong> approvals on this screen are audit decisions only. They cannot send money, credit Loop Bucks, or modify a wallet.</div>
 			<?php if ( $notice ) : ?><div class="notice <?php echo 'error' === $notice ? 'notice-error' : 'notice-success'; ?> is-dismissible"><p><?php echo esc_html( $detail ?: $notice ); ?></p></div><?php endif; ?>
+			<h2>Revenue source readiness</h2>
+			<table class="widefat striped"><thead><tr><th>Source</th><th>Status</th><th>Observed data</th><th>Safety decision</th></tr></thead><tbody>
+			<tr><td><strong>Group ads</strong></td><td><?php echo esc_html( $readiness['groupAds']['status'] ); ?></td><td><?php echo (int) $readiness['groupAds']['verifiedEvents']; ?> verified events</td><td><?php echo esc_html( $readiness['groupAds']['reason'] ); ?></td></tr>
+			<tr><td><strong>Video/live ads</strong></td><td class="<?php echo 'quarantined' === $readiness['videoAds']['status'] ? 'danger' : ''; ?>"><?php echo esc_html( $readiness['videoAds']['status'] ); ?></td><td><?php echo (int) $readiness['videoAds']['unverifiedRevenueRows']; ?> unverified revenue rows · $<?php echo esc_html( number_format( (float) $readiness['videoAds']['unverifiedRevenueUsd'], 2 ) ); ?></td><td><?php echo esc_html( $readiness['videoAds']['reason'] ); ?></td></tr>
+			<tr><td><strong>Internal ads</strong></td><td class="<?php echo 'quarantined' === $readiness['internalAds']['status'] ? 'danger' : ''; ?>"><?php echo esc_html( $readiness['internalAds']['status'] ); ?></td><td><?php echo (int) $readiness['internalAds']['unverifiedRecords']; ?> unverified records · $<?php echo esc_html( number_format( (float) $readiness['internalAds']['unverifiedRevenueUsd'], 2 ) ); ?></td><td><?php echo esc_html( $readiness['internalAds']['reason'] ); ?></td></tr>
+			</tbody></table>
 			<h2>Unreviewed verified revenue</h2>
 			<table class="widefat striped"><thead><tr><th>Creator</th><th>Ledger entries</th><th>Unreviewed</th><th class="money">80% shadow value</th><th class="money">Difference</th><th>Action</th></tr></thead><tbody>
 			<?php if ( empty( $creators ) ) : ?><tr><td colspan="6">No verified revenue events are available yet.</td></tr><?php endif; ?>
@@ -363,7 +399,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			'callback' => static function () {
 				global $wpdb; sml_creator_shadow_maybe_sync(); $table = sml_creator_shadow_table();
 				$rows = $wpdb->get_results( "SELECT creator_id, COUNT(*) entries, SUM(shadow_creator_cents) shadow_creator_cents, SUM(source_creator_cents) source_creator_cents, SUM(discrepancy_cents) discrepancy_cents FROM {$table} WHERE status IN ('shadow_verified','shadow_reversal') GROUP BY creator_id ORDER BY ABS(SUM(discrepancy_cents)) DESC LIMIT 500", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				return rest_ensure_response( array( 'mode' => 'shadow', 'payoutsEnabled' => false, 'creators' => $rows, 'lastSync' => get_option( 'sml_creator_shadow_last_sync', array() ) ) );
+				return rest_ensure_response( array( 'mode' => 'shadow', 'payoutsEnabled' => false, 'creators' => $rows, 'sourceReadiness' => sml_creator_shadow_source_readiness(), 'lastSync' => get_option( 'sml_creator_shadow_last_sync', array() ) ) );
 			},
 		) );
 		register_rest_route( 'sml-creator-analytics/v1', '/monetization-shadow/reviews', array(
