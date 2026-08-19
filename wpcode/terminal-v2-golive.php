@@ -95,6 +95,12 @@ if ( ! function_exists( 'sml_tv2_live_active' ) ) {
 	add_action( 'template_redirect', static function () {
 		if ( sml_tv2_clean_active() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { ob_start( 'sml_tv2_clean_ob' ); }
 	}, 0 );
+	/* blocks appended by OTHER snippets' output buffers (the live-feed booter, reply stream)
+	   land after this buffer has flushed — the outermost pre-paint-guard buffer strips them */
+	add_filter( 'sml_pp_strip_script_ids', static function ( $ids ) {
+		if ( ! sml_tv2_clean_active() ) { return $ids; }
+		return array_merge( (array) $ids, sml_tv2_clean_strip_ids() );
+	} );
 
 	add_action( 'wp_enqueue_scripts', function () {
 		if ( ! sml_tv2_live_active() ) { return; }

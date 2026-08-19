@@ -53,6 +53,19 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 			$at0 = $hm0[0][1] + strlen( $hm0[0][0] );
 			$html = substr( $html, 0, $at0 ) . $js . substr( $html, $at0 );
 		}
+		/* Late-printed legacy script removal. This buffer is the OUTERMOST one on the page
+		   (init priority -1), so it is the only place that still sees blocks appended by
+		   other snippets' own output buffers (e.g. the terminal live-feed booter). A takeover
+		   that wants blocks gone registers their script ids through the
+		   `sml_pp_strip_script_ids` filter (the Terminal V2 clean render does). */
+		$strip = apply_filters( 'sml_pp_strip_script_ids', array(), $html );
+		if ( is_array( $strip ) && $strip ) {
+			foreach ( $strip as $sid ) {
+				$sid = preg_quote( (string) $sid, '#' );
+				if ( '' === $sid ) { continue; }
+				$html = preg_replace( '#<script\b[^>]*\bid=["\']' . $sid . '["\'][^>]*>.*?</script>\s*#is', '', $html );
+			}
+		}
 		$hit = null;
 		foreach ( sml_pp_markers() as $marker => $ids ) { if ( false !== strpos( $html, $marker ) ) { $hit = $ids; break; } }
 		if ( null === $hit ) { return $html; }
