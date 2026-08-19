@@ -685,11 +685,12 @@
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (res) {
             if (!res.ok) { setFollowUI(on, false); toast((res.j && res.j.message) || 'Could not update follow.', true); return; }
-            var now = (res.j && typeof res.j.is_following === 'boolean') ? res.j.is_following : !on;
+            var j = res.j || {};
+            var now = (typeof j.following === 'boolean') ? j.following : ((typeof j.is_following === 'boolean') ? j.is_following : !on);
             setFollowUI(now, false);
-            var fc = $('.sip-stat-l'); /* FOLLOWERS is the first stat when present */
+            var cnt = (j.followers_count != null) ? j.followers_count : j.follower_count;
             var stat = Array.prototype.slice.call($$('.sip-stat')).filter(function (st) { return /FOLLOWERS/.test(st.textContent); })[0];
-            if (stat && res.j && res.j.follower_count != null) { var v = stat.querySelector('.sip-stat-v'); if (v) v.textContent = String(res.j.follower_count); }
+            if (stat && cnt != null) { var v = stat.querySelector('.sip-stat-v'); if (v) v.textContent = String(cnt); }
           }, function () { setFollowUI(on, false); toast('Could not update follow.', true); });
       };
       followBtn.addEventListener('click', function () { var rb = realFollow(); if (rb) { rb.click(); setTimeout(syncFollow, 300); setTimeout(syncFollow, 1500); } else directFollow(); });
