@@ -55,6 +55,7 @@
     // rides along (its background reload is harmless). Mock candles + mock
     // control row are hidden — the real controls come with the module.
     var wsl = document.getElementById('sml-ws-left');
+    if (!done.chart && window.SML_TV2_NATIVE_CHART === 1) { done.chart = true; }   /* terminal-chart.js owns the chart card now (legacy canvas stays hidden) */
     if (!done.chart && wsl && wsl.querySelector('canvas') && main.children[0]) {
       done.chart = adopt(cardBody(main.children[0], false), wsl);
       if (done.chart) {

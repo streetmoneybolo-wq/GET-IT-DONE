@@ -80,13 +80,14 @@
         clampSummary();
         window.addEventListener('resize', clampSummary);
         // Phase B: wire real data into the shell
-        var d = document.createElement('script'); d.src = base + 'js/terminal-data.js'; document.body.appendChild(d);
-        // Phase C: adopt the booted legacy modules into the shell's cards
-        var a = document.createElement('script'); a.src = base + 'js/terminal-adopt.js'; document.body.appendChild(a);
-        // Options tab: chain + what-if calculator
-        var o = document.createElement('script'); o.src = base + 'js/terminal-options.js'; document.body.appendChild(o);
-        // Market Position v2: new card under the chart, replaces the legacy #sml-mp module
-        var mp2 = document.createElement('script'); mp2.src = base + 'js/terminal-mp2.js'; document.body.appendChild(mp2);
+        /* module chain — async=false keeps INSERTION ORDER (a dynamically inserted script
+           is async by default): the native chart must set its flag before adopt runs */
+        var chain = function (file) { var s = document.createElement('script'); s.src = base + file; s.async = false; document.body.appendChild(s); };
+        chain('js/terminal-data.js');      // Phase B: real quote/strip/rail data
+        chain('js/terminal-chart.js');     // Phase 2: NATIVE chart (history + quote), replaces the adopted LoopCharts canvas
+        chain('js/terminal-adopt.js');     // Phase C: adopt the still-legacy modules (feed, alerts, ad) into the shell's cards
+        chain('js/terminal-options.js');   // Options tab: chain + what-if calculator
+        chain('js/terminal-mp2.js');       // Market Position v2 (+ chain-loads the Short sale card)
       })
       .catch(function () { /* fetch failed → leave the legacy terminal untouched */ });
   }
