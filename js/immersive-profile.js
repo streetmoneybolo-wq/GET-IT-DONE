@@ -265,6 +265,38 @@
     '.sip-panel-t{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.8px;color:#38F58A;flex:1;}' +
     '.sip-panel-grid{display:flex;flex-wrap:wrap;gap:6px;}' +
     '.sip-panel-note{font-size:11px;color:#6B7C90;margin-top:10px;line-height:1.5;}' +
+    '.sip-dock-more{display:none;}' +
+    '@media (max-width:640px){' +
+      '.sip-content{padding:10px 10px 150px;}' +
+      '.sip-topbar{gap:10px;padding-bottom:10px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +
+      '.sip-worldtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;margin-bottom:10px;}.sip-worldtabs::-webkit-scrollbar{display:none;}' +
+      '.sip-wtab{flex:none;padding:7px 12px;}.sip-wtab-hint{display:none;}' +
+      '.sip-worldnav{display:none !important;}' +
+      '.sip-banner{height:150px;}' +
+      '.sip-hero-row{position:relative;left:auto;right:auto;bottom:auto;margin-top:-42px;padding:0 12px 14px;gap:10px;align-items:flex-start;flex-direction:column;}' +
+      '.sip-hero-fade{background:linear-gradient(180deg,rgba(7,13,20,0) 40%,rgba(7,13,20,.9) 100%);}' +
+      '.sip-avatar{width:84px;height:84px;}' +
+      '.sip-name{font-size:26px;}.sip-handle{font-size:13px;}' +
+      '.sip-hero-row>div:last-child{width:100%;}.sip-hero-row .sip-btn{flex:1 1 auto;text-align:center;}' +
+      '.sip-stats{grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;}.sip-stat{padding:8px 9px;}.sip-stat-v{font-size:17px;}' +
+      '.sip-orbwrap{gap:8px;}.sip-orbcol{min-width:0;flex:1 1 100%;}.sip-stage{height:250px;}' +
+      '.sip-card{padding:14px 14px;}.sip-grid{gap:10px;}' +
+      '.sip-galphotos{grid-template-columns:repeat(2,1fr);gap:8px;}.sip-galvids{grid-template-columns:repeat(2,1fr);gap:8px;}' +
+      '.sip-worldtitle{font-size:22px;}' +
+      '.sip-editbadge{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px);max-width:calc(100vw - 20px);white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
+      '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
+      '.sip-play{width:40px;height:40px;font-size:12px;}' +
+      '.sip-track{min-width:0;max-width:none;flex:1 1 0;}' +
+      '.sip-eq{display:none;}' +
+      '.sip-dock-more{display:inline-block;flex:none;}' +
+      '.sip-wave{flex:1 1 100%;order:5;height:34px;min-width:0;}' +
+      '.sip-ctl{display:none;order:6;}' +
+      '.sip-dock.open .sip-ctl{display:flex;}' +
+      '.sip-dock.open .sip-wave{display:none;}' +
+      '.sip-dock.open{max-height:calc(100vh - 80px);overflow:auto;}' +
+      '.sip-panel{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:auto;max-height:60vh;}' +
+      '.sip-bsens{width:120px !important;}' +
+    '}' +
     '.sip-overlay{position:fixed;inset:0;z-index:9;background:rgba(4,9,14,.72);backdrop-filter:blur(7px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;}' +
     '.sip-overlay-btn{width:92px;height:92px;border-radius:50%;background:#38F58A;color:#03120A;display:flex;align-items:center;justify-content:center;font-size:32px;animation:sip-breathe 1.6s ease-in-out infinite;box-shadow:0 0 70px rgba(56,245,138,.5);}' +
     '.sip-overlay-t{font-family:Archivo,sans-serif;font-weight:800;font-size:22px;letter-spacing:.5px;}' +
@@ -428,6 +460,7 @@
       '<div class="sip-track"><div class="sip-track-l">PROFILE MUSIC · YOUTUBE</div><div class="sip-track-t">' + esc(cfg.music.title) + '</div><div class="sip-time">0:00 / 0:00</div></div>' +
       '<div class="sip-wave"><canvas></canvas></div>' +
       '<div class="sip-eq">' + eqHtml + '</div>' +
+      '<button class="sip-chip sip-dock-more" type="button" aria-expanded="false">Looks ▾</button>' +
       '<div class="sip-ctl"><div class="sip-ctl-l">2D OBJECTS</div><button class="sip-chip sip-obj-btn"></button>' +
       '<div class="sip-panel sip-obj-panel" hidden><div class="sip-panel-h"><div class="sip-panel-t">FLOATING 2D OBJECTS</div>' +
       '<button class="sip-chip sip-all">All</button><button class="sip-chip sip-none">None</button></div>' +
@@ -586,6 +619,8 @@
     }
     var editToggle = $('.sip-edit-toggle');
     if (editToggle) editToggle.addEventListener('click', function () { editMode = !editMode; if (!editMode) enlarged = null; applyEditUI(); });
+    var dockMore = $('.sip-dock-more'), dockEl = $('.sip-dock');
+    if (dockMore && dockEl) dockMore.addEventListener('click', function () { var on = !dockEl.classList.contains('open'); dockEl.classList.toggle('open', on); dockMore.setAttribute('aria-expanded', on ? 'true' : 'false'); dockMore.textContent = on ? 'Looks ▴' : 'Looks ▾'; });
     var editDone = $('.sip-editdone');
     if (editDone) editDone.addEventListener('click', function () { editMode = false; enlarged = null; applyEditUI(); });
     var studioOpen = $('.sip-studio-open');
@@ -1282,6 +1317,12 @@
     var mount = document.getElementById('sml-immersive-profile-root');
     if (!mount) { mount = document.createElement('div'); mount.id = 'sml-immersive-profile-root'; document.body.appendChild(mount); }
     if (isProfile || (window.SML_PROFILE && window.SML_PROFILE.overlay)) enableOverlay(mount);
+    if (isProfile && !document.querySelector('meta[name="viewport"]')) {
+      /* the public profile render ships no viewport meta (channel pages do) — phones
+         laid the page out at 980px and zoomed out. Mobile rules below rely on this. */
+      var vp = document.createElement('meta'); vp.name = 'viewport'; vp.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+      document.head.appendChild(vp);
+    }
     /* pre-paint guard (wpcode/prepaint-guard.php): the overlay's own dark canvas is
        up now, so the old unified profile never shows underneath — reveal */
     document.documentElement.classList.remove('sml-pp');
