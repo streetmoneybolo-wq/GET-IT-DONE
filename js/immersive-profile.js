@@ -194,6 +194,7 @@
     '.sip-social-name{font-size:13px;font-weight:700;}' +
     '.sip-social-handle{font-size:10.5px;color:#38F58A;font-family:"IBM Plex Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
     '.sip-social-desc{font-size:11px;color:#6B7C90;line-height:1.45;}' +
+    '.sip-editdone{margin-left:8px;padding:5px 12px;border-radius:999px;border:none;background:#38F58A;color:#03120A;font:700 11px "IBM Plex Sans",system-ui,sans-serif;cursor:pointer;letter-spacing:0;}' +
     '.sip-editbadge{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:8;background:rgba(11,19,31,.9);border:1px solid rgba(56,245,138,.5);color:#38F58A;border-radius:999px;padding:7px 16px;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:1px;backdrop-filter:blur(10px);white-space:nowrap;}' +
     '.sip-dock{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:min(1024px,calc(100vw - 18px));z-index:5;background:rgba(11,19,31,.84);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 calc(var(--kick,0)*44px) rgba(56,245,138,calc(var(--kick,0)*0.3));}' +
     '.sip-play{width:46px;height:46px;border-radius:50%;border:none;background:#38F58A;color:#03120A;font-size:14px;font-weight:700;cursor:pointer;flex:none;box-shadow:0 0 calc(8px + var(--kick,0)*32px) rgba(56,245,138,.55);}' +
@@ -365,7 +366,7 @@
       '<button class="sip-worldnav sip-prev" style="left:10px;" title="Previous world">‹</button>' +
       '<button class="sip-worldnav sip-next" style="right:10px;" title="Next world">›</button>' +
       '<button class="sip-exit" title="Exit to your normal profile (Customize, Settings, everything)">✕ Classic profile</button>' +
-      '<div class="sip-editbadge" hidden>EDIT MODE — drag sections to reorder · ⤢ − ＋ resize photos &amp; videos</div>' +
+      '<div class="sip-editbadge" hidden>ARRANGE MODE — drag sections to reorder · ⤢ − ＋ resize · double-click a slot to add media &nbsp;<button type="button" class="sip-editdone">Done ✓</button></div>' +
       '<div class="sip-content">' +
       '<div class="sip-topbar"><span class="sip-logo-dot"></span><span class="sip-logo">STOCKMARKETLOOP</span>' +
       '<nav class="sip-nav"><a href="/watch/">Watch</a><a href="/live/">Live</a><a href="/markets/">Markets</a><a href="/n/">Newsletters</a></nav></div>' +
@@ -536,6 +537,8 @@
     }
     var editToggle = $('.sip-edit-toggle');
     if (editToggle) editToggle.addEventListener('click', function () { editMode = !editMode; if (!editMode) enlarged = null; applyEditUI(); });
+    var editDone = $('.sip-editdone');
+    if (editDone) editDone.addEventListener('click', function () { editMode = false; enlarged = null; applyEditUI(); });
     var studioOpen = $('.sip-studio-open');
     if (studioOpen) studioOpen.addEventListener('click', function () { if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open(); });
     if (cfg.isOwner) mountStudio(mount, cfg);
