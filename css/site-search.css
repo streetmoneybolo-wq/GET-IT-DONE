@@ -42,7 +42,10 @@ body.sml-embed-tool #sml-global-header,
 body.sml-embed-tool .wp-site-blocks > header.wp-block-template-part,
 body.sml-embed-tool .wp-block-template-part footer,
 body.sml-embed-tool footer.wp-block-template-part,
-body.sml-embed-tool .sml-gh-tape{display:none!important}
+body.sml-embed-tool .sml-gh-tape,
+body.sml-embed-tool #sml-lb-btn,
+body.sml-embed-tool .sml-lb-floating,
+body.sml-embed-tool .sml-loop-launcher{display:none!important} /* Loop Bucks / Loop-Kick live in the OUTER page header, not inside the tool frame */
 body.sml-embed-tool{padding-top:0!important;margin-top:0!important}
 
 /* ticker-only live search for the embedded chart tools */
