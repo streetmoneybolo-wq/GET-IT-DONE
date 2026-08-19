@@ -29,6 +29,7 @@
       '</div>' +
       '<div class="tv2-mp2 tv2-sig" data-tv2-keep="1">' +
         '<div class="tv2-mp2-h"><span class="t">Signals</span><span class="d" id="tv2sig-sum"></span></div>' +
+        '<div class="tv2-sig-days" id="tv2sig-days"></div>' +
         '<div class="tv2-sig-body" id="tv2sig-body"><div class="tv2-mp2-empty">Computing signals…</div></div>' +
       '</div>';
     return row;
@@ -121,86 +122,228 @@
       });
   }
 
-  /* ---- Signals: standard indicator states computed from the site's own daily
-     candles (/sml/v1/history?tf=1D) — plain math on real bars, nothing invented. */
-  function sigSma(cl, n, i) { if (i + 1 < n) return null; var s = 0; for (var j = i - n + 1; j <= i; j++) s += cl[j]; return s / n; }
-  function sigEmaSeries(cl, n) { var out = [], k = 2 / (n + 1), e = null; for (var i = 0; i < cl.length; i++) { e = e == null ? cl[i] : cl[i] * k + e * (1 - k); out.push(e); } return out; }
-  function sigRsi(cl, n) {
-    if (cl.length < n + 1) return null;
+  /* ---- Signals: indicator intelligence computed from the site's own daily
+     candles (/sml/v1/history?tf=1D). Plain math on real bars — nothing invented.
+     The day pills pan the whole read-out back up to 5 trading days (bars are
+     sliced locally, so panning is instant); every tile also carries a delta
+     arrow vs the prior trading day so state changes stand out. */
+  var SIG = { bars: null, day: 0 };
+
+  function fmtQty(n) { n = Number(n) || 0; if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B'; if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'; return String(Math.round(n)); }
+  function sigSmaAt(a, n, i) { if (i + 1 < n) return null; var s = 0; for (var j = i - n + 1; j <= i; j++) s += a[j]; return s / n; }
+  function sigEmaSeries(a, n) { var out = [], k = 2 / (n + 1), e = null; for (var i = 0; i < a.length; i++) { e = e == null ? a[i] : a[i] * k + e * (1 - k); out.push(e); } return out; }
+  function sigRsiAt(cl, n, i) {
+    if (i < n) return null;
     var g = 0, l = 0;
-    for (var i = 1; i <= n; i++) { var d = cl[i] - cl[i - 1]; if (d > 0) g += d; else l -= d; }
+    for (var j = 1; j <= n; j++) { var d = cl[j] - cl[j - 1]; if (d > 0) g += d; else l -= d; }
     g /= n; l /= n;
-    for (i = n + 1; i < cl.length; i++) { var dd = cl[i] - cl[i - 1]; g = (g * (n - 1) + (dd > 0 ? dd : 0)) / n; l = (l * (n - 1) + (dd < 0 ? -dd : 0)) / n; }
+    for (j = n + 1; j <= i; j++) { var dd = cl[j] - cl[j - 1]; g = (g * (n - 1) + (dd > 0 ? dd : 0)) / n; l = (l * (n - 1) + (dd < 0 ? -dd : 0)) / n; }
     return l === 0 ? 100 : 100 - 100 / (1 + g / l);
   }
-  function computeSignals(bars) {
+  function sigAtrSeries(bars) {
+    var out = [], atr = null;
+    for (var i = 0; i < bars.length; i++) {
+      var tr = i === 0 ? bars[0].h - bars[0].l : Math.max(bars[i].h - bars[i].l, Math.abs(bars[i].h - bars[i - 1].c), Math.abs(bars[i].l - bars[i - 1].c));
+      atr = atr == null ? tr : (atr * 13 + tr) / 14;
+      out.push(atr);
+    }
+    return out;
+  }
+  function sigAdx(bars) { /* Wilder 14 — returns {adx,pdi,mdi} for the last bar */
+    var n = 14;
+    if (bars.length < n * 2 + 2) return null;
+    var tr14 = 0, p14 = 0, m14 = 0, adx = null, dxSum = 0;
+    var prev = bars[0];
+    for (var i = 1; i < bars.length; i++) {
+      var b = bars[i];
+      var up = b.h - prev.h, dn = prev.l - b.l;
+      var pdm = (up > dn && up > 0) ? up : 0;
+      var mdm = (dn > up && dn > 0) ? dn : 0;
+      var tr = Math.max(b.h - b.l, Math.abs(b.h - prev.c), Math.abs(b.l - prev.c));
+      if (i <= n) { tr14 += tr; p14 += pdm; m14 += mdm; }
+      else { tr14 = tr14 - tr14 / n + tr; p14 = p14 - p14 / n + pdm; m14 = m14 - m14 / n + mdm; }
+      if (i >= n) {
+        var pdi = tr14 ? 100 * p14 / tr14 : 0, mdi = tr14 ? 100 * m14 / tr14 : 0;
+        var dx = (pdi + mdi) ? 100 * Math.abs(pdi - mdi) / (pdi + mdi) : 0;
+        if (i < n * 2) { dxSum += dx; if (i === n * 2 - 1) adx = dxSum / n; }
+        else adx = adx == null ? dx : (adx * (n - 1) + dx) / n;
+      }
+      prev = b;
+    }
+    return { adx: adx, pdi: tr14 ? 100 * p14 / tr14 : 0, mdi: tr14 ? 100 * m14 / tr14 : 0 };
+  }
+  function sigStoch(bars) { /* slow stochastic 14,3,3 → {k,d} */
+    if (bars.length < 22) return null;
+    var raw = [];
+    for (var i = 13; i < bars.length; i++) {
+      var hi = -Infinity, lo = Infinity;
+      for (var j = i - 13; j <= i; j++) { if (bars[j].h > hi) hi = bars[j].h; if (bars[j].l < lo) lo = bars[j].l; }
+      raw.push(hi > lo ? (bars[i].c - lo) / (hi - lo) * 100 : 50);
+    }
+    var k3 = [];
+    for (var q = 2; q < raw.length; q++) k3.push((raw[q] + raw[q - 1] + raw[q - 2]) / 3);
+    if (k3.length < 3) return null;
+    return { k: k3[k3.length - 1], d: (k3[k3.length - 1] + k3[k3.length - 2] + k3[k3.length - 3]) / 3 };
+  }
+
+  function computeAll(bars) {
+    bars = bars.slice(-420); /* plenty for MA200 + 52w, keeps every pan instant */
     var cl = bars.map(function (b) { return b.c; });
     var i = cl.length - 1, last = cl[i];
-    var rows = [], bull = 0, bear = 0;
-    function push(name, val, chip, cls) { rows.push({ n: name, v: val, chip: chip, cls: cls }); if (cls === 'bull') bull++; if (cls === 'bear') bear++; }
+    var tiles = [], bull = 0, bear = 0;
+    function push(sec, name, val, chip, cls) { tiles.push({ sec: sec, n: name, v: val, chip: chip, cls: cls }); if (cls === 'bull') bull++; else if (cls === 'bear') bear++; }
 
-    var ma20 = sigSma(cl, 20, i), ma50 = sigSma(cl, 50, i);
+    /* TREND */
+    var ma20 = sigSmaAt(cl, 20, i), ma50 = sigSmaAt(cl, 50, i), ma200 = sigSmaAt(cl, 200, i);
     if (ma20 != null && ma50 != null) {
-      var cls = last > ma20 && ma20 > ma50 ? 'bull' : (last < ma20 && ma20 < ma50 ? 'bear' : 'mid');
-      push('Trend · MA20 / MA50', 'MA20 ' + num(ma20, 2) + ' · MA50 ' + num(ma50, 2),
-        cls === 'bull' ? 'Uptrend' : cls === 'bear' ? 'Downtrend' : 'Mixed', cls);
+      var upT = last > ma20 && ma20 > ma50, dnT = last < ma20 && ma20 < ma50;
+      push('Trend', 'MA 20 / 50', num(ma20, 2) + ' / ' + num(ma50, 2), upT ? 'Uptrend' : dnT ? 'Downtrend' : 'Mixed', upT ? 'bull' : dnT ? 'bear' : 'mid');
     }
-    var rsi = sigRsi(cl, 14);
-    if (rsi != null) {
-      push('Momentum · RSI 14', num(rsi, 1),
-        rsi >= 70 ? 'Overbought' : rsi <= 30 ? 'Oversold' : 'Neutral',
-        rsi >= 70 ? 'bear' : rsi <= 30 ? 'bull' : 'mid');
+    if (ma50 != null && ma200 != null) push('Trend', 'MA 50 / 200', num(ma50, 2) + ' / ' + num(ma200, 2), ma50 > ma200 ? 'Golden cross' : 'Death cross', ma50 > ma200 ? 'bull' : 'bear');
+    var adx = sigAdx(bars);
+    if (adx && adx.adx != null) {
+      var dir = adx.pdi > adx.mdi;
+      push('Trend', 'ADX 14', num(adx.adx, 1) + ' · +DI ' + num(adx.pdi, 1) + ' · −DI ' + num(adx.mdi, 1),
+        adx.adx >= 25 ? (dir ? 'Strong uptrend' : 'Strong downtrend') : 'Weak / range',
+        adx.adx >= 25 ? (dir ? 'bull' : 'bear') : 'mid');
     }
+
+    /* MOMENTUM */
+    var rsi = sigRsiAt(cl, 14, i);
+    if (rsi != null) push('Momentum', 'RSI 14', num(rsi, 1),
+      rsi >= 70 ? 'Overbought' : rsi <= 30 ? 'Oversold' : rsi >= 55 ? 'Firm' : rsi <= 45 ? 'Soft' : 'Neutral',
+      rsi >= 70 || rsi <= 30 ? 'warn' : rsi >= 55 ? 'bull' : rsi <= 45 ? 'bear' : 'mid');
     if (cl.length >= 35) {
       var e12 = sigEmaSeries(cl, 12), e26 = sigEmaSeries(cl, 26);
-      var macd = e12.map(function (v, k) { return v - e26[k]; });
-      var sigLine = sigEmaSeries(macd, 9);
-      var m = macd[i], sg = sigLine[i], hist = m - sg;
-      push('MACD · 12 26 9', num(m, 2) + ' · hist ' + (hist >= 0 ? '+' : '') + num(hist, 2),
-        m > sg ? 'Bullish' : 'Bearish', m > sg ? 'bull' : 'bear');
+      var macd = []; for (var q2 = 0; q2 < cl.length; q2++) macd.push(e12[q2] - e26[q2]);
+      var sl = sigEmaSeries(macd, 9);
+      var m = macd[i], sg = sl[i], hist = m - sg;
+      var crossed = i > 0 && ((m > sg) !== (macd[i - 1] > sl[i - 1]));
+      push('Momentum', 'MACD 12·26·9', num(m, 2) + ' · hist ' + (hist >= 0 ? '+' : '') + num(hist, 2),
+        m > sg ? (crossed ? 'Fresh bull cross' : 'Bullish') : (crossed ? 'Fresh bear cross' : 'Bearish'), m > sg ? 'bull' : 'bear');
     }
-    if (ma20 != null && cl.length >= 20) {
-      var v = 0; for (var j = i - 19; j <= i; j++) v += Math.pow(cl[j] - ma20, 2);
-      var sd = Math.sqrt(v / 20), up = ma20 + 2 * sd, lo = ma20 - 2 * sd;
-      var pb = up > lo ? (last - lo) / (up - lo) : 0.5;
-      push('Bollinger · 20 2\u03c3', '%B ' + num(pb * 100, 0) + '%',
-        pb > 1 ? 'Above upper band' : pb < 0 ? 'Below lower band' : 'Within bands',
-        pb > 1 || pb < 0 ? 'warn' : 'mid');
+    var st = sigStoch(bars);
+    if (st) push('Momentum', 'Stochastic 14·3·3', '%K ' + num(st.k, 1) + ' · %D ' + num(st.d, 1),
+      st.k >= 80 ? 'Overbought' : st.k <= 20 ? 'Oversold' : st.k > st.d ? '%K above %D' : '%K below %D',
+      st.k >= 80 || st.k <= 20 ? 'warn' : st.k > st.d ? 'bull' : 'bear');
+    if (i >= 10) { var roc = (last - cl[i - 10]) / cl[i - 10] * 100; push('Momentum', 'ROC 10', (roc >= 0 ? '+' : '') + num(roc, 2) + '%', roc >= 0 ? 'Rising' : 'Falling', roc >= 0 ? 'bull' : 'bear'); }
+
+    /* VOLATILITY */
+    if (ma20 != null) {
+      var dv = 0; for (var j2 = i - 19; j2 <= i; j2++) dv += Math.pow(cl[j2] - ma20, 2);
+      var sd = Math.sqrt(dv / 20), bbU = ma20 + 2 * sd, bbL = ma20 - 2 * sd;
+      var pb = bbU > bbL ? (last - bbL) / (bbU - bbL) : 0.5;
+      var bw = ma20 ? (bbU - bbL) / ma20 * 100 : 0;
+      push('Volatility', 'Bollinger 20·2σ', '%B ' + num(pb * 100, 0) + '% · width ' + num(bw, 1) + '%',
+        pb > 1 ? 'Above upper' : pb < 0 ? 'Below lower' : bw < 4 ? 'Squeeze' : 'Within bands',
+        pb > 1 || pb < 0 || bw < 4 ? 'warn' : 'mid');
     }
-    var pv = 0, vv = 0;
-    for (var k2 = Math.max(0, i - 19); k2 <= i; k2++) { var b = bars[k2]; var px = (b.vw != null ? b.vw : (b.h + b.l + b.c) / 3); pv += px * (b.v || 0); vv += (b.v || 0); }
-    if (vv > 0) {
-      var vw = pv / vv;
-      push('20-day VWAP', num(vw, 2), last >= vw ? 'Price above' : 'Price below', last >= vw ? 'bull' : 'bear');
+    var atrS = sigAtrSeries(bars);
+    if (atrS.length > 6) {
+      var atr = atrS[atrS.length - 1], atrPct = last ? atr / last * 100 : 0, atrPrev = atrS[atrS.length - 6];
+      push('Volatility', 'ATR 14', num(atr, 2) + ' (' + num(atrPct, 2) + '%)',
+        atr > atrPrev * 1.05 ? 'Vol rising' : atr < atrPrev * 0.95 ? 'Vol falling' : 'Vol steady', 'mid');
     }
+
+    /* VOLUME */
+    var pv = 0, tv = 0;
+    for (var k2 = Math.max(0, i - 19); k2 <= i; k2++) { var b2 = bars[k2]; var px = (b2.vw != null ? b2.vw : (b2.h + b2.l + b2.c) / 3); pv += px * (b2.v || 0); tv += (b2.v || 0); }
+    if (tv > 0) { var vw = pv / tv; push('Volume', '20-day VWAP', num(vw, 2), last >= vw ? 'Price above' : 'Price below', last >= vw ? 'bull' : 'bear'); }
+    if (bars.length >= 25) {
+      var obv = [0];
+      for (var k3 = 1; k3 < bars.length; k3++) { var d3 = bars[k3].c - bars[k3 - 1].c; obv.push(obv[k3 - 1] + (d3 > 0 ? (bars[k3].v || 0) : d3 < 0 ? -(bars[k3].v || 0) : 0)); }
+      var obvMa = sigSmaAt(obv, 20, obv.length - 1);
+      if (obvMa != null) push('Volume', 'OBV vs 20-day', (obv[obv.length - 1] >= obvMa ? 'above' : 'below') + ' its average',
+        obv[obv.length - 1] >= obvMa ? 'Accumulation' : 'Distribution', obv[obv.length - 1] >= obvMa ? 'bull' : 'bear');
+    }
+    if (tv > 0) {
+      var avgV = tv / Math.min(20, i + 1), lastV = bars[i].v || 0, xV = avgV ? lastV / avgV : 0;
+      push('Volume', 'Session volume', fmtQty(lastV) + ' · ' + num(xV, 2) + '× avg', xV >= 1.5 ? 'Heavy' : xV <= 0.5 ? 'Light' : 'Normal', xV >= 1.5 ? 'warn' : 'mid');
+    }
+
+    /* RANGE */
     if (bars.length >= 21) {
       var hi20 = -Infinity, lo20 = Infinity;
-      for (var k3 = i - 20; k3 < i; k3++) { if (bars[k3].h > hi20) hi20 = bars[k3].h; if (bars[k3].l < lo20) lo20 = bars[k3].l; }
-      if (last > hi20) push('20-day range', 'prior high ' + num(hi20, 2), 'New 20d high', 'bull');
-      else if (last < lo20) push('20-day range', 'prior low ' + num(lo20, 2), 'New 20d low', 'bear');
-      else push('20-day range', num(lo20, 2) + ' \u2013 ' + num(hi20, 2), num(((hi20 - last) / hi20) * 100, 1) + '% off high', 'mid');
+      for (var k4 = i - 20; k4 < i; k4++) { if (bars[k4].h > hi20) hi20 = bars[k4].h; if (bars[k4].l < lo20) lo20 = bars[k4].l; }
+      if (last > hi20) push('Range', '20-day range', 'prior high ' + num(hi20, 2), 'Breakout high', 'bull');
+      else if (last < lo20) push('Range', '20-day range', 'prior low ' + num(lo20, 2), 'Breakdown low', 'bear');
+      else push('Range', '20-day range', num(lo20, 2) + ' – ' + num(hi20, 2), num((hi20 - last) / hi20 * 100, 1) + '% off high', 'mid');
     }
-    return { rows: rows, bull: bull, bear: bear };
+    if (bars.length >= 252) {
+      var hi52 = -Infinity, lo52 = Infinity;
+      for (var k5 = i - 251; k5 <= i; k5++) { if (bars[k5].h > hi52) hi52 = bars[k5].h; if (bars[k5].l < lo52) lo52 = bars[k5].l; }
+      var offH = (hi52 - last) / hi52 * 100, offL = lo52 ? (last - lo52) / lo52 * 100 : 0;
+      push('Range', '52-week range', num(lo52, 2) + ' – ' + num(hi52, 2),
+        offH <= 1 ? 'At 52w high' : offL <= 1 ? 'At 52w low' : num(offH, 1) + '% off high',
+        offH <= 1 ? 'bull' : offL <= 1 ? 'bear' : 'mid');
+    }
+    return { tiles: tiles, bull: bull, bear: bear, total: tiles.length };
   }
-  function renderSignals(row, bars) {
+
+  function buildDayPills(row) {
+    var host = row.querySelector('#tv2sig-days');
+    var n = SIG.bars.length, html = '';
+    for (var k = 5; k >= 0; k--) {
+      var idx = n - 1 - k;
+      if (idx < 40) continue;
+      var d = new Date(SIG.bars[idx].t);
+      var lbl = k === 0 ? 'Latest' : (d.getMonth() + 1) + '/' + d.getDate();
+      html += '<button type="button" data-k="' + k + '" class="' + (k === SIG.day ? 'on' : '') + '">' + lbl + '</button>';
+    }
+    host.innerHTML = html;
+    if (!host.__wired) {
+      host.__wired = true;
+      host.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-k]'); if (!b) return;
+        SIG.day = Number(b.getAttribute('data-k')) || 0;
+        buildDayPills(row); renderSignals(row);
+      });
+    }
+  }
+
+  function renderSignals(row) {
+    var bars = SIG.bars; if (!bars) return;
+    var end = bars.length - SIG.day;
     var body = row.querySelector('#tv2sig-body');
-    var sum = row.querySelector('#tv2sig-sum');
-    var r = computeSignals(bars);
-    if (!r.rows.length) { body.innerHTML = '<div class="tv2-mp2-empty">Not enough daily history for ' + esc(SYM) + ' to compute signals.</div>'; return; }
-    sum.textContent = r.bull + ' bullish \u00b7 ' + r.bear + ' bearish';
-    body.innerHTML = r.rows.map(function (x) {
-      return '<div class="tv2-sig-row"><span class="n">' + esc(x.n) + '</span><span class="v">' + esc(x.v) + '</span><span class="c ' + x.cls + '">' + esc(x.chip) + '</span></div>';
-    }).join('') +
-    '<div class="tv2-sig-note">Computed live from ' + esc(SYM) + ' daily candles (authoritative history). Indicator states, not advice.</div>';
+    if (end < 40) { body.innerHTML = '<div class="tv2-mp2-empty">Not enough daily history for ' + esc(SYM) + ' to compute signals.</div>'; return; }
+    var cur = computeAll(bars.slice(0, end));
+    var prev = end > 41 ? computeAll(bars.slice(0, end - 1)) : null;
+    var rank = { bear: -1, warn: 0, mid: 0, bull: 1 };
+    var prevMap = {};
+    if (prev) prev.tiles.forEach(function (t) { prevMap[t.n] = t; });
+    var score = cur.total ? Math.round((cur.bull - cur.bear) / cur.total * 100) : 0;
+    var asOf = new Date(bars[end - 1].t);
+    row.querySelector('#tv2sig-sum').textContent = cur.bull + ' bullish · ' + cur.bear + ' bearish' + (SIG.day > 0 ? ' · as of ' + (asOf.getMonth() + 1) + '/' + asOf.getDate() + ' close' : '');
+
+    var bySec = {}, secOrder = [];
+    cur.tiles.forEach(function (t) { if (!bySec[t.sec]) { bySec[t.sec] = []; secOrder.push(t.sec); } bySec[t.sec].push(t); });
+    var html = '<div class="sig-gauge"><div class="sig-gauge-top"><span class="k">Composite bias</span><span class="v ' + (score > 15 ? 'bull' : score < -15 ? 'bear' : 'mid') + '">' + (score > 0 ? '+' : '') + score + '</span></div>' +
+      '<div class="sig-gauge-track"><i style="left:' + (50 + score / 2) + '%"></i></div>' +
+      '<div class="sig-gauge-lbl"><span>Bearish</span><span>Neutral</span><span>Bullish</span></div></div>';
+    secOrder.forEach(function (sec) {
+      html += '<div class="sig-sec">' + esc(sec) + '</div><div class="sig-grid">';
+      bySec[sec].forEach(function (t) {
+        var pt = prevMap[t.n];
+        var dd2 = pt ? (rank[t.cls] - rank[pt.cls]) : 0;
+        var arrow = dd2 > 0 ? '<span class="dl up" title="improved vs the prior trading day">▲</span>' : dd2 < 0 ? '<span class="dl dn" title="weakened vs the prior trading day">▼</span>' : '';
+        html += '<div class="sig-tile ' + t.cls + '"><div class="tt"><span class="n">' + esc(t.n) + '</span>' + arrow + '</div><div class="vv">' + esc(t.v) + '</div><div class="cc">' + esc(t.chip) + '</div></div>';
+      });
+      html += '</div>';
+    });
+    html += '<div class="tv2-sig-note">Every value is computed live from ' + esc(SYM) + ' daily candles (authoritative history). ▲▼ mark a state change vs the prior trading day. Indicator states, not advice.</div>';
+    body.innerHTML = html;
   }
+
   function loadSignals(row, attempt) {
     attempt = attempt || 0;
     fetch('/wp-json/sml/v1/history?symbol=' + encodeURIComponent(SYM) + '&tf=1D', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (d) {
-        var bars = (d && Array.isArray(d.bars)) ? d.bars.filter(function (b) { return b && b.c != null; }) : [];
+        var bars = (d && Array.isArray(d.bars)) ? d.bars.filter(function (b) { return b && b.c != null && b.h != null && b.l != null; }) : [];
         if (!bars.length) throw new Error('empty');
-        renderSignals(row, bars);
+        SIG.bars = bars;
+        buildDayPills(row);
+        renderSignals(row);
       })
       .catch(function () {
         if (attempt < 3) { setTimeout(function () { loadSignals(row, attempt + 1); }, [4000, 8000, 18000][attempt]); return; }
