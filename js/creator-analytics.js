@@ -179,6 +179,7 @@
     var countries = ga && Array.isArray(ga.countries) ? ga.countries : [];
     var cities = ga && Array.isArray(ga.cities) ? ga.cities : [];
     var liveAudience = ga && ga.live && ga.live.available ? n(ga.live.count) : null;
+	var liveNeedsPresence = !!(ga && ga.live && ga.live.reason === 'creator_realtime_requires_first_party_presence');
     function audienceBars(items, nameKey, valueKey, cap) {
       items = (items || []).slice(0, cap || 8); var max = 1;
       items.forEach(function (x) { max = Math.max(max, n(x[valueKey])); });
@@ -189,7 +190,7 @@
     }
     var liveCard = '<div class="ca-card"><h3>Live right now<span class="ca-fresh">' + (isLive ? 'streaming' : 'not streaming') + '</span></h3>' +
       '<div style="display:flex;align-items:baseline;gap:10px"><div class="ca-big ' + (isLive ? 'acc' : '') + '">' + (liveAudience != null ? fmt(liveAudience) : (isLive ? 'LIVE' : '—')) + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
-      '<div class="ca-sub" style="margin-top:6px">' + (isLive ? 'Started ' + esc(ago(S.live.live_started_at)) + (liveAudience != null ? ' · GA4 active users in the last 30 minutes.' : '. Audience totals are still collecting.') : 'Go live from Creator Studio — active audience totals appear here while you stream.') + '</div>' +
+      '<div class="ca-sub" style="margin-top:6px">' + (isLive ? 'Started ' + esc(ago(S.live.live_started_at)) + (liveAudience != null ? ' · Active visitors in the last 30 minutes.' : (liveNeedsPresence ? ' · Creator-specific realtime presence is not connected yet.' : '. Audience totals are still collecting.')) : 'Go live from Creator Studio.' + (liveNeedsPresence ? ' Creator-specific realtime presence is not connected yet.' : '')) + '</div>' +
       (isLive ? '' : '<div style="margin-top:10px"><a class="ca-btn2" href="/go-live/">Go Live →</a></div>') + '</div>';
     var audience = '<div class="ca-grid ca-g21">' +
       '<div class="ca-card"><h3>Where your audience is<span class="ca-fresh">country + city aggregates</span></h3>' + (cities.length ? audienceBars(cities, 'city', 'users', 12) : (countries.length ? audienceBars(countries, 'country', 'users', 12) : empty(ga ? 'Not enough data yet' : 'Audience analytics not connected yet', ga ? 'GA4 is connected, but no city has reached the privacy threshold yet.' : 'Audience analytics needs GA4 collection. No visitor is ever shown individually.'))) + '</div>' +
