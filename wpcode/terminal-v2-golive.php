@@ -117,6 +117,13 @@ if ( ! function_exists( 'sml_tv2_live_active' ) ) {
 		return array_merge( (array) $ids, sml_tv2_clean_strip_ids() );
 	} );
 
+	/* server-side body classes so the CDN stylesheet can clear the page chrome above the
+	   terminal on the very first paint (no script needed): tv2-live (+ tv2-clean) */
+	add_filter( 'body_class', static function ( $classes ) {
+		if ( sml_tv2_live_active() ) { $classes[] = 'tv2-live'; if ( sml_tv2_clean_active() ) { $classes[] = 'tv2-clean'; } }
+		return $classes;
+	} );
+
 	add_action( 'wp_enqueue_scripts', function () {
 		if ( ! sml_tv2_live_active() ) { return; }
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . sml_tv2_live_ref() . '/';
