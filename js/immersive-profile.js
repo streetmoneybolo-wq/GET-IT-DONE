@@ -913,7 +913,13 @@
       if (banner && banner.source_url) { if (/^video\//.test(banner.mime_type || '') || app.banner_mode === 'video') base.bannerVideoUrl = banner.source_url; else base.bannerUrl = banner.source_url; }
       if (bgm && bgm.source_url) { if (/^video\//.test(bgm.mime_type || '') || app.background_mode === 'video') base.backgroundVideoUrl = bgm.source_url; else base.backgroundUrl = bgm.source_url; }
       var TILES = { youtube: ['▶', '#FF0033'], discord: ['DC', '#5865F2'], facebook: ['f', '#1877F2'], x: ['𝕏', '#0f1419'], twitter: ['𝕏', '#0f1419'], linkedin: ['in', '#0A66C2'], bluesky: ['BS', '#0285FF'], threads: ['@', '#101010'], instagram: ['IG', 'linear-gradient(45deg,#F58529,#DD2A7B 55%,#8134AF)'], tiktok: ['TT', '#010101'], website: ['🌐', '#1c2833'], site: ['🌐', '#1c2833'], twitch: ['TV', '#9146FF'], reddit: ['r/', '#FF4500'], telegram: ['TG', '#229ED9'] };
-      base.socials = ((soc && soc.items) || []).filter(function (it) { return it && it.value; }).map(function (it) {
+      /* "social profile details" = the profile's detail rows (Age, city, school,
+         occupation, relationship …) — those are the ABOUT section; only real
+         network keys become social tiles */
+      var SOCIAL_KEYS = /^(youtube|discord|facebook|x|twitter|linkedin|bluesky|threads|instagram|tiktok|website|site|twitch|reddit|telegram|snapchat|rumble|medium|substack|github)$/;
+      var items = ((soc && soc.items) || []).filter(function (it) { return it && it.value; });
+      base.about = items.filter(function (it) { return !SOCIAL_KEYS.test(String(it.key || '').toLowerCase()); }).map(function (it) { return { k: it.label || it.key, v: String(it.value) }; });
+      base.socials = items.filter(function (it) { return SOCIAL_KEYS.test(String(it.key || '').toLowerCase()); }).map(function (it) {
         var key = String(it.key || '').toLowerCase(); var t = TILES[key] || [String(it.label || key).charAt(0).toUpperCase(), '#1c2833'];
         var v = String(it.value); var url = /^https?:\/\//i.test(v) ? v : (key === 'x' || key === 'twitter' ? 'https://x.com/' + v.replace(/^@/, '') : key === 'instagram' ? 'https://instagram.com/' + v.replace(/^@/, '') : key === 'youtube' ? 'https://youtube.com/' + (v[0] === '@' ? v : '@' + v) : key === 'tiktok' ? 'https://tiktok.com/@' + v.replace(/^@/, '') : /^[\w.-]+\.[a-z]{2,}/i.test(v) ? 'https://' + v : '#');
         return { name: it.label || key, handle: v, url: url, glyph: t[0], tile: t[1], glyphColor: '#fff', glow: 'rgba(56,245,138,.25)', desc: '' };
