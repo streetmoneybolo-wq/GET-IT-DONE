@@ -48,20 +48,33 @@ if ( ! function_exists( 'sml_tv2_live_active' ) ) {
 		return (bool) SML_TV2_CLEAN_DEFAULT;
 	}
 
-	/* remove the balanced <section class="sml-terminal" …>…</section> block (nested sections inside) */
-	function sml_tv2_strip_terminal( $html ) {
-		$start = strpos( $html, '<section class="sml-terminal"' );
-		if ( false === $start ) { return $html; }
-		if ( ! preg_match_all( '#<section\b|</section>#i', $html, $m, PREG_OFFSET_CAPTURE, $start ) ) { return $html; }
-		$depth = 0; $end = false;
+	/* [start, end) of the balanced <section …>…</section> block that begins at $needle */
+	function sml_tv2_section_span( $html, $needle ) {
+		$start = strpos( $html, $needle );
+		if ( false === $start ) { return null; }
+		if ( ! preg_match_all( '#<section\b|</section>#i', $html, $m, PREG_OFFSET_CAPTURE, $start ) ) { return null; }
+		$depth = 0;
 		foreach ( $m[0] as $tok ) {
 			$depth += ( 0 === stripos( $tok[0], '<section' ) ) ? 1 : -1;
-			if ( 0 === $depth ) { $end = $tok[1] + strlen( $tok[0] ); break; }
+			if ( 0 === $depth ) { return array( $start, $tok[1] + strlen( $tok[0] ) ); }
 		}
-		if ( false === $end ) { return $html; }
+		return null;
+	}
+	/* remove the legacy terminal block, leave the V2 anchor + voice host in its place, and move
+	   the SEO "market summary and related coverage" section to the BOTTOM of the content (under the terminal) */
+	function sml_tv2_strip_terminal( $html ) {
+		$t = sml_tv2_section_span( $html, '<section class="sml-terminal"' );
+		if ( ! $t ) { return $html; }
 		$anchor = '<div id="sml-tv2-anchor" aria-hidden="true"></div>'
 			. '<div class="sml-pro-body tv2-legacy-host" hidden aria-hidden="true" style="display:none"></div>'; /* voice-room plugin mounts here (proxied, never shown) */
-		return substr( $html, 0, $start ) . $anchor . substr( $html, $end );
+		$html = substr( $html, 0, $t[0] ) . $anchor . substr( $html, $t[1] );
+		$s = sml_tv2_section_span( $html, '<section class="sml-ticker-summary"' );
+		if ( $s ) {
+			$summary = substr( $html, $s[0], $s[1] - $s[0] );
+			$html    = substr( $html, 0, $s[0] ) . substr( $html, $s[1] );
+			$html    = rtrim( $html ) . "\n" . '<div class="tv2-summary-below">' . $summary . '</div>';
+		}
+		return $html;
 	}
 	add_filter( 'the_content', static function ( $html ) {
 		if ( ! is_string( $html ) || ! sml_tv2_clean_active() || ! in_the_loop() ) { return $html; }
