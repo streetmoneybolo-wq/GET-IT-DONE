@@ -100,7 +100,10 @@
     button.addEventListener('click', function () {
       var nativeButton = all('.sml-acct__btn, .wv-user, [aria-label="Account menu"]')
         .filter(function (node) { return node !== button && !node.classList.contains('sml-gh-account'); })[0];   /* the legacy chip is docked INSIDE the header now (dockLegacyAccount) */
-      if (nativeButton && typeof nativeButton.click === 'function') nativeButton.click();
+      /* defer: the chip's own document-level "click outside → close" handler runs for
+         THIS click (its target is the header avatar, outside the chip) and would close
+         the menu we just opened; opening on the next tick lets that handler pass first */
+      if (nativeButton && typeof nativeButton.click === 'function') window.setTimeout(function () { nativeButton.click(); }, 0);
       else location.href = '/members/';
     });
   }
