@@ -226,7 +226,47 @@
     document.addEventListener('click', function (e) { if (!bar.contains(e.target)) closeDrop(); });
   }
 
+  /* Analyst Dashboard / group Live Chart: while Detect is on, its floating
+     "Pattern x of y" results card sits on top of the candles. When the card
+     overlaps the chart plot it goes see-through so the candles stay readable,
+     and solidifies again the moment the pointer (or keyboard focus) is on it. */
+  function mountDetectFade() {
+    if (!/\/analyst-dashboard/.test(location.pathname)) return;
+    if (document.getElementById('sml-lct-fade-css')) return;
+    var css = document.createElement('style');
+    css.id = 'sml-lct-fade-css';
+    css.textContent = '.sml-lct-results{transition:opacity .22s ease}' +
+      '.sml-lct-results.sml-see-through{opacity:.16}' +
+      '.sml-lct-results.sml-see-through:hover,.sml-lct-results.sml-see-through:focus-within,.sml-lct-results.sml-see-through.is-hover{opacity:1}';
+    document.head.appendChild(css);
+    function chartRect() {
+      var best = null, area = 0;
+      all('canvas').forEach(function (c) {
+        var r = c.getBoundingClientRect();
+        var a = r.width * r.height;
+        if (a > area && r.width > 300 && r.height > 150) { area = a; best = r; }
+      });
+      return best;
+    }
+    function check() {
+      var p = el('.sml-lct-results');
+      if (!p || !p.offsetParent) return;
+      if (!p.__smlFadeWired) {
+        p.__smlFadeWired = true;
+        p.addEventListener('mouseenter', function () { p.classList.add('is-hover'); });
+        p.addEventListener('mouseleave', function () { p.classList.remove('is-hover'); });
+      }
+      var pr = p.getBoundingClientRect();
+      var cr = chartRect();
+      var overlaps = !!cr && pr.left < cr.right && pr.right > cr.left && pr.top < cr.bottom && pr.bottom > cr.top;
+      p.classList.toggle('sml-see-through', overlaps);
+    }
+    setInterval(check, 500);
+    window.addEventListener('scroll', check, true);
+  }
+
   function build() {
+    mountDetectFade();
     if (EMBED_TOOL) { mountEmbedTool(); return; }
     if (el('#sml-ss-panel')) return;
     mountGlobalHeader();
