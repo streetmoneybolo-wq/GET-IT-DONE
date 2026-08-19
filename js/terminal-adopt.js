@@ -150,6 +150,12 @@
     // with a brand-new card built straight off the real market-position API,
     // inserted directly under the chart. Legacy #sml-mp stays hidden, see CSS.)
     var ad = document.getElementById('sml-ad-slot');
+    if (!done.ad && window.SML_TV2_CLEAN === 1 && main.children[3]) {
+      /* clean render: the legacy tiles module (which built #sml-ad-slot) no longer boots —
+         the design's sample "AD 970×90" must not show; the ad runtime keeps its own
+         header/sidebar/mobile slots on the page */
+      main.children[3].style.display = 'none'; done.ad = true;
+    }
     if (!done.ad && ad && main.children[3]) { done.ad = adopt(cardBody(main.children[3], true), ad); }
     // RAIL[0] = alert card ← #sml-alert-list (fall back to whole side module's list)
     if (!done.al && window.SML_TV2_NATIVE_ALERTS === 1) { done.al = true; }   /* terminal-alerts.js owns the alert card */
