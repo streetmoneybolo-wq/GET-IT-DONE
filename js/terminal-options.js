@@ -302,6 +302,7 @@
       }, 250);
     }
     function loadResearch(v) {
+      if (window.SML_TV2_RESEARCH) { window.SML_TV2_RESEARCH.load(v); return; }   /* Phase 2: native research (terminal-research.js) */
       v.innerHTML = '<div class="tv2-rgrid">' +
         '<div class="tv2-rcard" data-r-tech></div>' +
         '<div class="tv2-rcard" data-r-prof></div></div>';
@@ -317,6 +318,7 @@
         v.querySelector('[data-r-prof]'));
     }
     function loadNews(v) {
+      if (window.SML_TV2_NEWS) { window.SML_TV2_NEWS.load(v); return; }   /* Phase 2: native news (terminal-research.js) */
       v.innerHTML = '<div class="tv2-rcard" data-n-host></div>';
       adoptLegacy(/^News$/i,
         function () { return document.querySelector('.sml-terminal .sml-pro-view[data-pro-view="news"]'); },

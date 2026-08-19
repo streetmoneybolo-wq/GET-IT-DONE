@@ -87,6 +87,7 @@
         chain('js/terminal-chart.js');     // Phase 2: NATIVE chart (history + quote), replaces the adopted LoopCharts canvas
         chain('js/terminal-feed.js');      // Phase 2: NATIVE live feed (stream/moomoo/webull/stocktwits/voice), replaces the adopted #sml-lf
         chain('js/terminal-alerts.js');    // Phase 2: NATIVE alert box (ticker-alerts), replaces the adopted #sml-alert-list
+        chain('js/terminal-research.js');  // Phase 2: NATIVE Research + News tab views (company/technicals/earnings/filings/financials, site coverage)
         chain('js/terminal-adopt.js');     // Phase C: adopt the still-legacy modules (feed, alerts, ad) into the shell's cards
         chain('js/terminal-options.js');   // Options tab: chain + what-if calculator
         chain('js/terminal-mp2.js');       // Market Position v2 (+ chain-loads the Short sale card)
