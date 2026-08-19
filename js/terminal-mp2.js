@@ -367,22 +367,20 @@
     var asOf = new Date(bars[end - 1].t);
     row.querySelector('#tv2sig-sum').textContent = cur.bull + ' bullish · ' + cur.bear + ' bearish' + (SIG.day > 0 ? ' · as of ' + (asOf.getMonth() + 1) + '/' + asOf.getDate() + ' close' : '');
 
-    var bySec = {}, secOrder = [];
-    cur.tiles.forEach(function (t) { if (!bySec[t.sec]) { bySec[t.sec] = []; secOrder.push(t.sec); } bySec[t.sec].push(t); });
     var html = '<div class="sig-gauge"><div class="sig-gauge-top"><span class="k">Composite bias</span><span class="v ' + (score > 15 ? 'bull' : score < -15 ? 'bear' : 'mid') + '">' + (score > 0 ? '+' : '') + score + '</span></div>' +
       '<div class="sig-gauge-track"><i style="left:' + (50 + score / 2) + '%"></i></div>' +
       '<div class="sig-gauge-lbl"><span>Bearish</span><span>Neutral</span><span>Bullish</span></div></div>';
-    secOrder.forEach(function (sec) {
-      html += '<div class="sig-sec">' + esc(sec) + '</div><div class="sig-grid">';
-      bySec[sec].forEach(function (t) {
-        var pt = prevMap[t.n];
-        var dd2 = pt ? (rank[t.cls] - rank[pt.cls]) : 0;
-        var arrow = dd2 > 0 ? '<span class="dl up" title="improved vs the prior trading day">▲</span>' : dd2 < 0 ? '<span class="dl dn" title="weakened vs the prior trading day">▼</span>' : '';
-        html += '<div class="sig-tile ' + t.cls + (SIG.sel === t.n ? ' sel' : '') + '" data-n="' + esc(t.n) + '" role="button" tabindex="0" title="Click for the 1-year backtest of this state"><div class="tt"><span class="n">' + esc(t.n) + '</span>' + arrow + '</div><div class="vv">' + esc(t.v) + '</div><div class="cc">' + esc(t.chip) + '</div></div>';
-      });
-      html += '</div>';
-      if (SIG.sel && bySec[sec].some(function (t2) { return t2.n === SIG.sel; })) html += btPanelHtml(cur, end);
+    html += '<div class="sig-grid">';
+    cur.tiles.forEach(function (t) {
+      var pt = prevMap[t.n];
+      var dd2 = pt ? (rank[t.cls] - rank[pt.cls]) : 0;
+      var arrow = dd2 > 0 ? '<span class="dl up" title="improved vs the prior trading day">▲</span>' : dd2 < 0 ? '<span class="dl dn" title="weakened vs the prior trading day">▼</span>' : '';
+      html += '<div class="sig-tile ' + t.cls + (SIG.sel === t.n ? ' sel' : '') + '" data-n="' + esc(t.n) + '" role="button" tabindex="0" title="' + esc(t.sec) + ' indicator — click for the 1-year backtest of this state">' +
+        '<div class="tt"><span class="n">' + esc(t.n) + '</span>' + arrow + '<span class="cc">' + esc(t.chip) + '</span></div>' +
+        '<div class="vv"><span class="val">' + esc(t.v) + '</span><span class="sc">' + esc(t.sec) + '</span></div></div>';
     });
+    html += '</div>';
+    if (SIG.sel) html += btPanelHtml(cur, end);
     html += '<div class="tv2-sig-note">Every value is computed live from ' + esc(SYM) + ' daily candles (authoritative history). ▲▼ mark a state change vs the prior trading day. Click any indicator for its 1-year backtest. Indicator states, not advice.</div>';
     body.innerHTML = html;
     if (!body.__btWired) {
