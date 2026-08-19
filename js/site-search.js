@@ -231,7 +231,7 @@
      overlaps the chart plot it goes see-through so the candles stay readable,
      and solidifies again the moment the pointer (or keyboard focus) is on it. */
   function mountDetectFade() {
-    if (!/\/analyst-dashboard/.test(location.pathname)) return;
+    if (!/\/analyst-dashboard\b/.test(location.pathname)) return;
     if (document.getElementById('sml-lct-fade-css')) return;
     var css = document.createElement('style');
     css.id = 'sml-lct-fade-css';
