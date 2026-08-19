@@ -23,6 +23,7 @@
     name: '', handle: '', roles: [],
     avatarUrl: '', bannerUrl: '', backgroundUrl: '', bannerVideoUrl: '', backgroundVideoUrl: '',
     editUrl: '', visitorUrl: '',
+    isOwner: true,            /* demo/non-profile mounts keep the full UI; profile pages set the real value */
     stats: [], tickers: [], about: [], friends: [], posts: [], socials: [],
     bio: '',
     disclaimer: 'Market data and content on Stock Market Loop are for informational purposes only and do not constitute investment advice.',
@@ -139,6 +140,8 @@
     '.sip-role{font-size:11px;font-weight:600;color:#93A4B8;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:4px 10px;background:rgba(11,19,31,.6);white-space:nowrap;}' +
     '.sip-btn{padding:9px 18px;border-radius:999px;border:none;background:#38F58A;color:#03120A;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;display:inline-block;}' +
     '.sip-btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.16);color:#c3ccd4;font-weight:400;}' +
+    '.sip-root a.sip-btn{color:#03120A;}.sip-root a.sip-btn:hover{color:#03120A;background:#5dffa3;}.sip-root a.sip-btn.ghost{color:#c3ccd4;}.sip-root a.sip-btn.ghost:hover{color:#fff;background:transparent;}' +
+    '.sip-btn.sip-follow[data-on="1"]{background:transparent;border:1px solid rgba(56,245,138,.55);color:#38F58A;}' +
     '.sip-sec{border-radius:8px;}' +
     '.sip-sec.edit{outline:2px dashed rgba(56,245,138,.4);outline-offset:5px;cursor:move;}' +
     '.sip-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:14px;}' +
@@ -297,11 +300,17 @@
     var bgVid = cfg.backgroundVideoUrl ? '<video class="sip-mediavid" src="' + esc(cfg.backgroundVideoUrl) + '" autoplay muted loop playsinline' + (cfg.backgroundUrl ? ' poster="' + esc(cfg.backgroundUrl) + '"' : '') + '></video>' : '';
     // "Edit profile" opens the SITE's real editor (avatar/banner/bio/music) — the
     // user's native abilities. "Arrange" is the immersive-only layout edit mode.
-    var editBtn = cfg.editUrl
-      ? '<a class="sip-btn" href="' + esc(cfg.editUrl) + '">Edit profile</a>'
-      : '<button class="sip-btn sip-edit-toggle" type="button">Arrange</button>';
-    var arrangeBtn = cfg.editUrl ? '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>' : '';
-    var visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
+    var editBtn = '', arrangeBtn = '', visitorBtn = '';
+    if (cfg.isOwner) {
+      editBtn = cfg.editUrl
+        ? '<a class="sip-btn" href="' + esc(cfg.editUrl) + '">Edit profile</a>'
+        : '<button class="sip-btn sip-edit-toggle" type="button">Arrange</button>';
+      arrangeBtn = cfg.editUrl ? '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>' : '';
+      visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
+    } else if (document.querySelector('button.sml-pfe-action[data-sml-follow]')) {
+      /* visitor: proxy the page's REAL follow button (unified profile, sml-members/v1/follow) */
+      editBtn = '<button class="sip-btn sip-follow" type="button">Follow</button>';
+    }
 
     // World 0: PROFILE
     var world0 =
@@ -513,6 +522,7 @@
 
     // edit mode
     function applyEditUI() {
+      if (!cfg.isOwner) editMode = false;
       editBadge.hidden = !editMode;
       $$('[data-editonly]').forEach(function (el) { el.hidden = !editMode; });
       $$('.sip-sec').forEach(function (s) { s.classList.toggle('edit', editMode); s.setAttribute('draggable', editMode ? 'true' : 'false'); });
@@ -521,7 +531,24 @@
       if (pin) pin.value = orbSize('photo'); if (vin) vin.value = orbSize('video');
       var ob = $('.sip-optin'); if (ob) ob.textContent = contactOptIn ? 'Hide my contact info' : 'Show my contact info';
     }
-    $('.sip-edit-toggle').addEventListener('click', function () { editMode = !editMode; if (!editMode) enlarged = null; applyEditUI(); });
+    var editToggle = $('.sip-edit-toggle');
+    if (editToggle) editToggle.addEventListener('click', function () { editMode = !editMode; if (!editMode) enlarged = null; applyEditUI(); });
+    /* visitor follow button → clicks the real one underneath and mirrors its state */
+    var followBtn = $('.sip-follow');
+    if (followBtn) {
+      var realFollow = function () { return document.querySelector('button.sml-pfe-action[data-sml-follow]'); };
+      var syncFollow = function () {
+        var rb = realFollow(); if (!rb) return;
+        var on = rb.dataset.following === 'true' || rb.getAttribute('aria-pressed') === 'true';
+        followBtn.textContent = on ? (rb.dataset.labelFollowing || 'Following') : (rb.dataset.labelFollow || 'Follow');
+        followBtn.setAttribute('data-on', on ? '1' : '0');
+        followBtn.disabled = !!rb.disabled;
+      };
+      followBtn.addEventListener('click', function () { var rb = realFollow(); if (rb) rb.click(); setTimeout(syncFollow, 300); setTimeout(syncFollow, 1500); });
+      var rbEl = realFollow();
+      if (rbEl && window.MutationObserver) new MutationObserver(syncFollow).observe(rbEl, { attributes: true, childList: true, subtree: true });
+      syncFollow();
+    }
 
     // section drag-reorder
     var dragKey = null;
@@ -879,6 +906,7 @@
       bannerUrl: (bn && bn.src) || '',
       editUrl: '/customize-profile/',
       visitorUrl: location.pathname,
+      isOwner: !!((window.SML_PROFILE_UNIFIED && window.SML_PROFILE_UNIFIED.isOwner) || (window.SMLPublicProfile && window.SMLPublicProfile.profile && window.SMLPublicProfile.profile.is_owner)),
       pulse: 'Immersive'
     };
   }
@@ -897,6 +925,7 @@
     if (/gravatar\.com/.test(base.bannerUrl)) base.bannerUrl = '';
     base.bio = P.description || '';
     base.editUrl = U.editorUrl || base.editUrl; base.visitorUrl = P.url || base.visitorUrl;
+    base.isOwner = !!(U.isOwner || P.is_owner);
     var rel = P.relationship || {}; var stats = [];
     if (rel.follower_count != null) stats.push({ label: 'FOLLOWERS', value: String(rel.follower_count) });
     if (rel.subscriber_count != null) stats.push({ label: 'SUBSCRIBERS', value: String(rel.subscriber_count) });
