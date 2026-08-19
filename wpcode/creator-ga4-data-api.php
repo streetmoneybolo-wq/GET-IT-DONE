@@ -167,6 +167,128 @@ if ( ! function_exists( 'sml_creator_ga4_rows' ) ) {
 	}
 }
 
+if ( ! function_exists( 'sml_creator_ga4_and_filter' ) ) {
+	function sml_creator_ga4_and_filter( $filters ) {
+		return array(
+			'andGroup' => array(
+				'expressions' => array_values( array_filter( $filters ) ),
+			),
+		);
+	}
+}
+
+if ( ! function_exists( 'sml_creator_ga4_exact_filter' ) ) {
+	function sml_creator_ga4_exact_filter( $field, $value ) {
+		return array(
+			'filter' => array(
+				'fieldName'    => $field,
+				'stringFilter' => array( 'matchType' => 'EXACT', 'value' => $value, 'caseSensitive' => false ),
+			),
+		);
+	}
+}
+
+if ( ! function_exists( 'sml_creator_ga4_clean_page_url' ) ) {
+	function sml_creator_ga4_clean_page_url( $url ) {
+		$url = trim( (string) $url );
+		if ( '' === $url ) {
+			return '';
+		}
+		if ( '/' === $url[0] ) {
+			$url = home_url( $url );
+		}
+		$url = esc_url_raw( $url );
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) ) {
+			return '';
+		}
+		$site_host = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ) );
+		if ( $site_host && strtolower( (string) $parts['host'] ) !== $site_host ) {
+			return '';
+		}
+		$scheme = ! empty( $parts['scheme'] ) ? strtolower( (string) $parts['scheme'] ) : 'https';
+		$path   = '/' . ltrim( (string) ( $parts['path'] ?? '/' ), '/' );
+		return esc_url_raw( $scheme . '://' . strtolower( (string) $parts['host'] ) . $path );
+	}
+}
+
+if ( ! function_exists( 'sml_creator_ga4_item_rows' ) ) {
+	function sml_creator_ga4_content_id_from_url( $kind, $url ) {
+		global $wpdb;
+		$path  = trim( (string) wp_parse_url( $url, PHP_URL_PATH ), '/' );
+		$parts = array_values( array_filter( explode( '/', $path ), 'strlen' ) );
+		if ( in_array( $kind, array( 'channel', 'video', 'live' ), true ) && ! empty( $parts[1] ) ) {
+			return sanitize_text_field( $parts[1] );
+		}
+		if ( 'article' === $kind ) {
+			return (string) absint( url_to_postid( $url ) );
+		}
+		if ( 'letter' === $kind && count( $parts ) >= 3 && function_exists( 'sml_letters_table' ) ) {
+			$id = $wpdb->get_var( $wpdb->prepare( 'SELECT id FROM ' . sml_letters_table( 'posts' ) . ' WHERE slug = %s LIMIT 1', sanitize_title( $parts[2] ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			return (string) absint( $id );
+		}
+		return '';
+	}
+
+	function sml_creator_ga4_item_rows( $report ) {
+		$rows = sml_creator_ga4_rows( $report, array( 'kind', 'url', 'title' ), array( 'views', 'users', 'sessions' ) );
+		$items = array();
+		foreach ( $rows as $row ) {
+			$url  = sml_creator_ga4_clean_page_url( $row['url'] ?? '' );
+			$kind = sanitize_key( $row['kind'] ?? '' );
+			if ( '' === $url || ! in_array( $kind, array( 'channel', 'video', 'live', 'letter', 'article' ), true ) ) {
+				continue;
+			}
+			$key = $kind . '|' . $url;
+			if ( ! isset( $items[ $key ] ) ) {
+				$items[ $key ] = array(
+					'kind'     => $kind,
+					'url'      => $url,
+					'title'    => sanitize_text_field( $row['title'] ?? '' ),
+					'views'    => 0,
+					'users'    => 0,
+					'sessions' => 0,
+				);
+			}
+			$items[ $key ]['views']    += max( 0, (int) ( $row['views'] ?? 0 ) );
+			$items[ $key ]['users']    += max( 0, (int) ( $row['users'] ?? 0 ) );
+			$items[ $key ]['sessions'] += max( 0, (int) ( $row['sessions'] ?? 0 ) );
+		}
+		$items = array_values( $items );
+		foreach ( $items as &$item ) {
+			$item['contentId'] = sml_creator_ga4_content_id_from_url( $item['kind'], $item['url'] );
+		}
+		unset( $item );
+		usort( $items, static function ( $a, $b ) { return (int) $b['views'] <=> (int) $a['views']; } );
+		return $items;
+	}
+}
+
+if ( ! function_exists( 'sml_creator_ga4_item_series_rows' ) ) {
+	function sml_creator_ga4_item_series_rows( $report ) {
+		$rows = sml_creator_ga4_rows( $report, array( 'date', 'kind', 'url' ), array( 'views', 'users', 'sessions' ) );
+		$out  = array();
+		foreach ( $rows as $row ) {
+			$url  = sml_creator_ga4_clean_page_url( $row['url'] ?? '' );
+			$kind = sanitize_key( $row['kind'] ?? '' );
+			$date = sanitize_text_field( $row['date'] ?? '' );
+			if ( '' === $url || ! preg_match( '/^\d{8}$/', $date ) || ! in_array( $kind, array( 'channel', 'video', 'live', 'letter', 'article' ), true ) ) {
+				continue;
+			}
+			$key = $date . '|' . $kind . '|' . $url;
+			if ( ! isset( $out[ $key ] ) ) {
+				$out[ $key ] = array( 'date' => substr( $date, 0, 4 ) . '-' . substr( $date, 4, 2 ) . '-' . substr( $date, 6, 2 ), 'kind' => $kind, 'url' => $url, 'views' => 0, 'users' => 0, 'sessions' => 0 );
+			}
+			$out[ $key ]['views']    += max( 0, (int) ( $row['views'] ?? 0 ) );
+			$out[ $key ]['users']    += max( 0, (int) ( $row['users'] ?? 0 ) );
+			$out[ $key ]['sessions'] += max( 0, (int) ( $row['sessions'] ?? 0 ) );
+		}
+		$out = array_values( $out );
+		usort( $out, static function ( $a, $b ) { return strcmp( $a['date'], $b['date'] ); } );
+		return $out;
+	}
+}
+
 if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 	function sml_creator_ga4_audience_payload( $handle, $days ) {
 		$token = sml_creator_ga4_access_token();
@@ -187,6 +309,35 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 		$kind = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'customEvent:content_kind' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'screenPageViews' ), 'desc' => true ) ) ) ) );
 		$series_body = array( 'dateRanges' => $date_ranges, 'dimensionFilter' => $filter, 'dimensions' => array( array( 'name' => 'date' ) ), 'metrics' => $metrics, 'orderBys' => array( array( 'dimension' => array( 'dimensionName' => 'date' ) ) ), 'limit' => 400 );
 		$series = sml_creator_ga4_report( $token, $series_body );
+		$item_filter = sml_creator_ga4_and_filter(
+			array(
+				sml_creator_ga4_exact_filter( 'customEvent:creator_handle', $handle ),
+				sml_creator_ga4_exact_filter( 'eventName', 'sml_creator_view' ),
+			)
+		);
+		$item_metrics = array( array( 'name' => 'eventCount' ), array( 'name' => 'totalUsers' ), array( 'name' => 'sessions' ) );
+		$item_report = sml_creator_ga4_report(
+			$token,
+			array(
+				'dateRanges'      => $date_ranges,
+				'dimensionFilter' => $item_filter,
+				'dimensions'      => array( array( 'name' => 'customEvent:content_kind' ), array( 'name' => 'pagePath' ), array( 'name' => 'pageTitle' ) ),
+				'metrics'         => $item_metrics,
+				'orderBys'        => array( array( 'metric' => array( 'metricName' => 'eventCount' ), 'desc' => true ) ),
+				'limit'           => 500,
+			)
+		);
+		$item_series = sml_creator_ga4_report(
+			$token,
+			array(
+				'dateRanges'      => $date_ranges,
+				'dimensionFilter' => $item_filter,
+				'dimensions'      => array( array( 'name' => 'date' ), array( 'name' => 'customEvent:content_kind' ), array( 'name' => 'pagePath' ) ),
+				'metrics'         => $item_metrics,
+				'orderBys'        => array( array( 'dimension' => array( 'dimensionName' => 'date' ) ) ),
+				'limit'           => 5000,
+			)
+		);
 
 		$cities = is_wp_error( $city ) ? array() : sml_creator_ga4_rows( $city, array( 'city', 'country' ), array( 'users', 'views', 'sessions' ) );
 		$cities = array_values( array_filter( $cities, static function ( $row ) { return (int) $row['users'] >= 10; } ) );
@@ -200,6 +351,13 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 			'sources'    => is_wp_error( $source ) ? array() : sml_creator_ga4_rows( $source, array( 'source' ), array( 'users', 'views', 'sessions' ) ),
 			'kinds'      => is_wp_error( $kind ) ? array() : sml_creator_ga4_rows( $kind, array( 'kind' ), array( 'users', 'views', 'sessions' ) ),
 			'series'     => is_wp_error( $series ) ? array() : sml_creator_ga4_rows( $series, array( 'date' ), array( 'users', 'views', 'sessions' ) ),
+			'items'      => is_wp_error( $item_report ) ? array() : sml_creator_ga4_item_rows( $item_report ),
+			'itemSeries' => is_wp_error( $item_series ) ? array() : sml_creator_ga4_item_series_rows( $item_series ),
+			'itemTracking' => array(
+				'available' => ! is_wp_error( $item_report ) && ! is_wp_error( $item_series ),
+				'method'    => 'sml_creator_view',
+				'note'      => 'Counts begin when creator attribution was enabled and exclude earlier visits.',
+			),
 			// GA4's Realtime API does not accept event-scoped custom dimensions,
 			// including customEvent:creator_handle. Keep this explicitly unavailable
 			// instead of issuing an invalid request or showing a site-wide count as if
@@ -228,9 +386,9 @@ if ( ! function_exists( 'sml_creator_ga4_rest_audience' ) ) {
 		}
 		$days = min( 90, max( 7, absint( $request->get_param( 'range' ) ?: 28 ) ) );
 		if ( is_wp_error( sml_creator_ga4_credentials() ) ) {
-			return rest_ensure_response( array( 'configured' => false, 'countries' => array(), 'cities' => array(), 'sources' => array(), 'kinds' => array(), 'series' => array(), 'live' => array( 'available' => false, 'count' => 0, 'topCountries' => array() ) ) );
+			return rest_ensure_response( array( 'configured' => false, 'countries' => array(), 'cities' => array(), 'sources' => array(), 'kinds' => array(), 'series' => array(), 'items' => array(), 'itemSeries' => array(), 'itemTracking' => array( 'available' => false ), 'live' => array( 'available' => false, 'count' => 0, 'topCountries' => array() ) ) );
 		}
-		$cache_key = 'sml_ga4_aud_' . get_current_user_id() . '_' . $days . '_' . substr( hash( 'sha256', $handle ), 0, 12 );
+		$cache_key = 'sml_ga4_aud_v2_' . get_current_user_id() . '_' . $days . '_' . substr( hash( 'sha256', $handle ), 0, 12 );
 		$cached = get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			$cached['cached'] = true;

@@ -306,11 +306,28 @@ if ( ! function_exists( 'sml_creator_presence_rest_mine' ) ) {
 			$by_kind[ sanitize_key( $row['content_kind'] ) ] = $count;
 			$total += $count;
 		}
+		$item_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT content_kind, content_id, COUNT(*) AS viewers FROM {$table} WHERE creator_id = %d AND last_seen >= %s GROUP BY content_kind, content_id ORDER BY viewers DESC",
+				$creator_id,
+				$cutoff
+			),
+			ARRAY_A
+		);
+		$items = array();
+		foreach ( (array) $item_rows as $row ) {
+			$items[] = array(
+				'kind'      => sanitize_key( $row['content_kind'] ),
+				'contentId' => sanitize_text_field( (string) $row['content_id'] ),
+				'viewers'   => max( 0, (int) $row['viewers'] ),
+			);
+		}
 		return rest_ensure_response(
 			array(
 				'available' => true,
 				'count'     => $total,
 				'byKind'    => $by_kind,
+				'items'     => $items,
 				'window'    => SML_CREATOR_PRESENCE_TTL,
 				'updatedAt' => gmdate( 'c' ),
 			)

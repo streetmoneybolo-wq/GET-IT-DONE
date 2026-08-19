@@ -44,6 +44,34 @@
   function ago(iso) { var t = Date.parse(iso); if (!t) return ''; var s = (Date.now() - t) / 1000; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago'; }
   function within(iso, days) { var t = Date.parse(iso); return t && (Date.now() - t) < days * 86400e3; }
   function empty(title, body) { return '<div class="ca-empty"><b>' + esc(title) + '</b><small>' + esc(body) + '</small></div>'; }
+  function cleanUrl(url) {
+    try { var u = new URL(String(url || ''), location.origin); return u.origin.toLowerCase() + u.pathname.replace(/\/+$/, '/') ; }
+    catch (e) { return String(url || '').split(/[?#]/)[0].replace(/\/+$/, '/'); }
+  }
+  function itemSeries(item) {
+    var key = cleanUrl(item && item.url);
+    return ((S.ga4 && S.ga4.itemSeries) || []).filter(function (r) { return r.kind === item.type && cleanUrl(r.url) === key; });
+  }
+  function trackedContent(engineRows) {
+    var tracked = (S.ga4 && Array.isArray(S.ga4.items)) ? S.ga4.items : [];
+    if (!tracked.length) return [];
+    var byUrl = {};
+    (engineRows || []).forEach(function (c) { if (c && c.url) byUrl[cleanUrl(c.url)] = c; });
+    (S.uploads || []).forEach(function (u) { if (u && u.watch_url && !byUrl[cleanUrl(u.watch_url)]) byUrl[cleanUrl(u.watch_url)] = { title: u.title, url: u.watch_url, thumbnail: u.thumbnail, type: 'video' }; });
+    return tracked.map(function (g) {
+      var old = byUrl[cleanUrl(g.url)] || {};
+      return Object.assign({}, old, {
+        title: old.title || g.title || (g.kind.charAt(0).toUpperCase() + g.kind.slice(1)),
+        type: g.kind,
+        url: g.url,
+        views: n(g.views),
+        users: n(g.users),
+        sessions: n(g.sessions),
+        contentId: g.contentId || '',
+        analyticsSource: 'ga4'
+      });
+    }).sort(function (a, b) { return n(b.views) - n(a.views); });
+  }
   var CSS_ACC = 'oklch(0.72 0.17 165)', CSS_C2 = 'oklch(0.7 0.14 220)', CSS_C4 = 'oklch(0.78 0.14 85)', CSS_C3 = 'oklch(0.72 0.15 290)';
 
   // sparkline / line chart as inline SVG (no chart library — matches the design's viewBox SVGs)
@@ -226,14 +254,20 @@
     }
 
     // top content (real rows from the engine) + right column: traffic sources (real array, usually empty) + new this week (real)
-    var rows = content.slice().sort(function (a, b) { return n(b.views) - n(a.views); });
+    var gaRows = trackedContent(content);
+    var rows = gaRows.length ? gaRows : content.slice().sort(function (a, b) { return n(b.views) - n(a.views); });
     var thumbs = {}; (S.uploads || []).forEach(function (u) { if (u.watch_url) thumbs[u.watch_url] = u.thumbnail; });
-    var contentTable = rows.length ? '<table><thead><tr><th>Content</th><th>Kind</th><th class="num">Views</th><th class="num">Impr.</th><th class="num">CTR</th></tr></thead><tbody>' +
+    var contentTable = rows.length && gaRows.length ? '<table><thead><tr><th>Content</th><th>Kind</th><th class="num">Tracked views</th><th class="num">Visitors</th><th class="num">Sessions</th></tr></thead><tbody>' +
+      rows.slice(0, 20).map(function (c, i) {
+        var kind = c.type || 'publication';
+        var th = (c.thumbnail || thumbs[c.url]) ? '<img class="ca-thumb" src="' + esc(c.thumbnail || thumbs[c.url]) + '" alt="">' : '';
+        return '<tr class="click" data-content="' + i + '"><td>' + th + '<span class="ca-title">' + esc(c.title || 'Untitled') + '</span><div class="ca-sub">' + esc((c.url || '').replace(/^https?:\/\/[^/]+/, '')) + '</div></td><td><span class="ca-tag ' + esc(kind) + '">' + esc(kind) + '</span></td><td class="num">' + fmt(c.views) + '</td><td class="num">' + fmt(c.users) + '</td><td class="num">' + fmt(c.sessions) + '</td></tr>';
+      }).join('') + '</tbody></table><div class="ca-note">Item counts begin when creator attribution was enabled; earlier visits are not backfilled.</div>' : rows.length ? '<table><thead><tr><th>Content</th><th>Kind</th><th class="num">Views</th><th class="num">Impr.</th><th class="num">CTR</th></tr></thead><tbody>' +
       rows.slice(0, 12).map(function (c, i) {
         var kind = /video/i.test(c.type) ? 'video' : (/letter/i.test(c.type) ? 'letter' : (/post/i.test(c.type) ? 'post' : 'publication'));
         var th = thumbs[c.url] ? '<img class="ca-thumb" src="' + esc(thumbs[c.url]) + '" alt="">' : '';
         return '<tr class="click" data-content="' + i + '"><td>' + th + '<span class="ca-title">' + esc(c.title || 'Untitled') + '</span><div class="ca-sub">' + esc((c.url || '').replace(/^https?:\/\/[^/]+/, '')) + (c.ticker ? ' · $' + esc(c.ticker) : '') + '</div></td><td><span class="ca-tag ' + kind + '">' + kind + '</span></td><td class="num">' + fmt(c.views) + '</td><td class="num">' + fmt(c.impressions) + '</td><td class="num">' + pct(c.ctr) + '</td></tr>';
-      }).join('') + '</tbody></table>' : empty('No content yet', 'Upload a video or publish a letter and it appears here with views, impressions and CTR.');
+      }).join('') + '</tbody></table><div class="ca-note">Item-level GA4 tracking is active. This table will switch to tracked 28-day visits after the first attributed view is processed.</div>' : empty('No tracked content yet', 'Open a Channel, watch page, article, livestream, or published Loop Letter and its attributed visits will appear here after GA4 processes them.');
     // letters as content rows (title/status/words) when the engine has none of them
     var lettersCard = '';
     if (hasLetters) {
@@ -251,7 +285,7 @@
     }
     var sources = ga && Array.isArray(ga.sources) && ga.sources.length ? ga.sources : (rt.traffic_sources || []);
     var newWeek = (S.uploads || []).filter(function (u) { return within(u.created_at, 7); }).length + (S.letters || []).filter(function (l) { return within(l.published_at || l.created_at || l.date, 7); }).length;
-    var contentRow = '<div class="ca-grid ca-g32"><div class="ca-card"><h3>Top content<span class="ca-fresh">28 days</span></h3>' + contentTable + '</div>' +
+    var contentRow = '<div class="ca-grid ca-g32"><div class="ca-card"><h3>Top content<span class="ca-fresh">28 days · ' + (gaRows.length ? 'item tracking' : 'existing totals') + '</span></h3>' + contentTable + '</div>' +
       '<div class="ca-col"><div class="ca-card"><h3>Where visitors came from</h3>' + (sources.length ? '<table>' + sources.slice(0, 8).map(function (s) { return '<tr><td>' + esc(s.source || s.name || '') + '</td><td class="num">' + fmt(s.sessions || s.views || s.count) + '</td></tr>'; }).join('') + '</table>' : empty('Not enough data yet', 'Traffic sources appear once the site’s analytics has enough visits to report — nothing is shown below the privacy threshold.')) + '</div>' +
       '<div class="ca-card"><h3>New this week</h3>' + (newWeek ? '<div class="ca-big">' + newWeek + '</div><div class="ca-sub">new uploads and letters in the last 7 days</div>' : empty('Not enough data yet', 'Nothing published in the last 7 days. New content shows here once it’s reached the reporting threshold.')) + '</div></div></div>';
 
@@ -283,6 +317,30 @@
     var rt = S.rt || {}, series = rt.series || [], vid = rt.video_analytics || {}, isVideo = /video/i.test(c.type || '');
     var kind = isVideo ? 'video' : (/letter/i.test(c.type) ? 'letter' : 'post');
     var path = (c.url || '').replace(/^https?:\/\/[^/]+/, '');
+    if (c.analyticsSource === 'ga4') {
+      kind = c.type || kind;
+      var ownSeries = itemSeries(c);
+      var contentId = c.contentId || '';
+      var active = 0;
+      (((S.presence || {}).items) || []).forEach(function (p) { if (p.kind === kind && String(p.contentId) === String(contentId)) active += n(p.viewers); });
+      var trackedHtml = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + backBar(c.title || 'Untitled', path, kind) +
+        '<div class="ca-grid ca-g4">' +
+          '<div class="ca-card"><h3>Tracked views</h3><div class="ca-big">' + fmt(c.views) + '</div><div class="ca-sub">creator-attributed page views in the last 28 days</div></div>' +
+          '<div class="ca-card"><h3>Visitors</h3><div class="ca-big">' + fmt(c.users) + '</div><div class="ca-sub">aggregated GA4 users; no individual visitors are exposed</div></div>' +
+          '<div class="ca-card"><h3>Sessions</h3><div class="ca-big">' + fmt(c.sessions) + '</div><div class="ca-sub">sessions containing an attributed view of this item</div></div>' +
+          '<div class="ca-card"><h3>Active right now</h3><div class="ca-big ' + (active > 0 ? 'acc' : '') + '">' + fmt(active) + '</div><div class="ca-sub">first-party presence in the last ' + fmt((S.presence || {}).window || 90) + ' seconds</div></div>' +
+        '</div>' +
+        '<div class="ca-card"><h3>Daily item activity<span class="ca-fresh">tracked views · visitors · sessions</span></h3>' +
+          (ownSeries.length ? '<div class="ca-chart">' + lineChart(ownSeries, ['views', 'users', 'sessions'], [CSS_ACC, CSS_C2, CSS_C3], dlabel) + '</div><div class="ca-legend"><span><i style="background:' + CSS_ACC + '"></i>views</span><span><i style="background:' + CSS_C2 + '"></i>visitors</span><span><i style="background:' + CSS_C3 + '"></i>sessions</span></div>' : empty('No daily activity yet', 'GA4 has not processed a creator-attributed view for this item in the selected window.')) +
+        '</div>' +
+        '<div class="ca-note">Tracking starts from the creator-attribution launch; older visits are intentionally not estimated or backfilled.</div>' +
+        (c.url ? '<div><a class="ca-btn2" href="' + esc(c.url) + '">Open ' + esc(kind) + ' ↗</a></div>' : '') +
+        '</main></div>';
+      root.innerHTML = trackedHtml;
+      q('#ca-back').addEventListener('click', renderMain);
+      window.scrollTo(0, 0);
+      return;
+    }
     var html = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + backBar(c.title || 'Untitled', path, kind) +
       '<div class="ca-grid ca-g4">' +
         '<div class="ca-card"><h3>Views</h3><div class="ca-big">' + fmt(c.views) + '</div><div class="ca-sub">' + esc(c.status || '') + (c.ticker ? ' · $' + esc(c.ticker) : '') + '</div></div>' +
