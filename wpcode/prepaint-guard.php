@@ -31,6 +31,7 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 			'sml-public-profile-page' => array( 'src:js/immersive-profile.js' ),    // public profile (immersive overlay; matched by src)
 			'id="sml-lw-root"'      => array( 'src:js/live-watch.js', 'src:css/live-watch.css' ),   // Live watch page (/live/)
 			'id="sml-ca-root"'      => array( 'sml-ca-js', 'sml-ca-css' ),          // Creator Analytics (reveals via body.smlca-on — see CSS)
+			'id="sml-tv2-root"'     => array( 'src:js/terminal-shell.js', 'src:css/terminal-v2.css' ),   // Ticker terminal V2 (/stock-chart/) — reveals from terminal-adopt.js once the real chart is in the shell
 		);
 	}
 	function sml_pp_active() {

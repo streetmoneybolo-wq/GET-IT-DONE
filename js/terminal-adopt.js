@@ -57,7 +57,12 @@
     var wsl = document.getElementById('sml-ws-left');
     if (!done.chart && wsl && wsl.querySelector('canvas') && main.children[0]) {
       done.chart = adopt(cardBody(main.children[0], false), wsl);
-      if (done.chart) { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
+      if (done.chart) {
+        try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+        /* pre-paint guard (wpcode/prepaint-guard.php): the real chart is inside the new
+           shell now — reveal the page (the guard hid the legacy build from the first byte) */
+        document.documentElement.classList.remove('sml-pp');
+      }
     }
 
     // MAIN[1] = feed card ← #sml-lf. The design card keeps ITS header; the legacy
