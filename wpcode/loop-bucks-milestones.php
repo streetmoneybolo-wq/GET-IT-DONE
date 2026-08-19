@@ -130,7 +130,21 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 		}
 	}, 10, 3 );
 
-	/* ---------------- referral capture: /?ref={nicename} → cookie → user_register ---------------- */
+	/* ---------------- referral capture: /?ref={handle} → cookie → user_register ----------------
+	   the link carries the member's PUBLIC handle (what they are known as on the site);
+	   resolution accepts public handle, nicename or login so older ?ref= links keep working */
+	function sml_lbm_ref_user( $slug ) {
+		$slug = strtolower( trim( (string) $slug ) ); if ( '' === $slug ) { return false; }
+		$q = new WP_User_Query( array( 'number' => 1, 'count_total' => false, 'meta_key' => 'sml_public_handle', 'meta_value' => $slug ) );
+		$r = $q->get_results(); if ( ! empty( $r[0] ) ) { return $r[0]; }
+		$u = get_user_by( 'slug', $slug ); if ( ! $u ) { $u = get_user_by( 'login', $slug ); }
+		return $u ?: false;
+	}
+	function sml_lbm_ref_slug( $u ) {
+		if ( ! $u ) { return ''; }
+		$h = (string) get_user_meta( $u->ID, 'sml_public_handle', true );
+		return $h !== '' ? $h : (string) $u->user_nicename;
+	}
 	add_action( 'init', static function () {
 		if ( ! empty( $_GET['ref'] ) && ! is_user_logged_in() && ! headers_sent() ) {
 			$slug = sanitize_title( wp_unslash( $_GET['ref'] ) );
@@ -140,7 +154,7 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 	add_action( 'user_register', static function ( $new_uid ) {
 		if ( empty( $_COOKIE['sml_lbm_ref'] ) ) { return; }
 		$slug = sanitize_title( wp_unslash( $_COOKIE['sml_lbm_ref'] ) );
-		$ref = get_user_by( 'slug', $slug );
+		$ref = sml_lbm_ref_user( $slug );
 		if ( $ref && (int) $ref->ID !== (int) $new_uid ) { update_user_meta( $new_uid, 'sml_lbm_referred_by', (int) $ref->ID ); }
 	} );
 
@@ -164,7 +178,7 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 		return array(
 			'ready'    => sml_lbm_ready(),
 			'streak'   => array( 'days' => $streak, 'tiers' => $tiers, 'checkedInToday' => in_array( gmdate( 'Ymd' ), sml_lbm_visit_days( $uid ), true ) ),
-			'referral' => array( 'count' => $refs, 'per' => (int) $c['referral']['per'], 'checkinsRequired' => (int) $c['referral']['checkins_required'], 'tiers' => $rtiers, 'link' => home_url( '/?ref=' . rawurlencode( $u ? $u->user_nicename : '' ) ) ),
+			'referral' => array( 'count' => $refs, 'per' => (int) $c['referral']['per'], 'checkinsRequired' => (int) $c['referral']['checkins_required'], 'tiers' => $rtiers, 'link' => home_url( '/?ref=' . rawurlencode( sml_lbm_ref_slug( $u ) ) ) ),
 			'socials'  => array( 'each' => (int) $c['social']['each'], 'allBonus' => (int) $c['social']['all_bonus'], 'allDone' => sml_lbm_paid( 'bonus:social_all:' . $uid ), 'platforms' => $socials ),
 			'share'    => array( 'amount' => (int) $c['share']['amount'], 'cap' => (int) $c['share']['cap'], 'today' => function_exists( 'sml_lb_earned_today' ) ? (int) sml_lb_earned_today( $uid, 'share_link' ) : 0 ),
 		);
