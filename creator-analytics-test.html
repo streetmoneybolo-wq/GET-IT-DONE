@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pulse Analytics local QA</title><link rel="stylesheet" href="/css/creator-analytics.css"></head>
+<body><div id="sml-ca-root"></div><script>
+window.SML_CA_NONCE='local-qa';
+(function(){
+  var today=new Date(), series=[];
+  for(var i=27;i>=0;i--){var d=new Date(today-i*864e5);series.push({date:d.toISOString().slice(0,10),views:80+(27-i)*4,impressions:160+(27-i)*7,engagement:30+(27-i)*2});}
+  var rt={user:{display_name:'Creator Preview',avatar_url:''},overview:{views:3864,impressions:7211,engagement:1420,ctr:7.2,followers:918,following:164,video_count:7,video_views:2880,posts:23,chart_posts:8,groups_created:1,creator_revenue_usd:184.26,video_creator_revenue_usd:102.40,group_ad_creator_revenue_usd:81.86,rpm:4.81,cpm:9.62,loop_bucks:1280},series:series,content:[],video_analytics:{enabled:true,creator_share_percent:75},group_ad_analytics:{groups:[],creator_share_percent:75},wallet:{available_balance:1280,pending_balance:240,lifetime_earnings:6840,stripe_connected:true}};
+  var map={
+    '/wp-json/sml-members/v1/creator-studio/realtime':rt,
+    '/wp-json/sml-creator-gate/v1/status':{hasChannel:true,channelHandle:'creatorpreview',hasLetter:true,letterHandle:'pulse'},
+    '/wp-json/sml-lb/v1/me':{balance:1280,rank:12}, '/wp-json/sml-live/v1/status':{is_live:false},
+    '/wp-json/sml-creator-analytics/v1/audience':{configured:true,privacyThreshold:10,countries:[{countryCode:'US',country:'United States',users:2840},{countryCode:'CA',country:'Canada',users:460},{countryCode:'GB',country:'United Kingdom',users:311}],cities:[{city:'Chicago',country:'United States',users:241},{city:'New York',country:'United States',users:198}],sources:[{source:'google / organic',sessions:1840},{source:'(direct) / (none)',sessions:924},{source:'discord / referral',sessions:518}],items:[],itemSeries:[],itemTracking:{available:true,checkedAt:new Date().toISOString()}},
+    '/wp-json/sml-creator-analytics/v1/presence':{available:true,count:18,window:90,byKind:{channel:8,video:6,article:4},countries:[{countryCode:'US',viewers:12},{countryCode:'CA',viewers:3},{countryCode:'GB',viewers:3}],items:[]},
+    '/wp-json/sml-creator-analytics/v1/monetization-shadow':null,'/wp-json/sml-creator-analytics/v1/adsense-attribution/me':null,
+    '/wp-json/sml-letters/v1/mine':{letters:[]},'/wp-json/sml-loopletters/v1/subscribers':{counts:{confirmed:140,pending:3,unsubscribed:8}},'/wp-json/sml-loopletters/v1/settings':{name:'Pulse Letter',publicUrl:'/letters/pulse/'},'/wp-json/sml-video-upload-studio/v1/creator-dashboard':{recent_uploads:[]}
+  };
+  window.fetch=function(input){var raw=typeof input==='string'?input:input.url;var u=new URL(raw,location.origin), key=u.pathname;
+    if(key==='/groups/')return Promise.resolve({ok:true,status:200,text:function(){return Promise.resolve('');}});
+    var val=map[key];if(typeof val==='undefined')val={};return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(val);},text:function(){return Promise.resolve(JSON.stringify(val));}});};
+})();
+</script><script id="sml-ca-js" src="/js/creator-analytics.js"></script></body></html>

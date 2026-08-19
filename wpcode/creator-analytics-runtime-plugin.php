@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Analytics Runtime
  * Description: Private creator analytics, realtime presence, and payout-disabled monetization reconciliation.
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: Stock Market Loop
  */
 
@@ -12,6 +12,7 @@ $sml_creator_analytics_sources = array(
 	__DIR__ . '/creator-realtime-presence.raw.php',
 	__DIR__ . '/creator-ga4-data-api.raw.php',
 	__DIR__ . '/creator-monetization-shadow.raw.php',
+	__DIR__ . '/creator-adsense-attribution.raw.php',
 );
 foreach ( $sml_creator_analytics_sources as $sml_creator_analytics_source ) {
 	if ( ! is_readable( $sml_creator_analytics_source ) ) { continue; }

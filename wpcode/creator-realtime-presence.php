@@ -27,7 +27,7 @@ if ( ! defined( 'SML_CREATOR_PRESENCE_LOADED' ) ) {
 }
 
 if ( ! defined( 'SML_CREATOR_PRESENCE_DB_VERSION' ) ) {
-	define( 'SML_CREATOR_PRESENCE_DB_VERSION', '1.0.0' );
+	define( 'SML_CREATOR_PRESENCE_DB_VERSION', '1.1.0' );
 }
 if ( ! defined( 'SML_CREATOR_PRESENCE_TTL' ) ) {
 	define( 'SML_CREATOR_PRESENCE_TTL', 90 );
@@ -52,13 +52,32 @@ if ( ! function_exists( 'sml_creator_presence_install' ) ) {
 				visitor_hash CHAR(64) NOT NULL,
 				content_kind VARCHAR(24) NOT NULL,
 				content_id VARCHAR(191) NOT NULL DEFAULT '',
+				country_code CHAR(2) NOT NULL DEFAULT '',
 				last_seen DATETIME NOT NULL,
 				PRIMARY KEY  (creator_id, visitor_hash),
 				KEY creator_seen (creator_id, last_seen),
+				KEY creator_country_seen (creator_id, country_code, last_seen),
 				KEY stale_seen (last_seen)
 			) {$charset};"
 		);
 		update_option( 'sml_creator_presence_db_version', SML_CREATOR_PRESENCE_DB_VERSION, false );
+	}
+}
+
+if ( ! function_exists( 'sml_creator_presence_country_code' ) ) {
+	/**
+	 * Resolve only a CDN-provided coarse country code. Never geolocate or store
+	 * the visitor IP, city, region, coordinates, or a user-supplied header.
+	 */
+	function sml_creator_presence_country_code() {
+		$keys = array( 'HTTP_CF_IPCOUNTRY', 'HTTP_CLOUDFRONT_VIEWER_COUNTRY', 'GEOIP_COUNTRY_CODE' );
+		foreach ( $keys as $key ) {
+			$value = isset( $_SERVER[ $key ] ) ? strtoupper( sanitize_text_field( (string) wp_unslash( $_SERVER[ $key ] ) ) ) : '';
+			if ( preg_match( '/^[A-Z]{2}$/', $value ) && ! in_array( $value, array( 'XX', 'T1' ), true ) ) {
+				return $value;
+			}
+		}
+		return '';
 	}
 }
 
@@ -264,15 +283,17 @@ if ( ! function_exists( 'sml_creator_presence_rest_beat' ) ) {
 
 		$visitor_hash = hash_hmac( 'sha256', $visitor, wp_salt( 'secure_auth' ) );
 		$table        = sml_creator_presence_table();
+		$country_code = sml_creator_presence_country_code();
 		$now          = gmdate( 'Y-m-d H:i:s' );
 		$sql          = $wpdb->prepare(
-			"INSERT INTO {$table} (creator_id, visitor_hash, content_kind, content_id, last_seen)
-			 VALUES (%d, %s, %s, %s, %s)
-			 ON DUPLICATE KEY UPDATE content_kind = VALUES(content_kind), content_id = VALUES(content_id), last_seen = VALUES(last_seen)",
+			"INSERT INTO {$table} (creator_id, visitor_hash, content_kind, content_id, country_code, last_seen)
+			 VALUES (%d, %s, %s, %s, %s, %s)
+			 ON DUPLICATE KEY UPDATE content_kind = VALUES(content_kind), content_id = VALUES(content_id), country_code = VALUES(country_code), last_seen = VALUES(last_seen)",
 			(int) $payload['uid'],
 			$visitor_hash,
 			sanitize_key( $payload['k'] ),
 			sanitize_text_field( (string) ( $payload['cid'] ?? '' ) ),
+			$country_code,
 			$now
 		);
 		if ( false === $wpdb->query( $sql ) ) { // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -322,12 +343,29 @@ if ( ! function_exists( 'sml_creator_presence_rest_mine' ) ) {
 				'viewers'   => max( 0, (int) $row['viewers'] ),
 			);
 		}
+		$country_rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT country_code, COUNT(*) AS viewers FROM {$table} WHERE creator_id = %d AND last_seen >= %s AND country_code <> '' GROUP BY country_code ORDER BY viewers DESC, country_code ASC",
+				$creator_id,
+				$cutoff
+			),
+			ARRAY_A
+		);
+		$countries = array();
+		foreach ( (array) $country_rows as $row ) {
+			$code = strtoupper( sanitize_text_field( (string) $row['country_code'] ) );
+			if ( preg_match( '/^[A-Z]{2}$/', $code ) ) {
+				$countries[] = array( 'countryCode' => $code, 'viewers' => max( 0, (int) $row['viewers'] ) );
+			}
+		}
 		return rest_ensure_response(
 			array(
 				'available' => true,
 				'count'     => $total,
 				'byKind'    => $by_kind,
 				'items'     => $items,
+				'countries' => $countries,
+				'locationResolution' => 'country',
 				'window'    => SML_CREATOR_PRESENCE_TTL,
 				'updatedAt' => gmdate( 'c' ),
 			)

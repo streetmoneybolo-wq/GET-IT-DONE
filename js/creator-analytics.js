@@ -135,7 +135,7 @@
   }
 
   /* ---------- state ---------- */
-  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, shadow: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
+  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, shadow: null, adsense: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
 
   document.documentElement.classList.add('smlca-on'); document.body.classList.add('smlca-on');
   if (!document.getElementById('sml-ca-font')) { var f = document.createElement('link'); f.id = 'sml-ca-font'; f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); }
@@ -151,6 +151,47 @@
       '<span class="ca-pill">Last 28 days</span><a class="ca-pill" href="/creator-studio/">Creator Studio ↗</a></header>';
   }
 
+  function pulseSection(id, title, note, html) {
+    return '<section class="ca-section" id="ca-' + esc(id) + '"><div class="ca-section-head"><h2>' + esc(title) + '</h2><span>' + esc(note || '') + '</span></div>' + html + '</section>';
+  }
+
+  function pulseShell(rt, content) {
+    var u = rt && rt.user || {};
+    var nav = [
+      ['realtime', 'Realtime'], ['overview', 'Overview'], ['acquisition', 'Acquisition'],
+      ['engagement', 'Engagement'], ['monetization', 'Monetization'], ['demographics', 'Demographics']
+    ];
+    return '<div class="ca-app"><aside class="ca-side"><a class="ca-side-logo" href="/"><img src="' + LOGO + '" alt="Stock Market Loop"><span>Pulse<br><small>Analytics</small></span></a>' +
+      '<nav class="ca-nav">' + nav.map(function (x, i) { return '<a class="' + (i === 0 ? 'on' : '') + '" href="#ca-' + x[0] + '" data-ca-nav="' + x[0] + '"><span></span>' + x[1] + '</a>'; }).join('') + '</nav>' +
+      '<div class="ca-side-foot"><b>' + esc(u.display_name || 'Creator') + '</b><small>Private creator view</small><a href="/creator-studio/">← Creator Studio</a></div></aside>' +
+      '<div class="ca-work"><header class="ca-top"><div><b>Pulse Analytics</b><span>Website overview · your creator-owned content</span></div><div class="ca-sp"></div><span class="ca-live"><span class="b"></span>LIVE</span><span class="ca-pill">Last 28 days</span></header>' +
+      '<main class="ca-main">' + content + '<div class="ca-foot">Counts are aggregated. Individual visitors, IP addresses, and exact locations are never shown.</div></main></div></div>';
+  }
+
+  var COUNTRY_POINT = {
+    US:[24,38],CA:[18,27],MX:[20,48],BR:[37,68],AR:[34,82],CL:[29,79],CO:[29,59],PE:[27,67],
+    GB:[47,28],IE:[44,29],FR:[49,34],ES:[45,39],PT:[43,39],DE:[52,31],NL:[50,29],BE:[49,31],IT:[53,39],
+    CH:[51,35],AT:[54,34],SE:[55,20],NO:[51,19],FI:[59,20],PL:[57,31],UA:[63,34],RO:[59,38],GR:[57,42],TR:[64,43],
+    RU:[73,25],IN:[72,52],PK:[68,49],BD:[76,52],CN:[80,42],JP:[92,43],KR:[88,44],ID:[82,67],PH:[88,59],VN:[83,56],TH:[79,57],
+    AU:[88,80],NZ:[98,88],ZA:[55,82],NG:[48,61],KE:[59,66],EG:[58,50],MA:[45,48],SA:[65,52],AE:[68,53],IL:[60,48]
+  };
+  function countryName(code) {
+    try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code; } catch (e) { return code; }
+  }
+  function liveLocationMap(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    var max = 1; rows.forEach(function (r) { max = Math.max(max, n(r.viewers || r.users)); });
+    var dots = rows.map(function (r) {
+      var code = String(r.countryCode || '').toUpperCase(), p = COUNTRY_POINT[code];
+      if (!p) return '';
+      var count = n(r.viewers || r.users), radius = Math.max(1.8, Math.min(4.6, 1.8 + 2.8 * count / max));
+      return '<g class="ca-map-dot"><circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + radius.toFixed(1) + '"></circle><circle class="ring" cx="' + p[0] + '" cy="' + p[1] + '" r="' + (radius + 3).toFixed(1) + '"></circle><title>' + esc(countryName(code)) + ': ' + fmt(count) + ' active</title></g>';
+    }).join('');
+    return '<div class="ca-map"><svg viewBox="0 0 110 100" role="img" aria-label="Active users by country">' +
+      '<path d="M5 19l14-9 16 4 7 10-8 8-9-3-7 9-9-4zM28 48l11 5 8 14-5 24-10-9-5-20zM45 18l16-7 19 6 17 10-7 13-17-2-8 9-12-7-9-12zM49 48l14-4 11 12-6 29-13 4-8-21zM78 57l11-8 13 8-3 12-13 3zM88 78l13-3 6 10-9 10-12-7z"></path>' + dots + '</svg>' +
+      (rows.length ? '<div class="ca-map-note">Live country-level presence · hover a marker for its count</div>' : '<div class="ca-map-empty"><b>No located active viewers right now</b><span>The map updates as creator-page heartbeats arrive through the site CDN.</span></div>') + '</div>';
+  }
+
   /* ---------- boot: load everything, then decide sections by ownership ---------- */
   Promise.all([
     api('/sml-members/v1/creator-studio/realtime'),
@@ -159,10 +200,11 @@
     api('/sml-live/v1/status'),
     api('/sml-creator-analytics/v1/audience?range=28'),
     api('/sml-creator-analytics/v1/presence'),
-    api('/sml-creator-analytics/v1/monetization-shadow')
+    api('/sml-creator-analytics/v1/monetization-shadow'),
+    api('/sml-creator-analytics/v1/adsense-attribution/me')
   ]).then(function (r) {
     if (r[0].status === 401 || r[1].status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
-    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null; S.presence = r[5].ok ? r[5].j : null; S.shadow = r[6].ok ? r[6].j : null;
+    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null; S.presence = r[5].ok ? r[5].j : null; S.shadow = r[6].ok ? r[6].j : null; S.adsense = r[7].ok ? r[7].j : null;
     var more = [];
     var hasLetter = !!(S.gate && S.gate.hasLetter);
     more.push(api('/sml-letters/v1/mine')); more.push(api('/sml-loopletters/v1/subscribers')); more.push(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }));
@@ -232,6 +274,7 @@
     var presence = S.presence && S.presence.available ? S.presence : null;
     var liveAudience = presence ? n(presence.count) : null;
     var liveKinds = presence && presence.byKind ? presence.byKind : {};
+    var liveCountries = presence && Array.isArray(presence.countries) ? presence.countries : [];
     var liveBreakdown = Object.keys(liveKinds).filter(function (k) { return n(liveKinds[k]) > 0; }).map(function (k) { return fmt(liveKinds[k]) + ' ' + k; }).join(' · ');
     function audienceBars(items, nameKey, valueKey, cap) {
       items = (items || []).slice(0, cap || 8); var max = 1;
@@ -241,13 +284,17 @@
         return '<div class="ca-audience-row"><span>' + esc(label) + '</span><i><b style="width:' + Math.max(2, Math.round(n(x[valueKey]) / max * 100)) + '%"></b></i><strong>' + fmt(x[valueKey]) + '</strong></div>';
       }).join('') + '</div>';
     }
-    var liveCard = '<div class="ca-card"><h3>Active right now<span class="ca-fresh">' + (presence ? 'last ' + fmt(presence.window) + ' seconds' : 'connecting') + '</span></h3>' +
+    var liveCard = '<div class="ca-card"><h3>Active users right now<span class="ca-fresh">' + (presence ? 'last ' + fmt(presence.window) + ' seconds' : 'connecting') + '</span></h3>' +
       '<div style="display:flex;align-items:baseline;gap:10px"><div class="ca-big ' + (liveAudience > 0 ? 'acc' : '') + '">' + (liveAudience != null ? fmt(liveAudience) : '—') + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
       '<div class="ca-sub" style="margin-top:6px">' + (presence ? (liveAudience > 0 ? 'Active visitors across your creator pages' + (liveBreakdown ? ' · ' + esc(liveBreakdown) : '') + '.' : 'No active visitors across your creator pages in this window.') : 'Creator presence is temporarily unavailable.') + (isLive ? ' Stream started ' + esc(ago(S.live.live_started_at)) + '.' : '') + '</div>' +
       (isLive ? '' : '<div style="margin-top:10px"><a class="ca-btn2" href="/go-live/">Go Live →</a></div>') + '</div>';
-    var audience = '<div class="ca-grid ca-g21">' +
-      '<div class="ca-card"><h3>Where your audience is<span class="ca-fresh">country + city aggregates</span></h3>' + (cities.length ? audienceBars(cities, 'city', 'users', 12) : (countries.length ? audienceBars(countries, 'country', 'users', 12) : empty(ga ? 'Not enough data yet' : 'Audience analytics not connected yet', ga ? 'GA4 is connected, but no city has reached the privacy threshold yet.' : 'Audience analytics needs GA4 collection. No visitor is ever shown individually.'))) + '</div>' +
-      '<div class="ca-col">' + liveCard + '<div class="ca-card"><h3>Top countries</h3>' + (countries.length ? audienceBars(countries, 'country', 'users', 7) : empty(ga ? 'Not enough data yet' : 'Not connected yet', ga ? 'Countries appear after GA4 has reportable audience activity.' : 'Appears with audience analytics.')) + '</div></div></div>';
+    var realtimeSources = ga && Array.isArray(ga.sources) ? ga.sources : [];
+    var liveCountryRows = liveCountries.map(function (x) { return { country: countryName(x.countryCode), viewers: x.viewers }; });
+    var audience = '<div class="ca-grid ca-rt-grid">' +
+      '<div class="ca-col">' + liveCard + '<div class="ca-card"><h3>Visitors by first source<span class="ca-fresh">28 days</span></h3>' + (realtimeSources.length ? audienceBars(realtimeSources, 'source', 'sessions', 6) : empty('Not enough data yet', 'Creator-scoped traffic sources appear after GA4 processes attributed visits.')) + '</div></div>' +
+      '<div class="ca-card ca-map-card"><h3>Active users by location<span class="ca-fresh">live · country level</span></h3>' + liveLocationMap(liveCountries) + '</div>' +
+      '<div class="ca-col"><div class="ca-card"><h3>Top active countries</h3>' + (liveCountryRows.length ? audienceBars(liveCountryRows, 'country', 'viewers', 7) : empty('No located viewers', 'Country rows appear as active creator-page heartbeats arrive.')) + '</div>' +
+      '<div class="ca-card"><h3>Active content</h3>' + (Object.keys(liveKinds).length ? audienceBars(Object.keys(liveKinds).map(function (k) { return { kind: k, viewers: liveKinds[k] }; }), 'kind', 'viewers', 7) : empty('No activity right now', 'This card updates every 20 seconds.')) + '</div></div></div>';
 
     // your content by kind (real counts of what you own)
     var kinds = [];
@@ -320,6 +367,13 @@
       '</div>';
 
     var sh = S.shadow;
+    var adsh = S.adsense;
+    var adsenseCard = adsh ? '<div class="ca-card"><h3>Google AdSense attribution<span class="ca-fresh">SHADOW ESTIMATE · payouts locked</span></h3><div class="ca-grid ca-g4">' +
+      '<div class="ca-kind"><b>Mapped watch-page estimate</b><div class="n">' + money(adsh.mappedEstimatedUsd) + '</div><div class="ca-sub">' + fmt(adsh.mappedRows) + ' verified creator-owned URL rows</div></div>' +
+      '<div class="ca-kind"><b>' + esc(adsh.shadowCreatorPercent) + '% policy preview</b><div class="n">' + money(adsh.shadowCreatorEstimatedUsd) + '</div><div class="ca-sub">reporting only · not payable</div></div>' +
+      '<div class="ca-kind"><b>Quarantined rows</b><div class="n">' + fmt(adsh.quarantinedRows) + '</div><div class="ca-sub">unresolved or unsupported page URLs</div></div>' +
+      '<div class="ca-kind"><b>Reporting connection</b><div class="n" style="font-size:16px">' + esc(adsh.connectionStatus) + '</div><div class="ca-sub">PAGE_URL attribution · no browser-side guessing</div></div>' +
+      '</div><div class="ca-note">AdSense estimates can change after invalid-traffic adjustments. They stay outside Loop Wallet and the verified payout ledger until Google reporting is connected and a finalized settlement is explicitly approved.</div></div>' : '';
     var shadowCard = sh ? '<div class="ca-card gold"><h3 class="gold">Monetization reconciliation<span class="ca-fresh">SHADOW MODE · payouts locked</span></h3><div class="ca-grid ca-g4">' +
       '<div class="ca-kind"><b>Verified source total</b><div class="n">' + money(sh.sourceCreatorUsd) + '</div><div class="ca-sub">what the existing source records assign</div></div>' +
       '<div class="ca-kind"><b>' + esc(sh.creatorSharePercent) + '% creator policy</b><div class="n">' + money(sh.shadowCreatorUsd) + '</div><div class="ca-sub">audit-only shadow calculation</div></div>' +
@@ -330,11 +384,22 @@
       '</div><div class="ca-note">Coverage now: verified group-ad events. Video: ' + esc((((sh.sourceReadiness || {}).videoAds || {}).status) || 'not connected') + '. Internal ads: ' + esc((((sh.sourceReadiness || {}).internalAds || {}).status) || 'not connected') + '. Unsupported revenue is quarantined and cannot enter review, Loop Wallet, or payouts.</div></div>' :
       '<div class="ca-card"><h3>Monetization reconciliation<span class="ca-fresh">not connected</span></h3>' + empty('Shadow ledger is unavailable', 'No earnings will be approved or paid until reconciliation is available.') + '</div>';
 
-    root.innerHTML = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + health + kpis + audience + kindsCard + groupsCard + contentRow + (lettersCard || '') + shadowCard + revCard +
-      '<div class="ca-foot">Counts are aggregated — individual visits are never shown. Revenue figures come from StockMarketLoop’s ad-revenue system as reported for your account.</div></main></div>';
+    var demographics = '<div class="ca-grid ca-demo-grid"><div class="ca-card"><h3>Countries<span class="ca-fresh">28 days</span></h3>' +
+      (countries.length ? audienceBars(countries, 'country', 'users', 12) : empty(ga ? 'Not enough data yet' : 'Audience analytics unavailable', ga ? 'No country has reportable creator-attributed activity yet.' : 'Connect GA4 to report aggregated audience locations.')) + '</div>' +
+      '<div class="ca-card"><h3>Top cities<span class="ca-fresh">privacy threshold ≥ ' + fmt((ga && ga.privacyThreshold) || 10) + '</span></h3>' +
+      (cities.length ? audienceBars(cities, 'city', 'users', 12) : empty('Not enough data yet', 'Cities remain hidden until the server privacy threshold is met.')) + '</div></div>';
+    var dashboard =
+      pulseSection('realtime', 'Realtime', 'Active creator-page viewers · updates every 20 seconds', audience) +
+      pulseSection('overview', 'Overview', 'Last 28 days · your creator-owned content only', health + kpis + kindsCard) +
+      pulseSection('acquisition', 'Acquisition', 'Traffic sources and creator-owned destinations', contentRow) +
+      pulseSection('engagement', 'Engagement', 'Content, groups, and publications', groupsCard + (lettersCard || '')) +
+      pulseSection('monetization', 'Monetization', 'Verified revenue, estimates, and payout safeguards', adsenseCard + shadowCard + revCard) +
+      pulseSection('demographics', 'Demographics', 'Aggregated GA4 location · never individual visitors', demographics);
+    root.innerHTML = pulseShell(rt, dashboard);
 
     root.querySelectorAll('tr[data-content]').forEach(function (tr) { tr.addEventListener('click', function () { renderContent(rows[Number(tr.getAttribute('data-content'))]); }); });
     root.querySelectorAll('tr[data-group]').forEach(function (tr) { tr.addEventListener('click', function () { renderGroup(S.groups[Number(tr.getAttribute('data-group'))]); }); });
+    root.querySelectorAll('[data-ca-nav]').forEach(function (link) { link.addEventListener('click', function () { root.querySelectorAll('[data-ca-nav]').forEach(function (x) { x.classList.toggle('on', x === link); }); }); });
     window.scrollTo(0, 0);
   }
   function kpi(label, big, deltaHtml, sparkHtml, fresh) {

@@ -27,3 +27,9 @@ WPCode Lite merges EVERY "Run Everywhere" PHP snippet into ONE `eval()` (`class-
 Diagnosis shortcut: a WPCode-registered REST route (e.g. `sml-channel/v1/channel/{handle}`) returns 404 while plugin routes (`sml-lb/v1/me`) work → the merged eval is dead → deactivate the newest snippet.
 
 `creator-analytics-runtime-plugin.php` in this folder is a **plugin bootstrap** (it contains `eval(`) — it must be installed as a plugin, never pasted into WPCode.
+
+`creator-adsense-attribution.php` is the payout-disabled AdSense PAGE_URL
+attribution adapter. It imports the official ReportResult shape, maps only
+canonical `/watch/{id}/` URLs to verified owners, and quarantines every other
+row. It does not fetch reports until user OAuth is configured, and it never
+writes to Loop Wallet or the verified revenue ledger.

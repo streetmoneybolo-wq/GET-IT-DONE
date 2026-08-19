@@ -96,5 +96,29 @@ html.smlca-on,body.smlca-on{background:var(--ca-bg) !important;margin:0;color:va
 .ca-onboard{max-width:620px;margin:48px auto;text-align:center;background:var(--ca-panel);border:1px solid var(--ca-line);border-radius:14px;padding:36px 28px}
 .ca-onboard .ca-big{font-size:22px}
 .ca-onboard .ca-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
-@media (max-width:1000px){.ca-g3,.ca-g4,.ca-g21,.ca-g32,.ca-g11{grid-template-columns:minmax(0,1fr)!important}.ca-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ca-wallet{grid-template-columns:1fr}.ca-wrap{padding:0 14px 48px}}
+
+/* Pulse Analytics visual contract: fixed navigation rail, sticky report bar,
+   spacious section rhythm, and the exact three-column realtime composition. */
+.ca-app{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh;background:var(--ca-bg)}
+.ca-side{position:sticky;top:0;height:100vh;border-right:1px solid var(--ca-line);background:#10161e;padding:20px 14px 16px;display:flex;flex-direction:column;z-index:20}
+.ca-side-logo{display:flex!important;align-items:center;gap:10px;color:var(--ca-text)!important;font-weight:800;font-size:16px;line-height:1.05;padding:0 8px 20px;border-bottom:1px solid var(--ca-line)}
+.ca-side-logo img{width:38px;height:38px;object-fit:contain}.ca-side-logo small{color:var(--ca-acc);font-size:10px;text-transform:uppercase;letter-spacing:1.6px}
+.ca-nav{display:grid;gap:5px;padding-top:18px}.ca-nav a{display:flex;align-items:center;gap:11px;color:var(--ca-muted)!important;border:1px solid transparent;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:650}
+.ca-nav a>span{width:8px;height:8px;border-radius:2px;border:1px solid var(--ca-line2);background:var(--ca-panel2)}
+.ca-nav a:hover,.ca-nav a.on{color:var(--ca-text)!important;background:var(--ca-panel2);border-color:var(--ca-line)}.ca-nav a.on>span{background:var(--ca-acc);border-color:var(--ca-acc);box-shadow:0 0 12px color-mix(in oklch,var(--ca-acc) 55%,transparent)}
+.ca-side-foot{margin-top:auto;border-top:1px solid var(--ca-line);padding:15px 8px 0;display:grid;gap:3px}.ca-side-foot b{font-size:12px}.ca-side-foot small{color:var(--ca-muted);font-size:10px}.ca-side-foot a{font-size:11px;margin-top:7px}
+.ca-work{min-width:0}.ca-top{height:68px;position:sticky;top:0;z-index:15;background:color-mix(in oklch,var(--ca-bg) 94%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--ca-line);display:flex;align-items:center;gap:14px;padding:0 26px}
+.ca-top>div:first-child{display:grid}.ca-top b{font-size:16px}.ca-top>div:first-child span{font-size:11px;color:var(--ca-muted)}
+.ca-app .ca-main{gap:40px;padding:28px 26px 72px;max-width:1600px;margin:0 auto;width:100%}
+.ca-section{scroll-margin-top:84px}.ca-section-head{display:flex;align-items:baseline;gap:12px;margin:0 0 14px}.ca-section-head h2{font-size:19px;letter-spacing:-.25px;margin:0;color:var(--ca-text)}.ca-section-head>span{font-size:11px;color:var(--ca-muted)}
+.ca-section>.ca-card+.ca-card,.ca-section>.ca-grid+.ca-card,.ca-section>.ca-card+.ca-grid{margin-top:14px}
+.ca-rt-grid{grid-template-columns:280px minmax(0,1fr) 260px;align-items:stretch}.ca-rt-grid>.ca-col{height:100%}.ca-rt-grid>.ca-col>.ca-card{flex:1}.ca-rt-grid .ca-card{overflow:hidden}.ca-rt-grid .ca-audience-row{grid-template-columns:minmax(0,1fr) minmax(54px,.8fr) 34px;gap:7px}
+.ca-map-card{padding:10px}.ca-map-card>h3{padding:6px 8px 0}.ca-map{min-height:330px;display:grid;place-items:center;position:relative}.ca-map svg{width:100%;height:auto;display:block}.ca-map svg>path{fill:#212c38;stroke:#2c3947;stroke-width:.5}
+.ca-map-dot>circle:first-child{fill:var(--ca-acc);filter:drop-shadow(0 0 3px var(--ca-acc))}.ca-map-dot .ring{fill:none;stroke:var(--ca-acc);stroke-width:.7;opacity:.7;animation:ca-map-pulse 2s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes ca-map-pulse{0%{transform:scale(.65);opacity:.9}100%{transform:scale(1.6);opacity:0}}
+.ca-map-note{position:absolute;left:10px;bottom:6px;color:var(--ca-muted);font-size:10px}.ca-map-empty{position:absolute;inset:0;display:grid;place-content:center;text-align:center;padding:25px}.ca-map-empty b{font-size:13px}.ca-map-empty span{color:var(--ca-muted);font-size:11px;max-width:280px;margin-top:4px}
+.ca-demo-grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+@media (max-width:1180px){.ca-rt-grid{grid-template-columns:minmax(220px,.8fr) minmax(0,1.5fr)}.ca-rt-grid>.ca-col:last-child{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}}
+@media (max-width:1000px){.ca-app{grid-template-columns:72px minmax(0,1fr)}.ca-side{padding:14px 8px}.ca-side-logo span,.ca-nav a:not(.on){font-size:0}.ca-side-logo{padding:0 8px 15px}.ca-side-logo img{width:36px}.ca-nav a{justify-content:center;padding:11px}.ca-nav a.on{font-size:0}.ca-side-foot{display:none}.ca-g3,.ca-g4,.ca-g21,.ca-g32,.ca-g11,.ca-demo-grid{grid-template-columns:minmax(0,1fr)!important}.ca-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ca-wallet{grid-template-columns:1fr}.ca-wrap{padding:0 14px 48px}}
+@media (max-width:760px){.ca-app{display:block}.ca-side{position:sticky;top:0;height:auto;display:flex;flex-direction:row;align-items:center;padding:8px 10px;border-right:0;border-bottom:1px solid var(--ca-line);overflow-x:auto}.ca-side-logo{border:0;padding:0}.ca-side-logo img{width:31px;height:31px}.ca-side-logo span,.ca-side-foot{display:none}.ca-nav{display:flex;padding:0 0 0 12px;gap:4px}.ca-nav a,.ca-nav a.on,.ca-nav a:not(.on){font-size:11px;white-space:nowrap;padding:7px 9px}.ca-nav a>span{display:none}.ca-top{top:48px;height:auto;min-height:58px;padding:9px 12px}.ca-top>div:first-child span{display:none}.ca-app .ca-main{padding:20px 12px 52px;gap:30px}.ca-rt-grid{grid-template-columns:1fr}.ca-rt-grid>.ca-col:last-child{grid-column:auto;display:flex}.ca-map{min-height:250px}.ca-section-head{align-items:flex-start;flex-direction:column;gap:2px}}
 @media (max-width:560px){.ca-health-grid{grid-template-columns:minmax(0,1fr)}.ca-header{align-items:flex-start}.ca-creator{width:100%}.ca-pill{font-size:12px;padding:6px 9px}}

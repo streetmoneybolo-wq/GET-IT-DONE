@@ -300,7 +300,7 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 		$metrics = array( array( 'name' => 'activeUsers' ), array( 'name' => 'screenPageViews' ), array( 'name' => 'sessions' ) );
 		$base = array( 'dateRanges' => $date_ranges, 'dimensionFilter' => $filter, 'metrics' => $metrics, 'limit' => 100 );
 
-		$country = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'country' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
+		$country = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'countryId' ), array( 'name' => 'country' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
 		if ( is_wp_error( $country ) ) {
 			return $country;
 		}
@@ -348,7 +348,7 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 			'propertyId' => (string) SML_CREATOR_GA4_PROPERTY_ID,
 			'rangeDays'  => $days,
 			'privacyThreshold' => 10,
-			'countries'  => sml_creator_ga4_rows( $country, array( 'country' ), array( 'users', 'views', 'sessions' ) ),
+			'countries'  => sml_creator_ga4_rows( $country, array( 'countryCode', 'country' ), array( 'users', 'views', 'sessions' ) ),
 			'cities'     => $cities,
 			'sources'    => is_wp_error( $source ) ? array() : sml_creator_ga4_rows( $source, array( 'source' ), array( 'users', 'views', 'sessions' ) ),
 			'kinds'      => is_wp_error( $kind ) ? array() : sml_creator_ga4_rows( $kind, array( 'kind' ), array( 'users', 'views', 'sessions' ) ),
