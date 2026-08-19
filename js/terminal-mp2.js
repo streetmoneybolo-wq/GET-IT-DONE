@@ -127,7 +127,7 @@
      The day pills pan the whole read-out back up to 5 trading days (bars are
      sliced locally, so panning is instant); every tile also carries a delta
      arrow vs the prior trading day so state changes stand out. */
-  var SIG = { bars: null, day: 0 };
+  var SIG = { bars: null, day: 0, sel: null, btCache: {} };
 
   function fmtQty(n) { n = Number(n) || 0; if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B'; if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K'; return String(Math.round(n)); }
   function sigSmaAt(a, n, i) { if (i + 1 < n) return null; var s = 0; for (var j = i - n + 1; j <= i; j++) s += a[j]; return s / n; }
@@ -301,6 +301,58 @@
     }
   }
 
+  /* ---- 1-year backtest: for every indicator, every session in the last 252
+     trading days gets its state computed from the bars as they stood THAT day;
+     clicking a tile shows how the next session went each time the indicator
+     closed in its current state. Real history only — close-to-close moves. */
+  function backtestStates(end) {
+    if (SIG.btCache[end]) return SIG.btCache[end];
+    var bars = SIG.bars.slice(0, end);
+    var n = bars.length;
+    var lookback = Math.min(252, n - 41);
+    var states = [];
+    for (var j = n - 1 - lookback; j < n - 1; j++) {
+      var res = computeAll(bars.slice(0, j + 1));
+      var map = {};
+      res.tiles.forEach(function (t) { map[t.n] = t.chip; });
+      states.push({ map: map, ret: bars[j].c ? bars[j + 1].c / bars[j].c - 1 : 0 });
+    }
+    SIG.btCache[end] = states;
+    return states;
+  }
+  function btPanelHtml(cur, end) {
+    var tile = null;
+    for (var i2 = 0; i2 < cur.tiles.length; i2++) if (cur.tiles[i2].n === SIG.sel) tile = cur.tiles[i2];
+    if (!tile) return '';
+    var states = backtestStates(end);
+    var hits = [], j2;
+    for (j2 = 0; j2 < states.length; j2++) if (states[j2].map[tile.n] === tile.chip) hits.push(states[j2].ret);
+    var rises = 0, falls = 0, sum = 0, maxR = null, maxF = null;
+    for (j2 = 0; j2 < hits.length; j2++) {
+      var r2 = hits[j2]; sum += r2;
+      if (r2 > 0) rises++; if (r2 < 0) falls++;
+      if (maxR == null || r2 > maxR) maxR = r2;
+      if (maxF == null || r2 < maxF) maxF = r2;
+    }
+    var occ = hits.length;
+    var pctf = function (x, sign) { return (sign && x > 0 ? '+' : '') + (x * 100).toFixed(2) + '%'; };
+    var head = '<div class="sig-bt"><div class="sig-bt-h"><span>' + esc(tile.n) + ' \u00b7 ' + esc(tile.chip) + '</span><button type="button" class="x" data-btclose title="Close backtest">\u2715</button></div>';
+    if (!occ) return head + '<div class="sig-bt-s">This exact state did not occur in the previous ' + states.length + ' trading sessions \u2014 no year-long backtest to show.</div></div>';
+    var rate = Math.round(rises / occ * 100);
+    return head +
+      '<div class="sig-bt-s">' + esc(tile.n) + ' closed \u201c' + esc(tile.chip) + '\u201d ' + occ + ' time' + (occ === 1 ? '' : 's') + ' over the last ' + states.length + ' sessions. The next session:</div>' +
+      '<div class="sig-bt-grid">' +
+        '<div class="big"><span class="pct ' + (rate >= 50 ? 'up' : 'dn') + '">' + rate + '%</span><span class="k">next-day rise rate</span></div>' +
+        '<div class="st"><span>Occurrences</span><b>' + occ + '</b></div>' +
+        '<div class="st"><span>Avg change</span><b class="' + (sum >= 0 ? 'up' : 'dn') + '">' + pctf(sum / occ, true) + '</b></div>' +
+        '<div class="st"><span>Next-day rises</span><b class="up">' + rises + '</b></div>' +
+        '<div class="st"><span>Max rise</span><b class="up">' + pctf(maxR, true) + '</b></div>' +
+        '<div class="st"><span>Next-day falls</span><b class="dn">' + falls + '</b></div>' +
+        '<div class="st"><span>Max fall</span><b class="dn">' + pctf(maxF, true) + '</b></div>' +
+      '</div>' +
+      '<div class="sig-bt-note">Backtest = every session in the last ' + states.length + ' trading days when ' + esc(tile.n) + ' closed in this exact state; \u201cnext-day\u201d is close\u2192close on the daily candles. For reference only \u2014 not investment advice.</div></div>';
+  }
+
   function renderSignals(row) {
     var bars = SIG.bars; if (!bars) return;
     var end = bars.length - SIG.day;
@@ -326,12 +378,33 @@
         var pt = prevMap[t.n];
         var dd2 = pt ? (rank[t.cls] - rank[pt.cls]) : 0;
         var arrow = dd2 > 0 ? '<span class="dl up" title="improved vs the prior trading day">▲</span>' : dd2 < 0 ? '<span class="dl dn" title="weakened vs the prior trading day">▼</span>' : '';
-        html += '<div class="sig-tile ' + t.cls + '"><div class="tt"><span class="n">' + esc(t.n) + '</span>' + arrow + '</div><div class="vv">' + esc(t.v) + '</div><div class="cc">' + esc(t.chip) + '</div></div>';
+        html += '<div class="sig-tile ' + t.cls + (SIG.sel === t.n ? ' sel' : '') + '" data-n="' + esc(t.n) + '" role="button" tabindex="0" title="Click for the 1-year backtest of this state"><div class="tt"><span class="n">' + esc(t.n) + '</span>' + arrow + '</div><div class="vv">' + esc(t.v) + '</div><div class="cc">' + esc(t.chip) + '</div></div>';
       });
       html += '</div>';
+      if (SIG.sel && bySec[sec].some(function (t2) { return t2.n === SIG.sel; })) html += btPanelHtml(cur, end);
     });
-    html += '<div class="tv2-sig-note">Every value is computed live from ' + esc(SYM) + ' daily candles (authoritative history). ▲▼ mark a state change vs the prior trading day. Indicator states, not advice.</div>';
+    html += '<div class="tv2-sig-note">Every value is computed live from ' + esc(SYM) + ' daily candles (authoritative history). ▲▼ mark a state change vs the prior trading day. Click any indicator for its 1-year backtest. Indicator states, not advice.</div>';
     body.innerHTML = html;
+    if (!body.__btWired) {
+      body.__btWired = true;
+      body.addEventListener('click', function (e) {
+        if (e.target.closest('[data-btclose]')) { SIG.sel = null; renderSignals(row); return; }
+        var tl = e.target.closest('.sig-tile[data-n]');
+        if (!tl) return;
+        var nm = tl.getAttribute('data-n');
+        SIG.sel = SIG.sel === nm ? null : nm;
+        renderSignals(row);
+      });
+      body.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var tl = e.target.closest && e.target.closest('.sig-tile[data-n]');
+        if (!tl) return;
+        e.preventDefault();
+        var nm = tl.getAttribute('data-n');
+        SIG.sel = SIG.sel === nm ? null : nm;
+        renderSignals(row);
+      });
+    }
   }
 
   function loadSignals(row, attempt) {
@@ -342,6 +415,7 @@
         var bars = (d && Array.isArray(d.bars)) ? d.bars.filter(function (b) { return b && b.c != null && b.h != null && b.l != null; }) : [];
         if (!bars.length) throw new Error('empty');
         SIG.bars = bars;
+        SIG.btCache = {}; SIG.sel = null;
         buildDayPills(row);
         renderSignals(row);
       })
