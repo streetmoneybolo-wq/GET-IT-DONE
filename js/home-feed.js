@@ -191,18 +191,43 @@
     // Reuse the site's real LOOP-KICK bridge so authentication, unread state,
     // audio unlock, and the existing popup lifecycle remain owned by one system.
     document.body.classList.add('sml-hf-loop-kick-nav');
+    // The header LOOP-KICK is the ONLY launcher on the home feed, so it must be a
+    // real toggle: 2nd click closes the widget completely. And when the member
+    // closes the phone from INSIDE the app (its × / Escape), the app collapses to
+    // its own bubble behind the transparent overlay — a second LOOP-KICK button
+    // next to ours. We listen for the app's surface report and hide the whole
+    // widget instead; the header button re-opens it. Re-opening after an in-app
+    // close reloads the frame (the app always boots to the open phone).
     var loopKickButton = document.getElementById('sml-hf-loop-kick');
-    if (loopKickButton) loopKickButton.addEventListener('click', function(){
-      var launcher = document.querySelector('.sml-loop-launcher');
-      if (launcher) { launcher.click(); return; }
-      var popup = document.getElementById('sml-loop-popup');
-      var frame = document.getElementById('sml-loop-popup-frame');
-      if (!popup) return;
-      if (frame && !frame.getAttribute('src') && frame.dataset.src) frame.setAttribute('src', frame.dataset.src);
-      popup.hidden = false;
-      document.body.classList.add('sml-loop-open');
-      if (popup.focus) popup.focus();
+    function kickParts(){ return { popup: document.getElementById('sml-loop-popup'), frame: document.getElementById('sml-loop-popup-frame') }; }
+    function kickIsOpen(){ var k = kickParts(); return !!(k.popup && !k.popup.hidden); }
+    function closeKick(){
+      var k = kickParts(); if (!k.popup) return;
+      k.popup.hidden = true; document.body.classList.remove('sml-loop-open');
+      if (loopKickButton) loopKickButton.setAttribute('aria-expanded', 'false');
+    }
+    function openKick(){
+      var k = kickParts(); if (!k.popup) return;
+      if (k.frame) {
+        var src = k.frame.getAttribute('src'), want = k.frame.dataset.src || src;
+        if (!src && want) k.frame.setAttribute('src', want);
+        else if (k.frame.dataset.smlLoopKickSurface === 'closed' && want) { k.frame.dataset.smlLoopKickLoaded = ''; k.frame.setAttribute('src', want); } // app was closed inside — reboot to the open phone
+      }
+      k.popup.hidden = false; document.body.classList.add('sml-loop-open');
+      if (loopKickButton) loopKickButton.setAttribute('aria-expanded', 'true');
+      if (k.popup.focus) k.popup.focus();
+    }
+    if (loopKickButton) loopKickButton.addEventListener('click', function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      if (kickIsOpen()) { closeKick(); return; }
+      openKick();
+    }, true);
+    window.addEventListener('message', function(ev){
+      var k = kickParts(); var d = ev.data;
+      if (!k.frame || ev.source !== k.frame.contentWindow || !d || d.type !== 'sml-loop-kick:surface') return;
+      if (d.surface === 'closed' && kickIsOpen()) closeKick();
     });
+    if (loopKickButton) loopKickButton.setAttribute('aria-expanded', kickIsOpen() ? 'true' : 'false');
 
     // Start live-quote polling (fills tape / watchlist / snapshot; "—" while offline).
     pollQuotes(); if (qTimer) clearInterval(qTimer); qTimer = setInterval(pollQuotes, 5000);
