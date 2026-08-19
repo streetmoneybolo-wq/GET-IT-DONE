@@ -76,10 +76,12 @@ if ( ! function_exists( 'sml_tv2_live_active' ) ) {
 		}
 		return $html;
 	}
+	/* priority 99: the SEO summary section is added by another plugin's content filter, so
+	   we must run after it to be able to move it below the terminal */
 	add_filter( 'the_content', static function ( $html ) {
 		if ( ! is_string( $html ) || ! sml_tv2_clean_active() || ! in_the_loop() ) { return $html; }
 		return sml_tv2_strip_terminal( $html );
-	}, 5 );
+	}, 99 );
 
 	/* The legacy terminal modules are printed as inline <script id="sml-…"> blocks by
 	   their plugins regardless of the content. With the markup gone they mostly no-op,
