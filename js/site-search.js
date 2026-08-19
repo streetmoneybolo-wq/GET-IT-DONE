@@ -73,10 +73,25 @@
     document.body.insertBefore(header, document.body.firstChild);
     document.body.classList.add('sml-global-header-on');
     replaceKnownHeader();
+    dockLegacyAccount(header);
     bindAccountMenu(header);
     bindLoopKick(header);
     pollHeaderQuotes();
     headerQuoteTimer = window.setInterval(pollHeaderQuotes, 5000);
+  }
+
+  /* ONE account control: the theme's floating account chip (.sml-acct, printed in
+     wp_footer by the Settings plugin, bottom-right) is moved INTO the header next to
+     the header avatar. Its own round button is hidden by CSS; its menu — the real,
+     server-rendered one with every item (profile, studio, go live, settings, sign out…)
+     — opens under the header avatar. Listeners survive the move (same node). */
+  function dockLegacyAccount(header) {
+    var acct = el('.sml-acct[data-sml-acct]');
+    var main = el('.sml-gh-main', header);
+    if (!acct || !main || main.contains(acct)) return;
+    var account = el('.sml-gh-account', header);
+    if (account && account.parentNode === main) account.insertAdjacentElement('afterend', acct); else main.appendChild(acct);
+    acct.classList.add('sml-gh-docked');
   }
 
   function bindAccountMenu(header) {
