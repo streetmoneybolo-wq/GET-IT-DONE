@@ -156,6 +156,7 @@
     '.sip-root .sip-sec[data-empty="1"]{display:none !important;}' +
     '.sip-root .sip-emptynote{font-size:12.5px;color:#6B7C90;line-height:1.6;padding:14px 4px;}' +
     '.sip-root:not(.sip-owner) .sip-slot-empty{display:none !important;}' +
+    '.sip-root:not(.sip-owner) .sip-ph{font-size:0 !important;}' +            /* visitors see the empty pattern, never "banner image"/"avatar" labels */
     '.sip-root:not(.sip-owner) .sip-orbcol[data-empty="1"]{display:none !important;}' +
     '.sip-root.sip-owner .sip-visitor-only{display:none !important;}' +
     '.sip-root .sip-mediavid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}' +
