@@ -22,6 +22,7 @@
 
   var loader = document.getElementById('sml-ca-js');
   var NONCE = window.SML_CA_NONCE || (loader && loader.dataset.nonce) || window.SML_CG_NONCE || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
+  var ASSET_BASE = loader && loader.src ? loader.src.split('/js/creator-analytics.js')[0] + '/' : '';
   var LOGO = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@3560eef3c519/img/loop-logo.png';
   var BANNED_GROUPS = ['the-options-plug', 'spy-spy-highflyers']; // shadow-banned site-wide (see snippet 6873)
   var root = document.getElementById('sml-ca-root');
@@ -135,7 +136,7 @@
   }
 
   /* ---------- state ---------- */
-  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, presenceHistory: [], shadow: null, adsense: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
+  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, presenceHistory: [], shadow: null, adsense: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main', mapFocus: null, didMainRender: false };
 
   function rememberPresence(presence) {
     if (!presence || presence.count == null) return;
@@ -186,7 +187,7 @@
   function countryName(code) {
     try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code; } catch (e) { return code; }
   }
-  function liveLocationMap(rows) {
+  function fallbackLocationMap(rows) {
     rows = Array.isArray(rows) ? rows : [];
     var max = 1; rows.forEach(function (r) { max = Math.max(max, n(r.viewers || r.users)); });
     var dots = rows.map(function (r) {
@@ -198,6 +199,145 @@
     return '<div class="ca-map"><svg viewBox="0 0 110 100" role="img" aria-label="Active users by country">' +
       '<path d="M5 19l14-9 16 4 7 10-8 8-9-3-7 9-9-4zM28 48l11 5 8 14-5 24-10-9-5-20zM45 18l16-7 19 6 17 10-7 13-17-2-8 9-12-7-9-12zM49 48l14-4 11 12-6 29-13 4-8-21zM78 57l11-8 13 8-3 12-13 3zM88 78l13-3 6 10-9 10-12-7z"></path>' + dots + '</svg>' +
       (rows.length ? '<div class="ca-map-note">Live country-level presence · hover a marker for its count</div>' : '<div class="ca-map-empty"><b>No located active viewers right now</b><span>The map updates as creator-page heartbeats arrive through the site CDN.</span></div>') + '</div>';
+  }
+
+  function liveLocationMap(rows) {
+    rows = Array.isArray(rows) ? rows : [];
+    return '<div class="ca-map ca-geo-map" data-ca-geo-map><div class="ca-map-loading"><span></span>Loading geographic map…</div>' +
+      '<button class="ca-map-reset" type="button" data-ca-map-reset hidden>← World view</button>' +
+      '<div class="ca-map-caption" data-ca-map-caption>Click a country to explore</div>' +
+      (!rows.length ? '<div class="ca-map-empty ca-map-empty-live"><b>No located active viewers right now</b><span>You can still explore the map. Live markers appear when creator-page heartbeats arrive.</span></div>' : '') + '</div>';
+  }
+
+  var mapLibsPromise = null, mapDataPromise = null;
+  function loadMapScript(path) {
+    return new Promise(function (resolve, reject) {
+      var old = document.querySelector('script[data-ca-map-lib="' + path + '"]');
+      if (old) {
+        if (old.dataset.loaded === '1') resolve();
+        else { old.addEventListener('load', resolve, { once: true }); old.addEventListener('error', reject, { once: true }); }
+        return;
+      }
+      var script = document.createElement('script'); script.async = false; script.dataset.caMapLib = path;
+      script.src = ASSET_BASE + path; script.onload = function () { script.dataset.loaded = '1'; resolve(); }; script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+  function ensureMapLibraries() {
+    if (window.d3 && window.topojson && window.d3.tile) return Promise.resolve();
+    if (!ASSET_BASE) return Promise.reject(new Error('Map asset base is unavailable'));
+    if (!mapLibsPromise) mapLibsPromise = loadMapScript('vendor/creator-analytics/d3.min.js')
+      .then(function () { return loadMapScript('vendor/creator-analytics/topojson-client.min.js'); })
+      .then(function () { return loadMapScript('vendor/creator-analytics/d3-tile.min.js'); });
+    return mapLibsPromise;
+  }
+  function loadMapData() {
+    if (!mapDataPromise) mapDataPromise = Promise.all([
+      fetch(ASSET_BASE + 'assets/creator-analytics/world-110m.json', { cache: 'force-cache' }).then(function (r) { if (!r.ok) throw new Error('World map unavailable'); return r.json(); }),
+      fetch(ASSET_BASE + 'assets/creator-analytics/us-states-10m.json', { cache: 'force-cache' }).then(function (r) { if (!r.ok) throw new Error('State map unavailable'); return r.json(); })
+    ]);
+    return mapDataPromise;
+  }
+  function normalizedPlace(name) {
+    name = String(name || '').toLowerCase().replace(/[^a-z]/g, '');
+    var alias = { unitedstates: 'unitedstatesofamerica', russianfederation: 'russia', southkorea: 'korea', republicofkorea: 'korea', czechia: 'czechrepublic' };
+    return alias[name] || name;
+  }
+  function initLiveLocationMap(rows, cities, privacyThreshold) {
+    var host = q('[data-ca-geo-map]'); if (!host) return;
+    rows = Array.isArray(rows) ? rows : []; cities = Array.isArray(cities) ? cities : [];
+    Promise.all([ensureMapLibraries(), loadMapData()]).then(function (loaded) {
+      if (!host.isConnected) return;
+      var d3 = window.d3, topojson = window.topojson, world = loaded[1][0], statesTopo = loaded[1][1];
+      var countries = topojson.feature(world, world.objects.countries).features;
+      var reset = host.querySelector('[data-ca-map-reset]'), caption = host.querySelector('[data-ca-map-caption]');
+      host.querySelector('.ca-map-loading').remove();
+      var W = Math.max(520, Math.round(host.getBoundingClientRect().width || 720)), H = Math.max(300, Math.round(W * .53));
+      var svg = d3.select(host).append('svg').attr('class', 'ca-geo-svg').attr('viewBox', '0 0 ' + W + ' ' + H).attr('role', 'img').attr('aria-label', 'Interactive active users map');
+      var liveByName = {};
+      rows.forEach(function (r) { liveByName[normalizedPlace(countryName(String(r.countryCode || '').toUpperCase()))] = n(r.viewers || r.users); });
+
+      function clearCityList() { var old = host.querySelector('.ca-map-city-list'); if (old) old.remove(); }
+      function cityList(countryLabel) {
+        clearCityList(); var key = normalizedPlace(countryLabel);
+        var matches = cities.filter(function (c) { return normalizedPlace(c.country) === key; }).slice(0, 8);
+        if (!matches.length) return;
+        var panel = document.createElement('div'); panel.className = 'ca-map-city-list';
+        panel.innerHTML = '<b>Reportable cities · 28 days</b>' + matches.map(function (c) { return '<span><i>' + esc(c.city) + '</i><strong>' + fmt(c.users) + '</strong></span>'; }).join('') + '<small>Aggregated GA4 data · privacy threshold ≥ ' + fmt(privacyThreshold || 10) + '</small>';
+        host.appendChild(panel);
+      }
+      function liveDots(layer, projection, features) {
+        var max = 1; Object.keys(liveByName).forEach(function (k) { max = Math.max(max, liveByName[k]); });
+        features.forEach(function (feature) {
+          var count = liveByName[normalizedPlace(feature.properties && feature.properties.name)]; if (!count) return;
+          var point = projection(d3.geoCentroid(feature)); if (!point || !isFinite(point[0]) || !isFinite(point[1])) return;
+          var radius = Math.max(4, Math.min(9, 4 + count / max * 5)), g = layer.append('g').attr('class', 'ca-real-live-dot');
+          g.append('circle').attr('cx', point[0]).attr('cy', point[1]).attr('r', radius);
+          g.append('circle').attr('class', 'ring').attr('cx', point[0]).attr('cy', point[1]).attr('r', radius + 5);
+          g.append('title').text((feature.properties.name || 'Country') + ': ' + count + ' active now');
+        });
+      }
+      function satelliteTiles(layer, projection) {
+        if (!d3.tile) return;
+        var tiles = d3.tile().size([W, H]).scale(projection.scale() * 2 * Math.PI).translate(projection([0, 0]))();
+        layer.selectAll('image').data(tiles).join('image')
+          .attr('href', function (t) { return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + t[2] + '/' + t[1] + '/' + t[0]; })
+          .attr('x', function (t) { return Math.round((t[0] + tiles.translate[0]) * tiles.scale); })
+          .attr('y', function (t) { return Math.round((t[1] + tiles.translate[1]) * tiles.scale); })
+          .attr('width', Math.ceil(tiles.scale)).attr('height', Math.ceil(tiles.scale));
+      }
+      function renderWorld() {
+        S.mapFocus = null; clearCityList(); reset.hidden = true; reset.textContent = '← World view';
+        caption.textContent = 'Click a country to zoom · live markers show country-level presence';
+        svg.selectAll('*').remove();
+        var projection = d3.geoNaturalEarth1().fitExtent([[8, 8], [W - 8, H - 8]], { type: 'FeatureCollection', features: countries }), path = d3.geoPath(projection);
+        svg.append('g').selectAll('path').data(countries).join('path')
+          .attr('class', function (d) { return liveByName[normalizedPlace(d.properties.name)] ? 'ca-country has-live' : 'ca-country'; }).attr('d', path)
+          .attr('tabindex', 0).attr('role', 'button').attr('aria-label', function (d) { return 'Explore ' + d.properties.name; })
+          .on('click', function (event, d) { renderCountry(d); })
+          .on('keydown', function (event, d) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); renderCountry(d); } })
+          .append('title').text(function (d) { var count = liveByName[normalizedPlace(d.properties.name)] || 0; return d.properties.name + (count ? ' · ' + count + ' active now' : '') + ' · click to explore'; });
+        liveDots(svg.append('g'), projection, countries);
+      }
+      function renderCountry(feature, stateFeature) {
+        var countryLabel = feature.properties.name === 'United States of America' ? 'United States' : feature.properties.name;
+        S.mapFocus = { country: countryLabel, state: stateFeature && stateFeature.properties.name || '' };
+        svg.selectAll('*').remove(); var focus = stateFeature || feature;
+        var projection = d3.geoMercator().fitExtent([[12, 12], [W - 12, H - 12]], focus), path = d3.geoPath(projection);
+        satelliteTiles(svg.append('g').attr('class', 'ca-satellite'), projection);
+        svg.append('path').attr('class', 'ca-map-dim').attr('d', path({ type: 'Polygon', coordinates: [[[-179.9, 84], [179.9, 84], [179.9, -84], [-179.9, -84], [-179.9, 84]]] }) + ' ' + path(focus)).attr('fill-rule', 'evenodd');
+        svg.append('path').datum(focus).attr('class', 'ca-map-focus').attr('d', path);
+        if (countryLabel === 'United States' && !stateFeature) {
+          var states = topojson.feature(statesTopo, statesTopo.objects.states).features;
+          svg.append('g').attr('class', 'ca-state-layer').selectAll('path').data(states).join('path').attr('d', path).attr('tabindex', 0).attr('role', 'button')
+            .on('click', function (event, d) { event.stopPropagation(); renderCountry(feature, d); })
+            .on('keydown', function (event, d) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); renderCountry(feature, d); } })
+            .append('title').text(function (d) { return d.properties.name + ' — click to zoom'; });
+        }
+        liveDots(svg.append('g'), projection, [feature]);
+        svg.append('text').attr('class', 'ca-map-place').attr('x', 14).attr('y', 28).text(stateFeature ? stateFeature.properties.name + ', ' + countryLabel : countryLabel);
+        svg.append('text').attr('class', 'ca-map-credit').attr('x', W - 10).attr('y', H - 10).attr('text-anchor', 'end').text('Imagery © Esri');
+        reset.hidden = false; reset.textContent = stateFeature ? '← United States' : '← World view';
+        reset.onclick = function () { stateFeature ? renderCountry(feature) : renderWorld(); };
+        caption.textContent = stateFeature ? stateFeature.properties.name + ' detail' : (countryLabel === 'United States' ? 'Click a state to zoom further' : 'Satellite country detail');
+        cityList(countryLabel);
+      }
+      reset.onclick = renderWorld;
+      if (S.mapFocus && S.mapFocus.country) {
+        var prior = countries.find(function (f) { return normalizedPlace(f.properties.name) === normalizedPlace(S.mapFocus.country); });
+        if (prior) {
+          var priorState = null;
+          if (S.mapFocus.state && normalizedPlace(S.mapFocus.country) === normalizedPlace('United States')) priorState = topojson.feature(statesTopo, statesTopo.objects.states).features.find(function (f) { return f.properties.name === S.mapFocus.state; });
+          renderCountry(prior, priorState);
+        } else renderWorld();
+      } else renderWorld();
+    }).catch(function (error) {
+      if (!host.isConnected) return;
+      var wrapper = document.createElement('div'); wrapper.innerHTML = fallbackLocationMap(rows);
+      wrapper.firstChild.dataset.mapError = error && error.message ? error.message : 'Interactive map unavailable';
+      host.replaceWith(wrapper.firstChild);
+      if (window.console && console.warn) console.warn('Creator Analytics map fallback:', error);
+    });
   }
 
   function presenceBars() {
@@ -444,6 +584,7 @@
       pulseSection('demographics', 'Demographics', 'Aggregated GA4 location · never individual visitors', demographics) +
       pulseSection('tech', 'Tech', 'Creator-attributed device and platform mix', tech);
     root.innerHTML = pulseShell(rt, dashboard);
+    initLiveLocationMap(liveCountries, cities, (ga && ga.privacyThreshold) || 10);
 
     root.querySelectorAll('tr[data-content]').forEach(function (tr) { tr.addEventListener('click', function () { renderContent(rows[Number(tr.getAttribute('data-content'))]); }); });
     root.querySelectorAll('tr[data-group]').forEach(function (tr) { tr.addEventListener('click', function () { renderGroup(S.groups[Number(tr.getAttribute('data-group'))]); }); });
@@ -462,7 +603,10 @@
       var observer = new IntersectionObserver(function (entries) { entries.forEach(function (entry) { if (!entry.isIntersecting) return; root.querySelectorAll('[data-ca-nav]').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-ca-nav') === entry.target.id.replace('ca-', '')); }); }); }, { rootMargin: '-20% 0px -65% 0px' });
       root.querySelectorAll('.ca-section').forEach(function (section) { observer.observe(section); });
     }
-    window.scrollTo(0, 0);
+    if (!S.didMainRender) {
+      window.scrollTo(0, 0);
+      S.didMainRender = true;
+    }
   }
   function kpi(label, big, deltaHtml, sparkHtml, fresh) {
     return '<div class="ca-card"><h3>' + esc(label) + '<span class="ca-fresh">' + esc(fresh) + '</span></h3><div class="ca-big">' + big + '</div>' + deltaHtml + '<div class="ca-spark">' + sparkHtml + '</div></div>';

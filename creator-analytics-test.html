@@ -16,8 +16,9 @@ window.SML_CA_NONCE='local-qa';
     '/wp-json/sml-creator-analytics/v1/monetization-shadow':null,'/wp-json/sml-creator-analytics/v1/adsense-attribution/me':null,
     '/wp-json/sml-letters/v1/mine':{letters:[]},'/wp-json/sml-loopletters/v1/subscribers':{counts:{confirmed:140,pending:3,unsubscribed:8}},'/wp-json/sml-loopletters/v1/settings':{name:'Pulse Letter',publicUrl:'/letters/pulse/'},'/wp-json/sml-video-upload-studio/v1/creator-dashboard':{recent_uploads:[]}
   };
+  var nativeFetch=window.fetch.bind(window);
   window.fetch=function(input){var raw=typeof input==='string'?input:input.url;var u=new URL(raw,location.origin), key=u.pathname;
     if(key==='/groups/')return Promise.resolve({ok:true,status:200,text:function(){return Promise.resolve('');}});
-    var val=map[key];if(typeof val==='undefined')val={};return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(val);},text:function(){return Promise.resolve(JSON.stringify(val));}});};
+    var val=map[key];if(typeof val==='undefined')return nativeFetch(input);return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(val);},text:function(){return Promise.resolve(JSON.stringify(val));}});};
 })();
 </script><script id="sml-ca-js" src="/js/creator-analytics.js"></script></body></html>
