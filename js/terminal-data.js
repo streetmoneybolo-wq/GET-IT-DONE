@@ -103,7 +103,9 @@
     }
     function poll() {
       fetch('/wp-json/sml/v1/quote?symbol=' + SYM, { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); }).then(apply).catch(function () {});
+        .then(function (r) { return r.json(); })
+        .then(function (q) { apply(q); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: q })); } catch (e) {} })   /* ONE poller: the native chart listens */
+        .catch(function () {});
     }
     poll(); setInterval(poll, 8000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
