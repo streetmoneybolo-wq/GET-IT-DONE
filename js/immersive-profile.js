@@ -153,6 +153,9 @@
     '.sip-root [hidden]{display:none !important;}' +
     '.sip-root .sip-sec[data-empty="1"]{display:none !important;}' +
     '.sip-root .sip-emptynote{font-size:12.5px;color:#6B7C90;line-height:1.6;padding:14px 4px;}' +
+    '.sip-root:not(.sip-owner) .sip-slot-empty{display:none !important;}' +
+    '.sip-root:not(.sip-owner) .sip-orbcol[data-empty="1"]{display:none !important;}' +
+    '.sip-root.sip-owner .sip-visitor-only{display:none !important;}' +
     '.sip-root .sip-mediavid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}' +
     '.sip-root a{color:#38F58A;text-decoration:none;}.sip-root a:hover{color:#8dffc2;}' +
     '.sip-bg{position:fixed;inset:0;z-index:0;background-size:cover;background-position:center;}' +
@@ -265,6 +268,38 @@
     '.sip-panel-t{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.8px;color:#38F58A;flex:1;}' +
     '.sip-panel-grid{display:flex;flex-wrap:wrap;gap:6px;}' +
     '.sip-panel-note{font-size:11px;color:#6B7C90;margin-top:10px;line-height:1.5;}' +
+    '.sip-dock-more{display:none;}' +
+    '@media (max-width:640px){' +
+      '.sip-content{padding:10px 10px 150px;}' +
+      '.sip-topbar{gap:10px;padding-bottom:10px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +
+      '.sip-worldtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;margin-bottom:10px;}.sip-worldtabs::-webkit-scrollbar{display:none;}' +
+      '.sip-wtab{flex:none;padding:7px 12px;}.sip-wtab-hint{display:none;}' +
+      '.sip-worldnav{display:none !important;}' +
+      '.sip-banner{height:150px;}' +
+      '.sip-hero-row{position:relative;left:auto;right:auto;bottom:auto;margin-top:-42px;padding:0 12px 14px;gap:10px;align-items:flex-start;flex-direction:column;}' +
+      '.sip-hero-fade{background:linear-gradient(180deg,rgba(7,13,20,0) 40%,rgba(7,13,20,.9) 100%);}' +
+      '.sip-avatar{width:84px;height:84px;}' +
+      '.sip-name{font-size:26px;}.sip-handle{font-size:13px;}' +
+      '.sip-hero-row>div:last-child{width:100%;}.sip-hero-row .sip-btn{flex:1 1 auto;text-align:center;}' +
+      '.sip-stats{grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;}.sip-stat{padding:8px 9px;}.sip-stat-v{font-size:17px;}' +
+      '.sip-orbwrap{gap:8px;}.sip-orbcol{min-width:0;flex:1 1 100%;}.sip-stage{height:250px;}' +
+      '.sip-card{padding:14px 14px;}.sip-grid{gap:10px;}' +
+      '.sip-galphotos{grid-template-columns:repeat(2,1fr);gap:8px;}.sip-galvids{grid-template-columns:repeat(2,1fr);gap:8px;}' +
+      '.sip-worldtitle{font-size:22px;}' +
+      '.sip-editbadge{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px);max-width:calc(100vw - 20px);white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
+      '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
+      '.sip-play{width:40px;height:40px;font-size:12px;}' +
+      '.sip-track{min-width:0;max-width:none;flex:1 1 0;}.sip-track-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+      '.sip-eq{display:none;}' +
+      '.sip-dock-more{display:inline-block;flex:none;}' +
+      '.sip-wave{flex:1 1 100%;order:5;height:34px;min-width:0;}' +
+      '.sip-ctl{display:none;order:6;}' +
+      '.sip-dock.open .sip-ctl{display:flex;}' +
+      '.sip-dock.open .sip-wave{display:none;}' +
+      '.sip-dock.open{max-height:calc(100vh - 80px);overflow:auto;}' +
+      '.sip-panel{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:auto;max-height:60vh;}' +
+      '.sip-bsens{width:120px !important;}' +
+    '}' +
     '.sip-overlay{position:fixed;inset:0;z-index:9;background:rgba(4,9,14,.72);backdrop-filter:blur(7px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;}' +
     '.sip-overlay-btn{width:92px;height:92px;border-radius:50%;background:#38F58A;color:#03120A;display:flex;align-items:center;justify-content:center;font-size:32px;animation:sip-breathe 1.6s ease-in-out infinite;box-shadow:0 0 70px rgba(56,245,138,.5);}' +
     '.sip-overlay-t{font-family:Archivo,sans-serif;font-weight:800;font-size:22px;letter-spacing:.5px;}' +
@@ -296,34 +331,35 @@
     }).join('');
 
     // Orbital photo ring (6)
-    var orbPhotos = '';
+    var orbPhotos = '', nOrbP = 0;
     for (var i = 0; i < 6; i++) {
-      var p = ph(cfg.orbitalPhotos[i], 'photo ' + (i + 1));
-      orbPhotos += '<div class="sip-orb-photo" data-ophoto="' + i + '"' + p.st + '>' + p.inner +
+      var p = ph(cfg.orbitalPhotos[i], 'photo ' + (i + 1)); if (cfg.orbitalPhotos[i]) nOrbP++;
+      orbPhotos += '<div class="sip-orb-photo' + (cfg.orbitalPhotos[i] ? '' : ' sip-slot-empty') + '" data-ophoto="' + i + '"' + p.st + '>' + p.inner +
         '<div class="sip-itembtns" data-editonly hidden><button class="sip-ibtn z" data-ozoom="' + i + '" title="Bring to front">⤢</button>' +
         '<button class="sip-ibtn" data-osmall="photo:' + i + '" title="Smaller">−</button>' +
         '<button class="sip-ibtn" data-obig="photo:' + i + '" title="Bigger">＋</button></div></div>';
     }
     // Orbital video ring (3)
-    var orbVids = '';
+    var orbVids = '', nOrbV = 0;
     for (var j = 0; j < 3; j++) {
-      var ov = (cfg.orbitalVideos || [])[j] || '';
-      orbVids += '<div class="sip-orb-video" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" src="' + esc(ov) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
+      var ov = (cfg.orbitalVideos || [])[j] || ''; if (ov) nOrbV++;
+      orbVids += '<div class="sip-orb-video' + (ov ? '' : ' sip-slot-empty') + '" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" src="' + esc(ov) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
         '<div class="sip-itembtns" data-editonly hidden><button class="sip-ibtn" data-osmall="video:' + j + '" title="Smaller">−</button>' +
         '<button class="sip-ibtn" data-obig="video:' + j + '" title="Bigger">＋</button></div></div>';
     }
 
     // Gallery photos (8)
-    var galP = '';
+    var galP = '', nGalP = 0;
     for (var g = 0; g < 8; g++) {
-      var gp = ph(cfg.galleryPhotos[g], 'gallery photo ' + (g + 1));
-      galP += '<div class="sip-galphoto" data-gphoto="' + g + '"' + gp.st + '>' + gp.inner + '</div>';
+      var gp = ph(cfg.galleryPhotos[g], 'gallery photo ' + (g + 1)); if (cfg.galleryPhotos[g]) nGalP++;
+      galP += '<div class="sip-galphoto' + (cfg.galleryPhotos[g] ? '' : ' sip-slot-empty') + '" data-gphoto="' + g + '"' + gp.st + '>' + gp.inner + '</div>';
     }
+    if (!nGalP) galP += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No photos shared yet.</div>';
     // Gallery videos (6)
-    var galV = '';
+    var galV = '', nGalV = 0;
     for (var gvi = 0; gvi < 6; gvi++) {
-      var gvu = (cfg.galleryVideos || [])[gvi] || '';
-      galV += '<div class="sip-galvid" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" src="' + esc(gvu) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div></div>';
+      var gvu = (cfg.galleryVideos || [])[gvi] || ''; if (gvu) nGalV++;
+      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" src="' + esc(gvu) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div></div>';
     }
 
     var postHtml = cfg.posts.map(function (po) {
@@ -374,10 +410,10 @@
       '<div class="sip-sections" style="display:flex;flex-direction:column;">' +
       '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="tickers"' + (tickHtml ? '' : ' data-empty="1"') + '><div class="sip-ticks">' + tickHtml + '</div></div>' +
-      '<div class="sip-sec" data-sec="orbitals"><div class="sip-orbwrap">' +
-      '<div class="sip-orbcol"><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-sec" data-sec="orbitals"' + ((!cfg.isOwner && !nOrbP && !nOrbV) ? ' data-empty="1"' : '') + '><div class="sip-orbwrap">' +
+      '<div class="sip-orbcol"' + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-pstage"><div class="sip-ring sip-pring">' + orbPhotos + '</div></div></div>' +
-      '<div class="sip-orbcol"><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-orbcol"' + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-vstage"><div class="sip-ring sip-vring">' + orbVids + '</div></div></div>' +
       '</div></div>' +
       '<div class="sip-sec" data-sec="about"><div class="sip-grid">' +
@@ -389,6 +425,7 @@
       '</div></div>';
     // World 1: PHOTOS
     var world1 = '<div class="sip-screen"><div class="sip-worldtitle">Photo Gallery</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
+    if (!nGalV) galV += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No videos shared yet.</div>';
     // World 2: VIDEOS
     var world2 = '<div class="sip-screen"><div class="sip-worldtitle">Video Gallery</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
     // World 3: POSTS
@@ -409,7 +446,7 @@
       '<iframe id="' + FRAME_ID + '" class="sip-yt" allow="autoplay; encrypted-media" src="https://www.youtube-nocookie.com/embed/' + esc(ytId(cfg.music.url)) + '?enablejsapi=1&rel=0&modestbranding=1&playsinline=1&controls=0&loop=1&playlist=' + esc(ytId(cfg.music.url)) + '"></iframe>' : '';
 
     return '' +
-      '<div class="sip-root">' +
+      '<div class="sip-root' + (cfg.isOwner ? ' sip-owner' : '') + '">' +
       '<div class="sip-bg"' + bg + '>' + bgVid + '<div class="sip-bg-scrim"></div></div>' +
       '<canvas class="sip-fx"></canvas>' +
       '<button class="sip-worldnav sip-prev" style="left:10px;" title="Previous world">‹</button>' +
@@ -428,6 +465,7 @@
       '<div class="sip-track"><div class="sip-track-l">PROFILE MUSIC · YOUTUBE</div><div class="sip-track-t">' + esc(cfg.music.title) + '</div><div class="sip-time">0:00 / 0:00</div></div>' +
       '<div class="sip-wave"><canvas></canvas></div>' +
       '<div class="sip-eq">' + eqHtml + '</div>' +
+      '<button class="sip-chip sip-dock-more" type="button" aria-expanded="false">Looks ▾</button>' +
       '<div class="sip-ctl"><div class="sip-ctl-l">2D OBJECTS</div><button class="sip-chip sip-obj-btn"></button>' +
       '<div class="sip-panel sip-obj-panel" hidden><div class="sip-panel-h"><div class="sip-panel-t">FLOATING 2D OBJECTS</div>' +
       '<button class="sip-chip sip-all">All</button><button class="sip-chip sip-none">None</button></div>' +
@@ -586,6 +624,8 @@
     }
     var editToggle = $('.sip-edit-toggle');
     if (editToggle) editToggle.addEventListener('click', function () { editMode = !editMode; if (!editMode) enlarged = null; applyEditUI(); });
+    var dockMore = $('.sip-dock-more'), dockEl = $('.sip-dock');
+    if (dockMore && dockEl) dockMore.addEventListener('click', function () { var on = !dockEl.classList.contains('open'); dockEl.classList.toggle('open', on); dockMore.setAttribute('aria-expanded', on ? 'true' : 'false'); dockMore.textContent = on ? 'Looks ▴' : 'Looks ▾'; });
     var editDone = $('.sip-editdone');
     if (editDone) editDone.addEventListener('click', function () { editMode = false; enlarged = null; applyEditUI(); });
     var studioOpen = $('.sip-studio-open');
@@ -1282,6 +1322,12 @@
     var mount = document.getElementById('sml-immersive-profile-root');
     if (!mount) { mount = document.createElement('div'); mount.id = 'sml-immersive-profile-root'; document.body.appendChild(mount); }
     if (isProfile || (window.SML_PROFILE && window.SML_PROFILE.overlay)) enableOverlay(mount);
+    if (isProfile && !document.querySelector('meta[name="viewport"]')) {
+      /* the public profile render ships no viewport meta (channel pages do) — phones
+         laid the page out at 980px and zoomed out. Mobile rules below rely on this. */
+      var vp = document.createElement('meta'); vp.name = 'viewport'; vp.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+      document.head.appendChild(vp);
+    }
     /* pre-paint guard (wpcode/prepaint-guard.php): the overlay's own dark canvas is
        up now, so the old unified profile never shows underneath — reveal */
     document.documentElement.classList.remove('sml-pp');
