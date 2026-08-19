@@ -72,6 +72,7 @@
 
       '<div class="lch-content">' +
         '<div id="ch-hero"></div>' +
+        '<div id="ch-tickers"></div>' +
         '<div id="ch-orbit"></div>' +
         '<div id="ch-community"></div>' +
         '<div id="ch-nl"></div>' +
@@ -273,11 +274,22 @@
     videoHero(latest);
     return Promise.resolve();
   }
-  function renderOrbit(videos) {
+  var ALL_VIDEOS = [], ORBIT_TICKER = '';
+  window.SML_CH_ORBIT_FILTER = function (sym) { ORBIT_TICKER = sym || ''; renderOrbit(ALL_VIDEOS, true); };
+  function renderOrbit(videos, keep) {
     var mount = el('#ch-orbit');
-    if (!videos.length) { mount.innerHTML = ''; return; }
+    if (!keep) ALL_VIDEOS = videos.slice();
+    var all = ALL_VIDEOS;
+    if (ORBIT_TICKER) videos = all.filter(function (v) { return String(v.ticker || '').toUpperCase().replace(/^\$/, '') === ORBIT_TICKER || new RegExp('\\$' + ORBIT_TICKER + '\\b', 'i').test((v.title || '') + ' ' + (v.description || '')); });
+    if (!all.length) { mount.innerHTML = ''; return; }
     var active = 0;
-    mount.innerHTML = '<section class="lch-orbit"><div class="lch-section-h"><span class="t">▮ LATEST CONTENT</span><span class="meta">' + videos.length + ' videos</span><div class="rule"></div></div>' +
+    var clearBtn = ORBIT_TICKER ? '<button class="lch-orbit-clear" type="button">✕ clear ' + esc(ORBIT_TICKER) + '</button>' : '';
+    if (!videos.length) {
+      mount.innerHTML = '<section class="lch-orbit"><div class="lch-section-h"><span class="t">▮ LATEST CONTENT</span><span class="meta">no ' + esc(ORBIT_TICKER) + ' videos yet</span>' + clearBtn + '<div class="rule"></div></div></section>';
+      mount.querySelector('.lch-orbit-clear').onclick = function () { window.SML_CH_ORBIT_FILTER(''); if (window.SML_CH_COMMUNITY && window.SML_CH_COMMUNITY.clearTicker) window.SML_CH_COMMUNITY.clearTicker(); };
+      return;
+    }
+    mount.innerHTML = '<section class="lch-orbit"><div class="lch-section-h"><span class="t">▮ LATEST CONTENT</span><span class="meta">' + videos.length + (ORBIT_TICKER ? ' ' + esc(ORBIT_TICKER) : '') + ' videos</span>' + clearBtn + '<div class="rule"></div></div>' +
       '<div class="lch-orbit-stage"><div class="lch-orbit-ring">' + videos.slice(0, 10).map(function (v, i) {
         var bg = safeImage(v.thumbnail);
         return '<a class="lch-orbit-card" data-orbit="' + i + '" href="' + esc(v.watch_url) + '" aria-label="' + esc(v.title) + '"><span class="pic"' +
@@ -301,24 +313,20 @@
     }
     function move(by) { active = (active + by + cards.length) % cards.length; paint(); }
     mount.querySelector('.prev').onclick = function () { move(-1); }; mount.querySelector('.next').onclick = function () { move(1); };
+    var clr = mount.querySelector('.lch-orbit-clear'); if (clr) clr.onclick = function () { window.SML_CH_ORBIT_FILTER(''); if (window.SML_CH_COMMUNITY && window.SML_CH_COMMUNITY.clearTicker) window.SML_CH_COMMUNITY.clearTicker(); };
     cards.forEach(function (card, i) { card.onclick = function (e) { if (i !== active) { e.preventDefault(); active = i; paint(); } }; });
     mount.onkeydown = function (e) { if (e.key === 'ArrowLeft') { e.preventDefault(); move(-1); } if (e.key === 'ArrowRight') { e.preventDefault(); move(1); } };
     paint();
   }
+  /* Community (Posts / Live chat / votes / replies) + YOUR TICKERS live in
+     js/loop-channel-community.js — loaded on demand so this file stays readable. */
   function renderCommunity(posts) {
-    var mount = el('#ch-community');
-    if (!posts.length) { mount.innerHTML = ''; return; }
-    mount.innerHTML = '<section class="lch-community"><div class="lch-section-h"><span class="t">▮ COMMUNITY</span><span class="meta">latest posts</span><div class="rule"></div></div><div class="lch-post-grid">' +
-      posts.slice(0, 8).map(function (p) {
-        var tags = (p.tickers || []).slice(0, 4).map(function (t) { return '<span>$' + esc(String(t).replace(/^\$/, '')) + '</span>'; }).join('');
-        var likes = p.metrics && (p.metrics.likes != null ? p.metrics.likes : p.metrics.like_count);
-        var image = safeImage(p.image);
-        var body = p.body || ''; var inner = '<span class="kind">' + esc(String(p.kind || 'post').replace(/_/g, ' ')) + '</span><time>' + esc(ago(p.date)) + '</time>' +
-          (image ? '<span class="image" style="background-image:url(&quot;' + esc(image) + '&quot;)"></span>' : '') +
-          (p.title ? '<b class="title">' + esc(p.title) + '</b>' : '') + (body ? '<span class="body">' + esc(body) + '</span>' : '') +
-          (tags ? '<span class="tickers">' + tags + '</span>' : '') + (likes != null ? '<span class="metrics">♥ ' + fmt(likes) + '</span>' : '');
-        return p.url ? '<a class="lch-post" href="' + esc(p.url) + '">' + inner + '</a>' : '<article class="lch-post">' + inner + '</article>';
-      }).join('') + '</div></section>';
+    var mountModule = function () {
+      window.SML_CH_MOD_ROLE = (CH.appearance && CH.appearance.moderation && CH.appearance.moderation.role) || 'Mod';
+      window.SML_CH_COMMUNITY.mount({ api: api, root: root, handle: HANDLE, me: ME, owner: OWNER, esc: esc, ago: ago, safeImage: safeImage, fmt: fmt, legacyPosts: posts });
+    };
+    if (window.SML_CH_COMMUNITY) { mountModule(); return; }
+    var s = document.createElement('script'); s.src = cdnBase() + 'js/loop-channel-community.js'; s.onload = mountModule; document.head.appendChild(s);
   }
   function loadChannelContent() {
     if (!HANDLE) return;
