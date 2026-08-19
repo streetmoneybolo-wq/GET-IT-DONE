@@ -7,7 +7,7 @@
  * 80% creator / 20% platform policy.
  */
 if ( ! defined( 'SML_CREATOR_SHADOW_DB_VERSION' ) ) {
-	define( 'SML_CREATOR_SHADOW_DB_VERSION', '1.1.0' );
+	define( 'SML_CREATOR_SHADOW_DB_VERSION', '1.2.0' );
 }
 
 if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
@@ -35,6 +35,11 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		return min( 100, max( 0, (float) apply_filters( 'sml_creator_shadow_share_percent', 80.0 ) ) );
 	}
 
+	function sml_creator_verified_revenue_table() {
+		global $wpdb;
+		return $wpdb->prefix . 'sml_creator_verified_revenue_events';
+	}
+
 	function sml_creator_shadow_table_exists( $table ) {
 		global $wpdb;
 		return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table;
@@ -45,19 +50,23 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		$group = sml_creator_shadow_group_table();
 		$video = $wpdb->prefix . 'sml_video_daily_metrics';
 		$internal = $wpdb->prefix . 'sml_revenue_records';
+		$verified = sml_creator_verified_revenue_table();
 		$group_exists = sml_creator_shadow_table_exists( $group );
 		$video_exists = sml_creator_shadow_table_exists( $video );
 		$internal_exists = sml_creator_shadow_table_exists( $internal );
+		$verified_exists = sml_creator_shadow_table_exists( $verified );
 		$verified_group = $group_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$group} WHERE is_verified=1" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$video_rows = $video_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$video} WHERE revenue<>0" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$video_total = $video_exists ? (float) $wpdb->get_var( "SELECT COALESCE(SUM(revenue),0) FROM {$video}" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$internal_rows = $internal_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$internal}" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$internal_total = $internal_exists ? (int) $wpdb->get_var( "SELECT COALESCE(SUM(revenue_cents),0) FROM {$internal}" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$verified_video = $verified_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$verified} WHERE source_type='video_ad' AND traffic_status='valid'" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$verified_internal = $verified_exists ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$verified} WHERE source_type='internal_ad' AND traffic_status='valid'" ) : 0; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		return array(
 			'checkedAt' => gmdate( 'c' ),
 			'groupAds' => array( 'supported' => $group_exists, 'status' => $group_exists ? 'connected' : 'missing', 'verifiedEvents' => $verified_group, 'reason' => $group_exists ? 'Verified event-level contract is active.' : 'Verified group event table is missing.' ),
-			'videoAds' => array( 'supported' => false, 'status' => $video_rows > 0 ? 'quarantined' : 'waiting_for_contract', 'unverifiedRevenueRows' => $video_rows, 'unverifiedRevenueUsd' => round( $video_total, 2 ), 'reason' => 'Daily video revenue is aggregate-only and has no verification or provider-event identity.' ),
-			'internalAds' => array( 'supported' => false, 'status' => $internal_rows > 0 ? 'quarantined' : 'waiting_for_records', 'unverifiedRecords' => $internal_rows, 'unverifiedRevenueUsd' => round( $internal_total / 100, 2 ), 'reason' => 'Internal revenue records are excluded until live provider statuses and settlement semantics can be verified.' ),
+			'videoAds' => array( 'supported' => $verified_exists, 'status' => $verified_video > 0 ? 'connected' : ( $video_rows > 0 ? 'aggregate_quarantined' : 'ready_no_verified_events' ), 'verifiedEvents' => $verified_video, 'unverifiedRevenueRows' => $video_rows, 'unverifiedRevenueUsd' => round( $video_total, 2 ), 'reason' => 'Only canonical events with provider identity, ownership, valid traffic, and verification evidence enter the ledger.' ),
+			'internalAds' => array( 'supported' => $verified_exists, 'status' => $verified_internal > 0 ? 'connected' : ( $internal_rows > 0 ? 'legacy_quarantined' : 'ready_no_verified_events' ), 'verifiedEvents' => $verified_internal, 'unverifiedRecords' => $internal_rows, 'unverifiedRevenueUsd' => round( $internal_total / 100, 2 ), 'reason' => 'Legacy aggregates remain excluded; only canonical provider-verified events enter the ledger.' ),
 			'quarantineActive' => $video_rows > 0 || $internal_rows > 0,
 		);
 	}
@@ -128,6 +137,31 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			PRIMARY KEY  (id),
 			UNIQUE KEY review_action (review_id,action)
 		) {$charset};" );
+		$verified = sml_creator_verified_revenue_table();
+		dbDelta( "CREATE TABLE {$verified} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			provider varchar(64) NOT NULL,
+			provider_event_id varchar(191) NOT NULL,
+			verification_id varchar(191) NOT NULL,
+			source_type varchar(32) NOT NULL,
+			creator_id bigint(20) unsigned NOT NULL,
+			content_id varchar(100) NOT NULL,
+			actor_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			provider_no_self_attested tinyint(1) unsigned NOT NULL DEFAULT 0,
+			gross_cents bigint(20) NOT NULL,
+			currency char(3) NOT NULL DEFAULT 'USD',
+			status varchar(24) NOT NULL,
+			traffic_status varchar(24) NOT NULL,
+			occurred_at datetime NOT NULL,
+			verified_at datetime NOT NULL,
+			payload_hash char(64) NOT NULL,
+			imported_by bigint(20) unsigned NOT NULL,
+			created_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY provider_event (provider,provider_event_id),
+			KEY creator_source (creator_id,source_type),
+			KEY occurred_at (occurred_at)
+		) {$charset};" );
 		update_option( 'sml_creator_shadow_db_version', SML_CREATOR_SHADOW_DB_VERSION, false );
 	}
 
@@ -138,6 +172,91 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			if ( ! empty( $tables['group_ad_events'] ) ) { return (string) $tables['group_ad_events']; }
 		}
 		return $wpdb->prefix . 'sml_group_ad_events';
+	}
+
+	function sml_creator_verified_revenue_validate_event( $raw ) {
+		global $wpdb;
+		$raw = is_array( $raw ) ? $raw : array();
+		$provider = sanitize_key( (string) ( $raw['provider'] ?? '' ) );
+		$provider_event_id = sanitize_text_field( (string) ( $raw['providerEventId'] ?? '' ) );
+		$verification_id = sanitize_text_field( (string) ( $raw['verificationId'] ?? '' ) );
+		$source_type = sanitize_key( (string) ( $raw['sourceType'] ?? '' ) );
+		$creator_id = absint( $raw['creatorId'] ?? 0 );
+		$content_id = sanitize_text_field( (string) ( $raw['contentId'] ?? '' ) );
+		$actor_user_id = absint( $raw['actorUserId'] ?? 0 );
+		$no_self_attested = ! empty( $raw['providerAttestedNoSelfActivity'] );
+		$currency = strtoupper( sanitize_text_field( (string) ( $raw['currency'] ?? '' ) ) );
+		$status = sanitize_key( (string) ( $raw['status'] ?? '' ) );
+		$traffic_status = sanitize_key( (string) ( $raw['trafficStatus'] ?? '' ) );
+		$gross_value = $raw['grossCents'] ?? null;
+		$gross_cents = filter_var( $gross_value, FILTER_VALIDATE_INT );
+		$occurred_raw = sanitize_text_field( (string) ( $raw['occurredAt'] ?? '' ) );
+		$occurred_ts = strtotime( $occurred_raw );
+		if ( ! $provider || strlen( $provider ) > 64 || ! $provider_event_id || strlen( $provider_event_id ) > 191 || ! $verification_id || strlen( $verification_id ) > 191 ) { return new WP_Error( 'invalid_provider_identity', 'Provider, providerEventId, and verificationId are required.', array( 'status' => 400 ) ); }
+		if ( ! in_array( $source_type, array( 'video_ad', 'internal_ad' ), true ) ) { return new WP_Error( 'invalid_source_type', 'sourceType must be video_ad or internal_ad.', array( 'status' => 400 ) ); }
+		if ( ! $creator_id || ! get_userdata( $creator_id ) || '' === $content_id ) { return new WP_Error( 'invalid_ownership_identity', 'A valid creatorId and contentId are required.', array( 'status' => 400 ) ); }
+		if ( 'USD' !== $currency ) { return new WP_Error( 'unsupported_currency', 'Only USD revenue is accepted in this phase.', array( 'status' => 400 ) ); }
+		if ( ! in_array( $status, array( 'verified', 'reversed' ), true ) || 'valid' !== $traffic_status ) { return new WP_Error( 'unverified_event', 'The event must have verified/reversed status and valid traffic.', array( 'status' => 400 ) ); }
+		if ( false === $gross_cents || 0 === (int) $gross_cents || ( 'verified' === $status && $gross_cents < 0 ) || ( 'reversed' === $status && $gross_cents > 0 ) ) { return new WP_Error( 'invalid_amount', 'grossCents must be a non-zero signed integer matching the event status.', array( 'status' => 400 ) ); }
+		if ( false === $occurred_ts || $occurred_ts > time() + 300 ) { return new WP_Error( 'invalid_occurred_at', 'occurredAt must be a valid timestamp that is not in the future.', array( 'status' => 400 ) ); }
+		if ( $actor_user_id === $creator_id || ( ! $actor_user_id && ! $no_self_attested ) ) { return new WP_Error( 'self_activity_unverified', 'Provide a different actorUserId or providerAttestedNoSelfActivity=true.', array( 'status' => 400 ) ); }
+		$owner_id = 0;
+		if ( ctype_digit( $content_id ) ) { $post = get_post( (int) $content_id ); $owner_id = $post ? (int) $post->post_author : 0; }
+		if ( ! $owner_id && 'video_ad' === $source_type ) {
+			$index = $wpdb->prefix . 'sml_video_index';
+			if ( sml_creator_shadow_table_exists( $index ) ) { $owner_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT author_id FROM {$index} WHERE video_id=%s LIMIT 1", $content_id ) ); }
+			if ( ! $owner_id && sml_creator_shadow_table_exists( 'videos' ) ) { $owner_id = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT creator_id FROM videos WHERE id=%s LIMIT 1', $content_id ) ); }
+		}
+		if ( $owner_id !== $creator_id ) { return new WP_Error( 'content_ownership_failed', 'The content does not belong to the supplied creator.', array( 'status' => 409 ) ); }
+		$event = array( 'provider' => $provider, 'provider_event_id' => $provider_event_id, 'verification_id' => $verification_id, 'source_type' => $source_type, 'creator_id' => $creator_id, 'content_id' => $content_id, 'actor_user_id' => $actor_user_id, 'provider_no_self_attested' => $no_self_attested ? 1 : 0, 'gross_cents' => (int) $gross_cents, 'currency' => 'USD', 'status' => $status, 'traffic_status' => 'valid', 'occurred_at' => gmdate( 'Y-m-d H:i:s', $occurred_ts ) );
+		$event['payload_hash'] = hash( 'sha256', wp_json_encode( $event ) );
+		return $event;
+	}
+
+	function sml_creator_verified_revenue_import( $events, $commit = false, $confirmation = '' ) {
+		global $wpdb;
+		$events = is_array( $events ) ? array_values( $events ) : array();
+		if ( empty( $events ) || count( $events ) > 250 ) { return new WP_Error( 'invalid_event_batch', 'Provide between 1 and 250 events.', array( 'status' => 400 ) ); }
+		if ( $commit && 'IMPORT VERIFIED REVENUE' !== (string) $confirmation ) { return new WP_Error( 'import_confirmation_required', 'Explicit verified-revenue import confirmation is required.', array( 'status' => 400 ) ); }
+		$table = sml_creator_verified_revenue_table(); $normalized = array(); $duplicates = 0; $batch_seen = array();
+		foreach ( $events as $index => $raw ) {
+			$event = sml_creator_verified_revenue_validate_event( $raw );
+			if ( is_wp_error( $event ) ) { return new WP_Error( $event->get_error_code(), 'Event ' . ( $index + 1 ) . ': ' . $event->get_error_message(), $event->get_error_data() ); }
+			$batch_key = $event['provider'] . ':' . $event['provider_event_id'];
+			if ( isset( $batch_seen[ $batch_key ] ) ) { if ( ! hash_equals( $batch_seen[ $batch_key ], $event['payload_hash'] ) ) { return new WP_Error( 'batch_event_conflict', 'Event ' . ( $index + 1 ) . ' conflicts with another event in this batch.', array( 'status' => 409 ) ); } $duplicates++; continue; }
+			$batch_seen[ $batch_key ] = $event['payload_hash'];
+			$existing = $wpdb->get_var( $wpdb->prepare( "SELECT payload_hash FROM {$table} WHERE provider=%s AND provider_event_id=%s LIMIT 1", $event['provider'], $event['provider_event_id'] ) );
+			if ( null !== $existing ) { if ( ! hash_equals( (string) $existing, $event['payload_hash'] ) ) { return new WP_Error( 'provider_event_conflict', 'Event ' . ( $index + 1 ) . ' conflicts with an existing provider event.', array( 'status' => 409 ) ); } $duplicates++; continue; }
+			$normalized[] = $event;
+		}
+		if ( ! $commit ) { return array( 'mode' => 'dry_run', 'valid' => count( $normalized ), 'duplicates' => $duplicates, 'errors' => 0, 'payoutsEnabled' => false ); }
+		$wpdb->query( 'START TRANSACTION' ); $inserted = 0; $now = gmdate( 'Y-m-d H:i:s' );
+		foreach ( $normalized as $event ) {
+			$event['verified_at'] = $now; $event['imported_by'] = get_current_user_id(); $event['created_at'] = $now;
+			$ok = $wpdb->insert( $table, $event, array( '%s','%s','%s','%s','%d','%s','%d','%d','%d','%s','%s','%s','%s','%s','%s','%d','%s' ) );
+			if ( false === $ok ) { $wpdb->query( 'ROLLBACK' ); return new WP_Error( 'verified_import_failed', 'No events were imported because the batch could not be saved atomically.', array( 'status' => 409 ) ); }
+			$inserted++;
+		}
+		$wpdb->query( 'COMMIT' );
+		$sync = sml_creator_shadow_sync_verified_events();
+		return array( 'mode' => 'committed', 'inserted' => $inserted, 'duplicates' => $duplicates, 'shadowSync' => $sync, 'payoutsEnabled' => false, 'walletWritesEnabled' => false );
+	}
+
+	function sml_creator_shadow_sync_verified_events( $limit = 5000 ) {
+		global $wpdb;
+		$source = sml_creator_verified_revenue_table(); $ledger = sml_creator_shadow_table();
+		if ( ! sml_creator_shadow_table_exists( $source ) ) { return array( 'available' => false, 'scanned' => 0, 'inserted' => 0, 'duplicates' => 0, 'conflicts' => 0 ); }
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$source} WHERE traffic_status='valid' AND status IN ('verified','reversed') ORDER BY id ASC LIMIT %d", min( 20000, max( 1, absint( $limit ) ) ) ), ARRAY_A );
+		$stats = array( 'available' => true, 'scanned' => count( $rows ), 'inserted' => 0, 'duplicates' => 0, 'conflicts' => 0 ); $share = sml_creator_shadow_share_percent();
+		foreach ( $rows as $row ) {
+			$gross = (int) $row['gross_cents']; $creator = (int) round( $gross * ( $share / 100 ) ); $platform = $gross - $creator; $source_ref = $row['provider'] . ':' . $row['provider_event_id'];
+			$fingerprint = hash( 'sha256', wp_json_encode( array( $row['payload_hash'], $creator, $platform ) ) );
+			$existing = $wpdb->get_var( $wpdb->prepare( "SELECT source_fingerprint FROM {$ledger} WHERE source_type=%s AND source_ref=%s LIMIT 1", $row['source_type'], $source_ref ) );
+			if ( null !== $existing ) { if ( hash_equals( (string) $existing, $fingerprint ) ) { $stats['duplicates']++; } else { $stats['conflicts']++; } continue; }
+			$ok = $wpdb->insert( $ledger, array( 'creator_id' => (int) $row['creator_id'], 'source_type' => $row['source_type'], 'source_ref' => $source_ref, 'content_kind' => 'video_ad' === $row['source_type'] ? 'video' : 'content', 'content_id' => $row['content_id'], 'gross_cents' => $gross, 'source_creator_cents' => $creator, 'shadow_creator_cents' => $creator, 'shadow_platform_cents' => $platform, 'discrepancy_cents' => 0, 'status' => 'reversed' === $row['status'] ? 'shadow_reversal' : 'shadow_verified', 'exclusion_reason' => '', 'source_fingerprint' => $fingerprint, 'source_created_at' => $row['occurred_at'], 'created_at' => gmdate( 'Y-m-d H:i:s' ) ), array( '%d','%s','%s','%s','%s','%d','%d','%d','%d','%d','%s','%s','%s','%s','%s' ) );
+			if ( false !== $ok ) { $stats['inserted']++; }
+		}
+		return $stats;
 	}
 
 	function sml_creator_shadow_sync_group_events( $limit = 5000 ) {
@@ -206,6 +325,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		if ( get_transient( 'sml_creator_shadow_sync_lock' ) ) { return; }
 		set_transient( 'sml_creator_shadow_sync_lock', 1, 5 * MINUTE_IN_SECONDS );
 		sml_creator_shadow_sync_group_events();
+		sml_creator_shadow_sync_verified_events();
 	}
 
 	function sml_creator_shadow_summary( $creator_id ) {
@@ -242,11 +362,12 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		);
 		$review = is_array( $review ) ? array_map( 'intval', $review ) : array();
 		$last = get_option( 'sml_creator_shadow_last_sync', array() );
+		$source_readiness = sml_creator_shadow_source_readiness();
 		return array(
 			'mode' => 'shadow', 'payoutsEnabled' => false, 'walletWritesEnabled' => false,
 			'creatorSharePercent' => sml_creator_shadow_share_percent(), 'platformSharePercent' => 100 - sml_creator_shadow_share_percent(),
-			'coverage' => array( 'groupAds' => true, 'videoAds' => false, 'internalAds' => false ),
-			'sourceReadiness' => sml_creator_shadow_source_readiness(),
+			'coverage' => array( 'groupAds' => true, 'videoAds' => ! empty( $source_readiness['videoAds']['supported'] ), 'internalAds' => ! empty( $source_readiness['internalAds']['supported'] ) ),
+			'sourceReadiness' => $source_readiness,
 			'entries' => (int) ( $row['entries'] ?? 0 ), 'excluded' => (int) ( $row['excluded'] ?? 0 ), 'reversals' => (int) ( $row['reversals'] ?? 0 ),
 			'grossUsd' => round( (int) ( $row['gross_cents'] ?? 0 ) / 100, 2 ),
 			'sourceCreatorUsd' => round( (int) ( $row['source_creator_cents'] ?? 0 ) / 100, 2 ),
@@ -345,9 +466,12 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			<h2>Revenue source readiness</h2>
 			<table class="widefat striped"><thead><tr><th>Source</th><th>Status</th><th>Observed data</th><th>Safety decision</th></tr></thead><tbody>
 			<tr><td><strong>Group ads</strong></td><td><?php echo esc_html( $readiness['groupAds']['status'] ); ?></td><td><?php echo (int) $readiness['groupAds']['verifiedEvents']; ?> verified events</td><td><?php echo esc_html( $readiness['groupAds']['reason'] ); ?></td></tr>
-			<tr><td><strong>Video/live ads</strong></td><td class="<?php echo 'quarantined' === $readiness['videoAds']['status'] ? 'danger' : ''; ?>"><?php echo esc_html( $readiness['videoAds']['status'] ); ?></td><td><?php echo (int) $readiness['videoAds']['unverifiedRevenueRows']; ?> unverified revenue rows · $<?php echo esc_html( number_format( (float) $readiness['videoAds']['unverifiedRevenueUsd'], 2 ) ); ?></td><td><?php echo esc_html( $readiness['videoAds']['reason'] ); ?></td></tr>
-			<tr><td><strong>Internal ads</strong></td><td class="<?php echo 'quarantined' === $readiness['internalAds']['status'] ? 'danger' : ''; ?>"><?php echo esc_html( $readiness['internalAds']['status'] ); ?></td><td><?php echo (int) $readiness['internalAds']['unverifiedRecords']; ?> unverified records · $<?php echo esc_html( number_format( (float) $readiness['internalAds']['unverifiedRevenueUsd'], 2 ) ); ?></td><td><?php echo esc_html( $readiness['internalAds']['reason'] ); ?></td></tr>
+			<tr><td><strong>Video/live ads</strong></td><td class="<?php echo false !== strpos( $readiness['videoAds']['status'], 'quarantined' ) ? 'danger' : ''; ?>"><?php echo esc_html( $readiness['videoAds']['status'] ); ?></td><td><?php echo (int) $readiness['videoAds']['unverifiedRevenueRows']; ?> unverified revenue rows · $<?php echo esc_html( number_format( (float) $readiness['videoAds']['unverifiedRevenueUsd'], 2 ) ); ?></td><td><?php echo esc_html( $readiness['videoAds']['reason'] ); ?></td></tr>
+			<tr><td><strong>Internal ads</strong></td><td class="<?php echo false !== strpos( $readiness['internalAds']['status'], 'quarantined' ) ? 'danger' : ''; ?>"><?php echo esc_html( $readiness['internalAds']['status'] ); ?></td><td><?php echo (int) $readiness['internalAds']['unverifiedRecords']; ?> unverified records · $<?php echo esc_html( number_format( (float) $readiness['internalAds']['unverifiedRevenueUsd'], 2 ) ); ?></td><td><?php echo esc_html( $readiness['internalAds']['reason'] ); ?></td></tr>
 			</tbody></table>
+			<h2>Verified provider import</h2>
+			<p>Paste a JSON array of provider settlement events. Always run a dry validation first. No import can issue payment.</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><?php wp_nonce_field( 'sml_verified_revenue_import' ); ?><input type="hidden" name="action" value="sml_creator_verified_revenue_import"><textarea name="payload_json" rows="10" class="large-text code" placeholder='[{"provider":"provider-name","providerEventId":"evt-123","verificationId":"settlement-456","sourceType":"video_ad","creatorId":123,"contentId":"video-id","grossCents":1000,"currency":"USD","status":"verified","trafficStatus":"valid","occurredAt":"2026-08-19T12:00:00Z","providerAttestedNoSelfActivity":true}]'></textarea><p><label><input type="checkbox" name="confirmed" value="1"> I confirm this payload comes from verified provider settlement data.</label></p><p><button class="button" name="import_mode" value="dry_run">Dry validation</button> <button class="button button-primary" name="import_mode" value="commit">Import verified events</button></p></form>
 			<h2>Unreviewed verified revenue</h2>
 			<table class="widefat striped"><thead><tr><th>Creator</th><th>Ledger entries</th><th>Unreviewed</th><th class="money">80% shadow value</th><th class="money">Difference</th><th>Action</th></tr></thead><tbody>
 			<?php if ( empty( $creators ) ) : ?><tr><td colspan="6">No verified revenue events are available yet.</td></tr><?php endif; ?>
@@ -370,7 +494,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		if ( SML_CREATOR_SHADOW_DB_VERSION !== get_option( 'sml_creator_shadow_db_version' ) ) { sml_creator_shadow_install(); }
 		if ( ! wp_next_scheduled( 'sml_creator_shadow_hourly_sync' ) ) { wp_schedule_event( time() + 300, 'hourly', 'sml_creator_shadow_hourly_sync' ); }
 	}, 20 );
-	add_action( 'sml_creator_shadow_hourly_sync', 'sml_creator_shadow_sync_group_events' );
+	add_action( 'sml_creator_shadow_hourly_sync', static function () { sml_creator_shadow_sync_group_events(); sml_creator_shadow_sync_verified_events(); } );
 	add_action( 'admin_menu', static function () { add_management_page( 'Creator Revenue Review', 'Creator Revenue Review', 'manage_options', 'sml-creator-revenue-review', 'sml_creator_shadow_admin_page' ); } );
 	add_action( 'admin_post_sml_creator_shadow_prepare', static function () {
 		if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Forbidden', 'Forbidden', array( 'response' => 403 ) ); }
@@ -385,6 +509,15 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		if ( 'approve' === $decision && ! $confirmed ) { wp_safe_redirect( sml_creator_shadow_admin_url( 'error', 'Approval requires the shadow-only confirmation checkbox.' ) ); exit; }
 		$result = sml_creator_shadow_decide_review( $review_id, $decision, wp_unslash( $_POST['note'] ?? '' ), $confirmed ? 'APPROVE SHADOW REVIEW' : '' ); $error = is_wp_error( $result );
 		wp_safe_redirect( sml_creator_shadow_admin_url( $error ? 'error' : 'success', $error ? $result->get_error_message() : 'Review decision saved. No payout was issued.' ) ); exit;
+	} );
+	add_action( 'admin_post_sml_creator_verified_revenue_import', static function () {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Forbidden', 'Forbidden', array( 'response' => 403 ) ); }
+		check_admin_referer( 'sml_verified_revenue_import' );
+		$payload = json_decode( wp_unslash( $_POST['payload_json'] ?? '' ), true ); $commit = 'commit' === sanitize_key( wp_unslash( $_POST['import_mode'] ?? '' ) ); $confirmed = ! empty( $_POST['confirmed'] );
+		if ( $commit && ! $confirmed ) { wp_safe_redirect( sml_creator_shadow_admin_url( 'error', 'Verified import requires the confirmation checkbox.' ) ); exit; }
+		$result = sml_creator_verified_revenue_import( $payload, $commit, $confirmed ? 'IMPORT VERIFIED REVENUE' : '' ); $error = is_wp_error( $result );
+		$detail = $error ? $result->get_error_message() : ( $commit ? sprintf( 'Imported %d verified events; %d duplicates. No payout was issued.', (int) $result['inserted'], (int) $result['duplicates'] ) : sprintf( 'Dry validation passed: %d new events, %d duplicates.', (int) $result['valid'], (int) $result['duplicates'] ) );
+		wp_safe_redirect( sml_creator_shadow_admin_url( $error ? 'error' : 'success', $detail ) ); exit;
 	} );
 
 	add_action( 'rest_api_init', static function () {
@@ -407,6 +540,9 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		) );
 		register_rest_route( 'sml-creator-analytics/v1', '/monetization-shadow/reviews/(?P<id>\d+)', array(
 			array( 'methods' => WP_REST_Server::EDITABLE, 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }, 'callback' => static function ( WP_REST_Request $request ) { return sml_creator_shadow_decide_review( $request['id'], $request->get_param( 'decision' ), $request->get_param( 'note' ), $request->get_param( 'confirmation' ) ); } ),
+		) );
+		register_rest_route( 'sml-creator-analytics/v1', '/verified-revenue/import', array(
+			array( 'methods' => WP_REST_Server::CREATABLE, 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }, 'callback' => static function ( WP_REST_Request $request ) { return sml_creator_verified_revenue_import( $request->get_param( 'events' ), (bool) $request->get_param( 'commit' ), $request->get_param( 'confirmation' ) ); } ),
 		) );
 	} );
 }
