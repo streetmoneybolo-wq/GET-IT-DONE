@@ -80,7 +80,9 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 		$refs = $wpdb->get_col( $wpdb->prepare( "SELECT ref FROM $ledger WHERE user_id = %d AND ref LIKE %s ORDER BY id DESC LIMIT 800", (int) $uid, 'earn:daily_visit:' . (int) $uid . ':%' ) );
 		$days = array();
 		foreach ( (array) $refs as $ref ) { $p = explode( ':', $ref ); if ( isset( $p[3] ) && preg_match( '/^\d{8}$/', $p[3] ) ) { $days[ $p[3] ] = true; } }
-		return array_keys( $days );
+		/* PHP turns numeric-string keys into ints — hand back STRINGS so strict compares
+		   against gmdate('Ymd') work (checkedInToday was always false otherwise) */
+		return array_map( 'strval', array_keys( $days ) );
 	}
 	function sml_lbm_streak( $uid ) {
 		$days = sml_lbm_visit_days( $uid ); if ( ! $days ) { return 0; }
