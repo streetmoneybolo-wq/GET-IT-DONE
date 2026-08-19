@@ -272,7 +272,7 @@
     '.sip-dock-more{display:none;}' +
     '@media (max-width:640px){' +
       '.sip-content{padding:10px 10px 150px;}' +
-      '.sip-topbar{gap:10px;padding-bottom:10px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +
+      '.sip-topbar{gap:10px;padding:2px 84px 10px 4px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +   /* right gutter = the site's floating Loop Bucks pill */
       '.sip-worldtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;margin-bottom:10px;}.sip-worldtabs::-webkit-scrollbar{display:none;}' +
       '.sip-wtab{flex:none;padding:7px 12px;}.sip-wtab-hint{display:none;}' +
       '.sip-worldnav{display:none !important;}' +

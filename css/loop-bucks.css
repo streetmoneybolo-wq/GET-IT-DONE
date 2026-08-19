@@ -67,3 +67,5 @@ a.sml-lb-name:hover{color:#8ffcb9;}
 @keyframes smlLbBlink{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.85;transform:scale(1.12);}}
 @keyframes smlLbReward{0%,100%{transform:scale(1);text-shadow:0 0 8px rgba(140,255,200,.6);}50%{transform:scale(1.15);text-shadow:0 0 16px rgba(140,255,200,1);}}
 @media(prefers-reduced-motion:reduce){.sml-lb-feat,.sml-lb-feat *,.sml-lb-badge{animation:none !important;}}
+/* phones: compact floating pill (icon + balance) so it never covers page headers */
+@media(max-width:640px){#sml-lb-btn.sml-lb-floating{top:10px;right:10px;padding:5px 10px 5px 7px;gap:6px;}#sml-lb-btn.sml-lb-floating .sml-lb-k{display:none;}#sml-lb-btn.sml-lb-floating img{width:24px;height:16px;}#sml-lb-btn.sml-lb-floating .sml-lb-v{font-size:13px;}}
