@@ -84,8 +84,10 @@
       return '<div class="tv2-lf-msg" data-id="' + esc(m.id) + '">' + avatarHTML(u.name, u.avatar) + '<div class="tv2-lf-bd"><div class="tv2-lf-meta"><span class="tv2-lf-user">' + (u.url ? '<a href="' + esc(u.url) + '">' : '') + esc(u.name.replace(/^@/, '')) + (u.url ? '</a>' : '') + '</span>' + (side ? '<span class="tv2-lf-badge ' + side + '">' + (side === 'bull' ? 'BULLISH' : 'BEARISH') + '</span>' : '') + '<span class="tv2-lf-time">' + esc(rel(m.t || m.time || m.created || m.at)) + '</span></div><div class="tv2-lf-text">' + linkify(m.body || m.text || m.message || '') + '</div></div></div>';
     }).join('');
   }
+  var firstLoad = true;
   function pollStream(el) {
-    if (document.hidden) return;
+    if (document.hidden && !firstLoad) return;   /* always fetch once; background tabs skip the 3s polls */
+    firstLoad = false;
     fetch('/wp-json/sml/v1/stream?symbol=' + encodeURIComponent(SYM), { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
