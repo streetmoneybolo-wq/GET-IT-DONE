@@ -12,7 +12,7 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
-/* WPCode merges EVERY "Run Everywhere" PHP snippet into ONE eval() (see
+/* WPCode merges EVERY "Run Everywhere" PHP snippet into ONE evaluated block (see
    insert-headers-and-footers/includes/auto-insert/class-wpcode-auto-insert-everywhere.php).
    Two consequences for every snippet on this site:
      1. never `return;`/`exit;` at top level — it aborts every snippet merged after it;
