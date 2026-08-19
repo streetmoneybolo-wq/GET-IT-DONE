@@ -161,7 +161,7 @@
         done.banner = true;
       }
     }
-    return !!(done.lf && done.mp && done.chart);
+    return !!(done.lf && done.mp && done.chart && done.ad);   /* keep retrying until the ad slot (late-booting) is adopted too; the loop caps at ~15s anyway */
   }
 
   var tries = 0;

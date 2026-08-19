@@ -99,13 +99,16 @@
         (r90 ? ' 90% range ' + num(r90[0]) + '–' + num(r90[1]) + '.' : '') + (r70 ? ' 70% range ' + num(r70[0]) + '–' + num(r70[1]) + '.' : '') + '</span></div>' : '');
   }
 
-  function load(el) {
+  function load(el, attempt) {
+    attempt = attempt || 0;
     var to = new Date(), from = new Date(to.getTime() - 90 * 86400000);
     var fmt = function (dt) { return dt.toISOString().slice(0, 10); };
     fetch('/wp-json/sml/v1/market-position?symbol=' + encodeURIComponent(SYM) + '&from=' + fmt(from) + '&to=' + fmt(to), { credentials: 'same-origin', cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (d) { render(el, d); })
       .catch(function () {
+        /* transient (rate-limit / cold cache) → retry at 4s, 12s, 30s before giving up */
+        if (attempt < 3) { setTimeout(function () { load(el, attempt + 1); }, [4000, 8000, 18000][attempt]); return; }
         el.querySelector('#tv2mp2-body').innerHTML = '<div class="tv2-mp2-empty">Market position isn’t available for ' + esc(SYM) + ' right now.</div>';
       });
   }
