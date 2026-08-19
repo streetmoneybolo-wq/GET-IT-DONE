@@ -60,6 +60,8 @@
       '<a class="cc-pill" href="/" id="cc-back">← Back</a></header>';
   }
   root.innerHTML = '<div class="cc-wrap">' + header() + '<div class="cc-loading">Loading your creator status…</div></div>';
+  /* pre-paint guard (wpcode/prepaint-guard.php): reveal once our stylesheet is in */
+  (function () { var l = document.getElementById('sml-cc-css'), d = false; var go = function () { if (d) return; d = true; document.documentElement.classList.remove('sml-pp'); }; if (!l || l.sheet) { go(); return; } l.addEventListener('load', go, { once: true }); l.addEventListener('error', go, { once: true }); setTimeout(go, 1500); })();
 
   /* ---------- boot ---------- */
   api('/sml-create-channel/v1/state').then(function (res) {

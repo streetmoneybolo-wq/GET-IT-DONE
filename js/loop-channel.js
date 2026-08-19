@@ -83,6 +83,15 @@
     '<input type="file" id="ch-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none">' +
     (ADMIN && !OWNER ? '<div class="lch-adminbar"><b>LOOP CHANNEL</b><span>admin preview</span><a href="?ch=0">exit</a></div>' : '');
   if (OWNER) root.classList.add('lch-owner');
+  /* pre-paint guard (wpcode/prepaint-guard.php): reveal once our stylesheet has
+     applied so the theme underneath never flashes unstyled (failsafe at 2.5s) */
+  (function reveal() {
+    var link = document.getElementById('sml-ch-css'), done = false;
+    var go = function () { if (done) return; done = true; document.documentElement.classList.remove('sml-pp'); };
+    if (!link || link.sheet) { go(); return; }
+    link.addEventListener('load', go, { once: true }); link.addEventListener('error', go, { once: true });
+    setTimeout(go, 1500);
+  })();
 
   /* ---------- identity: same sources the watch pages already use ---------- */
   function loadIdentity(profileHandle) {

@@ -187,6 +187,9 @@
     var slot = shell.querySelector('#sml-hf-feedslot');
     slot.appendChild(host);
     try { document.documentElement.style.overflow='hidden'; document.body.style.overflow='hidden'; } catch(e){}
+    // pre-paint guard (wpcode/prepaint-guard.php): the old feed was held invisible
+    // until this shell exists — reveal now (CSS failsafe reveals at 2.5s regardless)
+    document.documentElement.classList.remove('sml-pp');
 
     // Reuse the site's real LOOP-KICK bridge so authentication, unread state,
     // audio unlock, and the existing popup lifecycle remain owned by one system.
