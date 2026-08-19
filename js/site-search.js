@@ -99,7 +99,7 @@
     if (!button) return;
     button.addEventListener('click', function () {
       var nativeButton = all('.sml-acct__btn, .wv-user, [aria-label="Account menu"]')
-        .filter(function (node) { return node !== button && !node.closest('#sml-global-header'); })[0];
+        .filter(function (node) { return node !== button && !node.classList.contains('sml-gh-account'); })[0];   /* the legacy chip is docked INSIDE the header now (dockLegacyAccount) */
       if (nativeButton && typeof nativeButton.click === 'function') nativeButton.click();
       else location.href = '/members/';
     });
