@@ -40,8 +40,11 @@ if ( ! function_exists( 'sml_lbb_loader_active' ) ) {
 
 	function sml_lbb_loader_buffer( $html ) {
 		if ( ! is_string( $html ) || false === stripos( $html, '</body>' ) || false !== strpos( $html, 'id="sml-lb-js"' ) ) { return $html; }
-		/* only HTML documents — never wrap JSON/feeds that happen to be served through this hook */
-		if ( ! preg_match( '/<html[\s>]/i', substr( $html, 0, 4096 ) ) ) { return $html; }
+		/* non-HTML responses (JSON, feeds, files) must never be touched — by header, not by
+		   sniffing markup (some templates put <html> past a long preamble) */
+		foreach ( headers_list() as $h ) {
+			if ( 0 === stripos( $h, 'content-type:' ) && false === stripos( $h, 'text/html' ) ) { return $html; }
+		}
 		$pos = strripos( $html, '</body>' );
 		return substr( $html, 0, $pos ) . sml_lbb_loader_markup() . substr( $html, $pos );
 	}

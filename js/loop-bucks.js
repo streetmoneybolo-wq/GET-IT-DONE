@@ -156,9 +156,11 @@
 
   function refresh(){
     loading = true;
-    return Promise.all([ api('/me'), api('/earn'), api('/gates'), api('/leaderboard') ]).then(function(a){
+    /* each REST call here takes ~2s on this site — paint the balance the moment
+       /me lands instead of holding the button until the leaderboard arrives */
+    var me = api('/me').then(function(d){ if (d && d.balance != null){ ME = d; renderBtn(); if (panelOpen) renderPanel(); } });
+    return Promise.all([ me, api('/earn'), api('/gates'), api('/leaderboard') ]).then(function(a){
       loading = false;
-      if (a[0] && a[0].balance != null) ME = a[0];
       if (a[1] && a[1].ways) EARN = a[1];
       if (a[2] && a[2].gates) GATES = a[2];
       if (a[3] && a[3].board) BOARD = a[3];
