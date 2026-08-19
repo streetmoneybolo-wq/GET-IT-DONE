@@ -345,6 +345,7 @@
       var profileHandle = creator.profile_handle || '';
       var videos = Array.isArray(channel.videos) ? channel.videos : []; var posts = Array.isArray(channel.posts) ? channel.posts : [];
       CH.profile = channel.profile || {}; CH.appearance = channel.appearance || {}; CH.stats = channel.stats || {};
+      CH.room = profileHandle; /* live-stream chat room id (js/live-watch.js ?s=) */
       if (channel.owner && !OWNER) { OWNER = true; root.classList.add('lch-owner'); el('#ch-edit').style.display = ''; el('#ch-golive').style.display = ''; el('#ch-vanity').style.display = 'none'; }
       var shownName = CH.profile.name || creator.name;
       if (shownName) { document.title = shownName + ' | Loop Channel'; el('#ch-name').textContent = shownName; }
@@ -427,7 +428,7 @@
     ST.lSite = l.site || ''; ST.lX = l.x || ''; ST.lYt = l.youtube || '';
   }
   function studioHTML() {
-    var tabs = [['theme', 'Theme'], ['links', 'Links'], ['mod', 'Moderation'], ['chan', 'Channel']];
+    var tabs = [['theme', 'Theme'], ['links', 'Links'], ['mod', 'Moderation'], ['live', 'Live chat'], ['chan', 'Channel']];
     var body = '';
     if (ST.tab === 'theme') {
       body = '<div class="lch-f-group"><span class="lch-f-label">ACCENT COLOR</span><div class="lch-swatches">' +
@@ -454,8 +455,18 @@
         '<div class="lch-f-group"><span class="lch-f-label">BANNED LINKS</span><div class="lch-swatches">' +
         ST.bl.map(function (l, i) { return '<button class="lch-chipban" data-rmbl="' + i + '">' + esc(l) + ' ✕</button>'; }).join('') + '</div>' +
         '<div class="lch-f-row"><input class="lch-f-input mono" id="ch-bldraft" placeholder="Domain or pattern, e.g. t.me/*" value="' + esc(ST.blDraft) + '"><button class="lch-f-add" id="ch-bladd">Ban</button></div></div>' +
-        '<span class="lch-f-note">saved to your channel · carry-over into live-stream chat is not wired yet</span>' +
+        '<span class="lch-f-note">saved to your channel · enforced in channel chat, community posts AND your live-stream chat (blocked posts get a 403; you and your mods are exempt)</span>' +
         '<span class="lch-pending" id="ch-theme-save-note" style="display:' + (ST.saveNote ? '' : 'none') + '">' + esc(ST.saveNote) + '</span>';
+    } else if (ST.tab === 'live') {
+      var rows = (ST.liveMsgs || []).slice().reverse().map(function (m) {
+        var who = String(m.display_name || m.handle || m.user || 'member');
+        var when = String(m.created_at || m.at || '').replace('T', ' ').slice(0, 16);
+        return '<div class="lch-modrow lch-liverow" data-lmid="' + esc(String(m.id)) + '"><span class="who">@' + esc(who) + '</span><span class="tx">' + esc(String(m.body || m.message || m.text || '')) + '</span><span class="at">' + esc(when) + '</span><button class="kill" data-rmlive="' + esc(String(m.id)) + '" title="Remove from the live chat">✕</button></div>';
+      }).join('');
+      body = '<div class="lch-f-group"><span class="lch-f-label">LIVE-STREAM CHAT · ROOM @' + esc(CH.room || '') + '</span>' +
+        '<div class="lch-f-row"><button class="lch-f-add ghost" id="ch-live-refresh">↻ Refresh</button><span class="lch-f-note" id="ch-live-note">' + esc(ST.liveNote || '') + '</span></div>' +
+        (rows || (ST.liveLoaded ? '<span class="lch-f-note">No messages in your live chat right now.</span>' : '<span class="lch-f-note">Loading…</span>')) + '</div>' +
+        '<span class="lch-f-note">Last 50 messages from your live-stream room. Remove anything here — it disappears for every viewer on the watch page within seconds. Your mods can remove messages from the watch page itself.</span>';
     } else {
       body = '<div class="lch-f-group"><span class="lch-f-label">CHANNEL NAME</span><input class="lch-f-input" id="ch-namein" value="' + esc(ST.chName) + '" maxlength="60"><span class="lch-f-note">' + esc(ST.nameNote) + '</span></div>' +
         '<div class="lch-f-group"><span class="lch-f-label">TAGLINE</span><input class="lch-f-input" id="ch-tagin" value="' + esc(ST.chTagline) + '" maxlength="120" placeholder="One line under your channel name"></div>' +
@@ -488,6 +499,24 @@
         saveSettings({ aff: [{ label: ST.aff1Label, url: ST.aff1Url }, { label: ST.aff2Label, url: ST.aff2Url }], links: { x: ST.lX, youtube: ST.lYt, site: ST.lSite }, home_group: { name: ST.hgName, url: ST.hgUrl, members: ST.hgMembers } });
       };
       ['aff1l', 'aff1u', 'aff2l', 'aff2u', 'lx', 'lyt', 'lsite', 'hgname', 'hgurl', 'hgmem'].forEach(function (id) { var inp = el('#ch-' + id); if (inp) inp.onchange = linkSave; });
+    } else if (ST.tab === 'live') {
+      var loadLive = function () {
+        if (!CH.room) { ST.liveNote = 'No profile handle — live room unknown.'; ST.liveLoaded = true; renderStudio(); return; }
+        api('/sml-live-chat/v1/room/' + encodeURIComponent(CH.room) + '/messages?limit=50&_=' + Date.now()).then(function (res) {
+          ST.liveMsgs = (res.ok && res.j && (res.j.messages || res.j.items)) || []; ST.liveLoaded = true; ST.liveNote = res.ok ? '' : 'Could not load the live chat.'; renderStudio();
+        });
+      };
+      el('#ch-live-refresh').onclick = loadLive;
+      Array.prototype.forEach.call(root.querySelectorAll('[data-rmlive]'), function (b) {
+        b.onclick = function () {
+          var id = b.getAttribute('data-rmlive'); b.disabled = true; b.textContent = '…';
+          api('/sml-lcm/v1/room/' + encodeURIComponent(CH.room) + '/message/' + encodeURIComponent(id), { method: 'DELETE' }).then(function (res) {
+            if (!res.ok) { b.disabled = false; b.textContent = '✕'; ST.liveNote = (res.j && res.j.message) || 'Could not remove.'; renderStudio(); return; }
+            ST.liveMsgs = (ST.liveMsgs || []).filter(function (m) { return String(m.id) !== String(id); }); ST.liveNote = 'Removed.'; renderStudio();
+          });
+        };
+      });
+      if (!ST.liveLoaded) loadLive();
     } else if (ST.tab === 'mod') {
       var modSave = function () { saveSettings({ moderation: { role: ST.modRole, mods: ST.mods, words: ST.bw, links: ST.bl } }); };
       Array.prototype.forEach.call(root.querySelectorAll('[data-rmmod]'), function (b) { b.onclick = function () { ST.mods.splice(+b.getAttribute('data-rmmod'), 1); modSave(); renderStudio(); }; });
@@ -548,7 +577,7 @@
       if (cb) cb(!!r.ok);
     }).catch(function () { ST.saveNote = 'Could not reach the site.'; note = el('#ch-theme-save-note'); if (note) { note.style.display = ''; note.textContent = ST.saveNote; } if (cb) cb(false); });
   }
-  function openStudio() { if (!OWNER) return; syncStudioFromChannel(); ST.saveNote = ''; renderStudio(); document.addEventListener('keydown', studioEsc); }
+  function openStudio() { if (!OWNER) return; syncStudioFromChannel(); ST.saveNote = ''; ST.liveLoaded = false; ST.liveMsgs = []; ST.liveNote = ''; renderStudio(); document.addEventListener('keydown', studioEsc); }
   function closeStudio() { el('#ch-studio-mount').innerHTML = ''; document.removeEventListener('keydown', studioEsc); }
   function studioEsc(e) { if (e.key === 'Escape') closeStudio(); }
   el('#ch-edit').onclick = openStudio;
