@@ -198,6 +198,7 @@ body.lch-on{margin:0;background:#04060a !important}
 .lch-fontchip{font:600 10px/1 var(--chfont);color:#c7d6e3;background:#0a121b;border:1px solid #1c2833;border-radius:7px;padding:8px 11px;cursor:pointer}
 .lch-fontchip.on{color:#04060a;background:var(--accent);border-color:var(--accent)}
 .lch-modrow{display:flex;align-items:center;gap:9px;border:1px solid #16202b;border-radius:9px;background:#0a0d13;padding:9px 11px}
+.lch-liverow{margin-bottom:6px}.lch-liverow .who{font:600 10px/1 'IBM Plex Mono',monospace;color:var(--accent,#38F58A);flex:none}.lch-liverow .tx{flex:1;min-width:0;font:400 12px/1.4 'IBM Plex Sans',system-ui,sans-serif;color:#c3ccd4;word-break:break-word}.lch-liverow .at{font:400 9px/1 'IBM Plex Mono',monospace;color:#3d4f5f;flex:none}
 .lch-modrow .role{font:700 7px/1 var(--chfont);letter-spacing:.08em;color:#04060a;background:#ffd166;border-radius:4px;padding:3px 6px}
 .lch-modrow .kill{margin-left:auto;font:600 11px/1 var(--chfont);color:#5d7085;background:none;border:none;cursor:pointer}
 .lch-modrow .kill:hover{color:#ff5e6e}
