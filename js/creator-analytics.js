@@ -88,7 +88,7 @@
   }
 
   /* ---------- state ---------- */
-  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
+  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
 
   document.documentElement.classList.add('smlca-on'); document.body.classList.add('smlca-on');
   if (!document.getElementById('sml-ca-font')) { var f = document.createElement('link'); f.id = 'sml-ca-font'; f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); }
@@ -110,10 +110,11 @@
     api('/sml-creator-gate/v1/status'),
     api('/sml-lb/v1/me'),
     api('/sml-live/v1/status'),
-    api('/sml-creator-analytics/v1/audience?range=28')
+    api('/sml-creator-analytics/v1/audience?range=28'),
+    api('/sml-creator-analytics/v1/presence')
   ]).then(function (r) {
     if (r[0].status === 401 || r[1].status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
-    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null;
+    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null; S.presence = r[5].ok ? r[5].j : null;
     var more = [];
     var hasLetter = !!(S.gate && S.gate.hasLetter);
     more.push(api('/sml-letters/v1/mine')); more.push(api('/sml-loopletters/v1/subscribers')); more.push(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }));
@@ -125,9 +126,11 @@
       S.groups = m[4] || [];
       renderMain();
       setInterval(refreshRealtime, 60000);
+      setInterval(refreshPresence, 20000);
     });
   });
   function refreshRealtime() { api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderMain(); } }); }
+  function refreshPresence() { api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; if (S.view === 'main') renderMain(); } }); }
 
   function loadGroups() {
     // the site has no "my groups" route; the Groups page marks membership on each tile
@@ -178,8 +181,10 @@
     var ga = S.ga4 && S.ga4.configured && S.ga4.available !== false ? S.ga4 : null;
     var countries = ga && Array.isArray(ga.countries) ? ga.countries : [];
     var cities = ga && Array.isArray(ga.cities) ? ga.cities : [];
-    var liveAudience = ga && ga.live && ga.live.available ? n(ga.live.count) : null;
-	var liveNeedsPresence = !!(ga && ga.live && ga.live.reason === 'creator_realtime_requires_first_party_presence');
+    var presence = S.presence && S.presence.available ? S.presence : null;
+    var liveAudience = presence ? n(presence.count) : null;
+    var liveKinds = presence && presence.byKind ? presence.byKind : {};
+    var liveBreakdown = Object.keys(liveKinds).filter(function (k) { return n(liveKinds[k]) > 0; }).map(function (k) { return fmt(liveKinds[k]) + ' ' + k; }).join(' · ');
     function audienceBars(items, nameKey, valueKey, cap) {
       items = (items || []).slice(0, cap || 8); var max = 1;
       items.forEach(function (x) { max = Math.max(max, n(x[valueKey])); });
@@ -188,9 +193,9 @@
         return '<div class="ca-audience-row"><span>' + esc(label) + '</span><i><b style="width:' + Math.max(2, Math.round(n(x[valueKey]) / max * 100)) + '%"></b></i><strong>' + fmt(x[valueKey]) + '</strong></div>';
       }).join('') + '</div>';
     }
-    var liveCard = '<div class="ca-card"><h3>Live right now<span class="ca-fresh">' + (isLive ? 'streaming' : 'not streaming') + '</span></h3>' +
-      '<div style="display:flex;align-items:baseline;gap:10px"><div class="ca-big ' + (isLive ? 'acc' : '') + '">' + (liveAudience != null ? fmt(liveAudience) : (isLive ? 'LIVE' : '—')) + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
-      '<div class="ca-sub" style="margin-top:6px">' + (isLive ? 'Started ' + esc(ago(S.live.live_started_at)) + (liveAudience != null ? ' · Active visitors in the last 30 minutes.' : (liveNeedsPresence ? ' · Creator-specific realtime presence is not connected yet.' : '. Audience totals are still collecting.')) : 'Go live from Creator Studio.' + (liveNeedsPresence ? ' Creator-specific realtime presence is not connected yet.' : '')) + '</div>' +
+    var liveCard = '<div class="ca-card"><h3>Active right now<span class="ca-fresh">' + (presence ? 'last ' + fmt(presence.window) + ' seconds' : 'connecting') + '</span></h3>' +
+      '<div style="display:flex;align-items:baseline;gap:10px"><div class="ca-big ' + (liveAudience > 0 ? 'acc' : '') + '">' + (liveAudience != null ? fmt(liveAudience) : '—') + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
+      '<div class="ca-sub" style="margin-top:6px">' + (presence ? (liveAudience > 0 ? 'Active visitors across your creator pages' + (liveBreakdown ? ' · ' + esc(liveBreakdown) : '') + '.' : 'No active visitors across your creator pages in this window.') : 'Creator presence is temporarily unavailable.') + (isLive ? ' Stream started ' + esc(ago(S.live.live_started_at)) + '.' : '') + '</div>' +
       (isLive ? '' : '<div style="margin-top:10px"><a class="ca-btn2" href="/go-live/">Go Live →</a></div>') + '</div>';
     var audience = '<div class="ca-grid ca-g21">' +
       '<div class="ca-card"><h3>Where your audience is<span class="ca-fresh">country + city aggregates</span></h3>' + (cities.length ? audienceBars(cities, 'city', 'users', 12) : (countries.length ? audienceBars(countries, 'country', 'users', 12) : empty(ga ? 'Not enough data yet' : 'Audience analytics not connected yet', ga ? 'GA4 is connected, but no city has reached the privacy threshold yet.' : 'Audience analytics needs GA4 collection. No visitor is ever shown individually.'))) + '</div>' +
