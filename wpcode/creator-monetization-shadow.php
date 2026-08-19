@@ -267,10 +267,11 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		return array( 'reviewId' => $review_id, 'status' => 'review_pending', 'entries' => count( $rows ), 'shadowCreatorUsd' => round( $creator_cents / 100, 2 ), 'discrepancyUsd' => round( $discrepancy_cents / 100, 2 ), 'ledgerHash' => $ledger_hash, 'payoutsEnabled' => false );
 	}
 
-	function sml_creator_shadow_decide_review( $review_id, $decision, $note = '' ) {
+	function sml_creator_shadow_decide_review( $review_id, $decision, $note = '', $confirmation = '' ) {
 		global $wpdb;
 		$review_id = absint( $review_id ); $decision = sanitize_key( $decision ); $note = sanitize_text_field( (string) $note );
 		if ( ! in_array( $decision, array( 'approve', 'reject' ), true ) ) { return new WP_Error( 'invalid_decision', 'Decision must be approve or reject.', array( 'status' => 400 ) ); }
+		if ( 'approve' === $decision && 'APPROVE SHADOW REVIEW' !== (string) $confirmation ) { return new WP_Error( 'approval_confirmation_required', 'Explicit shadow approval confirmation is required.', array( 'status' => 400 ) ); }
 		$reviews = sml_creator_shadow_review_table(); $actions = sml_creator_shadow_review_action_table(); $items = sml_creator_shadow_review_item_table(); $ledger = sml_creator_shadow_table();
 		$review = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$reviews} WHERE id = %d", $review_id ), ARRAY_A );
 		if ( ! $review || 'review_pending' !== $review['status'] ) { return new WP_Error( 'review_not_pending', 'Only a pending review can be decided.', array( 'status' => 409 ) ); }
@@ -288,11 +289,67 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 		return array( 'reviewId' => $review_id, 'status' => $status, 'shadowCreatorUsd' => round( $creator_cents / 100, 2 ), 'payoutsEnabled' => false, 'walletWritesEnabled' => false );
 	}
 
+	function sml_creator_shadow_admin_url( $notice = '', $detail = '' ) {
+		$url = admin_url( 'tools.php?page=sml-creator-revenue-review' );
+		if ( $notice ) { $url = add_query_arg( array( 'sml_shadow_notice' => sanitize_key( $notice ), 'sml_shadow_detail' => mb_substr( (string) $detail, 0, 180 ) ), $url ); }
+		return $url;
+	}
+
+	function sml_creator_shadow_admin_page() {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( esc_html__( 'You are not allowed to view this page.' ) ); }
+		global $wpdb;
+		sml_creator_shadow_maybe_sync();
+		$ledger = sml_creator_shadow_table(); $reviews = sml_creator_shadow_review_table(); $items = sml_creator_shadow_review_item_table();
+		$creators = $wpdb->get_results( "SELECT l.creator_id, COUNT(*) ledger_entries,
+			SUM(CASE WHEN i.ledger_id IS NULL AND l.status IN ('shadow_verified','shadow_reversal') THEN 1 ELSE 0 END) unreviewed_entries,
+			COALESCE(SUM(CASE WHEN i.ledger_id IS NULL AND l.status IN ('shadow_verified','shadow_reversal') THEN l.shadow_creator_cents ELSE 0 END),0) unreviewed_cents,
+			COALESCE(SUM(CASE WHEN i.ledger_id IS NULL AND l.status IN ('shadow_verified','shadow_reversal') THEN l.discrepancy_cents ELSE 0 END),0) unreviewed_discrepancy_cents
+			FROM {$ledger} l LEFT JOIN {$items} i ON i.ledger_id=l.id GROUP BY l.creator_id ORDER BY unreviewed_cents DESC LIMIT 500", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$review_rows = $wpdb->get_results( "SELECT * FROM {$reviews} ORDER BY id DESC LIMIT 200", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$notice = sanitize_key( wp_unslash( $_GET['sml_shadow_notice'] ?? '' ) ); $detail = sanitize_text_field( wp_unslash( $_GET['sml_shadow_detail'] ?? '' ) );
+		?>
+		<div class="wrap sml-shadow-admin"><h1>Creator Revenue Review</h1>
+			<style>.sml-shadow-admin .sml-lock{padding:14px 16px;border-left:4px solid #d63638;background:#fff;margin:14px 0}.sml-shadow-admin .sml-ok{border-left-color:#00a32a}.sml-shadow-admin table{margin-top:16px}.sml-shadow-admin td,.sml-shadow-admin th{vertical-align:middle}.sml-shadow-admin .money{font-variant-numeric:tabular-nums;text-align:right}.sml-shadow-admin .danger{color:#b32d2e;font-weight:700}.sml-shadow-admin .actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sml-shadow-admin input[type=text]{max-width:260px}</style>
+			<div class="sml-lock"><strong>Shadow mode:</strong> approvals on this screen are audit decisions only. They cannot send money, credit Loop Bucks, or modify a wallet.</div>
+			<?php if ( $notice ) : ?><div class="notice <?php echo 'error' === $notice ? 'notice-error' : 'notice-success'; ?> is-dismissible"><p><?php echo esc_html( $detail ?: $notice ); ?></p></div><?php endif; ?>
+			<h2>Unreviewed verified revenue</h2>
+			<table class="widefat striped"><thead><tr><th>Creator</th><th>Ledger entries</th><th>Unreviewed</th><th class="money">80% shadow value</th><th class="money">Difference</th><th>Action</th></tr></thead><tbody>
+			<?php if ( empty( $creators ) ) : ?><tr><td colspan="6">No verified revenue events are available yet.</td></tr><?php endif; ?>
+			<?php foreach ( $creators as $creator ) : $user = get_userdata( (int) $creator['creator_id'] ); ?>
+			<tr><td><strong><?php echo esc_html( $user ? $user->display_name : 'User #' . (int) $creator['creator_id'] ); ?></strong><br><small>ID <?php echo (int) $creator['creator_id']; ?></small></td><td><?php echo (int) $creator['ledger_entries']; ?></td><td><?php echo (int) $creator['unreviewed_entries']; ?></td><td class="money">$<?php echo esc_html( number_format( (int) $creator['unreviewed_cents'] / 100, 2 ) ); ?></td><td class="money <?php echo 0 !== (int) $creator['unreviewed_discrepancy_cents'] ? 'danger' : ''; ?>">$<?php echo esc_html( number_format( (int) $creator['unreviewed_discrepancy_cents'] / 100, 2 ) ); ?></td><td>
+			<?php if ( (int) $creator['unreviewed_entries'] > 0 ) : ?><form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><?php wp_nonce_field( 'sml_shadow_prepare_' . (int) $creator['creator_id'] ); ?><input type="hidden" name="action" value="sml_creator_shadow_prepare"><input type="hidden" name="creator_id" value="<?php echo (int) $creator['creator_id']; ?>"><button class="button">Prepare locked review</button></form><?php else : ?>—<?php endif; ?></td></tr>
+			<?php endforeach; ?></tbody></table>
+			<h2>Review history</h2>
+			<table class="widefat striped"><thead><tr><th>ID</th><th>Creator</th><th>Status</th><th>Entries</th><th class="money">Shadow value</th><th class="money">Difference</th><th>Integrity</th><th>Decision</th></tr></thead><tbody>
+			<?php if ( empty( $review_rows ) ) : ?><tr><td colspan="8">No review snapshots have been prepared.</td></tr><?php endif; ?>
+			<?php foreach ( $review_rows as $review ) : $user = get_userdata( (int) $review['creator_id'] ); ?>
+			<tr><td>#<?php echo (int) $review['id']; ?></td><td><?php echo esc_html( $user ? $user->display_name : 'User #' . (int) $review['creator_id'] ); ?></td><td><strong><?php echo esc_html( $review['status'] ); ?></strong></td><td><?php echo (int) $review['entry_count']; ?></td><td class="money">$<?php echo esc_html( number_format( (int) $review['shadow_creator_cents'] / 100, 2 ) ); ?></td><td class="money <?php echo 0 !== (int) $review['discrepancy_cents'] ? 'danger' : ''; ?>">$<?php echo esc_html( number_format( (int) $review['discrepancy_cents'] / 100, 2 ) ); ?></td><td><code><?php echo esc_html( substr( $review['ledger_hash'], 0, 12 ) ); ?>…</code></td><td>
+			<?php if ( 'review_pending' === $review['status'] ) : ?><form class="actions" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"><?php wp_nonce_field( 'sml_shadow_decide_' . (int) $review['id'] ); ?><input type="hidden" name="action" value="sml_creator_shadow_decide"><input type="hidden" name="review_id" value="<?php echo (int) $review['id']; ?>"><input type="text" name="note" placeholder="Decision note" maxlength="500"><label><input type="checkbox" name="confirmed" value="1"> Confirm shadow only</label><button class="button button-primary" name="decision" value="approve">Approve</button><button class="button" name="decision" value="reject">Reject</button></form><?php else : echo esc_html( $review['decision_note'] ?: 'Complete' ); endif; ?></td></tr>
+			<?php endforeach; ?></tbody></table>
+		</div>
+		<?php
+	}
+
 	add_action( 'init', static function () {
 		if ( SML_CREATOR_SHADOW_DB_VERSION !== get_option( 'sml_creator_shadow_db_version' ) ) { sml_creator_shadow_install(); }
 		if ( ! wp_next_scheduled( 'sml_creator_shadow_hourly_sync' ) ) { wp_schedule_event( time() + 300, 'hourly', 'sml_creator_shadow_hourly_sync' ); }
 	}, 20 );
 	add_action( 'sml_creator_shadow_hourly_sync', 'sml_creator_shadow_sync_group_events' );
+	add_action( 'admin_menu', static function () { add_management_page( 'Creator Revenue Review', 'Creator Revenue Review', 'manage_options', 'sml-creator-revenue-review', 'sml_creator_shadow_admin_page' ); } );
+	add_action( 'admin_post_sml_creator_shadow_prepare', static function () {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Forbidden', 'Forbidden', array( 'response' => 403 ) ); }
+		$creator_id = absint( $_POST['creator_id'] ?? 0 ); check_admin_referer( 'sml_shadow_prepare_' . $creator_id );
+		$result = sml_creator_shadow_prepare_review( $creator_id ); $error = is_wp_error( $result );
+		wp_safe_redirect( sml_creator_shadow_admin_url( $error ? 'error' : 'success', $error ? $result->get_error_message() : 'Locked review snapshot prepared.' ) ); exit;
+	} );
+	add_action( 'admin_post_sml_creator_shadow_decide', static function () {
+		if ( ! current_user_can( 'manage_options' ) ) { wp_die( 'Forbidden', 'Forbidden', array( 'response' => 403 ) ); }
+		$review_id = absint( $_POST['review_id'] ?? 0 ); check_admin_referer( 'sml_shadow_decide_' . $review_id );
+		$decision = sanitize_key( wp_unslash( $_POST['decision'] ?? '' ) ); $confirmed = ! empty( $_POST['confirmed'] );
+		if ( 'approve' === $decision && ! $confirmed ) { wp_safe_redirect( sml_creator_shadow_admin_url( 'error', 'Approval requires the shadow-only confirmation checkbox.' ) ); exit; }
+		$result = sml_creator_shadow_decide_review( $review_id, $decision, wp_unslash( $_POST['note'] ?? '' ), $confirmed ? 'APPROVE SHADOW REVIEW' : '' ); $error = is_wp_error( $result );
+		wp_safe_redirect( sml_creator_shadow_admin_url( $error ? 'error' : 'success', $error ? $result->get_error_message() : 'Review decision saved. No payout was issued.' ) ); exit;
+	} );
 
 	add_action( 'rest_api_init', static function () {
 		register_rest_route( 'sml-creator-analytics/v1', '/monetization-shadow', array(
@@ -313,7 +370,7 @@ if ( ! function_exists( 'sml_creator_shadow_table' ) ) {
 			array( 'methods' => WP_REST_Server::CREATABLE, 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }, 'callback' => static function ( WP_REST_Request $request ) { return sml_creator_shadow_prepare_review( $request->get_param( 'creatorId' ), $request->get_param( 'cutoffAt' ) ); } ),
 		) );
 		register_rest_route( 'sml-creator-analytics/v1', '/monetization-shadow/reviews/(?P<id>\d+)', array(
-			array( 'methods' => WP_REST_Server::EDITABLE, 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }, 'callback' => static function ( WP_REST_Request $request ) { return sml_creator_shadow_decide_review( $request['id'], $request->get_param( 'decision' ), $request->get_param( 'note' ) ); } ),
+			array( 'methods' => WP_REST_Server::EDITABLE, 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }, 'callback' => static function ( WP_REST_Request $request ) { return sml_creator_shadow_decide_review( $request['id'], $request->get_param( 'decision' ), $request->get_param( 'note' ), $request->get_param( 'confirmation' ) ); } ),
 		) );
 	} );
 }

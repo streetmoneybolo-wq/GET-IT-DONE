@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Analytics Runtime
  * Description: Private creator analytics, realtime presence, and payout-disabled monetization reconciliation.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Author: Stock Market Loop
  */
 
