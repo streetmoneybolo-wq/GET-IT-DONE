@@ -107,10 +107,7 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 	add_action( 'sml_lb_earned', static function ( $uid, $event, $amount ) {
 		if ( 'daily_visit' !== $event || ! $uid ) { return; }
 		$c = sml_lbm_tiers();
-		$streak = sml_lbm_streak( $uid );
-		foreach ( $c['streak'] as $len => $bonus ) {
-			if ( $streak >= $len ) { sml_lbm_bonus( $uid, $bonus, 'bonus:streak:' . $len . ':' . $uid, array( 'streak' => $len ) ); }
-		}
+		sml_lbm_settle_streak( $uid );
 		/* referral: credits the referrer once the referred member has N confirmed visits */
 		$ref = (int) get_user_meta( $uid, 'sml_lbm_referred_by', true );
 		if ( $ref && $ref !== (int) $uid && ! get_user_meta( $uid, 'sml_lbm_ref_credited', true ) ) {
@@ -146,8 +143,16 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 	} );
 
 	/* ---------------- REST ---------------- */
-	function sml_lbm_state( $uid ) {
+	/* pay any streak tiers already reached — idempotent by ref, so calling this from
+	   /state as well as the daily_visit hook is safe (a 22-day member sees the 5/10-day
+	   bonuses the first time they open the panel, not tomorrow) */
+	function sml_lbm_settle_streak( $uid ) {
 		$c = sml_lbm_tiers(); $streak = sml_lbm_streak( $uid );
+		foreach ( $c['streak'] as $len => $bonus ) { if ( $streak >= $len ) { sml_lbm_bonus( $uid, $bonus, 'bonus:streak:' . $len . ':' . $uid, array( 'streak' => $len ) ); } }
+		return $streak;
+	}
+	function sml_lbm_state( $uid ) {
+		$c = sml_lbm_tiers(); $streak = sml_lbm_settle_streak( $uid );
 		$tiers = array(); foreach ( $c['streak'] as $len => $bonus ) { $tiers[] = array( 'len' => $len, 'amount' => $bonus, 'done' => sml_lbm_paid( 'bonus:streak:' . $len . ':' . $uid ) ); }
 		$done_soc = get_user_meta( $uid, 'sml_lbm_socials', true ); $done_soc = is_array( $done_soc ) ? $done_soc : array();
 		$socials = array(); foreach ( sml_lbm_socials() as $k => $row ) { $row['done'] = in_array( $k, $done_soc, true ); $socials[] = $row; }
