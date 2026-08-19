@@ -89,6 +89,7 @@
       out[k] = (empty && !CONTENT[k]) ? DEFAULTS[k] : (v == null ? DEFAULTS[k] : v);
     }
     if (user.music && user.music.url) out.music = { url: user.music.url, title: user.music.title || DEFAULTS.music.title };
+    if (user.__media) out.__media = user.__media; /* real media lists (orbital / orbital_video) — needed by the pickers */
     if (user.contact) out.contact = { email: user.contact.email || '', phone: user.contact.phone || '', optIn: user.contact.optIn !== false };
     return out;
   }
@@ -567,6 +568,15 @@
         .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Save failed'); return j; }); });
     }
     function setSlotItem(list, idx, item) { while (list.length < idx) list.push(null); list[idx] = item; return list.filter(function (x) { return !!x; }); }
+    /* SAFETY: the media POST replaces the whole slot. Never build it from a seed that
+       could be stale or empty — re-read the live list first, then merge one item in. */
+    function currentSlot(slot) {
+      var base = (U.customRest || '').replace(/customization.*$/, '') || '/wp-json/sml-profile/v2/profile/';
+      return fetch(base + U.userId + '/media', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (m) {
+        if (!m || !Array.isArray(m[slot])) throw new Error('Could not read your current ' + (slot === 'orbital' ? 'photos' : 'videos') + ' — nothing was changed.');
+        return m[slot].map(function (it) { return { attachment_id: it.attachment_id, caption: it.caption || '', url: it.url && !/^https?:\/\/[^\/]*stockmarketloop\.com/.test(it.url) ? it.url : '' }; });
+      });
+    }
     function toast(msg, bad) { var t = document.createElement('div'); t.textContent = msg; t.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2147483646;background:' + (bad ? '#3a1218' : '#0f2a1c') + ';color:' + (bad ? '#ff859f' : '#8dffc2') + ';border:1px solid ' + (bad ? '#7a2334' : '#1c6b45') + ';border-radius:10px;padding:10px 14px;font:600 12px/1 Archivo,sans-serif;'; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
     function pickFile(kind, idx) { pickKind = kind; pickIdx = idx; (kind === 'gphoto' ? imgInput : vidInput).click(); }
     vidInput.addEventListener('change', function () {
@@ -577,8 +587,10 @@
       if (!canPersist()) { toast('Sign in as the profile owner to save videos.', true); return; }
       var slotIdx = kind === 'ovideo' ? idx : 3 + idx;
       uploadFile(f, 'video').catch(function () { return uploadFile(f, 'banner_video'); }).then(function (att) {
-        var items = MEDIA.orbital_video.slice(); items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: att.url });
-        return saveSlot('orbital_video', items).then(function (saved) { MEDIA.orbital_video = Array.isArray(saved) ? saved : items; toast('Video saved to your profile.'); });
+        return currentSlot('orbital_video').then(function (items) {
+          items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
+          return saveSlot('orbital_video', items).then(function (saved) { MEDIA.orbital_video = Array.isArray(saved) ? saved : items; toast('Video saved to your profile.'); });
+        });
       }).catch(function (e) { toast(e.message || 'Could not save the video.', true); });
     });
     imgInput.addEventListener('change', function () {
@@ -589,8 +601,10 @@
       if (!canPersist()) { toast('Sign in as the profile owner to save photos.', true); return; }
       var slotIdx = kind === 'gphoto' ? 6 + idx : idx;
       uploadFile(f, 'photo').then(function (att) {
-        var items = MEDIA.orbital.slice(); items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
-        return saveSlot('orbital', items).then(function (saved) { MEDIA.orbital = Array.isArray(saved) ? saved : items; toast('Photo saved to your profile.'); });
+        return currentSlot('orbital').then(function (items) {
+          items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
+          return saveSlot('orbital', items).then(function (saved) { MEDIA.orbital = Array.isArray(saved) ? saved : items; toast('Photo saved to your profile.'); });
+        });
       }).catch(function (e) { toast(e.message || 'Could not save the photo.', true); });
     });
     function renderOrbVideo(i) {
