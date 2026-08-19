@@ -148,3 +148,262 @@ body.tv2-live .tv2-summary-below{margin-top:16px}
    quick-symbols / sample "+ Add" button) is gone: the sitewide header already carries the
    logo, search and tape, and the terminal now sits flush under it */
 body.tv2-live #sml-tv2-root [data-dc-tpl="10"]{display:none!important}
+
+/* ---- LoopCharts engine styles (vendored copy of the plugin's inline style block,
+   sml-loopcharts-inline-inline-css v1.0.4 — kept so the V2 chart is self-contained) ---- */
+.sml-lc-stage[hidden],
+#sml-tv-chart[hidden] {
+  display: none !important;
+}
+
+.sml-lc-stage {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: #dce6f2;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.sml-lc-shell {
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid #253044;
+  border-radius: 10px;
+  background: #0b1018;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .28);
+}
+
+.sml-lc-toolbar {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #202a3b;
+  background: #0e1520;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.sml-lc-symbol {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  color: #f6f8fb;
+  font: 750 14px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .03em;
+}
+
+.sml-lc-timeframes,
+.sml-lc-indicators {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+
+.sml-lc-indicators {
+  padding-left: 7px;
+  border-left: 1px solid #2a3548;
+}
+
+.sml-lc-toolbar button {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #9aa7b7;
+  padding: 0 8px;
+  font: 650 11px/28px ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sml-lc-toolbar button:hover,
+.sml-lc-toolbar button:focus-visible {
+  border-color: #40506a;
+  color: #f1f5fa;
+  outline: none;
+}
+
+.sml-lc-toolbar button[aria-pressed="true"] {
+  border-color: #ec7f23;
+  background: rgba(236, 127, 35, .14);
+  color: #ffb468;
+}
+
+.sml-lc-reset {
+  flex: 0 0 auto;
+}
+
+.sml-lc-source {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid #33425a;
+  border-radius: 999px;
+  color: #91a0b4;
+  padding: 4px 8px;
+  font: 700 9px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: .07em;
+}
+
+.sml-lc-source[data-source="massive-rest"],
+.sml-lc-source[data-source="massive"] {
+  border-color: rgba(36, 200, 117, .45);
+  color: #51dc96;
+}
+
+.sml-lc-source[data-source="replay"] {
+  border-color: rgba(243, 165, 58, .55);
+  color: #f3a53a;
+}
+
+.sml-lc-legend {
+  min-height: 30px;
+  overflow: hidden;
+  border-bottom: 1px solid #1b2535;
+  background: #0b1018;
+  color: #c8d2de;
+  padding: 7px 12px 6px;
+  font: 11px/16px ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sml-lc-legend[data-direction="up"] {
+  box-shadow: inset 3px 0 #24c875;
+}
+
+.sml-lc-legend[data-direction="down"] {
+  box-shadow: inset 3px 0 #ff4d61;
+}
+
+.sml-lc-canvas-host {
+  position: relative;
+  width: 100%;
+  height: clamp(420px, 53vw, 590px);
+  min-height: 420px;
+  background: #0b1018;
+  touch-action: pan-y;
+  cursor: crosshair;
+  outline: none;
+}
+
+.sml-lc-canvas-host:focus-visible {
+  box-shadow: inset 0 0 0 2px #f3a53a;
+}
+
+.sml-lc-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sml-lc-interaction {
+  z-index: 2;
+}
+
+.sml-lc-footer {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #202a3b;
+  background: #0e1520;
+  color: #8f9baa;
+  padding: 7px 11px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.sml-lc-stage[data-status="ready"] .sml-lc-status {
+  color: #51dc96;
+}
+
+.sml-lc-stage[data-status="warning"] .sml-lc-status {
+  color: #ffbf66;
+}
+
+.sml-lc-stage[data-status="demo"] .sml-lc-status {
+  color: #f3a53a;
+}
+
+.sml-lc-quality {
+  text-align: right;
+}
+
+.sml-lc-waiting .sml-lc-shell {
+  border-color: rgba(243, 165, 58, .45);
+  box-shadow: none;
+}
+
+.sml-lc-waiting .sml-lc-canvas-host,
+.sml-lc-waiting .sml-lc-legend,
+.sml-lc-waiting .sml-lc-timeframes,
+.sml-lc-waiting .sml-lc-indicators,
+.sml-lc-waiting .sml-lc-reset {
+  display: none;
+}
+
+.sml-lc-waiting .sml-lc-toolbar {
+  min-height: 40px;
+  border-bottom: 0;
+}
+
+.sml-lc-waiting .sml-lc-footer {
+  min-height: 42px;
+  border-top: 1px solid rgba(243, 165, 58, .18);
+}
+
+.sml-lc-sr-table {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(1px, 1px, 1px, 1px) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 720px) {
+  .sml-lc-toolbar {
+    gap: 5px;
+    padding-inline: 7px;
+  }
+
+  .sml-lc-indicators {
+    order: 3;
+  }
+
+  .sml-lc-source {
+    margin-left: 2px;
+  }
+
+  .sml-lc-canvas-host {
+    height: 440px;
+  }
+
+  .sml-lc-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .sml-lc-quality {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sml-lc-stage *,
+  .sml-lc-stage *::before,
+  .sml-lc-stage *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+/*# sourceURL=sml-loopcharts-inline-inline-css */
