@@ -1008,6 +1008,7 @@
       } catch (e) {}
     }
     function buildNav(d) {
+      dedupeUnified(d);
       Array.prototype.slice.call(nav.querySelectorAll('button')).forEach(function (b) { b.remove(); });
       var secs = Array.prototype.slice.call(d.querySelectorAll('.entry-content section, .entry-content .sml-spd-panel'));
       var seen = {};
@@ -1065,14 +1066,29 @@
        marker is gone. Nothing is duplicated: it refuses to mount twice. */
     function ensureUnified(w, d) {
       return new Promise(function (resolve) {
-        try {
-          if (!d.querySelector('[data-sml-profile-editor]') || d.querySelector('[data-smlpe-unified-mounted]')) { resolve(); return; }
-          var sc = d.createElement('script'); sc.src = '/wp-content/plugins/sml-profile-engine/assets/unified-editor.js?sps=' + encodeURIComponent(String(w.SML_PROFILE_UNIFIED_EDITOR_CONFIG && w.SML_PROFILE_UNIFIED_EDITOR_CONFIG.nonce || '1'));
-          var done = false, fin = function () { if (!done) { done = true; resolve(); } };
-          sc.onload = function () { var t = 0; (function wait() { if (d.querySelector('[data-smlpe-unified-mounted]') || ++t > 20) fin(); else setTimeout(wait, 300); })(); };
-          sc.onerror = fin; d.body.appendChild(sc); setTimeout(fin, 8000);
-        } catch (e) { resolve(); }
+        var t = 0, done = false, fin = function () { if (!done) { done = true; resolve(); } };
+        function marker() { return d.querySelector('[data-smlpe-unified-mounted]'); }
+        function mountFinished() { var g = w.SML_PROFILE_UNIFIED_EDITOR; return !!(g && typeof g.prepareSave === 'function'); }
+        function reinject() {
+          try {
+            var sc = d.createElement('script'); sc.src = '/wp-content/plugins/sml-profile-engine/assets/unified-editor.js?sps=' + encodeURIComponent(String((w.SML_PROFILE_UNIFIED_EDITOR_CONFIG && w.SML_PROFILE_UNIFIED_EDITOR_CONFIG.nonce) || '1'));
+            sc.onload = function () { var k = 0; (function wait() { if (marker() || ++k > 25) fin(); else setTimeout(wait, 300); })(); };
+            sc.onerror = fin; d.body.appendChild(sc); setTimeout(fin, 9000);
+          } catch (e) { fin(); }
+        }
+        (function check() {
+          try {
+            if (!d.querySelector('[data-sml-profile-editor]')) { fin(); return; }
+            if (marker()) { fin(); return; }                       /* block is there */
+            if (mountFinished()) { reinject(); return; }            /* mounted, then wiped by a core re-render → mount again */
+            if (++t > 50) { fin(); return; }                        /* 20s: the plugin never mounted (e.g. identity request failed) — leave it */
+          } catch (e) { fin(); return; }
+          setTimeout(check, 400);
+        })();
       });
+    }
+    function dedupeUnified(d) {
+      try { var ms = d.querySelectorAll('[data-smlpe-unified-mounted]'); for (var i = 1; i < ms.length; i++) ms[i].remove(); } catch (e) {}
     }
     function ensureFrame() {
       if (ifr) return;
