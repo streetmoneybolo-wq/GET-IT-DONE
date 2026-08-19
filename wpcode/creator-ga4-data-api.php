@@ -341,6 +341,8 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 
 		$cities = is_wp_error( $city ) ? array() : sml_creator_ga4_rows( $city, array( 'city', 'country' ), array( 'users', 'views', 'sessions' ) );
 		$cities = array_values( array_filter( $cities, static function ( $row ) { return (int) $row['users'] >= 10; } ) );
+		$items = is_wp_error( $item_report ) ? array() : sml_creator_ga4_item_rows( $item_report );
+		$item_series_rows = is_wp_error( $item_series ) ? array() : sml_creator_ga4_item_series_rows( $item_series );
 		$payload = array(
 			'configured' => true,
 			'propertyId' => (string) SML_CREATOR_GA4_PROPERTY_ID,
@@ -351,12 +353,16 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 			'sources'    => is_wp_error( $source ) ? array() : sml_creator_ga4_rows( $source, array( 'source' ), array( 'users', 'views', 'sessions' ) ),
 			'kinds'      => is_wp_error( $kind ) ? array() : sml_creator_ga4_rows( $kind, array( 'kind' ), array( 'users', 'views', 'sessions' ) ),
 			'series'     => is_wp_error( $series ) ? array() : sml_creator_ga4_rows( $series, array( 'date' ), array( 'users', 'views', 'sessions' ) ),
-			'items'      => is_wp_error( $item_report ) ? array() : sml_creator_ga4_item_rows( $item_report ),
-			'itemSeries' => is_wp_error( $item_series ) ? array() : sml_creator_ga4_item_series_rows( $item_series ),
+			'items'      => $items,
+			'itemSeries' => $item_series_rows,
 			'itemTracking' => array(
 				'available' => ! is_wp_error( $item_report ) && ! is_wp_error( $item_series ),
 				'method'    => 'sml_creator_view',
 				'note'      => 'Counts begin when creator attribution was enabled and exclude earlier visits.',
+				'itemCount'  => count( $items ),
+				'seriesRows' => count( $item_series_rows ),
+				'checkedAt'  => gmdate( 'c' ),
+				'lagNotice'  => 'GA4 processing can take several hours; realtime presence is reported separately.',
 			),
 			// GA4's Realtime API does not accept event-scoped custom dimensions,
 			// including customEvent:creator_handle. Keep this explicitly unavailable

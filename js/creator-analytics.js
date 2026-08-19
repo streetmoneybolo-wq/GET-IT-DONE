@@ -115,6 +115,25 @@
     return '<div class="ca-delta' + (up ? '' : ' down') + '">' + (up ? '▲ +' : '▼ ') + p.toFixed(1) + '% · last ' + (series.length - half) + ' days vs prior ' + half + '</div>';
   }
 
+  function healthPanel(ga, presence, trackedRows) {
+    var tracking = ga && ga.itemTracking ? ga.itemTracking : {};
+    var gaReady = !!ga;
+    var itemReady = gaReady && tracking.available === true;
+    var presenceReady = !!presence;
+    var checked = tracking.checkedAt ? ago(tracking.checkedAt) : '';
+    var statuses = [
+      ['GA4 connection', gaReady, gaReady ? (ga.cached ? 'Connected · cached report' : 'Connected · fresh report') : 'Unavailable — historical analytics are not being reported'],
+      ['Item attribution', itemReady, itemReady ? 'Active for Channels, videos, live streams, Letters, and articles' : 'Unavailable — item visits are not being attributed'],
+      ['Realtime presence', presenceReady, presenceReady ? 'Connected · ' + fmt(presence.window || 90) + '-second activity window' : 'Unavailable — active viewers cannot be reported'],
+      ['Processed items', itemReady, fmt((trackedRows || []).length) + ' item' + ((trackedRows || []).length === 1 ? '' : 's') + (checked ? ' · checked ' + checked : '')]
+    ];
+    return '<div class="ca-card ca-health"><h3>Analytics health<span class="ca-fresh">automatic checks</span></h3><div class="ca-health-grid">' + statuses.map(function (s) {
+      return '<div class="ca-health-row"><span class="ca-health-dot ' + (s[1] ? 'ok' : 'bad') + '"></span><div><b>' + esc(s[0]) + '</b><small>' + esc(s[2]) + '</small></div></div>';
+    }).join('') + '</div>' +
+      (itemReady && !(trackedRows || []).length ? '<div class="ca-note">Tracking is working. No attributed item has finished GA4 processing yet; this is not reported as zero traffic.</div>' : '') +
+      '</div>';
+  }
+
   /* ---------- state ---------- */
   var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
 
@@ -289,6 +308,8 @@
       '<div class="ca-col"><div class="ca-card"><h3>Where visitors came from</h3>' + (sources.length ? '<table>' + sources.slice(0, 8).map(function (s) { return '<tr><td>' + esc(s.source || s.name || '') + '</td><td class="num">' + fmt(s.sessions || s.views || s.count) + '</td></tr>'; }).join('') + '</table>' : empty('Not enough data yet', 'Traffic sources appear once the site’s analytics has enough visits to report — nothing is shown below the privacy threshold.')) + '</div>' +
       '<div class="ca-card"><h3>New this week</h3>' + (newWeek ? '<div class="ca-big">' + newWeek + '</div><div class="ca-sub">new uploads and letters in the last 7 days</div>' : empty('Not enough data yet', 'Nothing published in the last 7 days. New content shows here once it’s reached the reporting threshold.')) + '</div></div></div>';
 
+    var health = healthPanel(ga, presence, gaRows);
+
     // revenue + wallet (real engine values; honest labels)
     var revCard = '<div class="ca-grid ca-g4">' +
       '<div class="ca-card gold"><h3 class="gold">Creator revenue (28d)</h3><div class="ca-big gold">' + money(ov.creator_revenue_usd) + '</div><div class="ca-sub">RPM ' + money(ov.rpm) + ' · CPM ' + money(ov.cpm) + '</div></div>' +
@@ -297,7 +318,7 @@
       '<div class="ca-card"><h3>Loop Wallet<span class="ca-fresh">' + (wallet.stripe_connected ? 'Stripe connected' : 'Stripe not connected') + '</span></h3><div class="ca-big">' + fmt(wallet.available_balance) + ' <span class="ca-sub">LB available</span></div><div class="ca-sub">' + fmt(wallet.pending_balance) + ' pending · ' + fmt(wallet.lifetime_earnings) + ' lifetime</div>' + (wallet.transactions_url ? '<div style="margin-top:8px"><a class="ca-btn2" href="' + esc(wallet.transactions_url) + '">Manage wallet →</a></div>' : '') + '</div>' +
       '</div>';
 
-    root.innerHTML = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + kpis + audience + kindsCard + groupsCard + contentRow + (lettersCard || '') + revCard +
+    root.innerHTML = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + health + kpis + audience + kindsCard + groupsCard + contentRow + (lettersCard || '') + revCard +
       '<div class="ca-foot">Counts are aggregated — individual visits are never shown. Revenue figures come from StockMarketLoop’s ad-revenue system as reported for your account.</div></main></div>';
 
     root.querySelectorAll('tr[data-content]').forEach(function (tr) { tr.addEventListener('click', function () { renderContent(rows[Number(tr.getAttribute('data-content'))]); }); });

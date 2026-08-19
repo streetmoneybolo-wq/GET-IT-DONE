@@ -17,7 +17,12 @@
     var contentId = String(cfg.contentId || '').slice(0, 100);
     if (!handle || !kind) return;
     if (typeof window.gtag !== 'function') {
-      if ((attempt || 0) < 20) window.setTimeout(function () { trackCreatorView((attempt || 0) + 1); }, 500);
+      if ((attempt || 0) < 120) {
+        document.documentElement.setAttribute('data-sml-creator-attribution', 'waiting');
+        window.setTimeout(function () { trackCreatorView((attempt || 0) + 1); }, 500);
+      } else {
+        document.documentElement.setAttribute('data-sml-creator-attribution', 'unavailable');
+      }
       return;
     }
     window.gtag('event', 'sml_creator_view', {
