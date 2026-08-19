@@ -121,6 +121,7 @@
       '<div class="lch-ctext sm">' + segs(m.body) + '</div>' +
       (replies.length ? '<button class="lch-cthread" data-thread="1">' + (open ? 'Hide' : 'Show') + ' ' + replies.length + (replies.length === 1 ? ' reply' : ' replies') + '</button>' : '') +
       (ME ? '<button class="lch-cthread" data-replyto="1">Reply</button>' : '') +
+      (ME && (OWNER || (m.user && m.user.id === (S.viewer && S.viewer.id)) || (S.viewer && S.viewer.isMod)) ? '<button class="lch-cthread" style="color:#5d7085" data-cdel="1">Remove</button>' : '') +
       (open ? '<div class="lch-creplies">' + replies.map(function (r) { return '<div class="lch-creply"><span class="lch-cav sm"' + (safeImage(r.user.avatar) ? ' style="background-image:url(&quot;' + esc(r.user.avatar) + '&quot;)"' : '') + '></span><div><div class="lch-chead"><span class="lch-cuser">' + esc(r.user.name) + '</span><span class="lch-cwhen">' + esc(ago(r.at)) + '</span></div><div class="lch-ctext sm">' + segs(r.body) + '</div></div></div>'; }).join('') + '</div>' : '') +
       '</div></div>';
   }
@@ -169,6 +170,7 @@
       var id = +row.getAttribute('data-msg');
       var t = row.querySelector('[data-thread]'); if (t) t.onclick = function () { S.chatOpen[id] = !S.chatOpen[id]; render(); };
       var r = row.querySelector('[data-replyto]'); if (r) r.onclick = function () { S.replyTo = id; render(); var i = el('#ch-chdraft'); if (i) i.focus(); };
+      var dl = row.querySelector('[data-cdel]'); if (dl) dl.onclick = function () { if (!confirm('Remove this message?')) return; API('/sml-channel/v1/channel/' + encodeURIComponent(HANDLE) + '/chat/manage', { method: 'POST', body: JSON.stringify({ message_id: id }) }).then(function (r) { if (r.ok && r.j && r.j.chat) { S.chat = r.j.chat; render(); } else fail(r, 'Could not remove.'); }); };
     });
     var cr = mount.querySelector('[data-cancelreply]'); if (cr) cr.onclick = function () { S.replyTo = 0; render(); };
   }

@@ -419,6 +419,19 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		} else { return new WP_Error( 'sml_channel_bad_action', 'Unknown action.', array( 'status' => 400 ) ); }
 		return rest_ensure_response( array( 'ok' => true, 'posts' => sml_channel_community_posts( $owner, $uid ) ) );
 	}
+	/* remove a chat message: its author, a channel mod, or the creator */
+	function sml_channel_rest_chat_manage( WP_REST_Request $request ) {
+		$owner = sml_channel_owner_from_req( $request ); $uid = get_current_user_id();
+		$mid = (int) $request->get_param( 'message_id' );
+		$m = get_post( $mid );
+		if ( ! $owner || ! $m || 'sml_chchat' !== $m->post_type || (int) get_post_meta( $mid, '_sml_ch_uid', true ) !== $owner ) { return new WP_Error( 'sml_channel_not_found', 'Message not found.', array( 'status' => 404 ) ); }
+		if ( (int) $m->post_author !== $uid && ! sml_channel_is_mod( $owner, $uid ) ) { return new WP_Error( 'sml_channel_forbidden', 'Not yours to remove.', array( 'status' => 403 ) ); }
+		wp_delete_post( $mid, true );
+		/* replies to it go too */
+		$kids = get_posts( array( 'post_type' => 'sml_chchat', 'post_parent' => $mid, 'posts_per_page' => 100, 'fields' => 'ids', 'post_status' => 'any' ) );
+		foreach ( $kids as $k ) { wp_delete_post( $k, true ); }
+		return rest_ensure_response( array( 'ok' => true, 'chat' => sml_channel_chat_rows( $owner ) ) );
+	}
 	function sml_channel_rest_chat_get( WP_REST_Request $request ) {
 		$owner = sml_channel_owner_from_req( $request );
 		if ( ! $owner ) { return new WP_Error( 'sml_channel_not_found', 'Channel not found.', array( 'status' => 404 ) ); }
@@ -595,6 +608,7 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		register_rest_route( 'sml-channel/v1', '/channel/(?P<handle>[a-zA-Z0-9_.]+)/community/vote', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_community_vote', 'permission_callback' => 'is_user_logged_in', 'args' => $h ) );
 		register_rest_route( 'sml-channel/v1', '/channel/(?P<handle>[a-zA-Z0-9_.]+)/community/reply', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_community_reply', 'permission_callback' => 'is_user_logged_in', 'args' => $h ) );
 		register_rest_route( 'sml-channel/v1', '/channel/(?P<handle>[a-zA-Z0-9_.]+)/community/manage', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_community_manage', 'permission_callback' => 'is_user_logged_in', 'args' => $h ) );
+		register_rest_route( 'sml-channel/v1', '/channel/(?P<handle>[a-zA-Z0-9_.]+)/chat/manage', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_chat_manage', 'permission_callback' => 'is_user_logged_in', 'args' => $h ) );
 		register_rest_route( 'sml-channel/v1', '/channel/(?P<handle>[a-zA-Z0-9_.]+)/chat', array(
 			array( 'methods' => WP_REST_Server::READABLE, 'callback' => 'sml_channel_rest_chat_get', 'permission_callback' => '__return_true', 'args' => $h ),
 			array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => 'sml_channel_rest_chat_post', 'permission_callback' => 'is_user_logged_in', 'args' => $h ),
