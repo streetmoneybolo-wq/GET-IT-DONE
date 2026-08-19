@@ -41,6 +41,15 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 		if ( ! is_string( $html ) || false !== strpos( $html, 'id="sml-pp-css"' ) ) { return $html; }
 		if ( ! preg_match( '/<head(\s[^>]*)?>/i', $html ) ) { return $html; }
 		foreach ( headers_list() as $h ) { if ( 0 === stripos( $h, 'content-type:' ) && false === stripos( $h, 'text/html' ) ) { return $html; } }
+		/* Referral capture (Loop Bucks milestones, /?ref={handle}): anonymous pages come
+		   from the page cache, so a PHP setcookie() never reaches the browser. This tiny
+		   inline script runs on EVERY page regardless of caching and stores the referrer
+		   handle client-side; the milestones snippet reads the same cookie on user_register. */
+		if ( false === strpos( $html, 'id="sml-ref-capture"' ) && preg_match( '/<head(\s[^>]*)?>/i', $html, $hm0, PREG_OFFSET_CAPTURE ) ) {
+			$js  = '<script id="sml-ref-capture">(function(){try{var m=/[?&]ref=([A-Za-z0-9_.-]{1,60})/.exec(location.search);if(!m||/(^|; )sml_lbm_ref=/.test(document.cookie)||document.body&&document.body.classList.contains("logged-in"))return;document.cookie="sml_lbm_ref="+encodeURIComponent(m[1].toLowerCase())+"; max-age=2592000; path=/; secure; samesite=lax";}catch(e){}})();</script>';
+			$at0 = $hm0[0][1] + strlen( $hm0[0][0] );
+			$html = substr( $html, 0, $at0 ) . $js . substr( $html, $at0 );
+		}
 		$hit = null;
 		foreach ( sml_pp_markers() as $marker => $ids ) { if ( false !== strpos( $html, $marker ) ) { $hit = $ids; break; } }
 		if ( null === $hit ) { return $html; }
