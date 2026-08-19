@@ -11,6 +11,10 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+if ( defined( 'SML_CREATOR_GA4_LOADED' ) ) {
+	return;
+}
+define( 'SML_CREATOR_GA4_LOADED', true );
 
 if ( ! defined( 'SML_CREATOR_GA4_PROPERTY_ID' ) ) {
 	define( 'SML_CREATOR_GA4_PROPERTY_ID', '469605605' );
