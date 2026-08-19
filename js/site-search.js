@@ -7,6 +7,11 @@
   var CFG = window.SML_SITE_SEARCH || {};
   var REST = CFG.rest || '/wp-json/sml-site-search/v1/search';
   var state = { tab: 'all', data: null, timer: null, abort: null, anchor: null, fallbackTimer: null };
+  var scriptNode = document.currentScript;
+  var assetBase = scriptNode && scriptNode.src ? scriptNode.src.split('/js/site-search.js')[0] + '/' : '';
+  var QUOTES_URL = 'https://stockmarketloop-loop-kick.onrender.com/api/quotes';
+  var HEADER_SYMBOLS = ['SPY','QQQ','NVDA','AAPL','TSLA','MSFT','AMD','META','AMZN','SCKT','ILLR','MRAM'];
+  var headerQuoteTimer = null;
 
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function attr(v) { return esc(v); }
@@ -14,8 +19,115 @@
   function all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
   function visible(node) { return !!(node && (node.offsetWidth || node.offsetHeight || node.getClientRects().length)); }
 
+  function isHomeFeed() {
+    var path = String(location.pathname || '/').replace(/\/+$/, '') || '/';
+    return path === '/' || !!el('#sml-hf-shell');
+  }
+
+  function currentPath(path) {
+    var here = String(location.pathname || '/').replace(/\/+$/, '') || '/';
+    var want = String(path || '/').replace(/\/+$/, '') || '/';
+    return here === want;
+  }
+
+  function viewerIdentity() {
+    var cfg = window.SML_LB || window.SML_ME || {};
+    var name = String(cfg.name || cfg.displayName || 'Account');
+    var avatar = String(cfg.avatar || cfg.photo || '');
+    if (!avatar) {
+      var image = el('.sml-acct__btn img, .wv-user img, #wpadminbar img.avatar, img.avatar');
+      if (image) avatar = image.currentSrc || image.src || '';
+    }
+    return { name: name, avatar: avatar, initials: name.split(/\s+/).map(function (word) { return word.charAt(0); }).slice(0, 2).join('').toUpperCase() || 'ME' };
+  }
+
+  function tickerCells() {
+    return HEADER_SYMBOLS.map(function (symbol) {
+      return '<a class="sml-gh-tick" href="/stock-chart/?symbol=' + symbol + '"><b>$' + symbol + '</b><span data-gh-quote="' + symbol + '" data-field="last">—</span><em data-gh-quote="' + symbol + '" data-field="pct">—</em></a>';
+    }).join('');
+  }
+
+  function replaceKnownHeader() {
+    var nativeHeader = el('.wv-head');
+    if (nativeHeader) nativeHeader.classList.add('sml-gh-replaced');
+    var themeHeader = el('.wp-site-blocks > header.wp-block-template-part');
+    if (themeHeader) themeHeader.classList.add('sml-gh-replaced');
+  }
+
+  function mountGlobalHeader() {
+    if (isHomeFeed() || el('#sml-global-header')) return;
+    var me = viewerIdentity();
+    var header = document.createElement('header');
+    header.id = 'sml-global-header';
+    header.setAttribute('role', 'banner');
+    header.innerHTML = '<div class="sml-gh-main">' +
+      '<a class="sml-gh-brand" href="/" aria-label="Stock Market Loop home"><img src="' + attr(assetBase + 'img/loop-logo.png') + '" alt="Stock Market Loop"></a>' +
+      '<label class="sml-gh-search"><span aria-hidden="true">⌕</span><span class="screen-reader-text">Search Stock Market Loop</span><input type="search" aria-label="Search ticker" placeholder="Search a ticker, e.g. NVDA" autocomplete="off"></label>' +
+      '<nav class="sml-gh-nav" aria-label="Primary navigation">' +
+        [['/','Feed'],['/markets/','Markets'],['/live/','Live'],['/n/','Letters']].map(function (item) { return '<a href="' + item[0] + '"' + (currentPath(item[0]) ? ' aria-current="page"' : '') + '>' + item[1] + '</a>'; }).join('') +
+      '</nav>' +
+      '<button type="button" id="sml-hf-loop-kick" class="sml-gh-kick" aria-label="Open LOOP-KICK" aria-expanded="false">LOOP-KICK</button>' +
+      '<button type="button" class="sml-gh-account" aria-label="Open account menu for ' + attr(me.name) + '">' + (me.avatar ? '<img src="' + attr(me.avatar) + '" alt="' + attr(me.name) + '">' : '<span>' + esc(me.initials) + '</span>') + '</button>' +
+    '</div>' +
+    '<div class="sml-gh-tape" aria-label="Live market quotes"><div class="sml-gh-tape-row">' + tickerCells() + tickerCells() + '</div></div>';
+    document.body.insertBefore(header, document.body.firstChild);
+    document.body.classList.add('sml-global-header-on');
+    replaceKnownHeader();
+    bindAccountMenu(header);
+    bindLoopKick(header);
+    pollHeaderQuotes();
+    headerQuoteTimer = window.setInterval(pollHeaderQuotes, 5000);
+  }
+
+  function bindAccountMenu(header) {
+    var button = el('.sml-gh-account', header);
+    if (!button) return;
+    button.addEventListener('click', function () {
+      var nativeButton = all('.sml-acct__btn, .wv-user, [aria-label="Account menu"]')
+        .filter(function (node) { return node !== button && !node.closest('#sml-global-header'); })[0];
+      if (nativeButton && typeof nativeButton.click === 'function') nativeButton.click();
+      else location.href = '/members/';
+    });
+  }
+
+  function pollHeaderQuotes() {
+    var header = el('#sml-global-header');
+    if (!header) { if (headerQuoteTimer) clearInterval(headerQuoteTimer); return; }
+    fetch(QUOTES_URL + '?symbols=' + encodeURIComponent(HEADER_SYMBOLS.join(',')), { cache: 'no-store' })
+      .then(function (response) { if (!response.ok) throw new Error('quotes unavailable'); return response.json(); })
+      .then(function (payload) {
+        var quotes = payload && payload.quotes ? payload.quotes : {};
+        all('[data-gh-quote]', header).forEach(function (node) {
+          var quote = quotes[node.getAttribute('data-gh-quote')];
+          if (!quote) return;
+          var field = node.getAttribute('data-field');
+          var value = Number(quote[field]);
+          if (!Number.isFinite(value)) return;
+          if (field === 'last') node.textContent = '$' + (Math.abs(value) >= 1000 ? value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value.toFixed(2));
+          else { node.textContent = (value >= 0 ? '▲ +' : '▼ ') + value.toFixed(2) + '%'; node.classList.toggle('is-up', value >= 0); node.classList.toggle('is-down', value < 0); }
+        });
+      }).catch(function () { /* Honest empty state remains —; never fabricate quotes. */ });
+  }
+
+  function bindLoopKick(header) {
+    var button = el('#sml-hf-loop-kick', header);
+    if (!button) return;
+    document.body.classList.add('sml-gh-loop-kick-nav');
+    function parts() { return { popup: el('#sml-loop-popup'), frame: el('#sml-loop-popup-frame') }; }
+    function closeKick() { var item = parts(); if (!item.popup) return; item.popup.hidden = true; document.body.classList.remove('sml-loop-open'); button.setAttribute('aria-expanded', 'false'); }
+    function openKick() {
+      var item = parts();
+      if (!item.popup) { var launcher = el('.sml-loop-launcher'); if (launcher) launcher.click(); return; }
+      if (item.frame) { var src = item.frame.getAttribute('src'); var wanted = item.frame.dataset.src || src; if (!src && wanted) item.frame.setAttribute('src', wanted); }
+      item.popup.hidden = false; document.body.classList.add('sml-loop-open'); button.setAttribute('aria-expanded', 'true');
+    }
+    button.addEventListener('click', function (event) { event.preventDefault(); var item = parts(); if (item.popup && !item.popup.hidden) closeKick(); else openKick(); });
+    window.addEventListener('message', function (event) { var item = parts(); var data = event.data; if (item.frame && event.source === item.frame.contentWindow && data && data.type === 'sml-loop-kick:surface' && data.surface === 'closed') closeKick(); });
+  }
+
   function build() {
     if (el('#sml-ss-panel')) return;
+    mountGlobalHeader();
     var panel = document.createElement('div');
     panel.className = 'sml-ss-panel'; panel.id = 'sml-ss-panel';
     panel.innerHTML = '<section class="sml-ss-dialog" role="dialog" aria-label="StockMarketLoop search results">' +
