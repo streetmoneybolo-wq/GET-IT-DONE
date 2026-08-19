@@ -19,7 +19,7 @@
 
   function card() {
     var el = document.createElement('div');
-    el.className = 'tv2-mp2';
+    el.className = 'tv2-mp2'; el.setAttribute('data-tv2-keep', '1');   /* not a design card — terminal-adopt.js skips it */
     el.innerHTML =
       '<div class="tv2-mp2-h"><span class="t">Market position</span><span class="d" id="tv2mp2-range">' + esc(SYM) + '</span></div>' +
       '<div class="tv2-mp2-body" id="tv2mp2-body"><div class="tv2-mp2-empty">Loading market position…</div></div>';

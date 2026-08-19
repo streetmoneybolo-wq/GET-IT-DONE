@@ -38,8 +38,14 @@
     while (shell && shell.children.length === 1) shell = shell.children[0];
     if (!shell || shell.children.length < 4) return false;
     var body = shell.children[3];
-    var main = body.children[0], rail = body.children[1];
-    if (!main || !rail) return false;
+    var mainZone = body.children[0], railZone = body.children[1];
+    if (!mainZone || !railZone) return false;
+    /* DESIGN cards only: modules this build inserts itself (Market position v2,
+       Short sale analysis — marked data-tv2-keep / tv2-* class) must not shift
+       the index map, whichever script happens to run first. */
+    var own = function (zone) { return [].filter.call(zone.children, function (c) { return !c.hasAttribute('data-tv2-keep') && !/(^|\s)tv2-/.test(c.className || ''); }); };
+    var main = own(mainZone), rail = own(railZone);
+    main.children = main; rail.children = rail;   /* keep the children[n] reads below unchanged */
 
     var done = root.__adopted || (root.__adopted = {});
 
