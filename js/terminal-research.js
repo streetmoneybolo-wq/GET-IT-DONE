@@ -136,7 +136,12 @@
       c.innerHTML = c.firstElementChild.outerHTML + (list.length ? '<div class="tv2-rs-list">' + list.slice(0, 8).map(function (f) { return '<div class="tv2-rs-row"><span><a href="' + esc(f.filing_url || '#') + '" target="_blank" rel="noopener nofollow">' + esc(f.form_type || 'Filing') + '</a> <span style="color:#5d7085">' + esc((f.issuer_name || '').slice(0, 40)) + '</span></span><span class="d">' + esc(dstr(f.filing_date)) + '</span></div>'; }).join('') + '</div>' : '<div class="tv2-rs-empty">' + esc((r.j && r.j.message) || (r.status === 401 || r.status === 403 ? 'Sign in to view SEC filings.' : 'No filings found for $' + SYM + '.')) + '</div>');
     });
     /* financials */
-    get('/wp-json/sml-members/v1/market-data/fundamentals?symbol=' + encodeURIComponent(SYM)).then(function (r) {
+    /* newest-first statements via the terminal data API (the members fundamentals route
+       returns one oldest record per dataset); falls back to that route if this one is absent */
+    get('/wp-json/sml-short/v1/financials?symbol=' + encodeURIComponent(SYM) + '&limit=8').then(function (r) {
+      if (r.ok && r.j && r.j.datasets) return r;
+      return get('/wp-json/sml-members/v1/market-data/fundamentals?symbol=' + encodeURIComponent(SYM));
+    }).then(function (r) {
       var body = q('[data-fin-body]'); var ds = r.ok && r.j && r.j.datasets ? r.j.datasets : null;
       if (!ds) { body.className = 'tv2-rs-empty'; body.textContent = (r.j && r.j.message) || (r.status === 401 || r.status === 403 ? 'Sign in to view financial statements.' : 'Financial statements are not available for $' + SYM + '.'); return; }
       var byDate = function (arr) { return (arr || []).slice().sort(function (a, b) { return String(b.period_end || b.date || '').localeCompare(String(a.period_end || a.date || '')); }); };   /* newest period first */
