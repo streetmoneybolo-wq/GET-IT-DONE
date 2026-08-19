@@ -12,6 +12,10 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+if ( defined( 'SML_CREATOR_PRESENCE_LOADED' ) ) {
+	return;
+}
+define( 'SML_CREATOR_PRESENCE_LOADED', true );
 
 if ( ! defined( 'SML_CREATOR_PRESENCE_DB_VERSION' ) ) {
 	define( 'SML_CREATOR_PRESENCE_DB_VERSION', '1.0.0' );
