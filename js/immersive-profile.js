@@ -1055,7 +1055,7 @@
       })();
       try {
         var ec = d.querySelector('.entry-content');
-        if (ec && w.MutationObserver) { var navT = null; new w.MutationObserver(function () { clearTimeout(navT); navT = setTimeout(function () { buildNav(d); }, 800); }).observe(ec, { childList: true, subtree: true }); }
+        if (ec && w.MutationObserver) { var navT = null; new w.MutationObserver(function () { clearTimeout(navT); navT = setTimeout(function () { ensureUnified(w, d).then(function () { buildNav(d); }); }, 800); }).observe(ec, { childList: true, subtree: true }); }
       } catch (e) {}
     }
     /* Profile identity / Profile music / Immersive profile are mounted by the
@@ -1064,12 +1064,15 @@
        race that shows up inside the studio frame). Re-run the mounter — a
        fresh copy of the script mounts again because its "already mounted"
        marker is gone. Nothing is duplicated: it refuses to mount twice. */
+    var unifiedReinjects = 0;
     function ensureUnified(w, d) {
       return new Promise(function (resolve) {
         var t = 0, done = false, fin = function () { if (!done) { done = true; resolve(); } };
+        if (unifiedReinjects >= 4) { fin(); return; }
         function marker() { return d.querySelector('[data-smlpe-unified-mounted]'); }
         function mountFinished() { var g = w.SML_PROFILE_UNIFIED_EDITOR; return !!(g && typeof g.prepareSave === 'function'); }
         function reinject() {
+          unifiedReinjects++;
           try {
             var sc = d.createElement('script'); sc.src = '/wp-content/plugins/sml-profile-engine/assets/unified-editor.js?sps=' + encodeURIComponent(String((w.SML_PROFILE_UNIFIED_EDITOR_CONFIG && w.SML_PROFILE_UNIFIED_EDITOR_CONFIG.nonce) || '1'));
             sc.onload = function () { var k = 0; (function wait() { if (marker() || ++k > 25) fin(); else setTimeout(wait, 300); })(); };
