@@ -37,6 +37,7 @@
   var TOM_PRICE = 150, ARENA = { perShare: 250, winnerBonus: 5000, allNine: 1000, duration: '10 minute' };
 
   var S = {
+    me: 0, canMod: false,                     /* live-chat mod tools (sml-lcm/v1) */
     t: 4823, viewers: 2841, playing: true, muted: false, tab: 0, chapter: 3,
     tick: 0, liked: false, likes: 4183, shared: false, shareAnim: 0, affFlash: 0,
     tomLeft: 3, tomWarm: 60, tomStage: 'idle', tomNote: '',
@@ -293,9 +294,11 @@
     }
     var rl = (m.replies || []).length;
     var avExtra = (m.avatar && /^https:\/\//.test(m.avatar)) ? ';background-image:url(' + esc(m.avatar) + ');background-size:cover;background-position:center' : '';
+    var canRm = !!(m.rawId != null && (S.canMod || (S.me && m.uid && m.uid === S.me)));
     return '<div class="slw-msg" data-id="' + m.id + '"><div class="av" style="' + avStyle(i) + avExtra + '">' + (avExtra ? '' : m.ini) + '</div><div class="bd">' +
       '<div class="hd"><span class="hn" style="' + avStyle(i) + '">@' + m.h + '</span><span class="at">' + m.at + '</span>' +
-      '<button class="rp" data-th="' + m.id + '">↩ Reply</button></div>' +
+      '<button class="rp" data-th="' + m.id + '">↩ Reply</button>' +
+      (canRm ? '<button class="rm" data-rm="' + esc(String(m.rawId)) + '" title="' + (S.canMod ? 'Remove (moderator)' : 'Remove my message') + '">✕</button>' : '') + '</div>' +
       '<span class="tx">' + esc(m.tx) + '</span>' +
       (rl ? '<button class="open-th" data-th="' + m.id + '">↳ ' + rl + ' repl' + (rl === 1 ? 'y' : 'ies') + ' — open thread</button>' : '') +
       '</div></div>';
@@ -683,6 +686,18 @@
   feedEl.addEventListener('mouseenter', function () { S.chatHold = true; });
   feedEl.addEventListener('mouseleave', function () { S.chatHold = false; });
   root.addEventListener('click', function (e) {
+    var rm = e.target.closest && e.target.closest('[data-rm]');
+    if (rm) {
+      e.preventDefault(); e.stopPropagation();
+      var rid = rm.getAttribute('data-rm'); rm.disabled = true; rm.textContent = '…';
+      api('/sml-lcm/v1/room/' + HANDLE + '/message/' + encodeURIComponent(rid), { method: 'DELETE' }).then(function (res) {
+        if (!res.ok) { rm.disabled = false; rm.textContent = '✕'; rm.title = (res.j && res.j.message) || 'Could not remove'; return; }
+        S.msgs = S.msgs.filter(function (m) { return String(m.rawId) !== String(rid); });
+        renderFeed();
+        el('#slw-chat-empty').style.display = S.msgs.length ? 'none' : '';
+      });
+      return;
+    }
     var th = e.target.closest && e.target.closest('[data-th]');
     if (th) { S.thread = th.getAttribute('data-th'); renderThread(); }
   });
@@ -1233,11 +1248,16 @@
     el('#slw-chat-empty').style.display = '';
   }
   var seen = {}, chatCursor = '';
+  if (!SIM) {
+    api('/sml-lcm/v1/room/' + HANDLE + '/me').then(function (res) {
+      if (res.ok && res.j) { S.me = parseInt(res.j.uid || 0, 10) || 0; S.canMod = !!res.j.can_moderate; if (S.msgs.length) renderFeed(); }
+    }).catch(function () {});
+  }
   function mapMsg(m) {
     var name = String(m.handle || m.user || m.name || m.author || 'member').replace(/^@/, '');
     var text = String(m.message || m.text || m.body || '');
     var id = 'r' + String(m.id != null ? m.id : (m.at || m.time || m.created || '') + name + text.slice(0, 12));
-    return { id: id, rawId: m.id, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
+    return { id: id, rawId: m.id, uid: parseInt(m.user_id || m.uid || 0, 10) || 0, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
   }
   function pollChat() {
     if (SIM || document.hidden || S.chatHold) return;
@@ -1245,7 +1265,12 @@
        and 50 rows every 2.5s is a trivial payload */
     api('/sml-live-chat/v1/room/' + HANDLE + '/messages?limit=50').then(function (res) {
       var list = (res.j && (res.j.messages || res.j.items)) || [];
-      var added = false;
+      var added = false, liveIds = {}, minId = Infinity;
+      list.forEach(function (raw) { if (raw.id != null) { liveIds[String(raw.id)] = 1; var n = parseInt(raw.id, 10); if (n < minId) minId = n; } });
+      /* a message that should be inside the server window but isn't any more was removed */
+      var beforeN = S.msgs.length;
+      S.msgs = S.msgs.filter(function (m) { if (m.rawId == null || m.sys) return true; var n = parseInt(m.rawId, 10); if (!(n >= minId)) return true; return !!liveIds[String(m.rawId)]; });
+      if (S.msgs.length !== beforeN) added = true;
       list.forEach(function (raw) {
         var m = mapMsg(raw);
         if (seen[m.id]) return;

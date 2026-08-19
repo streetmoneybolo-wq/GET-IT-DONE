@@ -551,6 +551,10 @@ body.slw-on{background:#04060a !important}
 .slw-msg .hn{font:600 11px/1 Archivo,sans-serif;cursor:pointer;border-bottom:1px dotted transparent}
 .slw-msg .at{font:400 9px/1 'IBM Plex Mono',monospace;color:#3d4c5a}
 .slw-msg .rp{margin-left:auto;pointer-events:auto;font:600 9px/1 Archivo,sans-serif;color:#5d7085;background:none;border:none;cursor:pointer;padding:2px 4px}
+.slw-msg .rm{pointer-events:auto;font:700 10px/1 Archivo,sans-serif;color:#5d7085;background:none;border:1px solid transparent;border-radius:6px;cursor:pointer;padding:1px 5px;opacity:0;transition:opacity .15s,color .15s}
+.slw-msg:hover .rm,.slw-msg .rm:focus{opacity:1}
+.slw-msg .rm:hover{color:#ff5c7a;border-color:rgba(255,92,122,.4)}
+.slw-real .slw-msg .rm{display:inline-block}
 .slw-msg .rp:hover{color:#00ff88}
 .slw-msg .tx{font:400 12px/1.5 Archivo,sans-serif;color:#a9bccd;text-wrap:pretty}
 .slw-msg .open-th{pointer-events:auto;align-self:flex-start;font:600 10px/1 Archivo,sans-serif;color:#00ccff;background:none;border:none;cursor:pointer;padding:2px 0}

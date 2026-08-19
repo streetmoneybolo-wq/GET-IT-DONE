@@ -10,6 +10,9 @@
  * handle (js/live-watch.js ?s=handle → sml-live/v1/feeds/{handle}), resolved with
  * the channel API's own profile-handle lookup. Creator + listed mods are exempt.
  *
+ * Also adds mod tools the live-chat plugin lacks: GET sml-lcm/v1/room/{room}/me and
+ * DELETE sml-lcm/v1/room/{room}/message/{id} (author / creator / channel mod).
+ *
  * WPCode rules (see wpcode-merged-eval-trap): no top-level return/exit, no
  * base64-decode / eval / ini-set / error-reporting calls anywhere in this file.
  */
@@ -58,4 +61,54 @@ if ( ! function_exists( 'sml_lcm_owner_for_room' ) ) {
 		return $result;
 	}
 	add_filter( 'rest_pre_dispatch', 'sml_lcm_pre_dispatch', 10, 3 );
+
+	/* ---- mod tools on top of the live-chat plugin (its table: {prefix}sml_live_chat_messages,
+	   room_key = 'room-' . sanitize_key(room); it only exposes GET/POST) ----
+	   GET    /sml-lcm/v1/room/{room}/me            → who am I in this room (creator / mod / member)
+	   DELETE /sml-lcm/v1/room/{room}/message/{id}  → author, creator or a channel mod removes a message */
+	function sml_lcm_can_moderate( $owner, $uid ) {
+		if ( ! $owner || ! $uid ) { return false; }
+		if ( (int) $owner === (int) $uid ) { return true; }
+		return function_exists( 'sml_channel_is_mod' ) ? (bool) sml_channel_is_mod( $owner, $uid ) : false;
+	}
+	function sml_lcm_rest_me( WP_REST_Request $r ) {
+		$uid   = get_current_user_id();
+		$owner = sml_lcm_owner_for_room( $r['room'] );
+		return rest_ensure_response( array(
+			'uid'          => (int) $uid,
+			'owner_uid'    => (int) $owner,
+			'is_creator'   => (bool) ( $uid && $owner && (int) $uid === (int) $owner ),
+			'can_moderate' => (bool) sml_lcm_can_moderate( $owner, $uid ),
+		) );
+	}
+	function sml_lcm_rest_delete( WP_REST_Request $r ) {
+		global $wpdb;
+		$uid = get_current_user_id();
+		if ( ! $uid ) { return new WP_Error( 'sml_login_required', 'Sign in first.', array( 'status' => 401 ) ); }
+		$table = $wpdb->prefix . 'sml_live_chat_messages';
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			return new WP_Error( 'sml_chat_store_unknown', 'Live chat storage is not available.', array( 'status' => 501 ) );
+		}
+		$id   = absint( $r['id'] );
+		$room = sanitize_key( (string) $r['room'] );
+		$keys = array_values( array_unique( array( substr( 'room-' . $room, 0, 190 ), $room, (string) $r['room'] ) ) );
+		$ph   = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
+		$row  = $wpdb->get_row( $wpdb->prepare( "SELECT id, user_id, room_key FROM {$table} WHERE id = %d AND room_key IN ({$ph}) LIMIT 1", array_merge( array( $id ), $keys ) ) );
+		if ( ! $row ) { return new WP_Error( 'sml_chat_not_found', 'That message is gone already.', array( 'status' => 404 ) ); }
+		$owner = sml_lcm_owner_for_room( $r['room'] );
+		if ( (int) $row->user_id !== (int) $uid && ! sml_lcm_can_moderate( $owner, $uid ) ) {
+			return new WP_Error( 'sml_chat_forbidden', 'Only the author, the creator or a channel mod can remove this.', array( 'status' => 403 ) );
+		}
+		$ok = $wpdb->delete( $table, array( 'id' => (int) $row->id ), array( '%d' ) );
+		if ( false === $ok ) { return new WP_Error( 'sml_chat_delete_failed', 'Could not remove the message.', array( 'status' => 500 ) ); }
+		return rest_ensure_response( array( 'deleted' => true, 'id' => (int) $row->id ) );
+	}
+	add_action( 'rest_api_init', static function () {
+		register_rest_route( 'sml-lcm/v1', '/room/(?P<room>[A-Za-z0-9_-]+)/me', array(
+			'methods' => 'GET', 'callback' => 'sml_lcm_rest_me', 'permission_callback' => '__return_true',
+		) );
+		register_rest_route( 'sml-lcm/v1', '/room/(?P<room>[A-Za-z0-9_-]+)/message/(?P<id>\d+)', array(
+			'methods' => 'DELETE', 'callback' => 'sml_lcm_rest_delete', 'permission_callback' => 'is_user_logged_in',
+		) );
+	} );
 }
