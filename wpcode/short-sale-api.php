@@ -75,11 +75,19 @@ if ( ! function_exists( 'sml_short_fetch' ) ) {
 		);
 		$out = array(); $errs = array();
 		foreach ( $sets as $key => $spec ) {
-			$q = array( 'ticker' => $symbol, 'limit' => $limit, 'sort' => $spec[1] );
-			if ( 'ratios' !== $key ) { $q['timeframe'] = $tf; }
+			/* the financials API filters by `tickers` (plural) — `ticker` is silently ignored and
+			   returns every issuer sorted by period; ratios use `ticker` + `date` sort */
+			$q = ( 'ratios' === $key ) ? array( 'ticker' => $symbol, 'limit' => $limit ) : array( 'tickers' => $symbol, 'limit' => $limit, 'sort' => $spec[1], 'timeframe' => $tf );
 			$raw = sml_short_fetch( $spec[0], $q, 6 * HOUR_IN_SECONDS, 3 * DAY_IN_SECONDS );
 			if ( is_wp_error( $raw ) ) { $errs[] = $key . ': ' . $raw->get_error_message(); $out[ $key ] = array(); continue; }
-			$out[ $key ] = sml_short_rows( $raw );
+			$rows = sml_short_rows( $raw );
+			/* belt and braces: keep only rows that name this symbol when the row carries tickers */
+			$rows = array_values( array_filter( $rows, static function ( $row ) use ( $symbol ) {
+				if ( isset( $row['tickers'] ) && is_array( $row['tickers'] ) && $row['tickers'] ) { return in_array( $symbol, array_map( 'strtoupper', array_map( 'strval', $row['tickers'] ) ), true ); }
+				if ( isset( $row['ticker'] ) && '' !== (string) $row['ticker'] ) { return strtoupper( (string) $row['ticker'] ) === $symbol; }
+				return true;
+			} ) );
+			$out[ $key ] = $rows;
 		}
 		$res = rest_ensure_response( array( 'symbol' => $symbol, 'timeframe' => $tf, 'datasets' => $out, 'errors' => $errs, 'source' => 'Massive' ) );
 		$res->header( 'Cache-Control', 'public, max-age=1800' );
