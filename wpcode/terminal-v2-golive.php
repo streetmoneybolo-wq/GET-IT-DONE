@@ -68,6 +68,34 @@ if ( ! function_exists( 'sml_tv2_live_active' ) ) {
 		return sml_tv2_strip_terminal( $html );
 	}, 5 );
 
+	/* The legacy terminal modules are printed as inline <script id="sml-…"> blocks by
+	   their plugins regardless of the content. With the markup gone they mostly no-op,
+	   but the live-feed booter falls back to mounting in <main> and keeps polling, the
+	   search booter re-renders the old symbol search, etc. In clean render these exact
+	   blocks are dropped from the page output. Everything else (auth, ads, voice room,
+	   watchlists, members, analytics) is untouched. */
+	function sml_tv2_clean_strip_ids() {
+		return array(
+			'sml-livefeed-boot', 'sml-replystream-boot', 'sml-ws-js', 'sml-tiles-js', 'sml-tech-js', 'sml-opt-js',
+			'sml-moveprofile-js', 'sml-pro-terminal-js', 'sml-loopcharts-inline-js-after', 'sml-terminal-structure-guard-js-after',
+			'sml-ticker-nav-repair-js', 'sml-trading-floor-link-repair-js', 'sml-custom-chart-remover-js', 'sml-iv-stats-js',
+			'sml-options-earnings-intel-js', 'sml-ei-markers-js-extra', 'sml-ticker-heatmap-js-extra',
+			'sml-ticker-search-boot', 'sml-ticker-search-click-guard', 'sml-ticker-search-pointer-guard', 'sml-ticker-community-tabs-js-extra',
+		);
+	}
+	function sml_tv2_clean_ob( $html ) {
+		if ( ! is_string( $html ) || false === stripos( $html, '</body>' ) ) { return $html; }
+		foreach ( sml_tv2_clean_strip_ids() as $id ) {
+			$html = preg_replace( '#<script\b[^>]*\bid=["\']' . preg_quote( $id, '#' ) . '["\'][^>]*>.*?</script>\s*#is', '', $html );
+		}
+		/* external legacy UI scripts that only exist to dress the old terminal */
+		$html = preg_replace( '#<script\b[^>]*\bsrc=["\'][^"\']*sml-ticker-community-tabs/assets/ticker-community-tabs\.js[^"\']*["\'][^>]*></script>\s*#i', '', $html );
+		return $html;
+	}
+	add_action( 'template_redirect', static function () {
+		if ( sml_tv2_clean_active() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { ob_start( 'sml_tv2_clean_ob' ); }
+	}, 0 );
+
 	add_action( 'wp_enqueue_scripts', function () {
 		if ( ! sml_tv2_live_active() ) { return; }
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . sml_tv2_live_ref() . '/';
