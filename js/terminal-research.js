@@ -51,7 +51,9 @@
     function emaArr(p) { var k = 2 / (p + 1), e = c[0], out = [e]; for (var i = 1; i < n; i++) { e = c[i] * k + e * (1 - k); out.push(e); } return out; }
     var g = 0, l = 0; for (var i = n - 14; i < n; i++) { var d = c[i] - c[i - 1]; if (d > 0) g += d; else l -= d; } var rsi = l === 0 ? 100 : 100 - 100 / (1 + (g / 14) / (l / 14));
     var e12 = emaArr(12), e26 = emaArr(26), macdLine = e12.map(function (v, i) { return v - e26[i]; }); var sig = (function () { var k = 2 / 10, e = macdLine[0], out = [e]; for (var i = 1; i < macdLine.length; i++) { e = macdLine[i] * k + e * (1 - k); out.push(e); } return out; })(); var macd = macdLine[n - 1], macdSig = sig[n - 1], hist = macd - macdSig;
-    var lo9 = Infinity, hi9 = -Infinity; for (i = n - 9; i < n; i++) { lo9 = Math.min(lo9, b[i].l); hi9 = Math.max(hi9, b[i].h); } var rsv = hi9 > lo9 ? (c[n - 1] - lo9) / (hi9 - lo9) * 100 : 50; var K = rsv, D = K, J = 3 * K - 2 * D;
+    /* KDJ 9,3,3: RSV over 9 sessions, K = smoothed RSV, D = smoothed K (seeded at 50 like the classic formula) */
+    var K = 50, D = 50, J = 50;
+    for (var ki = 9; ki < n; ki++) { var lo9 = Infinity, hi9 = -Infinity; for (var kj = ki - 8; kj <= ki; kj++) { lo9 = Math.min(lo9, b[kj].l); hi9 = Math.max(hi9, b[kj].h); } var rsv = hi9 > lo9 ? (c[ki] - lo9) / (hi9 - lo9) * 100 : 50; K = (2 / 3) * K + (1 / 3) * rsv; D = (2 / 3) * D + (1 / 3) * K; J = 3 * K - 2 * D; }
     var m20 = smaAt(20), sd = 0; for (i = n - 20; i < n; i++) sd += Math.pow(c[i] - m20, 2); sd = Math.sqrt(sd / 20); var bbPos = sd ? (c[n - 1] - m20) / (2 * sd) : 0; /* -1..+1 = lower..upper band */
     var m50 = smaAt(50), m200 = n >= 200 ? smaAt(200) : null, px = c[n - 1];
     var score = 0;
@@ -137,7 +139,8 @@
     get('/wp-json/sml-members/v1/market-data/fundamentals?symbol=' + encodeURIComponent(SYM)).then(function (r) {
       var body = q('[data-fin-body]'); var ds = r.ok && r.j && r.j.datasets ? r.j.datasets : null;
       if (!ds) { body.className = 'tv2-rs-empty'; body.textContent = (r.j && r.j.message) || (r.status === 401 || r.status === 403 ? 'Sign in to view financial statements.' : 'Financial statements are not available for $' + SYM + '.'); return; }
-      var data = { income: ds.income_statement || [], balance: ds.balance_sheet || [], cash: ds.cash_flow || [], ratios: ds.ratios || [] };
+      var byDate = function (arr) { return (arr || []).slice().sort(function (a, b) { return String(b.period_end || b.date || '').localeCompare(String(a.period_end || a.date || '')); }); };   /* newest period first */
+      var data = { income: byDate(ds.income_statement), balance: byDate(ds.balance_sheet), cash: byDate(ds.cash_flow), ratios: byDate(ds.ratios) };
       var show = function (k) { body.className = ''; body.innerHTML = finTable(data[k], FIN[k]); };
       show('income');
       q('[data-r="fin"] .tv2-rs-tabs').addEventListener('click', function (e) { var b = e.target.closest('button[data-f]'); if (!b) return; Array.prototype.forEach.call(q('[data-r="fin"] .tv2-rs-tabs').children, function (x) { x.classList.toggle('on', x === b); }); show(b.getAttribute('data-f')); });
