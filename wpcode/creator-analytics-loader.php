@@ -20,7 +20,7 @@ if ( ! function_exists( 'sml_ca_loader_active' ) ) {
 	}
 	// Keep the analytics UI on the verified item-tracking build. The shared
 	// moving resolver can remain cached on an older commit for several minutes.
-	function sml_ca_loader_ref() { return 'e996a76'; }
+	function sml_ca_loader_ref() { return '6e3ce9f'; }
 
 	function sml_ca_loader_markup() {
 		$base  = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( sml_ca_loader_ref() ) . '/';
