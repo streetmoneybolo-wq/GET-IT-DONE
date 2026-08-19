@@ -63,7 +63,7 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 			if ( 0 === strpos( $id, 'src:' ) ) { /* match a script (src) or stylesheet (href) by URL fragment — tags without an id */
 				$frag = preg_quote( substr( $id, 4 ), '/' );
 				if ( preg_match( '/<script[^>]*\bsrc="([^"]*' . $frag . '[^"]*)"/i', $html, $m ) ) { $preload .= '<link rel="preload" as="script" href="' . esc_url( $m[1] ) . '">'; }
-				elseif ( preg_match( '/<link[^>]*\bhref="([^"]*' . $frag . '[^"]*)"/i', $html, $m ) ) { $preload .= '<link rel="preload" as="style" href="' . esc_url( $m[1] ) . '">'; }
+				elseif ( preg_match( '/<link[^>]*\bhref=["\']([^"\']*' . $frag . '[^"\']*)["\']/i', $html, $m ) ) { $preload .= '<link rel="preload" as="style" href="' . esc_url( $m[1] ) . '">'; }
 				continue;
 			}
 			if ( preg_match( '/<script[^>]*\bid="' . preg_quote( $id, '/' ) . '"[^>]*\bsrc="([^"]+)"/i', $html, $m ) || preg_match( '/<script[^>]*\bsrc="([^"]+)"[^>]*\bid="' . preg_quote( $id, '/' ) . '"/i', $html, $m ) ) {
