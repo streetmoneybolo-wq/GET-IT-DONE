@@ -127,3 +127,11 @@
     if (ok || ++tries > 60) clearInterval(t);
   }, 300);
 })();
+
+/* Short sale analysis card (js/terminal-short.js) rides along with this module so the
+   WPCode go-live snippet needs no change — same commit-pinned CDN base. */
+(function () {
+  var me = document.currentScript || Array.prototype.filter.call(document.scripts, function (s) { return /terminal-mp2\.js/.test(s.src); })[0];
+  if (!me || !me.src || document.querySelector('script[src*="terminal-short.js"]')) return;
+  var s = document.createElement('script'); s.src = me.src.replace(/terminal-mp2\.js.*$/, 'terminal-short.js'); s.async = true; document.head.appendChild(s);
+})();
