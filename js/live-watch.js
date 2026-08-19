@@ -282,6 +282,9 @@
       '<button class="slw-x" id="slw-orbbtn" style="padding:6px 9px;font-size:9px">orbit images</button>' +
       '<a href="?lw=0">exit</a></div>' : '');
 
+  /* pre-paint guard (wpcode/prepaint-guard.php): the shell is in the DOM — reveal */
+  document.documentElement.classList.remove('sml-pp');
+
   /* ---------- module renderers ---------- */
   var feedInner = el('#slw-feed-inner');
 

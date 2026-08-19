@@ -29,6 +29,8 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 			'id="sml-ch-root"'      => array( 'sml-ch-js', 'sml-ch-css' ),          // Loop Channel
 			'id="sml-cc-root"'      => array( 'sml-cc-js', 'sml-cc-css' ),          // Create Loop Channel
 			'sml-public-profile-page' => array( 'src:js/immersive-profile.js' ),    // public profile (immersive overlay; matched by src)
+			'id="sml-lw-root"'      => array( 'src:js/live-watch.js', 'src:css/live-watch.css' ),   // Live watch page (/live/)
+			'id="sml-ca-root"'      => array( 'sml-ca-js', 'sml-ca-css' ),          // Creator Analytics (reveals via body.smlca-on — see CSS)
 		);
 	}
 	function sml_pp_active() {
@@ -57,9 +59,10 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 		/* preload the exact CDN assets this page's loader emitted */
 		$preload = '';
 		foreach ( $hit as $id ) {
-			if ( 0 === strpos( $id, 'src:' ) ) { /* match a script by src fragment (tags without an id) */
+			if ( 0 === strpos( $id, 'src:' ) ) { /* match a script (src) or stylesheet (href) by URL fragment — tags without an id */
 				$frag = preg_quote( substr( $id, 4 ), '/' );
 				if ( preg_match( '/<script[^>]*\bsrc="([^"]*' . $frag . '[^"]*)"/i', $html, $m ) ) { $preload .= '<link rel="preload" as="script" href="' . esc_url( $m[1] ) . '">'; }
+				elseif ( preg_match( '/<link[^>]*\bhref="([^"]*' . $frag . '[^"]*)"/i', $html, $m ) ) { $preload .= '<link rel="preload" as="style" href="' . esc_url( $m[1] ) . '">'; }
 				continue;
 			}
 			if ( preg_match( '/<script[^>]*\bid="' . preg_quote( $id, '/' ) . '"[^>]*\bsrc="([^"]+)"/i', $html, $m ) || preg_match( '/<script[^>]*\bsrc="([^"]+)"[^>]*\bid="' . preg_quote( $id, '/' ) . '"/i', $html, $m ) ) {
@@ -71,6 +74,8 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 		$style = '<style id="sml-pp-css">'
 			. 'html.sml-pp{background:#080d15!important}'
 			. 'html.sml-pp body{visibility:hidden;animation:smlPpReveal .01s linear 2.5s forwards}'
+			/* takeovers whose JS we do not own reveal by their own body class */
+			. 'html.sml-pp body.smlca-on,html.sml-pp body.slw-on{visibility:visible;animation:none}'
 			. '@keyframes smlPpReveal{to{visibility:visible}}'
 			. '</style>';
 
