@@ -307,6 +307,10 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 		$city = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'city' ), array( 'name' => 'country' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
 		$source = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'sessionSourceMedium' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'sessions' ), 'desc' => true ) ) ) ) );
 		$kind = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'customEvent:content_kind' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'screenPageViews' ), 'desc' => true ) ) ) ) );
+		$device = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'deviceCategory' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
+		$browser = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'browser' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
+		$operating_system = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'operatingSystem' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
+		$language = sml_creator_ga4_report( $token, array_merge( $base, array( 'dimensions' => array( array( 'name' => 'language' ) ), 'orderBys' => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ) ) ) );
 		$series_body = array( 'dateRanges' => $date_ranges, 'dimensionFilter' => $filter, 'dimensions' => array( array( 'name' => 'date' ) ), 'metrics' => $metrics, 'orderBys' => array( array( 'dimension' => array( 'dimensionName' => 'date' ) ) ), 'limit' => 400 );
 		$series = sml_creator_ga4_report( $token, $series_body );
 		$item_filter = sml_creator_ga4_and_filter(
@@ -352,6 +356,10 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 			'cities'     => $cities,
 			'sources'    => is_wp_error( $source ) ? array() : sml_creator_ga4_rows( $source, array( 'source' ), array( 'users', 'views', 'sessions' ) ),
 			'kinds'      => is_wp_error( $kind ) ? array() : sml_creator_ga4_rows( $kind, array( 'kind' ), array( 'users', 'views', 'sessions' ) ),
+			'devices'    => is_wp_error( $device ) ? array() : sml_creator_ga4_rows( $device, array( 'device' ), array( 'users', 'views', 'sessions' ) ),
+			'browsers'   => is_wp_error( $browser ) ? array() : sml_creator_ga4_rows( $browser, array( 'browser' ), array( 'users', 'views', 'sessions' ) ),
+			'operatingSystems' => is_wp_error( $operating_system ) ? array() : sml_creator_ga4_rows( $operating_system, array( 'operatingSystem' ), array( 'users', 'views', 'sessions' ) ),
+			'languages'  => is_wp_error( $language ) ? array() : sml_creator_ga4_rows( $language, array( 'language' ), array( 'users', 'views', 'sessions' ) ),
 			'series'     => is_wp_error( $series ) ? array() : sml_creator_ga4_rows( $series, array( 'date' ), array( 'users', 'views', 'sessions' ) ),
 			'items'      => $items,
 			'itemSeries' => $item_series_rows,
@@ -392,9 +400,9 @@ if ( ! function_exists( 'sml_creator_ga4_rest_audience' ) ) {
 		}
 		$days = min( 90, max( 7, absint( $request->get_param( 'range' ) ?: 28 ) ) );
 		if ( is_wp_error( sml_creator_ga4_credentials() ) ) {
-			return rest_ensure_response( array( 'configured' => false, 'countries' => array(), 'cities' => array(), 'sources' => array(), 'kinds' => array(), 'series' => array(), 'items' => array(), 'itemSeries' => array(), 'itemTracking' => array( 'available' => false ), 'live' => array( 'available' => false, 'count' => 0, 'topCountries' => array() ) ) );
+			return rest_ensure_response( array( 'configured' => false, 'countries' => array(), 'cities' => array(), 'sources' => array(), 'kinds' => array(), 'devices' => array(), 'browsers' => array(), 'operatingSystems' => array(), 'languages' => array(), 'series' => array(), 'items' => array(), 'itemSeries' => array(), 'itemTracking' => array( 'available' => false ), 'live' => array( 'available' => false, 'count' => 0, 'topCountries' => array() ) ) );
 		}
-		$cache_key = 'sml_ga4_aud_v4_' . get_current_user_id() . '_' . $days . '_' . substr( hash( 'sha256', $handle ), 0, 12 );
+		$cache_key = 'sml_ga4_aud_v5_' . get_current_user_id() . '_' . $days . '_' . substr( hash( 'sha256', $handle ), 0, 12 );
 		$cached = get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			$cached['cached'] = true;
