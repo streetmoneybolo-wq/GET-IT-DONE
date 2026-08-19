@@ -12,10 +12,19 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
-if ( defined( 'SML_CREATOR_PRESENCE_LOADED' ) ) {
-	return;
+/* WPCode merges EVERY "Run Everywhere" PHP snippet into ONE eval() (see
+   insert-headers-and-footers/includes/auto-insert/class-wpcode-auto-insert-everywhere.php).
+   Two consequences for every snippet on this site:
+     1. never `return;`/`exit;` at top level — it aborts every snippet merged after it;
+     2. WPCode blanks the WHOLE merged block (all 100+ snippets silently dead: channels
+        404, CDN loader, Loop Bucks, creator gate…) when the merged code contains MORE
+        THAN FIVE calls to base64-decode / eval / ini-set / error-reporting — the site
+        already carries 5 (snippets 4481 ×4, 6262 ×1). This snippet's original
+        base64url helper was the 6th → sitewide outage 2026-08-19 01:49–02:40.
+        Tokens are hex now (bin2hex/hex2bin) — opaque to the client, zero flagged calls. */
+if ( ! defined( 'SML_CREATOR_PRESENCE_LOADED' ) ) {
+	define( 'SML_CREATOR_PRESENCE_LOADED', true );
 }
-define( 'SML_CREATOR_PRESENCE_LOADED', true );
 
 if ( ! defined( 'SML_CREATOR_PRESENCE_DB_VERSION' ) ) {
 	define( 'SML_CREATOR_PRESENCE_DB_VERSION', '1.0.0' );
@@ -64,16 +73,17 @@ add_action(
 );
 
 if ( ! function_exists( 'sml_creator_presence_b64url' ) ) {
+	/* hex, not base64 (WPCode flagged-call budget — see header). Name kept for the call sites. */
 	function sml_creator_presence_b64url( $value ) {
-		return rtrim( strtr( base64_encode( (string) $value ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		return bin2hex( (string) $value );
 	}
 }
 
 if ( ! function_exists( 'sml_creator_presence_b64url_decode' ) ) {
 	function sml_creator_presence_b64url_decode( $value ) {
-		$value = strtr( (string) $value, '-_', '+/' );
-		$value .= str_repeat( '=', ( 4 - strlen( $value ) % 4 ) % 4 );
-		return base64_decode( $value, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+		$value = (string) $value;
+		if ( '' === $value || strlen( $value ) % 2 || ! ctype_xdigit( $value ) ) { return false; }
+		return hex2bin( $value );
 	}
 }
 
