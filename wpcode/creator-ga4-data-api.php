@@ -187,28 +187,18 @@ if ( ! function_exists( 'sml_creator_ga4_audience_payload' ) ) {
 			'sources'    => is_wp_error( $source ) ? array() : sml_creator_ga4_rows( $source, array( 'source' ), array( 'users', 'views', 'sessions' ) ),
 			'kinds'      => is_wp_error( $kind ) ? array() : sml_creator_ga4_rows( $kind, array( 'kind' ), array( 'users', 'views', 'sessions' ) ),
 			'series'     => is_wp_error( $series ) ? array() : sml_creator_ga4_rows( $series, array( 'date' ), array( 'users', 'views', 'sessions' ) ),
-			'live'       => array( 'available' => false, 'count' => 0, 'topCountries' => array() ),
-		);
-
-		$live = sml_creator_ga4_report(
-			$token,
-			array(
-				'dimensionFilter' => $filter,
-				'dimensions'      => array( array( 'name' => 'country' ) ),
-				'metrics'         => array( array( 'name' => 'activeUsers' ) ),
-				'orderBys'        => array( array( 'metric' => array( 'metricName' => 'activeUsers' ), 'desc' => true ) ),
-				'limit'           => 25,
+			// GA4's Realtime API does not accept event-scoped custom dimensions,
+			// including customEvent:creator_handle. Keep this explicitly unavailable
+			// instead of issuing an invalid request or showing a site-wide count as if
+			// it belonged to this creator. A first-party presence heartbeat can fill
+			// this contract later without weakening creator isolation.
+			'live'       => array(
+				'available'    => false,
+				'count'        => 0,
+				'topCountries' => array(),
+				'reason'       => 'creator_realtime_requires_first_party_presence',
 			),
-			true
 		);
-		if ( ! is_wp_error( $live ) ) {
-			$live_rows = sml_creator_ga4_rows( $live, array( 'country' ), array( 'users' ) );
-			$payload['live'] = array(
-				'available'    => true,
-				'count'        => array_sum( wp_list_pluck( $live_rows, 'users' ) ),
-				'topCountries' => array_values( array_filter( $live_rows, static function ( $row ) { return (int) $row['users'] >= 10; } ) ),
-			);
-		}
 		return $payload;
 	}
 }
