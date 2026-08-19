@@ -18,6 +18,21 @@ body.tv2-preview-on #sml-mp .mptrack{transform:none!important}
    the legacy stays booted (hidden) so its modules/data mount in later phases */
 body.tv2-artifact-on .sml-terminal{display:none!important}
 #sml-tv2-root{max-width:100%;overflow-x:auto}
+/* FIX 2026-08-19 "dimensions are stretched": the theme caps the content column
+   (~1281px at a 1440 window) while the design keeps a fixed 396px rail, so the
+   chart column collapsed to ~700px against the chart engine's fixed 590px height
+   — a tall, narrow chart. Break the root out of the theme column (24px gutters,
+   capped 1680) and drop the captured design's 56px frame gutters below 1700px,
+   which returns the chart column to the design's own proportions (~950 @1440). */
+body.tv2-artifact-on #sml-tv2-root{width:min(1680px,calc(100vw - 48px))!important;max-width:none!important;margin-left:calc((100% - min(1680px,calc(100vw - 48px))) / 2)!important;margin-right:0!important}
+@media (max-width:1699px){
+  body.tv2-artifact-on #sml-tv2-root [data-tv2-frame]{padding-left:0!important;padding-right:0!important}
+  body.tv2-artifact-on #sml-tv2-root [data-tv2-zone="zbody"]{padding-left:16px!important;padding-right:16px!important}
+}
+/* the legacy summary/news block below the terminal carries a theme full-bleed
+   negative right margin — clamp at every width (was only <1200) or the page
+   scrolls sideways at 1440 */
+body.tv2-artifact-on .sml-ticker-summary,body.tv2-heatmap-off .sml-ticker-summary{margin-right:0!important;margin-left:0!important;max-width:100%!important;width:100%!important;box-sizing:border-box!important}
 
 body.tv2-heatmap-off #sml-mp [title="Heat Map"],
 body.tv2-heatmap-off #sml-mp [title*="Heat"],

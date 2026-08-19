@@ -70,13 +70,12 @@
         function clampSummary() {
           var sm = document.querySelector('.sml-ticker-summary');
           if (!sm) return;
-          if (window.innerWidth < 1200) {
-            sm.style.setProperty('margin-right', '0', 'important');
-            sm.style.setProperty('max-width', '100%', 'important');
-          } else {
-            sm.style.removeProperty('margin-right');
-            sm.style.removeProperty('max-width');
-          }
+          /* at EVERY width (2026-08-19): the theme rule is !important and won at
+             1200-1699 too, pushing the page 60px+ past the viewport at 1440 */
+          sm.style.setProperty('margin-right', '0', 'important');
+          sm.style.setProperty('margin-left', '0', 'important');
+          sm.style.setProperty('max-width', '100%', 'important');
+          sm.style.setProperty('width', '100%', 'important');
         }
         clampSummary();
         window.addEventListener('resize', clampSummary);
