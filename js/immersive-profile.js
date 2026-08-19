@@ -24,6 +24,7 @@
     avatarUrl: '', bannerUrl: '', backgroundUrl: '', bannerVideoUrl: '', backgroundVideoUrl: '',
     editUrl: '', visitorUrl: '',
     isOwner: true,            /* demo/non-profile mounts keep the full UI; profile pages set the real value */
+    followUid: 0, isFollowing: false,
     stats: [], tickers: [], about: [], friends: [], posts: [], socials: [],
     bio: '',
     disclaimer: 'Market data and content on Stock Market Loop are for informational purposes only and do not constitute investment advice.',
@@ -393,9 +394,11 @@
       editBtn = '<button class="sip-btn sip-studio-open" type="button">Edit profile</button>';
       arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
       visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
-    } else if (document.querySelector('button.sml-pfe-action[data-sml-follow]')) {
-      /* visitor: proxy the page's REAL follow button (unified profile, sml-members/v1/follow) */
-      editBtn = '<button class="sip-btn sip-follow" type="button">Follow</button>';
+    } else if (cfg.followUid) {
+      /* visitor: Follow — proxies the page's real follow button when the unified
+         layout renders one; otherwise talks to the same sml-members/v1/follow
+         endpoint directly ({user_id, action:'follow'|'unfollow'}) */
+      editBtn = '<button class="sip-btn sip-follow" type="button"' + (cfg.isFollowing ? ' data-on="1"' : ' data-on="0"') + '>' + (cfg.isFollowing ? 'Following' : 'Follow') + '</button>';
     }
 
     // World 0: PROFILE
@@ -665,6 +668,7 @@
     var followBtn = $('.sip-follow');
     if (followBtn) {
       var realFollow = function () { return document.querySelector('button.sml-pfe-action[data-sml-follow]'); };
+      var setFollowUI = function (on, busy) { followBtn.textContent = on ? 'Following' : 'Follow'; followBtn.setAttribute('data-on', on ? '1' : '0'); followBtn.disabled = !!busy; };
       var syncFollow = function () {
         var rb = realFollow(); if (!rb) return;
         var on = rb.dataset.following === 'true' || rb.getAttribute('aria-pressed') === 'true';
@@ -672,10 +676,24 @@
         followBtn.setAttribute('data-on', on ? '1' : '0');
         followBtn.disabled = !!rb.disabled;
       };
-      followBtn.addEventListener('click', function () { var rb = realFollow(); if (rb) rb.click(); setTimeout(syncFollow, 300); setTimeout(syncFollow, 1500); });
+      var directFollow = function () {
+        if (!document.body.classList.contains('logged-in') || !U.nonce) { location.href = '/login/?redirect_to=' + encodeURIComponent(location.href); return; }
+        var on = followBtn.getAttribute('data-on') === '1';
+        setFollowUI(on, true);
+        fetch('/wp-json/sml-members/v1/follow', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': U.nonce }, body: JSON.stringify({ user_id: cfg.followUid, action: on ? 'unfollow' : 'follow' }) })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (!res.ok) { setFollowUI(on, false); toast((res.j && res.j.message) || 'Could not update follow.', true); return; }
+            var now = (res.j && typeof res.j.is_following === 'boolean') ? res.j.is_following : !on;
+            setFollowUI(now, false);
+            var fc = $('.sip-stat-l'); /* FOLLOWERS is the first stat when present */
+            var stat = Array.prototype.slice.call($$('.sip-stat')).filter(function (st) { return /FOLLOWERS/.test(st.textContent); })[0];
+            if (stat && res.j && res.j.follower_count != null) { var v = stat.querySelector('.sip-stat-v'); if (v) v.textContent = String(res.j.follower_count); }
+          }, function () { setFollowUI(on, false); toast('Could not update follow.', true); });
+      };
+      followBtn.addEventListener('click', function () { var rb = realFollow(); if (rb) { rb.click(); setTimeout(syncFollow, 300); setTimeout(syncFollow, 1500); } else directFollow(); });
       var rbEl = realFollow();
-      if (rbEl && window.MutationObserver) new MutationObserver(syncFollow).observe(rbEl, { attributes: true, childList: true, subtree: true });
-      syncFollow();
+      if (rbEl) { if (window.MutationObserver) new MutationObserver(syncFollow).observe(rbEl, { attributes: true, childList: true, subtree: true }); syncFollow(); }
     }
 
     // section drag-reorder
@@ -1295,6 +1313,8 @@
     base.bio = P.description || '';
     base.editUrl = U.editorUrl || base.editUrl; base.visitorUrl = P.url || base.visitorUrl;
     base.isOwner = !!(U.isOwner || P.is_owner);
+    base.followUid = (!base.isOwner && uid) ? uid : 0;
+    base.isFollowing = !!(P.relationship && P.relationship.is_following);
     /* the owner's saved look — painted on first frame (see init "state") */
     var imSrv = (U.immersive && typeof U.immersive === 'object') ? U.immersive : ((U.settings && U.settings.immersive_profile && typeof U.settings.immersive_profile === 'object') ? U.settings.immersive_profile : {});
     base.immersive = imSrv;
