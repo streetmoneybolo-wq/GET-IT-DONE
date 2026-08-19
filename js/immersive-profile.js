@@ -20,48 +20,16 @@
   'use strict';
 
   var DEFAULTS = {
-    name: 'Vaughn McNair',
-    handle: '@grandmasterobi',
-    roles: ['Momentum Trader', 'Options Trader'],
-    avatarUrl: '', bannerUrl: '', backgroundUrl: '',
+    name: '', handle: '', roles: [],
+    avatarUrl: '', bannerUrl: '', backgroundUrl: '', bannerVideoUrl: '', backgroundVideoUrl: '',
     editUrl: '', visitorUrl: '',
-    stats: [
-      { label: 'FOLLOWERS', value: '2' }, { label: 'FOLLOWING', value: '1' },
-      { label: 'CHARTS', value: '1' }, { label: 'POSTS', value: '1' },
-      { label: 'PROFILE VIEWS', value: '61' }, { label: 'LIKES', value: '1' }
-    ],
-    tickers: [
-      { sym: '$MRAM', chg: '+12.4%', dir: 'up' }, { sym: '$SNDK', chg: '+3.1%', dir: 'up' },
-      { sym: '$AKAN', chg: '-4.2%', dir: 'down' }, { sym: '$SDOT', chg: '+8.9%', dir: 'up' },
-      { sym: '$NVDA', chg: '+1.6%', dir: 'up' }
-    ],
-    about: [
-      { k: 'Age', v: '32 years old' }, { k: 'Birth month and year', v: 'February 1994' },
-      { k: 'Current city', v: 'Chicago' }, { k: 'Birth city', v: 'Joliet, IL' },
-      { k: 'High school', v: 'Lockport, IL' }, { k: 'Graduated', v: '2012' },
-      { k: 'Occupation', v: 'Stock Market Analyst' }, { k: 'Relationship', v: 'In a relationship' }
-    ],
-    friends: [{ name: 'Stock Market Loop', handle: '@stockmarketloop', avatarUrl: '' }],
+    stats: [], tickers: [], about: [], friends: [], posts: [], socials: [],
+    bio: '',
     disclaimer: 'Market data and content on Stock Market Loop are for informational purposes only and do not constitute investment advice.',
-    orbitalPhotos: ['', '', '', '', '', ''],           // 6 URLs (ring)
-    galleryPhotos: ['', '', '', '', '', '', '', ''],   // 8 URLs (grid)
-    posts: [
-      { type: 'POST', color: '#38F58A', time: '2h ago', ctx: '', text: 'Locked in $MRAM at 4.20 pre-market. Momentum thesis playing out — watching volume into the close.' },
-      { type: 'COMMENT', color: '#3d8bfd', time: '5h ago', ctx: 'On Stock Market Loop’s post “Semis weekly recap”', text: 'Great breakdown of the semis run. $SNDK still has legs imo.' },
-      { type: 'SHARED', color: '#ffb020', time: '1d ago', ctx: 'Shared Stock Market Loop’s chart', text: '$NVDA weekly — ascending channel intact, retest of the mid-line looks likely.' },
-      { type: 'POST', color: '#38F58A', time: '2d ago', ctx: '', text: 'New week, new watchlist: $MRAM, $SDOT, $AKAN. Risk tight, size small.' },
-      { type: 'COMMENT', color: '#3d8bfd', time: '3d ago', ctx: 'On @tradequeen’s post “Chasing green candles”', text: 'This is why you wait for confirmation candles.' }
-    ],
-    socials: [
-      { name: 'YouTube', handle: '@grandmasterobi', url: '#', glyph: '▶', tile: '#FF0033', glyphColor: '#fff', glow: 'rgba(255,0,51,.5)', desc: 'Market breakdowns, live trading streams & recaps' },
-      { name: 'Discord', handle: 'grandmasterobi', url: '#', glyph: 'DC', tile: '#5865F2', glyphColor: '#fff', glow: 'rgba(88,101,242,.5)', desc: 'Trading community — watchlists & live calls' },
-      { name: 'Facebook', handle: 'Vaughn McNair', url: '#', glyph: 'f', tile: '#1877F2', glyphColor: '#fff', glow: 'rgba(24,119,242,.5)', desc: 'Daily market notes & longer write-ups' },
-      { name: 'X (Twitter)', handle: '@grandmasterobi', url: '#', glyph: '𝕏', tile: '#0f1419', glyphColor: '#fff', glow: 'rgba(230,237,245,.35)', desc: 'Real-time trade alerts & hot takes' },
-      { name: 'LinkedIn', handle: 'vaughn-mcnair', url: '#', glyph: 'in', tile: '#0A66C2', glyphColor: '#fff', glow: 'rgba(10,102,194,.5)', desc: 'Professional background & analyst work' },
-      { name: 'Bluesky', handle: '@grandmasterobi.bsky.social', url: '#', glyph: 'BS', tile: '#0285FF', glyphColor: '#fff', glow: 'rgba(2,133,255,.5)', desc: 'Casual market chatter, off the algorithm' },
-      { name: 'Threads', handle: '@grandmasterobi', url: '#', glyph: '@', tile: '#101010', glyphColor: '#fff', glow: 'rgba(230,237,245,.35)', desc: 'Quick thoughts between trading sessions' },
-      { name: 'Instagram', handle: '@grandmasterobi', url: '#', glyph: 'IG', tile: 'linear-gradient(45deg,#F58529,#DD2A7B 55%,#8134AF)', glyphColor: '#fff', glow: 'rgba(221,42,123,.5)', desc: 'Chart snapshots, setups & lifestyle' }
-    ],
+    orbitalPhotos: ['', '', '', '', '', ''],           // 6 URLs (ring)  — orbital media 0..5
+    galleryPhotos: ['', '', '', '', '', '', '', ''],   // 8 URLs (grid)  — orbital media 6..13
+    orbitalVideos: ['', '', ''],                       // 3 URLs (ring)  — orbital_video 0..2
+    galleryVideos: ['', '', '', '', '', ''],           // 6 URLs (grid)  — orbital_video 3..8
     contact: { email: '', phone: '', optIn: true },
     music: { url: '', title: 'Profile track' },
     useExistingPlayer: false,
@@ -116,7 +84,9 @@
     for (var k in DEFAULTS) {
       var v = user[k];
       var empty = v == null || v === '' || (Array.isArray(v) && !v.length);
-      out[k] = empty ? DEFAULTS[k] : v;
+      /* content arrays: an empty real value STAYS empty (sections hide) — never demo data */
+      var CONTENT = { stats: 1, tickers: 1, about: 1, friends: 1, posts: 1, socials: 1, roles: 1 };
+      out[k] = (empty && !CONTENT[k]) ? DEFAULTS[k] : (v == null ? DEFAULTS[k] : v);
     }
     if (user.music && user.music.url) out.music = { url: user.music.url, title: user.music.title || DEFAULTS.music.title };
     if (user.contact) out.contact = { email: user.contact.email || '', phone: user.contact.phone || '', optIn: user.contact.optIn !== false };
@@ -130,6 +100,9 @@
     '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:#E6EDF5;font-family:"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
     '.sip-root *{box-sizing:border-box;}' +
     '.sip-root [hidden]{display:none !important;}' +
+    '.sip-root .sip-sec[data-empty="1"]{display:none !important;}' +
+    '.sip-root .sip-emptynote{font-size:12.5px;color:#6B7C90;line-height:1.6;padding:14px 4px;}' +
+    '.sip-root .sip-mediavid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}' +
     '.sip-root a{color:#38F58A;text-decoration:none;}.sip-root a:hover{color:#8dffc2;}' +
     '.sip-bg{position:fixed;inset:0;z-index:0;background-size:cover;background-position:center;}' +
     '.sip-bg-scrim{position:absolute;inset:0;background:rgba(7,13,20,.55);pointer-events:none;}' +
@@ -259,7 +232,7 @@
       var col = (t.dir === 'down' || /^-/.test(t.chg)) ? '#ff5c7a' : '#38F58A';
       return '<div class="sip-tick"><b>' + esc(t.sym) + '</b><span style="color:' + col + '">' + esc(t.chg) + '</span></div>';
     }).join('');
-    var aboutHtml = cfg.about.map(function (r) {
+    var aboutHtml = (cfg.bio ? '<div class="sip-row" style="display:block"><span class="k">About</span><div class="v" style="margin-top:6px;white-space:pre-line;line-height:1.55">' + esc(cfg.bio) + '</div></div>' : '') + cfg.about.map(function (r) {
       return '<div class="sip-row"><span class="k">' + esc(r.k) + '</span><span class="v">' + esc(r.v) + '</span></div>';
     }).join('');
     var friendHtml = cfg.friends.map(function (f) {
@@ -280,7 +253,8 @@
     // Orbital video ring (3)
     var orbVids = '';
     for (var j = 0; j < 3; j++) {
-      orbVids += '<div class="sip-orb-video" data-ovideo="' + j + '"><div class="sip-cellph" data-vph><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
+      var ov = (cfg.orbitalVideos || [])[j] || '';
+      orbVids += '<div class="sip-orb-video" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" src="' + esc(ov) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
         '<div class="sip-itembtns" data-editonly hidden><button class="sip-ibtn" data-osmall="video:' + j + '" title="Smaller">−</button>' +
         '<button class="sip-ibtn" data-obig="video:' + j + '" title="Bigger">＋</button></div></div>';
     }
@@ -294,7 +268,8 @@
     // Gallery videos (6)
     var galV = '';
     for (var gvi = 0; gvi < 6; gvi++) {
-      galV += '<div class="sip-galvid" data-gvideo="' + gvi + '"><div class="sip-cellph" data-vph><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div></div>';
+      var gvu = (cfg.galleryVideos || [])[gvi] || '';
+      galV += '<div class="sip-galvid" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" src="' + esc(gvu) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div></div>';
     }
 
     var postHtml = cfg.posts.map(function (po) {
@@ -315,8 +290,10 @@
     var worldTabsHtml = WORLDS.map(function (w, i) { return '<button class="sip-wtab" data-world="' + i + '">' + w + '</button>'; }).join('');
 
     var b = ph(cfg.bannerUrl, 'banner image');
+    if (cfg.bannerVideoUrl) b = { st: '', inner: '<video class="sip-mediavid" src="' + esc(cfg.bannerVideoUrl) + '" autoplay muted loop playsinline' + (cfg.bannerUrl ? ' poster="' + esc(cfg.bannerUrl) + '"' : '') + '></video>' };
     var av = ph(cfg.avatarUrl, 'avatar', 'circle');
     var bg = cfg.backgroundUrl ? ' style="background-image:url(\'' + esc(cfg.backgroundUrl) + '\')"' : '';
+    var bgVid = cfg.backgroundVideoUrl ? '<video class="sip-mediavid" src="' + esc(cfg.backgroundVideoUrl) + '" autoplay muted loop playsinline' + (cfg.backgroundUrl ? ' poster="' + esc(cfg.backgroundUrl) + '"' : '') + '></video>' : '';
     // "Edit profile" opens the SITE's real editor (avatar/banner/bio/music) — the
     // user's native abilities. "Arrange" is the immersive-only layout edit mode.
     var editBtn = cfg.editUrl
@@ -336,8 +313,8 @@
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + editBtn + arrangeBtn + visitorBtn + '</div>' +
       '</div></div>' +
       '<div class="sip-sections" style="display:flex;flex-direction:column;">' +
-      '<div class="sip-sec" data-sec="stats"><div class="sip-stats">' + statHtml + '</div></div>' +
-      '<div class="sip-sec" data-sec="tickers"><div class="sip-ticks">' + tickHtml + '</div></div>' +
+      '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
+      '<div class="sip-sec" data-sec="tickers"' + (tickHtml ? '' : ' data-empty="1"') + '><div class="sip-ticks">' + tickHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="orbitals"><div class="sip-orbwrap">' +
       '<div class="sip-orbcol"><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-pstage"><div class="sip-ring sip-pring">' + orbPhotos + '</div></div></div>' +
@@ -356,7 +333,7 @@
     // World 2: VIDEOS
     var world2 = '<div class="sip-screen"><div class="sip-worldtitle">Video Gallery</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
     // World 3: POSTS
-    var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES — SWIPE LEFT FOR CONTACT →</div><div class="sip-posts">' + postHtml + '</div></div>';
+    var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES — SWIPE LEFT FOR CONTACT →</div><div class="sip-posts">' + (postHtml || '<div class="sip-emptynote">No recent activity shared yet.</div>') + '</div></div>';
     // World 4: CONTACT
     var c = cfg.contact || {};
     var contactRows = (c.email ? '<div class="sip-row"><span class="k">Email</span><a href="mailto:' + esc(c.email) + '" class="v">' + esc(c.email) + '</a></div>' : '') +
@@ -366,7 +343,7 @@
       '<div class="sip-card"><div class="sip-card-h">CONTACT INFO</div><div class="sip-contact-in">' + (contactRows || '<div style="font-size:12.5px;color:#6B7C90;line-height:1.6;">No contact info shared.</div>') + '</div>' +
       '<div class="sip-contact-out" style="display:none;font-size:12.5px;color:#6B7C90;line-height:1.6;">The profile owner hasn’t shared contact info.</div>' +
       '<button class="sip-optin sip-btn" type="button" data-editonly hidden style="margin-top:12px;background:rgba(56,245,138,.12);color:#38F58A;border:1px solid rgba(56,245,138,.5);"></button></div>' +
-      '<div class="sip-card"><div class="sip-card-h">SOCIALS</div><div class="sip-socials">' + socialHtml + '</div></div>' +
+      '<div class="sip-card"><div class="sip-card-h">SOCIALS</div><div class="sip-socials">' + (socialHtml || '<div class="sip-emptynote">No socials linked yet.</div>') + '</div></div>' +
       '</div></div>';
 
     var ytIframe = (!cfg.useExistingPlayer && ytId(cfg.music.url)) ?
@@ -374,7 +351,7 @@
 
     return '' +
       '<div class="sip-root">' +
-      '<div class="sip-bg"' + bg + '><div class="sip-bg-scrim"></div></div>' +
+      '<div class="sip-bg"' + bg + '>' + bgVid + '<div class="sip-bg-scrim"></div></div>' +
       '<canvas class="sip-fx"></canvas>' +
       '<button class="sip-worldnav sip-prev" style="left:10px;" title="Previous world">‹</button>' +
       '<button class="sip-worldnav sip-next" style="right:10px;" title="Next world">›</button>' +
@@ -570,21 +547,51 @@
     function bumpItem(ring, i, d) { var arr = itemScales[ring]; arr[i] = Math.max(0.5, Math.min(2.2, Math.round((arr[i] + d) * 10) / 10)); lsSet('sml-orbital-item-scales', JSON.stringify(itemScales)); }
     $$('[data-osmall]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); var p = b.dataset.osmall.split(':'); bumpItem(p[0], +p[1], -0.1); }); });
     $$('[data-obig]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); var p = b.dataset.obig.split(':'); bumpItem(p[0], +p[1], 0.1); }); });
+    $$('[data-ophoto]').forEach(function (cell) { cell.addEventListener('dblclick', function () { if (!editMode) return; pickFile('ophoto', +cell.dataset.ophoto); }); });
     $$('[data-ozoom]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); var i = +b.dataset.ozoom; enlarged = (enlarged && enlarged.ring === 'photo' && enlarged.i === i) ? null : { ring: 'photo', i: i }; }); });
 
-    // media pickers
+    // media pickers — REAL: upload to the profile engine, save the slot, everyone sees it.
+    // orbital photos ring = orbital[0..5], gallery photos = orbital[6..13];
+    // orbital videos ring = orbital_video[0..2], gallery videos = orbital_video[3..8].
+    var MEDIA = (cfg.__media && typeof cfg.__media === 'object') ? cfg.__media : { orbital: [], orbital_video: [] };
+    var U = window.SML_PROFILE_UNIFIED || {};
+    function canPersist() { return !!(U.isOwner && U.nonce && U.uploadRest); }
+    function uploadFile(file, purpose) {
+      var fd = new FormData(); fd.append('file', file); fd.append('purpose', purpose);
+      return fetch(U.uploadRest + (U.uploadRest.indexOf('?') > -1 ? '&' : '?') + 'purpose=' + encodeURIComponent(purpose), { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': U.nonce }, body: fd })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Upload failed'); return j; }); });
+    }
+    function saveSlot(slot, items) {
+      var base = (U.customRest || '').replace(/customization.*$/, '') || '/wp-json/sml-profile/v2/profile/';
+      return fetch(base + 'media', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': U.nonce, 'Content-Type': 'application/json' }, body: JSON.stringify({ slot_type: slot, items: items.map(function (it) { return { attachment_id: it.attachment_id, caption: it.caption || '', url: it.url || '' }; }) }) })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Save failed'); return j; }); });
+    }
+    function setSlotItem(list, idx, item) { while (list.length < idx) list.push(null); list[idx] = item; return list.filter(function (x) { return !!x; }); }
+    function toast(msg, bad) { var t = document.createElement('div'); t.textContent = msg; t.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2147483646;background:' + (bad ? '#3a1218' : '#0f2a1c') + ';color:' + (bad ? '#ff859f' : '#8dffc2') + ';border:1px solid ' + (bad ? '#7a2334' : '#1c6b45') + ';border-radius:10px;padding:10px 14px;font:600 12px/1 Archivo,sans-serif;'; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
     function pickFile(kind, idx) { pickKind = kind; pickIdx = idx; (kind === 'gphoto' ? imgInput : vidInput).click(); }
     vidInput.addEventListener('change', function () {
-      var f = vidInput.files && vidInput.files[0]; if (!f) return; var url = URL.createObjectURL(f);
-      if (pickKind === 'ovideo') { videos[pickIdx] = url; renderOrbVideo(pickIdx); }
-      else if (pickKind === 'gvideo') { gvids[pickIdx] = url; renderGalVideo(pickIdx); }
+      var f = vidInput.files && vidInput.files[0]; if (!f) return; var local = URL.createObjectURL(f); var kind = pickKind, idx = pickIdx;
+      // paint immediately, then persist
+      if (kind === 'ovideo') { videos[idx] = local; renderOrbVideo(idx); } else if (kind === 'gvideo') { gvids[idx] = local; renderGalVideo(idx); }
       vidInput.value = '';
+      if (!canPersist()) { toast('Sign in as the profile owner to save videos.', true); return; }
+      var slotIdx = kind === 'ovideo' ? idx : 3 + idx;
+      uploadFile(f, 'video').catch(function () { return uploadFile(f, 'banner_video'); }).then(function (att) {
+        var items = MEDIA.orbital_video.slice(); items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: att.url });
+        return saveSlot('orbital_video', items).then(function (saved) { MEDIA.orbital_video = Array.isArray(saved) ? saved : items; toast('Video saved to your profile.'); });
+      }).catch(function (e) { toast(e.message || 'Could not save the video.', true); });
     });
     imgInput.addEventListener('change', function () {
-      var f = imgInput.files && imgInput.files[0]; if (!f) return; var url = URL.createObjectURL(f);
-      gphotoLocal[pickIdx] = url; var el = $('[data-gphoto="' + pickIdx + '"]');
-      if (el) { el.style.backgroundImage = "url('" + url + "')"; el.innerHTML = ''; }
+      var f = imgInput.files && imgInput.files[0]; if (!f) return; var local = URL.createObjectURL(f); var kind = pickKind, idx = pickIdx;
+      var el = kind === 'gphoto' ? $('[data-gphoto="' + idx + '"]') : $('[data-ophoto="' + idx + '"]');
+      if (el) { el.style.backgroundImage = "url('" + local + "')"; var phEl = el.querySelector('.sip-ph'); if (phEl) phEl.remove(); }
       imgInput.value = '';
+      if (!canPersist()) { toast('Sign in as the profile owner to save photos.', true); return; }
+      var slotIdx = kind === 'gphoto' ? 6 + idx : idx;
+      uploadFile(f, 'photo').then(function (att) {
+        var items = MEDIA.orbital.slice(); items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
+        return saveSlot('orbital', items).then(function (saved) { MEDIA.orbital = Array.isArray(saved) ? saved : items; toast('Photo saved to your profile.'); });
+      }).catch(function (e) { toast(e.message || 'Could not save the photo.', true); });
     });
     function renderOrbVideo(i) {
       var cell = $('[data-ovideo="' + i + '"]'); if (!cell) return;
@@ -861,6 +868,59 @@
       pulse: 'Immersive'
     };
   }
+  /* Real profile config: the page already exposes SMLPublicProfile.profile (identity,
+     real avatar, bio, follower counts), SML_PROFILE_UNIFIED (user id, owner, nonce,
+     banner/background attachment ids + video modes, REST urls) and the profile
+     engine's media API (orbital photos/videos, galleries). Nothing here is demo data:
+     when a source is empty, the section stays empty. */
+  function realConfig() {
+    var base = autoConfig();
+    var U = window.SML_PROFILE_UNIFIED || {}, P = (window.SMLPublicProfile && window.SMLPublicProfile.profile) || {};
+    var uid = U.userId || P.user_id || 0;
+    if (P.display_name) base.name = P.display_name;
+    if (P.handle) base.handle = '@' + String(P.handle).replace(/^@/, '');
+    if (P.avatar) base.avatarUrl = P.avatar; else if (/gravatar\.com/.test(base.avatarUrl)) base.avatarUrl = '';
+    if (/gravatar\.com/.test(base.bannerUrl)) base.bannerUrl = '';
+    base.bio = P.description || '';
+    base.editUrl = U.editorUrl || base.editUrl; base.visitorUrl = P.url || base.visitorUrl;
+    var rel = P.relationship || {}; var stats = [];
+    if (rel.follower_count != null) stats.push({ label: 'FOLLOWERS', value: String(rel.follower_count) });
+    if (rel.subscriber_count != null) stats.push({ label: 'SUBSCRIBERS', value: String(rel.subscriber_count) });
+    /* the unified profile below already renders real counters — read them */
+    try {
+      var txt = (document.querySelector('main.sml-profile') || document.body).innerText || '';
+      [['FOLLOWING', /FOLLOWING\s+([\d,\.KM]+)/i], ['CHARTS', /CHARTS\s+([\d,\.KM]+)/i], ['POSTS', /POSTS\s+([\d,\.KM]+)/i], ['PROFILE VIEWS', /PROFILE VIEWS\s+([\d,\.KM]+)/i], ['LIKES', /LIKES\s+([\d,\.KM]+)/i], ['FRIENDS', /FRIENDS\s+([\d,\.KM]+)/i]].forEach(function (d) { var m = txt.match(d[1]); if (m && !stats.some(function (x) { return x.label === d[0]; })) stats.push({ label: d[0], value: m[1] }); });
+    } catch (e) {}
+    base.stats = stats;
+    var mediaBase = '/wp-json/sml-profile/v2/profile/';
+    function get(u) { return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
+    function att(id) { return id ? get('/wp-json/wp/v2/media/' + id) : Promise.resolve(null); }
+    var mediaIds = U.media || {}; var app = (U.settings && U.settings._appearance) || {};
+    return Promise.all([
+      uid ? get(mediaBase + uid + '/media') : null,
+      att(mediaIds.banner_id), att(mediaIds.background_id),
+      uid ? get('/wp-json/sml-social-profile/v1/public/' + uid) : null
+    ]).then(function (r) {
+      var media = r[0] || {}, banner = r[1], bgm = r[2], soc = r[3];
+      var orb = (media.orbital || []).slice(); var ov = (media.orbital_video || []).slice();
+      var pick = function (it) { return it ? (it.url || it.thumb || '') : ''; };
+      var pickThumb = function (it) { return it ? (it.thumb || it.url || '') : ''; };
+      base.orbitalPhotos = [0, 1, 2, 3, 4, 5].map(function (i) { return pickThumb(orb[i]); });
+      base.galleryPhotos = [6, 7, 8, 9, 10, 11, 12, 13].map(function (i) { return pickThumb(orb[i]); });
+      base.orbitalVideos = [0, 1, 2].map(function (i) { return pick(ov[i]); });
+      base.galleryVideos = [3, 4, 5, 6, 7, 8].map(function (i) { return pick(ov[i]); });
+      base.__media = { orbital: orb, orbital_video: ov };
+      if (banner && banner.source_url) { if (/^video\//.test(banner.mime_type || '') || app.banner_mode === 'video') base.bannerVideoUrl = banner.source_url; else base.bannerUrl = banner.source_url; }
+      if (bgm && bgm.source_url) { if (/^video\//.test(bgm.mime_type || '') || app.background_mode === 'video') base.backgroundVideoUrl = bgm.source_url; else base.backgroundUrl = bgm.source_url; }
+      var TILES = { youtube: ['▶', '#FF0033'], discord: ['DC', '#5865F2'], facebook: ['f', '#1877F2'], x: ['𝕏', '#0f1419'], twitter: ['𝕏', '#0f1419'], linkedin: ['in', '#0A66C2'], bluesky: ['BS', '#0285FF'], threads: ['@', '#101010'], instagram: ['IG', 'linear-gradient(45deg,#F58529,#DD2A7B 55%,#8134AF)'], tiktok: ['TT', '#010101'], website: ['🌐', '#1c2833'], site: ['🌐', '#1c2833'], twitch: ['TV', '#9146FF'], reddit: ['r/', '#FF4500'], telegram: ['TG', '#229ED9'] };
+      base.socials = ((soc && soc.items) || []).filter(function (it) { return it && it.value; }).map(function (it) {
+        var key = String(it.key || '').toLowerCase(); var t = TILES[key] || [String(it.label || key).charAt(0).toUpperCase(), '#1c2833'];
+        var v = String(it.value); var url = /^https?:\/\//i.test(v) ? v : (key === 'x' || key === 'twitter' ? 'https://x.com/' + v.replace(/^@/, '') : key === 'instagram' ? 'https://instagram.com/' + v.replace(/^@/, '') : key === 'youtube' ? 'https://youtube.com/' + (v[0] === '@' ? v : '@' + v) : key === 'tiktok' ? 'https://tiktok.com/@' + v.replace(/^@/, '') : /^[\w.-]+\.[a-z]{2,}/i.test(v) ? 'https://' + v : '#');
+        return { name: it.label || key, handle: v, url: url, glyph: t[0], tile: t[1], glyphColor: '#fff', glow: 'rgba(56,245,138,.25)', desc: '' };
+      });
+      return base;
+    });
+  }
   function enableOverlay(mount) {
     mount.style.cssText = 'position:fixed;inset:0;z-index:2147483000;overflow:auto;-webkit-overflow-scrolling:touch;background:#070d14;';
     try { document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; } catch (e) {}
@@ -871,10 +931,15 @@
     // (or anywhere an explicit window.SML_PROFILE is provided).
     if (!window.SML_PROFILE && !isProfile) return;
     if (document.getElementById('sml-immersive-profile-root') && document.querySelector('.sip-root')) return; // already mounted
-    if (!window.SML_PROFILE && isProfile) window.SML_PROFILE = autoConfig();
     var mount = document.getElementById('sml-immersive-profile-root');
     if (!mount) { mount = document.createElement('div'); mount.id = 'sml-immersive-profile-root'; document.body.appendChild(mount); }
     if (isProfile || (window.SML_PROFILE && window.SML_PROFILE.overlay)) enableOverlay(mount);
+    if (!window.SML_PROFILE && isProfile) {
+      /* real data first (identity, media, banner/background, socials); the overlay
+         paints the dark canvas immediately so nothing old shows in the meantime */
+      realConfig().then(function (cfgReal) { window.SML_PROFILE = cfgReal; init(mount); }, function () { window.SML_PROFILE = autoConfig(); init(mount); });
+      return;
+    }
     init(mount);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
