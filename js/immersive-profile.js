@@ -1084,6 +1084,7 @@
     '.sps-load[hidden]{display:none;}' +
     '.sps-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147483647;background:#0d1a12;border:1px solid rgba(56,245,138,.5);color:#dfffea;padding:10px 16px;border-radius:999px;font:600 12.5px "IBM Plex Sans",system-ui,sans-serif;box-shadow:0 8px 30px #000a;opacity:0;transition:opacity .25s;pointer-events:none;}' +
     '.sps-toast.on{opacity:1;}' +
+    '@media(max-width:1024px){.sps-nav{width:196px;}.sps-nav button{font-size:12.5px;padding:7px 9px;}}' +
     '@media(max-width:820px){.sps-body{flex-direction:column;}.sps-nav{width:auto;display:flex;gap:4px;overflow-x:auto;padding:6px 8px;border-right:0;border-bottom:1px solid rgba(255,255,255,.08);}.sps-nav-h{display:none;}.sps-nav button{white-space:nowrap;width:auto;padding:7px 10px;font-size:12px;}.sps-bar{padding:8px 10px;gap:6px;}.sps-btn{padding:7px 10px;font-size:12px;}}';
 
   /* CSS injected INTO the embedded editor page: hide site chrome, keep the editor */
@@ -1269,14 +1270,18 @@
       ifr.addEventListener('load', onFrameLoad);
       main.appendChild(ifr);
     }
+    var lastFocus = null;
     function open() {
       parkPill();
+      lastFocus = document.activeElement;
       el.hidden = false; loadEl.hidden = !!ifr; ensureFrame();
+      try { el.querySelector('.sps-done').focus(); } catch (e) {}
       prevScrollLock = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden';
       try { history.replaceState(null, '', location.pathname + location.search + '#studio'); } catch (e) {}
     }
     function close() {
       el.hidden = true; document.documentElement.style.overflow = prevScrollLock;
+      try { if (lastFocus && lastFocus.focus && document.contains(lastFocus)) lastFocus.focus(); else { var b = mount.querySelector('.sip-studio-open'); if (b) b.focus(); } } catch (e) {}
       try { if (location.hash === '#studio') history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     }
     el.querySelector('.sps-done').addEventListener('click', function () { close(); if (dirty) { dirty = false; refreshOverlay().then(function () { toast('Profile updated'); }); } });
