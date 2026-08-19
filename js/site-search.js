@@ -10,6 +10,16 @@
   var scriptNode = document.currentScript;
   var assetBase = scriptNode && scriptNode.src ? scriptNode.src.split('/js/site-search.js')[0] + '/' : '';
   var QUOTES_URL = 'https://stockmarketloop-loop-kick.onrender.com/api/quotes';
+
+  /* Group-tool embeds (Live Chart / Analyst Dashboard iframes on /groups/…)
+     load this page with ?sml_group_tool&embed=… — inside those frames the
+     site-wide header, tape, admin bar and theme chrome must NOT render
+     (they were duplicating the header inside the tool = the reported bug).
+     Instead the tool gets a slim ticker-ONLY search wired straight to the
+     dashboard's own chart controls (#csym + #csym-go), so picking a result
+     re-points the streaming chart instantly without leaving the frame. */
+  var EMBED_Q = new URLSearchParams(location.search);
+  var EMBED_TOOL = EMBED_Q.has('sml_group_tool') || (EMBED_Q.has('embed') && window.self !== window.top);
   var HEADER_SYMBOLS = ['SPY','QQQ','NVDA','AAPL','TSLA','MSFT','AMD','META','AMZN','SCKT','ILLR','MRAM'];
   var headerQuoteTimer = null;
 
@@ -143,7 +153,81 @@
     window.addEventListener('message', function (event) { var item = parts(); var data = event.data; if (item.frame && event.source === item.frame.contentWindow && data && data.type === 'sml-loop-kick:surface' && data.surface === 'closed') closeKick(); });
   }
 
+  function mountEmbedTool() {
+    document.body.classList.add('sml-embed-tool');
+    /* the admin bar forces html{margin-top:32px!important} — cancel it */
+    try { document.documentElement.style.setProperty('margin-top', '0', 'important'); } catch (e) {}
+    replaceKnownHeader();
+    if (!/\/analyst-dashboard\b/.test(location.pathname)) return;
+    if (el('#sml-ets')) return;
+    var bar = document.createElement('div');
+    bar.id = 'sml-ets';
+    bar.innerHTML = '<span class="mk" aria-hidden="true">\u2315</span>' +
+      '<input type="search" autocomplete="off" spellcheck="false" aria-label="Search a stock ticker" placeholder="Search a stock ticker \u2014 the chart switches live">' +
+      '<span class="lv">LIVE</span><div class="drop" hidden></div>';
+    document.body.insertBefore(bar, document.body.firstChild);
+    var input = bar.querySelector('input'), drop = bar.querySelector('.drop');
+    var t = null, ab = null;
+    function closeDrop() { drop.hidden = true; drop.innerHTML = ''; }
+    function apply(sym) {
+      sym = String(sym || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+      if (!sym) return;
+      var csym = document.getElementById('csym'), go = document.getElementById('csym-go');
+      if (csym && go) {
+        csym.value = sym;
+        try { csym.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+        go.click();
+        bar.classList.add('flash'); setTimeout(function () { bar.classList.remove('flash'); }, 700);
+      }
+      input.value = '$' + sym;
+      closeDrop();
+    }
+    function rows(list) {
+      drop.innerHTML = list.map(function (x) {
+        return '<button type="button" data-sym="' + attr(x.symbol) + '"><span class="sym">$' + esc(x.symbol) + '</span><span class="nm">' + esc(x.name || x.symbol) + '</span><span class="ex">' + esc([x.exchange, x.type].filter(Boolean).join(' \u00b7 ')) + '</span></button>';
+      }).join('');
+      drop.hidden = !list.length;
+    }
+    input.addEventListener('input', function () {
+      clearTimeout(t);
+      var q = input.value.trim().replace(/^\$/, '');
+      if (q.length < 1) { closeDrop(); return; }
+      t = setTimeout(function () {
+        if (ab) ab.abort();
+        ab = 'AbortController' in window ? new AbortController() : null;
+        fetch(REST + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', cache: 'no-store', signal: ab ? ab.signal : undefined })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var qs = (d && d.groups && Array.isArray(d.groups.quotes)) ? d.groups.quotes.slice(0, 8) : [];
+            rows(qs);
+          })
+          .catch(function () {});
+      }, 140); /* tickers only, near-instant */
+    });
+    input.addEventListener('keydown', function (e) {
+      var items = Array.prototype.slice.call(drop.querySelectorAll('button'));
+      var cur = items.indexOf(drop.querySelector('button.on'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!items.length) return;
+        e.preventDefault();
+        var next = e.key === 'ArrowDown' ? (cur + 1) % items.length : (cur <= 0 ? items.length - 1 : cur - 1);
+        items.forEach(function (b, i) { b.classList.toggle('on', i === next); });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        var on = drop.querySelector('button.on') || drop.querySelector('button');
+        if (on) apply(on.getAttribute('data-sym'));
+        else apply(input.value.trim().replace(/^\$/, ''));
+      } else if (e.key === 'Escape') { closeDrop(); }
+    });
+    drop.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-sym]');
+      if (b) apply(b.getAttribute('data-sym'));
+    });
+    document.addEventListener('click', function (e) { if (!bar.contains(e.target)) closeDrop(); });
+  }
+
   function build() {
+    if (EMBED_TOOL) { mountEmbedTool(); return; }
     if (el('#sml-ss-panel')) return;
     mountGlobalHeader();
     var panel = document.createElement('div');
