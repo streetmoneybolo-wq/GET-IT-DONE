@@ -677,10 +677,11 @@
         followBtn.disabled = !!rb.disabled;
       };
       var directFollow = function () {
-        if (!document.body.classList.contains('logged-in') || !U.nonce) { location.href = '/login/?redirect_to=' + encodeURIComponent(location.href); return; }
+        var nonce = U.nonce || (window.wpApiSettings && window.wpApiSettings.nonce) || '';   /* /members/{id}/ pages ship no unified bootstrap */
+        if (!document.body.classList.contains('logged-in') || !nonce) { location.href = '/login/?redirect_to=' + encodeURIComponent(location.href); return; }
         var on = followBtn.getAttribute('data-on') === '1';
         setFollowUI(on, true);
-        fetch('/wp-json/sml-members/v1/follow', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': U.nonce }, body: JSON.stringify({ user_id: cfg.followUid, action: on ? 'unfollow' : 'follow' }) })
+        fetch('/wp-json/sml-members/v1/follow', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ user_id: cfg.followUid, action: on ? 'unfollow' : 'follow' }) })
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (res) {
             if (!res.ok) { setFollowUI(on, false); toast((res.j && res.j.message) || 'Could not update follow.', true); return; }
