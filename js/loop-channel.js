@@ -91,8 +91,9 @@
       var c = res.j && res.j.creator;
       var live = !!(res.j && res.j.live);
       el('#ch-live').style.display = live ? '' : 'none';
-      el('#ch-golive').style.display = 'none'; /* owner-only, decided in a later phase once we can detect ownership */
-      if (c && c.name) { el('#ch-name').textContent = c.name; }
+      /* the channel's own name (set at /create-channel/ or in the Studio) always wins;
+         the profile display name is only a fallback when none was set */
+      if (c && c.name && !(CH.profile && CH.profile.name)) { el('#ch-name').textContent = c.name; }
     }).catch(function () {});
     api('/sml-lb/v1/card/' + encodeURIComponent(profileHandle)).then(function (res) {
       /* profile photo is only the FALLBACK — a channel avatar set via /create-channel/
