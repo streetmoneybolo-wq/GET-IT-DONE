@@ -62,8 +62,11 @@
           }
         } catch (e) {}
         // place the shell where the terminal was, so page flow reads naturally
+        // (clean render: the go-live snippet strips the legacy markup and leaves #sml-tv2-anchor)
         var legacy = document.querySelector('.sml-terminal');
-        if (legacy && legacy.parentNode) legacy.parentNode.insertBefore(root, legacy);
+        var anchor = document.getElementById('sml-tv2-anchor');
+        if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(root, anchor);
+        else if (legacy && legacy.parentNode) legacy.parentNode.insertBefore(root, legacy);
         // The theme gives .sml-ticker-summary a negative full-bleed right margin
         // (rule lives in a cross-origin sheet, unbeatable by specificity) — on
         // narrow viewports it overflows the page; clamp inline (beats everything).
@@ -102,7 +105,9 @@
   var t = setInterval(function () {
     var root = document.getElementById('sml-tv2-root');
     var legacy = document.querySelector('.sml-terminal');
-    if (root && root.getAttribute('data-artifact') && legacy && legacy.previousElementSibling !== root && legacy.parentNode) {
+    var anchor = document.getElementById('sml-tv2-anchor');
+    if (root && root.getAttribute('data-artifact') && anchor && anchor.parentNode && anchor.previousElementSibling !== root) { anchor.parentNode.insertBefore(root, anchor); }
+    else if (root && root.getAttribute('data-artifact') && legacy && legacy.previousElementSibling !== root && legacy.parentNode) {
       legacy.parentNode.insertBefore(root, legacy);
     }
     if (++tries > 20) clearInterval(t);
