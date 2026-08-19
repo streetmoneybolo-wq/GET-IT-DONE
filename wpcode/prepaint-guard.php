@@ -28,6 +28,7 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 			'id="sml-cdn-homefeed"' => array( 'sml-cdn-homefeed' ),                 // home feed shell (signed-in home)
 			'id="sml-ch-root"'      => array( 'sml-ch-js', 'sml-ch-css' ),          // Loop Channel
 			'id="sml-cc-root"'      => array( 'sml-cc-js', 'sml-cc-css' ),          // Create Loop Channel
+			'sml-public-profile-page' => array( 'src:js/immersive-profile.js' ),    // public profile (immersive overlay; matched by src)
 		);
 	}
 	function sml_pp_active() {
@@ -47,6 +48,11 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 		/* preload the exact CDN assets this page's loader emitted */
 		$preload = '';
 		foreach ( $hit as $id ) {
+			if ( 0 === strpos( $id, 'src:' ) ) { /* match a script by src fragment (tags without an id) */
+				$frag = preg_quote( substr( $id, 4 ), '/' );
+				if ( preg_match( '/<script[^>]*\bsrc="([^"]*' . $frag . '[^"]*)"/i', $html, $m ) ) { $preload .= '<link rel="preload" as="script" href="' . esc_url( $m[1] ) . '">'; }
+				continue;
+			}
 			if ( preg_match( '/<script[^>]*\bid="' . preg_quote( $id, '/' ) . '"[^>]*\bsrc="([^"]+)"/i', $html, $m ) || preg_match( '/<script[^>]*\bsrc="([^"]+)"[^>]*\bid="' . preg_quote( $id, '/' ) . '"/i', $html, $m ) ) {
 				$preload .= '<link rel="preload" as="script" href="' . esc_url( $m[1] ) . '">';
 			} elseif ( preg_match( '/<link[^>]*\bid="' . preg_quote( $id, '/' ) . '"[^>]*\bhref="([^"]+)"/i', $html, $m ) || preg_match( '/<link[^>]*\bhref="([^"]+)"[^>]*\bid="' . preg_quote( $id, '/' ) . '"/i', $html, $m ) ) {

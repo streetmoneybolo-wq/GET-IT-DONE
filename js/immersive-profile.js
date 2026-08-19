@@ -954,6 +954,9 @@
     var mount = document.getElementById('sml-immersive-profile-root');
     if (!mount) { mount = document.createElement('div'); mount.id = 'sml-immersive-profile-root'; document.body.appendChild(mount); }
     if (isProfile || (window.SML_PROFILE && window.SML_PROFILE.overlay)) enableOverlay(mount);
+    /* pre-paint guard (wpcode/prepaint-guard.php): the overlay's own dark canvas is
+       up now, so the old unified profile never shows underneath — reveal */
+    document.documentElement.classList.remove('sml-pp');
     if (!window.SML_PROFILE && isProfile) {
       /* real data first (identity, media, banner/background, socials); the overlay
          paints the dark canvas immediately so nothing old shows in the meantime */
