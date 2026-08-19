@@ -143,3 +143,8 @@ body.tv2-live .entry-content{margin-top:0!important;padding-top:0!important}
 body.tv2-live #sml-tv2-root{margin-top:0!important}
 body.tv2-live #sml-tv2-root [data-tv2-frame]{padding-top:0!important}
 body.tv2-live .tv2-summary-below{margin-top:16px}
+
+/* the terminal's own top bar (second logo / TERMINAL label / second search box / sample
+   quick-symbols / sample "+ Add" button) is gone: the sitewide header already carries the
+   logo, search and tape, and the terminal now sits flush under it */
+body.tv2-live #sml-tv2-root [data-dc-tpl="10"]{display:none!important}
