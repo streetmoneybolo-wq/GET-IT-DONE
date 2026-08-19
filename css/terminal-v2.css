@@ -524,3 +524,9 @@ body.tv2-live #sml-tv2-root [data-dc-tpl="10"]{display:none!important}
 .tv2-sig .sig-bt{position:absolute;left:8px;right:8px;bottom:8px;z-index:5;margin:0;max-height:78%;overflow-y:auto;background:#0a121c;border-color:rgba(0,255,136,.4);box-shadow:0 -12px 34px rgba(0,0,0,.75),inset 0 0 24px rgba(0,255,136,.04)}
 @media (max-width:640px){.tv2-sig .sig-grid{grid-template-columns:1fr 1fr}}
 
+/* ---- drawing toolbar: close (X) / reopen (pencil) ---- */
+.tv2-ch .sml-lc-drawbar[hidden]{display:none!important}
+.tv2-ch .sml-lc-drawopen{position:absolute;left:6px;top:6px;z-index:6;width:28px;height:28px;border:1px solid #253044;border-radius:8px;background:rgba(11,16,24,.93);color:#9aa7b7;font:600 13px/26px ui-sans-serif,system-ui,sans-serif;cursor:pointer;padding:0}
+.tv2-ch .sml-lc-drawopen:hover{border-color:rgba(0,255,136,.45);color:#00ff88}
+.tv2-ch .sml-lc-drawopen[hidden]{display:none!important}
+

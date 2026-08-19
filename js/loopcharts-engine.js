@@ -1023,7 +1023,8 @@
     });
     var sep2 = document.createElement('i'); sep2.className = 'sml-lc-drawsep'; drawbar.appendChild(sep2);
     var undo = document.createElement('button'); undo.type = 'button'; undo.title = 'Undo last drawing'; undo.textContent = '\u21B6'; undo.setAttribute('data-act', 'undo'); drawbar.appendChild(undo);
-    var clear = document.createElement('button'); clear.type = 'button'; clear.title = 'Clear all drawings for this symbol'; clear.textContent = '\u2715'; clear.setAttribute('data-act', 'clear'); drawbar.appendChild(clear);
+    var clear = document.createElement('button'); clear.type = 'button'; clear.title = 'Clear all drawings for this symbol'; clear.textContent = '\uD83D\uDDD1'; clear.setAttribute('data-act', 'clear'); drawbar.appendChild(clear);
+    var closeBtn = document.createElement('button'); closeBtn.type = 'button'; closeBtn.title = 'Close drawing tools'; closeBtn.textContent = '\u2715'; closeBtn.setAttribute('data-act', 'close'); drawbar.appendChild(closeBtn);
     drawbar.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
     drawbar.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
@@ -1031,10 +1032,29 @@
       else if (b.hasAttribute('data-color')) { drawState.color = b.getAttribute('data-color'); }
       else if (b.getAttribute('data-act') === 'undo') { drawState.items.pop(); drawSave(); }
       else if (b.getAttribute('data-act') === 'clear') { drawState.items = []; drawState.measure = null; drawSave(); }
+      else if (b.getAttribute('data-act') === 'close') {
+        drawState.tool = 'cursor'; drawState.inProgress = null; canvasHost.style.cursor = '';
+        drawbar.hidden = true;
+        var op = canvasHost.querySelector('.sml-lc-drawopen'); if (op) op.hidden = false;
+        try { localStorage.setItem('sml_lc2_drawbar', 'closed'); } catch (e) {}
+        scheduleRender();
+        return;
+      }
       drawbarRefresh(); scheduleRender();
       canvasHost.style.cursor = drawState.tool === 'cursor' ? '' : 'crosshair';
     });
+    var opener = document.createElement('button');
+    opener.type = 'button'; opener.className = 'sml-lc-drawopen'; opener.title = 'Drawing tools'; opener.textContent = '\u270F';
+    opener.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    opener.addEventListener('click', function () {
+      drawbar.hidden = false; opener.hidden = true;
+      try { localStorage.setItem('sml_lc2_drawbar', 'open'); } catch (e) {}
+    });
+    var closedPref = false;
+    try { closedPref = localStorage.getItem('sml_lc2_drawbar') === 'closed'; } catch (e) {}
+    drawbar.hidden = closedPref; opener.hidden = !closedPref;
     canvasHost.appendChild(drawbar);
+    canvasHost.appendChild(opener);
     drawbarRefresh();
   }());
 
