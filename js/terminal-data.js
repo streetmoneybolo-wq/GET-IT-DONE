@@ -110,8 +110,8 @@
     poll(); setInterval(poll, 8000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
 
-    // ---- alert box count (real) ----
-    fetch('/wp-json/sml/v1/ticker-alerts?symbol=' + SYM, { credentials: 'same-origin' })
+    // ---- alert box count (real) — terminal-alerts.js owns the pill when it is loaded ----
+    if (window.SML_TV2_NATIVE_ALERTS !== 1) fetch('/wp-json/sml/v1/ticker-alerts?symbol=' + SYM, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); }).then(function (d) {
         var n = (d && d.alerts) ? d.alerts.length : 0;
         var c = findLeaf(rail, /^\d+ ACTIVE$/i) || findLeaf(root, /^\d+ ACTIVE$/i);

@@ -152,6 +152,7 @@
     var ad = document.getElementById('sml-ad-slot');
     if (!done.ad && ad && main.children[3]) { done.ad = adopt(cardBody(main.children[3], true), ad); }
     // RAIL[0] = alert card ← #sml-alert-list (fall back to whole side module's list)
+    if (!done.al && window.SML_TV2_NATIVE_ALERTS === 1) { done.al = true; }   /* terminal-alerts.js owns the alert card */
     var al = document.getElementById('sml-alert-list') ||
              (document.getElementById('sml-side-alerts') && document.getElementById('sml-side-alerts').querySelector('.b, ul, ol'));
     if (!done.al && al && rail.children[0]) { done.al = adopt(rail.children[0], al); }
