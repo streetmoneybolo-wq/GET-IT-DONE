@@ -394,7 +394,7 @@ if ( ! function_exists( 'sml_creator_ga4_rest_audience' ) ) {
 		if ( is_wp_error( sml_creator_ga4_credentials() ) ) {
 			return rest_ensure_response( array( 'configured' => false, 'countries' => array(), 'cities' => array(), 'sources' => array(), 'kinds' => array(), 'series' => array(), 'items' => array(), 'itemSeries' => array(), 'itemTracking' => array( 'available' => false ), 'live' => array( 'available' => false, 'count' => 0, 'topCountries' => array() ) ) );
 		}
-		$cache_key = 'sml_ga4_aud_v3_' . get_current_user_id() . '_' . $days . '_' . substr( hash( 'sha256', $handle ), 0, 12 );
+		$cache_key = 'sml_ga4_aud_v4_' . get_current_user_id() . '_' . $days . '_' . substr( hash( 'sha256', $handle ), 0, 12 );
 		$cached = get_transient( $cache_key );
 		if ( is_array( $cached ) ) {
 			$cached['cached'] = true;
