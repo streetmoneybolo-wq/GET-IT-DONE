@@ -42,6 +42,9 @@
         '#sml-hf-shell{position:fixed;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;z-index:2147483001;background:radial-gradient(1200px 520px at 50% -170px,rgba(1,167,125,.20) 0%,rgba(11,19,31,0) 60%),radial-gradient(900px 620px at 105% -60px,rgba(56,245,138,.07),transparent 62%),linear-gradient(180deg,#0D1622 0%,#080D15 70%);color:#E6EDF5;font-family:"Inter",system-ui,sans-serif;}' +
         '#sml-hf-shell *{box-sizing:border-box;}' +
         '#sml-hf-shell button{font-family:inherit;}' +
+        // LOOP-KICK now lives in the header; suppress its old floating launcher
+        // on this page without touching the shared popup/bridge behind it.
+        'body.sml-hf-loop-kick-nav .sml-loop-launcher{display:none !important;}' +
         // Un-fix the real feed and let it flow inside the center column.
         '#sml-hf-shell #sml-optimized-home{position:static !important;inset:auto !important;z-index:auto !important;height:auto !important;min-height:0 !important;width:auto !important;overflow:visible !important;background:transparent !important;display:block !important;}' +
         // The real feed is itself a full app (own header + nav/watchlist/groups rails).
@@ -146,7 +149,7 @@
           '<div style="display:flex;gap:18px;font-size:13.5px;font-weight:500;color:#93A4B8">' +
             '<a href="/" style="color:#38F58A;text-decoration:none">Feed</a><a href="/markets/" style="color:#93A4B8;text-decoration:none">Markets</a><a href="/live/" style="color:#93A4B8;text-decoration:none">Live</a><a href="/n/" style="color:#93A4B8;text-decoration:none">Letters</a>' +
           '</div>' +
-          '<a href="/go-live/" style="padding:9px 20px;border-radius:999px;text-decoration:none;font-size:13px;white-space:nowrap;'+GBTN+'">Go Live</a>' +
+          '<button type="button" id="sml-hf-loop-kick" aria-label="Open LOOP-KICK" style="padding:9px 20px;border-radius:999px;font-size:13px;white-space:nowrap;'+GBTN+'">LOOP-KICK</button>' +
           '<div id="sml-hf-me-top" role="button" aria-label="Account menu" style="cursor:pointer;flex:none">'+avatarHTML(36)+'</div>' +
         '</div>' +
         '<div style="border-top:1px solid rgba(0,0,0,.6);overflow:hidden;background:linear-gradient(180deg,#060A11,#0B1119)"><div class="tape-row" style="display:flex;width:max-content;animation:smlHfTape 30s linear infinite;padding:7px 0">'+tapeCells()+tapeCells()+'</div></div>' +
@@ -184,6 +187,22 @@
     var slot = shell.querySelector('#sml-hf-feedslot');
     slot.appendChild(host);
     try { document.documentElement.style.overflow='hidden'; document.body.style.overflow='hidden'; } catch(e){}
+
+    // Reuse the site's real LOOP-KICK bridge so authentication, unread state,
+    // audio unlock, and the existing popup lifecycle remain owned by one system.
+    document.body.classList.add('sml-hf-loop-kick-nav');
+    var loopKickButton = document.getElementById('sml-hf-loop-kick');
+    if (loopKickButton) loopKickButton.addEventListener('click', function(){
+      var launcher = document.querySelector('.sml-loop-launcher');
+      if (launcher) { launcher.click(); return; }
+      var popup = document.getElementById('sml-loop-popup');
+      var frame = document.getElementById('sml-loop-popup-frame');
+      if (!popup) return;
+      if (frame && !frame.getAttribute('src') && frame.dataset.src) frame.setAttribute('src', frame.dataset.src);
+      popup.hidden = false;
+      document.body.classList.add('sml-loop-open');
+      if (popup.focus) popup.focus();
+    });
 
     // Start live-quote polling (fills tape / watchlist / snapshot; "—" while offline).
     pollQuotes(); if (qTimer) clearInterval(qTimer); qTimer = setInterval(pollQuotes, 5000);
