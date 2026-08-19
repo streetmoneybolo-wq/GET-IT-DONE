@@ -24,7 +24,7 @@
  * WPCode rules: no top-level return/exit; no base64-decode / eval / ini-set / error-reporting.
  * WPCode PHP snippet: Auto Insert / Run Everywhere / Active.
  */
-if ( ! defined( 'SML_TV2_CLEAN_DEFAULT' ) ) { define( 'SML_TV2_CLEAN_DEFAULT', false ); }
+if ( ! defined( 'SML_TV2_CLEAN_DEFAULT' ) ) { define( 'SML_TV2_CLEAN_DEFAULT', true ); }   /* clean render is the default since 2026-08-19; ?tv2clean=0 shows the old markup underneath for a visit */
 if ( ! function_exists( 'sml_tv2_live_active' ) ) {
 
 	function sml_tv2_live_active() {
