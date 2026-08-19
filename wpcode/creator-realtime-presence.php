@@ -200,10 +200,14 @@ if ( ! function_exists( 'sml_creator_presence_markup' ) ) {
 	function sml_creator_presence_markup( $context ) {
 		$ref  = function_exists( 'sml_cdn_resolve_ref' ) ? sml_cdn_resolve_ref() : 'c25b385';
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( $ref ) . '/';
+		$user = get_userdata( (int) $context['creator_id'] );
 		$cfg  = array(
-			'endpoint' => esc_url_raw( rest_url( 'sml-creator-analytics/v1/presence' ) ),
-			'context'  => sml_creator_presence_sign( $context['creator_id'], $context['kind'], $context['content_id'] ),
-			'interval' => 40000,
+			'endpoint'      => esc_url_raw( rest_url( 'sml-creator-analytics/v1/presence' ) ),
+			'context'       => sml_creator_presence_sign( $context['creator_id'], $context['kind'], $context['content_id'] ),
+			'creatorHandle' => $user ? sanitize_title( $user->user_nicename ) : '',
+			'contentKind'   => sanitize_key( $context['kind'] ),
+			'contentId'     => sanitize_text_field( (string) $context['content_id'] ),
+			'interval'      => 40000,
 		);
 		return '<script id="sml-cp-config">window.SML_CREATOR_PRESENCE=' . wp_json_encode( $cfg ) . ';</script>'
 			. '<script id="sml-cp-js" defer src="' . esc_url( $base . 'js/creator-presence.js' ) . '"></script>';
