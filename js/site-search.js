@@ -236,8 +236,8 @@
     var css = document.createElement('style');
     css.id = 'sml-lct-fade-css';
     css.textContent = '.sml-lct-results{transition:opacity .22s ease}' +
-      '.sml-lct-results.sml-see-through{opacity:.16}' +
-      '.sml-lct-results.sml-see-through:hover,.sml-lct-results.sml-see-through:focus-within,.sml-lct-results.sml-see-through.is-hover{opacity:1}';
+      '.sml-lct-results.sml-see-through{opacity:.16!important}' +
+      '.sml-lct-results.sml-see-through:hover,.sml-lct-results.sml-see-through:focus-within,.sml-lct-results.sml-see-through.is-hover{opacity:1!important}';
     document.head.appendChild(css);
     function chartRect() {
       var best = null, area = 0;
