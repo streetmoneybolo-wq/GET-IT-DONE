@@ -1,4 +1,4 @@
-/* StockMarketLoop site-wide search: Quotes, Videos, News + Loop Letters, People. */
+/* StockMarketLoop site-wide search: one header field, grouped live results. */
 (function () {
   'use strict';
   if (window.__smlSiteSearchBooted) return;
@@ -6,75 +6,119 @@
 
   var CFG = window.SML_SITE_SEARCH || {};
   var REST = CFG.rest || '/wp-json/sml-site-search/v1/search';
-  var state = { tab: 'all', data: null, timer: null, abort: null, lastFocus: null };
+  var state = { tab: 'all', data: null, timer: null, abort: null, anchor: null, fallbackTimer: null };
 
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function attr(v) { return esc(v); }
   function el(sel, root) { return (root || document).querySelector(sel); }
   function all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
-  function plain(v) { var d = document.createElement('div'); d.innerHTML = String(v || ''); return (d.textContent || '').trim(); }
+  function visible(node) { return !!(node && (node.offsetWidth || node.offsetHeight || node.getClientRects().length)); }
 
   function build() {
-    if (el('#sml-ss-overlay')) return;
-    var trigger = document.createElement('button');
-    trigger.type = 'button'; trigger.className = 'sml-ss-trigger'; trigger.id = 'sml-ss-trigger';
-    trigger.setAttribute('aria-label', 'Search StockMarketLoop');
-    trigger.innerHTML = '<span aria-hidden="true">⌕</span><span>Search SML</span><kbd>/</kbd>';
-    document.body.appendChild(trigger);
-
-    var overlay = document.createElement('div'); overlay.className = 'sml-ss-overlay'; overlay.id = 'sml-ss-overlay';
-    overlay.innerHTML = '<section class="sml-ss-dialog" role="dialog" aria-modal="true" aria-label="Search StockMarketLoop">' +
-      '<div class="sml-ss-head"><span class="sml-ss-mark" aria-hidden="true">⌕</span><input class="sml-ss-input" id="sml-ss-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search a ticker, video, article, Letter, or person…" aria-label="Search StockMarketLoop"><button class="sml-ss-close" type="button" aria-label="Close search">✕</button></div>' +
+    if (el('#sml-ss-panel')) return;
+    var panel = document.createElement('div');
+    panel.className = 'sml-ss-panel'; panel.id = 'sml-ss-panel';
+    panel.innerHTML = '<section class="sml-ss-dialog" role="dialog" aria-label="StockMarketLoop search results">' +
+      '<div class="sml-ss-head"><span class="sml-ss-mark" aria-hidden="true">⌕</span><strong id="sml-ss-query-label">Search results</strong><button class="sml-ss-close" type="button" aria-label="Close search results">✕</button></div>' +
       '<div class="sml-ss-tabs" role="tablist">' + [['all','All'],['quotes','Quotes'],['videos','Videos'],['news','News + Letters'],['people','People']].map(function (t) { return '<button type="button" class="sml-ss-tab' + (t[0] === 'all' ? ' is-active' : '') + '" data-tab="' + t[0] + '" role="tab">' + t[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="sml-ss-body" id="sml-ss-body"><div class="sml-ss-hint">Try <b>$AMC</b>, a company name, video topic, article headline, or member handle.</div></div>' +
+      '<div class="sml-ss-body" id="sml-ss-body"><div class="sml-ss-hint">Enter a ticker, company, video topic, article headline, or member name above.</div></div>' +
       '</section>';
-    document.body.appendChild(overlay);
+    document.body.appendChild(panel);
 
-    trigger.addEventListener('click', function () { open(''); });
-    el('.sml-ss-close', overlay).addEventListener('click', close);
-    overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(); });
-    el('#sml-ss-input').addEventListener('input', function () { queue(this.value); });
-    all('.sml-ss-tab', overlay).forEach(function (b) { b.addEventListener('click', function () { setTab(b.getAttribute('data-tab')); }); });
-    overlay.addEventListener('click', function (e) { var intent = e.target.closest('[data-intent]'); if (intent) { e.preventDefault(); setTab(intent.getAttribute('data-intent')); } });
+    el('.sml-ss-close', panel).addEventListener('click', close);
+    all('.sml-ss-tab', panel).forEach(function (b) { b.addEventListener('click', function () { setTab(b.getAttribute('data-tab')); }); });
+    panel.addEventListener('click', function (e) { var intent = e.target.closest('[data-intent]'); if (intent) { e.preventDefault(); setTab(intent.getAttribute('data-intent')); } });
     document.addEventListener('keydown', keys, true);
+    document.addEventListener('mousedown', outside, true);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
     bindExistingSearch();
+    scheduleFallback();
     if (window.MutationObserver) {
       var pending = null;
-      new MutationObserver(function () { if (pending) return; pending = setTimeout(function () { pending = null; bindExistingSearch(); }, 180); }).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver(function () { if (pending) return; pending = setTimeout(function () { pending = null; bindExistingSearch(); scheduleFallback(); }, 180); }).observe(document.body, { childList: true, subtree: true });
     }
   }
 
+  function searchInputs() {
+    return all('input[placeholder*="Search a ticker" i], input[aria-label="Search ticker" i]').filter(function (node) {
+      return !node.closest('#sml-ss-panel') && node.id !== 'sml-hf-watch-inp';
+    });
+  }
+
   function bindExistingSearch() {
-    all('input[placeholder*="Search a ticker" i], .slw-search').forEach(function (node) {
-      if (node.closest('#sml-ss-overlay') || node.id === 'sml-hf-watch-inp' || node.dataset.smlSsBound) return;
-      node.dataset.smlSsBound = '1';
-      var input = node.matches('input') ? node : node.querySelector('input');
-      node.addEventListener('click', function (e) { e.preventDefault(); open(input ? input.value : ''); });
-      if (input) {
-        input.addEventListener('focus', function () { open(input.value); });
-        var form = input.closest('form'); if (form && !form.dataset.smlSsBound) { form.dataset.smlSsBound = '1'; form.addEventListener('submit', function (e) { e.preventDefault(); open(input.value); }); }
+    searchInputs().forEach(function (input) {
+      if (input.dataset.smlSsBound) return;
+      input.dataset.smlSsBound = '1';
+      input.setAttribute('autocomplete', 'off');
+      input.addEventListener('focus', function () { open(input); });
+      input.addEventListener('click', function () { open(input); });
+      input.addEventListener('input', function () { open(input); queue(input.value); });
+      var form = input.closest('form');
+      if (form && !form.dataset.smlSsBound) {
+        form.dataset.smlSsBound = '1';
+        form.addEventListener('submit', function (e) { e.preventDefault(); open(input); queue(input.value, true); });
       }
     });
   }
 
-  function open(seed) {
-    var overlay = el('#sml-ss-overlay'); if (!overlay) return;
-    state.lastFocus = document.activeElement;
-    overlay.classList.add('is-open'); document.documentElement.classList.add('sml-ss-lock');
-    var input = el('#sml-ss-input'); input.value = seed || input.value || ''; input.focus(); input.select();
-    if (input.value.trim().length >= 2) queue(input.value, true);
+  function scheduleFallback() {
+    if (state.fallbackTimer || searchInputs().some(visible) || el('#sml-ss-global-host')) return;
+    state.fallbackTimer = setTimeout(function () {
+      state.fallbackTimer = null;
+      if (searchInputs().some(visible) || el('#sml-ss-global-host')) return;
+      var host = document.createElement('div');
+      host.className = 'sml-ss-global-host'; host.id = 'sml-ss-global-host';
+      host.innerHTML = '<span aria-hidden="true">⌕</span><input type="search" aria-label="Search ticker" placeholder="Search a ticker, e.g. NVDA">';
+      document.body.appendChild(host);
+      bindExistingSearch();
+    }, 700);
   }
+
+  function open(input) {
+    var panel = el('#sml-ss-panel'); if (!panel || !input) return;
+    state.anchor = input;
+    panel.classList.add('is-open');
+    reposition();
+    var q = String(input.value || '').trim();
+    el('#sml-ss-query-label').textContent = q ? 'Results for “' + q + '”' : 'Search StockMarketLoop';
+    if (q.length >= 2) queue(q, true);
+  }
+
+  function reposition() {
+    var panel = el('#sml-ss-panel');
+    if (!panel || !panel.classList.contains('is-open') || !state.anchor || !visible(state.anchor)) return;
+    var r = state.anchor.getBoundingClientRect();
+    var width = Math.min(920, Math.max(320, window.innerWidth - 24));
+    var left = Math.max(12, Math.min(window.innerWidth - width - 12, (r.left + r.width / 2) - width / 2));
+    var top = Math.min(window.innerHeight - 180, r.bottom + 9);
+    panel.style.width = width + 'px'; panel.style.left = left + 'px'; panel.style.top = top + 'px';
+    panel.style.setProperty('--sml-ss-max-height', Math.max(170, window.innerHeight - top - 12) + 'px');
+  }
+
   function close() {
-    var overlay = el('#sml-ss-overlay'); if (!overlay) return;
-    overlay.classList.remove('is-open'); document.documentElement.classList.remove('sml-ss-lock');
+    var panel = el('#sml-ss-panel'); if (!panel) return;
+    panel.classList.remove('is-open');
     if (state.abort) state.abort.abort();
-    if (state.lastFocus && state.lastFocus.focus) { try { state.lastFocus.focus(); } catch (e) {} }
   }
+
+  function outside(e) {
+    var panel = el('#sml-ss-panel');
+    if (!panel || !panel.classList.contains('is-open')) return;
+    if (panel.contains(e.target) || e.target === state.anchor || (e.target.closest && e.target.closest('#sml-ss-global-host'))) return;
+    close();
+  }
+
   function keys(e) {
-    var openNow = el('#sml-ss-overlay') && el('#sml-ss-overlay').classList.contains('is-open');
-    if (!openNow && e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) { e.preventDefault(); open(''); return; }
+    var panel = el('#sml-ss-panel');
+    var openNow = panel && panel.classList.contains('is-open');
+    if (e.key === '/' && !openNow && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) {
+      var target = searchInputs().filter(visible)[0];
+      if (target) { e.preventDefault(); target.focus(); open(target); }
+      return;
+    }
     if (!openNow) return;
-    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); close(); if (state.anchor) state.anchor.focus(); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       var items = all('.sml-ss-body a[href]:not([hidden]),.sml-ss-body button:not([hidden])'); if (!items.length) return;
       var i = items.indexOf(document.activeElement); i = e.key === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1); e.preventDefault(); items[i].focus();
@@ -84,9 +128,11 @@
   function queue(q, immediate) {
     clearTimeout(state.timer);
     q = String(q || '').trim();
+    el('#sml-ss-query-label').textContent = q ? 'Results for “' + q + '”' : 'Search StockMarketLoop';
     if (q.length < 2) { state.data = null; el('#sml-ss-body').innerHTML = '<div class="sml-ss-hint">Enter at least 2 characters. Search by ticker, company, topic, headline, display name, or @handle.</div>'; return; }
     state.timer = setTimeout(function () { run(q); }, immediate ? 0 : 240);
   }
+
   function run(q) {
     if (state.abort) state.abort.abort();
     state.abort = 'AbortController' in window ? new AbortController() : null;
@@ -96,6 +142,7 @@
       .then(function (data) { state.data = data || {}; render(); })
       .catch(function (e) { if (e.name !== 'AbortError') el('#sml-ss-body').innerHTML = '<div class="sml-ss-error">' + esc(e.message || 'Search failed.') + '</div>'; });
   }
+
   function setTab(tab) {
     state.tab = tab || 'all';
     all('.sml-ss-tab').forEach(function (b) { b.classList.toggle('is-active', b.getAttribute('data-tab') === state.tab); });
@@ -110,9 +157,8 @@
     var show = state.tab === 'all' || state.tab === key || (state.tab === 'news' && key === 'letters');
     return '<section class="sml-ss-section" data-section="' + key + '"' + (show ? '' : ' hidden') + '><h2 class="sml-ss-title">' + title + '<span class="sml-ss-count">' + rows.length + '</span></h2>' + (rows.length ? '<div class="sml-ss-grid">' + rows.map(renderer).join('') + '</div>' : '<div class="sml-ss-empty">No matching ' + title.toLowerCase() + ' found.</div>') + '</section>';
   }
+
   function render() {
-    // The API only sets symbol when the query is a real ticker-shaped term.
-    // Do not turn a person/topic search such as "grandmaster" into a fake ticker.
     var d = state.data || {}, g = d.groups || {}, sym = d.symbol || '';
     var intents = sym ? '<div class="sml-ss-intents"><a class="sml-ss-intent" href="/stock-chart/?symbol=' + encodeURIComponent(sym) + '"><b>$' + esc(sym) + ' Quote</b><span>OPEN TICKER TERMINAL</span></a><button class="sml-ss-intent" data-intent="videos"><b>$' + esc(sym) + ' Videos</b><span>LATEST WATCH PAGES</span></button><button class="sml-ss-intent" data-intent="news"><b>$' + esc(sym) + ' News</b><span>ARTICLES + LOOP LETTERS</span></button><button class="sml-ss-intent" data-intent="people"><b>People</b><span>NAMES + @HANDLES</span></button></div>' : '';
     el('#sml-ss-body').innerHTML = intents +
