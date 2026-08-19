@@ -148,7 +148,13 @@ if ( ! function_exists( 'sml_lbm_tiers' ) ) {
 	add_action( 'init', static function () {
 		if ( ! empty( $_GET['ref'] ) && ! is_user_logged_in() && ! headers_sent() ) {
 			$slug = sanitize_title( wp_unslash( $_GET['ref'] ) );
-			if ( $slug ) { setcookie( 'sml_lbm_ref', $slug, time() + 30 * DAY_IN_SECONDS, '/', '', is_ssl(), true ); }
+			if ( $slug ) {
+				/* anonymous pages are served from the page cache, which drops Set-Cookie —
+				   mark this response uncacheable so the referral cookie actually reaches the browser */
+				if ( ! defined( 'DONOTCACHEPAGE' ) ) { define( 'DONOTCACHEPAGE', true ); }
+				nocache_headers();
+				setcookie( 'sml_lbm_ref', $slug, time() + 30 * DAY_IN_SECONDS, '/', '', is_ssl(), true );
+			}
 		}
 	}, 1 );
 	add_action( 'user_register', static function ( $new_uid ) {
