@@ -135,7 +135,7 @@
   }
 
   /* ---------- state ---------- */
-  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
+  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, presence: null, shadow: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
 
   document.documentElement.classList.add('smlca-on'); document.body.classList.add('smlca-on');
   if (!document.getElementById('sml-ca-font')) { var f = document.createElement('link'); f.id = 'sml-ca-font'; f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); }
@@ -158,10 +158,11 @@
     api('/sml-lb/v1/me'),
     api('/sml-live/v1/status'),
     api('/sml-creator-analytics/v1/audience?range=28'),
-    api('/sml-creator-analytics/v1/presence')
+    api('/sml-creator-analytics/v1/presence'),
+    api('/sml-creator-analytics/v1/monetization-shadow')
   ]).then(function (r) {
     if (r[0].status === 401 || r[1].status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
-    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null; S.presence = r[5].ok ? r[5].j : null;
+    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null; S.presence = r[5].ok ? r[5].j : null; S.shadow = r[6].ok ? r[6].j : null;
     var more = [];
     var hasLetter = !!(S.gate && S.gate.hasLetter);
     more.push(api('/sml-letters/v1/mine')); more.push(api('/sml-loopletters/v1/subscribers')); more.push(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }));
@@ -318,7 +319,16 @@
       '<div class="ca-card"><h3>Loop Wallet<span class="ca-fresh">' + (wallet.stripe_connected ? 'Stripe connected' : 'Stripe not connected') + '</span></h3><div class="ca-big">' + fmt(wallet.available_balance) + ' <span class="ca-sub">LB available</span></div><div class="ca-sub">' + fmt(wallet.pending_balance) + ' pending · ' + fmt(wallet.lifetime_earnings) + ' lifetime</div>' + (wallet.transactions_url ? '<div style="margin-top:8px"><a class="ca-btn2" href="' + esc(wallet.transactions_url) + '">Manage wallet →</a></div>' : '') + '</div>' +
       '</div>';
 
-    root.innerHTML = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + health + kpis + audience + kindsCard + groupsCard + contentRow + (lettersCard || '') + revCard +
+    var sh = S.shadow;
+    var shadowCard = sh ? '<div class="ca-card gold"><h3 class="gold">Monetization reconciliation<span class="ca-fresh">SHADOW MODE · payouts locked</span></h3><div class="ca-grid ca-g4">' +
+      '<div class="ca-kind"><b>Verified source total</b><div class="n">' + money(sh.sourceCreatorUsd) + '</div><div class="ca-sub">what the existing source records assign</div></div>' +
+      '<div class="ca-kind"><b>' + esc(sh.creatorSharePercent) + '% creator policy</b><div class="n">' + money(sh.shadowCreatorUsd) + '</div><div class="ca-sub">audit-only shadow calculation</div></div>' +
+      '<div class="ca-kind"><b>Difference</b><div class="n">' + money(sh.discrepancyUsd) + '</div><div class="ca-sub">' + (sh.reconciled ? 'source and policy reconcile' : 'requires review before payouts') + '</div></div>' +
+      '<div class="ca-kind"><b>Safety checks</b><div class="n">' + fmt(sh.entries) + '</div><div class="ca-sub">immutable entries · ' + fmt(sh.excluded) + ' excluded · ' + fmt(sh.reversals) + ' reversals</div></div>' +
+      '</div><div class="ca-note">Coverage now: verified group-ad events. Video and internal-ad sources remain excluded until their event-level contracts exist. This module cannot write to Loop Wallet or issue a payout.</div></div>' :
+      '<div class="ca-card"><h3>Monetization reconciliation<span class="ca-fresh">not connected</span></h3>' + empty('Shadow ledger is unavailable', 'No earnings will be approved or paid until reconciliation is available.') + '</div>';
+
+    root.innerHTML = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + health + kpis + audience + kindsCard + groupsCard + contentRow + (lettersCard || '') + shadowCard + revCard +
       '<div class="ca-foot">Counts are aggregated — individual visits are never shown. Revenue figures come from StockMarketLoop’s ad-revenue system as reported for your account.</div></main></div>';
 
     root.querySelectorAll('tr[data-content]').forEach(function (tr) { tr.addEventListener('click', function () { renderContent(rows[Number(tr.getAttribute('data-content'))]); }); });
