@@ -194,6 +194,7 @@
     '.sip-social-name{font-size:13px;font-weight:700;}' +
     '.sip-social-handle{font-size:10.5px;color:#38F58A;font-family:"IBM Plex Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
     '.sip-social-desc{font-size:11px;color:#6B7C90;line-height:1.45;}' +
+    '.sip-editdone{margin-left:8px;padding:5px 12px;border-radius:999px;border:none;background:#38F58A;color:#03120A;font:700 11px "IBM Plex Sans",system-ui,sans-serif;cursor:pointer;letter-spacing:0;}' +
     '.sip-editbadge{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:8;background:rgba(11,19,31,.9);border:1px solid rgba(56,245,138,.5);color:#38F58A;border-radius:999px;padding:7px 16px;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:1px;backdrop-filter:blur(10px);white-space:nowrap;}' +
     '.sip-dock{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:min(1024px,calc(100vw - 18px));z-index:5;background:rgba(11,19,31,.84);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 calc(var(--kick,0)*44px) rgba(56,245,138,calc(var(--kick,0)*0.3));}' +
     '.sip-play{width:46px;height:46px;border-radius:50%;border:none;background:#38F58A;color:#03120A;font-size:14px;font-weight:700;cursor:pointer;flex:none;box-shadow:0 0 calc(8px + var(--kick,0)*32px) rgba(56,245,138,.55);}' +
@@ -302,10 +303,9 @@
     // user's native abilities. "Arrange" is the immersive-only layout edit mode.
     var editBtn = '', arrangeBtn = '', visitorBtn = '';
     if (cfg.isOwner) {
-      editBtn = cfg.editUrl
-        ? '<a class="sip-btn" href="' + esc(cfg.editUrl) + '">Edit profile</a>'
-        : '<button class="sip-btn sip-edit-toggle" type="button">Arrange</button>';
-      arrangeBtn = cfg.editUrl ? '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>' : '';
+      /* ONE Edit profile: opens the Profile Studio (every customization option, live) */
+      editBtn = '<button class="sip-btn sip-studio-open" type="button">Edit profile</button>';
+      arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
       visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
     } else if (document.querySelector('button.sml-pfe-action[data-sml-follow]')) {
       /* visitor: proxy the page's REAL follow button (unified profile, sml-members/v1/follow) */
@@ -366,7 +366,7 @@
       '<button class="sip-worldnav sip-prev" style="left:10px;" title="Previous world">‹</button>' +
       '<button class="sip-worldnav sip-next" style="right:10px;" title="Next world">›</button>' +
       '<button class="sip-exit" title="Exit to your normal profile (Customize, Settings, everything)">✕ Classic profile</button>' +
-      '<div class="sip-editbadge" hidden>EDIT MODE — drag sections to reorder · ⤢ − ＋ resize photos &amp; videos</div>' +
+      '<div class="sip-editbadge" hidden>ARRANGE MODE — drag sections to reorder · ⤢ − ＋ resize · double-click a slot to add media &nbsp;<button type="button" class="sip-editdone">Done ✓</button></div>' +
       '<div class="sip-content">' +
       '<div class="sip-topbar"><span class="sip-logo-dot"></span><span class="sip-logo">STOCKMARKETLOOP</span>' +
       '<nav class="sip-nav"><a href="/watch/">Watch</a><a href="/live/">Live</a><a href="/markets/">Markets</a><a href="/n/">Newsletters</a></nav></div>' +
@@ -400,8 +400,10 @@
   }
 
   // ---------------------------------------------------------------- init
+  var INIT_GEN = 0;
   function init(mount) {
     var cfg = merge();
+    var GEN = ++INIT_GEN;                    /* soft refresh (Profile Studio) re-inits: old rAF/message loops exit */
     if (!document.getElementById('sip-fonts')) {
       var lk = document.createElement('link');
       lk.id = 'sip-fonts'; lk.rel = 'stylesheet';
@@ -440,6 +442,7 @@
     if (!Array.isArray(reactiveComponents)) reactiveComponents = allReactiveComponents.slice();
     function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
     window.addEventListener('sml-immersive-components', function (event) {
+      if (GEN !== INIT_GEN) return;
       if (event && Array.isArray(event.detail)) reactiveComponents = event.detail.slice();
     });
     var editMode = false, screen = 0, enlarged = null;
@@ -462,6 +465,7 @@
     function cmd(func, args) { try { frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*'); } catch (e) {} }
     function register() { if (registered || !frame || !frame.contentWindow) return; try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 8, channel: 'widget' }), '*'); registered = true; } catch (e) {} }
     window.addEventListener('message', function (ev) {
+      if (GEN !== INIT_GEN) return;
       if (!frame || !isYT(ev.origin)) return;
       var d = ev.data; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
       if (!d || !d.info) return;
@@ -533,6 +537,11 @@
     }
     var editToggle = $('.sip-edit-toggle');
     if (editToggle) editToggle.addEventListener('click', function () { editMode = !editMode; if (!editMode) enlarged = null; applyEditUI(); });
+    var editDone = $('.sip-editdone');
+    if (editDone) editDone.addEventListener('click', function () { editMode = false; enlarged = null; applyEditUI(); });
+    var studioOpen = $('.sip-studio-open');
+    if (studioOpen) studioOpen.addEventListener('click', function () { if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open(); });
+    if (cfg.isOwner) mountStudio(mount, cfg);
     /* visitor follow button → clicks the real one underneath and mirrors its state */
     var followBtn = $('.sip-follow');
     if (followBtn) {
@@ -867,6 +876,7 @@
       }
 
       // world carousel
+      if (GEN !== INIT_GEN) return;          /* superseded by a newer init */
       var kids = screens.children;
       for (var wi = 0; wi < kids.length; wi++) { var dd = wi - screen; kids[wi].style.transform = 'translateX(' + (dd * 106) + '%) rotateY(' + (dd * -48) + 'deg) scale(' + (dd ? 0.9 : 1) + ')'; kids[wi].style.opacity = dd === 0 ? '1' : (Math.abs(dd) === 1 ? '0.18' : '0'); kids[wi].style.pointerEvents = dd === 0 ? 'auto' : 'none'; }
       var act = kids[screen]; if (act) { var hh = act.offsetHeight + 'px'; if (screens.style.height !== hh) screens.style.height = hh; }
@@ -886,6 +896,230 @@
       overlay.querySelector('.sip-overlay-s').textContent = 'No profile music configured yet.';
     }
     requestAnimationFrame(tick);
+  }
+
+
+  /* =====================================================================
+     PROFILE STUDIO — the ONE "Edit profile" package for owners.
+     Everything the site can customize (identity, socials, music, immersive
+     parts/objects/effects/order, layout, theme, accent, typeface, background,
+     banner, typography, cursor, orbital photos + videos, pinned moments, photo
+     strip, cars, modules, social details) is the real /customize-profile/
+     editor: it is embedded here (same origin), re-skinned to the studio, given
+     a section navigator, and every successful save inside it refreshes the
+     live profile behind the studio. The bridge's live-preview drawer (Live
+     Profile Studio) and the immersive Arrange mode are exposed as studio
+     buttons — nothing is duplicated, nothing is lost.
+     ===================================================================== */
+  var STUDIO_CSS = '' +
+    '.sps{position:fixed;inset:0;z-index:2147483646;background:#070d14;color:#e6edf5;font-family:"IBM Plex Sans",system-ui,sans-serif;display:flex;flex-direction:column;}' +
+    '.sps[hidden]{display:none;}' +
+    '.sps-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:#0a1119;flex-wrap:wrap;}' +
+    '.sps-title{font-family:Archivo,"IBM Plex Sans",sans-serif;font-weight:800;font-size:15px;letter-spacing:.02em;}' +
+    '.sps-title b{color:#38F58A;}.sps-sub{font-size:11.5px;color:#7e8a96;letter-spacing:.06em;text-transform:uppercase;}' +
+    '.sps-sp{flex:1;}' +
+    '.sps-btn{padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:transparent;color:#c3ccd4;font:600 12.5px/1 "IBM Plex Sans",system-ui,sans-serif;cursor:pointer;}' +
+    '.sps-btn:hover{color:#fff;border-color:rgba(255,255,255,.35);}' +
+    '.sps-btn.pri{background:#38F58A;color:#03120A;border-color:#38F58A;font-weight:700;}.sps-btn.pri:hover{background:#5dffa3;color:#03120A;}' +
+    '.sps-body{flex:1;display:flex;min-height:0;}' +
+    '.sps-nav{width:232px;flex:none;overflow:auto;padding:12px 8px;border-right:1px solid rgba(255,255,255,.08);background:#0a1119;}' +
+    '.sps-nav-h{font-size:10.5px;letter-spacing:.14em;color:#6B7C90;text-transform:uppercase;padding:8px 10px 6px;}' +
+    '.sps-nav button{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:transparent;color:#c3ccd4;font:500 13px/1.25 "IBM Plex Sans",system-ui,sans-serif;border-radius:8px;cursor:pointer;}' +
+    '.sps-nav button:hover{background:rgba(255,255,255,.06);color:#fff;}.sps-nav button.on{background:rgba(56,245,138,.12);color:#38F58A;}' +
+    '.sps-main{flex:1;min-width:0;position:relative;background:#070d14;}' +
+    '.sps-main iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#070d14;}' +
+    '.sps-load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7e8a96;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:#070d14;pointer-events:none;transition:opacity .3s;}' +
+    '.sps-load[hidden]{display:none;}' +
+    '.sps-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147483647;background:#0d1a12;border:1px solid rgba(56,245,138,.5);color:#dfffea;padding:10px 16px;border-radius:999px;font:600 12.5px "IBM Plex Sans",system-ui,sans-serif;box-shadow:0 8px 30px #000a;opacity:0;transition:opacity .25s;pointer-events:none;}' +
+    '.sps-toast.on{opacity:1;}' +
+    '@media(max-width:820px){.sps-body{flex-direction:column;}.sps-nav{width:auto;display:flex;gap:4px;overflow-x:auto;padding:6px 8px;border-right:0;border-bottom:1px solid rgba(255,255,255,.08);}.sps-nav-h{display:none;}.sps-nav button{white-space:nowrap;width:auto;padding:7px 10px;font-size:12px;}.sps-bar{padding:8px 10px;gap:6px;}.sps-btn{padding:7px 10px;font-size:12px;}}';
+
+  /* CSS injected INTO the embedded editor page: hide site chrome, keep the editor */
+  var EMBED_CSS = '' +
+    'html,body{background:#070d14!important;}' +
+    '#wpadminbar,.wordads-ad-wrapper,.sml-uads-slot,.sml-loop-tape,.sml-acct,.sml-inbox,.sml-loop-bucks-root,#sml-lb-btn,.sml-lb-floating,.sml-loop-kick,#sml-hf-loop-kick,.sml-loop-launcher,#sml-ss-global-host,.sml-ss-global-host,.jetpack-instant-search,.sml-legal-footer-links,#sml-legal-footer,.sc-cart-wrapper,.wp-site-blocks>header,.wp-site-blocks>footer,header.wp-block-template-part,footer.wp-block-template-part,.wp-block-post-title,#wp-skip-link{display:none!important;}' +
+    'html{margin-top:0!important;}' +
+    'main.wp-block-group{padding-top:0!important;}main.wp-block-group>.wp-block-group.is-layout-constrained:not(.entry-content){display:none!important;}' +
+    '.entry-content{max-width:1080px!important;margin:0 auto!important;padding:18px 18px 120px!important;}' +
+    '.sml-profile-editor,.smlpe-section{scroll-margin-top:16px;}' +
+    '.smlpe-actions{bottom:0!important;}';
+
+  function mountStudio(mount, cfg) {
+    if (window.SML_PROFILE_STUDIO) return;
+    var U = window.SML_PROFILE_UNIFIED || {};
+    var editorUrl = U.editorUrl || cfg.editUrl || '/customize-profile/';
+    if (!document.getElementById('sps-css')) { var st = document.createElement('style'); st.id = 'sps-css'; st.textContent = STUDIO_CSS; document.head.appendChild(st); }
+    var el = document.createElement('div'); el.className = 'sps'; el.hidden = true; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Profile Studio');
+    el.innerHTML =
+      '<div class="sps-bar">' +
+        '<div><div class="sps-title">PROFILE <b>STUDIO</b></div><div class="sps-sub">' + esc(cfg.handle || '') + ' · every customization, live</div></div>' +
+        '<div class="sps-sp"></div>' +
+        '<button class="sps-btn sps-live" type="button" title="Preview background, banner, music and reactions on the profile before saving">Live preview</button>' +
+        '<button class="sps-btn sps-arrange" type="button" title="Drag sections, resize orbitals, double-click orbital slots to add photos/videos">Arrange on profile</button>' +
+        '<button class="sps-btn sps-refresh" type="button" title="Re-read the saved profile behind the studio">Refresh preview</button>' +
+        '<button class="sps-btn pri sps-done" type="button">Done ✓</button>' +
+      '</div>' +
+      '<div class="sps-body"><nav class="sps-nav"><div class="sps-nav-h">Sections</div></nav>' +
+      '<div class="sps-main"><div class="sps-load">Loading your editor…</div></div></div>';
+    document.body.appendChild(el);
+    var toastEl = document.createElement('div'); toastEl.className = 'sps-toast'; document.body.appendChild(toastEl);
+    var toastT = null;
+    function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('on'); }, 2600); }
+    var nav = el.querySelector('.sps-nav'), main = el.querySelector('.sps-main'), loadEl = el.querySelector('.sps-load');
+    var ifr = null, dirty = false, refreshT = null, prevScrollLock = '';
+
+    /* the bridge's live-preview drawer button: keep it, hide it, call it from here */
+    function bridgePill() { return document.querySelector('.sml-live-profile-edit'); }
+    function parkPill() {
+      var pill = bridgePill(); if (!pill) return;
+      if (pill.parentNode !== document.body) document.body.appendChild(pill);   /* survive re-inits of the overlay */
+      pill.style.setProperty('display', 'none', 'important'); pill.setAttribute('aria-hidden', 'true'); pill.tabIndex = -1;
+    }
+    parkPill();
+    if (window.MutationObserver) { var mo = new MutationObserver(function () { if (bridgePill()) { parkPill(); mo.disconnect(); } }); mo.observe(document.documentElement, { childList: true, subtree: true }); setTimeout(function () { mo.disconnect(); }, 20000); }
+
+    function refreshOverlay() {
+      return realConfig().then(function (cfgReal) {
+        parkPill();
+        window.SML_PROFILE = cfgReal; init(mount);
+        var arr = mount.querySelector('.sip-edit-toggle'); if (arr) { arr.style.setProperty('display', 'none', 'important'); arr.setAttribute('aria-hidden', 'true'); }
+        /* the bridge's reactive-component attributes live in localStorage; re-apply them */
+        try {
+          var comps = JSON.parse(localStorage.getItem('sml-immersive-components') || 'null'), root = mount.querySelector('.sip-root');
+          if (root && Array.isArray(comps)) ['background', 'banner', 'avatar', 'cards', 'orbital_photos', 'orbital_videos'].forEach(function (k) { root.setAttribute('data-sml-imm-' + k.replace(/_/g, '-'), comps.indexOf(k) >= 0 ? '1' : '0'); });
+        } catch (e) {}
+      }, function () {});
+    }
+    function onSaved() {
+      dirty = true; clearTimeout(refreshT);
+      refreshT = setTimeout(function () { toast('Saved · your live profile updated'); refreshOverlay(); }, 900);
+    }
+    function hookSaves(w) {
+      try {
+        var of = w.fetch;
+        if (typeof of === 'function' && !of.__sps) {
+          var nf = function (u, o) { var p = of.apply(this, arguments); try { var m = (o && o.method) || (u && u.method) || 'GET', url = String((u && u.url) || u || ''); if (/^(POST|PUT|PATCH|DELETE)$/i.test(m) && url.indexOf('/wp-json/') >= 0) p.then(function (r) { if (r && r.ok) onSaved(); }, function () {}); } catch (e) {} return p; };
+          nf.__sps = 1; w.fetch = nf;
+        }
+        var XP = w.XMLHttpRequest && w.XMLHttpRequest.prototype;
+        if (XP && !XP.__sps) {
+          var oo = XP.open, os = XP.send;
+          XP.open = function (m, u) { this.__spsReq = [String(m || 'GET'), String(u || '')]; return oo.apply(this, arguments); };
+          XP.send = function () { var x = this, r = x.__spsReq; if (r && /^(POST|PUT|PATCH|DELETE)$/i.test(r[0]) && r[1].indexOf('/wp-json/') >= 0) x.addEventListener('load', function () { if (x.status >= 200 && x.status < 300) onSaved(); }); return os.apply(this, arguments); };
+          XP.__sps = 1;
+        }
+      } catch (e) {}
+    }
+    function buildNav(d) {
+      dedupeUnified(d);
+      Array.prototype.slice.call(nav.querySelectorAll('button')).forEach(function (b) { b.remove(); });
+      var secs = Array.prototype.slice.call(d.querySelectorAll('.entry-content section, .entry-content .sml-spd-panel'));
+      var seen = {};
+      secs.forEach(function (sec, i) {
+        var h = sec.querySelector('h2,h3,h4'); var label = h ? (h.textContent || '').trim() : '';
+        if (!label || sec.offsetHeight < 8) return;
+        var key = label.toLowerCase(); if (seen[key]) label += ' ' + (++seen[key]); else seen[key] = 1;
+        if (!sec.id) sec.id = 'sps-sec-' + i;
+        var b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+        b.addEventListener('click', function () {
+          Array.prototype.slice.call(nav.querySelectorAll('button')).forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on');
+          try { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { sec.scrollIntoView(); }
+        });
+        nav.appendChild(b);
+      });
+      if (!nav.querySelector('button')) { var b0 = document.createElement('button'); b0.type = 'button'; b0.textContent = 'Editor'; b0.className = 'on'; nav.appendChild(b0); }
+    }
+    function onFrameLoad() {
+      var w, d;
+      try { w = ifr.contentWindow; d = ifr.contentDocument || (w && w.document); } catch (e) { loadEl.hidden = true; return; }
+      if (!d) { loadEl.hidden = true; return; }
+      var path = '';
+      try { path = w.location.pathname; } catch (e) {}
+      var editorPath = editorUrl.replace(/^https?:\/\/[^/]+/, '').replace(/\?.*$/, '');
+      if (path && editorPath && path.replace(/\/+$/, '') !== editorPath.replace(/\/+$/, '')) {
+        /* the editor navigated away (e.g. "View public profile") — leave the studio */
+        var target = ''; try { target = w.location.href; } catch (e) {}
+        close(); if (target && target.indexOf(location.pathname) < 0) location.href = target; else if (dirty) refreshOverlay();
+        return;
+      }
+      try { var st = d.createElement('style'); st.id = 'sps-embed-css'; st.textContent = EMBED_CSS; d.head.appendChild(st); } catch (e) {}
+      hookSaves(w);
+      loadEl.hidden = true;
+      /* the editor renders in stages (core sections, then the unified identity/
+         music/immersive block, then social details) — build the navigator once
+         the section count has settled, and keep it in sync afterwards */
+      var last = -1, stable = 0, polls = 0;
+      (function settle() {
+        var n = d.querySelectorAll('.entry-content section').length;
+        if (n === last && n > 0) stable++; else stable = 0;
+        last = n;
+        if ((stable >= 3) || ++polls > 45) { ensureUnified(w, d).then(function () { buildNav(d); }); }
+        else setTimeout(settle, 400);
+      })();
+      try {
+        var ec = d.querySelector('.entry-content');
+        if (ec && w.MutationObserver) { var navT = null; new w.MutationObserver(function () { clearTimeout(navT); navT = setTimeout(function () { ensureUnified(w, d).then(function () { buildNav(d); }); }, 800); }).observe(ec, { childList: true, subtree: true }); }
+      } catch (e) {}
+    }
+    /* Profile identity / Profile music / Immersive profile are mounted by the
+       plugin's unified-editor.js on 'sml-profile-editor-ready'; when the core
+       editor re-renders after that mount the block is dropped (a load-order
+       race that shows up inside the studio frame). Re-run the mounter — a
+       fresh copy of the script mounts again because its "already mounted"
+       marker is gone. Nothing is duplicated: it refuses to mount twice. */
+    var unifiedReinjects = 0;
+    function ensureUnified(w, d) {
+      return new Promise(function (resolve) {
+        var t = 0, done = false, fin = function () { if (!done) { done = true; resolve(); } };
+        if (unifiedReinjects >= 4) { fin(); return; }
+        function marker() { return d.querySelector('[data-smlpe-unified-mounted]'); }
+        function mountFinished() { var g = w.SML_PROFILE_UNIFIED_EDITOR; return !!(g && typeof g.prepareSave === 'function'); }
+        function reinject() {
+          unifiedReinjects++;
+          try {
+            var sc = d.createElement('script'); sc.src = '/wp-content/plugins/sml-profile-engine/assets/unified-editor.js?sps=' + encodeURIComponent(String((w.SML_PROFILE_UNIFIED_EDITOR_CONFIG && w.SML_PROFILE_UNIFIED_EDITOR_CONFIG.nonce) || '1'));
+            sc.onload = function () { var k = 0; (function wait() { if (marker() || ++k > 25) fin(); else setTimeout(wait, 300); })(); };
+            sc.onerror = fin; d.body.appendChild(sc); setTimeout(fin, 9000);
+          } catch (e) { fin(); }
+        }
+        (function check() {
+          try {
+            if (!d.querySelector('[data-sml-profile-editor]')) { fin(); return; }
+            if (marker()) { fin(); return; }                       /* block is there */
+            if (mountFinished()) { reinject(); return; }            /* mounted, then wiped by a core re-render → mount again */
+            if (++t > 50) { fin(); return; }                        /* 20s: the plugin never mounted (e.g. identity request failed) — leave it */
+          } catch (e) { fin(); return; }
+          setTimeout(check, 400);
+        })();
+      });
+    }
+    function dedupeUnified(d) {
+      try { var ms = d.querySelectorAll('[data-smlpe-unified-mounted]'); for (var i = 1; i < ms.length; i++) ms[i].remove(); } catch (e) {}
+    }
+    function ensureFrame() {
+      if (ifr) return;
+      ifr = document.createElement('iframe'); ifr.title = 'Profile editor';
+      ifr.src = editorUrl + (editorUrl.indexOf('?') >= 0 ? '&' : '?') + 'sml_studio=1';
+      ifr.addEventListener('load', onFrameLoad);
+      main.appendChild(ifr);
+    }
+    function open() {
+      parkPill();
+      el.hidden = false; loadEl.hidden = !!ifr; ensureFrame();
+      prevScrollLock = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden';
+      try { history.replaceState(null, '', location.pathname + location.search + '#studio'); } catch (e) {}
+    }
+    function close() {
+      el.hidden = true; document.documentElement.style.overflow = prevScrollLock;
+      try { if (location.hash === '#studio') history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    }
+    el.querySelector('.sps-done').addEventListener('click', function () { close(); if (dirty) { dirty = false; refreshOverlay().then(function () { toast('Profile updated'); }); } });
+    el.querySelector('.sps-refresh').addEventListener('click', function () { refreshOverlay().then(function () { toast('Preview refreshed from your saved profile'); }); });
+    el.querySelector('.sps-arrange').addEventListener('click', function () { close(); var t = mount.querySelector('.sip-edit-toggle'); if (t) { t.click(); toast('Arrange mode — drag sections, resize orbitals, double-click a slot to add media. Click Done on the profile when finished.'); } });
+    el.querySelector('.sps-live').addEventListener('click', function () { var pill = bridgePill(); if (!pill) { toast('Live preview is loading — try again in a moment'); return; } close(); pill.click(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.hidden) close(); });
+    window.SML_PROFILE_STUDIO = { open: open, close: close, refresh: refreshOverlay };
+    if (location.hash === '#studio') setTimeout(open, 50);
   }
 
   // Build a config from the live members-profile page (footer auto-inject mode):
