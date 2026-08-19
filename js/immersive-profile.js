@@ -934,7 +934,7 @@
   /* CSS injected INTO the embedded editor page: hide site chrome, keep the editor */
   var EMBED_CSS = '' +
     'html,body{background:#070d14!important;}' +
-    '#wpadminbar,.wordads-ad-wrapper,.sml-uads-slot,.sml-loop-tape,.sml-acct,.sml-inbox,.sml-loop-bucks-root,.sml-loop-kick,#sml-hf-loop-kick,.wp-site-blocks>header,.wp-site-blocks>footer,header.wp-block-template-part,footer.wp-block-template-part,.wp-block-post-title,#wp-skip-link{display:none!important;}' +
+    '#wpadminbar,.wordads-ad-wrapper,.sml-uads-slot,.sml-loop-tape,.sml-acct,.sml-inbox,.sml-loop-bucks-root,#sml-lb-btn,.sml-lb-floating,.sml-loop-kick,#sml-hf-loop-kick,.sml-loop-launcher,#sml-ss-global-host,.sml-ss-global-host,.jetpack-instant-search,.sml-legal-footer-links,#sml-legal-footer,.sc-cart-wrapper,.wp-site-blocks>header,.wp-site-blocks>footer,header.wp-block-template-part,footer.wp-block-template-part,.wp-block-post-title,#wp-skip-link{display:none!important;}' +
     'html{margin-top:0!important;}' +
     'main.wp-block-group{padding-top:0!important;}main.wp-block-group>.wp-block-group.is-layout-constrained:not(.entry-content){display:none!important;}' +
     '.entry-content{max-width:1080px!important;margin:0 auto!important;padding:18px 18px 120px!important;}' +
