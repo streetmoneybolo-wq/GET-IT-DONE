@@ -578,6 +578,10 @@
 
     // ---- YouTube beat clock ----
     var frame = cfg.useExistingPlayer ? document.getElementById(FRAME_ID) : $('#' + FRAME_ID);
+    /* the page always ships the player iframe; with no music configured its src is
+       empty (resolves to the page URL). Treat that as "no music": no tap-for-sound
+       gate, honest dock copy, nothing pretends to play. */
+    if (frame && !isYT((function () { try { return new URL(frame.getAttribute('src') || '', location.href).origin; } catch (e) { return ''; } })())) frame = null;
     var playing = false, lastTime = 0, lastStamp = 0, duration = 0, registered = false, lastBeat = -1;
     var BPM = (cfg.bpm >= 50 && cfg.bpm <= 220) ? cfg.bpm : 120;
     var wavePeaks = (function () { var a = []; for (var i = 0; i < 160; i++) a.push(0.12 + Math.abs(Math.sin(i * 0.7) * 0.5) + Math.random() * 0.28); var mx = Math.max.apply(null, a); return a.map(function (v) { return v / mx; }); })();
@@ -1034,7 +1038,13 @@
       var tries = 0; var iv = setInterval(function () { register(); if (++tries > 40 || registered) clearInterval(iv); }, 250);
       if (!cfg.useExistingPlayer) frame.addEventListener('load', function () { register(); setTimeout(function () { cmd('mute'); cmd('playVideo'); }, 600); });
     } else {
-      overlay.querySelector('.sip-overlay-s').textContent = 'No profile music configured yet.';
+      /* no music: don't gate the profile behind "Tap for sound" */
+      overlay.style.display = 'none';
+      var tt = $('.sip-track-t'), tl = $('.sip-track-l');
+      if (tt) tt.textContent = cfg.isOwner ? 'No profile music yet — add it in Edit profile → Profile music' : 'No profile music yet';
+      if (tl) tl.textContent = 'PROFILE MUSIC';
+      if (playBtn) { playBtn.disabled = true; playBtn.style.opacity = '.45'; playBtn.title = 'No profile music'; }
+      if (timeEl) timeEl.textContent = '';
     }
     requestAnimationFrame(tick);
   }
