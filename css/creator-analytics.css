@@ -45,6 +45,12 @@ html.smlca-on,body.smlca-on{background:var(--ca-bg) !important;margin:0;color:va
 .ca-big{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
 .ca-big.gold{color:var(--ca-gold)}.ca-big.acc{color:var(--ca-acc)}
 .ca-sub{color:var(--ca-muted);font-size:12px}
+.ca-audience-bars{display:grid;gap:10px;margin-top:14px}
+.ca-audience-row{display:grid;grid-template-columns:minmax(100px,1.1fr) minmax(100px,2fr) 44px;align-items:center;gap:10px;font-size:12px}
+.ca-audience-row>span{color:var(--ca-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ca-audience-row>i{display:block;height:7px;border-radius:999px;background:#202b35;overflow:hidden}
+.ca-audience-row>i>b{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--ca-acc),var(--ca-cyan))}
+.ca-audience-row>strong{text-align:right;color:var(--ca-text);font-variant-numeric:tabular-nums}
 .ca-delta{font-size:12px;font-weight:700;color:var(--ca-up)}.ca-delta.down{color:var(--ca-down)}.ca-delta.flat{color:var(--ca-muted)}
 .ca-spark{margin-top:10px;height:36px}
 #sml-ca-root table{width:100%;border-collapse:collapse;font-size:13px}

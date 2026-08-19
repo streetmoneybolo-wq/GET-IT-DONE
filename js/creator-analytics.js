@@ -88,7 +88,7 @@
   }
 
   /* ---------- state ---------- */
-  var S = { rt: null, gate: null, lb: null, live: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
+  var S = { rt: null, gate: null, lb: null, live: null, ga4: null, letters: null, subs: null, lsettings: null, uploads: null, groups: [], view: 'main' };
 
   document.documentElement.classList.add('smlca-on'); document.body.classList.add('smlca-on');
   if (!document.getElementById('sml-ca-font')) { var f = document.createElement('link'); f.id = 'sml-ca-font'; f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); }
@@ -109,10 +109,11 @@
     api('/sml-members/v1/creator-studio/realtime'),
     api('/sml-creator-gate/v1/status'),
     api('/sml-lb/v1/me'),
-    api('/sml-live/v1/status')
+    api('/sml-live/v1/status'),
+    api('/sml-creator-analytics/v1/audience?range=28')
   ]).then(function (r) {
     if (r[0].status === 401 || r[1].status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
-    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null;
+    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null;
     var more = [];
     var hasLetter = !!(S.gate && S.gate.hasLetter);
     more.push(api('/sml-letters/v1/mine')); more.push(api('/sml-loopletters/v1/subscribers')); more.push(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }));
@@ -172,14 +173,27 @@
       kpi('Engagement (28 days)', fmt(ov.engagement), delta(series, 'engagement', ov.engagement), spark(series.map(function (s) { return n(s.engagement); }), CSS_C4), 'likes · comments · saves') +
       '</div>';
 
-    // audience row: map (GA4 — not connected) | live now (real) + top countries (not connected)
+    // Audience row: aggregate GA4 only. City rows below the server's privacy
+    // threshold are omitted by the server and are never inferred here.
+    var ga = S.ga4 && S.ga4.configured && S.ga4.available !== false ? S.ga4 : null;
+    var countries = ga && Array.isArray(ga.countries) ? ga.countries : [];
+    var cities = ga && Array.isArray(ga.cities) ? ga.cities : [];
+    var liveAudience = ga && ga.live && ga.live.available ? n(ga.live.count) : null;
+    function audienceBars(items, nameKey, valueKey, cap) {
+      items = (items || []).slice(0, cap || 8); var max = 1;
+      items.forEach(function (x) { max = Math.max(max, n(x[valueKey])); });
+      return '<div class="ca-audience-bars">' + items.map(function (x) {
+        var label = x[nameKey] || 'Unknown'; if (nameKey === 'city' && x.country) label += ', ' + x.country;
+        return '<div class="ca-audience-row"><span>' + esc(label) + '</span><i><b style="width:' + Math.max(2, Math.round(n(x[valueKey]) / max * 100)) + '%"></b></i><strong>' + fmt(x[valueKey]) + '</strong></div>';
+      }).join('') + '</div>';
+    }
     var liveCard = '<div class="ca-card"><h3>Live right now<span class="ca-fresh">' + (isLive ? 'streaming' : 'not streaming') + '</span></h3>' +
-      '<div style="display:flex;align-items:baseline;gap:10px"><div class="ca-big ' + (isLive ? 'acc' : '') + '">' + (isLive ? 'LIVE' : '—') + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
-      '<div class="ca-sub" style="margin-top:6px">' + (isLive ? 'Started ' + esc(ago(S.live.live_started_at)) + '. Live viewer counts by location arrive when audience analytics is connected.' : 'Go live from Creator Studio — your live viewers show here while you stream.') + '</div>' +
+      '<div style="display:flex;align-items:baseline;gap:10px"><div class="ca-big ' + (isLive ? 'acc' : '') + '">' + (liveAudience != null ? fmt(liveAudience) : (isLive ? 'LIVE' : '—')) + '</div><div class="ca-live' + (isLive ? '' : ' off') + '"><span class="b"></span>' + (isLive ? 'ON AIR' : 'OFFLINE') + '</div></div>' +
+      '<div class="ca-sub" style="margin-top:6px">' + (isLive ? 'Started ' + esc(ago(S.live.live_started_at)) + (liveAudience != null ? ' · GA4 active users in the last 30 minutes.' : '. Audience totals are still collecting.') : 'Go live from Creator Studio — active audience totals appear here while you stream.') + '</div>' +
       (isLive ? '' : '<div style="margin-top:10px"><a class="ca-btn2" href="/go-live/">Go Live →</a></div>') + '</div>';
     var audience = '<div class="ca-grid ca-g21">' +
-      '<div class="ca-card"><h3>Where your audience is<span class="ca-fresh">country + city aggregates</span></h3>' + empty('Audience map not connected yet', 'Audience analytics (countries, cities, traffic sources) needs the site’s GA4 collection to be running for 2–4 weeks. It isn’t connected yet — no visitor is ever shown individually.') + '</div>' +
-      '<div class="ca-col">' + liveCard + '<div class="ca-card"><h3>Top countries</h3>' + empty('Not connected yet', 'Appears with audience analytics.') + '</div></div></div>';
+      '<div class="ca-card"><h3>Where your audience is<span class="ca-fresh">country + city aggregates</span></h3>' + (cities.length ? audienceBars(cities, 'city', 'users', 12) : (countries.length ? audienceBars(countries, 'country', 'users', 12) : empty(ga ? 'Not enough data yet' : 'Audience analytics not connected yet', ga ? 'GA4 is connected, but no city has reached the privacy threshold yet.' : 'Audience analytics needs GA4 collection. No visitor is ever shown individually.'))) + '</div>' +
+      '<div class="ca-col">' + liveCard + '<div class="ca-card"><h3>Top countries</h3>' + (countries.length ? audienceBars(countries, 'country', 'users', 7) : empty(ga ? 'Not enough data yet' : 'Not connected yet', ga ? 'Countries appear after GA4 has reportable audience activity.' : 'Appears with audience analytics.')) + '</div></div></div>';
 
     // your content by kind (real counts of what you own)
     var kinds = [];
@@ -229,10 +243,10 @@
         }).join('') + '</tbody></table>' : empty('No letters yet', 'Write your first letter from Creator Studio.')) +
         '<div class="ca-note">Per-letter reads and open rates appear when letter analytics is connected.</div></div>';
     }
-    var sources = rt.traffic_sources || [];
+    var sources = ga && Array.isArray(ga.sources) && ga.sources.length ? ga.sources : (rt.traffic_sources || []);
     var newWeek = (S.uploads || []).filter(function (u) { return within(u.created_at, 7); }).length + (S.letters || []).filter(function (l) { return within(l.published_at || l.created_at || l.date, 7); }).length;
     var contentRow = '<div class="ca-grid ca-g32"><div class="ca-card"><h3>Top content<span class="ca-fresh">28 days</span></h3>' + contentTable + '</div>' +
-      '<div class="ca-col"><div class="ca-card"><h3>Where visitors came from</h3>' + (sources.length ? '<table>' + sources.slice(0, 8).map(function (s) { return '<tr><td>' + esc(s.source || s.name || '') + '</td><td class="num">' + fmt(s.views || s.sessions || s.count) + '</td></tr>'; }).join('') + '</table>' : empty('Not enough data yet', 'Traffic sources appear once the site’s analytics has enough visits to report — nothing is shown below the privacy threshold.')) + '</div>' +
+      '<div class="ca-col"><div class="ca-card"><h3>Where visitors came from</h3>' + (sources.length ? '<table>' + sources.slice(0, 8).map(function (s) { return '<tr><td>' + esc(s.source || s.name || '') + '</td><td class="num">' + fmt(s.sessions || s.views || s.count) + '</td></tr>'; }).join('') + '</table>' : empty('Not enough data yet', 'Traffic sources appear once the site’s analytics has enough visits to report — nothing is shown below the privacy threshold.')) + '</div>' +
       '<div class="ca-card"><h3>New this week</h3>' + (newWeek ? '<div class="ca-big">' + newWeek + '</div><div class="ca-sub">new uploads and letters in the last 7 days</div>' : empty('Not enough data yet', 'Nothing published in the last 7 days. New content shows here once it’s reached the reporting threshold.')) + '</div></div></div>';
 
     // revenue + wallet (real engine values; honest labels)
