@@ -48,14 +48,19 @@
 
   function bindExistingSearch() {
     searchInputs().forEach(function (input) {
-      if (input.dataset.smlSsBound) return;
+      // Use a versioned ownership marker. Older search builds and other home
+      // modules used data-sml-ss-bound, which could make a newly rendered
+      // input look connected even though this engine had no listeners on it.
+      if (input.dataset.smlSsV2Bound) return;
+      input.dataset.smlSsV2Bound = '1';
       input.dataset.smlSsBound = '1';
       input.setAttribute('autocomplete', 'off');
       input.addEventListener('focus', function () { open(input); });
       input.addEventListener('click', function () { open(input); });
       input.addEventListener('input', function () { open(input); queue(input.value); });
       var form = input.closest('form');
-      if (form && !form.dataset.smlSsBound) {
+      if (form && !form.dataset.smlSsV2Bound) {
+        form.dataset.smlSsV2Bound = '1';
         form.dataset.smlSsBound = '1';
         form.addEventListener('submit', function (e) { e.preventDefault(); open(input); queue(input.value, true); });
       }
