@@ -95,7 +95,56 @@
     return out;
   }
   function lsGet(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
-  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  var onLsSet = null;                      /* owner hook: immersive keys → profile engine (see persistImmersive) */
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} if (onLsSet) { try { onLsSet(k); } catch (e) {} } }
+  /* The profile-engine bridge (unified-profile.js) seeds these localStorage keys
+     from settings.immersive_profile on every load, for every viewer. So an OWNER
+     changing them here (Arrange order, orbital sizes/scales, texture, screen FX,
+     shapes, pulse, beat sensitivity, contact opt-in, reactive parts) must write
+     them back — otherwise the change lives only in this browser and visitors
+     never see it. Debounced; merges over the current server object. */
+  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1 };
+  var persistT = null, persistBusy = false, persistAgain = false;
+  function immersiveFromLocal(baseObj) {
+    var im = {}; for (var k in (baseObj || {})) im[k] = baseObj[k];
+    var g = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    var j = function (k) { try { var v = JSON.parse(g(k)); return v == null ? undefined : v; } catch (e) { return undefined; } };
+    var v;
+    if ((v = g('sml_profile_pulse_level')) != null) im.pulse = String(v).toLowerCase();
+    if ((v = j('sml-pulse-shapes')) !== undefined) im.shapes = v;
+    if ((v = j('sml-screen-fx-list')) !== undefined) im.effects = v;
+    if ((v = g('sml-card-texture')) != null) im.texture = v;
+    if ((v = j('sml-section-order')) !== undefined) im.section_order = v;
+    if ((v = j('sml-orbital-item-scales')) !== undefined) im.item_scales = v;
+    if ((v = g('sml-orbital-photo-size')) != null && !isNaN(parseInt(v, 10))) im.photo_size = parseInt(v, 10);
+    if ((v = g('sml-orbital-video-size')) != null && !isNaN(parseInt(v, 10))) im.video_size = parseInt(v, 10);
+    if ((v = g('sml-contact-optin')) != null) im.contact_opt_in = v !== '0';
+    if ((v = g('sml-beat-sens')) != null && !isNaN(parseFloat(v))) im.beat_sensitivity = parseFloat(v);
+    if ((v = j('sml-immersive-components')) !== undefined) im.components = v;
+    return im;
+  }
+  function persistImmersive() {
+    var U = window.SML_PROFILE_UNIFIED || {};
+    if (!(U.isOwner && U.nonce && U.customRest)) return;
+    if (persistBusy) { persistAgain = true; return; }
+    var settings = {}; for (var k in (U.settings || {})) settings[k] = U.settings[k];
+    settings.immersive_profile = immersiveFromLocal(U.immersive || settings.immersive_profile || {});
+    try { if (JSON.stringify(settings.immersive_profile) === JSON.stringify(U.immersive || (U.settings && U.settings.immersive_profile) || null)) return; } catch (e) {}
+    persistBusy = true;
+    fetch(U.customRest, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': U.nonce }, body: JSON.stringify({ settings: settings }) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (saved) {
+        if (saved && saved.settings) { U.settings = saved.settings; if (saved.settings.immersive_profile) U.immersive = saved.settings.immersive_profile; }
+        else { U.settings = settings; U.immersive = settings.immersive_profile; }
+      }, function () {})
+      .then(function () { persistBusy = false; if (persistAgain) { persistAgain = false; persistImmersive(); } });
+  }
+  var persistArmed = false;
+  function schedulePersist() {
+    if (!persistArmed) return;                                   /* boot-time chip sync from the bridge is not a user change */
+    var lpe = document.querySelector('.sml-lpe'); if (lpe && !lpe.hidden) return;   /* Live preview drawer open: it owns save/cancel */
+    clearTimeout(persistT); persistT = setTimeout(persistImmersive, 1200);
+  }
   function lsJSON(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
 
   var CSS = '' +
@@ -593,6 +642,8 @@
     var MEDIA = (cfg.__media && typeof cfg.__media === 'object') ? cfg.__media : { orbital: [], orbital_video: [] };
     var U = window.SML_PROFILE_UNIFIED || {};
     function canPersist() { return !!(U.isOwner && U.nonce && U.uploadRest); }
+    onLsSet = (U.isOwner && U.nonce && U.customRest) ? function (k) { if (IMMERSIVE_KEYS[k]) schedulePersist(); } : null;
+    persistArmed = false; setTimeout(function () { if (GEN === INIT_GEN) persistArmed = true; }, 3000);
     function uploadFile(file, purpose) {
       var fd = new FormData(); fd.append('file', file); fd.append('purpose', purpose);
       return fetch(U.uploadRest + (U.uploadRest.indexOf('?') > -1 ? '&' : '?') + 'purpose=' + encodeURIComponent(purpose), { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': U.nonce }, body: fd })
@@ -1010,9 +1061,11 @@
         }
       } catch (e) {}
     }
+    var navItems = [];
     function buildNav(d) {
       dedupeUnified(d);
       Array.prototype.slice.call(nav.querySelectorAll('button')).forEach(function (b) { b.remove(); });
+      navItems = [];
       var secs = Array.prototype.slice.call(d.querySelectorAll('.entry-content section, .entry-content .sml-spd-panel'));
       var seen = {};
       secs.forEach(function (sec, i) {
@@ -1022,12 +1075,23 @@
         if (!sec.id) sec.id = 'sps-sec-' + i;
         var b = document.createElement('button'); b.type = 'button'; b.textContent = label;
         b.addEventListener('click', function () {
+          spyLock = Date.now() + 900;
           Array.prototype.slice.call(nav.querySelectorAll('button')).forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on');
           try { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { sec.scrollIntoView(); }
         });
-        nav.appendChild(b);
+        nav.appendChild(b); navItems.push({ sec: sec, btn: b });
       });
+      spy();
       if (!nav.querySelector('button')) { var b0 = document.createElement('button'); b0.type = 'button'; b0.textContent = 'Editor'; b0.className = 'on'; nav.appendChild(b0); }
+    }
+    var spyLock = 0;
+    function spy() {
+      if (!navItems.length || Date.now() < spyLock) return;
+      var best = null, bestD = Infinity, anchor = 120;
+      navItems.forEach(function (it) { var r = it.sec.getBoundingClientRect(); var dd = r.top <= anchor ? anchor - r.top : (r.top - anchor) + 4000; if (dd < bestD) { bestD = dd; best = it; } });
+      if (!best) return;
+      navItems.forEach(function (it) { it.btn.classList.toggle('on', it === best); });
+      try { if (best.btn.scrollIntoViewIfNeeded) best.btn.scrollIntoViewIfNeeded(false); } catch (e) {}
     }
     function onFrameLoad() {
       var w, d;
@@ -1045,6 +1109,7 @@
       try { var st = d.createElement('style'); st.id = 'sps-embed-css'; st.textContent = EMBED_CSS; d.head.appendChild(st); } catch (e) {}
       hookSaves(w);
       loadEl.hidden = true;
+      try { var spyT = null; w.addEventListener('scroll', function () { if (spyT) return; spyT = setTimeout(function () { spyT = null; spy(); }, 120); }, { passive: true }); } catch (e) {}
       /* the editor renders in stages (core sections, then the unified identity/
          music/immersive block, then social details) — build the navigator once
          the section count has settled, and keep it in sync afterwards */
