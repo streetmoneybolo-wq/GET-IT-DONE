@@ -1041,7 +1041,38 @@
       try { var st = d.createElement('style'); st.id = 'sps-embed-css'; st.textContent = EMBED_CSS; d.head.appendChild(st); } catch (e) {}
       hookSaves(w);
       loadEl.hidden = true;
-      var tries = 0; (function waitSections() { if (d.querySelector('.entry-content section') || tries++ > 40) buildNav(d); else setTimeout(waitSections, 250); })();
+      /* the editor renders in stages (core sections, then the unified identity/
+         music/immersive block, then social details) — build the navigator once
+         the section count has settled, and keep it in sync afterwards */
+      var last = -1, stable = 0, polls = 0;
+      (function settle() {
+        var n = d.querySelectorAll('.entry-content section').length;
+        if (n === last && n > 0) stable++; else stable = 0;
+        last = n;
+        if ((stable >= 3) || ++polls > 45) { ensureUnified(w, d).then(function () { buildNav(d); }); }
+        else setTimeout(settle, 400);
+      })();
+      try {
+        var ec = d.querySelector('.entry-content');
+        if (ec && w.MutationObserver) { var navT = null; new w.MutationObserver(function () { clearTimeout(navT); navT = setTimeout(function () { buildNav(d); }, 800); }).observe(ec, { childList: true, subtree: true }); }
+      } catch (e) {}
+    }
+    /* Profile identity / Profile music / Immersive profile are mounted by the
+       plugin's unified-editor.js on 'sml-profile-editor-ready'; when the core
+       editor re-renders after that mount the block is dropped (a load-order
+       race that shows up inside the studio frame). Re-run the mounter — a
+       fresh copy of the script mounts again because its "already mounted"
+       marker is gone. Nothing is duplicated: it refuses to mount twice. */
+    function ensureUnified(w, d) {
+      return new Promise(function (resolve) {
+        try {
+          if (!d.querySelector('[data-sml-profile-editor]') || d.querySelector('[data-smlpe-unified-mounted]')) { resolve(); return; }
+          var sc = d.createElement('script'); sc.src = '/wp-content/plugins/sml-profile-engine/assets/unified-editor.js?sps=' + encodeURIComponent(String(w.SML_PROFILE_UNIFIED_EDITOR_CONFIG && w.SML_PROFILE_UNIFIED_EDITOR_CONFIG.nonce || '1'));
+          var done = false, fin = function () { if (!done) { done = true; resolve(); } };
+          sc.onload = function () { var t = 0; (function wait() { if (d.querySelector('[data-smlpe-unified-mounted]') || ++t > 20) fin(); else setTimeout(wait, 300); })(); };
+          sc.onerror = fin; d.body.appendChild(sc); setTimeout(fin, 8000);
+        } catch (e) { resolve(); }
+      });
     }
     function ensureFrame() {
       if (ifr) return;
