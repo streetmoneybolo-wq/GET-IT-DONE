@@ -91,6 +91,7 @@
     }
     if (user.music && user.music.url) out.music = { url: user.music.url, title: user.music.title || DEFAULTS.music.title };
     if (user.__media) out.__media = user.__media; /* real media lists (orbital / orbital_video) — needed by the pickers */
+    if (user.immersive && typeof user.immersive === 'object') out.immersive = user.immersive; /* owner's saved look (profile pages) */
     if (user.contact) out.contact = { email: user.contact.email || '', phone: user.contact.phone || '', optIn: user.contact.optIn !== false };
     return out;
   }
@@ -507,26 +508,55 @@
     var rootEl = document.documentElement;
 
     // ---- state ----
+    /* Source of truth for the LOOK (pulse, shapes, FX, texture, section order,
+       orbital sizes/scales, contact opt-in, beat sensitivity, reactive parts):
+         profile pages  → the owner's saved settings.immersive_profile (cfg.immersive),
+                          painted on the very first frame; missing keys → defaults.
+                          localStorage is NOT consulted: it is per-browser and would
+                          bleed profile A's arrangement into profile B.
+         other mounts   → localStorage (demo / explicit window.SML_PROFILE), as before.
+       Owner changes still write localStorage (the bridge's contract) AND persist to
+       the server (persistImmersive), so a reload shows exactly what was saved. */
+    var IM = (cfg.immersive && typeof cfg.immersive === 'object') ? cfg.immersive : null;
+    var srvMode = !!IM;
+    function pickStr(srv, key, def) { if (srvMode) return (srv != null && srv !== '') ? String(srv) : def; var v = lsGet(key, null); return v == null ? def : v; }
+    function pickJSON(srv, key) { if (srvMode) return (srv !== undefined) ? srv : null; return lsJSON(key, null); }
+    function pickNum(srv, key) { if (srvMode) return (srv != null && srv !== '') ? Number(srv) : NaN; return parseFloat(lsGet(key, '')); }
     var level = LEVELS.indexOf(cfg.pulse) >= 0 ? cfg.pulse : 'Immersive';
-    var savedLvl = lsGet('sml_profile_pulse_level', null);
+    var savedLvl = pickStr(IM && IM.pulse, 'sml_profile_pulse_level', null);
     if (LEVELS.map(function (l) { return l.toLowerCase(); }).indexOf(String(savedLvl)) >= 0) {
       level = LEVELS[LEVELS.map(function (l) { return l.toLowerCase(); }).indexOf(String(savedLvl))];
     }
-    var shapes = lsJSON('sml-pulse-shapes', null); if (!Array.isArray(shapes)) shapes = cfg.shapes.slice();
-    var fxList = lsJSON('sml-screen-fx-list', null); if (!Array.isArray(fxList)) fxList = cfg.fx.slice();
-    var texture = lsGet('sml-card-texture', cfg.texture); if (!TEX[texture]) texture = 'Glass';
-    var sectionOrder = lsJSON('sml-section-order', null);
+    var shapes = pickJSON(IM && IM.shapes, 'sml-pulse-shapes'); if (!Array.isArray(shapes)) shapes = cfg.shapes.slice();
+    var fxList = pickJSON(IM && IM.effects, 'sml-screen-fx-list'); if (!Array.isArray(fxList)) fxList = cfg.fx.slice();
+    var texture = pickStr(IM && IM.texture, 'sml-card-texture', cfg.texture); if (!TEX[texture]) texture = 'Glass';
+    var sectionOrder = pickJSON(IM && IM.section_order, 'sml-section-order');
     if (!Array.isArray(sectionOrder) || sectionOrder.length !== 4) sectionOrder = ['stats', 'tickers', 'orbitals', 'about'];
-    var itemScales = lsJSON('sml-orbital-item-scales', null);
+    var itemScales = pickJSON(IM && IM.item_scales, 'sml-orbital-item-scales');
     if (!itemScales || !itemScales.photo || !itemScales.video) itemScales = { photo: [1, 1, 1, 1, 1, 1], video: [1, 1, 1] };
-    var photoSize = parseInt(lsGet('sml-orbital-photo-size', ''), 10); if (isNaN(photoSize)) photoSize = null;
-    var videoSize = parseInt(lsGet('sml-orbital-video-size', ''), 10); if (isNaN(videoSize)) videoSize = null;
-    var contactOptIn = lsGet('sml-contact-optin', (cfg.contact && cfg.contact.optIn === false) ? '0' : '1') !== '0';
-    var beatSens = parseFloat(lsGet('sml-beat-sens', cfg.beatSensitivity));
+    var photoSize = parseInt(pickNum(IM && IM.photo_size, 'sml-orbital-photo-size'), 10); if (isNaN(photoSize)) photoSize = null;
+    var videoSize = parseInt(pickNum(IM && IM.video_size, 'sml-orbital-video-size'), 10); if (isNaN(videoSize)) videoSize = null;
+    var contactOptIn = srvMode
+      ? (IM.contact_opt_in !== undefined ? IM.contact_opt_in !== false : !(cfg.contact && cfg.contact.optIn === false))
+      : lsGet('sml-contact-optin', (cfg.contact && cfg.contact.optIn === false) ? '0' : '1') !== '0';
+    var beatSens = pickNum(IM && IM.beat_sensitivity, 'sml-beat-sens'); if (isNaN(beatSens)) beatSens = parseFloat(cfg.beatSensitivity);
     if (!(beatSens >= 0.5 && beatSens <= 2)) beatSens = (cfg.beatSensitivity >= 0.5 && cfg.beatSensitivity <= 2) ? cfg.beatSensitivity : 1;
-    var reactiveComponents = lsJSON('sml-immersive-components', null);
+    var reactiveComponents = pickJSON(IM && IM.components, 'sml-immersive-components');
     var allReactiveComponents = ['background', 'banner', 'avatar', 'cards', 'orbital_photos', 'orbital_videos'];
     if (!Array.isArray(reactiveComponents)) reactiveComponents = allReactiveComponents.slice();
+    if (srvMode) {
+      /* keep the per-browser keys in step with what is painted, so the bridge, the
+         dock chips and the owner's persistence all start from the same values */
+      try {
+        localStorage.setItem('sml_profile_pulse_level', level.toLowerCase()); localStorage.setItem('sml-pulse-shapes', JSON.stringify(shapes));
+        localStorage.setItem('sml-screen-fx-list', JSON.stringify(fxList)); localStorage.setItem('sml-card-texture', texture);
+        localStorage.setItem('sml-section-order', JSON.stringify(sectionOrder)); localStorage.setItem('sml-orbital-item-scales', JSON.stringify(itemScales));
+        if (photoSize != null) localStorage.setItem('sml-orbital-photo-size', String(photoSize)); else localStorage.removeItem('sml-orbital-photo-size');
+        if (videoSize != null) localStorage.setItem('sml-orbital-video-size', String(videoSize)); else localStorage.removeItem('sml-orbital-video-size');
+        localStorage.setItem('sml-contact-optin', contactOptIn ? '1' : '0'); localStorage.setItem('sml-beat-sens', String(beatSens));
+        localStorage.setItem('sml-immersive-components', JSON.stringify(reactiveComponents));
+      } catch (e) {}
+    }
     function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
     window.addEventListener('sml-immersive-components', function (event) {
       if (GEN !== INIT_GEN) return;
@@ -1265,6 +1295,9 @@
     base.bio = P.description || '';
     base.editUrl = U.editorUrl || base.editUrl; base.visitorUrl = P.url || base.visitorUrl;
     base.isOwner = !!(U.isOwner || P.is_owner);
+    /* the owner's saved look — painted on first frame (see init "state") */
+    var imSrv = (U.immersive && typeof U.immersive === 'object') ? U.immersive : ((U.settings && U.settings.immersive_profile && typeof U.settings.immersive_profile === 'object') ? U.settings.immersive_profile : {});
+    base.immersive = imSrv;
     var rel = P.relationship || {}; var stats = [];
     if (rel.follower_count != null) stats.push({ label: 'FOLLOWERS', value: String(rel.follower_count) });
     if (rel.subscriber_count != null) stats.push({ label: 'SUBSCRIBERS', value: String(rel.subscriber_count) });
