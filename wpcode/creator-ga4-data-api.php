@@ -4,8 +4,9 @@
  * WPCode: PHP Snippet / Auto Insert / Run Everywhere.
  * Do not add an opening PHP tag in WPCode.
  *
- * The service-account JSON must live outside the public web root. Override the
- * default path with SML_CREATOR_GA4_KEY_FILE in wp-config.php when needed.
+ * Prefer the guarded PHP credential file bundled with the runtime plugin. A
+ * JSON key outside the public web root remains supported as a fallback, and
+ * SML_CREATOR_GA4_KEY_FILE may override either location from wp-config.php.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -25,6 +26,10 @@ if ( ! function_exists( 'sml_creator_ga4_key_file' ) ) {
 		if ( defined( 'SML_CREATOR_GA4_KEY_FILE' ) && SML_CREATOR_GA4_KEY_FILE ) {
 			return (string) SML_CREATOR_GA4_KEY_FILE;
 		}
+		$runtime_key = WP_PLUGIN_DIR . '/sml-creator-realtime-presence/ga4-creator-reader.php';
+		if ( is_readable( $runtime_key ) ) {
+			return $runtime_key;
+		}
 		return '/home/150846796/sml-secrets/ga4-creator-reader.json';
 	}
 }
@@ -35,8 +40,12 @@ if ( ! function_exists( 'sml_creator_ga4_credentials' ) ) {
 		if ( ! is_readable( $path ) ) {
 			return new WP_Error( 'sml_ga4_not_configured', 'Creator audience analytics is not configured.' );
 		}
-		$raw = file_get_contents( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
-		$creds = json_decode( (string) $raw, true );
+		if ( 'php' === strtolower( (string) pathinfo( $path, PATHINFO_EXTENSION ) ) ) {
+			$creds = include $path;
+		} else {
+			$raw = file_get_contents( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+			$creds = json_decode( (string) $raw, true );
+		}
 		if ( ! is_array( $creds ) || empty( $creds['client_email'] ) || empty( $creds['private_key'] ) || empty( $creds['token_uri'] ) ) {
 			return new WP_Error( 'sml_ga4_invalid_credentials', 'Creator audience analytics credentials are invalid.' );
 		}
