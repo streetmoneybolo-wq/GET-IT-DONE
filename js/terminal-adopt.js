@@ -69,6 +69,7 @@
     // MAIN[1] = feed card ← #sml-lf. The design card keeps ITS header; the legacy
     // module's own "Live Feed" header is hidden so there is exactly ONE title.
     var lf = document.getElementById('sml-lf');
+    if (!done.lf && window.SML_TV2_NATIVE_FEED === 1) { done.lf = true; }   /* terminal-feed.js owns the feed card now (legacy #sml-lf stays hidden, keeps booting for the voice room) */
     if (!done.lf && lf && main.children[1]) {
       done.lf = adopt(cardBody(main.children[1], true), lf);
       if (done.lf) {
@@ -151,6 +152,7 @@
     var ad = document.getElementById('sml-ad-slot');
     if (!done.ad && ad && main.children[3]) { done.ad = adopt(cardBody(main.children[3], true), ad); }
     // RAIL[0] = alert card ← #sml-alert-list (fall back to whole side module's list)
+    if (!done.al && window.SML_TV2_NATIVE_ALERTS === 1) { done.al = true; }   /* terminal-alerts.js owns the alert card */
     var al = document.getElementById('sml-alert-list') ||
              (document.getElementById('sml-side-alerts') && document.getElementById('sml-side-alerts').querySelector('.b, ul, ol'));
     if (!done.al && al && rail.children[0]) { done.al = adopt(rail.children[0], al); }
