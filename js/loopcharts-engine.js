@@ -377,6 +377,8 @@
   var height = 0;
   var pad = { left: 12, right: 72, top: 18, bottom: 32 };
   var volumeHeight = 86;
+  var volumeRatio = (function () { var v = Number(saved && saved.volumeRatio); return (v >= 0.05 && v <= 0.65) ? v : 0.19; }()); /* candle/volume split — draggable divider */
+  var dividerDrag = false;
   var priceBottom = 0;
   var yMin = 0;
   var yMax = 1;
@@ -408,7 +410,8 @@
     try {
       localStorage.setItem('sml_lc2_preferences', JSON.stringify({
         timeframe: state.timeframe,
-        indicators: state.indicators
+        indicators: state.indicators,
+        volumeRatio: volumeRatio
       }));
     } catch (error) { /* Storage can be disabled without breaking the chart. */ }
   }
@@ -637,7 +640,7 @@
     lastVisible = bars;
 
     pad.right = width < 560 ? 58 : 72;
-    volumeHeight = Math.max(58, Math.min(92, height * 0.19));
+    volumeHeight = Math.max(24, Math.min(height * 0.65, height * volumeRatio));
     priceBottom = height - pad.bottom - volumeHeight - 18;
     var plotWidth = Math.max(1, width - pad.left - pad.right);
     var indicators = computeIndicators();
@@ -952,8 +955,18 @@
     zoom(event.deltaY > 0 ? 1.18 : 0.84, ratio);
   }, { passive: false });
 
+  function inDividerZone(y) {
+    return state.active && y >= priceBottom - 5 && y <= priceBottom + 21; /* the gap band above the volume pane */
+  }
+
   canvasHost.addEventListener('pointerdown', function (event) {
     if (!state.active) return;
+    var rect = canvasHost.getBoundingClientRect();
+    if (inDividerZone(event.clientY - rect.top)) {
+      dividerDrag = true;
+      canvasHost.setPointerCapture(event.pointerId);
+      return;
+    }
     dragging = true;
     dragStartX = event.clientX;
     dragStartFrom = state.from;
@@ -963,6 +976,14 @@
   canvasHost.addEventListener('pointermove', function (event) {
     if (!state.active) return;
     var rect = canvasHost.getBoundingClientRect();
+    if (dividerDrag) {
+      var yy = event.clientY - rect.top;
+      volumeRatio = Math.max(0.05, Math.min(0.65, (height - pad.bottom - 18 - yy) / Math.max(1, height)));
+      state.crosshair = null;
+      scheduleRender();
+      return;
+    }
+    canvasHost.style.cursor = inDividerZone(event.clientY - rect.top) && !dragging ? 'ns-resize' : '';
     state.crosshair = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     if (dragging) {
       var deltaBars = Math.round((dragStartX - event.clientX) / Math.max(1, lastSpacing));
@@ -976,6 +997,7 @@
   });
 
   function endDrag(event) {
+    if (dividerDrag) { dividerDrag = false; persistPreferences(); }
     dragging = false;
     if (event && canvasHost.hasPointerCapture(event.pointerId)) canvasHost.releasePointerCapture(event.pointerId);
   }
