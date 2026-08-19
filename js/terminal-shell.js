@@ -85,6 +85,7 @@
         var chain = function (file) { var s = document.createElement('script'); s.src = base + file; s.async = false; document.body.appendChild(s); };
         chain('js/terminal-data.js');      // Phase B: real quote/strip/rail data
         chain('js/terminal-chart.js');     // Phase 2: NATIVE chart (history + quote), replaces the adopted LoopCharts canvas
+        chain('js/terminal-feed.js');      // Phase 2: NATIVE live feed (stream/moomoo/webull/stocktwits/voice), replaces the adopted #sml-lf
         chain('js/terminal-adopt.js');     // Phase C: adopt the still-legacy modules (feed, alerts, ad) into the shell's cards
         chain('js/terminal-options.js');   // Options tab: chain + what-if calculator
         chain('js/terminal-mp2.js');       // Market Position v2 (+ chain-loads the Short sale card)
