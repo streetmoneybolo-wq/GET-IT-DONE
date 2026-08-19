@@ -407,3 +407,14 @@ body.tv2-live #sml-tv2-root [data-dc-tpl="10"]{display:none!important}
 }
 
 /*# sourceURL=sml-loopcharts-inline-inline-css */
+
+/* ---- compact LoopCharts toolbar inside the V2 chart card: everything fits on one
+   (wrapping) row — no horizontal scrollbar. Scoped .tv2-ch so it wins over the
+   plugin's inline copy of the engine styles. ---- */
+.tv2-ch .sml-lc-toolbar{overflow:visible;flex-wrap:wrap;min-height:0;gap:4px;padding:6px 8px}
+.tv2-ch .sml-lc-toolbar button{height:24px;padding:0 6px;font-size:10px;line-height:22px;border-radius:4px}
+.tv2-ch .sml-lc-symbol{display:none}/* redundant — the card head + page header already show the symbol */
+.tv2-ch .sml-lc-timeframes,.tv2-ch .sml-lc-indicators{gap:2px;flex-wrap:wrap}
+.tv2-ch .sml-lc-indicators{padding-left:5px}
+.tv2-ch .sml-lc-source{font-size:8.5px;padding:3px 6px}
+@media (max-width:700px){.tv2-ch .sml-lc-toolbar button{padding:0 5px}}
