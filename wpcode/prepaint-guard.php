@@ -38,7 +38,7 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 	}
 	function sml_pp_ob( $html ) {
 		if ( ! is_string( $html ) || false !== strpos( $html, 'id="sml-pp-css"' ) ) { return $html; }
-		if ( ! preg_match( '/<head(\s[^>]*)?>/i', $html, $hm, PREG_OFFSET_CAPTURE ) ) { return $html; }
+		if ( ! preg_match( '/<head(\s[^>]*)?>/i', $html ) ) { return $html; }
 		foreach ( headers_list() as $h ) { if ( 0 === stripos( $h, 'content-type:' ) && false === stripos( $h, 'text/html' ) ) { return $html; } }
 		$hit = null;
 		foreach ( sml_pp_markers() as $marker => $ids ) { if ( false !== strpos( $html, $marker ) ) { $hit = $ids; break; } }
@@ -67,6 +67,9 @@ if ( ! function_exists( 'sml_pp_markers' ) ) {
 			return '<html' . $attrs . '>';
 		}, $html, 1 );
 
+		/* locate <head> AFTER the <html> rewrite above — that rewrite lengthens the
+		   string, and an offset captured before it would land inside the class attr */
+		if ( ! preg_match( '/<head(\s[^>]*)?>/i', $html, $hm, PREG_OFFSET_CAPTURE ) ) { return $html; }
 		$at = $hm[0][1] + strlen( $hm[0][0] );
 		return substr( $html, 0, $at ) . $style . $preload . substr( $html, $at );
 	}
