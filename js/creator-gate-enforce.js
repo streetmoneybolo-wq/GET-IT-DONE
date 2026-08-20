@@ -189,6 +189,27 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
+
+  /* ---- ONE 3D Orbit module, not two ----
+     Upload Video and Go Live each shipped their own "3D Orbit Photos" editor,
+     both saving the SAME sml-video-upload-studio/v1/orbit-settings. The Go Live
+     wizard's card is the canonical one; the injected duplicate on /upload-video/
+     is hidden here (its Voice Queue half is kept whenever it has content). */
+  if (/^\/upload-video\//.test(path)) {
+    var oneOrbit = document.createElement('style');
+    oneOrbit.textContent = '.sml-cdo-editor{display:none!important}' +
+      '.sml-cdo-orbit-voice-layout:not(.sml-has-voice){display:none!important}';
+    document.head.appendChild(oneOrbit);
+    var oTries = 0;
+    var oT = setInterval(function () {
+      var lay = document.querySelector('.sml-cdo-orbit-voice-layout');
+      if (lay) {
+        var voice = lay.querySelector('.sml-cdo-voice-slot');
+        lay.classList.toggle('sml-has-voice', !!(voice && voice.children.length));
+      }
+      if (++oTries > 25) clearInterval(oT);
+    }, 800);
+  }
   // back/forward cache restore: entitlement may have changed (channel just created) — re-check
   window.addEventListener('pageshow', function (e) { if (e.persisted) { CACHED = cgCacheGet(); CACHED_OK = !!(CACHED && (NEEDS_CHANNEL_ONLY ? CACHED.channel : (CACHED.channel || CACHED.letter))); boot(); } });
 })();
