@@ -11,6 +11,34 @@
   if (window.__smlGoLiveEncoderBooted) return;
   window.__smlGoLiveEncoderBooted = true;
 
+  /* ---- 30-SECOND CHECK THROTTLE (owner request) ----
+     Both this module AND the studio's own poller check /sml-live/v1/feeds +
+     /status every few seconds, and each check makes the studio re-render its
+     panel. Wrap fetch so those two GET endpoints hit the server at most once
+     per 30s per URL — every checker on the page shares the one cached answer
+     instantly, so the studio's pollers keep "working" without hammering the
+     server or churning the layout. Real data only: the cache is the server's
+     own last response, never older than 30s. */
+  (function () {
+    if (window.__smlGlFetchThrottled) return;
+    window.__smlGlFetchThrottled = true;
+    var NATIVE = window.fetch;
+    var cache = {};
+    window.fetch = function (input, init) {
+      var url = typeof input === 'string' ? input : ((input && input.url) || '');
+      var isGet = !init || !init.method || String(init.method).toUpperCase() === 'GET';
+      if (isGet && /\/wp-json\/sml-live\/v1\/(feeds\/|status)/.test(url)) {
+        var c = cache[url];
+        if (c && Date.now() - c.t < 30000) return c.ready.then(function (stored) { return stored.clone(); });
+        var ready = NATIVE.call(window, input, init).then(function (r) { return r.clone(); });
+        cache[url] = { t: Date.now(), ready: ready };
+        ready.catch(function () { delete cache[url]; }); /* a failed check is not cached */
+        return ready.then(function (stored) { return stored.clone(); });
+      }
+      return NATIVE.apply(window, arguments);
+    };
+  }());
+
   var HANDLE = (window.SML_GL_HANDLE || 'grandmasterobi');
   var NONCE = (window.wpApiSettings && window.wpApiSettings.nonce) || window.SML_GL_NONCE || '';
   var state = { live: false, since: 0, segs: 0, seq: 0, playback: '', lastCheck: 0, err: '', height: 0, ingest: '' };
