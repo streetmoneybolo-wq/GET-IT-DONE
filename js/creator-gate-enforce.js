@@ -202,15 +202,15 @@
     oneOrbit.textContent = '.sml-cdo-editor{display:none!important}' +
       '.sml-cdo-orbit-voice-layout:not(.sml-has-voice){display:none!important}';
     document.head.appendChild(oneOrbit);
-    var oTries = 0;
-    var oT = setInterval(function () {
+    setInterval(function () {
       var lay = document.querySelector('.sml-cdo-orbit-voice-layout');
       if (lay) {
         var voice = lay.querySelector('.sml-cdo-voice-slot');
-        lay.classList.toggle('sml-has-voice', !!(voice && voice.children.length));
+        /* the Voice Queue is real functionality — keep the layout whenever its
+           voice half has ANY content (children or text), only the orbit editor stays hidden */
+        lay.classList.toggle('sml-has-voice', !!(voice && (voice.children.length || voice.textContent.replace(/\s+/g, ''))));
       }
-      if (++oTries > 25) clearInterval(oT);
-    }, 800);
+    }, 1200);
   }
   // back/forward cache restore: entitlement may have changed (channel just created) — re-check
   window.addEventListener('pageshow', function (e) { if (e.persisted) { CACHED = cgCacheGet(); CACHED_OK = !!(CACHED && (NEEDS_CHANNEL_ONLY ? CACHED.channel : (CACHED.channel || CACHED.letter))); boot(); } });
