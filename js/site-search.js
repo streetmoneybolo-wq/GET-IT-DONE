@@ -273,7 +273,7 @@
     if (document.getElementById('sml-tkpop')) return;
     var css = document.createElement('style');
     css.textContent = '.sml-gh-tape:hover .sml-gh-tape-row{animation-play-state:paused}' +
-      '#sml-tkpop{position:fixed;z-index:2147483000;width:310px;background:linear-gradient(168deg,rgba(16,24,35,.97),rgba(8,12,18,.98));border:1px solid rgba(0,255,136,.35);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.75),0 0 24px rgba(0,255,136,.08);padding:12px 14px 10px;opacity:0;transform:translateY(6px) scale(.97);pointer-events:none;transition:opacity .18s ease,transform .18s ease;cursor:pointer;backdrop-filter:blur(10px)}' +
+      '#sml-tkpop{position:fixed;z-index:2147483004;width:310px;background:linear-gradient(168deg,rgba(16,24,35,.97),rgba(8,12,18,.98));border:1px solid rgba(0,255,136,.35);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.75),0 0 24px rgba(0,255,136,.08);padding:12px 14px 10px;opacity:0;transform:translateY(6px) scale(.97);pointer-events:none;transition:opacity .18s ease,transform .18s ease;cursor:pointer;backdrop-filter:blur(10px)}' +
       '#sml-tkpop.on{opacity:1;transform:none;pointer-events:auto}' +
       '#sml-tkpop .h{display:flex;align-items:baseline;gap:9px;margin-bottom:8px}' +
       '#sml-tkpop .sym{font:700 15px/1 Archivo,ui-sans-serif,sans-serif;color:#e6edf3}' +
@@ -378,6 +378,9 @@
     /* hide only on PAGE scroll — capture-phase caught internal feed widgets
        auto-scrolling and killed the popover while the user was still hovering */
     window.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); });
+    /* the homepage takeover (#sml-hf-shell) is its own fixed scroller above the page */
+    var hfs = document.getElementById('sml-hf-shell');
+    if (hfs) hfs.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); });
   }
 
   function build() {
