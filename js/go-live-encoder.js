@@ -199,7 +199,7 @@
   var tries = 0;
   var boot = setInterval(function () {
     tries++;
-    if (findRow('encoder')) { clearInterval(boot); watchRerenders(); paint(); poll(); setInterval(poll, 5000); setInterval(paint, 1000); }
+    if (findRow('encoder')) { clearInterval(boot); watchRerenders(); paint(); poll(); setInterval(poll, 30000); setInterval(paint, 1000); } /* encoder check every 30s (owner request) - the 1s tick only rewrites the ago/clock text, it never re-checks or reflows */
     else if (tries > 60) clearInterval(boot);
   }, 500);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
