@@ -161,18 +161,25 @@
   function paint() {
     paintCard();
     paintRow();
-    /* ---- ANTI-JUMP part 2: the studio's own re-render empties the panel's
-       rows for a beat (480px ↔ 316px flips) which shoved every module below it
-       up and down. Pin the card's min-height to the tallest size it has
-       reached, so the layout under it never moves. */
-    if (card && card.isConnected) {
-      var shCard = card.closest('.cs-card') || card.parentElement;
-      if (shCard) {
-        var h = shCard.getBoundingClientRect().height;
-        var cur = parseFloat(shCard.style.minHeight) || 0;
-        if (h > cur + 1) shCard.style.minHeight = Math.ceil(h) + 'px';
-      }
+    pinHealth();
+  }
+  /* ---- ANTI-JUMP part 2: the studio REPLACES the whole Stream Health card on
+     its own poll (fresh node, rows empty for a beat: 480px ↔ 316px) which shoved
+     every module below it up and down. Track the tallest height the panel ever
+     reaches in a module variable and re-pin it onto whichever card node is
+     current — applied from every mutation, so even a brand-new node is pinned
+     before the next frame paints. */
+  var healthMaxH = 0;
+  function pinHealth() {
+    var heads = document.querySelectorAll('h1,h2,h3,h4');
+    var cs = null;
+    for (var i = 0; i < heads.length; i++) {
+      if (/Stream Health/i.test(heads[i].textContent)) { cs = heads[i].closest('.cs-card') || heads[i].closest('section'); break; }
     }
+    if (!cs) return;
+    var h = cs.getBoundingClientRect().height;
+    if (h > healthMaxH) healthMaxH = h;
+    if (healthMaxH && (parseFloat(cs.style.minHeight) || 0) < healthMaxH - 1) cs.style.minHeight = Math.ceil(healthMaxH) + 'px';
   }
 
   /* the studio re-renders the whole Stream Health card on its own poll and our
@@ -183,6 +190,7 @@
   function watchRerenders() {
     if (MO || !window.MutationObserver) return;
     MO = new MutationObserver(function () {
+      pinHealth(); /* a freshly replaced card gets its height pinned immediately */
       if (card && !card.isConnected && findRow('encoder')) paint();
     });
     MO.observe(document.body, { childList: true, subtree: true });
