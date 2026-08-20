@@ -74,14 +74,14 @@
         '.sml-rh-btn:hover{transform:translateY(-50%) scale(1.12);box-shadow:0 0 18px -4px rgba(56,245,138,.65);}' +
         '.sml-rh-panel{position:absolute;inset:0;z-index:6;border-radius:18px;overflow:hidden;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(56,245,138,.3);display:flex;flex-direction:column;opacity:0;transform:translateX(26px);pointer-events:none;transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .25s ease;}' +
         '.sml-rh-panel.on{opacity:1;transform:translateX(0);pointer-events:auto;}' +
-        '.sml-rh-track{display:flex;flex:1;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
+        '.sml-rh-track{display:flex;flex:1;height:100%;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
         '.sml-rh-item{min-width:100%;position:relative;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}' +
         '.sml-rh-item a{text-decoration:none;}' +
         '.sml-rh-item.no-img{padding:14px 22px;gap:7px;}' +
         '.sml-rh-item.has-img{padding:0;justify-content:flex-end;}' +
         '.sml-rh-cover{position:absolute;inset:0;display:block;}' +
         '.sml-rh-cover img{width:100%;height:100%;object-fit:cover;display:block;}' +
-        '.sml-rh-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,18,0) 32%,rgba(8,12,18,.55) 62%,rgba(8,12,18,.95) 100%);pointer-events:none;}' +
+        '.sml-rh-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,18,.12) 0%,rgba(8,12,18,0) 30%,rgba(8,12,18,.28) 62%,rgba(8,12,18,.88) 100%);pointer-events:none;}' +
         '.sml-rh-info{position:relative;z-index:2;padding:0 20px 16px;display:flex;flex-direction:column;gap:7px;}' +
         '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
         '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
