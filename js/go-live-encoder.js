@@ -158,7 +158,22 @@
     else if (window.Hls && window.Hls.isSupported()) { var h = new Hls(); h.loadSource(url); h.attachMedia(v); }
     else { var s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js'; s.onload = function () { var h2 = new Hls(); h2.loadSource(url); h2.attachMedia(v); }; document.head.appendChild(s); }
   }
-  function paint() { paintCard(); paintRow(); }
+  function paint() {
+    paintCard();
+    paintRow();
+    /* ---- ANTI-JUMP part 2: the studio's own re-render empties the panel's
+       rows for a beat (480px ↔ 316px flips) which shoved every module below it
+       up and down. Pin the card's min-height to the tallest size it has
+       reached, so the layout under it never moves. */
+    if (card && card.isConnected) {
+      var shCard = card.closest('.cs-card') || card.parentElement;
+      if (shCard) {
+        var h = shCard.getBoundingClientRect().height;
+        var cur = parseFloat(shCard.style.minHeight) || 0;
+        if (h > cur + 1) shCard.style.minHeight = Math.ceil(h) + 'px';
+      }
+    }
+  }
 
   /* the studio re-renders the whole Stream Health card on its own poll and our
      banner vanishes with it — re-inserting on the NEXT 1s tick made the panel
