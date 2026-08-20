@@ -75,12 +75,14 @@
         '.sml-rh-panel{position:absolute;inset:0;z-index:6;border-radius:18px;overflow:hidden;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(56,245,138,.3);display:flex;flex-direction:column;opacity:0;transform:translateX(26px);pointer-events:none;transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .25s ease;}' +
         '.sml-rh-panel.on{opacity:1;transform:translateX(0);pointer-events:auto;}' +
         '.sml-rh-track{display:flex;flex:1;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
-        '.sml-rh-item{min-width:100%;padding:14px 22px;display:flex;flex-direction:column;justify-content:center;gap:7px;}' +
+        '.sml-rh-item{min-width:100%;position:relative;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}' +
         '.sml-rh-item a{text-decoration:none;}' +
-        '.sml-rh-wrap{display:flex;align-items:center;gap:13px;min-width:0;}' +
-        '.sml-rh-th{flex:0 0 104px;height:64px;border-radius:9px;overflow:hidden;background:#101826;border:1px solid rgba(56,245,138,.22);display:block;}' +
-        '.sml-rh-th img{width:100%;height:100%;object-fit:cover;display:block;}' +
-        '.sml-rh-tx{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:7px;}' +
+        '.sml-rh-item.no-img{padding:14px 22px;gap:7px;}' +
+        '.sml-rh-item.has-img{padding:0;justify-content:flex-end;}' +
+        '.sml-rh-cover{position:absolute;inset:0;display:block;}' +
+        '.sml-rh-cover img{width:100%;height:100%;object-fit:cover;display:block;}' +
+        '.sml-rh-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,18,0) 32%,rgba(8,12,18,.55) 62%,rgba(8,12,18,.95) 100%);pointer-events:none;}' +
+        '.sml-rh-info{position:relative;z-index:2;padding:0 20px 16px;display:flex;flex-direction:column;gap:7px;}' +
         '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
         '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
@@ -319,11 +321,13 @@
       var tr = card.__rhTrack; if (!tr) return;
       if (!st.items.length){ tr.innerHTML='<div class="sml-rh-item"><div style="font-size:13.5px;color:#93A4B8">Nothing more here yet — keep scrolling the feed.</div></div>'; if(card.__rhCount) card.__rhCount.textContent=''; return; }
       tr.innerHTML = st.items.map(function(it){
-        var th = it.img ? '<a class="sml-rh-th" href="'+esc(it.link)+'"><img src="'+esc(it.img)+'" alt="" loading="lazy"></a>' : '';
-        return '<div class="sml-rh-item"><div class="sml-rh-wrap">'+th+'<div class="sml-rh-tx">'
-          + '<a href="'+esc(it.link)+'"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:15.5px;line-height:1.3;color:#E6EDF5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+it.title+'</div></a>'
-          + '<div style="display:flex;align-items:center;gap:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span>'+esc(rhFmtDate(it.date))+'</span><a href="'+esc(it.link)+'" style="color:#38F58A;font-weight:600">Read →</a></div>'
-          + '</div></div></div>'; }).join('');
+        var title = '<a href="'+esc(it.link)+'"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16.5px;line-height:1.3;color:#E6EDF5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 1px 6px rgba(0,0,0,.7)">'+it.title+'</div></a>';
+        var meta = '<div style="display:flex;align-items:center;gap:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#93A4B8"><span>'+esc(rhFmtDate(it.date))+'</span><a href="'+esc(it.link)+'" style="color:#38F58A;font-weight:600">Read →</a></div>';
+        if (it.img) {
+          /* featured image fills the entire module, title rides the bottom gradient — same feel as the original post card */
+          return '<div class="sml-rh-item has-img"><a class="sml-rh-cover" href="'+esc(it.link)+'"><img src="'+esc(it.img)+'" alt="" loading="lazy"></a><div class="sml-rh-shade"></div><div class="sml-rh-info">'+title+meta+'</div></div>';
+        }
+        return '<div class="sml-rh-item no-img">'+title+meta+'</div>'; }).join('');
       rhGo(card, st, st.i || 0, true);
     }
     // Resolve a card's rail data (cached per query so many cards share fetches).
