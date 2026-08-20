@@ -122,7 +122,7 @@
   var boot = setInterval(function () {
     tries++;
     if (findRow('encoder')) {
-      clearInterval(boot); loadKeys(); pollLive(); setInterval(pollLive, 5000);
+      clearInterval(boot); loadKeys(); pollLive(); setInterval(pollLive, 40000); /* multi-screen check every 40s (owner asked for 30-45s) */
       /* the Creator Studio wizard re-renders the health panel (step changes, previews) and
          orphans injected cards — re-mount whenever ours falls out of the document */
       setInterval(function () { if (!card || !card.isConnected) paint(); }, 1000);
