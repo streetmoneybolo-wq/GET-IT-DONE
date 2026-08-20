@@ -61,13 +61,26 @@
     var sub = live
       ? 'Receiving your broadcast' + (state.height ? ' · ' + state.height + 'p' : '') + ' · ' + state.segs + ' segments buffered · on air ' + fmtDur((Date.now() / 1000) - state.since)
       : (state.err ? state.err : 'Press Start Streaming in OBS. Server: ' + (state.ingest || 'rtmp://live.stockmarketloop.com/live'));
+    /* ---- ANTI-JUMP: only rebuild the DOM when the state actually changes.
+       The per-second tickers ("checked Ns ago", the on-air clock + segment
+       count) are written into stable text nodes instead — rebuilding the whole
+       card every second was re-flowing the panel and made it visibly jump. */
+    var sig = live + '|' + (state.err || '') + '|' + state.height + '|' + state.seq + '|' + (state.ingest || '');
+    if (c.__smlSig === sig) {
+      var agoEl = c.querySelector('#sml-gl-ago');
+      if (agoEl) agoEl.textContent = state.lastCheck ? 'checked ' + Math.round((Date.now() - state.lastCheck) / 1000) + 's ago' : '';
+      var subEl = c.querySelector('#sml-gl-sub');
+      if (subEl && subEl.textContent !== sub) subEl.textContent = sub;
+      return;
+    }
+    c.__smlSig = sig;
     c.innerHTML =
       '<div style="display:flex;align-items:center;gap:9px">' +
         '<span style="width:9px;height:9px;border-radius:50%;background:' + dotCol + ';box-shadow:0 0 10px ' + dotCol + '88;' + (live ? 'animation:smlGlPulse 1.4s ease-in-out infinite' : '') + '"></span>' +
         '<b style="font-size:11px;letter-spacing:.14em;color:' + (live ? '#00ff88' : '#e6edf5') + '">' + head + '</b>' +
-        '<span style="margin-left:auto;font:600 10px/1 ui-monospace,Menlo,monospace;color:#5c6771">' + (state.lastCheck ? 'checked ' + Math.round((Date.now() - state.lastCheck) / 1000) + 's ago' : '') + '</span>' +
+        '<span id="sml-gl-ago" style="margin-left:auto;font:600 10px/1 ui-monospace,Menlo,monospace;color:#5c6771">' + (state.lastCheck ? 'checked ' + Math.round((Date.now() - state.lastCheck) / 1000) + 's ago' : '') + '</span>' +
       '</div>' +
-      '<div style="font-size:12px;line-height:1.5;color:' + (live ? '#c7d6e3' : '#98a3ad') + '">' + sub + '</div>' +
+      '<div id="sml-gl-sub" style="font-size:12px;line-height:1.5;color:' + (live ? '#c7d6e3' : '#98a3ad') + ';min-height:18px">' + sub + '</div>' +
       (live ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">' +
         '<a href="/live/" target="_blank" rel="noopener" style="font:700 10px/1 inherit;letter-spacing:.06em;color:#04060a;background:#00ff88;border-radius:8px;padding:8px 11px;text-decoration:none">OPEN WATCH PAGE ↗</a>' +
         '<span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:#5c6771;padding:8px 0">stream #' + state.seq + '</span>' +
@@ -147,10 +160,23 @@
   }
   function paint() { paintCard(); paintRow(); }
 
+  /* the studio re-renders the whole Stream Health card on its own poll and our
+     banner vanishes with it — re-inserting on the NEXT 1s tick made the panel
+     collapse and re-expand (the reported jumping). Watch for the re-render and
+     put the banner back in the same mutation batch, before the next frame paints. */
+  var MO = null;
+  function watchRerenders() {
+    if (MO || !window.MutationObserver) return;
+    MO = new MutationObserver(function () {
+      if (card && !card.isConnected && findRow('encoder')) paint();
+    });
+    MO.observe(document.body, { childList: true, subtree: true });
+  }
+
   var tries = 0;
   var boot = setInterval(function () {
     tries++;
-    if (findRow('encoder')) { clearInterval(boot); paint(); poll(); setInterval(poll, 5000); setInterval(paint, 1000); }
+    if (findRow('encoder')) { clearInterval(boot); watchRerenders(); paint(); poll(); setInterval(poll, 5000); setInterval(paint, 1000); }
     else if (tries > 60) clearInterval(boot);
   }, 500);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
