@@ -366,12 +366,14 @@
         .catch(function () { if (g === gen) msg('Intraday chart unavailable right now.'); });
     }
     function scheduleHide() { clearTimeout(hideT); hideT = setTimeout(function () { pop.classList.remove('on'); curSym = ''; }, 220); }
+    /* CAPTURE phase: feed widgets stopPropagation() on bubbled mouseover,
+       which silently killed the popover on the homepage */
     document.addEventListener('mouseover', function (e) {
       var tk = e.target.closest ? e.target.closest('[data-tkpop]') : null;
       if (tk) { var sym = String(tk.getAttribute('data-tkpop') || '').toUpperCase(); if (sym && sym !== curSym) show(sym, tk.getBoundingClientRect()); else clearTimeout(hideT); return; }
       if (pop.contains(e.target)) { clearTimeout(hideT); return; }
       if (pop.classList.contains('on')) scheduleHide();
-    });
+    }, true);
     pop.addEventListener('click', function () { if (curSym) location.href = '/stock-chart/?symbol=' + encodeURIComponent(curSym); });
     /* hide only on PAGE scroll — capture-phase caught internal feed widgets
        auto-scrolling and killed the popover while the user was still hovering */
