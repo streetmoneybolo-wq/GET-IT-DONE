@@ -123,6 +123,18 @@
   function cgCacheClear() { try { localStorage.removeItem(CG_CACHE_KEY); } catch (e) {} }
   var CACHED = cgCacheGet();
   var CACHED_OK = !!(CACHED && (NEEDS_CHANNEL_ONLY ? CACHED.channel : (CACHED.channel || CACHED.letter)));
+  /* the loader snippet prints the server-verified entitlement into the page —
+     a creator with a Loop Channel/Letter passes instantly on ANY device, first
+     visit included (data-* attrs are the CSP fallback) */
+  function serverEntitled() {
+    var v = window.SML_CG_SERVER_ENTITLED;
+    if (!v && loader && loader.dataset && loader.dataset.entChannel != null) {
+      v = { channel: loader.dataset.entChannel === '1', either: loader.dataset.entEither === '1' };
+    }
+    if (!v) return false;
+    return !!(NEEDS_CHANNEL_ONLY ? v.channel : v.either);
+  }
+  if (serverEntitled()) CACHED_OK = true;
 
   function check(quiet) {
     api('/sml-creator-gate/v1/status').then(function (res) {

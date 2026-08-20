@@ -68,10 +68,16 @@ if ( ! function_exists( 'sml_cg_loader_is_gated_path' ) ) {
 	function sml_cg_loader_markup() {
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( sml_cg_loader_ref() ) . '/js/';
 		$nonce = wp_create_nonce( 'wp_rest' );
+		/* the server already KNOWS whether this user owns a Channel/Letter — print it
+		   so entitled creators are never made to wait on a client-side access check
+		   (data-* attrs are the CSP fallback when inline scripts are blocked) */
+		$ent_channel = is_user_logged_in() ? sml_cg_loader_entitled( 'channel' ) : false;
+		$ent_either  = is_user_logged_in() ? sml_cg_loader_entitled( 'either' ) : false;
 		$config = '<script id="sml-cg-config">window.SML_CG_NONCE=' . wp_json_encode( $nonce )
-			. ';window.SML_CG_ME=' . ( is_user_logged_in() ? 'true' : 'false' ) . ';</script>';
+			. ';window.SML_CG_ME=' . ( is_user_logged_in() ? 'true' : 'false' )
+			. ';window.SML_CG_SERVER_ENTITLED={channel:' . ( $ent_channel ? 'true' : 'false' ) . ',either:' . ( $ent_either ? 'true' : 'false' ) . '};</script>';
 		$scripts = '<script id="sml-cg-js" data-nonce="' . esc_attr( $nonce ) . '" data-me="'
-			. ( is_user_logged_in() ? '1' : '0' ) . '" src="' . esc_url( $base . 'creator-gate.js' ) . '"></script>';
+			. ( is_user_logged_in() ? '1' : '0' ) . '" data-ent-channel="' . ( $ent_channel ? '1' : '0' ) . '" data-ent-either="' . ( $ent_either ? '1' : '0' ) . '" src="' . esc_url( $base . 'creator-gate.js' ) . '"></script>';
 		if ( sml_cg_loader_is_gated_path() ) {
 			$scripts .= '<script id="sml-cg-enforce-js" src="' . esc_url( $base . 'creator-gate-enforce.js' ) . '"></script>';
 		}
