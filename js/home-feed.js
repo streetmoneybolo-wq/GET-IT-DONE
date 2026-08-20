@@ -77,6 +77,10 @@
         '.sml-rh-track{display:flex;flex:1;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
         '.sml-rh-item{min-width:100%;padding:14px 22px;display:flex;flex-direction:column;justify-content:center;gap:7px;}' +
         '.sml-rh-item a{text-decoration:none;}' +
+        '.sml-rh-wrap{display:flex;align-items:center;gap:13px;min-width:0;}' +
+        '.sml-rh-th{flex:0 0 104px;height:64px;border-radius:9px;overflow:hidden;background:#101826;border:1px solid rgba(56,245,138,.22);display:block;}' +
+        '.sml-rh-th img{width:100%;height:100%;object-fit:cover;display:block;}' +
+        '.sml-rh-tx{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:7px;}' +
         '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
         '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
@@ -314,7 +318,12 @@
     function rhRender(card, st){
       var tr = card.__rhTrack; if (!tr) return;
       if (!st.items.length){ tr.innerHTML='<div class="sml-rh-item"><div style="font-size:13.5px;color:#93A4B8">Nothing more here yet — keep scrolling the feed.</div></div>'; if(card.__rhCount) card.__rhCount.textContent=''; return; }
-      tr.innerHTML = st.items.map(function(it){ return '<div class="sml-rh-item"><a href="'+esc(it.link)+'"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16.5px;line-height:1.3;color:#E6EDF5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+it.title+'</div></a><div style="display:flex;align-items:center;gap:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span>'+esc(rhFmtDate(it.date))+'</span><a href="'+esc(it.link)+'" style="color:#38F58A;font-weight:600">Read →</a></div></div>'; }).join('');
+      tr.innerHTML = st.items.map(function(it){
+        var th = it.img ? '<a class="sml-rh-th" href="'+esc(it.link)+'"><img src="'+esc(it.img)+'" alt="" loading="lazy"></a>' : '';
+        return '<div class="sml-rh-item"><div class="sml-rh-wrap">'+th+'<div class="sml-rh-tx">'
+          + '<a href="'+esc(it.link)+'"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:15.5px;line-height:1.3;color:#E6EDF5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+it.title+'</div></a>'
+          + '<div style="display:flex;align-items:center;gap:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span>'+esc(rhFmtDate(it.date))+'</span><a href="'+esc(it.link)+'" style="color:#38F58A;font-weight:600">Read →</a></div>'
+          + '</div></div></div>'; }).join('');
       rhGo(card, st, st.i || 0, true);
     }
     // Resolve a card's rail data (cached per query so many cards share fetches).
@@ -338,14 +347,14 @@
       var label = isNews ? (tick ? ('MORE ON $'+tick) : 'MORE LIKE THIS') : ('MORE FROM '+(an||'THIS TRADER').toUpperCase());
       var ck = isNews ? ('s:'+(tick||topic||'stocks')) : ('a:'+((asm&&asm[1])||an));
       function finish(arr){
-        var items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date }; }).slice(0,10);
+        var items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date, img:x.jetpack_featured_media_url||'' }; }).slice(0,10);
         card.__rhData = { items: items, label: label };
         cb(items, label);
       }
       if (rhCache[ck]){ finish(rhCache[ck]); return; }
       var save = function(arr){ rhCache[ck] = arr || []; finish(arr); };
       var base = '/wp-json/wp/v2/';
-      function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); }
+      function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date,jetpack_featured_media_url').then(function(r){ return r.json(); }); }
       if (isNews){
         // News article -> more articles on the same stock (or same topic if no ticker).
         searchBy(tick || topic || 'stocks').then(save).catch(function(){ save([]); });
@@ -353,7 +362,7 @@
       else if (asm){
         // User post -> ALWAYS that user's latest posts (ticker mentions don't change this).
         fetch(base+'users?slug='+encodeURIComponent(asm[1])+'&_fields=id').then(function(r){ return r.json(); })
-          .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date').then(function(r){ return r.json(); }); })
+          .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date,jetpack_featured_media_url').then(function(r){ return r.json(); }); })
           .then(function(arr){ if (arr && arr.length) save(arr); else return searchBy(an).then(save); })
           .catch(function(){ searchBy(an).then(save).catch(function(){ save([]); }); });
       }
