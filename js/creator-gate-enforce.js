@@ -193,9 +193,11 @@
   /* ---- ONE 3D Orbit module, not two ----
      Upload Video and Go Live each shipped their own "3D Orbit Photos" editor,
      both saving the SAME sml-video-upload-studio/v1/orbit-settings. The Go Live
-     wizard's card is the canonical one; the injected duplicate on /upload-video/
-     is hidden here (its Voice Queue half is kept whenever it has content). */
-  if (/^\/upload-video\//.test(path)) {
+     wizard's card is the canonical one; the injected duplicate is hidden on
+     BOTH /upload-video/ and /go-live/ (the go-live Scene & Sources screen was
+     showing it as a third copy). The Voice Queue half of the injected layout
+     is kept whenever it has content. */
+  if (/^\/(upload-video|go-live)\//.test(path)) {
     var oneOrbit = document.createElement('style');
     oneOrbit.textContent = '.sml-cdo-editor{display:none!important}' +
       '.sml-cdo-orbit-voice-layout:not(.sml-has-voice){display:none!important}';
