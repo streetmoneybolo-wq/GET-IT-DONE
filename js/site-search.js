@@ -53,7 +53,7 @@
 
   function tickerCells() {
     return HEADER_SYMBOLS.map(function (symbol) {
-      return '<a class="sml-gh-tick" href="/stock-chart/?symbol=' + symbol + '"><b>$' + symbol + '</b><span data-gh-quote="' + symbol + '" data-field="last">—</span><em data-gh-quote="' + symbol + '" data-field="pct">—</em></a>';
+      return '<a class="sml-gh-tick" data-tkpop="' + symbol + '" href="/stock-chart/?symbol=' + symbol + '"><b>$' + symbol + '</b><span data-gh-quote="' + symbol + '" data-field="last">—</span><em data-gh-quote="' + symbol + '" data-field="pct">—</em></a>';
     }).join('');
   }
 
@@ -265,8 +265,120 @@
     window.addEventListener('scroll', check, true);
   }
 
+  /* ---- ticker hover popover: hovering any tagged ticker ([data-tkpop]) in the
+     rolling tape or the watchlist freezes in place and shows TODAY'S intraday
+     chart (real /sml/v1/history 5m candles) in a floating glass card. Click
+     anywhere on it -> that stock's Ticker Terminal. ---- */
+  function mountTickerPop() {
+    if (document.getElementById('sml-tkpop')) return;
+    var css = document.createElement('style');
+    css.textContent = '.sml-gh-tape:hover .sml-gh-tape-row{animation-play-state:paused}' +
+      '#sml-tkpop{position:fixed;z-index:2147483000;width:310px;background:linear-gradient(168deg,rgba(16,24,35,.97),rgba(8,12,18,.98));border:1px solid rgba(0,255,136,.35);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.75),0 0 24px rgba(0,255,136,.08);padding:12px 14px 10px;opacity:0;transform:translateY(6px) scale(.97);pointer-events:none;transition:opacity .18s ease,transform .18s ease;cursor:pointer;backdrop-filter:blur(10px)}' +
+      '#sml-tkpop.on{opacity:1;transform:none;pointer-events:auto}' +
+      '#sml-tkpop .h{display:flex;align-items:baseline;gap:9px;margin-bottom:8px}' +
+      '#sml-tkpop .sym{font:700 15px/1 Archivo,ui-sans-serif,sans-serif;color:#e6edf3}' +
+      '#sml-tkpop .px{font:700 14px/1 "IBM Plex Mono",monospace}' +
+      '#sml-tkpop .pc{font:600 11px/1 "IBM Plex Mono",monospace}' +
+      '#sml-tkpop .up{color:#00e07a}#sml-tkpop .dn{color:#ff4757}' +
+      '#sml-tkpop .tag{margin-left:auto;font:700 8px/1 "IBM Plex Mono",monospace;letter-spacing:.1em;color:#04060a;background:#00ff88;border-radius:9px;padding:3px 6px;box-shadow:0 0 8px rgba(0,255,136,.5)}' +
+      '#sml-tkpop canvas{display:block;width:100%;height:110px;border-radius:8px}' +
+      '#sml-tkpop .f{display:flex;justify-content:space-between;margin-top:7px;font:500 9px/1 "IBM Plex Mono",monospace;color:#5d7085}' +
+      '#sml-tkpop .msg{display:flex;align-items:center;justify-content:center;height:110px;font:500 10.5px/1.5 "IBM Plex Mono",monospace;color:#5d7085}';
+    document.head.appendChild(css);
+    var pop = document.createElement('div');
+    pop.id = 'sml-tkpop';
+    pop.innerHTML = '<div class="h"><span class="sym"></span><span class="px"></span><span class="pc"></span><span class="tag">TODAY</span></div><div class="wrap"><canvas width="282" height="110"></canvas></div><div class="f"><span class="lo"></span><span class="mid">Intraday · 5m · open terminal →</span><span class="hi"></span></div>';
+    document.body.appendChild(pop);
+    var cache = {}, curSym = '', hideT = null, gen = 0;
+    function draw(bars) {
+      var cv = pop.querySelector('canvas'), ctx = cv.getContext('2d');
+      var W = cv.width, H = cv.height;
+      ctx.clearRect(0, 0, W, H);
+      if (!bars.length) return;
+      var lo = Infinity, hi = -Infinity;
+      bars.forEach(function (b) { if (b.l < lo) lo = b.l; if (b.h > hi) hi = b.h; });
+      var span = (hi - lo) || 1;
+      var up = bars[bars.length - 1].c >= bars[0].o;
+      var col = up ? '#00e07a' : '#ff4757';
+      var x = function (i) { return bars.length > 1 ? i / (bars.length - 1) * (W - 4) + 2 : W / 2; };
+      var y = function (v) { return 8 + (hi - v) / span * (H - 16); };
+      var grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, up ? 'rgba(0,224,122,.35)' : 'rgba(255,71,87,.35)');
+      grad.addColorStop(1, 'rgba(8,12,18,0)');
+      ctx.beginPath();
+      ctx.moveTo(x(0), y(bars[0].c));
+      for (var i = 1; i < bars.length; i++) ctx.lineTo(x(i), y(bars[i].c));
+      ctx.lineTo(x(bars.length - 1), H); ctx.lineTo(x(0), H); ctx.closePath();
+      ctx.fillStyle = grad; ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x(0), y(bars[0].c));
+      for (i = 1; i < bars.length; i++) ctx.lineTo(x(i), y(bars[i].c));
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
+      /* session open reference line */
+      ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(143,163,181,.4)';
+      ctx.beginPath(); ctx.moveTo(2, y(bars[0].o)); ctx.lineTo(W - 2, y(bars[0].o)); ctx.stroke(); ctx.restore();
+      /* live dot */
+      ctx.beginPath(); ctx.arc(x(bars.length - 1), y(bars[bars.length - 1].c), 3, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+      ctx.beginPath(); ctx.arc(x(bars.length - 1), y(bars[bars.length - 1].c), 6, 0, Math.PI * 2);
+      ctx.fillStyle = up ? 'rgba(0,224,122,.25)' : 'rgba(255,71,87,.25)'; ctx.fill();
+      pop.querySelector('.lo').textContent = 'L ' + lo.toFixed(2);
+      pop.querySelector('.hi').textContent = 'H ' + hi.toFixed(2);
+      var last = bars[bars.length - 1].c, first = bars[0].o;
+      var chg = last - first, pct = first ? chg / first * 100 : 0;
+      pop.querySelector('.px').textContent = last.toFixed(2);
+      pop.querySelector('.px').className = 'px ' + (up ? 'up' : 'dn');
+      pop.querySelector('.pc').textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)';
+      pop.querySelector('.pc').className = 'pc ' + (up ? 'up' : 'dn');
+    }
+    function msg(txt) {
+      var w = pop.querySelector('.wrap');
+      w.innerHTML = txt ? '<div class="msg">' + txt + '</div>' : '<canvas width="282" height="110"></canvas>';
+    }
+    function sessionBars(bars) {
+      if (!bars.length) return [];
+      var lastDay = new Date(bars[bars.length - 1].t).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+      return bars.filter(function (b) { return new Date(b.t).toLocaleDateString('en-US', { timeZone: 'America/New_York' }) === lastDay; });
+    }
+    function show(sym, rect) {
+      curSym = sym; clearTimeout(hideT);
+      pop.querySelector('.sym').textContent = '$' + sym;
+      pop.querySelector('.px').textContent = ''; pop.querySelector('.pc').textContent = '';
+      pop.querySelector('.lo').textContent = ''; pop.querySelector('.hi').textContent = '';
+      var left = Math.max(8, Math.min(window.innerWidth - 318, rect.left + rect.width / 2 - 155));
+      var top = rect.bottom + 8;
+      if (top + 190 > window.innerHeight) top = rect.top - 198;
+      pop.style.left = left + 'px'; pop.style.top = top + 'px';
+      pop.classList.add('on');
+      var g = ++gen;
+      var c = cache[sym];
+      if (c && Date.now() - c.t < 60000) { msg(''); draw(c.bars); return; }
+      msg('Loading intraday…');
+      fetch('/wp-json/sml/v1/history?symbol=' + encodeURIComponent(sym) + '&tf=5m', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (g !== gen || curSym !== sym) return;
+          var bars = sessionBars((d && d.bars) || []);
+          if (!bars.length) { msg('No intraday candles for $' + sym + ' yet today.'); return; }
+          cache[sym] = { bars: bars, t: Date.now() };
+          msg(''); draw(bars);
+        })
+        .catch(function () { if (g === gen) msg('Intraday chart unavailable right now.'); });
+    }
+    function scheduleHide() { clearTimeout(hideT); hideT = setTimeout(function () { pop.classList.remove('on'); curSym = ''; }, 220); }
+    document.addEventListener('mouseover', function (e) {
+      var tk = e.target.closest ? e.target.closest('[data-tkpop]') : null;
+      if (tk) { var sym = String(tk.getAttribute('data-tkpop') || '').toUpperCase(); if (sym && sym !== curSym) show(sym, tk.getBoundingClientRect()); else clearTimeout(hideT); return; }
+      if (pop.contains(e.target)) { clearTimeout(hideT); return; }
+      if (pop.classList.contains('on')) scheduleHide();
+    });
+    pop.addEventListener('click', function () { if (curSym) location.href = '/stock-chart/?symbol=' + encodeURIComponent(curSym); });
+    window.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); }, true);
+  }
+
   function build() {
     mountDetectFade();
+    mountTickerPop();
     if (EMBED_TOOL) { mountEmbedTool(); return; }
     if (el('#sml-ss-panel')) return;
     mountGlobalHeader();
