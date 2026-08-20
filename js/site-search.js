@@ -373,7 +373,9 @@
       if (pop.classList.contains('on')) scheduleHide();
     });
     pop.addEventListener('click', function () { if (curSym) location.href = '/stock-chart/?symbol=' + encodeURIComponent(curSym); });
-    window.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); }, true);
+    /* hide only on PAGE scroll — capture-phase caught internal feed widgets
+       auto-scrolling and killed the popover while the user was still hovering */
+    window.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); });
   }
 
   function build() {
