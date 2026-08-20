@@ -24,6 +24,11 @@
     return fetch('/wp-json' + path, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); });
   }
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  /* remember confirmed entitlement so gated pages open instantly (creator-gate-enforce.js reads this) */
+  function rememberEntitlement(j) {
+    if (!j || (!j.hasChannel && !j.hasLetter)) return;
+    try { localStorage.setItem('sml_cg_entitled_v1', JSON.stringify({ channel: !!j.hasChannel, letter: !!j.hasLetter, t: Date.now() })); } catch (e) {}
+  }
   function el(id) { return document.getElementById(id); }
 
   /* ---------- creator shortcuts in the signed-in home navigation ----------
@@ -78,7 +83,7 @@
   }
   function loadCreatorShortcuts() {
     if (!LOGGED_IN) return;
-    api('/sml-creator-gate/v1/status').then(function (res) {
+    api('/sml-creator-gate/v1/status').then(function (res) { rememberEntitlement(res && res.j);
       if (!res.ok || !res.j) return;
       var status = res.j;
       var attempts = 0;
@@ -204,7 +209,7 @@
     // If the creator already has a channel, the page itself sends them on.
     if (kind === 'channel') { window.location.href = '/create-channel/'; return; }
     openModal('<p style="color:#5d7085;font:400 12px/1 Archivo,sans-serif">Loading…</p>');
-    api('/sml-creator-gate/v1/status').then(function (res) {
+    api('/sml-creator-gate/v1/status').then(function (res) { rememberEntitlement(res && res.j);
       if (res.status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
       if (res.status === 403 && res.j && /nonce/i.test(res.j.code || '') && !sessionStorage.getItem('sml-cg-nonce-retry')) {
         sessionStorage.setItem('sml-cg-nonce-retry', '1'); window.location.reload(); return; // stale nonce (page cache) -> fresh one

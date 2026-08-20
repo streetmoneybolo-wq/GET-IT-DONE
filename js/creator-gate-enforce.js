@@ -105,9 +105,29 @@
     if (ch) { ch.textContent = 'Retry'; ch.onclick = function () { window.location.reload(); }; }
   }
 
-  function check() {
+  /* Once a user has made a Loop Channel / Loop Letter there is no reason to
+     make them sit through the access check again: the confirmed entitlement is
+     remembered on this device and the page opens instantly. The status route
+     is still consulted QUIETLY in the background so a genuinely revoked
+     entitlement re-gates on the next definitive answer (and 401 clears it). */
+  var CG_CACHE_KEY = 'sml_cg_entitled_v1';
+  function cgCacheGet() {
+    try {
+      var v = JSON.parse(localStorage.getItem(CG_CACHE_KEY) || 'null');
+      return (v && v.t && (Date.now() - v.t) < 30 * 86400000) ? v : null;
+    } catch (e) { return null; }
+  }
+  function cgCacheSet(j) {
+    try { localStorage.setItem(CG_CACHE_KEY, JSON.stringify({ channel: !!j.hasChannel, letter: !!j.hasLetter, t: Date.now() })); } catch (e) {}
+  }
+  function cgCacheClear() { try { localStorage.removeItem(CG_CACHE_KEY); } catch (e) {} }
+  var CACHED = cgCacheGet();
+  var CACHED_OK = !!(CACHED && (NEEDS_CHANNEL_ONLY ? CACHED.channel : (CACHED.channel || CACHED.letter)));
+
+  function check(quiet) {
     api('/sml-creator-gate/v1/status').then(function (res) {
       if (res.status === 401) {
+        cgCacheClear();
         document.documentElement.dataset.smlCgEnforce = 'login-required';
         window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.href);
         return;
@@ -116,7 +136,7 @@
         // stale/foreign nonce (page cache) — a reload issues a fresh one; retry once
         sessionStorage.setItem('sml-cg-nonce-retry', '1'); window.location.reload(); return;
       }
-      if (!res.ok) { verificationFailure(); return; }
+      if (!res.ok) { if (!quiet) verificationFailure(); return; } /* quiet mode: a flaky network never kicks out a known creator */
       sessionStorage.removeItem('sml-cg-nonce-retry');
       var j = res.j || {};
       /* URGENT (2026-08-18): no longer gating on j.registered — the
@@ -125,7 +145,8 @@
          too would have permanently locked out anyone who creates a Channel
          or Letter, since nothing sets it true anymore. Entitlement alone. */
       var entitlement = NEEDS_CHANNEL_ONLY ? !!j.hasChannel : !!(j.hasChannel || j.hasLetter);
-      if (entitlement) { allowPage(); return; }
+      if (entitlement) { cgCacheSet(j); allowPage(); return; }
+      cgCacheClear(); /* definitive 200 says NOT entitled — forget the shortcut and gate (even in quiet mode) */
       var showGate = function () {
         var label = NEEDS_CHANNEL_ONLY ? 'You need a Loop Channel to continue' : 'You need a Loop Channel or Loop Letter to continue';
         blockingOverlay(label, false, !NEEDS_CHANNEL_ONLY);
@@ -140,12 +161,22 @@
         });
       };
       showGate();
-    }).catch(verificationFailure);
+    }).catch(function () { if (!quiet) verificationFailure(); });
   }
 
-  checkingOverlay();
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', check, { once: true });
-  else check();
+  function boot() {
+    if (CACHED_OK) {
+      /* already made a Channel/Letter — straight in, verify in the background */
+      allowPage();
+      document.documentElement.dataset.smlCgEnforce = 'cached-allowed';
+      check(true);
+      return;
+    }
+    checkingOverlay();
+    check(false);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
   // back/forward cache restore: entitlement may have changed (channel just created) — re-check
-  window.addEventListener('pageshow', function (e) { if (e.persisted) { checkingOverlay(); check(); } });
+  window.addEventListener('pageshow', function (e) { if (e.persisted) { CACHED = cgCacheGet(); CACHED_OK = !!(CACHED && (NEEDS_CHANNEL_ONLY ? CACHED.channel : (CACHED.channel || CACHED.letter))); boot(); } });
 })();
