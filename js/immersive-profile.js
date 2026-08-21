@@ -275,7 +275,7 @@
     '.sip-mini .sip-dock{left:auto;right:14px;bottom:14px;transform:none;width:auto;min-width:0;padding:6px;gap:0;border-radius:999px;flex-wrap:nowrap;}' +
     '.sip-mini .sip-dock .sip-track,.sip-mini .sip-dock .sip-wave,.sip-mini .sip-dock .sip-eq,.sip-mini .sip-dock .sip-ctl,.sip-mini .sip-dock .sip-dock-more,.sip-mini .sip-dock .sip-panel{display:none!important;}' +
     '.sip-mini .sip-dock .sip-play{margin:0;}' +
-    '.sip-mini.sip-root .sip-dock:not(:has(.sip-play))/*no-music profiles: nothing at all*/{display:none;}' +
+    '.sip-mini .sip-dock.sip-dock--none{display:none!important;}' +
     '@media (max-width:640px){' +
       '.sip-content{padding:10px 10px 150px;}' +
       '.sip-topbar{gap:10px;padding:2px 84px 10px 4px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +   /* right gutter = the site's floating Loop Bucks pill */
@@ -1050,6 +1050,9 @@
       if (tl) tl.textContent = 'PROFILE MUSIC';
       if (playBtn) { playBtn.disabled = true; playBtn.style.opacity = '.45'; playBtn.title = 'No profile music'; }
       if (timeEl) timeEl.textContent = '';
+      /* mini mode + no music: a dead play pill is noise — show nothing at all */
+      var miniRoot = $('.sip-root');
+      if (miniRoot && miniRoot.classList.contains('sip-mini')) { var mdk = $('.sip-dock'); if (mdk) mdk.classList.add('sip-dock--none'); }
     }
     requestAnimationFrame(tick);
   }
