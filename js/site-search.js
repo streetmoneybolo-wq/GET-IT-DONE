@@ -18,6 +18,30 @@
      Instead the tool gets a slim ticker-ONLY search wired straight to the
      dashboard's own chart controls (#csym + #csym-go), so picking a result
      re-points the streaming chart instantly without leaving the frame. */
+  /* ---- Obi's Algo calibration fix (group Algo tool / analyst dashboard) ----
+     The moomoo bridge dispatches sml:moomoo-market with snapshot.bid_price /
+     ask_price = null (even mid-session), so the Obi confluence engine could
+     never accumulate impact samples: coverage = min(trades, elapsed, impact)
+     stayed 0 and the panel said "calibrating 0%" forever. The SAME event's
+     order book carries the real top-of-book — mirror it into the snapshot
+     before the engine (whose listener registers after this script) ingests it.
+     Real market data only; nothing is synthesized. */
+  if (/\/analyst-dashboard/.test(location.pathname)) {
+    window.addEventListener('sml:moomoo-market', function (e) {
+      try {
+        var d = e.detail;
+        if (!d || !d.snapshot || !d.book) return;
+        var snap = d.snapshot;
+        var bb = d.book.bids && d.book.bids[0];
+        var ba = d.book.asks && d.book.asks[0];
+        var bp = bb ? Number(bb.price) : 0;
+        var ap = ba ? Number(ba.price) : 0;
+        if (!(Number(snap.bid_price) > 0) && bp > 0) { snap.bid_price = bp; if (!(Number(snap.bid_size) > 0)) snap.bid_size = Number(bb.size) || 0; }
+        if (!(Number(snap.ask_price) > 0) && ap > 0 && ap >= bp) { snap.ask_price = ap; if (!(Number(snap.ask_size) > 0)) snap.ask_size = Number(ba.size) || 0; }
+      } catch (err) {}
+    });
+  }
+
   var EMBED_Q = new URLSearchParams(location.search);
   var EMBED_TOOL = EMBED_Q.has('sml_group_tool') || (EMBED_Q.has('embed') && window.self !== window.top);
   var HEADER_SYMBOLS = ['SPY','QQQ','NVDA','AAPL','TSLA','MSFT','AMD','META','AMZN','SCKT','ILLR','MRAM'];
