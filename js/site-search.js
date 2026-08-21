@@ -383,7 +383,24 @@
     if (hfs) hfs.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); });
   }
 
+  /* wp-login.php: the sign-in page must stay CLEAN — no injected site header,
+     no ticker tape, no ad slots, no floating buttons. (They were all rendering
+     on top of the WordPress login box.) */
+  function isLoginPage() {
+    return /^\/wp-login\.php/.test(location.pathname) || (document.body && document.body.classList.contains('login'));
+  }
+  function mountLoginCleanup() {
+    if (document.getElementById('sml-login-clean')) return;
+    var st = document.createElement('style');
+    st.id = 'sml-login-clean';
+    st.textContent = '.wordads-ad-wrapper,[class*="wordads"],.sml-uads-slot,[id^="sml-uads"],' +
+      '#sml-global-header,.sml-gh-tape,.sml-lb-floating,#sml-lb-btn,.sml-loop-launcher{display:none!important}' +
+      'body.login{margin-top:0!important;padding-top:0!important}';
+    document.head.appendChild(st);
+  }
+
   function build() {
+    if (isLoginPage()) { mountLoginCleanup(); return; }
     mountDetectFade();
     mountTickerPop();
     if (EMBED_TOOL) { mountEmbedTool(); return; }
