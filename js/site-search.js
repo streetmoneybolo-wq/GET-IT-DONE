@@ -26,7 +26,7 @@
      order book carries the real top-of-book — mirror it into the snapshot
      before the engine (whose listener registers after this script) ingests it.
      Real market data only; nothing is synthesized. */
-  if (/\/analyst-dashboard/.test(location.pathname)) {
+  if (/\/analyst-dashboard\b/.test(location.pathname)) {
     window.addEventListener('sml:moomoo-market', function (e) {
       try {
         var d = e.detail;
