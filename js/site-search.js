@@ -394,9 +394,25 @@
     var st = document.createElement('style');
     st.id = 'sml-login-clean';
     st.textContent = '.wordads-ad-wrapper,[class*="wordads"],.sml-uads-slot,[id^="sml-uads"],' +
-      '#sml-global-header,.sml-gh-tape,.sml-lb-floating,#sml-lb-btn,.sml-loop-launcher{display:none!important}' +
+      '#sml-global-header,.sml-gh-tape,.sml-lb-floating,#sml-lb-btn,.sml-loop-launcher,' +
+      /* no third-party sign-in buttons on the login flow (owner request): Site Kit's
+         "Sign in with Google" + any Google GSI / Facebook login rendering */
+      '.googlesitekit-sign-in-with-google__frontend-output-button,' +
+      'iframe[src*="accounts.google.com/gsi"],#credential_picker_container,' +
+      '.fb-login-button,[data-provider="facebook"],[class*="facebook-login"],[class*="login-facebook"],' +
+      'a[href*="facebook.com/"][href*="oauth"]{display:none!important}' +
       'body.login{margin-top:0!important;padding-top:0!important}';
     document.head.appendChild(st);
+    /* remove the Google Sign-In script + config so the button never initializes */
+    function stripSocial() {
+      var kill = document.querySelectorAll('script[src*="accounts.google.com/gsi"],script[data-siwg-config],script[src*="connect.facebook.net"]');
+      for (var i = 0; i < kill.length; i++) kill[i].parentNode && kill[i].parentNode.removeChild(kill[i]);
+      var btns = document.querySelectorAll('.googlesitekit-sign-in-with-google__frontend-output-button');
+      for (var j = 0; j < btns.length; j++) btns[j].parentNode && btns[j].parentNode.removeChild(btns[j]);
+    }
+    stripSocial();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', stripSocial, { once: true });
+    setTimeout(stripSocial, 1500);
   }
 
   function build() {
