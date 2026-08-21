@@ -272,6 +272,10 @@
     '.sip-panel-grid{display:flex;flex-wrap:wrap;gap:6px;}' +
     '.sip-panel-note{font-size:11px;color:#6B7C90;margin-top:10px;line-height:1.5;}' +
     '.sip-dock-more{display:none;}' +
+    '.sip-mini .sip-dock{left:auto;right:14px;bottom:14px;transform:none;width:auto;min-width:0;padding:6px;gap:0;border-radius:999px;flex-wrap:nowrap;}' +
+    '.sip-mini .sip-dock .sip-track,.sip-mini .sip-dock .sip-wave,.sip-mini .sip-dock .sip-eq,.sip-mini .sip-dock .sip-ctl,.sip-mini .sip-dock .sip-dock-more,.sip-mini .sip-dock .sip-panel{display:none!important;}' +
+    '.sip-mini .sip-dock .sip-play{margin:0;}' +
+    '.sip-mini.sip-root .sip-dock:not(:has(.sip-play))/*no-music profiles: nothing at all*/{display:none;}' +
     '@media (max-width:640px){' +
       '.sip-content{padding:10px 10px 150px;}' +
       '.sip-topbar{gap:10px;padding:2px 84px 10px 4px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +   /* right gutter = the site's floating Loop Bucks pill */
@@ -451,7 +455,7 @@
       '<iframe id="' + FRAME_ID + '" class="sip-yt" allow="autoplay; encrypted-media" src="https://www.youtube-nocookie.com/embed/' + esc(ytId(cfg.music.url)) + '?enablejsapi=1&rel=0&modestbranding=1&playsinline=1&controls=0&loop=1&playlist=' + esc(ytId(cfg.music.url)) + '"></iframe>' : '';
 
     return '' +
-      '<div class="sip-root' + (cfg.isOwner ? ' sip-owner' : '') + '">' +
+      '<div class="sip-root' + (cfg.isOwner ? ' sip-owner' : '') + (/[?&]sml_studio=1/.test(location.search) ? '' : ' sip-mini') + '">' +
       '<div class="sip-bg"' + bg + '>' + bgVid + '<div class="sip-bg-scrim"></div></div>' +
       '<canvas class="sip-fx"></canvas>' +
       '<button class="sip-worldnav sip-prev" style="left:10px;" title="Previous world">‹</button>' +
