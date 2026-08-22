@@ -8,11 +8,15 @@
  *   - every card click navigates to /stocks/{ticker}/ (the entity page);
  *   - logos always come from the public favicon service (the bundle's few
  *     local PNGs are not hosted on the site).
- * DATA IS SAMPLE and labeled so in the UI ("· SAMPLE", "all figures
- * sample"), exactly as the design ships. Wiring real quotes is a separate
- * phase — do NOT strip the sample labels before that lands, and do not wire
- * ~290 tickers to live quote calls without a bulk endpoint + the provider
- * rate-limit question resolved (see massive-rate-limits memory).
+ * DATA IS REAL (v2): every figure comes from the site's own market data —
+ * primary source is the sml-hm/v1/snapshot aggregate (a WP cron merges the
+ * bulk sml-scanner/v1/quotes route, which caps at 50 symbols/request, into
+ * one cached blob); if that snippet isn't active the module falls back to
+ * fetching the scanner in 6 chunks directly. Labeled "· DELAYED" honestly.
+ * Sparklines accumulate REAL prices (open + one point per refresh) — the
+ * design's synthetic series and random per-tick mutation are gone; values
+ * change only when a real refresh lands. Symbols the feed can't price are
+ * dropped from the rotation, never faked. Fails closed: no data, no module.
  */
 (function () {
   'use strict';
@@ -20,7 +24,7 @@
   window.__smlTv2HeatmapBooted = true;
 
   var CSS = ".smlhm{--up:#00ff88;--down:#ff4d5e;--flat:#8fa89b;--bg:#05080a;--panel:#0a1210;--line:#1c2b23;--txt:#e6f2ea;--mut:#8fa89b;\n  width:100%;background:var(--bg);color:var(--txt);font-family:'IBM Plex Sans',sans-serif;padding:22px 18px 26px;box-sizing:border-box;}\n.smlhm *{box-sizing:border-box;margin:0;}\n.smlhm .hm-top{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:14px;}\n.smlhm h2{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:700;letter-spacing:1px;}\n.smlhm h2 em{color:var(--up);font-style:normal;} .smlhm h2 i{color:var(--down);font-style:normal;}\n.smlhm .hm-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--mut);margin-top:3px;}\n.smlhm .hm-block{border-left:1px solid var(--line);padding-left:16px;}\n.smlhm .hm-block label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--mut);display:block;}\n.smlhm .hm-block b{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;margin-top:2px;display:block;}\n.smlhm .hm-block b.now{color:var(--up);}\n.smlhm .hm-samp{color:#ffb020;}\n.smlhm .hm-idx{margin-left:auto;display:flex;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;}\n.smlhm .hm-idx span{color:var(--mut);} .smlhm .hm-idx b{font-weight:600;margin-left:5px;}\n.smlhm .hm-prog{height:3px;background:#101815;border-radius:2px;overflow:hidden;margin:0 0 14px;}\n.smlhm .hm-prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#00ff8833,var(--up));}\n.smlhm .hm-break{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:14px;font-family:'IBM Plex Mono',monospace;}\n.smlhm .hm-break label{font-size:10px;letter-spacing:2px;color:var(--mut);}\n.smlhm .hm-break b{font-size:12px;font-weight:700;letter-spacing:1px;}\n.smlhm .hm-break span{font-size:10px;color:var(--mut);margin-left:auto;}\n.smlhm .hm-grid{display:grid;grid-template-columns:repeat(30,1fr);gap:13px;transition:opacity .38s ease,transform .38s ease;}\n.smlhm .hm-grid.fade{opacity:.15;transform:translateY(8px) scale(.99);}\n.smlhm .hm-card{position:relative;grid-column:span 6;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;\n  border:1px solid color-mix(in srgb,var(--c) 40%,transparent);\n  background:\n    url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E\"),\n    repeating-linear-gradient(0deg,transparent 0 3px,#ffffff03 3px 4px),\n    radial-gradient(120% 90% at 18% 0%,color-mix(in srgb,var(--c) 10%,transparent),transparent 55%),\n    linear-gradient(165deg,#111c17,#070c0e 62%,#05090b);\n  box-shadow:0 16px 34px #000000c4,0 2px 6px #000000a0,0 0 26px color-mix(in srgb,var(--c) 13%,transparent),\n    inset 0 1px 0 #ffffff21,inset 0 -14px 30px #00000075;\n  transition:transform .4s ease,opacity .4s ease,box-shadow .3s ease,border-color .5s ease;}\n.smlhm .hm-card::before,.smlhm .hm-card::after{content:\"\";position:absolute;width:14px;height:14px;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);pointer-events:none;}\n.smlhm .hm-card::before{top:6px;left:6px;border-right:none;border-bottom:none;border-radius:6px 0 0 0;}\n.smlhm .hm-card::after{bottom:6px;right:6px;border-left:none;border-top:none;border-radius:0 0 6px 0;}\n.smlhm .hm-card:hover{transform:translateY(-4px) scale(1.008);}\n.smlhm .hm-card.swap{opacity:.15;transform:translateY(10px) scale(.97);}\n.smlhm .hm-card header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}\n.smlhm .hm-logo{position:relative;width:36px;height:36px;border-radius:9px;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;\n  background:color-mix(in srgb,var(--c) 12%,transparent);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);\n  color:var(--c);font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:16px;}\n.smlhm .hm-logo i{position:absolute;inset:0;background-size:cover;background-position:center;}\n.smlhm .hm-sym{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:23px;letter-spacing:1px;line-height:1;}\n.smlhm .hm-meta{min-width:0;}\n.smlhm .hm-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}\n.smlhm .hm-sector{font-size:10px;color:var(--c);margin-top:2px;transition:color .5s;}\n.smlhm .hm-badge{display:none;font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:1px;font-weight:700;color:#05080a;background:var(--c);\n  padding:4px 7px;border-radius:4px;box-shadow:0 0 14px color-mix(in srgb,var(--c) 55%,transparent);white-space:nowrap;}\n.smlhm .hm-badge.on{display:block;}\n.smlhm .hm-pct{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:19px;color:var(--c);white-space:nowrap;\n  transition:text-shadow .35s,transform .35s,color .5s;}\n.smlhm .hm-pct.pulse{text-shadow:0 0 16px var(--c);transform:scale(1.06);}\n.smlhm .hm-spark{width:100%;height:34px;display:block;}\n.smlhm .hm-stats{display:flex;border-top:1px solid #ffffff12;padding-top:8px;}\n.smlhm .hm-stats>div{flex:1;min-width:0;padding-right:8px;}\n.smlhm .hm-stats>div+div{border-left:1px solid #ffffff12;padding-left:10px;}\n.smlhm .hm-stats label{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--mut);display:block;}\n.smlhm .hm-stats b{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;margin-top:3px;display:block;}\n.smlhm .hm-range{position:relative;height:6px;border-radius:2px;background:#101815;margin-top:7px;}\n.smlhm .hm-range i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 35%,transparent));width:100%;}\n.smlhm .hm-range u{position:absolute;top:-2px;width:2px;height:10px;background:var(--c);border-radius:1px;left:50%;transition:left .8s ease,background .5s;box-shadow:0 0 6px var(--c);}\n.smlhm .rs-row{display:flex;align-items:center;gap:7px;}\n.smlhm .hm-rs{flex:1;height:6px;border-radius:2px;background:#101815;position:relative;max-width:100px;}\n.smlhm .hm-rs i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:linear-gradient(90deg,color-mix(in srgb,var(--c) 20%,transparent),var(--c));transition:width .8s ease,background .5s;}\n/* tiers */\n.smlhm .hm-card.t0{padding:18px 24px;gap:12px;}\n.smlhm .hm-card.t0 .hm-logo{width:52px;height:52px;font-size:22px;}\n.smlhm .hm-card.t0 .hm-sym{font-size:42px;}\n.smlhm .hm-card.t0 .hm-pct{font-size:40px;}\n.smlhm .hm-card.t0 .hm-name{font-size:14px;} .smlhm .hm-card.t0 .hm-sector{font-size:12px;}\n.smlhm .hm-card.t0 .hm-spark{height:58px;} .smlhm .hm-card.t0 .hm-stats b{font-size:16px;}\n.smlhm .hm-card.t0 .hm-badge{font-size:9px;padding:5px 9px;}\n.smlhm .hm-card.t1 .hm-sym{font-size:29px;} .smlhm .hm-card.t1 .hm-pct{font-size:25px;}\n.smlhm .hm-card.t1 .hm-spark{height:42px;}\n.smlhm .hm-foot{margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#5c7a6b;}\n@media (max-width:1100px){\n  .smlhm .hm-card{grid-column:span 15 !important;}\n  .smlhm .hm-card.t0{grid-column:span 30 !important;}\n}\n@media (max-width:640px){\n  .smlhm .hm-card{grid-column:span 30 !important;}\n  .smlhm .hm-idx{display:none;}\n}\n\n.smlhm .hm-card{cursor:pointer;}\n";
-  var MARKUP = "<div class=\"hm-top\">\n  <div>\n    <h2>LEADING STOCKS <em>HEAT</em> <i>MAP</i></h2>\n    <div class=\"hm-sub\">INDUSTRY LEADERS &amp; LAGGARDS · FULL MARKET ROTATION</div>\n  </div>\n  <div class=\"hm-block\"><label>MARKET SNAPSHOT</label><b>LIVE TAPE <span class=\"hm-samp\">· SAMPLE</span></b></div>\n  <div class=\"hm-block\"><label>NOW SHOWING</label><b class=\"now\" id=\"hm-view\">MARKET OVERVIEW</b></div>\n  <div class=\"hm-idx\" id=\"hm-idx\"></div>\n  <button type=\"button\" class=\"hm-min\" id=\"hm-min\" aria-expanded=\"true\" title=\"Minimize heat map\">—</button>\n</div>\n<div class=\"hm-prog\"><i id=\"hm-prog\"></i></div>\n<div class=\"hm-break\" id=\"hm-break\"></div>\n<div class=\"hm-grid\" id=\"hm-grid\"></div>\n<div class=\"hm-foot\">ⓘ Data is delayed · Market cap in USD · Relative strength vs. S&amp;P 500 · rotation: market overview → every industry's top 5 → every industry's bottom 5 · all figures sample</div>";
+  var MARKUP = "<div class=\"hm-top\">\n  <div>\n    <h2>LEADING STOCKS <em>HEAT</em> <i>MAP</i></h2>\n    <div class=\"hm-sub\">INDUSTRY LEADERS &amp; LAGGARDS · FULL MARKET ROTATION</div>\n  </div>\n  <div class=\"hm-block\"><label>MARKET SNAPSHOT</label><b>LIVE TAPE <span class=\"hm-samp\">· DELAYED</span></b></div>\n  <div class=\"hm-block\"><label>NOW SHOWING</label><b class=\"now\" id=\"hm-view\">MARKET OVERVIEW</b></div>\n  <div class=\"hm-idx\" id=\"hm-idx\"></div>\n  <button type=\"button\" class=\"hm-min\" id=\"hm-min\" aria-expanded=\"true\" title=\"Minimize heat map\">—</button>\n</div>\n<div class=\"hm-prog\"><i id=\"hm-prog\"></i></div>\n<div class=\"hm-break\" id=\"hm-break\"></div>\n<div class=\"hm-grid\" id=\"hm-grid\"></div>\n<div class=\"hm-foot\">ⓘ Real site market data, delayed · Prices in USD · Relative strength vs. S&amp;P 500 (SPY) · rotation: market overview → every industry's top 5 → every industry's bottom 5</div>";
 
   function engine(){
 
@@ -96,32 +100,58 @@ var IND=[
 ["Gold","NEM|Newmont|$65B,GOLD|Barrick|$38B,AEM|Agnico Eagle|$60B,KGC|Kinross|$18B,WPM|Wheaton|$40B"],
 ["Paper & Packaging","IP|International Paper|$18B,PKG|Packaging Corp|$17B,SW|Smurfit Westrock|$22B,BALL|Ball Corp|$16B,AMCR|Amcor|$14B"]
 ];
-function hash(s){var h=0,i;for(i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%99991;return h;}
+/* REAL DATA build: the taxonomy (industries, symbols, names) comes from the
+   design; every figure comes from the site's own market data. No seeded or
+   random values anywhere — a symbol the feed can't price is dropped, never
+   faked. */
 var DATA=IND.map(function(row){
   return{sector:row[0],stocks:row[1].split(",").map(function(t){
-    var p=t.split("|"),sym=p[0];
-    var pct=Math.round(((hash(sym+"p")%1000)/1000-0.5)*7*100)/100;
-    var vol=Math.round((1+(hash(sym+"v")%590)/10)*10)/10;
-    var rs=Math.max(0.6,Math.min(1.5,Math.round((1+pct*0.09+((hash(sym+"r")%100)/100-0.5)*0.2)*100)/100));
-    return[sym,p[1],pct,p[2],vol,rs];
+    var p=t.split("|");
+    return[p[0],p[1]];
   })};
 });
 var N=DATA.length;
-var IDX=[["S&P 500",6412.2,0.42],["NASDAQ",21830.5,0.66],["DOW",44916.8,0.18]];
+var IDX=[["SPY",0,0],["QQQ",0,0],["DIA",0,0]]; /* real index-ETF quotes, labeled by their actual symbols */
 var OV_SPANS=[30,10,10,10,6,6,6,6,6,15,15],OV_TIERS=[0,1,1,1,2,2,2,2,2,1,1];
-var live={},leaders=DATA.map(function(){return 0;}),sv=-1,cards=[],idxRefs=[];
+var live={},leaders=DATA.map(function(){return 0;}),sv=-1,cards=[],idxRefs=[],READY=false;
 function colorOf(p){return p===0?FLAT:(p>0?UP:DOWN);}
-function initVals(sym,pct){
-  var seed=0,i;for(i=0;i<sym.length;i++)seed=(seed*31+sym.charCodeAt(i))%9973;
-  function rnd(){seed=(seed*1103515245+12345)%2147483648;return seed/2147483648;}
-  var n=140,drift=pct/n*6,v=20-pct*3,vals=[];
-  for(i=0;i<n;i++){var burst=rnd()<0.06?(rnd()-0.5)*4:0;v+=drift+(rnd()-0.5)*1.7+burst;vals.push(v);}
-  return vals;
+/* ---- data feed: sml-hm aggregator first, chunked scanner fallback ----
+   Sparklines are ACCUMULATED real prices: seeded from the day's open + last,
+   one real point appended per refresh — the line grows through the session
+   instead of showing an invented series. */
+var SYMS=(function(){var a=[];DATA.forEach(function(sec){sec.stocks.forEach(function(s){a.push(s[0]);});});a.push("SPY","QQQ","DIA");return a;})();
+function applyQuotes(q){
+  var spy=(q.SPY&&typeof q.SPY.chgPct==="number")?q.SPY.chgPct:0,n=0;
+  SYMS.forEach(function(sym){
+    var r=q[sym];if(!r||typeof r.last!=="number")return;
+    var L=live[sym]||(live[sym]={vals:[]});
+    L.pct=Math.round((r.chgPct||0)*100)/100;
+    L.vol=(r.v||0)/1e6;
+    L.hi=(typeof r.h==="number")?r.h:r.last;
+    L.lo=(typeof r.l==="number")?r.l:r.last;
+    L.pc=(typeof r.pc==="number")?r.pc:null;
+    L.last=r.last;
+    L.rs=Math.max(0.6,Math.min(1.5,Math.round(((1+L.pct/100)/(1+spy/100))*100)/100));
+    if(!L.vals.length&&typeof r.o==="number")L.vals.push(r.o);
+    if(L.vals[L.vals.length-1]!==r.last)L.vals.push(r.last);
+    if(L.vals.length<2)L.vals.push(r.last);
+    if(L.vals.length>140)L.vals=L.vals.slice(-140);
+    n++;
+  });
+  [["SPY",0],["QQQ",1],["DIA",2]].forEach(function(x){var r=q[x[0]];if(r&&typeof r.last==="number"){IDX[x[1]][1]=r.last;IDX[x[1]][2]=Math.round((r.chgPct||0)*100)/100;}});
+  return n;
 }
-DATA.forEach(function(sec){sec.stocks.forEach(function(s){
-  var vals=initVals(s[0],s[2]);
-  live[s[0]]={pct:s[2],vol:s[4],rsd:0,vals:vals,hi:Math.max.apply(null,vals),lo:Math.min.apply(null,vals)};
-});});
+function fetchSnap(){
+  return fetch("/wp-json/sml-hm/v1/snapshot",{credentials:"same-origin"}).then(function(r){return r.json();})
+    .then(function(d){if(d&&d.available&&d.quotes)return d.quotes;throw 0;})
+    .catch(function(){
+      var chunks=[];for(var i=0;i<SYMS.length;i+=50)chunks.push(SYMS.slice(i,i+50));
+      return Promise.all(chunks.map(function(c){
+        return fetch("/wp-json/sml-scanner/v1/quotes?symbols="+c.join(","),{credentials:"same-origin"})
+          .then(function(r){return r.json();}).then(function(d){return d&&d.rows?d.rows:[];}).catch(function(){return [];});
+      })).then(function(all){var q={};all.forEach(function(rows){rows.forEach(function(r){if(r&&r.sym)q[r.sym]=r;});});return q;});
+    });
+}
 function avgOf(sec){return sec.stocks.reduce(function(a,s){return a+live[s[0]].pct;},0)/sec.stocks.length;}
 function pts(vals){
   var n=vals.length,min=Math.min.apply(null,vals),max=Math.max.apply(null,vals),range=Math.max(max-min,1),arr=[];
@@ -146,7 +176,7 @@ function buildCard(en,grid){
   var line=svgEl("polyline",svg);line.setAttribute("fill","none");line.setAttribute("stroke-width","0.9");line.setAttribute("opacity","0.95");line.setAttribute("stroke-linejoin","round");
   var dot=svgEl("circle",svg);dot.setAttribute("r","1.8");
   var stats=el("div","hm-stats",root);
-  var d1=el("div",null,stats);el("label",null,d1).textContent="MARKET CAP";var cap=el("b",null,d1);
+  var d1=el("div",null,stats);el("label",null,d1).textContent="PREV CLOSE";var cap=el("b",null,d1);
   var d2=el("div",null,stats);el("label",null,d2).textContent="VOLUME";var vol=el("b",null,d2);
   var d3=el("div",null,stats);el("label",null,d3).textContent="DAY RANGE";var range=el("div","hm-range",d3);el("i",null,range);var rdot=el("u",null,range);
   var d4=el("div",null,stats);el("label",null,d4).textContent="REL STRENGTH";var rrow=el("div","rs-row",d4);var rsb=el("b",null,rrow);var rsbar=el("div","hm-rs",rrow);var rsfill=el("i",null,rsbar);
@@ -173,11 +203,10 @@ function paint(card,stock){
   e.glow.setAttribute("points",p.line);e.glow.setAttribute("stroke",c);
   e.line.setAttribute("points",p.line);e.line.setAttribute("stroke",c);
   e.dot.setAttribute("cx",p.last[0]);e.dot.setAttribute("cy",p.last[1]);e.dot.setAttribute("fill",c);
-  e.cap.textContent=s[3];
+  e.cap.textContent=(L.pc!=null)?"$"+L.pc.toFixed(2):"—";
   e.vol.textContent=L.vol.toFixed(1)+"M";
-  var cur=L.vals[L.vals.length-1];
-  e.rdot.style.left=Math.max(2,Math.min(98,(cur-L.lo)/Math.max(L.hi-L.lo,0.1)*100))+"%";
-  var rs=Math.round((s[5]+L.rsd)*100)/100;
+  e.rdot.style.left=Math.max(2,Math.min(98,(L.last-L.lo)/Math.max(L.hi-L.lo,0.001)*100))+"%";
+  var rs=L.rs||1;
   e.rsb.textContent=rs.toFixed(2);
   e.rsfill.style.width=Math.min(rs/1.5*100,100)+"%";
 }
@@ -239,16 +268,9 @@ function paintIdx(){
   });
 }
 function tick(){
-  Object.keys(live).forEach(function(sym){
-    var L=live[sym];
-    var d=(Math.random()-0.5)*0.3-L.pct*0.03;
-    L.pct=Math.round((L.pct+d)*100)/100;
-    L.vol+=Math.random()*0.2;
-    var nv=L.vals[L.vals.length-1]+d*8+(Math.random()-0.5)*1.4;
-    L.vals=L.vals.slice(1);L.vals.push(nv);
-    L.hi=Math.max(L.hi,nv);L.lo=Math.min(L.lo,nv);
-    L.rsd=Math.max(-0.12,Math.min(0.12,L.rsd+(Math.random()-0.5)*0.02));
-  });
+  /* repaint-only: values change ONLY when a real snapshot refresh lands
+     (the design's random per-tick mutation is gone — never fake a move) */
+  if(!READY)return;
   DATA.forEach(function(sec,i){ // leadership hysteresis for overview slots
     var cur=leaders[i],best=cur;
     sec.stocks.forEach(function(s,j){if(live[s[0]].pct>live[sec.stocks[best][0]].pct+0.15)best=j;});
@@ -268,7 +290,6 @@ function tick(){
       (function(cd){setTimeout(function(){cd.els.pct.classList.remove("pulse");},550);})(card);
     }
   });
-  IDX.forEach(function(d){d[2]=Math.round((d[2]+(Math.random()-0.5)*0.06)*100)/100;d[1]+=d[1]*(Math.random()-0.5)*0.0004;});
   paintIdx();
 }
 var progEl=document.getElementById("hm-prog"),viewEl=document.getElementById("hm-view");
@@ -289,11 +310,23 @@ function nextView(){
     restartProg();
   },400);
 }
-buildIdx();buildGrid();buildBreak();restartProg();
-/* while minimized the engine idles — no ticks, no rotation, no repaint work */
+/* boot: first REAL snapshot before anything renders — fail closed (the whole
+   module unmounts) rather than ever painting an empty or invented map */
+fetchSnap().then(function(q){
+  if(applyQuotes(q)<20)throw 0;
+  DATA.forEach(function(sec){sec.stocks=sec.stocks.filter(function(s){return live[s[0]];});});
+  DATA=DATA.filter(function(sec){return sec.stocks.length;});
+  N=DATA.length;leaders=DATA.map(function(){return 0;});
+  READY=true;
+  buildIdx();buildGrid();buildBreak();restartProg();
+}).catch(function(){var s=document.getElementById("smlhm");if(s)s.remove();});
+/* while minimized the engine idles — no polls, no rotation, no repaint work */
 function hmOff(){var s=document.getElementById("smlhm");return !!(s&&s.classList.contains("hm-collapsed"));}
-setInterval(function(){if(!hmOff())tick();},2200);
-setInterval(function(){if(!hmOff())nextView();},9000);
+setInterval(function(){
+  if(hmOff()||!READY)return;
+  fetchSnap().then(function(q){applyQuotes(q);tick();}).catch(function(){});
+},60000);
+setInterval(function(){if(!hmOff()&&READY)nextView();},9000);
 document.getElementById("smlhm").addEventListener("smlhm:expand",restartProg);
 
   var grid2=document.getElementById("hm-grid");
