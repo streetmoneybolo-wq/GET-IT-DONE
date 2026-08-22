@@ -30,9 +30,9 @@ function createDatabase({ databaseUrl, databaseSsl }) {
     const result = await pool.query(
       `INSERT INTO wordpress_gateway_events (
          event_id, event_type, occurred_at, actor_user_id,
-         subject_type, subject_id, payload, payload_hash
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-       ON CONFLICT (event_id) DO NOTHING
+         subject_type, subject_id, payload, payload_hash, source_event_key
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+       ON CONFLICT DO NOTHING
        RETURNING id`,
       [
         event.eventId,
@@ -42,7 +42,8 @@ function createDatabase({ databaseUrl, databaseSsl }) {
         event.subjectType,
         event.subjectId,
         JSON.stringify(event.data),
-        event.payloadHash
+        event.payloadHash,
+        event.sourceEventKey
       ]
     );
     return result.rowCount === 1 ? 'accepted' : 'duplicate';

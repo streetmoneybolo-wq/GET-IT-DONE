@@ -45,3 +45,17 @@ test('gateway payload limit stays intentionally small', () => {
   assert.equal(MAX_BODY_BYTES, 65_536);
   assert.equal(parseEvent(JSON.stringify({ version: 1 })).error, 'invalid_event');
 });
+
+test('gateway accepts only UUID source event keys for retry-safe producers', () => {
+  const retryable = JSON.stringify({
+    version: 1,
+    eventId: '7dc5f64b-7c05-4f38-9c55-31fcfa798706',
+    eventType: 'creator.channel.updated',
+    occurredAt: '2023-11-14T22:13:20.000Z',
+    subject: { type: 'channel', id: 'grandmasterobi' },
+    data: { sourceEventKey: 'bd30f4d9-6e48-46c5-9f0f-b565b8202b6d', action: 'updated' }
+  });
+  assert.equal(parseEvent(retryable).ok, true);
+  assert.equal(parseEvent(retryable).event.sourceEventKey, 'bd30f4d9-6e48-46c5-9f0f-b565b8202b6d');
+  assert.equal(parseEvent(retryable.replace('bd30f4d9-6e48-46c5-9f0f-b565b8202b6d', 'not-a-uuid')).error, 'invalid_event');
+});

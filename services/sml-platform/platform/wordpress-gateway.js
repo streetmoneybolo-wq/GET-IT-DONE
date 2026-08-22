@@ -76,10 +76,19 @@ function parseEvent(rawBody) {
 
   const subjectType = subject.type == null ? null : cleanText(subject.type, 48);
   const subjectId = subject.id == null ? null : cleanText(String(subject.id), 191);
+  // A trusted WordPress producer may provide a stable UUID for one logical
+  // change. It is distinct from eventId, which is regenerated on each delivery
+  // attempt by the WordPress gateway. This lets the database collapse retries
+  // without accepting an arbitrary caller-controlled idempotency key.
+  const hasSourceEventKey = Object.prototype.hasOwnProperty.call(body.data || {}, 'sourceEventKey');
+  const sourceEventKey = hasSourceEventKey
+    ? cleanText(String(body.data.sourceEventKey), 36)
+    : null;
   if (
     (subject.type != null && !subjectType) ||
     (subject.id != null && !subjectId) ||
-    ((subjectType === null) !== (subjectId === null))
+    ((subjectType === null) !== (subjectId === null)) ||
+    (hasSourceEventKey && (!sourceEventKey || !UUID_RE.test(sourceEventKey)))
   ) return fail(422, 'invalid_event');
 
   return {
@@ -92,6 +101,7 @@ function parseEvent(rawBody) {
       subjectType,
       subjectId,
       data: body.data || {},
+      sourceEventKey: sourceEventKey ? sourceEventKey.toLowerCase() : null,
       payloadHash: crypto.createHash('sha256').update(rawBody, 'utf8').digest('hex')
     }
   };
