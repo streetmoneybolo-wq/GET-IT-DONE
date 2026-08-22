@@ -234,9 +234,9 @@
     '.sip-disc-h{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.8px;color:#6B7C90;margin-bottom:6px;}' +
     '.sip-disc-t{font-size:11.5px;color:#93A4B8;line-height:1.6;}' +
     '.sip-galphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}' +
-    '.sip-galphoto{aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);transform:scale(calc(1 + var(--kick,0)*0.04));box-shadow:0 10px 26px rgba(0,0,0,.4);background-size:cover;background-position:center;cursor:pointer;}' +
+    '.sip-galphoto{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);transform:scale(calc(1 + var(--kick,0)*0.04));box-shadow:0 10px 26px rgba(0,0,0,.4);background-size:cover;background-position:center;cursor:pointer;}' +
     '.sip-galvids{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;}' +
-    '.sip-galvid{aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);cursor:pointer;transform:scale(calc(1 + var(--bass,0)*0.03));box-shadow:0 10px 26px rgba(0,0,0,.4);}' +
+    '.sip-galvid{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);cursor:pointer;transform:scale(calc(1 + var(--bass,0)*0.03));box-shadow:0 10px 26px rgba(0,0,0,.4);}' +
     '.sip-galvid video{width:100%;height:100%;object-fit:cover;}' +
     '.sip-posts{display:flex;flex-direction:column;gap:10px;max-width:720px;}' +
     '.sip-post{background:var(--card-bg);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:14px 16px;backdrop-filter:blur(8px);transform:translateY(calc(var(--kick,0)*-3px));}' +
@@ -320,6 +320,11 @@
     '.sip-overlay-s{font-size:13px;color:#93A4B8;max-width:340px;text-align:center;line-height:1.6;}' +
     '.sip-gallery-add{margin-left:auto;padding:7px 12px;border:1px solid rgba(56,245,138,.55);border-radius:999px;background:rgba(56,245,138,.1);color:#38F58A;font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}' +
     '.sip-gallery-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}' +
+    '.sip-gallery-delete{position:absolute;right:8px;top:8px;z-index:3;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(40,5,12,.9);color:#ff8299;padding:6px 9px;font:800 10px/1 Archivo,sans-serif;cursor:pointer;}' +
+    '.sip-media-caption{position:absolute;left:0;right:0;bottom:0;padding:28px 10px 9px;background:linear-gradient(transparent,rgba(2,7,11,.9));color:#fff;font:700 11px/1.25 Archivo,sans-serif}.sip-media-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}.sip-media-tags a{color:#62bfff;text-decoration:none;font-size:10px;}' +
+    '.sip-media-meta{position:fixed;inset:0;z-index:2147483645;background:rgba(2,7,11,.86);display:flex;align-items:center;justify-content:center;padding:20px;}' +
+    '.sip-media-meta-card{width:min(440px,100%);background:#09121a;border:1px solid rgba(56,245,138,.4);border-radius:18px;padding:20px;box-shadow:0 24px 80px #000;}' +
+    '.sip-media-meta-card h3{margin:0 0 6px;color:#fff;font:800 19px/1.2 Archivo,sans-serif}.sip-media-meta-card p{margin:0 0 15px;color:#93a4b8;font:500 12px/1.5 Archivo,sans-serif}.sip-media-meta-card label{display:block;margin:12px 0 5px;color:#c8d5df;font:700 11px/1 Archivo,sans-serif}.sip-media-meta-card input{width:100%;box-sizing:border-box;border:1px solid #263a48;border-radius:10px;background:#050b10;color:#fff;padding:11px 12px;outline:none}.sip-media-meta-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:17px}.sip-media-meta-actions button{border:1px solid #2a3d49;border-radius:999px;background:#101b23;color:#d7e2e9;padding:9px 14px;font-weight:800;cursor:pointer}.sip-media-meta-actions .primary{background:#38F58A;color:#03120a;border-color:#38F58A;}' +
     '.sip-yt{position:fixed;width:1px;height:1px;left:-9999px;top:-9999px;opacity:0;pointer-events:none;border:0;}' +
     '@keyframes sip-breathe{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}';
 
@@ -368,17 +373,25 @@
     }
 
     // Gallery photos (8)
+    function mediaCaption(item) {
+      if (!item) return '';
+      var title = item.title || item.caption || '', tags = Array.isArray(item.tags) ? item.tags : [];
+      var tagHtml = tags.map(function (tag) { var handle = tag && (tag.handle || tag.name); return handle ? '<a href="' + esc(tag.url || ('/members/' + Number(tag.user_id || 0) + '/')) + '">@' + esc(String(handle).replace(/^@/, '')) + '</a>' : ''; }).join('');
+      return (title || tagHtml) ? '<div class="sip-media-caption">' + (title ? '<div>' + esc(title) + '</div>' : '') + (tagHtml ? '<div class="sip-media-tags">' + tagHtml + '</div>' : '') + '</div>' : '';
+    }
     var galP = '', nGalP = 0;
     for (var g = 0; g < 8; g++) {
       var gp = ph(cfg.galleryPhotos[g], 'gallery photo ' + (g + 1)); if (cfg.galleryPhotos[g]) nGalP++;
-      galP += '<div class="sip-galphoto' + (cfg.galleryPhotos[g] ? '' : ' sip-slot-empty') + '" data-gphoto="' + g + '"' + gp.st + '>' + gp.inner + '</div>';
+      var gpItem = ((cfg.__media && cfg.__media.gallery_photo) || [])[g] || null;
+      galP += '<div class="sip-galphoto' + (cfg.galleryPhotos[g] ? '' : ' sip-slot-empty') + '" data-gphoto="' + g + '"' + gp.st + '>' + gp.inner + mediaCaption(gpItem) + (cfg.isOwner && gpItem && gpItem.attachment_id ? '<button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_photo:' + g + ':' + Number(gpItem.attachment_id) + '">Delete</button>' : '') + '</div>';
     }
     if (!nGalP) galP += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No photos shared yet.</div>';
     // Gallery videos (6)
     var galV = '', nGalV = 0;
     for (var gvi = 0; gvi < 6; gvi++) {
       var gvu = (cfg.galleryVideos || [])[gvi] || ''; if (gvu) nGalV++;
-      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" src="' + esc(gvu) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div></div>';
+      var gvItem = ((cfg.__media && cfg.__media.gallery_video) || [])[gvi] || null;
+      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" src="' + esc(gvu) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div>' + mediaCaption(gvItem) + (cfg.isOwner && gvItem && gvItem.attachment_id ? '<button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_video:' + gvi + ':' + Number(gvItem.attachment_id) + '">Delete</button>' : '') + '</div>';
     }
 
     var postHtml = cfg.posts.map(function (po) {
@@ -814,36 +827,54 @@
     }
     function toast(msg, bad) { var t = document.createElement('div'); t.textContent = msg; t.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2147483646;background:' + (bad ? '#3a1218' : '#0f2a1c') + ';color:' + (bad ? '#ff859f' : '#8dffc2') + ';border:1px solid ' + (bad ? '#7a2334' : '#1c6b45') + ';border-radius:10px;padding:10px 14px;font:600 12px/1 Archivo,sans-serif;'; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
     function pickFile(kind, idx) { pickKind = kind; pickIdx = idx; ((kind === 'gphoto' || kind === 'ophoto') ? imgInput : vidInput).click(); }
-    vidInput.addEventListener('change', function () {
-      var f = vidInput.files && vidInput.files[0]; if (!f) return; var local = URL.createObjectURL(f); var kind = pickKind, idx = pickIdx;
-      // paint immediately, then persist
-      if (kind === 'ovideo') { videos[idx] = local; renderOrbVideo(idx); } else if (kind === 'gvideo') { gvids[idx] = local; cfg.galleryVideos[idx] = local; renderGalVideo(idx); }
-      vidInput.value = '';
-      if (!canPersist()) { toast('Sign in as the profile owner to save videos.', true); return; }
-      var slot = kind === 'ovideo' ? 'orbital_video' : 'gallery_video';
-      var slotIdx = idx;
-      uploadFile(f, 'orbital_video').then(function (att) {
-        return currentSlot(slot).then(function (items) {
-          items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
-          return saveSlot(slot, items).then(function (saved) { MEDIA[slot] = Array.isArray(saved) ? saved : items; toast('Video saved to your profile.'); });
+    function mediaEndpoint(path, payload) {
+      var base = (U.customRest || '').replace(/customization.*$/, '') || '/wp-json/sml-profile/v2/profile/';
+      return fetch(base + path, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': U.nonce, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Media update failed'); return j; }); });
+    }
+    function collectMediaDetails(file) {
+      return new Promise(function (resolve) {
+        var modal = document.createElement('div'); modal.className = 'sip-media-meta';
+        var suggested = String(file.name || '').replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+        modal.innerHTML = '<form class="sip-media-meta-card"><h3>Photo/video details</h3><p>Add a clear title so people and search engines understand this upload. You can optionally tag up to 10 members.</p><label>Title (required)</label><input name="title" maxlength="120" minlength="3" required placeholder="Describe this upload" value="' + esc(suggested) + '"><label>Tag members (optional)</label><input name="tags" maxlength="240" placeholder="@grandmasterobi, @anothermember"><div class="sip-media-meta-actions"><button type="button" data-cancel>Cancel</button><button class="primary" type="submit">Continue upload</button></div></form>';
+        document.body.appendChild(modal);
+        var form = modal.querySelector('form'), title = form.elements.title;
+        setTimeout(function () { title.focus(); title.select(); }, 0);
+        modal.querySelector('[data-cancel]').addEventListener('click', function () { modal.remove(); resolve(null); });
+        modal.addEventListener('click', function (e) { if (e.target === modal) { modal.remove(); resolve(null); } });
+        form.addEventListener('submit', function (e) {
+          e.preventDefault(); var cleanTitle = title.value.trim();
+          if (cleanTitle.length < 3) { title.setCustomValidity('Add a title of at least 3 characters.'); title.reportValidity(); return; }
+          title.setCustomValidity('');
+          var tags = String(form.elements.tags.value || '').split(/[\s,]+/).map(function (v) { return v.replace(/^@/, '').trim(); }).filter(Boolean).slice(0, 10);
+          modal.remove(); resolve({ title: cleanTitle, tags: tags });
         });
-      }).catch(function (e) { toast(e.message || 'Could not save the video.', true); });
+      });
+    }
+    function finishUpload(file, kind, idx, details) {
+      if (!canPersist()) { toast('Sign in as the profile owner to save media.', true); return; }
+      var isVideo = kind === 'ovideo' || kind === 'gvideo';
+      var slot = kind === 'ovideo' ? 'orbital_video' : kind === 'gvideo' ? 'gallery_video' : kind === 'gphoto' ? 'gallery_photo' : 'orbital';
+      return uploadFile(file, isVideo ? 'orbital_video' : 'photo').then(function (att) {
+        return mediaEndpoint('media/details', { attachment_id: att.id, title: details.title, tags: details.tags }).then(function () {
+          return currentSlot(slot).then(function (items) {
+            items = setSlotItem(items, idx, { attachment_id: att.id, caption: details.title, url: '' });
+            return saveSlot(slot, items).then(function (saved) {
+              MEDIA[slot] = Array.isArray(saved) ? saved : items;
+              toast('Upload saved to your profile.');
+              setTimeout(function () { location.reload(); }, 500);
+            });
+          });
+        });
+      }).catch(function (e) { toast(e.message || 'Could not save the upload.', true); });
+    }
+    vidInput.addEventListener('change', function () {
+      var f = vidInput.files && vidInput.files[0]; if (!f) return; var kind = pickKind, idx = pickIdx; vidInput.value = '';
+      collectMediaDetails(f).then(function (details) { if (details) finishUpload(f, kind, idx, details); });
     });
     imgInput.addEventListener('change', function () {
-      var f = imgInput.files && imgInput.files[0]; if (!f) return; var local = URL.createObjectURL(f); var kind = pickKind, idx = pickIdx;
-      var el = kind === 'gphoto' ? $('[data-gphoto="' + idx + '"]') : $('[data-ophoto="' + idx + '"]');
-      if (el) { el.style.backgroundImage = "url('" + local + "')"; var phEl = el.querySelector('.sip-ph'); if (phEl) phEl.remove(); }
-      if (kind === 'gphoto') cfg.galleryPhotos[idx] = local;
-      imgInput.value = '';
-      if (!canPersist()) { toast('Sign in as the profile owner to save photos.', true); return; }
-      var slot = kind === 'gphoto' ? 'gallery_photo' : 'orbital';
-      var slotIdx = idx;
-      uploadFile(f, 'photo').then(function (att) {
-        return currentSlot(slot).then(function (items) {
-          items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
-          return saveSlot(slot, items).then(function (saved) { MEDIA[slot] = Array.isArray(saved) ? saved : items; toast('Photo saved to your profile.'); });
-        });
-      }).catch(function (e) { toast(e.message || 'Could not save the photo.', true); });
+      var f = imgInput.files && imgInput.files[0]; if (!f) return; var kind = pickKind, idx = pickIdx; imgInput.value = '';
+      collectMediaDetails(f).then(function (details) { if (details) finishUpload(f, kind, idx, details); });
     });
     function renderOrbVideo(i) {
       var cell = $('[data-ovideo="' + i + '"]'); if (!cell) return;
@@ -862,6 +893,17 @@
     });
     $$('[data-gvideo]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gvideo; if (editMode && !(cfg.galleryVideos || [])[i]) pickFile('gvideo', i); }); });
     $$('[data-gphoto]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gphoto; if (editMode) pickFile('gphoto', i); }); });
+    $$('.sip-media-tags a').forEach(function (link) { link.addEventListener('click', function (e) { e.stopPropagation(); }); });
+    $$('[data-gallery-delete]').forEach(function (button) {
+      button.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var parts = button.dataset.galleryDelete.split(':'), slot = parts[0], attachmentId = Number(parts[2] || 0);
+        if (!attachmentId || !canPersist()) return;
+        if (!window.confirm('Delete this upload permanently? This removes the gallery item and the file from the website.')) return;
+        button.disabled = true; button.textContent = 'Deleting…';
+        mediaEndpoint('media/delete', { slot_type: slot, attachment_id: attachmentId }).then(function () { toast('Upload permanently deleted.'); setTimeout(function () { location.reload(); }, 450); }).catch(function (err) { button.disabled = false; button.textContent = 'Delete'; toast(err.message || 'Could not delete the upload.', true); });
+      });
+    });
     $$('[data-gallery-add]').forEach(function (button) {
       button.addEventListener('click', function () {
         var isPhoto = button.dataset.galleryAdd === 'photo';
