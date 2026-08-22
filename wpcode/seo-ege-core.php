@@ -80,7 +80,16 @@ if ( ! function_exists( 'sml_ege_internal_get' ) ) {
 			// cache on top of that could durably drop a real ticker. A confirmed
 			// negative is cached normally; an unavailable result is cached briefly
 			// so the next check retries soon instead of compounding the outage.
-			$confirmed = is_array( $quote ); // the endpoint answered, just said "no data" — not a fetch failure
+			// A JSON response is not automatically a confirmed-negative result. The
+			// quote route also returns a structured 200 response when its provider is
+			// unavailable (quality:"unavailable", error.code:"provider_unavailable").
+			// Treat only a clean source:"none" response without an upstream error as
+			// confirmed invalid; outages must remain retryable.
+			$quote_error = is_array( $quote ) && isset( $quote['error'] ) ? $quote['error'] : null;
+			$confirmed = is_array( $quote )
+				&& isset( $quote['source'] ) && 'none' === $quote['source']
+				&& ( ! isset( $quote['quality'] ) || 'unavailable' !== $quote['quality'] )
+				&& empty( $quote_error );
 			$out = array(
 				'valid' => false, 'confirmed_invalid' => $confirmed, 'score' => 0, 'verdict' => 'noindex',
 				'factors' => array(), 'quote' => $quote, 'company' => $company, 'position' => $position,
