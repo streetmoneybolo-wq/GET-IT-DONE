@@ -53,7 +53,23 @@
     '.tv2-lf-voice{padding:18px 16px;background:#0d141c;border:1px solid #134a33;border-radius:10px}' +
     '.tv2-lf-voice h4{margin:0 0 4px;font:600 13px Archivo,sans-serif;color:#e6edf3}.tv2-lf-voice .st{font:400 11px/1.5 "IBM Plex Mono",monospace;color:#8fa3b5;margin-bottom:12px}' +
     '.tv2-lf-voice .row{display:flex;gap:10px;flex-wrap:wrap}.tv2-lf-voice button{padding:8px 18px;border-radius:999px;font:600 12px Archivo,sans-serif;cursor:pointer;border:1px solid #1c2833;background:#131c26;color:#8fa3b5}' +
-    '.tv2-lf-voice button.join{border-color:#134a33;background:linear-gradient(180deg,#00ff88,#00c86b);color:#04120b}.tv2-lf-voice button.leave{border-color:#4a1d24;background:#1a0d10;color:#ff4757}';
+    '.tv2-lf-voice button.join{border-color:#134a33;background:linear-gradient(180deg,#00ff88,#00c86b);color:#04120b}.tv2-lf-voice button.leave{border-color:#4a1d24;background:#1a0d10;color:#ff4757}' +
+    '.tv2-lf-voice .vhead{display:flex;align-items:center;justify-content:space-between;gap:10px}' +
+    '.tv2-lf-vcount{font:600 11px/1 "IBM Plex Mono",monospace;color:#00ff88;border:1px solid #134a33;background:#0b1a13;border-radius:999px;padding:4px 10px;white-space:nowrap}' +
+    '.tv2-lf-vcount[data-empty="1"]{color:#5d7085;border-color:#1c2833;background:#0b1119}' +
+    '.tv2-lf-vroster{display:flex;flex-direction:column;gap:6px;margin:0 0 12px}' +
+    '.tv2-lf-vempty{font:500 11px/1.5 "IBM Plex Mono",monospace;color:#5d7085;padding:8px 0}' +
+    '.tv2-lf-vm{display:flex;align-items:center;gap:10px;padding:7px 9px;border:1px solid #16202b;border-radius:8px;background:#0b1119;text-decoration:none}' +
+    '.tv2-lf-vm:hover{border-color:#1c3a2b;background:#0d1a14}' +
+    '.tv2-lf-vm img{width:28px;height:28px;border-radius:50%;object-fit:cover;background:#131c26;flex:0 0 auto}' +
+    '.tv2-lf-vm .who{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}' +
+    '.tv2-lf-vm .nm{font:600 12px/1.3 Archivo,sans-serif;color:#e6edf3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.tv2-lf-vm .hd{font:400 11px/1.3 "IBM Plex Mono",monospace;color:#8fa3b5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.tv2-lf-vm .role{font:500 10px/1 "IBM Plex Mono",monospace;color:#5d7085;white-space:nowrap}' +
+    '.tv2-lf-vm .dot{width:7px;height:7px;border-radius:50%;background:#1c2833;flex:0 0 auto}' +
+    '.tv2-lf-vm[data-speaking="1"]{border-color:#134a33;background:#0c1a13}' +
+    '.tv2-lf-vm[data-speaking="1"] .role{color:#00ff88}' +
+    '.tv2-lf-vm[data-speaking="1"] .dot{background:#00ff88;box-shadow:0 0 0 3px rgba(0,255,136,.15)}';
 
   var S = { tab: 'sml', msgs: [], seen: {}, side: 'bull', pollT: null, mm: null, wb: null };
 
@@ -69,7 +85,12 @@
       '<div class="tv2-lf-pane" data-pane="moomoo"><div class="tv2-lf-list" id="tv2lf-mm"><div class="tv2-lf-empty">Loading moomoo posts…</div></div></div>' +
       '<div class="tv2-lf-pane" data-pane="stocktwits"><div class="tv2-lf-ext"><span>Stocktwits conversation for $' + esc(SYM) + ' opens on stocktwits.com (no on-site feed).</span><a href="https://stocktwits.com/symbol/' + encodeURIComponent(SYM) + '" target="_blank" rel="noopener nofollow">Open Stocktwits ↗</a></div></div>' +
       '<div class="tv2-lf-pane" data-pane="webull"><div class="tv2-lf-list" id="tv2lf-wb"><div class="tv2-lf-empty">Loading Webull posts…</div></div></div>' +
-      '<div class="tv2-lf-pane" data-pane="voice"><div class="tv2-lf-voice"><h4>Live Voice Room</h4><div class="st" id="tv2lf-vstatus">Connecting to the room system…</div><div class="row"><button type="button" class="join" data-v="join">Join</button><button type="button" data-v="listen">Listen only</button><button type="button" data-v="mute">Mute</button><button type="button" class="leave" data-v="leave">Leave</button></div></div></div>';
+      '<div class="tv2-lf-pane" data-pane="voice"><div class="tv2-lf-voice">' +
+        '<div class="vhead"><h4>Live Voice Room</h4><span class="tv2-lf-vcount" id="tv2lf-vcount" data-empty="1">0 live</span></div>' +
+        '<div class="st" id="tv2lf-vstatus">Connecting to the room system…</div>' +
+        '<div class="tv2-lf-vroster" id="tv2lf-vroster"><div class="tv2-lf-vempty">No traders are in this room yet.</div></div>' +
+        '<div class="row"><button type="button" class="join" data-v="join">Join</button><button type="button" data-v="listen">Listen only</button><button type="button" data-v="mute">Mute</button><button type="button" class="leave" data-v="leave">Leave</button></div>' +
+      '</div></div>';
     return el;
   }
 
@@ -130,19 +151,76 @@
       .catch(function () { el.querySelector(id).innerHTML = '<div class="tv2-lf-empty">' + label + ' is not responding right now.</div>'; });
   }
 
-  /* voice: proxy the hidden legacy room's controls (the WebRTC client keeps working) */
+  /* voice: roster + count read from sml-ticker-voice/v1/room; controls still proxy to the
+     hidden legacy room, whose WebRTC client is the one actually carrying the audio */
   function wireVoice(el) {
-    var st = el.querySelector('#tv2lf-vstatus'); var timer = null;
+    var st = el.querySelector('#tv2lf-vstatus');
+    var countEl = el.querySelector('#tv2lf-vcount');
+    var roster = el.querySelector('#tv2lf-vroster');
+    var timer = null;
+    var MAX = 12;
+
     function room() { return document.getElementById('live-voice-room'); }
     function legacyBtn(rx) { var r = room(); if (!r) return null; var bs = [].slice.call(r.querySelectorAll('button, [role="button"], a')); return bs.filter(function (b) { return rx.test((b.textContent || '').trim()); })[0] || null; }
-    function mirror() { var r = room(); if (!r) { st.textContent = 'The voice room system is not loaded on this page.'; return; } var t = (r.innerText || '').replace(/\s+/g, ' ').trim(); st.textContent = t ? t.slice(0, 160) : 'Room idle.'; }
+    function cfg() { return window.SMLTickerVoiceRoom || {}; }
+    function joined() { var lb = legacyBtn(/leave|exit/i); return !!(lb && !lb.disabled); }
+
+    /* the room payload carries name/avatar_url/profile_url but no handle yet, so fall back
+       to the profile URL's last path segment — public profiles live at /{handle}/ */
+    function handleOf(m) {
+      if (m.handle) return String(m.handle).replace(/^@+/, '');
+      try {
+        var seg = new URL(m.profile_url || '', location.origin).pathname.replace(/^\/+|\/+$/g, '').split('/').pop();
+        if (seg && !/^(profile|u|user|member|members)$/i.test(seg)) return decodeURIComponent(seg);
+      } catch (e) {}
+      return '';
+    }
+
+    function renderRoster(data) {
+      var members = (data && Array.isArray(data.members)) ? data.members : [];
+      var n = Number((data && data.count) || members.length || 0);
+      if (countEl) { countEl.textContent = n + ' live'; countEl.setAttribute('data-empty', n ? '0' : '1'); }
+      if (!roster) return;
+      if (!members.length) { roster.innerHTML = '<div class="tv2-lf-vempty">No traders are in this room yet.</div>'; return; }
+      var rows = members.slice(0, MAX).map(function (m) {
+        var h = handleOf(m);
+        var role = m.mode === 'speaker' ? (m.muted ? 'Muted' : 'Speaker') : 'Listening';
+        return '<a class="tv2-lf-vm" href="' + esc(m.profile_url || '#') + '" data-speaking="' + (m.speaking ? '1' : '0') + '">' +
+          '<img src="' + esc(m.avatar_url || '') + '" width="28" height="28" alt="" loading="lazy">' +
+          '<span class="who"><span class="nm">' + esc(m.name || 'Trader') + '</span>' +
+          (h ? '<span class="hd">@' + esc(h) + '</span>' : '') + '</span>' +
+          '<span class="role">' + role + '</span><span class="dot"></span></a>';
+      }).join('');
+      if (members.length > MAX) rows += '<div class="tv2-lf-vempty">+' + (members.length - MAX) + ' more in the room</div>';
+      roster.innerHTML = rows;
+    }
+
+    function statusFor(data) {
+      if (joined()) return 'You are connected to the room.';
+      var n = Number((data && data.count) || 0);
+      if (n > 0) return n + (n === 1 ? ' trader is' : ' traders are') + ' connected. Join to hear them.';
+      return 'Join with your microphone or listen without speaking.';
+    }
+
+    function refresh() {
+      var c = cfg();
+      var base = c.restBase || '/wp-json/sml-ticker-voice/v1/';
+      fetch(base + 'room?symbol=' + encodeURIComponent(c.symbol || SYM), {
+        credentials: 'same-origin',
+        headers: c.nonce ? { 'X-WP-Nonce': c.nonce } : {}
+      }).then(function (r) { return r.json(); })
+        .then(function (j) { renderRoster(j); st.textContent = statusFor(j); })
+        .catch(function () { st.textContent = room() ? 'The room list is unavailable right now.' : 'The voice room system is not loaded on this page.'; });
+    }
+
     el.querySelector('.tv2-lf-voice').addEventListener('click', function (ev) {
       var b = ev.target.closest('button[data-v]'); if (!b) return;
       var map = { join: /join/i, listen: /listen/i, mute: /mute|unmute/i, leave: /leave|exit/i };
       var lb = legacyBtn(map[b.getAttribute('data-v')]);
-      if (lb) { try { lb.click(); } catch (e) {} setTimeout(mirror, 400); } else st.textContent = 'That control isn’t available right now (the room system hasn’t offered it yet).';
+      if (lb) { try { lb.click(); } catch (e) {} setTimeout(refresh, 400); } else st.textContent = 'That control isn’t available right now (the room system hasn’t offered it yet).';
     });
-    return { start: function () { mirror(); timer = setInterval(mirror, 1500); }, stop: function () { if (timer) clearInterval(timer); timer = null; } };
+
+    return { start: function () { refresh(); timer = setInterval(refresh, 5000); }, stop: function () { if (timer) clearInterval(timer); timer = null; } };
   }
 
   function wire(el) {
