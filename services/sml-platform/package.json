@@ -1,0 +1,24 @@
+{
+  "name": "sml-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StockMarketLoop Node platform: subscriptions and newsroom services",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "start": "node platform/server.js",
+    "worker": "node platform/worker.js",
+    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js db/migrate.test.js platform/server.test.js",
+    "db:status": "node db/migrate.js status",
+    "db:dry-run": "node db/migrate.js up --dry-run",
+    "db:migrate": "node db/migrate.js up",
+    "db:release": "node platform/release-migrate.js",
+    "db:verify": "node db/migrate.js verify",
+    "fees:verify": "node group-subs/verify-fee-rules.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1",
+    "stripe": "^17.7.0"
+  }
+}
