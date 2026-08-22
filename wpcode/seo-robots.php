@@ -20,15 +20,19 @@ if ( ! function_exists( 'sml_seo_robots_txt' ) ) {
 		if ( false === strpos( $output, '/wp-json/' ) ) {
 			$output = rtrim( $output ) . "\n\n# Raw REST API responses are data, not pages — never a separate crawl target.\nDisallow: /wp-json/\n";
 		}
-		// Keep discovery in this same reliable robots filter. The sitemap snippet
-		// also registers these lines defensively, but WPCode execution order and
-		// full-page caching can otherwise publish the REST rule without the new
-		// sitemap declarations during a staggered activation.
-		if ( false === strpos( $output, 'sml-stocks-sitemap.xml' ) ) {
-			$output = rtrim( $output ) . "\nSitemap: " . home_url( '/sml-stocks-sitemap.xml' )
-				. "\nSitemap: " . home_url( '/sml-hub-sitemap.xml' ) . "\n";
-		}
 		return $output;
 	}
 	add_filter( 'robots_txt', 'sml_seo_robots_txt', 20, 2 );
+
+	// Rank Math/the site's existing robots builder writes its canonical Sitemap:
+	// section after normal-priority filters. Append entity sitemap discovery at
+	// the final priority so that later rewrite cannot silently remove these lines.
+	// This is separate from the wildcard REST rule above: moving that Disallow to
+	// the end would incorrectly associate it with the final named crawler group.
+	function sml_seo_robots_sitemaps( $output, $public ) {
+		if ( ! $public || false !== strpos( $output, 'sml-stocks-sitemap.xml' ) ) { return $output; }
+		return rtrim( $output ) . "\nSitemap: " . home_url( '/sml-stocks-sitemap.xml' )
+			. "\nSitemap: " . home_url( '/sml-hub-sitemap.xml' ) . "\n";
+	}
+	add_filter( 'robots_txt', 'sml_seo_robots_sitemaps', PHP_INT_MAX, 2 );
 }
