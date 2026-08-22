@@ -4,6 +4,7 @@ const http = require('node:http');
 const { getConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { log } = require('./logger');
+const { parseEvent, readRequestBody, verifySignature } = require('./wordpress-gateway');
 
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
@@ -16,9 +17,70 @@ function sendJson(response, status, body) {
   response.end(payload);
 }
 
-function createServer({ checkDatabase, logger = log }) {
+function contentTypeIsJson(request) {
+  return /^application\/json(?:\s*;|$)/i.test(String(request.headers['content-type'] || ''));
+}
+
+async function handleWordPressEvent(request, response, options) {
+  if (!contentTypeIsJson(request)) {
+    sendJson(response, 415, { ok: false, error: 'content_type_required' });
+    return;
+  }
+
+  const body = await readRequestBody(request);
+  if (!body.ok) {
+    sendJson(response, body.status, { ok: false, error: body.error });
+    return;
+  }
+
+  const verified = verifySignature({
+    secret: options.wordpressWebhookSecret,
+    timestamp: request.headers['x-sml-timestamp'],
+    signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) {
+    sendJson(response, verified.status, { ok: false, error: verified.error });
+    return;
+  }
+
+  const parsed = parseEvent(body.rawBody);
+  if (!parsed.ok) {
+    sendJson(response, parsed.status, { ok: false, error: parsed.error });
+    return;
+  }
+
+  try {
+    const status = await options.acceptWordPressEvent(parsed.event);
+    options.logger('info', 'wordpress_event_received', {
+      eventId: parsed.event.eventId,
+      eventType: parsed.event.eventType,
+      status
+    });
+    sendJson(response, status === 'accepted' ? 202 : 200, {
+      ok: true,
+      eventId: parsed.event.eventId,
+      status
+    });
+  } catch (error) {
+    options.logger('error', 'wordpress_event_store_failed', {
+      error,
+      eventId: parsed.event.eventId,
+      eventType: parsed.event.eventType
+    });
+    sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+  }
+}
+
+function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '', logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
+    if (request.method === 'POST' && path === '/v1/wordpress/events') {
+      await handleWordPressEvent(request, response, { acceptWordPressEvent, wordpressWebhookSecret, logger, now });
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -37,7 +99,11 @@ function createServer({ checkDatabase, logger = log }) {
 async function main() {
   const config = getConfig();
   const database = createDatabase(config);
-  const server = createServer({ checkDatabase: database.health });
+  const server = createServer({
+    checkDatabase: database.health,
+    acceptWordPressEvent: database.acceptWordPressEvent,
+    wordpressWebhookSecret: config.wordpressWebhookSecret
+  });
   let shuttingDown = false;
 
   async function shutdown(signal) {

@@ -13,7 +13,11 @@ function getConfig(env = process.env) {
     databaseUrl,
     databaseSsl: String(env.DATABASE_SSL || '').trim(),
     port: integer(env.PORT, 10000, 1),
-    workerIntervalMs: integer(env.SML_WORKER_INTERVAL_MS, 60_000, 60_000)
+    workerIntervalMs: integer(env.SML_WORKER_INTERVAL_MS, 60_000, 60_000),
+    // This is deliberately optional at boot.  Until Render and WordPress both
+    // have the same secret configured, the gateway fails closed with 503 rather
+    // than accepting an unauthenticated request.
+    wordpressWebhookSecret: String(env.SML_WORDPRESS_WEBHOOK_SECRET || '').trim()
   });
 }
 

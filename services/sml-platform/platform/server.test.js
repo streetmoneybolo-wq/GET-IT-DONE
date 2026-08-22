@@ -3,9 +3,16 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createServer } = require('./server');
+const { hmac } = require('./wordpress-gateway');
 
-async function withServer(checkDatabase, run) {
-  const server = createServer({ checkDatabase, logger: () => {} });
+async function withServer(options, run) {
+  const server = createServer({
+    checkDatabase: async () => true,
+    acceptWordPressEvent: async () => 'accepted',
+    logger: () => {},
+    now: () => 1_700_000_000_000,
+    ...options
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
     const { port } = server.address();
@@ -16,7 +23,7 @@ async function withServer(checkDatabase, run) {
 }
 
 test('health returns 200 only when the database check passes', async () => {
-  await withServer(async () => true, async (base) => {
+  await withServer({ checkDatabase: async () => true }, async (base) => {
     const response = await fetch(`${base}/health`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
@@ -28,7 +35,7 @@ test('health returns 200 only when the database check passes', async () => {
 });
 
 test('health fails closed when the database check fails', async () => {
-  await withServer(async () => { throw new Error('offline'); }, async (base) => {
+  await withServer({ checkDatabase: async () => { throw new Error('offline'); } }, async (base) => {
     const response = await fetch(`${base}/health`);
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), {
@@ -40,9 +47,103 @@ test('health fails closed when the database check fails', async () => {
 });
 
 test('all other routes are a no-store 404', async () => {
-  await withServer(async () => true, async (base) => {
+  await withServer({}, async (base) => {
     const response = await fetch(`${base}/not-a-route`);
     assert.equal(response.status, 404);
     assert.equal(response.headers.get('cache-control'), 'no-store');
   });
+});
+
+function signedHeaders(secret, body, timestamp = '1700000000') {
+  return {
+    'content-type': 'application/json',
+    'x-sml-timestamp': timestamp,
+    'x-sml-signature': `sha256=${hmac(secret, timestamp, body)}`
+  };
+}
+
+function eventBody(overrides = {}) {
+  return JSON.stringify({
+    version: 1,
+    eventId: '7dc5f64b-7c05-4f38-9c55-31fcfa798706',
+    eventType: 'system.integration.ping',
+    occurredAt: '2023-11-14T22:13:20.000Z',
+    actorUserId: 42,
+    subject: { type: 'integration', id: 'wordpress' },
+    data: { source: 'test' },
+    ...overrides
+  });
+}
+
+test('WordPress gateway fails closed until its secret exists', async () => {
+  const body = eventBody();
+  await withServer({}, async (base) => {
+    const response = await fetch(`${base}/v1/wordpress/events`, {
+      method: 'POST', body, headers: signedHeaders('not-configured', body)
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { ok: false, error: 'integration_unconfigured' });
+  });
+});
+
+test('WordPress gateway accepts one valid signed event and exposes no payload', async () => {
+  const received = [];
+  const body = eventBody();
+  await withServer({
+    wordpressWebhookSecret: 'gateway-test-secret',
+    acceptWordPressEvent: async (event) => { received.push(event); return 'accepted'; }
+  }, async (base) => {
+    const response = await fetch(`${base}/v1/wordpress/events`, {
+      method: 'POST', body, headers: signedHeaders('gateway-test-secret', body)
+    });
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), {
+      ok: true,
+      eventId: '7dc5f64b-7c05-4f38-9c55-31fcfa798706',
+      status: 'accepted'
+    });
+  });
+  assert.equal(received.length, 1);
+  assert.equal(received[0].eventType, 'system.integration.ping');
+  assert.match(received[0].payloadHash, /^[0-9a-f]{64}$/);
+});
+
+test('WordPress gateway recognizes a replay without processing it twice', async () => {
+  const body = eventBody();
+  await withServer({
+    wordpressWebhookSecret: 'gateway-test-secret',
+    acceptWordPressEvent: async () => 'duplicate'
+  }, async (base) => {
+    const response = await fetch(`${base}/v1/wordpress/events`, {
+      method: 'POST', body, headers: signedHeaders('gateway-test-secret', body)
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ok: true,
+      eventId: '7dc5f64b-7c05-4f38-9c55-31fcfa798706',
+      status: 'duplicate'
+    });
+  });
+});
+
+test('WordPress gateway rejects bad signatures and old requests before storage', async () => {
+  const body = eventBody();
+  let calls = 0;
+  await withServer({
+    wordpressWebhookSecret: 'gateway-test-secret',
+    acceptWordPressEvent: async () => { calls += 1; return 'accepted'; }
+  }, async (base) => {
+    const bad = await fetch(`${base}/v1/wordpress/events`, {
+      method: 'POST', body, headers: { ...signedHeaders('wrong-secret', body) }
+    });
+    assert.equal(bad.status, 401);
+    assert.deepEqual(await bad.json(), { ok: false, error: 'invalid_signature' });
+
+    const old = await fetch(`${base}/v1/wordpress/events`, {
+      method: 'POST', body, headers: signedHeaders('gateway-test-secret', body, '1600000000')
+    });
+    assert.equal(old.status, 401);
+    assert.deepEqual(await old.json(), { ok: false, error: 'stale_request' });
+  });
+  assert.equal(calls, 0);
 });
