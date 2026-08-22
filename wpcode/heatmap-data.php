@@ -48,6 +48,8 @@ if ( ! function_exists( 'sml_hm_symbols' ) ) {
 			'LIN','SHW','APD','ECL','DD','BHP','RIO','FCX','NUE','VALE','NEM','GOLD','AEM','KGC','WPM',
 			'IP','PKG','SW','BALL','AMCR',
 			'SPY','QQQ','DIA',
+			// command-center extras: real ETF proxies for the global strip + volatility
+			'GLD','USO','EWJ','FXI','EWU','EWG','IBIT','VIXY',
 		);
 	}
 
