@@ -114,10 +114,14 @@ test('the real migrations are discovered and ordered across both projects', () =
   const versions = found.map((m) => m.version);
   assert.deepEqual(versions, [...versions].sort(), 'migrations are out of order');
 
-  /* 001/002 live in news-engine, 003 in group-subs — ordering must be by
-     version across directories, not by directory. */
-  assert.equal(found[0].version, '001');
-  assert.match(found[0].name, /news_engine/);
+  /* 000/001/002 live in news-engine, 003 in group-subs — ordering must be
+     by version across directories, not by directory.  The ticker registry
+     must come first because article_tickers has a real foreign key to it. */
+  assert.equal(found[0].version, '000');
+  assert.match(found[0].name, /ticker_registry/);
+  const v1 = found.find((m) => m.version === '001');
+  assert.ok(v1, 'news-engine migration missing');
+  assert.match(v1.name, /news_engine/);
   const v3 = found.find((m) => m.version === '003');
   assert.ok(v3, 'group-subs migration missing');
   assert.match(path.basename(v3.dir), /migrations/);

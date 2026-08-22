@@ -3,12 +3,9 @@
 -- Target: PostgreSQL 14+
 -- Apply inside a transaction:  psql -1 -f 001_news_engine_up.sql
 --
--- PREREQUISITE: a `tickers` table must already exist with a UNIQUE or PRIMARY
--- KEY constraint on `tickers.ticker`. A plain column is not enough — Postgres
--- will not accept a foreign key against a non-unique column. Verify with:
---   SELECT conname, contype FROM pg_constraint
---    WHERE conrelid = 'tickers'::regclass AND contype IN ('p','u');
--- If none exists:  ALTER TABLE tickers ADD CONSTRAINT tickers_ticker_key UNIQUE (ticker);
+-- PREREQUISITE: migration 000_ticker_registry_up.sql runs first and creates
+-- `tickers(ticker PRIMARY KEY)`. Do not bypass the migration runner: article
+-- ticker references must point to the platform-local canonical registry.
 -- =============================================================================
 
 BEGIN;
