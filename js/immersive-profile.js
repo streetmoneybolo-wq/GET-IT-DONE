@@ -25,7 +25,7 @@
     editUrl: '', visitorUrl: '',
     isOwner: true,            /* demo/non-profile mounts keep the full UI; profile pages set the real value */
     followUid: 0, isFollowing: false,
-    stats: [], tickers: [], about: [], friends: [], posts: [], socials: [],
+    stats: [], tickers: [], about: [], friends: [], posts: [], socials: [], moduleVisibility: {},
     bio: '',
     disclaimer: 'Market data and content on Stock Market Loop are for informational purposes only and do not constitute investment advice.',
     orbitalPhotos: ['', '', '', '', '', ''],           // 6 URLs (ring)  — orbital media 0..5
@@ -313,15 +313,21 @@
     '}' +
     /* Playback stays user-initiated through the persistent Play control. A
        full-viewport sound gate blocked profile actions, including Edit. */
-    '.sip-overlay{display:none!important;}' +
+    '.sip-overlay{position:fixed;inset:0;z-index:9;background:radial-gradient(700px 420px at 50% 45%,rgba(56,245,138,.12),transparent 65%),rgba(4,9,14,.94);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;text-align:center;padding:24px;}' +
+    '.sip-owner .sip-overlay{display:none!important;}' +
     '.sip-overlay-btn{width:92px;height:92px;border-radius:50%;background:#38F58A;color:#03120A;display:flex;align-items:center;justify-content:center;font-size:32px;animation:sip-breathe 1.6s ease-in-out infinite;box-shadow:0 0 70px rgba(56,245,138,.5);}' +
     '.sip-overlay-t{font-family:Archivo,sans-serif;font-weight:800;font-size:22px;letter-spacing:.5px;}' +
     '.sip-overlay-s{font-size:13px;color:#93A4B8;max-width:340px;text-align:center;line-height:1.6;}' +
+    '.sip-gallery-add{margin-left:auto;padding:7px 12px;border:1px solid rgba(56,245,138,.55);border-radius:999px;background:rgba(56,245,138,.1);color:#38F58A;font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}' +
+    '.sip-gallery-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}' +
     '.sip-yt{position:fixed;width:1px;height:1px;left:-9999px;top:-9999px;opacity:0;pointer-events:none;border:0;}' +
     '@keyframes sip-breathe{0%,100%{transform:scale(1);}50%{transform:scale(1.07);}}';
 
   // ---------------------------------------------------------------- markup
   function markup(cfg) {
+    var moduleVisibility = cfg.moduleVisibility && typeof cfg.moduleVisibility === 'object' ? cfg.moduleVisibility : {};
+    var showOrbitalPhotos = moduleVisibility.orbital_photo_feed !== false;
+    var showOrbitalVideos = moduleVisibility.orbital_video_feed !== false;
     function ph(url, label, cls) {
       var st = url ? ' style="background-image:url(\'' + esc(url) + '\')"' : '';
       var inner = url ? '' : '<div class="sip-ph"' + (cls === 'circle' ? ' style="border-radius:50%"' : '') + '>' + esc(label) + '</div>';
@@ -425,10 +431,10 @@
       '<div class="sip-sections" style="display:flex;flex-direction:column;">' +
       '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="tickers"' + (tickHtml ? '' : ' data-empty="1"') + '><div class="sip-ticks">' + tickHtml + '</div></div>' +
-      '<div class="sip-sec" data-sec="orbitals"' + ((!cfg.isOwner && !nOrbP && !nOrbV) ? ' data-empty="1"' : '') + '><div class="sip-orbwrap">' +
-      '<div class="sip-orbcol" data-orbital-kind="photos"' + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-sec" data-sec="orbitals"' + ((!showOrbitalPhotos && !showOrbitalVideos) || (!cfg.isOwner && !nOrbP && !nOrbV) ? ' data-empty="1"' : '') + '><div class="sip-orbwrap">' +
+      '<div class="sip-orbcol" data-orbital-kind="photos"' + (!showOrbitalPhotos ? ' style="display:none"' : '') + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-pstage"><div class="sip-ring sip-pring">' + orbPhotos + '</div></div></div>' +
-      '<div class="sip-orbcol" data-orbital-kind="videos"' + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-orbcol" data-orbital-kind="videos"' + (!showOrbitalVideos ? ' style="display:none"' : '') + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-vstage"><div class="sip-ring sip-vring">' + orbVids + '</div></div></div>' +
       '</div></div>' +
       '<div class="sip-sec" data-sec="about"><div class="sip-grid">' +
@@ -439,10 +445,10 @@
       '</div></div></div>' +
       '</div></div>';
     // World 1: PHOTOS
-    var world1 = '<div class="sip-screen"><div class="sip-worldtitle">Photo Gallery</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
+    var world1 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Photo Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="photo">＋ Upload photo</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
     if (!nGalV) galV += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No videos shared yet.</div>';
     // World 2: VIDEOS
-    var world2 = '<div class="sip-screen"><div class="sip-worldtitle">Video Gallery</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
+    var world2 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Video Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="video">＋ Upload video</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
     // World 3: POSTS
     var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES — SWIPE LEFT FOR CONTACT →</div><div class="sip-posts">' + (postHtml || '<div class="sip-emptynote">No recent activity shared yet.</div>') + '</div></div>';
     // World 4: CONTACT
@@ -496,8 +502,8 @@
       ytIframe +
       '<input type="file" accept="video/*" class="sip-vidinput" hidden>' +
       '<input type="file" accept="image/*" class="sip-imginput" hidden>' +
-      '<div class="sip-overlay"><div class="sip-overlay-btn">▶</div><div class="sip-overlay-t">Tap for sound</div>' +
-      '<div class="sip-overlay-s">Profile Pulse reacts to the beat of your YouTube profile music. Set to Immersive.</div></div>' +
+      '<div class="sip-overlay"><div class="sip-overlay-btn">▶</div><div class="sip-overlay-t">Click to view &amp; hear</div>' +
+      '<div class="sip-overlay-s">Enter this profile and start its music experience.</div></div>' +
       '</div>';
   }
 
@@ -778,9 +784,10 @@
     $$('[data-ozoom]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); var i = +b.dataset.ozoom; enlarged = (enlarged && enlarged.ring === 'photo' && enlarged.i === i) ? null : { ring: 'photo', i: i }; }); });
 
     // media pickers — REAL: upload to the profile engine, save the slot, everyone sees it.
-    // orbital photos ring = orbital[0..5], gallery photos = orbital[6..13];
-    // orbital videos ring = orbital_video[0..2], gallery videos = orbital_video[3..8].
-    var MEDIA = (cfg.__media && typeof cfg.__media === 'object') ? cfg.__media : { orbital: [], orbital_video: [] };
+    // Rings and galleries use independent slots. Legacy gallery items that were
+    // stored after the ring items are still read below, but all new writes go to
+    // gallery_photo / gallery_video so empty positions cannot collapse into a ring.
+    var MEDIA = (cfg.__media && typeof cfg.__media === 'object') ? cfg.__media : { orbital: [], orbital_video: [], gallery_photo: [], gallery_video: [] };
     var U = window.SML_PROFILE_UNIFIED || {};
     function canPersist() { return !!(U.isOwner && U.nonce && U.uploadRest); }
     onLsSet = (U.isOwner && U.nonce && U.customRest) ? function (k) { if (IMMERSIVE_KEYS[k]) schedulePersist(); } : null;
@@ -806,18 +813,19 @@
       });
     }
     function toast(msg, bad) { var t = document.createElement('div'); t.textContent = msg; t.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2147483646;background:' + (bad ? '#3a1218' : '#0f2a1c') + ';color:' + (bad ? '#ff859f' : '#8dffc2') + ';border:1px solid ' + (bad ? '#7a2334' : '#1c6b45') + ';border-radius:10px;padding:10px 14px;font:600 12px/1 Archivo,sans-serif;'; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2600); }
-    function pickFile(kind, idx) { pickKind = kind; pickIdx = idx; (kind === 'gphoto' ? imgInput : vidInput).click(); }
+    function pickFile(kind, idx) { pickKind = kind; pickIdx = idx; ((kind === 'gphoto' || kind === 'ophoto') ? imgInput : vidInput).click(); }
     vidInput.addEventListener('change', function () {
       var f = vidInput.files && vidInput.files[0]; if (!f) return; var local = URL.createObjectURL(f); var kind = pickKind, idx = pickIdx;
       // paint immediately, then persist
-      if (kind === 'ovideo') { videos[idx] = local; renderOrbVideo(idx); } else if (kind === 'gvideo') { gvids[idx] = local; renderGalVideo(idx); }
+      if (kind === 'ovideo') { videos[idx] = local; renderOrbVideo(idx); } else if (kind === 'gvideo') { gvids[idx] = local; cfg.galleryVideos[idx] = local; renderGalVideo(idx); }
       vidInput.value = '';
       if (!canPersist()) { toast('Sign in as the profile owner to save videos.', true); return; }
-      var slotIdx = kind === 'ovideo' ? idx : 3 + idx;
-      uploadFile(f, 'video').catch(function () { return uploadFile(f, 'banner_video'); }).then(function (att) {
-        return currentSlot('orbital_video').then(function (items) {
+      var slot = kind === 'ovideo' ? 'orbital_video' : 'gallery_video';
+      var slotIdx = idx;
+      uploadFile(f, 'orbital_video').then(function (att) {
+        return currentSlot(slot).then(function (items) {
           items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
-          return saveSlot('orbital_video', items).then(function (saved) { MEDIA.orbital_video = Array.isArray(saved) ? saved : items; toast('Video saved to your profile.'); });
+          return saveSlot(slot, items).then(function (saved) { MEDIA[slot] = Array.isArray(saved) ? saved : items; toast('Video saved to your profile.'); });
         });
       }).catch(function (e) { toast(e.message || 'Could not save the video.', true); });
     });
@@ -825,13 +833,15 @@
       var f = imgInput.files && imgInput.files[0]; if (!f) return; var local = URL.createObjectURL(f); var kind = pickKind, idx = pickIdx;
       var el = kind === 'gphoto' ? $('[data-gphoto="' + idx + '"]') : $('[data-ophoto="' + idx + '"]');
       if (el) { el.style.backgroundImage = "url('" + local + "')"; var phEl = el.querySelector('.sip-ph'); if (phEl) phEl.remove(); }
+      if (kind === 'gphoto') cfg.galleryPhotos[idx] = local;
       imgInput.value = '';
       if (!canPersist()) { toast('Sign in as the profile owner to save photos.', true); return; }
-      var slotIdx = kind === 'gphoto' ? 6 + idx : idx;
+      var slot = kind === 'gphoto' ? 'gallery_photo' : 'orbital';
+      var slotIdx = idx;
       uploadFile(f, 'photo').then(function (att) {
-        return currentSlot('orbital').then(function (items) {
+        return currentSlot(slot).then(function (items) {
           items = setSlotItem(items, slotIdx, { attachment_id: att.id, caption: '', url: '' });
-          return saveSlot('orbital', items).then(function (saved) { MEDIA.orbital = Array.isArray(saved) ? saved : items; toast('Photo saved to your profile.'); });
+          return saveSlot(slot, items).then(function (saved) { MEDIA[slot] = Array.isArray(saved) ? saved : items; toast('Photo saved to your profile.'); });
         });
       }).catch(function (e) { toast(e.message || 'Could not save the photo.', true); });
     });
@@ -850,8 +860,18 @@
     $$('[data-ovideo]').forEach(function (cell) {
       cell.addEventListener('click', function () { var i = +cell.dataset.ovideo; if (!editMode) return; if (videos[i]) { enlarged = (enlarged && enlarged.ring === 'video' && enlarged.i === i) ? null : { ring: 'video', i: i }; } else pickFile('ovideo', i); });
     });
-    $$('[data-gvideo]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gvideo; if (editMode && !gvids[i]) pickFile('gvideo', i); }); });
+    $$('[data-gvideo]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gvideo; if (editMode && !(cfg.galleryVideos || [])[i]) pickFile('gvideo', i); }); });
     $$('[data-gphoto]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gphoto; if (editMode) pickFile('gphoto', i); }); });
+    $$('[data-gallery-add]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var isPhoto = button.dataset.galleryAdd === 'photo';
+        var list = isPhoto ? (cfg.galleryPhotos || []) : (cfg.galleryVideos || []);
+        var limit = isPhoto ? 8 : 6, idx = -1;
+        for (var x = 0; x < limit; x++) { if (!list[x]) { idx = x; break; } }
+        if (idx < 0) { toast('This gallery is full. Enter Arrange mode and select a tile to replace it.', true); return; }
+        pickFile(isPhoto ? 'gphoto' : 'gvideo', idx);
+      });
+    });
 
     // contact opt-in
     function applyContact() {
@@ -895,7 +915,7 @@
     /* Browsers permit reliable autoplay only while muted. Honour the saved
        setting immediately, then let the persistent Play pill enable sound with
        one gesture instead of covering the profile with a click gate. */
-    if (cfg.autoplay && frame) setTimeout(function () { startPlayback(false); }, 700);
+    if (cfg.autoplay && frame && cfg.isOwner) setTimeout(function () { startPlayback(false); }, 700);
 
     root.style.setProperty('--card-bg', TEX[texture]);
     applyComponentState();
@@ -1411,17 +1431,20 @@
     return Promise.all([
       uid ? get(mediaBase + uid + '/media') : null,
       att(mediaIds.banner_id), att(mediaIds.background_id),
-      uid ? get('/wp-json/sml-social-profile/v1/public/' + uid) : null
+      uid ? get('/wp-json/sml-social-profile/v1/public/' + uid) : null,
+      uid ? get('/wp-json/sml-profile/v2/profile/' + uid + '/customization') : null
     ]).then(function (r) {
-      var media = r[0] || {}, banner = r[1], bgm = r[2], soc = r[3];
+      var media = r[0] || {}, banner = r[1], bgm = r[2], soc = r[3], customization = r[4] || {};
+      base.moduleVisibility = customization.module_visibility && typeof customization.module_visibility === 'object' ? customization.module_visibility : {};
       var orb = (media.orbital || []).slice(); var ov = (media.orbital_video || []).slice();
+      var galleryPhoto = (media.gallery_photo || []).slice(); var galleryVideo = (media.gallery_video || []).slice();
       var pick = function (it) { return it ? (it.url || it.thumb || '') : ''; };
       var pickThumb = function (it) { return it ? (it.thumb || it.url || '') : ''; };
       base.orbitalPhotos = [0, 1, 2, 3, 4, 5].map(function (i) { return pickThumb(orb[i]); });
-      base.galleryPhotos = [6, 7, 8, 9, 10, 11, 12, 13].map(function (i) { return pickThumb(orb[i]); });
+      base.galleryPhotos = [0, 1, 2, 3, 4, 5, 6, 7].map(function (i) { return pickThumb(galleryPhoto[i] || orb[6 + i]); });
       base.orbitalVideos = [0, 1, 2].map(function (i) { return pick(ov[i]); });
-      base.galleryVideos = [3, 4, 5, 6, 7, 8].map(function (i) { return pick(ov[i]); });
-      base.__media = { orbital: orb, orbital_video: ov };
+      base.galleryVideos = [0, 1, 2, 3, 4, 5].map(function (i) { return pick(galleryVideo[i] || ov[3 + i]); });
+      base.__media = { orbital: orb, orbital_video: ov, gallery_photo: galleryPhoto, gallery_video: galleryVideo };
       if (banner && banner.source_url) { if (/^video\//.test(banner.mime_type || '') || app.banner_mode === 'video') base.bannerVideoUrl = banner.source_url; else base.bannerUrl = banner.source_url; }
       if (bgm && bgm.source_url) { if (/^video\//.test(bgm.mime_type || '') || app.background_mode === 'video') base.backgroundVideoUrl = bgm.source_url; else base.backgroundUrl = bgm.source_url; }
       var TILES = { youtube: ['▶', '#FF0033'], discord: ['DC', '#5865F2'], facebook: ['f', '#1877F2'], x: ['𝕏', '#0f1419'], twitter: ['𝕏', '#0f1419'], linkedin: ['in', '#0A66C2'], bluesky: ['BS', '#0285FF'], threads: ['@', '#101010'], instagram: ['IG', 'linear-gradient(45deg,#F58529,#DD2A7B 55%,#8134AF)'], tiktok: ['TT', '#010101'], website: ['🌐', '#1c2833'], site: ['🌐', '#1c2833'], twitch: ['TV', '#9146FF'], reddit: ['r/', '#FF4500'], telegram: ['TG', '#229ED9'] };
