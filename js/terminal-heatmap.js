@@ -319,6 +319,10 @@ fetchSnap().then(function(q){
   N=DATA.length;leaders=DATA.map(function(){return 0;});
   READY=true;
   buildIdx();buildGrid();buildBreak();restartProg();
+  /* standalone /heat-map/ page: the live module replaces the server-rendered
+     tiles ONLY once real data has painted — crawlers and failed loads always
+     keep the SSR content */
+  var ssr=document.getElementById("sml-hm-ssr");if(ssr)ssr.style.display="none";
 }).catch(function(){var s=document.getElementById("smlhm");if(s)s.remove();});
 /* while minimized the engine idles — no polls, no rotation, no repaint work */
 function hmOff(){var s=document.getElementById("smlhm");return !!(s&&s.classList.contains("hm-collapsed"));}
@@ -340,9 +344,11 @@ document.getElementById("smlhm").addEventListener("smlhm:expand",restartProg);
 
   function mount(){
     if (document.getElementById('smlhm')) return true;
+    // standalone host (the /heat-map/ page) OR the terminal's module slot
+    var standalone = document.getElementById('sml-hm-standalone');
     var lf = document.querySelector('.tv2-lf');
     var mpsig = document.querySelector('.tv2-mpsig');
-    if (!lf && !mpsig) return false;
+    if (!standalone && !lf && !mpsig) return false;
     var style = document.createElement('style');
     style.id = 'smlhm-css'; style.textContent = CSS + [
       /* minimizer: collapses to a slim title bar; the live feed below shifts up
@@ -364,7 +370,8 @@ document.getElementById("smlhm").addEventListener("smlhm:expand",restartProg);
     var sec = document.createElement('section');
     sec.className = 'smlhm'; sec.id = 'smlhm'; sec.setAttribute('data-tv2-keep', '1');
     sec.innerHTML = MARKUP;
-    if (lf && lf.parentNode) lf.parentNode.insertBefore(sec, lf);
+    if (standalone) standalone.appendChild(sec);
+    else if (lf && lf.parentNode) lf.parentNode.insertBefore(sec, lf);
     else mpsig.parentNode.insertBefore(sec, mpsig.nextSibling);
     try { engine(); } catch (e) { sec.remove(); return true; }
     var btn = sec.querySelector('#hm-min');

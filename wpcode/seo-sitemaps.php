@@ -252,10 +252,18 @@ if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 	}
 
 	function sml_seo_render_hub_sitemap() {
-		// v1: /markets/ only — real, always-valid. Sector/theme hub URLs join once
+		// /markets/ — real, always-valid. Sector/theme hub URLs join once
 		// their own routes exist and their backing data is confirmed broad enough.
 		$xml = sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
 		$xml .= '<url><loc>' . sml_esc_xml( home_url( '/markets/' ) ) . '</loc><changefreq>daily</changefreq><priority>0.6</priority></url>' . "\n";
+		// /heat-map/ joins only while its real-data snapshot is live and fresh —
+		// the page itself serves noindex in that same condition, so sitemap and
+		// robots signals always agree (see wpcode/heatmap-page.php)
+		$snap = get_option( 'sml_hm_snapshot', array() );
+		if ( is_array( $snap ) && ! empty( $snap['quotes'] ) && is_array( $snap['quotes'] ) && count( $snap['quotes'] ) >= 20
+			&& ! empty( $snap['generated'] ) && ( time() - (int) $snap['generated'] ) < 2 * HOUR_IN_SECONDS ) {
+			$xml .= '<url><loc>' . sml_esc_xml( home_url( '/heat-map/' ) ) . '</loc><changefreq>hourly</changefreq><priority>0.7</priority></url>' . "\n";
+		}
 		$xml .= '</urlset>';
 		return $xml;
 	}
