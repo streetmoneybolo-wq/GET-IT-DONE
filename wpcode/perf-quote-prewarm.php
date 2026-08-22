@@ -88,6 +88,23 @@ if ( ! function_exists( 'sml_perf_prewarm_tickers' ) ) {
 			wp_remote_get( home_url( $p ), $args );
 			wp_remote_get( home_url( $p ), $args );
 		}
+
+		// Flagship profile page + its data endpoints. Measured live 2026-08-22:
+		// an anonymous /grandmasterobi/ visit blocks on ~a dozen REST calls at
+		// ~2s each cold (profile media was 4.5s) — these are same-origin only,
+		// no upstream market-data provider cost, so warming them is free of the
+		// rate-limit budget. Extend the list per profile when more top profiles
+		// deserve it (user id from sml-social-profile/v1/public/{id} on the page).
+		$profile_urls = array(
+			'/grandmasterobi/',
+			'/wp-json/sml-social-profile/v1/public/258456581',
+			'/wp-json/sml-profile/v2/profile/258456581/media',
+			'/wp-json/sml-profile/v2/profile/258456581/customization',
+		);
+		foreach ( $profile_urls as $p ) {
+			wp_remote_get( home_url( $p ), $args );
+			wp_remote_get( home_url( $p ), $args ); // 2 hits: Batcache caches pages only after repeat visits in-window
+		}
 	}
 	add_action( 'sml_perf_prewarm_tick', 'sml_perf_prewarm_run' );
 

@@ -367,7 +367,7 @@
     var orbVids = '', nOrbV = 0;
     for (var j = 0; j < 3; j++) {
       var ov = (cfg.orbitalVideos || [])[j] || ''; if (ov) nOrbV++;
-      orbVids += '<div class="sip-orb-video' + (ov ? '' : ' sip-slot-empty') + '" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" src="' + esc(ov) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
+      orbVids += '<div class="sip-orb-video' + (ov ? '' : ' sip-slot-empty') + '" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" data-lazyvid preload="metadata" src="' + esc(ov) + '" muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
         '<div class="sip-itembtns" data-editonly hidden><button class="sip-ibtn" data-osmall="video:' + j + '" title="Smaller">−</button>' +
         '<button class="sip-ibtn" data-obig="video:' + j + '" title="Bigger">＋</button></div></div>';
     }
@@ -391,7 +391,7 @@
     for (var gvi = 0; gvi < 6; gvi++) {
       var gvu = (cfg.galleryVideos || [])[gvi] || ''; if (gvu) nGalV++;
       var gvItem = ((cfg.__media && cfg.__media.gallery_video) || [])[gvi] || null;
-      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" src="' + esc(gvu) + '" autoplay muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div>' + mediaCaption(gvItem) + (cfg.isOwner && gvItem && gvItem.attachment_id ? '<button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_video:' + gvi + ':' + Number(gvItem.attachment_id) + '">Delete</button>' : '') + '</div>';
+      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" data-lazyvid preload="metadata" src="' + esc(gvu) + '" muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div>' + mediaCaption(gvItem) + (cfg.isOwner && gvItem && gvItem.attachment_id ? '<button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_video:' + gvi + ':' + Number(gvItem.attachment_id) + '">Delete</button>' : '') + '</div>';
     }
 
     var postHtml = cfg.posts.map(function (po) {
@@ -894,6 +894,25 @@
     $$('[data-gvideo]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gvideo; if (editMode && !(cfg.galleryVideos || [])[i]) pickFile('gvideo', i); }); });
     $$('[data-gphoto]').forEach(function (cell) { cell.addEventListener('click', function () { var i = +cell.dataset.gphoto; if (editMode) pickFile('gphoto', i); }); });
     $$('.sip-media-tags a').forEach(function (link) { link.addEventListener('click', function (e) { e.stopPropagation(); }); });
+    /* Lazy playback for slot videos (measured 2026-08-22: the profile rendered
+       13 <video autoplay> at once — 13 concurrent downloads + decodes competing
+       with the page's data fetches, and a browser media-throttling breakage
+       risk). Slot videos now render paused with preload="metadata" and only
+       play while actually on screen; banner/background keep autoplay (they ARE
+       the visible design). Falls back to play-everything if IntersectionObserver
+       is unavailable — same behavior as before, never a black tile. */
+    (function () {
+      var lazies = $$('[data-lazyvid]'); if (!lazies.length) return;
+      if (typeof IntersectionObserver !== 'function') { lazies.forEach(function (v) { try { v.play(); } catch (e) {} }); return; }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          var v = en.target;
+          if (en.isIntersecting) { try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+          else if (!v.paused) { try { v.pause(); } catch (e) {} }
+        });
+      }, { threshold: 0.2 });
+      lazies.forEach(function (v) { io.observe(v); });
+    })();
     $$('[data-gallery-delete]').forEach(function (button) {
       button.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
