@@ -166,7 +166,7 @@
     var u = rt && rt.user || {};
     var propertyName = (S.gate && (S.gate.channelHandle || S.gate.letterHandle)) ? '@' + (S.gate.channelHandle || S.gate.letterHandle) : 'creator property';
     var nav = [
-      ['realtime', 'Realtime'], ['overview', 'Overview'], ['acquisition', 'Acquisition'],
+      ['overview', 'Overview'], ['realtime', 'Realtime'], ['acquisition', 'Acquisition'],
       ['engagement', 'Engagement'], ['monetization', 'Monetization'], ['retention', 'Retention'],
       ['demographics', 'Demographics'], ['tech', 'Tech']
     ];
@@ -352,33 +352,61 @@
     return '<div class="ca-minute-chart"><div class="ca-minute-bars">' + bars.join('') + '</div><div class="ca-minute-axis"><span>Earlier</span><span>Now</span></div></div>';
   }
 
-  /* ---------- boot: load everything, then decide sections by ownership ---------- */
+  /* ---------- boot: paint on the essentials, warm the rest up behind it ----------
+
+     This used to Promise.all THIRTEEN calls across two waves and render nothing
+     until every one had returned. Measured on a live account: the eight in the
+     first wave all start within the same millisecond, queue behind each other on
+     the backend, and the slowest (presence/state) took 10.6-12.7s — so the whole
+     dashboard sat blank for as long as the worst request, even though the data
+     that fills the top of the page had arrived in 7.7s.
+
+     Only two calls actually gate the page: the aggregate (everything reads from
+     it) and the creator gate (it decides which sections the user is allowed to
+     see, and both carry the 401 redirect). Every other value was already written
+     as `ok ? j : null`, i.e. each consumer ALREADY renders correctly when its
+     source is missing — which is exactly the state they are in before they land.
+     So paint on those two, then let the rest arrive whenever and repaint.
+
+     Repaints are coalesced: nine background calls landing separately would
+     otherwise rebuild the dashboard nine times in a few seconds. */
+  var painted = false, repaintT = null;
+  function repaint() {
+    if (!painted || S.view !== 'main') { return; }
+    clearTimeout(repaintT);
+    repaintT = setTimeout(function () { if (S.view === 'main') { renderMain(); } }, 80);
+  }
+  function warm(promise, assign) {
+    return promise.then(function (r) { try { assign(r); } catch (e) {} repaint(); },
+                        function () { repaint(); });
+  }
+
   Promise.all([
     api('/sml-members/v1/creator-studio/realtime'),
-    api('/sml-creator-gate/v1/status'),
-    api('/sml-lb/v1/me'),
-    api('/sml-live/v1/status'),
-    api('/sml-creator-analytics/v1/audience?range=28'),
-    api('/sml-creator-analytics/v1/presence'),
-    api('/sml-creator-analytics/v1/monetization-shadow'),
-    api('/sml-creator-analytics/v1/adsense-attribution/me')
+    api('/sml-creator-gate/v1/status')
   ]).then(function (r) {
     if (r[0].status === 401 || r[1].status === 401) { window.location.href = '/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname); return; }
-    S.rt = r[0].ok ? r[0].j : null; S.gate = r[1].ok ? r[1].j : {}; S.lb = r[2].ok ? r[2].j : null; S.live = r[3].ok ? r[3].j : null; S.ga4 = r[4].ok ? r[4].j : null; S.presence = r[5].ok ? r[5].j : null; S.shadow = r[6].ok ? r[6].j : null; S.adsense = r[7].ok ? r[7].j : null;
-    rememberPresence(S.presence);
-    var more = [];
+    S.rt = r[0].ok ? r[0].j : null;
+    S.gate = r[1].ok ? r[1].j : {};
+
+    renderMain();            /* first paint — Overview is already complete here */
+    painted = true;
+
     var hasLetter = !!(S.gate && S.gate.hasLetter);
-    more.push(api('/sml-letters/v1/mine')); more.push(api('/sml-loopletters/v1/subscribers')); more.push(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }));
-    more.push(api('/sml-video-upload-studio/v1/creator-dashboard'));
-    more.push(loadGroups());
-    return Promise.all(more).then(function (m) {
-      S.letters = m[0].ok && m[0].j ? (m[0].j.letters || []) : []; S.subs = m[1].ok && m[1].j ? m[1].j.counts : null; S.lsettings = m[2].ok ? m[2].j : null;
-      S.uploads = m[3].ok && m[3].j ? (m[3].j.recent_uploads || []) : [];
-      S.groups = m[4] || [];
-      renderMain();
-      setInterval(refreshRealtime, 60000);
-      setInterval(refreshPresence, 20000);
-    });
+    warm(api('/sml-lb/v1/me'), function (x) { S.lb = x.ok ? x.j : null; });
+    warm(api('/sml-live/v1/status'), function (x) { S.live = x.ok ? x.j : null; });
+    warm(api('/sml-creator-analytics/v1/audience?range=28'), function (x) { S.ga4 = x.ok ? x.j : null; });
+    warm(api('/sml-creator-analytics/v1/presence'), function (x) { S.presence = x.ok ? x.j : null; rememberPresence(S.presence); });
+    warm(api('/sml-creator-analytics/v1/monetization-shadow'), function (x) { S.shadow = x.ok ? x.j : null; });
+    warm(api('/sml-creator-analytics/v1/adsense-attribution/me'), function (x) { S.adsense = x.ok ? x.j : null; });
+    warm(api('/sml-letters/v1/mine'), function (x) { S.letters = x.ok && x.j ? (x.j.letters || []) : []; });
+    warm(api('/sml-loopletters/v1/subscribers'), function (x) { S.subs = x.ok && x.j ? x.j.counts : null; });
+    warm(hasLetter ? api('/sml-loopletters/v1/settings') : Promise.resolve({ ok: false }), function (x) { S.lsettings = x.ok ? x.j : null; });
+    warm(api('/sml-video-upload-studio/v1/creator-dashboard'), function (x) { S.uploads = x.ok && x.j ? (x.j.recent_uploads || []) : []; });
+    warm(loadGroups(), function (g) { S.groups = g || []; });
+
+    setInterval(refreshRealtime, 60000);
+    setInterval(refreshPresence, 20000);
   });
   function refreshRealtime() { api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderMain(); } }); }
   function refreshPresence() { api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); if (S.view === 'main') renderMain(); } }); }
@@ -574,9 +602,13 @@
       (devices.length ? audienceBars(devices, 'device', 'users', 8) : empty('Not enough data yet', 'Device data appears after GA4 processing.')) + '</div>' +
       '<div class="ca-card"><h3>Browser<span class="ca-fresh">28 days</span></h3>' + (browsers.length ? audienceBars(browsers, 'browser', 'users', 10) : empty('Not enough data yet', 'Browser data appears after GA4 processing.')) + '</div>' +
       '<div class="ca-card"><h3>Operating system<span class="ca-fresh">28 days</span></h3>' + (operatingSystems.length ? audienceBars(operatingSystems, 'operatingSystem', 'users', 10) : empty('Not enough data yet', 'Operating-system data appears after GA4 processing.')) + '</div></div>';
+    /* Overview leads. It is the section that answers "how am I doing", it renders
+       from the aggregate that arrives in the first boot wave, and putting the live
+       Realtime block above it meant the landing view was whichever slow presence
+       call had not come back yet. Realtime now warms up underneath it. */
     var dashboard =
-      pulseSection('realtime', 'Realtime', 'Active creator-page viewers · updates every 20 seconds', audience) +
       pulseSection('overview', 'Overview', 'Last 28 days · your creator-owned content only', health + kpis + kindsCard) +
+      pulseSection('realtime', 'Realtime', 'Active creator-page viewers · updates every 20 seconds', audience) +
       pulseSection('acquisition', 'Acquisition', 'Traffic sources and creator-owned destinations', contentRow) +
       pulseSection('engagement', 'Engagement', 'Content, groups, and publications', groupsCard + (lettersCard || '')) +
       pulseSection('monetization', 'Monetization', 'Verified revenue, estimates, and payout safeguards', adsenseCard + shadowCard + revCard) +
