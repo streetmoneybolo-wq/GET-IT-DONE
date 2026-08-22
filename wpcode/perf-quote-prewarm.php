@@ -75,6 +75,20 @@ if ( ! function_exists( 'sml_perf_prewarm_tickers' ) ) {
 				wp_remote_get( home_url( $ep . rawurlencode( $sym ) ), $args );
 			}
 		}
+
+		// Page-HTML warming (the useful part of what "cache preloader" plugins
+		// do, without installing one — redundant/conflicting on WordPress.com
+		// Atomic where Batcache is built in). A handful of high-traffic,
+		// anonymous-cacheable STATIC URLs only; per-user/per-group pages can't
+		// be enumerated cheaply and are skipped on purpose. Each URL is hit
+		// TWICE per tick because Batcache's default policy only caches a page
+		// it has seen more than once within its window — a single lonely
+		// request would never populate it.
+		$pages = array( '/', '/markets/', '/stock-chart/', '/groups/' );
+		foreach ( $pages as $p ) {
+			wp_remote_get( home_url( $p ), $args );
+			wp_remote_get( home_url( $p ), $args );
+		}
 	}
 	add_action( 'sml_perf_prewarm_tick', 'sml_perf_prewarm_run' );
 
