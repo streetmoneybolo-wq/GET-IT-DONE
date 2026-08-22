@@ -166,7 +166,25 @@
     }, function () {});
   }
 
+  function mounted() { return !!(wrap && wrap.isConnected); }
+
   paint();
   try { md.addEventListener('devicechange', paint); } catch (e) {}
-  var n = 0, t = setInterval(function () { paint(); if (++n > 40) { clearInterval(t); } }, 500);
+
+  /* The Studio Preview card can appear well after load — this page's own API calls
+     have been measured taking 10s+ — and Creator Studio re-renders its middle
+     column afterwards, which would silently drop an already-mounted picker. A
+     fixed retry window loses both races (the first version used 40x500ms and
+     never mounted at all), so watch the DOM instead and re-mount whenever the
+     picker is missing. The guard keeps this a cheap no-op once it is in place. */
+  try {
+    new MutationObserver(function () { if (!mounted()) { paint(); } })
+      .observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+
+  /* backstop for the no-MutationObserver case; stops as soon as it is mounted */
+  var n = 0, t = setInterval(function () {
+    if (mounted() || ++n > 240) { clearInterval(t); return; }
+    paint();
+  }, 500);
 })();
