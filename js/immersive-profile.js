@@ -307,7 +307,9 @@
       '.sip-panel{position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);width:auto;max-height:60vh;}' +
       '.sip-bsens{width:120px !important;}' +
     '}' +
-    '.sip-overlay{position:fixed;inset:0;z-index:9;background:rgba(4,9,14,.72);backdrop-filter:blur(7px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;}' +
+    /* Playback stays user-initiated through the persistent Play control. A
+       full-viewport sound gate blocked profile actions, including Edit. */
+    '.sip-overlay{display:none!important;}' +
     '.sip-overlay-btn{width:92px;height:92px;border-radius:50%;background:#38F58A;color:#03120A;display:flex;align-items:center;justify-content:center;font-size:32px;animation:sip-breathe 1.6s ease-in-out infinite;box-shadow:0 0 70px rgba(56,245,138,.5);}' +
     '.sip-overlay-t{font-family:Archivo,sans-serif;font-weight:800;font-size:22px;letter-spacing:.5px;}' +
     '.sip-overlay-s{font-size:13px;color:#93A4B8;max-width:340px;text-align:center;line-height:1.6;}' +
@@ -1387,8 +1389,33 @@
       return base;
     });
   }
+  function syncOverlayTop(mount) {
+    var top = 0;
+    ['wpadminbar', 'sml-global-header'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var rect = el.getBoundingClientRect();
+      if (rect.height > 0 && rect.bottom > top) top = rect.bottom;
+    });
+    top = Math.max(0, Math.round(top));
+    mount.style.top = top + 'px';
+  }
   function enableOverlay(mount) {
-    mount.style.cssText = 'position:fixed;inset:0;z-index:2147483000;overflow:auto;-webkit-overflow-scrolling:touch;background:#070d14;';
+    mount.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;z-index:2147483000;overflow:auto;-webkit-overflow-scrolling:touch;background:#070d14;';
+    syncOverlayTop(mount);
+    if (!mount.__smlShellSync) {
+      mount.__smlShellSync = function () { syncOverlayTop(mount); };
+      window.addEventListener('resize', mount.__smlShellSync, { passive: true });
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', mount.__smlShellSync, { passive: true });
+      if (window.ResizeObserver) {
+        mount.__smlShellObserver = new ResizeObserver(mount.__smlShellSync);
+        ['wpadminbar', 'sml-global-header'].forEach(function (id) {
+          var el = document.getElementById(id); if (el) mount.__smlShellObserver.observe(el);
+        });
+      }
+      setTimeout(mount.__smlShellSync, 0);
+      setTimeout(mount.__smlShellSync, 500);
+    }
     try { document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; } catch (e) {}
   }
   function boot() {
