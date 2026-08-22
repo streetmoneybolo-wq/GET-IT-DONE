@@ -4,35 +4,40 @@
  * /sml-ticker-sitemap.xml, or Rank Math's /sitemap_index.xml. Discovery
  * happens via robots.txt Sitemap: lines, so no existing index needs editing.
  *
- * SCOPE, HONESTLY: this ships a bounded v1, not full-directory coverage —
- * see the two real gaps documented inline. Nothing here fakes coverage it
- * doesn't have.
- *   - /sml/v1/symbol-directory and /sml-scanner/v1/directory return the
- *     site's FULL exchange listing (thousands of tickers, most illiquid
- *     ETFs with zero real signal). Scoring every one through the Eligibility
- *     Engine (4 internal REST calls each) on every sitemap request is not
- *     viable synchronously. This ships a documented seed list of real,
- *     liquid, well-known tickers instead — matching Phase 1 of the
- *     architecture doc ("concentrate on top stocks, don't chase millions
- *     yet"). Expanding to the full directory needs a WP-Cron background job
- *     that pre-scores the full list on a schedule and stores the result —
- *     real, buildable, but a separate task from what ships here.
- *   - Groups and creator channels have NO enumeration endpoint at all today
- *     (groups/discover returns a handful of curated groups, not a full list;
- *     channel/letter handles are user meta with no list-all REST route). A
- *     groups/channels sitemap needs that endpoint built first — not
- *     attempted here rather than shipped against data that doesn't exist.
+ * v2, 2026-08-22 — the empty-sitemap fix. v1 scored all 67 seed tickers
+ * synchronously inside the sitemap request via internal REST dispatch; that
+ * failed live (every ticker logged "temporarily unavailable", sitemap shipped
+ * empty). v2 moves scoring to a WP-Cron sweep: every 5 minutes a batch of 5
+ * tickers is re-scored through the real front door (see seo-ege-core.php v2
+ * for why front-door) and the verdicts are stored in an option; the sitemap
+ * renders instantly from that stored state. The first full pass over the 67
+ * seed tickers takes 14 sweeps (~70 minutes); after that every symbol
+ * refreshes on the same ~70-minute rotation.
+ *
+ * OUTAGE RESILIENCE, deliberately: a ticker that was eligible does NOT get
+ * dropped because one sweep couldn't fetch data (the provider has real,
+ * observed outage windows) — its last good verdict is kept for up to 24h of
+ * consecutive failures before it's honestly dropped. And a "confirmed
+ * nonexistent" verdict is only trusted when the same sweep proved the
+ * upstream can answer at all (at least one symbol scored valid), so a total
+ * outage can never mass-evict the sitemap.
+ *
+ * SCOPE, HONESTLY: still a bounded v1 seed list, not full-directory coverage —
+ * the full symbol-directory (thousands of tickers) and groups/channels
+ * sitemaps remain future work with real, documented blockers (no enumeration
+ * endpoints for groups/channels; the full directory just needs this same
+ * cron pattern with a much longer rotation).
  *
  * WPCode setup: PHP snippet, Auto Insert / Run Everywhere.
  * Depends on wpcode/seo-ege-core.php (load before this one).
  * ROLLBACK: deactivate this snippet — both new URLs 404, robots.txt Sitemap:
- * lines become dead references (harmless; crawlers just get a 404 on them).
+ * lines become dead references (harmless). Optional cleanup after
+ * deactivation: wp_clear_scheduled_hook('sml_seo_stocks_score_tick') and
+ * delete_option('sml_seo_stocks_state') — both harmless to leave.
  */
 if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 
-	/** Documented v1 seed — real, liquid, well-known tickers. Expand via a
-	 *  cron job against symbol-directory once that's built; this is not the
-	 *  full market. */
+	/** Documented v1 seed — real, liquid, well-known tickers. */
 	function sml_seo_sitemap_seed_tickers() {
 		return array(
 			'SPY', 'QQQ', 'DIA', 'IWM', 'SMH',
@@ -56,52 +61,199 @@ if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 	function sml_seo_xml_head() { return '<?xml version="1.0" encoding="UTF-8"?>' . "\n"; }
 	function sml_esc_xml( $s ) { return htmlspecialchars( (string) $s, ENT_XML1 | ENT_QUOTES, 'UTF-8' ); }
 
-	function sml_seo_render_stocks_sitemap() {
-		$cache_key = 'sml_seo_stocks_sitemap_xml';
-		$cached = get_transient( $cache_key );
-		if ( is_string( $cached ) ) { return $cached; }
+	/* ---------- background pre-scoring state ----------
+	   symbol => array(
+	     'eligible'   => bool,      // include in the sitemap?
+	     'verdict'    => string,    // index|selective|noindex
+	     'score'      => int,
+	     'why'        => 'scored'|'no-data'|'unavailable'|'kept-last-good',
+	     'checked'    => int,       // unix ts of last sweep that touched it
+	     'fail_since' => int,       // 0, or unix ts when consecutive failures began
+	   ) */
+	function sml_seo_stocks_state() {
+		$s = get_option( 'sml_seo_stocks_state', array() );
+		return is_array( $s ) ? $s : array();
+	}
 
-		if ( ! function_exists( 'sml_ege_score_ticker' ) ) {
-			// engine not loaded — fail closed: an empty-but-valid sitemap, never a broken one
-			$xml = sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>';
-			set_transient( $cache_key, $xml, 15 * MINUTE_IN_SECONDS );
-			return $xml;
+	add_filter( 'cron_schedules', static function ( $s ) {
+		if ( ! isset( $s['sml_seo_5min'] ) ) { $s['sml_seo_5min'] = array( 'interval' => 5 * MINUTE_IN_SECONDS, 'display' => 'Every 5 minutes (SML SEO scoring sweep)' ); }
+		return $s;
+	} );
+
+	function sml_seo_stocks_score_tick() {
+		if ( ! function_exists( 'sml_ege_score_ticker' ) ) { return; } // engine off — change nothing, fail closed at render
+		// overlap lock: WP-Cron can double-fire an event under load, and a
+		// duplicate scheduled event would otherwise double the sweep's network
+		// budget forever — a second tick inside 4 minutes is a no-op instead
+		if ( false !== get_transient( 'sml_seo_tick_lock' ) ) { return; }
+		set_transient( 'sml_seo_tick_lock', 1, 4 * MINUTE_IN_SECONDS );
+
+		$state = sml_seo_stocks_state();
+		$seed  = sml_seo_sitemap_seed_tickers();
+
+		// oldest-checked first (never-checked = 0 sorts first) — a simple
+		// rotation that both completes the first pass and keeps refreshing
+		usort( $seed, static function ( $a, $b ) use ( $state ) {
+			$ca = isset( $state[ $a ]['checked'] ) ? (int) $state[ $a ]['checked'] : 0;
+			$cb = isset( $state[ $b ]['checked'] ) ? (int) $state[ $b ]['checked'] : 0;
+			return $ca <=> $cb;
+		} );
+		$batch = array_slice( $seed, 0, 5 ); // 5 symbols x (4 parallel data calls + 1 mostly-cached page check), 3s timeouts — bounded well under cron exec limits
+
+		// advance the rotation BEFORE fetching: if this tick is killed by an
+		// exec limit mid-batch, the next tick moves on to other symbols
+		// instead of livelocking on this same batch forever. The entries'
+		// verdicts/data are untouched here — only 'checked' moves.
+		$now   = time();
+		$prevs = array();
+		foreach ( $batch as $sym ) {
+			$prevs[ $sym ] = isset( $state[ $sym ] ) && is_array( $state[ $sym ] ) ? $state[ $sym ] : null;
+			if ( null !== $prevs[ $sym ] ) {
+				$state[ $sym ]['checked'] = $now;
+			} else {
+				$state[ $sym ] = array( 'eligible' => false, 'verdict' => 'noindex', 'score' => 0, 'why' => 'in-progress', 'checked' => $now, 'fail_since' => 0 );
+			}
+		}
+		update_option( 'sml_seo_stocks_state', $state, false );
+
+		$results   = array();
+		$any_valid = false;
+		foreach ( $batch as $sym ) {
+			$r = sml_ege_score_ticker( $sym, true ); // force: sweeps always re-measure
+			$results[ $sym ] = $r;
+			if ( ! empty( $r['valid'] ) ) { $any_valid = true; }
 		}
 
-		$xml = sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
-		$included = 0; $skipped_invalid = array(); $skipped_unavailable = array();
-		foreach ( sml_seo_sitemap_seed_tickers() as $sym ) {
-			$s = sml_ege_score_ticker( $sym );
-			if ( ! $s['valid'] || ! in_array( $s['verdict'], array( 'index', 'selective' ), true ) ) {
-				// log WHY, never silently truncate: a confirmed-nonexistent symbol
-				// is a real skip; "unavailable" means the data call itself failed
-				// this run and the symbol should be retried on the next generation
-				// rather than treated as durably ineligible.
-				if ( ! $s['valid'] && empty( $s['confirmed_invalid'] ) ) { $skipped_unavailable[] = $sym; }
-				else { $skipped_invalid[] = $sym; }
+		foreach ( $results as $sym => $r ) {
+			$prev = $prevs[ $sym ];
+
+			if ( ! empty( $r['valid'] ) ) {
+				// a DEGRADED score (aux endpoints failed rather than answered —
+				// see seo-ege-core.php) is artificially depressed and must never
+				// demote a previously-good ticker; route it through the same
+				// keep-last-good grace as a fetch failure. With no good prior
+				// state it's still the best available measurement — store it.
+				if ( ! empty( $r['degraded'] ) && ! empty( $prev['eligible'] ) ) {
+					$since = ! empty( $prev['fail_since'] ) ? (int) $prev['fail_since'] : $now;
+					if ( ( $now - $since ) < DAY_IN_SECONDS ) {
+						$prev['why']        = 'kept-last-good';
+						$prev['checked']    = $now;
+						$prev['fail_since'] = $since;
+						$state[ $sym ]      = $prev;
+						continue;
+					}
+				}
+				// valid data is not enough — the /stocks/{x}/ page itself must
+				// exist before the sitemap may advertise it (verified live: KO
+				// has full real data yet /stocks/ko/ is an HTTP 404). null =
+				// the existence check couldn't get a definitive answer — fall
+				// through to keep-last-good rather than evicting on a blip.
+				$page = function_exists( 'sml_ege_stocks_page_exists' ) ? sml_ege_stocks_page_exists( $sym ) : null;
+				if ( false === $page ) {
+					$state[ $sym ] = array(
+						'eligible' => false, 'verdict' => $r['verdict'], 'score' => (int) $r['score'],
+						'why'      => 'no-page', 'checked' => $now, 'fail_since' => 0,
+					);
+					continue;
+				}
+				if ( true === $page ) {
+					$state[ $sym ] = array(
+						'eligible' => in_array( $r['verdict'], array( 'index', 'selective' ), true ),
+						'verdict'  => $r['verdict'], 'score' => (int) $r['score'],
+						'why'      => 'scored', 'checked' => $now, 'fail_since' => 0,
+					);
+					continue;
+				}
+			}
+
+			if ( ! empty( $r['confirmed_invalid'] ) && ( $any_valid || empty( $prev['eligible'] ) ) ) {
+				// trust a confirmed negative only when this same sweep proved the
+				// upstream can answer at all, or when there's no good prior state
+				// to protect — a total-outage sweep must never evict tickers
+				$state[ $sym ] = array(
+					'eligible' => false, 'verdict' => 'noindex', 'score' => 0,
+					'why'      => 'no-data', 'checked' => $now, 'fail_since' => 0,
+				);
 				continue;
 			}
-			$xml .= '<url><loc>' . sml_esc_xml( home_url( '/stocks/' . strtolower( $sym ) . '/' ) ) . '</loc>'
-				. '<changefreq>hourly</changefreq><priority>' . ( 'index' === $s['verdict'] ? '0.8' : '0.5' ) . '</priority></url>' . "\n";
-			$included++;
-		}
-		$xml .= "<!-- {$included} included; " . count( $skipped_invalid ) . ' below eligibility or confirmed no data: '
-			. sml_esc_xml( implode( ',', $skipped_invalid ) ) . '; ' . count( $skipped_unavailable )
-			. ' temporarily unavailable this run (will retry): ' . sml_esc_xml( implode( ',', $skipped_unavailable ) ) . " -->\n";
-		$xml .= '</urlset>';
 
-		// Shorter than a naive "regenerate daily" window on purpose: this cache
-		// compounds on top of each ticker's own 10-min (or 60s, if unavailable)
-		// cache, so keeping it to a few hours bounds how long a transient data
-		// hiccup can keep a real ticker out of the sitemap.
-		set_transient( $cache_key, $xml, 3 * HOUR_IN_SECONDS );
+			// fetch failed this sweep (or a confirmed-negative arrived during a
+			// suspect all-fail sweep): keep a previously-good verdict for up to
+			// 24h of consecutive failures, then drop honestly
+			$since = ! empty( $prev['fail_since'] ) ? (int) $prev['fail_since'] : $now;
+			if ( ! empty( $prev['eligible'] ) && ( $now - $since ) < DAY_IN_SECONDS ) {
+				$prev['why']        = 'kept-last-good';
+				$prev['checked']    = $now;
+				$prev['fail_since'] = $since;
+				$state[ $sym ]      = $prev;
+			} else {
+				$state[ $sym ] = array(
+					'eligible' => false, 'verdict' => 'noindex', 'score' => 0,
+					'why'      => 'unavailable', 'checked' => $now, 'fail_since' => $since,
+				);
+			}
+		}
+
+		update_option( 'sml_seo_stocks_state', $state, false ); // autoload off: only sitemap requests + this cron read it
+	}
+	add_action( 'sml_seo_stocks_score_tick', 'sml_seo_stocks_score_tick' );
+
+	add_action( 'init', static function () {
+		if ( ! wp_next_scheduled( 'sml_seo_stocks_score_tick' ) ) {
+			// wp_schedule_event has no duplicate-event guard, so two concurrent
+			// requests in the activation window could each register a recurring
+			// event and permanently double the sweep — a short lock closes that
+			if ( false === get_transient( 'sml_seo_sched_lock' ) ) {
+				set_transient( 'sml_seo_sched_lock', 1, MINUTE_IN_SECONDS );
+				wp_schedule_event( time() + 30, 'sml_seo_5min', 'sml_seo_stocks_score_tick' );
+			}
+		}
+	} );
+
+	/* ---------- rendering: instant, from stored state — no scoring inline ---------- */
+	function sml_seo_render_stocks_sitemap() {
+		if ( ! function_exists( 'sml_ege_score_ticker' ) ) {
+			// engine not loaded — fail closed: an empty-but-valid sitemap, never
+			// stale state served against the engine's documented rollback contract
+			return sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><!-- eligibility engine inactive; failing closed --></urlset>';
+		}
+
+		$state = sml_seo_stocks_state();
+		$xml   = sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+		$included = 0; $held = 0; $ineligible = array(); $unavailable = array(); $nopage = array(); $pending = array();
+
+		$now = time();
+		foreach ( sml_seo_sitemap_seed_tickers() as $sym ) {
+			$st = isset( $state[ $sym ] ) && is_array( $state[ $sym ] ) ? $state[ $sym ] : null;
+			if ( null === $st || 'in-progress' === ( isset( $st['why'] ) ? $st['why'] : '' ) ) { $pending[] = $sym; continue; }
+			// render-side staleness bound: the 24h keep-last-good grace is
+			// enforced inside cron ticks, but a dead cron would otherwise serve
+			// last-good URLs forever — cap any entry at 26h regardless
+			if ( ! isset( $st['checked'] ) || ( $now - (int) $st['checked'] ) > 26 * HOUR_IN_SECONDS ) { $unavailable[] = $sym; continue; }
+			if ( ! empty( $st['eligible'] ) ) {
+				$xml .= '<url><loc>' . sml_esc_xml( home_url( '/stocks/' . strtolower( $sym ) . '/' ) ) . '</loc>'
+					. '<changefreq>hourly</changefreq><priority>' . ( 'index' === $st['verdict'] ? '0.8' : '0.5' ) . '</priority></url>' . "\n";
+				$included++;
+				if ( 'kept-last-good' === $st['why'] ) { $held++; }
+				continue;
+			}
+			if ( 'unavailable' === $st['why'] ) { $unavailable[] = $sym; }
+			elseif ( 'no-page' === $st['why'] ) { $nopage[] = $sym; }
+			else { $ineligible[] = $sym; }
+		}
+
+		$xml .= "<!-- {$included} included ({$held} held on last good verdict through a data outage); "
+			. count( $ineligible ) . ' below eligibility or confirmed no data: ' . sml_esc_xml( implode( ',', $ineligible ) ) . '; '
+			. count( $nopage ) . ' valid ticker but /stocks/ page missing (404): ' . sml_esc_xml( implode( ',', $nopage ) ) . '; '
+			. count( $unavailable ) . ' unavailable (will retry): ' . sml_esc_xml( implode( ',', $unavailable ) ) . '; '
+			. count( $pending ) . ' awaiting first scoring pass: ' . sml_esc_xml( implode( ',', $pending ) ) . " -->\n";
+		$xml .= '</urlset>';
 		return $xml;
 	}
 
 	function sml_seo_render_hub_sitemap() {
 		// v1: /markets/ only — real, always-valid. Sector/theme hub URLs join once
-		// their own routes exist and their backing data is confirmed broad enough
-		// (see the architecture doc's Part 7 caution against shipping ahead of data).
+		// their own routes exist and their backing data is confirmed broad enough.
 		$xml = sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
 		$xml .= '<url><loc>' . sml_esc_xml( home_url( '/markets/' ) ) . '</loc><changefreq>daily</changefreq><priority>0.6</priority></url>' . "\n";
 		$xml .= '</urlset>';
@@ -125,7 +277,7 @@ if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 	}, 1 );
 
 	// discovery: append both new files as robots.txt Sitemap: lines (additive,
-	// doesn't touch the two existing Sitemap: lines already there)
+	// doesn't touch the existing Sitemap: lines already there)
 	add_filter( 'robots_txt', static function ( $output, $public ) {
 		if ( ! $public ) { return $output; }
 		if ( false !== strpos( $output, 'sml-stocks-sitemap.xml' ) ) { return $output; }

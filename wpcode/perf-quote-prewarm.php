@@ -9,10 +9,12 @@
  * That's why this warms via a real outbound wp_remote_get() to the site's own
  * public URL, not an internal rest_do_request(): Batcache only sees requests
  * that come through the actual front door. An in-process internal dispatch
- * (the technique every other seo-*.php snippet correctly uses to READ data
- * cheaply) would run the REST callback fine but never touch Batcache at all,
- * since it isn't a new HTTP request — for pre-warming specifically, only a
- * real request does the job.
+ * would run the REST callback fine but never touch Batcache at all, since it
+ * isn't a new HTTP request — for pre-warming specifically, only a real
+ * request does the job. (2026-08-22: the seo-*.php snippets ALSO moved to
+ * front-door fetching, for a second reason — internal dispatch was verified
+ * live to fail for the sml/v1 endpoints in contexts where front-door HTTP
+ * works. Do not reintroduce rest_do_request for those endpoints.)
  *
  * HONEST LIMITATION: cache warmth appeared to differ by edge datacenter in
  * testing (two consecutive requests for the same symbol landed on different
