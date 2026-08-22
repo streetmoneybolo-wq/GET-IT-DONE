@@ -1359,6 +1359,8 @@
     var av = document.querySelector('.sml-profile-avatar img, img.sml-avatar, img[class*="avatar" i]');
     var bn = document.querySelector('.sml-profile-banner img, [class*="banner" i] img, [class*="cover" i] img');
     var nativeProfile = document.querySelector('[data-sml-profile]');
+    var nativePlayer = document.getElementById(FRAME_ID);
+    var nativePlayerSrc = nativePlayer ? String(nativePlayer.getAttribute('src') || '') : '';
     return {
       useExistingPlayer: true,
       name: name || 'Profile',
@@ -1368,7 +1370,7 @@
       editUrl: '/customize-profile/',
       visitorUrl: location.pathname,
       isOwner: !!((window.SML_PROFILE_UNIFIED && window.SML_PROFILE_UNIFIED.isOwner) || (window.SMLPublicProfile && window.SMLPublicProfile.profile && window.SMLPublicProfile.profile.is_owner)),
-      autoplay: !!(nativeProfile && nativeProfile.getAttribute('data-music-autoplay') === '1'),
+      autoplay: !!((nativeProfile && nativeProfile.getAttribute('data-music-autoplay') === '1') || /[?&]autoplay=1(?:&|$)/.test(nativePlayerSrc)),
       pulse: 'Immersive'
     };
   }
