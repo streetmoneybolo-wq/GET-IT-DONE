@@ -71,8 +71,21 @@ if ( ! function_exists( 'sml_ege_internal_get' ) ) {
 			&& isset( $quote['source'] ) && 'none' !== $quote['source'];
 
 		if ( ! $valid ) {
-			$out = array( 'valid' => false, 'score' => 0, 'verdict' => 'noindex', 'factors' => array(), 'quote' => $quote, 'company' => $company, 'position' => $position );
-			set_transient( $cache_key, $out, 10 * MINUTE_IN_SECONDS );
+			// Distinguish a CONFIRMED negative (the quote endpoint responded and
+			// explicitly said this symbol has no data — source:"none") from an
+			// UNAVAILABLE result (the internal call itself failed — timeout,
+			// transient 5xx, nothing came back at all). Conflating the two would
+			// cache a one-off hiccup on a real blue-chip ticker for the same 10
+			// minutes as a genuinely nonexistent symbol, and the sitemap's own
+			// cache on top of that could durably drop a real ticker. A confirmed
+			// negative is cached normally; an unavailable result is cached briefly
+			// so the next check retries soon instead of compounding the outage.
+			$confirmed = is_array( $quote ); // the endpoint answered, just said "no data" — not a fetch failure
+			$out = array(
+				'valid' => false, 'confirmed_invalid' => $confirmed, 'score' => 0, 'verdict' => 'noindex',
+				'factors' => array(), 'quote' => $quote, 'company' => $company, 'position' => $position,
+			);
+			set_transient( $cache_key, $out, $confirmed ? 10 * MINUTE_IN_SECONDS : 60 );
 			return $out;
 		}
 

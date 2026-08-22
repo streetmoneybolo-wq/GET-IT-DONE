@@ -34,10 +34,16 @@ if ( ! function_exists( 'sml_sta_symbol_from_stocks_path' ) ) {
 	}
 
 	/* ---------- Day-1: /stock-chart/?symbol=X canonicalizes to /stocks/{ticker}/ ----------
-	   Uses Rank Math's own canonical filter — no HTML surgery. */
+	   Uses Rank Math's own canonical filter — no HTML surgery. Only rewrites for
+	   a symbol the eligibility engine confirms is real: an invalid/typo'd/garbage
+	   symbol would otherwise get canonicalized to a URL that 404s (/stocks/{x}/
+	   genuinely 404s on unknown tickers) — self-canonical is the correct fallback
+	   for those, matching today's live behavior. */
 	add_filter( 'rank_math/frontend/canonical', function ( $canonical ) {
 		$symbol = sml_sta_symbol_from_stock_chart();
-		if ( '' === $symbol ) { return $canonical; }
+		if ( '' === $symbol || ! function_exists( 'sml_ege_score_ticker' ) ) { return $canonical; }
+		$s = sml_ege_score_ticker( $symbol );
+		if ( empty( $s['valid'] ) ) { return $canonical; }
 		return home_url( '/stocks/' . strtolower( $symbol ) . '/' );
 	} );
 
@@ -54,11 +60,22 @@ if ( ! function_exists( 'sml_sta_symbol_from_stocks_path' ) ) {
 	}
 
 	add_filter( 'rank_math/frontend/robots', function ( $robots ) {
+		// Fail CLOSED, not open: distinguish "not a /stocks/ page" (leave Rank
+		// Math's own default alone) from "IS a /stocks/ page but the scoring
+		// engine is unreachable" (force noindex — this is the documented
+		// rollback contract from seo-ege-core.php: deactivating that snippet
+		// must never make a previously-suppressed thin page indexable again).
+		$symbol = sml_sta_symbol_from_stocks_path();
+		if ( '' === $symbol ) { return $robots; }
 		$s = sml_sta_current_stocks_ticker_score();
-		if ( null === $s ) { return $robots; }
-		// invalid tickers already 404 on this path today — this only covers the
+		if ( null === $s || ! $s['valid'] ) {
+			$robots['index']  = 'noindex';
+			$robots['follow'] = 'follow';
+			return $robots;
+		}
+		// invalid tickers already 404 on this path today — this covers the
 		// scored-but-thin case (40-59): crawlable, never indexed.
-		if ( $s['valid'] && 'noindex' === $s['verdict'] ) {
+		if ( 'noindex' === $s['verdict'] ) {
 			$robots['index']  = 'noindex';
 			$robots['follow'] = 'follow';
 		}
@@ -122,15 +139,25 @@ if ( ! function_exists( 'sml_sta_symbol_from_stocks_path' ) ) {
 		$name     = ! empty( $company['name'] ) ? $company['name'] : $symbol;
 		$market   = ! empty( $company['market'] ) ? $company['market'] : '';
 
-		$sentences = array();
-		$sentences[] = 'As of ' . esc_html( wp_date( 'F j, Y g:ia T', (int) ( ( $quote['timestamp'] ?? time() * 1000 ) / 1000 ) ) )
-			. ', ' . esc_html( $symbol ) . ' (' . esc_html( $name ) . ( $market ? ', ' . esc_html( $market ) : '' ) . ')'
-			. ( isset( $quote['current'] ) && null !== $quote['current']
+		$has_ts   = ! empty( $quote['timestamp'] ); // never substitute render-time "now" for a real observation time
+		$has_px   = isset( $quote['current'] ) && null !== $quote['current'];
+		$delayed  = $has_px && ! empty( $quote['stale'] ); // the live normal case for anonymous sessions — label it, don't hide the price
+
+		$lead = $has_ts
+			? 'As of ' . esc_html( wp_date( 'F j, Y g:ia T', (int) ( $quote['timestamp'] / 1000 ) ) ) . ', '
+			: '';
+		$sentences   = array();
+		$sentences[] = $lead . esc_html( $symbol ) . ' (' . esc_html( $name ) . ( $market ? ', ' . esc_html( $market ) : '' ) . ')'
+			. ( $has_px
 				? ' traded at $' . esc_html( number_format_i18n( (float) $quote['current'], 2 ) )
 					. ( isset( $quote['change'] ) && null !== $quote['change']
 						? ', ' . ( $quote['change'] >= 0 ? '+' : '' ) . esc_html( number_format_i18n( (float) $quote['change'], 2 ) )
-							. ' (' . ( $quote['percentChange'] >= 0 ? '+' : '' ) . esc_html( number_format_i18n( (float) $quote['percentChange'], 2 ) ) . '%) on the day.'
-						: '.' )
+							. ( isset( $quote['percentChange'] ) && null !== $quote['percentChange']
+								? ' (' . ( $quote['percentChange'] >= 0 ? '+' : '' ) . esc_html( number_format_i18n( (float) $quote['percentChange'], 2 ) ) . '%)'
+								: '' )
+							. ' on the day'
+						: '' )
+					. ( $delayed ? ' (delayed quote).' : '.' )
 				: ' has no current trading data available.' );
 
 		if ( isset( $position['profitRatio'] ) ) {

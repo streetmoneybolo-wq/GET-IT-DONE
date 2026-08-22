@@ -69,21 +69,32 @@ if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 		}
 
 		$xml = sml_seo_xml_head() . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
-		$included = 0; $skipped = array();
+		$included = 0; $skipped_invalid = array(); $skipped_unavailable = array();
 		foreach ( sml_seo_sitemap_seed_tickers() as $sym ) {
 			$s = sml_ege_score_ticker( $sym );
 			if ( ! $s['valid'] || ! in_array( $s['verdict'], array( 'index', 'selective' ), true ) ) {
-				$skipped[] = $sym; continue;
+				// log WHY, never silently truncate: a confirmed-nonexistent symbol
+				// is a real skip; "unavailable" means the data call itself failed
+				// this run and the symbol should be retried on the next generation
+				// rather than treated as durably ineligible.
+				if ( ! $s['valid'] && empty( $s['confirmed_invalid'] ) ) { $skipped_unavailable[] = $sym; }
+				else { $skipped_invalid[] = $sym; }
+				continue;
 			}
 			$xml .= '<url><loc>' . sml_esc_xml( home_url( '/stocks/' . strtolower( $sym ) . '/' ) ) . '</loc>'
 				. '<changefreq>hourly</changefreq><priority>' . ( 'index' === $s['verdict'] ? '0.8' : '0.5' ) . '</priority></url>' . "\n";
 			$included++;
 		}
-		$xml .= "<!-- {$included} included, " . count( $skipped ) . ' skipped (below eligibility threshold or no live data): '
-			. sml_esc_xml( implode( ',', $skipped ) ) . " -->\n";
+		$xml .= "<!-- {$included} included; " . count( $skipped_invalid ) . ' below eligibility or confirmed no data: '
+			. sml_esc_xml( implode( ',', $skipped_invalid ) ) . '; ' . count( $skipped_unavailable )
+			. ' temporarily unavailable this run (will retry): ' . sml_esc_xml( implode( ',', $skipped_unavailable ) ) . " -->\n";
 		$xml .= '</urlset>';
 
-		set_transient( $cache_key, $xml, 12 * HOUR_IN_SECONDS );
+		// Shorter than a naive "regenerate daily" window on purpose: this cache
+		// compounds on top of each ticker's own 10-min (or 60s, if unavailable)
+		// cache, so keeping it to a few hours bounds how long a transient data
+		// hiccup can keep a real ticker out of the sitemap.
+		set_transient( $cache_key, $xml, 3 * HOUR_IN_SECONDS );
 		return $xml;
 	}
 
