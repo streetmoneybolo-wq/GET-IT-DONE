@@ -94,6 +94,7 @@
         chain('js/terminal-adopt.js');     // Phase C: adopt the still-legacy modules (feed, alerts, ad) into the shell's cards
         chain('js/terminal-options.js');   // Options tab: chain + what-if calculator
         chain('js/terminal-mp2.js');       // Market Position v2 (+ chain-loads the Short sale card)
+        chain('js/terminal-heatmap.js');   // Sector heat map (design port): mounts between the mp/signals row and the live feed
       })
       .catch(function () { /* fetch failed → leave the legacy terminal untouched */ });
   }
