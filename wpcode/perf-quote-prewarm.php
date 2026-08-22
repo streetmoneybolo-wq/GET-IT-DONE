@@ -34,19 +34,18 @@
  */
 if ( ! function_exists( 'sml_perf_prewarm_tickers' ) ) {
 
-	/** Same real, liquid, well-known seed used by the stocks sitemap
-	 *  (wpcode/seo-sitemaps.php) — kept as its own local copy here so this
-	 *  snippet has no load-order dependency on that one. */
+	/** Trimmed 2026-08-22 from 40+ tickers to the 12 highest-traffic ones.
+	 *  Measured live: the site's quotes were returning provider_rate_limited —
+	 *  Massive (the anonymous-session fallback provider) was throttling, and
+	 *  keeping N symbols warm on a 5-min cache inherently costs ~N/5 upstream
+	 *  calls per minute. 40 tickers ≈ 8/min from this cron alone; 12 ≈ 2.4/min,
+	 *  leaving budget for the SEO scoring sweep and real users. Re-expand ONLY
+	 *  after confirming the Massive plan's actual rate limit. */
 	function sml_perf_prewarm_tickers() {
 		return array(
-			'SPY', 'QQQ', 'DIA', 'IWM', 'SMH',
-			'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AVGO', 'AMD',
-			'NFLX', 'ADBE', 'CRM', 'ORCL', 'CSCO', 'INTC', 'QCOM',
-			'PLTR', 'SOFI', 'COIN', 'RBLX', 'UBER', 'ABNB', 'SHOP',
-			'JPM', 'BAC', 'V', 'MA',
-			'JNJ', 'UNH', 'LLY',
-			'XOM', 'CVX',
-			'WMT', 'COST', 'HD', 'NKE', 'DIS',
+			'SPY', 'QQQ',
+			'NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMD', 'META', 'AMZN', 'GOOGL',
+			'PLTR', 'COIN',
 		);
 	}
 
