@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node platform/server.js",
     "worker": "node platform/worker.js",
-    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js db/migrate.test.js platform/server.test.js",
+    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js db/migrate.test.js platform/server.test.js platform/wordpress-gateway.test.js",
     "db:status": "node db/migrate.js status",
     "db:dry-run": "node db/migrate.js up --dry-run",
     "db:migrate": "node db/migrate.js up",

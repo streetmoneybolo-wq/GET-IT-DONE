@@ -126,6 +126,9 @@ test('the real migrations are discovered and ordered across both projects', () =
   assert.ok(v3, 'group-subs migration missing');
   assert.match(path.basename(v3.dir), /migrations/);
   assert.match(v3.path, /group-subs/);
+  const v4 = found.find((m) => m.version === '004');
+  assert.ok(v4, 'WordPress gateway migration missing');
+  assert.match(v4.name, /wordpress_gateway/);
 });
 
 test('only *_up.sql files are collected — rollbacks are never applied forward', () => {
