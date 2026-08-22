@@ -40,7 +40,7 @@
     shapes: ['dot', 'ring', 'diamond', 'plus', 'sparkle', 'note', 'dollar', 'candle'],
     fx: ['Rain'],
     texture: 'Glass',
-    particleDensity: 60, bannerShake: true, orbitalSize: 300
+    particleDensity: 60, bannerShake: true, orbitalSize: 300, autoplay: false
   };
 
   var SHAPES = [
@@ -198,7 +198,11 @@
     '.sip-root a.sip-btn{color:#03120A;}.sip-root a.sip-btn:hover{color:#03120A;background:#5dffa3;}.sip-root a.sip-btn.ghost{color:#c3ccd4;}.sip-root a.sip-btn.ghost:hover{color:#fff;background:transparent;}' +
     '.sip-btn.sip-follow[data-on="1"]{background:transparent;border:1px solid rgba(56,245,138,.55);color:#38F58A;}' +
     '.sip-sec{border-radius:8px;}' +
-    '.sip-sec.edit{outline:2px dashed rgba(56,245,138,.4);outline-offset:5px;cursor:move;}' +
+    '.sip-sec.edit{outline:2px dashed rgba(56,245,138,.4);outline-offset:5px;cursor:grab;touch-action:none;user-select:none;}' +
+    '.sip-sec.edit:active,.sip-sec.sip-dragging{cursor:grabbing;opacity:.68;}' +
+    '.sip-sec.sip-drop-target{outline-color:#38F58A;box-shadow:0 0 24px rgba(56,245,138,.24);}' +
+    '.sip-root[data-sml-imm-orbital-photos="0"] [data-orbital-kind="photos"],.sip-root[data-sml-imm-orbital-videos="0"] [data-orbital-kind="videos"]{display:none!important;}' +
+    '.sip-root[data-sml-imm-orbital-photos="0"][data-sml-imm-orbital-videos="0"] .sip-sec[data-sec="orbitals"]{display:none!important;}' +
     '.sip-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:14px;}' +
     '.sip-stat{background:var(--card-bg);border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:10px 12px;backdrop-filter:blur(8px);transform:translateY(calc(var(--kick,0)*-8px));}' +
     '.sip-stat-l{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:1.4px;color:#6B7C90;}' +
@@ -422,9 +426,9 @@
       '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="tickers"' + (tickHtml ? '' : ' data-empty="1"') + '><div class="sip-ticks">' + tickHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="orbitals"' + ((!cfg.isOwner && !nOrbP && !nOrbV) ? ' data-empty="1"' : '') + '><div class="sip-orbwrap">' +
-      '<div class="sip-orbcol"' + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-orbcol" data-orbital-kind="photos"' + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-pstage"><div class="sip-ring sip-pring">' + orbPhotos + '</div></div></div>' +
-      '<div class="sip-orbcol"' + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-orbcol" data-orbital-kind="videos"' + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
       '<div class="sip-stage sip-vstage"><div class="sip-ring sip-vring">' + orbVids + '</div></div></div>' +
       '</div></div>' +
       '<div class="sip-sec" data-sec="about"><div class="sip-grid">' +
@@ -568,9 +572,15 @@
       } catch (e) {}
     }
     function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
+    function applyComponentState() {
+      if (!root) return;
+      allReactiveComponents.forEach(function (key) {
+        root.setAttribute('data-sml-imm-' + key.replace(/_/g, '-'), reactiveComponents.indexOf(key) >= 0 ? '1' : '0');
+      });
+    }
     window.addEventListener('sml-immersive-components', function (event) {
       if (GEN !== INIT_GEN) return;
-      if (event && Array.isArray(event.detail)) reactiveComponents = event.detail.slice();
+      if (event && Array.isArray(event.detail)) { reactiveComponents = event.detail.slice(); applyComponentState(); }
     });
     var editMode = false, screen = 0, enlarged = null;
     var videos = [null, null, null], gvids = [null, null, null, null, null, null], gphotoLocal = {};
@@ -589,7 +599,7 @@
        empty (resolves to the page URL). Treat that as "no music": no tap-for-sound
        gate, honest dock copy, nothing pretends to play. */
     if (frame && !isYT((function () { try { return new URL(frame.getAttribute('src') || '', location.href).origin; } catch (e) { return ''; } })())) frame = null;
-    var playing = false, lastTime = 0, lastStamp = 0, duration = 0, registered = false, lastBeat = -1;
+    var playing = false, soundEnabled = false, lastTime = 0, lastStamp = 0, duration = 0, registered = false, lastBeat = -1;
     var BPM = (cfg.bpm >= 50 && cfg.bpm <= 220) ? cfg.bpm : 120;
     var wavePeaks = (function () { var a = []; for (var i = 0; i < 160; i++) a.push(0.12 + Math.abs(Math.sin(i * 0.7) * 0.5) + Math.random() * 0.28); var mx = Math.max.apply(null, a); return a.map(function (v) { return v / mx; }); })();
     function isYT(o) { return /(^|\.)youtube(-nocookie)?\.com$/.test(String(o).replace(/^https?:\/\//, '')); }
@@ -613,8 +623,10 @@
       if (!frame) { overlay.style.display = 'none'; return; }
       register();
       setTimeout(function () { cmd('mute'); cmd('playVideo'); if (unmute) { cmd('unMute'); cmd('setVolume', [60]); } }, 250);
+      soundEnabled = !!unmute;
       overlay.style.display = 'none';
-      playBtn.textContent = '❚❚';
+      playBtn.textContent = unmute ? '❚❚' : '🔇';
+      playBtn.title = unmute ? 'Pause profile music' : 'Music is autoplaying muted — click for sound';
     }
 
     // ---- controls ----
@@ -709,19 +721,47 @@
       if (rbEl) { if (window.MutationObserver) new MutationObserver(syncFollow).observe(rbEl, { attributes: true, childList: true, subtree: true }); syncFollow(); }
     }
 
-    // section drag-reorder
+    // Section placement: desktop HTML drag plus Pointer Events for mouse, pen
+    // and touch. Positions remain responsive and persist through section_order.
     var dragKey = null;
     function applyOrder() { $$('.sip-sec').forEach(function (s) { s.style.order = sectionOrder.indexOf(s.dataset.sec); }); }
+    function moveSection(from, to) {
+      if (!from || !to || from === to) return;
+      var o = sectionOrder.filter(function (k) { return k !== from; });
+      var at = o.indexOf(to); if (at < 0) return;
+      o.splice(at, 0, from); sectionOrder = o;
+      lsSet('sml-section-order', JSON.stringify(o)); applyOrder();
+    }
     $$('.sip-sec').forEach(function (s) {
       s.addEventListener('dragstart', function () { if (editMode) dragKey = s.dataset.sec; });
       s.addEventListener('dragover', function (e) { if (editMode) e.preventDefault(); });
       s.addEventListener('drop', function (e) {
         e.preventDefault(); var from = dragKey, to = s.dataset.sec; dragKey = null;
-        if (!from || from === to) return;
-        var o = sectionOrder.filter(function (k) { return k !== from; });
-        o.splice(o.indexOf(to), 0, from); sectionOrder = o;
-        lsSet('sml-section-order', JSON.stringify(o)); applyOrder();
+        moveSection(from, to);
       });
+      var pd = null;
+      s.addEventListener('pointerdown', function (e) {
+        if (!editMode || (e.target.closest && e.target.closest('button,input,a,video'))) return;
+        pd = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+        try { s.setPointerCapture(e.pointerId); } catch (ignore) {}
+      });
+      s.addEventListener('pointermove', function (e) {
+        if (!pd || pd.id !== e.pointerId || !editMode) return;
+        if (!pd.moved && Math.hypot(e.clientX - pd.x, e.clientY - pd.y) < 8) return;
+        pd.moved = true; s.classList.add('sip-dragging');
+        var under = document.elementFromPoint(e.clientX, e.clientY);
+        var target = under && under.closest ? under.closest('.sip-sec') : null;
+        $$('.sip-sec').forEach(function (x) { x.classList.toggle('sip-drop-target', x === target && x !== s); });
+        if (target && target !== s) moveSection(s.dataset.sec, target.dataset.sec);
+        e.preventDefault();
+      });
+      function endPointer(e) {
+        if (!pd || (e && pd.id !== e.pointerId)) return;
+        pd = null; s.classList.remove('sip-dragging');
+        $$('.sip-sec').forEach(function (x) { x.classList.remove('sip-drop-target'); });
+      }
+      s.addEventListener('pointerup', endPointer);
+      s.addEventListener('pointercancel', endPointer);
     });
     applyOrder();
 
@@ -846,13 +886,19 @@
     // transport
     playBtn.addEventListener('click', function () {
       if (!frame) return;
-      if (playing) { cmd('pauseVideo'); playBtn.textContent = '▶'; }
+      if (playing && !soundEnabled) { startPlayback(true); }
+      else if (playing) { cmd('pauseVideo'); playBtn.textContent = '▶'; playBtn.title = 'Play profile music'; }
       else { startPlayback(true); }
     });
     wfWrap.addEventListener('click', function (e) { if (!duration) return; var r = wfWrap.getBoundingClientRect(); cmd('seekTo', [duration * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), true]); });
     overlay.addEventListener('click', function () { startPlayback(true); });
+    /* Browsers permit reliable autoplay only while muted. Honour the saved
+       setting immediately, then let the persistent Play pill enable sound with
+       one gesture instead of covering the profile with a click gate. */
+    if (cfg.autoplay && frame) setTimeout(function () { startPlayback(false); }, 700);
 
     root.style.setProperty('--card-bg', TEX[texture]);
+    applyComponentState();
     rootEl.setAttribute('data-sml-pulse', level.toLowerCase());
     syncChips();
     applyEditUI();
@@ -1312,6 +1358,7 @@
     var handle = hm ? ('@' + hm[1].replace(/^@/, '')) : (seg ? ('@' + seg.replace(/^@/, '')) : '');
     var av = document.querySelector('.sml-profile-avatar img, img.sml-avatar, img[class*="avatar" i]');
     var bn = document.querySelector('.sml-profile-banner img, [class*="banner" i] img, [class*="cover" i] img');
+    var nativeProfile = document.querySelector('[data-sml-profile]');
     return {
       useExistingPlayer: true,
       name: name || 'Profile',
@@ -1321,6 +1368,7 @@
       editUrl: '/customize-profile/',
       visitorUrl: location.pathname,
       isOwner: !!((window.SML_PROFILE_UNIFIED && window.SML_PROFILE_UNIFIED.isOwner) || (window.SMLPublicProfile && window.SMLPublicProfile.profile && window.SMLPublicProfile.profile.is_owner)),
+      autoplay: !!(nativeProfile && nativeProfile.getAttribute('data-music-autoplay') === '1'),
       pulse: 'Immersive'
     };
   }
