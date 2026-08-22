@@ -6,9 +6,9 @@ services:
     region: ohio
     plan: starter
     buildCommand: npm ci
-    # First deployment is deliberately non-mutating.  After its dry-run has
-    # been reviewed, switch SML_MIGRATION_MODE to `apply` for the explicit
-    # migration release.
+    # The initial dry-run was reviewed against the new, empty platform
+    # database.  This explicit release applies only the versioned additive
+    # migrations; the runner records each one so future deploys are no-ops.
     preDeployCommand: npm run db:release
     startCommand: npm start
     healthCheckPath: /health
@@ -19,7 +19,7 @@ services:
       - key: NODE_VERSION
         value: 22.14.0
       - key: SML_MIGRATION_MODE
-        value: dry-run
+        value: apply
       - key: DATABASE_URL
         fromDatabase:
           name: sml-platform-db
