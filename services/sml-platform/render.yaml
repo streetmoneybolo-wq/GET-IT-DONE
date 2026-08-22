@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: sml-platform-api
+    runtime: node
+    rootDir: services/sml-platform
+    region: ohio
+    plan: starter
+    buildCommand: npm ci
+    # First deployment is deliberately non-mutating.  After its dry-run has
+    # been reviewed, switch SML_MIGRATION_MODE to `apply` for the explicit
+    # migration release.
+    preDeployCommand: npm run db:release
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: SML_MIGRATION_MODE
+        value: dry-run
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sml-platform-db
+          property: connectionString
+
+  - type: worker
+    name: sml-platform-worker
+    runtime: node
+    rootDir: services/sml-platform
+    region: ohio
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run worker
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sml-platform-db
+          property: connectionString
