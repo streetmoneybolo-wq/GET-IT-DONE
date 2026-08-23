@@ -17,6 +17,10 @@
   /* ?sim=1 keeps the full design demo (sample chat etc.) — admins only; default is real data.
      window.SML_LW_FORCE_SIM powers the standalone showcase artifact. */
   var SIM = (ADMIN && /[?&]sim=1/.test(location.search)) || !!window.SML_LW_FORCE_SIM;
+  /* The public loader provides the plugin's own WebRTC call-in client.  Keep
+     the design-only voice panel for ?sim=1, but never sell a pass through the
+     old request-and-meter-only shell on a real Watch Page. */
+  var NATIVE_VOICE = !SIM && !!window.SML_LW_NATIVE_VOICE;
 
   /* ---------- sample data (verbatim from the design handoff) ---------- */
   var ACCENTS = ['#00ff88', '#00ccff', '#ffb454', '#ff7a45', '#ff2e66'];
@@ -195,8 +199,9 @@
           '<div class="slw-composer" id="slw-composer"><input class="cin" id="slw-cin" type="text" maxlength="500" placeholder="Say something to the room" autocomplete="off"><button class="slw-send" id="slw-csend">Send</button></div></div>' +
 
         /* speak */
-        '<div id="slw-pane-1" style="display:none">' +
-          '<div class="slw-voice-h"><div class="eq"><i></i><i></i><i></i></div><div class="tx"><b>On air right now</b><span>3 on the line · 118 listening</span></div></div>' +
+        '<div id="slw-pane-1" style="display:none">' + (NATIVE_VOICE
+          ? '<div class="slw-native-voice-wrap" id="slw-native-voice-slot" aria-live="polite"></div>'
+          : '<div class="slw-voice-h"><div class="eq"><i></i><i></i><i></i></div><div class="tx"><b>On air right now</b><span>3 on the line · 118 listening</span></div></div>' +
           '<div class="slw-seats">' + SEATS.map(function (p) {
             var live = p[2] === 'HOST' || p[2] === 'SPEAKING';
             return '<div class="slw-seat"><div class="rg' + (live ? ' live' : '') + (p[2] === 'SPEAKING' ? ' speaking' : '') + '">' + p[0] + '</div><span class="nm">' + p[1] + '</span><span class="rl ' + p[2].toLowerCase() + '">' + p[2] + '</span></div>';
@@ -212,7 +217,7 @@
             '<div class="card"><span class="pos" id="slw-qpos">#3</span><div class="bd"><b id="slw-qtier">Silver pass · 20s</b><span>Waiting for the host between segments</span></div></div>' +
             '<div class="slw-mic"><span class="l">MIC LEVEL</span><span class="bars" id="slw-micbars"></span></div>' +
             '<div class="slw-checks">' + ['Echo cancellation', 'Noise suppression', 'Auto gain', 'Mic ready'].map(function (c) { return '<div class="c"><b>✓</b><span>' + c + '</span></div>'; }).join('') + '</div>' +
-            '<button class="slw-vleave" id="slw-vleave">Leave the queue &amp; refund</button></div></div>' +
+            '<button class="slw-vleave" id="slw-vleave">Leave the queue &amp; refund</button></div>') + '</div>' +
 
         /* Q&A */
         '<div id="slw-pane-2" style="display:none">' + QUESTIONS.map(function (q) {
@@ -281,6 +286,17 @@
       '<select id="slw-scene"><option value="idle">cam: idle (closed)</option><option value="cam">cam: host cam live</option><option value="wait">cam: viewer waiting</option><option value="call">cam: incoming call</option><option value="dial">cam: calling out</option></select>' +
       '<button class="slw-x" id="slw-orbbtn" style="padding:6px 9px;font-size:9px">orbit images</button>' +
       '<a href="?lw=0">exit</a></div>' : '');
+
+  /* The plugin's native viewer owns the real microphone, signaling and WebRTC
+     session. Move it into the Watch Page's Speak tab after the shell renders. */
+  if (NATIVE_VOICE) {
+    var nativeVoice = document.getElementById('sml-lw-native-voice');
+    var nativeVoiceSlot = el('#slw-native-voice-slot');
+    if (nativeVoice && nativeVoiceSlot) {
+      nativeVoice.hidden = false;
+      nativeVoiceSlot.appendChild(nativeVoice);
+    }
+  }
 
   /* pre-paint guard (wpcode/prepaint-guard.php): the shell is in the DOM — reveal */
   document.documentElement.classList.remove('sml-pp');
@@ -1747,7 +1763,7 @@
       }
     }).catch(function () {});
   }
-  if (!SIM) {
+  if (!SIM && !NATIVE_VOICE) {
     el('#slw-vreq').onclick = buyAndRequest;
     el('#slw-vleave').onclick = function () { cancelVoice(); };
     loadElig();
