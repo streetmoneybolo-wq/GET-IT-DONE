@@ -24,10 +24,53 @@
     return fetch('/wp-json' + path, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); });
   }
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  /* What this user already owns, so we stop offering to create it again.
+     null means UNKNOWN, and unknown must render as SHOWN: hiding "Create a Loop
+     Channel" from someone who has no channel would lock them out of making one,
+     so the ambiguous case fails open. */
+  var ENTITLED = { channel: null, letter: null };
+  (function readCachedEntitlement() {
+    /* The cache only exists once something was owned, so it is a safe hint for
+       hiding on the very first paint — before the status call returns. */
+    try {
+      var c = JSON.parse(localStorage.getItem('sml_cg_entitled_v1') || 'null');
+      if (c) { ENTITLED.channel = !!c.channel; ENTITLED.letter = !!c.letter; }
+    } catch (e) {}
+  })();
+
   /* remember confirmed entitlement so gated pages open instantly (creator-gate-enforce.js reads this) */
   function rememberEntitlement(j) {
+    /* Live status updates the in-memory copy even when it is all-false, so a
+       creator who deleted a channel gets the create item back. The localStorage
+       write below keeps its original condition — creator-gate-enforce.js treats
+       the mere presence of that key as entitlement. */
+    if (j && (typeof j.hasChannel !== 'undefined' || typeof j.hasLetter !== 'undefined')) {
+      ENTITLED.channel = !!j.hasChannel;
+      ENTITLED.letter = !!j.hasLetter;
+      applyEntitlement();
+    }
     if (!j || (!j.hasChannel && !j.hasLetter)) return;
     try { localStorage.setItem('sml_cg_entitled_v1', JSON.stringify({ channel: !!j.hasChannel, letter: !!j.hasLetter, t: Date.now() })); } catch (e) {}
+  }
+
+  /* Show or hide the two create-shortcuts to match what the user already owns.
+     Toggled rather than removed: the cached hint can be stale (a deleted
+     channel), and the live status arriving moments later has to be able to put
+     the item back. The separator goes with them so the menu never ends on a
+     stray divider. */
+  function applyEntitlement() {
+    findAccountMenus().forEach(function (menu) {
+      var shown = 0;
+      ['channel', 'letter'].forEach(function (kind) {
+        var item = menu.querySelector('[data-sml-cg-item="' + kind + '"]');
+        if (!item) return;
+        var hide = ENTITLED[kind] === true;
+        item.style.display = hide ? 'none' : '';
+        if (!hide) shown++;
+      });
+      var sep = menu.querySelector('[data-sml-cg-item="sep"]');
+      if (sep) sep.style.display = shown ? '' : 'none';
+    });
   }
   function el(id) { return document.getElementById(id); }
 
@@ -149,7 +192,10 @@
     menu.appendChild(mk('Create a Loop Channel', 'channel'));
     menu.appendChild(mk('Create a Loop Letter', 'letter'));
   }
-  function injectMenuItems() { findAccountMenus().forEach(injectInto); }
+  /* applyEntitlement runs OUTSIDE injectInto because injectInto is a no-op once
+     a menu already carries our items — the menu that needs correcting is
+     usually one we injected into on an earlier pass. */
+  function injectMenuItems() { findAccountMenus().forEach(injectInto); applyEntitlement(); }
 
   /* ---------- modal shell ---------- */
   var CSS = '#sml-cg-overlay{position:fixed;inset:0;z-index:2147483100;background:rgba(2,4,8,.8);display:flex;align-items:center;justify-content:center;padding:20px;font-family:Archivo,sans-serif}' +
