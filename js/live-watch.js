@@ -919,6 +919,9 @@
   function qs(name) { var m = location.search.match(new RegExp('[?&]' + name + '=([^&]+)')); return m ? decodeURIComponent(m[1]) : null; }
   var HANDLE = (qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
   var media = el('#slw-media'), ph = el('#slw-ph');
+  /* A schedule is metadata only. It never claims a stream is live; the
+     existing feeds endpoint remains the authority for actual playback. */
+  var scheduledLive = null;
 
   /* click shield: clicks on the video toggle play through OUR controls */
   var shield = document.createElement('div');
@@ -928,6 +931,45 @@
 
   function phState(t1, t2) { ph.classList.remove('hide'); ph.parentNode.classList.remove('clear'); ph.querySelector('.t1').textContent = t1; ph.querySelector('.t2').textContent = t2; }
   function phHide() { ph.classList.add('hide'); ph.parentNode.classList.add('clear'); }
+  function clearScheduledPlaceholder() {
+    ph.classList.remove('scheduled');
+    ph.style.backgroundImage = '';
+    ph.style.backgroundSize = '';
+    ph.style.backgroundPosition = '';
+  }
+  function scheduledStartText(value) {
+    var at = Date.parse(value || '');
+    if (!at) return 'Starting soon';
+    return 'Starts ' + new Date(at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  function showScheduledPlaceholder(info) {
+    if (!info || !info.title) return false;
+    if (P.mode !== 'none') teardown();
+    ph.classList.add('scheduled');
+    if (info.thumbnail_url && /^https:\/\//i.test(String(info.thumbnail_url))) {
+      ph.style.backgroundImage = 'linear-gradient(180deg,rgba(3,8,14,.28),rgba(3,8,14,.86)),url("' + String(info.thumbnail_url).replace(/"/g, '%22') + '")';
+      ph.style.backgroundSize = 'cover';
+      ph.style.backgroundPosition = 'center';
+    }
+    phState('SCHEDULED LIVE', scheduledStartText(info.scheduled_at));
+    var heading = root.querySelector('.slw-titleblk h1');
+    if (heading) heading.textContent = info.title;
+    setSourceNote('scheduled · chat is open');
+    el('#slw-viewers').textContent = '—';
+    return true;
+  }
+  function loadScheduledLive() {
+    if (!HANDLE) return Promise.resolve(null);
+    return fetch('/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        scheduledLive = data && data.status === 'scheduled' ? data : null;
+        /* A public scheduled room is intentionally open before video starts. */
+        paintComposer();
+        return scheduledLive;
+      })
+      .catch(function () { return scheduledLive; });
+  }
   function setSourceNote(n) { window.__slwSrcNote = n; var mh = root.querySelector('.slw-menu .mh span'); if (mh) mh.textContent = n; }
   function paintPlayBtn() {
     var b = el('#slw-play');
@@ -1008,6 +1050,7 @@
   function mountYT(id) {
     if (P.mode === 'yt' && P.ytId === id) return;
     teardown();
+    clearScheduledPlaceholder();
     P.mode = 'yt'; P.ytId = id;
     media.innerHTML = '<div id="slw-yt"></div>';
     phState('CONNECTING…', 'YouTube Live · ' + id);
@@ -1036,6 +1079,7 @@
   function mountSlot(url) {
     if (P.mode === 'slot' && P.hlsUrl === url) return;
     teardown();
+    clearScheduledPlaceholder();
     P.mode = 'slot'; P.hlsUrl = url;
     phState('CONNECTING…', 'Loop stream');
     var v = document.createElement('video');
@@ -1062,6 +1106,7 @@
     media.innerHTML = '';
   }
   function offline(reason) {
+    clearScheduledPlaceholder();
     phState('NOT LIVE RIGHT NOW', (reason ? reason + ' ' : '') + 'Latest streams are below — follow to get the next alert.');
     el('#slw-viewers').textContent = '—';
   }
@@ -1182,15 +1227,21 @@
         var slot = live[0];
         if (slot) { mountSlot(slot.playback); return; }
         if (P.mode === 'slot') { teardown(); }
+        if (showScheduledPlaceholder(scheduledLive)) return;
+        clearScheduledPlaceholder();
         if (P.mode === 'none') resolveYT();
       })
-      .catch(function () { if (P.mode === 'none') resolveYT(); });
+      .catch(function () {
+        if (showScheduledPlaceholder(scheduledLive)) return;
+        clearScheduledPlaceholder();
+        if (P.mode === 'none') resolveYT();
+      });
   }
   if (window.SML_LW_FORCE_SIM) {
     phState('LIVE STREAM', 'demo frame — the live page at stockmarketloop.com/live carries the real broadcast');
   } else {
-    pollFeeds();
-    setInterval(pollFeeds, 20000);
+    loadScheduledLive().then(pollFeeds);
+    setInterval(function () { loadScheduledLive().then(pollFeeds); }, 20000);
   }
   /* real clock + progress once a source is mounted */
   setInterval(function () {
@@ -1298,6 +1349,12 @@
       row.innerHTML = 'Sign in to join live chat. <a href="/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname + location.search) + '">Sign in</a>';
       input.disabled = true; btn.disabled = true; return;
     }
+    /* Scheduling creates an open Watch Page room; Loop Bucks gates still apply
+       to the normal non-scheduled Watch Page chat experience. */
+    if (scheduledLive) {
+      row.style.display = 'none';
+      input.disabled = false; btn.disabled = false; return;
+    }
     var c = g.chat;
     if (c && !c.open) {
       row.style.display = '';
@@ -1328,11 +1385,16 @@
     var post = function (body) {
       return api('/sml-live-chat/v1/room/' + HANDLE + '/messages', { method: 'POST', body: JSON.stringify(body) });
     };
-    post({ message: v }).then(function (res) {
+    /* `body` is the canonical shared-room field. Older room plugins are
+       supported below only as a fallback while they are upgraded. */
+    post({ body: v }).then(function (res) {
       if (res.ok) return done(true);
-      /* field-name fallback: server said "empty" but we sent message → try text */
+      /* field-name fallback for an older live-chat installation */
       if (res.j && res.j.code === 'sml_empty_message') {
-        return post({ text: v }).then(function (r2) { done(r2.ok, r2.ok ? null : (r2.j && r2.j.message) || 'Message did not send — try again.'); });
+        return post({ message: v }).then(function (r2) {
+          if (r2.ok) return done(true);
+          return post({ text: v }).then(function (r3) { done(r3.ok, r3.ok ? null : (r3.j && r3.j.message) || 'Message did not send — try again.'); });
+        });
       }
       done(false, (res.j && res.j.message) || 'Message did not send — try again.');
     }).catch(function () { done(false, 'Message did not send — check your connection.'); });

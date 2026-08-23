@@ -117,6 +117,13 @@ body.slw-on{background:#04060a !important}
 .slw-frame-ph .t2{max-width:70%;text-align:center;line-height:1.5}
 .slw-frame-ph .t1{font:800 12px/1 Archivo,sans-serif;letter-spacing:.22em;color:#26333f}
 .slw-frame-ph .t2{font:400 10px/1 Archivo,sans-serif;color:#1c2833}
+/* Scheduled streams are Watch Pages, not fake video: preserve the creator's
+   thumbnail/GIF behind an accessible label until the real feed is live. */
+.slw-frame-ph.scheduled{background-color:#07101a;background-repeat:no-repeat;background-size:cover;background-position:center;isolation:isolate}
+.slw-frame-ph.scheduled::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.04),rgba(0,0,0,.44));z-index:-1}
+.slw-frame-ph.scheduled .t1,.slw-frame-ph.scheduled .t2{color:#f5fbff;text-shadow:0 2px 12px rgba(0,0,0,.9)}
+.slw-frame-ph.scheduled .t1{font-size:12px}
+.slw-frame-ph.scheduled .t2{font-size:12px;font-weight:700}
 /* the film-grain treatment only dresses the EMPTY frame — a mounted stream shows
    crystal clear, no scanlines/vignette/sweep over real video */
 .slw-frame.clear .slw-scanlines, .slw-frame.clear .slw-vignette, .slw-frame.clear .slw-scan, .slw-frame.clear .slw-sweepwrap{display:none}
