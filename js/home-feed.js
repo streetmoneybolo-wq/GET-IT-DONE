@@ -279,7 +279,19 @@
       var P={'home':'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10','my profile':'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 8.5c1.4-3.6 5-5 8-5s6.6 1.4 8 5','creator studio':'M4 6h16M4 12h16M4 18h16M9 4v4M15 10v4M7 16v4','go live':'M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3.5v11L15 14','settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8-3-1.8-.6.4-1.9-1.6-1.6-1.9.4L14.5 6h-5L8.9 7.9 7 7.5 5.4 9.1l.4 1.9L4 12l1.8.6-.4 1.9 1.6 1.6 1.9-.4 1.6 1.8h5l.6-1.8 1.9.4 1.6-1.6-.4-1.9L20 12Z','customize profile':'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 6l3 3','out':'M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M9 12h11m-3-3 3 3-3 3'};
       return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="'+(P[k]||P['home'])+'"/></svg>';
     }
-    function closeMeMenu(){ var p=document.getElementById('sml-hf-memenu'); if(p) p.remove(); }
+    /* The ticker's intraday card (#sml-tkpop) and the member hover card are
+       fixed-position and outstack almost everything, so they paint straight
+       over an open account menu. Dismiss them while the menu is up rather than
+       racing them on z-index alone — the menu is modal in spirit. */
+    var MEMENU_CARDS='#sml-tkpop, .sml-member-hover-card, .sml-ticker-card';
+    function setCardsHidden(hidden){
+      var els=document.querySelectorAll(MEMENU_CARDS);
+      for(var i=0;i<els.length;i++){
+        if(hidden) els[i].style.setProperty('display','none','important');
+        else els[i].style.removeProperty('display');
+      }
+    }
+    function closeMeMenu(){ var p=document.getElementById('sml-hf-memenu'); if(p) p.remove(); setCardsHidden(false); }
     function openMeMenu(){
       if(document.getElementById('sml-hf-memenu')){ closeMeMenu(); return; }
       var m=harvestMenu();
@@ -291,9 +303,15 @@
         rows+='<a href="'+esc(it.h)+'" style="display:flex;align-items:center;gap:13px;padding:11px 14px;border-radius:11px;text-decoration:none;font-size:14.5px;font-weight:600;color:'+(it.k==='out'?'#F2495C':'#E6EDF5')+'" onmouseover="this.style.background=\'rgba(255,255,255,.06)\'" onmouseout="this.style.background=\'transparent\'">'+menuIcon(it.k)+'<span>'+esc(it.l)+'</span>'+(it.k==='go live'?'<span style="margin-left:auto;width:9px;height:9px;border-radius:50%;background:#F23645;box-shadow:0 0 8px rgba(242,54,69,.8)"></span>':'')+'</a>';
       });
       var p=document.createElement('div'); p.id='sml-hf-memenu';
-      p.style.cssText='position:fixed;top:64px;right:24px;z-index:2147483002;width:282px;padding:10px;border-radius:18px;background:linear-gradient(180deg,#10151C,#0A0E14);border:1px solid rgba(255,255,255,.1);box-shadow:0 30px 70px -20px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.08);font-family:\'Inter\',system-ui,sans-serif';
+      /* 2147483060, not 2147483002: #sml-tkpop sits at 2147483004 and
+         .sml-member-hover-card at 2147483050, so the old value put this menu
+         UNDER both. Matches the value the global-header menu was lifted to, and
+         stays below #sml-ss-panel (2147483646) and the Jetpack search overlay
+         (2147483647), which are full-screen and must keep winning. */
+      p.style.cssText='position:fixed;top:64px;right:24px;z-index:2147483060;width:282px;padding:10px;border-radius:18px;background:linear-gradient(180deg,#10151C,#0A0E14);border:1px solid rgba(255,255,255,.1);box-shadow:0 30px 70px -20px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.08);font-family:\'Inter\',system-ui,sans-serif';
       p.innerHTML='<div style="padding:12px 14px 10px"><div style="font-weight:700;font-size:15.5px;color:#E6EDF5">'+esc(meName)+'</div>'+(handle?'<div style="font-size:12.5px;color:#7E8A96;margin-top:2px">'+esc(handle)+'</div>':'')+'</div><div style="height:1px;background:rgba(255,255,255,.09);margin:0 0 7px"></div>'+rows;
       document.body.appendChild(p);
+      setCardsHidden(true);
     }
     ['sml-hf-me-top','sml-hf-me-card'].forEach(function(id){ var el=document.getElementById(id); if(el) el.addEventListener('click', function(ev){ ev.stopPropagation(); openMeMenu(); }); });
     document.addEventListener('click', function(ev){ var p=document.getElementById('sml-hf-memenu'); if(p && !p.contains(ev.target)) closeMeMenu(); });
