@@ -944,6 +944,7 @@
   /* A schedule is metadata only. It never claims a stream is live; the
      existing feeds endpoint remains the authority for actual playback. */
   var scheduledLive = null;
+  var defaultBroadcastTitle = (root.querySelector('.slw-titleblk h1') || {}).textContent || 'StockMarketLoop Live';
 
   /* click shield: clicks on the video toggle play through OUR controls */
   var shield = document.createElement('div');
@@ -967,6 +968,8 @@
   function showScheduledPlaceholder(info) {
     if (!info || !info.title) return false;
     if (P.mode !== 'none') teardown();
+    setPlaybackAvailable(false);
+    setBroadcastState('scheduled');
     ph.classList.add('scheduled');
     if (info.thumbnail_url && /^https:\/\//i.test(String(info.thumbnail_url))) {
       ph.style.backgroundImage = 'linear-gradient(180deg,rgba(3,8,14,.28),rgba(3,8,14,.86)),url("' + String(info.thumbnail_url).replace(/"/g, '%22') + '")';
@@ -993,6 +996,21 @@
       .catch(function () { return scheduledLive; });
   }
   function setSourceNote(n) { window.__slwSrcNote = n; var mh = root.querySelector('.slw-menu .mh span'); if (mh) mh.textContent = n; }
+  function setPlaybackAvailable(available) {
+    ['#slw-play', '#slw-vol'].forEach(function (selector) {
+      var control = el(selector);
+      if (!control) return;
+      control.disabled = !available;
+      control.setAttribute('aria-disabled', available ? 'false' : 'true');
+      control.title = available ? '' : 'Playback is available when this stream starts.';
+    });
+  }
+  function setBroadcastState(state) {
+    var chip = root.querySelector('.slw-livechip > span:last-child');
+    if (chip) chip.textContent = state === 'scheduled' ? 'SCHEDULED' : (state === 'offline' ? 'OFF AIR' : 'LIVE LOOP');
+    var clock = root.querySelector('.slw-clock');
+    if (clock) clock.lastChild.textContent = state === 'scheduled' ? ' / STARTING SOON' : (state === 'offline' ? ' / OFFLINE' : ' / LIVE');
+  }
   function paintPlayBtn() {
     var b = el('#slw-play');
     b.textContent = P.playing ? '❚❚' : '▶';
@@ -1036,7 +1054,7 @@
   }
   /* real controls take over the sim buttons once a source mounts */
   el('#slw-play').onclick = function () {
-    if (P.mode === 'none') { /* sim */
+    if (P.mode === 'none' && SIM) { /* local QA simulator only */
       S.playing = !S.playing;
       var b = el('#slw-play');
       b.textContent = S.playing ? '❚❚' : '▶';
@@ -1047,7 +1065,7 @@
     togglePlay();
   };
   el('#slw-vol').onclick = function () {
-    if (P.mode === 'none') {
+    if (P.mode === 'none' && SIM) {
       S.muted = !S.muted;
       el('#slw-vol').className = 'slw-vol' + (S.muted ? ' muted' : '');
       el('#slw-vol').innerHTML = S.muted ? '<span class="g">◂✕</span><span class="ml">MUTED</span>' : '<span class="g">◂))</span><span class="bar"><i></i></span>';
@@ -1073,6 +1091,8 @@
     if (P.mode === 'yt' && P.ytId === id) return;
     teardown();
     clearScheduledPlaceholder();
+    setPlaybackAvailable(true);
+    setBroadcastState('live');
     P.mode = 'yt'; P.ytId = id;
     media.innerHTML = '<div id="slw-yt"></div>';
     phState('CONNECTING…', 'YouTube Live · ' + id);
@@ -1102,6 +1122,8 @@
     if (P.mode === 'slot' && P.hlsUrl === url) return;
     teardown();
     clearScheduledPlaceholder();
+    setPlaybackAvailable(true);
+    setBroadcastState('live');
     P.mode = 'slot'; P.hlsUrl = url;
     phState('CONNECTING…', 'Loop stream');
     var v = document.createElement('video');
@@ -1110,7 +1132,7 @@
     P.video = v;
     v.addEventListener('playing', function () { P.playing = true; phHide(); paintPlayBtn(); setSourceNote('source: Loop stream'); el('#slw-viewers').textContent = '—'; });
     v.addEventListener('pause', function () { P.playing = false; paintPlayBtn(); });
-    v.addEventListener('error', function () { teardown(); resolveYT(); });
+    v.addEventListener('error', function () { teardown(); offline('The live stream could not be loaded.'); });
     var isHls = /\.m3u8($|\?)/.test(url);
     if (isHls && !v.canPlayType('application/vnd.apple.mpegurl')) {
       var go = function () {
@@ -1128,8 +1150,15 @@
     media.innerHTML = '';
   }
   function offline(reason) {
+    if (P.mode !== 'none') teardown();
     clearScheduledPlaceholder();
-    phState('NOT LIVE RIGHT NOW', (reason ? reason + ' ' : '') + 'Latest streams are below — follow to get the next alert.');
+    setPlaybackAvailable(false);
+    setBroadcastState('offline');
+    setSourceNote('off air');
+    el('#slw-clock').textContent = '—';
+    var heading = root.querySelector('.slw-titleblk h1');
+    if (heading) heading.textContent = defaultBroadcastTitle;
+    phState('NOT LIVE RIGHT NOW', (reason ? reason + ' ' : '') + 'No stream video is available until the creator starts a live broadcast.');
     el('#slw-viewers').textContent = '—';
   }
   var ytResolved = null, ytResolving = false;
@@ -1173,6 +1202,8 @@
     if (MS.on && MS.key === key) return;
     teardown();
     P.mode = 'multi';
+    setPlaybackAvailable(true);
+    setBroadcastState('live');
     MS.on = true; MS.key = key; MS.sources = sources;
     if (MS.mainIdx >= sources.length) MS.mainIdx = 0;
     paintMulti();
@@ -1239,29 +1270,31 @@
         var live = (d && d.live) ? (d.slots || []).filter(function (s2) { return s2.live && s2.playback; }) : [];
         var extra = extraScreens();
         /* multi-screen: 2+ live slots, or a primary + creator-pinned screens */
-        if (live.length >= 2 || (live.length >= 1 && extra.length) || (extra.length && (ytResolved || qs('yt')))) {
+        if (live.length >= 2 || (live.length >= 1 && extra.length)) {
           var sources = live.slice(0, 3).map(function (s2, i) { return { kind: 'slot', url: s2.playback, label: 'SCREEN ' + (i + 1) }; });
-          if (!sources.length) { var yid = qs('yt') || ytResolved; if (yid) sources.push({ kind: 'yt', id: yid.replace(/[^A-Za-z0-9_-]/g, ''), label: 'SCREEN 1' }); }
           sources = sources.concat(extra).slice(0, 3);
           if (sources.length >= 2) { mountMulti(sources); return; }
         }
         if (MS.on) unmountMulti();
         var slot = live[0];
         if (slot) { mountSlot(slot.playback); return; }
-        if (P.mode === 'slot') { teardown(); }
+        if (P.mode !== 'none') { teardown(); }
         if (showScheduledPlaceholder(scheduledLive)) return;
-        clearScheduledPlaceholder();
-        if (P.mode === 'none') resolveYT();
+        offline('');
       })
       .catch(function () {
+        if (P.mode !== 'none') teardown();
         if (showScheduledPlaceholder(scheduledLive)) return;
-        clearScheduledPlaceholder();
-        if (P.mode === 'none') resolveYT();
+        offline('Live status is temporarily unavailable.');
       });
   }
   if (window.SML_LW_FORCE_SIM) {
+    setPlaybackAvailable(true);
+    setBroadcastState('live');
     phState('LIVE STREAM', 'demo frame — the live page at stockmarketloop.com/live carries the real broadcast');
   } else {
+    setPlaybackAvailable(false);
+    setBroadcastState('offline');
     loadScheduledLive().then(pollFeeds);
     setInterval(function () { loadScheduledLive().then(pollFeeds); }, 20000);
   }
@@ -2298,7 +2331,7 @@
   setInterval(function () {
     S.tick++;
     if (S.playing) S.t++;
-    if (P.mode === 'none') { /* sim clock/progress only until a real source mounts */
+    if (SIM && P.mode === 'none') { /* local QA simulator only */
       S.viewers = Math.max(1200, S.viewers + Math.round((Math.random() - 0.42) * 14));
       el('#slw-clock').textContent = hms(S.t);
       el('#slw-elapsed').textContent = hms(S.t);
