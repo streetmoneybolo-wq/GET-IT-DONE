@@ -1363,7 +1363,14 @@
     }).catch(function () {});
   }
   function mapMsg(m) {
-    var name = String(m.handle || m.user || m.name || m.author || 'member').replace(/^@/, '');
+    /* The shared live-chat API supplies the sender identity as `display_name`.
+       Prefer it over legacy aliases so viewers see the person's actual
+       StockMarketLoop name (rather than a generic "member" label). */
+    var name = String(
+      m.display_name || m.displayName || m.handle || m.username ||
+      m.user_name || m.user || m.name || m.author || 'StockMarketLoop User'
+    ).trim().replace(/^@/, '');
+    if (!name) name = 'StockMarketLoop User';
     var text = String(m.message || m.text || m.body || '');
     var id = 'r' + String(m.id != null ? m.id : (m.at || m.time || m.created || '') + name + text.slice(0, 12));
     return { id: id, rawId: m.id, uid: parseInt(m.user_id || m.uid || 0, 10) || 0, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
