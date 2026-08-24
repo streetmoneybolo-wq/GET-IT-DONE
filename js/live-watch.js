@@ -378,21 +378,24 @@
     return '<div class="slw-ch' + (i === S.chapter ? ' on' : '') + '" data-ch="' + i + '"><div class="r"><span class="t">' + c[0] + '</span><span class="b">' + c[2] + '</span></div><span class="n">' + c[1] + '</span></div>';
   }).join('');
 
-  /* tiers */
-  function renderTiers() {
-    el('#slw-tiers').innerHTML = TIERS.map(function (t, i) {
-      var locked = i === 3, on = i === S.tier;
-      return '<div class="slw-tier' + (on ? ' on' : '') + (locked ? ' locked' : '') + '" data-tier="' + i + '"><div class="l"><span class="dot"></span>' +
-        '<div style="display:flex;flex-direction:column;gap:4px"><span class="nm">' + t[0] + '</span><span class="nt">' + t[3] + '</span></div></div>' +
-        '<div class="r"><span class="pr">' + (locked ? 'Soon' : t[1].toLocaleString() + ' LB') + '</span><span class="sc">' + t[2] + 's on air</span></div></div>';
-    }).join('');
-    el('#slw-vreq').textContent = 'Request to speak · ' + TIERS[S.tier][1].toLocaleString() + ' LB';
-    Array.prototype.forEach.call(root.querySelectorAll('.slw-tier'), function (n) {
-      n.onclick = function () { var i = +n.getAttribute('data-tier'); if (i !== 3) { S.tier = i; renderTiers(); } };
-    });
+  /* The native voice client supplies its own controls.  The legacy pass UI is
+     not rendered in that mode, so never initialize or bind its removed nodes. */
+  if (!NATIVE_VOICE) {
+    function renderTiers() {
+      el('#slw-tiers').innerHTML = TIERS.map(function (t, i) {
+        var locked = i === 3, on = i === S.tier;
+        return '<div class="slw-tier' + (on ? ' on' : '') + (locked ? ' locked' : '') + '" data-tier="' + i + '"><div class="l"><span class="dot"></span>' +
+          '<div style="display:flex;flex-direction:column;gap:4px"><span class="nm">' + t[0] + '</span><span class="nt">' + t[3] + '</span></div></div>' +
+          '<div class="r"><span class="pr">' + (locked ? 'Soon' : t[1].toLocaleString() + ' LB') + '</span><span class="sc">' + t[2] + 's on air</span></div></div>';
+      }).join('');
+      el('#slw-vreq').textContent = 'Request to speak · ' + TIERS[S.tier][1].toLocaleString() + ' LB';
+      Array.prototype.forEach.call(root.querySelectorAll('.slw-tier'), function (n) {
+        n.onclick = function () { var i = +n.getAttribute('data-tier'); if (i !== 3) { S.tier = i; renderTiers(); } };
+      });
+    }
+    renderTiers();
+    el('#slw-micbars').innerHTML = new Array(19).join('<i></i>') + '<i class="amber"></i><i class="amber"></i>';
   }
-  renderTiers();
-  el('#slw-micbars').innerHTML = new Array(19).join('<i></i>') + '<i class="amber"></i><i class="amber"></i>';
 
   /* boost */
   function renderPlats() {
@@ -721,18 +724,21 @@
     if (th) { S.thread = th.getAttribute('data-th'); renderThread(); }
   });
 
-  /* speak flow */
-  el('#slw-vreq').onclick = function () {
-    S.vStage = 'queued'; S.queuePos = 3; S.vWait = 3;
-    el('#slw-vidle').style.display = 'none';
-    el('#slw-vqueue').classList.add('show');
-    el('#slw-qtier').textContent = TIERS[S.tier][0] + ' pass · ' + TIERS[S.tier][2] + 's';
-  };
-  el('#slw-vleave').onclick = function () {
-    S.vStage = 'idle';
-    el('#slw-vidle').style.display = '';
-    el('#slw-vqueue').classList.remove('show');
-  };
+  /* Demo/legacy voice-pass flow only.  Native voice owns this interaction in
+     production and deliberately does not render these controls. */
+  if (!NATIVE_VOICE) {
+    el('#slw-vreq').onclick = function () {
+      S.vStage = 'queued'; S.queuePos = 3; S.vWait = 3;
+      el('#slw-vidle').style.display = 'none';
+      el('#slw-vqueue').classList.add('show');
+      el('#slw-qtier').textContent = TIERS[S.tier][0] + ' pass · ' + TIERS[S.tier][2] + 's';
+    };
+    el('#slw-vleave').onclick = function () {
+      S.vStage = 'idle';
+      el('#slw-vidle').style.display = '';
+      el('#slw-vqueue').classList.remove('show');
+    };
+  }
 
   /* games */
   function paintTTT() {
