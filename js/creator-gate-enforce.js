@@ -20,6 +20,17 @@
   if (!NEEDS_CHANNEL_ONLY && !NEEDS_EITHER) return;
 
   var loader = document.getElementById('sml-cg-js');
+
+  /* Administrators are never gated. The gate exists to make creators pick a
+     handle before broadcasting; an admin already holds every capability these
+     pages use, and requiring a Loop Channel locked the site owner out of his
+     own /go-live/.
+
+     The flag is printed server-side by snippet #7156 (which applies the same
+     rule to its own redirect), so this needs no API round trip — checking it
+     before the status call means an admin never sees the overlay flash while a
+     request is in flight. */
+  if (loader && loader.getAttribute('data-bypass') === '1') return;
   var NONCE = (window.wpApiSettings && window.wpApiSettings.nonce) || window.SML_CG_NONCE || (loader && loader.dataset.nonce) || '';
   function api(path) {
     var h = {}; if (NONCE) h['X-WP-Nonce'] = NONCE;
