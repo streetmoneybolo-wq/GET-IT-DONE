@@ -67,7 +67,10 @@ if ( ! function_exists( 'sml_scheduled_live_meta_key' ) ) {
 if ( ! function_exists( 'sml_scheduled_live_watch_url' ) ) {
 	function sml_scheduled_live_watch_url( $handle ) {
 		$handle = sanitize_key( (string) $handle );
-		return $handle ? add_query_arg( 's', $handle, home_url( '/live/' ) ) : home_url( '/live/' );
+		/* `s` is WordPress's global search query. `room` keeps a shared Watch
+		 * Page URL stable instead of letting theme/search canonicalization strip
+		 * its creator context. */
+		return $handle ? add_query_arg( 'room', $handle, home_url( '/live/' ) ) : home_url( '/live/' );
 	}
 }
 

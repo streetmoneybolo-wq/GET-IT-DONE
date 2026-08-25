@@ -1021,6 +1021,8 @@
      existing feeds endpoint remains the authority for actual playback. */
   var scheduledLive = null;
   var defaultBroadcastTitle = (root.querySelector('.slw-titleblk h1') || {}).textContent || 'StockMarketLoop Live';
+  var defaultBroadcastEyebrow = (root.querySelector('.slw-titleblk .ep span') || {}).textContent || 'LIVE ON STOCKMARKETLOOP';
+  var scheduledCountdownTimer = 0;
 
   /* click shield: clicks on the video toggle play through OUR controls */
   var shield = document.createElement('div');
@@ -1031,10 +1033,49 @@
   function phState(t1, t2) { ph.classList.remove('hide'); ph.parentNode.classList.remove('clear'); ph.querySelector('.t1').textContent = t1; ph.querySelector('.t2').textContent = t2; }
   function phHide() { ph.classList.add('hide'); ph.parentNode.classList.add('clear'); }
   function clearScheduledPlaceholder() {
+    if (scheduledCountdownTimer) {
+      window.clearInterval(scheduledCountdownTimer);
+      scheduledCountdownTimer = 0;
+    }
     ph.classList.remove('scheduled');
     ph.style.backgroundImage = '';
     ph.style.backgroundSize = '';
     ph.style.backgroundPosition = '';
+  }
+  function scheduledTicker(info) {
+    var configured = String((info && info.ticker) || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+    var named = String((info && info.title) || '').toUpperCase().match(/\$([A-Z][A-Z0-9.\-]{0,14})\b/);
+    /* The studio historically began new drafts on SPY. If a creator leaves that
+       default in place but names another ticker in the stream title, the title
+       is the better public context. An explicitly selected non-SPY ticker
+       always wins. */
+    if (named && (!configured || configured === 'SPY')) return named[1];
+    return configured;
+  }
+  function scheduledCountdownText(value) {
+    var starts = Date.parse(value || '');
+    if (!starts) return { headline: 'SCHEDULED LIVE', detail: 'Starting soon · chat is open now' };
+    var remaining = Math.max(0, starts - Date.now());
+    var date = new Date(starts).toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+    if (remaining <= 0) {
+      return {
+        headline: 'STARTING NOW',
+        detail: 'Scheduled for ' + date + ' · video appears when the creator starts the broadcast'
+      };
+    }
+    var seconds = Math.floor(remaining / 1000);
+    var days = Math.floor(seconds / 86400); seconds -= days * 86400;
+    var hours = Math.floor(seconds / 3600); seconds -= hours * 3600;
+    var minutes = Math.floor(seconds / 60); seconds -= minutes * 60;
+    var countdown = (days ? days + 'd ' : '') + String(hours).padStart(2, '0') + 'h '
+      + String(minutes).padStart(2, '0') + 'm ' + String(seconds).padStart(2, '0') + 's';
+    return { headline: 'STARTS IN ' + countdown, detail: 'Scheduled for ' + date + ' · chat is open now' };
+  }
+  function paintScheduledCountdown(info) {
+    var copy = scheduledCountdownText(info && info.scheduled_at);
+    phState(copy.headline, copy.detail);
   }
   function scheduledStartText(value) {
     var at = Date.parse(value || '');
@@ -1044,6 +1085,7 @@
   function showScheduledPlaceholder(info) {
     if (!info || !info.title) return false;
     if (P.mode !== 'none') teardown();
+    clearScheduledPlaceholder();
     setPlaybackAvailable(false);
     setBroadcastState('scheduled');
     ph.classList.add('scheduled');
@@ -1052,9 +1094,18 @@
       ph.style.backgroundSize = 'cover';
       ph.style.backgroundPosition = 'center';
     }
-    phState('SCHEDULED LIVE', scheduledStartText(info.scheduled_at));
+    paintScheduledCountdown(info);
+    scheduledCountdownTimer = window.setInterval(function () { paintScheduledCountdown(info); }, 1000);
     var heading = root.querySelector('.slw-titleblk h1');
     if (heading) heading.textContent = info.title;
+    var eyebrow = root.querySelector('.slw-titleblk .ep span');
+    if (eyebrow) eyebrow.textContent = 'SCHEDULED LIVE · STARTING SOON';
+    var ticker = scheduledTicker(info);
+    if (ticker) {
+      qSym = ticker;
+      qHeard = S.tick;
+      paintQ();
+    }
     setSourceNote('scheduled · chat is open');
     el('#slw-viewers').textContent = '—';
     return true;
@@ -1234,6 +1285,8 @@
     el('#slw-clock').textContent = '—';
     var heading = root.querySelector('.slw-titleblk h1');
     if (heading) heading.textContent = defaultBroadcastTitle;
+    var eyebrow = root.querySelector('.slw-titleblk .ep span');
+    if (eyebrow) eyebrow.textContent = defaultBroadcastEyebrow;
     phState('NOT LIVE RIGHT NOW', (reason ? reason + ' ' : '') + 'No stream video is available until the creator starts a live broadcast.');
     el('#slw-viewers').textContent = '—';
   }
