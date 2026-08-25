@@ -577,7 +577,10 @@ body.slw-on{background:#04060a !important}
 .slw-gaterow{font:400 10px/1.5 Archivo,sans-serif;color:#8a7a52;padding:9px 16px;border-top:1px solid #131c26;background:#0d0b04}
 .slw-gaterow a, #sml-lw-root .slw-gaterow a{color:#ffb454 !important;font-weight:600}
 .slw-chat-empty{font:400 11px/1.6 Archivo,sans-serif;color:#3d4c5a;padding:18px 16px;text-align:center}
-.slw-real .slw-msg .rp, .slw-real .slw-msg .open-th{display:none}
+/* Keep production Reply controls hidden until the persistent thread API has
+   answered successfully. This avoids advertising a control before its server
+   feature is installed and ready. */
+.slw-real:not(.slw-threads-ready) .slw-msg .rp, .slw-real:not(.slw-threads-ready) .slw-msg .open-th{display:none}
 .slw-send{font:700 10px/1 Archivo,sans-serif;color:#04060a;background:#00ff88;border:none;padding:11px 14px;border-radius:20px;cursor:pointer}
 .slw-send:hover{background:#7affc0}
 /* thread view */

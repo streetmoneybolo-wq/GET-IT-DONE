@@ -47,7 +47,7 @@
     tomLeft: 3, tomWarm: 60, tomStage: 'idle', tomNote: '',
     subd: false, notify: false, vidSet: false, res: 0, speedIdx: 1, saved: false, theater: false, mk: false,
     aboutDeg: 0, aboutAuto: 0,
-    msgs: [], thread: null, chatHold: false,
+    msgs: [], thread: null, threadAvailable: false, chatHold: false,
     oIdx: 0, oAngle: 0, oPlaying: true, oHover: false, oLightbox: false,
     vStage: 'idle', tier: 1, queuePos: 3, vWait: 0, vLeft: 0,
     aLeft: 504, aShared: [], aImpr: 0, aClicks: 0,
@@ -305,14 +305,22 @@
   var feedInner = el('#slw-feed-inner');
 
   function avStyle(i) { return 'color:' + ACCENTS[i % 5]; }
+  function avatarExtra(url) {
+    return (url && /^https:\/\//.test(url)) ? ';background-image:url(' + esc(url) + ');background-size:cover;background-position:center' : '';
+  }
+  function replyCount(m) {
+    var loaded = (m.replies || []).length;
+    var stored = parseInt(m.replyCount, 10) || 0;
+    return Math.max(loaded, stored);
+  }
   function msgHTML(m, i) {
     if (m.sys) {
       return '<div class="slw-msg sys" data-id="' + m.id + '"><div class="av">' + m.ini + '</div><div class="bd">' +
         '<div class="hd"><span class="hn">GAME ARENA</span><span class="at">' + m.at + '</span></div>' +
         '<span class="tx">' + esc(m.tx) + '</span></div></div>';
     }
-    var rl = (m.replies || []).length;
-    var avExtra = (m.avatar && /^https:\/\//.test(m.avatar)) ? ';background-image:url(' + esc(m.avatar) + ');background-size:cover;background-position:center' : '';
+    var rl = replyCount(m);
+    var avExtra = avatarExtra(m.avatar);
     var canRm = !!(m.rawId != null && (S.canMod || (S.me && m.uid && m.uid === S.me)));
     return '<div class="slw-msg" data-id="' + m.id + '"><div class="av" style="' + avStyle(i) + avExtra + '">' + (avExtra ? '' : m.ini) + '</div><div class="bd">' +
       '<div class="hd"><span class="hn" style="' + avStyle(i) + '">@' + m.h + '</span><span class="at">' + m.at + '</span>' +
@@ -330,37 +338,94 @@
     renderTop();
   }
   function renderTop() {
-    var ranked = S.msgs.filter(function (m) { return (m.replies || []).length > 0 && !m.sys; })
-      .sort(function (a, b) { return b.replies.length - a.replies.length; }).slice(0, 3);
+    var ranked = S.msgs.filter(function (m) { return replyCount(m) > 0 && !m.sys; })
+      .sort(function (a, b) { return replyCount(b) - replyCount(a); }).slice(0, 3);
+    el('#slw-tt').style.display = ranked.length ? '' : 'none';
     el('#slw-tt-rows').innerHTML = ranked.map(function (m, i) {
       return '<div class="slw-tt' + (i === 0 ? ' first' : '') + '" data-th="' + m.id + '"><span class="rk">' + (i + 1) + '</span>' +
-        '<span class="tx"><b>@' + m.h + '</b> · ' + esc(m.tx) + '</span><span class="ct">' + m.replies.length + ' ↩</span></div>';
+        '<span class="tx"><b>@' + m.h + '</b> · ' + esc(m.tx) + '</span><span class="ct">' + replyCount(m) + ' ↩</span></div>';
     }).join('');
+  }
+  function threadMessage() {
+    return S.msgs.filter(function (x) { return x.id === S.thread; })[0] || null;
+  }
+  function mapReply(r) {
+    r = r || {};
+    var name = String(r.display_name || r.displayName || r.handle || r.user_name || r.user || r.name || r.author || 'StockMarketLoop User').trim().replace(/^@/, '');
+    if (!name) name = 'StockMarketLoop User';
+    return {
+      id: r.id != null ? String(r.id) : '',
+      uid: parseInt(r.user_id || r.uid || 0, 10) || 0,
+      ini: (name.slice(0, 2) || 'SL').toUpperCase(),
+      h: name,
+      tx: String(r.body || r.message || r.text || ''),
+      at: relTime(r.created_at || r.at || r.time || r.created || ''),
+      avatar: r.avatar || r.avatar_url || ''
+    };
+  }
+  function threadPostAllowed() {
+    if (!gateState || !gateState.loggedIn) return false;
+    return !!(scheduledLive || !gateState.chat || gateState.chat.open);
+  }
+  function threadPostReason() {
+    if (!gateState || !gateState.loggedIn) return 'Sign in to reply in this live thread.';
+    if (!scheduledLive && gateState.chat && !gateState.chat.open) return 'Live chat access is required to reply in this thread.';
+    return '';
   }
   function renderThread() {
     var tw = el('#slw-thread'), fw = el('#slw-feed'), tt = el('#slw-tt'), comp = el('#slw-composer');
-    var m = S.msgs.filter(function (x) { return x.id === S.thread; })[0];
+    var m = threadMessage();
     if (!m) { tw.classList.remove('show'); fw.style.display = ''; tt.style.display = ''; comp.style.display = ''; return; }
     fw.style.display = 'none'; tt.style.display = 'none'; comp.style.display = 'none';
     var ti = S.msgs.indexOf(m);
-    tw.innerHTML = '<div class="slw-thread-h"><button class="slw-back" id="slw-tback">← All chat</button><b>THREAD</b><span>' + (m.replies || []).length + ' replies</span></div>' +
-      '<div class="slw-thread-root"><div class="av" style="' + avStyle(ti) + '">' + m.ini + '</div><div class="bd">' +
+    var rootAvatar = avatarExtra(m.avatar);
+    var replies = (m.replies || []).slice(-100);
+    var composer = threadPostAllowed()
+      ? '<div class="slw-thread-comp"><input type="text" id="slw-draft" maxlength="500" placeholder="Reply to @' + esc(m.h) + '"><button class="slw-reply-send" id="slw-rsend">Reply</button></div>'
+      : '<div class="slw-thread-gate">' + esc(threadPostReason()) + '</div>';
+    tw.innerHTML = '<div class="slw-thread-h"><button class="slw-back" id="slw-tback">← All chat</button><b>THREAD</b><span>' + replyCount(m) + ' repl' + (replyCount(m) === 1 ? 'y' : 'ies') + '</span></div>' +
+      '<div class="slw-thread-root"><div class="av" style="' + avStyle(ti) + rootAvatar + '">' + (rootAvatar ? '' : m.ini) + '</div><div class="bd">' +
       '<span class="hn" style="' + avStyle(ti) + '">@' + m.h + '</span><span class="at">' + m.at + '</span><span class="tx">' + esc(m.tx) + '</span></div></div>' +
-      '<div class="slw-thread-list">' + (m.replies || []).slice(-6).map(function (r, j) {
-        return '<div class="slw-reply"><div class="av" style="' + avStyle(j + 1) + '">' + r.ini + '</div><div class="bd">' +
-          '<span class="hn" style="' + (r.h === 'you' ? 'color:#00ff88' : avStyle(j + 1)) + '">@' + r.h + '</span><span class="at">' + r.at + '</span><span class="tx">' + esc(r.tx) + '</span></div></div>';
-      }).join('') + '</div>' +
-      '<div class="slw-thread-comp"><input type="text" id="slw-draft" placeholder="Reply to this thread"><button class="slw-reply-send" id="slw-rsend">Reply</button></div>';
+      '<div class="slw-thread-list">' + (m.threadLoading ? '<div class="slw-chat-empty" style="display:block">Loading replies…</div>' : (replies.length ? replies.map(function (r, j) {
+        var replyAvatar = avatarExtra(r.avatar);
+        return '<div class="slw-reply"><div class="av" style="' + avStyle(j + 1) + replyAvatar + '">' + (replyAvatar ? '' : r.ini) + '</div><div class="bd">' +
+          '<span class="hn" style="' + avStyle(j + 1) + '">@' + esc(r.h) + '</span><span class="at">' + r.at + '</span><span class="tx">' + esc(r.tx) + '</span></div></div>';
+      }).join('') : '<div class="slw-chat-empty" style="display:block">No replies yet — start the thread.</div>')) + '</div>' + composer;
     tw.classList.add('show');
     el('#slw-tback').onclick = function () { S.thread = null; renderThread(); };
     var send = function () {
       var v = el('#slw-draft').value.trim();
-      if (!v) return;
-      m.replies.push({ ini: 'YO', h: 'you', tx: v, at: 'now' });
-      renderThread(); renderFeed();
+      if (!v || m.threadSending) return;
+      m.threadSending = true;
+      el('#slw-rsend').disabled = true;
+      el('#slw-rsend').textContent = '…';
+      api('/sml-live-chat-threads/v1/room/' + HANDLE + '/message/' + encodeURIComponent(m.rawId) + '/replies', { method: 'POST', body: JSON.stringify({ body: v }) }).then(function (res) {
+        if (!res.ok) {
+          var note = el('#slw-thread-note');
+          if (!note) { note = document.createElement('div'); note.id = 'slw-thread-note'; note.className = 'slw-thread-gate'; el('#slw-thread').appendChild(note); }
+          note.textContent = (res.j && res.j.message) || 'Reply did not send — try again.';
+          return;
+        }
+        if (res.j && res.j.reply) {
+          m.replies = (m.replies || []).concat([mapReply(res.j.reply)]);
+          m.replyCount = replyCount(m);
+        }
+        refreshThreadCounts(true);
+        loadThread(m, true);
+      }).catch(function () {
+        var note = el('#slw-thread-note');
+        if (!note) { note = document.createElement('div'); note.id = 'slw-thread-note'; note.className = 'slw-thread-gate'; el('#slw-thread').appendChild(note); }
+        note.textContent = 'Reply did not send — check your connection.';
+      }).then(function () {
+        m.threadSending = false;
+        var replyButton = el('#slw-rsend');
+        if (replyButton) { replyButton.disabled = false; replyButton.textContent = 'Reply'; }
+      });
     };
-    el('#slw-rsend').onclick = send;
-    el('#slw-draft').onkeydown = function (e) { if (e.key === 'Enter') send(); };
+    if (el('#slw-rsend')) {
+      el('#slw-rsend').onclick = send;
+      el('#slw-draft').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); send(); } };
+    }
   }
   function gameNote(glyph, txt, eid) {
     var id = 'g-' + eid;
@@ -721,7 +786,14 @@
       return;
     }
     var th = e.target.closest && e.target.closest('[data-th]');
-    if (th) { S.thread = th.getAttribute('data-th'); renderThread(); }
+    if (th) {
+      var rootMessage = S.msgs.filter(function (m) { return m.id === th.getAttribute('data-th'); })[0];
+      if (rootMessage) {
+        S.thread = rootMessage.id;
+        renderThread();
+        loadThread(rootMessage, true);
+      }
+    }
   });
 
   /* Demo/legacy voice-pass flow only.  Native voice owns this interaction in
@@ -1351,7 +1423,7 @@
     return Math.floor(d / 86400) + 'd';
   }
   if (!SIM) {
-    root.classList.add('slw-real');           /* hides sim-only reply/thread affordances */
+    root.classList.add('slw-real');           /* reply controls appear only after the thread API answers */
     el('#slw-tt').style.display = 'none';     /* top threads return when the room has them */
     root.querySelector('.slw-sent').style.display = 'none'; /* sentiment lands with the economy phase */
     el('#slw-chat-empty').style.display = '';
@@ -1375,6 +1447,51 @@
     var id = 'r' + String(m.id != null ? m.id : (m.at || m.time || m.created || '') + name + text.slice(0, 12));
     return { id: id, rawId: m.id, uid: parseInt(m.user_id || m.uid || 0, 10) || 0, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
   }
+  var threadCountsPending = false, threadCountsAt = 0;
+  function refreshThreadCounts(force) {
+    if (SIM || threadCountsPending) return;
+    if (!force && Date.now() - threadCountsAt < 2000) return;
+    var ids = S.msgs.filter(function (m) { return !m.sys && m.rawId != null; }).map(function (m) { return String(m.rawId); });
+    if (!ids.length) return;
+    threadCountsPending = true;
+    threadCountsAt = Date.now();
+    api('/sml-live-chat-threads/v1/room/' + HANDLE + '/threads?ids=' + encodeURIComponent(ids.join(','))).then(function (res) {
+      var counts = res.ok && res.j && res.j.counts;
+      if (!counts || typeof counts !== 'object') return;
+      var becameAvailable = !S.threadAvailable;
+      if (becameAvailable) {
+        S.threadAvailable = true;
+        root.classList.add('slw-threads-ready');
+      }
+      var changed = false;
+      S.msgs.forEach(function (m) {
+        if (m.rawId == null || counts[String(m.rawId)] == null) return;
+        var next = parseInt(counts[String(m.rawId)], 10) || 0;
+        if ((parseInt(m.replyCount, 10) || 0) !== next) { m.replyCount = next; changed = true; }
+      });
+      if (changed || becameAvailable) {
+        if (S.thread) renderThread();
+        else renderFeed();
+      }
+    }).catch(function () {}).then(function () { threadCountsPending = false; });
+  }
+  function loadThread(m, force) {
+    if (SIM || !m || m.rawId == null || m.threadLoading) return;
+    if (!force && m.threadLoaded) return;
+    m.threadLoading = true;
+    if (S.thread === m.id) renderThread();
+    api('/sml-live-chat-threads/v1/room/' + HANDLE + '/message/' + encodeURIComponent(m.rawId) + '/replies').then(function (res) {
+      if (!res.ok || !res.j) return;
+      var list = Array.isArray(res.j.replies) ? res.j.replies : [];
+      m.replies = list.map(mapReply);
+      m.replyCount = m.replies.length;
+      m.threadLoaded = true;
+    }).catch(function () {}).then(function () {
+      m.threadLoading = false;
+      if (S.thread === m.id) renderThread();
+      else renderFeed();
+    });
+  }
   function pollChat() {
     if (SIM || document.hidden || S.chatHold) return;
     /* full-window fetch + client dedupe — the `after` param's semantics are unverified,
@@ -1397,6 +1514,7 @@
       });
       if (added) { S.msgs = S.msgs.slice(-24); renderFeed(); }
       el('#slw-chat-empty').style.display = S.msgs.length ? 'none' : '';
+      refreshThreadCounts(false);
     }).catch(function () {});
   }
   /* composer: live gate states from the wallet */
@@ -1469,6 +1587,7 @@
       var g = res.j || {};
       gateState = { loggedIn: !!g.loggedIn, chat: g.gates && g.gates.live_comment, games: g.gates && g.gates.games };
       paintComposer();
+      if (S.thread) renderThread();
       var pg = el('#slw-pgate');
       if (gateState.games) {
         if (gateState.games.open) { pg.textContent = 'ACCESS UNLOCKED · HOLD 495+ LB'; }
