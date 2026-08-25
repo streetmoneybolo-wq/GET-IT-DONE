@@ -627,9 +627,10 @@
     b.onclick = function () { S.aboutDeg += 180 * (+b.getAttribute('data-flip')); S.aboutAuto = 0; paintFlip(); };
   });
   function openModal() {
+    var aboutCopy = broadcastDescription || 'Live from the Loop Desk every weekday at 9:15 ET. Today: positioning into the #CPI print, where the tape found liquidity at the #MarketOpen, and the #ShortVolume picture on $SPY. Callers get the floor between segments — request the mic in the Speak tab. Voice passes, the Boost Arena, and Watch & Play games are open for this stream; alerts fire through the terminal as levels break.';
     el('#slw-modal-mount').innerHTML = '<div class="slw-modal" id="slw-modal"><div class="slw-modal-c">' +
       '<div class="slw-modal-h"><b>About this broadcast</b><button class="slw-x" id="slw-mx">Close ✕</button></div>' +
-      '<span class="slw-modal-t">Live from the Loop Desk every weekday at 9:15 ET. Today: positioning into the <a href="#tag-cpi">#CPI</a> print, where the tape found liquidity at the <a href="#tag-marketopen">#MarketOpen</a>, and the <a href="#tag-shortvolume">#ShortVolume</a> picture on $SPY. Callers get the floor between segments — request the mic in the Speak tab. Voice passes, the Boost Arena, and Watch &amp; Play games are open for this stream; alerts fire through the terminal as levels break.</span>' +
+      '<span class="slw-modal-t">' + esc(aboutCopy) + '</span>' +
       '<div class="slw-tagrow"><a class="slw-tag" href="#">#SPY</a><a class="slw-tag" href="#">#CPI</a><a class="slw-tag" href="#">#MarketOpen</a><a class="slw-tag" href="#">#ShortVolume</a><a class="slw-tag" href="#">#OptionsFlow</a></div>' +
       '<span class="fn">Hashtags open a feed of every video, post, photo and article using that tag.</span>' +
       '<div class="disc"><b>DISCLAIMER</b><span>Broadcasts are for education and information only and are not investment advice or a recommendation to buy or sell any security. Quotes may be delayed. Callers speak for themselves. Live audio, including approved callers, is mixed into the stream and may remain in the archive.</span></div></div></div>';
@@ -1023,6 +1024,7 @@
   var defaultBroadcastTitle = (root.querySelector('.slw-titleblk h1') || {}).textContent || 'StockMarketLoop Live';
   var defaultBroadcastEyebrow = (root.querySelector('.slw-titleblk .ep span') || {}).textContent || 'LIVE ON STOCKMARKETLOOP';
   var scheduledCountdownTimer = 0;
+  var broadcastDescription = '';
 
   /* click shield: clicks on the video toggle play through OUR controls */
   var shield = document.createElement('div');
@@ -1082,6 +1084,34 @@
     if (!at) return 'Starting soon';
     return 'Starts ' + new Date(at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
+  function applyScheduledCreator(info) {
+    var creator = (info && info.creator) || {};
+    var name = String(creator.name || info.creator_name || '').trim();
+    var handle = String(creator.handle || info.handle || HANDLE || '').replace(/[^A-Za-z0-9_-]/g, '');
+    var avatar = String(creator.avatar || '').trim();
+    var label = name || (handle ? '@' + handle : 'Creator');
+    if (handle && label.toLowerCase() !== ('@' + handle).toLowerCase()) label += ' · @' + handle;
+
+    var titleIdentity = root.querySelector('.slw-titleblk .who .nm');
+    if (titleIdentity) titleIdentity.textContent = label;
+    var aboutIdentity = root.querySelector('.slw-about-id .nm');
+    if (aboutIdentity) aboutIdentity.textContent = label;
+    if (avatar && /^https:\/\//i.test(avatar)) {
+      var avatarEl = root.querySelector('.slw-avatar');
+      if (avatarEl) {
+        avatarEl.style.background = '#0d1a15 url("' + avatar.replace(/"/g, '%22') + '") center/cover';
+        avatarEl.textContent = '';
+      }
+    }
+  }
+  function applyScheduledDescription(info) {
+    broadcastDescription = String((info && info.description) || '').trim();
+    var descriptionEl = root.querySelector('.slw-about-desc');
+    if (descriptionEl && broadcastDescription) {
+      descriptionEl.textContent = broadcastDescription;
+      descriptionEl.style.display = '';
+    }
+  }
   function showScheduledPlaceholder(info) {
     if (!info || !info.title) return false;
     if (P.mode !== 'none') teardown();
@@ -1100,6 +1130,8 @@
     if (heading) heading.textContent = info.title;
     var eyebrow = root.querySelector('.slw-titleblk .ep span');
     if (eyebrow) eyebrow.textContent = 'SCHEDULED LIVE · STARTING SOON';
+    applyScheduledCreator(info);
+    applyScheduledDescription(info);
     var ticker = scheduledTicker(info);
     if (ticker) {
       qSym = ticker;
@@ -1112,7 +1144,12 @@
   }
   function loadScheduledLive() {
     if (!HANDLE) return Promise.resolve(null);
-    return fetch('/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE), { credentials: 'same-origin', cache: 'no-store' })
+    /* The host's whole-response cache can retain a just-replaced 404 briefly.
+     * A per-request key makes a newly scheduled title and thumbnail visible
+     * immediately, while the endpoint itself remains inexpensive. */
+    var endpoint = '/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE)
+      + '?_sml_room_check=' + Date.now();
+    return fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         scheduledLive = data && data.status === 'scheduled' ? data : null;
@@ -2261,6 +2298,7 @@
   function loadCreator() {
     if (SIM) return;
     api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
+      if (scheduledLive && scheduledLive.creator) return;
       var c = res.j && res.j.creator;
       if (!c) return;
       root.querySelector('.slw-titleblk .who .nm').textContent = c.name + ' · @' + c.handle;
@@ -2269,6 +2307,7 @@
       av.textContent = (c.name || c.handle || 'SL').slice(0, 2).toUpperCase();
     }).catch(function () {});
     api('/sml-lb/v1/card/' + HANDLE).then(function (res) {
+      if (scheduledLive && scheduledLive.creator) return;
       var j = res.j || {};
       var url = (j.profile && j.profile.photo) || j.photo || j.avatar || (j.profile && j.profile.avatar) || '';
       if (url && /^https:/.test(url)) {

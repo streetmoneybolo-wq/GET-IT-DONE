@@ -5,7 +5,7 @@
  * WPCode: PHP snippet, Auto Insert / Run Everywhere.
  *
  * A scheduled stream uses the existing creator-scoped Watch Page route:
- * /live/?s={profile-handle}. It does not create a duplicate WordPress post or
+ * /live/?room={profile-handle}. It does not create a duplicate WordPress post or
  * a fake video. The record only makes the pending broadcast discoverable and
  * supplies its title, thumbnail/GIF, start time, and chat room before RTMP
  * ingest begins. Once the real ingest turns on, sml-live/v1/feeds/{handle}
@@ -64,6 +64,30 @@ if ( ! function_exists( 'sml_scheduled_live_meta_key' ) ) {
 	}
 }
 
+/* The Watch Page must identify the person/channel that owns a broadcast,
+ * not the site brand. A Loop Channel identity wins when configured; otherwise
+ * the creator's public profile handle is the honest visible identity. */
+if ( ! function_exists( 'sml_scheduled_live_creator_identity' ) ) {
+	function sml_scheduled_live_creator_identity( $user_id ) {
+		$user_id       = absint( $user_id );
+		$user          = $user_id ? get_userdata( $user_id ) : false;
+		$profile_handle = sml_scheduled_live_handle_for_user( $user_id );
+		$channel_name   = sanitize_text_field( (string) get_user_meta( $user_id, 'sml_channel_name', true ) );
+		$channel_handle = sanitize_key( (string) get_user_meta( $user_id, 'sml_channel_handle', true ) );
+		$avatar_id      = absint( get_user_meta( $user_id, 'sml_channel_avatar_id', true ) );
+		$avatar         = $avatar_id ? wp_get_attachment_image_url( $avatar_id, 'medium' ) : '';
+		if ( ! $avatar && $user ) {
+			$avatar = get_avatar_url( $user_id, array( 'size' => 200 ) );
+		}
+
+		return array(
+			'name'   => $channel_name ?: ( $profile_handle ?: ( $user ? $user->display_name : 'Creator' ) ),
+			'handle' => $channel_handle ?: $profile_handle,
+			'avatar' => $avatar ? esc_url_raw( $avatar ) : '',
+		);
+	}
+}
+
 if ( ! function_exists( 'sml_scheduled_live_watch_url' ) ) {
 	function sml_scheduled_live_watch_url( $handle ) {
 		$handle = sanitize_key( (string) $handle );
@@ -119,12 +143,13 @@ if ( ! function_exists( 'sml_scheduled_live_public_payload' ) ) {
 			return null;
 		}
 
-		$user = get_userdata( $user_id );
+		$creator = sml_scheduled_live_creator_identity( $user_id );
 		return array(
 			'id'            => sanitize_text_field( (string) $row['id'] ),
 			'status'        => sanitize_key( (string) $row['status'] ),
 			'handle'        => $handle,
-			'creator_name'  => $user ? ( $user->display_name ?: $user->user_login ) : 'Creator',
+			'creator_name'  => $creator['name'], /* legacy consumer compatibility */
+			'creator'       => $creator,
 			'title'         => sanitize_text_field( (string) ( $row['title'] ?? '' ) ),
 			'description'   => sanitize_textarea_field( (string) ( $row['description'] ?? '' ) ),
 			'ticker'        => sanitize_key( (string) ( $row['ticker'] ?? '' ) ),
