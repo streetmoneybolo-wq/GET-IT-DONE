@@ -1011,7 +1011,11 @@
   /* ---------- Phase 2: real player (slot playback → YouTube fallback → offline) ---------- */
   var P = { mode: 'none', yt: null, video: null, dur: 0, cur: 0, playing: false, muted: true, ytId: null, hlsUrl: null };
   function qs(name) { var m = location.search.match(new RegExp('[?&]' + name + '=([^&]+)')); return m ? decodeURIComponent(m[1]) : null; }
-  var HANDLE = (qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
+  /* `s` is WordPress' global search parameter.  Using it for a Live room made
+     the canonical URL vulnerable to other site code normalizing it away.  New
+     links use `room`; keep the `s` fallback only for a legacy page that has
+     already loaded before the server-side normalizer can redirect it. */
+  var HANDLE = (qs('room') || qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
   var media = el('#slw-media'), ph = el('#slw-ph');
   /* A schedule is metadata only. It never claims a stream is live; the
      existing feeds endpoint remains the authority for actual playback. */
