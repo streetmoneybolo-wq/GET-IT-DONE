@@ -1,6 +1,7 @@
 'use strict';
 
 const { Pool } = require('pg');
+const { createStripeEventStore } = require('./stripe-event-store');
 
 function sslConfig(connectionString, mode) {
   if (mode === 'off') return false;
@@ -49,7 +50,9 @@ function createDatabase({ databaseUrl, databaseSsl }) {
     return result.rowCount === 1 ? 'accepted' : 'duplicate';
   }
 
-  return { pool, health, acceptWordPressEvent, close: () => pool.end() };
+  const acceptStripeEvent = createStripeEventStore(pool);
+
+  return { pool, health, acceptWordPressEvent, acceptStripeEvent, close: () => pool.end() };
 }
 
 module.exports = { createDatabase, sslConfig };

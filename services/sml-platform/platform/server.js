@@ -159,7 +159,9 @@ async function main() {
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
-    wordpressWebhookSecret: config.wordpressWebhookSecret
+    wordpressWebhookSecret: config.wordpressWebhookSecret,
+    acceptStripeEvent: database.acceptStripeEvent,
+    stripeWebhookSecret: config.stripeWebhookSecret
   });
   let shuttingDown = false;
 
