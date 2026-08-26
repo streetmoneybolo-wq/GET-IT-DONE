@@ -239,6 +239,10 @@
         '.sml-rh-track{display:flex;flex:1;height:100%;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
         '.sml-rh-item{min-width:100%;position:relative;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}' +
         '.sml-rh-item a{text-decoration:none;}' +
+        '.oh-post{position:relative;}' +
+        '.sml-owner-delete{position:absolute;z-index:7;right:16px;top:16px;border:1px solid rgba(255,82,104,.55);border-radius:999px;background:linear-gradient(180deg,rgba(82,18,29,.96),rgba(43,8,15,.96));color:#ff9aac;padding:6px 11px;font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.02em;cursor:pointer;box-shadow:0 7px 18px rgba(0,0,0,.32);}' +
+        '.sml-owner-delete:hover,.sml-owner-delete:focus-visible{color:#fff;border-color:#ff5268;background:#a51630;outline:none;}' +
+        '.sml-owner-delete[disabled]{opacity:.55;cursor:wait;}' +
         '.sml-rh-item.no-img{padding:14px 22px;gap:7px;}' +
         '.sml-rh-item.has-img{padding:0;justify-content:flex-end;}' +
         '.sml-rh-cover{position:absolute;inset:0;display:block;}' +
@@ -687,7 +691,6 @@
       scope.querySelectorAll('.sml-signal-feed-post').forEach(function(c){cards.push(c);});
       cards.forEach(function(card){
         var sym=String(card.getAttribute('data-sml-ticker')||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); if(!sym) return;
-        var av=card.querySelector('.oh-post-avatar'); if(av){av.src='https://stockmarketloop.com/wp-content/uploads/2026/08/Untitled-design-90.png';av.alt='Stock Market Loop Signal News';}
         if(card.getAttribute('data-sml-chart')) return; card.setAttribute('data-sml-chart','loading');
         if(Object.prototype.hasOwnProperty.call(signalHistory,sym)){paintSignalCard(card,sym,signalHistory[sym]);return;}
         if(!signalPending[sym]){signalPending[sym]=1;signalQueue.push({sym:sym,tries:0});runSignalQueue();}
@@ -792,6 +795,25 @@
     fbComments();
     enhanceSignalCards(host);
     dedupeFeed();
+
+    // Owner-only permanent deletion. The button is emitted only when the
+    // server recognizes the current user as owner (or administrator), and the
+    // endpoint independently repeats that ownership check before deleting.
+    host.addEventListener('click', function(event){
+      var button=event.target&&event.target.closest?event.target.closest('[data-sml-delete-item]'):null;
+      if(!button||!host.contains(button)) return;
+      event.preventDefault(); event.stopPropagation();
+      var itemId=String(button.getAttribute('data-sml-delete-item')||'');
+      if(!itemId||!window.confirm('Permanently delete this article or post from StockMarketLoop? This cannot be undone.')) return;
+      var nonce=hfbNonce();
+      if(!nonce){window.alert('Your session needs to be refreshed before deleting.');return;}
+      button.disabled=true; button.textContent='Deleting…';
+      fetch('/wp-json/sml-home-owner/v1/content',{method:'DELETE',credentials:'same-origin',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify({item_id:itemId})}).then(function(response){
+        return response.json().catch(function(){return {};}).then(function(data){if(!response.ok)throw new Error(data.message||'The post could not be deleted.');return data;});
+      }).then(function(){
+        var card=button.closest('.oh-post'); if(card){card.style.transition='opacity .25s ease,transform .25s ease';card.style.opacity='0';card.style.transform='scale(.98)';setTimeout(function(){card.remove();dedupeFeed();},260);}
+      }).catch(function(error){button.disabled=false;button.textContent='Delete';window.alert(error.message||'The post could not be deleted.');});
+    });
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
     var feedSeen = {};

@@ -121,16 +121,39 @@ function sml_oh_render() {
         // survives live-feed refreshes and automatically applies to new signals.
         $post_id = 0;
         if (preg_match('/^wp-(\d+)$/', $item_id, $post_match)) { $post_id = absint($post_match[1]); }
+        // Never freeze an author's old identity into a feed card. Resolve the
+        // owner from the authoritative content record, then load their current
+        // display name and avatar on every request.
+        if ($post_id) {
+            $author_id = absint(get_post_field('post_author', $post_id));
+        } elseif (preg_match('/^chart-(\d+)-/', $item_id, $chart_match)) {
+            $author_id = absint($chart_match[1]);
+        } elseif (preg_match('/^stream-(\d+)$/', $item_id, $stream_match)) {
+            $stream_comment = get_comment(absint($stream_match[1]));
+            if ($stream_comment) {
+                $author_id = absint($stream_comment->user_id);
+                if (function_exists('sml_members_parse_stream_comment')) {
+                    $stream_payload = sml_members_parse_stream_comment($stream_comment);
+                    if (is_array($stream_payload)) { $author_id = absint($stream_payload['user_id'] ?? $author_id); }
+                }
+            }
+        }
+        if ($author_id) {
+            $live_author = get_userdata($author_id);
+            if ($live_author) {
+                $author_name = sanitize_text_field($live_author->display_name ?: $live_author->user_login);
+                $author_url = function_exists('sml_sth_profile_url') ? sml_sth_profile_url($author_id) : get_author_posts_url($author_id);
+                $author_avatar = esc_url_raw((string) get_user_meta($author_id, 'sml_avatar_url', true));
+                if (!$author_avatar) { $author_avatar = get_avatar_url($author_id, array('size' => 96)); }
+            }
+        }
         $is_signal = $post_id && get_post_meta($post_id, '_sml_signal_key', true);
         $signal_ticker = $is_signal ? strtoupper(preg_replace('/[^A-Z0-9.\-]/', '', (string) get_post_meta($post_id, '_sml_primary_ticker', true))) : '';
-        if ($is_signal) {
-            $author_name = 'Stock Market Loop Signal News';
-            $author_url = home_url('/markets/');
-            $author_avatar = 'https://stockmarketloop.com/wp-content/uploads/2026/08/Untitled-design-90.png';
-        }
         $metrics = is_array($post['metrics'] ?? null) ? $post['metrics'] : array();
         $card_class = 'oh-card oh-post sml-sth-post' . ($is_signal ? ' sml-signal-feed-post' : '');
-        echo '<article class="' . esc_attr($card_class) . '" data-hfe-item="' . esc_attr($item_id) . '" data-hfe-url="' . esc_url($url) . '"' . ($post_id ? ' data-sml-news-item="1" data-sml-published="' . esc_attr($date) . '"' : '') . ($signal_ticker !== '' ? ' data-sml-ticker="' . esc_attr($signal_ticker) . '"' : '') . '><a class="oh-post-author" data-sml-user-id="' . esc_attr((string) $author_id) . '" href="' . esc_url($author_url) . '"><img class="oh-post-avatar" src="' . esc_url($author_avatar) . '" alt="' . esc_attr($author_name) . '"><span class="oh-post-author-name">' . esc_html($author_name) . '</span></a>';
+        $can_delete = $author_id && ((int) get_current_user_id() === (int) $author_id || current_user_can('manage_options')) && (bool) preg_match('/^(?:wp-\d+|chart-\d+-.+|stream-\d+)$/', $item_id);
+        echo '<article class="' . esc_attr($card_class) . '" data-hfe-item="' . esc_attr($item_id) . '" data-hfe-url="' . esc_url($url) . '" data-sml-owner-id="' . esc_attr((string) $author_id) . '"' . ($post_id ? ' data-sml-news-item="1" data-sml-published="' . esc_attr($date) . '"' : '') . ($signal_ticker !== '' ? ' data-sml-ticker="' . esc_attr($signal_ticker) . '"' : '') . '><a class="oh-post-author" data-sml-user-id="' . esc_attr((string) $author_id) . '" href="' . esc_url($author_url) . '"><img class="oh-post-avatar" src="' . esc_url($author_avatar) . '" alt="' . esc_attr($author_name) . '"><span class="oh-post-author-name">' . esc_html($author_name) . '</span></a>';
+        if ($can_delete) { echo '<button type="button" class="sml-owner-delete" data-sml-delete-item="' . esc_attr($item_id) . '" aria-label="Delete this post permanently" title="Delete this post permanently">Delete</button>'; }
         echo '<div class="oh-meta">' . esc_html($author_name . ($date !== '' ? ' · ' . $date : '')) . '</div><h2><a href="' . esc_url($url) . '">' . esc_html($title) . '</a></h2><p>' . esc_html($body) . '</p>';
         if ($image && preg_match('#^https?://#i', $image)) { echo '<a href="' . esc_url($url) . '"><img loading="lazy" src="' . esc_url($image) . '" alt=""></a>'; }
         echo '<div class="sml-sth-actions"><span>Likes ' . esc_html((string) absint($metrics['likes'] ?? 0)) . '</span> <span>Comments ' . esc_html((string) absint($metrics['comments'] ?? 0)) . '</span> <span>Shares ' . esc_html((string) absint($metrics['shares'] ?? 0)) . '</span> <a href="' . esc_url($url) . '">Open</a></div>';
