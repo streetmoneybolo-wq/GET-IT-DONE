@@ -30,7 +30,7 @@
  * Kill switch: deactivate this snippet → route 404s → client falls back.
  * WPCode: PHP snippet, Auto Insert / Run Everywhere. No top-level return.
  */
-if ( ! defined( 'SML_HOME_BOOT_AUDIENCE' ) ) { define( 'SML_HOME_BOOT_AUDIENCE', 'admins' ); } // 'admins' | 'all'
+if ( ! defined( 'SML_HOME_BOOT_AUDIENCE' ) ) { define( 'SML_HOME_BOOT_AUDIENCE', 'all' ); } // 'admins' | 'all'
 if ( ! defined( 'SML_HOME_BOOT_CACHE_TTL' ) ) { define( 'SML_HOME_BOOT_CACHE_TTL', 15 ); }       // seconds; 0 disables
 if ( ! defined( 'SML_HOME_BOOT_SCHEMA' ) ) { define( 'SML_HOME_BOOT_SCHEMA', 'v2.1' ); }
 

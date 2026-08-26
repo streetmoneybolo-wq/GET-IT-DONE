@@ -395,23 +395,41 @@
     // Move the REAL feed into the center slot (preserves posts + engagement + listeners).
     var slot = shell.querySelector('#sml-hf-feedslot');
     slot.appendChild(host);
-    /* PERF phase 6: post avatars render at 26-40px but shipped full uploads —
-       swap to Photon 96px variants; lazy-load every card image below card #2. */
-    try {
-      host.querySelectorAll('img.oh-post-avatar').forEach(function (im) {
-        var v = photonImg(im.src, 96, 96);
-        if (v !== im.src) im.src = v;
-        im.loading = 'lazy'; im.decoding = 'async';
-      });
-      var cardIdx = 0;
+    /* PERF: avatars at Photon 96px; hero images capped at 2x render width via
+       Photon (server rewrites the initial document; this covers cards that
+       arrive later via pollFeed); first hero fetches at high priority, below
+       card #2 lazy-loads. Runs from feedSweep — idempotent per image. */
+    function photonW(u, w){
+      try {
+        var x = new URL(u, location.origin);
+        if (/\.(gif|svg)$/i.test(x.pathname)) return u;
+        if (/^i\d\.wp\.com$/.test(x.host)) { if(!x.searchParams.get('w')&&!x.searchParams.get('resize')){x.searchParams.set('w',String(w));x.searchParams.set('ssl','1');} return x.href; }
+        if (!/\/wp-content\/uploads\//.test(x.pathname)) return u;
+        return 'https://i0.wp.com/' + x.host + x.pathname + '?w=' + w + '&ssl=1';
+      } catch (e) { return u; }
+    }
+    function optimizeCardImages(){
+      var tw = (window.innerWidth||1200) <= 768 ? 860 : 1200, cardIdx = 0;
       host.querySelectorAll('.oh-post').forEach(function (card) {
         cardIdx++;
+        card.querySelectorAll('img.oh-post-avatar').forEach(function (im) {
+          if (im.__smlOpt) return; im.__smlOpt = 1;
+          var v = photonImg(im.src, 96, 96);
+          if (v !== im.src) im.src = v;
+          im.loading = 'lazy'; im.decoding = 'async';
+        });
         card.querySelectorAll('img:not(.oh-post-avatar)').forEach(function (im) {
+          if (im.__smlOpt) return; im.__smlOpt = 1;
+          var v = photonW(im.currentSrc || im.src || '', tw);
+          if (v !== im.src) im.src = v;
           if (cardIdx > 2) im.loading = 'lazy';
+          else if (cardIdx === 1) { try { im.setAttribute('fetchpriority', 'high'); } catch (e) {} }
           im.decoding = 'async';
         });
       });
-    } catch (e) {}
+    }
+    try { optimizeCardImages(); } catch (e) {}
+    try { if (!document.querySelector('link[href="https://i0.wp.com"]')) { var pc = document.createElement('link'); pc.rel = 'preconnect'; pc.href = 'https://i0.wp.com'; document.head.appendChild(pc); } } catch (e) {}
     try { document.documentElement.style.overflow='hidden'; document.body.style.overflow='hidden'; } catch(e){}
     // pre-paint guard (wpcode/prepaint-guard.php): the old feed was held invisible
     // until this shell exists — reveal now (CSS failsafe reveals at 2.5s regardless)
@@ -1014,7 +1032,7 @@
       host.querySelectorAll('.sml-hfe-reaction-menu').forEach(function(m){ m.remove(); });
     }
 
-    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); }
+    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); try{optimizeCardImages();}catch(e){} }
     feedSweep(); setInterval(feedSweep, 3000); /* also covers cards slid in by pollFeed */
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
