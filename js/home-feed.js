@@ -106,9 +106,18 @@
     try { var pth = new URL(url, location.origin).pathname; return HFB_ROUTES[pth] || null; }
     catch (e) { return null; }
   }
+  function hfbNonce() {
+    try {
+      return (window.wpApiSettings && window.wpApiSettings.nonce)
+        || (window.SMLHomeFeedEngagement && window.SMLHomeFeedEngagement.nonce)
+        || window.SML_CG_NONCE || window.SML_LB_NONCE || '';
+    } catch (e) { return ''; }
+  }
   function hfbLoad(realFetch) {
     if (HFB.promise) return HFB.promise;
-    HFB.promise = realFetch('/wp-json/sml-home/v2/bootstrap', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    var n = hfbNonce();
+    if (!n) { HFB.map = false; HFB.promise = Promise.resolve(false); return HFB.promise; } /* no nonce → let singles carry their own auth */
+    HFB.promise = realFetch('/wp-json/sml-home/v2/bootstrap', { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-WP-Nonce': n } })
       .then(function (r) { if (!r.ok) throw new Error('boot ' + r.status); return r.json(); })
       .then(function (j) {
         if (j && j.components) { HFB.map = j.components; try { window.__smlHomeBoot = j.component_status; } catch (e) {} }
