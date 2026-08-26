@@ -23,7 +23,7 @@
   var loader = document.getElementById('sml-ca-js');
   var NONCE = window.SML_CA_NONCE || (loader && loader.dataset.nonce) || window.SML_CG_NONCE || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
   var ASSET_BASE = loader && loader.src ? loader.src.split('/js/creator-analytics.js')[0] + '/' : '';
-  var LOGO = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@3560eef3c519/img/loop-logo.png';
+  var LOGO = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/loop-logo.png';
   var BANNED_GROUPS = ['the-options-plug', 'spy-spy-highflyers']; // shadow-banned site-wide (see snippet 6873)
   var root = document.getElementById('sml-ca-root');
   if (!root) return;

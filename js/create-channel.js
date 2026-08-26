@@ -19,7 +19,7 @@
 
   var loader = document.getElementById('sml-cc-js');
   var NONCE = window.SML_CC_NONCE || (loader && loader.dataset.nonce) || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
-  var LOGO = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@3560eef3c519/img/loop-logo.png';
+  var LOGO = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/loop-logo.png';
   var HOST = 'stockmarketloop.com';
 
   function api(path, opts) {
