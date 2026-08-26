@@ -115,12 +115,15 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		$views = isset( $video['views'] ) ? max( 0, (int) $video['views'] ) : 0;
 		$duration = isset( $video['duration'] ) ? max( 0, (int) $video['duration'] ) : 0;
 		$created = isset( $video['created_at'] ) ? sml_channel_iso_date( $video['created_at'] ) : '';
+		$title = sanitize_text_field( isset( $video['title'] ) ? $video['title'] : '' );
+		$thumbnail = esc_url_raw( isset( $video['thumbnail_url'] ) ? $video['thumbnail_url'] : ( isset( $video['thumbnail'] ) ? $video['thumbnail'] : '' ) );
+		if ( '' === $title || '' === $thumbnail ) { return null; }
 		return array(
 			'id'          => $id,
-			'title'       => sanitize_text_field( isset( $video['title'] ) ? $video['title'] : '' ),
+			'title'       => $title,
 			'description' => wp_strip_all_tags( isset( $video['description'] ) ? $video['description'] : '' ),
 			'watch_url'   => $watch_url,
-			'thumbnail'   => esc_url_raw( isset( $video['thumbnail_url'] ) ? $video['thumbnail_url'] : '' ),
+			'thumbnail'   => $thumbnail,
 			'creator'     => $creator,
 			'handle'      => $handle,
 			'ticker'      => sanitize_text_field( isset( $video['ticker'] ) ? $video['ticker'] : '' ),

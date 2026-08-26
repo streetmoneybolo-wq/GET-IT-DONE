@@ -585,7 +585,7 @@
   }
 
   function cardQuote(x) { return '<a class="sml-ss-card sml-ss-card--quote" href="' + attr(x.terminal_url || ('/stock-chart/?symbol=' + encodeURIComponent(x.symbol || ''))) + '"><span class="sml-ss-symbol">$' + esc(x.symbol) + '</span><span class="sml-ss-copy"><span class="sml-ss-name">' + esc(x.name || x.symbol) + '</span><span class="sml-ss-meta">' + esc([x.exchange,x.type].filter(Boolean).join(' · ')) + '</span></span></a>'; }
-  function cardVideo(x) { return '<a class="sml-ss-card" href="' + attr(x.url) + '">' + (x.thumbnail ? '<img src="' + attr(x.thumbnail) + '" alt="" loading="lazy">' : '') + '<span class="sml-ss-copy"><span class="sml-ss-name">' + esc(x.title || 'Video') + '</span><span class="sml-ss-meta">' + esc([x.ticker ? '$' + x.ticker : '',x.creator,x.duration,x.views].filter(Boolean).join(' · ')) + '</span></span></a>'; }
+  function cardVideo(x) { return '<a class="sml-ss-card" href="' + attr(x.url) + '"><img src="' + attr(x.thumbnail) + '" alt="' + attr(x.title) + '" loading="lazy"><span class="sml-ss-copy"><span class="sml-ss-name">' + esc(x.title) + '</span><span class="sml-ss-meta">' + esc([x.ticker ? '$' + x.ticker : '',x.creator,x.duration,x.views].filter(Boolean).join(' · ')) + '</span></span></a>'; }
   function cardNews(x, letter) { return '<a class="sml-ss-card" href="' + attr(x.url) + '">' + (x.image ? '<img src="' + attr(x.image) + '" alt="" loading="lazy">' : '') + '<span class="sml-ss-copy"><span class="sml-ss-name">' + esc(x.title || (letter ? 'Loop Letter' : 'Article')) + '</span><span class="sml-ss-meta">' + esc([letter ? 'Loop Letter' : 'News',x.author,x.date].filter(Boolean).join(' · ')) + '</span></span></a>'; }
   function cardPerson(x) { return '<a class="sml-ss-card sml-ss-card--person" href="' + attr(x.url) + '"><img src="' + attr(x.avatar || '') + '" alt="" loading="lazy"><span class="sml-ss-copy"><span class="sml-ss-name">' + esc(x.name || x.handle) + '</span><span class="sml-ss-meta">@' + esc(x.handle) + '</span></span></a>'; }
   function section(key, title, rows, renderer) {
@@ -598,7 +598,7 @@
     var intents = sym ? '<div class="sml-ss-intents"><a class="sml-ss-intent" href="/stock-chart/?symbol=' + encodeURIComponent(sym) + '"><b>$' + esc(sym) + ' Quote</b><span>OPEN TICKER TERMINAL</span></a><button class="sml-ss-intent" data-intent="videos"><b>$' + esc(sym) + ' Videos</b><span>LATEST WATCH PAGES</span></button><button class="sml-ss-intent" data-intent="news"><b>$' + esc(sym) + ' News</b><span>ARTICLES + LOOP LETTERS</span></button><button class="sml-ss-intent" data-intent="people"><b>People</b><span>NAMES + @HANDLES</span></button></div>' : '';
     el('#sml-ss-body').innerHTML = intents +
       section('quotes','Quotes',g.quotes || [],cardQuote) +
-      section('videos','Videos',g.videos || [],cardVideo) +
+      section('videos','Videos',(g.videos || []).filter(function (x) { return x && x.title && x.url && x.thumbnail && /^https:\/\//i.test(String(x.thumbnail)); }),cardVideo) +
       section('news','News articles',g.news || [],function (x) { return cardNews(x,false); }) +
       section('letters','Loop Letters',g.letters || [],function (x) { return cardNews(x,true); }) +
       section('people','People',g.people || [],cardPerson);

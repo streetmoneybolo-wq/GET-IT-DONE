@@ -2238,22 +2238,20 @@
     el('#slw-recmeta').textContent = '';
     api('/sml-media/v1/feed').then(function (res) {
       var items = (res.j && (res.j.items || res.j.feed || res.j.media)) || [];
-      if (!items.length) throw new Error('empty');
-      renderRecReal(items.slice(0, 5).map(function (it) {
-        return { title: it.title || it.caption || 'Watch', url: it.url || it.link || it.permalink || '#', thumb: it.thumbnail || it.thumb || it.image || '', meta: it.author || it.handle || '' };
-      }));
+      var complete = items.map(function (it) {
+        return { title: it.title || it.caption || '', url: it.watch_url || it.url || it.link || it.permalink || '', thumb: it.thumbnail || it.thumbnail_url || it.thumb || it.image || '', meta: it.author || it.handle || '' };
+      }).filter(function (it) { return it.title && it.url && it.thumb && /^https:\/\//i.test(String(it.thumb)); }).slice(0, 5);
+      if (!complete.length) throw new Error('empty');
+      renderRecReal(complete);
     }).catch(function () {
-      fetch('/wp-json/wp/v2/posts?per_page=5&_fields=title,link,date', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (posts) {
-        if (!posts || !posts.length) { root.querySelector('.slw-rec').style.display = 'none'; return; }
-        renderRecReal(posts.map(function (p) {
-          return { title: (p.title && p.title.rendered) || 'Read', url: p.link, thumb: '', meta: (p.date || '').slice(0, 10) };
-        }));
-      }).catch(function () { root.querySelector('.slw-rec').style.display = 'none'; });
+      root.querySelector('.slw-rec').style.display = 'none';
     });
   }
   function renderRecReal(items) {
+    items = (items || []).filter(function (v) { return v && v.title && v.url && v.thumb && /^https:\/\//i.test(String(v.thumb)); });
+    if (!items.length) { root.querySelector('.slw-rec').style.display = 'none'; return; }
     el('#slw-rec-rows').innerHTML = items.map(function (v) {
-      return '<a class="slw-rv" href="' + esc(v.url) + '" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph"' + (v.thumb && /^https:/.test(v.thumb) ? ' style="background-image:url(' + esc(v.thumb) + ');background-size:cover;background-position:center"' : '') + '>' + (v.thumb ? '' : '<span>LOOP</span>') + '</div></div>' +
+      return '<a class="slw-rv" href="' + esc(v.url) + '" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph" style="background-image:url(' + esc(v.thumb) + ');background-size:cover;background-position:center"></div></div>' +
         '<div class="bd"><span class="tt">' + esc(String(v.title).replace(/<[^>]*>/g, '')) + '</span><div class="mt"><span class="d"></span><span>' + esc(v.meta) + '</span></div></div></a>';
     }).join('');
   }

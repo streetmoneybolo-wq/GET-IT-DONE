@@ -51,13 +51,14 @@
   }
 
   function renderVideos(el, items) {
+    items = (items || []).filter(function (v) { return v && v.watch_url && v.title && v.thumbnail && /^https:\/\//i.test(String(v.thumbnail)); });
     el.querySelector('#tv2med-body').innerHTML = items.slice(0, 5).map(function (v) {
       var sub = [];
       if (v.creator) sub.push(esc(v.creator) + (v.verified ? ' <span class="vf">✓</span>' : ''));
       if (v.views_label) sub.push(esc(v.views_label));
       if (v.ago) sub.push(esc(v.ago));
       return '<a class="tv2-med-item" href="' + esc(v.watch_url) + '">' +
-        '<span class="th">' + (v.thumbnail ? '<img loading="lazy" src="' + esc(v.thumbnail) + '" alt="">' : '') + (v.duration ? '<i class="dur">' + esc(v.duration) + '</i>' : '') + '</span>' +
+        '<span class="th"><img loading="lazy" src="' + esc(v.thumbnail) + '" alt="' + esc(v.title) + '">' + (v.duration ? '<i class="dur">' + esc(v.duration) + '</i>' : '') + '</span>' +
         '<span class="meta"><span class="ttl">' + esc(v.title) + '</span><span class="sub">' + (v.ticker ? '<span class="tk">$' + esc(v.ticker) + '</span> · ' : '') + sub.join(' · ') + '</span></span></a>';
     }).join('');
   }
@@ -88,7 +89,7 @@
     fetch('/wp-json/sml-video-upload-studio/v1/rail?ticker=' + encodeURIComponent(SYM), { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (d) {
-        var rel = (d && Array.isArray(d.related)) ? d.related.filter(function (v) { return v && v.watch_url && v.title; }) : [];
+        var rel = (d && Array.isArray(d.related)) ? d.related.filter(function (v) { return v && v.watch_url && v.title && v.thumbnail && /^https:\/\//i.test(String(v.thumbnail)); }) : [];
         if (rel.length) {
           MODE = 'videos';
           EL = card('Related videos & streams');

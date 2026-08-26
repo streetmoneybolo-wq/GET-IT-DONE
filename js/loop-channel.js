@@ -262,23 +262,31 @@
     return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
   function safeImage(url) { return url && /^https:\/\//i.test(url) ? url : ''; }
+  function completeVideo(video) { return !!(video && video.title && video.watch_url && safeImage(video.thumbnail)); }
   function videoHero(video) {
-    if (!video) return;
+    if (!completeVideo(video)) { el('#ch-hero').innerHTML = ''; return; }
     var bg = safeImage(video.thumbnail);
     el('#ch-hero').innerHTML = '<a class="lch-hero latest" href="' + esc(video.watch_url) + '"><div class="lch-hero-box"><div class="lch-hero-bg"' +
       (bg ? ' style="background-image:url(&quot;' + esc(bg) + '&quot;)"' : '') + '></div><div class="lch-hero-shade"></div>' +
       '<div class="lch-hero-badge latest"><span>NEW VIDEO</span></div><span class="lch-hero-meta">' + esc(video.views_label || '') + '</span>' +
-      '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(video.title || 'Watch video') + '</span><span class="lch-hero-cta">WATCH →</span></div></div></a>';
+      '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(video.title) + '</span><span class="lch-hero-cta">WATCH →</span></div></div></a>';
   }
   function loadHero(feed, latest) {
     if (feed && feed.live) {
-      return api('/sml-lw/v1/presence?handle=' + encodeURIComponent(HANDLE)).then(function (pres) {
-        var n = (pres.j && pres.j.count) || 0;
-        el('#ch-hero').innerHTML = '<a class="lch-hero live" href="/live/"><div class="lch-hero-box"><div class="lch-hero-bg"></div>' +
+      var creatorHandle = ((feed.creator || {}).handle || PROFILE_HANDLE || '').replace(/^@/, '');
+      if (!creatorHandle) { videoHero(latest); return Promise.resolve(); }
+      return Promise.all([
+        api('/sml-scheduled-live/v1/creator/' + encodeURIComponent(creatorHandle)),
+        api('/sml-lw/v1/presence?handle=' + encodeURIComponent(creatorHandle))
+      ]).then(function (rows) {
+        var live = rows[0].ok ? (rows[0].j || {}) : {};
+        var n = (rows[1].j && rows[1].j.count) || 0;
+        var liveImage = safeImage(live.thumbnail_url || live.thumbnail);
+        if (!live.title || !live.watch_url || !liveImage) { videoHero(latest); return; }
+        el('#ch-hero').innerHTML = '<a class="lch-hero live" href="' + esc(live.watch_url) + '"><div class="lch-hero-box"><div class="lch-hero-bg" style="background-image:url(&quot;' + esc(liveImage) + '&quot;)"></div>' +
           '<div class="lch-hero-badge"><span class="dot"></span><span>LIVE</span></div><span class="lch-hero-meta">' + n + ' watching</span>' +
-          '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(el('#ch-name').textContent || HANDLE) + ' is live on Stock Market Loop</span>' +
-          '<span class="lch-hero-cta">JOIN STREAM →</span></div></div></a>';
-      });
+          '<div class="lch-hero-foot"><span class="lch-hero-title">' + esc(live.title) + '</span><span class="lch-hero-cta">JOIN STREAM →</span></div></div></a>';
+      }).catch(function () { videoHero(latest); });
     }
     videoHero(latest);
     return Promise.resolve();
@@ -287,6 +295,7 @@
   window.SML_CH_ORBIT_FILTER = function (sym) { ORBIT_TICKER = sym || ''; renderOrbit(ALL_VIDEOS, true); };
   function renderOrbit(videos, keep) {
     var mount = el('#ch-orbit');
+    videos = (videos || []).filter(completeVideo);
     if (!keep) ALL_VIDEOS = videos.slice();
     var all = ALL_VIDEOS;
     if (ORBIT_TICKER) videos = all.filter(function (v) { return String(v.ticker || '').toUpperCase().replace(/^\$/, '') === ORBIT_TICKER || new RegExp('\\$' + ORBIT_TICKER + '\\b', 'i').test((v.title || '') + ' ' + (v.description || '')); });
@@ -303,7 +312,7 @@
         var bg = safeImage(v.thumbnail);
         return '<a class="lch-orbit-card" data-orbit="' + i + '" href="' + esc(v.watch_url) + '" aria-label="' + esc(v.title) + '"><span class="pic"' +
           (bg ? ' style="background-image:url(&quot;' + esc(bg) + '&quot;)"' : '') + '></span><span class="shade"></span><span class="dur">' + esc(v.duration || '') + '</span>' +
-          '<span class="copy"><b>' + esc(v.title || 'Untitled video') + '</b><small>' + esc(v.views_label || '') + (v.created_at ? ' · ' + esc(ago(v.created_at)) : '') + '</small></span></a>';
+          '<span class="copy"><b>' + esc(v.title) + '</b><small>' + esc(v.views_label || '') + (v.created_at ? ' · ' + esc(ago(v.created_at)) : '') + '</small></span></a>';
       }).join('') + '</div><button class="lch-orbit-arrow prev" type="button" aria-label="Previous video">‹</button><button class="lch-orbit-arrow next" type="button" aria-label="Next video">›</button></div>' +
       '<div class="lch-orbit-status"><b></b><span></span></div></section>';
     var cards = Array.prototype.slice.call(mount.querySelectorAll('.lch-orbit-card'));
@@ -317,7 +326,7 @@
         card.style.setProperty('--orbit-depth', (Math.abs(delta) * -58) + 'px');
         card.classList.toggle('on', delta === 0); card.tabIndex = delta === 0 ? 0 : -1;
       });
-      var v = videos[active]; mount.querySelector('.lch-orbit-status b').textContent = v.title || 'Untitled video';
+      var v = videos[active]; mount.querySelector('.lch-orbit-status b').textContent = v.title;
       mount.querySelector('.lch-orbit-status span').textContent = (v.views_label || '') + (v.created_at ? ' · ' + ago(v.created_at) : '');
     }
     function move(by) { active = (active + by + cards.length) % cards.length; paint(); }

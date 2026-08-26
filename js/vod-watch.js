@@ -410,17 +410,19 @@
         if (me.ticker) { var t = el('#vw-term'); t.textContent = 'Open $' + String(me.ticker).replace(/^\$/, '') + ' terminal →'; t.style.display = ''; t.onclick = function () { location.href = '/stock-chart/?symbol=' + encodeURIComponent(String(me.ticker).replace(/^\$/, '')); }; }
         if (me.duration && !VID.duration) { el('#vw-dur').textContent = me.duration; el('#vw-dur2').textContent = me.duration; }
       }
-      var list = items.filter(function (x) { return x.id !== VID.id; }).slice(0, 8);
+      var list = items.filter(function (x) { return x.id !== VID.id && x.title && x.watch_url && x.thumbnail && /^https:\/\//i.test(String(x.thumbnail)); }).slice(0, 8);
       el('#vw-rec').innerHTML = list.map(function (x) {
-        return '<a class="slw-rv" href="' + esc(x.watch_url || ('/watch/' + x.id + '/')) + '" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph"' + (x.thumbnail && /^https:/.test(x.thumbnail) ? ' style="background-image:url(' + esc(x.thumbnail) + ');background-size:cover;background-position:center"' : '') + '>' + (x.thumbnail ? '' : '<span>LOOP</span>') + '</div>' +
+        return '<a class="slw-rv" href="' + esc(x.watch_url) + '" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph" style="background-image:url(' + esc(x.thumbnail) + ');background-size:cover;background-position:center"></div>' +
           '<div class="badge">UPLOAD</div>' + (x.duration ? '<div class="dur">' + esc(x.duration) + '</div>' : '') + '</div>' +
           '<div class="bd"><span class="tt">' + esc(x.title) + '</span><div class="mt"><span class="d"></span><span>' + esc((x.views_label || (x.views != null ? Number(x.views).toLocaleString() + ' views' : '')) + (x.ago ? ' · ' + x.ago : '') + (x.creator ? ' · ' + x.creator : '')) + '</span></div></div></a>';
       }).join('') || '<div class="slw-cm-empty">More uploads land here as creators publish.</div>';
       el('#vw-recmeta').textContent = list.length ? list.length + ' picks' : '';
       /* the live desk, if it's on air, leads the rail */
       api('/sml-live/v1/feeds/grandmasterobi').then(function (f) {
-        if (f.j && f.j.live) {
-          var liveRow = '<a class="slw-rv" href="/live/" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph"><span>LIVE</span></div><div class="badge live">LIVE</div></div><div class="bd"><span class="tt">Live on Stock Market Loop</span><div class="mt"><span class="d live"></span><span>the desk is on air now</span></div></div></a>';
+        var live = f.j || {};
+        var liveThumb = live.thumbnail || live.thumbnail_url || '';
+        if (live.live && live.title && live.watch_url && /^https:\/\//i.test(String(liveThumb))) {
+          var liveRow = '<a class="slw-rv" href="' + esc(live.watch_url) + '" style="text-decoration:none"><div class="th"><div class="ar"></div><div class="ph" style="background-image:url(' + esc(liveThumb) + ');background-size:cover;background-position:center"></div><div class="badge live">LIVE</div></div><div class="bd"><span class="tt">' + esc(live.title) + '</span><div class="mt"><span class="d live"></span><span>live now</span></div></div></a>';
           el('#vw-rec').insertAdjacentHTML('afterbegin', liveRow);
         }
       }).catch(function () {});

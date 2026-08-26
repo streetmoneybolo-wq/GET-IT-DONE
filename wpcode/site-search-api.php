@@ -90,14 +90,17 @@ if ( ! function_exists( 'sml_ss_clean_query' ) ) {
 			if ( ! is_array( $row ) ) { continue; }
 			$id = isset( $row['id'] ) ? sanitize_key( $row['id'] ) : '';
 			if ( '' === $id || isset( $out[ $id ] ) ) { continue; }
+			$title = sml_ss_text( $row['title'] ?? '' );
+			$thumbnail = esc_url_raw( $row['thumbnail'] ?? '' );
+			if ( '' === $title || '' === $thumbnail ) { continue; }
 			$haystack = strtolower( implode( ' ', array_filter( array( $row['ticker'] ?? '', $row['title'] ?? '', $row['creator'] ?? '', $row['handle'] ?? '' ) ) ) );
 			$exact_ticker = $symbol && strtoupper( (string) ( $row['ticker'] ?? '' ) ) === $symbol;
 			if ( ! $exact_ticker && false === strpos( $haystack, $needle ) ) { continue; }
 			$out[ $id ] = array(
 				'id'        => $id,
-				'title'     => sml_ss_text( $row['title'] ?? '' ),
+				'title'     => $title,
 				'url'       => esc_url_raw( $row['watch_url'] ?? home_url( '/watch/' . $id . '/' ) ),
-				'thumbnail' => esc_url_raw( $row['thumbnail'] ?? '' ),
+				'thumbnail' => $thumbnail,
 				'creator'   => sml_ss_text( $row['creator'] ?? '' ),
 				'handle'    => sanitize_user( (string) ( $row['handle'] ?? '' ), true ),
 				'ticker'    => strtoupper( sanitize_text_field( (string) ( $row['ticker'] ?? '' ) ) ),
