@@ -50,7 +50,18 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 
 	function sml_sn_publish( $title, $excerpt, $body, $key, &$log ) {
 		if ( isset( $log['keys'][ $key ] ) || $log['count'] >= 14 ) { return 0; }
+		/* re-check against the STORED log right before inserting — a crashed or
+		   concurrent tick must never let the same key publish twice */
+		$fresh = get_option( 'sml_sn_log', array() );
+		if ( is_array( $fresh ) && ( $fresh['day'] ?? '' ) === $log['day'] && isset( $fresh['keys'][ $key ] ) ) {
+			$log['keys'][ $key ] = 1;
+			return 0;
+		}
 		$cat = (int) get_cat_ID( 'Markets' );
+		if ( ! $cat ) {
+			$term = wp_insert_term( 'Markets', 'category' );
+			$cat  = is_array( $term ) && ! empty( $term['term_id'] ) ? (int) $term['term_id'] : 0;
+		}
 		$id  = wp_insert_post( array(
 			'post_title'    => $title,
 			'post_content'  => $body,
@@ -64,12 +75,20 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 		update_post_meta( $id, '_sml_sn_autopilot', 1 );
 		$log['keys'][ $key ] = 1;
 		$log['count']++;
+		update_option( 'sml_sn_log', $log, false ); /* persist PER article — crash-safe dedup */
 		return (int) $id;
 	}
 
 	function sml_sn_tick( $force = false ) {
 		if ( get_option( 'sml_sn_off' ) ) { return array( 'skipped' => 'disabled' ); }
 		if ( ! $force && ! sml_sn_market_open() ) { return array( 'skipped' => 'market closed' ); }
+		/* atomic tick lock (add_option INSERTs or fails) — overlapping cron +
+		   manual runs must not race the dedup log */
+		if ( ! add_option( 'sml_sn_lock', (string) time(), '', false ) ) {
+			$t = (int) get_option( 'sml_sn_lock' );
+			if ( time() - $t < 300 ) { return array( 'skipped' => 'locked' ); }
+			update_option( 'sml_sn_lock', (string) time(), false ); /* stale lock from a dead tick — take over */
+		}
 		$log = sml_sn_log_load();
 		$posted = array();
 		$tick_cap = 3;
@@ -92,19 +111,22 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 				$key  = 'gamma:' . $sym . ':' . $peak;
 				$title = sprintf( '$%s Options Gamma Clusters Near $%s%s', $sym, $peak, $exp ? ' Into ' . $exp : '' );
 				$ex    = sprintf( 'The engine measured %s of signed gamma exposure across %d live option contracts.', $net, $n );
-				$body  = '<p>' . esc_html( sprintf( '$%s option positioning shows its heaviest gamma concentration near the $%s strike%s. Net signed gamma exposure across %d live contracts measured %s, with the underlying at $%s at capture.', $sym, $peak, $exp ? ' into ' . $exp : '', $n, $net, number_format( (float) ( $snap['underlying'] ?? 0 ), 2 ) ) ) . '</p>';
+				$body  = '<p>' . esc_html( sprintf( '$%s option positioning shows its heaviest gamma concentration near the $%s strike%s. Net signed gamma exposure across %d live contracts measured %s, with the underlying at $%s at capture (%s).', $sym, $peak, $exp ? ' into ' . $exp : '', $n, $net, number_format( (float) ( $snap['underlying'] ?? 0 ), 2 ), (string) $snap['captured'] ) ) . '</p>';
 				if ( ! empty( $snap['max_pain']['strike'] ) ) {
-					$body .= '<p>' . esc_html( sprintf( 'The same snapshot puts max pain at $%s. Figures reduce the live chain captured %s and refresh intraday as new snapshots land.', number_format( (float) $snap['max_pain']['strike'], 2 ), (string) $snap['captured'] ) ) . '</p>';
+					$body .= '<p>' . esc_html( sprintf( 'The same snapshot puts max pain at $%s. Figures reduce the live chain and refresh intraday as new snapshots land.', number_format( (float) $snap['max_pain']['strike'], 2 ) ) ) . '</p>';
 				}
-				$body .= '<p>' . esc_html( sprintf( 'Live positioning for $%s updates on the Stock Market Loop options page.', $sym ) ) . '</p>';
+				$body .= '<p>' . esc_html( 'Sign convention: dealers assumed short calls and long puts (call gamma positive, put gamma negative); the opposite assumption inverts the sign.' ) . '</p>'
+					. '<p>' . esc_html( sprintf( 'Live positioning for $%s updates on the Stock Market Loop options page.', $sym ) ) . '</p>';
 				$id = sml_sn_publish( $title, $ex, $body, $key, $log );
 				if ( $id ) { $posted[] = $id; }
 			}
 			if ( count( $posted ) >= $tick_cap ) { break; }
 
 			$un = isset( $snap['unusual'] ) && is_array( $snap['unusual'] ) ? $snap['unusual'] : array();
-			if ( $un && ! empty( $un[0]['premium'] ) && (float) $un[0]['premium'] >= 250000 && ! empty( $un[0]['strike'] ) ) {
-				$u      = $un[0];
+			/* OI must be >= 1: on a zero-OI strike (newly listed) the stored ratio
+			   is volume/1, and printing it as a Vol/OI multiple would be fabricated */
+			if ( $un && ! empty( $un[0]['premium'] ) && (float) $un[0]['premium'] >= 250000 && ! empty( $un[0]['strike'] ) && (int) ( $un[0]['open_interest'] ?? 0 ) >= 1 ) {
+				$u      = $un[0] + array( 'type' => '', 'volume' => 0, 'open_interest' => 0, 'ratio' => 0 );
 				$side   = strtoupper( (string) $u['type'] );
 				$strike = number_format( (float) $u['strike'], 2 );
 				$prem   = sml_sn_money( $u['premium'] );
@@ -118,11 +140,15 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 			}
 		}
 
-		/* -- momentum from the Render quote cache (warmed symbols only) -- */
-		if ( count( $posted ) < $tick_cap ) {
+		/* -- momentum from the Render quote cache (one snapshot call for the
+		      whole set, ~20/day). Gated on the REAL clock even under force:
+		      outside market hours the snapshot's pct is the prior session and
+		      an "Intraday" headline would be false. Stale/error responses are
+		      rejected outright. -- */
+		if ( count( $posted ) < $tick_cap && sml_sn_market_open() ) {
 			$r = wp_remote_get( 'https://stockmarketloop-loop-kick.onrender.com/api/quotes?symbols=' . rawurlencode( implode( ',', $tickers ) ), array( 'timeout' => 6 ) );
 			$q = ! is_wp_error( $r ) ? json_decode( (string) wp_remote_retrieve_body( $r ), true ) : null;
-			$quotes = is_array( $q ) && isset( $q['quotes'] ) && is_array( $q['quotes'] ) ? $q['quotes'] : array();
+			$quotes = is_array( $q ) && ! empty( $q['ok'] ) && empty( $q['stale'] ) && isset( $q['quotes'] ) && is_array( $q['quotes'] ) ? $q['quotes'] : array();
 			foreach ( $tickers as $sym ) {
 				if ( count( $posted ) >= $tick_cap ) { break; }
 				$row = $quotes[ $sym ] ?? null;
@@ -144,6 +170,7 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 
 		$log['last'] = gmdate( 'c' );
 		update_option( 'sml_sn_log', $log, false );
+		delete_option( 'sml_sn_lock' );
 		return array( 'posted' => $posted, 'count_today' => $log['count'] );
 	}
 
@@ -152,7 +179,11 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 		return $s;
 	} );
 	add_action( 'init', static function () {
-		if ( ! wp_next_scheduled( 'sml_sn_tick_event' ) ) { wp_schedule_event( time() + 120, 'sml_sn_20min', 'sml_sn_tick_event' ); }
+		/* one-shot atomic flag: two concurrent first requests must not both
+		   schedule (duplicate recurring events reschedule themselves forever) */
+		if ( ! wp_next_scheduled( 'sml_sn_tick_event' ) && add_option( 'sml_sn_scheduled_v1', '1', '', false ) ) {
+			wp_schedule_event( time() + 120, 'sml_sn_20min', 'sml_sn_tick_event' );
+		}
 	}, 20 );
 	add_action( 'sml_sn_tick_event', 'sml_sn_tick' );
 
