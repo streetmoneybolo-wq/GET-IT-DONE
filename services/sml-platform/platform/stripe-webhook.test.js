@@ -32,12 +32,18 @@ test('a signature computed over the exact raw bytes verifies', () => {
   assert.equal(r.timestamp, T);
 });
 
-/* This is the failure everyone ships at least once: JSON.parse then
-   re-serialise, and the bytes no longer match what Stripe signed. */
-test('re-serialising the JSON breaks the signature', () => {
+/* The failure everyone ships at least once: something reformats the body
+   before verification. A plain parse/stringify round-trip often happens to
+   reproduce identical bytes, which is exactly why this bug survives casual
+   testing - so this asserts the real mechanism, that ANY reformatting of the
+   same data invalidates the signature. */
+test('reformatting the body breaks the signature even though the data is identical', () => {
   const raw = body();
-  const reserialised = JSON.stringify(JSON.parse(raw).constructor === Object ? JSON.parse(raw) : {});
-  const r = S.verifySignature({ secret: SECRET, header: header(raw), rawBody: reserialised, now: NOW_MS });
+  const prettied = JSON.stringify(JSON.parse(raw), null, 2);
+  assert.deepEqual(JSON.parse(prettied), JSON.parse(raw), 'same data...');
+  assert.notEqual(prettied, raw, '...different bytes');
+
+  const r = S.verifySignature({ secret: SECRET, header: header(raw), rawBody: prettied, now: NOW_MS });
   assert.equal(r.ok, false);
   assert.equal(r.error, 'signature_mismatch');
 });
