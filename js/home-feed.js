@@ -18,6 +18,31 @@
 
   // ---- live quotes (moomoo OpenD bridge -> Render /api/quotes) ----
   // Stays on "—" until the bridge is up; never fabricates a number.
+  /* PERF (phase 3-lite): the signed-in homepage fired 18x engagement-counts
+     (server durations up to 15.6s) and every Loop Bucks read twice. Cache GET
+     responses for these endpoints briefly IN-PAGE and share in-flight requests.
+     Mutations (earn/react/post) are never touched. Kill switch: ?hfreq=0 */
+  (function () {
+    if (window.__smlHfFetchShim || /[?&]hfreq=0/.test(location.search)) return;
+    window.__smlHfFetchShim = true;
+    var NF = window.fetch, cache = {};
+    var RX = /\/wp-json\/(sml-home-engagement\/v1\/counts|sml-lb\/v1\/(me|gates|leaderboard)|sml-lbm\/v1\/state)/;
+    window.fetch = function (input, init) {
+      var url = typeof input === 'string' ? input : ((input && input.url) || '');
+      var isGet = !init || !init.method || String(init.method).toUpperCase() === 'GET';
+      if (isGet && RX.test(url)) {
+        var ttl = /home-engagement/.test(url) ? 25000 : 60000;
+        var c = cache[url];
+        if (c && Date.now() - c.t < ttl) return c.p.then(function (r) { return r.clone(); });
+        var pr = NF.call(window, input, init).then(function (r) { return r.clone(); });
+        cache[url] = { t: Date.now(), p: pr };
+        pr.catch(function () { delete cache[url]; });
+        return pr.then(function (r) { return r.clone(); });
+      }
+      return NF.apply(window, arguments);
+    };
+  }());
+
   var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', LOGO_URL='https://stockmarketloop-loop-kick.onrender.com/api/logo/', BRAND_IMG='https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@3560eef3c519/img/loop-logo.png', AJAX_URL='/wp-admin/admin-ajax.php', Q={}, qTimer=null, SYMS=[];
   function fmtP(v){return v==null?'—':'$'+(Math.abs(Number(v))>=1000?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toFixed(2));}
   function fmtPct(v){return v==null?'—':(v>=0?'▲ +':'▼ ')+Number(v).toFixed(2)+'%';}
@@ -25,7 +50,7 @@
   function fmtVol(v){if(v==null)return'—';v=Number(v);return v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(v);}
   function qColor(v){return v==null?'#6B7C90':(v>=0?'#38F58A':'#F2495C');}
   function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var d=Q[el.getAttribute('data-q')]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); }
-  function pollQuotes(){ var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
+  function pollQuotes(){ if(document.hidden) return; var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
 
   function boot() {
     var host = document.getElementById('sml-optimized-home');
@@ -68,6 +93,36 @@
         '#sml-optimized-home .sml-sth-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;}' +
         // Responsive: collapse rails on narrow screens.
         '@media(max-width:1080px){#sml-hf-grid{grid-template-columns:1fr !important;}#sml-hf-left,#sml-hf-right{display:none !important;}}' +
+        /* PERF phase 2: true mobile layout <768px, scoped to the homepage shell.
+           Kill switch: ?hfm=0 or localStorage sml_hfm=0 (class .hfm not added). */
+        '@media(max-width:767px){' +
+          '#sml-hf-shell.hfm{overflow-x:clip;}' +
+          '#sml-hf-shell.hfm .hf-headrow{height:auto !important;min-height:56px;padding:8px 10px !important;gap:8px !important;}' +
+          '#sml-hf-shell.hfm .hf-nav{display:none !important;}' +
+          '#sml-hf-shell.hfm .hf-logo img{height:32px !important;}' +
+          '#sml-hf-shell.hfm .hf-search{padding:8px 12px !important;max-width:none !important;}' +
+          '#sml-hf-shell.hfm .hf-search input{font-size:16px !important;}' +      /* 16px stops iOS zoom-on-focus */
+          '#sml-hf-shell.hfm #sml-hf-loop-kick{padding:11px 12px !important;font-size:11px !important;}' +
+          '#sml-hf-shell.hfm #sml-hf-me-top{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;}' +
+          '#sml-hf-shell.hfm .hf-headrow #sml-lb-btn{display:none !important;}' + /* Loop Bucks moves to the bottom bar */
+          '#sml-hf-shell.hfm #sml-hf-grid{padding:12px 12px calc(76px + env(safe-area-inset-bottom,0px)) !important;gap:14px !important;}' +
+          '#sml-hf-shell.hfm .hf-stories{gap:10px !important;margin-bottom:12px !important;-webkit-overflow-scrolling:touch;scrollbar-width:none;}' +
+          '#sml-hf-shell.hfm .hf-stories::-webkit-scrollbar{display:none;}' +
+          '#sml-hf-shell.hfm .hf-composer{flex-wrap:wrap;padding:12px 14px !important;}' +
+          '#sml-hf-shell.hfm .hf-composer input{flex:1 1 140px !important;font-size:16px !important;}' +
+          '#sml-hf-shell.hfm .hf-composer a{padding:12px 20px !important;}' +
+          '#sml-hf-shell.hfm #sml-hf-tabs{overflow-x:auto;scrollbar-width:none;}' +
+          '#sml-hf-shell.hfm #sml-hf-tabs::-webkit-scrollbar{display:none;}' +
+          '#sml-hf-shell.hfm #sml-hf-tabs button{min-height:44px;}' +
+          '#sml-hf-shell.hfm .sml-hfe-actions button,#sml-hf-shell.hfm .sml-sth-actions button{min-height:44px;min-width:44px;}' +
+        '}' +
+        '#sml-hf-bnav{display:none;}' +
+        '@media(max-width:767px){' +
+          '#sml-hf-shell.hfm ~ #sml-hf-bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:linear-gradient(180deg,rgba(12,19,30,.96),rgba(7,12,20,.98));backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.08);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));}' +
+          '#sml-hf-bnav a,#sml-hf-bnav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:48px;font:600 10px Archivo,sans-serif;color:#93A4B8;text-decoration:none;border-radius:10px;background:transparent;border:none;cursor:pointer;}' +
+          '#sml-hf-bnav .on{color:#38F58A;}' +
+          '#sml-hf-bnav .i{font-size:16px;line-height:1;}' +
+        '}' +
         // Rabbit-hole reveal: right-edge arrow on each post opens a looping mini-carousel.
         '#sml-optimized-home .oh-post{overflow:visible;}' +
         '.sml-rh-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid rgba(56,245,138,.4);background:linear-gradient(180deg,rgba(28,39,52,.96),rgba(17,25,38,.96));color:#38F58A;font-size:17px;font-weight:700;cursor:pointer;z-index:5;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px -4px rgba(0,0,0,.8);transition:transform .15s,box-shadow .15s;padding:0;line-height:1;}' +
@@ -116,7 +171,17 @@
     var GBTN = 'border:1px solid rgba(20,170,90,.9);background:linear-gradient(180deg,#6BFFB0 0%,#38F58A 46%,#17BC64 100%);color:#03120A;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.65),inset 0 -2px 0 rgba(0,0,0,.28),0 6px 14px -5px rgba(56,245,138,.5),0 2px 3px rgba(0,0,0,.55);';
     var initialsOf = function(n){return n.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase();};
     // Viewer avatar: real profile pic if we have it (window.SML_ME.avatar), else initials.
-    function avatarHTML(size, ring, rw){ ring = ring||'rgba(34,224,122,.85)'; rw = rw||3.5; var sh='0 0 0 2px #0B131F,0 0 0 '+rw+'px '+ring; if (meAvatar) return '<img src="'+esc(meAvatar)+'" alt="'+esc(meName)+'" referrerpolicy="no-referrer" style="width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+sh+'">'; return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:linear-gradient(160deg,#24323F,#0E1620);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:'+Math.round(size*0.37)+'px;color:#38F58A;flex:none;box-shadow:'+sh+'">'+esc(meInit)+'</div>'; }
+    /* PERF: avatars rendered at 36-56px were downloading full-size uploads —
+       route site uploads through the existing Jetpack Photon CDN at 2x size. */
+    function photonImg(u, w, h){
+      try {
+        var x = new URL(u, location.origin);
+        if (/^i\d\.wp\.com$/.test(x.host)) { x.searchParams.set('resize', w + ',' + h); return x.href; }
+        if (!/\/wp-content\/uploads\//.test(x.pathname)) return u;
+        return 'https://i0.wp.com/' + x.host + x.pathname + '?resize=' + w + ',' + h + '&ssl=1';
+      } catch (e) { return u; }
+    }
+    function avatarHTML(size, ring, rw){ ring = ring||'rgba(34,224,122,.85)'; rw = rw||3.5; var sh='0 0 0 2px #0B131F,0 0 0 '+rw+'px '+ring; if (meAvatar) return '<img src="'+esc(photonImg(meAvatar, size*2, size*2))+'" width="'+size+'" height="'+size+'" alt="'+esc(meName)+'" referrerpolicy="no-referrer" style="width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+sh+'">'; return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:linear-gradient(160deg,#24323F,#0E1620);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:'+Math.round(size*0.37)+'px;color:#38F58A;flex:none;box-shadow:'+sh+'">'+esc(meInit)+'</div>'; }
 
     function tapeCells(){ return syms.map(function(s){return '<a href="/stock-chart/?symbol='+esc(s)+'" data-tkpop="'+esc(s)+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:8px;padding:0 20px;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;white-space:nowrap;border-right:1px solid rgba(255,255,255,.06)"><span style="color:#CFDAE4;font-weight:600">$'+esc(s)+'</span><span data-q="'+esc(s)+'" data-qf="last" style="color:#6B7C90">—</span><span data-q="'+esc(s)+'" data-qf="pct" style="color:#6B7C90;font-weight:600">—</span></a>';}).join(''); }
     var NAV = [['🎥','Watch','/watch/'],['✉️','Letters','/n/'],['👥','Groups','/groups/']];
@@ -148,11 +213,11 @@
     var shell = document.createElement('div'); shell.id='sml-hf-shell';
     shell.innerHTML =
       // header
-      '<div style="position:sticky;top:0;z-index:50;background:linear-gradient(180deg,rgba(20,30,44,.92),rgba(9,15,24,.9));backdrop-filter:blur(16px) saturate(140%);border-bottom:1px solid rgba(0,0,0,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 14px 34px -14px rgba(0,0,0,.9)">' +
-        '<div style="max-width:1360px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:0 24px;height:60px">' +
-          '<a href="/" aria-label="StockMarketLoop" style="display:flex;align-items:center;flex:none;text-decoration:none"><img src="'+BRAND_IMG+'" alt="StockMarketLoop" style="height:46px;width:auto;display:block"></a>' +
-          '<div style="flex:1;max-width:620px;display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#080E17,#121B27);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:8px 16px;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><span style="color:#6B7C90;font-size:13px">⌕</span><input placeholder="Search a ticker, e.g. NVDA" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#E6EDF5;font-size:13px"></div>' +
-          '<div style="display:flex;gap:18px;font-size:13.5px;font-weight:500;color:#93A4B8">' +
+      '<div class="hf-head" style="position:sticky;top:0;z-index:50;background:linear-gradient(180deg,rgba(20,30,44,.92),rgba(9,15,24,.9));backdrop-filter:blur(16px) saturate(140%);border-bottom:1px solid rgba(0,0,0,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 14px 34px -14px rgba(0,0,0,.9)">' +
+        '<div class="hf-headrow" style="max-width:1360px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:0 24px;height:60px">' +
+          '<a class="hf-logo" href="/" aria-label="StockMarketLoop" style="display:flex;align-items:center;flex:none;text-decoration:none"><img src="'+BRAND_IMG+'" alt="StockMarketLoop" style="height:46px;width:auto;display:block"></a>' +
+          '<div class="hf-search" style="flex:1;max-width:620px;display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#080E17,#121B27);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:8px 16px;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><span style="color:#6B7C90;font-size:13px">⌕</span><input placeholder="Search a ticker, e.g. NVDA" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#E6EDF5;font-size:13px"></div>' +
+          '<div class="hf-nav" style="display:flex;gap:18px;font-size:13.5px;font-weight:500;color:#93A4B8">' +
             '<a href="/" style="color:#38F58A;text-decoration:none">Feed</a><a href="/markets/" style="color:#93A4B8;text-decoration:none">Markets</a><a href="/live/" style="color:#93A4B8;text-decoration:none">Live</a><a href="/n/" style="color:#93A4B8;text-decoration:none">Letters</a>' +
           '</div>' +
           '<button type="button" id="sml-hf-loop-kick" aria-label="Open LOOP-KICK" style="padding:9px 20px;border-radius:999px;font-size:13px;white-space:nowrap;'+GBTN+'">LOOP-KICK</button>' +
@@ -172,8 +237,8 @@
         '</div>' +
         // center
         '<div style="min-width:0">' +
-          '<div style="display:flex;gap:14px;margin-bottom:18px;overflow-x:auto;padding:2px">'+storyItems()+'</div>' +
-          '<div style="'+CARD+'border-radius:18px;padding:16px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">'+avatarHTML(40)+'<input placeholder="What\'s on the tape? Use $TICKER to tag…" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:11px 18px;color:#E6EDF5;font-size:13px;outline:none;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><a href="/?compose=1" style="padding:10px 22px;border-radius:999px;text-decoration:none;font-size:13px;flex:none;'+GBTN+'">Post</a></div>' +
+          '<div class="hf-stories" style="display:flex;gap:14px;margin-bottom:18px;overflow-x:auto;padding:2px">'+storyItems()+'</div>' +
+          '<div class="hf-composer" style="'+CARD+'border-radius:18px;padding:16px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">'+avatarHTML(40)+'<input placeholder="What\'s on the tape? Use $TICKER to tag…" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:11px 18px;color:#E6EDF5;font-size:13px;outline:none;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><a href="/?compose=1" style="padding:10px 22px;border-radius:999px;text-decoration:none;font-size:13px;flex:none;'+GBTN+'">Post</a></div>' +
           '<div id="sml-hf-tabs" style="display:flex;align-items:center;gap:8px;margin-bottom:18px">'+feedTabs()+'<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A;animation:smlHfGlow 2s ease-in-out infinite"></span>live</div></div>' +
           // real feed slot
           '<div id="sml-hf-feedslot"></div>' +
@@ -187,9 +252,49 @@
       '</div>';
 
     document.body.appendChild(shell);
+    /* PERF phase 2: mobile layout flag + bottom navigation (secondary nav moves
+       off the compact mobile header). Kill: ?hfm=0 / localStorage sml_hfm=0 */
+    var HFM = !/[?&]hfm=0/.test(location.search);
+    try { if (localStorage.getItem('sml_hfm') === '0') HFM = false; } catch(e) {}
+    if (HFM) {
+      shell.classList.add('hfm');
+      var bnav = document.createElement('nav');
+      bnav.id = 'sml-hf-bnav';
+      bnav.setAttribute('aria-label', 'Primary');
+      bnav.innerHTML =
+        '<a href="/" class="on"><span class="i">◉</span>Feed</a>' +
+        '<a href="/markets/"><span class="i">▤</span>Markets</a>' +
+        '<a href="/live/"><span class="i">◈</span>Live</a>' +
+        '<a href="/n/"><span class="i">✉</span>Letters</a>' +
+        '<button type="button" id="sml-hf-bnav-bucks"><span class="i">◎</span>Bucks</button>';
+      shell.insertAdjacentElement('afterend', bnav);
+      bnav.addEventListener('click', function (ev) {
+        if (ev.target.closest && ev.target.closest('#sml-hf-bnav-bucks')) {
+          var lb = document.getElementById('sml-lb-btn');
+          if (lb) lb.click();
+        }
+      });
+    }
     // Move the REAL feed into the center slot (preserves posts + engagement + listeners).
     var slot = shell.querySelector('#sml-hf-feedslot');
     slot.appendChild(host);
+    /* PERF phase 6: post avatars render at 26-40px but shipped full uploads —
+       swap to Photon 96px variants; lazy-load every card image below card #2. */
+    try {
+      host.querySelectorAll('img.oh-post-avatar').forEach(function (im) {
+        var v = photonImg(im.src, 96, 96);
+        if (v !== im.src) im.src = v;
+        im.loading = 'lazy'; im.decoding = 'async';
+      });
+      var cardIdx = 0;
+      host.querySelectorAll('.oh-post').forEach(function (card) {
+        cardIdx++;
+        card.querySelectorAll('img:not(.oh-post-avatar)').forEach(function (im) {
+          if (cardIdx > 2) im.loading = 'lazy';
+          im.decoding = 'async';
+        });
+      });
+    } catch (e) {}
     try { document.documentElement.style.overflow='hidden'; document.body.style.overflow='hidden'; } catch(e){}
     // pre-paint guard (wpcode/prepaint-guard.php): the old feed was held invisible
     // until this shell exists — reveal now (CSS failsafe reveals at 2.5s regardless)
@@ -238,6 +343,7 @@
 
     // Start live-quote polling (fills tape / watchlist / snapshot; "—" while offline).
     pollQuotes(); if (qTimer) clearInterval(qTimer); qTimer = setInterval(pollQuotes, 5000);
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollQuotes(); });
     loadAccountWatchlist(); // pull the user's saved watchlist from their account
 
     // Watchlist edit controls (event delegation — rows re-render).
@@ -420,10 +526,12 @@
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
       card.appendChild(b);
     }
-    // Only add the arrow when there IS more to see: prefetch each card's rail
-    // (staggered, cached) and attach the arrow only if items came back.
-    function armRh(card, delay){ setTimeout(function(){ rhResolve(card, function(items){ if (items.length) attachRh(card); }); }, delay); }
-    (function(){ var i = 0; host.querySelectorAll('.oh-post').forEach(function(card){ armRh(card, 350 * i++); }); })();
+    /* PERF phase 5: the old staggered per-card PREFETCH fired ~15 wp/v2/posts +
+       user lookups on every homepage load before anyone clicked anything. The
+       arrow now attaches immediately and the rail fetches ON OPEN (rhOpen
+       already shows a loading row and an honest empty state). */
+    function armRh(card){ attachRh(card); }
+    (function(){ host.querySelectorAll('.oh-post').forEach(function(card){ armRh(card); }); })();
 
     // ---- feed hygiene: one card per user per content type ----
     // A user may appear again only with a DIFFERENT kind of activity (photo /
