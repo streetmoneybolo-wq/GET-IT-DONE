@@ -94,6 +94,18 @@ body {
   margin: 0 auto 26px;
   text-wrap: pretty;
 }
+
+/* Permanent article rule: no floating previous/next/recommendation controls.
+   Readers navigate through normal inline links and the site header only. */
+.sml-alert-article-page .post-navigation,
+.sml-alert-article-page .navigation.post-navigation,
+.sml-alert-article-page .wp-block-post-navigation-link,
+.sml-alert-article-page .sml-rh-btn,
+.sml-alert-article-page .sml-rh-panel,
+.sml-alert-article-page [class*="floating"][class*="next"],
+.sml-alert-article-page [class*="floating"][class*="prev"] {
+  display: none !important;
+}
 .sml-article-kicker {
   font-family: var(--sml-mono);
   font-size: .72rem;

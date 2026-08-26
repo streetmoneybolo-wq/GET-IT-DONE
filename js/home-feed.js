@@ -241,16 +241,8 @@
           '#sml-hf-bnav .on{color:#38F58A;}' +
           '#sml-hf-bnav .i{font-size:16px;line-height:1;}' +
         '}' +
-        // Rabbit-hole reveal: right-edge arrow on each post opens a looping mini-carousel.
-        '#sml-optimized-home .oh-post{overflow:visible;}' +
-        '.sml-rh-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid rgba(56,245,138,.4);background:linear-gradient(180deg,rgba(28,39,52,.96),rgba(17,25,38,.96));color:#38F58A;font-size:17px;font-weight:700;cursor:pointer;z-index:5;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px -4px rgba(0,0,0,.8);transition:transform .15s,box-shadow .15s;padding:0;line-height:1;}' +
-        '.sml-rh-btn:hover{transform:translateY(-50%) scale(1.12);box-shadow:0 0 18px -4px rgba(56,245,138,.65);}' +
-        '.sml-rh-panel{position:absolute;inset:0;z-index:6;border-radius:18px;overflow:hidden;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(56,245,138,.3);display:flex;flex-direction:column;opacity:0;transform:translateX(26px);pointer-events:none;transition:transform .3s cubic-bezier(.2,.8,.25,1),opacity .25s ease;}' +
-        '.sml-rh-panel.on{opacity:1;transform:translateX(0);pointer-events:auto;}' +
-        '.sml-rh-track{display:flex;flex:1;height:100%;transition:transform .32s cubic-bezier(.2,.8,.25,1);}' +
-        '.sml-rh-item{min-width:100%;position:relative;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}' +
-        '.sml-rh-item a{text-decoration:none;}' +
         '.oh-post{position:relative;}' +
+        '.sml-rh-btn,.sml-rh-panel{display:none!important;}' +
         /* server-rendered Delete buttons are only a capability signal now — the
            controller replaces them (however many were emitted) with ONE ⋯ menu */
         '.sml-owner-delete{display:none!important;}' +
@@ -265,14 +257,6 @@
         '.sml-owner-delete:hover,.sml-owner-delete:focus-visible{color:#fff;border-color:#ff5268;background:#a51630;outline:none;}' +
         '.sml-owner-delete[disabled]{opacity:.55;cursor:wait;}' +
         '.sml-owner-delete-err{position:absolute;z-index:7;right:16px;top:52px;max-width:260px;background:rgba(43,8,15,.97);border:1px solid rgba(255,82,104,.55);border-radius:10px;color:#ffb3c0;padding:8px 11px;font:600 11px/1.45 Inter,system-ui,sans-serif;box-shadow:0 7px 18px rgba(0,0,0,.4);}' +
-        '.sml-rh-item.no-img{padding:14px 22px;gap:7px;}' +
-        '.sml-rh-item.has-img{padding:0;justify-content:flex-end;}' +
-        '.sml-rh-cover{position:absolute;inset:0;display:block;}' +
-        '.sml-rh-cover img{width:100%;height:100%;max-height:none;object-fit:cover;display:block;}' +
-        '.sml-rh-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,18,.12) 0%,rgba(8,12,18,0) 30%,rgba(8,12,18,.28) 62%,rgba(8,12,18,.88) 100%);pointer-events:none;}' +
-        '.sml-rh-info{position:relative;z-index:2;padding:0 20px 16px;display:flex;flex-direction:column;gap:7px;}' +
-        '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
-        '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
         '@keyframes smlHfNew{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}' +
         '@keyframes smlHfGlow{0%,100%{opacity:.5}50%{opacity:1}}' +
@@ -679,12 +663,9 @@
         st.items = items; rhRender(card, st);
       });
     }
-    function attachRh(card){
-      var tick=rhTicker(card); if(!tick||rhDead[tick]||card.querySelector('.sml-rh-btn')) return;
-      var b = document.createElement('button'); b.className='sml-rh-btn'; b.innerHTML='›'; b.title='More $'+tick+' news from the last 7 days'; b.setAttribute('aria-label',b.title);
-      b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
-      card.appendChild(b);
-    }
+    /* Side-card controls are permanently retired. Keep this no-op because
+       older polling code may still call armRh while cached pages drain. */
+    function attachRh(){ return; }
     /* PERF phase 5: the old staggered per-card PREFETCH fired ~15 wp/v2/posts +
        user lookups on every homepage load before anyone clicked anything. The
        arrow now attaches immediately and the rail fetches ON OPEN (rhOpen
@@ -1053,7 +1034,6 @@
           node.style.animation = 'smlHfNew .6s ease';
           main.insertBefore(node, main.firstChild);
           feedSeen[cardKeyOf(node)] = 1;
-          armRh(node, 250 * (fresh.length - i));
         }
         fbComments(); enhanceSignalCards(host); dedupeFeed(); applyQuotes();
       }).catch(function(){});
