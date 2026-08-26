@@ -118,12 +118,21 @@ if ( ! function_exists( 'sml_scheduled_live_public_payload' ) ) {
 			return null;
 		}
 
-		$user = get_userdata( $user_id );
+		$creator_name      = trim( (string) get_user_meta( $user_id, 'sml_channel_name', true ) );
+		$channel_handle    = sanitize_key( (string) get_user_meta( $user_id, 'sml_channel_handle', true ) );
+		$creator_avatar_id = absint( get_user_meta( $user_id, 'sml_channel_avatar_id', true ) );
+		$creator_avatar    = $creator_avatar_id ? wp_get_attachment_image_url( $creator_avatar_id, 'thumbnail' ) : '';
 		return array(
 			'id'            => sanitize_text_field( (string) $row['id'] ),
 			'status'        => sanitize_key( (string) $row['status'] ),
 			'handle'        => $handle,
-			'creator_name'  => $user ? ( $user->display_name ?: $user->user_login ) : 'Creator',
+			'creator_name'  => '' !== $creator_name ? $creator_name : 'Creator',
+			'creator'       => array(
+				'name'   => '' !== $creator_name ? $creator_name : 'Creator',
+				'handle' => $channel_handle,
+				'avatar' => $creator_avatar ? esc_url_raw( $creator_avatar ) : '',
+				'url'    => $channel_handle ? home_url( '/channel/' . rawurlencode( $channel_handle ) . '/' ) : '',
+			),
 			'title'         => sanitize_text_field( (string) ( $row['title'] ?? '' ) ),
 			'description'   => sanitize_textarea_field( (string) ( $row['description'] ?? '' ) ),
 			'ticker'        => sanitize_key( (string) ( $row['ticker'] ?? '' ) ),

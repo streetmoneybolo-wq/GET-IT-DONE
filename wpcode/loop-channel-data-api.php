@@ -460,7 +460,7 @@ if ( ! function_exists( 'sml_channel_clean_handle' ) ) {
 		if ( ! $user ) { return new WP_Error( 'sml_channel_not_found', 'Creator not found.', array( 'status' => 404 ) ); }
 		$handle = sml_channel_handle_for_user( $user->ID );
 		$profile_handle = sml_channel_profile_handle_for_user( $user->ID );
-		$creator = $user->display_name;
+		$creator = (string) ( get_user_meta( $user->ID, 'sml_channel_name', true ) ?: 'Creator' );
 		$videos = sml_channel_videos( $user->ID, $creator, $handle );
 		$posts = sml_channel_posts( $user->ID );
 		$owner = get_current_user_id() && (int) get_current_user_id() === (int) $user->ID;
