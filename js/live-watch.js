@@ -399,7 +399,7 @@
       m.threadSending = true;
       el('#slw-rsend').disabled = true;
       el('#slw-rsend').textContent = '…';
-      api('/sml-live-chat-threads/v1/room/' + HANDLE + '/message/' + encodeURIComponent(m.rawId) + '/replies', { method: 'POST', body: JSON.stringify({ body: v }) }).then(function (res) {
+      api('/sml-live-chat-threads/v1/room/' + CHAT_ROOM + '/message/' + encodeURIComponent(m.rawId) + '/replies', { method: 'POST', body: JSON.stringify({ body: v }) }).then(function (res) {
         if (!res.ok) {
           var note = el('#slw-thread-note');
           if (!note) { note = document.createElement('div'); note.id = 'slw-thread-note'; note.className = 'slw-thread-gate'; el('#slw-thread').appendChild(note); }
@@ -777,7 +777,7 @@
     if (rm) {
       e.preventDefault(); e.stopPropagation();
       var rid = rm.getAttribute('data-rm'); rm.disabled = true; rm.textContent = '…';
-      api('/sml-lcm/v1/room/' + HANDLE + '/message/' + encodeURIComponent(rid), { method: 'DELETE' }).then(function (res) {
+      api('/sml-lcm/v1/room/' + CHAT_ROOM + '/message/' + encodeURIComponent(rid), { method: 'DELETE' }).then(function (res) {
         if (!res.ok) { rm.disabled = false; rm.textContent = '✕'; rm.title = (res.j && res.j.message) || 'Could not remove'; return; }
         S.msgs = S.msgs.filter(function (m) { return String(m.rawId) !== String(rid); });
         renderFeed();
@@ -1094,6 +1094,10 @@
      already loaded before the server-side normalizer can redirect it. */
   var HANDLE = (qs('room') || qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
   var STREAM_ID = (qs('stream') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
+  /* A creator can schedule many broadcasts. Chat, replies, moderation, Speak,
+     and chat-generated arena notices belong to the immutable stream—not to a
+     creator-wide room that leaks conversation into every later broadcast. */
+  var CHAT_ROOM = STREAM_ID ? 'stream-' + STREAM_ID.toLowerCase() : HANDLE;
   /* Build share links from the resolved room identity, never from the current
      browser URL. This preserves the creator when WordPress, a cache buster, or
      another script normalizes /live/?room=... back to /live/. */
@@ -1649,7 +1653,7 @@
   }
   var seen = {}, chatCursor = '';
   if (!SIM) {
-    api('/sml-lcm/v1/room/' + HANDLE + '/me').then(function (res) {
+    api('/sml-lcm/v1/room/' + CHAT_ROOM + '/me').then(function (res) {
       if (res.ok && res.j) { S.me = parseInt(res.j.uid || 0, 10) || 0; S.canMod = !!res.j.can_moderate; if (S.msgs.length) renderFeed(); }
     }).catch(function () {});
   }
@@ -1674,7 +1678,7 @@
     if (!ids.length) return;
     threadCountsPending = true;
     threadCountsAt = Date.now();
-    api('/sml-live-chat-threads/v1/room/' + HANDLE + '/threads?ids=' + encodeURIComponent(ids.join(','))).then(function (res) {
+    api('/sml-live-chat-threads/v1/room/' + CHAT_ROOM + '/threads?ids=' + encodeURIComponent(ids.join(','))).then(function (res) {
       var counts = res.ok && res.j && res.j.counts;
       if (!counts || typeof counts !== 'object') return;
       var becameAvailable = !S.threadAvailable;
@@ -1699,7 +1703,7 @@
     if (!force && m.threadLoaded) return;
     m.threadLoading = true;
     if (S.thread === m.id) renderThread();
-    api('/sml-live-chat-threads/v1/room/' + HANDLE + '/message/' + encodeURIComponent(m.rawId) + '/replies').then(function (res) {
+    api('/sml-live-chat-threads/v1/room/' + CHAT_ROOM + '/message/' + encodeURIComponent(m.rawId) + '/replies').then(function (res) {
       if (!res.ok || !res.j) return;
       var list = Array.isArray(res.j.replies) ? res.j.replies : [];
       m.replies = list.map(mapReply);
@@ -1715,7 +1719,7 @@
     if (SIM || document.hidden || S.chatHold) return;
     /* full-window fetch + client dedupe — the `after` param's semantics are unverified,
        and 50 rows every 2.5s is a trivial payload */
-    api('/sml-live-chat/v1/room/' + HANDLE + '/messages?limit=50').then(function (res) {
+    api('/sml-live-chat/v1/room/' + CHAT_ROOM + '/messages?limit=50').then(function (res) {
       var list = (res.j && (res.j.messages || res.j.items)) || [];
       var added = false, liveIds = {}, minId = Infinity;
       list.forEach(function (raw) { if (raw.id != null) { liveIds[String(raw.id)] = 1; var n = parseInt(raw.id, 10); if (n < minId) minId = n; } });
@@ -1782,7 +1786,7 @@
       }
     };
     var post = function (body) {
-      return api('/sml-live-chat/v1/room/' + HANDLE + '/messages', { method: 'POST', body: JSON.stringify(body) });
+      return api('/sml-live-chat/v1/room/' + CHAT_ROOM + '/messages', { method: 'POST', body: JSON.stringify(body) });
     };
     /* `body` is the canonical shared-room field. Older room plugins are
        supported below only as a fallback while they are upgraded. */
@@ -2065,7 +2069,7 @@
   }
   function loadElig() {
     if (SIM || document.hidden) return;
-    api('/sml-voice/v1/eligibility?room_id=' + HANDLE).then(function (res) {
+    api('/sml-voice/v1/eligibility?room_id=' + CHAT_ROOM).then(function (res) {
       if (res.j && typeof res.j.logged_in !== 'undefined') { VC.elig = res.j; renderSpeakReal(); }
     }).catch(function () {});
   }
@@ -2083,13 +2087,13 @@
     /* reuse an unused pass when one exists, else buy the tier pass */
     var tok = (VC.elig.tokens || []).filter(function (x) { return (x.tier || x.slug) === VC.tierSlug && !x.used; })[0];
     var reqWith = function (token) {
-      vForm({ room_id: HANDLE, token: token || '', pass: token || '' }, '/sml-voice/v1/request').then(function (res) {
+      vForm({ room_id: CHAT_ROOM, token: token || '', pass: token || '' }, '/sml-voice/v1/request').then(function (res) {
         if (res.ok) finish();
         else finish((res.j && res.j.message) || 'The request did not go through.');
       }).catch(function () { finish('The request did not go through — check your connection.'); });
     };
     if (tok && (tok.token || tok.key || tok.id)) { reqWith(tok.token || tok.key || tok.id); return; }
-    vForm({ room_id: HANDLE, tier: VC.tierSlug }, '/sml-voice/v1/superchat').then(function (res) {
+    vForm({ room_id: CHAT_ROOM, tier: VC.tierSlug }, '/sml-voice/v1/superchat').then(function (res) {
       if (!res.ok) { finish((res.j && res.j.message) || 'Could not buy the pass.'); return; }
       var j = res.j || {};
       var token = j.token || j.pass || (j.pass_id != null ? j.pass_id : '') || (j.id != null ? j.id : '');
@@ -2098,14 +2102,14 @@
     }).catch(function () { finish('Could not buy the pass — check your connection.'); });
   }
   function cancelVoice() {
-    vForm({ room_id: HANDLE, queue_id: (VC.elig && VC.elig.queue_id) || '' }, '/sml-voice/v1/cancel').then(function () { stopMic(); loadElig(); loadWallet(); });
+    vForm({ room_id: CHAT_ROOM, queue_id: (VC.elig && VC.elig.queue_id) || '' }, '/sml-voice/v1/cancel').then(function () { stopMic(); loadElig(); loadWallet(); });
   }
   /* real mic meter + readiness */
   function startMic() {
     if (VC.micStream || !navigator.mediaDevices) return;
     navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
       VC.micStream = stream;
-      vForm({ room_id: HANDLE, ready: 1 }, '/sml-voice/v1/mic-ready');
+      vForm({ room_id: CHAT_ROOM, ready: 1 }, '/sml-voice/v1/mic-ready');
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
       var src = ctx.createMediaStreamSource(stream);
       var an = ctx.createAnalyser();
@@ -2135,7 +2139,7 @@
   /* queue-driven "requested to speak" strip — visible to every viewer, per the design */
   function pollVoiceQueue() {
     if (SIM || document.hidden) return;
-    api('/sml-voice/v1/queue?room_id=' + HANDLE).then(function (res) {
+    api('/sml-voice/v1/queue?room_id=' + CHAT_ROOM).then(function (res) {
       var q2 = (res.j && res.j.queue) || [];
       var w = el('#slw-wait');
       if (q2.length && S.camScene === 'idle') {
@@ -2164,7 +2168,7 @@
   function sendArena(glyph, text, eid) {
     /* one deterministic poster per event id keeps the room single-voiced */
     if (!gateState || !gateState.loggedIn) return;
-    api('/sml-live-chat/v1/room/' + HANDLE + '/messages', { method: 'POST', body: JSON.stringify({ message: glyph + ' ' + text }) }).then(function () { pollChat(); }).catch(function () {});
+    api('/sml-live-chat/v1/room/' + CHAT_ROOM + '/messages', { method: 'POST', body: JSON.stringify({ message: glyph + ' ' + text }) }).then(function () { pollChat(); }).catch(function () {});
   }
   function renderLobbyReal(j) {
     G.catalogue = j.catalogue || [];

@@ -242,7 +242,9 @@ if ( ! function_exists( 'sml_scheduled_live_public_payload' ) ) {
 			'scheduled_at'  => sanitize_text_field( (string) ( $row['scheduled_at'] ?? '' ) ),
 			'visibility'    => sanitize_key( (string) ( $row['visibility'] ?? 'public' ) ),
 			'watch_url'     => sml_scheduled_live_watch_url( $handle, $row['id'] ),
-			'chat_room'     => $handle,
+			/* Each permanent stream URL owns a separate conversation. Creator-only
+			 * legacy pages still use the handle, but scheduled broadcasts never do. */
+			'chat_room'     => 'stream-' . sml_scheduled_live_clean_id( $row['id'] ),
 			'recording_status' => $recording_status,
 			'recording_url' => $recording_url,
 			'ended_at'      => sanitize_text_field( (string) ( $row['ended_at'] ?? '' ) ),
