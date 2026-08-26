@@ -18,7 +18,10 @@
 if ( ! function_exists( 'sml_retire_react_footer' ) ) {
 	function sml_retire_react_footer() {
 		echo '<style id="sml-noreact-css">.sml-hfe-reaction-menu{display:none!important}</style>';
-		echo '<script id="sml-noreact" data-sml-oh-allow>(function(){function z(){try{document.querySelectorAll("button.sml-hfe-btn").forEach(function(b){if(/^\s*React\b/i.test(b.textContent||""))b.remove();});document.querySelectorAll(".sml-hfe-reaction-menu").forEach(function(m){m.remove();});}catch(e){}}z();setInterval(z,4000);})();</script>';
+		/* The engagement plugin HYDRATES the button late (counts fetch), so sweep
+		   fast for the first ~6s (kills the flash), then settle to a slow tick.
+		   Deliberately no MutationObserver — busy tickers churn the DOM. */
+		echo '<script id="sml-noreact" data-sml-oh-allow>(function(){function z(){try{document.querySelectorAll("button.sml-hfe-btn").forEach(function(b){if(/^\s*React\b/i.test(b.textContent||""))b.remove();});document.querySelectorAll(".sml-hfe-reaction-menu").forEach(function(m){m.remove();});}catch(e){}}z();var n=0,h=setInterval(function(){z();if(++n>7){clearInterval(h);setInterval(z,5000);}},800);})();</script>';
 	}
 	add_action( 'wp_footer', 'sml_retire_react_footer', 99 );
 }
