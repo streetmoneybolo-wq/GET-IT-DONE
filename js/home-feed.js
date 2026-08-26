@@ -486,12 +486,13 @@
         var t=(a.textContent||'').replace(/\s+/g,' ').trim(), hf=a.getAttribute('href')||''; if(!hf) return;
         if(/action=logout/.test(hf)||/^(sign|log)\s?out$/i.test(t)){ out.push({l:'Sign out',h:hf,k:'out'}); return; }
         var lt=t.toLowerCase();
-        if(KNOWN.indexOf(lt)>=0) out.push({l:t,h:hf,k:lt});
+        if(lt==='profile') lt='my profile'; // header now labels the profile link "Profile"
+        if(KNOWN.indexOf(lt)>=0) out.push({l:lt==='my profile'?'My profile':t,h:hf,k:lt});
       });
       var seen={}; return out.filter(function(x){ if(seen[x.k]) return false; seen[x.k]=1; return true; });
     }
     function menuIcon(k){
-      var P={'home':'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10','my profile':'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 8.5c1.4-3.6 5-5 8-5s6.6 1.4 8 5','creator studio':'M4 6h16M4 12h16M4 18h16M9 4v4M15 10v4M7 16v4','go live':'M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3.5v11L15 14','settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8-3-1.8-.6.4-1.9-1.6-1.6-1.9.4L14.5 6h-5L8.9 7.9 7 7.5 5.4 9.1l.4 1.9L4 12l1.8.6-.4 1.9 1.6 1.6 1.9-.4 1.6 1.8h5l.6-1.8 1.9.4 1.6-1.6-.4-1.9L20 12Z','customize profile':'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 6l3 3','out':'M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M9 12h11m-3-3 3 3-3 3'};
+      var P={'home':'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10','my profile':'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 8.5c1.4-3.6 5-5 8-5s6.6 1.4 8 5','creator studio':'M4 6h16M4 12h16M4 18h16M9 4v4M15 10v4M7 16v4','go live':'M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3.5v11L15 14','settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8-3-1.8-.6.4-1.9-1.6-1.6-1.9.4L14.5 6h-5L8.9 7.9 7 7.5 5.4 9.1l.4 1.9L4 12l1.8.6-.4 1.9 1.6 1.6 1.9-.4 1.6 1.8h5l.6-1.8 1.9.4 1.6-1.6-.4-1.9L20 12Z','customize profile':'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 6l3 3','wallet':'M3 8a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Zm17 3.5h-4.5a2 2 0 0 0 0 4H20M17 6V5a1.5 1.5 0 0 0-1.5-1.5h-9','store':'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm0-13v10m2.4-8.2c-.5-.7-1.4-1.1-2.4-1.1-1.5 0-2.6.8-2.6 1.9 0 2.4 5.2 1.2 5.2 3.6 0 1.1-1.1 1.9-2.6 1.9-1 0-1.9-.4-2.4-1.1','out':'M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M9 12h11m-3-3 3 3-3 3'};
       return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="'+(P[k]||P['home'])+'"/></svg>';
     }
     /* The ticker's intraday card (#sml-tkpop) and the member hover card are
@@ -510,9 +511,27 @@
     function openMeMenu(){
       if(document.getElementById('sml-hf-memenu')){ closeMeMenu(); return; }
       var m=harvestMenu();
-      if(!m.length) m=[{l:'Home',h:'/',k:'home'},{l:'My profile',h:'#',k:'my profile'},{l:'Creator Studio',h:'/creator-studio/',k:'creator studio'},{l:'Go live',h:'/go-live/',k:'go live'},{l:'Customize profile',h:'/customize-profile/',k:'customize profile'},{l:'Sign out',h:'/wp-login.php?action=logout',k:'out'}];
-      var handle=''; m.forEach(function(it){ if(it.k==='my profile'){ var hm=it.h.match(/\/([a-z0-9_\-]+)\/?$/i); if(hm) handle='@'+hm[1]; } });
-      var SEP={'creator studio':1,'settings':1,'out':1}, rows='';
+      /* Merge the harvest with the canonical account links (mirrors the site's
+         real avatar widget, verified live on /markets/): a reshuffled hidden
+         header can only improve URLs, never empty the menu. Harvested entries
+         win per item — they carry the site's real hrefs (e.g. the nonce'd
+         Sign out); the defaults fill whatever the header no longer prints. */
+      var DEFAULTS=[
+        {l:'Home',h:'/',k:'home'},
+        {l:'My profile',h:'/my-profile/',k:'my profile'},
+        {l:'Creator Studio',h:'/creator-studio/',k:'creator studio'},
+        {l:'Go live',h:'/go-live/',k:'go live'},
+        {l:'Settings',h:'/settings/',k:'settings'},
+        {l:'Customize profile',h:'/customize-profile/',k:'customize profile'},
+        {l:'Wallet',h:'/wallet/',k:'wallet'},
+        {l:'Get Loop Bucks',h:'/store/',k:'store'},
+        {l:'Sign out',h:'/wp-login.php?action=logout',k:'out'}
+      ];
+      var have={}; m.forEach(function(x){ have[x.k]=x; });
+      m=DEFAULTS.map(function(d){ return have[d.k]||d; });
+      /* /my-profile/ is the generic alias, not the member's handle — never show it as one */
+      var handle=''; m.forEach(function(it){ if(it.k==='my profile'){ var hm=it.h.match(/\/([a-z0-9_\-]+)\/?$/i); if(hm&&hm[1]!=='my-profile') handle='@'+hm[1]; } });
+      var SEP={'creator studio':1,'settings':1,'wallet':1,'out':1}, rows='';
       m.forEach(function(it){
         if(SEP[it.k]) rows+='<div style="height:1px;background:rgba(255,255,255,.09);margin:7px 0"></div>';
         rows+='<a href="'+esc(it.h)+'" style="display:flex;align-items:center;gap:13px;padding:11px 14px;border-radius:11px;text-decoration:none;font-size:14.5px;font-weight:600;color:'+(it.k==='out'?'#F2495C':'#E6EDF5')+'" onmouseover="this.style.background=\'rgba(255,255,255,.06)\'" onmouseout="this.style.background=\'transparent\'">'+menuIcon(it.k)+'<span>'+esc(it.l)+'</span>'+(it.k==='go live'?'<span style="margin-left:auto;width:9px;height:9px;border-radius:50%;background:#F23645;box-shadow:0 0 8px rgba(242,54,69,.8)"></span>':'')+'</a>';
