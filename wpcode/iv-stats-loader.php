@@ -36,11 +36,18 @@ add_action( 'init', function () {
 		return;
 	}
 	ob_start( function ( $html ) {
-		if ( ! is_string( $html ) || stripos( $html, '</body>' ) === false ) {
+		// no </body> requirement: the analyst-dashboard page is a custom echo
+		// whose HTML carries no closing body tag (verified live — the coalescer
+		// injects into its <head> fine, but a </body>-gated injector never
+		// fires there). Fall back to </html>, then to plain append.
+		if ( ! is_string( $html ) || '' === $html || stripos( $html, '<head' ) === false ) {
 			return $html;
 		}
 		if ( false !== strpos( $html, 'id="sml-iv-stats-js"' ) ) {
 			return $html; // idempotent
+		}
+		foreach ( headers_list() as $hh ) {
+			if ( 0 === stripos( $hh, 'content-type:' ) && false === stripos( $hh, 'text/html' ) ) { return $html; }
 		}
 		$uri       = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
 		$uri_match = ( false !== stripos( $uri, '/analyst-dashboard' ) ) || ( false !== stripos( $uri, '/groups/' ) );
@@ -49,6 +56,8 @@ add_action( 'init', function () {
 		}
 		$ref = function_exists( 'sml_cdn_resolve_ref' ) ? sml_cdn_resolve_ref() : 'main';
 		$js  = '<script id="sml-iv-stats-js" defer src="https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . esc_attr( $ref ) . '/js/iv-stats.js"></script>';
-		return str_ireplace( '</body>', $js . '</body>', $html );
+		if ( false !== stripos( $html, '</body>' ) ) { return str_ireplace( '</body>', $js . '</body>', $html ); }
+		if ( false !== stripos( $html, '</html>' ) ) { return str_ireplace( '</html>', $js . '</html>', $html ); }
+		return $html . $js;
 	} );
 }, 0 );
