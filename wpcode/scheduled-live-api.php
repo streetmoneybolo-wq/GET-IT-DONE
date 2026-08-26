@@ -134,7 +134,11 @@ if ( ! function_exists( 'sml_scheduled_live_public_payload' ) ) {
 		if ( ! $user_id || ! $handle || empty( $row['id'] ) || empty( $row['status'] ) || 'cancelled' === $row['status'] ) {
 			return null;
 		}
-		if ( ! $include_private && ( $row['visibility'] ?? 'public' ) !== 'public' ) {
+		$visibility = sanitize_key( (string) ( $row['visibility'] ?? 'public' ) );
+		/* An unlisted stream is intentionally available to anyone holding its
+		 * direct Watch Page URL. Protected audiences stay private, while the
+		 * creator and site administrators may always preview their own record. */
+		if ( ! $include_private && ! in_array( $visibility, array( 'public', 'unlisted' ), true ) ) {
 			return null;
 		}
 		/* A missed session must not leave a permanent public "scheduled" page. */
@@ -236,7 +240,10 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 if ( ! function_exists( 'sml_scheduled_live_rest_public' ) ) {
 	function sml_scheduled_live_rest_public( WP_REST_Request $request ) {
 		$user = sml_scheduled_live_user_for_handle( $request->get_param( 'handle' ) );
-		$data = $user ? sml_scheduled_live_public_payload( $user->ID, false ) : null;
+		$can_preview_private = $user && is_user_logged_in() && (
+			get_current_user_id() === (int) $user->ID || current_user_can( 'manage_options' )
+		);
+		$data = $user ? sml_scheduled_live_public_payload( $user->ID, $can_preview_private ) : null;
 		if ( ! $data ) {
 			return new WP_Error( 'sml_scheduled_live_not_found', 'No public scheduled stream was found for this creator.', array( 'status' => 404 ) );
 		}

@@ -1150,7 +1150,29 @@
     var endpoint = '/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE)
       + '?_sml_room_check=' + Date.now();
     return fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) {
+        if (r.ok) return r.json();
+
+        /* Protected schedules deliberately return 404 on the public route.
+         * When the creator is viewing their own Watch Page, use the existing
+         * authenticated self route so their title, thumbnail and countdown
+         * still preview correctly. Unauthorized visitors never receive it. */
+        var nonce = (window.wpApiSettings || {}).nonce || '';
+        if (!nonce) return null;
+        return fetch('/wp-json/sml-scheduled-live/v1/creator?_sml_room_check=' + Date.now(), {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { 'X-WP-Nonce': nonce }
+        }).then(function (selfResponse) {
+          if (!selfResponse.ok) return null;
+          return selfResponse.json().then(function (selfData) {
+            var ownSchedule = selfData && selfData.scheduled_live;
+            return ownSchedule && String(ownSchedule.handle || '').toLowerCase() === HANDLE.toLowerCase()
+              ? ownSchedule
+              : null;
+          });
+        });
+      })
       .then(function (data) {
         scheduledLive = data && data.status === 'scheduled' ? data : null;
         /* A public scheduled room is intentionally open before video starts. */
