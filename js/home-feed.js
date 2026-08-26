@@ -131,9 +131,11 @@
           '#sml-hf-shell.hfm .hf-headrow{height:auto !important;min-height:56px;padding:8px 10px !important;gap:8px !important;}' +
           '#sml-hf-shell.hfm .hf-nav{display:none !important;}' +
           '#sml-hf-shell.hfm .hf-logo img{height:32px !important;}' +
-          '#sml-hf-shell.hfm .hf-search{padding:8px 12px !important;max-width:none !important;}' +
+          '#sml-hf-shell.hfm .hf-search{padding:8px 12px !important;max-width:none !important;min-width:0 !important;flex:1 1 0 !important;}' +
+          '#sml-hf-shell.hfm .hf-search input{min-width:0 !important;width:100%;}' +
+          '#sml-hf-shell.hfm .hf-logo img{height:28px !important;}' +
           '#sml-hf-shell.hfm .hf-search input{font-size:16px !important;}' +      /* 16px stops iOS zoom-on-focus */
-          '#sml-hf-shell.hfm #sml-hf-loop-kick{padding:11px 12px !important;font-size:11px !important;}' +
+          '#sml-hf-shell.hfm #sml-hf-loop-kick{padding:11px 10px !important;font-size:10px !important;letter-spacing:0 !important;flex:none;}' +
           '#sml-hf-shell.hfm #sml-hf-me-top{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;}' +
           '#sml-hf-shell.hfm .hf-headrow #sml-lb-btn{display:none !important;}' + /* Loop Bucks moves to the bottom bar */
           '#sml-hf-shell.hfm #sml-hf-grid{padding:12px 12px calc(76px + env(safe-area-inset-bottom,0px)) !important;gap:14px !important;}' +
