@@ -213,7 +213,7 @@ if ( ! function_exists( 'sml_scheduled_live_public_payload' ) ) {
 		}
 		/* A missed session must not leave a permanent public "scheduled" page. */
 		$scheduled_timestamp = strtotime( (string) ( $row['scheduled_at'] ?? '' ) );
-		if ( ! $include_private && 'scheduled' === ( $row['status'] ?? '' ) && $scheduled_timestamp && $scheduled_timestamp < ( time() - DAY_IN_SECONDS ) ) {
+		if ( ! $include_private && ! sml_scheduled_live_clean_id( $stream_id ) && 'scheduled' === ( $row['status'] ?? '' ) && $scheduled_timestamp && $scheduled_timestamp < ( time() - DAY_IN_SECONDS ) ) {
 			return null;
 		}
 
