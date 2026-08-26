@@ -5,6 +5,7 @@ const { getConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { log } = require('./logger');
 const { parseEvent, readRequestBody, verifySignature } = require('./wordpress-gateway');
+const stripeWebhook = require('./stripe-webhook');
 
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
@@ -73,9 +74,65 @@ async function handleWordPressEvent(request, response, options) {
   }
 }
 
-function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '', logger = log, now = Date.now }) {
+async function handleStripeWebhook(request, response, options) {
+  /* The raw bytes are read and verified BEFORE anything parses them. There is
+     no body-parser anywhere in this server, which is what keeps that true. */
+  const body = await readRequestBody(request, stripeWebhook.MAX_BODY_BYTES);
+  if (!body.ok) {
+    sendJson(response, body.status, { ok: false, error: body.error });
+    return;
+  }
+
+  const verified = stripeWebhook.verifySignature({
+    secret: options.stripeWebhookSecret,
+    header: request.headers['stripe-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) {
+    options.logger('warn', 'stripe_signature_rejected', { error: verified.error });
+    sendJson(response, verified.status, { ok: false, error: verified.error });
+    return;
+  }
+
+  const parsed = stripeWebhook.parseEvent(body.rawBody);
+  if (!parsed.ok) {
+    sendJson(response, parsed.status, { ok: false, error: parsed.error });
+    return;
+  }
+
+  try {
+    const status = await options.acceptStripeEvent(parsed.event);
+    options.logger('info', 'stripe_event_received', {
+      eventId: parsed.event.id,
+      eventType: parsed.event.type,
+      account: parsed.event.account,
+      status
+    });
+    /* 'duplicate' is a success: Stripe retries aggressively and the event store
+       is unique on event id, so a replay is the system working, not an error. */
+    sendJson(response, 200, { ok: true, eventId: parsed.event.id, status });
+  } catch (error) {
+    options.logger('error', 'stripe_event_store_failed', {
+      error,
+      eventId: parsed.event.id,
+      eventType: parsed.event.type
+    });
+    /* 503 so Stripe retries. Swallowing this with a 200 would silently drop a
+       payment event forever. */
+    sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+  }
+}
+
+function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
+  acceptStripeEvent, stripeWebhookSecret = '', logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
+    if (request.method === 'POST' && path === '/v1/stripe/webhook') {
+      await handleStripeWebhook(request, response, { acceptStripeEvent, stripeWebhookSecret, logger, now });
+      return;
+    }
+
     if (request.method === 'POST' && path === '/v1/wordpress/events') {
       await handleWordPressEvent(request, response, { acceptWordPressEvent, wordpressWebhookSecret, logger, now });
       return;
