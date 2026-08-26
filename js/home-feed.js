@@ -657,7 +657,7 @@
     // Real intraday watermark for Signal News cards. There is deliberately no
     // synthetic fallback: if observed history is unavailable, the card keeps
     // its editorial styling without drawing a made-up chart.
-    var signalHistory={};
+    var signalHistory={}, signalPending={}, signalQueue=[], signalQueueBusy=false;
     function signalPath(bars){
       var vals=(Array.isArray(bars)?bars:[]).map(function(b){return Number(b&&b.c);}).filter(function(v){return isFinite(v);}).slice(-96);
       if(vals.length<2) return null;
@@ -674,6 +674,16 @@
       wm.innerHTML='<b>$'+esc(sym)+' · INTRADAY</b><svg viewBox="0 0 1000 268" preserveAspectRatio="none"><path class="sml-signal-grid" d="M0 68H1000M0 134H1000M0 200H1000"></path><polygon points="'+path.area+'"></polygon><polyline points="'+path.points+'"></polyline></svg>';
       card.insertBefore(wm,card.firstChild);
     }
+    function runSignalQueue(){
+      if(signalQueueBusy||!signalQueue.length) return;
+      var job=signalQueue.shift(), sym=job.sym; signalQueueBusy=true;
+      fetch('/wp-json/sml/v1/history?symbol='+encodeURIComponent(sym)+'&interval=1m&range=1d',{credentials:'same-origin',cache:'no-store'}).then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(d){
+        var bars=(d&&d.bars)||[]; signalHistory[sym]=bars; delete signalPending[sym];
+        document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){paintSignalCard(c,sym,bars);});
+      }).catch(function(){
+        if(job.tries<2){job.tries++;signalQueue.push(job);}else{delete signalPending[sym];document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){c.setAttribute('data-sml-chart','unavailable');});}
+      }).then(function(){signalQueueBusy=false;setTimeout(runSignalQueue,400);});
+    }
     function enhanceSignalCards(root){
       var scope=root&&root.querySelectorAll?root:document;
       var cards=[]; if(scope.matches&&scope.matches('.sml-signal-feed-post')) cards.push(scope);
@@ -682,8 +692,8 @@
         var sym=String(card.getAttribute('data-sml-ticker')||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); if(!sym) return;
         var av=card.querySelector('.oh-post-avatar'); if(av){av.src='https://stockmarketloop.com/wp-content/uploads/2026/08/Untitled-design-90.png';av.alt='Stock Market Loop Signal News';}
         if(card.getAttribute('data-sml-chart')) return; card.setAttribute('data-sml-chart','loading');
-        if(signalHistory[sym]){paintSignalCard(card,sym,signalHistory[sym]);return;}
-        fetch('/wp-json/sml/v1/history?symbol='+encodeURIComponent(sym)+'&interval=1m&range=1d',{credentials:'same-origin',cache:'no-store'}).then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(d){signalHistory[sym]=(d&&d.bars)||[];document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]') .forEach(function(c){paintSignalCard(c,sym,signalHistory[sym]);});}).catch(function(){card.setAttribute('data-sml-chart','unavailable');});
+        if(Object.prototype.hasOwnProperty.call(signalHistory,sym)){paintSignalCard(card,sym,signalHistory[sym]);return;}
+        if(!signalPending[sym]){signalPending[sym]=1;signalQueue.push({sym:sym,tries:0});runSignalQueue();}
       });
     }
 
