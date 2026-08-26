@@ -618,7 +618,17 @@
       rhGo(card, st, st.i || 0, true);
     }
     // Resolve a card's rail data (cached per query so many cards share fetches).
-    var rhCache = {};
+    var rhCache = {}, rhDead = {};
+    /* a ticker whose 7-day rail resolved EMPTY gets no arrow anywhere: the
+       button would open nothing, so it should not exist (or keep loading) */
+    function rhRetire(tick){
+      rhDead[tick]=1;
+      host.querySelectorAll('.oh-post').forEach(function(c){
+        if(rhTicker(c)!==tick) return;
+        var b=c.querySelector('.sml-rh-btn'); if(b) b.remove();
+        if(c.__rhPanel){ c.__rhPanel.remove(); c.__rhPanel=null; }
+      });
+    }
     function rhResolve(card, cb){
       if (card.__rhData){ cb(card.__rhData.items, card.__rhData.label); return; }
       var tick = rhTicker(card);
@@ -639,6 +649,7 @@
           if(!exact.test(hay)) return false; seen[xurl]=1; return true;
         }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date, img:x.jetpack_featured_media_url||'' }; }).slice(0,10);
         card.__rhData = { items: items, label: label };
+        if (!items.length && tick) { rhRetire(tick); return; }
         cb(items, label);
       }
       if(!tick){finish([]);return;}
@@ -667,7 +678,7 @@
       });
     }
     function attachRh(card){
-      var tick=rhTicker(card); if(!tick||card.querySelector('.sml-rh-btn')) return;
+      var tick=rhTicker(card); if(!tick||rhDead[tick]||card.querySelector('.sml-rh-btn')) return;
       var b = document.createElement('button'); b.className='sml-rh-btn'; b.innerHTML='›'; b.title='More $'+tick+' news from the last 7 days'; b.setAttribute('aria-label',b.title);
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
       card.appendChild(b);
@@ -976,7 +987,39 @@
     }
     document.addEventListener('click', function(){ closeKmenus(); });
     document.addEventListener('keydown', function(ev){ if(ev.key==='Escape') closeKmenus(); });
-    kebabize(); setInterval(kebabize, 3000); /* also covers cards slid in by pollFeed */
+
+    // ---- feed age rule: nothing older than 48 hours stays in the live feed.
+    // Chart posts carry their unix timestamp inside the item id (free check);
+    // article dates come from ONE batched lookup per page load. ----
+    var FEED_MAX_AGE=48*3600*1000, wpDates=null;
+    function pruneStale(){
+      var now=Date.now();
+      host.querySelectorAll('article[data-hfe-item]').forEach(function(card){
+        var id=card.getAttribute('data-hfe-item')||'';
+        var ch=id.match(/^chart-\d+-(\d{9,11})-/);
+        if(ch && now-(+ch[1]*1000)>FEED_MAX_AGE){ card.remove(); return; }
+        var wp=id.match(/^wp-(\d+)$/);
+        if(wp && wpDates && wpDates[wp[1]] && now-wpDates[wp[1]]>FEED_MAX_AGE){ card.remove(); }
+      });
+    }
+    (function(){
+      var ids=[]; host.querySelectorAll('article[data-hfe-item^="wp-"]').forEach(function(c){ var m=(c.getAttribute('data-hfe-item')||'').match(/^wp-(\d+)$/); if(m) ids.push(m[1]); });
+      if(!ids.length){ wpDates={}; return; }
+      fetch('/wp-json/wp/v2/posts?include='+ids.join(',')+'&per_page='+Math.min(ids.length,50)+'&_fields=id,date_gmt',{credentials:'same-origin'})
+        .then(function(r){ return r.ok?r.json():[]; })
+        .then(function(list){ wpDates={}; (list||[]).forEach(function(p){ var t=Date.parse((p.date_gmt||'')+'Z'); if(t) wpDates[String(p.id)]=t; }); pruneStale(); })
+        .catch(function(){ wpDates={}; });
+    })();
+
+    // ---- React buttons are retired site design — strip them (and their emoji
+    // menus) from every card ----
+    function stripReact(){
+      host.querySelectorAll('button.sml-hfe-btn').forEach(function(b){ if(/^\s*React\b/i.test(b.textContent||'')) b.remove(); });
+      host.querySelectorAll('.sml-hfe-reaction-menu').forEach(function(m){ m.remove(); });
+    }
+
+    function feedSweep(){ kebabize(); pruneStale(); stripReact(); }
+    feedSweep(); setInterval(feedSweep, 3000); /* also covers cards slid in by pollFeed */
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
     var feedSeen = {};

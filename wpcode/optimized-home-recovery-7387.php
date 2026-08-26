@@ -58,12 +58,12 @@ function sml_oh_render() {
     $user = wp_get_current_user();
     $avatar = get_avatar_url($user->ID, array('size' => 96));
     $payload = function_exists('sml_sth_feed_payload') ? (array) sml_sth_feed_payload() : array();
-    // Feed contract: an article is eligible for 72 hours only, and every
+    // Feed contract: an article is eligible for 48 hours only, and every
     // underlying feed item may render once. Community activity remains
     // available, but duplicate payload rows and stale WordPress news do not.
     $posts = array();
     $seen_feed_items = array();
-    $news_cutoff = time() - (72 * HOUR_IN_SECONDS);
+    $news_cutoff = time() - (48 * HOUR_IN_SECONDS);
     foreach ((array) ($payload['feed'] ?? array()) as $candidate) {
         if (!is_array($candidate)) { continue; }
         $candidate_id = sanitize_text_field((string) ($candidate['id'] ?? ''));
