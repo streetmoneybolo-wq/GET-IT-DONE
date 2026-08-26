@@ -2375,10 +2375,14 @@
   function loadRec() {
     var mount = el('#slw-rec-rows');
     el('#slw-recmeta').textContent = '';
-    api('/sml-media/v1/feed').then(function (res) {
-      var items = (res.j && (res.j.items || res.j.feed || res.j.media)) || [];
+    /* Use the upload-studio rail because it resolves each video's public Loop
+       Channel identity. The generic media feed can expose a private WordPress
+       display name as `author`, which must never appear on public cards. */
+    api('/sml-video-upload-studio/v1/rail').then(function (res) {
+      var payload = res.j || {};
+      var items = (payload.up_next || []).concat(payload.related || []);
       var complete = items.map(function (it) {
-        return { title: it.title || it.caption || '', url: it.watch_url || it.url || it.link || it.permalink || '', thumb: it.thumbnail || it.thumbnail_url || it.thumb || it.image || '', meta: it.author || it.handle || '' };
+        return { title: it.title || '', url: it.watch_url || '', thumb: it.thumbnail || '', meta: it.creator || (it.handle ? '@' + it.handle : '') };
       }).filter(function (it) { return it.title && it.url && it.thumb && /^https:\/\//i.test(String(it.thumb)); }).slice(0, 5);
       if (!complete.length) throw new Error('empty');
       renderRecReal(complete);
