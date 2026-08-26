@@ -259,3 +259,25 @@
   var tries = 0;
   var t = setInterval(function () { var ok = false; try { ok = mount(); } catch (e) {} if (ok || ++tries > 60) clearInterval(t); }, 250);
 })();
+
+/* ---- Stocktwits pane ------------------------------------------------------
+   The Stocktwits tab lives in this same .tv2-lf region, so its feed is loaded
+   from here rather than from PHP: /stock-chart/ is a custom render that fires
+   neither wp_head nor wp_footer, so a server-printed tag never appears.
+
+   The ref is taken from THIS file's own URL, so the two files can never drift
+   to different commits. */
+(function () {
+  if (document.getElementById('sml-stocktwits-js')) { return; }
+  var me = null, list = document.getElementsByTagName('script');
+  for (var i = 0; i < list.length; i++) {
+    if (/terminal-feed\.js/.test(list[i].src || '')) { me = list[i]; break; }
+  }
+  if (!me) { return; }
+  var src = me.src.replace(/terminal-feed\.js.*$/, 'stocktwits-feed.js');
+  var s = document.createElement('script');
+  s.id = 'sml-stocktwits-js';
+  s.src = src;
+  s.defer = true;
+  document.head.appendChild(s);
+})();
