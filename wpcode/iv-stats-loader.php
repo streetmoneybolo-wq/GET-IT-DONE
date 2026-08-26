@@ -14,12 +14,25 @@
  * v2 also injects by URL on /analyst-dashboard/ and /groups/ pages. The
  * script is inert on pages where no LoopCharts host ever appears.
  *
+ * HOOK CHOICE: init priority 0, NOT template_redirect — the analyst-dashboard
+ * page is itself rendered by a snippet that echoes and exits at
+ * template_redirect priority 0, so a later-registered buffer never wraps it
+ * (this is the second reason the old version never reached that page).
+ * An init-time ob_start wraps everything, including custom-route output.
+ *
  * WPCode setup: PHP snippet, Auto Insert / Run Everywhere (replace #5865's
  * contents with this).
  * ROLLBACK: restore #5865's previous revision from WPCode's revision history.
  */
-add_action( 'template_redirect', function () {
+add_action( 'init', function () {
 	if ( is_admin() ) {
+		return;
+	}
+	$uri0 = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	if ( false !== strpos( $uri0, '/wp-json/' ) || false !== strpos( $uri0, '/wp-admin/' ) ) {
+		return;
+	}
+	if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) {
 		return;
 	}
 	ob_start( function ( $html ) {
@@ -38,4 +51,4 @@ add_action( 'template_redirect', function () {
 		$js  = '<script id="sml-iv-stats-js" defer src="https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . esc_attr( $ref ) . '/js/iv-stats.js"></script>';
 		return str_ireplace( '</body>', $js . '</body>', $html );
 	} );
-}, 1 );
+}, 0 );
