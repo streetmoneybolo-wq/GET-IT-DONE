@@ -2,11 +2,27 @@
 /**
  * Plugin Name: SML Home Owner Controls
  * Description: Keeps homepage feed identities current and lets owners permanently delete their own articles and posts.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+/**
+ * Apply the requested SML News identity once without changing the account
+ * login, nicename, public handle, or stable /stockmarketloop/ profile URL.
+ */
+function sml_hoc_migrate_news_identity() {
+	if ( '1.0.1' === get_option( 'sml_hoc_identity_version' ) ) { return; }
+	$user_id = 258456543;
+	if ( get_userdata( $user_id ) ) {
+		update_user_meta( $user_id, 'sml_display_handle', 'SML News' );
+		update_user_meta( $user_id, 'sml_avatar_url', 'https://stockmarketloop.com/wp-content/uploads/2026/08/Untitled-design-90.png' );
+		wp_update_user( array( 'ID' => $user_id, 'display_name' => 'SML News' ) );
+	}
+	update_option( 'sml_hoc_identity_version', '1.0.1', false );
+}
+add_action( 'init', 'sml_hoc_migrate_news_identity', 1 );
 
 function sml_hoc_owner_for_item( $item_id ) {
 	$item_id = sanitize_text_field( (string) $item_id );
@@ -30,12 +46,14 @@ function sml_hoc_owner_for_item( $item_id ) {
 function sml_hoc_identity( $user_id ) {
 	$user = get_userdata( absint( $user_id ) );
 	if ( ! $user ) { return null; }
+	$name = sanitize_text_field( (string) get_user_meta( $user->ID, 'sml_display_handle', true ) );
+	if ( ! $name ) { $name = sanitize_text_field( $user->display_name ?: $user->user_login ); }
 	$avatar = esc_url_raw( (string) get_user_meta( $user->ID, 'sml_avatar_url', true ) );
 	if ( ! $avatar ) { $avatar = get_avatar_url( $user->ID, array( 'size' => 96 ) ); }
 	$url = function_exists( 'sml_sth_profile_url' ) ? sml_sth_profile_url( $user->ID ) : get_author_posts_url( $user->ID );
 	return array(
 		'id'     => (int) $user->ID,
-		'name'   => sanitize_text_field( $user->display_name ?: $user->user_login ),
+		'name'   => $name,
 		'avatar' => esc_url_raw( (string) $avatar ),
 		'url'    => esc_url_raw( (string) $url ),
 	);
