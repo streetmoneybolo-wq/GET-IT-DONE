@@ -154,9 +154,17 @@
 
   function loadNews(v) {
     css();
-    v.innerHTML = '<div class="tv2-nw-h"><b>$' + esc(SYM) + ' coverage on Stock Market Loop</b><span id="tv2nw-count"></span></div><div class="tv2-nw" id="tv2nw-grid"><div class="tv2-rs-empty">Loading…</div></div>';
-    get('/wp-json/sml-members/v1/news-feed?symbol=' + encodeURIComponent(SYM)).then(function (r) {
+    v.innerHTML = '<div class="tv2-nw-h"><b id="tv2nw-title">$' + esc(SYM) + ' coverage on Stock Market Loop</b><span id="tv2nw-count"></span></div><div class="tv2-nw" id="tv2nw-grid"><div class="tv2-rs-empty">Loading…</div></div>';
+    /* symbol-matched coverage first (Signal News included — sml-ticker-news
+       actually filters by ticker); the legacy generic feed is only a fallback
+       so the module never goes empty if the new route is off */
+    get('/wp-json/sml-ticker-news/v1/feed?symbol=' + encodeURIComponent(SYM)).then(function (r0) {
+      var matched = r0.ok && r0.j && Array.isArray(r0.j.articles) ? r0.j.articles : [];
+      if (matched.length) { return { j: { articles: matched }, ok: true, symbolMatched: true }; }
+      return get('/wp-json/sml-members/v1/news-feed?symbol=' + encodeURIComponent(SYM));
+    }).then(function (r) {
       var grid = v.querySelector('#tv2nw-grid'); var arts = r.ok && r.j && Array.isArray(r.j.articles) ? r.j.articles : [];
+      if (!r.symbolMatched) { var tt = v.querySelector('#tv2nw-title'); if (tt) tt.textContent = 'Latest on Stock Market Loop'; }
       var cnt = v.querySelector('#tv2nw-count'); if (cnt) cnt.textContent = arts.length ? arts.length + ' articles' : '';
       if (!arts.length) { grid.innerHTML = '<div class="tv2-rs-empty">' + esc((r.j && r.j.message) || 'No Stock Market Loop articles mention $' + SYM + ' yet.') + '</div>'; return; }
       grid.innerHTML = arts.map(function (a) {
