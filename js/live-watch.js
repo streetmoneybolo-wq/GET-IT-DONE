@@ -1093,6 +1093,14 @@
      links use `room`; keep the `s` fallback only for a legacy page that has
      already loaded before the server-side normalizer can redirect it. */
   var HANDLE = (qs('room') || qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
+  /* Build share links from the resolved room identity, never from the current
+     browser URL. This preserves the creator when WordPress, a cache buster, or
+     another script normalizes /live/?room=... back to /live/. */
+  function canonicalWatchUrl() {
+    var watch = new URL('/live/', location.origin);
+    watch.searchParams.set('room', HANDLE);
+    return watch.href;
+  }
   var media = el('#slw-media'), ph = el('#slw-ph');
   /* A schedule is metadata only. It never claims a stream is live; the
      existing feeds endpoint remains the authority for actual playback. */
@@ -1899,9 +1907,11 @@
   /* share: web-share / copy-link, morph animation preserved */
   if (!SIM) {
     el('#slw-share').onclick = function () {
-      var url = location.origin + '/live/';
+      var url = canonicalWatchUrl();
+      var heading = root.querySelector('.slw-titleblk h1');
+      var title = heading && heading.textContent.trim() ? heading.textContent.trim() : 'Live on Stock Market Loop';
       var after = function () { S.shared = true; S.shareAnim = 0; paintShare(); el('#slw-share').querySelector('.slw-facepile') && (el('#slw-share').querySelector('.slw-facepile').style.display = 'none'); };
-      if (navigator.share) navigator.share({ title: 'Live on Stock Market Loop', url: url }).then(after).catch(function () {});
+      if (navigator.share) navigator.share({ title: title, url: url }).then(after).catch(function () {});
       else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { after(); flashGate('Stream link copied — paste it anywhere.'); });
     };
   }
