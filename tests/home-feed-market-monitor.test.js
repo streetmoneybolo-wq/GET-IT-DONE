@@ -35,11 +35,19 @@ bars.push({ t: start + (24 * 60000), o: 100.23, h: 108.4, l: 100.2, c: 108.1, v:
 
 const result = context.detect(bars);
 assert.ok(result.rows.length > 0, 'real threshold crossings should create events');
-assert.ok(result.rows.length <= 5, 'the embedded tape must show at most five events');
+assert.ok(result.rows.length <= 2, 'the compact embedded tape must show at most two events');
 assert.ok(result.rows.some((row) => row.type === 'Rise 7%+'), 'a +7% session crossing should be detected');
 assert.ok(result.rows.some((row) => row.type === 'Skyrocket'), 'a >=3% one-minute move should be detected');
-assert.ok(result.rows.some((row) => row.type === '↑ Huge Volume'), 'a >=4x volume spike should be detected');
 assert.equal(result.rows.some((row) => /Block|Soaring Trade|Diving Trade/.test(row.type)), false, 'unsupported trade-print events must never be fabricated');
 assert.equal(result.bulls > 0, true, 'bullish stats should count detected bullish events');
+
+const volumeBars = bars.slice(0, 24);
+volumeBars.push({ t: start + (24 * 60000), o: 100.23, h: 100.5, l: 100.2, c: 100.4, v: 9000 });
+const volumeResult = context.detect(volumeBars);
+assert.ok(volumeResult.rows.some((row) => row.type === '↑ Huge Volume'), 'a >=4x volume spike should be detected');
+assert.match(source, /animation:smlMmRowLife 20s/, 'signal rows must fade on a 20-second lifecycle');
+assert.doesNotMatch(source, /padding:22px 24px 224px/, 'the monitor must never enlarge cards with reserved bottom space');
+assert.match(source, /sml-signal-feed-post\{min-height:230px;padding:22px 24px/, 'the original Signal News card dimensions must remain locked');
+assert.match(source, /ingestSignalQuoteEvents=function/, 'new activity must stream from the existing quote poll without extra provider polling');
 
 console.log('PASS  Signal News watermark market-monitor detector');
