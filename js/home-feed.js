@@ -171,7 +171,7 @@
         '#sml-optimized-home .oh-grid .oh-left,#sml-optimized-home .oh-grid .oh-right{display:none !important;}' +
         '#sml-optimized-home .oh-grid > main{width:auto !important;max-width:none !important;margin:0 !important;}' +
         // Re-dress the real cards to match the design.
-        '#sml-optimized-home .oh-post{position:relative;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(255,255,255,.07);border-top-color:rgba(255,255,255,.19);border-radius:18px;padding:20px 22px;margin:0 0 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -2px 0 rgba(0,0,0,.6),0 2px 3px rgba(0,0,0,.45),0 18px 32px -14px rgba(0,0,0,.8),0 44px 70px -38px rgba(0,0,0,.95);transition:transform .2s cubic-bezier(.2,.7,.3,1),border-color .2s,box-shadow .2s;}' +
+        '#sml-optimized-home .oh-post{position:relative;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(255,255,255,.07);border-top-color:rgba(255,255,255,.19);border-radius:14px;padding:13px 15px;margin:0 0 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -2px 0 rgba(0,0,0,.6),0 2px 3px rgba(0,0,0,.45),0 18px 32px -14px rgba(0,0,0,.8),0 44px 70px -38px rgba(0,0,0,.95);transition:transform .2s cubic-bezier(.2,.7,.3,1),border-color .2s,box-shadow .2s;}' +
         '#sml-optimized-home .oh-post:hover{transform:translateY(-4px);border-color:rgba(56,245,138,.32);box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 4px 6px rgba(0,0,0,.5),0 30px 52px -18px rgba(0,0,0,.9),0 0 60px -22px rgba(56,245,138,.45);}' +
         '#sml-optimized-home .oh-post-author{display:flex !important;align-items:center;gap:10px;margin-bottom:6px;text-decoration:none;}' +
         '#sml-optimized-home .oh-post-avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 0 0 2px #131C28,0 0 0 3.5px rgba(34,224,122,.85);}' +
@@ -179,12 +179,19 @@
         /* owner call 2026-08-26: the byline/time strip on every feed card reads
            bright glowing red, and times render 12-hour in the VIEWER's zone */
         '#sml-optimized-home .oh-meta{font-family:"IBM Plex Mono",monospace;font-size:10px;color:#FF4757;font-weight:700;text-shadow:0 0 7px rgba(255,59,76,.9),0 0 16px rgba(255,59,76,.45);margin-bottom:10px;}' +
-        '#sml-optimized-home .oh-post h2{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:19px;line-height:1.25;letter-spacing:-.2px;margin:2px 0 7px;}' +
+        '#sml-optimized-home .oh-post h2{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:16px;line-height:1.22;letter-spacing:-.2px;margin:1px 0 5px;}' +
         '#sml-optimized-home .oh-post h2 a{color:#E6EDF5;text-decoration:none;}#sml-optimized-home .oh-post h2 a:hover{color:#38F58A;}' +
+        /* compact pass: clamp excerpts, cap media height, slim avatars and
+           the engagement row - same look, much less vertical space */
+        '#sml-optimized-home .oh-post > p{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.45;}' +
+        '#sml-optimized-home .oh-post img:not(.oh-post-avatar){max-height:170px;margin-top:8px;}' +
+        '#sml-optimized-home .oh-post-avatar{width:32px !important;height:32px !important;}' +
+        '#sml-optimized-home .sml-signal-feed-post .oh-post-avatar{width:38px !important;height:38px !important;}' +
+        '#sml-optimized-home .sml-hfe-btn{padding:5px 10px;font-size:11px;}' +
         '#sml-optimized-home .oh-post>p{font-size:13.5px;color:#93A4B8;line-height:1.6;margin:0 0 14px;}' +
         // Signal News / non-article market activity cards: real intraday data
         // becomes a visible watermark while copy and controls stay readable.
-        '#sml-optimized-home .sml-signal-feed-post{min-height:230px;padding:22px 24px;border-color:rgba(0,208,255,.30);background:linear-gradient(148deg,rgba(5,18,25,.97),rgba(4,13,20,.98));isolation:isolate;}' +
+        '#sml-optimized-home .sml-signal-feed-post{min-height:160px;padding:13px 15px;border-color:rgba(0,208,255,.30);background:linear-gradient(148deg,rgba(5,18,25,.97),rgba(4,13,20,.98));isolation:isolate;}' +
         '#sml-optimized-home .sml-signal-feed-post::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:18px;background:linear-gradient(90deg,rgba(3,10,17,.97) 0%,rgba(3,10,17,.77) 42%,rgba(3,10,17,.30) 72%,rgba(3,10,17,.54) 100%);}' +
         '#sml-optimized-home .sml-signal-feed-post>*:not(.sml-signal-watermark):not(.sml-mm-tape){position:relative;z-index:2;}' +
         '#sml-optimized-home .sml-signal-feed-post .oh-post-avatar{width:48px;height:48px;box-shadow:0 0 0 2px #07131c,0 0 0 4px rgba(0,208,255,.80),0 0 22px rgba(0,208,255,.30);}' +
@@ -222,6 +229,15 @@
           '#sml-hf-shell.hfm .hf-search input{font-size:16px !important;}' +      /* 16px stops iOS zoom-on-focus */
           '#sml-hf-shell.hfm #sml-hf-loop-kick{padding:11px 10px !important;font-size:10px !important;letter-spacing:0 !important;flex:none;}' +
           '#sml-hf-shell.hfm #sml-hf-me-top{min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;}' +
+          /* mobile compact cards: tighter everything, 2-line excerpts */
+          '#sml-hf-shell.hfm .oh-post{padding:10px 12px !important;margin:0 0 8px !important;border-radius:12px !important;}' +
+          '#sml-hf-shell.hfm .oh-post h2{font-size:14.5px !important;margin:0 0 4px !important;}' +
+          '#sml-hf-shell.hfm .oh-post > p{-webkit-line-clamp:2 !important;font-size:12.5px !important;line-height:1.4 !important;}' +
+          '#sml-hf-shell.hfm .oh-post img:not(.oh-post-avatar){max-height:120px !important;margin-top:6px !important;}' +
+          '#sml-hf-shell.hfm .sml-signal-feed-post{min-height:120px !important;padding:10px 12px !important;}' +
+          '#sml-hf-shell.hfm .oh-post-avatar{width:28px !important;height:28px !important;}' +
+          '#sml-hf-shell.hfm .sml-hfe-btn{padding:4px 8px !important;font-size:10.5px !important;}' +
+          '#sml-hf-shell.hfm .oh-meta{font-size:9px !important;margin-bottom:4px !important;}' +
           '#sml-hf-shell.hfm .hf-headrow #sml-lb-btn{display:none !important;}' + /* Loop Bucks moves to the bottom bar */
           '#sml-hf-shell.hfm #sml-hf-grid{padding:12px 12px calc(76px + env(safe-area-inset-bottom,0px)) !important;gap:14px !important;}' +
           '#sml-hf-shell.hfm .hf-stories{gap:10px !important;margin-bottom:12px !important;-webkit-overflow-scrolling:touch;scrollbar-width:none;}' +
