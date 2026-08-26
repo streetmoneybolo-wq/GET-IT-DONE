@@ -1,0 +1,581 @@
+/* ==========================================================================
+   STOCK MARKET LOOP — permanent article stylesheet
+   --------------------------------------------------------------------------
+   Dark terminal-editorial theme. Written against uploads/articlespecimen.html;
+   scoped to .entry-content / .sml-alert-report so it applies to every post.
+
+   Fonts:  Space Grotesk (display) · IBM Plex Sans (body) · IBM Plex Mono (data)
+   Accent: #38F58A (up/green) · #F2495C (down/red)
+
+   Install: enqueue this file, or paste into Appearance → Customize →
+   Additional CSS. Nothing here depends on markup changes.
+
+   INDEX
+   01 tokens + base        05 data tables           09 market-links aside
+   02 column system        06 evidence figure       10 trust box
+   03 title / dek / byline 07 live charts (.sml-live-chart)
+   04 TOC + headings       08 blockquote, lists, hr, FAQ
+   ========================================================================== */
+
+/* ── 01 · tokens + base ─────────────────────────────────────────────────── */
+:root {
+  --sml-bg:          #0A0F14;
+  --sml-bg-card:     #0E141B;
+  --sml-bg-card-2:   #111923;
+  --sml-line:        #1D2733;
+  --sml-line-strong: #2B3745;
+  --sml-text:        #D9E1E8;
+  --sml-text-bright: #F2F7FA;
+  --sml-text-dim:    #8C99A8;
+  --sml-text-faint:  #5F6C7A;
+  --sml-green:       #38F58A;
+  --sml-red:         #F2495C;
+  --sml-cyan:        #38D6F5;
+  --sml-amber:       #F5C544;
+  --sml-mono:    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sml-sans:    'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --sml-display: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1100px 520px at 12% -4%, rgba(56,245,138,.07), transparent 62%),
+    radial-gradient(900px 480px at 92% 6%, rgba(56,214,245,.055), transparent 60%),
+    var(--sml-bg);
+  background-attachment: fixed;
+  color: var(--sml-text);
+  font-family: var(--sml-sans);
+  font-size: 17px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--sml-green); color: #04140B; }
+
+.entry-content a { color: var(--sml-green); text-decoration: underline; text-decoration-color: rgba(56,245,138,.35); text-underline-offset: 3px; }
+.entry-content a:hover { color: #7CFFB4; text-decoration-color: #7CFFB4; }
+.entry-content :focus-visible { outline: 2px solid var(--sml-green); outline-offset: 2px; }
+
+/* ── 02 · column system ─────────────────────────────────────────────────── */
+.entry-content { padding: 56px 20px 110px; }
+.sml-alert-report { counter-reset: sml-sec; }
+.sml-alert-report > * { max-width: 680px; margin-left: auto; margin-right: auto; }
+/* data-dense elements get the wide measure */
+.sml-alert-report > table,
+.sml-alert-report > figure,
+.sml-alert-report > .sml-live-chart,
+.sml-alert-report > .sml-market-links,
+.sml-alert-report > .sml-featured-image,
+.sml-alert-report > .sml-engage-bar,
+.sml-alert-report > .sml-quote-board,
+.sml-alert-report > .sml-q-asof { max-width: 840px; }
+
+/* ── 03 · title, dek, byline ────────────────────────────────────────────── */
+.sml-alert-report h1 {
+  font-family: var(--sml-display);
+  font-weight: 700;
+  font-size: clamp(2.1rem, 5.2vw, 3.35rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--sml-text-bright);
+  background: linear-gradient(112deg, #F2F7FA 52%, #9FF5C9 88%, var(--sml-green));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0 auto 22px;
+  text-wrap: balance;
+}
+.sml-dek {
+  font-size: 1.28rem;
+  line-height: 1.55;
+  color: var(--sml-text-dim);
+  margin: 0 auto 26px;
+  text-wrap: pretty;
+}
+/* byline row (the classless <p> directly after the dek) */
+.sml-dek + p {
+  font-family: var(--sml-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sml-text-faint);
+  line-height: 1.9;
+  background: linear-gradient(90deg, var(--sml-green), var(--sml-cyan) 55%, transparent) top / 100% 2px no-repeat;
+  border-bottom: 1px solid var(--sml-line);
+  padding: 14px 0 12px;
+  margin: 0 auto 44px;
+}
+.sml-dek + p strong { color: var(--sml-text); font-weight: 500; }
+.sml-dek + p time { color: var(--sml-text-dim); }
+
+/* ── 04 · table of contents + section headings ──────────────────────────── */
+.sml-article-toc {
+  border: 1px solid var(--sml-line);
+  background: var(--sml-bg-card);
+  padding: 22px 26px 24px;
+  margin: 0 auto 56px;
+}
+.sml-article-toc > strong {
+  display: block;
+  font-family: var(--sml-mono);
+  font-weight: 500;
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sml-text-faint);
+  margin-bottom: 14px;
+}
+.sml-article-toc ol {
+  list-style: none;
+  margin: 0; padding: 0;
+  counter-reset: sml-toc;
+  columns: 2;
+  column-gap: 40px;
+}
+.sml-article-toc li {
+  counter-increment: sml-toc;
+  break-inside: avoid;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--sml-line);
+}
+.sml-article-toc li::before {
+  content: '0' counter(sml-toc);
+  font-family: var(--sml-mono);
+  font-size: 0.72rem;
+  color: var(--sml-green);
+  margin-right: 12px;
+}
+.sml-article-toc li:nth-child(3n+2)::before { color: var(--sml-cyan); }
+.sml-article-toc li:nth-child(3n)::before   { color: var(--sml-amber); }
+.sml-article-toc a { color: var(--sml-text); text-decoration: none; font-size: 0.95rem; }
+.sml-article-toc a:hover { color: var(--sml-green); }
+
+.sml-alert-report > h2 {
+  counter-increment: sml-sec;
+  font-family: var(--sml-display);
+  font-weight: 600;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--sml-text-bright);
+  border-top: 1px solid var(--sml-line);
+  padding-top: 30px;
+  margin: 64px auto 18px;
+}
+.sml-alert-report > h2::before {
+  content: '0' counter(sml-sec);
+  display: block;
+  font-family: var(--sml-mono);
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: var(--sml-green);
+  margin-bottom: 10px;
+}
+.sml-alert-report h3 {
+  font-family: var(--sml-display);
+  font-weight: 600;
+  font-size: 1.14rem;
+  color: var(--sml-text-bright);
+  margin: 36px auto 10px;
+}
+.sml-alert-report p { margin: 0 auto 20px; }
+
+/* ── 05 · data tables ───────────────────────────────────────────────────── */
+/* WP emits two-column tables; they render as a grid of interactive stat
+   modules (label over value), not rows. Top edges cycle green/cyan/amber. */
+.entry-content table { display: block; width: 100%; border: 0; margin: 34px auto; }
+.entry-content tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 12px;
+}
+.entry-content tr {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px 18px 18px;
+  background: var(--sml-bg-card);
+  border: 1px solid var(--sml-line);
+  border-top: 2px solid var(--sml-green);
+  transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.entry-content tr:nth-child(3n+2) { border-top-color: var(--sml-cyan); }
+.entry-content tr:nth-child(3n)   { border-top-color: var(--sml-amber); }
+.entry-content tr:hover {
+  transform: translateY(-3px);
+  background: var(--sml-bg-card-2);
+  box-shadow: 0 10px 26px rgba(0,0,0,.4);
+}
+.entry-content th[scope="row"] {
+  text-align: left;
+  font-family: var(--sml-mono);
+  font-weight: 400;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sml-text-dim);
+  padding: 0;
+}
+.entry-content td {
+  text-align: left;
+  font-family: var(--sml-mono);
+  font-weight: 600;
+  font-size: 1.22rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--sml-text-bright);
+  padding: 0;
+}
+.entry-content td.sml-down { color: var(--sml-red); }
+.entry-content td.sml-up { color: var(--sml-green); }
+/* disclaimer paragraph directly after a table */
+.entry-content table + p { font-size: 0.85rem; color: rgba(245,197,68,.68); max-width: 840px; }
+
+/* up/down helpers for hand-written values in future articles */
+.sml-up   { color: var(--sml-green); }
+.sml-down { color: var(--sml-red); }
+
+/* ── inline $TICKER links ───────────────────────────────────────────────── */
+.sml-ticker-link {
+  font-family: var(--sml-mono);
+  font-weight: 500;
+  font-size: 0.86em;
+  color: var(--sml-green);
+  text-decoration: none;
+  background: rgba(56,245,138,.07);
+  border: 1px solid rgba(56,245,138,.28);
+  border-radius: 4px;
+  padding: 0.05em 0.45em 0.12em;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s;
+}
+.sml-ticker-link:hover { color: var(--sml-green); background: rgba(56,245,138,.16); border-color: rgba(56,245,138,.6); }
+
+/* ── 06 · evidence figure ───────────────────────────────────────────────── */
+.sml-alert-evidence { margin: 38px auto; }
+.sml-alert-evidence img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--sml-line-strong);
+}
+.sml-alert-evidence figcaption,
+.sml-live-chart figcaption {
+  font-family: var(--sml-mono);
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--sml-text-dim);
+  margin-top: 10px;
+}
+.sml-alert-evidence figcaption::before { content: 'FIG · '; color: var(--sml-green); }
+
+/* ── 07 · live charts ───────────────────────────────────────────────────── */
+/* Wrapper for real-time embeds — iframe, canvas, or img all work:
+     <figure class="sml-live-chart">
+       <div class="sml-chart-head">
+         <span class="sml-chart-symbol">$CRE</span>
+         <span class="sml-chart-live">LIVE</span>
+         <span class="sml-chart-price">$8.25 <span class="sml-chart-delta sml-up">+234%</span></span>
+       </div>
+       <iframe|canvas|img …>
+       <figcaption>…</figcaption>
+     </figure>                                                               */
+.sml-live-chart {
+  border: 1px solid var(--sml-line-strong);
+  background: #0C1117;
+  margin: 38px auto;
+}
+.sml-chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--sml-line);
+  font-family: var(--sml-mono);
+}
+.sml-chart-symbol { font-weight: 600; font-size: 0.95rem; color: var(--sml-text-bright); }
+.sml-chart-live {
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--sml-green);
+}
+.sml-chart-live::before {
+  content: '';
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--sml-green);
+  margin-right: 7px;
+  vertical-align: 1px;
+  animation: sml-pulse 1.5s ease-in-out infinite;
+}
+@keyframes sml-pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+.sml-chart-price { margin-left: auto; font-weight: 600; font-size: 0.95rem; color: var(--sml-text-bright); font-variant-numeric: tabular-nums; }
+.sml-chart-delta { font-size: 0.8rem; margin-left: 8px; }
+.sml-live-chart :is(iframe, canvas, img) { display: block; width: 100%; border: 0; }
+.sml-live-chart figcaption { padding: 10px 18px 12px; border-top: 1px solid var(--sml-line); margin-top: 0; }
+
+/* ── 08 · blockquote, lists, hr, FAQ ────────────────────────────────────── */
+.entry-content blockquote {
+  margin: 44px auto;
+  padding: 18px 26px 18px 26px;
+  border-left: 2px solid var(--sml-green);
+  background: linear-gradient(90deg, rgba(56,245,138,.08), transparent 70%);
+}
+.entry-content blockquote p {
+  font-family: var(--sml-display);
+  font-size: 1.32rem;
+  line-height: 1.45;
+  color: #EAF1F6;
+  margin: 0;
+}
+.entry-content ul, .entry-content ol { margin: 0 auto 22px; padding-left: 24px; }
+.entry-content li { margin-bottom: 8px; padding-left: 6px; }
+.entry-content li::marker { color: var(--sml-green); font-family: var(--sml-mono); font-size: 0.9em; }
+.entry-content hr {
+  border: 0;
+  height: 1px;
+  max-width: 680px;
+  margin: 60px auto;
+  background: linear-gradient(90deg, transparent, var(--sml-line-strong), transparent);
+}
+/* FAQ questions get a mono Q-mark */
+.sml-alert-report > h2#frequently-asked-questions ~ h3::before {
+  content: 'Q · ';
+  font-family: var(--sml-mono);
+  font-size: 0.8em;
+  color: var(--sml-green);
+}
+
+/* ── 09 · market-links aside ────────────────────────────────────────────── */
+.sml-market-links {
+  border: 1px solid var(--sml-line);
+  border-top: 2px solid var(--sml-cyan);
+  background: linear-gradient(180deg, var(--sml-bg-card-2), var(--sml-bg-card));
+  padding: 26px 28px 28px;
+  margin: 64px auto 0;
+}
+.sml-market-links h2 {
+  font-family: var(--sml-mono);
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sml-green);
+  margin: 0 0 16px;
+}
+.sml-market-links ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.sml-market-links li { margin: 0; padding: 0; }
+.sml-market-links a {
+  display: block;
+  padding: 13px 46px 13px 16px;
+  border: 1px solid var(--sml-line);
+  background: var(--sml-bg);
+  color: var(--sml-text);
+  text-decoration: none;
+  font-size: 0.93rem;
+  position: relative;
+  transition: border-color .12s, color .12s;
+}
+.sml-market-links a::after {
+  content: '→';
+  position: absolute;
+  right: 16px; top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sml-mono);
+  color: var(--sml-green);
+}
+.sml-market-links a:hover { border-color: rgba(56,245,138,.5); color: var(--sml-text-bright); background: rgba(56,245,138,.05); }
+
+/* ── 10 · trust box ─────────────────────────────────────────────────────── */
+.sml-trust-box {
+  margin: 44px auto 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--sml-line);
+  font-size: 0.83rem;
+  line-height: 1.7;
+  color: var(--sml-text-dim);
+}
+.sml-trust-box p { margin: 0 0 10px; }
+.sml-trust-box p:first-child {
+  font-family: var(--sml-mono);
+  font-size: 0.73rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sml-text-faint);
+}
+.sml-trust-box a { color: var(--sml-text); }
+.sml-trust-box a:hover { color: var(--sml-green); }
+
+/* ── 12 · featured image + engagement bar ───────────────────────────── */
+/* Featured image sits directly under the byline/date row:
+     <figure class="sml-featured-image"><img …></figure>
+   Engagement bar sits under the dek (WP renders the buttons; these style them):
+     <div class="sml-engage-bar">
+       <button class="sml-engage-btn sml-engage-like">… Like · <span>128</span></button> …
+     </div>                                                                  */
+.sml-featured-image { margin: 0 auto 48px; }
+.sml-featured-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--sml-line-strong);
+}
+.sml-featured-image figcaption {
+  font-family: var(--sml-mono);
+  font-size: 0.74rem;
+  color: var(--sml-text-dim);
+  margin-top: 10px;
+}
+
+.sml-engage-bar {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 auto 26px;
+  max-width: 680px;
+}
+.sml-engage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sml-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 8px;
+  padding: 10px 18px 11px;
+  cursor: pointer;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+}
+.sml-engage-btn svg { display: block; }
+.sml-engage-btn:hover { transform: translateY(-1px); filter: brightness(1.12); }
+.sml-engage-btn:active { transform: translateY(2px); }
+
+.sml-engage-like {
+  color: #04140B;
+  background: linear-gradient(180deg, #6DFFAC, #2DDF78);
+  border: 1px solid #1FB35F;
+  box-shadow: 0 4px 0 #148144, 0 8px 18px rgba(56,245,138,.28), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.sml-engage-like span { color: #0A3D22; }
+.sml-engage-like:active { box-shadow: 0 1px 0 #148144, 0 3px 8px rgba(56,245,138,.2), inset 0 1px 0 rgba(255,255,255,.5); }
+.sml-engage-like[aria-pressed="true"] { background: linear-gradient(180deg, #38F58A, #1CB963); }
+
+.sml-engage-comment {
+  color: #03222C;
+  background: linear-gradient(180deg, #7BE4FF, #29BEE8);
+  border: 1px solid #1B9CC4;
+  box-shadow: 0 4px 0 #12718F, 0 8px 18px rgba(56,214,245,.26), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.sml-engage-comment span { color: #0A4759; }
+.sml-engage-comment:active { box-shadow: 0 1px 0 #12718F, 0 3px 8px rgba(56,214,245,.2), inset 0 1px 0 rgba(255,255,255,.5); }
+
+.sml-engage-share {
+  color: #2A1F03;
+  background: linear-gradient(180deg, #FFDD6E, #F0B62E);
+  border: 1px solid #C99417;
+  box-shadow: 0 4px 0 #97700F, 0 8px 18px rgba(245,197,68,.26), inset 0 1px 0 rgba(255,255,255,.55);
+}
+.sml-engage-share:active { box-shadow: 0 1px 0 #97700F, 0 3px 8px rgba(245,197,68,.2), inset 0 1px 0 rgba(255,255,255,.55); }
+
+/* ── 11 · quote board (corporate stat grid under the byline) ────────────── */
+/*   <div class="sml-quote-board">
+       <div><span class="sml-q-label">Last</span>
+            <span class="sml-q-value">$8.25</span>
+            <span class="sml-q-sub sml-up">+234.0%</span></div> ×N
+     </div>
+     <p class="sml-q-asof">Exchange · Company · timestamp</p>                */
+.sml-quote-board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--sml-line);
+  border-top: 2px solid var(--sml-green);
+  border-right: 0;
+  border-bottom: 0;
+  background: var(--sml-bg-card);
+  margin: 0 auto 12px;
+}
+.sml-quote-board > div { transition: background .14s ease; }
+.sml-quote-board > div:hover { background: rgba(56,245,138,.05); }
+.sml-quote-board > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 18px 15px;
+  border-right: 1px solid var(--sml-line);
+  border-bottom: 1px solid var(--sml-line);
+}
+.sml-q-label {
+  font-family: var(--sml-mono);
+  font-size: 0.63rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sml-text-faint);
+}
+.sml-q-value {
+  font-family: var(--sml-mono);
+  font-weight: 600;
+  font-size: 1.02rem;
+  color: var(--sml-text-bright);
+  font-variant-numeric: tabular-nums;
+}
+.sml-q-sub { font-family: var(--sml-mono); font-size: 0.72rem; color: var(--sml-text-dim); }
+.entry-content .sml-q-asof {
+  font-family: var(--sml-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--sml-text-faint);
+  margin: 0 auto 52px;
+}
+
+/* ── WordPress title compatibility ─────────────────────────────────────── */
+/* The production block theme renders the post title immediately before
+   .entry-content. Alert articles receive the body class from the permanent
+   loader, so that theme-owned title follows the same visual contract as an
+   in-article H1 without duplicating the headline in post_content. */
+body.sml-alert-article-page h1.wp-block-post-title {
+  width: min(100% - 40px, 840px);
+  max-width: 840px;
+  margin: 34px auto 22px !important;
+  font-family: var(--sml-display);
+  font-weight: 700;
+  font-size: clamp(2.1rem, 5.2vw, 3.35rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--sml-text-bright);
+  background: linear-gradient(112deg, #F2F7FA 52%, #9FF5C9 88%, var(--sml-green));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-wrap: balance;
+}
+body.sml-alert-article-page .entry-content { margin-block-start: 0 !important; }
+body.sml-alert-article-page .entry-content > p:empty { display: none !important; }
+body.sml-alert-article-page .sml-uads-header,
+body.sml-alert-article-page .wordads-ad-wrapper--top,
+body.sml-alert-article-page .sml-alert-report .sml-uads-slot { display: none !important; }
+body.sml-alert-article-page .sml-news-engagement {
+  width: min(100% - 40px, 840px);
+  margin: 0 auto 26px !important;
+  padding: 12px 0 !important;
+  border-top: 1px solid var(--sml-line);
+  border-bottom: 1px solid var(--sml-line);
+}
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  .entry-content { padding: 36px 16px 80px; }
+  .sml-article-toc ol { columns: 1; }
+  .sml-alert-report > h2 { margin-top: 48px; }
+  .entry-content tbody { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .entry-content td { font-size: 1.05rem; }
+  .sml-chart-head { flex-wrap: wrap; gap: 10px 14px; }
+  .sml-quote-board { grid-template-columns: repeat(2, 1fr); }
+  body.sml-alert-article-page h1.wp-block-post-title,
+  body.sml-alert-article-page .sml-news-engagement { width: min(100% - 32px, 840px); }
+}
