@@ -541,10 +541,15 @@
     beat(); setInterval(beat, 60000);
     pollPresence(); setInterval(pollPresence, 60000);
 
-    // ---- rabbit hole: right arrow on each post reveals a looping rail of more ----
-    // User posts -> author's recent posts; ticker/news cards -> recent articles on
-    // that stock. The rail wraps around endlessly (1..N then back to 1).
+    // ---- rabbit hole: exact-ticker, seven-day news only ----
+    // A side arrow never crosses tickers, never recommends a story older than
+    // seven days, and never exposes another route to the same article.
     function rhFmtDate(d){ try { return new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric'}); } catch(e){ return ''; } }
+    function rhTicker(card){
+      var tagged=String(card.getAttribute('data-sml-ticker')||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,'');
+      if(tagged) return tagged;
+      return (((card.innerText||'').match(/\$([A-Z]{1,5})\b/)||[])[1]||'').toUpperCase();
+    }
     function rhGo(card, st, i, instant){
       var n = st.items.length || 1; i = ((i % n) + n) % n; st.i = i;
       var tr = card.__rhTrack; if (tr){ if (instant){ tr.style.transition='none'; tr.style.transform='translateX(-'+(i*100)+'%)'; void tr.offsetWidth; tr.style.transition=''; } else { tr.style.transform='translateX(-'+(i*100)+'%)'; } }
@@ -561,49 +566,37 @@
           return '<div class="sml-rh-item has-img"><a class="sml-rh-cover" href="'+esc(it.link)+'"><img src="'+esc(it.img)+'" alt="" loading="lazy"></a><div class="sml-rh-shade"></div><div class="sml-rh-info">'+title+meta+'</div></div>';
         }
         return '<div class="sml-rh-item no-img">'+title+meta+'</div>'; }).join('');
+      var prev=card.__rhPanel&&card.__rhPanel.querySelector('.sml-rh-prev'), next=card.__rhPanel&&card.__rhPanel.querySelector('.sml-rh-next'), nav=st.items.length>1;
+      [prev,next].forEach(function(btn){if(btn){btn.disabled=!nav;btn.style.opacity=nav?'1':'.35';btn.style.cursor=nav?'pointer':'default';}});
       rhGo(card, st, st.i || 0, true);
     }
     // Resolve a card's rail data (cached per query so many cards share fetches).
     var rhCache = {};
     function rhResolve(card, cb){
       if (card.__rhData){ cb(card.__rhData.items, card.__rhData.label); return; }
-      var text = card.innerText || '';
-      var tick = (text.match(/\$([A-Z]{1,5})\b/)||[])[1];
-      var an = ((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
-      var aEl = card.querySelector('.oh-post-author');
-      var ahref = aEl ? (aEl.getAttribute('href')||'') : '';
-      var asm = ahref.match(/^(?:https?:\/\/[^\/]+)?\/([a-z0-9_\-]+)\/?$/i);
+      var tick = rhTicker(card);
       var hEl = card.querySelector('h2 a');
       var cur = hEl ? (hEl.getAttribute('href')||'') : '';
-      // A card is a NEWS article only when it's posted by the site's own news
-      // account. Every member post — even one tagging $TICKERs — is a USER post
-      // and reveals that user's latest posts.
-      var isNews = /^(stock\s*market\s*loop|sml(\s*news)?)$/i.test(an);
-      var title = hEl ? (hEl.textContent||'') : '';
-      var topic = title.replace(/[^A-Za-z0-9$ ]/g,' ').split(/\s+/).filter(function(w){ return w.length>3 && !/^(this|that|with|from|will|have|been|after|about|says|over|into|their|would|could|these|those|when|what|where|more|than)$/i.test(w); }).slice(0,3).join(' ');
-      var label = isNews ? (tick ? ('MORE ON $'+tick) : 'MORE LIKE THIS') : ('MORE FROM '+(an||'THIS TRADER').toUpperCase());
-      var ck = isNews ? ('s:'+(tick||topic||'stocks')) : ('a:'+((asm&&asm[1])||an));
+      var label = tick ? ('MORE ON $'+tick+' · 7 DAYS') : '';
+      var ck = 'ticker7:'+(tick||'none');
       function finish(arr){
-        var items = (arr||[]).filter(function(x){ return x && x.link !== cur; }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date, img:x.jetpack_featured_media_url||'' }; }).slice(0,10);
+        var floor=Date.now()-(7*24*60*60*1000), seen={};
+        var exact=new RegExp('\\$'+tick+'(?:\\b|$)','i');
+        var items = (arr||[]).filter(function(x){
+          if(!x||!x.link||x.link===cur||seen[x.link]) return false;
+          var when=Date.parse(x.date||''); if(!when||when<floor||when>Date.now()+60000) return false;
+          var hay=[x.title&&x.title.rendered,x.excerpt&&x.excerpt.rendered,x.content&&x.content.rendered].join(' ').replace(/<[^>]+>/g,' ');
+          if(!exact.test(hay)) return false; seen[x.link]=1; return true;
+        }).map(function(x){ return { title:(x.title&&x.title.rendered)||'Untitled', link:x.link, date:x.date, img:x.jetpack_featured_media_url||'' }; }).slice(0,10);
         card.__rhData = { items: items, label: label };
         cb(items, label);
       }
+      if(!tick){finish([]);return;}
       if (rhCache[ck]){ finish(rhCache[ck]); return; }
       var save = function(arr){ rhCache[ck] = arr || []; finish(arr); };
       var base = '/wp-json/wp/v2/';
-      function searchBy(q){ return fetch(base+'posts?search='+encodeURIComponent(q)+'&per_page=10&_fields=title,link,date,jetpack_featured_media_url').then(function(r){ return r.json(); }); }
-      if (isNews){
-        // News article -> more articles on the same stock (or same topic if no ticker).
-        searchBy(tick || topic || 'stocks').then(save).catch(function(){ save([]); });
-      }
-      else if (asm){
-        // User post -> ALWAYS that user's latest posts (ticker mentions don't change this).
-        fetch(base+'users?slug='+encodeURIComponent(asm[1])+'&_fields=id').then(function(r){ return r.json(); })
-          .then(function(u){ var id = u && u[0] && u[0].id; if (!id) throw 0; return fetch(base+'posts?author='+id+'&per_page=10&_fields=title,link,date,jetpack_featured_media_url').then(function(r){ return r.json(); }); })
-          .then(function(arr){ if (arr && arr.length) save(arr); else return searchBy(an).then(save); })
-          .catch(function(){ searchBy(an).then(save).catch(function(){ save([]); }); });
-      }
-      else { searchBy(an || tick || 'stocks').then(save).catch(function(){ save([]); }); }
+      var after=new Date(Date.now()-(7*24*60*60*1000)).toISOString();
+      fetch(base+'posts?search='+encodeURIComponent(tick)+'&after='+encodeURIComponent(after)+'&orderby=date&order=desc&per_page=20&_fields=title,link,date,jetpack_featured_media_url,excerpt,content').then(function(r){if(!r.ok)throw r.status;return r.json();}).then(save).catch(function(){save([]);});
     }
     function rhOpen(card){
       if (card.__rhPanel){ card.__rhPanel.classList.add('on'); return; }
@@ -624,8 +617,8 @@
       });
     }
     function attachRh(card){
-      if (card.querySelector('.sml-rh-btn')) return;
-      var b = document.createElement('button'); b.className='sml-rh-btn'; b.innerHTML='›'; b.title='More like this';
+      var tick=rhTicker(card); if(!tick||card.querySelector('.sml-rh-btn')) return;
+      var b = document.createElement('button'); b.className='sml-rh-btn'; b.innerHTML='›'; b.title='More $'+tick+' news from the last 7 days'; b.setAttribute('aria-label',b.title);
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); rhOpen(card); });
       card.appendChild(b);
     }
@@ -636,10 +629,7 @@
     function armRh(card){ attachRh(card); }
     (function(){ host.querySelectorAll('.oh-post').forEach(function(card){ armRh(card); }); })();
 
-    // ---- feed hygiene: one card per user per content type ----
-    // A user may appear again only with a DIFFERENT kind of activity (photo /
-    // video / comment / liked post / text post). The site's own news account is
-    // exempt so the news flow never collapses.
+    // ---- feed hygiene: fresh news, one card per item, one activity card per type ----
     function cardType(card){
       var meta = ((card.querySelector('.oh-meta')||{}).textContent||'').toLowerCase();
       if (/comment|repl/.test(meta)) return 'comment';
@@ -720,13 +710,19 @@
       var lg=document.getElementById('sml-hf-livegrid'); if (lg) lg.style.display=live?'grid':'none';
       host.style.display=live?'none':'';
       if (live) return;
-      var seen={}, any=false;
+      var seen={}, seenContent={}, any=false, newsCutoff=Date.now()-(72*60*60*1000);
       host.querySelectorAll('.oh-post').forEach(function(card){
         var an=((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
         var lan=an.toLowerCase();
-        var isNewsA=/^(stock\s*market\s*loop|sml(\s*news)?)$/.test(lan);
+        var isNewsA=/^(stock\s*market\s*loop(?:\s*signal\s*news)?|sml(?:\s*news)?)$/.test(lan);
         var show=true;
-        if (!isNewsA && lan){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
+        var contentKey=String(card.getAttribute('data-hfe-item')||card.getAttribute('data-hfe-url')||'').toLowerCase();
+        if(contentKey){if(seenContent[contentKey])show=false;else seenContent[contentKey]=1;}
+        if(show&&card.getAttribute('data-sml-news-item')==='1'){
+          var published=Date.parse(card.getAttribute('data-sml-published')||'');
+          if(!published||published<newsCutoff) show=false;
+        }
+        if (show&&!isNewsA && lan){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
         if (show && curTab==='following'){
           if (isNewsA) show=false;
           else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan])); }
@@ -796,8 +792,8 @@
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
         if (html.indexOf('sml-optimized-home') < 0) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
-        var fresh = [];
-        doc.querySelectorAll('#sml-optimized-home .oh-post').forEach(function(c){ if (!feedSeen[cardKeyOf(c)]) fresh.push(c); });
+        var fresh = [], batchSeen = {};
+        doc.querySelectorAll('#sml-optimized-home .oh-post').forEach(function(c){ var k=cardKeyOf(c); if (!feedSeen[k]&&!batchSeen[k]){batchSeen[k]=1;fresh.push(c);} });
         if (!fresh.length) return;
         var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
         for (var i = fresh.length - 1; i >= 0; i--) {
