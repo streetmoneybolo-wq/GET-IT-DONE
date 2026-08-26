@@ -9,6 +9,10 @@
  */
 (function () {
   'use strict';
+  // The standalone homepage now loads this controller directly as a fail-safe.
+  // Keep the legacy WPCode injector harmless when both delivery paths succeed.
+  if (window.__smlHomeFeedControllerLoaded) return;
+  window.__smlHomeFeedControllerLoaded = true;
   var GREEN = '#38F58A';
   // Shadow-banned groups: never build them into the My Groups module.
   var SML_BANNED_SLUGS = ['the-options-plug','spy-spy-highflyers'];
