@@ -14,7 +14,8 @@ if ( ! function_exists( 'sml_ss_loader_active' ) ) {
 		$ref = function_exists( 'sml_cdn_resolve_ref' ) ? sml_cdn_resolve_ref() : 'main';
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( $ref ) . '/';
 		$config = '<script id="sml-ss-config">window.SML_SITE_SEARCH=' . wp_json_encode( array(
-			'rest' => rest_url( 'sml-site-search/v1/search' ),
+			'rest'          => rest_url( 'sml-site-search/v1/search' ),
+			'breaking_rest' => rest_url( 'sml-signal-news/v1/tape' ),
 		) ) . ';</script>';
 		return '<link id="sml-ss-css" rel="stylesheet" href="' . esc_url( $base . 'css/site-search.css' ) . '">' . $config
 			. '<script id="sml-ss-js" src="' . esc_url( $base . 'js/site-search.js' ) . '"></script>';

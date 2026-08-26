@@ -6,6 +6,7 @@
 
   var CFG = window.SML_SITE_SEARCH || {};
   var REST = CFG.rest || '/wp-json/sml-site-search/v1/search';
+  var BREAKING_REST = CFG.breaking_rest || '/wp-json/sml-signal-news/v1/tape';
   var state = { tab: 'all', data: null, timer: null, abort: null, anchor: null, fallbackTimer: null };
   var scriptNode = document.currentScript;
   var assetBase = scriptNode && scriptNode.src ? scriptNode.src.split('/js/site-search.js')[0] + '/' : '';
@@ -79,6 +80,132 @@
     return HEADER_SYMBOLS.map(function (symbol) {
       return '<a class="sml-gh-tick" data-tkpop="' + symbol + '" href="/stock-chart/?symbol=' + symbol + '"><b>$' + symbol + '</b><span data-gh-quote="' + symbol + '" data-field="last">—</span><em data-gh-quote="' + symbol + '" data-field="pct">—</em></a>';
     }).join('');
+  }
+
+  /* ---- one-pass breaking market-post lane ---------------------------------
+     Signal News records an immutable event only after a post reaches publish.
+     The first request establishes "now" and returns no history, so opening or
+     refreshing a page never replays an old headline. While this tab is visible
+     we poll a sequence cursor; each new title crosses the existing tape once,
+     remains clickable, pauses on hover, then is removed permanently. */
+  var breaking = { cursor: 0, queue: [], active: false, timer: null, lane: null, tape: null, mountAttempts: 0, mountTimer: null };
+  var BREAKING_SEEN_KEY = 'sml:breaking-posts:seen:v1';
+
+  function breakingSeen() {
+    try { var data = JSON.parse(localStorage.getItem(BREAKING_SEEN_KEY) || '{}'); return data && typeof data === 'object' ? data : {}; }
+    catch (e) { return {}; }
+  }
+
+  function rememberBreaking(id) {
+    var seen = breakingSeen();
+    if (seen[id]) return false;
+    seen[id] = 1;
+    try { localStorage.setItem(BREAKING_SEEN_KEY, JSON.stringify(seen)); } catch (e) {}
+    return true;
+  }
+
+  function scheduleBreaking(delay) {
+    clearTimeout(breaking.timer);
+    breaking.timer = setTimeout(pollBreaking, delay || 4000);
+  }
+
+  function breakingRequest(query) {
+    return fetch(BREAKING_REST + query + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('Breaking feed unavailable'); return r.json(); });
+  }
+
+  function resetBreakingVisual() {
+    breaking.queue = [];
+    breaking.active = false;
+    if (breaking.lane) { breaking.lane.innerHTML = ''; breaking.lane.setAttribute('aria-hidden', 'true'); }
+    if (breaking.tape) breaking.tape.classList.remove('has-breaking');
+  }
+
+  function bootstrapBreaking() {
+    clearTimeout(breaking.timer);
+    if (document.hidden || !breaking.lane) return;
+    breakingRequest('?bootstrap=1').then(function (data) {
+      breaking.cursor = Number(data && data.cursor) || 0;
+      scheduleBreaking(3500);
+    }).catch(function () { scheduleBreaking(12000); });
+  }
+
+  function pollBreaking() {
+    if (document.hidden || !breaking.lane) return;
+    breakingRequest('?after=' + encodeURIComponent(breaking.cursor)).then(function (data) {
+      var rows = Array.isArray(data && data.items) ? data.items : [];
+      breaking.cursor = Number(data && data.cursor) || breaking.cursor;
+      rows.forEach(function (item) {
+        var id = Number(item && item.id) || 0;
+        var published = Number(item && item.published) || 0;
+        /* A backgrounded/restored tab must not parade stale headlines. */
+        if (!id || !item.url || !item.title || (published && Date.now() / 1000 - published > 120)) return;
+        if (rememberBreaking(String(id))) breaking.queue.push(item);
+      });
+      runBreaking();
+      scheduleBreaking(data && data.has_more ? 250 : 3500);
+    }).catch(function () { scheduleBreaking(12000); });
+  }
+
+  function runBreaking() {
+    if (breaking.active || !breaking.queue.length || !breaking.lane || document.hidden) return;
+    var item = breaking.queue.shift();
+    var link = document.createElement('a');
+    var ticker = String(item.ticker || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+    link.className = 'sml-gh-breaking-item';
+    link.href = String(item.url);
+    link.setAttribute('aria-label', 'Breaking market post: ' + String(item.title));
+    link.innerHTML = '<span class="sml-gh-breaking-flag">BREAKING</span>' +
+      (ticker ? '<span class="sml-gh-breaking-symbol">$' + esc(ticker) + '</span>' : '') +
+      '<strong class="sml-gh-breaking-title">' + esc(item.title) + '</strong>' +
+      '<span class="sml-gh-breaking-open">READ NOW →</span>';
+    breaking.active = true;
+    breaking.lane.setAttribute('aria-hidden', 'false');
+    breaking.lane.appendChild(link);
+    breaking.tape.classList.add('has-breaking');
+
+    var finish = function () {
+      if (!breaking.active) return;
+      breaking.active = false;
+      if (link.parentNode) link.parentNode.removeChild(link);
+      if (!breaking.queue.length) {
+        breaking.lane.setAttribute('aria-hidden', 'true');
+        breaking.tape.classList.remove('has-breaking');
+      }
+      setTimeout(runBreaking, 220);
+    };
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTimeout(finish, 9000);
+    } else {
+      var duration = Math.max(12, Math.min(24, (window.innerWidth + link.offsetWidth) / 105));
+      link.style.setProperty('--sml-breaking-duration', duration.toFixed(2) + 's');
+      link.addEventListener('animationend', finish, { once: true });
+    }
+  }
+
+  function mountBreakingTape() {
+    var tape = el('.sml-gh-tape');
+    if (!tape) {
+      if (breaking.mountAttempts++ < 20) breaking.mountTimer = setTimeout(mountBreakingTape, 500);
+      return;
+    }
+    if (tape.getAttribute('data-breaking-mounted') === '1') return;
+    clearTimeout(breaking.mountTimer);
+    breaking.mountAttempts = 0;
+    tape.setAttribute('data-breaking-mounted', '1');
+    var lane = document.createElement('div');
+    lane.className = 'sml-gh-breaking-lane';
+    lane.setAttribute('aria-live', 'polite');
+    lane.setAttribute('aria-atomic', 'true');
+    lane.setAttribute('aria-hidden', 'true');
+    tape.appendChild(lane);
+    breaking.tape = tape;
+    breaking.lane = lane;
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { clearTimeout(breaking.timer); resetBreakingVisual(); }
+      else bootstrapBreaking();
+    });
+    bootstrapBreaking();
   }
 
   function replaceKnownHeader() {
@@ -446,6 +573,7 @@
     if (EMBED_TOOL) { mountEmbedTool(); return; }
     if (el('#sml-ss-panel')) return;
     mountGlobalHeader();
+    mountBreakingTape();
     var panel = document.createElement('div');
     panel.className = 'sml-ss-panel'; panel.id = 'sml-ss-panel';
     panel.innerHTML = '<section class="sml-ss-dialog" role="dialog" aria-label="StockMarketLoop search results">' +
