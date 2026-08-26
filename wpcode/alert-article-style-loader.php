@@ -42,5 +42,12 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 			array( 'sml-alert-article-fonts' ),
 			$ref
 		);
+		wp_enqueue_script(
+			'sml-alert-article-market-pulse',
+			'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( $ref ) . '/js/article-market-pulse.js',
+			array(),
+			$ref,
+			true
+		);
 	}, 40 );
 }
