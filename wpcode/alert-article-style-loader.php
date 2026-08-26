@@ -17,7 +17,9 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 			$ref = (string) sml_cdn_resolve_ref();
 			if ( '' !== $ref ) { return $ref; }
 		}
-		return 'main';
+		// Immutable fallback known to contain css/article-styles.css. The normal
+		// path uses the site's resolver and follows the current verified release.
+		return 'e6874ed815d2679d50b96622e4c9eb2d0ac58e00';
 	}
 
 	add_filter( 'body_class', function ( $classes ) {
