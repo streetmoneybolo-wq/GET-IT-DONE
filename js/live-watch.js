@@ -1093,12 +1093,14 @@
      links use `room`; keep the `s` fallback only for a legacy page that has
      already loaded before the server-side normalizer can redirect it. */
   var HANDLE = (qs('room') || qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
+  var STREAM_ID = (qs('stream') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
   /* Build share links from the resolved room identity, never from the current
      browser URL. This preserves the creator when WordPress, a cache buster, or
      another script normalizes /live/?room=... back to /live/. */
   function canonicalWatchUrl() {
     var watch = new URL('/live/', location.origin);
     watch.searchParams.set('room', HANDLE);
+    if (STREAM_ID) watch.searchParams.set('stream', STREAM_ID);
     return watch.href;
   }
   var media = el('#slw-media'), ph = el('#slw-ph');
@@ -1249,10 +1251,12 @@
   }
   function loadScheduledLive() {
     if (!HANDLE) return Promise.resolve(null);
-    return fetch('/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE), { credentials: 'same-origin', cache: 'no-store' })
+    var endpoint = '/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE)
+      + (STREAM_ID ? '/' + encodeURIComponent(STREAM_ID) : '');
+    return fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
-        scheduledLive = data && data.status === 'scheduled' ? data : null;
+        scheduledLive = data && data.id ? data : null;
         if (scheduledLive) paintScheduledAbout(scheduledLive);
         /* A public scheduled room is intentionally open before video starts. */
         paintComposer();
@@ -1409,6 +1413,18 @@
     } else v.src = url;
     P.muted = true; paintVolBtn();
   }
+  function mountRecording(info) {
+    if (!info || info.recording_status !== 'ready' || !/^https:\/\//i.test(String(info.recording_url || ''))) return false;
+    mountSlot(String(info.recording_url));
+    setBroadcastState('offline');
+    setSourceNote('saved live replay');
+    var heading = root.querySelector('.slw-titleblk h1');
+    if (heading && info.title) heading.textContent = info.title;
+    var eyebrow = root.querySelector('.slw-titleblk .ep span');
+    if (eyebrow) eyebrow.textContent = 'RECORDED LIVE · REPLAY';
+    paintScheduledAbout(info);
+    return true;
+  }
   function teardown() {
     if (P.yt && P.yt.destroy) try { P.yt.destroy(); } catch (e) {}
     P.yt = null; P.video = null; P.mode = 'none'; P.dur = 0; P.playing = false;
@@ -1531,10 +1547,18 @@
   teardown = function () { unmountMulti(); _origTeardown(); };
 
   function pollFeeds() {
+    /* A permanent stream URL must never jump to a different, newer broadcast
+       by the same creator. Once its recorder attaches a real replay asset,
+       this page plays that asset; otherwise it remains the scheduled/off-air
+       page for this exact stream. */
+    if (STREAM_ID && scheduledLive && scheduledLive.recording_status === 'ready') {
+      mountRecording(scheduledLive);
+      return;
+    }
     fetch('/wp-json/sml-live/v1/feeds/' + HANDLE, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        var live = (d && d.live) ? (d.slots || []).filter(function (s2) { return s2.live && s2.playback; }) : [];
+        var live = (d && d.live && (!STREAM_ID || (scheduledLive && scheduledLive.status === 'scheduled'))) ? (d.slots || []).filter(function (s2) { return s2.live && s2.playback; }) : [];
         var extra = extraScreens();
         /* multi-screen: 2+ live slots, or a primary + creator-pinned screens */
         if (live.length >= 2 || (live.length >= 1 && extra.length)) {

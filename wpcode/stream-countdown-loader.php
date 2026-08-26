@@ -5,7 +5,8 @@
  * wired to the real sml-scheduled-live/v1/creator/{handle} API) on the pages
  * where a creator's upcoming stream matters:
  *   /channel/{handle}/   — the channel's public page
- *   /live/               — the watch page (?room={handle})
+ *   /live/               — the watch page (?room={handle}&stream={id})
+ *   /go-live/            — creator dashboard live-library module
  * The module itself decides whether to render: only when the API says a
  * PUBLIC stream is genuinely scheduled (status "scheduled", future
  * scheduled_at). No schedule -> the page is untouched. Scheduled video
@@ -24,15 +25,21 @@ if ( ! function_exists( 'sml_cdwn_loader_active' ) ) {
 		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
 		if ( preg_match( '#^/channel/[A-Za-z0-9_-]{1,40}/?$#', $path ) ) { return true; }
 		if ( '/live/' === rtrim( $path, '/' ) . '/' && '/' !== $path ) { return true; }
+		if ( '/go-live/' === rtrim( $path, '/' ) . '/' && '/' !== $path ) { return true; }
 		return false;
 	}
 
 	function sml_cdwn_ob( $html ) {
 		if ( ! is_string( $html ) || false === stripos( $html, '</body>' ) ) { return $html; }
-		if ( false !== strpos( $html, 'id="sml-cdwn-js"' ) ) { return $html; } // idempotent
+		if ( false !== strpos( $html, 'id="sml-cdwn-js"' ) || false !== strpos( $html, 'id="sml-creator-live-library-js"' ) ) { return $html; } // idempotent
 		foreach ( headers_list() as $hh ) { if ( 0 === stripos( $hh, 'content-type:' ) && false === stripos( $hh, 'text/html' ) ) { return $html; } }
 		$ref = function_exists( 'sml_cdn_resolve_ref' ) ? sml_cdn_resolve_ref() : 'main';
-		$tag = '<script id="sml-cdwn-js" defer src="https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . esc_attr( $ref ) . '/js/stream-countdown.js"></script>';
+		$path = (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH );
+		if ( '/go-live/' === rtrim( $path, '/' ) . '/' ) {
+			$tag = '<script id="sml-creator-live-library-js" defer src="https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . esc_attr( $ref ) . '/js/creator-live-library.js"></script>';
+		} else {
+			$tag = '<script id="sml-cdwn-js" defer src="https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . esc_attr( $ref ) . '/js/stream-countdown.js"></script>';
+		}
 		$at  = stripos( $html, '</body>' );
 		return substr( $html, 0, $at ) . $tag . substr( $html, $at );
 	}

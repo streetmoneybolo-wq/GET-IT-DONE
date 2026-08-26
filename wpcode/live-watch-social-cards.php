@@ -20,6 +20,13 @@ if ( ! function_exists( 'sml_lsc_room_handle' ) ) {
 		return preg_match( '/^[A-Za-z0-9_-]{1,60}$/', $handle ) ? $handle : '';
 	}
 
+	function sml_lsc_stream_id() {
+		if ( empty( $_GET['stream'] ) || ! function_exists( 'sml_scheduled_live_clean_id' ) ) {
+			return '';
+		}
+		return sml_scheduled_live_clean_id( wp_unslash( (string) $_GET['stream'] ) );
+	}
+
 	function sml_lsc_is_room_page() {
 		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 		$path = '/' . trim( strtolower( (string) strtok( $uri, '?' ) ), '/' ) . '/';
@@ -42,7 +49,7 @@ if ( ! function_exists( 'sml_lsc_room_handle' ) ) {
 		if ( ! $user || empty( $user->ID ) ) {
 			return $record;
 		}
-		$payload = sml_scheduled_live_public_payload( absint( $user->ID ), false );
+		$payload = sml_scheduled_live_public_payload( absint( $user->ID ), false, sml_lsc_stream_id() );
 		if ( is_array( $payload ) ) {
 			$record = $payload;
 		}
@@ -107,7 +114,10 @@ if ( ! function_exists( 'sml_lsc_room_handle' ) ) {
 		$description = trim( wp_strip_all_tags( (string) ( $row['description'] ?? '' ) ) );
 		$canonical   = esc_url_raw( (string) ( $row['watch_url'] ?? '' ) );
 		if ( '' === $canonical ) {
-			$canonical = home_url( '/live/?room=' . rawurlencode( sml_lsc_room_handle() ) );
+			$canonical = add_query_arg(
+				array_filter( array( 'room' => sml_lsc_room_handle(), 'stream' => sml_lsc_stream_id() ) ),
+				home_url( '/live/' )
+			);
 		}
 		if ( '' === $title || '' === $description ) {
 			return array();

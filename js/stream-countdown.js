@@ -31,13 +31,17 @@
   }
 
   var HANDLE = handleFromUrl();
+  var STREAM_ID = '';
+  try { STREAM_ID = (new URLSearchParams(location.search).get('stream') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32); } catch (e) {}
   if (!HANDLE) return;
 
-  function schedFor(handle) {
-    return fetch('/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(handle), { credentials: 'same-origin' })
+  function schedFor(handle, streamId) {
+    var endpoint = '/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(handle)
+      + (streamId ? '/' + encodeURIComponent(streamId) : '');
+    return fetch(endpoint, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; });
   }
-  schedFor(HANDLE)
+  schedFor(HANDLE, STREAM_ID)
     .then(function (d) {
       if (d) return d;
       // /channel/{handle}/ uses the CHANNEL handle, but the schedule API is
@@ -48,7 +52,7 @@
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (ch) {
           var ph = ch && ch.creator && ch.creator.profile_handle ? String(ch.creator.profile_handle).replace(/^@/, '') : '';
-          return ph ? schedFor(ph) : null;
+          return ph ? schedFor(ph, STREAM_ID) : null;
         });
     })
     .then(function (d) {

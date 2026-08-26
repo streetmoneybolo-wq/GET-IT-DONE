@@ -33,3 +33,21 @@ attribution adapter. It imports the official ReportResult shape, maps only
 canonical `/watch/{id}/` URLs to verified owners, and quarantines every other
 row. It does not fetch reports until user OAuth is configured, and it never
 writes to Loop Wallet or the verified revenue ledger.
+
+## Scheduled live library and unique Watch URLs
+
+`scheduled-live-api.php` stores a bounded per-creator stream library and gives
+each scheduled stream a stable URL shaped as
+`/live/?room={profile-handle}&stream={stream-id}`. The creator dashboard module
+is loaded by `stream-countdown-loader.php` on `/go-live/` and lists the real
+upcoming stream records with copy/open controls. `live-watch.js`,
+`stream-countdown.js`, and `live-watch-social-cards.php` all resolve that exact
+stream ID so sharing an older link cannot jump to a newer broadcast.
+
+Replay state is deliberately fail-closed. A stream appears as a saved replay
+only after the RTMP recorder has persisted a real HTTPS asset and POSTed its
+URL to `sml-scheduled-live/v1/creator/recording` as the signed-in creator with
+`stream_id`, `status=ready`, and `recording_url`. WordPress metadata alone does
+not record RTMP/HLS media. The nginx-rtmp host at `live.stockmarketloop.com`
+must be configured to archive/transcode and perform that callback before the
+automatic recording requirement is complete.
