@@ -5,8 +5,8 @@
  *
  * Every scheduled stream receives its own stable identity and Watch Page URL:
  * /live/?room={profile-handle}&stream={stream-id}. The creator's current
- * stream remains available through the legacy creator route, while a bounded
- * per-creator library preserves prior records for the dashboard and replay
+ * stream remains available through the legacy creator route, while an
+ * append-only per-creator library preserves every prior record for the dashboard and replay
  * pipeline. This metadata never pretends that video was recorded: the RTMP
  * ingest/recorder must attach a real recording asset before a replay is marked
  * ready. sml-live/v1/feeds/{handle} remains the authority for actual live video.
@@ -156,12 +156,36 @@ if ( ! function_exists( 'sml_scheduled_live_store' ) ) {
 		uasort( $rows, static function ( $a, $b ) {
 			return strcmp( (string) ( $b['created_at'] ?? '' ), (string) ( $a['created_at'] ?? '' ) );
 		} );
-		$rows = array_slice( $rows, 0, 100, true );
 		update_user_meta( $user_id, sml_scheduled_live_library_key(), $rows );
 		if ( $make_current ) {
 			update_user_meta( $user_id, sml_scheduled_live_meta_key(), $row );
 		}
 		return true;
+	}
+}
+
+if ( ! function_exists( 'sml_scheduled_live_set_next_current' ) ) {
+	/** Keep the legacy creator-only Watch Page pointed at a real active stream. */
+	function sml_scheduled_live_set_next_current( $user_id ) {
+		$rows = sml_scheduled_live_library( $user_id );
+		$now  = time();
+		$candidates = array_filter( $rows, static function ( $row ) use ( $now ) {
+			if ( ! is_array( $row ) || 'scheduled' !== ( $row['status'] ?? '' ) ) {
+				return false;
+			}
+			$starts = strtotime( (string) ( $row['scheduled_at'] ?? '' ) );
+			return ! $starts || $starts >= ( $now - DAY_IN_SECONDS );
+		} );
+		uasort( $candidates, static function ( $a, $b ) {
+			return strcmp( (string) ( $a['scheduled_at'] ?? '' ), (string) ( $b['scheduled_at'] ?? '' ) );
+		} );
+		$next = reset( $candidates );
+		if ( is_array( $next ) && ! empty( $next['id'] ) ) {
+			update_user_meta( absint( $user_id ), sml_scheduled_live_meta_key(), $next );
+			return $next;
+		}
+		delete_user_meta( absint( $user_id ), sml_scheduled_live_meta_key() );
+		return array();
 	}
 }
 
@@ -266,13 +290,17 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 		}
 
 		if ( 'DELETE' === $request->get_method() ) {
-			$row = sml_scheduled_live_read( $user_id );
+			$stream_id = sml_scheduled_live_clean_id( $request->get_param( 'stream_id' ) );
+			$row       = $stream_id ? sml_scheduled_live_row( $user_id, $stream_id ) : sml_scheduled_live_read( $user_id );
 			if ( ! empty( $row['id'] ) ) {
 				$row['status']     = 'cancelled';
 				$row['updated_at'] = gmdate( 'c' );
 				sml_scheduled_live_store( $user_id, $row, false );
 			}
-			delete_user_meta( $user_id, sml_scheduled_live_meta_key() );
+			$current = sml_scheduled_live_read( $user_id );
+			if ( ! empty( $current['id'] ) && sml_scheduled_live_clean_id( $current['id'] ) === sml_scheduled_live_clean_id( $row['id'] ?? '' ) ) {
+				sml_scheduled_live_set_next_current( $user_id );
+			}
 			return rest_ensure_response( array( 'ok' => true, 'cancelled' => true, 'stream_id' => sml_scheduled_live_clean_id( $row['id'] ?? '' ) ) );
 		}
 
@@ -303,14 +331,11 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 			return new WP_Error( 'sml_scheduled_live_thumbnail', 'Upload a valid HTTPS thumbnail image or GIF before scheduling.', array( 'status' => 400 ) );
 		}
 
-		$previous = sml_scheduled_live_read( $user_id );
 		$now      = gmdate( 'c' );
-		/* Repeated clicks/retries for the same pending broadcast are idempotent,
-		 * while the next broadcast receives a new ID after the current one is
-		 * cancelled or finalized. */
-		$reuse_id = ! empty( $previous['id'] ) && 'scheduled' === ( $previous['status'] ?? '' );
+		/* POST /creator is create-only. A new schedule must never mutate or reuse
+		 * another broadcast's identity, title, thumbnail, time, or permanent URL. */
 		$record   = array(
-			'id'            => $reuse_id ? sml_scheduled_live_clean_id( $previous['id'] ) : sml_scheduled_live_new_id(),
+			'id'            => sml_scheduled_live_new_id(),
 			'status'        => 'scheduled',
 			'title'         => $title,
 			'description'   => $description,
@@ -318,9 +343,9 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 			'thumbnail_url' => $thumb,
 			'scheduled_at'  => $start,
 			'visibility'    => $visibility,
-			'recording_status' => $reuse_id ? sanitize_key( (string) ( $previous['recording_status'] ?? 'not_started' ) ) : 'not_started',
-			'recording_url' => $reuse_id ? esc_url_raw( (string) ( $previous['recording_url'] ?? '' ) ) : '',
-			'created_at'    => $reuse_id && ! empty( $previous['created_at'] ) ? sanitize_text_field( (string) $previous['created_at'] ) : $now,
+			'recording_status' => 'not_started',
+			'recording_url' => '',
+			'created_at'    => $now,
 			'updated_at'    => $now,
 		);
 		sml_scheduled_live_store( $user_id, $record, true );

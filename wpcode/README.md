@@ -36,13 +36,18 @@ writes to Loop Wallet or the verified revenue ledger.
 
 ## Scheduled live library and unique Watch URLs
 
-`scheduled-live-api.php` stores a bounded per-creator stream library and gives
-each scheduled stream a stable URL shaped as
+`scheduled-live-api.php` stores every creator stream as a separate preserved
+record and gives each newly scheduled stream a fresh, stable URL shaped as
 `/live/?room={profile-handle}&stream={stream-id}`. The creator dashboard module
 is loaded by `stream-countdown-loader.php` on `/go-live/` and lists the real
 upcoming stream records with copy/open controls. `live-watch.js`,
 `stream-countdown.js`, and `live-watch-social-cards.php` all resolve that exact
 stream ID so sharing an older link cannot jump to a newer broadcast.
+
+`POST /sml-scheduled-live/v1/creator` is create-only: it never reuses the
+current stream ID or overwrites an earlier schedule. Cancelling one record
+keeps every other scheduled stream and repoints the legacy creator-only URL to
+the next upcoming stream.
 
 Replay state is deliberately fail-closed. A stream appears as a saved replay
 only after the RTMP recorder has persisted a real HTTPS asset and POSTed its
