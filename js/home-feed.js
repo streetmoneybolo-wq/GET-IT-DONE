@@ -708,7 +708,7 @@
       var pts=vals.map(function(v,i){return (i*(1000/last)).toFixed(1)+','+(24+(hi-v)/span*220).toFixed(1);}).join(' ');
       return {points:pts,area:'0,268 '+pts+' 1000,268',up:vals[last]>=vals[0],count:vals.length};
     }
-    var signalCompanies={}, signalCompanyPending={};
+    var signalCompanies={}, signalCompanyPending={}, signalCompanyQueue=[], signalCompanyBusy=false;
     function signalKind(title){
       title=String(title||'');
       if(/\bsweep\b/i.test(title))return'Sweep';
@@ -736,13 +736,21 @@
       });
       rows.sort(function(a,b){return b.time-a.time;}); return rows.slice(0,5);
     }
-    function loadSignalCompany(sym){
-      if(signalCompanies[sym]||signalCompanyPending[sym])return;
-      signalCompanyPending[sym]=1;
+    function runSignalCompanyQueue(){
+      if(signalCompanyBusy||!signalCompanyQueue.length)return;
+      var job=signalCompanyQueue.shift(), sym=job.sym; signalCompanyBusy=true;
       fetch('/wp-json/sml-site-search/v1/search?q='+encodeURIComponent(sym),{credentials:'same-origin'}).then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(d){
         var list=d&&d.groups&&Array.isArray(d.groups.quotes)?d.groups.quotes:[], exact=list.filter(function(x){return String(x&&x.symbol||'').toUpperCase()===sym;})[0];
-        signalCompanies[sym]=exact&&exact.name?String(exact.name):'Company name unavailable';
-      }).catch(function(){signalCompanies[sym]='Company name unavailable';}).then(function(){delete signalCompanyPending[sym];refreshSignalMonitors();});
+        if(!exact||!exact.name)throw'no exact company';
+        signalCompanies[sym]=String(exact.name); delete signalCompanyPending[sym];
+      }).catch(function(){
+        if(job.tries<2){job.tries++;signalCompanyQueue.push(job);}
+        else{signalCompanies[sym]='Company name unavailable';delete signalCompanyPending[sym];}
+      }).then(function(){signalCompanyBusy=false;refreshSignalMonitors();setTimeout(runSignalCompanyQueue,300);});
+    }
+    function loadSignalCompany(sym){
+      if(signalCompanies[sym]||signalCompanyPending[sym])return;
+      signalCompanyPending[sym]=1; signalCompanyQueue.push({sym:sym,tries:0}); runSignalCompanyQueue();
     }
     function renderSignalMonitor(card,sym){
       if(!card)return; loadSignalCompany(sym);
