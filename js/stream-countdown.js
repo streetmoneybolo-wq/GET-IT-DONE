@@ -60,13 +60,29 @@
     })
     .catch(function () {});
 
+  /* The design is a TRANSPARENT OVERLAY that sits centered over the page's
+     own thumbnail/player (its demo literally reads "YOUR THUMBNAIL / PLAYER
+     BEHIND THE OVERLAY") — so this mounts exactly that: the .sml-countdown
+     embed, absolutely positioned over the player box, and NOTHING else. */
+  function findPlayerBox() {
+    // watch page: the takeover's player box (verified live: .slw-player,
+    // position:relative). channel page: the hero card's thumbnail box.
+    return document.querySelector('#sml-lw-root .slw-player')
+      || document.querySelector('#ch-hero .lch-hero-box')
+      || null;
+  }
+
+  var OVERLAY = null;
+
   function mount(d) {
-    if (document.getElementById('sml-cdwn-hero')) return;
     window.__SML_CD_WATCH = d.watch_url || null;
 
     var style = document.createElement('style');
     style.id = 'sml-cdwn-css';
-    style.textContent = CSS + '\n#sml-cdwn-hero{position:relative;overflow:hidden;padding:64px 20px 58px;display:flex;flex-direction:column;align-items:center;gap:26px;background:#05080a;}\n#sml-cdwn-hero .cdwn-bg{position:absolute;inset:0;background-size:cover;background-position:center;filter:brightness(0.32) saturate(0.9);}\n#sml-cdwn-hero .cdwn-in{position:relative;display:flex;flex-direction:column;align-items:center;gap:22px;max-width:900px;text-align:center;}\n#sml-cdwn-hero .cdwn-title{font:700 26px/1.3 "Space Grotesk",sans-serif;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,0.7);}\n#sml-cdwn-hero .cdwn-by{font:500 12px "Space Grotesk",sans-serif;letter-spacing:3px;color:rgba(255,255,255,0.6);}\n@media(max-width:640px){#sml-cdwn-hero .sml-digit{width:44px;height:66px;perspective:220px}#sml-cdwn-hero .sml-digit i{font-size:48px;line-height:66px;height:66px}#sml-cdwn-hero .sml-digit .sml-bot i{top:-33px}#sml-cdwn-hero .cdwn-title{font-size:19px}}';
+    style.textContent = CSS
+      + '\n#sml-cdwn-overlay{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;pointer-events:none;}'
+      + '\n#sml-cdwn-overlay .sml-countdown{pointer-events:auto;}'
+      + '\n@media(max-width:760px){#sml-cdwn-overlay .sml-digit{width:38px;height:58px;perspective:200px}#sml-cdwn-overlay .sml-digit i{font-size:42px;line-height:58px;height:58px}#sml-cdwn-overlay .sml-digit .sml-bot i{top:-29px}#sml-cdwn-overlay .sml-groups{gap:14px}#sml-cdwn-overlay .sml-digits{gap:4px}}';
     document.head.appendChild(style);
 
     if (!document.querySelector('link[href*="Space+Grotesk"]')) {
@@ -76,49 +92,34 @@
       document.head.appendChild(f);
     }
 
-    var hero = document.createElement('section');
-    hero.id = 'sml-cdwn-hero';
-    var bg = document.createElement('div');
-    bg.className = 'cdwn-bg';
-    if (d.thumbnail_url) bg.style.backgroundImage = 'url("' + String(d.thumbnail_url).replace(/"/g, '') + '")';
-    hero.appendChild(bg);
-    var inner = document.createElement('div');
-    inner.className = 'cdwn-in';
-    if (d.title) { var ti = document.createElement('div'); ti.className = 'cdwn-title'; ti.textContent = d.title; inner.appendChild(ti); }
-    var by = document.createElement('div');
-    by.className = 'cdwn-by';
-    by.textContent = (d.creator && d.creator.name ? d.creator.name.toUpperCase() + ' · ' : '') + 'SCHEDULED LIVE STREAM';
-    inner.appendChild(by);
+    OVERLAY = document.createElement('div');
+    OVERLAY.id = 'sml-cdwn-overlay';
     var mountEl = document.createElement('div');
     mountEl.className = 'sml-countdown';
     mountEl.setAttribute('data-target', d.scheduled_at);
-    inner.appendChild(mountEl);
-    hero.appendChild(inner);
+    OVERLAY.appendChild(mountEl);
 
-    // Host preference: the /live/ watch takeover hides every body child
-    // outside #sml-lw-root (verified live — a body-level hero computes
-    // display:none there), so inside the root is the ONLY visible slot on
-    // watch pages. Channel/other pages: after the site header.
-    var lwRoot = document.getElementById('sml-lw-root');
-    var header = document.querySelector('header');
-    if (lwRoot) lwRoot.insertBefore(hero, lwRoot.firstChild);
-    else if (header && header.parentNode) header.parentNode.insertBefore(hero, header.nextSibling);
-    else document.body.insertBefore(hero, document.body.firstChild);
-
+    var host = findPlayerBox();
+    if (host) attach(host);
     engine();
 
-    // the takeover can boot well AFTER us and hide a body-mounted hero — keep
-    // watching for its root for a full two minutes (measured live: the root
-    // can appear 15s+ into a heavy watch-page load) and relocate when it does
+    // the player box renders late on heavy loads (measured 15s+), and the
+    // page can rebuild it — keep (re)attaching the SAME overlay node so the
+    // engine's bindings survive. Runs for up to 3 minutes, then settles.
     var tries = 0;
     var rt = setInterval(function () {
-      var h = document.getElementById('sml-cdwn-hero');
-      if (!h) { clearInterval(rt); return; }
-      var root2 = document.getElementById('sml-lw-root');
-      if (root2 && h.parentNode !== root2 && 'none' === getComputedStyle(h).display) root2.insertBefore(h, root2.firstChild);
-      else if (root2 && h.parentNode === root2 && 'none' !== getComputedStyle(h).display) { clearInterval(rt); return; }
-      if (++tries > 120) clearInterval(rt);
+      if (!OVERLAY) { clearInterval(rt); return; }
+      if (!OVERLAY.isConnected) {
+        var h2 = findPlayerBox();
+        if (h2) attach(h2);
+      }
+      if (++tries > 180) clearInterval(rt);
     }, 1000);
+  }
+
+  function attach(host) {
+    if ('static' === getComputedStyle(host).position) host.style.position = 'relative';
+    host.appendChild(OVERLAY);
   }
 
   function engine() {
