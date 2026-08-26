@@ -107,16 +107,18 @@
 
     engine();
 
-    // the takeover can boot AFTER us and hide a body-mounted hero — if that
-    // happens, relocate into its root
+    // the takeover can boot well AFTER us and hide a body-mounted hero — keep
+    // watching for its root for a full two minutes (measured live: the root
+    // can appear 15s+ into a heavy watch-page load) and relocate when it does
     var tries = 0;
     var rt = setInterval(function () {
       var h = document.getElementById('sml-cdwn-hero');
       if (!h) { clearInterval(rt); return; }
       var root2 = document.getElementById('sml-lw-root');
       if (root2 && h.parentNode !== root2 && 'none' === getComputedStyle(h).display) root2.insertBefore(h, root2.firstChild);
-      if (++tries > 15) clearInterval(rt);
-    }, 800);
+      else if (root2 && h.parentNode === root2 && 'none' !== getComputedStyle(h).display) { clearInterval(rt); return; }
+      if (++tries > 120) clearInterval(rt);
+    }, 1000);
   }
 
   function engine() {
