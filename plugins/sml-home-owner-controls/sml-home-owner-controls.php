@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Home Owner Controls
  * Description: Keeps homepage feed identities current and lets owners permanently delete their own articles and posts.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Stock Market Loop
  */
 
@@ -61,28 +61,62 @@ function sml_hoc_identity( $user_id ) {
 
 function sml_hoc_patch_home( $html ) {
 	if ( ! is_string( $html ) || false === strpos( $html, 'id="sml-optimized-home"' ) ) { return $html; }
-	$current = get_current_user_id();
+	$current  = get_current_user_id();
+	$is_admin = $current && current_user_can( 'manage_options' );
 	$pattern = '~(<article\b[^>]*\bdata-hfe-item="([^"]+)"[^>]*>)(\s*<a\b[^>]*class="oh-post-author"[^>]*>.*?</a>)~is';
-	$html = preg_replace_callback( $pattern, static function ( $match ) use ( $current ) {
+	$patched = preg_replace_callback( $pattern, static function ( $match ) use ( $current, $is_admin ) {
 		$item_id  = html_entity_decode( (string) $match[2], ENT_QUOTES, 'UTF-8' );
 		$owner_id = sml_hoc_owner_for_item( $item_id );
-		$identity = sml_hoc_identity( $owner_id );
-		if ( ! $identity ) { return $match[0]; }
+		$identity = $owner_id ? sml_hoc_identity( $owner_id ) : null;
 		$opening = $match[1];
-		if ( false === strpos( $opening, 'data-sml-owner-id=' ) ) {
+		/* A card whose article tag already carries data-sml-owner-id was patched
+		   by an inner renderer (a newer homepage snippet body) that also emits
+		   its own Delete control — stamp nothing twice on those cards. */
+		$already_patched = false !== strpos( $opening, 'data-sml-owner-id=' );
+		if ( ! $already_patched ) {
 			$opening = preg_replace( '/>$/', ' data-sml-owner-id="' . esc_attr( (string) $owner_id ) . '">', $opening, 1 );
 		}
-		$stable_url = $identity['url'];
-		if ( preg_match( '/\bhref="([^"]*)"/i', $match[3], $href_match ) ) {
-			$stable_url = html_entity_decode( $href_match[1], ENT_QUOTES, 'UTF-8' );
+		if ( $identity ) {
+			$stable_url = $identity['url'];
+			if ( preg_match( '/\bhref="([^"]*)"/i', $match[3], $href_match ) ) {
+				$stable_url = html_entity_decode( $href_match[1], ENT_QUOTES, 'UTF-8' );
+			}
+			$author = '<a class="oh-post-author" data-sml-user-id="' . esc_attr( (string) $owner_id ) . '" href="' . esc_url( $stable_url ) . '"><img class="oh-post-avatar" src="' . esc_url( $identity['avatar'] ) . '" alt="' . esc_attr( $identity['name'] ) . '"><span class="oh-post-author-name">' . esc_html( $identity['name'] ) . '</span></a>';
+		} else {
+			/* Unresolvable author (deleted user, system import with author 0):
+			   keep the card's original author markup untouched. Moderation must
+			   still work — administrators get the Delete control regardless. */
+			$author = $match[3];
 		}
-		$author = '<a class="oh-post-author" data-sml-user-id="' . esc_attr( (string) $owner_id ) . '" href="' . esc_url( $stable_url ) . '"><img class="oh-post-avatar" src="' . esc_url( $identity['avatar'] ) . '" alt="' . esc_attr( $identity['name'] ) . '"><span class="oh-post-author-name">' . esc_html( $identity['name'] ) . '</span></a>';
 		$button = '';
-		if ( $current && ( (int) $current === (int) $owner_id || current_user_can( 'manage_options' ) ) ) {
+		if ( ! $already_patched && $current && ( ( $owner_id && (int) $current === (int) $owner_id ) || $is_admin ) ) {
 			$button = '<button type="button" class="sml-owner-delete" data-sml-delete-item="' . esc_attr( $item_id ) . '" aria-label="Delete this post permanently" title="Delete this post permanently">Delete</button>';
 		}
 		return $opening . $author . $button;
 	}, $html );
+	/* A PCRE failure returns null — degrade to the unpatched page, never blank. */
+	if ( is_string( $patched ) ) { $html = $patched; }
+	/* Fresh authenticated REST config for the delete client, printed BEFORE the
+	   controller script tag so window.SMLHomeOwnerControls exists whenever
+	   home-feed.js executes. This page is per-user and never edge-cached
+	   (private, no-store), so the nonce is always the viewer's own. */
+	if ( $current ) {
+		/* Path-only endpoint: the fetch runs with credentials:'same-origin', and
+		   an absolute rest_url() whose origin drifts from the page origin
+		   (apex/www, proxy SSL detection) would silently drop the auth cookie.
+		   A root-relative path is same-origin by construction. */
+		$endpoint = (string) wp_parse_url( rest_url( 'sml-home-owner/v1/content' ), PHP_URL_PATH );
+		if ( '' === $endpoint || '/' !== $endpoint[0] ) { $endpoint = '/wp-json/sml-home-owner/v1/content'; }
+		$config = '<script data-sml-oh-allow>window.SMLHomeOwnerControls=' . wp_json_encode( array(
+			'nonce'    => wp_create_nonce( 'wp_rest' ),
+			'endpoint' => $endpoint,
+		) ) . ';</script>';
+		$pos = false;
+		if ( preg_match( '~<script\b[^>]*home-feed\.js~i', $html, $tag, PREG_OFFSET_CAPTURE ) ) { $pos = (int) $tag[0][1]; }
+		if ( false === $pos || $pos < 0 ) { $pos = strripos( $html, '</body>' ); }
+		if ( false !== $pos ) { $html = substr( $html, 0, $pos ) . $config . substr( $html, $pos ); }
+		else { $html .= $config; }
+	}
 	return $html;
 }
 
@@ -111,6 +145,7 @@ function sml_hoc_delete_chart( $item_id, $user_id ) {
 	if ( ! preg_match( '/^chart-(\d+)-(.+)$/', $item_id, $match ) ) { return sml_hoc_error( 'sml_hoc_bad_id', 'That Chart post identifier is invalid.', 400 ); }
 	$claimed = absint( $match[1] );
 	$post_id = sanitize_key( $match[2] );
+	if ( ! $claimed || '' === $post_id ) { return sml_hoc_error( 'sml_hoc_bad_id', 'That Chart post identifier is invalid.', 400 ); }
 	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT user_id, meta_value FROM {$wpdb->usermeta} WHERE meta_key=%s", 'sml_profile_chart_posts' ), ARRAY_A );
 	foreach ( (array) $rows as $row ) {
 		$posts = maybe_unserialize( $row['meta_value'] ?? '' );
@@ -138,8 +173,16 @@ function sml_hoc_delete_chart( $item_id, $user_id ) {
 function sml_hoc_delete_stream( $item_id, $user_id ) {
 	if ( ! preg_match( '/^stream-(\d+)$/', $item_id, $match ) ) { return sml_hoc_error( 'sml_hoc_bad_id', 'That market post identifier is invalid.', 400 ); }
 	$comment_id = absint( $match[1] );
-	$owner_id = sml_hoc_owner_for_item( $item_id );
-	if ( ! $owner_id ) { return sml_hoc_error( 'sml_hoc_missing', 'That market post no longer exists.', 404 ); }
+	/* 404 only when the comment is really gone — an author of 0 (system import,
+	   deleted user) is still deletable by an administrator, so the ownership
+	   check below must run against the resolved author even when it is 0. */
+	$comment = get_comment( $comment_id );
+	if ( ! $comment ) { return sml_hoc_error( 'sml_hoc_missing', 'That market post no longer exists.', 404 ); }
+	$owner_id = absint( $comment->user_id );
+	if ( function_exists( 'sml_members_parse_stream_comment' ) ) {
+		$row = sml_members_parse_stream_comment( $comment );
+		if ( is_array( $row ) ) { $owner_id = absint( $row['user_id'] ?? $owner_id ); }
+	}
 	if ( $owner_id !== (int) $user_id && ! current_user_can( 'manage_options' ) ) { return sml_hoc_error( 'sml_hoc_owner', 'You can only delete content you own.', 403 ); }
 	if ( ! wp_delete_comment( $comment_id, true ) ) { return sml_hoc_error( 'sml_hoc_failed', 'The market post could not be deleted.', 500 ); }
 	return array( 'deleted' => true, 'type' => 'stream', 'id' => $comment_id );

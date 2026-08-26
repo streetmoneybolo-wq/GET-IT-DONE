@@ -112,7 +112,11 @@
   }
   function hfbNonce() {
     try {
-      return (window.wpApiSettings && window.wpApiSettings.nonce)
+      /* SMLHomeOwnerControls is emitted fresh by the Home Owner Controls plugin
+         on every signed-in homepage response — prefer it over nonces that ride
+         along with other configs and may predate this page load. */
+      return (window.SMLHomeOwnerControls && window.SMLHomeOwnerControls.nonce)
+        || (window.wpApiSettings && window.wpApiSettings.nonce)
         || (window.SMLHomeFeedEngagement && window.SMLHomeFeedEngagement.nonce)
         || window.SML_CG_NONCE || window.SML_LB_NONCE || '';
     } catch (e) { return ''; }
@@ -243,6 +247,7 @@
         '.sml-owner-delete{position:absolute;z-index:7;right:16px;top:16px;border:1px solid rgba(255,82,104,.55);border-radius:999px;background:linear-gradient(180deg,rgba(82,18,29,.96),rgba(43,8,15,.96));color:#ff9aac;padding:6px 11px;font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.02em;cursor:pointer;box-shadow:0 7px 18px rgba(0,0,0,.32);}' +
         '.sml-owner-delete:hover,.sml-owner-delete:focus-visible{color:#fff;border-color:#ff5268;background:#a51630;outline:none;}' +
         '.sml-owner-delete[disabled]{opacity:.55;cursor:wait;}' +
+        '.sml-owner-delete-err{position:absolute;z-index:7;right:16px;top:52px;max-width:260px;background:rgba(43,8,15,.97);border:1px solid rgba(255,82,104,.55);border-radius:10px;color:#ffb3c0;padding:8px 11px;font:600 11px/1.45 Inter,system-ui,sans-serif;box-shadow:0 7px 18px rgba(0,0,0,.4);}' +
         '.sml-rh-item.no-img{padding:14px 22px;gap:7px;}' +
         '.sml-rh-item.has-img{padding:0;justify-content:flex-end;}' +
         '.sml-rh-cover{position:absolute;inset:0;display:block;}' +
@@ -818,6 +823,12 @@
     // Owner-only permanent deletion. The button is emitted only when the
     // server recognizes the current user as owner (or administrator), and the
     // endpoint independently repeats that ownership check before deleting.
+    function deleteErrorIn(button, message){
+      /* visible in-card error with the exact server message — never silent */
+      var card=button.closest('.oh-post')||button.parentNode, err=card?card.querySelector('.sml-owner-delete-err'):null;
+      if(!err&&card){err=document.createElement('div');err.className='sml-owner-delete-err';err.setAttribute('role','alert');card.appendChild(err);}
+      if(err){err.textContent=message;err.style.display='block';}
+    }
     host.addEventListener('click', function(event){
       var button=event.target&&event.target.closest?event.target.closest('[data-sml-delete-item]'):null;
       if(!button||!host.contains(button)) return;
@@ -825,13 +836,22 @@
       var itemId=String(button.getAttribute('data-sml-delete-item')||'');
       if(!itemId||!window.confirm('Permanently delete this article or post from StockMarketLoop? This cannot be undone.')) return;
       var nonce=hfbNonce();
-      if(!nonce){window.alert('Your session needs to be refreshed before deleting.');return;}
+      if(!nonce){deleteErrorIn(button,'Your session needs to be refreshed before deleting. Reload the page and try again.');return;}
       button.disabled=true; button.textContent='Deleting…';
-      fetch('/wp-json/sml-home-owner/v1/content',{method:'DELETE',credentials:'same-origin',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify({item_id:itemId})}).then(function(response){
-        return response.json().catch(function(){return {};}).then(function(data){if(!response.ok)throw new Error(data.message||'The post could not be deleted.');return data;});
+      /* Only honor a same-origin configured endpoint (normalized to a path so
+         credentials:'same-origin' always sends the auth cookie); anything else
+         falls back to the canonical relative route. */
+      var endpoint='/wp-json/sml-home-owner/v1/content';
+      try{
+        var cfgEp=window.SMLHomeOwnerControls&&window.SMLHomeOwnerControls.endpoint;
+        if(cfgEp){var epu=new URL(String(cfgEp),location.origin);if(epu.origin===location.origin)endpoint=epu.pathname+epu.search;}
+      }catch(e){}
+      fetch(endpoint,{method:'DELETE',credentials:'same-origin',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify({item_id:itemId})}).then(function(response){
+        return response.json().catch(function(){return {};}).then(function(data){if(!response.ok)throw new Error(data.message||('The post could not be deleted (HTTP '+response.status+').'));return data;});
       }).then(function(){
+        /* remove the card only after the server confirmed the deletion */
         var card=button.closest('.oh-post'); if(card){card.style.transition='opacity .25s ease,transform .25s ease';card.style.opacity='0';card.style.transform='scale(.98)';setTimeout(function(){card.remove();dedupeFeed();},260);}
-      }).catch(function(error){button.disabled=false;button.textContent='Delete';window.alert(error.message||'The post could not be deleted.');});
+      }).catch(function(error){button.disabled=false;button.textContent='Delete';deleteErrorIn(button,error.message||'The post could not be deleted.');});
     });
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----

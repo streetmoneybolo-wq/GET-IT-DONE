@@ -10,9 +10,16 @@
  * Ownership is always re-checked server-side. A client-supplied owner id is
  * never trusted. Deactivate this snippet to remove deletion immediately.
  *
+ * STATUS 2026-08-26: NOT INSTALLED — superseded by the "SML Home Owner
+ * Controls" plugin (sml_hoc_*), which owns the sml-home-owner/v1/content
+ * route in production (verified live: error codes come back sml_hoc_*).
+ * This file is kept only as a break-glass fallback: the guard below now
+ * also checks for the plugin, so even if this is pasted as a snippet while
+ * the plugin is active it registers nothing (single-owner rule).
+ *
  * WPCode: PHP snippet, Auto Insert / Run Everywhere.
  */
-if ( ! function_exists( 'sml_home_owner_delete_content' ) ) {
+if ( ! function_exists( 'sml_home_owner_delete_content' ) && ! function_exists( 'sml_hoc_rest_delete' ) ) {
 	function sml_home_owner_delete_error( $code, $message, $status ) {
 		return new WP_Error( $code, $message, array( 'status' => (int) $status ) );
 	}
