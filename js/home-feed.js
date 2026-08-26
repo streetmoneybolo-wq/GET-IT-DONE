@@ -254,6 +254,11 @@
         '.sml-kmenu a:hover,.sml-kmenu button:hover{background:rgba(255,255,255,.06);}' +
         '.sml-kmenu .sml-kmenu-del{color:#F2495C;}' +
         '.sml-kmenu .sml-kmenu-del[disabled]{opacity:.55;cursor:wait;}' +
+        /* inline variant: the ⋯ sits in the card action row next to Open; the
+           menu opens UPWARD so it never clips at the card bottom */
+        '.sml-kwrap{position:relative;display:inline-flex;margin-left:6px;vertical-align:middle;z-index:3;}' +
+        '.sml-kwrap .sml-kebab{position:static;width:32px;height:28px;}' +
+        '.sml-kwrap .sml-kmenu{left:auto;right:0;top:auto;bottom:34px;}' +
         '.sml-owner-delete:hover,.sml-owner-delete:focus-visible{color:#fff;border-color:#ff5268;background:#a51630;outline:none;}' +
         '.sml-owner-delete[disabled]{opacity:.55;cursor:wait;}' +
         '.sml-owner-delete-err{position:absolute;z-index:7;right:16px;top:52px;max-width:260px;background:rgba(43,8,15,.97);border:1px solid rgba(255,82,104,.55);border-radius:10px;color:#ffb3c0;padding:8px 11px;font:600 11px/1.45 Inter,system-ui,sans-serif;box-shadow:0 7px 18px rgba(0,0,0,.4);}' +
@@ -801,15 +806,28 @@
         host.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(target){paintSignalStream(target,sym,signalCompanies[sym]||'Loading…',signalLiveEvents[sym],signalLiveEvents[sym][0].born);});
       });
     };
+    /* PERF: watermarks paint as fast as possible without adding provider load —
+       (1) a short sessionStorage cache makes reloads paint INSTANTLY with zero
+       requests; (2) two queue lanes instead of one halve the wall-clock for a
+       cold feed (same total request count, only the burst pacing changes). */
+    function sigCacheGet(sym){
+      try{ var raw=sessionStorage.getItem('sml_sig_'+sym); if(!raw) return null;
+        var v=JSON.parse(raw); if(!v||Date.now()-v.t>180000) return null; return v.bars||null; }catch(e){ return null; }
+    }
+    function sigCachePut(sym,bars){ try{ sessionStorage.setItem('sml_sig_'+sym, JSON.stringify({t:Date.now(),bars:(bars||[]).slice(-120)})); }catch(e){} }
+    var signalLanes=0;
     function runSignalQueue(){
-      if(signalQueueBusy||!signalQueue.length) return;
-      var job=signalQueue.shift(), sym=job.sym; signalQueueBusy=true;
-      fetch('/wp-json/sml/v1/history?symbol='+encodeURIComponent(sym)+'&interval=1m&range=1d',{credentials:'same-origin',cache:'no-store'}).then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(d){
-        var bars=(d&&d.bars)||[]; signalHistory[sym]=bars; delete signalPending[sym];
-        document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){paintSignalCard(c,sym,bars);});
-      }).catch(function(){
-        if(job.tries<2){job.tries++;signalQueue.push(job);}else{delete signalPending[sym];document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){c.setAttribute('data-sml-chart','unavailable');});}
-      }).then(function(){signalQueueBusy=false;setTimeout(runSignalQueue,400);});
+      while(signalLanes<2&&signalQueue.length){
+        (function(job){
+          var sym=job.sym; signalLanes++;
+          fetch('/wp-json/sml/v1/history?symbol='+encodeURIComponent(sym)+'&interval=1m&range=1d',{credentials:'same-origin',cache:'no-store'}).then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(d){
+            var bars=(d&&d.bars)||[]; signalHistory[sym]=bars; sigCachePut(sym,bars); delete signalPending[sym];
+            document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){paintSignalCard(c,sym,bars);});
+          }).catch(function(){
+            if(job.tries<2){job.tries++;signalQueue.push(job);}else{delete signalPending[sym];document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){c.setAttribute('data-sml-chart','unavailable');});}
+          }).then(function(){signalLanes--;setTimeout(runSignalQueue,250);});
+        })(signalQueue.shift());
+      }
     }
     function enhanceSignalCards(root){
       var scope=root&&root.querySelectorAll?root:document;
@@ -820,6 +838,8 @@
         if(SYMS.indexOf(sym)<0){SYMS.push(sym);clearTimeout(signalQuoteTimer);signalQuoteTimer=setTimeout(pollQuotes,80);}
         if(card.getAttribute('data-sml-chart')) return; card.setAttribute('data-sml-chart','loading');
         if(Object.prototype.hasOwnProperty.call(signalHistory,sym)){paintSignalCard(card,sym,signalHistory[sym]);return;}
+        var cached=sigCacheGet(sym);
+        if(cached){ signalHistory[sym]=cached; paintSignalCard(card,sym,cached); return; }
         if(!signalPending[sym]){signalPending[sym]=1;signalQueue.push({sym:sym,tries:0});runSignalQueue();}
       });
     }
@@ -964,12 +984,15 @@
     // same data-sml-delete-item attribute. ----
     function closeKmenus(except){ host.querySelectorAll('.sml-kmenu.open').forEach(function(x){ if(x!==except) x.classList.remove('open'); }); }
     function kebabize(){
+      var meId=String((window.SML_ME&&window.SML_ME.id)||'');
       host.querySelectorAll('.oh-post').forEach(function(card){
-        var btns=card.querySelectorAll('button.sml-owner-delete[data-sml-delete-item]');
-        if(!btns.length) return;
-        var itemId=btns[0].getAttribute('data-sml-delete-item')||'';
-        btns.forEach(function(b){ b.remove(); });
-        if(!itemId||card.querySelector('.sml-kebab')) return;
+        /* server-rendered Delete buttons are only a capability signal — always
+           strip them, whatever layer emitted them */
+        card.querySelectorAll('button.sml-owner-delete[data-sml-delete-item]').forEach(function(b){ b.remove(); });
+        if(card.querySelector('.sml-kebab')) return;
+        /* the ⋯ belongs ONLY on the viewer's own posts */
+        var itemId=card.getAttribute('data-hfe-item')||'';
+        if(!itemId||!meId||card.getAttribute('data-sml-owner-id')!==meId) return;
         var kb=document.createElement('button'); kb.type='button'; kb.className='sml-kebab'; kb.textContent='⋯';
         kb.setAttribute('aria-label','Post options'); kb.setAttribute('aria-haspopup','menu');
         var menu=document.createElement('div'); menu.className='sml-kmenu'; menu.setAttribute('role','menu');
@@ -983,7 +1006,16 @@
         del.setAttribute('data-sml-delete-item', itemId); del.textContent='Delete';
         menu.appendChild(del);
         kb.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); closeKmenus(menu); menu.classList.toggle('open'); });
-        card.appendChild(kb); card.appendChild(menu);
+        /* sit INLINE right after the card's Open control; float top-right only
+           when a card has no action row */
+        var openBtn=card.querySelector('.sml-hfe-actions .sml-hfe-open');
+        if(openBtn&&openBtn.parentElement){
+          var wrap=document.createElement('span'); wrap.className='sml-kwrap';
+          wrap.appendChild(kb); wrap.appendChild(menu);
+          openBtn.parentElement.insertBefore(wrap, openBtn.nextSibling);
+        } else {
+          card.appendChild(kb); card.appendChild(menu);
+        }
       });
     }
     document.addEventListener('click', function(){ closeKmenus(); });
