@@ -176,7 +176,9 @@
         '#sml-optimized-home .oh-post-author{display:flex !important;align-items:center;gap:10px;margin-bottom:6px;text-decoration:none;}' +
         '#sml-optimized-home .oh-post-avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 0 0 2px #131C28,0 0 0 3.5px rgba(34,224,122,.85);}' +
         '#sml-optimized-home .oh-post-author-name{font-weight:600;font-size:13.5px;color:#E6EDF5;}' +
-        '#sml-optimized-home .oh-meta{font-family:"IBM Plex Mono",monospace;font-size:10px;color:#6B7C90;margin-bottom:10px;}' +
+        /* owner call 2026-08-26: the byline/time strip on every feed card reads
+           bright glowing red, and times render 12-hour in the VIEWER's zone */
+        '#sml-optimized-home .oh-meta{font-family:"IBM Plex Mono",monospace;font-size:10px;color:#FF4757;font-weight:700;text-shadow:0 0 7px rgba(255,59,76,.9),0 0 16px rgba(255,59,76,.45);margin-bottom:10px;}' +
         '#sml-optimized-home .oh-post h2{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:19px;line-height:1.25;letter-spacing:-.2px;margin:2px 0 7px;}' +
         '#sml-optimized-home .oh-post h2 a{color:#E6EDF5;text-decoration:none;}#sml-optimized-home .oh-post h2 a:hover{color:#38F58A;}' +
         '#sml-optimized-home .oh-post>p{font-size:13.5px;color:#93A4B8;line-height:1.6;margin:0 0 14px;}' +
@@ -187,7 +189,7 @@
         '#sml-optimized-home .sml-signal-feed-post>*:not(.sml-signal-watermark):not(.sml-mm-tape){position:relative;z-index:2;}' +
         '#sml-optimized-home .sml-signal-feed-post .oh-post-avatar{width:48px;height:48px;box-shadow:0 0 0 2px #07131c,0 0 0 4px rgba(0,208,255,.80),0 0 22px rgba(0,208,255,.30);}' +
         '#sml-optimized-home .sml-signal-feed-post .oh-post-author-name{font-size:14px;color:#fff;letter-spacing:.01em;}' +
-        '#sml-optimized-home .sml-signal-feed-post .oh-meta{color:#9FB5C9;}' +
+        '#sml-optimized-home .sml-signal-feed-post .oh-meta{color:#FF4757;}' +
         '#sml-optimized-home .sml-signal-feed-post h2{max-width:780px;font-size:clamp(21px,2.25vw,30px);line-height:1.12;margin:12px 0 9px;text-shadow:0 2px 18px #02070c;}' +
         '#sml-optimized-home .sml-signal-feed-post h2 a{color:#fff;}' +
         '#sml-optimized-home .sml-signal-feed-post>p{max-width:720px;color:#DCE8F3;font-size:14.5px;line-height:1.52;text-shadow:0 1px 12px #02070c;}' +
@@ -1011,6 +1013,19 @@
         .catch(function(){ wpDates={}; });
     })();
 
+    // ---- card meta times: raw ISO stamps become the viewer's LOCAL time,
+    // 12-hour clock (e.g. "Aug 25, 2026, 11:01 PM") ----
+    var ISO_RX=/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+\-]\d{2}:?\d{2})/;
+    function localizeMeta(){
+      host.querySelectorAll('.oh-meta').forEach(function(m){
+        var t=m.textContent||'', hit=t.match(ISO_RX);
+        if(!hit) return;
+        var when=new Date(hit[0]);
+        if(isNaN(+when)) return;
+        m.textContent=t.replace(hit[0], when.toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}));
+      });
+    }
+
     // ---- React buttons are retired site design — strip them (and their emoji
     // menus) from every card ----
     function stripReact(){
@@ -1018,7 +1033,7 @@
       host.querySelectorAll('.sml-hfe-reaction-menu').forEach(function(m){ m.remove(); });
     }
 
-    function feedSweep(){ kebabize(); pruneStale(); stripReact(); }
+    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); }
     feedSweep(); setInterval(feedSweep, 3000); /* also covers cards slid in by pollFeed */
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
