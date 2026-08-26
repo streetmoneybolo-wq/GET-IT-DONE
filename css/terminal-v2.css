@@ -533,5 +533,5 @@ body.tv2-live #sml-tv2-root [data-dc-tpl="10"]{display:none!important}
 /* ---- terminal mobile: interval row wraps; the screen-reader table must be
    sr-only (it was 500px wide and forcing layout width on phones) ---- */
 @media (max-width:640px){.tv2-ch .sml-lc-timeframes{flex-wrap:wrap}}
-.tv2-ch .sml-lc-sr-table{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
+.tv2-ch .sml-lc-sr-table{display:block!important;position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
 
