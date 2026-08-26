@@ -95,11 +95,28 @@
     inner.appendChild(mountEl);
     hero.appendChild(inner);
 
+    // Host preference: the /live/ watch takeover hides every body child
+    // outside #sml-lw-root (verified live — a body-level hero computes
+    // display:none there), so inside the root is the ONLY visible slot on
+    // watch pages. Channel/other pages: after the site header.
+    var lwRoot = document.getElementById('sml-lw-root');
     var header = document.querySelector('header');
-    if (header && header.parentNode) header.parentNode.insertBefore(hero, header.nextSibling);
+    if (lwRoot) lwRoot.insertBefore(hero, lwRoot.firstChild);
+    else if (header && header.parentNode) header.parentNode.insertBefore(hero, header.nextSibling);
     else document.body.insertBefore(hero, document.body.firstChild);
 
     engine();
+
+    // the takeover can boot AFTER us and hide a body-mounted hero — if that
+    // happens, relocate into its root
+    var tries = 0;
+    var rt = setInterval(function () {
+      var h = document.getElementById('sml-cdwn-hero');
+      if (!h) { clearInterval(rt); return; }
+      var root2 = document.getElementById('sml-lw-root');
+      if (root2 && h.parentNode !== root2 && 'none' === getComputedStyle(h).display) root2.insertBefore(h, root2.firstChild);
+      if (++tries > 15) clearInterval(rt);
+    }, 800);
   }
 
   function engine() {
