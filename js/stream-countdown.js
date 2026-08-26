@@ -82,6 +82,11 @@
     style.textContent = CSS
       + '\n#sml-cdwn-overlay{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;pointer-events:none;}'
       + '\n#sml-cdwn-overlay .sml-countdown{pointer-events:auto;}'
+      /* while the flip clock is overlaying, the player placeholder's own
+         "STARTS IN ..." text countdown is a duplicate — hide just that line
+         (scoped to the host class, so it comes right back if the overlay
+         ever fails to mount) */
+      + '\n.sml-cdwn-host .slw-frame-ph .t1{display:none !important;}'
       + '\n@media(max-width:760px){#sml-cdwn-overlay .sml-digit{width:38px;height:58px;perspective:200px}#sml-cdwn-overlay .sml-digit i{font-size:42px;line-height:58px;height:58px}#sml-cdwn-overlay .sml-digit .sml-bot i{top:-29px}#sml-cdwn-overlay .sml-groups{gap:14px}#sml-cdwn-overlay .sml-digits{gap:4px}}';
     document.head.appendChild(style);
 
@@ -119,6 +124,7 @@
 
   function attach(host) {
     if ('static' === getComputedStyle(host).position) host.style.position = 'relative';
+    host.classList.add('sml-cdwn-host');
     host.appendChild(OVERLAY);
   }
 
