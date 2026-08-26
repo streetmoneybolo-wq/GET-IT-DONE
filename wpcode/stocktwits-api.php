@@ -353,7 +353,8 @@ if ( ! function_exists( 'sml_st_config' ) ) {
 	 * Layer 3 loader. The terminal already renders a Stocktwits TAB; the feed
 	 * script claims that pane itself, so nothing in the terminal's own markup
 	 * (which is plugin-rendered, and plugin edits get reverted here) has to
-	 * change. Printed late so it cannot delay first paint.
+	 * change. Hooked to wp_head, NOT wp_footer: the ticker terminal is a custom
+	 * render and never fires wp_footer. defer keeps it off the critical path.
 	 * ------------------------------------------------------------------- */
 	function sml_st_is_terminal() {
 		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
@@ -362,7 +363,7 @@ if ( ! function_exists( 'sml_st_config' ) ) {
 		return ( '/stock-chart/' === $path );
 	}
 
-	add_action( 'wp_footer', function () {
+	add_action( 'wp_head', function () {
 		if ( ! sml_st_is_terminal() ) {
 			return;
 		}
