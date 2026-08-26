@@ -162,13 +162,17 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 
 		$mode = sanitize_key( (string) $request->get_param( 'mode' ) );
 		$mode = in_array( $mode, array( 'now', 'later' ), true ) ? $mode : 'later';
-		$handle = sml_scheduled_live_handle_for_user( $user_id );
-		$title  = sanitize_text_field( (string) $request->get_param( 'title' ) );
+		$handle      = sml_scheduled_live_handle_for_user( $user_id );
+		$title       = sanitize_text_field( (string) $request->get_param( 'title' ) );
+		$description = sanitize_textarea_field( (string) $request->get_param( 'description' ) );
 		if ( '' === $handle ) {
 			return new WP_Error( 'sml_scheduled_live_no_handle', 'Set a public profile handle before scheduling a live stream.', array( 'status' => 400 ) );
 		}
 		if ( '' === $title ) {
 			return new WP_Error( 'sml_scheduled_live_title', 'Add a stream title before scheduling.', array( 'status' => 400 ) );
+		}
+		if ( '' === $description ) {
+			return new WP_Error( 'sml_scheduled_live_description', 'Add a stream description before scheduling so the share card has complete details.', array( 'status' => 400 ) );
 		}
 
 		$start = sml_scheduled_live_normalize_start( $request->get_param( 'starts_at' ), $mode );
@@ -179,8 +183,8 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 		$visibility = in_array( $visibility, array( 'public', 'unlisted', 'followers', 'subscribers', 'premium', 'group' ), true ) ? $visibility : 'public';
 		$thumb      = esc_url_raw( (string) $request->get_param( 'thumbnail_url' ) );
 		$thumb_info = $thumb ? wp_parse_url( $thumb ) : array();
-		if ( $thumb && ( ! wp_http_validate_url( $thumb ) || empty( $thumb_info['scheme'] ) || 'https' !== strtolower( (string) $thumb_info['scheme'] ) ) ) {
-			return new WP_Error( 'sml_scheduled_live_thumbnail', 'The stream thumbnail must be a valid HTTPS image URL.', array( 'status' => 400 ) );
+		if ( ! $thumb || ! wp_http_validate_url( $thumb ) || empty( $thumb_info['scheme'] ) || 'https' !== strtolower( (string) $thumb_info['scheme'] ) ) {
+			return new WP_Error( 'sml_scheduled_live_thumbnail', 'Upload a valid HTTPS thumbnail image or GIF before scheduling.', array( 'status' => 400 ) );
 		}
 
 		$previous = sml_scheduled_live_read( $user_id );
@@ -189,7 +193,7 @@ if ( ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
 			'id'            => ! empty( $previous['id'] ) ? sanitize_text_field( (string) $previous['id'] ) : wp_generate_uuid4(),
 			'status'        => 'scheduled',
 			'title'         => $title,
-			'description'   => sanitize_textarea_field( (string) $request->get_param( 'description' ) ),
+			'description'   => $description,
 			'ticker'        => strtoupper( preg_replace( '/[^A-Z]/', '', (string) $request->get_param( 'ticker' ) ) ),
 			'thumbnail_url' => $thumb,
 			'scheduled_at'  => $start,
