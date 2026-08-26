@@ -1,4 +1,3 @@
-<?php
 /**
  * SML Discord group connectors (v2).
  *
