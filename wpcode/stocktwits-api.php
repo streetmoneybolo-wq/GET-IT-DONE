@@ -349,4 +349,27 @@ if ( ! function_exists( 'sml_st_config' ) ) {
 		}
 		sml_st_meta_update( array( 'last_warm' => gmdate( 'c' ) ) );
 	} );
+	/* ---------------------------------------------------------------------
+	 * Layer 3 loader. The terminal already renders a Stocktwits TAB; the feed
+	 * script claims that pane itself, so nothing in the terminal's own markup
+	 * (which is plugin-rendered, and plugin edits get reverted here) has to
+	 * change. Printed late so it cannot delay first paint.
+	 * ------------------------------------------------------------------- */
+	function sml_st_is_terminal() {
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = strtolower( (string) strtok( $uri, '?' ) );
+		$path = '/' . trim( $path, '/' ) . '/';
+		return ( '/stock-chart/' === $path );
+	}
+
+	add_action( 'wp_footer', function () {
+		if ( ! sml_st_is_terminal() ) {
+			return;
+		}
+		$ref = function_exists( 'sml_cdn_resolve_ref' ) ? sml_cdn_resolve_ref() : 'main';
+		$src = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@'
+			. rawurlencode( $ref ) . '/js/stocktwits-feed.js';
+		echo '<script id="sml-stocktwits-js" src="' . esc_url( $src ) . '" defer></script>' . "
+";
+	}, 30 );
 }
