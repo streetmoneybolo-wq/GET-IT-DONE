@@ -1167,6 +1167,54 @@
     if (!at) return 'Starting soon';
     return 'Starts ' + new Date(at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
+  function paintCreatorIdentity(identity) {
+    identity = identity || {};
+    var name = String(identity.name || '').trim();
+    var handle = String(identity.handle || HANDLE || '').replace(/^@/, '').trim();
+    var avatar = String(identity.avatar || identity.photo || '').trim();
+    if (name || handle) {
+      var label = name || ('@' + handle);
+      var suffix = name && handle ? ' · @' + handle : '';
+      root.querySelector('.slw-titleblk .who .nm').textContent = label + suffix;
+      var aboutName = root.querySelector('.slw-about-id .nm');
+      aboutName.textContent = label;
+      if (handle) {
+        var small = document.createElement('small');
+        small.textContent = ' · @' + handle;
+        aboutName.appendChild(small);
+      }
+      var av = root.querySelector('.slw-avatar');
+      av.style.backgroundImage = 'none';
+      av.style.backgroundColor = '#0d1a15';
+      av.textContent = (name || handle || 'SL').slice(0, 2).toUpperCase();
+    }
+    if (/^https:\/\//i.test(avatar)) {
+      var avatarEl = root.querySelector('.slw-avatar');
+      avatarEl.style.backgroundColor = '#0d1a15';
+      avatarEl.style.backgroundImage = 'url("' + avatar.replace(/"/g, '%22') + '")';
+      avatarEl.style.backgroundPosition = 'center';
+      avatarEl.style.backgroundSize = 'cover';
+      avatarEl.textContent = '';
+    }
+  }
+  function paintScheduledAbout(info) {
+    if (!info) return;
+    var creator = info.creator || {};
+    paintCreatorIdentity({
+      name: creator.name || info.creator_name || '',
+      handle: creator.handle || info.handle || HANDLE,
+      avatar: creator.avatar || info.creator_avatar || ''
+    });
+    var description = String(info.description || '').trim();
+    var desc = root.querySelector('.slw-about-desc');
+    if (description) {
+      desc.textContent = description;
+      desc.style.display = '';
+    } else {
+      desc.textContent = '';
+      desc.style.display = 'none';
+    }
+  }
   function showScheduledPlaceholder(info) {
     if (!info || !info.title) return false;
     if (P.mode !== 'none') teardown();
@@ -1185,6 +1233,7 @@
     if (heading) heading.textContent = info.title;
     var eyebrow = root.querySelector('.slw-titleblk .ep span');
     if (eyebrow) eyebrow.textContent = 'SCHEDULED LIVE · STARTING SOON';
+    paintScheduledAbout(info);
     var ticker = scheduledTicker(info);
     if (ticker) {
       qSym = ticker;
@@ -1204,6 +1253,7 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         scheduledLive = data && data.status === 'scheduled' ? data : null;
+        if (scheduledLive) paintScheduledAbout(scheduledLive);
         /* A public scheduled room is intentionally open before video starts. */
         paintComposer();
         return scheduledLive;
@@ -2348,21 +2398,20 @@
   function loadCreator() {
     if (SIM) return;
     api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
+      if (scheduledLive) { paintScheduledAbout(scheduledLive); return; }
       var c = res.j && res.j.creator;
       if (!c) return;
-      root.querySelector('.slw-titleblk .who .nm').textContent = c.name + ' · @' + c.handle;
-      root.querySelector('.slw-about-id .nm').innerHTML = esc(c.name) + ' <small>· @' + esc(c.handle) + '</small>';
-      var av = root.querySelector('.slw-avatar');
-      av.textContent = (c.name || c.handle || 'SL').slice(0, 2).toUpperCase();
+      paintCreatorIdentity(c);
     }).catch(function () {});
     api('/sml-lb/v1/card/' + HANDLE).then(function (res) {
+      if (scheduledLive) { paintScheduledAbout(scheduledLive); return; }
       var j = res.j || {};
       var url = (j.profile && j.profile.photo) || j.photo || j.avatar || (j.profile && j.profile.avatar) || '';
-      if (url && /^https:/.test(url)) {
-        var av = root.querySelector('.slw-avatar');
-        av.style.background = '#0d1a15 url(' + url + ') center/cover';
-        av.textContent = '';
-      }
+      var profile = j.profile || {};
+      paintCreatorIdentity({ name: profile.name || '', handle: profile.handle || HANDLE, avatar: url });
+      var bio = String(profile.bio || '').trim();
+      var desc = root.querySelector('.slw-about-desc');
+      if (bio) { desc.textContent = bio; desc.style.display = ''; }
     }).catch(function () {});
   }
   /* real orbit: creator images live in the MEDIA LIBRARY tagged by title prefix
