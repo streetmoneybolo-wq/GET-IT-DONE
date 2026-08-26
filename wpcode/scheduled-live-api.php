@@ -1,4 +1,3 @@
-<?php
 /**
  * SML Scheduled Live Watch Pages.
  *
@@ -13,7 +12,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-	return;
+	exit;
 }
 
 if ( ! function_exists( 'sml_scheduled_live_handle_for_user' ) ) {
