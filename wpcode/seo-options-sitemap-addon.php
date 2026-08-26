@@ -31,6 +31,14 @@ if ( ! function_exists( 'sml_seo_options_sitemap_tickers' ) ) {
 		$esc   = function_exists( 'sml_esc_xml' ) ? 'sml_esc_xml' : 'esc_html';
 		$items = '<url><loc>' . $esc( home_url( '/options/' ) ) . '</loc><changefreq>daily</changefreq><priority>0.7</priority></url>' . "\n";
 		foreach ( sml_seo_options_sitemap_tickers() as $ticker ) {
+			/* Keep empty option shells out of discovery. The ingest stores each
+			 * snapshot under a lowercase symbol and captured is written only after
+			 * a successful chain calculation. URLs therefore join automatically as
+			 * their first real dataset arrives. */
+			$snapshot = get_option( 'sml_opt_snap_' . $ticker, null );
+			if ( ! is_array( $snapshot ) || empty( $snapshot['captured'] ) ) {
+				continue;
+			}
 			$items .= '<url><loc>' . $esc( home_url( '/options/' . rawurlencode( $ticker ) . '/' ) ) . '</loc><changefreq>daily</changefreq><priority>0.6</priority></url>' . "\n";
 		}
 		return str_replace( '</urlset>', $items . '</urlset>', $xml );
