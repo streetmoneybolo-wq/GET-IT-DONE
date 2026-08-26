@@ -132,13 +132,13 @@
 
       /* info row */
       '<div class="slw-inforow">' +
-        '<div class="slw-qcard"><div class="slw-qcard-h"><div class="sy"><span class="sym" id="slw-qsym">$SPY</span><span class="nm" id="slw-qname">SPDR S&amp;P 500 ETF Trust</span></div>' +
+        '<div class="slw-qcard"><div class="slw-qcard-h"><div class="sy"><span class="slw-qlogo" id="slw-qlogo"><img id="slw-qlogo-img" alt="" decoding="async"><span id="slw-qlogo-fallback">SP</span></span><span class="slw-qidentity"><span class="sym" id="slw-qsym">$SPY</span><span class="nm" id="slw-qname">SPDR S&amp;P 500 ETF Trust</span></span></div>' +
           '<div class="slw-vsync"><span class="bars"><i></i><i></i><i></i></span><span>VOICE SYNC</span></div></div>' +
         '<div class="slw-qcard-b"><div class="slw-qcard-top"><div class="slw-qcard-px"><span class="p" id="slw-qpx">—</span><span class="c" id="slw-qchg">—</span></div>' +
           '<div class="slw-qcard-grid"><span class="k">OPEN</span><span class="k">HIGH</span><span class="k">LOW</span><span class="k">VOL</span>' +
           '<span class="v" id="slw-qopen">—</span><span class="v hi" id="slw-qhigh">—</span><span class="v lo" id="slw-qlow">—</span><span class="v" id="slw-qvol">—</span></div></div>' +
           '<svg width="100%" height="52" viewBox="0 0 440 52" preserveAspectRatio="none" aria-hidden="true"><polygon id="slw-qfill" points="" style="opacity:.08"></polygon><polyline id="slw-qline" points="" style="fill:none;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round"></polyline></svg>' +
-          '<div class="slw-qcard-x"><span>9:30</span><span>INTRADAY · LIVE</span><span>NOW</span></div></div>' +
+          '<div class="slw-qcard-x"><span id="slw-qstart">OPEN</span><span>REAL INTRADAY</span><span id="slw-qend">LATEST</span></div></div>' +
         '<div class="slw-qcard-f"><span class="heard" id="slw-qheard">🎙 Heard "spy" in the stream audio 0s ago</span>' +
           '<div class="dots" id="slw-qdots"></div><span class="mode">TOP 5</span></div></div>' +
 
@@ -935,9 +935,10 @@
   var Q5 = ['SPY', 'QQQ', 'NVDA', 'VIX', 'TSLA'];
   var QI = { SPY: ['SPDR S&P 500 ETF Trust', 772.18, 0.42, '68.4M'], QQQ: ['Invesco QQQ Trust', 486.31, 0.61, '41.2M'], NVDA: ['NVIDIA Corporation', 128.44, -1.12, '108.7M'], VIX: ['CBOE Volatility Index', 14.82, -3.11, '—'], TSLA: ['Tesla, Inc.', 243.77, 2.04, '92.6M'] };
   var qSym = 'SPY', qHeard = 0;
+  var QDOM = { SPY: 'ssga.com', QQQ: 'invesco.com', NVDA: 'nvidia.com', VIX: 'cboe.com', TSLA: 'tesla.com' };
   el('#slw-qdots').innerHTML = Q5.map(function (s2, i) { return '<button data-q="' + s2 + '"' + (i === 0 ? ' class="on"' : '') + ' title="$' + s2 + '"></button>'; }).join('');
   Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
-    b.onclick = function () { qSym = b.getAttribute('data-q'); qHeard = S.tick; paintQ(); };
+    b.onclick = function () { qSym = b.getAttribute('data-q'); qHeard = S.tick; paintQ(); pollQuote(); pollHistory(); pollCompany(); };
   });
   function series(sym) {
     var seed = 0, i;
@@ -948,6 +949,8 @@
     return pts;
   }
   var QR = {}; /* real quote cache per symbol */
+  var QH = {}; /* authoritative intraday bars per symbol */
+  var QN = {}; /* authoritative company identity per symbol */
   function fmtVol(v) {
     if (v == null || isNaN(v)) return '—';
     if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
@@ -962,13 +965,86 @@
       if (typeof j.current === 'number') { QR[qSym] = j; paintQ(); }
     }).catch(function () {});
   }
+  function pollHistory() {
+    if (SIM || document.hidden) return;
+    var requested = qSym;
+    api('/sml/v1/history?symbol=' + encodeURIComponent(requested) + '&interval=1m&range=1d').then(function (res) {
+      var bars = res.j && Array.isArray(res.j.bars) ? res.j.bars.filter(function (bar) {
+        return bar && isFinite(Number(bar.c)) && isFinite(Number(bar.t));
+      }) : [];
+      if (bars.length < 2) return;
+      QH[requested] = bars.slice(-180);
+      if (requested === qSym) paintQ();
+    }).catch(function () {});
+  }
+  function pollCompany() {
+    if (SIM || document.hidden || QN[qSym]) return;
+    var requested = qSym;
+    api('/sml/v1/company2?symbol=' + encodeURIComponent(requested)).then(function (res) {
+      var company = res.j || {};
+      if (!company.name) return;
+      QN[requested] = company;
+      if (requested === qSym) paintQ();
+    }).catch(function () {});
+  }
+  function paintQLogo(sym, name) {
+    var logo = el('#slw-qlogo');
+    var img = el('#slw-qlogo-img');
+    var fallback = el('#slw-qlogo-fallback');
+    var company = QN[sym] || {};
+    var website = String(company.website || '').match(/^https?:\/\/([^/]+)/i);
+    var domain = QDOM[sym] || (website && website[1]);
+    if (logo.getAttribute('data-symbol') === sym && logo.getAttribute('data-domain') === String(domain || '')) return;
+    logo.setAttribute('data-symbol', sym);
+    logo.setAttribute('data-domain', String(domain || ''));
+    fallback.textContent = String(sym || 'ST').slice(0, 2);
+    fallback.style.display = '';
+    img.style.display = 'none';
+    img.alt = (name || sym) + ' logo';
+    img.onload = function () { img.style.display = 'block'; fallback.style.display = 'none'; logo.classList.add('has-logo'); };
+    img.onerror = function () { img.style.display = 'none'; fallback.style.display = ''; logo.classList.remove('has-logo'); };
+    img.src = domain
+      ? 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=128'
+      : 'https://stockmarketloop-loop-kick.onrender.com/api/logo/' + encodeURIComponent(sym);
+  }
+  function paintRealSeries(sym, up) {
+    var svg = root.querySelector('.slw-qcard svg');
+    var axis = root.querySelector('.slw-qcard-x');
+    var bars = QH[sym] || [];
+    if (bars.length < 2) { svg.style.display = 'none'; axis.style.display = 'none'; return; }
+    var closes = bars.map(function (bar) { return Number(bar.c); });
+    var min = Math.min.apply(Math, closes), max = Math.max.apply(Math, closes);
+    var span = Math.max(max - min, Math.abs(max || 1) * 0.001);
+    var last = closes.length - 1;
+    var xy = closes.map(function (value, i) {
+      var x = last ? i * (440 / last) : 0;
+      var y = 5 + ((max - value) / span) * 40;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    var col = up ? '#61e33d' : '#ff3f45';
+    el('#slw-qline').setAttribute('points', xy.join(' '));
+    el('#slw-qline').style.stroke = col;
+    el('#slw-qline').style.filter = 'drop-shadow(0 0 5px ' + col + ')';
+    el('#slw-qfill').setAttribute('points', xy.join(' ') + ' 440,52 0,52');
+    el('#slw-qfill').style.fill = col;
+    var firstDate = new Date(Number(bars[0].t));
+    var lastDate = new Date(Number(bars[last].t));
+    var fmt = function (d) { return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+    el('#slw-qstart').textContent = fmt(firstDate);
+    el('#slw-qend').textContent = fmt(lastDate);
+    svg.style.display = '';
+    axis.style.display = '';
+  }
   function paintQ() {
-    var qi = QI[qSym];
+    var qi = QI[qSym] || [qSym + ' market data', 0, 0, '—'];
+    var companyName = QN[qSym] && QN[qSym].name ? QN[qSym].name : qi[0];
     el('#slw-qsym').textContent = '$' + qSym;
-    el('#slw-qname').textContent = qi[0];
+    el('#slw-qname').textContent = companyName;
+    paintQLogo(qSym, companyName);
     if (!SIM) {
       var r = QR[qSym];
       var up2 = r && r.percentChange >= 0;
+      root.querySelector('.slw-qcard').classList.toggle('down', !!(r && !up2));
       el('#slw-qpx').textContent = r ? r.current.toFixed(2) : '—';
       var c2 = el('#slw-qchg');
       c2.textContent = r ? ((up2 ? '+' : '') + r.percentChange.toFixed(2) + '% ' + (up2 ? '▲' : '▼')) : '—';
@@ -980,6 +1056,7 @@
       Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
         b.classList.toggle('on', b.getAttribute('data-q') === qSym);
       });
+      paintRealSeries(qSym, up2 !== false);
       return;
     }
     var up = qi[2] >= 0, col = up ? '#00e07a' : '#ff4757';
@@ -1105,6 +1182,9 @@
       qSym = ticker;
       qHeard = S.tick;
       paintQ();
+      pollQuote();
+      pollHistory();
+      pollCompany();
     }
     setSourceNote('scheduled · chat is open');
     el('#slw-viewers').textContent = '—';
@@ -2206,10 +2286,9 @@
     root.querySelector('.slw-pinned').style.display = 'none';               /* no pin backend yet */
     el('#slw-pmarks').style.display = 'none';                              /* sample chapter marks */
     root.querySelector('.slw-orbit-sec').style.display = 'none';           /* photos land with creator settings */
-    /* qcard: honest fields only */
-    root.querySelector('.slw-qcard svg').style.display = 'none';           /* synthetic sparkline */
+    /* qcard: real quote fields plus authoritative intraday history only */
+    root.querySelector('.slw-qcard svg').style.display = 'none';
     root.querySelector('.slw-qcard-x').style.display = 'none';
-    root.querySelector('.slw-qcard').style.height = 'auto';
     root.querySelector('.slw-vsync span:last-child').textContent = 'DESK FOCUS';
     el('#slw-qheard').textContent = '🎙 Tap a dot to switch the desk ticker';
     /* title block: real identity, no sample episode */
@@ -2227,11 +2306,11 @@
     loadRec();
     pollTape();
     pollQuote();
+    pollHistory();
+    pollCompany();
     setInterval(pollTape, 15000);
     setInterval(pollQuote, 8000);
-    Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
-      b.addEventListener('click', pollQuote);
-    });
+    setInterval(pollHistory, 60000);
   }
   function loadRec() {
     var mount = el('#slw-rec-rows');
