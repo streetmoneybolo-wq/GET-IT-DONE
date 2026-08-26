@@ -26,15 +26,46 @@
     if (window.__smlHfFetchShim || /[?&]hfreq=0/.test(location.search)) return;
     window.__smlHfFetchShim = true;
     var NF = window.fetch, cache = {};
-    var RX = /\/wp-json\/(sml-home-engagement\/v1\/counts|sml-lb\/v1\/(me|gates|leaderboard)|sml-lbm\/v1\/state)/;
+    var RX = /\/wp-json\/(sml-home-engagement\/v1\/counts\?|sml-lb\/v1\/(me|gates|leaderboard)|sml-lbm\/v1\/state)/;
+    /* engagement counts: coalesce per-card GETs (one per post!) into ONE
+       counts-batch POST per 60ms window; falls back to the original single
+       calls if the batch route is missing or errors. */
+    var cbQ = [], cbT = null, cbBroken = false;
+    function cbFlush() {
+      var batch = cbQ; cbQ = []; cbT = null;
+      var items = batch.map(function (b) {
+        try { var u = new URL(b.url, location.origin); return { item_id: u.searchParams.get('item_id') || '', url: u.searchParams.get('url') || '' }; }
+        catch (e) { return { item_id: '', url: '' }; }
+      });
+      NF.call(window, '/wp-json/sml-home-engagement/v1/counts-batch', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: items }) })
+        .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+        .then(function (j) {
+          var rs = (j && j.results) || [];
+          batch.forEach(function (b, i) {
+            if (rs[i]) b.res(new Response(JSON.stringify(rs[i]), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+            else NF.call(window, b.url, { credentials: 'same-origin' }).then(b.res, b.rej);
+          });
+        })
+        .catch(function () {
+          cbBroken = true; /* batch route unavailable → plain singles from now on */
+          batch.forEach(function (b) { NF.call(window, b.url, { credentials: 'same-origin' }).then(b.res, b.rej); });
+        });
+    }
+    function cbEnqueue(u) {
+      return new Promise(function (res, rej) {
+        cbQ.push({ url: u, res: res, rej: rej });
+        if (!cbT) cbT = setTimeout(cbFlush, 60);
+      });
+    }
     window.fetch = function (input, init) {
       var url = typeof input === 'string' ? input : ((input && input.url) || '');
       var isGet = !init || !init.method || String(init.method).toUpperCase() === 'GET';
       if (isGet && RX.test(url)) {
-        var ttl = /home-engagement/.test(url) ? 25000 : 60000;
+        var isCounts = /home-engagement/.test(url);
+        var ttl = isCounts ? 25000 : 60000;
         var c = cache[url];
         if (c && Date.now() - c.t < ttl) return c.p.then(function (r) { return r.clone(); });
-        var pr = NF.call(window, input, init).then(function (r) { return r.clone(); });
+        var pr = (isCounts && !cbBroken ? cbEnqueue(url) : NF.call(window, input, init)).then(function (r) { return r.clone(); });
         cache[url] = { t: Date.now(), p: pr };
         pr.catch(function () { delete cache[url]; });
         return pr.then(function (r) { return r.clone(); });
