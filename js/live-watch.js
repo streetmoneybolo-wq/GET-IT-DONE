@@ -1040,6 +1040,8 @@
       scheduledCountdownTimer = 0;
     }
     ph.classList.remove('scheduled');
+    var frame = root.querySelector('.slw-frame');
+    if (frame) frame.classList.remove('scheduled-thumb');
     ph.style.backgroundImage = '';
     ph.style.backgroundSize = '';
     ph.style.backgroundPosition = '';
@@ -1119,8 +1121,10 @@
     setPlaybackAvailable(false);
     setBroadcastState('scheduled');
     ph.classList.add('scheduled');
+    var frame = root.querySelector('.slw-frame');
+    if (frame) frame.classList.add('scheduled-thumb');
     if (info.thumbnail_url && /^https:\/\//i.test(String(info.thumbnail_url))) {
-      ph.style.backgroundImage = 'linear-gradient(180deg,rgba(3,8,14,.28),rgba(3,8,14,.86)),url("' + String(info.thumbnail_url).replace(/"/g, '%22') + '")';
+      ph.style.backgroundImage = 'url("' + String(info.thumbnail_url).replace(/"/g, '%22') + '")';
       ph.style.backgroundSize = 'cover';
       ph.style.backgroundPosition = 'center';
     }
@@ -2293,22 +2297,33 @@
     });
   }
   function loadRec() {
-    var mount = el('#slw-rec-rows');
     el('#slw-recmeta').textContent = '';
-    api('/sml-media/v1/feed').then(function (res) {
-      var items = (res.j && (res.j.items || res.j.feed || res.j.media)) || [];
-      if (!items.length) throw new Error('empty');
-      renderRecReal(items.slice(0, 5).map(function (it) {
-        return { title: it.title || it.caption || 'Watch', url: it.url || it.link || it.permalink || '#', thumb: it.thumbnail || it.thumb || it.image || '', meta: it.author || it.handle || '' };
+    /* This rail is for playable content only. The verified upload-studio
+       endpoint returns real Watch Page videos; never fall back to articles,
+       photos, generic media, or WordPress posts. */
+    fetch('/wp-json/sml-video-upload-studio/v1/rail', { credentials: 'same-origin' }).then(function (r) {
+      if (!r.ok) throw new Error('video rail unavailable');
+      return r.json();
+    }).then(function (data) {
+      var videos = (data && data.up_next) || [];
+      videos = videos.filter(function (v) {
+        if (!v || !v.watch_url) return false;
+        try {
+          var target = new URL(String(v.watch_url), window.location.origin);
+          return target.origin === window.location.origin && /^\/watch\/[A-Za-z0-9_-]+\/?$/.test(target.pathname);
+        } catch (e) { return false; }
+      }).slice(0, 5);
+      if (!videos.length) throw new Error('empty video rail');
+      root.querySelector('.slw-rec').style.display = '';
+      renderRecReal(videos.map(function (v) {
+        return {
+          title: v.title || 'Watch video',
+          url: v.watch_url,
+          thumb: v.thumbnail || '',
+          meta: [v.creator || '', v.duration || '', v.views_label || ''].filter(Boolean).join(' · ')
+        };
       }));
-    }).catch(function () {
-      fetch('/wp-json/wp/v2/posts?per_page=5&_fields=title,link,date', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (posts) {
-        if (!posts || !posts.length) { root.querySelector('.slw-rec').style.display = 'none'; return; }
-        renderRecReal(posts.map(function (p) {
-          return { title: (p.title && p.title.rendered) || 'Read', url: p.link, thumb: '', meta: (p.date || '').slice(0, 10) };
-        }));
-      }).catch(function () { root.querySelector('.slw-rec').style.display = 'none'; });
-    });
+    }).catch(function () { root.querySelector('.slw-rec').style.display = 'none'; });
   }
   function renderRecReal(items) {
     el('#slw-rec-rows').innerHTML = items.map(function (v) {
