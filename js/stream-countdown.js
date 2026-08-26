@@ -33,8 +33,24 @@
   var HANDLE = handleFromUrl();
   if (!HANDLE) return;
 
-  fetch('/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(HANDLE), { credentials: 'same-origin' })
-    .then(function (r) { return r.ok ? r.json() : null; })
+  function schedFor(handle) {
+    return fetch('/wp-json/sml-scheduled-live/v1/creator/' + encodeURIComponent(handle), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; });
+  }
+  schedFor(HANDLE)
+    .then(function (d) {
+      if (d) return d;
+      // /channel/{handle}/ uses the CHANNEL handle, but the schedule API is
+      // keyed by the owner's PROFILE handle (verified live: grandmasterobi
+      // answers, making_easy_money 404s) — resolve via the channel data API
+      if (!/^\/channel\//.test(location.pathname)) return null;
+      return fetch('/wp-json/sml-channel/v1/channel/' + encodeURIComponent(HANDLE), { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (ch) {
+          var ph = ch && ch.creator && ch.creator.profile_handle ? String(ch.creator.profile_handle).replace(/^@/, '') : '';
+          return ph ? schedFor(ph) : null;
+        });
+    })
     .then(function (d) {
       if (!d || 'scheduled' !== d.status || !d.scheduled_at || 'public' !== (d.visibility || 'public')) return;
       var t = Date.parse(d.scheduled_at);
