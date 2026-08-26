@@ -249,7 +249,17 @@
         '.sml-rh-item{min-width:100%;position:relative;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}' +
         '.sml-rh-item a{text-decoration:none;}' +
         '.oh-post{position:relative;}' +
-        '.sml-owner-delete{position:absolute;z-index:7;right:16px;top:16px;border:1px solid rgba(255,82,104,.55);border-radius:999px;background:linear-gradient(180deg,rgba(82,18,29,.96),rgba(43,8,15,.96));color:#ff9aac;padding:6px 11px;font:700 10px/1.2 Inter,system-ui,sans-serif;letter-spacing:.02em;cursor:pointer;box-shadow:0 7px 18px rgba(0,0,0,.32);}' +
+        /* server-rendered Delete buttons are only a capability signal now — the
+           controller replaces them (however many were emitted) with ONE ⋯ menu */
+        '.sml-owner-delete{display:none!important;}' +
+        '.sml-kebab{position:absolute;z-index:8;right:14px;top:14px;width:34px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(10,16,24,.85);color:#B7C3CF;font:700 15px/1 Inter,system-ui,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;}' +
+        '.sml-kebab:hover,.sml-kebab:focus-visible{color:#fff;border-color:rgba(255,255,255,.32);outline:none;}' +
+        '.sml-kmenu{position:absolute;z-index:9;right:14px;top:50px;min-width:150px;padding:6px;border-radius:12px;background:linear-gradient(180deg,#10151C,#0A0E14);border:1px solid rgba(255,255,255,.12);box-shadow:0 18px 40px -12px rgba(0,0,0,.85);display:none;}' +
+        '.sml-kmenu.open{display:block;}' +
+        '.sml-kmenu a,.sml-kmenu button{display:flex;width:100%;box-sizing:border-box;align-items:center;gap:10px;padding:9px 12px;border:0;border-radius:8px;background:transparent;color:#E6EDF5;font:600 13px/1.2 Inter,system-ui,sans-serif;text-decoration:none;cursor:pointer;text-align:left;}' +
+        '.sml-kmenu a:hover,.sml-kmenu button:hover{background:rgba(255,255,255,.06);}' +
+        '.sml-kmenu .sml-kmenu-del{color:#F2495C;}' +
+        '.sml-kmenu .sml-kmenu-del[disabled]{opacity:.55;cursor:wait;}' +
         '.sml-owner-delete:hover,.sml-owner-delete:focus-visible{color:#fff;border-color:#ff5268;background:#a51630;outline:none;}' +
         '.sml-owner-delete[disabled]{opacity:.55;cursor:wait;}' +
         '.sml-owner-delete-err{position:absolute;z-index:7;right:16px;top:52px;max-width:260px;background:rgba(43,8,15,.97);border:1px solid rgba(255,82,104,.55);border-radius:10px;color:#ffb3c0;padding:8px 11px;font:600 11px/1.45 Inter,system-ui,sans-serif;box-shadow:0 7px 18px rgba(0,0,0,.4);}' +
@@ -934,6 +944,39 @@
         var card=button.closest('.oh-post'); if(card){card.style.transition='opacity .25s ease,transform .25s ease';card.style.opacity='0';card.style.transform='scale(.98)';setTimeout(function(){card.remove();dedupeFeed();},260);}
       }).catch(function(error){button.disabled=false;button.textContent='Delete';deleteErrorIn(button,error.message||'The post could not be deleted.');});
     });
+
+    // ---- ⋯ card menu: replace every server-rendered Delete button (some cards
+    // were getting TWO from different render layers) with one kebab at the
+    // card's top right that opens Edit / Delete. The hidden server buttons stay
+    // the capability signal; the Delete row reuses the whole flow above via the
+    // same data-sml-delete-item attribute. ----
+    function closeKmenus(except){ host.querySelectorAll('.sml-kmenu.open').forEach(function(x){ if(x!==except) x.classList.remove('open'); }); }
+    function kebabize(){
+      host.querySelectorAll('.oh-post').forEach(function(card){
+        var btns=card.querySelectorAll('button.sml-owner-delete[data-sml-delete-item]');
+        if(!btns.length) return;
+        var itemId=btns[0].getAttribute('data-sml-delete-item')||'';
+        btns.forEach(function(b){ b.remove(); });
+        if(!itemId||card.querySelector('.sml-kebab')) return;
+        var kb=document.createElement('button'); kb.type='button'; kb.className='sml-kebab'; kb.textContent='⋯';
+        kb.setAttribute('aria-label','Post options'); kb.setAttribute('aria-haspopup','menu');
+        var menu=document.createElement('div'); menu.className='sml-kmenu'; menu.setAttribute('role','menu');
+        var wp=itemId.match(/^wp-(\d+)$/);
+        if(wp){
+          var ed=document.createElement('a'); ed.className='sml-kmenu-edit'; ed.setAttribute('role','menuitem');
+          ed.href='/wp-admin/post.php?post='+wp[1]+'&action=edit'; ed.textContent='Edit';
+          menu.appendChild(ed);
+        }
+        var del=document.createElement('button'); del.type='button'; del.className='sml-kmenu-del'; del.setAttribute('role','menuitem');
+        del.setAttribute('data-sml-delete-item', itemId); del.textContent='Delete';
+        menu.appendChild(del);
+        kb.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation(); closeKmenus(menu); menu.classList.toggle('open'); });
+        card.appendChild(kb); card.appendChild(menu);
+      });
+    }
+    document.addEventListener('click', function(){ closeKmenus(); });
+    document.addEventListener('keydown', function(ev){ if(ev.key==='Escape') closeKmenus(); });
+    kebabize(); setInterval(kebabize, 3000); /* also covers cards slid in by pollFeed */
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
     var feedSeen = {};

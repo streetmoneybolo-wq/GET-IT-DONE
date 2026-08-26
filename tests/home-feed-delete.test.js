@@ -38,7 +38,7 @@ function sliceBetween(startMarker, endMarker, label) {
 
 const hfbNonceSrc = sliceBetween('function hfbNonce()', 'function hfbLoad', 'hfbNonce');
 const deleteErrorInSrc = sliceBetween('function deleteErrorIn(', "host.addEventListener('click'", 'deleteErrorIn');
-const clickHandlerSrc = sliceBetween("host.addEventListener('click'", '// ---- live feed', 'click handler');
+const clickHandlerSrc = sliceBetween("host.addEventListener('click'", '// ---- ⋯ card menu', 'click handler');
 
 // Sanity: the slices look like the units we intended to capture.
 assert.ok(/^function hfbNonce\(\)/.test(hfbNonceSrc) && hfbNonceSrc.endsWith('}'),
