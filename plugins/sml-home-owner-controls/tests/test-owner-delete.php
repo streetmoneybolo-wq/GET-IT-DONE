@@ -77,6 +77,14 @@ function update_user_meta( $user_id, $meta_key, $meta_value, $prev_value = '' ) 
 	return true;
 }
 
+function delete_user_meta( $user_id, $meta_key, $meta_value = '' ) {
+	$user_id = (int) $user_id;
+	if ( isset( WPStub::$user_meta[ $user_id ][ $meta_key ] ) ) {
+		unset( WPStub::$user_meta[ $user_id ][ $meta_key ] );
+	}
+	return true;
+}
+
 function wp_update_user( $userdata ) {
 	WPStub::$wp_update_user_calls[] = $userdata;
 	$id = isset( $userdata['ID'] ) ? (int) $userdata['ID'] : 0;
@@ -576,6 +584,32 @@ t_assert_error( $result, 'sml_hoc_missing', 404, 'case14 genuinely missing strea
 $result = run_delete( 'chart-0-abc123', 99 );
 t_assert_error( $result, 'sml_hoc_bad_id', 400, 'case15 chart-0-{id} -> 400 invalid identifier' );
 t_assert( array() === WPStub::$update_user_meta_calls, 'case15 -> no usermeta write attempted' );
+
+/* ------------------------------------------------------------------ */
+/* Case 16: SML News identity migration uses the gold news artwork     */
+/* while leaving login/nicename/profile routing entirely untouched.   */
+/* ------------------------------------------------------------------ */
+
+WPStub::$options = array();
+WPStub::$users[258456543] = (object) array(
+	'ID'           => 258456543,
+	'display_name' => 'Old Name',
+	'user_login'   => 'stockmarketloop',
+	'user_nicename'=> 'stockmarketloop',
+);
+WPStub::$user_meta[258456543] = array(
+	'sml_avatar_url'           => 'https://example.test/old-avatar.png',
+	'sml_avatar_attachment_id' => 991,
+);
+WPStub::$update_user_meta_calls = array();
+WPStub::$wp_update_user_calls   = array();
+sml_hoc_migrate_news_identity();
+t_assert( 'SML News' === WPStub::$user_meta[258456543]['sml_display_handle'], 'case16 -> display handle is SML News' );
+t_assert( 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/sml-news-avatar-gold-v1.png' === WPStub::$user_meta[258456543]['sml_avatar_url'], 'case16 -> gold SML News avatar is canonical' );
+t_assert( ! isset( WPStub::$user_meta[258456543]['sml_avatar_attachment_id'] ), 'case16 -> stale managed attachment id removed' );
+t_assert( 'SML News' === WPStub::$users[258456543]->display_name, 'case16 -> WordPress display name is SML News' );
+t_assert( 'stockmarketloop' === WPStub::$users[258456543]->user_login && 'stockmarketloop' === WPStub::$users[258456543]->user_nicename, 'case16 -> stable login and profile slug remain stockmarketloop' );
+t_assert( '1.0.3' === WPStub::$options['sml_hoc_identity_version'], 'case16 -> migration version stored' );
 
 printf( "Total: %d assertions, %d passed, %d failed\n", $GLOBALS['t_pass'] + $GLOBALS['t_fail'], $GLOBALS['t_pass'], $GLOBALS['t_fail'] );
 if ( $GLOBALS['t_fail'] > 0 ) {
