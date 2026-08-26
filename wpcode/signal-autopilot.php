@@ -4,7 +4,7 @@
  *
  * The original Signal News articles were posted by an outside job that only
  * ran mornings, so the feed went silent after midday. This snippet generates
- * the same article families ON SITE via WP-cron every 20 minutes during
+ * the same article families ON SITE via WP-cron every 10 minutes during
  * market hours (9:30–16:00 ET, weekdays), from data the site ALREADY ingests:
  *   - options positioning snapshots (#7372 refreshes the 8 deep-chain tickers
  *     every 15 minutes in market hours)  → gamma-cluster + large-flow articles
@@ -14,7 +14,7 @@
  *
  * Discipline: hard dedup (one gamma article per symbol per peak strike per
  * day; one flow article per contract per day; one momentum per symbol per
- * direction per day), at most 3 articles per tick and 14 autopilot articles
+ * direction per day), at most 4 articles per tick and 30 autopilot articles
  * per day. Articles post as SML News (258456543), category Markets, with the
  * $SYM tag in title/body so the homepage feed, rabbit hole, and terminal
  * ticker-news module all pick them up automatically.
@@ -49,7 +49,7 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 	}
 
 	function sml_sn_publish( $title, $excerpt, $body, $key, &$log ) {
-		if ( isset( $log['keys'][ $key ] ) || $log['count'] >= 14 ) { return 0; }
+		if ( isset( $log['keys'][ $key ] ) || $log['count'] >= 30 ) { return 0; }
 		/* re-check against the STORED log right before inserting — a crashed or
 		   concurrent tick must never let the same key publish twice */
 		$fresh = get_option( 'sml_sn_log', array() );
@@ -91,7 +91,7 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 		}
 		$log = sml_sn_log_load();
 		$posted = array();
-		$tick_cap = 3;
+		$tick_cap = 4;
 
 		$tickers = function_exists( 'sml_opt_config' ) ? sml_opt_config()['tickers'] : array( 'SPY', 'QQQ', 'NVDA', 'TSLA', 'AAPL', 'AMD', 'META', 'AMZN' );
 
@@ -155,7 +155,7 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 				if ( ! is_array( $row ) ) { continue; }
 				$last = (float) ( $row['last'] ?? 0 );
 				$pct  = (float) ( $row['pct'] ?? 0 );
-				if ( $last <= 0 || abs( $pct ) < 4 ) { continue; }
+				if ( $last <= 0 || abs( $pct ) < 3 ) { continue; }
 				$dir  = $pct > 0 ? 'up' : 'down';
 				$key  = 'mom:' . $sym . ':' . $dir;
 				$verb = $pct > 0 ? 'Jumps' : 'Slides';
@@ -175,14 +175,15 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 	}
 
 	add_filter( 'cron_schedules', static function ( $s ) {
-		$s['sml_sn_20min'] = array( 'interval' => 1200, 'display' => 'Every 20 minutes' );
+		$s['sml_sn_10min'] = array( 'interval' => 600, 'display' => 'Every 10 minutes' );
 		return $s;
 	} );
 	add_action( 'init', static function () {
 		/* one-shot atomic flag: two concurrent first requests must not both
 		   schedule (duplicate recurring events reschedule themselves forever) */
-		if ( ! wp_next_scheduled( 'sml_sn_tick_event' ) && add_option( 'sml_sn_scheduled_v1', '1', '', false ) ) {
-			wp_schedule_event( time() + 120, 'sml_sn_20min', 'sml_sn_tick_event' );
+		if ( add_option( 'sml_sn_scheduled_v2', '1', '', false ) ) {
+			wp_clear_scheduled_hook( 'sml_sn_tick_event' ); /* migrate off the 20-min cadence */
+			wp_schedule_event( time() + 120, 'sml_sn_10min', 'sml_sn_tick_event' );
 		}
 	}, 20 );
 	add_action( 'sml_sn_tick_event', 'sml_sn_tick' );
