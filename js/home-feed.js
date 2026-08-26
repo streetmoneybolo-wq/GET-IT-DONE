@@ -60,6 +60,18 @@
     window.fetch = function (input, init) {
       var url = typeof input === 'string' ? input : ((input && input.url) || '');
       var isGet = !init || !init.method || String(init.method).toUpperCase() === 'GET';
+      /* one-shot bootstrap for the six read panels (unless ?hfboot=0) */
+      if (isGet && !/[?&]hfboot=0/.test(location.search)) {
+        var comp = hfbComponentFor(url);
+        if (comp) {
+          var single = function () { return NF.call(window, input, init); };
+          if (HFB.map === false) return single();
+          return hfbLoad(NF).then(function (m) {
+            if (!m || m[comp] == null) return single();
+            return new Response(JSON.stringify(m[comp]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          });
+        }
+      }
       if (isGet && RX.test(url)) {
         var isCounts = /home-engagement/.test(url);
         var ttl = isCounts ? 25000 : 60000;
@@ -73,6 +85,38 @@
       return NF.apply(window, arguments);
     };
   }());
+
+  /* PERF phase 3: pull the six read-only homepage panels (Loop Bucks me/gates/
+     leaderboard, milestones, watchlist, creator-gate) from ONE authenticated
+     bootstrap request instead of six. The shared fetch shim (below) answers
+     each panel's own GET from this single response; if the bootstrap route is
+     missing, in limited rollout (403), or errors, every panel transparently
+     falls back to its original per-route call. Kill switch: ?hfboot=0.
+     Read-only — no mutation is ever routed here. */
+  var HFB = { map: null, promise: null };
+  var HFB_ROUTES = {
+    '/wp-json/sml-lb/v1/me': 'loopbucks',
+    '/wp-json/sml-lb/v1/gates': 'gates',
+    '/wp-json/sml-lb/v1/leaderboard': 'leaderboard',
+    '/wp-json/sml-lbm/v1/state': 'milestones',
+    '/wp-json/sml-members/v1/watchlist': 'watchlist',
+    '/wp-json/sml-creator-gate/v1/status': 'creatorGate'
+  };
+  function hfbComponentFor(url) {
+    try { var pth = new URL(url, location.origin).pathname; return HFB_ROUTES[pth] || null; }
+    catch (e) { return null; }
+  }
+  function hfbLoad(realFetch) {
+    if (HFB.promise) return HFB.promise;
+    HFB.promise = realFetch('/wp-json/sml-home/v2/bootstrap', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('boot ' + r.status); return r.json(); })
+      .then(function (j) {
+        if (j && j.components) { HFB.map = j.components; try { window.__smlHomeBoot = j.component_status; } catch (e) {} }
+        return HFB.map;
+      })
+      .catch(function () { HFB.map = false; return false; }); /* false = unavailable → singles */
+    return HFB.promise;
+  }
 
   var QUOTES_URL='https://stockmarketloop-loop-kick.onrender.com/api/quotes', LOGO_URL='https://stockmarketloop-loop-kick.onrender.com/api/logo/', BRAND_IMG='https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/loop-logo.png', AJAX_URL='/wp-admin/admin-ajax.php', Q={}, qTimer=null, SYMS=[];
   function fmtP(v){return v==null?'—':'$'+(Math.abs(Number(v))>=1000?Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):Number(v).toFixed(2));}
