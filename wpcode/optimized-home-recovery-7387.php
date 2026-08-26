@@ -142,7 +142,8 @@ function sml_oh_render() {
             $live_author = get_userdata($author_id);
             if ($live_author) {
                 $author_name = sanitize_text_field($live_author->display_name ?: $live_author->user_login);
-                $author_url = function_exists('sml_sth_profile_url') ? sml_sth_profile_url($author_id) : get_author_posts_url($author_id);
+                // Preserve the existing /stockmarketloop/ profile URL/handle;
+                // a display-name or avatar change must never rewrite old links.
                 $author_avatar = esc_url_raw((string) get_user_meta($author_id, 'sml_avatar_url', true));
                 if (!$author_avatar) { $author_avatar = get_avatar_url($author_id, array('size' => 96)); }
             }
