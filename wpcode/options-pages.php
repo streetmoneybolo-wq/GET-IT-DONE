@@ -375,11 +375,12 @@ if ( ! function_exists( 'sml_opt_config' ) ) {
 	add_action( 'init', function () {
 		add_rewrite_rule( '^options/([A-Za-z]{1,6})/?$', 'index.php?sml_opt_sym=$matches[1]', 'top' );
 		add_rewrite_rule( '^options/?$', 'index.php?sml_opt_index=1', 'top' );
+		add_rewrite_rule( '^options-sitemap\.xml$', 'index.php?sml_opt_sitemap=1', 'top' );
 		/* Flushed once per rule revision. Flushing on every load is expensive
 		   enough to be a self-inflicted outage. */
-		if ( get_option( 'sml_opt_rules' ) !== 'v1' ) {
+		if ( get_option( 'sml_opt_rules' ) !== 'v2' ) {
 			flush_rewrite_rules( false );
-			update_option( 'sml_opt_rules', 'v1', false );
+			update_option( 'sml_opt_rules', 'v2', false );
 		}
 	}, 5 );
 
@@ -623,14 +624,16 @@ if ( ! function_exists( 'sml_opt_config' ) ) {
 		   generate a thin empty page - thin auto-generated pages are exactly
 		   what put 1.9k URLs into "crawled, not indexed" in the first place. */
 		if ( ! sml_opt_is_launch( $sym ) ) {
+			/* A bare status_header leaves WordPress rendering a 200-shaped body.
+			   set_404() makes it a real not-found for crawlers. */
+			global $wp_query;
+			$wp_query->set_404();
 			status_header( 404 );
+			nocache_headers();
 			return;
 		}
 		sml_opt_render( $sym );
 		exit;
 	}, 0 );
 
-	add_action( 'init', function () {
-		add_rewrite_rule( '^options-sitemap\.xml$', 'index.php?sml_opt_sitemap=1', 'top' );
-	}, 5 );
 }
