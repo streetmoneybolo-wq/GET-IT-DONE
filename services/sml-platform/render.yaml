@@ -24,6 +24,8 @@ services:
         fromDatabase:
           name: sml-platform-db
           property: connectionString
+      - key: SML_STRIPE_WEBHOOK_SECRET
+        sync: false
 
   - type: worker
     name: sml-platform-worker

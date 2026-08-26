@@ -17,7 +17,10 @@ function getConfig(env = process.env) {
     // This is deliberately optional at boot.  Until Render and WordPress both
     // have the same secret configured, the gateway fails closed with 503 rather
     // than accepting an unauthenticated request.
-    wordpressWebhookSecret: String(env.SML_WORDPRESS_WEBHOOK_SECRET || '').trim()
+    wordpressWebhookSecret: String(env.SML_WORDPRESS_WEBHOOK_SECRET || '').trim(),
+    // Also optional at boot and fail-closed at the webhook route. Render owns
+    // the whsec_ value; it is never committed or logged.
+    stripeWebhookSecret: String(env.SML_STRIPE_WEBHOOK_SECRET || '').trim()
   });
 }
 
