@@ -163,6 +163,39 @@ if ( ! function_exists( 'sml_lsc_room_handle' ) ) {
 		}
 	}
 
+	/* Rank Math resolves canonical earlier than its Open Graph callbacks on this
+	 * WordPress.com stack, so register this filter immediately at snippet load. */
+	add_filter( 'rank_math/frontend/canonical', static function ( $canonical ) {
+		if ( ! sml_lsc_is_room_page() ) {
+			return $canonical;
+		}
+		$data = sml_lsc_values();
+		return empty( $data['canonical'] ) ? $canonical : $data['canonical'];
+	}, PHP_INT_MAX );
+
+	/* WordPress.com can cache Rank Math's canonical before frontend filters run.
+	 * Normalize the one generated canonical in the final room-page HTML as the
+	 * last line of defense; other pages are never buffered or touched. */
+	add_action( 'template_redirect', static function () {
+		if ( ! sml_lsc_is_room_page() ) {
+			return;
+		}
+		$data = sml_lsc_values();
+		if ( empty( $data['canonical'] ) ) {
+			return;
+		}
+		$canonical = esc_url( $data['canonical'] );
+		ob_start( static function ( $html ) use ( $canonical ) {
+			$tag   = '<link rel="canonical" href="' . $canonical . '" />';
+			$count = 0;
+			$html  = preg_replace( '#<link\s+rel=["\']canonical["\'][^>]*>#i', $tag, $html, 1, $count );
+			if ( ! $count ) {
+				$html = preg_replace( '#</head>#i', $tag . "\n</head>", $html, 1 );
+			}
+			return $html;
+		} );
+	}, -999 );
+
 	add_action( 'wp', function () {
 		$data = sml_lsc_values();
 		if ( empty( $data ) ) {
@@ -177,7 +210,7 @@ if ( ! function_exists( 'sml_lsc_room_handle' ) ) {
 		}, 99 );
 		add_filter( 'rank_math/frontend/canonical', static function () use ( $data ) {
 			return $data['canonical'];
-		}, 99 );
+		}, PHP_INT_MAX );
 
 		/* Replace, do not supplement, Rank Math's network tags. */
 		remove_all_actions( 'rank_math/opengraph/facebook' );
