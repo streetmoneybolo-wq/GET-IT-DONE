@@ -989,7 +989,22 @@
         /* server-rendered Delete buttons are only a capability signal — always
            strip them, whatever layer emitted them */
         card.querySelectorAll('button.sml-owner-delete[data-sml-delete-item]').forEach(function(b){ b.remove(); });
-        if(card.querySelector('.sml-kebab')) return;
+        var placed=card.querySelector('.sml-kebab');
+        if(placed){
+          /* the engagement action row hydrates AFTER first sweep — relocate a
+             fallback-placed kebab inline next to Open once the row exists
+             (same nodes move, listeners survive) */
+          if(!placed.closest('.sml-kwrap')){
+            var ob=card.querySelector('.sml-hfe-actions .sml-hfe-open');
+            if(ob&&ob.parentElement){
+              var mn=card.querySelector('.sml-kmenu');
+              var w=document.createElement('span'); w.className='sml-kwrap';
+              w.appendChild(placed); if(mn) w.appendChild(mn);
+              ob.parentElement.insertBefore(w, ob.nextSibling);
+            }
+          }
+          return;
+        }
         /* the ⋯ belongs ONLY on the viewer's own posts */
         var itemId=card.getAttribute('data-hfe-item')||'';
         if(!itemId||!meId||card.getAttribute('data-sml-owner-id')!==meId) return;
