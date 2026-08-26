@@ -16,9 +16,9 @@
  * ROLLBACK: deactivate — the script tag disappears, pages return to today's
  * behavior; the module holds no server state.
  */
-if ( ! function_exists( 'sml_cdwn_loader_active' ) ) {
+if ( ! function_exists( 'sml_cdwn_v2_loader_active' ) ) {
 
-	function sml_cdwn_loader_active() {
+	function sml_cdwn_v2_loader_active() {
 		if ( is_admin() || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return false; }
 		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
 		if ( false !== strpos( $uri, '/wp-json/' ) || false !== strpos( $uri, '/wp-admin/' ) ) { return false; }
@@ -29,7 +29,7 @@ if ( ! function_exists( 'sml_cdwn_loader_active' ) ) {
 		return false;
 	}
 
-	function sml_cdwn_ob( $html ) {
+	function sml_cdwn_v2_ob( $html ) {
 		if ( ! is_string( $html ) || false === stripos( $html, '</body>' ) ) { return $html; }
 		if ( false !== strpos( $html, 'id="sml-cdwn-js"' ) || false !== strpos( $html, 'id="sml-creator-live-library-js"' ) ) { return $html; } // idempotent
 		foreach ( headers_list() as $hh ) { if ( 0 === stripos( $hh, 'content-type:' ) && false === stripos( $hh, 'text/html' ) ) { return $html; } }
@@ -45,6 +45,6 @@ if ( ! function_exists( 'sml_cdwn_loader_active' ) ) {
 	}
 
 	add_action( 'init', static function () {
-		if ( sml_cdwn_loader_active() ) { ob_start( 'sml_cdwn_ob' ); }
+		if ( sml_cdwn_v2_loader_active() ) { ob_start( 'sml_cdwn_v2_ob' ); }
 	}, 0 );
 }
