@@ -150,6 +150,57 @@
       });
   }
 
+  /* ---- auto-mount into the Ticker Terminal's Stocktwits pane ----------------
+     The terminal (tv2) renders a .tv2-lf-pane per tab and its markup comes from
+     a plugin, and plugin edits get reverted on this site. So rather than asking
+     that renderer for a mount point, we claim its Stocktwits pane ourselves:
+     find the tab with data-tab="stocktwits", take the pane at the same index,
+     and drop our host inside it. Nothing upstream has to change. */
+  function paneForStocktwits() {
+    var tabs = document.querySelectorAll('.tv2-lf-tabs [data-tab]');
+    if (!tabs.length) { return null; }
+    var idx = -1;
+    for (var i = 0; i < tabs.length; i++) {
+      if ((tabs[i].getAttribute('data-tab') || '').toLowerCase() === 'stocktwits') { idx = i; break; }
+    }
+    if (idx < 0) { return null; }
+    var panes = document.querySelectorAll('.tv2-lf > .tv2-lf-pane');
+    return panes[idx] || null;
+  }
+
+  function urlSymbol() {
+    try {
+      var s = new URL(location.href).searchParams.get('symbol') || '';
+      return s.toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+    } catch (e) { return ''; }
+  }
+
+  function autoMount() {
+    var pane = paneForStocktwits();
+    if (!pane) { return; }
+    var sym = urlSymbol();
+    if (!sym) { return; }
+
+    var host = pane.querySelector('[data-sml-stocktwits]');
+    if (!host) {
+      /* The pane ships a "opens on stocktwits.com" placeholder. Replacing it is
+         the point — the whole change is that the conversation is now on-site. */
+      pane.innerHTML = '';
+      host = document.createElement('div');
+      host.setAttribute('data-sml-stocktwits', sym);
+      pane.appendChild(host);
+      host.setAttribute('data-bound', '1');
+      load(host);
+      return;
+    }
+    /* The terminal swaps symbols without a page load, so follow it. */
+    if (host.getAttribute('data-sml-stocktwits') !== sym) {
+      host.setAttribute('data-sml-stocktwits', sym);
+      host.removeAttribute('data-loaded');
+      load(host);
+    }
+  }
+
   function scan() {
     var hosts = document.querySelectorAll(MOUNT);
     for (var i = 0; i < hosts.length; i++) {
@@ -158,6 +209,7 @@
         load(hosts[i]);
       }
     }
+    autoMount();
   }
 
   scan();
