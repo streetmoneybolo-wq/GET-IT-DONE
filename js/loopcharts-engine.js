@@ -1000,7 +1000,7 @@
     ['fib', '\u0192', 'Fibonacci retracement'],
     ['brush', '\u270F', 'Brush (freehand)'],
     ['text', 'T', 'Text note'],
-    ['measure', '\u21F2', 'Measure price / % / bars'],
+    ['measure', '\u21F2', 'Interval stats \u2014 drag a range: change \u00B7 high/low \u00B7 amplitude \u00B7 volume'],
     ['eraser', '\u232B', 'Eraser \u2014 click a drawing to remove it']
   ];
   var DRAW_COLORS = ['#00ff88', '#f5a623', '#4da3ff', '#ff4757', '#e6edf3'];
@@ -1164,17 +1164,48 @@
       ctx.font = '600 12px Archivo, ui-sans-serif, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText(item.text || '', pts[0].x, pts[0].y);
     } else if (item.tool === 'measure') {
+      /* INTERVAL STATS: everything is computed from the REAL bars inside the
+         dragged range (first bar's open -> last bar's close, true range
+         high/low, summed volume) — moomoo-style, never from the drag pixels. */
       var mx = Math.min(pts[0].x, pts[1].x), my = Math.min(pts[0].y, pts[1].y);
       var mw = Math.abs(pts[1].x - pts[0].x), mh = Math.abs(pts[1].y - pts[0].y);
-      var dp = item.pts[1].p - item.pts[0].p, up = dp >= 0;
-      ctx.strokeStyle = ctx.fillStyle = up ? '#00e07a' : '#ff4757';
+      var mi1 = Math.round(idxAtTime(item.pts[0].t)), mi2 = Math.round(idxAtTime(item.pts[1].t));
+      var mlo = Math.max(0, Math.min(mi1, mi2)), mhi = Math.min(state.bars.length - 1, Math.max(mi1, mi2));
+      var span = mhi >= mlo ? state.bars.slice(mlo, mhi + 1) : [];
+      var dp = item.pts[1].p - item.pts[0].p, up = dp >= 0, lines;
+      if (span.length) {
+        var mFirst = span[0], mLast = span[span.length - 1];
+        var mChg = mLast.c - mFirst.o; up = mChg >= 0;
+        var mPct = mFirst.o ? (mChg / mFirst.o) * 100 : 0;
+        var mHi = -Infinity, mLo = Infinity, mVol = 0;
+        span.forEach(function (b) { if (b.h > mHi) mHi = b.h; if (b.l < mLo) mLo = b.l; mVol += b.v || 0; });
+        var mAmp = mLo > 0 ? ((mHi - mLo) / mLo) * 100 : 0;
+        lines = [
+          (up ? '+' : '') + formatPrice(mChg) + '  (' + (up ? '+' : '') + mPct.toFixed(2) + '%)  ' + span.length + ' bars',
+          'H ' + formatPrice(mHi) + '   L ' + formatPrice(mLo) + '   Amp ' + mAmp.toFixed(2) + '%',
+          'Vol ' + formatCompact(mVol) + '   avg ' + formatCompact(mVol / span.length) + '/bar'
+        ];
+      } else {
+        var mPct0 = item.pts[0].p ? (dp / item.pts[0].p) * 100 : 0;
+        lines = [(up ? '+' : '') + formatPrice(dp) + '  (' + (up ? '+' : '') + mPct0.toFixed(2) + '%)'];
+      }
+      var mCol = up ? '#00e07a' : '#ff4757';
+      ctx.strokeStyle = ctx.fillStyle = mCol;
       ctx.globalAlpha = 0.14; ctx.fillRect(mx, my, mw, mh); ctx.globalAlpha = 1;
       ctx.strokeRect(mx, my, mw, mh);
-      var nBars = Math.abs(Math.round(idxAtTime(item.pts[1].t) - idxAtTime(item.pts[0].t)));
-      var pct = item.pts[0].p ? (dp / item.pts[0].p) * 100 : 0;
-      var label = (up ? '+' : '') + formatPrice(dp) + '  (' + (up ? '+' : '') + pct.toFixed(2) + '%)  ' + nBars + ' bars';
-      ctx.font = '600 11px ui-monospace, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText(label, mx + mw / 2, my - 6 < pad.top + 12 ? my + mh + 16 : my - 6);
+      ctx.font = '600 11px ui-monospace, monospace';
+      var mW = 0; lines.forEach(function (s) { mW = Math.max(mW, ctx.measureText(s).width); });
+      var cw = mW + 20, chh = lines.length * 15 + 11;
+      var cx = mx + mw + 8;
+      if (cx + cw > width - pad.right) cx = mx - cw - 8;
+      if (cx < pad.left) cx = Math.min(width - pad.right - cw, Math.max(pad.left, mx + mw / 2 - cw / 2));
+      var cy = my;
+      if (cy + chh > priceBottom) cy = priceBottom - chh;
+      if (cy < pad.top) cy = pad.top;
+      ctx.globalAlpha = 0.93; ctx.fillStyle = '#060e12'; ctx.fillRect(cx, cy, cw, chh); ctx.globalAlpha = 1;
+      ctx.strokeStyle = mCol; ctx.strokeRect(cx, cy, cw, chh);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      lines.forEach(function (s, li) { ctx.fillStyle = li === 0 ? mCol : '#cfe0d6'; ctx.fillText(s, cx + 10, cy + 6 + li * 15); });
     }
   }
   function drawToolLayer() {
