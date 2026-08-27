@@ -205,6 +205,14 @@
         '.sml-signal-watermark>svg{position:absolute;left:28%;right:-2%;bottom:0;width:74%;height:82%;opacity:.58;filter:drop-shadow(0 0 8px currentColor);}' +
         '.sml-signal-watermark polygon{fill:currentColor;opacity:.20}.sml-signal-watermark polyline{fill:none;stroke:currentColor;stroke-width:5;vector-effect:non-scaling-stroke;}' +
         '.sml-signal-watermark .sml-signal-grid{stroke:rgba(151,178,201,.22);stroke-width:1;vector-effect:non-scaling-stroke;}' +
+        '.sml-signal-watermark .sml-sig-open{stroke:rgba(151,178,201,.45);stroke-width:1;stroke-dasharray:7 6;vector-effect:non-scaling-stroke;}' +
+        '.sml-sig-marks{position:absolute;left:28%;right:-2%;bottom:0;height:82%;pointer-events:none;}' +
+        '.sml-sig-dot{position:absolute;border-radius:50%;background:currentColor;transform:translate(-50%,-50%);}' +
+        '.sml-sig-dot--hi,.sml-sig-dot--lo{width:5px;height:5px;opacity:.75;box-shadow:0 0 6px currentColor;}' +
+        '.sml-sig-dot--last{width:8px;height:8px;box-shadow:0 0 10px currentColor;transition:top .6s cubic-bezier(.3,.8,.3,1);}' +
+        '@media (prefers-reduced-motion:no-preference){.sml-sig-dot--last::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1.5px solid currentColor;opacity:.6;animation:smlSigPulse 1.8s ease-out infinite;}}' +
+        '@keyframes smlSigPulse{0%{transform:scale(.6);opacity:.7}80%{transform:scale(2.1);opacity:0}100%{transform:scale(2.1);opacity:0}}' +
+        '#sml-optimized-home .sml-signal-feed-post:hover .sml-signal-watermark>svg{opacity:.72;}' +
         '.sml-mm-tape{position:absolute;z-index:2;right:15px;top:15px;width:min(48%,420px);color:#DCE8F3;border:1px solid rgba(255,255,255,.09);border-radius:6px;background:rgba(10,12,16,.74);box-shadow:0 8px 22px rgba(0,0,0,.28);backdrop-filter:blur(6px);overflow:hidden;pointer-events:none;}' +
         '.sml-mm-row{display:grid;grid-template-columns:58px 48px minmax(58px,1fr) minmax(76px,1.15fr) 76px;align-items:center;gap:6px;height:27px;padding:0 8px;color:#C0C5CA;font:700 8.5px "IBM Plex Mono",monospace;border-bottom:1px solid rgba(255,255,255,.055);animation:smlMmRowLife 20s linear forwards;}' +
         '.sml-mm-row:last-child{border-bottom:0}.sml-mm-row time{color:#D9DDE1}.sml-mm-row .sml-mm-row-symbol{color:#D9DDE1}.sml-mm-row .sml-mm-row-name,.sml-mm-event{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sml-mm-data{text-align:right;white-space:nowrap;}' +
@@ -738,7 +746,8 @@
       if(vals.length<2) return null;
       var lo=Math.min.apply(Math,vals), hi=Math.max.apply(Math,vals), span=Math.max(hi-lo,Math.abs(hi||1)*.001), last=vals.length-1;
       var pts=vals.map(function(v,i){return (i*(1000/last)).toFixed(1)+','+(24+(hi-v)/span*220).toFixed(1);}).join(' ');
-      return {points:pts,area:'0,268 '+pts+' 1000,268',up:vals[last]>=vals[0],count:vals.length};
+      return {points:pts,area:'0,268 '+pts+' 1000,268',up:vals[last]>=vals[0],count:vals.length,
+        scale:{lo:lo,hi:hi,span:span,n:vals.length,first:vals[0],lastV:vals[last],hiIdx:vals.indexOf(hi),loIdx:vals.indexOf(lo)}};
     }
     function signalDay(t){
       var d=new Date(Number(t)||0); if(!isFinite(d.getTime()))return'';
@@ -798,7 +807,17 @@
       wm.setAttribute('role','img');wm.setAttribute('aria-label','$'+sym+' intraday chart');
       var tape=signalEvents(bars), company=signalCompanies[sym]||'Loading…', sig=tape.rows.map(function(e){return e.t+':'+e.type;}).join('|');
       if(sig&&card.getAttribute('data-sml-mm-sig')!==sig){card.setAttribute('data-sml-mm-sig',sig);card._smlMmBorn=Date.now();}
-      wm.innerHTML='<svg viewBox="0 0 1000 268" preserveAspectRatio="none"><path class="sml-signal-grid" d="M0 68H1000M0 134H1000M0 200H1000"></path><polygon points="'+path.area+'"></polygon><polyline points="'+path.points+'"></polyline></svg>';
+      var sc=path.scale;
+      function sigY(v){return ((24+(sc.hi-v)/sc.span*220)/268*100);}
+      function sigX(i){return (sc.n>1?i/(sc.n-1)*100:100);}
+      var openY=(24+(sc.hi-sc.first)/sc.span*220).toFixed(1);
+      wm.innerHTML='<svg viewBox="0 0 1000 268" preserveAspectRatio="none"><path class="sml-signal-grid" d="M0 68H1000M0 134H1000M0 200H1000"></path><line class="sml-sig-open" x1="0" y1="'+openY+'" x2="1000" y2="'+openY+'"></line><polygon points="'+path.area+'"></polygon><polyline points="'+path.points+'"></polyline></svg>'
+        +'<div class="sml-sig-marks">'
+        +'<span class="sml-sig-dot sml-sig-dot--hi" style="left:'+sigX(sc.hiIdx).toFixed(2)+'%;top:'+sigY(sc.hi).toFixed(2)+'%" title="Session high"></span>'
+        +'<span class="sml-sig-dot sml-sig-dot--lo" style="left:'+sigX(sc.loIdx).toFixed(2)+'%;top:'+sigY(sc.lo).toFixed(2)+'%" title="Session low"></span>'
+        +'<span class="sml-sig-dot sml-sig-dot--last" style="left:'+sigX(sc.n-1).toFixed(2)+'%;top:'+sigY(sc.lastV).toFixed(2)+'%"></span>'
+        +'</div>';
+      card.__sigScale=sc; card.__sigDot=wm.querySelector('.sml-sig-dot--last');
       var live=(signalLiveEvents[sym]||[]).filter(function(e){return Date.now()-e.born<20000;});
       if(live.length)paintSignalStream(card,sym,company,live,live[0].born);else paintSignalStream(card,sym,company,tape.rows,card._smlMmBorn);
     }
@@ -806,6 +825,8 @@
     ingestSignalQuoteEvents=function(){
       var now=Date.now();host.querySelectorAll('.sml-signal-feed-post[data-sml-ticker]').forEach(function(card){
         var sym=String(card.getAttribute('data-sml-ticker')||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''),q=Q[sym];if(!sym||!q)return;
+        /* live last-price dot: slide it along the watermark on every real quote */
+        try{var lsc=card.__sigScale,ld=card.__sigDot,lv=Number(q.last);if(lsc&&ld&&isFinite(lv)&&lv>=lsc.lo&&lv<=lsc.hi){ld.style.top=((24+(lsc.hi-lv)/lsc.span*220)/268*100).toFixed(2)+'%';}}catch(e){}
         var last=Number(q.last),vol=Number(q.vol),pct=Number(q.pct),key=String(q.t||'')+'|'+last+'|'+vol,st=signalQuoteState[sym];if(!isFinite(last)||last<=0||st&&st.key===key)return;
         var made=[];
         if(st){
@@ -829,12 +850,14 @@
        cold feed (same total request count, only the burst pacing changes). */
     function sigCacheGet(sym){
       try{ var raw=sessionStorage.getItem('sml_sig_'+sym); if(!raw) return null;
-        var v=JSON.parse(raw); if(!v||Date.now()-v.t>180000) return null; return v.bars||null; }catch(e){ return null; }
+        var v=JSON.parse(raw); if(!v||!v.bars) return null;
+        var age=Date.now()-v.t; if(age>1800000) return null;
+        return {bars:v.bars, fresh:age<90000}; }catch(e){ return null; }
     }
     function sigCachePut(sym,bars){ try{ sessionStorage.setItem('sml_sig_'+sym, JSON.stringify({t:Date.now(),bars:(bars||[]).slice(-120)})); }catch(e){} }
     var signalLanes=0;
     function runSignalQueue(){
-      while(signalLanes<2&&signalQueue.length){
+      while(signalLanes<3&&signalQueue.length){
         (function(job){
           var sym=job.sym; signalLanes++;
           fetch('/wp-json/sml/v1/history?symbol='+encodeURIComponent(sym)+'&interval=1m&range=1d',{credentials:'same-origin',cache:'no-store'}).then(function(r){if(!r.ok)throw r.status;return r.json();}).then(function(d){
@@ -842,7 +865,7 @@
             document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){paintSignalCard(c,sym,bars);});
           }).catch(function(){
             if(job.tries<2){job.tries++;signalQueue.push(job);}else{delete signalPending[sym];document.querySelectorAll('.sml-signal-feed-post[data-sml-ticker="'+sym+'"]').forEach(function(c){c.setAttribute('data-sml-chart','unavailable');});}
-          }).then(function(){signalLanes--;setTimeout(runSignalQueue,250);});
+          }).then(function(){signalLanes--;setTimeout(runSignalQueue,150);});
         })(signalQueue.shift());
       }
     }
@@ -856,7 +879,10 @@
         if(card.getAttribute('data-sml-chart')) return; card.setAttribute('data-sml-chart','loading');
         if(Object.prototype.hasOwnProperty.call(signalHistory,sym)){paintSignalCard(card,sym,signalHistory[sym]);return;}
         var cached=sigCacheGet(sym);
-        if(cached){ signalHistory[sym]=cached; paintSignalCard(card,sym,cached); return; }
+        if(cached){ /* paint NOW from session data; revalidate quietly if aging */
+          signalHistory[sym]=cached.bars; paintSignalCard(card,sym,cached.bars);
+          if(!cached.fresh&&!signalPending[sym]){signalPending[sym]=1;signalQueue.push({sym:sym,tries:0});runSignalQueue();}
+          return; }
         if(!signalPending[sym]){signalPending[sym]=1;signalQueue.push({sym:sym,tries:0});runSignalQueue();}
       });
     }
