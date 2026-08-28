@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML News Daily Guard
  * Description: Race-safe one-post-per-ticker-topic-day protection for automated Markets news.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: StockMarketLoop
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -10,10 +10,13 @@
 
 defined( 'ABSPATH' ) || exit;
 
-final class SML_News_Daily_Guard_V110 {
-	const VERSION = '1.1.0';
+final class SML_News_Daily_Guard_V120 {
+	const VERSION = '1.2.0';
 	const MARKET_CATEGORY_ID = 7212105;
-	const SML_NEWS_USER_ID = 258456543;
+	// The Make connection currently authenticates as this service/editor user.
+	const MAKE_INGEST_USER_ID = 258456543;
+	// All generated SML News articles must belong to /stockmarketloop/.
+	const SML_NEWS_AUTHOR_ID = 258456587;
 	const META_KEY = '_sml_news_daily_key';
 	const DUPLICATE_META = '_sml_news_duplicate_of';
 	const SOURCE = 'daily_ticker_topic';
@@ -213,7 +216,8 @@ final class SML_News_Daily_Guard_V110 {
 	}
 
 	private static function is_sml_make_article( $request ) {
-		if ( (int) get_current_user_id() !== self::SML_NEWS_USER_ID ) { return false; }
+		$current_user_id = (int) get_current_user_id();
+		if ( ! in_array( $current_user_id, array( self::MAKE_INGEST_USER_ID, self::SML_NEWS_AUTHOR_ID ), true ) ) { return false; }
 		$categories = array_map( 'absint', (array) $request->get_param( 'categories' ) );
 		if ( ! in_array( self::MARKET_CATEGORY_ID, $categories, true ) ) { return false; }
 		$content = self::request_value( $request->get_param( 'content' ) );
@@ -225,17 +229,20 @@ final class SML_News_Daily_Guard_V110 {
 		if ( $request->get_param( 'id' ) || ! self::is_sml_make_article( $request ) ) { return; }
 		$status = sanitize_key( $request->get_param( 'status' ) ?: 'draft' );
 		if ( in_array( $status, array( 'draft', 'pending' ), true ) ) { $request->set_param( 'status', 'publish' ); }
+		$request->set_param( 'author', self::SML_NEWS_AUTHOR_ID );
 	}
 
 	public static function protect_rest_insert( $prepared_post, $request ) {
 		if ( is_wp_error( $prepared_post ) || ! $prepared_post instanceof stdClass ) { return $prepared_post; }
-		if ( $request->get_param( 'id' ) || (int) ( $prepared_post->post_author ?? 0 ) !== self::SML_NEWS_USER_ID ) { return $prepared_post; }
+		if ( $request->get_param( 'id' ) || ! self::is_sml_make_article( $request ) ) { return $prepared_post; }
 		$categories = array_map( 'absint', (array) $request->get_param( 'categories' ) );
 		$content = (string) ( $prepared_post->post_content ?? self::request_value( $request->get_param( 'content' ) ) );
 		if ( ! in_array( self::MARKET_CATEGORY_ID, $categories, true ) ) { return $prepared_post; }
 		if ( false === stripos( $content, 'smln-article' ) && false === stripos( $content, 'Stock Market Loop News' ) ) { return $prepared_post; }
 
+		$prepared_post->post_author = self::SML_NEWS_AUTHOR_ID;
 		$prepared_post->post_status = 'publish';
+		$request->set_param( 'author', self::SML_NEWS_AUTHOR_ID );
 		$request->set_param( 'status', 'publish' );
 		if ( $request->get_param( '_sml_news_daily_key' ) ) { return $prepared_post; }
 
@@ -397,7 +404,7 @@ final class SML_News_Daily_Guard_V110 {
 	}
 }
 
-SML_News_Daily_Guard_V110::boot();
-register_activation_hook( __FILE__, array( 'SML_News_Daily_Guard_V110', 'activate' ) );
-register_deactivation_hook( __FILE__, array( 'SML_News_Daily_Guard_V110', 'deactivate' ) );
+SML_News_Daily_Guard_V120::boot();
+register_activation_hook( __FILE__, array( 'SML_News_Daily_Guard_V120', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'SML_News_Daily_Guard_V120', 'deactivate' ) );
 
