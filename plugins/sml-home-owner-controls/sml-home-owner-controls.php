@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Home Owner Controls
  * Description: Keeps homepage feed identities current and lets owners permanently delete their own articles and posts.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author: Stock Market Loop
  */
 
@@ -13,18 +13,20 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
  * login, nicename, public handle, or stable /stockmarketloop/ profile URL.
  */
 function sml_hoc_migrate_news_identity() {
-	if ( '1.0.3' === get_option( 'sml_hoc_identity_version' ) ) { return; }
-	$user_id = 258456543;
+	if ( '1.0.4' === get_option( 'sml_hoc_identity_version' ) ) { return; }
+	$user_id = 258456587;
 	if ( get_userdata( $user_id ) ) {
 		update_user_meta( $user_id, 'sml_display_handle', 'SML News' );
+		update_user_meta( $user_id, 'sml_display_name', 'SML News' );
+		update_user_meta( $user_id, 'sml_public_handle', 'stockmarketloop' );
 		/* Keep the stable stockmarketloop account/profile URL, but use the
 		   dedicated SML News artwork everywhere this account is rendered. The
 		   versioned filename prevents an old avatar from surviving CDN caches. */
 		update_user_meta( $user_id, 'sml_avatar_url', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/sml-news-avatar-gold-v1.png' );
 		delete_user_meta( $user_id, 'sml_avatar_attachment_id' );
-		wp_update_user( array( 'ID' => $user_id, 'display_name' => 'SML News' ) );
+		wp_update_user( array( 'ID' => $user_id, 'display_name' => 'SML News', 'nickname' => 'SML News' ) );
 	}
-	update_option( 'sml_hoc_identity_version', '1.0.3', false );
+	update_option( 'sml_hoc_identity_version', '1.0.4', false );
 }
 add_action( 'init', 'sml_hoc_migrate_news_identity', 1 );
 
