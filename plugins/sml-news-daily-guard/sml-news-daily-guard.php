@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML News Daily Guard
  * Description: Race-safe one-post-per-ticker-topic-day protection for automated Markets news.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: StockMarketLoop
  * Requires at least: 6.4
  * Requires PHP: 8.0
@@ -10,8 +10,8 @@
 
 defined( 'ABSPATH' ) || exit;
 
-final class SML_News_Daily_Guard_V120 {
-	const VERSION = '1.2.0';
+final class SML_News_Daily_Guard_V130 {
+	const VERSION = '1.3.0';
 	const MARKET_CATEGORY_ID = 7212105;
 	// The Make connection currently authenticates as this service/editor user.
 	const MAKE_INGEST_USER_ID = 258456543;
@@ -379,13 +379,19 @@ final class SML_News_Daily_Guard_V120 {
 	}
 
 	public static function protect_non_rest_insert( $post_id, $post, $update, $post_before ) {
-		if ( self::$fallback_lock || ! $post instanceof WP_Post || 'post' !== $post->post_type || 'publish' !== $post->post_status ) { return; }
+		if ( self::$fallback_lock || ! $post instanceof WP_Post || 'post' !== $post->post_type ) { return; }
+		if ( ! in_array( $post->post_status, array( 'publish', 'draft', 'pending' ), true ) ) { return; }
 		if ( ! has_category( self::MARKET_CATEGORY_ID, $post ) || get_post_meta( $post_id, self::META_KEY, true ) ) { return; }
-		$identity = self::identity( $post->post_title, $post->post_content, strtotime( $post->post_date_gmt . ' UTC' ) );
+		$content = (string) $post->post_content;
+		if ( false === stripos( $content, 'smln-article' ) && false === stripos( $content, 'Stock Market Loop News' ) ) { return; }
+
+		$timestamp = strtotime( (string) $post->post_date_gmt . ' UTC' );
+		if ( ! $timestamp || $timestamp < 1 ) { $timestamp = time(); }
+		$identity = self::identity( $post->post_title, $content, $timestamp );
 		$existing_id = self::find_existing( $identity, $post_id );
 		if ( $existing_id ) {
 			self::$fallback_lock = true;
-			wp_update_post( array( 'ID' => $post_id, 'post_status' => 'draft' ) );
+			wp_update_post( array( 'ID' => $post_id, 'post_author' => self::SML_NEWS_AUTHOR_ID, 'post_status' => 'draft' ) );
 			update_post_meta( $post_id, self::DUPLICATE_META, $existing_id );
 			self::$fallback_lock = false;
 			return;
@@ -393,18 +399,25 @@ final class SML_News_Daily_Guard_V120 {
 		$reservation = self::reserve( $identity );
 		if ( ! empty( $reservation['post_id'] ) && (int) $reservation['post_id'] !== (int) $post_id ) {
 			self::$fallback_lock = true;
-			wp_update_post( array( 'ID' => $post_id, 'post_status' => 'draft' ) );
+			wp_update_post( array( 'ID' => $post_id, 'post_author' => self::SML_NEWS_AUTHOR_ID, 'post_status' => 'draft' ) );
 			update_post_meta( $post_id, self::DUPLICATE_META, (int) $reservation['post_id'] );
 			self::$fallback_lock = false;
 			return;
 		}
+		if ( empty( $reservation['reserved'] ) && empty( $reservation['post_id'] ) ) { return; }
+
+		self::$fallback_lock = true;
+		wp_update_post( array( 'ID' => $post_id, 'post_author' => self::SML_NEWS_AUTHOR_ID, 'post_status' => 'publish' ) );
+		self::$fallback_lock = false;
 		global $wpdb;
 		$wpdb->update( self::table(), array( 'post_id' => $post_id, 'state' => 'created', 'updated_at' => current_time( 'mysql', true ) ), array( 'daily_key' => $identity['daily_key'] ) );
 		update_post_meta( $post_id, self::META_KEY, $identity['daily_key'] );
+		update_post_meta( $post_id, '_sml_news_tickers', $identity['tickers'] );
+		update_post_meta( $post_id, '_sml_news_topic_tokens', $identity['tokens'] );
 	}
 }
 
-SML_News_Daily_Guard_V120::boot();
-register_activation_hook( __FILE__, array( 'SML_News_Daily_Guard_V120', 'activate' ) );
-register_deactivation_hook( __FILE__, array( 'SML_News_Daily_Guard_V120', 'deactivate' ) );
+SML_News_Daily_Guard_V130::boot();
+register_activation_hook( __FILE__, array( 'SML_News_Daily_Guard_V130', 'activate' ) );
+register_deactivation_hook( __FILE__, array( 'SML_News_Daily_Guard_V130', 'deactivate' ) );
 

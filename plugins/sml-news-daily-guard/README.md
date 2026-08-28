@@ -10,6 +10,7 @@ Prevents automated Markets news from creating more than one WordPress post for t
 - Exact concurrent requests are serialized by a database unique key.
 - Similar-title comparison catches paraphrased repeats.
 - Non-REST duplicate inserts are moved to draft as a fallback.
+- A final insert-level fallback publishes unique SML News drafts and assigns them to `/stockmarketloop/`, even when a connector bypasses the normal REST route.
 - WPCode snippet 4884 remains a secondary broad title guard.
 
 The plugin deliberately does not merge or overwrite article content. Make should stop downstream creation when `sml_duplicate` is true and may route material updates into a separately reviewed update workflow.
