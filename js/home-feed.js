@@ -396,7 +396,7 @@
         // center
         '<div style="min-width:0">' +
           '<div class="hf-stories" style="display:flex;gap:14px;margin-bottom:18px;overflow-x:auto;padding:2px">'+storyItems()+'</div>' +
-          '<div class="hf-composer" style="'+CARD+'border-radius:18px;padding:16px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">'+avatarHTML(40)+'<input placeholder="What\'s on the tape? Use $TICKER to tag…" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:11px 18px;color:#E6EDF5;font-size:13px;outline:none;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><a href="/?compose=1" style="padding:10px 22px;border-radius:999px;text-decoration:none;font-size:13px;flex:none;'+GBTN+'">Post</a></div>' +
+          '<div class="hf-composer" style="'+CARD+'border-radius:18px;padding:16px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">'+avatarHTML(40)+'<input placeholder="What\'s on the tape? Use $TICKER to tag…" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:11px 18px;color:#E6EDF5;font-size:13px;outline:none;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><a id="sml-hf-post" href="/?compose=1" style="padding:10px 22px;border-radius:999px;text-decoration:none;font-size:13px;flex:none;'+GBTN+'">Post</a></div>' +
           '<div id="sml-hf-tabs" style="display:flex;align-items:center;gap:8px;margin-bottom:18px">'+feedTabs()+'<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A;animation:smlHfGlow 2s ease-in-out infinite"></span>live</div></div>' +
           // real feed slot
           '<div id="sml-hf-feedslot"></div>' +
@@ -1242,6 +1242,42 @@
     },true);
     document.addEventListener('focusout',function(ev){ if(ev.target===TA.el) setTimeout(function(){ if(document.activeElement!==TA.el) taClose(); },150); },true);
     window.addEventListener('scroll',function(){ taClose(); },true);
+
+    // ---- the composer bar POSTS for real now: sml-social-home/v1/post is the
+    // engine's own route (text <= 1600 chars; the post lands in the feed as a
+    // chart post). Until this, the Post button linked to ?compose=1, which
+    // nothing handled. ----
+    function composerToast(msg, ok){
+      var t=document.createElement('div'); t.textContent=msg;
+      t.style.cssText='position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2147483058;background:'+(ok?'#0f2a1c':'#3a1218')+';color:'+(ok?'#8dffc2':'#ff859f')+';border:1px solid '+(ok?'#1c6b45':'#7a2334')+';border-radius:10px;padding:10px 14px;font:600 12px/1 Inter,system-ui,sans-serif;max-width:80vw;text-align:center;';
+      document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 2800);
+    }
+    var composerInput=shell.querySelector('.hf-composer input'), composerBtn=document.getElementById('sml-hf-post'), composerBusy=false;
+    function composerPost(){
+      if(composerBusy||!composerInput) return;
+      var text=String(composerInput.value||'').trim();
+      if(!text){ composerInput.focus(); return; }
+      if(text.length>1600){ composerToast('Keep posts under 1,600 characters.', false); return; }
+      var nonce=hfbNonce();
+      if(!nonce){ composerToast('Refresh the page to post.', false); return; }
+      composerBusy=true; if(composerBtn){ composerBtn.textContent='Posting…'; composerBtn.style.opacity='.6'; }
+      fetch('/wp-json/sml-social-home/v1/post',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify({text:text})})
+        .then(function(r){ return r.json().catch(function(){return {};}).then(function(j){ if(!r.ok) throw new Error(j.message||('The post did not go through (HTTP '+r.status+').')); return j; }); })
+        .then(function(){
+          composerInput.value='';
+          composerToast('Posted to the tape.', true);
+          setTimeout(function(){ try{pollFeed();}catch(e){} }, 1500);
+          setTimeout(function(){ try{pollFeed();}catch(e){} }, 6000);
+        })
+        .catch(function(e){ composerToast(e.message||'The post did not go through — try again.', false); })
+        .then(function(){ composerBusy=false; if(composerBtn){ composerBtn.textContent='Post'; composerBtn.style.opacity=''; } });
+    }
+    if(composerBtn){ composerBtn.addEventListener('click', function(ev){ ev.preventDefault(); composerPost(); }); }
+    if(composerInput){ composerInput.addEventListener('keydown', function(ev){
+      if(ev.key!=='Enter') return;
+      if(TA.panel&&TA.panel.classList.contains('on')) return; /* typeahead owns Enter while open */
+      ev.preventDefault(); composerPost();
+    }); }
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
     var feedSeen = {};
