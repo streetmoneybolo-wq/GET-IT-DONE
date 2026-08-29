@@ -103,7 +103,7 @@ if ( ! function_exists( 'sml_ssoc_state' ) ) {
 		if ( ! $public || false !== strpos( $output, 'sml-groups-sitemap.xml' ) ) { return $output; }
 		return rtrim( $output ) . "\nSitemap: " . home_url( '/sml-groups-sitemap.xml' )
 			. "\nSitemap: " . home_url( '/sml-channels-sitemap.xml' ) . "\n";
-	}, 22, 2 );
+	}, PHP_INT_MAX, 2 ); /* late robots rewrite drops normal-priority lines */
 
 	add_action( 'rest_api_init', static function () {
 		register_rest_route( 'sml-seo-social/v1', '/refresh', array(
