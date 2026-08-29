@@ -50,6 +50,20 @@ if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 			'WMT', 'COST', 'HD', 'NKE', 'MCD', 'SBUX', 'DIS',
 			'BA', 'CAT', 'GE', 'F', 'GM',
 			'T', 'VZ', 'TMUS',
+			/* Phase 3 expansion (2026-08-29): these mostly have NO static page —
+			   the stocks-dynamic snippet renders vouched entity pages for them,
+			   which the next sweep then marks eligible. Same 5-per-5-min sweep
+			   budget; only the rotation lengthens (~170 symbols ≈ 2.8h). */
+			'KO', 'PEP', 'LOW', 'TGT', 'CVS', 'ABT', 'TMO', 'GILD', 'AMGN', 'HON', 'MMM', 'PG', 'IBM',
+			'CRWD', 'NET', 'DDOG', 'SNOW', 'ARM', 'SMCI', 'MSTR', 'ZS', 'OKTA', 'TWLO', 'TEAM', 'MDB', 'DOCU', 'ZM',
+			'MARA', 'RIOT', 'CLSK', 'HOOD', 'GME', 'AMC', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI',
+			'DKNG', 'ROKU', 'PINS', 'ETSY', 'CHWY', 'CELH', 'ELF', 'DUOL', 'ONON', 'RDDT', 'DJT',
+			'SOUN', 'BBAI', 'IONQ', 'RGTI', 'QUBT', 'AI', 'PATH', 'U',
+			'SMR', 'OKLO', 'NNE', 'ACHR', 'JOBY', 'RKLB', 'ASTS', 'LUNR', 'SPCE',
+			'TSM', 'BABA', 'JD', 'PDD', 'BIDU', 'SE', 'MELI',
+			'XLF', 'XLE', 'XLK', 'XLV', 'XLI', 'XLU', 'XLY', 'XLP', 'XLB',
+			'VOO', 'VTI', 'ARKK', 'TQQQ', 'SQQQ', 'SOXL', 'SOXS',
+			'GLD', 'SLV', 'USO', 'TLT', 'HYG', 'XBI', 'IBB', 'KRE', 'EEM', 'EFA', 'UVXY', 'VXX',
 		);
 	}
 

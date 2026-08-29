@@ -54,6 +54,7 @@ if ( ! function_exists( 'sml_scan_symbol' ) ) {
 	/* entity terminal is ON unless the kill option is set or ?tv2stocks=0 */
 	function sml_scan_stocks_live() {
 		if ( is_admin() || get_option( 'sml_stocks_tv2_off' ) ) { return false; }
+		if ( function_exists( 'is_404' ) && is_404() ) { return false; } /* real 404s stay bare (vouched ones render via stocks-dynamic) */
 		if ( isset( $_GET['tv2stocks'] ) && '0' === $_GET['tv2stocks'] ) { return false; }
 		if ( '' === sml_scan_stocks_path_sym() ) { return false; }
 		return function_exists( 'sml_cdn_resolve_ref' ); /* fail closed: never @main */
