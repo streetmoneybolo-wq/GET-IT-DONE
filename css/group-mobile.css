@@ -1,0 +1,67 @@
+/*!
+ * SML Group Mobile — /groups/{slug} phone polish.
+ *
+ * The WPCode loader (wpcode/group-mobile.php) adds the viewport meta the group
+ * renderer's head is missing — that alone activates the renderer's own
+ * @media(max-width:860px) rules (single-column grid, stacked head). This file
+ * only adds the phone tier on top: overflow guards, compact hero, swipeable
+ * tab pills. Desktop and tablet are untouched.
+ *
+ * Every selector is prefixed with #sml-group-root: the renderer's own
+ * stylesheet is an inline <style> in the BODY (after the root), so a
+ * head-loaded sheet loses every equal-specificity tie — the id prefix wins on
+ * specificity instead of order.
+ */
+
+@media (max-width: 768px) {
+  /* nothing inside the group UI may force horizontal scroll */
+  #sml-group-root .sml-groups-wrap img,
+  #sml-group-root .sml-groups-wrap video,
+  #sml-group-root .sml-groups-wrap canvas,
+  #sml-group-root .sml-groups-wrap iframe { max-width: 100%; height: auto; }
+  #sml-group-root .sml-group-panel,
+  #sml-group-root .sml-group-card,
+  #sml-group-root .sml-group-post,
+  #sml-group-root .sml-group-chat-row { min-width: 0; overflow-wrap: anywhere; }
+  #sml-group-root .sml-group-floor-footer input,
+  #sml-group-root .sml-group-floor-footer textarea { width: 100%; box-sizing: border-box; }
+}
+
+@media (max-width: 480px) {
+  body #sml-group-root { padding: 10px 0 44px; }
+  #sml-group-root .sml-groups-wrap { padding: 0 10px; }
+  #sml-group-root .sml-groups-wrap > h1 { font-size: clamp(26px, 7.5vw, 34px); }
+
+  /* hero: shallower banner, tighter head, smaller icon */
+  #sml-group-root .sml-group-hero { border-radius: 10px; }
+  #sml-group-root .sml-group-banner { height: 130px; }
+  #sml-group-root .sml-group-head {
+    grid-template-columns: 60px 1fr;
+    gap: 10px;
+    padding: 0 12px 12px;
+    margin-top: -30px;
+  }
+  #sml-group-root .sml-group-icon { width: 60px; height: 60px; border-radius: 14px; border-width: 2px; }
+  #sml-group-root .sml-group-head h1,
+  #sml-group-root .sml-group-head h2 { font-size: 22px; line-height: 1.08; }
+  #sml-group-root .sml-group-meta { font-size: 13px; }
+  #sml-group-root .sml-group-btn { padding: 11px 14px; font-size: 14px; }
+
+  /* tabs: one swipeable row of pills instead of two wrapped rows */
+  #sml-group-root .sml-group-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 12px 0;
+    padding-bottom: 2px;
+  }
+  #sml-group-root .sml-group-tabs::-webkit-scrollbar { display: none; }
+  #sml-group-root .sml-group-tabs button { flex: 0 0 auto; white-space: nowrap; padding: 8px 12px; }
+
+  #sml-group-root .sml-group-grid { gap: 12px; }
+  #sml-group-root .sml-group-panel,
+  #sml-group-root .sml-group-card,
+  #sml-group-root .sml-group-form { padding: 12px; }
+  #sml-group-root .sml-group-chat-log { max-height: 56dvh; }
+}
