@@ -1269,6 +1269,7 @@
         .then(function(r){ return r.json().catch(function(){return {};}).then(function(j){ if(!r.ok) throw new Error(j.message||('The post did not go through (HTTP '+r.status+').')); return j; }); })
         .then(function(){
           composerInput.value='';
+          try{composerInput.dispatchEvent(new Event('input'));}catch(e){} /* overlay repaint */
           composerToast('Posted to the tape.', true);
           setTimeout(function(){ try{pollFeed();}catch(e){} }, 1500);
           setTimeout(function(){ try{pollFeed();}catch(e){} }, 6000);
@@ -1282,6 +1283,47 @@
       if(TA.panel&&TA.panel.classList.contains('on')) return; /* typeahead owns Enter while open */
       ev.preventDefault(); composerPost();
     }); }
+
+    // ---- in-field rich tokens: $TICKERS glow green and @mentions glow blue
+    // LIVE inside the composer. A pointer-events:none overlay mirrors the
+    // input's text on top of it; the input's own text goes transparent while
+    // its caret, selection, background and the typeahead all stay native. ----
+    (function mountComposerHighlight(){
+      if(!composerInput||composerInput.__smlCi) return;
+      composerInput.__smlCi=true;
+      var st=document.createElement('style');
+      st.textContent='.hf-ci-wrap{position:relative;display:flex;flex:1 1 140px;min-width:0}'+
+        '.hf-ci-wrap input{flex:1;width:100%;min-width:0}'+
+        '.hf-ci-ov{position:absolute;inset:0;z-index:2;display:flex;align-items:center;overflow:hidden;pointer-events:none;white-space:pre}'+
+        '.hf-ci-ov .t{color:#35ff8d;font-weight:800;text-shadow:0 0 12px rgba(0,255,102,.35)}'+
+        '.hf-ci-ov .u{color:#5db9ff;font-weight:800;text-shadow:0 0 12px rgba(93,185,255,.3)}';
+      document.head.appendChild(st);
+      var wrap=document.createElement('div'); wrap.className='hf-ci-wrap';
+      composerInput.parentNode.insertBefore(wrap,composerInput); wrap.appendChild(composerInput);
+      var ov=document.createElement('div'); ov.className='hf-ci-ov'; ov.setAttribute('aria-hidden','true'); wrap.appendChild(ov);
+      function px(v){ var n=parseFloat(v); return isFinite(n)?n:0; }
+      function paint(){
+        var v=String(composerInput.value||'');
+        var cs=getComputedStyle(composerInput);
+        if(!v){ ov.innerHTML=''; composerInput.style.color=''; composerInput.style.caretColor=''; return; }
+        ov.style.font=cs.font; ov.style.letterSpacing=cs.letterSpacing; ov.style.color=cs.color===('rgba(0, 0, 0, 0)')?'#eaf7f1':cs.color;
+        ov.style.paddingLeft=(px(cs.paddingLeft)+px(cs.borderLeftWidth))+'px';
+        ov.style.paddingRight=(px(cs.paddingRight)+px(cs.borderRightWidth))+'px';
+        if(composerInput.style.color!=='transparent'){
+          composerInput.style.caretColor=cs.color; /* keep the native caret visible... */
+          composerInput.style.color='transparent'; /* ...while the overlay owns the glyphs */
+        }
+        var html=v.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})
+          .replace(/(^|[\s(])(\$[A-Za-z][A-Za-z0-9.\-]{0,9}|@[A-Za-z0-9_.]{2,30})/g,function(m,pre,tok){
+            return pre+'<span class="'+(tok.charAt(0)==='$'?'t':'u')+'">'+tok+'</span>';
+          });
+        ov.innerHTML=html;
+        ov.scrollLeft=composerInput.scrollLeft;
+      }
+      ['input','keyup','change','focus'].forEach(function(e){ composerInput.addEventListener(e,paint); });
+      composerInput.addEventListener('scroll',function(){ ov.scrollLeft=composerInput.scrollLeft; });
+      paint();
+    })();
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
     var feedSeen = {};

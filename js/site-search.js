@@ -225,7 +225,7 @@
       '<a class="sml-gh-brand" href="/" aria-label="Stock Market Loop home"><img src="' + attr(assetBase + 'img/loop-logo.png') + '" alt="Stock Market Loop"></a>' +
       '<label class="sml-gh-search"><span aria-hidden="true">⌕</span><span class="screen-reader-text">Search Stock Market Loop</span><input type="search" aria-label="Search ticker" placeholder="Search a ticker, e.g. NVDA" autocomplete="off"></label>' +
       '<nav class="sml-gh-nav" aria-label="Primary navigation">' +
-        [['/','Feed'],['/markets/','Markets'],['/live/','Live'],['/n/','Letters']].map(function (item) { return '<a href="' + item[0] + '"' + (currentPath(item[0]) ? ' aria-current="page"' : '') + '>' + item[1] + '</a>'; }).join('') +
+        [['/','Feed'],['/markets/','Markets'],['/live/','Live'],['/market-monitor/','Monitor'],['/n/','Letters']].map(function (item) { return '<a href="' + item[0] + '"' + (currentPath(item[0]) ? ' aria-current="page"' : '') + '>' + item[1] + '</a>'; }).join('') +
       '</nav>' +
       '<button type="button" id="sml-hf-loop-kick" class="sml-gh-kick" aria-label="Open LOOP-KICK" aria-expanded="false">LOOP-KICK</button>' +
       '<button type="button" class="sml-gh-account" aria-label="Open account menu for ' + attr(me.name) + '">' + (me.avatar ? '<img src="' + attr(me.avatar) + '" alt="' + attr(me.name) + '">' : '<span>' + esc(me.initials) + '</span>') + '</button>' +
