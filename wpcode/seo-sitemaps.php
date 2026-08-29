@@ -80,7 +80,7 @@ if ( ! function_exists( 'sml_seo_sitemap_seed_tickers' ) ) {
 	     'eligible'   => bool,      // include in the sitemap?
 	     'verdict'    => string,    // index|selective|noindex
 	     'score'      => int,
-	     'why'        => 'scored'|'no-data'|'unavailable'|'kept-last-good',
+	     'why'        => 'scored'|'no-data'|'unavailable'|'kept-last-good'|'no-page'|'in-progress',
 	     'checked'    => int,       // unix ts of last sweep that touched it
 	     'fail_since' => int,       // 0, or unix ts when consecutive failures began
 	   ) */

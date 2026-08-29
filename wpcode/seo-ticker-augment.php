@@ -113,12 +113,16 @@ if ( ! function_exists( 'sml_sta_symbol_from_stocks_path' ) ) {
 		}
 		$s = sml_sta_current_stocks_ticker_score();
 		if ( is_array( $s ) && ! empty( $s['valid'] ) ) {
-			// fresh cached score is the authority when we have one
-			if ( 'noindex' === $s['verdict'] ) {
+			// fresh cached score is the authority when we have one — EXCEPT a
+			// DEGRADED noindex (aux endpoint transport-failed, score artificially
+			// depressed): that is not a real measurement, so fall through to the
+			// swept state's keep-last-good grace instead of demoting on it
+			if ( 'noindex' === $s['verdict'] && empty( $s['degraded'] ) ) {
 				$robots['index']  = 'noindex';
 				$robots['follow'] = 'follow';
+				return $robots;
 			}
-			return $robots;
+			if ( 'noindex' !== $s['verdict'] ) { return $robots; }
 		}
 		// No fresh score (cache expired, provider outage, or engine off). The
 		// sweep's stored state carries the same keep-last-good grace the

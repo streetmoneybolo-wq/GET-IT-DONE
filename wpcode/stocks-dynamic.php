@@ -27,9 +27,11 @@ if ( ! function_exists( 'sml_sdy_render' ) ) {
 		$state = get_option( 'sml_seo_stocks_state', array() );
 		if ( ! is_array( $state ) || ! isset( $state[ $sym ] ) || ! is_array( $state[ $sym ] ) ) { return null; }
 		$st = $state[ $sym ];
-		/* a real scoring result or a kept-last-good entry within the same 26h
-		   bound every other render surface honors */
-		if ( ! in_array( (string) ( $st['why'] ?? '' ), array( 'scored', 'kept-last-good', 'no-data' ), true ) ) { return null; }
+		/* a real swept result: 'scored'/'kept-last-good' (data-backed) or 'no-page'
+		   (valid data, page missing — exactly what this route exists to fix).
+		   'no-data' = confirmed NONEXISTENT symbol -> stays a real 404;
+		   'in-progress' rejected so a first sweep cannot self-vouch. */
+		if ( ! in_array( (string) ( $st['why'] ?? '' ), array( 'scored', 'kept-last-good', 'no-page' ), true ) ) { return null; }
 		if ( ! isset( $st['checked'] ) || ( time() - (int) $st['checked'] ) > 26 * HOUR_IN_SECONDS ) { return null; }
 		return $st;
 	}
@@ -42,6 +44,8 @@ if ( ! function_exists( 'sml_sdy_render' ) ) {
 		$st  = sml_sdy_vouched( $sym );
 		if ( null === $st ) { return; } /* stays a real 404 */
 		if ( ! function_exists( 'sml_cdn_resolve_ref' ) ) { return; } /* fail closed */
+		$canonical_path = '/stocks/' . strtolower( $sym ) . '/';
+		if ( $path !== $canonical_path ) { wp_safe_redirect( home_url( $canonical_path ), 301 ); exit; }
 
 		$score   = function_exists( 'sml_ege_cached_score' ) ? sml_ege_cached_score( $sym ) : null;
 		$company = is_array( $score ) && is_array( $score['company'] ?? null ) ? $score['company'] : null;
@@ -58,9 +62,9 @@ if ( ! function_exists( 'sml_sdy_render' ) ) {
 		$canon = home_url( '/stocks/' . strtolower( $sym ) . '/' );
 
 		status_header( 200 );
-		nocache_headers();
 		header( 'Content-Type: text/html; charset=UTF-8' );
 		header( 'Cache-Control: public, max-age=300' );
+		header_remove( 'Expires' ); /* core's 404 handling sent a 1984 Expires — keep freshness signals coherent */
 
 		echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
 		echo '<meta name="viewport" content="width=device-width, initial-scale=1">';

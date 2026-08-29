@@ -261,7 +261,7 @@ if ( ! function_exists( 'sml_ege_front_fetch_many' ) ) {
 		// nearly always find this cache warm; the sweep refreshes it long
 		// before expiry. All timestamps shown downstream are the quote's own,
 		// so a rotation-old price still reads honestly as "As of <real time>".
-		set_transient( $cache_key, $out, 2 * HOUR_IN_SECONDS );
+		set_transient( $cache_key, $out, 6 * HOUR_IN_SECONDS ); /* Phase 3: 168-symbol seed => ~2h50m rotation; TTL must outlive it */
 		return $out;
 	}
 
