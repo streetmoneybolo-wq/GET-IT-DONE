@@ -75,6 +75,25 @@ if ( ! function_exists( 'sml_ni_should_noindex' ) ) {
 		return $robots;
 	}, 20 );
 
+	/* Robust fallback: on WordPress.com, POST robots come from a WPCOM/Jetpack
+	   layer the filters above don't intercept (pages work, posts don't). Only on
+	   the low-value target pages, buffer the output and force the robots meta to
+	   noindex in the final HTML — the same captured-shell technique used for the
+	   entity terminal. Scoped to noindex-targets, so no cost on real content. */
+	add_action( 'template_redirect', static function () {
+		if ( is_admin() || ! sml_ni_should_noindex() ) { return; }
+		ob_start( static function ( $html ) {
+			if ( ! is_string( $html ) || false === stripos( $html, '<meta' ) ) { return $html; }
+			$tag = '<meta name="robots" content="noindex, follow, max-image-preview:large">';
+			if ( preg_match( '/<meta[^>]+name=["\']robots["\'][^>]*>/i', $html ) ) {
+				$new = preg_replace( '/<meta[^>]+name=["\']robots["\'][^>]*>/i', $tag, $html, 1 );
+			} else {
+				$new = preg_replace( '/<head(\s[^>]*)?>/i', '$0' . "\n" . $tag, $html, 1 );
+			}
+			return is_string( $new ) ? $new : $html;
+		} );
+	}, 0 );
+
 	/* Admin diagnostic: GET /wp-json/sml-ni/v1/check?url=/some/path (or ?post=ID). */
 	add_action( 'rest_api_init', static function () {
 		register_rest_route( 'sml-ni/v1', '/check', array(
