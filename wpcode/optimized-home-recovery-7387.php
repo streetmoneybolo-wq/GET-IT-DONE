@@ -2,11 +2,24 @@ if (!function_exists('sml_oh_is_home')) {
 /**
  * Plugin Name: StockMarketLoop Optimized Home
  * Description: Lightweight, server-rendered signed-in homepage with isolated assets.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: StockMarketLoop
  */
 
 if (!defined('ABSPATH')) { exit; }
+
+/* Feed-payload cache generation: bumped on any delete so a cached payload can
+   never resurrect a removed post. Over-invalidation (revisions etc.) is safe. */
+function sml_oh_feed_gen() {
+    return absint(get_option('sml_oh_feed_gen', 0));
+}
+function sml_oh_bump_feed_gen() {
+    update_option('sml_oh_feed_gen', (sml_oh_feed_gen() + 1) % 1000000, false);
+}
+add_action('deleted_post', 'sml_oh_bump_feed_gen');
+add_action('trashed_post', 'sml_oh_bump_feed_gen');
+add_action('deleted_comment', 'sml_oh_bump_feed_gen');
+add_action('trashed_comment', 'sml_oh_bump_feed_gen');
 
 function sml_oh_is_home() {
     if (is_admin() || wp_doing_ajax() || !is_user_logged_in() || is_preview()) { return false; }
@@ -57,7 +70,46 @@ function sml_oh_render() {
     $GLOBALS['sml_oh_rendered'] = true;
     $user = wp_get_current_user();
     $avatar = get_avatar_url($user->ID, array('size' => 96));
-    $payload = function_exists('sml_sth_feed_payload') ? (array) sml_sth_feed_payload() : array();
+    // The payload builder runs 50-150 uncached queries (audited 2026-08-29), so
+    // repeat views within 30s reuse a per-user copy. Per-user keying keeps
+    // viewerLiked/score personalization correct; the generation counter busts
+    // every copy the moment anything is deleted. Kill: sml_oh_plcache_off=1.
+    $payload = array();
+    if (function_exists('sml_sth_feed_payload')) {
+        $payload_key = get_option('sml_oh_plcache_off') ? '' : 'sml_oh_pl_' . $user->ID . '_' . sml_oh_feed_gen();
+        if ($payload_key) {
+            $payload_cached = get_transient($payload_key);
+            if (is_array($payload_cached) && $payload_cached) { $payload = $payload_cached; }
+        }
+        if (!$payload) {
+            $payload = (array) sml_sth_feed_payload();
+            if ($payload_key && $payload) { set_transient($payload_key, $payload, 30); }
+        }
+    }
+    // Bulk-prime the lookups the loops below repeat per item (posts+meta for the
+    // 48h date checks and signal meta, stream comments, then author rows+meta) —
+    // behavior-identical, collapses the per-card N+1 into a few grouped queries.
+    $prime_post_ids = array();
+    $prime_comment_ids = array();
+    foreach ((array) ($payload['feed'] ?? array()) as $prime_item) {
+        if (!is_array($prime_item)) { continue; }
+        $prime_id = (string) ($prime_item['id'] ?? '');
+        if (preg_match('/^wp-(\d+)$/', $prime_id, $prime_m)) { $prime_post_ids[] = absint($prime_m[1]); }
+        elseif (preg_match('/^stream-(\d+)$/', $prime_id, $prime_m)) { $prime_comment_ids[] = absint($prime_m[1]); }
+    }
+    if ($prime_post_ids && function_exists('_prime_post_caches')) { _prime_post_caches($prime_post_ids, false, true); }
+    if ($prime_comment_ids) { get_comments(array('comment__in' => $prime_comment_ids, 'number' => count($prime_comment_ids))); }
+    $prime_author_ids = array();
+    foreach ((array) ($payload['feed'] ?? array()) as $prime_item) {
+        if (!is_array($prime_item)) { continue; }
+        $prime_id = (string) ($prime_item['id'] ?? '');
+        $prime_aid = 0;
+        if (preg_match('/^wp-(\d+)$/', $prime_id, $prime_m)) { $prime_aid = absint(get_post_field('post_author', absint($prime_m[1]))); }
+        elseif (preg_match('/^chart-(\d+)-/', $prime_id, $prime_m)) { $prime_aid = absint($prime_m[1]); }
+        elseif (preg_match('/^stream-(\d+)$/', $prime_id, $prime_m)) { $prime_c = get_comment(absint($prime_m[1])); $prime_aid = $prime_c ? absint($prime_c->user_id) : 0; }
+        if ($prime_aid) { $prime_author_ids[$prime_aid] = 1; }
+    }
+    if ($prime_author_ids && function_exists('cache_users')) { cache_users(array_keys($prime_author_ids)); }
     // Feed contract: an article is eligible for 48 hours only, and every
     // underlying feed item may render once. Community activity remains
     // available, but duplicate payload rows and stale WordPress news do not.
