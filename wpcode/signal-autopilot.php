@@ -48,6 +48,24 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 		return $log;
 	}
 
+	/* Two generators post news now (this autopilot + the external Make-news
+	   pipeline). Neither sees the other's dedup keys, so before publishing we
+	   check for ANY same-day post already covering this family for the symbol
+	   — one indexed LIKE query per pattern, symbol-prefixed so no cross-symbol
+	   false positives. */
+	function sml_sn_similar_exists( $patterns ) {
+		global $wpdb;
+		$today = gmdate( 'Y-m-d 00:00:00' );
+		foreach ( (array) $patterns as $like ) {
+			$found = $wpdb->get_var( $wpdb->prepare(
+				"SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' AND post_date_gmt >= %s AND post_title LIKE %s LIMIT 1",
+				$today, $like
+			) );
+			if ( $found ) { return true; }
+		}
+		return false;
+	}
+
 	function sml_sn_publish( $title, $excerpt, $body, $key, &$log ) {
 		if ( isset( $log['keys'][ $key ] ) || $log['count'] >= 30 ) { return 0; }
 		/* re-check against the STORED log right before inserting — a crashed or
@@ -117,8 +135,10 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 				}
 				$body .= '<p>' . esc_html( 'Sign convention: dealers assumed short calls and long puts (call gamma positive, put gamma negative); the opposite assumption inverts the sign.' ) . '</p>'
 					. '<p>' . esc_html( sprintf( 'Live positioning for $%s updates on the Stock Market Loop options page.', $sym ) ) . '</p>';
-				$id = sml_sn_publish( $title, $ex, $body, $key, $log );
-				if ( $id ) { $posted[] = $id; }
+				if ( ! sml_sn_similar_exists( array( '$' . $sym . ' Options Gamma%' ) ) ) {
+					$id = sml_sn_publish( $title, $ex, $body, $key, $log );
+					if ( $id ) { $posted[] = $id; }
+				}
 			}
 			if ( count( $posted ) >= $tick_cap ) { break; }
 
@@ -135,8 +155,10 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 				$ex     = sprintf( 'The options tape shows concentrated activity in %s with %s of traded premium.', $sym, $prem );
 				$body   = '<p>' . esc_html( sprintf( '$%s options activity concentrated on the $%s strike %s%s, where %s contracts traded against %s open interest — %.1fx — for roughly %s in premium at the mid.', $sym, $strike, $side, $exp ? ' expiring ' . $exp : '', number_format( (int) $u['volume'] ), number_format( (int) $u['open_interest'] ), (float) $u['ratio'], $prem ) ) . '</p>'
 					. '<p>' . esc_html( sprintf( 'Volume-to-open-interest of this size flags positioning built TODAY rather than carried over. Data reduces the live $%s chain captured %s.', $sym, (string) $snap['captured'] ) ) . '</p>';
-				$id = sml_sn_publish( $title, $ex, $body, $key, $log );
-				if ( $id ) { $posted[] = $id; }
+				if ( ! sml_sn_similar_exists( array( '$' . $sym . '%CALL%', '$' . $sym . '%PUT%' ) ) ) {
+					$id = sml_sn_publish( $title, $ex, $body, $key, $log );
+					if ( $id ) { $posted[] = $id; }
+				}
 			}
 		}
 
@@ -163,8 +185,10 @@ if ( ! function_exists( 'sml_sn_tick' ) ) {
 				$ex    = sprintf( '%s is trading at $%s, %s%s%% on the session.', $sym, number_format( $last, 2 ), $pct > 0 ? '+' : '-', number_format( abs( $pct ), 2 ) );
 				$body  = '<p>' . esc_html( sprintf( '$%s moved to $%s intraday, a %s%s%% change on the session%s.', $sym, number_format( $last, 2 ), $pct > 0 ? '+' : '-', number_format( abs( $pct ), 2 ), ! empty( $row['vol'] ) ? ' on ' . number_format( (float) $row['vol'] ) . ' shares of volume' : '' ) ) . '</p>'
 					. '<p>' . esc_html( sprintf( 'Quote captured from the live Stock Market Loop feed; track $%s on the ticker terminal for the current tape.', $sym ) ) . '</p>';
-				$id = sml_sn_publish( $title, $ex, $body, $key, $log );
-				if ( $id ) { $posted[] = $id; }
+				if ( ! sml_sn_similar_exists( array( '$' . $sym . ' Moves%', '$' . $sym . ' Jumps%', '$' . $sym . ' Slides%' ) ) ) {
+					$id = sml_sn_publish( $title, $ex, $body, $key, $log );
+					if ( $id ) { $posted[] = $id; }
+				}
 			}
 		}
 
