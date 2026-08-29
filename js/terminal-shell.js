@@ -14,6 +14,18 @@
   // visitor on /stock-chart/. Without the flag, ?tv2=1 remains the explicit
   // preview opt-in. ?tv2=0 is the escape hatch (the snippet also bails server-side).
   var params = new URLSearchParams(location.search);
+  /* entity pages carry the symbol in the PATH (/stocks/nvda/) — surface it as
+     the ?symbol= param BEFORE the modules load so all of their existing
+     parsing works unchanged */
+  try {
+    var psym = (location.pathname.match(/^\/stocks\/([a-z0-9.\-]{1,12})\/?$/i) || [])[1];
+    if (psym && !params.get('symbol')) {
+      var pu = new URL(location.href);
+      pu.searchParams.set('symbol', psym.toUpperCase());
+      history.replaceState(null, '', pu);
+      params = new URLSearchParams(location.search);
+    }
+  } catch (e) {}
   var LIVE = (window.SML_TV2_LIVE === 1) && params.get('tv2') !== '0';
   if (!LIVE && params.get('tv2') !== '1') return;
 

@@ -83,7 +83,17 @@
       });
       T.emit('symbol', ctx);
       // keep the URL shareable without a reload
-      try { var u = new URL(location.href); u.searchParams.set('symbol', sym); history.replaceState(null, '', u); } catch (e) {}
+      try {
+        var u = new URL(location.href);
+        if (/^\/stocks\/[a-z0-9.\-]{1,12}\/?$/i.test(u.pathname)) {
+          /* entity pages: the symbol lives in the PATH — switch the path, keep it clean */
+          u.pathname = '/stocks/' + String(sym).toLowerCase() + '/';
+          u.searchParams.delete('symbol');
+        } else {
+          u.searchParams.set('symbol', sym);
+        }
+        history.replaceState(null, '', u);
+      } catch (e) {}
       return sym;
     },
 
