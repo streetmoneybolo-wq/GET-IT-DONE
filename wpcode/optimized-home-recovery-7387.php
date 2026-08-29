@@ -13,13 +13,24 @@ if (!defined('ABSPATH')) { exit; }
 function sml_oh_feed_gen() {
     return absint(get_option('sml_oh_feed_gen', 0));
 }
-function sml_oh_bump_feed_gen() {
+function sml_oh_bump_feed_gen($bump_id = 0, $bump_obj = null) {
+    if ($bump_obj instanceof WP_Post && in_array($bump_obj->post_type, array('revision', 'customize_changeset', 'oembed_cache'), true)) { return; }
     update_option('sml_oh_feed_gen', (sml_oh_feed_gen() + 1) % 1000000, false);
 }
-add_action('deleted_post', 'sml_oh_bump_feed_gen');
+add_action('deleted_post', 'sml_oh_bump_feed_gen', 10, 2);
 add_action('trashed_post', 'sml_oh_bump_feed_gen');
 add_action('deleted_comment', 'sml_oh_bump_feed_gen');
 add_action('trashed_comment', 'sml_oh_bump_feed_gen');
+add_action('spammed_comment', 'sml_oh_bump_feed_gen');
+/* creation must bust too, or a member's own just-posted stream item hides ≤30s */
+add_action('wp_insert_comment', 'sml_oh_bump_feed_gen');
+/* chart cards delete/create by REWRITING sml_profile_chart_posts usermeta —
+   no post/comment hook fires, so watch that meta key directly */
+function sml_oh_meta_bump_feed_gen($meta_id, $object_id, $meta_key) {
+    if ('sml_profile_chart_posts' === $meta_key) { sml_oh_bump_feed_gen(); }
+}
+add_action('added_user_meta', 'sml_oh_meta_bump_feed_gen', 10, 3);
+add_action('updated_user_meta', 'sml_oh_meta_bump_feed_gen', 10, 3);
 
 function sml_oh_is_home() {
     if (is_admin() || wp_doing_ajax() || !is_user_logged_in() || is_preview()) { return false; }
@@ -83,6 +94,9 @@ function sml_oh_render() {
         }
         if (!$payload) {
             $payload = (array) sml_sth_feed_payload();
+            /* cap well above the 18-card render (plus dedup/48h attrition) so the
+               serialized transient stays far under memcached's 1MB per-key limit */
+            if (is_array($payload['feed'] ?? null) && count($payload['feed']) > 60) { $payload['feed'] = array_slice($payload['feed'], 0, 60); }
             if ($payload_key && $payload) { set_transient($payload_key, $payload, 30); }
         }
     }
