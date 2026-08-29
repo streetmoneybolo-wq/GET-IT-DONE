@@ -64,4 +64,31 @@ if ( ! function_exists( 'sml_scan_symbol' ) ) {
 		echo '<div id="sml-tv2-root" aria-label="Ticker Terminal preview"></div>';
 		echo '<script id="sml-tv2-shell" src="' . esc_url( $base . 'js/terminal-shell.js' ) . '"></script>';
 	}, 30 );
+
+	/* admin-only diagnostics: what does the canonical gate actually see? */
+	add_action( 'rest_api_init', static function () {
+		register_rest_route( 'sml-scan/v1', '/state', array(
+			'methods'             => 'GET',
+			'callback'            => static function ( WP_REST_Request $q ) {
+				$sym   = strtoupper( preg_replace( '/[^A-Za-z0-9.\-]/', '', (string) $q->get_param( 'sym' ) ) );
+				$state = get_option( 'sml_seo_stocks_state', array() );
+				$entry = ( is_array( $state ) && $sym && isset( $state[ $sym ] ) ) ? $state[ $sym ] : null;
+				$next  = wp_next_scheduled( 'sml_seo_stocks_score_tick' );
+				$eligible_n = 0; $newest_checked = 0;
+				if ( is_array( $state ) ) {
+					foreach ( $state as $row ) {
+						if ( ! empty( $row['eligible'] ) ) { $eligible_n++; }
+						if ( isset( $row['checked'] ) && (int) $row['checked'] > $newest_checked ) { $newest_checked = (int) $row['checked']; }
+					}
+				}
+				return rest_ensure_response( array(
+					'ok' => true, 'is_array' => is_array( $state ), 'total' => is_array( $state ) ? count( $state ) : 0,
+					'eligible_count' => $eligible_n, 'newest_checked_age_s' => $newest_checked ? ( time() - $newest_checked ) : null,
+					'entry' => $entry, 'sweep_next_cron_in_s' => $next ? ( $next - time() ) : null,
+					'sample_keys' => is_array( $state ) ? array_slice( array_keys( $state ), 0, 6 ) : array(),
+				) );
+			},
+			'permission_callback' => static function () { return current_user_can( 'manage_options' ); },
+		) );
+	} );
 }
