@@ -42,6 +42,26 @@ if ( ! function_exists( 'sml_scan_symbol' ) ) {
 		return home_url( '/stocks/' . strtolower( $sym ) . '/' );
 	}
 
+	/* The terminal page is a CAPTURED-SHELL custom render: its head is a static
+	   template with per-symbol substitutions, so Rank Math never runs there and
+	   no canonical FILTER can work (the augment snippet's Day-1 filter silently
+	   never fired for the same reason — verified live 2026-08-29). The buffer
+	   rewrite below fixes the canonical in the final HTML regardless of who
+	   rendered it. The filters further down stay as belt-and-suspenders for
+	   any future switch back to a normal Rank Math render. */
+	add_action( 'init', static function () {
+		if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { return; }
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		if ( false === strpos( $uri, '/stock-chart' ) ) { return; }
+		if ( '' === sml_scan_symbol() ) { return; }
+		ob_start( static function ( $html ) {
+			$t = sml_scan_target();
+			if ( '' === $t || ! is_string( $html ) ) { return $html; }
+			$new = preg_replace( '~<link rel="canonical" href="[^"]*"~', '<link rel="canonical" href="' . esc_url( $t ) . '"', $html, 1 );
+			return is_string( $new ) ? $new : $html;
+		} );
+	}, 3 );
+
 	/* Rank Math prints the canonical on this site; core fallback covered too. */
 	add_filter( 'rank_math/frontend/canonical', static function ( $canonical ) {
 		$t = sml_scan_target();
