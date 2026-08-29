@@ -105,8 +105,15 @@
   }
 
   function render() {
+    // session badge + clock always update, even when the row list is unchanged
+    var sess = document.getElementById('mm-session');
+    if (state.session && sess) {
+      sess.textContent = (state.session.open ? 'Market Open' : 'Market Closed') + ' · ' + state.session.et + ' ET';
+      sess.className = 'mm-session ' + (state.session.open ? 'open' : 'closed');
+      document.getElementById('mm-dot').className = 'mm-dot' + (state.session.open ? ' live' : '');
+    }
     var list = rows();
-    var key = list.length + ':' + (list[0] ? list[0].ts + list[0].sym + list[0].family : '') + ':' + state.counts.bull + ':' + state.counts.bear + ':' + (state.session && state.session.open);
+    var key = list.length + ':' + (list[0] ? list[0].ts + list[0].sym + list[0].family : '') + ':' + state.signals.length + ':' + state.counts.bull + ':' + state.counts.bear;
     if (key === state.lastRenderKey) return;
     state.lastRenderKey = key;
 
@@ -114,10 +121,11 @@
     var empty = document.getElementById('mm-empty');
     body.innerHTML = list.map(function (r) {
       var f = FAM[r.family];
+      var num = function (x) { return typeof x === 'number' && isFinite(x); };
       var data;
       if (r.family === 'SIGNAL') data = '<span class="mm-sigtitle">' + esc(r.title) + '</span>';
-      else if (r.family === 'HVOL_UP' || r.family === 'HVOL_DN') data = esc(fmtVol(r.vol)) + (isFinite(r.pct) ? ' / ' + esc(fmtPct(r.pct)) : '');
-      else data = esc(fmtPct(isFinite(r.pct) ? r.pct : 0)) + (isFinite(r.move) ? ' <span class="mm-move">(' + esc(fmtPct(r.move)) + ' burst)</span>' : '');
+      else if (r.family === 'HVOL_UP' || r.family === 'HVOL_DN') data = esc(fmtVol(r.vol)) + (num(r.pct) ? ' / ' + esc(fmtPct(r.pct)) : '');
+      else data = (num(r.pct) ? esc(fmtPct(r.pct)) : '&mdash;') + (num(r.move) ? ' <span class="mm-move">(' + esc(fmtPct(r.move)) + ' burst)</span>' : '');
       return '<tr class="mm-row ' + f.cls + '" data-href="' + esc(r.url) + '">' +
         '<td class="mm-time">' + esc(fmtTime(r.ts)) + '</td>' +
         '<td class="mm-sym">$' + esc(r.sym) + '</td>' +
@@ -137,12 +145,6 @@
     document.getElementById('mm-nbear').textContent = bear;
     document.getElementById('mm-gbull').style.width = Math.round((bull / tot) * 100) + '%';
     document.getElementById('mm-gbear').style.width = Math.round((bear / tot) * 100) + '%';
-    var sess = document.getElementById('mm-session');
-    if (state.session) {
-      sess.textContent = (state.session.open ? 'Market Open' : 'Market Closed') + ' · ' + state.session.et + ' ET';
-      sess.className = 'mm-session ' + (state.session.open ? 'open' : 'closed');
-      document.getElementById('mm-dot').className = 'mm-dot' + (state.session.open ? ' live' : '');
-    }
   }
 
   root.addEventListener('click', function (ev) {
@@ -157,8 +159,11 @@
     }).catch(function () { /* keep last state */ });
   }
   function pollQuotes() {
-    // keeps the Render ingest fed while someone watches the tape; the symbol
-    // set matches the homepage rail EXACTLY so the server cache is shared.
+    // Feeds the Render tape ingest while someone watches. Honest cost note:
+    // this set rarely matches another viewer's cache key exactly, so with the
+    // tape open it adds ~1.3 Massive snapshot calls/min (45s cadence against
+    // the server's 10s cache) — deliberately slow; detectors use 5-10 min
+    // windows and don't need faster samples.
     if (document.hidden || !CFG.quotes) return;
     var syms = (CFG.syms || []).join(',');
     fetch(CFG.quotes + (syms ? '?symbols=' + encodeURIComponent(syms) : ''), { cache: 'no-store' }).catch(function () { /* fine */ });
@@ -173,7 +178,7 @@
   shell();
   render();
   pollQuotes(); pollTape(); pollSignals();
-  setInterval(pollQuotes, 12000);
+  setInterval(pollQuotes, 45000);
   setInterval(pollTape, 10000);
   setInterval(pollSignals, 60000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { pollQuotes(); pollTape(); } });

@@ -30,11 +30,11 @@ if ( ! function_exists( 'sml_mmx_signals' ) ) {
 			'no_found_rows'  => true,
 		) );
 		foreach ( $qq->posts as $p ) {
-			$sym   = strtoupper( preg_replace( '/[^A-Z0-9.\-]/', '', (string) get_post_meta( $p->ID, '_sml_primary_ticker', true ) ) );
+			$sym   = preg_replace( '/[^A-Z0-9.\-]/', '', strtoupper( (string) get_post_meta( $p->ID, '_sml_primary_ticker', true ) ) );
 			$out[] = array(
 				'ts'    => (int) get_post_time( 'U', true, $p ),
 				'sym'   => $sym,
-				'title' => wp_strip_all_tags( get_the_title( $p ) ),
+				'title' => html_entity_decode( wp_strip_all_tags( get_the_title( $p ) ), ENT_QUOTES ),
 				'url'   => get_permalink( $p ),
 			);
 		}
@@ -82,7 +82,7 @@ if ( ! function_exists( 'sml_mmx_signals' ) ) {
 				'tape'    => 'https://stockmarketloop-loop-kick.onrender.com/api/tape',
 				'quotes'  => 'https://stockmarketloop-loop-kick.onrender.com/api/quotes',
 				'signals' => rest_url( 'sml-mm/v1/signals' ),
-				'syms'    => array( 'SPY', 'QQQ', 'IWM', 'DIA', 'SOXX', 'BTC' ), /* the homepage rail's EXACT set — shares Render's cache key, zero marginal provider load */
+				'syms'    => array( 'SPY', 'QQQ', 'IWM', 'DIA', 'SOXX', 'BTC' ), /* polled at 45s to feed the tape ingest — ~1.3 snapshot calls/min while the tape is open */
 			) ) . ';</script>';
 			echo '<script src="' . esc_url( $base . 'js/market-monitor.js' ) . '"></script>';
 			echo '</body></html>';
