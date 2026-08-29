@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Preview — /n/{handle} public letter page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+<!-- The real tokens, exactly as sampled from the live public LoopLetter page.
+     On the site these come from the existing stylesheet; here they stand in
+     for it so the preview is the same colours the plugin will render. -->
+<style>
+  :root {
+    --bg: #05070a; --bg-2: #080b11;
+    --panel: rgba(255,255,255,.038); --panel-2: rgba(255,255,255,.058);
+    --line: rgba(255,255,255,.10); --line-2: rgba(255,255,255,.16);
+    --ink: #eef2f7; --ink-2: #a8b3c4; --ink-3: #6f7d90;
+    --accent: #00ff88; --accent-2: #00c46a; --accent-dim: rgba(0,255,136,.12);
+    --red: #ff5c5c; --amber: #ffc453;
+    --r: 16px; --r-lg: 22px; --maxw: 1180px;
+    --shadow: 0 24px 60px rgba(0,0,0,.55);
+  }
+  html, body { margin: 0; background: var(--bg); }
+  .pv-bar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    padding: 10px 16px; background: #080b11; border-bottom: 1px solid var(--line);
+    font: 600 12px Inter, system-ui, sans-serif; color: var(--ink-3);
+  }
+  .pv-bar b { color: var(--ink); font-weight: 700; }
+  .pv-bar button {
+    font: 600 12px Inter, system-ui, sans-serif;
+    padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line-2); color: var(--ink-2);
+  }
+  .pv-bar button.is-on { background: var(--accent-dim); border-color: rgba(0,255,136,.34); color: var(--accent); }
+  .pv-url {
+    margin-left: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; color: var(--ink-3);
+    max-width: 100%; overflow-wrap: anywhere;
+  }
+  .pv-view { display: none; }
+  .pv-view.is-on { display: block; }
+</style>
+
+<link rel="stylesheet" href="../assets/letter-public.css" />
+</head>
+<body>
+
+<div class="pv-bar">
+  <b>Preview</b>
+  <button data-v="pub" class="is-on">Publication</button>
+  <button data-v="single">Single letter</button>
+  <button data-v="empty">Empty state</button>
+  <button data-v="dir">Directory</button>
+  <span class="pv-url" id="pv-url">stockmarketloop.com/n/street-money/</span>
+</div>
+
+<!-- ============================ PUBLICATION ============================ -->
+<div class="pv-view is-on" data-view="pub">
+<div class="ll-pub">
+
+  <header class="ll-head">
+    <a class="ll-head__id" href="#">
+      <img class="ll-head__avatar" width="56" height="56" alt=""
+           src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Crect width='56' height='56' fill='%2300ff88'/%3E%3Ctext x='28' y='36' font-family='Inter,sans-serif' font-size='22' font-weight='800' fill='%2303210f' text-anchor='middle'%3ESM%3C/text%3E%3C/svg%3E" />
+      <span class="ll-head__names">
+        <span class="ll-head__name">Street Money</span>
+        <span class="ll-head__by">by Vaughn</span>
+      </span>
+    </a>
+    <p class="ll-head__tagline">Where the tape is going before the headline catches up. Positioning, flows, and the three charts that mattered this week.</p>
+    <span class="ll-head__cadence">Weekly</span>
+    <ul class="ll-topics">
+      <li class="ll-topics__item">Macro</li>
+      <li class="ll-topics__item">Options flow</li>
+      <li class="ll-topics__item">Semis</li>
+      <li class="ll-topics__item">Energy</li>
+    </ul>
+
+    <form class="ll-sub" data-ll-subscribe>
+      <label class="ll-sub__label" for="e1">Your email</label>
+      <div class="ll-sub__row">
+        <input class="ll-sub__input" id="e1" type="email" placeholder="you@example.com" />
+        <button class="ll-sub__btn" type="submit">Subscribe</button>
+      </div>
+      <p class="ll-sub__note" data-ll-status>Free. One click to unsubscribe.</p>
+    </form>
+  </header>
+
+  <div class="ll-pub__body">
+    <ul class="ll-list">
+      <li class="ll-list__item"><a class="ll-list__link" href="#">
+        <time class="ll-list__date">Aug 8, 2026</time>
+        <h3 class="ll-list__title">The semis bid is thinner than it looks</h3>
+        <p class="ll-list__excerpt">Three weeks of gains on falling volume, and the options market is not confirming any of it. What the January skew is telling us that spot price is not.</p>
+      </a></li>
+      <li class="ll-list__item"><a class="ll-list__link" href="#">
+        <time class="ll-list__date">Aug 1, 2026</time>
+        <h3 class="ll-list__title">Nobody is positioned for a soft CPI</h3>
+        <p class="ll-list__excerpt">Positioning data says the desk consensus has quietly moved to one side of the boat. That is usually where the pain trade starts.</p>
+      </a></li>
+      <li class="ll-list__item"><a class="ll-list__link" href="#">
+        <time class="ll-list__date">Jul 25, 2026</time>
+        <h3 class="ll-list__title">Energy is not the inflation hedge you think</h3>
+        <p class="ll-list__excerpt">The correlation everyone quotes broke in 2023 and has not come back. Here is what actually hedged the last two prints.</p>
+      </a></li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<!-- ============================ SINGLE LETTER ============================ -->
+<div class="pv-view" data-view="single">
+<div class="ll-pub ll-pub--single">
+  <header class="ll-head ll-head--compact">
+    <a class="ll-head__id" href="#">
+      <img class="ll-head__avatar" width="40" height="40" alt=""
+           src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Crect width='56' height='56' fill='%2300ff88'/%3E%3Ctext x='28' y='36' font-family='Inter,sans-serif' font-size='22' font-weight='800' fill='%2303210f' text-anchor='middle'%3ESM%3C/text%3E%3C/svg%3E" />
+      <span class="ll-head__names">
+        <span class="ll-head__name">Street Money</span>
+        <span class="ll-head__by">by Vaughn</span>
+      </span>
+    </a>
+  </header>
+
+  <article class="ll-letter">
+    <time class="ll-letter__date">August 8, 2026</time>
+    <h1 class="ll-letter__title">The semis bid is thinner than it looks</h1>
+    <div class="ll-letter__body">
+      <p>Three weeks of gains on falling volume is not a rally, it is a drift. The distinction matters because the two unwind very differently, and right now the options market is pricing one while the tape shows the other.</p>
+      <h2>What the skew is saying</h2>
+      <p>January skew has been flattening since the second week of July. In a genuine risk-on move you would expect the opposite: calls bid, puts offered, the whole curve tilting. Instead the market is paying up for downside while spot grinds higher.</p>
+      <blockquote>Flat skew into a rising tape is the market telling you it does not believe the tape.</blockquote>
+      <p>That divergence has resolved toward the options market in four of the last five instances since 2019. Not a large sample, but the mechanism is sound — dealers hedge what they are short, and they are short downside.</p>
+      <h3>The three names carrying it</h3>
+      <p>Breadth inside the index has narrowed to a degree that is hard to overstate. Strip out the top three names and the sector is flat on the quarter.</p>
+      <table>
+        <thead><tr><th>Name</th><th>Contribution</th><th>Volume vs 30d</th></tr></thead>
+        <tbody>
+          <tr><td>Top 3</td><td>+8.4%</td><td>−22%</td></tr>
+          <tr><td>Next 12</td><td>+0.3%</td><td>−31%</td></tr>
+          <tr><td>Remainder</td><td>−1.1%</td><td>−28%</td></tr>
+        </tbody>
+      </table>
+      <p>Falling volume across all three buckets is the part worth sitting with. Rallies that nobody participates in do not need a catalyst to end — they need only the marginal buyer to stop.</p>
+      <p>I am not short. I am, for the first time since April, no longer long.</p>
+    </div>
+  </article>
+
+  <form class="ll-sub" data-ll-subscribe>
+    <label class="ll-sub__label" for="e2">Your email</label>
+    <div class="ll-sub__row">
+      <input class="ll-sub__input" id="e2" type="email" placeholder="you@example.com" />
+      <button class="ll-sub__btn" type="submit">Subscribe</button>
+    </div>
+    <p class="ll-sub__note" data-ll-status>Free. One click to unsubscribe.</p>
+  </form>
+</div>
+</div>
+
+<!-- ============================ EMPTY ============================ -->
+<div class="pv-view" data-view="empty">
+<div class="ll-pub">
+  <header class="ll-head">
+    <a class="ll-head__id" href="#">
+      <img class="ll-head__avatar" width="56" height="56" alt=""
+           src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Crect width='56' height='56' fill='%2300ff88'/%3E%3Ctext x='28' y='36' font-family='Inter,sans-serif' font-size='22' font-weight='800' fill='%2303210f' text-anchor='middle'%3ESM%3C/text%3E%3C/svg%3E" />
+      <span class="ll-head__names">
+        <span class="ll-head__name">Street Money</span>
+        <span class="ll-head__by">by Vaughn</span>
+      </span>
+    </a>
+    <p class="ll-head__tagline">Where the tape is going before the headline catches up.</p>
+    <span class="ll-head__cadence">Weekly</span>
+    <form class="ll-sub" data-ll-subscribe>
+      <label class="ll-sub__label" for="e3">Your email</label>
+      <div class="ll-sub__row">
+        <input class="ll-sub__input" id="e3" type="email" placeholder="you@example.com" />
+        <button class="ll-sub__btn" type="submit">Subscribe</button>
+      </div>
+      <p class="ll-sub__note" data-ll-status>Free. One click to unsubscribe.</p>
+    </form>
+  </header>
+  <div class="ll-pub__body">
+    <div class="ll-empty">
+      <h2 class="ll-empty__title">No letters yet</h2>
+      <p class="ll-empty__body">Subscribe and you will get the first one the moment it goes out.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============================ DIRECTORY ============================ -->
+<div class="pv-view" data-view="dir">
+<div class="ll-pub">
+  <header class="ll-head">
+    <h1 class="ll-head__name">Loop Letters</h1>
+    <p class="ll-head__tagline">Market analysis, written by people who trade it.</p>
+  </header>
+  <div class="ll-pub__body">
+    <ul class="ll-dir">
+      <li class="ll-dir__item"><a class="ll-dir__link" href="#">
+        <img class="ll-dir__avatar" width="40" height="40" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%2300ff88'/%3E%3C/svg%3E" />
+        <span><span class="ll-dir__name">Street Money</span><span class="ll-dir__by">by Vaughn</span></span>
+      </a></li>
+      <li class="ll-dir__item"><a class="ll-dir__link" href="#">
+        <img class="ll-dir__avatar" width="40" height="40" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23ffc453'/%3E%3C/svg%3E" />
+        <span><span class="ll-dir__name">The Close</span><span class="ll-dir__by">by M. Reyes</span></span>
+      </a></li>
+      <li class="ll-dir__item"><a class="ll-dir__link" href="#">
+        <img class="ll-dir__avatar" width="40" height="40" alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23a8b3c4'/%3E%3C/svg%3E" />
+        <span><span class="ll-dir__name">Small Caps Weekly</span><span class="ll-dir__by">by J. Okafor</span></span>
+      </a></li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<script>
+var URLS = {
+  pub:    'stockmarketloop.com/n/street-money/',
+  single: 'stockmarketloop.com/n/street-money/the-semis-bid-is-thinner-than-it-looks/',
+  empty:  'stockmarketloop.com/n/street-money/',
+  dir:    'stockmarketloop.com/n/'
+};
+document.querySelector('.pv-bar').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-v]');
+  if (!b) return;
+  var v = b.getAttribute('data-v');
+  document.querySelectorAll('.pv-bar button').forEach(function (x) { x.classList.toggle('is-on', x === b); });
+  document.querySelectorAll('.pv-view').forEach(function (x) {
+    x.classList.toggle('is-on', x.getAttribute('data-view') === v);
+  });
+  document.getElementById('pv-url').textContent = URLS[v];
+  window.scrollTo(0, 0);
+});
+// Demonstrate the success state without a server behind it.
+document.querySelectorAll('[data-ll-subscribe]').forEach(function (f) {
+  f.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var note = f.querySelector('[data-ll-status]');
+    note.textContent = 'Check your inbox to confirm.';
+    note.className = 'll-sub__note is-ok';
+    var row = f.querySelector('.ll-sub__row'); if (row) row.remove();
+    var lab = f.querySelector('.ll-sub__label'); if (lab) lab.remove();
+  });
+});
+</script>
+</body>
+</html>

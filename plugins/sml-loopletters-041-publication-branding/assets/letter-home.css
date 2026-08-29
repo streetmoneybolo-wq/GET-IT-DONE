@@ -1,0 +1,745 @@
+/**
+ * Loop Hub — newsletter home.
+ *
+ * Every value here was sampled from the computed styles of the Newsletter Home
+ * mock, not estimated from a screenshot. Where the mock and the earlier public
+ * LoopLetter page disagree, the mock wins on this screen: it is a different
+ * surface with its own type system.
+ *
+ * WHAT DIFFERS FROM letter-public.css, AND WHY IT IS NOT A MISTAKE
+ *
+ *   letter-public.css   680px measure, Inter, --bg #05070a
+ *   this file          1140px grid,   Space Grotesk / IBM Plex, --bg #07090b
+ *
+ * Those are two different jobs. A publication home is an index — scannable,
+ * two-column, dense with entry points. A letter is prose, and prose wants one
+ * narrow column and nothing beside it. Forcing one stylesheet to do both would
+ * make the index cramped or the reading measure unreadable.
+ *
+ * The palettes are close but genuinely distinct (#07090b vs #05070a), so the
+ * tokens below are namespaced --lh-* and do not inherit from the public page's
+ * --ll-* set. Deliberate: silently inheriting would make one screen drift when
+ * the other is retuned.
+ *
+ * Everything is scoped under .lh-* so nothing leaks into the theme.
+ */
+
+.lh {
+	--lh-bg:        #07090b;
+	--lh-surface:   #0b0e12;
+	--lh-line:      #1b2026;
+	--lh-line-soft: #141a1f;
+
+	--lh-ink:       #e8edf2;
+	--lh-ink-2:     #c3ccd4;
+	--lh-ink-3:     #98a3ad;
+	--lh-ink-4:     #8d98a3;
+	--lh-muted:     #5c6771;
+	--lh-nav:       #7e8a96;
+
+	--lh-accent:    #00ff88;
+	--lh-accent-ink:#06120c;
+
+	--lh-r:         14px;
+	--lh-r-sm:      10px;
+
+	--lh-display:   "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+	--lh-body:      "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+	--lh-mono:      ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+	--lh-max:       1140px;
+	--lh-main:      716px;
+	--lh-side:      316px;
+	--lh-gap:       52px;
+
+	background: var(--lh-bg);
+	background-image: var(--lh-background-image, none);
+	background-position: center top;
+	background-size: cover;
+	background-attachment: fixed;
+	color: var(--lh-ink);
+	font-family: var(--lh-body);
+	font-size: 14px;
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+}
+
+.lh *, .lh *::before, .lh *::after { box-sizing: border-box; }
+
+/* --- shared bits --------------------------------------------------------- */
+
+.lh__label {
+	font-family: var(--lh-mono);
+	font-size: 10px;
+	letter-spacing: 1.8px;
+	text-transform: uppercase;
+	color: var(--lh-muted);
+	margin: 0 0 18px;
+}
+
+.lh__meta {
+	font-family: var(--lh-mono);
+	font-size: 10.5px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--lh-muted);
+}
+
+/* --- top bar ------------------------------------------------------------- */
+
+.lh-top {
+	border-bottom: 1px solid var(--lh-line);
+	background: var(--lh-bg);
+}
+
+.lh-top__in {
+	max-width: var(--lh-max);
+	margin: 0 auto;
+	padding: 18px 20px;
+	display: flex;
+	align-items: center;
+	gap: 26px;
+}
+
+.lh-brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	text-decoration: none;
+	flex: none;
+}
+
+.lh-brand__dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--lh-accent);
+	flex: none;
+}
+
+.lh-brand__name {
+	font-family: "Archivo", var(--lh-display);
+	font-size: 14px;
+	font-weight: 800;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--lh-ink);
+}
+
+.lh-nav {
+	display: flex;
+	align-items: center;
+	gap: 22px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.lh-nav__link {
+	font-size: 13px;
+	color: var(--lh-nav);
+	text-decoration: none;
+	transition: color .15s;
+}
+
+.lh-nav__link:hover { color: var(--lh-ink-2); }
+.lh-nav__link.is-active { color: var(--lh-ink); }
+
+/* Owner-only. Sits far right so it never competes with the reader's nav —
+   the person editing already knows where it is, and everyone else should
+   not have their eye pulled to a control they cannot use. */
+.lh-edit {
+	margin-left: auto;
+	flex: none;
+	font-size: 13px;
+	font-weight: 600;
+	font-family: inherit;
+	color: var(--lh-accent);
+	background: transparent;
+	text-decoration: none;
+	border: 1px solid rgba(var(--lh-accent-rgb, 0, 255, 136), .35);
+	border-radius: 8px;
+	padding: 8px 16px;
+	transition: background .15s, border-color .15s;
+}
+
+.lh-edit:hover {
+	background: rgba(var(--lh-accent-rgb, 0, 255, 136), .08);
+	border-color: rgba(var(--lh-accent-rgb, 0, 255, 136), .6);
+}
+
+/* --- page grid ----------------------------------------------------------- */
+
+.lh-wrap {
+	max-width: var(--lh-max);
+	margin: 0 auto;
+	padding: 44px 20px 80px;
+	display: grid;
+	grid-template-columns: minmax(0, var(--lh-main)) var(--lh-side);
+	gap: var(--lh-gap);
+	align-items: start;
+}
+
+/* --- hero ---------------------------------------------------------------- */
+
+.lh-hero {
+	display: block;
+	text-decoration: none;
+	color: inherit;
+	background: var(--lh-surface);
+	border: 1px solid var(--lh-line);
+	border-radius: var(--lh-r);
+	overflow: hidden;
+	margin-bottom: 44px;
+	transition: border-color .18s;
+}
+
+.lh-hero:hover { border-color: #2a323a; }
+.lh-hero:hover .lh-hero__title { color: var(--lh-accent); }
+
+.lh-hero__media {
+	display: block;
+	width: 100%;
+	aspect-ratio: 16 / 7;
+	object-fit: cover;
+	background:
+		repeating-linear-gradient(135deg, #10151a 0 12px, #0d1216 12px 24px);
+	border-bottom: 1px solid var(--lh-line);
+}
+
+/* Placeholder when a letter has no featured image. Striped rather than flat
+   so an empty slot reads as "no image yet" instead of a broken one. */
+.lh-hero__media--empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-family: var(--lh-mono);
+	font-size: 10px;
+	letter-spacing: 1.6px;
+	text-transform: uppercase;
+	color: var(--lh-muted);
+}
+
+.lh-hero__body { padding: 26px 28px 30px; }
+
+.lh-hero__eyebrow {
+	font-family: var(--lh-mono);
+	font-size: 10px;
+	letter-spacing: 1.6px;
+	text-transform: uppercase;
+	color: var(--lh-accent);
+	margin: 0 0 14px;
+}
+
+.lh-hero__title {
+	font-family: var(--lh-display);
+	font-size: 34px;
+	font-weight: 700;
+	letter-spacing: -.5px;
+	line-height: 1.15;
+	margin: 0 0 14px;
+	transition: color .18s;
+}
+
+.lh-hero__excerpt {
+	font-size: 15px;
+	line-height: 1.6;
+	color: var(--lh-ink-4);
+	margin: 0 0 18px;
+	max-width: 62ch;
+}
+
+/* --- issue list ---------------------------------------------------------- */
+
+.lh-list { list-style: none; margin: 0; padding: 0; }
+
+.lh-list__item + .lh-list__item {
+	border-top: 1px solid var(--lh-line-soft);
+}
+
+.lh-list__link {
+	display: block;
+	padding: 28px 0;
+	text-decoration: none;
+	color: inherit;
+}
+
+.lh-list__link:hover .lh-list__title { color: var(--lh-accent); }
+
+.lh-list__title {
+	font-family: var(--lh-display);
+	font-size: 25px;
+	font-weight: 700;
+	letter-spacing: -.3px;
+	line-height: 1.22;
+	margin: 0 0 10px;
+	transition: color .18s;
+}
+
+.lh-list__excerpt {
+	font-size: 14px;
+	line-height: 1.65;
+	color: var(--lh-ink-4);
+	margin: 0 0 12px;
+	max-width: 66ch;
+}
+
+/* --- load more ----------------------------------------------------------- */
+
+.lh-more {
+	display: block;
+	margin: 36px auto 0;
+	padding: 13px 30px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--lh-ink-3);
+	background: transparent;
+	border: 1px solid var(--lh-line);
+	border-radius: 999px;
+	cursor: pointer;
+	transition: border-color .15s, color .15s;
+}
+
+.lh-more:hover:not(:disabled) { border-color: #2a323a; color: var(--lh-ink); }
+.lh-more:disabled { opacity: .5; cursor: default; }
+.lh-more[hidden] { display: none; }
+
+/* --- sidebar ------------------------------------------------------------- */
+
+.lh-side { position: sticky; top: 24px; }
+.lh-side__block + .lh-side__block { margin-top: 40px; }
+
+.lh-about__id {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	text-decoration: none;
+	color: inherit;
+	margin-bottom: 14px;
+}
+
+.lh-about__avatar,
+.lh-about__logo {
+	width: 46px;
+	height: 46px;
+	border-radius: 10px;
+	object-fit: cover;
+	flex: none;
+	background: var(--lh-accent);
+}
+
+.lh-about__logo {
+	display: grid;
+	place-items: center;
+	font-family: var(--lh-display);
+	font-size: 15px;
+	font-weight: 800;
+	color: var(--lh-accent-ink);
+}
+
+.lh-about__logo img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border-radius: inherit;
+}
+
+.lh--has-background .lh-wrap {
+	padding: 32px;
+	border: 1px solid rgba(255,255,255,.08);
+	border-radius: 20px;
+	background: rgba(7,9,11,.88);
+	box-shadow: 0 24px 80px rgba(0,0,0,.42);
+	backdrop-filter: blur(8px);
+}
+
+.lh-about__name {
+	display: block;
+	font-family: var(--lh-display);
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--lh-ink);
+}
+
+.lh-about__tagline {
+	display: block;
+	font-size: 12.5px;
+	color: var(--lh-ink-3);
+	margin-top: 2px;
+}
+
+.lh-about__pitch {
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--lh-ink-4);
+	margin: 0 0 14px;
+}
+
+/* --- subscribe ----------------------------------------------------------- */
+
+.lh-sub__row { display: flex; }
+
+.lh-sub__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 42px;
+	padding: 0 13px;
+	font: inherit;
+	font-size: 13px;
+	color: var(--lh-ink);
+	background: var(--lh-surface);
+	border: 1px solid var(--lh-line);
+	border-right: 0;
+	border-radius: 8px 0 0 8px;
+}
+
+.lh-sub__input::placeholder { color: var(--lh-muted); }
+
+.lh-sub__input:focus-visible {
+	outline: 2px solid var(--lh-accent);
+	outline-offset: -2px;
+}
+
+.lh-sub__btn {
+	flex: none;
+	height: 42px;
+	padding: 0 16px;
+	font: inherit;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: .6px;
+	text-transform: uppercase;
+	color: var(--lh-accent-ink);
+	background: var(--lh-accent);
+	border: 0;
+	border-radius: 0 8px 8px 0;
+	cursor: pointer;
+	transition: filter .15s;
+}
+
+.lh-sub__btn:hover:not(:disabled) { filter: brightness(1.08); }
+.lh-sub__btn:disabled { opacity: .6; cursor: default; }
+
+.lh-sub__note {
+	font-size: 11.5px;
+	color: var(--lh-muted);
+	margin: 9px 0 0;
+}
+
+.lh-sub__note.is-ok { color: var(--lh-accent); }
+.lh-sub__note.is-error { color: #ff5c5c; }
+
+/* --- social -------------------------------------------------------------- */
+
+.lh-social {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 18px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.lh-social__link {
+	display: inline-block;
+	font-size: 11.5px;
+	color: var(--lh-ink-3);
+	text-decoration: none;
+	border: 1px solid var(--lh-line);
+	border-radius: 999px;
+	padding: 6px 13px;
+	transition: border-color .15s, color .15s;
+}
+
+.lh-social__link:hover { border-color: #2a323a; color: var(--lh-ink); }
+
+/* --- featured ------------------------------------------------------------ */
+
+.lh-feat { list-style: none; margin: 0; padding: 0; }
+.lh-feat__item + .lh-feat__item { margin-top: 22px; }
+
+.lh-feat__link { text-decoration: none; color: inherit; display: block; }
+
+.lh-feat__title {
+	font-family: var(--lh-display);
+	font-size: 14.5px;
+	font-weight: 600;
+	line-height: 1.35;
+	margin: 0 0 6px;
+	transition: color .18s;
+}
+
+.lh-feat__link:hover .lh-feat__title { color: var(--lh-accent); }
+
+.lh-feat__excerpt {
+	font-size: 12.5px;
+	line-height: 1.55;
+	color: var(--lh-ink-4);
+	margin: 0 0 6px;
+}
+
+/* --- topics -------------------------------------------------------------- */
+
+.lh-topics { list-style: none; margin: 0; padding: 0; }
+
+.lh-topics__item + .lh-topics__item { border-top: 1px solid var(--lh-line-soft); }
+
+.lh-topics__link {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 11px 0;
+	text-decoration: none;
+	color: var(--lh-ink-2);
+	font-size: 12.5px;
+	transition: color .15s;
+}
+
+.lh-topics__link:hover { color: var(--lh-accent); }
+
+.lh-topics__count {
+	flex: none;
+	font-family: var(--lh-mono);
+	font-size: 9.5px;
+	color: var(--lh-muted);
+}
+
+/* --- empty --------------------------------------------------------------- */
+
+.lh-empty {
+	border: 1px dashed var(--lh-line);
+	border-radius: var(--lh-r);
+	padding: 44px 28px;
+	text-align: center;
+}
+
+.lh-empty__title {
+	font-family: var(--lh-display);
+	font-size: 19px;
+	font-weight: 700;
+	margin: 0 0 8px;
+}
+
+.lh-empty__body { color: var(--lh-ink-4); margin: 0; font-size: 13.5px; }
+
+/* --- footer -------------------------------------------------------------- */
+
+.lh-foot {
+	border-top: 1px solid var(--lh-line);
+	padding: 26px 20px 40px;
+	text-align: center;
+}
+
+.lh-foot__in {
+	font-family: var(--lh-mono);
+	font-size: 10.5px;
+	letter-spacing: 1px;
+	color: var(--lh-muted);
+}
+
+.lh-foot__in a { color: var(--lh-muted); text-decoration: none; }
+.lh-foot__in a:hover { color: var(--lh-ink-3); }
+
+/* --- responsive ---------------------------------------------------------- */
+
+/* The sidebar drops below the feed rather than shrinking. At tablet width a
+   316px rail beside a squeezed main column leaves neither readable, and the
+   sidebar's job — about, subscribe, discovery — works just as well underneath. */
+@media (max-width: 1040px) {
+	.lh-wrap { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+	.lh-side { position: static; }
+}
+
+@media (max-width: 720px) {
+	.lh-top__in { gap: 16px; flex-wrap: wrap; }
+	.lh-nav { gap: 16px; order: 3; width: 100%; overflow-x: auto; }
+	.lh-edit { margin-left: auto; }
+
+	.lh-wrap { padding: 28px 16px 64px; }
+	.lh-hero__body { padding: 20px 18px 24px; }
+	.lh-hero__title { font-size: 25px; }
+	.lh-list__title { font-size: 20px; }
+	.lh-hero__excerpt { font-size: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.lh * { transition: none !important; }
+}
+
+/* --- filtered view ------------------------------------------------------- */
+
+.lh-filter {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	padding-bottom: 20px;
+	margin-bottom: 8px;
+	border-bottom: 1px solid var(--lh-line);
+}
+
+.lh-filter__name {
+	font-family: var(--lh-display);
+	font-size: 28px;
+	font-weight: 700;
+	letter-spacing: -.4px;
+	margin: 0;
+}
+
+/* Always visible, never a browser-back-only affordance. A reader who arrives
+   on a filtered link from outside has no back button to return to, and
+   without this the unfiltered publication is unreachable from here. */
+.lh-filter__clear {
+	flex: none;
+	font-size: 12.5px;
+	color: var(--lh-ink-3);
+	text-decoration: none;
+	border: 1px solid var(--lh-line);
+	border-radius: 999px;
+	padding: 6px 14px;
+	transition: border-color .15s, color .15s;
+}
+
+.lh-filter__clear:hover { border-color: #2a323a; color: var(--lh-ink); }
+
+/* --- creator-selected publication variants ----------------------------- */
+
+.lh--font-serif {
+	--lh-display: Georgia, "Times New Roman", serif;
+	--lh-body: Georgia, "Times New Roman", serif;
+}
+
+.lh--font-archivo {
+	--lh-display: "Archivo", ui-sans-serif, system-ui, sans-serif;
+	--lh-body: "Archivo", ui-sans-serif, system-ui, sans-serif;
+}
+
+.lh--font-inter { --lh-display: Inter, ui-sans-serif, system-ui, sans-serif; --lh-body: Inter, ui-sans-serif, system-ui, sans-serif; }
+.lh--font-manrope { --lh-display: Manrope, ui-sans-serif, system-ui, sans-serif; --lh-body: Manrope, ui-sans-serif, system-ui, sans-serif; }
+.lh--font-poppins { --lh-display: Poppins, ui-sans-serif, system-ui, sans-serif; --lh-body: Poppins, ui-sans-serif, system-ui, sans-serif; }
+.lh--font-montserrat { --lh-display: Montserrat, ui-sans-serif, system-ui, sans-serif; --lh-body: Montserrat, ui-sans-serif, system-ui, sans-serif; }
+.lh--font-dm-sans { --lh-display: "DM Sans", ui-sans-serif, system-ui, sans-serif; --lh-body: "DM Sans", ui-sans-serif, system-ui, sans-serif; }
+.lh--font-playfair { --lh-display: "Playfair Display", Georgia, serif; --lh-body: Lora, Georgia, serif; }
+.lh--font-merriweather { --lh-display: Merriweather, Georgia, serif; --lh-body: Merriweather, Georgia, serif; }
+.lh--font-lora { --lh-display: Lora, Georgia, serif; --lh-body: Lora, Georgia, serif; }
+.lh--font-roboto-slab { --lh-display: "Roboto Slab", Georgia, serif; --lh-body: "Roboto Slab", Georgia, serif; }
+
+.lh--layout-grid .lh-list {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+}
+
+.lh--layout-grid .lh-list__item,
+.lh--layout-grid .lh-list__item + .lh-list__item {
+	border: 1px solid var(--lh-line);
+	border-radius: 8px;
+	background: var(--lh-surface);
+}
+
+.lh--layout-grid .lh-list__link { padding: 20px; height: 100%; }
+.lh--layout-grid .lh-list__title { font-size: 20px; }
+
+.lh--layout-magazine { --lh-main: 770px; --lh-side: 270px; --lh-gap: 40px; }
+.lh--layout-magazine .lh-hero__media { aspect-ratio: 16 / 8.5; }
+.lh--layout-magazine .lh-list__item:first-child .lh-list__title { font-size: 30px; }
+.lh--layout-magazine .lh-list__item:first-child .lh-list__excerpt { font-size: 15px; }
+
+[data-lh-section][hidden] { display: none !important; }
+
+/* --- live publication editor ------------------------------------------- */
+
+.lh-editor {
+	position: fixed;
+	z-index: 999999;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: min(380px, 100vw);
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	color: #e8edf2;
+	background: #0b0e12;
+	border-left: 1px solid #252c34;
+	box-shadow: -20px 0 60px rgba(0, 0, 0, .5);
+	font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+.lh-editor__head,
+.lh-editor__foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 18px 20px;
+	background: #0b0e12;
+}
+
+.lh-editor__head { border-bottom: 1px solid #1b2026; }
+.lh-editor__foot { border-top: 1px solid #1b2026; }
+.lh-editor__eyebrow { margin: 0 0 2px; color: var(--lh-accent, #00ff88); font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; }
+.lh-editor__title { margin: 0; font-size: 20px; letter-spacing: 0; }
+
+.lh-editor__close,
+.lh-editor__segment,
+.lh-editor__save {
+	font: inherit;
+	color: #c3ccd4;
+	background: #10151a;
+	border: 1px solid #2a323a;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.lh-editor__close { padding: 7px 10px; font-size: 12px; }
+.lh-editor__body { overflow-y: auto; padding: 6px 20px 28px; }
+.lh-editor__group { padding: 20px 0; border-bottom: 1px solid #1b2026; }
+.lh-editor__group-title { margin: 0 0 14px; font-size: 14px; letter-spacing: 0; }
+.lh-editor__field { display: block; margin-top: 12px; }
+.lh-editor__field-label,
+.lh-editor__hint { display: block; margin: 0 0 6px; color: #98a3ad; font-size: 11px; }
+
+.lh-editor__input {
+	width: 100%;
+	min-height: 39px;
+	padding: 9px 10px;
+	font: inherit;
+	font-size: 13px;
+	color: #e8edf2;
+	background: #07090b;
+	border: 1px solid #252c34;
+	border-radius: 6px;
+	resize: vertical;
+}
+
+textarea.lh-editor__input { min-height: 72px; }
+.lh-editor__input:focus-visible { outline: 2px solid var(--lh-accent, #00ff88); outline-offset: 1px; }
+.lh-editor__segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; }
+.lh-editor__segment { min-height: 36px; padding: 6px; font-size: 11px; }
+.lh-editor__segment.is-active { color: #06120c; background: var(--lh-accent, #00ff88); border-color: var(--lh-accent, #00ff88); }
+.lh-editor__colors { display: flex; gap: 10px; margin-bottom: 14px; }
+
+.lh-editor__color {
+	width: 30px;
+	height: 30px;
+	border: 3px solid #0b0e12;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px #38424d;
+	cursor: pointer;
+}
+
+.lh-editor__color.is-active { box-shadow: 0 0 0 2px #e8edf2; }
+.lh-editor__toggle { display: flex; align-items: center; justify-content: space-between; min-height: 36px; color: #c3ccd4; font-size: 13px; }
+.lh-editor__toggle input { width: 18px; height: 18px; accent-color: var(--lh-accent, #00ff88); }
+.lh-editor__status { min-width: 0; margin: 0; color: #7e8a96; font-size: 11px; }
+.lh-editor__status.is-error { color: #ff5c7a; }
+.lh-editor__save { flex: none; padding: 10px 14px; font-size: 12px; font-weight: 700; color: #06120c; background: var(--lh-accent, #00ff88); border-color: var(--lh-accent, #00ff88); }
+.lh-editor__save:disabled { opacity: .55; cursor: wait; }
+
+@media (max-width: 720px) {
+	.lh--layout-grid .lh-list { grid-template-columns: 1fr; }
+	.lh-editor { width: 100vw; }
+}

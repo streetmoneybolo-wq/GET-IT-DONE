@@ -1,0 +1,371 @@
+/**
+ * SML Loop Letters — public letter page.
+ *
+ * Every value below reads through the site's own LoopLetter custom properties
+ * first and only falls back to a literal if that property is absent:
+ *
+ *     var(--accent, #00ff88)
+ *
+ * So on /loop-letters/, where the marketing stylesheet defines :root, this page
+ * inherits the live palette and follows any future change automatically. On a
+ * bare page where those properties are not defined, the fallbacks reproduce the
+ * same palette. Hardcoding the literals alone would have created a second copy
+ * of the design system that silently drifts from the first.
+ *
+ * Everything is namespaced under .ll-* so nothing leaks into the theme.
+ */
+
+.ll-pub {
+	--ll-bg:      var(--bg, #05070a);
+	--ll-panel:   var(--panel, rgba(255, 255, 255, .038));
+	--ll-panel-2: var(--panel-2, rgba(255, 255, 255, .058));
+	--ll-line:    var(--line, rgba(255, 255, 255, .10));
+	--ll-line-2:  var(--line-2, rgba(255, 255, 255, .16));
+	--ll-ink:     var(--ink, #eef2f7);
+	--ll-ink-2:   var(--ink-2, #a8b3c4);
+	--ll-ink-3:   var(--ink-3, #6f7d90);
+	--ll-accent:  var(--accent, #00ff88);
+	--ll-accent-2: var(--accent-2, #00c46a);
+	--ll-accent-dim: var(--accent-dim, rgba(0, 255, 136, .12));
+	--ll-r:       var(--r, 16px);
+	--ll-shadow:  var(--shadow, 0 24px 60px rgba(0, 0, 0, .55));
+
+	/* Narrower than the marketing --maxw of 1180px. That width is right for a
+	   grid of feature cards and wrong for prose — a 1180px line of body text is
+	   roughly 160 characters, about double what anyone can read comfortably. */
+	--ll-measure: 680px;
+
+	max-width: var(--ll-measure);
+	margin: 0 auto;
+	padding: 40px 20px 96px;
+	color: var(--ll-ink);
+	font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	font-size: 16px;
+	line-height: 1.6;
+}
+
+/* --- publication header -------------------------------------------------- */
+
+.ll-head {
+	text-align: center;
+	padding-bottom: 32px;
+	margin-bottom: 32px;
+	border-bottom: 1px solid var(--ll-line);
+}
+
+.ll-head__id {
+	display: inline-flex;
+	align-items: center;
+	gap: 14px;
+	text-decoration: none;
+	color: inherit;
+}
+
+.ll-head__avatar {
+	width: 56px;
+	height: 56px;
+	border-radius: 50%;
+	border: 1px solid var(--ll-line-2);
+	object-fit: cover;
+	flex: none;
+}
+
+.ll-head__names {
+	display: flex;
+	flex-direction: column;
+	text-align: left;
+	gap: 2px;
+}
+
+.ll-head__name {
+	font-size: 1.6rem;
+	font-weight: 800;
+	letter-spacing: -.02em;
+	line-height: 1.15;
+}
+
+.ll-head__by {
+	font-size: .85rem;
+	color: var(--ll-ink-3);
+}
+
+.ll-head__tagline {
+	margin: 18px auto 0;
+	max-width: 46ch;
+	color: var(--ll-ink-2);
+	font-size: 1.02rem;
+}
+
+.ll-head__cadence {
+	display: inline-block;
+	margin-top: 14px;
+	font-size: .735rem;
+	font-weight: 700;
+	letter-spacing: .14em;
+	text-transform: uppercase;
+	color: var(--ll-accent);
+	background: var(--ll-accent-dim);
+	border: 1px solid rgba(0, 255, 136, .24);
+	padding: .4rem .85rem;
+	border-radius: 999px;
+}
+
+.ll-topics {
+	list-style: none;
+	margin: 16px 0 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: center;
+}
+
+.ll-topics__item {
+	font-size: .78rem;
+	color: var(--ll-ink-2);
+	background: var(--ll-panel);
+	border: 1px solid var(--ll-line);
+	padding: .3rem .7rem;
+	border-radius: 999px;
+}
+
+/* On a single letter the header shrinks to a byline — the reader came for the
+   letter, and a full masthead above every one of them is just furniture. */
+.ll-head--compact {
+	text-align: left;
+	padding-bottom: 20px;
+	margin-bottom: 28px;
+}
+
+.ll-head--compact .ll-head__avatar { width: 40px; height: 40px; }
+.ll-head--compact .ll-head__name { font-size: 1.05rem; }
+
+/* --- subscribe ----------------------------------------------------------- */
+
+.ll-sub {
+	margin: 26px auto 0;
+	max-width: 440px;
+	text-align: left;
+}
+
+.ll-sub__label {
+	display: block;
+	font-size: .78rem;
+	font-weight: 600;
+	color: var(--ll-ink-3);
+	margin-bottom: 6px;
+}
+
+.ll-sub__row {
+	display: flex;
+	gap: 8px;
+}
+
+.ll-sub__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: .82rem 1rem;
+	border-radius: 12px;
+	border: 1px solid var(--ll-line-2);
+	background: var(--ll-panel);
+	color: var(--ll-ink);
+	font: inherit;
+	font-size: .95rem;
+}
+
+.ll-sub__input::placeholder { color: var(--ll-ink-3); }
+
+.ll-sub__input:focus-visible {
+	outline: 2px solid var(--ll-accent);
+	outline-offset: 1px;
+	border-color: transparent;
+}
+
+.ll-sub__btn {
+	flex: none;
+	padding: .82rem 1.4rem;
+	border-radius: 12px;
+	border: 1px solid transparent;
+	background: linear-gradient(180deg, var(--ll-accent), var(--ll-accent-2));
+	color: #03210f;
+	font: inherit;
+	font-weight: 700;
+	font-size: .95rem;
+	cursor: pointer;
+	box-shadow: 0 8px 30px rgba(0, 255, 136, .28);
+	transition: transform .22s, box-shadow .22s;
+}
+
+.ll-sub__btn:hover:not(:disabled) {
+	transform: translateY(-2px);
+	box-shadow: 0 14px 40px rgba(0, 255, 136, .42);
+}
+
+.ll-sub__btn:disabled { opacity: .6; cursor: default; }
+
+.ll-sub__note {
+	margin: 8px 0 0;
+	font-size: .8rem;
+	color: var(--ll-ink-3);
+}
+
+.ll-sub__note.is-ok { color: var(--ll-accent); }
+.ll-sub__note.is-error { color: var(--red, #ff5c5c); }
+
+/* --- letter list --------------------------------------------------------- */
+
+.ll-list, .ll-dir {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.ll-list__item + .ll-list__item {
+	border-top: 1px solid var(--ll-line);
+}
+
+.ll-list__link {
+	display: block;
+	padding: 22px 0;
+	text-decoration: none;
+	color: inherit;
+}
+
+.ll-list__link:hover .ll-list__title { color: var(--ll-accent); }
+
+.ll-list__date {
+	display: block;
+	font-size: .76rem;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	color: var(--ll-ink-3);
+	margin-bottom: 6px;
+}
+
+.ll-list__title {
+	margin: 0 0 6px;
+	font-size: 1.22rem;
+	font-weight: 700;
+	line-height: 1.3;
+	letter-spacing: -.01em;
+	transition: color .18s;
+}
+
+.ll-list__excerpt {
+	margin: 0;
+	color: var(--ll-ink-2);
+	font-size: .94rem;
+}
+
+/* --- single letter ------------------------------------------------------- */
+
+.ll-letter__date {
+	display: block;
+	font-size: .78rem;
+	letter-spacing: .06em;
+	text-transform: uppercase;
+	color: var(--ll-ink-3);
+	margin-bottom: 10px;
+}
+
+.ll-letter__title {
+	margin: 0 0 28px;
+	font-size: 2.1rem;
+	font-weight: 800;
+	line-height: 1.18;
+	letter-spacing: -.025em;
+}
+
+.ll-letter__body { font-size: 1.06rem; line-height: 1.72; }
+
+.ll-letter__body > * + * { margin-top: 1.25em; }
+
+.ll-letter__body h2 {
+	margin-top: 2em;
+	font-size: 1.35rem;
+	font-weight: 700;
+	letter-spacing: -.01em;
+}
+
+.ll-letter__body h3 { margin-top: 1.7em; font-size: 1.12rem; font-weight: 700; }
+
+.ll-letter__body a { color: var(--ll-accent); text-underline-offset: 3px; }
+
+.ll-letter__body img,
+.ll-letter__body figure { max-width: 100%; height: auto; border-radius: var(--ll-r); }
+
+.ll-letter__body blockquote {
+	margin-left: 0;
+	padding-left: 1.1em;
+	border-left: 3px solid var(--ll-accent);
+	color: var(--ll-ink-2);
+}
+
+.ll-letter__body pre {
+	overflow-x: auto;
+	padding: 1em;
+	border-radius: 12px;
+	background: var(--ll-panel-2);
+	border: 1px solid var(--ll-line);
+	font-size: .88rem;
+}
+
+.ll-letter__body table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.ll-letter__body th, .ll-letter__body td {
+	padding: .55em .7em;
+	border-bottom: 1px solid var(--ll-line);
+	text-align: left;
+}
+
+/* The subscribe form after a letter is the one that converts — someone who
+   read to the bottom has already decided. It gets a panel so it reads as an
+   invitation rather than a footer. */
+.ll-pub--single .ll-sub {
+	margin-top: 56px;
+	padding: 24px;
+	background: var(--ll-panel);
+	border: 1px solid var(--ll-line);
+	border-radius: var(--ll-r);
+	box-shadow: var(--ll-shadow);
+}
+
+/* --- empty + directory --------------------------------------------------- */
+
+.ll-empty { padding: 48px 0; text-align: center; }
+.ll-empty__title { margin: 0 0 8px; font-size: 1.2rem; font-weight: 700; }
+.ll-empty__body { margin: 0; color: var(--ll-ink-2); }
+.ll-empty__body a { color: var(--ll-accent); }
+
+.ll-dir__item + .ll-dir__item { border-top: 1px solid var(--ll-line); }
+
+.ll-dir__link {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 16px 0;
+	text-decoration: none;
+	color: inherit;
+}
+
+.ll-dir__avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+.ll-dir__name { display: block; font-weight: 700; }
+.ll-dir__by { display: block; font-size: .82rem; color: var(--ll-ink-3); }
+.ll-dir__link:hover .ll-dir__name { color: var(--ll-accent); }
+
+/* --- narrow screens ------------------------------------------------------ */
+
+@media (max-width: 560px) {
+	.ll-pub { padding: 28px 16px 72px; }
+	.ll-letter__title { font-size: 1.7rem; }
+	.ll-head__id { flex-direction: column; gap: 10px; }
+	.ll-head__names { text-align: center; }
+
+	/* Stacked, not shrunk: a side-by-side input and button at this width
+	   leaves the field too narrow to see a whole email address in. */
+	.ll-sub__row { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ll-sub__btn { transition: none; }
+	.ll-sub__btn:hover:not(:disabled) { transform: none; }
+}

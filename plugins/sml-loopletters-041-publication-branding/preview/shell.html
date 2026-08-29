@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop Letters — setup preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/letters-setup.css">
+<style>
+/* ===========================================================
+   Replica of the live Creator Studio shell.
+   Values transcribed from stockmarketloop.com computed styles
+   so the add-on can be checked in its real context offline.
+   Preview only — NOT shipped.
+   =========================================================== */
+*{box-sizing:border-box}
+body{margin:0;background:#070c15;color:#e6edf5;
+     font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px}
+a{color:inherit;text-decoration:none}
+
+.cs-shell{display:grid;grid-template-columns:222px minmax(0,1fr);min-height:100vh}
+.cs-side{background:#080d17;border-right:1px solid #141d2a;display:flex;flex-direction:column;
+         padding:0 0 18px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.cs-brand{display:flex;align-items:center;gap:11px;padding:20px 18px;border-bottom:1px solid #141d2a}
+.cs-brand .dot{width:22px;height:22px;border-radius:50%;border:2px solid #2b6cff;flex:0 0 auto}
+.cs-brand b{font-size:17px;font-weight:800;line-height:1.15;letter-spacing:-.3px}
+.cs-brand b em{display:block;font-style:normal;color:#2b6cff}
+.cs-side-label{padding:20px 18px 10px;font-size:11px;font-weight:800;letter-spacing:1.3px;color:#5d7189}
+.cs-nav{display:flex;flex-direction:column;gap:2px;padding:0 10px}
+.cs-nav a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;
+          font-size:14px;font-weight:600;color:#a9b8ca}
+.cs-nav a:hover{background:#0d1622;color:#e6edf5}
+.cs-nav a.cs-on{background:#2b6cff;color:#fff}
+.cs-nav a i{width:16px;height:16px;border-radius:4px;background:currentColor;opacity:.5;flex:0 0 auto}
+.cs-help{margin:auto 12px 0;padding:16px;border-radius:12px;background:#0d1622;border:1px solid #1a2534}
+.cs-help b{display:block;font-size:14px;margin-bottom:7px}
+.cs-help p{margin:0 0 13px;font-size:12.5px;line-height:1.55;color:#8798ac}
+.cs-help a{display:block;text-align:center;height:38px;line-height:38px;border-radius:9px;
+           background:#2b6cff;color:#fff;font-size:13px;font-weight:700}
+.cs-main{min-width:0;display:flex;flex-direction:column}
+.cs-top{display:flex;align-items:center;gap:18px;padding:14px 26px;border-bottom:1px solid #141d2a;
+        background:#080d17;position:sticky;top:0;z-index:40}
+.cs-crumb{font-size:19px;font-weight:700;letter-spacing:-.3px}
+.cs-crumb span{color:#5d7189;margin:0 8px;font-weight:500}
+.cs-crumb b{font-weight:700;color:#e6edf5}
+.cs-autosave{font-size:12.5px;color:#5d7189;display:flex;align-items:center;gap:7px}
+.cs-spacer{flex:1}
+.cs-top-btn{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 18px;border-radius:10px;
+            border:1px solid #1e2a3a;background:#0d1622;font-size:14px;font-weight:600;color:#dbe6f2;
+            font-family:inherit;cursor:pointer}
+.cs-top-btn:hover{background:#132033}
+.cs-avatar{display:flex;align-items:center;gap:7px;padding:3px 9px 3px 3px;border-radius:999px;border:1px solid #1e2a3a}
+.cs-avatar .pic{width:34px;height:34px;border-radius:50%;background:#1e2a3a}
+.cs-card{background:#0b131f;border:1px solid #182130;border-radius:14px;padding:22px}
+.cs-card+.cs-card{margin-top:18px}
+.cs-card h2{margin:0 0 4px;font-size:20px;font-weight:700;letter-spacing:-.3px}
+.cs-card h3{margin:0;font-size:16px;font-weight:700}
+.cs-card p.cs-sub{margin:0 0 20px;font-size:13.5px;color:#8798ac}
+.cs-btn{display:inline-flex;align-items:center;gap:10px;height:48px;padding:0 24px;border-radius:10px;
+        font-weight:700;font-size:15px;border:1px solid #223146;background:#0d1622;color:#dbe6f2;
+        font-family:inherit;cursor:pointer}
+.cs-btn:hover{background:#152234}
+.cs-btn-primary{background:#2b6cff;border-color:#2b6cff;color:#fff}
+.cs-btn-primary:hover{background:#1f5ce6}
+.cs-btn[disabled]{opacity:.45;cursor:not-allowed}
+.cs-hint{font-size:12.5px;line-height:1.55;color:#8798ac;margin:0}
+.le-card{background:#0b131f;border:1px solid #182130;border-radius:14px;padding:18px}
+.le-card h3{margin:0 0 8px;font-size:14px;font-weight:700}
+
+/* Assumed mobile collapse. I could not read the live Studio's own breakpoint,
+   so this approximates it purely to test the add-on in a narrow column. */
+@media (max-width:860px){
+  .cs-shell{grid-template-columns:minmax(0,1fr)}
+  .cs-side{display:none}
+  .cs-top{padding:12px 16px;gap:10px}
+  .cs-crumb{font-size:15px}
+  .cs-autosave{display:none}
+  .cs-top-btn{height:38px;padding:0 13px;font-size:13px}
+}
+</style>
+</head>
+<body>
+
+<div class="cs-shell">
+  <aside class="cs-side">
+    <a class="cs-brand"><span class="dot"></span><b>StockMarket<em>Loop</em></b></a>
+    <div class="cs-side-label">CREATOR STUDIO</div>
+    <nav class="cs-nav">
+      <a><i></i>Dashboard</a>
+      <a><i></i>Videos</a>
+      <a><i></i>Upload Video</a>
+      <a><i></i>Go Live</a>
+      <a><i></i>Playlists</a>
+      <a><i></i>Analytics</a>
+      <a><i></i>Comments</a>
+      <a><i></i>Subscribers</a>
+      <a><i></i>Monetization</a>
+      <a class="cs-on"><i></i>Loop Letters</a>
+      <a><i></i>Distribution</a>
+      <a><i></i>Groups</a>
+      <a><i></i>Settings</a>
+    </nav>
+    <div class="cs-help">
+      <b>Write what you trade</b>
+      <p>Letters bind to the tickers you mention and land on those ticker pages automatically.</p>
+      <a>Open Creator Studio</a>
+    </div>
+  </aside>
+
+  <main class="cs-main">
+    <header class="cs-top">
+      <div class="cs-crumb">Creator Studio <span>/</span> <b>Loop Letters</b></div>
+      <div class="cs-autosave">Autosaves as you type</div>
+      <div class="cs-spacer"></div>
+      <button class="cs-top-btn" id="le-settings">Newsletter settings</button>
+      <a class="cs-top-btn">Upload video</a>
+      <span class="cs-avatar"><span class="pic"></span></span>
+    </header>
+
+    <!-- letters-setup.js auto-mounts the wizard here -->
+    <div id="ls-setup-root"></div>
+  </main>
+</div>
+
+<script>
+/* ===========================================================
+   Mock of sml-letters/v1 for offline verification.
+   Preview only — the real plugin talks to WordPress.
+   =========================================================== */
+window.SMLLetters = {
+  rest:   '/mock/',
+  nonce:  'preview',
+  site:   'stockmarketloop.com',
+  base:   '/n/',
+  studio: '/creator-studio/loop-letters/write/'
+};
+
+// Start empty (new creator) unless ?seeded=1
+var seeded = /[?&]seeded=1/.test(location.search);
+var STORE = seeded ? {
+  publication: {
+    name: 'The Market Loop',
+    handle: 'the-market-loop',
+    tagline: 'Weekly breakdowns of what actually moved the tape, for people who read filings for fun.',
+    topics: ['Earnings', 'Macro', 'Options Flow'],
+    cadence: 'weekly',
+    visibility: 'public',
+    accent: '#22d97a',
+    welcome_subject: 'Welcome to The Market Loop',
+    welcome_body: 'Thanks for subscribing.',
+    onboarded: true
+  },
+  // an unrelated key, to prove read-modify-write preserves it
+  legacy_flag: 'do-not-lose-me'
+} : {};
+
+var TAKEN = ['alpha-letter', 'tape-reader'];
+
+window.fetch = function (url, opts) {
+  opts = opts || {};
+  var u = String(url);
+  var body = opts.body ? JSON.parse(opts.body) : null;
+  var reply = function (obj, status) {
+    return Promise.resolve({
+      ok: (status || 200) < 400,
+      status: status || 200,
+      text: function () { return Promise.resolve(JSON.stringify(obj)); }
+    });
+  };
+
+  if (u.indexOf('/mock/settings') === 0) {
+    if ((opts.method || 'GET') === 'POST') {
+      STORE = body;
+      console.log('[preview] POST settings ->', JSON.stringify(STORE, null, 2));
+      return reply({ saved: true });
+    }
+    return reply(STORE);
+  }
+
+  if (u.indexOf('/mock/handle-available') === 0) {
+    var h = decodeURIComponent(u.split('handle=')[1] || '');
+    return reply({ available: TAKEN.indexOf(h) === -1, handle: h });
+  }
+
+  return reply({ code: 'not_found' }, 404);
+};
+</script>
+<script src="../assets/letters-setup.js"></script>
+</body>
+</html>
