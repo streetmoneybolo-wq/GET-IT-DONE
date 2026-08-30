@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Q&A
  * Description: First-party Questions & Answers built on WordPress core — CPT questions, answers as native comments, votes, accepted answers. Content is created server-side via first-party REST routes (this Atomic site gates the core /wp/v2/{cpt} routes). Unanswered questions are noindex from day one.
- * Version: 0.6.0
+ * Version: 0.6.1
  * Author: StockMarketLoop
  *
  * Phase 1 of SML/QA-PLATFORM-HANDOFF.md. Routing confirmed in Phase 0 (§5.2):
@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_QA_VER', '0.6.0' );
+define( 'SML_QA_VER', '0.6.1' );
 define( 'SML_QA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_QA_URL', plugin_dir_url( __FILE__ ) );
 define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );

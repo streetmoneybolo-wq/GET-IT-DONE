@@ -1,29 +1,37 @@
 /*!
- * SML Q&A — add a "Q&A" item to the site's global header nav (.sml-gh-nav) on
- * every page, so the knowledge base is reachable sitewide. The global header is
- * a custom server-rendered component; this appends additively without touching
- * its source (reversible by deactivating the plugin). CSP-safe: external file,
- * no inline handlers. The link inherits the nav's own `.sml-gh-nav a` styling.
+ * SML Q&A — add a "Q&A" item to the site's header nav on every page, so the
+ * knowledge base is reachable sitewide. The site renders two header variants:
+ *   .sml-gh-nav  — the theme header (question pages, posts)
+ *   .hf-nav      — the custom "home feed" shell (homepage + custom surfaces)
+ * This appends additively to whichever is present, without touching either
+ * source (reversible by deactivating the plugin). CSP-safe: external file, no
+ * inline handlers. The link inherits each nav's own `a` styling.
  */
 (function () {
   'use strict';
   var HREF = '/q/';
+  var SELECTORS = ['.sml-gh-nav', '.hf-nav'];
   function onQA() { return location.pathname === HREF || location.pathname.indexOf('/q/') === 0; }
-  function add() {
-    var nav = document.querySelector('.sml-gh-nav');
-    if (!nav) return false;
-    if (nav.querySelector('a[data-sml-qa-nav]')) return true;
+  function addTo(nav) {
+    if (!nav || nav.querySelector('a[data-sml-qa-nav]')) { return; }
     var a = document.createElement('a');
     a.href = HREF;
     a.textContent = 'Q&A';
     a.setAttribute('data-sml-qa-nav', '1');
     if (onQA()) { a.setAttribute('aria-current', 'page'); }
     nav.appendChild(a);
-    return true;
+  }
+  function add() {
+    var found = 0;
+    for (var i = 0; i < SELECTORS.length; i++) {
+      var nav = document.querySelector(SELECTORS[i]);
+      if (nav) { found++; addTo(nav); }
+    }
+    return found > 0;
   }
   function start() {
     if (add()) { return; }
-    /* The header can hydrate slightly after DOMContentLoaded — retry briefly. */
+    /* Header can hydrate slightly after DOMContentLoaded — retry briefly. */
     var n = 0;
     var t = setInterval(function () { if (add() || ++n > 15) { clearInterval(t); } }, 400);
   }
