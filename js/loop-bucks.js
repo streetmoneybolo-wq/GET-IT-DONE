@@ -178,7 +178,7 @@
     var r = b ? b.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 16 };
     p.style.top = Math.round(r.bottom + 8) + 'px';
     p.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + 'px';
-    var body = ME ? (todayRow() + wayRows() + storeButton() + msRows() + gateRows() + historyRows() + boardRows())
+    var body = ME ? (storeButton() + todayRow() + wayRows() + msRows() + gateRows() + historyRows() + boardRows())
       : '<div style="padding:22px 12px;color:#6B7C90;font-size:12px">'+(loading ? 'Loading your Loop Bucks…' : 'Loop Bucks are unavailable right now — try again in a moment.')+'</div>';
     p.innerHTML = head() + '<div class="sml-lb-scroll">' + body + '</div>';
   }
