@@ -58,12 +58,12 @@ function createDatabase({ databaseUrl, databaseSsl }) {
        RETURNING id, status`,
       [job.sourceUrl, job.sourceUrlHash, job.sourceEventKey]
     );
-    if (result.rowCount === 1) return { status: 'accepted', ...result.rows[0] };
+    if (result.rowCount === 1) return { ...result.rows[0], status: 'accepted' };
     const existing = await pool.query(
       'SELECT id, status FROM news_article_jobs WHERE source_url_hash = $1',
       [job.sourceUrlHash]
     );
-    return { status: 'duplicate', ...existing.rows[0] };
+    return { ...existing.rows[0], status: 'duplicate' };
   }
 
   async function claimNewsJob(workerId) {
