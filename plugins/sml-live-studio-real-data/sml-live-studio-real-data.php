@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Live Studio Real Data
  * Description: Replaces Creator Studio overlay demo content with the creator's real subscriber count and shared Watch Page chat.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: StockMarketLoop
  */
 
@@ -21,7 +21,7 @@ function sml_lsrd_enqueue() {
 		'sml-live-studio-real-data',
 		plugins_url( 'assets/live-studio-real-data.js', __FILE__ ),
 		array(),
-		'1.0.2',
+		'1.0.3',
 		true
 	);
 }
@@ -34,7 +34,7 @@ add_action( 'wp_enqueue_scripts', 'sml_lsrd_enqueue', 9999 );
  */
 function sml_lsrd_inject_standalone_asset( $html ) {
 	if ( false !== strpos( $html, 'sml-live-studio-real-data.js' ) ) { return $html; }
-	$src = esc_url( plugins_url( 'assets/live-studio-real-data.js', __FILE__ ) ) . '?ver=1.0.2';
+	$src = esc_url( plugins_url( 'assets/live-studio-real-data.js', __FILE__ ) ) . '?ver=1.0.3';
 	$tag = '<script src="' . $src . '" defer></script>';
 	if ( false !== stripos( $html, '</body>' ) ) {
 		return preg_replace( '/<\/body>/i', $tag . '</body>', $html, 1 );

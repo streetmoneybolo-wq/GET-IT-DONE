@@ -149,8 +149,9 @@
     state.messages.slice(-limit).forEach(function (message) { root.appendChild(realArticle(message)); });
 
     var counter = root.querySelector('.gl-overlay-subscriber-count');
-    if (!counter && state.subscriberTemplate) {
-      counter = state.subscriberTemplate.cloneNode(true);
+    if (!counter && state.subscriberLoaded) {
+      counter = state.subscriberTemplate ? state.subscriberTemplate.cloneNode(true) : document.createElement('div');
+      counter.classList.add('gl-overlay-subscriber-count');
       root.insertBefore(counter, root.firstChild);
     }
     if (counter) {
