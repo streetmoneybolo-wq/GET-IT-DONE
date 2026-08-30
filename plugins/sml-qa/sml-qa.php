@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_QA_VER', '0.1.0' );
+define( 'SML_QA_VER', '0.2.0' );
 define( 'SML_QA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_QA_URL', plugin_dir_url( __FILE__ ) );
 define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );
@@ -141,7 +141,11 @@ add_action( 'template_redirect', function () {
 /* Front-end assets on question pages + any page carrying the ask shortcode. */
 add_action( 'wp_enqueue_scripts', function () {
 	if ( ! is_singular( 'sml_question' ) && ! is_post_type_archive( 'sml_question' ) && ! sml_qa_page_has_ask() ) { return; }
-	wp_enqueue_style( 'sml-qa', SML_QA_URL . 'assets/qa.css', array(), SML_QA_VER );
+	/* The design uses Archivo (UI/headings, incl. a 650 weight → variable axis)
+	   and IBM Plex Mono (data/labels). Load both from Google Fonts; qa.css falls
+	   back to Helvetica/system-mono if the request is blocked. */
+	wp_enqueue_style( 'sml-qa-fonts', 'https://fonts.googleapis.com/css2?family=Archivo:wght@400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap', array(), null );
+	wp_enqueue_style( 'sml-qa', SML_QA_URL . 'assets/qa.css', array( 'sml-qa-fonts' ), SML_QA_VER );
 	wp_enqueue_script( 'sml-qa', SML_QA_URL . 'assets/qa.js', array(), SML_QA_VER, true );
 	wp_localize_script( 'sml-qa', 'SML_QA', array(
 		'rest'    => esc_url_raw( rest_url( 'sml-qa/v1' ) ),
