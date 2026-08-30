@@ -1,0 +1,5 @@
+.sml-loop-bucks{display:inline-flex;align-items:center;gap:5px;color:#4ade80;font-weight:800;text-decoration:none}
+.sml-wallet-panel{max-width:900px;margin:24px auto;padding:28px;border:1px solid rgba(74,222,128,.25);border-radius:18px;background:#0c1410;color:#e8f0ea}
+.sml-wallet-panel__balance{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.sml-wallet-panel__balance>span{color:#6b8574;font-size:11px;letter-spacing:1.5px}.sml-wallet-panel__balance strong{color:#4ade80;font-size:28px}.sml-wallet-panel__balance a{margin-left:auto;color:#4ade80}
+.sml-wallet-history>div{display:flex;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid rgba(255,255,255,.08)}.sml-wallet-history span{display:flex;flex-direction:column}.sml-wallet-history small{color:#6b8574}.sml-wallet-history .is-credit{color:#4ade80}.sml-wallet-history .is-debit{color:#e5484d}
+.sml-profile-wallet{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(74,222,128,.25);border-radius:12px;background:#0c1410;color:#9db5a5}.sml-profile-wallet a{color:#4ade80;text-decoration:none}.sml-profile-wallet__fund{margin-left:auto}
