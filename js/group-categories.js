@@ -3,31 +3,49 @@
  *
  * Companion layer over the groups engine's sidebar: reads per-group category
  * names + channel assignments from sml-gcat/v1 and REGROUPS the existing
- * sidebar VISUALLY under those headers. It never creates, renames, or deletes
- * a channel — and, critically, it never MOVES an engine node at all.
+ * sidebar VISUALLY under those headers. It never creates or deletes a
+ * channel — and, critically, it never MOVES an engine node at all.
  *
  * Adversarially reviewed 2026-08-30, then hardened against the live engine:
  *  - the bootstrap GET sends X-WP-Nonce (core demotes cookie-authed REST
  *    without it to user 0, which would hide the manage gear from owners
  *    forever); an expired nonce retries once anonymously so members still
  *    get read-only grouping.
- *  - regrouping is pure CSS: the container becomes a flex column and every
- *    child gets an inline `order`; our headers are APPENDED (new nodes only)
- *    and float up via their order. Verified live that physically moving
- *    buttons breaks the engine — its installer keeps insertBefore anchors on
- *    the channel buttons and throws NotFoundError, then wipes the sidebar in
- *    the ensuing observer tug-of-war. DOM order always stays the engine's.
+ *  - regrouping is pure CSS — and (since the jump fix, 2026-08-30 PM) the
+ *    channel orders live in ONE injected STYLESHEET keyed by channel id,
+ *    not in inline styles on engine nodes. The live shell REBUILDS every
+ *    channel button every ~10s; with inline orders each rebuild produced
+ *    buttons with order:auto (= 0) that jumped to the TOP of the flex
+ *    column until the next debounced re-apply — the "sidebar jumping"
+ *    bug. A stylesheet rule matches the recreated button the instant the
+ *    shell inserts it, so a rebuild now changes nothing visually. The
+ *    box itself is only marked with data-sml-gcat-active; everything
+ *    without a per-id rule defaults to order:100000 (the native zone,
+ *    ties resolved by DOM order = the engine's own order).
+ *  - our headers are APPENDED (new nodes only) and float up via inline
+ *    order (category order minus 1 — an appended header must beat its
+ *    channels' tie-break or it lands under them). apply() is INCREMENTAL:
+ *    it only appends missing headers, removes stale ones, and writes
+ *    changed style values — a no-op apply produces zero mutations, so the
+ *    body observer can never feed itself (the old clear-and-rebuild pass
+ *    re-created every header on every pass and amplified shell churn).
+ *  - physically moving buttons is still fatal (verified live): the shell
+ *    keeps insertBefore anchors on the channel buttons and throws
+ *    NotFoundError, then wipes the sidebar in the ensuing observer
+ *    tug-of-war. DOM order always stays the engine's.
  *  - empty categories render ONLY for managers (dimmed) — members never see
  *    dead headers from suggestions or restricted channels.
  *  - the observer watches document.body (the shell can replace the container
  *    node) and skips batches while apply() itself is mutating (an `applying`
  *    flag cleared on a macrotask, after the observer's microtask fires); any
- *    other change — including something removing OUR nodes — re-applies.
- *  - grouped() checks per-button correctness (inline order + data-sml-gcat-ord
- *    matching the assignment), so an engine re-render that recreates or
- *    resets a button triggers a re-apply.
+ *    other change — including something removing OUR nodes — re-applies
+ *    after an 80ms debounce (was 400ms; headers should be back within a
+ *    frame or two of a shell rebuild).
  *  - panel: renames carry assignments along; names are trimmed everywhere;
- *    duplicate names block Save; category cap is code-point safe.
+ *    duplicate names block Save; category cap is code-point safe; channel
+ *    ↑/↓ reordering persists through sml-gcat/v1/reorder into the ENGINE's
+ *    own order_index column (its sidebar sorts ORDER BY order_index, id),
+ *    so the saved order is real for every member, JS or not.
  */
 (function () {
   'use strict';
@@ -49,43 +67,87 @@
   function norm(name) { return String(name == null ? '' : name).trim(); }
   function capPoints(s) { return Array.from(String(s)).slice(0, 40).join(''); }
 
-  /* ---------- CSS-order regrouping (no engine node ever moves) ---------- */
-  var NATIVE_BASE = 100000; // non-category children keep engine DOM order up here
+  /* ---------- CSS-order regrouping (no engine node is ever moved OR written) ---------- */
+  var NATIVE_BASE = 100000; // stylesheet default zone: DOM-order ties keep the engine's own order
+
+  var SHEET_ID = 'sml-gcat-style';
+  var sheetKey = null;
+  function ensureSheet() {
+    var want = JSON.stringify([S.categories, S.assignments]);
+    var sheet = document.getElementById(SHEET_ID);
+    if (sheet && sheetKey === want) return;
+    var css = [
+      '.sml-gshell__channels[data-sml-gcat-active]{display:flex;flex-direction:column;}',
+      '.sml-gshell__channels[data-sml-gcat-active]>*{order:' + NATIVE_BASE + ';}'
+    ];
+    S.categories.forEach(function (cat, ci) {
+      var ord = (ci + 1) * 1000;
+      Object.keys(S.assignments).forEach(function (id) {
+        if (S.assignments[id] !== cat) return;
+        var n = parseInt(id, 10);
+        if (n > 0) css.push('.sml-gshell__channels[data-sml-gcat-active]>[data-smlgs-channel="' + n + '"]{order:' + ord + ';}');
+      });
+    });
+    if (!sheet) {
+      sheet = document.createElement('style');
+      sheet.id = SHEET_ID;
+      (document.head || document.documentElement).appendChild(sheet); // head, not body: never re-fires our own observer
+    }
+    sheet.textContent = css.join('\n');
+    sheetKey = want;
+  }
 
   function clearOurs(box) {
     [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]')).forEach(function (h) { h.remove(); });
+    box.removeAttribute('data-sml-gcat-active');
     [].slice.call(box.children).forEach(function (el) {
-      el.style.removeProperty('order');
+      // legacy cleanup: earlier versions wrote inline orders on engine nodes
+      if (el.id !== 'sml-gcat-gear') el.style.removeProperty('order');
       if (el.hasAttribute('data-sml-gcat-ord')) el.removeAttribute('data-sml-gcat-ord');
     });
+    box.style.removeProperty('display');
+    box.style.removeProperty('flex-direction');
   }
 
   // drop any assignment whose category is not declared, at every ingest —
   // the server intersects too, but a single orphaned assignment would make
-  // grouped() permanently false and drive a 400ms apply loop (review #3)
+  // grouped() permanently false and drive a constant apply loop (review #3)
   function intersectAssignments() {
     Object.keys(S.assignments).forEach(function (k) {
       if (S.categories.indexOf(S.assignments[k]) === -1) delete S.assignments[k];
     });
   }
 
-  function grouped(box) {
-    // per-button correctness: every present assigned button must carry the
-    // inline order + marker apply() gave it (a recreated/reset button fails)
-    var headsPresent = !!box.querySelector('.sml-gshell__category[data-sml-gcat]');
-    var assigned = channelButtons(box).filter(function (b) {
+  // headers that SHOULD exist right now: every category for managers
+  // (empty ones dimmed), only populated ones for members. Order is the
+  // category order minus 1 so an appended header always sorts above its
+  // channels' shared order despite losing the DOM-order tie-break.
+  function desiredHeaders(box) {
+    var present = Object.create(null);
+    channelButtons(box).forEach(function (b) {
       var a = S.assignments[b.getAttribute('data-smlgs-channel')];
-      return !!a && S.categories.indexOf(a) !== -1;
+      if (a) present[a] = (present[a] || 0) + 1;
     });
-    if (!S.categories.length) return !headsPresent;
-    if (!assigned.length) {
-      // managers keep dimmed empty headers; for members every header is dead
-      // weight and must be torn down (review #4: engine deleting the last
-      // assigned channel used to leave the member a permanent empty header)
-      return S.canManage ? headsPresent : !headsPresent;
-    }
-    return headsPresent && assigned.every(function (b) {
-      return b.style.order !== '' && b.getAttribute('data-sml-gcat-ord') === S.assignments[b.getAttribute('data-smlgs-channel')];
+    var out = [];
+    S.categories.forEach(function (cat, ci) {
+      var count = present[cat] || 0;
+      if (!count && !S.canManage) return; // members never see empty headers
+      out.push({ name: cat, order: (ci + 1) * 1000 - 1, empty: !count });
+    });
+    return out;
+  }
+
+  function grouped(box) {
+    var ours = [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]'));
+    if (!S.categories.length) return !ours.length;
+    if (!box.hasAttribute('data-sml-gcat-active')) return false;
+    var want = desiredHeaders(box);
+    if (ours.length !== want.length) return false;
+    var byName = Object.create(null); // null proto: a category named "__proto__" must not alias (review #12)
+    ours.forEach(function (h) { byName[h.textContent] = h; });
+    return want.every(function (w) {
+      var h = byName[w.name];
+      return !!h && h.style.order === String(w.order) && h.style.opacity === (w.empty ? '0.45' : '');
     });
   }
 
@@ -104,36 +166,40 @@
       if (S.categories.length && !btns.length) { ensureGear(box); return; }
 
       S.lastBox = box;
-      clearOurs(box);
 
-      if (S.categories.length) {
-        box.style.display = 'flex';
-        box.style.flexDirection = 'column';
-
-        // engine children keep their own relative order, shifted after ours
-        [].slice.call(box.children).forEach(function (el, i) {
-          el.style.order = String(NATIVE_BASE + i);
-        });
-
-        S.categories.forEach(function (cat, ci) {
-          var mine = btns.filter(function (b) { return S.assignments[b.getAttribute('data-smlgs-channel')] === cat; });
-          if (!mine.length && !S.canManage) return; // members never see empty headers
-          var head = document.createElement('div');
-          head.className = 'sml-gshell__category';
-          head.setAttribute('data-sml-gcat', '1');
-          head.textContent = cat;
-          head.style.order = String((ci + 1) * 1000);
-          if (!mine.length) head.style.opacity = '0.45'; // manager-only editing affordance
-          box.appendChild(head);
-          mine.forEach(function (b, j) {
-            b.style.order = String((ci + 1) * 1000 + j + 1);
-            b.setAttribute('data-sml-gcat-ord', cat);
-          });
-        });
-      } else {
-        box.style.removeProperty('display');
-        box.style.removeProperty('flex-direction');
+      if (!S.categories.length) {
+        clearOurs(box);
+        hideEmpties(box);
+        ensureGear(box);
+        return;
       }
+
+      ensureSheet();
+      if (!box.hasAttribute('data-sml-gcat-active')) box.setAttribute('data-sml-gcat-active', '1');
+
+      // incremental header sync: reuse by name, only touch what differs
+      var want = desiredHeaders(box);
+      var wantByName = Object.create(null);
+      want.forEach(function (w) { wantByName[w.name] = w; });
+      var byName = Object.create(null);
+      [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]')).forEach(function (h) {
+        var nm = h.textContent;
+        if (!wantByName[nm] || byName[nm]) { h.remove(); return; } // stale or duplicate
+        byName[nm] = h;
+      });
+      want.forEach(function (w) {
+        var h = byName[w.name];
+        if (!h) {
+          h = document.createElement('div');
+          h.className = 'sml-gshell__category';
+          h.setAttribute('data-sml-gcat', '1');
+          h.textContent = w.name;
+          box.appendChild(h);
+        }
+        if (h.style.order !== String(w.order)) h.style.order = String(w.order);
+        if (w.empty) { if (h.style.opacity !== '0.45') h.style.opacity = '0.45'; } // manager-only editing affordance
+        else if (h.style.opacity !== '') h.style.removeProperty('opacity');
+      });
 
       hideEmpties(box);
       ensureGear(box);
@@ -178,7 +244,7 @@
       g.addEventListener('click', openPanel);
       box.appendChild(g);
     }
-    g.style.order = '999999'; // visually last in the flex column
+    if (g.style.order !== '999999') g.style.order = '999999'; // visually last in the flex column
   }
 
   function el(tag, css, parent, text) {
@@ -205,10 +271,11 @@
     // channel data comes from the ENGINE's own list endpoint (bare DB names —
     // the sidebar's "#" is decoration), falling back to sidebar buttons
     // read-only when it can't be reached. Creation uses the engine's own
-    // create endpoint; only rename needs our companion route.
+    // create endpoint; only rename and reorder need our companion routes.
     var gid = (window.SMLGroupShell && window.SMLGroupShell.groupId) ? parseInt(window.SMLGroupShell.groupId, 10) : 0;
-    var chans = null;                    // [{id, name, type, ro}] — null while loading
+    var chans = null;                    // [{id, name, type, ro}] — null while loading; ARRAY ORDER = sidebar order
     var orig = Object.create(null);      // id -> name at panel open
+    var origSeq = '';                    // id sequence at load (+ later creates) — reorder saves only when it changed
     var createdAny = false;
     var CH_TYPES = ['text', 'alerts', 'education', 'voice', 'live'];
     function loadChannels() {
@@ -218,6 +285,7 @@
           return { id: parseInt(b.getAttribute('data-smlgs-channel'), 10), name: (b.textContent || '').trim().replace(/^#\s*/, ''), type: '', ro: true };
         });
         chans.forEach(function (c) { orig[c.id] = c.name; });
+        origSeq = chans.map(function (c) { return c.id; }).join(',');
       }
       if (!gid) { fromSidebar(); drawAssign(); return; }
       fetch('/wp-json/sml/v1/group/channels?group_id=' + gid, { credentials: 'same-origin', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
@@ -228,6 +296,7 @@
           else {
             chans = list.map(function (c) { return { id: parseInt(c.id, 10), name: String(c.name || ''), type: String(c.type || 'text'), ro: false }; });
             chans.forEach(function (c) { orig[c.id] = c.name; });
+            origSeq = chans.map(function (c) { return c.id; }).join(',');
           }
           drawAssign();
         })
@@ -281,7 +350,7 @@
       add.addEventListener('click', function () { if (cats.length < 30) { cats.push(''); drawCats(); drawAssign(); } });
     }
 
-    el('div', 'font:700 12px inherit;letter-spacing:1px;color:#8fa89b;margin:4px 0 6px;', card, 'CHANNELS — rename and pick a category');
+    el('div', 'font:700 12px inherit;letter-spacing:1px;color:#8fa89b;margin:4px 0 6px;', card, 'CHANNELS — rename, reorder (↑↓) and pick a category');
     var chBox = el('div', 'display:flex;flex-direction:column;gap:5px;margin-bottom:10px;', card);
     function catSelect(row, id) {
       var sel = el('select', 'flex:0 1 auto;max-width:100%;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:5px 8px;font:12px inherit;', row);
@@ -307,8 +376,22 @@
       chBox.innerHTML = '';
       if (chans === null) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'Loading channels…'); return; }
       if (!chans.length) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'No channels yet — add one below.'); return; }
-      chans.forEach(function (c) {
+      chans.forEach(function (c, idx) {
         var row = el('div', 'display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;', chBox);
+        if (!c.ro) {
+          // ↑/↓ move the channel in the ENGINE's real order (order_index) on Save
+          [['↑', -1], ['↓', 1]].forEach(function (mv) {
+            var edge = mv[1] === -1 ? idx === 0 : idx === chans.length - 1;
+            var b = el('button', 'flex:0 0 auto;background:#101c16;border:1px solid #24382e;border-radius:7px;color:#8fa89b;padding:4px 8px;cursor:pointer;font:12px inherit;' + (edge ? 'opacity:.35;cursor:default;' : ''), row, mv[0]);
+            b.type = 'button';
+            b.addEventListener('click', function () {
+              var j = idx + mv[1];
+              if (j < 0 || j >= chans.length) return;
+              var t = chans[idx]; chans[idx] = chans[j]; chans[j] = t;
+              drawAssign();
+            });
+          });
+        }
         el('span', 'flex:0 0 auto;color:#8fa89b;font-size:13px;', row, '#');
         var nm = el('input', 'flex:1 1 130px;min-width:110px;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:5px 8px;font:13px inherit;', row);
         nm.type = 'text'; nm.value = c.name; nm.maxLength = 120;
@@ -352,6 +435,9 @@
           chans = chans || [];
           chans.push({ id: parseInt(ch.id, 10), name: String(ch.name || name), type: String(ch.type || newType.value), ro: false });
           orig[ch.id] = String(ch.name || name);
+          // the engine appends creates at MAX(order_index)+1 — extending the
+          // baseline keeps "did the user reorder?" honest across a create
+          origSeq = origSeq ? origSeq + ',' + ch.id : String(ch.id);
           newName.value = '';
           addNote.textContent = '#' + ch.name + ' created — assign it a category, then Save.';
           drawAssign();
@@ -386,11 +472,15 @@
         if (name && clean.indexOf(name) !== -1) outAsgn[k] = name;
       });
       // channel renames go first, one at a time (our companion route), then
-      // the categories; renamed/created channels need a reload because the
-      // engine renders the sidebar names, not us
+      // the reorder (engine order_index), then the categories; renamed,
+      // created, or reordered channels need a reload because the engine
+      // renders the sidebar (names and DOM order), not us
       var renames = (chans || []).filter(function (c) {
         return !c.ro && norm(c.name) !== '' && norm(c.name) !== orig[c.id];
       });
+      var anyRo = (chans || []).some(function (c) { return c.ro; });
+      var seq = (chans || []).map(function (c) { return c.id; }).join(',');
+      var orderChanged = !anyRo && chans !== null && seq !== origSeq;
       note.textContent = 'Saving…';
       save.disabled = true;
       var chain = Promise.resolve(true);
@@ -407,21 +497,31 @@
       });
       chain.then(function (renamesOk) {
         if (!renamesOk) { save.disabled = false; note.textContent = 'A channel rename failed — nothing else was saved.'; return; }
-        fetch(API, {
-          method: 'POST', credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-          body: JSON.stringify({ categories: clean, assignments: outAsgn })
-        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-          .then(function (res) {
-            save.disabled = false;
-            if (!res.ok || !res.j || res.j.saved !== true) { note.textContent = (res.j && res.j.message) || 'Could not save.'; return; }
-            S.categories = res.j.categories || [];
-            S.assignments = res.j.assignments || {};
-            intersectAssignments();
-            if (renames.length || createdAny) { note.textContent = 'Saved — reloading…'; location.reload(); return; }
-            close(); apply();
-          })
-          .catch(function () { save.disabled = false; note.textContent = 'Could not save.'; });
+        var reorderStep = !orderChanged ? Promise.resolve(true)
+          : fetch('/wp-json/sml-gcat/v1/reorder?slug=' + encodeURIComponent(SLUG), {
+              method: 'POST', credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+              body: JSON.stringify({ order: (chans || []).map(function (c) { return c.id; }) })
+            }).then(function (r) { return r.json().then(function (j) { return r.ok && j && j.saved === true; }); })
+              .catch(function () { return false; });
+        reorderStep.then(function (orderOk) {
+          if (!orderOk) { save.disabled = false; note.textContent = 'Saving the channel order failed — categories were not saved.'; return; }
+          fetch(API, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+            body: JSON.stringify({ categories: clean, assignments: outAsgn })
+          }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              save.disabled = false;
+              if (!res.ok || !res.j || res.j.saved !== true) { note.textContent = (res.j && res.j.message) || 'Could not save.'; return; }
+              S.categories = res.j.categories || [];
+              S.assignments = res.j.assignments || {};
+              intersectAssignments();
+              if (renames.length || createdAny || orderChanged) { note.textContent = 'Saved — reloading…'; location.reload(); return; }
+              close(); apply();
+            })
+            .catch(function () { save.disabled = false; note.textContent = 'Could not save.'; });
+        });
       });
     });
 
@@ -465,7 +565,7 @@
         if (!box) return;
         if (box !== S.lastBox || !grouped(box) || (S.canManage && !box.querySelector('#sml-gcat-gear'))) apply();
         else hideEmpties(box); // display-only refresh (attribute writes — no childList re-fire)
-      }, 400);
+      }, 80); // fast: the shell rebuilds every button ~10s and wipes our headers — they must be back within a frame or two. Channel ORDER survives rebuilds by itself now (stylesheet rules, not inline styles), so a pending debounce no longer shows a shuffled sidebar.
     }).observe(document.body, { childList: true, subtree: true }); // body: the shell may REPLACE the container node
   }
 

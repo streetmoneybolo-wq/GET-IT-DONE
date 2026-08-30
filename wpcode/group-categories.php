@@ -26,6 +26,14 @@
  *        same way the engine's create sanitizes). Same manager gate. NOTE:
  *        the engine restricts posting in any channel whose name or type
  *        contains "alert" — a rename can change who may post, by design.
+ *   POST /reorder?slug={slug} -> { order: [channel_id, ...] }
+ *        Persists the manager's ↑/↓ channel order into the ENGINE's own
+ *        order_index column — its sidebar and channels endpoint both sort
+ *        ORDER BY order_index ASC, id ASC, and its create endpoint appends
+ *        at MAX(order_index)+1, so writing the list position as the index
+ *        is exactly the engine's own scheme. Every submitted id must belong
+ *        to THIS group (same cross-group guard as rename); channels not in
+ *        the list (e.g. created after the panel loaded) keep their index.
  *
  * Also injects (via the same init@0 output-buffer pattern as the site's other
  * loaders) the CDN script tag + a wp_rest nonce on /groups/{slug} pages only.
@@ -201,6 +209,54 @@ if ( ! function_exists( 'sml_gcat_group_by_slug' ) ) {
 						array( '%d' )
 					);
 					return array( 'saved' => true, 'id' => $cid, 'name' => $name );
+				},
+			),
+		) );
+
+		register_rest_route( 'sml-gcat/v1', '/reorder', array(
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => static function ( $req ) {
+					$group = sml_gcat_group_by_slug( $req->get_param( 'slug' ) );
+					return $group && sml_gcat_can_manage( $group );
+				},
+				'callback'            => static function ( $req ) {
+					global $wpdb;
+					$group = sml_gcat_group_by_slug( $req->get_param( 'slug' ) );
+					if ( ! $group ) { return new WP_Error( 'sml_gcat_no_group', 'Unknown group.', array( 'status' => 404 ) ); }
+					$body = $req->get_json_params();
+					$in   = ( is_array( $body ) && isset( $body['order'] ) && is_array( $body['order'] ) ) ? $body['order'] : null;
+					if ( null === $in || count( $in ) > 300 ) { return new WP_Error( 'sml_gcat_bad_input', 'order must be an array of channel ids (max 300).', array( 'status' => 400 ) ); }
+					$ids = array();
+					foreach ( $in as $v ) {
+						$v = (int) $v;
+						if ( $v > 0 && ! in_array( $v, $ids, true ) ) { $ids[] = $v; }
+					}
+					// every id must be one of THIS group's channels — the manager
+					// gate above is per-slug, so without this an admin of group A
+					// could reorder channels in group B by mixing parameters
+					$rows    = $wpdb->get_results( $wpdb->prepare(
+						"SELECT id, order_index FROM {$wpdb->prefix}sml_group_channels WHERE group_id = %d",
+						(int) $group['id']
+					), ARRAY_A );
+					$current = array();
+					foreach ( (array) $rows as $r ) { $current[ (int) $r['id'] ] = (int) $r['order_index']; }
+					foreach ( $ids as $cid ) {
+						if ( ! array_key_exists( $cid, $current ) ) {
+							return new WP_Error( 'sml_gcat_wrong_group', 'A channel in the order list is not in this group.', array( 'status' => 400 ) );
+						}
+					}
+					foreach ( $ids as $i => $cid ) {
+						if ( $current[ $cid ] === $i ) { continue; } // no-op rows skip the write
+						$wpdb->update(
+							$wpdb->prefix . 'sml_group_channels',
+							array( 'order_index' => $i ),
+							array( 'id' => $cid ),
+							array( '%d' ),
+							array( '%d' )
+						);
+					}
+					return array( 'saved' => true, 'order' => $ids );
 				},
 			),
 		) );
