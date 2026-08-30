@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createArticleGenerator, validateAndSanitize } = require('./article-generator');
+const { classifyArticleTemplate, createArticleGenerator, validateAndSanitize } = require('./article-generator');
 
 function article(overrides = {}) {
   const paragraphs = Array.from({ length: 100 }, (_, i) => `<p>Markets paragraph ${i} explains verified developments and relevant context for readers following this unfolding business report today.</p>`).join('');
@@ -84,4 +84,37 @@ test('extends the newsroom rules without weakening factuality safeguards', () =>
   assert.match(SYSTEM_INSTRUCTIONS, /OpenGraph, Twitter, and NewsArticle JSON-LD/i);
   assert.match(SYSTEM_INSTRUCTIONS, /never invent a fact, number, statistic, quote/i);
   assert.match(SYSTEM_INSTRUCTIONS, /non-defamatory/i);
+});
+
+test('uses the standard SML News template unless the source verifies a Grandmaster-OBI alert', () => {
+  assert.equal(classifyArticleTemplate({ title: 'NVDA earnings update', text: 'The company reported results.' }), 'news');
+  assert.equal(classifyArticleTemplate({ title: 'Grandmaster-OBI alert review', text: 'The reported entry and alert-to-high move were verified.' }), 'grandmaster_obi_alert');
+  assert.equal(classifyArticleTemplate({ title: 'Grandmaster-OBI profile', text: 'A profile covering his public market commentary.' }), 'news');
+});
+
+test('renders ordinary reporting with the news template and transparency box', () => {
+  const output = validateAndSanitize(article(), 'https://example.com/source', 'news');
+  assert.match(output.body_html, /<article class="sml-news-article">/);
+  assert.doesNotMatch(output.body_html, /sml-alert-report/);
+  assert.match(output.body_html, /class="sml-trust-box"/);
+  assert.match(output.body_html, /SML News/);
+});
+
+test('renders verified Grandmaster-OBI coverage with the alert template, TOC, chart, and ticker links', () => {
+  const output = validateAndSanitize(article({
+    title: 'CRE Alert Record Shows a Major Intraday Move',
+    subtitle: 'The verified CRE alert record is compared with the session high and documented market data.',
+    excerpt: 'A verified CRE alert record and market data show the timing, scale, and risks surrounding the intraday move.',
+    body_html: article().body_html.replace('<h2>What happened</h2>', '<h2>Verified performance</h2><table><tbody><tr><th scope="row">Reported entry</th><td>$2.47</td></tr></tbody></table><h2>Risk considerations</h2>'),
+    meta_description: 'CRE alert data documents the reported entry, intraday high, timing, and significant trading risks surrounding the verified market move today.',
+    tags: ['CRE', 'Market Alerts', 'Trading Risk'],
+    tickers: ['$CRE']
+  }), 'https://example.com/source', 'grandmaster_obi_alert');
+  assert.match(output.body_html, /<article class="sml-alert-report">/);
+  assert.match(output.body_html, /class="sml-article-toc"/);
+  assert.match(output.body_html, /href="#verified-performance"/);
+  assert.match(output.body_html, /class="sml-live-chart"/);
+  assert.match(output.body_html, /stock-chart\/\?symbol=CRE/);
+  assert.doesNotMatch(output.body_html, /symbol=\$CRE/);
+  assert.match(output.body_html, /class="sml-market-links"/);
 });

@@ -1,5 +1,5 @@
 /**
- * SML Grandmaster-OBI alert articles — permanent layout loader.
+ * SML News Article Templates 2.0 — permanent layout loader.
  *
  * WPCode: PHP Snippet, Auto Insert / Run Everywhere.
  * The loader is content-scoped: ordinary posts/pages never receive this CSS.
@@ -9,7 +9,8 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 		if ( is_admin() || ! is_singular( 'post' ) ) { return false; }
 		$post = get_queried_object();
 		if ( ! $post instanceof WP_Post ) { return false; }
-		return false !== strpos( (string) $post->post_content, 'sml-alert-report' );
+		$content = (string) $post->post_content;
+		return false !== strpos( $content, 'sml-alert-report' ) || false !== strpos( $content, 'sml-news-article' );
 	}
 
 	function sml_alert_article_layout_ref() {
@@ -23,7 +24,14 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 	}
 
 	add_filter( 'body_class', function ( $classes ) {
-		if ( sml_alert_article_is_layout_post() ) { $classes[] = 'sml-alert-article-page'; }
+		if ( ! sml_alert_article_is_layout_post() ) { return $classes; }
+		$classes[] = 'sml-article-template-page';
+		$post = get_queried_object();
+		if ( $post instanceof WP_Post && false !== strpos( (string) $post->post_content, 'sml-alert-report' ) ) {
+			$classes[] = 'sml-alert-article-page';
+		} else {
+			$classes[] = 'sml-news-article-page';
+		}
 		return $classes;
 	}, 20 );
 
@@ -31,7 +39,7 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 		if ( ! sml_alert_article_is_layout_post() ) { return; }
 		wp_enqueue_style(
 			'sml-alert-article-fonts',
-			'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Space+Grotesk:wght@500;600;700&display=swap',
+			'https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap',
 			array(),
 			null
 		);
@@ -42,12 +50,15 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 			array( 'sml-alert-article-fonts' ),
 			$ref
 		);
-		wp_enqueue_script(
-			'sml-alert-article-market-pulse',
-			'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( $ref ) . '/js/article-market-pulse.js',
-			array(),
-			$ref,
-			true
-		);
+		$post = get_queried_object();
+		if ( $post instanceof WP_Post && false !== strpos( (string) $post->post_content, 'sml-alert-report' ) ) {
+			wp_enqueue_script(
+				'sml-alert-article-market-pulse',
+				'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( $ref ) . '/js/article-market-pulse.js',
+				array(),
+				$ref,
+				true
+			);
+		}
 	}, 40 );
 }
