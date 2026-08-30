@@ -189,17 +189,55 @@
     catch (e) { return String(value || '').replace(/\/$/, ''); }
   }
 
+  function upcomingWhen(value) {
+    var at = Date.parse(value || '');
+    return isFinite(at) ? new Date(at).toLocaleString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    }) : 'Start time unavailable';
+  }
+
+  function ensureUpcomingCard(section, row) {
+    var url = normalizeUrl(row && row.watch_url);
+    var cards = Array.prototype.slice.call(section.querySelectorAll('.cs-live-library-card'));
+    var card = cards.find(function (candidate) {
+      var copy = candidate.querySelector('[data-copy-stream]');
+      return normalizeUrl(copy && copy.getAttribute('data-copy-stream')) === url;
+    });
+    if (card) { return card; }
+
+    var list = section.querySelector('.cs-live-library-list');
+    if (!list) {
+      list = document.createElement('div');
+      list.className = 'cs-live-library-list';
+      var empty = section.querySelector('.cs-dash-empty');
+      if (empty) { empty.replaceWith(list); }
+      else { section.appendChild(list); }
+    }
+
+    var image = /^https:\/\//i.test(String(row.thumbnail_url || '')) ? String(row.thumbnail_url) : '';
+    card = document.createElement('article');
+    card.className = 'cs-live-library-card';
+    card.setAttribute('data-sml-stream-id', String(row.id || ''));
+    card.innerHTML = '<a class="cs-live-library-thumb" href="' + esc(url) + '"'
+      + (image ? ' style="background-image:url(&quot;' + esc(image) + '&quot;)"' : '') + '>'
+      + (image ? '' : 'No thumbnail') + '</a>'
+      + '<div><a href="' + esc(url) + '"><b>' + esc(row.title || 'Untitled stream') + '</b></a>'
+      + '<small>' + esc(upcomingWhen(row.scheduled_at)) + '</small>'
+      + '<span class="cs-live-library-badge">Upcoming live</span></div>'
+      + '<div class="cs-live-library-copy"><input readonly value="' + esc(url) + '" aria-label="Stream link">'
+      + '<button type="button" data-copy-stream="' + esc(url) + '">Copy link</button></div>';
+    list.appendChild(card);
+    return card;
+  }
+
   function enhanceUpcomingLibrary() {
     var section = document.querySelector('[data-cs-live-library]');
     if (!section || !upcoming.rows.length) { return; }
-    section.querySelectorAll('.cs-live-library-card').forEach(function (card) {
+    upcoming.rows.filter(function (item) {
+      return item && item.status === 'scheduled' && item.id && item.watch_url;
+    }).forEach(function (row) {
+      var card = ensureUpcomingCard(section, row);
       if (card.querySelector('[data-delete-upcoming]')) { return; }
-      var copy = card.querySelector('[data-copy-stream]');
-      var url = normalizeUrl(copy && copy.getAttribute('data-copy-stream'));
-      var row = upcoming.rows.find(function (item) {
-        return item && item.status === 'scheduled' && Date.parse(item.scheduled_at || '') > Date.now() && normalizeUrl(item.watch_url) === url;
-      });
-      if (!row || !row.id) { return; }
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'sml-delete-upcoming';

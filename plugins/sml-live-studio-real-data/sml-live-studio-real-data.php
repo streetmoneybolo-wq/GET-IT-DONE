@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Live Studio Real Data
  * Description: Replaces Creator Studio overlay demo content with the creator's real subscriber count and shared Watch Page chat.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: StockMarketLoop
  */
 
@@ -21,7 +21,7 @@ function sml_lsrd_enqueue() {
 		'sml-live-studio-real-data',
 		plugins_url( 'assets/live-studio-real-data.js', __FILE__ ),
 		array(),
-		'1.1.0',
+		'1.1.1',
 		true
 	);
 }
@@ -34,7 +34,7 @@ add_action( 'wp_enqueue_scripts', 'sml_lsrd_enqueue', 9999 );
  */
 function sml_lsrd_inject_standalone_asset( $html ) {
 	if ( false !== strpos( $html, 'sml-live-studio-real-data.js' ) ) { return $html; }
-	$src = esc_url( plugins_url( 'assets/live-studio-real-data.js', __FILE__ ) ) . '?ver=1.1.0';
+	$src = esc_url( plugins_url( 'assets/live-studio-real-data.js', __FILE__ ) ) . '?ver=1.1.1';
 	$tag = '<script src="' . $src . '" defer></script>';
 	if ( false !== stripos( $html, '</body>' ) ) {
 		return preg_replace( '/<\/body>/i', $tag . '</body>', $html, 1 );
@@ -72,8 +72,10 @@ function sml_lsrd_delete_upcoming( WP_REST_Request $request ) {
 	if ( empty( $row['id'] ) ) {
 		return new WP_Error( 'sml_lsrd_stream_not_owned', 'That upcoming stream does not belong to this creator.', array( 'status' => 404 ) );
 	}
-	$starts = strtotime( (string) ( $row['scheduled_at'] ?? '' ) );
-	if ( 'scheduled' !== ( $row['status'] ?? '' ) || ! $starts || $starts <= time() ) {
+	/* A missed scheduled time is not the same as a stream that actually
+	 * started. Keep stale, never-started schedules removable; only the real
+	 * lifecycle status can close this creator action. */
+	if ( 'scheduled' !== ( $row['status'] ?? '' ) ) {
 		return new WP_Error( 'sml_lsrd_stream_started', 'A stream can only be deleted before it starts.', array( 'status' => 409 ) );
 	}
 	$request->set_param( 'stream_id', $stream_id );
