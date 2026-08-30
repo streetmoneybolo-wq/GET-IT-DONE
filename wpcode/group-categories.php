@@ -39,29 +39,42 @@ if ( ! function_exists( 'sml_gcat_group_by_slug' ) ) {
 		return $row ? array( 'id' => (int) $row->id, 'owner_id' => (int) $row->owner_id ) : null;
 	}
 
-	function sml_gcat_role( $group ) {
-		if ( ! is_array( $group ) || empty( $group['id'] ) ) { return ''; }
+	/** Raw membership-row role, or null when the user has no row at all. */
+	function sml_gcat_member_role( $group ) {
+		if ( ! is_array( $group ) || empty( $group['id'] ) ) { return null; }
 		$uid = get_current_user_id();
-		if ( ! $uid ) { return ''; }
-		if ( ! empty( $group['owner_id'] ) && (int) $group['owner_id'] === $uid ) { return 'owner'; }
+		if ( ! $uid ) { return null; }
 		global $wpdb;
-		$role = strtolower( trim( (string) $wpdb->get_var( $wpdb->prepare(
+		$role = $wpdb->get_var( $wpdb->prepare(
 			"SELECT role FROM {$wpdb->prefix}sml_group_members WHERE group_id = %d AND user_id = %d",
 			(int) $group['id'], $uid
-		) ) ) );
-		if ( 'mod' === $role ) { $role = 'moderator'; }
-		return in_array( $role, array( 'owner', 'admin', 'moderator', 'member' ), true ) ? $role : '';
+		) );
+		return null === $role ? null : strtolower( trim( (string) $role ) );
 	}
 
+	/** Mirrors the ENGINE's manage rule (verified live: sml/v1/group grants
+	 *  can_manage to site admins even when owner_id is another account —
+	 *  a row-owner-only check locks the admin out of the gear). Order:
+	 *  site admin -> engine's own function when exposed -> row owner ->
+	 *  owner/admin membership role. Moderators/members never manage. */
 	function sml_gcat_can_manage( $group ) {
-		return in_array( sml_gcat_role( $group ), array( 'owner', 'admin' ), true );
+		if ( ! is_array( $group ) || empty( $group['id'] ) ) { return false; }
+		$uid = get_current_user_id();
+		if ( ! $uid ) { return false; }
+		if ( current_user_can( 'manage_options' ) ) { return true; }
+		if ( function_exists( 'sml_groups_current_user_can_manage' ) && sml_groups_current_user_can_manage( (int) $group['id'], $uid ) ) { return true; }
+		if ( ! empty( $group['owner_id'] ) && (int) $group['owner_id'] === $uid ) { return true; }
+		return in_array( (string) sml_gcat_member_role( $group ), array( 'owner', 'admin' ), true );
 	}
 
 	/** Category names may describe paid/private group structure — only people
-	 *  who can actually see the sidebar (any member, plus the owner) may read
-	 *  them. Everyone else gets empty arrays, never an error. */
+	 *  who can actually see the sidebar may read them. ANY membership row
+	 *  counts (don't interpret the role string — an unexpected value must not
+	 *  blind a real member), plus managers. Everyone else gets empty arrays,
+	 *  never an error. */
 	function sml_gcat_can_view( $group ) {
-		return '' !== sml_gcat_role( $group );
+		if ( null !== sml_gcat_member_role( $group ) ) { return true; }
+		return sml_gcat_can_manage( $group );
 	}
 
 	/** One sanitation pipeline for category names, applied identically to the
