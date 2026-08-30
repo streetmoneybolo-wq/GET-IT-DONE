@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Live Studio Real Data
  * Description: Replaces Creator Studio overlay demo content with the creator's real subscriber count and shared Watch Page chat.
- * Version: 1.0.3
+ * Version: 1.1.0
  * Author: StockMarketLoop
  */
 
@@ -21,7 +21,7 @@ function sml_lsrd_enqueue() {
 		'sml-live-studio-real-data',
 		plugins_url( 'assets/live-studio-real-data.js', __FILE__ ),
 		array(),
-		'1.0.3',
+		'1.1.0',
 		true
 	);
 }
@@ -34,7 +34,7 @@ add_action( 'wp_enqueue_scripts', 'sml_lsrd_enqueue', 9999 );
  */
 function sml_lsrd_inject_standalone_asset( $html ) {
 	if ( false !== strpos( $html, 'sml-live-studio-real-data.js' ) ) { return $html; }
-	$src = esc_url( plugins_url( 'assets/live-studio-real-data.js', __FILE__ ) ) . '?ver=1.0.3';
+	$src = esc_url( plugins_url( 'assets/live-studio-real-data.js', __FILE__ ) ) . '?ver=1.1.0';
 	$tag = '<script src="' . $src . '" defer></script>';
 	if ( false !== stripos( $html, '</body>' ) ) {
 		return preg_replace( '/<\/body>/i', $tag . '</body>', $html, 1 );
@@ -62,12 +62,35 @@ function sml_lsrd_creator_status( WP_REST_Request $request ) {
 	return rest_ensure_response( array( 'subscriber_count' => $count ) );
 }
 
+function sml_lsrd_delete_upcoming( WP_REST_Request $request ) {
+	$user_id   = get_current_user_id();
+	$stream_id = sanitize_key( (string) $request->get_param( 'stream_id' ) );
+	if ( ! $user_id || ! $stream_id || ! function_exists( 'sml_scheduled_live_row' ) || ! function_exists( 'sml_scheduled_live_rest_self' ) ) {
+		return new WP_Error( 'sml_lsrd_stream_unavailable', 'That upcoming stream could not be found.', array( 'status' => 404 ) );
+	}
+	$row = sml_scheduled_live_row( $user_id, $stream_id );
+	if ( empty( $row['id'] ) ) {
+		return new WP_Error( 'sml_lsrd_stream_not_owned', 'That upcoming stream does not belong to this creator.', array( 'status' => 404 ) );
+	}
+	$starts = strtotime( (string) ( $row['scheduled_at'] ?? '' ) );
+	if ( 'scheduled' !== ( $row['status'] ?? '' ) || ! $starts || $starts <= time() ) {
+		return new WP_Error( 'sml_lsrd_stream_started', 'A stream can only be deleted before it starts.', array( 'status' => 409 ) );
+	}
+	$request->set_param( 'stream_id', $stream_id );
+	return sml_scheduled_live_rest_self( $request );
+}
+
 function sml_lsrd_register_routes() {
 	register_rest_route( 'sml-live-studio-real-data/v1', '/creator-status', array(
 		'methods'             => WP_REST_Server::READABLE,
 		'callback'            => 'sml_lsrd_creator_status',
 		'permission_callback' => 'sml_lsrd_can_read_creator_status',
 		'args'                => array( 'creator_id' => array( 'required' => true, 'type' => 'integer' ) ),
+	) );
+	register_rest_route( 'sml-live-studio-real-data/v1', '/upcoming/(?P<stream_id>[A-Za-z0-9]{8,32})', array(
+		'methods'             => WP_REST_Server::DELETABLE,
+		'callback'            => 'sml_lsrd_delete_upcoming',
+		'permission_callback' => 'is_user_logged_in',
 	) );
 }
 add_action( 'rest_api_init', 'sml_lsrd_register_routes' );

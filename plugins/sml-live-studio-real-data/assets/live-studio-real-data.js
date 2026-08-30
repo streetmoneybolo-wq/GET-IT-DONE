@@ -32,6 +32,7 @@
     paintQueued: false,
     lastSignature: ''
   };
+  var upcoming = { rows: [], busy: false, loadedAt: 0 };
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
@@ -59,6 +60,14 @@
   function relationshipUrl() {
     var creatorId = Number(cfg.userId || 0);
     return creatorId ? '/wp-json/sml-live-studio-real-data/v1/creator-status?creator_id=' + encodeURIComponent(creatorId) + '&_=' + Date.now() : '';
+  }
+
+  function upcomingUrl() {
+    return '/wp-json/sml-scheduled-live/v1/creator?_=' + Date.now();
+  }
+
+  function deleteUpcomingUrl(streamId) {
+    return '/wp-json/sml-live-studio-real-data/v1/upcoming/' + encodeURIComponent(streamId);
   }
 
   function fetchJson(url) {
@@ -175,6 +184,85 @@
     window.requestAnimationFrame(paint);
   }
 
+  function normalizeUrl(value) {
+    try { return new URL(String(value || ''), window.location.origin).href.replace(/\/$/, ''); }
+    catch (e) { return String(value || '').replace(/\/$/, ''); }
+  }
+
+  function enhanceUpcomingLibrary() {
+    var section = document.querySelector('[data-cs-live-library]');
+    if (!section || !upcoming.rows.length) { return; }
+    section.querySelectorAll('.cs-live-library-card').forEach(function (card) {
+      if (card.querySelector('[data-delete-upcoming]')) { return; }
+      var copy = card.querySelector('[data-copy-stream]');
+      var url = normalizeUrl(copy && copy.getAttribute('data-copy-stream'));
+      var row = upcoming.rows.find(function (item) {
+        return item && item.status === 'scheduled' && Date.parse(item.scheduled_at || '') > Date.now() && normalizeUrl(item.watch_url) === url;
+      });
+      if (!row || !row.id) { return; }
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sml-delete-upcoming';
+      button.setAttribute('data-delete-upcoming', String(row.id));
+      button.setAttribute('data-stream-title', String(row.title || 'this stream'));
+      button.textContent = 'Delete';
+      var actions = card.querySelector('.cs-live-library-copy');
+      if (actions) { actions.appendChild(button); }
+    });
+  }
+
+  function loadUpcomingIndex(force) {
+    if (upcoming.busy || (!force && Date.now() - upcoming.loadedAt < 15000)) { enhanceUpcomingLibrary(); return; }
+    upcoming.busy = true;
+    fetchJson(upcomingUrl()).then(function (payload) {
+      upcoming.rows = Array.isArray(payload && payload.streams) ? payload.streams : [];
+      upcoming.loadedAt = Date.now();
+      enhanceUpcomingLibrary();
+    }).catch(function () {
+      upcoming.rows = [];
+    }).then(function () { upcoming.busy = false; });
+  }
+
+  function removeUpcomingCard(button, streamId) {
+    upcoming.rows = upcoming.rows.filter(function (row) { return String(row && row.id) !== String(streamId); });
+    var card = button.closest('.cs-live-library-card');
+    var list = card && card.parentElement;
+    if (card) { card.remove(); }
+    if (list && !list.querySelector('.cs-live-library-card')) {
+      var empty = document.createElement('div');
+      empty.className = 'cs-dash-empty';
+      empty.textContent = 'No upcoming stream is scheduled yet.';
+      list.replaceWith(empty);
+    }
+  }
+
+  function deleteUpcoming(button) {
+    var streamId = button.getAttribute('data-delete-upcoming') || '';
+    var title = button.getAttribute('data-stream-title') || 'this stream';
+    if (!streamId || !window.confirm('Delete "' + title + '"? This cannot be undone.')) { return; }
+    button.disabled = true;
+    button.textContent = 'Deleting...';
+    fetchJsonDelete(deleteUpcomingUrl(streamId)).then(function () {
+      removeUpcomingCard(button, streamId);
+    }).catch(function (error) {
+      button.disabled = false;
+      button.textContent = 'Delete';
+      window.alert(error && error.message ? error.message : 'The stream could not be deleted.');
+    });
+  }
+
+  function fetchJsonDelete(url) {
+    var headers = { Accept: 'application/json' };
+    if (cfg.nonce) { headers['X-WP-Nonce'] = cfg.nonce; }
+    return fetch(url, { method: 'DELETE', credentials: 'same-origin', cache: 'no-store', headers: headers })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok || payload.code) { throw new Error(payload.message || 'The stream could not be deleted.'); }
+          return payload;
+        });
+      });
+  }
+
   function pollChat() {
     var url = chatUrl();
     if (!url || document.hidden || state.chatBusy) { return; }
@@ -213,15 +301,23 @@
   }
 
   function start() {
+    var style = document.createElement('style');
+    style.textContent = '.cs-live-library-copy .sml-delete-upcoming{height:34px;border:1px solid #ff566e;border-radius:7px;background:rgba(255,86,110,.1);color:#ff8c9d;font-size:11px;font-weight:850;padding:0 12px;cursor:pointer}.cs-live-library-copy .sml-delete-upcoming:hover{background:#ff566e;color:#fff}.cs-live-library-copy .sml-delete-upcoming:disabled{opacity:.6;cursor:wait}';
+    document.head.appendChild(style);
     schedulePaint();
     pollChat();
     pollSubscribers();
+    loadUpcomingIndex(true);
     window.setInterval(pollChat, 2500);
     window.setInterval(pollSubscribers, 5000);
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) { pollChat(); pollSubscribers(); }
     });
-    new MutationObserver(schedulePaint).observe(document.body, { childList: true, subtree: true });
+    document.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-delete-upcoming]');
+      if (button) { event.preventDefault(); deleteUpcoming(button); }
+    });
+    new MutationObserver(function () { schedulePaint(); enhanceUpcomingLibrary(); loadUpcomingIndex(false); }).observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start, { once: true }); }
