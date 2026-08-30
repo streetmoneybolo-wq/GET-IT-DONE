@@ -66,8 +66,13 @@
     return '/wp-json/sml-scheduled-live/v1/creator?_=' + Date.now();
   }
 
-  function deleteUpcomingUrl(streamId) {
-    return '/wp-json/sml-live-studio-real-data/v1/upcoming/' + encodeURIComponent(streamId);
+  function adminUpcomingUrl() {
+    return '/wp-json/sml-live-studio-real-data/v1/admin-upcoming?_=' + Date.now();
+  }
+
+  function deleteUpcomingUrl(streamId, ownerId) {
+    var url = '/wp-json/sml-live-studio-real-data/v1/upcoming/' + encodeURIComponent(streamId);
+    return ownerId ? url + '?owner_id=' + encodeURIComponent(ownerId) : url;
   }
 
   function fetchJson(url) {
@@ -242,6 +247,7 @@
       button.type = 'button';
       button.className = 'sml-delete-upcoming';
       button.setAttribute('data-delete-upcoming', String(row.id));
+      button.setAttribute('data-stream-owner', String(row.owner_id || cfg.userId || ''));
       button.setAttribute('data-stream-title', String(row.title || 'this stream'));
       button.textContent = 'Delete';
       var actions = card.querySelector('.cs-live-library-copy');
@@ -254,6 +260,11 @@
     upcoming.busy = true;
     fetchJson(upcomingUrl()).then(function (payload) {
       upcoming.rows = Array.isArray(payload && payload.streams) ? payload.streams : [];
+      if (upcoming.rows.length) { return null; }
+      return fetchJson(adminUpcomingUrl()).then(function (adminPayload) {
+        upcoming.rows = Array.isArray(adminPayload && adminPayload.streams) ? adminPayload.streams : [];
+      }).catch(function () { return null; });
+    }).then(function () {
       upcoming.loadedAt = Date.now();
       enhanceUpcomingLibrary();
     }).catch(function () {
@@ -276,11 +287,12 @@
 
   function deleteUpcoming(button) {
     var streamId = button.getAttribute('data-delete-upcoming') || '';
+    var ownerId = button.getAttribute('data-stream-owner') || '';
     var title = button.getAttribute('data-stream-title') || 'this stream';
     if (!streamId || !window.confirm('Delete "' + title + '"? This cannot be undone.')) { return; }
     button.disabled = true;
     button.textContent = 'Deleting...';
-    fetchJsonDelete(deleteUpcomingUrl(streamId)).then(function () {
+    fetchJsonDelete(deleteUpcomingUrl(streamId, ownerId)).then(function () {
       removeUpcomingCard(button, streamId);
     }).catch(function (error) {
       button.disabled = false;
