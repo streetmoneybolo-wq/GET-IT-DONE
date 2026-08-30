@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Q&A
  * Description: First-party Questions & Answers built on WordPress core — CPT questions, answers as native comments, votes, accepted answers. Content is created server-side via first-party REST routes (this Atomic site gates the core /wp/v2/{cpt} routes). Unanswered questions are noindex from day one.
- * Version: 0.4.0
+ * Version: 0.4.1
  * Author: StockMarketLoop
  *
  * Phase 1 of SML/QA-PLATFORM-HANDOFF.md. Routing confirmed in Phase 0 (§5.2):
@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_QA_VER', '0.4.0' );
+define( 'SML_QA_VER', '0.4.1' );
 define( 'SML_QA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_QA_URL', plugin_dir_url( __FILE__ ) );
 define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );
@@ -153,11 +153,28 @@ add_filter( 'get_the_archive_title', function ( $title ) {
 	return $title;
 } );
 add_filter( 'get_the_archive_description', function ( $desc ) {
-	/* Intro only on page 1 — never repeat the framing paragraph on /q/page/N/. */
+	/* Standard path (themes that render the archive description). Intro only on
+	   page 1 — never repeat the framing paragraph on /q/page/N/. */
 	if ( is_post_type_archive( 'sml_question' ) && ! is_paged() ) {
-		return '<p>Real questions from traders about how the market actually works — halts and circuit breakers, options flow and dealer hedging, volatility, short interest and more. Every answer is written to be specific and evergreen.</p>';
+		return sml_qa_archive_intro_html();
 	}
 	return $desc;
+} );
+
+function sml_qa_archive_intro_html() {
+	return '<p>Real questions from traders about how the market actually works — halts and circuit breakers, options flow and dealer hedging, volatility, short interest and more. Every answer is written to be specific and evergreen.</p>';
+}
+
+/* Block themes commonly render the archive title but not the archive description,
+   so the filter above never surfaces. Echo the intro right before the main
+   archive loop instead — main query, page 1, once. */
+add_action( 'loop_start', function ( $query ) {
+	if ( is_admin() || ! ( $query instanceof WP_Query ) || ! $query->is_main_query() ) { return; }
+	if ( ! is_post_type_archive( 'sml_question' ) || is_paged() ) { return; }
+	static $shown = false;
+	if ( $shown ) { return; }
+	$shown = true;
+	echo '<div class="sml-qa sml-qa-archive-intro">' . wp_kses_post( sml_qa_archive_intro_html() ) . '</div>';
 } );
 
 /* Front-end assets on question pages + any page carrying the ask shortcode. */
