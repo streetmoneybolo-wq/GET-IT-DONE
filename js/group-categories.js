@@ -607,9 +607,17 @@
         if (c.type) el('span', 'flex:0 0 auto;font-size:10px;letter-spacing:1px;color:#5f7a6c;text-transform:uppercase;', row, c.type);
         catSelect(row, c.id);
         if (!c.ro) {
-          var trash = el('button', 'flex:0 0 auto;background:#1a1012;border:1px solid #3a2428;border-radius:7px;color:#ff8a96;padding:5px 9px;cursor:pointer;font:12px inherit;', row, '🗑');
-          trash.type = 'button'; trash.title = 'Delete this channel';
-          trash.addEventListener('click', function () { confirmDeleteChannel(c); });
+          if (norm(c.name).toUpperCase() === 'PUBLIC ALERTS') {
+            // The engine protects the "PUBLIC ALERTS" default channel (wired to
+            // the public charts) — a delete returns 403 sml_protected_channel.
+            // Show a lock instead of a trash button that could only ever fail.
+            var lock = el('span', 'flex:0 0 auto;color:#6f8a7c;font-size:13px;cursor:default;', row, '🔒');
+            lock.title = 'Default channel wired to the public charts — it can’t be deleted';
+          } else {
+            var trash = el('button', 'flex:0 0 auto;background:#1a1012;border:1px solid #3a2428;border-radius:7px;color:#ff8a96;padding:5px 9px;cursor:pointer;font:12px inherit;', row, '🗑');
+            trash.type = 'button'; trash.title = 'Delete this channel';
+            trash.addEventListener('click', function () { confirmDeleteChannel(c); });
+          }
         }
       });
     }
@@ -656,9 +664,15 @@
               return;
             }
             del.disabled = false; keep.disabled = false;
-            msg.textContent = (res.status === 401 || res.status === 403)
+            // Prefer the server's own reason — 403 covers both an expired nonce
+            // AND a protected/default channel ("PUBLIC ALERTS is a default
+            // channel and cannot be deleted"), so show the message when there is
+            // one; only the genuine nonce failure gets the session hint.
+            msg.textContent = (res.j && res.j.code === 'rest_cookie_invalid_nonce')
               ? 'Your session expired — reload the page and try again.'
-              : ((res.j && res.j.message) || 'Could not delete the channel.');
+              : ((res.j && res.j.message) || ((res.status === 401 || res.status === 403)
+                ? 'Your session expired — reload the page and try again.'
+                : 'Could not delete the channel.'));
           })
           .catch(function () { del.disabled = false; keep.disabled = false; msg.textContent = 'Could not delete the channel — check your connection and try again.'; });
       });
