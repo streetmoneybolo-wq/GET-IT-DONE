@@ -59,6 +59,10 @@ register_deactivation_hook( __FILE__, function () {
  * comment query and the dashboard count so they never leak into normal streams.
  * ------------------------------------------------------------------------- */
 add_action( 'pre_get_comments', function ( $q ) {
+	/* Keep answers visible on the real wp-admin Comments screen so admins can
+	   moderate them; hide them from every front-end query INCLUDING admin-ajax
+	   (front-end stream/group-reply features often fetch via ajax). */
+	if ( is_admin() && ! wp_doing_ajax() ) { return; }
 	$type = $q->query_vars['type'] ?? '';
 	$type_in = $q->query_vars['type__in'] ?? '';
 	if ( '' === $type && '' === $type_in ) {
@@ -68,18 +72,6 @@ add_action( 'pre_get_comments', function ( $q ) {
 		$q->query_vars['type__not_in'] = $not;
 	}
 } );
-
-add_filter( 'wp_count_comments', function ( $stats, $post_id ) {
-	if ( $post_id ) { return $stats; } /* only adjust the global dashboard total */
-	global $wpdb;
-	$n = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_type = %s AND comment_approved = '1'", SML_QA_ANSWER_TYPE ) );
-	if ( $n && is_object( $stats ) ) {
-		foreach ( array( 'approved', 'all', 'total_comments' ) as $k ) {
-			if ( isset( $stats->$k ) ) { $stats->$k = max( 0, (int) $stats->$k - $n ); }
-		}
-	}
-	return $stats;
-}, 10, 2 );
 
 /* Question helpers ---------------------------------------------------------- */
 function sml_qa_answers( $question_id ) {
@@ -103,6 +95,22 @@ function sml_qa_recount( $question_id ) {
 	return sml_qa_answer_count( $question_id );
 }
 
+/* Keep the count meta (and the noindex gate) honest when an answer is removed,
+   unapproved, spammed, or restored — not just when one is added. Also drop the
+   accepted-answer pointer if the accepted answer is no longer an approved one. */
+function sml_qa_on_answer_change( $comment_id, $comment ) {
+	if ( ! is_object( $comment ) || SML_QA_ANSWER_TYPE !== ( $comment->comment_type ?? '' ) ) { return; }
+	$qid = (int) $comment->comment_post_ID;
+	if ( ! $qid ) { return; }
+	sml_qa_recount( $qid );
+	if ( (int) get_post_meta( $qid, '_sml_qa_accepted', true ) === (int) $comment_id ) {
+		$fresh = get_comment( $comment_id );
+		if ( ! $fresh || '1' !== (string) $fresh->comment_approved ) { delete_post_meta( $qid, '_sml_qa_accepted' ); }
+	}
+}
+add_action( 'transition_comment_status', function ( $new, $old, $comment ) { sml_qa_on_answer_change( (int) $comment->comment_ID, $comment ); }, 10, 3 );
+add_action( 'deleted_comment', function ( $cid, $comment ) { sml_qa_on_answer_change( (int) $cid, $comment ); }, 10, 2 );
+
 /* ---------------------------------------------------------------------------
  * Index hygiene: noindex any question with zero approved answers. On this
  * WPCOM/Atomic site the robots meta comes from a layer Rank Math/wp_robots
@@ -117,14 +125,11 @@ function sml_qa_should_noindex() {
 add_action( 'template_redirect', function () {
 	if ( ! sml_qa_should_noindex() ) { return; }
 	ob_start( function ( $html ) {
-		if ( ! is_string( $html ) || false === stripos( $html, '<meta' ) ) { return $html; }
-		$tag = '<meta name="robots" content="noindex, follow">';
-		if ( preg_match( '/<meta[^>]+name=["\']robots["\'][^>]*>/i', $html ) ) {
-			$new = preg_replace( '/<meta[^>]+name=["\']robots["\'][^>]*>/i', $tag, $html, 1 );
-		} else {
-			$new = preg_replace( '/<head(\s[^>]*)?>/i', '$0' . "\n" . $tag, $html, 1 );
-		}
-		return is_string( $new ) ? $new : $html;
+		if ( ! is_string( $html ) || false === stripos( $html, '<head' ) ) { return $html; }
+		/* strip EVERY robots meta (whitespace-tolerant), then inject one noindex */
+		$stripped = preg_replace( '/<meta[^>]+name\s*=\s*["\']robots["\'][^>]*>\s*/i', '', $html );
+		$out = preg_replace( '/<head(\s[^>]*)?>/i', '$0' . "\n" . '<meta name="robots" content="noindex, follow">', is_string( $stripped ) ? $stripped : $html, 1 );
+		return is_string( $out ) ? $out : $html;
 	} );
 }, 0 );
 

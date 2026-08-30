@@ -9,6 +9,15 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/* Per-user throttle. Checked BEFORE work; the caller stamps it only AFTER a
+   successful insert, so a failed validation never locks a user out. */
+function sml_qa_rate_limited( $action ) {
+	return (bool) get_transient( 'sml_qa_rl_' . $action . '_' . get_current_user_id() );
+}
+function sml_qa_rate_stamp( $action, $seconds ) {
+	set_transient( 'sml_qa_rl_' . $action . '_' . get_current_user_id(), 1, (int) $seconds );
+}
+
 add_action( 'rest_api_init', function () {
 
 	$logged_in = function () {
@@ -20,6 +29,7 @@ add_action( 'rest_api_init', function () {
 		'methods'             => 'POST',
 		'permission_callback' => $logged_in,
 		'callback'            => function ( WP_REST_Request $r ) {
+			if ( sml_qa_rate_limited( 'ask' ) ) { return new WP_Error( 'sml_qa_slow', 'You are posting questions too quickly — please wait a moment.', array( 'status' => 429 ) ); }
 			$title = sanitize_text_field( (string) $r->get_param( 'title' ) );
 			$body  = (string) $r->get_param( 'body' );
 			$ticker = strtoupper( preg_replace( '/[^A-Za-z0-9.\-]/', '', (string) $r->get_param( 'ticker' ) ) );
@@ -40,6 +50,7 @@ add_action( 'rest_api_init', function () {
 			if ( is_wp_error( $id ) || ! $id ) { return new WP_Error( 'sml_qa_insert', 'Could not save the question.', array( 'status' => 500 ) ); }
 			if ( '' !== $ticker && strlen( $ticker ) <= 12 ) { update_post_meta( $id, '_sml_qa_ticker', $ticker ); }
 			update_post_meta( $id, '_sml_qa_answer_count', 0 );
+			sml_qa_rate_stamp( 'ask', 30 );
 			return rest_ensure_response( array( 'ok' => true, 'id' => (int) $id, 'url' => get_permalink( $id ) ) );
 		},
 	) );
@@ -49,6 +60,7 @@ add_action( 'rest_api_init', function () {
 		'methods'             => 'POST',
 		'permission_callback' => $logged_in,
 		'callback'            => function ( WP_REST_Request $r ) {
+			if ( sml_qa_rate_limited( 'answer' ) ) { return new WP_Error( 'sml_qa_slow', 'You are posting answers too quickly — please wait a moment.', array( 'status' => 429 ) ); }
 			$qid  = absint( $r->get_param( 'question_id' ) );
 			$body = trim( (string) $r->get_param( 'body' ) );
 			$q = $qid ? get_post( $qid ) : null;
@@ -57,18 +69,25 @@ add_action( 'rest_api_init', function () {
 			if ( mb_strlen( wp_strip_all_tags( $body ) ) > 8000 ) { return new WP_Error( 'sml_qa_long', 'Answer is too long.', array( 'status' => 400 ) ); }
 
 			$user = wp_get_current_user();
-			$cid = wp_insert_comment( array(
+			/* wp_new_comment (not the low-level insert) so preprocess_comment,
+			   Akismet, the disallowed list, flood check and moderation rules all
+			   run; a first-time user may be held pending, which is correct. */
+			$cid = wp_new_comment( wp_slash( array(
 				'comment_post_ID'      => $qid,
 				'comment_content'      => wp_kses_post( $body ),
 				'comment_type'         => SML_QA_ANSWER_TYPE,
 				'user_id'              => $user->ID,
 				'comment_author'       => $user->display_name,
 				'comment_author_email' => $user->user_email,
-				'comment_approved'     => 1,
-			) );
+				'comment_author_url'   => '',
+			) ), true );
+			if ( is_wp_error( $cid ) ) { return new WP_Error( 'sml_qa_answer', $cid->get_error_message(), array( 'status' => 400 ) ); }
 			if ( ! $cid ) { return new WP_Error( 'sml_qa_answer', 'Could not save the answer.', array( 'status' => 500 ) ); }
+			sml_qa_rate_stamp( 'answer', 15 );
 			$count = sml_qa_recount( $qid );
-			return rest_ensure_response( array( 'ok' => true, 'comment_id' => (int) $cid, 'answer_count' => $count ) );
+			$fresh = get_comment( $cid );
+			$pending = ! $fresh || '1' !== (string) $fresh->comment_approved;
+			return rest_ensure_response( array( 'ok' => true, 'comment_id' => (int) $cid, 'answer_count' => $count, 'pending' => $pending ) );
 		},
 	) );
 
@@ -79,7 +98,7 @@ add_action( 'rest_api_init', function () {
 		'callback'            => function ( WP_REST_Request $r ) {
 			$cid = absint( $r->get_param( 'comment_id' ) );
 			$c = $cid ? get_comment( $cid ) : null;
-			if ( ! $c || SML_QA_ANSWER_TYPE !== $c->comment_type ) { return new WP_Error( 'sml_qa_c', 'Answer not found.', array( 'status' => 404 ) ); }
+			if ( ! $c || SML_QA_ANSWER_TYPE !== $c->comment_type || '1' !== (string) $c->comment_approved ) { return new WP_Error( 'sml_qa_c', 'Answer not found.', array( 'status' => 404 ) ); }
 			$uid = get_current_user_id();
 			if ( (int) $c->user_id === (int) $uid ) { return new WP_Error( 'sml_qa_self', 'You cannot vote on your own answer.', array( 'status' => 403 ) ); }
 			$voters = get_comment_meta( $cid, '_sml_qa_voters', true );

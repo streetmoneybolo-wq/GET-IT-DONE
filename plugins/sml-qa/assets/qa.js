@@ -65,9 +65,9 @@
       if (body.length < 15) { msg(m, 'Add a little more detail (15+ characters).', true); return; }
       t.disabled = true; msg(m, 'Posting…');
       post('/answer', { question_id: wrap.getAttribute('data-question'), body: body }).then(function (res) {
-        t.disabled = false;
-        if (res.ok) { msg(m, 'Posted.'); window.location.reload(); }
-        else { msg(m, (res.j && res.j.message) || 'Could not post.', true); }
+        if (res.ok && res.j.pending) { t.disabled = false; ta.value = ''; msg(m, 'Thanks — your answer is awaiting moderation.'); }
+        else if (res.ok) { msg(m, 'Posted.'); window.location.reload(); }
+        else { t.disabled = false; msg(m, (res.j && res.j.message) || 'Could not post.', true); }
       }).catch(function () { t.disabled = false; msg(m, 'Network error — try again.', true); });
       return;
     }
