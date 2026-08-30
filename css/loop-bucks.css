@@ -28,6 +28,17 @@ a.sml-lb-name:hover{color:#8ffcb9;}
 .sml-lb-msrow.done .amt{color:#6B7C90;}
 .sml-lb-msrow a{color:#38F58A;font-weight:600;text-decoration:underline;text-underline-offset:2px;}
 .sml-lb-msrow a:hover{color:#8ffcb9;}
+/* primary Store action — intentionally sits immediately above Milestones */
+.sml-lb-store-cta{position:relative;display:flex;align-items:center;gap:10px;margin:10px 2px 2px;padding:11px 12px;border:1px solid rgba(56,245,138,.85);border-radius:11px;background:linear-gradient(100deg,#10351f 0%,#0b2517 55%,#123b23 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 0 15px rgba(56,245,138,.2);color:#fff;text-decoration:none;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease,filter .15s ease;}
+.sml-lb-store-cta:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.14) 48%,transparent 72%);transform:translateX(-130%);transition:transform .45s ease;pointer-events:none;}
+.sml-lb-store-cta:hover{color:#fff;transform:translateY(-1px);filter:brightness(1.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 0 22px rgba(56,245,138,.42);}
+.sml-lb-store-cta:hover:after{transform:translateX(130%);}
+.sml-lb-store-cta:focus-visible{outline:2px solid #8ffcb9;outline-offset:2px;}
+.sml-lb-store-ic{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:rgba(56,245,138,.17);font-size:18px;flex:none;}
+.sml-lb-store-copy{display:flex;flex:1;min-width:0;flex-direction:column;line-height:1.15;}
+.sml-lb-store-copy strong{font-size:13px;letter-spacing:.08em;color:#38F58A;}
+.sml-lb-store-copy small{margin-top:3px;color:#93A4B8;font-size:10.5px;}
+.sml-lb-store-go{color:#E6EDF5;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:800;letter-spacing:.08em;white-space:nowrap;}
 /* featured (socials) row */
 .sml-lb-row.sml-lb-feat{padding:14px 12px;margin:6px 2px;border-radius:12px;position:relative;overflow:hidden;border:2px solid #38F58A;background:linear-gradient(90deg,#123a22,#0c2416,#2a3a10,#123a22);background-size:300% 100%;animation:smlLbGlow 1.6s ease-in-out infinite,smlLbGradient 5s linear infinite;}
 .sml-lb-feat .sml-lb-shine{position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(140,255,200,.35),transparent);animation:smlLbShine 2s ease-in-out infinite;pointer-events:none;}
@@ -66,6 +77,6 @@ a.sml-lb-name:hover{color:#8ffcb9;}
 @keyframes smlLbWiggle{0%,88%,100%{transform:rotate(0);}90%{transform:rotate(-12deg) scale(1.15);}94%{transform:rotate(12deg) scale(1.15);}98%{transform:rotate(-6deg);}}
 @keyframes smlLbBlink{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.85;transform:scale(1.12);}}
 @keyframes smlLbReward{0%,100%{transform:scale(1);text-shadow:0 0 8px rgba(140,255,200,.6);}50%{transform:scale(1.15);text-shadow:0 0 16px rgba(140,255,200,1);}}
-@media(prefers-reduced-motion:reduce){.sml-lb-feat,.sml-lb-feat *,.sml-lb-badge{animation:none !important;}}
+@media(prefers-reduced-motion:reduce){.sml-lb-feat,.sml-lb-feat *,.sml-lb-badge{animation:none !important;}.sml-lb-store-cta,.sml-lb-store-cta:after{transition:none !important;}}
 /* phones: compact floating pill (icon + balance) so it never covers page headers */
 @media(max-width:640px){#sml-lb-btn.sml-lb-floating{top:10px;right:10px;padding:5px 10px 5px 7px;gap:6px;}#sml-lb-btn.sml-lb-floating .sml-lb-k{display:none;}#sml-lb-btn.sml-lb-floating img{width:24px;height:16px;}#sml-lb-btn.sml-lb-floating .sml-lb-v{font-size:13px;}}

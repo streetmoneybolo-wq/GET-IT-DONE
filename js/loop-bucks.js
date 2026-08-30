@@ -111,6 +111,13 @@
     return '<div class="sml-lb-sec">Top earners</div><div class="sml-lb-ms" style="margin:0 2px 10px">' + rows + '</div>';
   }
 
+  function storeButton(){
+    return '<a class="sml-lb-store-cta" href="/store/" data-stop="1" aria-label="Open the Loop Store">' +
+      '<span class="sml-lb-store-ic" aria-hidden="true">🛍️</span>' +
+      '<span class="sml-lb-store-copy"><strong>LOOP-STORE</strong><small>Get or spend Loop Bucks</small></span>' +
+      '<span class="sml-lb-store-go" aria-hidden="true">OPEN&nbsp;↗</span></a>';
+  }
+
   /* ---- Milestones (sml-lbm/v1 — streaks / referrals / socials / shares, all paid into the real ledger) ---- */
   function msRows(){
     if (!MS || !MS.ready) return '';
@@ -171,7 +178,7 @@
     var r = b ? b.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 16 };
     p.style.top = Math.round(r.bottom + 8) + 'px';
     p.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + 'px';
-    var body = ME ? (todayRow() + wayRows() + msRows() + gateRows() + historyRows() + boardRows())
+    var body = ME ? (todayRow() + wayRows() + storeButton() + msRows() + gateRows() + historyRows() + boardRows())
       : '<div style="padding:22px 12px;color:#6B7C90;font-size:12px">'+(loading ? 'Loading your Loop Bucks…' : 'Loop Bucks are unavailable right now — try again in a moment.')+'</div>';
     p.innerHTML = head() + '<div class="sml-lb-scroll">' + body + '</div>';
   }
