@@ -34,6 +34,10 @@ function createDiscordAccessHandler(token, fetchImpl = fetch) {
     }
   };
 }
+const { createArticleGenerator } = require('./article-generator');
+const { createNewsPipeline } = require('./news-pipeline');
+const { fetchSourceArticle } = require('./source-article');
+const { createWordPressPublisher } = require('./wordpress-publisher');
 
 async function main() {
   const config = getConfig();
@@ -60,6 +64,26 @@ async function main() {
     seller_restore: createStripeRestoreHandler(stripe)
   });
   let stopping = false;
+  let pipeline = null;
+
+  const missing = [
+    ['OPENAI_API_KEY', config.openaiApiKey],
+    ['SML_WORDPRESS_USERNAME', config.wordpressUsername],
+    ['SML_WORDPRESS_APP_PASSWORD', config.wordpressAppPassword]
+  ].filter((entry) => !entry[1]).map((entry) => entry[0]);
+
+  if (!missing.length) {
+    pipeline = createNewsPipeline({
+      database,
+      fetchSource: fetchSourceArticle,
+      generateArticle: createArticleGenerator({ apiKey: config.openaiApiKey, model: config.openaiModel }),
+      publisher: createWordPressPublisher(config),
+      logger: log,
+      workerId: `render-${process.pid}`
+    });
+  } else {
+    log('warn', 'news_pipeline_disabled', { missing });
+  }
 
   async function tick() {
     if (stopping) return;
@@ -67,15 +91,31 @@ async function main() {
       await database.health();
       const expired = await expireGrace(database.pool);
       const promoted = await promoteSubscriptionIntents(database.pool);
-      let processed = 0;
-      let failed = 0;
+      let billingProcessed = 0;
+      let billingFailed = 0;
       for (let i = 0; i < 50; i += 1) {
         const outcome = await processOutbox();
         if (outcome === 'empty') break;
-        if (outcome === 'processed') processed++;
-        else failed++;
+        if (outcome === 'processed') billingProcessed++;
+        else billingFailed++;
       }
-      log('info', 'billing_worker_tick', { expired, promoted, processed, failed });
+      let newsJobsProcessed = 0;
+      if (pipeline) {
+        /* Drain a small bounded batch each minute. A flood cannot starve the
+           process or create an unbounded OpenAI bill in one tick. */
+        for (let i = 0; i < 3; i += 1) {
+          if (!await pipeline.runOnce()) break;
+          newsJobsProcessed += 1;
+        }
+      }
+      log('info', 'worker_ready_for_jobs', {
+        jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline'],
+        expired,
+        promoted,
+        billingProcessed,
+        billingFailed,
+        newsJobsProcessed
+      });
     } catch (error) {
       log('error', 'worker_database_unavailable', { error });
     }

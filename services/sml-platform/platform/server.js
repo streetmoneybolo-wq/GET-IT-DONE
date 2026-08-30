@@ -9,6 +9,7 @@ const stripeWebhook = require('./stripe-webhook');
 const Stripe = require('stripe');
 const billingService = require('./billing-service');
 const { createUpgradeChatClient } = require('./upgrade-chat');
+const newsWebhook = require('./news-webhook');
 
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
@@ -174,9 +175,50 @@ async function handleBillingRequest(request, response, options, action) {
   }
 }
 
+async function handleNewsWebhook(request, response, options) {
+  if (!contentTypeIsJson(request)) {
+    sendJson(response, 415, { ok: false, error: 'content_type_required' });
+    return;
+  }
+  const verified = newsWebhook.verifyBearer(options.newsIngestToken, request.headers.authorization);
+  if (!verified.ok) {
+    sendJson(response, verified.status, { ok: false, error: verified.error });
+    return;
+  }
+  const body = await readRequestBody(request, newsWebhook.MAX_BODY_BYTES);
+  if (!body.ok) {
+    sendJson(response, body.status, { ok: false, error: body.error });
+    return;
+  }
+  const parsed = newsWebhook.parseNewsRequest(body.rawBody);
+  if (!parsed.ok) {
+    sendJson(response, parsed.status, { ok: false, error: parsed.error });
+    return;
+  }
+  try {
+    const result = await options.enqueueNewsArticle(parsed.job);
+    options.logger('info', 'news_article_enqueued', {
+      jobId: result.id,
+      status: result.status,
+      sourceUrlHash: parsed.job.sourceUrlHash
+    });
+    sendJson(response, result.status === 'accepted' ? 202 : 200, {
+      ok: true,
+      jobId: result.id,
+      status: result.status,
+      jobStatus: result.status === 'duplicate' ? result.status : 'queued'
+    });
+  } catch (error) {
+    options.logger('error', 'news_article_enqueue_failed', { error, sourceUrlHash: parsed.job.sourceUrlHash });
+    sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+  }
+}
+
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
   acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
-  pool = null, upgradeChat = null, upgradeChatPlanMap = {}, logger = log, now = Date.now }) {
+  pool = null, upgradeChat = null, upgradeChatPlanMap = {},
+  enqueueNewsArticle = async () => { throw new Error('not configured'); },
+  newsIngestToken = '', logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
@@ -207,6 +249,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     if (request.method === 'POST' && path === '/v1/wordpress/events') {
       await handleWordPressEvent(request, response, { acceptWordPressEvent, wordpressWebhookSecret, logger, now });
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/v1/news/articles') {
+      await handleNewsWebhook(request, response, { enqueueNewsArticle, newsIngestToken, logger });
       return;
     }
 
@@ -241,7 +288,9 @@ async function main() {
     upgradeChat,
     upgradeChatPlanMap: config.upgradeChatPlanMap,
     stripe,
-    pool: database.pool
+    pool: database.pool,
+    enqueueNewsArticle: database.enqueueNewsArticle,
+    newsIngestToken: config.newsIngestToken
   });
   let shuttingDown = false;
 

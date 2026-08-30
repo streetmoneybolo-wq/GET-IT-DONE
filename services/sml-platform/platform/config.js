@@ -41,7 +41,15 @@ function getConfig(env = process.env) {
     upgradeChatClientId: String(env.UPGRADE_CHAT_CLIENT_ID || '').trim(),
     upgradeChatClientSecret: String(env.UPGRADE_CHAT_CLIENT_SECRET || '').trim(),
     upgradeChatPlanMap: jsonObject(env.UPGRADE_CHAT_PLAN_MAP_JSON, 'UPGRADE_CHAT_PLAN_MAP_JSON'),
-    discordBotToken: String(env.DISCORD_BOT_TOKEN || '').trim()
+    discordBotToken: String(env.DISCORD_BOT_TOKEN || '').trim(),
+    newsIngestToken: String(env.SML_NEWS_INGEST_TOKEN || '').trim(),
+    openaiApiKey: String(env.OPENAI_API_KEY || '').trim(),
+    openaiModel: String(env.SML_NEWS_OPENAI_MODEL || 'gpt-5-mini').trim(),
+    wordpressUrl: String(env.SML_WORDPRESS_URL || 'https://stockmarketloop.com').replace(/\/$/, ''),
+    wordpressUsername: String(env.SML_WORDPRESS_USERNAME || '').trim(),
+    wordpressAppPassword: String(env.SML_WORDPRESS_APP_PASSWORD || '').trim(),
+    wordpressAuthorSlug: String(env.SML_WORDPRESS_AUTHOR_SLUG || 'stockmarketloop').trim(),
+    wordpressAuthorName: String(env.SML_WORDPRESS_AUTHOR_NAME || 'SML NEWS').trim()
   });
 }
 

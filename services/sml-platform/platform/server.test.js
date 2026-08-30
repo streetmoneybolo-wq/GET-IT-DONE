@@ -147,3 +147,52 @@ test('WordPress gateway rejects bad signatures and old requests before storage',
   });
   assert.equal(calls, 0);
 });
+
+test('news webhook queues one authenticated source URL and collapses duplicates', async () => {
+  const received = [];
+  await withServer({
+    newsIngestToken: 'news-test-token',
+    enqueueNewsArticle: async (job) => {
+      received.push(job);
+      return received.length === 1
+        ? { id: 71, status: 'accepted' }
+        : { id: 71, status: 'duplicate' };
+    }
+  }, async (base) => {
+    const body = JSON.stringify({ source_url: 'https://example.com/story?utm_source=test' });
+    const first = await fetch(`${base}/v1/news/articles`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer news-test-token', 'content-type': 'application/json' },
+      body
+    });
+    assert.equal(first.status, 202);
+    assert.deepEqual(await first.json(), { ok: true, jobId: 71, status: 'accepted', jobStatus: 'queued' });
+    const second = await fetch(`${base}/v1/news/articles`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer news-test-token', 'content-type': 'application/json' },
+      body
+    });
+    assert.equal(second.status, 200);
+    assert.equal((await second.json()).status, 'duplicate');
+  });
+  assert.equal(received[0].sourceUrl, 'https://example.com/story');
+  assert.match(received[0].sourceUrlHash, /^[a-f0-9]{64}$/);
+});
+
+test('news webhook fails closed before storing unauthenticated or invalid requests', async () => {
+  let calls = 0;
+  await withServer({
+    newsIngestToken: 'news-test-token',
+    enqueueNewsArticle: async () => { calls += 1; return { id: 1, status: 'accepted' }; }
+  }, async (base) => {
+    const denied = await fetch(`${base}/v1/news/articles`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"source_url":"https://example.com"}'
+    });
+    assert.equal(denied.status, 401);
+    const invalid = await fetch(`${base}/v1/news/articles`, {
+      method: 'POST', headers: { authorization: 'Bearer news-test-token', 'content-type': 'application/json' }, body: '{"source_url":"http://localhost"}'
+    });
+    assert.equal(invalid.status, 422);
+  });
+  assert.equal(calls, 0);
+});
