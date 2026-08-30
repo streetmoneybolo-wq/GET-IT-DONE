@@ -125,6 +125,60 @@
     sheetKey = want;
   }
 
+  /* ---------- Portal Chat placement (per-group rule) ----------
+   * Making Easy Money: Portal Chat sits FIRST inside the "💬 CHATS 🗣️"
+   * category. Every other group: Portal Chat is the very FIRST item in the
+   * whole sidebar. Positioned the same safe way as channels — a CSS `order`
+   * rule keyed by the portal's own class in a <head> stylesheet, so the shell
+   * rebuilding the button never dislodges it and no engine node is moved. */
+  var PORTAL_IN_CATEGORY = { 'making-easy-money': '💬 CHATS 🗣️' };
+  var PORTAL_SHEET_ID = 'sml-gcat-portal-style';
+  var portalSheetKey = null;
+  function portalCategoryIndex() {
+    var wanted = PORTAL_IN_CATEGORY[SLUG];
+    if (!wanted) return -1;
+    var i = S.categories.indexOf(wanted);
+    if (i !== -1) return i;
+    // emoji/spacing-tolerant fallback so a small edit to the category name
+    // (variation selectors, extra spaces) doesn't silently drop the portal
+    var normx = function (s) { return String(s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    var w = normx(wanted);
+    for (var k = 0; k < S.categories.length; k++) { if (normx(S.categories[k]) === w) return k; }
+    return -1;
+  }
+  function positionPortal() {
+    if (!channelsBox()) return;
+    var ci = portalCategoryIndex();
+    // Inside the named category: exactly (n)*STRIDE — after its header
+    // (n*STRIDE-1) and before its first channel (n*STRIDE+rank, rank>=1).
+    // Otherwise -1: below every native element (default 0 AND the active
+    // sheet's NATIVE_BASE) — the very first item, whether or not categories
+    // are active in this group.
+    var portalOrder = (ci !== -1) ? ((ci + 1) * CATEGORY_STRIDE) : -1;
+    var key = SLUG + '|' + portalOrder;
+    var sheet = document.getElementById(PORTAL_SHEET_ID);
+    if (sheet && portalSheetKey === key) return;
+    // DESKTOP ONLY. On desktop the engine renders .sml-gshell__channels as a
+    // block (order is inert on block) so we make it flex-column to honour the
+    // portal's `order`. Below 561px the engine deliberately makes it a
+    // HORIZONTAL scroller (display:flex;overflow-x:auto) — never override that.
+    // `order !important` beats the category sheet's non-important
+    // `[data-sml-gcat-active]>*{order:NATIVE_BASE}` rule regardless of which
+    // <style> was appended to <head> last (equal specificity would otherwise
+    // let source order decide, and positionPortal runs before ensureSheet).
+    var css = '@media (min-width:561px){'
+      + '.sml-gshell__channels{display:flex;flex-direction:column;}'
+      + '.sml-gshell__channels>.sml-gshell__portal-channel{order:' + portalOrder + ' !important;}'
+      + '}';
+    if (!sheet) {
+      sheet = document.createElement('style');
+      sheet.id = PORTAL_SHEET_ID;
+      (document.head || document.documentElement).appendChild(sheet); // head: never re-fires our body observer
+    }
+    sheet.textContent = css;
+    portalSheetKey = key;
+  }
+
   function clearOurs(box) {
     [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]')).forEach(function (h) { h.remove(); });
     box.removeAttribute('data-sml-gcat-active');
@@ -157,10 +211,16 @@
       if (a) present[a] = (present[a] || 0) + 1;
     });
     var out = [];
+    var portalHome = portalCategoryIndex(); // the category the portal lives in (-1 = none)
     S.categories.forEach(function (cat, ci) {
       var count = present[cat] || 0;
-      if (!count && !S.canManage) return; // members never see empty headers
-      out.push({ name: cat, order: (ci + 1) * CATEGORY_STRIDE - 1, empty: !count });
+      // The portal's home category ALWAYS shows its header (the portal is its
+      // content), for members too — otherwise an empty CHATS would leave the
+      // portal floating with no label. Every other empty category is
+      // manager-only + dimmed.
+      var portalHere = (ci === portalHome);
+      if (!count && !S.canManage && !portalHere) return;
+      out.push({ name: cat, order: (ci + 1) * CATEGORY_STRIDE - 1, empty: (!count && !portalHere) });
     });
     return out;
   }
@@ -187,6 +247,11 @@
 
     applying = true;
     try {
+      // Portal Chat placement runs first and unconditionally — it must hold on
+      // EVERY group (categories or not), and its own <head> stylesheet is
+      // independent of the category-header work below.
+      positionPortal();
+
       // never build headers over an empty box mid-re-render — the engine is
       // between "cleared" and "repopulated"; the observer retries when it
       // fills. The gear still renders so a manager of a channel-less group
@@ -243,9 +308,21 @@
   // channel id and counts as staying). Runs from the observer too, because
   // an unassigned channel the engine adds under an already-hidden header
   // must un-hide it without a full re-apply (review #5).
+  // Native section labels the owner wants gone from EVERY group (2026-08-30):
+  // the custom categories replace them. Matched by text — the engine gives
+  // these headers no data attribute (categoryName() returns the literal
+  // 'Alerts'/'Channels'). A channel the owner explicitly named a category
+  // "Alerts"/"Channels" would also match; that is the intended behavior.
+  var HIDE_NATIVE = { ALERTS: 1, CHANNELS: 1 };
   function hideEmpties(box) {
     [].slice.call(box.querySelectorAll('.sml-gshell__category:not([data-sml-gcat])')).forEach(function (h) {
-      if (!S.categories.length) { h.style.display = ''; return; }
+      // unconditional hide (independent of custom categories) so it holds on
+      // groups that use no custom categories at all
+      if (HIDE_NATIVE[h.textContent.trim().toUpperCase()]) {
+        if (h.style.display !== 'none') h.style.display = 'none';
+        return;
+      }
+      if (!S.categories.length) { if (h.style.display !== '') h.style.display = ''; return; }
       var n = h.nextElementSibling, has = false;
       while (n && !(n.classList && n.classList.contains('sml-gshell__category'))) {
         if (n.classList && n.classList.contains('sml-gshell__channel')) {
