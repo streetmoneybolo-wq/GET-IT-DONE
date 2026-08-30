@@ -842,6 +842,22 @@ body.slw-on{background:#04060a !important}
 .slw-rematch:hover{background:#7affc0}
 .slw-play-fn{font:400 9px/1.4 Archivo,sans-serif;color:#3d4c5a;text-align:center}
 
+/* ---- chess board (server-authoritative; thin UI) ---- */
+.slw-chess{position:relative;display:grid;grid-template-columns:repeat(8,1fr);width:min(384px,86vw);aspect-ratio:1;border-radius:12px;overflow:hidden;border:1px solid #1c2833;box-shadow:0 24px 44px -18px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
+.slw-sq{display:flex;align-items:center;justify-content:center;padding:0;margin:0;border:0;line-height:1;font-size:clamp(20px,6.4vw,32px);cursor:pointer;transition:filter .1s ease,box-shadow .12s ease;-webkit-tap-highlight-color:transparent}
+.slw-sq.lt{background:#c3ccd9}
+.slw-sq.dk{background:#48586a}
+.slw-sq:disabled{cursor:default}
+.slw-sq:not(:disabled):hover{filter:brightness(1.08)}
+.slw-sq.last{box-shadow:inset 0 0 0 4px rgba(0,204,255,.45)}
+.slw-sq.sel{box-shadow:inset 0 0 0 4px #00ff88;filter:brightness(1.05)}
+.slw-sq .pc{pointer-events:none}
+.slw-sq .pc.wp{color:#fcfdff;text-shadow:0 1px 1px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)}
+.slw-sq .pc.bp{color:#14181e;text-shadow:0 1px 1px rgba(255,255,255,.3),0 0 2px rgba(255,255,255,.2)}
+.slw-promo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(6,10,16,.9);z-index:3;backdrop-filter:blur(2px)}
+.slw-promo button{display:flex;align-items:center;justify-content:center;width:54px;height:54px;font-size:32px;line-height:1;border-radius:10px;border:1px solid #2a3a48;background:#0e1620;cursor:pointer;transition:border-color .2s,background .2s}
+.slw-promo button:hover{border-color:#00ff88;background:#12202b}
+
 /* ---- recommended ---- */
 .slw-rec{border:1px solid #16202b;border-radius:14px;background:#080c12;overflow:hidden}
 .slw-rec-h{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #131c26}

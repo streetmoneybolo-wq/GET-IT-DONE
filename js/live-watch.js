@@ -2230,6 +2230,7 @@
   }
   function gErr(msg) { el('#slw-glive').textContent = msg; flashGate(msg); }
   function adoptTable(t) {
+    chessSel = -1;
     G.tableId = t.id; G.game = t.game || G.game; G.version = -1; G.practice = false;
     clearInterval(G.pollT);
     G.pollT = setInterval(pollTable, 1500);
@@ -2275,11 +2276,175 @@
       }
       return;
     }
-    if (t.game === 'tictactoe') { gShow('match'); paintServerTTT(t); return; }
-    /* non-TTT boards land next update — the table itself is live */
+    if (t.game === 'tictactoe') { resetMatchChrome(); gShow('match'); paintServerTTT(t); return; }
+    if (t.game === 'chess') { resetMatchChrome(); paintServerChess(t); return; }
+    /* remaining boards land next update — the table itself is live */
     gShow('wait');
     el('#slw-gwname').textContent = (t.label || t.game) + ' — match running';
     el('#slw-gwait').querySelector('.n').textContent = 'The board UI for this game lands in the next update. The table is live on the server.';
+  }
+
+  /* Restore the shared #slw-gmatch chrome to its Tic-Tac-Toe defaults before
+     each match is painted — chess mutates the title, chips, #slw-ttt and adds
+     #slw-chess, so a chess→TTT switch would otherwise leave the 3×3 board
+     hidden behind a stale chess board. Each painter then sets only its own. */
+  function resetMatchChrome() {
+    var ttt = el('#slw-ttt'); if (ttt) ttt.style.display = '';
+    var ch = el('#slw-chess'); if (ch) ch.style.display = 'none';
+    var gm = el('#slw-gmatch');
+    var title = gm && gm.querySelector('.slw-gmatch-h .l b'); if (title) title.textContent = 'Tic-Tac-Toe';
+    var ym = el('#slw-chipyou') && el('#slw-chipyou').querySelector('.m'); if (ym) ym.textContent = '✕';
+    var om = el('#slw-chipopp') && el('#slw-chipopp').querySelector('.m'); if (om) om.textContent = '◯';
+    var clk = el('#slw-tclk'); if (clk) clk.style.display = '';
+  }
+
+  /* ---------- Chess board (server owns all legality; this is a thin, correct UI) ---------- */
+  var CHESS_GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
+  var chessSel = -1;          // selected from-square (0..63, a8=0), -1 = none
+  var CHESS_MOVE_FMT = null;  // cached working move-param format once detected
+  function chessBoardArr(t) {
+    var raw = t.state && t.state.board;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+    return Array.isArray(raw) ? raw : [];
+  }
+  function sqName(idx) { return 'abcdefgh'.charAt(idx % 8) + String(8 - ((idx / 8) | 0)); }
+  function chessMyColor(t) { return (t.yourSeat === 2 || t.yourSeat === '2') ? 'b' : 'w'; } // seat 1 = white
+  function chessPlaying(t) { return (t.yourSeat === 1 || t.yourSeat === 2 || t.yourSeat === '1' || t.yourSeat === '2') && !t.spectating; }
+  function chessDone(t) {
+    var r = t.state && t.state.result;
+    if (r != null && r !== '') return true;
+    return t.winner != null && t.winner !== 0 && t.winner !== '' && t.winner !== '0';
+  }
+  function renderChess(cb, t) {
+    var board = chessBoardArr(t);
+    var flip = chessMyColor(t) === 'b';            // my back rank at the bottom
+    var last = (t.state && t.state.last) || [];
+    var canPlay = chessPlaying(t) && t.yourTurn && !chessDone(t);
+    var frag = document.createDocumentFragment();
+    for (var r = 0; r < 8; r++) {
+      for (var f = 0; f < 8; f++) {
+        var idx = flip ? ((7 - r) * 8 + (7 - f)) : (r * 8 + f); // display cell -> board index
+        var piece = board[idx] || '';
+        var light = ((r + f) % 2 === 0);            // a8 (top-left, unflipped) is light
+        var sq = document.createElement('button');
+        sq.type = 'button';
+        sq.className = 'slw-sq ' + (light ? 'lt' : 'dk') + (idx === chessSel ? ' sel' : '') + (last.indexOf(idx) > -1 ? ' last' : '');
+        sq.setAttribute('data-sq', idx);
+        if (piece) { sq.innerHTML = '<span class="pc ' + (piece.charAt(0) === 'w' ? 'wp' : 'bp') + '">' + (CHESS_GLYPH[piece.charAt(1)] || '') + '</span>'; }
+        if (!canPlay) sq.disabled = true;
+        (function (i) { sq.onclick = function () { chessClick(t, i); }; })(idx);
+        frag.appendChild(sq);
+      }
+    }
+    cb.innerHTML = '';
+    cb.appendChild(frag);
+  }
+  function chessClick(t, idx) {
+    if (!chessPlaying(t) || !t.yourTurn || chessDone(t)) return;
+    var board = chessBoardArr(t);
+    var mc = chessMyColor(t);
+    var piece = board[idx] || '';
+    if (chessSel === -1) {                          // pick up one of my pieces
+      if (piece && piece.charAt(0) === mc) { chessSel = idx; renderChess(el('#slw-chess'), t); }
+      return;
+    }
+    if (idx === chessSel) { chessSel = -1; renderChess(el('#slw-chess'), t); return; }   // tap again = drop
+    if (piece && piece.charAt(0) === mc) { chessSel = idx; renderChess(el('#slw-chess'), t); return; } // reselect
+    var from = chessSel, moving = board[from] || '';
+    chessSel = -1;
+    var toRank = 8 - ((idx / 8) | 0);
+    if (moving.charAt(1) === 'P' && ((mc === 'w' && toRank === 8) || (mc === 'b' && toRank === 1))) {
+      promptPromotion(t, from, idx);               // pawn reaching the last rank
+    } else {
+      submitChessMove(t, from, idx, null);
+    }
+  }
+  function promptPromotion(t, from, to) {
+    var cb = el('#slw-chess'); if (!cb) return;
+    var mc = chessMyColor(t);
+    var old = cb.querySelector('.slw-promo'); if (old) old.remove();
+    var pk = document.createElement('div'); pk.className = 'slw-promo';
+    ['q', 'r', 'b', 'n'].forEach(function (pp) {
+      var b = document.createElement('button'); b.type = 'button';
+      b.innerHTML = '<span class="pc ' + (mc === 'w' ? 'wp' : 'bp') + '">' + CHESS_GLYPH[pp.toUpperCase()] + '</span>';
+      b.onclick = function () { pk.remove(); submitChessMove(t, from, to, pp); };
+      pk.appendChild(b);
+    });
+    cb.appendChild(pk);
+  }
+  // The server owns legality; the client only names the move. BOTH candidate
+  // formats are SQUARE-NAME based (UCI "e2e4"; or from:"e2",to:"e4") — never
+  // raw board indices, so a wrong-shaped body can only be REJECTED, never
+  // silently accepted as an index-transposed move (a numeric a8=0-vs-a1=0
+  // ambiguity would risk exactly that). Whichever the server accepts is cached;
+  // if a cached format later fails a well-formed move, the cache is cleared so
+  // the next attempt re-probes both.
+  function submitChessMove(t, from, to, promote) {
+    var order = CHESS_MOVE_FMT ? [CHESS_MOVE_FMT] : ['uci', 'alg'];
+    var run = function (k) {
+      if (k >= order.length) { CHESS_MOVE_FMT = null; gErr('Move refused — reload if it persists.'); return; }
+      var fmt = order[k], body;
+      if (fmt === 'uci') { body = { move: sqName(from) + sqName(to) + (promote || '') }; }
+      else { body = { from: sqName(from), to: sqName(to) }; if (promote) body.promote = promote; }
+      vFormG('/sml-games/v1/tables/' + G.tableId + '/move', body).then(function (res) {
+        if (res.ok) { CHESS_MOVE_FMT = fmt; pollTable(); return; }
+        var msg = (res.j && (res.j.message || res.j.code)) || '';
+        // a well-formed but ILLEGAL move (or off-turn) means the naming was
+        // accepted — surface it. Only a params/shape rejection (400/404/422
+        // with no illegal-move wording) makes us try the other naming.
+        var illegal = /illeg|not your|turn|check|occupied|own|pinn|mate|castle|pawn|promot|no.?piece|empty|blocked|forfeit|over/i.test(msg);
+        if (!CHESS_MOVE_FMT && !illegal && (res.status === 400 || res.status === 404 || res.status === 422)) { run(k + 1); return; }
+        gErr(msg || 'Move refused.');
+      });
+    };
+    run(0);
+  }
+  function paintServerChess(t) {
+    gShow('match');
+    var gm = el('#slw-gmatch');
+    var title = gm.querySelector('.slw-gmatch-h .l b'); if (title) title.textContent = 'Chess';
+    el('#slw-tclk').style.display = 'none';
+    var ttt = el('#slw-ttt'); if (ttt) ttt.style.display = 'none';   // hide the TTT grid
+    var mc = chessMyColor(t);
+    var youM = el('#slw-chipyou').querySelector('.m'); if (youM) youM.textContent = mc === 'w' ? '♔' : '♚';
+    var oppM = el('#slw-chipopp').querySelector('.m'); if (oppM) oppM.textContent = mc === 'w' ? '♚' : '♔';
+    var plist = t.players ? (Array.isArray(t.players) ? t.players : Object.keys(t.players).map(function (k) { return t.players[k]; })) : [];
+    var me = (VC.elig && VC.elig.handle) || '';
+    var opp = plist.filter(Boolean).map(function (p) { return p.handle || p.name; }).filter(function (h) { return h && h !== me; });
+    el('#slw-chipopp').querySelector('.n').textContent = '@' + String(opp[opp.length - 1] || 'opponent').replace(/^@/, '');
+    var wrap = gm.querySelector('.slw-ttt-wrap');
+    var cb = el('#slw-chess');
+    if (!cb) { cb = document.createElement('div'); cb.id = 'slw-chess'; cb.className = 'slw-chess'; wrap.insertBefore(cb, el('#slw-tstat')); }
+    cb.style.display = '';
+    renderChess(cb, t);
+    var done = chessDone(t), stat = el('#slw-tstat');
+    el('#slw-tbtns').classList.toggle('show', done);
+    el('#slw-chipyou').classList.toggle('on', !!t.yourTurn && !done);
+    el('#slw-chipopp').classList.toggle('on', !t.yourTurn && !done);
+    if (done) {
+      // Winner is a SEAT number (1/2), 0/''/null/'draw' = no winner = a draw
+      // (covers repetition/fifty-move/insufficient/stalemate/agreement, whose
+      // result strings share no common word). Coerce types — yourSeat/winner
+      // can arrive as strings, as the rest of this block already assumes.
+      var w = t.winner;
+      var hasWinner = w != null && w !== 0 && w !== '0' && w !== '' && w !== 'draw';
+      var meWon = w === 'you' || (hasWinner && String(w) === String(t.yourSeat));
+      var draw = !hasWinner;
+      var result = String((t.state && t.state.result) || '');
+      var pretty = result.replace(/[_-]+/g, ' ');
+      stat.textContent = draw ? ('Draw' + (result ? ' — ' + pretty : '.'))
+        : (meWon ? 'You win the match! ♚'
+          : (chessPlaying(t) ? 'They take it.' : ('Match over' + (result ? ' — ' + pretty : '') + '.')));
+      stat.className = 'slw-ttt-status' + (meWon ? ' win' : (draw ? '' : (chessPlaying(t) ? ' lose' : '')));
+      clearInterval(G.pollT);
+      if (meWon) sendArena('♚', 'won a chess match in the arena', 'm' + G.tableId + '-end');
+      api('/sml-games/v1/scores').then(function () {});
+    } else {
+      var chk = t.state && t.state.check;
+      if (!chessPlaying(t)) { stat.textContent = 'Spectating — ' + (t.yourTurn ? '' : '') + (chk ? 'check on the board.' : 'live game.'); stat.className = 'slw-ttt-status'; }
+      else if (t.yourTurn) { stat.textContent = chk ? 'You are in check — get your king to safety.' : 'Your move.'; stat.className = 'slw-ttt-status'; }
+      else { stat.textContent = chk ? 'Check delivered — waiting on the other seat…' : 'Waiting on the other seat…'; stat.className = 'slw-ttt-status'; }
+    }
   }
   function paintServerTTT(t) {
     var cells = [];
