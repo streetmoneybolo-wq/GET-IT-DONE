@@ -16,11 +16,13 @@
  *    not in inline styles on engine nodes. The live shell REBUILDS every
  *    channel button every ~10s; with inline orders each rebuild produced
  *    buttons with order:auto (= 0) that jumped to the TOP of the flex
- *    column until the next debounced re-apply — the "sidebar jumping"
- *    bug. A stylesheet rule matches the recreated button the instant the
- *    shell inserts it, so a rebuild now changes nothing visually. The
+ *    column until the next re-apply — the "sidebar jumping" bug. Every
+ *    channel now has a UNIQUE persisted CSS slot (never a shared category
+ *    slot whose tie is broken by transient DOM order). A stylesheet rule
+ *    matches the recreated button the instant the shell inserts it, so a
+ *    rebuild now changes nothing visually. The
  *    box itself is only marked with data-sml-gcat-active; everything
- *    without a per-id rule defaults to order:100000 (the native zone,
+ *    without a per-id rule defaults to the separate native zone,
  *    ties resolved by DOM order = the engine's own order).
  *  - our headers are APPENDED (new nodes only) and float up via inline
  *    order (category order minus 1 — an appended header must beat its
@@ -38,14 +40,13 @@
  *  - the observer watches document.body (the shell can replace the container
  *    node) and skips batches while apply() itself is mutating (an `applying`
  *    flag cleared on a macrotask, after the observer's microtask fires); any
- *    other change — including something removing OUR nodes — re-applies
- *    after an 80ms debounce (was 400ms; headers should be back within a
- *    frame or two of a shell rebuild).
+ *    sidebar changes repair synchronously in the observer's pre-paint
+ *    microtask; unrelated page churn uses a throttled 80ms check.
  *  - panel: renames carry assignments along; names are trimmed everywhere;
- *    duplicate names block Save; category cap is code-point safe; channel
- *    ↑/↓ reordering persists through sml-gcat/v1/reorder into the ENGINE's
- *    own order_index column (its sidebar sorts ORDER BY order_index, id),
- *    so the saved order is real for every member, JS or not.
+ *    duplicate names block Save; category cap is code-point safe; category
+ *    membership + the full channel sequence persist as ONE revision-checked
+ *    layout transaction. Two admin tabs cannot silently overwrite each
+ *    other, and a partial category/order save is impossible.
  */
 (function () {
   'use strict';
@@ -56,9 +57,10 @@
   if (!m) return;
   var SLUG = decodeURIComponent(m[1]);
   var API = '/wp-json/sml-gcat/v1/group?slug=' + encodeURIComponent(SLUG);
+  var LAYOUT_API = '/wp-json/sml-gcat/v1/layout?slug=' + encodeURIComponent(SLUG);
   var NONCE = window.SML_GCAT_NONCE || '';
 
-  var S = { categories: [], assignments: {}, canManage: false, lastBox: null };
+  var S = { categories: [], assignments: {}, channelOrder: [], layoutRevision: '', canManage: false, lastBox: null };
 
   function channelsBox() { return document.querySelector('.sml-gshell__channels'); }
   function channelButtons(box) {
@@ -68,24 +70,50 @@
   function capPoints(s) { return Array.from(String(s)).slice(0, 40).join(''); }
 
   /* ---------- CSS-order regrouping (no engine node is ever moved OR written) ---------- */
-  var NATIVE_BASE = 100000; // stylesheet default zone: DOM-order ties keep the engine's own order
+  // One million positions per category means category N can never collide
+  // with category N+1, even for an exceptionally large group. Native engine
+  // rows and the manage control live in separate, later zones.
+  var CATEGORY_STRIDE = 1000000;
+  var NATIVE_BASE = 1000000000;
 
   var SHEET_ID = 'sml-gcat-style';
   var sheetKey = null;
   function ensureSheet() {
-    var want = JSON.stringify([S.categories, S.assignments]);
+    var want = JSON.stringify([S.categories, S.assignments, S.channelOrder]);
     var sheet = document.getElementById(SHEET_ID);
     if (sheet && sheetKey === want) return;
     var css = [
       '.sml-gshell__channels[data-sml-gcat-active]{display:flex;flex-direction:column;}',
       '.sml-gshell__channels[data-sml-gcat-active]>*{order:' + NATIVE_BASE + ';}'
     ];
+    var orderSource = S.channelOrder.slice();
+    // Rolling deploy safety: if the PHP endpoint has not yet started sending
+    // channel_order, freeze the first visible engine order instead of falling
+    // back to Object.keys() (integer-key sorting is not the owner's order).
+    if (!orderSource.length) {
+      var currentBox = channelsBox();
+      orderSource = currentBox ? channelButtons(currentBox).map(function (b) {
+        return parseInt(b.getAttribute('data-smlgs-channel'), 10);
+      }).filter(function (id) { return id > 0; }) : [];
+    }
+    var savedRank = Object.create(null);
+    orderSource.forEach(function (id, i) {
+      id = parseInt(id, 10);
+      if (id > 0 && savedRank[id] == null) savedRank[id] = i + 1;
+    });
     S.categories.forEach(function (cat, ci) {
-      var ord = (ci + 1) * 1000;
+      var ord = (ci + 1) * CATEGORY_STRIDE;
+      var fallbackRank = orderSource.length + 1;
       Object.keys(S.assignments).forEach(function (id) {
         if (S.assignments[id] !== cat) return;
         var n = parseInt(id, 10);
-        if (n > 0) css.push('.sml-gshell__channels[data-sml-gcat-active]>[data-smlgs-channel="' + n + '"]{order:' + ord + ';}');
+        if (n > 0) {
+          // Every channel gets a UNIQUE slot. 17ebc49 gave all channels in a
+          // category the same order and therefore still depended on the
+          // engine's transient DOM sequence to break ties during a rebuild.
+          var rank = savedRank[n] || fallbackRank++;
+          css.push('.sml-gshell__channels[data-sml-gcat-active]>[data-smlgs-channel="' + n + '"]{order:' + (ord + rank) + ';}');
+        }
       });
     });
     if (!sheet) {
@@ -132,7 +160,7 @@
     S.categories.forEach(function (cat, ci) {
       var count = present[cat] || 0;
       if (!count && !S.canManage) return; // members never see empty headers
-      out.push({ name: cat, order: (ci + 1) * 1000 - 1, empty: !count });
+      out.push({ name: cat, order: (ci + 1) * CATEGORY_STRIDE - 1, empty: !count });
     });
     return out;
   }
@@ -244,7 +272,7 @@
       g.addEventListener('click', openPanel);
       box.appendChild(g);
     }
-    if (g.style.order !== '999999') g.style.order = '999999'; // visually last in the flex column
+    if (g.style.order !== '2000000000') g.style.order = '2000000000'; // visually last in the flex column
   }
 
   function el(tag, css, parent, text) {
@@ -277,7 +305,33 @@
     var orig = Object.create(null);      // id -> name at panel open
     var origSeq = '';                    // id sequence at load (+ later creates) — reorder saves only when it changed
     var createdAny = false;
+    var revisionRefresh = Promise.resolve(true);
     var CH_TYPES = ['text', 'alerts', 'education', 'voice', 'live'];
+    function refreshLayoutSnapshot() {
+      revisionRefresh = fetch(API, { credentials: 'same-origin', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || !d.layout_revision) return false;
+          var serverOrder = Array.isArray(d.channel_order)
+            ? d.channel_order.map(function (id) { return parseInt(id, 10); }).filter(function (id) { return id > 0; })
+            : [];
+          var panelOrder = (chans || []).map(function (c) { return c.id; });
+          var fingerprint = function (obj) {
+            return Object.keys(obj || {}).sort(function (a, b) { return Number(a) - Number(b); })
+              .map(function (k) { return k + ':' + obj[k]; }).join('|');
+          };
+          // A create is expected to append exactly one channel. If anything
+          // else changed while this panel was open, do not adopt the newer
+          // revision and then overwrite it with the stale panel snapshot.
+          if (serverOrder.join(',') !== panelOrder.join(',') ||
+              JSON.stringify(d.categories || []) !== JSON.stringify(S.categories) ||
+              fingerprint(d.assignments) !== fingerprint(S.assignments)) return false;
+          S.layoutRevision = String(d.layout_revision);
+          return true;
+        })
+        .catch(function () { return false; });
+      return revisionRefresh;
+    }
     function loadChannels() {
       function fromSidebar() {
         var box = channelsBox();
@@ -295,6 +349,19 @@
           if (!list) { fromSidebar(); }
           else {
             chans = list.map(function (c) { return { id: parseInt(c.id, 10), name: String(c.name || ''), type: String(c.type || 'text'), ro: false }; });
+            // The layout endpoint is canonical. Never trust transport/SQL
+            // row order from the engine list endpoint when an explicit saved
+            // sequence is available.
+            if (S.channelOrder.length) {
+              var rank = Object.create(null);
+              S.channelOrder.forEach(function (id, i) { rank[id] = i; });
+              chans.sort(function (a, b) {
+                var ar = rank[a.id] == null ? Number.MAX_SAFE_INTEGER : rank[a.id];
+                var br = rank[b.id] == null ? Number.MAX_SAFE_INTEGER : rank[b.id];
+                return ar - br || a.id - b.id;
+              });
+            }
+            S.channelOrder = chans.map(function (c) { return c.id; });
             chans.forEach(function (c) { orig[c.id] = c.name; });
             origSeq = chans.map(function (c) { return c.id; }).join(',');
           }
@@ -434,13 +501,19 @@
           createdAny = true;
           chans = chans || [];
           chans.push({ id: parseInt(ch.id, 10), name: String(ch.name || name), type: String(ch.type || newType.value), ro: false });
+          S.channelOrder.push(parseInt(ch.id, 10));
           orig[ch.id] = String(ch.name || name);
           // the engine appends creates at MAX(order_index)+1 — extending the
           // baseline keeps "did the user reorder?" honest across a create
           origSeq = origSeq ? origSeq + ',' + ch.id : String(ch.id);
           newName.value = '';
-          addNote.textContent = '#' + ch.name + ' created — assign it a category, then Save.';
+          addNote.textContent = '#' + ch.name + ' created — synchronizing layout…';
           drawAssign();
+          refreshLayoutSnapshot().then(function (ok) {
+            addNote.textContent = ok
+              ? '#' + ch.name + ' created — assign it a category, then Save.'
+              : '#' + ch.name + ' was created, but the layout changed. Reload before editing its position.';
+          });
         })
         .catch(function () { addBtn.disabled = false; addNote.textContent = 'Could not create the channel.'; });
     });
@@ -471,16 +544,19 @@
         var name = norm(cats[asgn[k]]);
         if (name && clean.indexOf(name) !== -1) outAsgn[k] = name;
       });
-      // channel renames go first, one at a time (our companion route), then
-      // the reorder (engine order_index), then the categories; renamed,
-      // created, or reordered channels need a reload because the engine
-      // renders the sidebar (names and DOM order), not us
+      // Channel renames are independent of layout. Category membership and
+      // the complete sequence then save together through /layout; there is
+      // no intermediate state where one changed and the other did not.
       var renames = (chans || []).filter(function (c) {
         return !c.ro && norm(c.name) !== '' && norm(c.name) !== orig[c.id];
       });
       var anyRo = (chans || []).some(function (c) { return c.ro; });
       var seq = (chans || []).map(function (c) { return c.id; }).join(',');
       var orderChanged = !anyRo && chans !== null && seq !== origSeq;
+      if (chans === null || anyRo) {
+        note.textContent = 'Channel list unavailable — reload before changing the layout.';
+        return;
+      }
       note.textContent = 'Saving…';
       save.disabled = true;
       var chain = Promise.resolve(true);
@@ -497,25 +573,36 @@
       });
       chain.then(function (renamesOk) {
         if (!renamesOk) { save.disabled = false; note.textContent = 'A channel rename failed — nothing else was saved.'; return; }
-        var reorderStep = !orderChanged ? Promise.resolve(true)
-          : fetch('/wp-json/sml-gcat/v1/reorder?slug=' + encodeURIComponent(SLUG), {
-              method: 'POST', credentials: 'same-origin',
-              headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-              body: JSON.stringify({ order: (chans || []).map(function (c) { return c.id; }) })
-            }).then(function (r) { return r.json().then(function (j) { return r.ok && j && j.saved === true; }); })
-              .catch(function () { return false; });
-        reorderStep.then(function (orderOk) {
-          if (!orderOk) { save.disabled = false; note.textContent = 'Saving the channel order failed — categories were not saved.'; return; }
-          fetch(API, {
+        revisionRefresh.then(function (revisionOk) {
+          if (!revisionOk || !S.layoutRevision) {
+            save.disabled = false;
+            note.textContent = 'Could not confirm the current layout — reload before saving.';
+            return;
+          }
+          fetch(LAYOUT_API, {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-            body: JSON.stringify({ categories: clean, assignments: outAsgn })
+            body: JSON.stringify({
+              base_revision: S.layoutRevision,
+              categories: clean,
+              assignments: outAsgn,
+              order: chans.map(function (c) { return c.id; })
+            })
           }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
             .then(function (res) {
               save.disabled = false;
-              if (!res.ok || !res.j || res.j.saved !== true) { note.textContent = (res.j && res.j.message) || 'Could not save.'; return; }
+              if (!res.ok || !res.j || res.j.saved !== true) {
+                note.textContent = res.j && res.j.code === 'sml_gcat_layout_conflict'
+                  ? 'This layout changed in another tab. Reload, then make your changes again.'
+                  : (res.j && res.j.message) || 'Could not save.';
+                return;
+              }
               S.categories = res.j.categories || [];
               S.assignments = res.j.assignments || {};
+              S.channelOrder = Array.isArray(res.j.channel_order)
+                ? res.j.channel_order.map(function (id) { return parseInt(id, 10); }).filter(function (id) { return id > 0; })
+                : (chans || []).map(function (c) { return c.id; });
+              S.layoutRevision = String(res.j.layout_revision || S.layoutRevision);
               intersectAssignments();
               if (renames.length || createdAny || orderChanged) { note.textContent = 'Saved — reloading…'; location.reload(); return; }
               close(); apply();
@@ -548,6 +635,10 @@
         if (!d) return false;
         S.categories = Array.isArray(d.categories) ? d.categories : [];
         S.assignments = (d.assignments && typeof d.assignments === 'object') ? d.assignments : {};
+        S.channelOrder = Array.isArray(d.channel_order)
+          ? d.channel_order.map(function (id) { return parseInt(id, 10); }).filter(function (id) { return id > 0; })
+          : [];
+        S.layoutRevision = String(d.layout_revision || '');
         S.canManage = !!d.can_manage;
         intersectAssignments();
         return true;
@@ -574,8 +665,27 @@
     pending = setTimeout(check, 80);
   }
   function watch() {
-    new MutationObserver(function () {
+    new MutationObserver(function (records) {
       if (applying) return; // our own apply() churn — everything else re-checks
+      var box = channelsBox();
+      var sidebarChanged = box !== S.lastBox;
+      if (!sidebarChanged && box) {
+        sidebarChanged = records.some(function (record) {
+          if (record.target === box || box.contains(record.target)) return true;
+          return [].slice.call(record.addedNodes || []).concat([].slice.call(record.removedNodes || [])).some(function (node) {
+            return node && node.nodeType === 1 && (node === box || (node.matches && node.matches('.sml-gshell__channels')) || (node.querySelector && node.querySelector('.sml-gshell__channels')));
+          });
+        });
+      }
+      if (sidebarChanged) {
+        // MutationObserver runs before the browser paints. Repairing the
+        // sidebar now prevents a single wrong-order frame; the old 80ms queue
+        // made the broken intermediate layout visible.
+        if (pending) clearTimeout(pending);
+        pending = null;
+        check();
+        return;
+      }
       schedule();
     }).observe(document.body, { childList: true, subtree: true }); // body: the shell may REPLACE the container node
     // hidden tabs throttle timers to a crawl (verified live: a backgrounded

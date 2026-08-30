@@ -118,6 +118,29 @@ if ( ! function_exists( 'sml_gcat_group_by_slug' ) ) {
 		return array( 'categories' => $cats, 'assignments' => $clean );
 	}
 
+	/**
+	 * Canonical channel sequence from the groups engine. The client uses this
+	 * to give every channel ID a unique CSS order; DOM insertion timing is never
+	 * allowed to break an ordering tie.
+	 */
+	function sml_gcat_channel_order( $group_id ) {
+		global $wpdb;
+		$rows = $wpdb->get_col( $wpdb->prepare(
+			"SELECT id FROM {$wpdb->prefix}sml_group_channels
+			 WHERE group_id = %d ORDER BY order_index ASC, id ASC",
+			(int) $group_id
+		) );
+		return array_values( array_map( 'intval', (array) $rows ) );
+	}
+
+	/** Optimistic-lock token for one complete sidebar layout snapshot. */
+	function sml_gcat_layout_revision( $group_id ) {
+		return hash( 'sha256', wp_json_encode( array(
+			'layout' => sml_gcat_read( $group_id ),
+			'order'  => sml_gcat_channel_order( $group_id ),
+		) ) );
+	}
+
 	add_action( 'rest_api_init', static function () {
 		register_rest_route( 'sml-gcat/v1', '/group', array(
 			array(
@@ -128,9 +151,11 @@ if ( ! function_exists( 'sml_gcat_group_by_slug' ) ) {
 					if ( ! $group || ! sml_gcat_can_view( $group ) ) {
 						// unknown slug and non-member look identical on purpose;
 						// group_id is deliberately not exposed anywhere
-						return array( 'categories' => array(), 'assignments' => (object) array(), 'can_manage' => false );
+						return array( 'categories' => array(), 'assignments' => (object) array(), 'channel_order' => array(), 'can_manage' => false );
 					}
 					$out               = sml_gcat_read( $group['id'] );
+					$out['channel_order'] = sml_gcat_channel_order( $group['id'] );
+					$out['layout_revision'] = sml_gcat_layout_revision( $group['id'] );
 					$out['can_manage'] = sml_gcat_can_manage( $group );
 					return $out;
 				},
@@ -174,7 +199,111 @@ if ( ! function_exists( 'sml_gcat_group_by_slug' ) ) {
 						'updated'     => time(),
 					), false );
 
-					return array( 'saved' => true, 'categories' => $cats, 'assignments' => $asgn );
+					return array(
+						'saved'        => true,
+						'categories'   => $cats,
+						'assignments'  => $asgn,
+						'channel_order'=> sml_gcat_channel_order( $group['id'] ),
+					);
+				},
+			),
+		) );
+
+		/*
+		 * Atomic Discord-style layout save. Categories, assignments and the
+		 * canonical channel sequence are one unit; no split-brain partial save.
+		 */
+		register_rest_route( 'sml-gcat/v1', '/layout', array(
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => static function ( $req ) {
+					$group = sml_gcat_group_by_slug( $req->get_param( 'slug' ) );
+					return $group && sml_gcat_can_manage( $group );
+				},
+				'callback'            => static function ( $req ) {
+					global $wpdb;
+					$group = sml_gcat_group_by_slug( $req->get_param( 'slug' ) );
+					if ( ! $group ) { return new WP_Error( 'sml_gcat_no_group', 'Unknown group.', array( 'status' => 404 ) ); }
+					$body = $req->get_json_params();
+					if ( ! is_array( $body ) ) { $body = array(); }
+					$lock_name = 'sml_gcat_layout_' . (int) $group['id'];
+					$locked = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 5)', $lock_name ) );
+					if ( 1 !== $locked ) {
+						return new WP_Error( 'sml_gcat_layout_busy', 'Another layout save is still running. Try again.', array( 'status' => 409 ) );
+					}
+
+					try {
+
+					$base = isset( $body['base_revision'] ) ? (string) $body['base_revision'] : '';
+					// Recompute only AFTER acquiring the per-group lock. Two owners
+					// clicking Save together are serialized, and the second request
+					// sees the first request's new revision instead of overwriting it.
+					$now  = sml_gcat_layout_revision( $group['id'] );
+					if ( '' === $base || ! hash_equals( $now, $base ) ) {
+						return new WP_Error( 'sml_gcat_layout_conflict', 'The channel layout changed in another session. Reload before saving.', array( 'status' => 409, 'revision' => $now ) );
+					}
+
+					$cats = array();
+					foreach ( ( isset( $body['categories'] ) && is_array( $body['categories'] ) ) ? $body['categories'] : array() as $name ) {
+						$name = sml_gcat_clean_name( $name );
+						if ( '' === $name || in_array( $name, $cats, true ) ) { continue; }
+						$cats[] = $name;
+						if ( count( $cats ) >= 30 ) { break; }
+					}
+
+					$current = sml_gcat_channel_order( $group['id'] );
+					$order   = array();
+					foreach ( ( isset( $body['order'] ) && is_array( $body['order'] ) ) ? $body['order'] : array() as $cid ) {
+						$cid = (int) $cid;
+						if ( $cid > 0 && ! in_array( $cid, $order, true ) ) { $order[] = $cid; }
+					}
+					$expect = $current; $got = $order;
+					sort( $expect, SORT_NUMERIC ); sort( $got, SORT_NUMERIC );
+					if ( $expect !== $got ) {
+						return new WP_Error( 'sml_gcat_incomplete_layout', 'The saved layout must contain every current channel exactly once.', array( 'status' => 409 ) );
+					}
+
+					$allowed = array_fill_keys( array_map( 'strval', $current ), true );
+					$asgn    = array();
+					foreach ( ( isset( $body['assignments'] ) && is_array( $body['assignments'] ) ) ? $body['assignments'] : array() as $cid => $cat ) {
+						$cid = (int) $cid;
+						$cat = sml_gcat_clean_name( $cat );
+						if ( isset( $allowed[ (string) $cid ] ) && in_array( $cat, $cats, true ) ) { $asgn[ (string) $cid ] = $cat; }
+					}
+
+					if ( false === $wpdb->query( 'START TRANSACTION' ) ) {
+						return new WP_Error( 'sml_gcat_layout_transaction', 'The layout transaction could not start.', array( 'status' => 500 ) );
+					}
+					foreach ( $order as $position => $cid ) {
+						$ok = $wpdb->update(
+							$wpdb->prefix . 'sml_group_channels',
+							array( 'order_index' => $position ),
+							array( 'id' => $cid, 'group_id' => (int) $group['id'] ),
+							array( '%d' ), array( '%d', '%d' )
+						);
+						if ( false === $ok ) {
+							$wpdb->query( 'ROLLBACK' );
+							return new WP_Error( 'sml_gcat_layout_write', 'The layout could not be saved.', array( 'status' => 500 ) );
+						}
+					}
+					update_option( 'sml_gcat_' . $group['id'], array(
+						'categories' => $cats, 'assignments' => $asgn, 'updated' => time(),
+					), false );
+					if ( false === $wpdb->query( 'COMMIT' ) ) {
+						$wpdb->query( 'ROLLBACK' );
+						return new WP_Error( 'sml_gcat_layout_commit', 'The layout could not be committed.', array( 'status' => 500 ) );
+					}
+
+					return array(
+						'saved'          => true,
+						'categories'     => $cats,
+						'assignments'    => $asgn,
+						'channel_order'  => $order,
+						'layout_revision'=> sml_gcat_layout_revision( $group['id'] ),
+					);
+					} finally {
+						$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+					}
 				},
 			),
 		) );
