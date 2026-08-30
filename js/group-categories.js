@@ -277,6 +277,24 @@
       }
     });
   }
+  // The shell renders channel-name custom emojis (:free_green:/:free_red:) as
+  // loading="lazy" <img>s. In the sidebar's own scroll container the lazy loader
+  // never pulls them (verified: in-viewport + preloaded-to-cache, yet the <img>
+  // stays unloaded), so a tiny always-visible emoji just doesn't paint. Flip
+  // them to eager+high priority the moment they appear; the bytes are already
+  // in cache (preloaded at boot), so this is an instant paint. Idempotent, and
+  // re-applied on every ~10s rebuild that recreates the buttons.
+  function eagerizeChannelEmojis(box) {
+    [].slice.call(box.querySelectorAll('img.sml-gshell__custom-emoji')).forEach(function (img) {
+      if (img.getAttribute('loading') === 'eager') return;
+      img.setAttribute('loading', 'eager');
+      img.setAttribute('fetchpriority', 'high');
+      if (!img.complete) {           // nudge a stalled lazy <img> to load now (from cache)
+        var s = img.getAttribute('src');
+        if (s) { img.removeAttribute('src'); img.setAttribute('src', s); }
+      }
+    });
+  }
 
   var applying = false;
   function apply() {
@@ -291,8 +309,10 @@
       // independent of the category-header work below.
       positionPortal();
       // Same deal: the public-alerts channel is relabelled on every group,
-      // categories or not, before any early return below.
+      // categories or not, before any early return below. Custom emojis get
+      // eagerized here too so they paint instantly instead of stalling lazy.
       relabelPublicAlerts(box);
+      eagerizeChannelEmojis(box);
 
       // never build headers over an empty box mid-re-render — the engine is
       // between "cleared" and "repopulated"; the observer retries when it
