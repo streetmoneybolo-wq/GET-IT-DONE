@@ -58,7 +58,7 @@
 
   function relationshipUrl() {
     var creatorId = Number(cfg.userId || 0);
-    return creatorId ? '/wp-json/sml-video-upload-studio/v1/creator-relationship?creator_id=' + encodeURIComponent(creatorId) + '&_=' + Date.now() : '';
+    return creatorId ? '/wp-json/sml-live-studio-real-data/v1/creator-status?creator_id=' + encodeURIComponent(creatorId) + '&_=' + Date.now() : '';
   }
 
   function fetchJson(url) {
