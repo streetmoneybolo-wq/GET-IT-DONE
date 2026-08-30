@@ -39,17 +39,19 @@ if ( ! function_exists( 'sml_dmr_run' ) ) {
 		return '$' . number_format( $v, 0 );
 	}
 
-	/* Gather the day's real data into a structured shape. Read-only. */
-	function sml_dmr_gather() {
+	/* Gather the day's real data into a structured shape. Read-only.
+	   $max_age_h bounds snapshot freshness — 8h for a real post (same session),
+	   widened only by the admin preview to eyeball the template off-hours. */
+	function sml_dmr_gather( $max_age_h = 8 ) {
 		$tickers = sml_dmr_tickers();
 		$gamma = array(); $flow = array(); $asof = '';
 
 		foreach ( $tickers as $sym ) {
 			$snap = get_option( 'sml_opt_snap_' . strtolower( $sym ), null );
 			if ( ! is_array( $snap ) || empty( $snap['captured'] ) ) { continue; }
-			/* same-session only: reject snapshots older than ~8h so a weekend run
-			   never dresses stale data as "today" */
-			if ( time() - (int) strtotime( (string) $snap['captured'] ) > 8 * HOUR_IN_SECONDS ) { continue; }
+			/* same-session only: reject stale snapshots so a weekend run never
+			   dresses stale data as "today" */
+			if ( time() - (int) strtotime( (string) $snap['captured'] ) > (int) $max_age_h * HOUR_IN_SECONDS ) { continue; }
 			if ( '' === $asof || strtotime( (string) $snap['captured'] ) > strtotime( $asof ) ) { $asof = (string) $snap['captured']; }
 			$exp = (string) ( $snap['expiration'] ?? '' );
 			$gex = isset( $snap['gex'] ) && is_array( $snap['gex'] ) ? $snap['gex'] : null;
@@ -199,7 +201,13 @@ if ( ! function_exists( 'sml_dmr_run' ) ) {
 	add_action( 'rest_api_init', static function () {
 		register_rest_route( 'sml-dmr/v1', '/run', array(
 			'methods'             => 'POST',
-			'callback'            => static function ( WP_REST_Request $q ) { return rest_ensure_response( sml_dmr_run( '1' === (string) $q->get_param( 'force' ) ) ); },
+			'callback'            => static function ( WP_REST_Request $q ) {
+				if ( '1' === (string) $q->get_param( 'preview' ) ) {
+					$d = sml_dmr_gather( (int) ( $q->get_param( 'age' ) ?: 72 ) );
+					return rest_ensure_response( array( 'preview' => true, 'counts' => array( 'gamma' => count( $d['gamma'] ), 'flow' => count( $d['flow'] ), 'movers' => count( $d['movers'] ) ), 'asof' => $d['asof'], 'html' => sml_dmr_build_html( $d ) ) );
+				}
+				return rest_ensure_response( sml_dmr_run( '1' === (string) $q->get_param( 'force' ) ) );
+			},
 			'permission_callback' => static function () { return current_user_can( 'manage_options' ); },
 		) );
 		register_rest_route( 'sml-dmr/v1', '/status', array(
