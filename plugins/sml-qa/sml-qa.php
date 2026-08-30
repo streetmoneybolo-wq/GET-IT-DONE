@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Q&A
  * Description: First-party Questions & Answers built on WordPress core — CPT questions, answers as native comments, votes, accepted answers. Content is created server-side via first-party REST routes (this Atomic site gates the core /wp/v2/{cpt} routes). Unanswered questions are noindex from day one.
- * Version: 0.5.0
+ * Version: 0.6.0
  * Author: StockMarketLoop
  *
  * Phase 1 of SML/QA-PLATFORM-HANDOFF.md. Routing confirmed in Phase 0 (§5.2):
@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_QA_VER', '0.5.0' );
+define( 'SML_QA_VER', '0.6.0' );
 define( 'SML_QA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_QA_URL', plugin_dir_url( __FILE__ ) );
 define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );
@@ -176,6 +176,14 @@ add_action( 'loop_start', function ( $query ) {
 	$shown = true;
 	echo '<div class="sml-qa sml-qa-archive-intro">' . wp_kses_post( sml_qa_archive_intro_html() ) . '</div>';
 } );
+
+/* Sitewide: a tiny script that adds a "Q&A" item to the global header nav so the
+   knowledge base is reachable from every page. Additive + reversible; loads in
+   the footer so it never blocks render. */
+add_action( 'wp_enqueue_scripts', function () {
+	if ( is_admin() ) { return; }
+	wp_enqueue_script( 'sml-qa-nav', SML_QA_URL . 'assets/nav.js', array(), SML_QA_VER, true );
+}, 20 );
 
 /* Front-end assets on question pages + any page carrying the ask shortcode. */
 add_action( 'wp_enqueue_scripts', function () {
