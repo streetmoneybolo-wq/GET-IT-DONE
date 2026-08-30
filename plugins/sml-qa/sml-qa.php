@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Q&A
  * Description: First-party Questions & Answers built on WordPress core — CPT questions, answers as native comments, votes, accepted answers. Content is created server-side via first-party REST routes (this Atomic site gates the core /wp/v2/{cpt} routes). Unanswered questions are noindex from day one.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: StockMarketLoop
  *
  * Phase 1 of SML/QA-PLATFORM-HANDOFF.md. Routing confirmed in Phase 0 (§5.2):
@@ -17,6 +17,7 @@ define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );
 
 require_once SML_QA_DIR . 'includes/rest.php';
 require_once SML_QA_DIR . 'includes/render.php';
+require_once SML_QA_DIR . 'includes/schema.php';
 
 /* ---------------------------------------------------------------------------
  * Custom post type — the question. Registration lives in a function so the
@@ -119,6 +120,10 @@ add_action( 'deleted_comment', function ( $cid, $comment ) { sml_qa_on_answer_ch
  * ------------------------------------------------------------------------- */
 function sml_qa_should_noindex() {
 	if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { return false; }
+	/* Archive stays out of the index until Phase 3 gives it real content, links
+	   and a sitemap entry — an empty/dev listing is exactly the thin surface to
+	   keep away from crawlers. Flip this when discovery launches. */
+	if ( is_post_type_archive( 'sml_question' ) ) { return true; }
 	if ( ! is_singular( 'sml_question' ) ) { return false; }
 	return sml_qa_answer_count( get_queried_object_id() ) < 1;
 }
