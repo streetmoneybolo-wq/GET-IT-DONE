@@ -315,9 +315,10 @@
   // Native section labels the owner wants gone from EVERY group (2026-08-30):
   // the custom categories replace them. Matched by text — the engine gives
   // these headers no data attribute (categoryName() returns the literal
-  // 'Alerts'/'Channels'). A channel the owner explicitly named a category
-  // "Alerts"/"Channels" would also match; that is the intended behavior.
-  var HIDE_NATIVE = { ALERTS: 1, CHANNELS: 1 };
+  // 'Alerts'/'Channels'/'Conversation'). Only NATIVE headers are touched (the
+  // query below is :not([data-sml-gcat])), so a custom category the owner named
+  // the same thing is never hidden by this.
+  var HIDE_NATIVE = { ALERTS: 1, CHANNELS: 1, CONVERSATION: 1 };
   function hideEmpties(box) {
     [].slice.call(box.querySelectorAll('.sml-gshell__category:not([data-sml-gcat])')).forEach(function (h) {
       // unconditional hide (independent of custom categories) so it holds on
