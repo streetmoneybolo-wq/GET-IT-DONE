@@ -18,7 +18,6 @@ function sml_runtime_config_defaults() {
 		'group_plan_map'=> '{}',
 	);
 }
-
 function sml_runtime_config_generate_secret() {
 	try {
 		return bin2hex( random_bytes( 32 ) );
@@ -110,4 +109,3 @@ function sml_runtime_config_page() {
 	<script>document.querySelectorAll('[data-sml-reveal]').forEach(function(b){b.addEventListener('click',function(){var i=b.previousElementSibling;i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'Reveal':'Hide';});});</script>
 	<?php
 }
-
