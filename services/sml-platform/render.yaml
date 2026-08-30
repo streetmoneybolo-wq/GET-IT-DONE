@@ -26,6 +26,8 @@ services:
           property: connectionString
       - key: SML_STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: SML_NEWS_INGEST_TOKEN
+        sync: false
 
   - type: worker
     name: sml-platform-worker
@@ -45,3 +47,17 @@ services:
         fromDatabase:
           name: sml-platform-db
           property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SML_NEWS_OPENAI_MODEL
+        value: gpt-5-mini
+      - key: SML_WORDPRESS_URL
+        value: https://stockmarketloop.com
+      - key: SML_WORDPRESS_USERNAME
+        sync: false
+      - key: SML_WORDPRESS_APP_PASSWORD
+        sync: false
+      - key: SML_WORDPRESS_AUTHOR_SLUG
+        value: stockmarketloop
+      - key: SML_WORDPRESS_AUTHOR_NAME
+        value: SML NEWS

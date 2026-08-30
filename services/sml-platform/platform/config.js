@@ -20,7 +20,15 @@ function getConfig(env = process.env) {
     wordpressWebhookSecret: String(env.SML_WORDPRESS_WEBHOOK_SECRET || '').trim(),
     // Also optional at boot and fail-closed at the webhook route. Render owns
     // the whsec_ value; it is never committed or logged.
-    stripeWebhookSecret: String(env.SML_STRIPE_WEBHOOK_SECRET || '').trim()
+    stripeWebhookSecret: String(env.SML_STRIPE_WEBHOOK_SECRET || '').trim(),
+    newsIngestToken: String(env.SML_NEWS_INGEST_TOKEN || '').trim(),
+    openaiApiKey: String(env.OPENAI_API_KEY || '').trim(),
+    openaiModel: String(env.SML_NEWS_OPENAI_MODEL || 'gpt-5-mini').trim(),
+    wordpressUrl: String(env.SML_WORDPRESS_URL || 'https://stockmarketloop.com').replace(/\/$/, ''),
+    wordpressUsername: String(env.SML_WORDPRESS_USERNAME || '').trim(),
+    wordpressAppPassword: String(env.SML_WORDPRESS_APP_PASSWORD || '').trim(),
+    wordpressAuthorSlug: String(env.SML_WORDPRESS_AUTHOR_SLUG || 'stockmarketloop').trim(),
+    wordpressAuthorName: String(env.SML_WORDPRESS_AUTHOR_NAME || 'SML NEWS').trim()
   });
 }
 
