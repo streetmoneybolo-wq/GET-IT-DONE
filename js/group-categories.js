@@ -202,6 +202,38 @@
     });
     if (!cats.length) cats = ['Announcements', 'Onboarding', 'Video', 'News']; // suggestions — members never see them unless channels are assigned
 
+    // channel data comes from the ENGINE's own list endpoint (bare DB names —
+    // the sidebar's "#" is decoration), falling back to sidebar buttons
+    // read-only when it can't be reached. Creation uses the engine's own
+    // create endpoint; only rename needs our companion route.
+    var gid = (window.SMLGroupShell && window.SMLGroupShell.groupId) ? parseInt(window.SMLGroupShell.groupId, 10) : 0;
+    var chans = null;                    // [{id, name, type, ro}] — null while loading
+    var orig = Object.create(null);      // id -> name at panel open
+    var createdAny = false;
+    var CH_TYPES = ['text', 'alerts', 'education', 'voice', 'live'];
+    function loadChannels() {
+      function fromSidebar() {
+        var box = channelsBox();
+        chans = (box ? channelButtons(box) : []).map(function (b) {
+          return { id: parseInt(b.getAttribute('data-smlgs-channel'), 10), name: (b.textContent || '').trim().replace(/^#\s*/, ''), type: '', ro: true };
+        });
+        chans.forEach(function (c) { orig[c.id] = c.name; });
+      }
+      if (!gid) { fromSidebar(); drawAssign(); return; }
+      fetch('/wp-json/sml/v1/group/channels?group_id=' + gid, { credentials: 'same-origin', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          var list = j && (Array.isArray(j.channels) ? j.channels : (Array.isArray(j) ? j : null));
+          if (!list) { fromSidebar(); }
+          else {
+            chans = list.map(function (c) { return { id: parseInt(c.id, 10), name: String(c.name || ''), type: String(c.type || 'text'), ro: false }; });
+            chans.forEach(function (c) { orig[c.id] = c.name; });
+          }
+          drawAssign();
+        })
+        .catch(function () { fromSidebar(); drawAssign(); });
+    }
+
     PANEL = el('div', 'position:fixed;inset:0;z-index:2147480000;display:flex;align-items:center;justify-content:center;background:rgba(3,8,6,0.72);', document.body);
     var card = el('div', 'width:min(520px,92vw);max-height:84vh;overflow:auto;background:#0b1210;border:1px solid #1e2f27;border-radius:14px;padding:18px 20px;color:#e6f2ea;font:14px/1.5 -apple-system,Segoe UI,sans-serif;box-shadow:0 24px 80px rgba(0,0,0,.7);', PANEL);
     el('div', 'font:700 16px inherit;margin-bottom:2px;', card, 'Channel categories');
@@ -249,37 +281,85 @@
       add.addEventListener('click', function () { if (cats.length < 30) { cats.push(''); drawCats(); drawAssign(); } });
     }
 
-    el('div', 'font:700 12px inherit;letter-spacing:1px;color:#8fa89b;margin:4px 0 6px;', card, 'CHANNELS');
-    var chBox = el('div', 'display:flex;flex-direction:column;gap:5px;margin-bottom:16px;', card);
+    el('div', 'font:700 12px inherit;letter-spacing:1px;color:#8fa89b;margin:4px 0 6px;', card, 'CHANNELS — rename and pick a category');
+    var chBox = el('div', 'display:flex;flex-direction:column;gap:5px;margin-bottom:10px;', card);
+    function catSelect(row, id) {
+      var sel = el('select', 'flex:0 1 auto;max-width:100%;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:5px 8px;font:12px inherit;', row);
+      var none = document.createElement('option');
+      none.value = ''; none.textContent = '— default —';
+      sel.appendChild(none);
+      cats.forEach(function (c, ci) {
+        var name = norm(c);
+        if (!name) return;
+        var o = document.createElement('option');
+        o.value = String(ci); o.textContent = name;
+        if (asgn[id] === ci) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+      sel.addEventListener('change', function () {
+        if (sel.value !== '') asgn[id] = parseInt(sel.value, 10); else delete asgn[id];
+        sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+      });
+      return sel;
+    }
     function drawAssign() {
       chBox.innerHTML = '';
-      var box = channelsBox();
-      var btns = box ? channelButtons(box) : [];
-      if (!btns.length) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'No channels found in the sidebar.'); return; }
-      btns.forEach(function (b) {
-        var id = b.getAttribute('data-smlgs-channel');
+      if (chans === null) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'Loading channels…'); return; }
+      if (!chans.length) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'No channels yet — add one below.'); return; }
+      chans.forEach(function (c) {
         var row = el('div', 'display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;', chBox);
-        el('span', 'flex:1 1 140px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;', row, (b.textContent || '').trim());
-        var sel = el('select', 'flex:0 1 auto;max-width:100%;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:5px 8px;font:12px inherit;', row);
-        var none = document.createElement('option');
-        none.value = ''; none.textContent = '— default —';
-        sel.appendChild(none);
-        cats.forEach(function (c, ci) {
-          var name = norm(c);
-          if (!name) return;
-          var o = document.createElement('option');
-          o.value = String(ci); o.textContent = name;
-          if (asgn[id] === ci) o.selected = true;
-          sel.appendChild(o);
-        });
-        sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
-        sel.addEventListener('change', function () {
-          if (sel.value !== '') asgn[id] = parseInt(sel.value, 10); else delete asgn[id];
-          sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
-        });
+        el('span', 'flex:0 0 auto;color:#8fa89b;font-size:13px;', row, '#');
+        var nm = el('input', 'flex:1 1 130px;min-width:110px;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:5px 8px;font:13px inherit;', row);
+        nm.type = 'text'; nm.value = c.name; nm.maxLength = 120;
+        if (c.ro) { nm.readOnly = true; nm.style.opacity = '0.6'; nm.title = 'Renaming unavailable — channel list could not be loaded.'; }
+        else { nm.addEventListener('input', function () { c.name = nm.value; }); }
+        if (c.type) el('span', 'flex:0 0 auto;font-size:10px;letter-spacing:1px;color:#5f7a6c;text-transform:uppercase;', row, c.type);
+        catSelect(row, c.id);
       });
     }
-    drawCats(); drawAssign();
+
+    // ---- add channel (the engine's own create endpoint does the work) ----
+    var addWrap = el('div', 'display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:6px;padding-top:8px;border-top:1px dashed #1e2f27;', card);
+    var newName = el('input', 'flex:1 1 130px;min-width:110px;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:6px 9px;font:13px inherit;', addWrap);
+    newName.type = 'text'; newName.placeholder = 'new-channel-name'; newName.maxLength = 120;
+    var newType = el('select', 'flex:0 1 auto;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:6px 8px;font:12px inherit;', addWrap);
+    CH_TYPES.forEach(function (ty) {
+      var o = document.createElement('option');
+      o.value = ty; o.textContent = ty;
+      newType.appendChild(o);
+    });
+    var addBtn = el('button', 'background:#101c16;border:1px solid #2a3a32;border-radius:7px;color:#38F58A;padding:6px 12px;cursor:pointer;font:600 12px inherit;', addWrap, '+ Add channel');
+    addBtn.type = 'button';
+    var addNote = el('div', 'font-size:11px;color:#8fa89b;margin-bottom:14px;', card, gid
+      ? 'New channels appear for everyone after saving. Channels with "alert" in the name (or the alerts type) only allow group admins to post.'
+      : 'Adding channels is unavailable on this page load.');
+    if (!gid) { addBtn.disabled = true; addBtn.style.opacity = '0.5'; }
+    addBtn.addEventListener('click', function () {
+      var name = norm(newName.value);
+      if (!name) { addNote.textContent = 'Give the new channel a name first.'; return; }
+      addBtn.disabled = true; addNote.textContent = 'Creating…';
+      fetch('/wp-json/sml/v1/group/channel/create', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+        body: JSON.stringify({ group_id: gid, name: name, type: newType.value })
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          addBtn.disabled = false;
+          var ch = res.ok && res.j && res.j.channel;
+          if (!ch || !ch.id) { addNote.textContent = (res.j && res.j.message) || 'Could not create the channel.'; return; }
+          createdAny = true;
+          chans = chans || [];
+          chans.push({ id: parseInt(ch.id, 10), name: String(ch.name || name), type: String(ch.type || newType.value), ro: false });
+          orig[ch.id] = String(ch.name || name);
+          newName.value = '';
+          addNote.textContent = '#' + ch.name + ' created — assign it a category, then Save.';
+          drawAssign();
+        })
+        .catch(function () { addBtn.disabled = false; addNote.textContent = 'Could not create the channel.'; });
+    });
+
+    drawCats(); loadChannels();
 
     var foot = el('div', 'display:flex;gap:10px;justify-content:flex-end;align-items:center;', card);
     var note = el('span', 'margin-right:auto;font-size:12px;color:#8fa89b;', foot, '');
@@ -305,20 +385,44 @@
         var name = norm(cats[asgn[k]]);
         if (name && clean.indexOf(name) !== -1) outAsgn[k] = name;
       });
+      // channel renames go first, one at a time (our companion route), then
+      // the categories; renamed/created channels need a reload because the
+      // engine renders the sidebar names, not us
+      var renames = (chans || []).filter(function (c) {
+        return !c.ro && norm(c.name) !== '' && norm(c.name) !== orig[c.id];
+      });
       note.textContent = 'Saving…';
-      fetch(API, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-        body: JSON.stringify({ categories: clean, assignments: outAsgn })
-      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-        .then(function (res) {
-          if (!res.ok || !res.j || res.j.saved !== true) { note.textContent = (res.j && res.j.message) || 'Could not save.'; return; }
-          S.categories = res.j.categories || [];
-          S.assignments = res.j.assignments || {};
-          intersectAssignments();
-          close(); apply();
-        })
-        .catch(function () { note.textContent = 'Could not save.'; });
+      save.disabled = true;
+      var chain = Promise.resolve(true);
+      renames.forEach(function (c) {
+        chain = chain.then(function (okSoFar) {
+          if (!okSoFar) return false;
+          return fetch('/wp-json/sml-gcat/v1/channel?slug=' + encodeURIComponent(SLUG), {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+            body: JSON.stringify({ channel_id: c.id, name: norm(c.name) })
+          }).then(function (r) { return r.json().then(function (j) { return r.ok && j && j.saved === true; }); })
+            .catch(function () { return false; });
+        });
+      });
+      chain.then(function (renamesOk) {
+        if (!renamesOk) { save.disabled = false; note.textContent = 'A channel rename failed — nothing else was saved.'; return; }
+        fetch(API, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+          body: JSON.stringify({ categories: clean, assignments: outAsgn })
+        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            save.disabled = false;
+            if (!res.ok || !res.j || res.j.saved !== true) { note.textContent = (res.j && res.j.message) || 'Could not save.'; return; }
+            S.categories = res.j.categories || [];
+            S.assignments = res.j.assignments || {};
+            intersectAssignments();
+            if (renames.length || createdAny) { note.textContent = 'Saved — reloading…'; location.reload(); return; }
+            close(); apply();
+          })
+          .catch(function () { save.disabled = false; note.textContent = 'Could not save.'; });
+      });
     });
 
     function close() { if (PANEL) { PANEL.remove(); PANEL = null; } document.removeEventListener('keydown', esc, true); }

@@ -19,6 +19,13 @@
  *        Owner/admin only, cookie auth + X-WP-Nonce (wp_rest). Input is
  *        sanitized hard: <=30 categories, names <=40 chars stripped of tags,
  *        assignment keys forced to ints, values must be declared categories.
+ *   POST /channel?slug={slug} -> rename { channel_id, name }
+ *        The engine has create/delete endpoints (sml/v1/group/channel/create)
+ *        but NO rename — this fills that one gap, updating ONLY the `name`
+ *        column of {prefix}sml_group_channels (VARCHAR(120), sanitized the
+ *        same way the engine's create sanitizes). Same manager gate. NOTE:
+ *        the engine restricts posting in any channel whose name or type
+ *        contains "alert" — a rename can change who may post, by design.
  *
  * Also injects (via the same init@0 output-buffer pattern as the site's other
  * loaders) the CDN script tag + a wp_rest nonce on /groups/{slug} pages only.
@@ -160,6 +167,40 @@ if ( ! function_exists( 'sml_gcat_group_by_slug' ) ) {
 					), false );
 
 					return array( 'saved' => true, 'categories' => $cats, 'assignments' => $asgn );
+				},
+			),
+		) );
+
+		register_rest_route( 'sml-gcat/v1', '/channel', array(
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => static function ( $req ) {
+					$group = sml_gcat_group_by_slug( $req->get_param( 'slug' ) );
+					return $group && sml_gcat_can_manage( $group );
+				},
+				'callback'            => static function ( $req ) {
+					global $wpdb;
+					$group = sml_gcat_group_by_slug( $req->get_param( 'slug' ) );
+					if ( ! $group ) { return new WP_Error( 'sml_gcat_no_group', 'Unknown group.', array( 'status' => 404 ) ); }
+					$cid  = absint( $req->get_param( 'channel_id' ) );
+					$name = sanitize_text_field( (string) $req->get_param( 'name' ) );
+					$name = trim( function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 120 ) : substr( $name, 0, 120 ) );
+					if ( ! $cid || '' === $name ) { return new WP_Error( 'sml_gcat_bad_input', 'Channel id and a non-empty name are required.', array( 'status' => 400 ) ); }
+					// the channel must belong to THIS group — the manager gate
+					// above is per-slug, so without this an admin of group A
+					// could rename channels in group B by mixing parameters
+					$owner_gid = (int) $wpdb->get_var( $wpdb->prepare(
+						"SELECT group_id FROM {$wpdb->prefix}sml_group_channels WHERE id = %d", $cid
+					) );
+					if ( $owner_gid !== (int) $group['id'] ) { return new WP_Error( 'sml_gcat_wrong_group', 'That channel is not in this group.', array( 'status' => 404 ) ); }
+					$wpdb->update(
+						$wpdb->prefix . 'sml_group_channels',
+						array( 'name' => $name ),
+						array( 'id' => $cid ),
+						array( '%s' ),
+						array( '%d' )
+					);
+					return array( 'saved' => true, 'id' => $cid, 'name' => $name );
 				},
 			),
 		) );
