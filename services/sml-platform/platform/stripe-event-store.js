@@ -23,9 +23,13 @@ async function loadContext(client, event) {
   if (!subscriptionId) return { subscription: null, plan: {} };
 
   const result = await client.query(
-    `SELECT s.*, p.grace_days
+    `SELECT s.*, p.grace_days,
+            old.external_platform AS migration_external_platform,
+            old.external_reference AS migration_external_reference,
+            old.current_period_end AS migration_external_renewal_at
        FROM subscriptions s
        LEFT JOIN group_plans p ON p.id = s.plan_id
+       LEFT JOIN subscriptions old ON old.id = s.migration_from_subscription_id
       WHERE s.stripe_subscription_id = $1
       FOR UPDATE OF s`,
     [subscriptionId]
@@ -115,7 +119,17 @@ async function applyIntent(client, event, intent, intentIndex) {
 
     case 'sync_roles':
     case 'notify':
+    case 'cancel_external_subscription':
       await enqueue(client, event.id, intentIndex, intent);
+      return;
+
+    case 'supersede_imported':
+      await client.query(
+        `UPDATE subscriptions
+            SET status = 'superseded', superseded_by = $2
+          WHERE id = $1 AND origin = 'discord_imported' AND superseded_by IS NULL`,
+        [intent.imported_subscription_id, intent.new_subscription_id]
+      );
       return;
 
     default:

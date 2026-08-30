@@ -24,3 +24,8 @@ only after both the third failed attempt and the 72-hour deadline.
 The site-specific group engine must attach a listener to
 `sml_platform_subscription_access_reconcile`. The bridge deliberately fails and
 retries instead of pretending access changed when no adapter is installed.
+
+Migration provider adapters use `sml_platform_verify_imported_renewal()` after
+checking the renewal date server-to-server, then listen to
+`sml_platform_cancel_external_subscription` to cancel the old billing at period
+end. Never use a renewal date entered by the member.

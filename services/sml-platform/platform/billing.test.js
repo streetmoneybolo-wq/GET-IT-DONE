@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const B = require('./billing');
+const NOW = 1_700_000_000_000;
 
 test('Loop Bucks quote adds a separately disclosed 2% fee exactly once', () => {
   assert.deepEqual(B.loopBuckQuote(10_00, 83), {
@@ -38,6 +39,30 @@ test('membership checkout sends 5% to platform and rest to seller', () => {
   });
   assert.equal(params.subscription_data.application_fee_percent, 5);
   assert.equal(params.subscription_data.transfer_data.destination, 'acct_seller');
+});
+
+test('migration checkout collects payment method now and bills on verified renewal date', () => {
+  const renewal = NOW + 7 * 24 * 3600 * 1000;
+  const params = B.buildMembershipCheckout({
+    plan: { stripe_price_id: 'price_1', platform_fee_bps: 500 },
+    subscriptionKey: 'subkey_2', userId: 9, connectedAccountId: 'acct_seller',
+    successUrl: 'https://stockmarketloop.com/groups/one/?migrated=1',
+    cancelUrl: 'https://stockmarketloop.com/groups/one/',
+    migrationRenewalAt: renewal, now: NOW
+  });
+  assert.equal(params.payment_method_collection, 'always');
+  assert.equal(params.subscription_data.trial_end, Math.floor(renewal / 1000));
+  assert.equal(params.subscription_data.application_fee_percent, 5);
+});
+
+test('migration refuses a renewal date too close to prevent double billing', () => {
+  assert.throws(() => B.buildMembershipCheckout({
+    plan: { stripe_price_id: 'price_1', platform_fee_bps: 500 },
+    subscriptionKey: 'subkey_3', userId: 9, connectedAccountId: 'acct_seller',
+    successUrl: 'https://stockmarketloop.com/groups/one/',
+    cancelUrl: 'https://stockmarketloop.com/groups/one/',
+    migrationRenewalAt: NOW + 3600 * 1000, now: NOW
+  }), /too close/);
 });
 
 test('checkout builders reject browser-style price drift and insecure redirects', () => {

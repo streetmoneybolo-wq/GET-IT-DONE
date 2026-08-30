@@ -233,6 +233,29 @@ test('expiredGrace finds only members whose window has actually closed', () => {
   assert.deepEqual(out, [1]);
 });
 
+test('a migrated subscription requests external cancellation at the old renewal date', () => {
+  const migrated = sub({ id: 22, origin: 'migrated', migration_from_subscription_id: 11,
+    migration_external_platform: 'upgrade_chat', migration_external_reference: 'ext_1',
+    migration_external_renewal_at: new Date(T0 + DAY).toISOString() });
+  const r = L.handleEvent(evt('customer.subscription.created', {
+    id: 'sub_123', status: 'trialing', current_period_end: (T0 + DAY) / 1000
+  }), { subscription: migrated, plan, now: T0 });
+  const cancel = r.intents.find((i) => i.type === 'cancel_external_subscription');
+  assert.equal(cancel.imported_subscription_id, 11);
+  assert.equal(cancel.external_platform, 'upgrade_chat');
+});
+
+test('first migrated payment supersedes the imported row without changing roles twice', () => {
+  const migrated = sub({ id: 22, origin: 'migrated', migration_from_subscription_id: 11,
+    platform_fee_bps: 500, fee_consent_at: new Date(T0 - 1000).toISOString() });
+  const r = L.handleEvent(evt('invoice.paid', {
+    id: 'in_1', subscription: 'sub_123', amount_paid: 1000, currency: 'usd'
+  }), { subscription: migrated, plan, now: T0 });
+  const supersede = r.intents.find((i) => i.type === 'supersede_imported');
+  assert.deepEqual(supersede, { type: 'supersede_imported', imported_subscription_id: 11, new_subscription_id: 22 });
+  assert.equal(r.intents.filter((i) => i.type === 'sync_roles').length, 1);
+});
+
 /* ---------- determinism ---------- */
 
 test('reconcile is deterministic', () => {

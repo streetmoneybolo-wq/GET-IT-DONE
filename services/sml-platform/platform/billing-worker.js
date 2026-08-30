@@ -45,6 +45,41 @@ async function expireGrace(pool) {
   }
 }
 
+async function promoteSubscriptionIntents(pool, limit = 100) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      `SELECT * FROM subscription_intent_outbox
+        WHERE status IN ('pending','failed') AND available_at <= now()
+        ORDER BY available_at, id
+        FOR UPDATE SKIP LOCKED LIMIT $1`, [limit]
+    );
+    for (const row of found.rows) {
+      const type = row.intent_type === 'sync_roles' ? 'subscription_access_reconcile'
+        : row.intent_type === 'notify' ? 'subscription_notify'
+          : row.intent_type;
+      await client.query(
+        `INSERT INTO billing_outbox (source_key, intent_type, payload)
+         VALUES ($1,$2,$3::jsonb) ON CONFLICT (source_key) DO NOTHING`,
+        [`subscription-intent:${row.id}`, type, JSON.stringify(row.payload)]
+      );
+      await client.query(
+        `UPDATE subscription_intent_outbox
+            SET status = 'processed', processed_at = now(), last_error = NULL
+          WHERE id = $1`, [row.id]
+      );
+    }
+    await client.query('COMMIT');
+    return found.rowCount;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function claimOne(pool) {
   const client = await pool.connect();
   try {
@@ -247,6 +282,7 @@ function createStripeRestoreHandler(stripe) {
 module.exports = {
   retryDelaySeconds,
   expireGrace,
+  promoteSubscriptionIntents,
   claimOne,
   finish,
   createOutboxWorker,

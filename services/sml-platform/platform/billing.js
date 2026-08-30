@@ -96,10 +96,26 @@ function buildLoopBuckCheckout({ order, packageRow, successUrl, cancelUrl }) {
 
 /** A native SML membership uses Connect destination charges and exactly 5%. */
 function buildMembershipCheckout({ plan, subscriptionKey, userId, connectedAccountId,
-  successUrl, cancelUrl }) {
+  successUrl, cancelUrl, migrationRenewalAt = null, now = Date.now() }) {
   if (!plan || !plan.stripe_price_id) throw new TypeError('active Stripe price required');
   if (!/^acct_/.test(String(connectedAccountId || ''))) throw new TypeError('connected account required');
   if (plan.platform_fee_bps !== MEMBERSHIP_FEE_BPS) throw new Error('native membership fee must be 5%');
+
+  const subscriptionData = {
+    application_fee_percent: MEMBERSHIP_FEE_BPS / 100,
+    transfer_data: { destination: connectedAccountId },
+    metadata: { sml_kind: 'membership', subscription_key: subscriptionKey }
+  };
+  const renewalMs = migrationRenewalAt == null ? null : new Date(migrationRenewalAt).getTime();
+  if (renewalMs != null) {
+    /* Stripe Checkout requires a meaningful future trial. Refuse a date less
+       than 48h away rather than double-billing immediately while the external
+       subscription is still active. */
+    if (!Number.isFinite(renewalMs) || renewalMs <= now) throw new TypeError('verified renewal date must be in the future');
+    if (renewalMs < now + 48 * 3600 * 1000) throw new TypeError('verified renewal date is too close for safe migration');
+    subscriptionData.trial_end = Math.floor(renewalMs / 1000);
+    subscriptionData.trial_settings = { end_behavior: { missing_payment_method: 'cancel' } };
+  }
 
   return {
     mode: 'subscription',
@@ -107,13 +123,10 @@ function buildMembershipCheckout({ plan, subscriptionKey, userId, connectedAccou
     success_url: absoluteUrl(successUrl, 'successUrl'),
     cancel_url: absoluteUrl(cancelUrl, 'cancelUrl'),
     automatic_tax: { enabled: true },
+    payment_method_collection: 'always',
     line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
     metadata: { sml_kind: 'membership', subscription_key: subscriptionKey },
-    subscription_data: {
-      application_fee_percent: MEMBERSHIP_FEE_BPS / 100,
-      transfer_data: { destination: connectedAccountId },
-      metadata: { sml_kind: 'membership', subscription_key: subscriptionKey }
-    }
+    subscription_data: subscriptionData
   };
 }
 

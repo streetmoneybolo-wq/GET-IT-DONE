@@ -187,6 +187,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       await handleBillingRequest(request, response, billingOptions, billingService.createSellerOnboarding);
       return;
     }
+    if (request.method === 'POST' && path === '/v1/billing/migrations/verify-renewal') {
+      await handleBillingRequest(request, response, billingOptions, billingService.verifyImportedRenewal);
+      return;
+    }
     if (request.method === 'POST' && path === '/v1/stripe/webhook') {
       await handleStripeWebhook(request, response, { acceptStripeEvent, stripeWebhookSecret, logger, now });
       return;

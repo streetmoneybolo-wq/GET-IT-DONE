@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Platform Billing Bridge
  * Description: Signed bridge between WordPress, the Render billing service, Loop Bucks, and group access.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Stock Market Loop
  */
 
@@ -91,6 +91,16 @@ function sml_platform_billing_process_outbox( WP_REST_Request $request ) {
 			return new WP_Error( 'membership_adapter_missing', 'Membership adapter unavailable.', array( 'status' => 503 ) );
 		}
 		do_action( 'sml_platform_subscription_access_reconcile', $data, $source );
+	} elseif ( 'cancel_external_subscription' === $intent ) {
+		if ( ! has_action( 'sml_platform_cancel_external_subscription' ) ) {
+			return new WP_Error( 'external_cancel_adapter_missing', 'External subscription adapter unavailable.', array( 'status' => 503 ) );
+		}
+		do_action( 'sml_platform_cancel_external_subscription', $data, $source );
+	} elseif ( 'subscription_notify' === $intent ) {
+		if ( ! has_action( 'sml_platform_subscription_notify' ) ) {
+			return new WP_Error( 'subscription_notify_adapter_missing', 'Subscription notification adapter unavailable.', array( 'status' => 503 ) );
+		}
+		do_action( 'sml_platform_subscription_notify', $data, $source );
 	} else {
 		return new WP_Error( 'billing_intent', 'Unsupported billing intent.', array( 'status' => 400 ) );
 	}
@@ -148,4 +158,8 @@ function sml_platform_membership_checkout( array $data ) {
 
 function sml_platform_seller_onboarding( array $data ) {
 	return sml_platform_billing_call( '/v1/billing/sellers/onboard', $data );
+}
+
+function sml_platform_verify_imported_renewal( array $provider_verified_data ) {
+	return sml_platform_billing_call( '/v1/billing/migrations/verify-renewal', $provider_verified_data );
 }

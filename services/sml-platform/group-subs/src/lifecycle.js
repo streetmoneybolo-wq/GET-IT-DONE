@@ -128,6 +128,17 @@ function handleEvent(event, ctx = {}) {
         intents.push(intent('clear_failure_state', { stripe_subscription_id: obj.id }));
         intents.push(intent('sync_roles', { reason: 'active', stripe_subscription_id: obj.id }));
       }
+      if (event.type === 'customer.subscription.created' && sub && sub.origin === 'migrated' &&
+          sub.migration_from_subscription_id) {
+        intents.push(intent('cancel_external_subscription', {
+          imported_subscription_id: sub.migration_from_subscription_id,
+          new_subscription_id: sub.id,
+          external_platform: sub.migration_external_platform,
+          external_reference: sub.migration_external_reference,
+          cancel_at: sub.migration_external_renewal_at,
+          reason: 'migrated_to_sml_at_existing_renewal_date'
+        }));
+      }
       break;
     }
 
@@ -157,6 +168,12 @@ function handleEvent(event, ctx = {}) {
           fee_bps: feeBps,
           currency: obj.currency || 'usd',
           consent_ref: sub.fee_consent_at || null
+        }));
+      }
+      if (sub && sub.origin === 'migrated' && sub.migration_from_subscription_id) {
+        intents.push(intent('supersede_imported', {
+          imported_subscription_id: sub.migration_from_subscription_id,
+          new_subscription_id: sub.id
         }));
       }
       intents.push(intent('sync_roles', { reason: 'paid', stripe_subscription_id: obj.subscription }));

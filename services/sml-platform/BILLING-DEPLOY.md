@@ -10,6 +10,10 @@
   are never trusted.
 - Three-attempt/72-hour grace enforcement. The worker requires both conditions
   before revoking access.
+- Provider-verified subscription migration: Discord identifies the member, the
+  provider supplies the renewal timestamp, Stripe collects a payment method
+  immediately, and the first 5%-fee charge waits until that existing renewal
+  date. The imported membership remains active until the first SML payment.
 - Website/Discord access reconciliation through the existing role system.
 - Seller dispute accounting. Principal is recovered when a dispute opens. The
   separate 12.5% seller fee is finalized only when the dispute is lost. A won
@@ -61,6 +65,12 @@ Connect the existing native group-role engine to the
 continue through the existing `plan_role_grants` reconciler and rate-limited
 Discord client; the bot needs Manage Roles and its role above every managed
 membership role.
+
+External provider adapters must call `sml_platform_verify_imported_renewal()`
+with provider-verified data and listen to
+`sml_platform_cancel_external_subscription` to cancel the old subscription at
+period end. A member-entered date is never accepted. Dates less than 48 hours
+away fail closed to avoid an immediate double charge.
 
 ## Release order
 

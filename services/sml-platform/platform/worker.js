@@ -6,6 +6,7 @@ const { log } = require('./logger');
 const Stripe = require('stripe');
 const {
   expireGrace,
+  promoteSubscriptionIntents,
   createOutboxWorker,
   createWordPressHandler,
   createStripeRecoveryHandler,
@@ -23,6 +24,8 @@ async function main() {
   const processOutbox = createOutboxWorker(database.pool, {
     loop_bucks_credit: wordpress,
     subscription_access_reconcile: wordpress,
+    subscription_notify: wordpress,
+    cancel_external_subscription: wordpress,
     seller_recovery: createStripeRecoveryHandler(stripe),
     seller_restore: createStripeRestoreHandler(stripe)
   });
@@ -33,6 +36,7 @@ async function main() {
     try {
       await database.health();
       const expired = await expireGrace(database.pool);
+      const promoted = await promoteSubscriptionIntents(database.pool);
       let processed = 0;
       let failed = 0;
       for (let i = 0; i < 50; i += 1) {
@@ -41,7 +45,7 @@ async function main() {
         if (outcome === 'processed') processed++;
         else failed++;
       }
-      log('info', 'billing_worker_tick', { expired, processed, failed });
+      log('info', 'billing_worker_tick', { expired, promoted, processed, failed });
     } catch (error) {
       log('error', 'worker_database_unavailable', { error });
     }
