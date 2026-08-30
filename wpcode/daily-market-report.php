@@ -214,7 +214,14 @@ if ( ! function_exists( 'sml_dmr_run' ) ) {
 			'methods'             => 'GET',
 			'callback'            => static function () {
 				$d = sml_dmr_gather();
-				return rest_ensure_response( array( 'ok' => true, 'last' => get_option( 'sml_dmr_last' ), 'next_cron' => wp_next_scheduled( 'sml_dmr_tick_event' ), 'available' => array( 'gamma' => count( $d['gamma'] ), 'flow' => count( $d['flow'] ), 'movers' => count( $d['movers'] ), 'asof' => $d['asof'] ) ) );
+				$raw = array();
+				foreach ( sml_dmr_tickers() as $sym ) {
+					$s = get_option( 'sml_opt_snap_' . strtolower( $sym ), null );
+					$raw[ $sym ] = is_array( $s )
+						? array( 'keys' => array_keys( $s ), 'captured' => (string) ( $s['captured'] ?? '' ), 'age_h' => ! empty( $s['captured'] ) ? round( ( time() - strtotime( (string) $s['captured'] ) ) / 3600, 1 ) : null, 'has_gex' => isset( $s['gex']['net'], $s['gex']['peak']['strike'] ), 'unusual_n' => is_array( $s['unusual'] ?? null ) ? count( $s['unusual'] ) : 0 )
+						: ( null === $s ? 'absent' : gettype( $s ) );
+				}
+				return rest_ensure_response( array( 'ok' => true, 'last' => get_option( 'sml_dmr_last' ), 'has_opt_config' => function_exists( 'sml_opt_config' ), 'tickers' => sml_dmr_tickers(), 'next_cron' => wp_next_scheduled( 'sml_dmr_tick_event' ), 'available' => array( 'gamma' => count( $d['gamma'] ), 'flow' => count( $d['flow'] ), 'movers' => count( $d['movers'] ), 'asof' => $d['asof'] ), 'raw_snapshots' => $raw ) );
 			},
 			'permission_callback' => static function () { return current_user_can( 'manage_options' ); },
 		) );
