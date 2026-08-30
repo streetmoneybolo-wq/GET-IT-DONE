@@ -428,6 +428,7 @@
         '<a href="/markets/"><span class="i">▤</span>Markets</a>' +
         '<a href="/live/"><span class="i">◈</span>Live</a>' +
         '<a href="/n/"><span class="i">✉</span>Letters</a>' +
+        '<a href="/q/"><span class="i">?</span>Q&amp;A</a>' +
         '<button type="button" id="sml-hf-bnav-bucks"><span class="i">◎</span>Bucks</button>';
       shell.insertAdjacentElement('afterend', bnav);
       bnav.addEventListener('click', function (ev) {
