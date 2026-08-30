@@ -1,0 +1,17 @@
+BEGIN;
+DROP TRIGGER IF EXISTS marketplace_disputes_touch ON marketplace_disputes;
+DROP TRIGGER IF EXISTS loop_buck_orders_touch ON loop_buck_orders;
+DROP TRIGGER IF EXISTS marketplace_sellers_touch ON marketplace_sellers;
+DROP FUNCTION IF EXISTS set_updated_at_marketplace();
+DROP TABLE IF EXISTS marketplace_disputes;
+DROP TABLE IF EXISTS seller_ledger;
+DROP TYPE IF EXISTS dispute_state;
+DROP TYPE IF EXISTS seller_ledger_kind;
+DROP TABLE IF EXISTS billing_outbox;
+DROP TABLE IF EXISTS loop_buck_orders;
+DROP TYPE IF EXISTS loop_buck_order_status;
+DROP TABLE IF EXISTS loop_buck_packages;
+DROP TABLE IF EXISTS marketplace_sellers;
+ALTER TABLE subscriptions DROP COLUMN IF EXISTS stripe_checkout_session_id;
+ALTER TABLE subscriptions DROP COLUMN IF EXISTS membership_checkout_key;
+COMMIT;

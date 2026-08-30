@@ -20,7 +20,11 @@ function getConfig(env = process.env) {
     wordpressWebhookSecret: String(env.SML_WORDPRESS_WEBHOOK_SECRET || '').trim(),
     // Also optional at boot and fail-closed at the webhook route. Render owns
     // the whsec_ value; it is never committed or logged.
-    stripeWebhookSecret: String(env.SML_STRIPE_WEBHOOK_SECRET || '').trim()
+    stripeWebhookSecret: String(env.SML_STRIPE_WEBHOOK_SECRET || '').trim(),
+    stripeSecretKey: String(env.STRIPE_SECRET_KEY || '').trim(),
+    billingApiSecret: String(env.SML_BILLING_API_SECRET || '').trim(),
+    wordpressBillingBridgeUrl: String(env.SML_WORDPRESS_BILLING_BRIDGE_URL || '').trim(),
+    wordpressBillingBridgeSecret: String(env.SML_WORDPRESS_BILLING_BRIDGE_SECRET || '').trim()
   });
 }
 

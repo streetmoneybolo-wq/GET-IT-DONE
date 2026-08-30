@@ -6,6 +6,8 @@ const { createDatabase } = require('./database');
 const { log } = require('./logger');
 const { parseEvent, readRequestBody, verifySignature } = require('./wordpress-gateway');
 const stripeWebhook = require('./stripe-webhook');
+const Stripe = require('stripe');
+const billingService = require('./billing-service');
 
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
@@ -124,10 +126,67 @@ async function handleStripeWebhook(request, response, options) {
   }
 }
 
+async function handleBillingRequest(request, response, options, action) {
+  if (!contentTypeIsJson(request)) {
+    sendJson(response, 415, { ok: false, error: 'content_type_required' });
+    return;
+  }
+  const body = await readRequestBody(request);
+  if (!body.ok) {
+    sendJson(response, body.status, { ok: false, error: body.error });
+    return;
+  }
+  const verified = verifySignature({
+    secret: options.billingApiSecret,
+    timestamp: request.headers['x-sml-timestamp'],
+    signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) {
+    sendJson(response, verified.status, { ok: false, error: verified.error });
+    return;
+  }
+  if (!options.stripe) {
+    sendJson(response, 503, { ok: false, error: 'stripe_unconfigured' });
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(body.rawBody);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid');
+  } catch (_) {
+    sendJson(response, 400, { ok: false, error: 'invalid_json' });
+    return;
+  }
+  try {
+    const result = await action(options.pool, options.stripe, input);
+    sendJson(response, 201, { ok: true, ...result });
+  } catch (error) {
+    options.logger('error', 'billing_request_failed', { error });
+    const inputError = error instanceof TypeError || /not found|not ready|consent|fee is not/.test(String(error.message));
+    sendJson(response, inputError ? 400 : 503, { ok: false, error: inputError ? 'invalid_request' : 'temporary_unavailable' });
+  }
+}
+
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
-  acceptStripeEvent, stripeWebhookSecret = '', logger = log, now = Date.now }) {
+  acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
+  pool = null, logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
+    const billingOptions = { billingApiSecret, stripe, pool, logger, now };
+    if (request.method === 'POST' && path === '/v1/billing/loop-bucks/checkout') {
+      await handleBillingRequest(request, response, billingOptions, billingService.createLoopBuckCheckout);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/billing/memberships/checkout') {
+      await handleBillingRequest(request, response, billingOptions, billingService.createMembershipCheckout);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/billing/sellers/onboard') {
+      await handleBillingRequest(request, response, billingOptions, billingService.createSellerOnboarding);
+      return;
+    }
     if (request.method === 'POST' && path === '/v1/stripe/webhook') {
       await handleStripeWebhook(request, response, { acceptStripeEvent, stripeWebhookSecret, logger, now });
       return;
@@ -156,12 +215,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 async function main() {
   const config = getConfig();
   const database = createDatabase(config);
+  const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
     wordpressWebhookSecret: config.wordpressWebhookSecret,
     acceptStripeEvent: database.acceptStripeEvent,
-    stripeWebhookSecret: config.stripeWebhookSecret
+    stripeWebhookSecret: config.stripeWebhookSecret,
+    billingApiSecret: config.billingApiSecret,
+    stripe,
+    pool: database.pool
   });
   let shuttingDown = false;
 
@@ -189,4 +252,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, sendJson };
+module.exports = { createServer, sendJson, handleBillingRequest };

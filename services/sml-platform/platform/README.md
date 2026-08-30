@@ -8,7 +8,9 @@ This folder is the deployment shell for the existing `news-engine`, `group-subs`
 - The API health check fails closed with HTTP 503 when Postgres is unavailable.
 - The API and worker drain their Postgres pools on `SIGTERM` and `SIGINT`.
 - The API service alone runs migrations in Render's pre-deploy stage. A migration failure cancels that deployment rather than exposing a partially deployed API.
-- The worker only checks database connectivity until D-7 and D-8 wire the existing subscription and news modules to real upstream adapters.
+- The worker enforces the third-failure/72-hour subscription cutoff and drains
+  the idempotent billing outbox for Loop Bucks, membership reconciliation, and
+  seller dispute recovery. News trigger work remains a separate adapter.
 - The WordPress gateway at `POST /v1/wordpress/events` is disabled until
   `SML_WORDPRESS_WEBHOOK_SECRET` is configured in Render. It uses HMAC-SHA256,
   a five-minute timestamp window, a 64 KiB body limit, and a database-backed

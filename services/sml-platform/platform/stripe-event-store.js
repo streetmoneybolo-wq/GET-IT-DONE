@@ -1,6 +1,7 @@
 'use strict';
 
 const lifecycle = require('../group-subs/src/lifecycle');
+const { applyMarketplaceEvent } = require('./marketplace-events');
 
 function stripeSubscriptionId(event) {
   const object = event && event.data && event.data.object;
@@ -130,6 +131,7 @@ function resultStatus(result) {
 
 function createStripeEventStore(pool, options = {}) {
   const handleEvent = options.handleEvent || lifecycle.handleEvent;
+  const handleMarketplaceEvent = options.applyMarketplaceEvent || applyMarketplaceEvent;
   const now = options.now || Date.now;
 
   return async function acceptStripeEvent(event) {
@@ -156,6 +158,7 @@ function createStripeEventStore(pool, options = {}) {
         return 'duplicate';
       }
 
+      const marketplaceStatus = await handleMarketplaceEvent(client, event);
       const context = await loadContext(client, event);
       const result = handleEvent(event, {
         seenEventIds: new Set(),
@@ -171,14 +174,16 @@ function createStripeEventStore(pool, options = {}) {
         await applyIntent(client, event, result.intents[i], i);
       }
 
+      const status = marketplaceStatus && marketplaceStatus !== 'ignored'
+        ? marketplaceStatus : resultStatus(result);
       await client.query(
         `UPDATE stripe_events
             SET processed_at = now(), status = $2, error = NULL
           WHERE event_id = $1`,
-        [event.id, resultStatus(result)]
+        [event.id, status]
       );
       await client.query('COMMIT');
-      return resultStatus(result);
+      return status;
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
       throw error;

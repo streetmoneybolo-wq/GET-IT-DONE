@@ -224,8 +224,9 @@ test('revokes are never blocked by Discord health', () => {
 
 test('expiredGrace finds only members whose window has actually closed', () => {
   const rows = [
-    sub({ id: 1, status: 'grace', access_until: T0 - 1 }),
-    sub({ id: 2, status: 'grace', access_until: T0 + DAY }),
+    sub({ id: 1, status: 'grace', failed_payment_count: 3, access_until: T0 - 1 }),
+    sub({ id: 2, status: 'grace', failed_payment_count: 3, access_until: T0 + DAY }),
+    sub({ id: 4, status: 'grace', failed_payment_count: 2, access_until: T0 - DAY }),
     sub({ id: 3, status: 'active', access_until: null })
   ];
   const out = L.expiredGrace(rows, T0).map((s) => s.id);

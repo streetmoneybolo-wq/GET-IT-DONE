@@ -304,6 +304,9 @@ function reconcile(input = {}) {
 function expiredGrace(subs, now) {
   return (subs || []).filter((s) =>
     (s.status === 'grace' || s.status === 'past_due' || s.status === 'unpaid') &&
+    /* Three TOTAL attempts: the original charge plus two retries. Time alone
+       cannot revoke someone when Stripe never actually performed attempt 3. */
+    Number(s.failed_payment_count || 0) >= 3 &&
     s.access_until != null && now >= toMs(s.access_until));
 }
 
