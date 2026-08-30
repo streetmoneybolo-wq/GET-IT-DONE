@@ -2,6 +2,24 @@
   'use strict';
 
   var cfg = window.smlGoLiveConfig || {};
+  // The standalone /go-live/ renderer can leave its config script inert.
+  // Recover only the JSON assigned to smlGoLiveConfig, stopping before the
+  // adjacent dashboard assignment instead of parsing the whole script.
+  if (!cfg.userId) {
+    try {
+      var configNode = Array.prototype.slice.call(document.scripts).find(function (script) {
+        return (script.textContent || '').indexOf('window.smlGoLiveConfig=') === 0;
+      });
+      var raw = configNode && (configNode.textContent || '');
+      var start = raw.indexOf('window.smlGoLiveConfig=');
+      var end = raw.indexOf(';window.smlCreatorDashboardConfig=', start);
+      if (start >= 0) {
+        var json = raw.slice(start + 'window.smlGoLiveConfig='.length, end > start ? end : undefined).replace(/;\s*$/, '');
+        var recovered = JSON.parse(json);
+        if (recovered && typeof recovered === 'object') { cfg = recovered; }
+      }
+    } catch (e) {}
+  }
   var state = {
     messages: [],
     chatLoaded: false,
