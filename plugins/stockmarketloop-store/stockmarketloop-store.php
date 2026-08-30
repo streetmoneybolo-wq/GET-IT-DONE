@@ -2,7 +2,7 @@
 /**
  * Plugin Name: StockMarketLoop Store
  * Description: Loop Bucks wallet, digital storefront, entitlements, and WooCommerce fulfillment for StockMarketLoop.
- * Version: 0.5.0
+ * Version: 0.5.1
  * Author: StockMarketLoop
  * Text Domain: sml-store
  */
@@ -10,7 +10,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class SML_Store {
-	const VERSION = '0.5.0';
+	const VERSION = '0.5.1';
 	const DB_VERSION = '3';
 	const OPTION_DB_VERSION = 'sml_store_db_version';
 	const NONCE_ACTION = 'sml_store_purchase';
@@ -255,7 +255,6 @@ final class SML_Store {
 		ob_start();
 		?>
 		<section class="sml-store" data-sml-store data-balance="<?php echo esc_attr( $balance ); ?>">
-			<header class="sml-store__bar"><div class="sml-store__brand"><div class="sml-store__wordmark">LOOP <span>STORE</span></div><div class="sml-store__network">Stock Market Loop</div></div><a class="sml-store__balance" href="<?php echo esc_url( home_url( '/wallet/' ) ); ?>"><img src="<?php echo esc_url( $asset . 'loopbuck.png' ); ?>" alt=""><span class="sml-store__balance-copy"><small>Your balance</small><strong data-sml-balance><?php echo esc_html( number_format_i18n( $balance ) ); ?> LB</strong></span></a></header>
 			<section class="sml-store__hero"><img class="sml-store__hero-art" src="<?php echo esc_url( $asset . 'loopbuck.png' ); ?>" alt="A stack of Loop Bucks"><h1>Load up on<br><span>Loop Bucks</span></h1><p>The currency of Stock Market Loop. Buy a pack, then unlock streams, immersive profiles, group tools, and more.</p></section>
 			<div class="sml-store__notice" data-store-notice hidden></div>
 			<section class="sml-store__section" data-packages><div class="sml-store__heading"><h2>Bucks Packs</h2><span>Bigger packs, bigger bonus per dollar</span></div><div class="sml-store__packs">
