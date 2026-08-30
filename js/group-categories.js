@@ -3,26 +3,29 @@
  *
  * Companion layer over the groups engine's sidebar: reads per-group category
  * names + channel assignments from sml-gcat/v1 and REGROUPS the existing
- * sidebar buttons under those headers. It only MOVES the engine's own buttons
- * (listeners survive) and never creates, renames, or deletes a channel.
+ * sidebar VISUALLY under those headers. It never creates, renames, or deletes
+ * a channel — and, critically, it never MOVES an engine node at all.
  *
- * Adversarially reviewed 2026-08-30; the shape below encodes those findings:
+ * Adversarially reviewed 2026-08-30, then hardened against the live engine:
  *  - the bootstrap GET sends X-WP-Nonce (core demotes cookie-authed REST
  *    without it to user 0, which would hide the manage gear from owners
  *    forever); an expired nonce retries once anonymously so members still
  *    get read-only grouping.
- *  - apply() moves ONLY assigned buttons, leaving an invisible placeholder at
- *    each one's exact native spot; every re-apply first sends buttons home via
- *    their placeholders, then regroups. Unassigned channels are never touched,
- *    so the engine's own progressive render order can't be corrupted (the
- *    earlier whole-sidebar snapshot/restore raced that render and clustered
- *    every channel above the native headers).
+ *  - regrouping is pure CSS: the container becomes a flex column and every
+ *    child gets an inline `order`; our headers are APPENDED (new nodes only)
+ *    and float up via their order. Verified live that physically moving
+ *    buttons breaks the engine — its installer keeps insertBefore anchors on
+ *    the channel buttons and throws NotFoundError, then wipes the sidebar in
+ *    the ensuing observer tug-of-war. DOM order always stays the engine's.
  *  - empty categories render ONLY for managers (dimmed) — members never see
  *    dead headers from suggestions or restricted channels.
  *  - the observer watches document.body (the shell can replace the container
- *    node), ignores our own mutations, and verifies grouping CORRECTNESS,
- *    not just header presence; apply() refuses to build over an empty box
- *    mid-re-render.
+ *    node) and skips batches while apply() itself is mutating (an `applying`
+ *    flag cleared on a macrotask, after the observer's microtask fires); any
+ *    other change — including something removing OUR nodes — re-applies.
+ *  - grouped() checks per-button correctness (inline order + data-sml-gcat-ord
+ *    matching the assignment), so an engine re-render that recreates or
+ *    resets a button triggers a re-apply.
  *  - panel: renames carry assignments along; names are trimmed everywhere;
  *    duplicate names block Save; category cap is code-point safe.
  */
@@ -46,106 +49,136 @@
   function norm(name) { return String(name == null ? '' : name).trim(); }
   function capPoints(s) { return Array.from(String(s)).slice(0, 40).join(''); }
 
-  /* ---------- placeholder-based move/restore ---------- */
-  // Moving an assigned button out leaves an invisible <i> marker at its exact
-  // native position; restoring is "insert before your marker, remove marker".
-  // Unassigned buttons and the engine's own headers are NEVER moved, so a
-  // progressive or partial engine render can't be reordered by us.
-  function markHome(b) {
-    var ph = document.createElement('i');
-    ph.setAttribute('data-sml-gcat-ph', b.getAttribute('data-smlgs-channel') || '');
-    ph.style.display = 'none';
-    b.parentNode.insertBefore(ph, b);
-  }
-  function restoreAll(box) {
-    [].slice.call(box.querySelectorAll('i[data-sml-gcat-ph]')).forEach(function (ph) {
-      var id = ph.getAttribute('data-sml-gcat-ph');
-      var b = id && box.querySelector('.sml-gshell__channel[data-smlgs-channel="' + id + '"]');
-      if (b) ph.parentNode.insertBefore(b, ph);
-      ph.remove();
-    });
+  /* ---------- CSS-order regrouping (no engine node ever moves) ---------- */
+  var NATIVE_BASE = 100000; // non-category children keep engine DOM order up here
+
+  function clearOurs(box) {
     [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]')).forEach(function (h) { h.remove(); });
-  }
-
-  /* ---------- regrouping ---------- */
-  function underOurHeader(b) {
-    var n = b.previousElementSibling;
-    while (n) {
-      if (n.hasAttribute && n.hasAttribute('data-sml-gcat')) return true;
-      if (n.classList && n.classList.contains('sml-gshell__category') && !n.hasAttribute('data-sml-gcat')) return false;
-      n = n.previousElementSibling;
-    }
-    return false;
-  }
-  function grouped(box) {
-    // correctness, not presence: EVERY assigned button that exists must sit
-    // under one of our headers (a late-arriving button from the engine's
-    // progressive render fails this and triggers a re-apply)
-    var assigned = channelButtons(box).filter(function (b) {
-      return !!S.assignments[b.getAttribute('data-smlgs-channel')];
+    [].slice.call(box.children).forEach(function (el) {
+      el.style.removeProperty('order');
+      if (el.hasAttribute('data-sml-gcat-ord')) el.removeAttribute('data-sml-gcat-ord');
     });
-    if (!assigned.length) return !S.categories.length || !!box.querySelector('.sml-gshell__category[data-sml-gcat]') || S.canManage === false;
-    return assigned.every(underOurHeader);
   }
 
+  // drop any assignment whose category is not declared, at every ingest —
+  // the server intersects too, but a single orphaned assignment would make
+  // grouped() permanently false and drive a 400ms apply loop (review #3)
+  function intersectAssignments() {
+    Object.keys(S.assignments).forEach(function (k) {
+      if (S.categories.indexOf(S.assignments[k]) === -1) delete S.assignments[k];
+    });
+  }
+
+  function grouped(box) {
+    // per-button correctness: every present assigned button must carry the
+    // inline order + marker apply() gave it (a recreated/reset button fails)
+    var headsPresent = !!box.querySelector('.sml-gshell__category[data-sml-gcat]');
+    var assigned = channelButtons(box).filter(function (b) {
+      var a = S.assignments[b.getAttribute('data-smlgs-channel')];
+      return !!a && S.categories.indexOf(a) !== -1;
+    });
+    if (!S.categories.length) return !headsPresent;
+    if (!assigned.length) {
+      // managers keep dimmed empty headers; for members every header is dead
+      // weight and must be torn down (review #4: engine deleting the last
+      // assigned channel used to leave the member a permanent empty header)
+      return S.canManage ? headsPresent : !headsPresent;
+    }
+    return headsPresent && assigned.every(function (b) {
+      return b.style.order !== '' && b.getAttribute('data-sml-gcat-ord') === S.assignments[b.getAttribute('data-smlgs-channel')];
+    });
+  }
+
+  var applying = false;
   function apply() {
     var box = channelsBox();
     if (!box) return;
     var btns = channelButtons(box);
-    // never build headers over an empty box mid-re-render — the engine is
-    // between "cleared" and "repopulated"; the observer retries when it fills
-    if (S.categories.length && !btns.length) return;
 
-    S.lastBox = box;
+    applying = true;
+    try {
+      // never build headers over an empty box mid-re-render — the engine is
+      // between "cleared" and "repopulated"; the observer retries when it
+      // fills. The gear still renders so a manager of a channel-less group
+      // can reach the panel at all (review #13).
+      if (S.categories.length && !btns.length) { ensureGear(box); return; }
 
-    // 1) send every previously-moved button home and drop our headers
-    restoreAll(box);
+      S.lastBox = box;
+      clearOurs(box);
 
-    // 2) rebuild the grouped block in one fragment, inserted once at the top;
-    //    each button we take marks its native home first
-    if (S.categories.length) {
-      var frag = document.createDocumentFragment();
-      var current = channelButtons(box); // fresh, in native DOM order
-      S.categories.forEach(function (cat) {
-        var mine = current.filter(function (b) { return S.assignments[b.getAttribute('data-smlgs-channel')] === cat; });
-        if (!mine.length && !S.canManage) return; // members never see empty headers
-        var head = document.createElement('div');
-        head.className = 'sml-gshell__category';
-        head.setAttribute('data-sml-gcat', '1');
-        head.textContent = cat;
-        if (!mine.length) head.style.opacity = '0.45'; // manager-only editing affordance
-        frag.appendChild(head);
-        mine.forEach(function (b) { markHome(b); frag.appendChild(b); });
-      });
-      box.insertBefore(frag, box.firstChild);
+      if (S.categories.length) {
+        box.style.display = 'flex';
+        box.style.flexDirection = 'column';
+
+        // engine children keep their own relative order, shifted after ours
+        [].slice.call(box.children).forEach(function (el, i) {
+          el.style.order = String(NATIVE_BASE + i);
+        });
+
+        S.categories.forEach(function (cat, ci) {
+          var mine = btns.filter(function (b) { return S.assignments[b.getAttribute('data-smlgs-channel')] === cat; });
+          if (!mine.length && !S.canManage) return; // members never see empty headers
+          var head = document.createElement('div');
+          head.className = 'sml-gshell__category';
+          head.setAttribute('data-sml-gcat', '1');
+          head.textContent = cat;
+          head.style.order = String((ci + 1) * 1000);
+          if (!mine.length) head.style.opacity = '0.45'; // manager-only editing affordance
+          box.appendChild(head);
+          mine.forEach(function (b, j) {
+            b.style.order = String((ci + 1) * 1000 + j + 1);
+            b.setAttribute('data-sml-gcat-ord', cat);
+          });
+        });
+      } else {
+        box.style.removeProperty('display');
+        box.style.removeProperty('flex-direction');
+      }
+
+      hideEmpties(box);
+      ensureGear(box);
+    } finally {
+      // cleared on a macrotask: the observer's microtask for our own
+      // mutations fires first and sees applying === true
+      setTimeout(function () { applying = false; }, 0);
     }
+  }
 
-    // 3) native headers left without any channel before the next header hide;
-    //    with no categories at all, everything is back to native — unhide all
+  // native headers whose every own channel moved to a category hide (the
+  // walk is DOM order, which we never change; the portal button has no
+  // channel id and counts as staying). Runs from the observer too, because
+  // an unassigned channel the engine adds under an already-hidden header
+  // must un-hide it without a full re-apply (review #5).
+  function hideEmpties(box) {
     [].slice.call(box.querySelectorAll('.sml-gshell__category:not([data-sml-gcat])')).forEach(function (h) {
       if (!S.categories.length) { h.style.display = ''; return; }
       var n = h.nextElementSibling, has = false;
       while (n && !(n.classList && n.classList.contains('sml-gshell__category'))) {
-        if (n.classList && n.classList.contains('sml-gshell__channel')) { has = true; break; }
+        if (n.classList && n.classList.contains('sml-gshell__channel')) {
+          var id = n.getAttribute('data-smlgs-channel');
+          if (!id || !S.assignments[id]) { has = true; break; }
+        }
         n = n.nextElementSibling;
       }
       h.style.display = has ? '' : 'none';
     });
-
-    ensureGear(box);
   }
 
   /* ---------- manage panel (owner/admin only) ---------- */
   var PANEL = null;
   function ensureGear(box) {
-    if (!S.canManage || box.querySelector('#sml-gcat-gear')) return;
-    var g = document.createElement('button');
-    g.type = 'button';
-    g.id = 'sml-gcat-gear';
-    g.textContent = '⚙ Categories';
-    g.style.cssText = 'display:block;width:calc(100% - 16px);margin:10px 8px 12px;padding:7px 10px;font:600 11px/1.2 inherit;letter-spacing:1px;color:#8fa89b;background:transparent;border:1px dashed #2a3a32;border-radius:8px;cursor:pointer;';
-    g.addEventListener('click', openPanel);
-    box.appendChild(g);
+    var g = box.querySelector('#sml-gcat-gear');
+    if (!S.canManage) { if (g) g.remove(); return; }
+    if (!g) {
+      g = document.createElement('button');
+      g.type = 'button';
+      g.id = 'sml-gcat-gear';
+      g.textContent = '⚙ Categories';
+      g.style.cssText = 'display:block;width:calc(100% - 16px);margin:10px 8px 12px;padding:7px 10px;font:600 11px/1.2 inherit;letter-spacing:1px;color:#8fa89b;background:transparent;border:1px dashed #2a3a32;border-radius:8px;cursor:pointer;';
+      g.addEventListener('click', openPanel);
+      box.appendChild(g);
+    }
+    g.style.order = '999999'; // visually last in the flex column
   }
 
   function el(tag, css, parent, text) {
@@ -159,8 +192,14 @@
   function openPanel() {
     if (PANEL) { PANEL.remove(); PANEL = null; }
     var cats = S.categories.slice();
-    var asgn = {};
-    Object.keys(S.assignments).forEach(function (k) { asgn[k] = S.assignments[k]; });
+    // panel-internal assignments are keyed by category INDEX, not name — a
+    // rename that transiently collides with another category's name must not
+    // merge their channel sets (review #10)
+    var asgn = Object.create(null); // channelId -> index into cats
+    Object.keys(S.assignments).forEach(function (k) {
+      var i = cats.indexOf(S.assignments[k]);
+      if (i !== -1) asgn[k] = i;
+    });
     if (!cats.length) cats = ['Announcements', 'Onboarding', 'Video', 'News']; // suggestions — members never see them unless channels are assigned
 
     PANEL = el('div', 'position:fixed;inset:0;z-index:2147480000;display:flex;align-items:center;justify-content:center;background:rgba(3,8,6,0.72);', document.body);
@@ -176,12 +215,10 @@
         var inp = el('input', 'flex:1;min-width:120px;background:#0f1a15;border:1px solid #24382e;border-radius:8px;color:#e6f2ea;padding:7px 10px;font:inherit;', row);
         inp.type = 'text'; inp.value = name;
         inp.addEventListener('input', function () {
-          // renames carry their channel assignments along (else save orphans them)
-          var old = cats[i];
+          // index-keyed assignments ride along with the rename for free
           var next = capPoints(inp.value); // code-point cap, surrogate-safe
           if (next !== inp.value) inp.value = next;
           cats[i] = next;
-          Object.keys(asgn).forEach(function (k) { if (asgn[k] === old) asgn[k] = next; });
         });
         inp.addEventListener('change', drawAssign);
         [['↑', -1], ['↓', 1]].forEach(function (mv) {
@@ -191,14 +228,19 @@
             var j = i + mv[1];
             if (j < 0 || j >= cats.length) return;
             var t = cats[i]; cats[i] = cats[j]; cats[j] = t;
+            Object.keys(asgn).forEach(function (k) {
+              if (asgn[k] === i) asgn[k] = j; else if (asgn[k] === j) asgn[k] = i;
+            });
             drawCats(); drawAssign();
           });
         });
         var del = el('button', 'background:#1a1012;border:1px solid #3a2428;border-radius:7px;color:#ff8a96;padding:6px 9px;cursor:pointer;', row, '✕');
         del.type = 'button';
         del.addEventListener('click', function () {
-          var gone = cats.splice(i, 1)[0];
-          Object.keys(asgn).forEach(function (k) { if (asgn[k] === gone) delete asgn[k]; });
+          cats.splice(i, 1);
+          Object.keys(asgn).forEach(function (k) {
+            if (asgn[k] === i) delete asgn[k]; else if (asgn[k] > i) asgn[k]--;
+          });
           drawCats(); drawAssign();
         });
       });
@@ -222,18 +264,18 @@
         var none = document.createElement('option');
         none.value = ''; none.textContent = '— default —';
         sel.appendChild(none);
-        cats.forEach(function (c) {
+        cats.forEach(function (c, ci) {
           var name = norm(c);
           if (!name) return;
           var o = document.createElement('option');
-          o.value = name; o.textContent = name;
-          if (norm(asgn[id]) === name) o.selected = true;
+          o.value = String(ci); o.textContent = name;
+          if (asgn[id] === ci) o.selected = true;
           sel.appendChild(o);
         });
-        sel.title = sel.value || '';
+        sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
         sel.addEventListener('change', function () {
-          if (sel.value) asgn[id] = sel.value; else delete asgn[id];
-          sel.title = sel.value || '';
+          if (sel.value !== '') asgn[id] = parseInt(sel.value, 10); else delete asgn[id];
+          sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
         });
       });
     }
@@ -247,7 +289,9 @@
     var save = el('button', 'background:#38F58A;border:0;border-radius:8px;color:#04120a;padding:8px 18px;cursor:pointer;font:700 12px inherit;', foot, 'Save');
     save.type = 'button';
     save.addEventListener('click', function () {
-      var clean = [], seen = {}, dup = null;
+      // null-prototype map: a category literally named "constructor" or
+      // "__proto__" must not trip the duplicate check (review #12)
+      var clean = [], seen = Object.create(null), dup = null;
       cats.forEach(function (c) {
         var name = norm(c);
         if (!name) return;
@@ -258,8 +302,8 @@
       if (dup) { note.textContent = 'Duplicate category name: "' + dup + '" — make names unique.'; return; }
       var outAsgn = {};
       Object.keys(asgn).forEach(function (k) {
-        var v = norm(asgn[k]);
-        if (v && clean.indexOf(v) !== -1) outAsgn[k] = v;
+        var name = norm(cats[asgn[k]]);
+        if (name && clean.indexOf(name) !== -1) outAsgn[k] = name;
       });
       note.textContent = 'Saving…';
       fetch(API, {
@@ -271,6 +315,7 @@
           if (!res.ok || !res.j || res.j.saved !== true) { note.textContent = (res.j && res.j.message) || 'Could not save.'; return; }
           S.categories = res.j.categories || [];
           S.assignments = res.j.assignments || {};
+          intersectAssignments();
           close(); apply();
         })
         .catch(function () { note.textContent = 'Could not save.'; });
@@ -300,28 +345,22 @@
         S.categories = Array.isArray(d.categories) ? d.categories : [];
         S.assignments = (d.assignments && typeof d.assignments === 'object') ? d.assignments : {};
         S.canManage = !!d.can_manage;
+        intersectAssignments();
         return true;
       })
       .catch(function () { return false; });
   }
 
   var debounce = null;
-  function ours(node) {
-    return node && node.nodeType === 1 && (node.hasAttribute('data-sml-gcat') || node.hasAttribute('data-sml-gcat-ph') || node.id === 'sml-gcat-gear');
-  }
   function watch() {
-    new MutationObserver(function (muts) {
-      // ignore batches that are entirely our own header/gear churn
-      var foreign = muts.some(function (mu) {
-        var nodes = [].slice.call(mu.addedNodes).concat([].slice.call(mu.removedNodes));
-        return nodes.some(function (n) { return !ours(n); });
-      });
-      if (!foreign) return;
+    new MutationObserver(function () {
+      if (applying) return; // our own apply() churn — everything else re-checks
       clearTimeout(debounce);
       debounce = setTimeout(function () {
         var box = channelsBox();
         if (!box) return;
         if (box !== S.lastBox || !grouped(box) || (S.canManage && !box.querySelector('#sml-gcat-gear'))) apply();
+        else hideEmpties(box); // display-only refresh (attribute writes — no childList re-fire)
       }, 400);
     }).observe(document.body, { childList: true, subtree: true }); // body: the shell may REPLACE the container node
   }
@@ -329,12 +368,16 @@
   function boot() {
     load().then(function (ok) {
       if (!ok) return;
+      // the observer installs unconditionally — a sidebar that renders after
+      // the polling window (or a group with no id'd channels yet) must still
+      // get grouped/geared when it eventually appears (reviews #6/#13)
+      watch();
       var tries = 0;
       var iv = setInterval(function () {
         var box = channelsBox();
-        if (box && channelButtons(box).length) {
+        if (box && box.children.length) {
           clearInterval(iv);
-          apply(); watch();
+          apply();
         } else if (++tries > 90) { clearInterval(iv); }
       }, 700);
     });
