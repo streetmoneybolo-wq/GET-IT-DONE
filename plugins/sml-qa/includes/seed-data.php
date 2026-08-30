@@ -4,7 +4,8 @@
  *
  * Evergreen editorial Q&A: slug, title, ticker (optional), question_body,
  * answer_body. Each entry was drafted and adversarially fact-checked for accuracy
- * (6 corrected, 2 clean, 0 rejected) before inclusion. Consumed by includes/seed.php.
+ * before inclusion (workflows qa-seed-content + qa-seed-content-2). Consumed by
+ * includes/seed.php (idempotent: existing slugs are skipped on re-seed).
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -113,6 +114,110 @@ Positioning matters too. If a stock ran up hard into the print, much of the good
 Max pain, the strike where the most total option value expires worthless, is a related folk indicator. Price sometimes drifts toward it into expiration, but the evidence is weak and easily overwhelmed.
 
 The limits matter, especially for your case. You cannot directly observe dealer positioning; retail gamma estimates only guess which side the dealer holds. Pinning concentrates in the final day or two and barely touches cash-settled index options. Note that ETFs like QQQ settle into shares, not cash, so the mechanism technically applies, but QQQ is so large, liquid, and arbitraged against its basket and futures that reliable pinning is rare. Any catalyst, like earnings or a macro print, erases it. Treat concentrated strikes as areas where hedging flow may cluster, not as guaranteed floors or ceilings.',
+		),
+		array(
+			'slug'          => 'bid-ask-spread-hidden-cost',
+			'title'         => 'Why does the bid-ask spread cost me even when the stock doesn\'t move?',
+			'ticker'        => 'SPY',
+			'question_body' => 'I keep seeing a gap between the bid and the ask when I pull up a quote, and sometimes it\'s a penny and sometimes it\'s much wider. I\'ve noticed I\'m often down a little the instant my order fills, before the stock has even moved. Is that spread actually costing me, and what makes it get so wide on some tickers?',
+			'answer_body'   => 'The bid is the highest price buyers are currently willing to pay; the ask, or offer, is the lowest price sellers will accept, and the spread is the gap between them. It exists because whoever posts those quotes, typically market makers, earns that gap as payment for standing ready to trade and for carrying inventory they may not want.
+
+You pay it because you buy at the ask and sell at the bid. Buy and instantly sell and you lose the full round-trip spread before the price moves. A market order crosses the spread at once, so a wide spread means you start underwater and pay again on the exit. The mid-price shown is a reference point, not a guaranteed fill.
+
+Several things widen the quoted spread. Low liquidity: fewer resting shares and fewer competing makers mean a bigger gap, which is why a thin small cap trades far wider than a heavily traded name like SPY. Volatility: when prices jump, makers widen quotes to avoid being picked off, which is why spreads also balloon around the open and the close. A separate cost is order size: a large order can exceed what sits at the best price and walk the book into worse levels, called slippage, on top of the spread. Thin sessions like pre-market and after-hours widen quotes too.
+
+Because the cost is baked into the fill price rather than billed as a fee, it hides easily. Limit orders, liquid names, and sizing to available depth all shrink what it quietly takes.',
+		),
+		array(
+			'slug'          => 'market-vs-limit-order-when-each-hurts',
+			'title'         => 'Market order vs limit order — when does each one actually hurt me?',
+			'ticker'        => '',
+			'question_body' => 'I keep seeing people say to never use market orders, but sometimes my limit orders just sit there and I miss the whole move. I trade a mix of big liquid names, some thinner small caps, and a few options. When does it actually matter which order type I pick, and what is the real downside of each one?',
+			'answer_body'   => 'A market order and a limit order differ in what they guarantee. A market order guarantees execution but not price: it tells the exchange to fill immediately at the best available price, crossing the spread and consuming resting liquidity one price level at a time. A limit order guarantees price but not execution: it fills only at your stated price or better, and otherwise sits in the order book waiting.
+
+That trade-off defines each one\'s failure mode. A market order\'s risk is slippage. In a wide spread, a thin book, or a fast market, your fill can land well past the last quote because the order walks the book until your whole size is filled. Overnight news and the opening auction make this worse, because price can gap far from where you last looked. Market orders punish you most in illiquid stocks, low-volume options, and volatile moments.
+
+A limit order\'s risk is the opposite: a missed fill or a partial fill. If price never reaches your limit, you simply do not get in, and if it then runs, that is real opportunity cost. If only part of your size trades at your price, the remainder keeps resting. Limits hurt when you must be in or out right now, chasing a breakout or needing an exit, and the market moves without you.
+
+A marketable limit order splits the difference: priced at or slightly through the current market, it usually fills like a market order but caps how bad the price can get.',
+		),
+		array(
+			'slug'          => 'what-is-stock-float-low-float-moves',
+			'title'         => 'What is a stock\'s \'float,\' and why do low-float stocks move so violently?',
+			'ticker'        => '',
+			'question_body' => 'I keep hearing traders talk about "low-float" stocks that rip 100% in a day on what seems like small news. I get that float is different from shares outstanding, but I don\'t really understand why a smaller float makes a stock so much more explosive. What\'s actually happening under the hood that makes these things spike and get halted?',
+			'answer_body'   => 'Float is the number of shares actually available for the public to trade. Start with shares outstanding, then subtract shares that are closely held or restricted: insider stakes, holdings under lockups, and large strategic owners who aren\'t selling. What\'s left is the tradable supply that changes hands on the open market.
+
+Price is set at the margin, by whoever is most willing to transact right now. A larger float tends to come with deeper resting orders, so buying pressure gets absorbed and moves are gradual. When the tradable supply is small, there often aren\'t many shares or resting sell orders near the current price, so eager buyers have to walk up the order book, paying higher and higher prices to get filled. The same dollar demand can produce a far bigger percentage move.
+
+This also feeds squeezes. Short sellers borrow shares to sell them; if short interest is large relative to a tiny float, their buying-to-cover competes with fresh buyers for the same scarce shares, creating a self-reinforcing spike. Thin floats also carry wide bid-ask spreads, so slippage is severe.
+
+Exchanges limit how fast a single stock can move using volatility bands, often called limit up-limit down. Trades can\'t execute outside the band; if the price presses against it and doesn\'t retreat within a short window, trading pauses briefly and then reopens. Low-float runners hit these limits easily, which is why they gap, halt, and reopen repeatedly.',
+		),
+		array(
+			'slug'          => 'why-stocks-drop-on-ex-dividend-date',
+			'title'         => 'Why does a stock drop by about the dividend amount on the ex-dividend date?',
+			'ticker'        => 'KO',
+			'question_body' => 'I noticed one of my dividend stocks opened lower on the ex-dividend date by almost exactly what the dividend pays. It didn\'t look like bad news or heavy selling — it just gapped down at the open. Is this a real drop I should worry about, and does it mean I can buy right before the ex-date, collect the dividend, and sell for a quick gain?',
+			'answer_body'   => 'When a company pays a cash dividend, that cash leaves the business and goes to shareholders. Each share afterward represents a claim on slightly less cash than it did the day before. The ex-dividend date is the cutoff for who receives the payment: buy before it and you collect the dividend, buy on or after it and you do not. Because a new buyer on the ex-date is giving up that upcoming cash, the share is worth roughly one dividend less to them, and the stock opens lower to reflect it.
+
+This adjustment is mechanical, not a wave of selling. Before the open on the ex-date, brokers and pricing feeds show an adjusted prior close, and exchanges reduce standing buy limit orders by the dividend amount. No one has to sell for the drop to appear; it is built into the opening price.
+
+That is why dividend capture, buying just before the ex-date to grab the payout and then selling, is not free money. In theory the price decline offsets the dividend you receive, leaving total return roughly unchanged before costs. Commissions and the bid-ask spread, paid on both trades, chip away at it, and taxes often make it worse: a dividend captured over just a few days can fail the holding-period test for the lower qualified rate and be taxed as ordinary income.
+
+In practice the drop is approximately, not exactly, the dividend, and ordinary daily price swings easily swamp it on any single stock.',
+		),
+		array(
+			'slug'          => 'how-do-share-buybacks-affect-stock-price',
+			'title'         => 'How does a share buyback actually affect the stock price?',
+			'ticker'        => 'AAPL',
+			'question_body' => 'I keep hearing that when a company like AAPL announces a buyback, the stock is supposed to go up. But I don\'t really get why buying back shares would make each share worth more, or whether that\'s just a talking point. Is a buyback actually returning value to me, or is it financial engineering that mostly helps executives? What are the real ways it moves the price versus the myths?',
+			'answer_body'   => 'A buyback is a company using its own cash to purchase its shares on the open market and retire them, shrinking the share count. It is one of two main ways to return cash to owners, the other being dividends.
+
+The clearest real mechanism is EPS math. Net income stays the same, but it is now divided across fewer shares, so earnings per share rises purely arithmetically. If the price-to-earnings multiple holds, a higher EPS supports a higher price. This is not created value, it is concentration: each remaining share owns a larger slice of the same business.
+
+Second is signaling. Management authorizing a buyback can signal that leadership believes shares are undervalued and that cash flow is stable enough to spend. Markets sometimes reward that confidence, though a signal is only as good as the judgment behind it.
+
+Third is simple supply and demand. A steady buyer in the market can provide price support, especially during selloffs.
+
+The myths: a buyback does not directly hand you cash the way a dividend does, and an announced authorization is not a guarantee, companies can announce and not execute. It does not raise the intrinsic value of the business, and overpaying for shares destroys value. It also does not fix weak fundamentals. Watch whether buybacks are funded by real free cash flow or by debt, and whether they merely offset shares issued to employees.',
+		),
+		array(
+			'slug'          => 'does-a-high-vix-predict-a-crash',
+			'title'         => 'Does a high VIX actually mean a crash is coming, and what is it really measuring?',
+			'ticker'        => 'VIX',
+			'question_body' => 'I keep seeing traders freak out when the VIX jumps and call it the "fear index." I get that it\'s supposed to measure volatility, but what is it actually calculated from? And if it spikes to a high reading, does that mean a market crash is about to happen, or is treating it as a warning signal just a myth?',
+			'answer_body'   => 'The VIX is the Cboe Volatility Index, and it estimates how much the S&P 500 is expected to move over the next 30 days. Crucially, it is not measured from past prices. It is calculated from the live prices of a wide strip of SPX index options, puts and calls across many strikes. Option prices embed implied volatility: the more traders pay for options, the larger the moves they are bracing for. The VIX blends those prices into one number, annualized and expressed in percentage points. A reading of 20 implies roughly 20 percent annualized volatility. Divide by about 3.46 (the square root of 12) to approximate the expected one-month move.
+
+It earns the "fear index" nickname because it usually spikes when stocks fall. Selloffs trigger a rush to buy downside protection, which bids up put prices and lifts implied volatility, so the VIX tends to move opposite to the S&P 500.
+
+The honest limits matter. The VIX measures the expected size of moves, not their direction, so a high reading never says which way the market will go. It is largely coincident, not predictive: it typically rises during or after a decline rather than before one, making it more thermometer than crystal ball. It also runs above realized volatility on average, because option sellers charge a risk premium. Extreme highs often mark peak fear near bottoms, not the beginning of fresh crashes.',
+		),
+		array(
+			'slug'          => 'short-squeeze-vs-gamma-squeeze',
+			'title'         => 'How do I tell a short squeeze from a gamma squeeze?',
+			'ticker'        => 'GME',
+			'question_body' => 'People throw around "short squeeze" and "gamma squeeze" like they\'re the same thing whenever a heavily shorted name rockets. I get that both send the price flying, but I don\'t actually understand what\'s mechanically different under the hood. What\'s the real distinction, and why should I care which one is driving a move?',
+			'answer_body'   => 'Both are self-reinforcing buying loops, but they originate in different markets and run on different fuel.
+
+A short squeeze lives in the stock itself. Short sellers have borrowed shares and sold them, so a rising price creates mounting losses and margin calls. To cap the damage they buy shares back to close positions, and that buy-to-cover demand pushes the price higher, pressuring the remaining shorts into covering too. The loop\'s fuel is short interest; it is largest when short interest and days-to-cover (short interest divided by average daily volume) are high and borrow is expensive.
+
+A gamma squeeze lives in the options market. When traders buy heavy call volume, the dealers who sold those calls are short them and hedge by buying the underlying. As the stock rises, each call\'s delta grows, and the rate of that growth is gamma, forcing dealers to buy still more shares to stay hedged, which lifts the price again. This is sharpest near strikes just above spot and close to expiration.
+
+They compound: dealer hedging can lift price enough to trigger covering, and covering can lift price enough to force more hedging.
+
+The distinction matters because the fuel exhausts differently. Short-covering pressure vanishes once shorts are out, so watch short interest and borrow rates. Gamma pressure is tied to positioning and the calendar, and can reverse violently as options expire, roll, or fall out-of-the-money and dealers sell the hedges they no longer need.',
+		),
+		array(
+			'slug'          => 'market-wide-circuit-breaker-vs-stock-halt',
+			'title'         => 'What\'s the difference between a market-wide circuit breaker and a single-stock halt?',
+			'ticker'        => 'SPY',
+			'question_body' => 'During a fast sell-off I keep hearing people say the market might "hit a circuit breaker," but I\'ve also watched individual stocks I own get paused on their own during big moves. Are those the same mechanism? I want to understand what actually triggers a market-wide halt versus a single name getting frozen, and how long each one keeps me from trading.',
+			'answer_body'   => 'Market-wide circuit breakers and single-stock LULD pauses solve different problems. Market-wide circuit breakers halt every security on U.S. exchanges at once, and they key off one number: the percentage decline in the S&P 500 Index from the prior trading day\'s closing value. There are three thresholds. A Level 1 halt triggers at a 7 percent decline, Level 2 at 13 percent, and Level 3 at 20 percent. Level 1 and Level 2 each pause the whole market for 15 minutes, but only if the drop happens before 3:25 p.m. Eastern; after that cutoff, trading continues to the close. Each of those two levels can fire only once per day. A Level 3 breach halts trading for the remainder of the session, whenever it occurs.
+
+Limit Up-Limit Down works on one stock at a time. Each security has price bands set a percentage above and below a rolling reference price, roughly its recent five-minute average. Band width depends on the stock\'s tier and price, and it widens during the opening and closing periods. When the best quote reaches a band, the stock enters a limit state in which trades cannot print through it; if price does not move back inside within 15 seconds, a five-minute trading pause follows. In a sell-off the lower band binds; in a spike, the upper one.
+
+So the differences are scope (the whole market versus one name), trigger (a broad index decline versus a single stock\'s own price band), and duration (15 minutes or the day versus five minutes).',
 		),
 	);
 }
