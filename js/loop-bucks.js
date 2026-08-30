@@ -105,9 +105,9 @@
     var rows = b.slice(0, 3).map(function(r){
       var me = ME && r.id === C.me.id;
       var av = r.avatar ? '<img src="'+esc(r.avatar)+'" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover">' : '';
-      return '<div class="sml-lb-msrow"'+(me?' style="color:#fff"':'')+'><span style="width:18px;color:#6B7C90;font-family:'+MONO+'">'+r.rank+'</span>'+av+'<span>'+esc(r.name||r.handle||'')+(me?' (you)':'')+'</span><span class="amt">'+fmt(r.balance)+' LB</span></div>';
+      return '<div class="sml-lb-msrow"'+(me?' style="color:#fff"':'')+'><span style="width:18px;color:#6B7C90;font-family:'+MONO+'">'+r.rank+'</span>'+av+'<span>'+esc(r.name||r.handle||'')+(me?' (you)':'')+'</span><span class="amt">'+fmt(r.earned != null ? r.earned : r.balance)+' earned</span></div>';
     }).join('');
-    if (ME && ME.rank && ME.rank > 3) rows += '<div class="sml-lb-msrow" style="color:#fff"><span style="width:18px;color:#6B7C90;font-family:'+MONO+'">'+ME.rank+'</span><span>You</span><span class="amt">'+fmt(ME.balance)+' LB</span></div>';
+    if (ME && ME.rank && ME.rank > 3) rows += '<div class="sml-lb-msrow" style="color:#fff"><span style="width:18px;color:#6B7C90;font-family:'+MONO+'">'+ME.rank+'</span><span>You</span><span class="amt">'+fmt(ME.earned != null ? ME.earned : ME.balance)+' earned</span></div>';
     return '<div class="sml-lb-sec">Top earners</div><div class="sml-lb-ms" style="margin:0 2px 10px">' + rows + '</div>';
   }
 
