@@ -11,11 +11,12 @@
  *    without it to user 0, which would hide the manage gear from owners
  *    forever); an expired nonce retries once anonymously so members still
  *    get read-only grouping.
- *  - apply() first RESTORES every button to its snapshotted native order,
- *    then builds the grouped block in a DocumentFragment and inserts it once
- *    — idempotent across re-applies, and unassigning/undo genuinely returns
- *    buttons to their native sections (the naive re-anchor version scrambled
- *    categories on every second apply).
+ *  - apply() moves ONLY assigned buttons, leaving an invisible placeholder at
+ *    each one's exact native spot; every re-apply first sends buttons home via
+ *    their placeholders, then regroups. Unassigned channels are never touched,
+ *    so the engine's own progressive render order can't be corrupted (the
+ *    earlier whole-sidebar snapshot/restore raced that render and clustered
+ *    every channel above the native headers).
  *  - empty categories render ONLY for managers (dimmed) — members never see
  *    dead headers from suggestions or restricted channels.
  *  - the observer watches document.body (the shell can replace the container
@@ -36,7 +37,7 @@
   var API = '/wp-json/sml-gcat/v1/group?slug=' + encodeURIComponent(SLUG);
   var NONCE = window.SML_GCAT_NONCE || '';
 
-  var S = { categories: [], assignments: {}, canManage: false, nativeOrder: null, lastBox: null };
+  var S = { categories: [], assignments: {}, canManage: false, lastBox: null };
 
   function channelsBox() { return document.querySelector('.sml-gshell__channels'); }
   function channelButtons(box) {
@@ -45,48 +46,46 @@
   function norm(name) { return String(name == null ? '' : name).trim(); }
   function capPoints(s) { return Array.from(String(s)).slice(0, 40).join(''); }
 
-  /* ---------- native order snapshot / restore ---------- */
-  function snapshotNative(box) {
-    // child-id sequence of the UNGROUPED sidebar: headers recorded by text,
-    // buttons by channel id — enough to rebuild the native order exactly
-    S.nativeOrder = [].slice.call(box.children).filter(function (el) {
-      return !el.hasAttribute('data-sml-gcat') && el.id !== 'sml-gcat-gear';
-    }).map(function (el) {
-      if (el.classList.contains('sml-gshell__channel') && el.hasAttribute('data-smlgs-channel')) {
-        return { kind: 'ch', id: el.getAttribute('data-smlgs-channel') };
-      }
-      return { kind: 'node', el: el };
-    });
+  /* ---------- placeholder-based move/restore ---------- */
+  // Moving an assigned button out leaves an invisible <i> marker at its exact
+  // native position; restoring is "insert before your marker, remove marker".
+  // Unassigned buttons and the engine's own headers are NEVER moved, so a
+  // progressive or partial engine render can't be reordered by us.
+  function markHome(b) {
+    var ph = document.createElement('i');
+    ph.setAttribute('data-sml-gcat-ph', b.getAttribute('data-smlgs-channel') || '');
+    ph.style.display = 'none';
+    b.parentNode.insertBefore(ph, b);
   }
-  function restoreNative(box) {
-    if (!S.nativeOrder) return;
-    var byId = {};
-    channelButtons(box).forEach(function (b) { byId[b.getAttribute('data-smlgs-channel')] = b; });
-    var frag = document.createDocumentFragment();
-    S.nativeOrder.forEach(function (slot) {
-      if (slot.kind === 'ch') { if (byId[slot.id]) { frag.appendChild(byId[slot.id]); delete byId[slot.id]; } }
-      else if (slot.el && slot.el.isConnected !== false) { frag.appendChild(slot.el); }
+  function restoreAll(box) {
+    [].slice.call(box.querySelectorAll('i[data-sml-gcat-ph]')).forEach(function (ph) {
+      var id = ph.getAttribute('data-sml-gcat-ph');
+      var b = id && box.querySelector('.sml-gshell__channel[data-smlgs-channel="' + id + '"]');
+      if (b) ph.parentNode.insertBefore(b, ph);
+      ph.remove();
     });
-    // buttons the snapshot doesn't know (created after boot) keep their spot at the end
-    Object.keys(byId).forEach(function (id) { frag.appendChild(byId[id]); });
-    box.insertBefore(frag, box.firstChild);
+    [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]')).forEach(function (h) { h.remove(); });
   }
 
   /* ---------- regrouping ---------- */
-  function grouped(box) {
-    // correctness, not presence: the first assigned button that exists must
-    // sit somewhere after one of our headers
-    var firstAssigned = channelButtons(box).filter(function (b) {
-      return !!S.assignments[b.getAttribute('data-smlgs-channel')];
-    })[0];
-    if (!firstAssigned) return !S.categories.length || !!box.querySelector('.sml-gshell__category[data-sml-gcat]') || S.canManage === false;
-    var n = firstAssigned.previousElementSibling;
+  function underOurHeader(b) {
+    var n = b.previousElementSibling;
     while (n) {
       if (n.hasAttribute && n.hasAttribute('data-sml-gcat')) return true;
       if (n.classList && n.classList.contains('sml-gshell__category') && !n.hasAttribute('data-sml-gcat')) return false;
       n = n.previousElementSibling;
     }
     return false;
+  }
+  function grouped(box) {
+    // correctness, not presence: EVERY assigned button that exists must sit
+    // under one of our headers (a late-arriving button from the engine's
+    // progressive render fails this and triggers a re-apply)
+    var assigned = channelButtons(box).filter(function (b) {
+      return !!S.assignments[b.getAttribute('data-smlgs-channel')];
+    });
+    if (!assigned.length) return !S.categories.length || !!box.querySelector('.sml-gshell__category[data-sml-gcat]') || S.canManage === false;
+    return assigned.every(underOurHeader);
   }
 
   function apply() {
@@ -97,13 +96,13 @@
     // between "cleared" and "repopulated"; the observer retries when it fills
     if (S.categories.length && !btns.length) return;
 
-    if (box !== S.lastBox || !S.nativeOrder) { snapshotNative(box); S.lastBox = box; }
+    S.lastBox = box;
 
-    // 1) tear down our headers and put every button back in native order
-    [].slice.call(box.querySelectorAll('.sml-gshell__category[data-sml-gcat]')).forEach(function (h) { h.remove(); });
-    restoreNative(box);
+    // 1) send every previously-moved button home and drop our headers
+    restoreAll(box);
 
-    // 2) rebuild the grouped block in one fragment, inserted once at the top
+    // 2) rebuild the grouped block in one fragment, inserted once at the top;
+    //    each button we take marks its native home first
     if (S.categories.length) {
       var frag = document.createDocumentFragment();
       var current = channelButtons(box); // fresh, in native DOM order
@@ -116,7 +115,7 @@
         head.textContent = cat;
         if (!mine.length) head.style.opacity = '0.45'; // manager-only editing affordance
         frag.appendChild(head);
-        mine.forEach(function (b) { frag.appendChild(b); });
+        mine.forEach(function (b) { markHome(b); frag.appendChild(b); });
       });
       box.insertBefore(frag, box.firstChild);
     }
@@ -308,7 +307,7 @@
 
   var debounce = null;
   function ours(node) {
-    return node && node.nodeType === 1 && (node.hasAttribute('data-sml-gcat') || node.id === 'sml-gcat-gear');
+    return node && node.nodeType === 1 && (node.hasAttribute('data-sml-gcat') || node.hasAttribute('data-sml-gcat-ph') || node.id === 'sml-gcat-gear');
   }
   function watch() {
     new MutationObserver(function (muts) {
