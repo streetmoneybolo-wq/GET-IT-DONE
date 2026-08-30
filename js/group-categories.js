@@ -262,6 +262,22 @@
     });
   }
 
+  // The public-alerts channel (the one every group has, wired to the ticker
+  // terminal's chart of the underlying stock) reads "🌐 | PUBLIC ALERTS" in
+  // every group. DISPLAY relabel only — the channel, its id and its behaviour
+  // are untouched; matched by its standard name so it holds on every group with
+  // no per-group data, and re-applied on each shell rebuild. Idempotent: once
+  // relabelled the text no longer equals "PUBLIC ALERTS", so it won't re-fire.
+  var PUBLIC_ALERTS_LABEL = '🌐 | PUBLIC ALERTS';
+  function relabelPublicAlerts(box) {
+    channelButtons(box).forEach(function (btn) {
+      var nameEl = btn.querySelector('.sml-gshell__channel-name');
+      if (nameEl && nameEl.textContent.trim().toUpperCase() === 'PUBLIC ALERTS') {
+        nameEl.textContent = PUBLIC_ALERTS_LABEL;
+      }
+    });
+  }
+
   var applying = false;
   function apply() {
     var box = channelsBox();
@@ -274,6 +290,9 @@
       // EVERY group (categories or not), and its own <head> stylesheet is
       // independent of the category-header work below.
       positionPortal();
+      // Same deal: the public-alerts channel is relabelled on every group,
+      // categories or not, before any early return below.
+      relabelPublicAlerts(box);
 
       // never build headers over an empty box mid-re-render — the engine is
       // between "cleared" and "repopulated"; the observer retries when it
