@@ -843,8 +843,10 @@ body.slw-on{background:#04060a !important}
 .slw-play-fn{font:400 9px/1.4 Archivo,sans-serif;color:#3d4c5a;text-align:center}
 
 /* ---- chess board (server-authoritative; thin UI) ---- */
-.slw-chess{position:relative;display:grid;grid-template-columns:repeat(8,1fr);width:min(384px,86vw);aspect-ratio:1;border-radius:12px;overflow:hidden;border:1px solid #1c2833;box-shadow:0 24px 44px -18px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
-.slw-sq{display:flex;align-items:center;justify-content:center;padding:0;margin:0;border:0;line-height:1;font-size:clamp(20px,6.4vw,32px);cursor:pointer;transition:filter .1s ease,box-shadow .12s ease;-webkit-tap-highlight-color:transparent}
+.slw-chess{position:relative;display:grid;grid-template-columns:repeat(8,1fr);width:min(384px,86vw);border-radius:12px;overflow:hidden;border:1px solid #1c2833;box-shadow:0 24px 44px -18px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
+/* each cell is its own square — the grid takes its height from the cells, so
+   the board never collapses if container aspect-ratio isn't honored */
+.slw-sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;padding:0;margin:0;border:0;line-height:1;font-size:clamp(20px,6.4vw,32px);cursor:pointer;transition:filter .1s ease,box-shadow .12s ease;-webkit-tap-highlight-color:transparent}
 .slw-sq.lt{background:#c3ccd9}
 .slw-sq.dk{background:#48586a}
 .slw-sq:disabled{cursor:default}
