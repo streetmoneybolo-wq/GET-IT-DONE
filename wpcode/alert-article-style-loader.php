@@ -20,7 +20,7 @@ if ( ! function_exists( 'sml_alert_article_is_layout_post' ) ) {
 		}
 		// Immutable fallback known to contain css/article-styles.css. The normal
 		// path uses the site's resolver and follows the current verified release.
-		return 'e6874ed815d2679d50b96622e4c9eb2d0ac58e00';
+		return '762a306024c7b1224053e3358deb5f893a9043d8';
 	}
 
 	add_filter( 'body_class', function ( $classes ) {
