@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Q&A
  * Description: First-party Questions & Answers built on WordPress core — CPT questions, answers as native comments, votes, accepted answers. Content is created server-side via first-party REST routes (this Atomic site gates the core /wp/v2/{cpt} routes). Unanswered questions are noindex from day one.
- * Version: 0.3.0
+ * Version: 0.4.0
  * Author: StockMarketLoop
  *
  * Phase 1 of SML/QA-PLATFORM-HANDOFF.md. Routing confirmed in Phase 0 (§5.2):
@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_QA_VER', '0.3.0' );
+define( 'SML_QA_VER', '0.4.0' );
 define( 'SML_QA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_QA_URL', plugin_dir_url( __FILE__ ) );
 define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );
@@ -18,6 +18,7 @@ define( 'SML_QA_ANSWER_TYPE', 'sml_answer' );
 require_once SML_QA_DIR . 'includes/rest.php';
 require_once SML_QA_DIR . 'includes/render.php';
 require_once SML_QA_DIR . 'includes/schema.php';
+require_once SML_QA_DIR . 'includes/sitemap.php';
 if ( is_admin() ) { require_once SML_QA_DIR . 'includes/seed.php'; }
 
 /* ---------------------------------------------------------------------------
@@ -121,10 +122,16 @@ add_action( 'deleted_comment', function ( $cid, $comment ) { sml_qa_on_answer_ch
  * ------------------------------------------------------------------------- */
 function sml_qa_should_noindex() {
 	if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) { return false; }
-	/* Archive stays out of the index until Phase 3 gives it real content, links
-	   and a sitemap entry — an empty/dev listing is exactly the thin surface to
-	   keep away from crawlers. Flip this when discovery launches. */
-	if ( is_post_type_archive( 'sml_question' ) ) { return true; }
+	/* Phase 3: the /q/ archive is a real landing page once it has answered
+	   questions — index it then, but keep the guard so an empty archive (every
+	   question removed or still unanswered) never gets indexed as a thin page. */
+	if ( is_post_type_archive( 'sml_question' ) ) {
+		/* Page 2+ of the archive are browse-only: every question is already in the
+		   sitemap as its own URL, so keep paginated listings out of the index
+		   rather than let them accrue as thin, duplicate-framed pages. */
+		if ( is_paged() ) { return true; }
+		return ! sml_qa_has_indexable_questions();
+	}
 	if ( ! is_singular( 'sml_question' ) ) { return false; }
 	return sml_qa_answer_count( get_queried_object_id() ) < 1;
 }
@@ -138,6 +145,20 @@ add_action( 'template_redirect', function () {
 		return is_string( $out ) ? $out : $html;
 	} );
 }, 0 );
+
+/* Give the /q/ archive a real identity instead of the theme's "Archives:
+   Questions" default — a clean title + an intro that frames the section. */
+add_filter( 'get_the_archive_title', function ( $title ) {
+	if ( is_post_type_archive( 'sml_question' ) ) { return 'Community Q&amp;A'; }
+	return $title;
+} );
+add_filter( 'get_the_archive_description', function ( $desc ) {
+	/* Intro only on page 1 — never repeat the framing paragraph on /q/page/N/. */
+	if ( is_post_type_archive( 'sml_question' ) && ! is_paged() ) {
+		return '<p>Real questions from traders about how the market actually works — halts and circuit breakers, options flow and dealer hedging, volatility, short interest and more. Every answer is written to be specific and evergreen.</p>';
+	}
+	return $desc;
+} );
 
 /* Front-end assets on question pages + any page carrying the ask shortcode. */
 add_action( 'wp_enqueue_scripts', function () {
