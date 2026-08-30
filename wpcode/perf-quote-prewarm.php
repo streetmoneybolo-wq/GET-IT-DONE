@@ -41,11 +41,17 @@ if ( ! function_exists( 'sml_perf_prewarm_tickers' ) ) {
 	 *  calls per minute. 40 tickers ≈ 8/min from this cron alone; 12 ≈ 2.4/min,
 	 *  leaving budget for the SEO scoring sweep and real users. Re-expand ONLY
 	 *  after confirming the Massive plan's actual rate limit. */
+	/* Re-expanded 12 -> 40 on 2026-08-29 after confirming the site's Massive
+	   STOCKS plan is Advanced ($199/mo) = UNLIMITED calls (the 5/min cap only
+	   applies to the free tiers, i.e. our OPTIONS subscription). Stock-quote
+	   prewarm has no per-minute budget; keep options-touching crons minimal. */
 	function sml_perf_prewarm_tickers() {
 		return array(
-			'SPY', 'QQQ',
-			'NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMD', 'META', 'AMZN', 'GOOGL',
-			'PLTR', 'COIN',
+			'SPY', 'QQQ', 'IWM', 'DIA',
+			'NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMD', 'META', 'AMZN', 'GOOGL', 'AVGO', 'NFLX',
+			'MU', 'SMCI', 'PLTR', 'COIN', 'MSTR', 'MARA', 'RIOT', 'SOFI', 'HOOD', 'INTC',
+			'BAC', 'F', 'DIS', 'BABA', 'UBER', 'SHOP', 'PYPL', 'SNAP', 'ROKU', 'DKNG',
+			'TSM', 'ARM', 'CRWD', 'NET', 'SNOW', 'RIVN',
 		);
 	}
 
