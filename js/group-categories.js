@@ -47,6 +47,10 @@
  *    membership + the full channel sequence persist as ONE revision-checked
  *    layout transaction. Two admin tabs cannot silently overwrite each
  *    other, and a partial category/order save is impossible.
+ *  - delete: each channel row has a 🗑 button (managers only, loaded rows
+ *    only). It takes an inline confirm and then calls the ENGINE's own
+ *    permission-gated delete, applied immediately (not deferred to Save),
+ *    then reloads so the sidebar/order/revision re-sync from scratch.
  */
 (function () {
   'use strict';
@@ -543,6 +547,61 @@
         else { nm.addEventListener('input', function () { c.name = nm.value; }); }
         if (c.type) el('span', 'flex:0 0 auto;font-size:10px;letter-spacing:1px;color:#5f7a6c;text-transform:uppercase;', row, c.type);
         catSelect(row, c.id);
+        if (!c.ro) {
+          var trash = el('button', 'flex:0 0 auto;background:#1a1012;border:1px solid #3a2428;border-radius:7px;color:#ff8a96;padding:5px 9px;cursor:pointer;font:12px inherit;', row, '🗑');
+          trash.type = 'button'; trash.title = 'Delete this channel';
+          trash.addEventListener('click', function () { confirmDeleteChannel(c); });
+        }
+      });
+    }
+    // Deleting a channel is destructive, so it takes an explicit confirmation
+    // and then calls the ENGINE's own permission-gated delete (POST
+    // sml/v1/group/channel/delete {channel_id} — the engine derives the group
+    // from the channel and removes it for everyone; verified live). The confirm
+    // is a separate OVERLAY, not a mutated row, so a concurrent drawAssign()
+    // (a reorder click, a category edit) can't wipe it mid-decision and the
+    // status stays visible. We reload on success so the sidebar, channel order
+    // and layout revision all re-sync from scratch — the delete response
+    // carries no fresh layout_revision, so a reload (not an in-place splice) is
+    // the only way to keep the next Save's base_revision valid.
+    function confirmDeleteChannel(c) {
+      var ov = el('div', 'position:fixed;inset:0;z-index:2147480001;display:flex;align-items:center;justify-content:center;background:rgba(3,8,6,0.6);', PANEL);
+      var box = el('div', 'width:min(400px,90vw);background:#12100f;border:1px solid #3a2428;border-radius:12px;padding:18px 20px;color:#ffdfe2;font:14px/1.5 inherit;box-shadow:0 20px 60px rgba(0,0,0,.7);', ov);
+      el('div', 'font:700 15px inherit;color:#ffb3bb;margin-bottom:8px;', box, 'Delete #' + norm(c.name) + '?');
+      el('div', 'font-size:12.5px;color:#e8c9cd;margin-bottom:8px;', box, 'This permanently removes the channel and its messages for everyone. This cannot be undone.');
+      if ((chans || []).filter(function (x) { return !x.ro; }).length <= 1) {
+        el('div', 'font-size:11.5px;color:#ffce7a;margin-bottom:8px;', box, 'This is the group’s only channel — the group will have no channels until you add one.');
+      }
+      el('div', 'font-size:11.5px;color:#9c8f86;margin-bottom:14px;', box, 'Deleting takes effect immediately and reloads the panel, so Save any unsaved category or name changes first.');
+      var msg = el('div', 'font-size:12px;color:#c9b7ba;min-height:16px;margin-bottom:10px;', box, '');
+      var btns = el('div', 'display:flex;gap:10px;justify-content:flex-end;', box);
+      var keep = el('button', 'background:#101c16;border:1px solid #24382e;border-radius:8px;color:#cfe0d7;padding:7px 16px;cursor:pointer;font:600 12px inherit;', btns, 'Keep');
+      keep.type = 'button';
+      keep.addEventListener('click', function () { ov.remove(); });
+      var del = el('button', 'background:#e5484d;border:0;border-radius:8px;color:#fff;padding:7px 18px;cursor:pointer;font:700 12px inherit;', btns, 'Delete');
+      del.type = 'button';
+      ov.addEventListener('click', function (e) { if (e.target === ov) ov.remove(); });
+      del.addEventListener('click', function () {
+        del.disabled = true; keep.disabled = true; msg.textContent = 'Deleting…';
+        fetch('/wp-json/sml/v1/group/channel/delete', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
+          body: JSON.stringify({ channel_id: c.id })
+        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: r.ok, status: r.status, j: null }; }); })
+          .then(function (res) {
+            // 404 = the channel is already gone (deleted in another tab) — the
+            // manager's goal is met, so re-sync rather than showing an error.
+            if (res.ok || res.status === 404) {
+              msg.textContent = '#' + norm(c.name) + ' deleted — reloading…';
+              location.reload();
+              return;
+            }
+            del.disabled = false; keep.disabled = false;
+            msg.textContent = (res.status === 401 || res.status === 403)
+              ? 'Your session expired — reload the page and try again.'
+              : ((res.j && res.j.message) || 'Could not delete the channel.');
+          })
+          .catch(function () { del.disabled = false; keep.disabled = false; msg.textContent = 'Could not delete the channel — check your connection and try again.'; });
       });
     }
 
