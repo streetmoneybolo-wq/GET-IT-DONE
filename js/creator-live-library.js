@@ -40,7 +40,18 @@
     var old = root.querySelector('[data-cs-live-library]');
     if (old) old.remove();
     var rows = Array.isArray(payload && payload.streams) ? payload.streams : [];
-    var upcoming = rows.filter(function (row) { return row && row.status === 'scheduled'; });
+    // A future-dated stream must keep showing as "Upcoming" even if its status
+    // wobbles off 'scheduled' — e.g. the backend flips it to live/open when the
+    // creator opens the Watch Page early. Show every scheduled stream, plus any
+    // not-yet-ended stream whose start time is still ahead; only ended /
+    // cancelled ones drop off (cancelled never reach the client anyway).
+    var nowMs = Date.now();
+    var upcoming = rows.filter(function (row) {
+      if (!row || row.status === 'ended' || row.status === 'cancelled') return false;
+      if (row.status === 'scheduled') return true;
+      var startMs = Date.parse(row.scheduled_at || '');
+      return isFinite(startMs) && startMs > nowMs;
+    });
     var replays = rows.filter(function (row) { return row && row.recording_status === 'ready' && row.recording_url; });
     var section = document.createElement('section');
     section.className = 'cs-dash-panel cs-live-library';
