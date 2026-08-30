@@ -70,6 +70,16 @@ test('accepts when ANY v1 in the header matches — secret rotation', () => {
   assert.equal(r.ok, true, 'a rotating secret must not reject half of all deliveries');
 });
 
+test('accepts signatures from either configured event destination', () => {
+  const raw = body();
+  const connectedSecret = 'whsec_connected';
+  const configured = `${SECRET}, ${connectedSecret}`;
+
+  assert.equal(S.verifySignature({ secret: configured, header: header(raw), rawBody: raw, now: NOW_MS }).ok, true);
+  assert.equal(S.verifySignature({ secret: configured, header: header(raw, T, connectedSecret), rawBody: raw, now: NOW_MS }).ok, true);
+  assert.equal(S.verifySignature({ secret: configured, header: header(raw, T, 'whsec_unknown'), rawBody: raw, now: NOW_MS }).ok, false);
+});
+
 test('rejects when no v1 matches, however many are offered', () => {
   const raw = body();
   const h = `t=${T},v1=${'a'.repeat(64)},v1=${'b'.repeat(64)}`;

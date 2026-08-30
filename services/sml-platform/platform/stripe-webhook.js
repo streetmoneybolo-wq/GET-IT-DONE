@@ -59,7 +59,15 @@ function parseSignatureHeader(header) {
 }
 
 function verifySignature({ secret, header, rawBody, now = Date.now(), tolerance = DEFAULT_TOLERANCE_SECONDS }) {
-  if (!secret) return fail(503, 'stripe_unconfigured');
+  /* Stripe assigns a different signing secret to each event destination.
+     Accept a comma-separated list so the platform-account and Connect-account
+     destinations can safely share this endpoint without weakening signature
+     verification. Empty entries are ignored to make secret rotation edits
+     tolerant of harmless surrounding commas/whitespace. */
+  const secrets = (Array.isArray(secret) ? secret : String(secret || '').split(','))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  if (!secrets.length) return fail(503, 'stripe_unconfigured');
   if (typeof rawBody !== 'string') return fail(400, 'raw_body_required');
 
   const parsed = parseSignatureHeader(header);
@@ -70,13 +78,15 @@ function verifySignature({ secret, header, rawBody, now = Date.now(), tolerance 
   const skew = Math.abs(Math.floor(now / 1000) - Number(parsed.timestamp));
   if (skew > tolerance) return fail(400, 'timestamp_out_of_tolerance');
 
-  const expected = sign(secret, parsed.timestamp, rawBody);
-  /* Compare against every candidate, and do NOT short-circuit on the first
-     match — the loop always runs to completion so timing cannot reveal which
-     signature matched. */
+  /* Compare every configured destination secret against every candidate, and
+     do NOT short-circuit. This accepts either destination while avoiding a
+     timing signal that reveals which secret or signature matched. */
   let matched = false;
-  for (const candidate of parsed.signatures) {
-    if (secureEqual(expected, candidate)) matched = true;
+  for (const configuredSecret of secrets) {
+    const expected = sign(configuredSecret, parsed.timestamp, rawBody);
+    for (const candidate of parsed.signatures) {
+      if (secureEqual(expected, candidate)) matched = true;
+    }
   }
   if (!matched) return fail(400, 'signature_mismatch');
 
