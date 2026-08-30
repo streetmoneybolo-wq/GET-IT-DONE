@@ -5,6 +5,19 @@ function integer(value, fallback, minimum) {
   return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
 }
 
+function jsonObject(value, name) {
+  if (!String(value || '').trim()) return Object.freeze({});
+  let parsed;
+  try { parsed = JSON.parse(value); } catch (_) { throw new Error(`${name} must be valid JSON`); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${name} must be a JSON object`);
+  for (const [key, entry] of Object.entries(parsed)) {
+    if (!/^\d+:\d+$/.test(key) || !/^[0-9a-f-]{20,50}$/i.test(String(entry))) {
+      throw new Error(`${name} contains an invalid group:plan mapping`);
+    }
+  }
+  return Object.freeze(parsed);
+}
+
 function getConfig(env = process.env) {
   const databaseUrl = String(env.DATABASE_URL || '').trim();
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -24,7 +37,11 @@ function getConfig(env = process.env) {
     stripeSecretKey: String(env.STRIPE_SECRET_KEY || '').trim(),
     billingApiSecret: String(env.SML_BILLING_API_SECRET || '').trim(),
     wordpressBillingBridgeUrl: String(env.SML_WORDPRESS_BILLING_BRIDGE_URL || '').trim(),
-    wordpressBillingBridgeSecret: String(env.SML_WORDPRESS_BILLING_BRIDGE_SECRET || '').trim()
+    wordpressBillingBridgeSecret: String(env.SML_WORDPRESS_BILLING_BRIDGE_SECRET || '').trim(),
+    upgradeChatClientId: String(env.UPGRADE_CHAT_CLIENT_ID || '').trim(),
+    upgradeChatClientSecret: String(env.UPGRADE_CHAT_CLIENT_SECRET || '').trim(),
+    upgradeChatPlanMap: jsonObject(env.UPGRADE_CHAT_PLAN_MAP_JSON, 'UPGRADE_CHAT_PLAN_MAP_JSON'),
+    discordBotToken: String(env.DISCORD_BOT_TOKEN || '').trim()
   });
 }
 

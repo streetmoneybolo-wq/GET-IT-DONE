@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Platform Billing Bridge
  * Description: Signed bridge between WordPress, the Render billing service, Loop Bucks, and group access.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Author: Stock Market Loop
  */
 
@@ -13,7 +13,13 @@ function sml_platform_billing_table() {
 	return $wpdb->prefix . 'sml_platform_billing_events';
 }
 
-register_activation_hook( __FILE__, function () {
+function sml_platform_billing_grants_table() {
+	global $wpdb;
+	return $wpdb->prefix . 'sml_platform_membership_grants';
+}
+
+function sml_platform_billing_install() {
+	if ( '0.3.0' === get_option( 'sml_platform_billing_bridge_version' ) ) return;
 	global $wpdb;
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	$table = sml_platform_billing_table();
@@ -26,7 +32,24 @@ register_activation_hook( __FILE__, function () {
 		PRIMARY KEY (id),
 		UNIQUE KEY source_key (source_key)
 	) {$charset};" );
-} );
+	$grants = sml_platform_billing_grants_table();
+	dbDelta( "CREATE TABLE {$grants} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		user_id bigint(20) unsigned NOT NULL,
+		group_id bigint(20) unsigned NOT NULL,
+		applied_role varchar(32) NOT NULL,
+		prior_role varchar(32) NOT NULL DEFAULT '',
+		created_member tinyint(1) NOT NULL DEFAULT 0,
+		subscription_id bigint(20) unsigned NOT NULL,
+		updated_at datetime NOT NULL,
+		PRIMARY KEY (id),
+		UNIQUE KEY group_user (group_id,user_id),
+		KEY subscription_id (subscription_id)
+	) {$charset};" );
+	update_option( 'sml_platform_billing_bridge_version', '0.3.0', false );
+}
+register_activation_hook( __FILE__, 'sml_platform_billing_install' );
+add_action( 'init', 'sml_platform_billing_install', 1 );
 
 function sml_platform_billing_secret() {
 	return defined( 'SML_PLATFORM_BILLING_BRIDGE_SECRET' )
@@ -140,7 +163,8 @@ function sml_platform_billing_call( $path, array $data ) {
 	if ( is_wp_error( $response ) ) return $response;
 	$result = json_decode( wp_remote_retrieve_body( $response ), true );
 	if ( wp_remote_retrieve_response_code( $response ) >= 300 || empty( $result['ok'] ) ) {
-		return new WP_Error( 'billing_api_failed', 'Billing service could not complete the request.' );
+		$message = isset( $result['message'] ) ? sanitize_text_field( $result['message'] ) : 'Billing service could not complete the request.';
+		return new WP_Error( 'billing_api_failed', $message );
 	}
 	return $result;
 }
@@ -163,3 +187,131 @@ function sml_platform_seller_onboarding( array $data ) {
 function sml_platform_verify_imported_renewal( array $provider_verified_data ) {
 	return sml_platform_billing_call( '/v1/billing/migrations/verify-renewal', $provider_verified_data );
 }
+
+function sml_platform_group_plan_map() {
+	if ( ! defined( 'SML_PLATFORM_GROUP_PLAN_MAP' ) ) return array();
+	$map = json_decode( (string) SML_PLATFORM_GROUP_PLAN_MAP, true );
+	if ( ! is_array( $map ) ) return array();
+	return array_map( 'absint', $map );
+}
+
+function sml_platform_group_plan_id( $group_id ) {
+	$map = sml_platform_group_plan_map();
+	return isset( $map[ (string) absint( $group_id ) ] ) ? absint( $map[ (string) absint( $group_id ) ] ) : 0;
+}
+
+function sml_platform_group_context( $group_id ) {
+	global $wpdb;
+	$group_id = absint( $group_id );
+	if ( ! $group_id || ! function_exists( 'sml_dgc_tables' ) || ! function_exists( 'sml_dgc_connector' ) ) return null;
+	$tables = sml_dgc_tables();
+	$connector = sml_dgc_connector( $group_id );
+	if ( ! $connector || 'active' !== $connector['state'] ) return null;
+	$link = $wpdb->get_row( $wpdb->prepare( "SELECT discord_user_id FROM {$tables['links']} WHERE user_id=%d", get_current_user_id() ), ARRAY_A );
+	$owner_id = absint( $wpdb->get_var( $wpdb->prepare( "SELECT owner_id FROM {$tables['groups']} WHERE id=%d", $group_id ) ) );
+	if ( ! $link || ! $owner_id ) return null;
+	return array(
+		'group_id' => $group_id,
+		'guild_id' => preg_replace( '/\D/', '', (string) $connector['guild_id'] ),
+		'discord_user_id' => preg_replace( '/\D/', '', (string) $link['discord_user_id'] ),
+		'owner_user_id' => $owner_id,
+		'plan_id' => sml_platform_group_plan_id( $group_id ),
+	);
+}
+
+function sml_platform_migration_status( WP_REST_Request $request ) {
+	$context = sml_platform_group_context( $request['group_id'] );
+	return rest_ensure_response( array(
+		'eligible' => (bool) ( $context && $context['plan_id'] ),
+		'connected' => (bool) $context,
+	) );
+}
+
+function sml_platform_start_upgrade_chat_migration( WP_REST_Request $request ) {
+	$context = sml_platform_group_context( $request['group_id'] );
+	if ( ! $context ) return new WP_Error( 'discord_required', 'Connect Discord to this group first.', array( 'status' => 409 ) );
+	if ( ! $context['plan_id'] ) return new WP_Error( 'plan_unavailable', 'This group has not enabled billing migration yet.', array( 'status' => 409 ) );
+	$group_url = wp_validate_redirect( wp_get_referer(), home_url( '/' ) );
+	$group_url = remove_query_arg( 'billing', $group_url );
+	$result = sml_platform_billing_call( '/v1/billing/migrations/upgrade-chat', array(
+		'userId' => get_current_user_id(),
+		'groupId' => $context['group_id'],
+		'ownerUserId' => $context['owner_user_id'],
+		'planId' => $context['plan_id'],
+		'discordUserId' => $context['discord_user_id'],
+		'guildId' => $context['guild_id'],
+		'successUrl' => add_query_arg( 'billing', 'migration-complete', $group_url ),
+		'cancelUrl' => add_query_arg( 'billing', 'migration-canceled', $group_url ),
+	) );
+	if ( is_wp_error( $result ) ) return $result;
+	return rest_ensure_response( array(
+		'checkoutUrl' => esc_url_raw( $result['checkoutUrl'] ?? '' ),
+		'renewalAt' => sanitize_text_field( $result['renewalAt'] ?? '' ),
+	) );
+}
+
+add_action( 'rest_api_init', function () {
+	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/migration-status', array(
+		'methods' => 'GET', 'callback' => 'sml_platform_migration_status', 'permission_callback' => 'is_user_logged_in',
+	) );
+	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/migrate-upgrade-chat', array(
+		'methods' => 'POST', 'callback' => 'sml_platform_start_upgrade_chat_migration', 'permission_callback' => 'is_user_logged_in',
+	) );
+} );
+
+/** Apply only the website role owned by billing; manual owner/admin access is never overwritten. */
+add_action( 'sml_platform_subscription_access_reconcile', function ( $data ) {
+	global $wpdb;
+	$user_id = absint( $data['userId'] ?? $data['user_id'] ?? 0 );
+	$group_id = absint( $data['groupId'] ?? $data['group_id'] ?? 0 );
+	$subscription_id = absint( $data['subscriptionId'] ?? $data['subscription_id'] ?? 0 );
+	if ( ! $user_id || ! $group_id || ! function_exists( 'sml_dgc_tables' ) ) return;
+	$active = ! empty( $data['active'] );
+	$native_roles = array();
+	foreach ( (array) ( $data['grants'] ?? array() ) as $grant ) {
+		if ( 'native_group_role' === ( $grant['target'] ?? '' ) ) $native_roles[] = sanitize_key( $grant['roleRef'] ?? $grant['role_ref'] ?? '' );
+	}
+	$weights = array( 'member' => 10, 'premium' => 20, 'analyst' => 30, 'mod' => 40, 'admin' => 50 );
+	$role = 'member';
+	foreach ( $native_roles as $candidate ) if ( isset( $weights[ $candidate ] ) && $weights[ $candidate ] > $weights[ $role ] ) $role = $candidate;
+	$tables = sml_dgc_tables();
+	$owned = sml_platform_billing_grants_table();
+	$current = sanitize_key( $wpdb->get_var( $wpdb->prepare( "SELECT role FROM {$tables['members']} WHERE group_id=%d AND user_id=%d", $group_id, $user_id ) ) );
+	if ( $active ) {
+		$created_member = $current ? 0 : 1;
+		$prior_role = $current;
+		if ( ! in_array( $current, array( 'owner', 'admin' ), true ) ) {
+			if ( $current ) $wpdb->update( $tables['members'], array( 'role' => $role ), array( 'group_id' => $group_id, 'user_id' => $user_id ) );
+			else $wpdb->insert( $tables['members'], array( 'group_id' => $group_id, 'user_id' => $user_id, 'role' => $role, 'joined_at' => current_time( 'mysql', true ) ) );
+		}
+		$existing_owned = $wpdb->get_row( $wpdb->prepare( "SELECT prior_role,created_member FROM {$owned} WHERE group_id=%d AND user_id=%d", $group_id, $user_id ), ARRAY_A );
+		if ( $existing_owned ) {
+			$prior_role = sanitize_key( $existing_owned['prior_role'] );
+			$created_member = absint( $existing_owned['created_member'] );
+		}
+		$wpdb->replace( $owned, array( 'user_id' => $user_id, 'group_id' => $group_id, 'applied_role' => $role, 'prior_role' => $prior_role, 'created_member' => $created_member, 'subscription_id' => $subscription_id, 'updated_at' => current_time( 'mysql', true ) ) );
+	} else {
+		$grant = $wpdb->get_row( $wpdb->prepare( "SELECT applied_role,prior_role,created_member FROM {$owned} WHERE group_id=%d AND user_id=%d", $group_id, $user_id ), ARRAY_A );
+		if ( $grant && $current === sanitize_key( $grant['applied_role'] ) ) {
+			if ( ! empty( $grant['created_member'] ) ) $wpdb->delete( $tables['members'], array( 'group_id' => $group_id, 'user_id' => $user_id ) );
+			elseif ( $grant['prior_role'] ) $wpdb->update( $tables['members'], array( 'role' => sanitize_key( $grant['prior_role'] ) ), array( 'group_id' => $group_id, 'user_id' => $user_id ) );
+		}
+		$wpdb->delete( $owned, array( 'group_id' => $group_id, 'user_id' => $user_id ) );
+	}
+}, 10, 1 );
+
+/** Upgrade.Chat was already provider-confirmed as canceled before Checkout opened. */
+add_action( 'sml_platform_cancel_external_subscription', function ( $data ) {
+	if ( 'upgrade_chat' !== sanitize_key( $data['external_platform'] ?? '' ) ) throw new RuntimeException( 'No external cancellation adapter is installed for this provider.' );
+	if ( empty( $data['external_reference'] ) ) throw new RuntimeException( 'Upgrade.Chat cancellation acknowledgement is missing its order reference.' );
+	error_log( sprintf( 'SML billing migration completed for canceled Upgrade.Chat order %s.', sanitize_text_field( $data['external_reference'] ?? '' ) ) );
+}, 10, 1 );
+
+add_action( 'wp_footer', function () {
+	if ( ! is_user_logged_in() ) return;
+	$nonce = wp_create_nonce( 'wp_rest' );
+	?>
+	<style>.sml-billing-migrate{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px!important;border:1px solid #f5c84b!important;background:linear-gradient(135deg,#fff3a3,#d69b00)!important;color:#251600!important;font-weight:900!important;box-shadow:0 0 18px #f5c84b66;animation:smlBillingGlow 1.8s ease-in-out infinite}@keyframes smlBillingGlow{50%{transform:translateY(-1px);box-shadow:0 0 28px #f5c84baa}}</style>
+	<script>(function(){var nonce=<?php echo wp_json_encode( $nonce ); ?>;function boot(){var root=document.getElementById('sml-group-root'),gid=root&&String(root.dataset.groupId||'').replace(/\D/g,'');if(!gid||root.querySelector('[data-sml-billing-migrate]'))return;fetch('/wp-json/sml-platform/v1/group/'+gid+'/migration-status',{headers:{'X-WP-Nonce':nonce}}).then(function(r){return r.json();}).then(function(s){if(!s.eligible)return;var actions=root.querySelector('.sml-group-actions,.sml-gshell__group-actions,[data-group-actions]');if(!actions)return;var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-migrate';b.dataset.smlBillingMigrate='1';b.textContent='💳 Move Membership Billing';b.onclick=function(){if(!confirm('Move this membership to StockMarketLoop? Stripe will collect your payment method now but will not charge until your verified Upgrade.Chat renewal date.'))return;b.disabled=true;b.textContent='Verifying membership…';fetch('/wp-json/sml-platform/v1/group/'+gid+'/migrate-upgrade-chat',{method:'POST',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:'{}'}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.message||'Migration could not start.');return j;});}).then(function(j){location.href=j.checkoutUrl;}).catch(function(e){b.disabled=false;b.textContent='💳 Move Membership Billing';alert(e.message);});};actions.appendChild(b);}).catch(function(){});}if(!boot())[400,1000,2200].forEach(function(ms){setTimeout(boot,ms);});})();</script>
+	<?php
+}, 100 );

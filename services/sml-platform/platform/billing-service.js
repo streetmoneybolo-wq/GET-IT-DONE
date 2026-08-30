@@ -97,6 +97,18 @@ async function createMembershipCheckout(pool, stripe, input) {
       if (renewal < Date.now() + 48 * 3600 * 1000) {
         throw new Error('external renewal date is too close for safe migration');
       }
+      const existingResult = await client.query(
+        `SELECT * FROM subscriptions
+          WHERE migration_from_subscription_id = $1
+            AND status = 'incomplete' AND stripe_checkout_session_id IS NOT NULL
+          FOR UPDATE`, [imported.id]
+      );
+      if (existingResult.rows[0]) {
+        subscription = existingResult.rows[0];
+        await client.query('COMMIT');
+        const prior = await stripe.checkout.sessions.retrieve(subscription.stripe_checkout_session_id);
+        return { subscriptionId: subscription.id, checkoutUrl: checkoutUrl(prior), reused: true };
+      }
     }
     const checkoutKey = key('membership');
     const inserted = await client.query(
@@ -194,10 +206,91 @@ async function verifyImportedRenewal(pool, _stripe, input) {
   };
 }
 
+async function prepareUpgradeChatMigration(pool, stripe, input, context = {}) {
+  if (!context.upgradeChat) throw new Error('Upgrade.Chat migration is not configured');
+  const discordUserId = String(input.discordUserId || '');
+  if (!/^\d{15,24}$/.test(discordUserId)) throw new TypeError('a linked Discord identity is required');
+  const mapKey = `${input.groupId}:${input.planId}`;
+  const productUuid = context.upgradeChatPlanMap && context.upgradeChatPlanMap[mapKey];
+  if (!productUuid) throw new TypeError('this group plan has no Upgrade.Chat migration mapping');
+
+  const verified = await context.upgradeChat.findMembership({ discordUserId, productUuid });
+  if (!verified.cancelledAt) {
+    throw new TypeError('cancel the existing Upgrade.Chat renewal before moving billing; paid access remains until its verified end date');
+  }
+  const renewalMs = new Date(verified.renewalAt).getTime();
+  const nowMs = typeof context.now === 'function' ? context.now() : Date.now();
+  if (!Number.isFinite(renewalMs) || renewalMs < nowMs + 48 * 3600 * 1000) {
+    throw new TypeError('the provider renewal date is too close for safe migration');
+  }
+
+  const client = await pool.connect();
+  let importedSubscriptionId;
+  try {
+    await client.query('BEGIN');
+    if (input.guildId) {
+      const guildId = String(input.guildId);
+      if (!/^\d{15,24}$/.test(guildId)) throw new TypeError('invalid Discord server identity');
+      await client.query(
+        `INSERT INTO discord_identities (user_id,discord_user_id,linked_at,revoked_at)
+         VALUES ($1,$2,now(),NULL)
+         ON CONFLICT (user_id) DO UPDATE SET discord_user_id=EXCLUDED.discord_user_id,revoked_at=NULL`,
+        [input.userId, discordUserId]
+      );
+      await client.query(
+        `INSERT INTO discord_guild_links (group_id,guild_id,linked_by,linked_at,active)
+         VALUES ($1,$2,$3,now(),true)
+         ON CONFLICT (group_id) DO UPDATE SET guild_id=EXCLUDED.guild_id,active=true,last_verified_at=now(),last_error=NULL`,
+        [input.groupId, guildId, input.ownerUserId]
+      );
+    }
+    const inserted = await client.query(
+      `INSERT INTO subscriptions (
+         user_id, group_id, plan_id, origin, status, external_platform,
+         external_reference, current_period_end, access_until,
+         external_renewal_source, external_renewal_verified_at
+       ) VALUES ($1,$2,$3,'discord_imported','active','upgrade_chat',$4,$5,$5,'upgrade_chat',now())
+       ON CONFLICT (external_platform, external_reference) WHERE origin = 'discord_imported' DO NOTHING
+       RETURNING id`,
+      [input.userId, input.groupId, input.planId, verified.externalReference, new Date(renewalMs).toISOString()]
+    );
+    if (inserted.rows[0]) {
+      importedSubscriptionId = inserted.rows[0].id;
+    } else {
+      const found = await client.query(
+        `SELECT * FROM subscriptions
+          WHERE origin='discord_imported' AND external_platform='upgrade_chat' AND external_reference=$1
+          FOR UPDATE`, [verified.externalReference]
+      );
+      const row = found.rows[0];
+      if (!row || String(row.user_id) !== String(input.userId) || String(row.group_id) !== String(input.groupId)) {
+        throw new TypeError('provider subscription is already linked to another account or group');
+      }
+      importedSubscriptionId = row.id;
+      if (!row.superseded_by) {
+        await client.query(
+          `UPDATE subscriptions SET plan_id=$2,status='active',current_period_end=$3,access_until=$3,
+             external_renewal_source='upgrade_chat',external_renewal_verified_at=now(),updated_at=now()
+           WHERE id=$1`, [row.id, input.planId, new Date(renewalMs).toISOString()]
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
+    throw error;
+  } finally {
+    client.release();
+  }
+  const checkout = await createMembershipCheckout(pool, stripe, { ...input, importedSubscriptionId });
+  return { ...checkout, importedSubscriptionId, renewalAt: new Date(renewalMs).toISOString(), provider: 'upgrade_chat' };
+}
+
 module.exports = {
   createLoopBuckCheckout,
   createMembershipCheckout,
   createSellerOnboarding,
   verifyImportedRenewal,
+  prepareUpgradeChatMigration,
   checkoutUrl
 };

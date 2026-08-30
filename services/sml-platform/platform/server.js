@@ -8,6 +8,7 @@ const { parseEvent, readRequestBody, verifySignature } = require('./wordpress-ga
 const stripeWebhook = require('./stripe-webhook');
 const Stripe = require('stripe');
 const billingService = require('./billing-service');
+const { createUpgradeChatClient } = require('./upgrade-chat');
 
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
@@ -160,21 +161,25 @@ async function handleBillingRequest(request, response, options, action) {
     return;
   }
   try {
-    const result = await action(options.pool, options.stripe, input);
+    const result = await action(options.pool, options.stripe, input, options);
     sendJson(response, 201, { ok: true, ...result });
   } catch (error) {
     options.logger('error', 'billing_request_failed', { error });
     const inputError = error instanceof TypeError || /not found|not ready|consent|fee is not/.test(String(error.message));
-    sendJson(response, inputError ? 400 : 503, { ok: false, error: inputError ? 'invalid_request' : 'temporary_unavailable' });
+    sendJson(response, inputError ? 400 : 503, {
+      ok: false,
+      error: inputError ? 'invalid_request' : 'temporary_unavailable',
+      ...(inputError ? { message: String(error.message).slice(0, 240) } : {})
+    });
   }
 }
 
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
   acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
-  pool = null, logger = log, now = Date.now }) {
+  pool = null, upgradeChat = null, upgradeChatPlanMap = {}, logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
-    const billingOptions = { billingApiSecret, stripe, pool, logger, now };
+    const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     if (request.method === 'POST' && path === '/v1/billing/loop-bucks/checkout') {
       await handleBillingRequest(request, response, billingOptions, billingService.createLoopBuckCheckout);
       return;
@@ -189,6 +194,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'POST' && path === '/v1/billing/migrations/verify-renewal') {
       await handleBillingRequest(request, response, billingOptions, billingService.verifyImportedRenewal);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/billing/migrations/upgrade-chat') {
+      await handleBillingRequest(request, response, billingOptions, billingService.prepareUpgradeChatMigration);
       return;
     }
     if (request.method === 'POST' && path === '/v1/stripe/webhook') {
@@ -220,6 +229,8 @@ async function main() {
   const config = getConfig();
   const database = createDatabase(config);
   const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
+  const upgradeChat = config.upgradeChatClientId && config.upgradeChatClientSecret
+    ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
@@ -227,6 +238,8 @@ async function main() {
     acceptStripeEvent: database.acceptStripeEvent,
     stripeWebhookSecret: config.stripeWebhookSecret,
     billingApiSecret: config.billingApiSecret,
+    upgradeChat,
+    upgradeChatPlanMap: config.upgradeChatPlanMap,
     stripe,
     pool: database.pool
   });

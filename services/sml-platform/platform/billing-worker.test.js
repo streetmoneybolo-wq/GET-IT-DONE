@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const W = require('./billing-worker');
+const { createDiscordAccessHandler } = require('./worker');
 
 test('outbox retry delay is bounded exponential backoff', () => {
   assert.equal(W.retryDelaySeconds(0), 30);
@@ -55,4 +56,31 @@ test('a won dispute returns funds to the connected seller', async () => {
     { source_key: 'seller-restore:dp_1' });
   assert.equal(calls[0].params.destination, 'acct_1');
   assert.equal(calls[0].params.amount, 10000);
+});
+
+test('access outbox payload is enriched with real roles and Discord identities', async () => {
+  const client = { query: async () => ({ rows: [{
+    id: 44, user_id: 7, group_id: 9, status: 'active', access_until: null,
+    discord_user_id: '1051212765475377172', guild_id: '938894329076940820',
+    grants: [{ target: 'discord_guild_role', roleRef: '939031140679970867' }]
+  }] }) };
+  const row = await W.enrichAccessPayload(client, {
+    intent_type: 'subscription_access_reconcile', payload: { subscriptionId: 44 }
+  });
+  assert.equal(row.payload.active, true);
+  assert.equal(row.payload.discordUserId, '1051212765475377172');
+  assert.equal(row.payload.grants.length, 1);
+});
+
+test('Discord membership handler applies every mapped role', async () => {
+  const calls = [];
+  const handler = createDiscordAccessHandler('bot-token', async (url, options) => {
+    calls.push({ url, options });
+    return { status: 204, headers: { get: () => null } };
+  });
+  await handler({ active: true, guildId: '938894329076940820', discordUserId: '1051212765475377172',
+    grants: [{ target: 'discord_guild_role', roleRef: '939031140679970867' }] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, 'PUT');
+  assert.match(calls[0].url, /939031140679970867$/);
 });

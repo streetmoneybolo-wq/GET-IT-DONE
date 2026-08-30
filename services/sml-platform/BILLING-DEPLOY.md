@@ -30,6 +30,10 @@ Set these as secret environment variables; never commit their values:
 - `SML_BILLING_API_SECRET`
 - `SML_WORDPRESS_BILLING_BRIDGE_URL`
 - `SML_WORDPRESS_BILLING_BRIDGE_SECRET`
+- `UPGRADE_CHAT_CLIENT_ID`
+- `UPGRADE_CHAT_CLIENT_SECRET`
+- `UPGRADE_CHAT_PLAN_MAP_JSON` (for example `{"7:12":"123e4567-e89b-12d3-a456-426614174000"}`)
+- `DISCORD_BOT_TOKEN` on the worker, for rate-limited role grants/revokes
 
 The API and worker must share `STRIPE_SECRET_KEY`. The API gets
 `SML_BILLING_API_SECRET`; the worker gets the two bridge variables.
@@ -66,16 +70,21 @@ continue through the existing `plan_role_grants` reconciler and rate-limited
 Discord client; the bot needs Manage Roles and its role above every managed
 membership role.
 
-External provider adapters must call `sml_platform_verify_imported_renewal()`
-with provider-verified data and listen to
-`sml_platform_cancel_external_subscription` to cancel the old subscription at
-period end. A member-entered date is never accepted. Dates less than 48 hours
-away fail closed to avoid an immediate double charge.
+Also set `SML_PLATFORM_GROUP_PLAN_MAP` in WordPress (for example `{"7":12}`).
+The group and plan identifiers must match the Render product map.
+
+Upgrade.Chat migration is now concrete: the platform fetches the order by the
+linked Discord ID, checks the mapped product and last successful charge, and
+derives the paid-through date. Upgrade.Chat's documented public API is read-only
+for orders, so the member must cancel the old renewal before migration. Access
+continues until that verified date and Stripe's first 5%-fee charge is scheduled
+for the same date. Dates under 48 hours away, stale orders, mismatched accounts,
+and uncanceled renewals all fail closed.
 
 ## Release order
 
 1. Back up Postgres.
-2. Deploy the API; Render applies migration 007 in its pre-deploy transaction.
+2. Deploy the API; Render applies pending migrations through 009 in its pre-deploy transaction.
 3. Install/activate the WordPress bridge and configure matching secrets.
 4. Set the worker variables and deploy the worker.
 5. Use Stripe test mode for one Loop Bucks purchase, one membership recovery,

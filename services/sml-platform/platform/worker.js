@@ -12,6 +12,28 @@ const {
   createStripeRecoveryHandler,
   createStripeRestoreHandler
 } = require('./billing-worker');
+const { createSyncClient } = require('../group-subs/src/discord-sync');
+
+function createDiscordAccessHandler(token, fetchImpl = fetch) {
+  if (!token) return null;
+  const client = createSyncClient({ token, fetchImpl });
+  return async function discordAccess(payload) {
+    const grants = (payload.grants || []).filter((g) => g.target === 'discord_guild_role');
+    if (!grants.length) return;
+    if (!payload.guildId || !payload.discordUserId) throw new Error('linked Discord server and member identity are required');
+    const action = payload.active ? 'grant' : 'revoke';
+    const result = await client.applyOperations(grants.map((g) => ({
+      action,
+      guildId: String(payload.guildId),
+      userId: String(payload.discordUserId),
+      roleId: String(g.roleRef),
+      reason: payload.active ? 'StockMarketLoop membership active' : 'StockMarketLoop membership ended'
+    })));
+    if (result.retryable.length || result.permanentFailures.length || result.deferred) {
+      throw new Error(`Discord membership sync incomplete: ${result.summary}`);
+    }
+  };
+}
 
 async function main() {
   const config = getConfig();
@@ -21,9 +43,17 @@ async function main() {
     url: config.wordpressBillingBridgeUrl,
     secret: config.wordpressBillingBridgeSecret
   });
+  const discord = createDiscordAccessHandler(config.discordBotToken);
+  const membershipAccess = async (payload, row) => {
+    await wordpress(payload, row);
+    if (discord) await discord(payload, row);
+    else if ((payload.grants || []).some((g) => g.target === 'discord_guild_role')) {
+      throw new Error('DISCORD_BOT_TOKEN is not configured');
+    }
+  };
   const processOutbox = createOutboxWorker(database.pool, {
     loop_bucks_credit: wordpress,
-    subscription_access_reconcile: wordpress,
+    subscription_access_reconcile: membershipAccess,
     subscription_notify: wordpress,
     cancel_external_subscription: wordpress,
     seller_recovery: createStripeRecoveryHandler(stripe),
@@ -74,4 +104,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main };
+module.exports = { main, createDiscordAccessHandler };

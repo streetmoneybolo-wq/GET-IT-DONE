@@ -80,6 +80,43 @@ async function promoteSubscriptionIntents(pool, limit = 100) {
   }
 }
 
+async function enrichAccessPayload(client, row) {
+  if (!row || row.intent_type !== 'subscription_access_reconcile') return row;
+  const payload = row.payload || {};
+  const result = await client.query(
+    `SELECT s.id,s.user_id,s.group_id,s.status,s.access_until,
+            di.discord_user_id,dg.guild_id,
+            COALESCE(jsonb_agg(jsonb_build_object('target',g.target,'roleRef',g.role_ref))
+              FILTER (WHERE g.id IS NOT NULL),'[]'::jsonb) AS grants
+       FROM subscriptions s
+       LEFT JOIN plan_role_grants g ON g.plan_id=s.plan_id
+       LEFT JOIN discord_identities di ON di.user_id=s.user_id AND di.revoked_at IS NULL
+       LEFT JOIN discord_guild_links dg ON dg.group_id=s.group_id AND dg.active=true
+      WHERE ($1::bigint IS NOT NULL AND s.id=$1)
+         OR ($2::text IS NOT NULL AND s.stripe_subscription_id=$2)
+      GROUP BY s.id,di.discord_user_id,dg.guild_id
+      LIMIT 1`,
+    [payload.subscriptionId || null, payload.stripeSubscriptionId || payload.stripe_subscription_id || null]
+  );
+  if (!result.rows[0]) return row;
+  const sub = result.rows[0];
+  const active = sub.status === 'active' || sub.status === 'trialing' ||
+    (['grace', 'past_due', 'unpaid'].includes(sub.status) && sub.access_until && new Date(sub.access_until) > new Date());
+  return {
+    ...row,
+    payload: {
+      ...payload,
+      subscriptionId: sub.id,
+      userId: String(sub.user_id),
+      groupId: String(sub.group_id),
+      discordUserId: sub.discord_user_id,
+      guildId: sub.guild_id,
+      active,
+      grants: sub.grants
+    }
+  };
+}
+
 async function claimOne(pool) {
   const client = await pool.connect();
   try {
@@ -101,7 +138,7 @@ async function claimOne(pool) {
         WHERE id = $1`, [row.id]
     );
     await client.query('COMMIT');
-    return { ...row, attempts: Number(row.attempts || 0) + 1 };
+    return await enrichAccessPayload(client, { ...row, attempts: Number(row.attempts || 0) + 1 });
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
     throw error;
@@ -288,5 +325,6 @@ module.exports = {
   createOutboxWorker,
   createWordPressHandler,
   createStripeRecoveryHandler,
-  createStripeRestoreHandler
+  createStripeRestoreHandler,
+  enrichAccessPayload
 };

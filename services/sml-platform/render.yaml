@@ -30,6 +30,12 @@ services:
         sync: false
       - key: SML_BILLING_API_SECRET
         sync: false
+      - key: UPGRADE_CHAT_CLIENT_ID
+        sync: false
+      - key: UPGRADE_CHAT_CLIENT_SECRET
+        sync: false
+      - key: UPGRADE_CHAT_PLAN_MAP_JSON
+        sync: false
 
   - type: worker
     name: sml-platform-worker
@@ -54,4 +60,6 @@ services:
       - key: SML_WORDPRESS_BILLING_BRIDGE_URL
         sync: false
       - key: SML_WORDPRESS_BILLING_BRIDGE_SECRET
+        sync: false
+      - key: DISCORD_BOT_TOKEN
         sync: false
