@@ -2301,13 +2301,11 @@
   /* ---------- Chess board (server owns all legality; this is a thin, correct UI) ---------- */
   var CHESS_GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
   var chessSel = -1;          // selected from-square (0..63, a8=0), -1 = none
-  var CHESS_MOVE_FMT = null;  // cached working move-param format once detected
   function chessBoardArr(t) {
     var raw = t.state && t.state.board;
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
     return Array.isArray(raw) ? raw : [];
   }
-  function sqName(idx) { return 'abcdefgh'.charAt(idx % 8) + String(8 - ((idx / 8) | 0)); }
   function chessMyColor(t) { return (t.yourSeat === 2 || t.yourSeat === '2') ? 'b' : 'w'; } // seat 1 = white
   function chessPlaying(t) { return (t.yourSeat === 1 || t.yourSeat === 2 || t.yourSeat === '1' || t.yourSeat === '2') && !t.spectating; }
   function chessDone(t) {
@@ -2372,32 +2370,20 @@
     });
     cb.appendChild(pk);
   }
-  // The server owns legality; the client only names the move. BOTH candidate
-  // formats are SQUARE-NAME based (UCI "e2e4"; or from:"e2",to:"e4") — never
-  // raw board indices, so a wrong-shaped body can only be REJECTED, never
-  // silently accepted as an index-transposed move (a numeric a8=0-vs-a1=0
-  // ambiguity would risk exactly that). Whichever the server accepts is cached;
-  // if a cached format later fails a well-formed move, the cache is cleared so
-  // the next attempt re-probes both.
+  // The server owns legality; the client only names the move. The engine reads
+  // move.from / move.to as INTEGER indices into state.board (0 = a8 … 63 = h1)
+  // plus an optional move.promo (Q/R/B/N) — the very indices chessClick already
+  // holds, since it reads the same board the server sent (no square-name
+  // round-trip, no a8-vs-a1 ambiguity). vFormG posts x-www-form-urlencoded, so
+  // the nested object goes as bracketed keys (move[from]=…) that the server
+  // rebuilds into the `move` array.
   function submitChessMove(t, from, to, promote) {
-    var order = CHESS_MOVE_FMT ? [CHESS_MOVE_FMT] : ['uci', 'alg'];
-    var run = function (k) {
-      if (k >= order.length) { CHESS_MOVE_FMT = null; gErr('Move refused — reload if it persists.'); return; }
-      var fmt = order[k], body;
-      if (fmt === 'uci') { body = { move: sqName(from) + sqName(to) + (promote || '') }; }
-      else { body = { from: sqName(from), to: sqName(to) }; if (promote) body.promote = promote; }
-      vFormG('/sml-games/v1/tables/' + G.tableId + '/move', body).then(function (res) {
-        if (res.ok) { CHESS_MOVE_FMT = fmt; pollTable(); return; }
-        var msg = (res.j && (res.j.message || res.j.code)) || '';
-        // a well-formed but ILLEGAL move (or off-turn) means the naming was
-        // accepted — surface it. Only a params/shape rejection (400/404/422
-        // with no illegal-move wording) makes us try the other naming.
-        var illegal = /illeg|not your|turn|check|occupied|own|pinn|mate|castle|pawn|promot|no.?piece|empty|blocked|forfeit|over/i.test(msg);
-        if (!CHESS_MOVE_FMT && !illegal && (res.status === 400 || res.status === 404 || res.status === 422)) { run(k + 1); return; }
-        gErr(msg || 'Move refused.');
-      });
-    };
-    run(0);
+    var body = { 'move[from]': from, 'move[to]': to };
+    if (promote) body['move[promo]'] = promote;
+    vFormG('/sml-games/v1/tables/' + G.tableId + '/move', body).then(function (res) {
+      if (res.ok) { pollTable(); return; }
+      gErr((res.j && (res.j.message || res.j.code)) || 'Move refused.');
+    });
   }
   function paintServerChess(t) {
     gShow('match');
