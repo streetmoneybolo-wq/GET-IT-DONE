@@ -555,18 +555,42 @@
       .catch(function () { return false; });
   }
 
-  var debounce = null;
+  var pending = null;
+  function check() {
+    pending = null;
+    var box = channelsBox();
+    if (!box) return;
+    if (box !== S.lastBox || !grouped(box) || (S.canManage && !box.querySelector('#sml-gcat-gear'))) apply();
+    else hideEmpties(box); // display-only refresh (attribute writes — no childList re-fire)
+  }
+  function schedule() {
+    // THROTTLE, never a resetting debounce: a page that mutates more often
+    // than the delay (live chat, presence ticks) must not starve the repair —
+    // once a check is queued it always runs. 80ms: the shell rebuilds every
+    // button ~10s and wipes our headers; they must be back within a frame or
+    // two. Channel ORDER survives rebuilds by itself (stylesheet rules, not
+    // inline styles), so a queued check never shows a shuffled sidebar.
+    if (pending) return;
+    pending = setTimeout(check, 80);
+  }
   function watch() {
     new MutationObserver(function () {
       if (applying) return; // our own apply() churn — everything else re-checks
-      clearTimeout(debounce);
-      debounce = setTimeout(function () {
-        var box = channelsBox();
-        if (!box) return;
-        if (box !== S.lastBox || !grouped(box) || (S.canManage && !box.querySelector('#sml-gcat-gear'))) apply();
-        else hideEmpties(box); // display-only refresh (attribute writes — no childList re-fire)
-      }, 80); // fast: the shell rebuilds every button ~10s and wipes our headers — they must be back within a frame or two. Channel ORDER survives rebuilds by itself now (stylesheet rules, not inline styles), so a pending debounce no longer shows a shuffled sidebar.
+      schedule();
     }).observe(document.body, { childList: true, subtree: true }); // body: the shell may REPLACE the container node
+    // hidden tabs throttle timers to a crawl (verified live: a backgrounded
+    // group page ran ZERO timers/mutations for 6s+ and sat header-less in a
+    // mid-rebuild state) — repair the instant the user comes back
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      if (pending) clearTimeout(pending);
+      pending = null;
+      check();
+    });
+    // belt-and-braces heartbeat: grouped() is cheap and check() is a no-op
+    // when the sidebar is already correct, so a missed observer edge (or a
+    // wipe whose repair timer died with a throttled tab) always heals
+    setInterval(function () { if (!applying && !pending) check(); }, 4000);
   }
 
   function boot() {
