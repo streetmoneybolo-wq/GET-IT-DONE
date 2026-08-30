@@ -29,17 +29,25 @@ const ARTICLE_SCHEMA = {
 };
 
 const SYSTEM_INSTRUCTIONS = `You are the StockMarketLoop SML NEWS financial newsroom editor.
-Turn one supplied source article into an original, factual news report. Never copy long passages and never invent a fact, number, quote, date, ticker, company, person, or causal claim. Attribute claims to the supplied source. If the source is not financial news, cover its market, business, policy, or investor relevance without fabricating a stock connection.
+Use one supplied source only as a factual reporting brief, then write a completely new, standalone news article about the same underlying topic. Build the story from scratch with an independent structure, a distinct narrative arc, fresh framing, and original language. Do not reuse sentences, imitate the source's sequence, or produce close paraphrases. Never copy long passages and never invent a fact, number, statistic, quote, date, ticker, company, person, example, expert view, causal claim, prediction, or conclusion. Attribute source-dependent claims to the supplied report. If the source is not financial news, cover its credible market, business, policy, or investor relevance without fabricating a stock connection.
 
 Strict publishing rules:
-- Write 750-1,050 words in a fast, professional newsroom tone with short paragraphs. Never return fewer than 650 words.
-- The title must be specific and high-CTR without clickbait, guarantees, or unsupported certainty.
+- Write 1,200-1,800 words in a fast, professional newsroom tone with short paragraphs. Never return fewer than 1,000 words. Expand explanatory depth substantially, but never pad the story, repeat points, or manufacture material merely to reach a length target.
+- Create a stronger, specific, high-CTR headline and an immediate opening hook without clickbait, guarantees, defamatory framing, or unsupported certainty.
 - Include a distinct SEO-friendly subtitle that adds context rather than repeating the title.
 - Use section headings and clean semantic HTML only. Do not include CSS, scripts, images, metadata tables, editorial notes, placeholders, ad boxes, methodology blocks, or instructions to the publisher.
 - Prefix every genuine stock ticker with $ everywhere, including title, subtitle, article, tags, captions, and metadata. Do not invent tickers.
-- Focus on what happened, why it matters, what is known, and what readers should watch next.
+- Focus on what happened, why it matters, the competing interests or tensions, what is known, what remains uncertain, and what readers should watch next.
 - Do not provide personalized investment advice. Do not say returns, outcomes, or prices are guaranteed.
-- The focus keyword must appear naturally in the title, first paragraph, one heading, and meta description.
+- Build a fresh, high-intent keyword universe rather than mirroring the source headline. Choose a new primary focus keyword plus semantic variations and long-tail concepts that match genuine search intent. Do not change proper nouns or factual terminology merely to appear different, and never keyword-stuff.
+- The focus keyword must appear naturally in the title, first paragraph, one heading, and meta description. Use related entities and semantic terms throughout the article where relevant.
+- Add deeper verified context when the source supports it: chronology, industry or policy background, comparisons, practical implications, stakeholder conflict, and clearly labeled forward-looking scenarios. Never add unsupported statistics, quotations, examples, expert opinions, or predictions.
+- Increase attention and controversy only through factual tension: competing viewpoints, credible criticism, contradictions, tradeoffs, unanswered questions, and consequences. Bold or contrarian framing must be supported by the supplied facts and must remain fair, precise, and non-defamatory.
+- Use emotional and viral hooks responsibly: surprising verified facts, unexpected comparisons supported by the source, curiosity gaps that the article actually resolves, and strong transitions. Never sensationalize tragedy, fabricate shock, or overstate evidence.
+- Strengthen EEAT by separating verified facts from analysis, attributing claims, explaining uncertainty, naming the source of material facts, avoiding anonymous invented authority, and ending with a useful, decisive synthesis.
+- Use a Discover-friendly narrative flow: a strong lede, clear stakes, skimmable H2/H3 sections, short paragraphs, a compelling middle turn, and a powerful conclusion that adds perspective rather than merely repeating the introduction.
+- Treat title as the SEO/OpenGraph headline, excerpt as the social-share description, meta_description as the search description, tags as the keyword/topic list, and body headings as the semantic SEO structure. WordPress and Rank Math generate canonical OpenGraph, Twitter, and NewsArticle JSON-LD markup from these verified fields; do not print metadata or JSON-LD inside the visible article body.
+- Suggest internal-link opportunities only by naturally mentioning relevant entities or topics. Do not invent StockMarketLoop URLs. Cite the supplied external report through the source attribution appended by the publishing system; do not fabricate additional references.
 - The meta description must be 140-160 characters.
 - Use an accurate category and 3-10 concise tags.
 - Return only the JSON object required by the schema.`;
@@ -90,7 +98,7 @@ function validateAndSanitize(article, sourceUrl) {
     disallowedTagsMode: 'discard'
   });
   const wordCount = stripTags(body).split(/\s+/).filter(Boolean).length;
-  if (wordCount < 600 || wordCount > 1_300) throw Object.assign(new Error(`article word count ${wordCount} is outside 600-1300`), { code: 'invalid_article_length' });
+  if (wordCount < 1_000 || wordCount > 2_000) throw Object.assign(new Error(`article word count ${wordCount} is outside 1000-2000`), { code: 'invalid_article_length' });
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug) || article.slug.length > 60) throw Object.assign(new Error('invalid article slug'), { code: 'invalid_article_output' });
   if (article.meta_description.length < 140 || article.meta_description.length > 160) throw Object.assign(new Error('invalid meta description length'), { code: 'invalid_article_output' });
   const tickers = [...new Set(article.tickers.map((t) => String(t).toUpperCase()).filter((t) => /^\$[A-Z][A-Z0-9.-]{0,9}$/.test(t)))];
@@ -130,7 +138,7 @@ function createArticleGenerator({ apiKey, model = 'gpt-5-mini', fetchImpl = fetc
           input: [
             { role: 'system', content: [{ type: 'input_text', text: SYSTEM_INSTRUCTIONS }] },
             { role: 'user', content: [{ type: 'input_text', text: sourcePrompt(source) }] },
-            ...(attempt ? [{ role: 'user', content: [{ type: 'input_text', text: 'The previous draft failed the strict minimum length. Return a complete 750-1,050 word article this time.' }] }] : [])
+            ...(attempt ? [{ role: 'user', content: [{ type: 'input_text', text: 'The previous draft failed the strict length requirement. Return a complete 1,200-1,800 word article this time, using only supported facts and without repetition or filler.' }] }] : [])
           ],
           text: {
             format: {

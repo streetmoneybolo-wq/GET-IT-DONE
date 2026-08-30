@@ -5,7 +5,7 @@ const test = require('node:test');
 const { createArticleGenerator, validateAndSanitize } = require('./article-generator');
 
 function article(overrides = {}) {
-  const paragraphs = Array.from({ length: 70 }, (_, i) => `<p>Markets paragraph ${i} explains verified developments and relevant context for readers following this unfolding business report today.</p>`).join('');
+  const paragraphs = Array.from({ length: 100 }, (_, i) => `<p>Markets paragraph ${i} explains verified developments and relevant context for readers following this unfolding business report today.</p>`).join('');
   return {
     title: 'Markets React as Companies Assess a Major Policy Development',
     subtitle: 'Investors are weighing the verified details and watching for the next official update.',
@@ -74,4 +74,14 @@ test('uses Responses structured outputs and never stores source content', async 
   assert.equal(requests[0].store, false);
   assert.equal(requests[0].text.format.type, 'json_schema');
   assert.equal(requests[0].text.format.strict, true);
+});
+
+test('extends the newsroom rules without weakening factuality safeguards', () => {
+  const { SYSTEM_INSTRUCTIONS } = require('./article-generator');
+  assert.match(SYSTEM_INSTRUCTIONS, /completely new, standalone news article/i);
+  assert.match(SYSTEM_INSTRUCTIONS, /fresh, high-intent keyword universe/i);
+  assert.match(SYSTEM_INSTRUCTIONS, /Discover-friendly narrative flow/i);
+  assert.match(SYSTEM_INSTRUCTIONS, /OpenGraph, Twitter, and NewsArticle JSON-LD/i);
+  assert.match(SYSTEM_INSTRUCTIONS, /never invent a fact, number, statistic, quote/i);
+  assert.match(SYSTEM_INSTRUCTIONS, /non-defamatory/i);
 });
