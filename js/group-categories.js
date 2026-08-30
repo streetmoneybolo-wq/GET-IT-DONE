@@ -60,6 +60,25 @@
   var m = location.pathname.match(/^\/groups\/([^/]+)\/?$/);
   if (!m) return;
   var SLUG = decodeURIComponent(m[1]);
+
+  // The group shell renders custom channel-name emojis (:free_green:/:free_red:)
+  // as loading="lazy" <img>s — low priority and deferred, so a tiny, always-
+  // visible sidebar emoji paints late. Preload the catalog at high priority the
+  // instant this script runs (well before the shell fetches channels and draws
+  // buttons), turning that lazy fetch — and every ~10s rebuild — into an instant
+  // cache hit. The images are small and edge-cached; catalog mirrors the shell's
+  // customEmojiCatalog (sml-group-shell-v11 assets/group-shell.js).
+  (function preloadChannelEmojis() {
+    ['sml-free-green-128', 'sml-free-red-128'].forEach(function (base) {
+      var href = 'https://stockmarketloop.com/wp-content/uploads/2026/08/' + base + '.png';
+      if (document.querySelector('link[data-sml-emoji="' + base + '"]')) return;
+      var l = document.createElement('link');
+      l.rel = 'preload'; l.as = 'image'; l.href = href;
+      l.setAttribute('fetchpriority', 'high');
+      l.setAttribute('data-sml-emoji', base);
+      (document.head || document.documentElement).appendChild(l);
+    });
+  })();
   var API = '/wp-json/sml-gcat/v1/group?slug=' + encodeURIComponent(SLUG);
   var LAYOUT_API = '/wp-json/sml-gcat/v1/layout?slug=' + encodeURIComponent(SLUG);
   var NONCE = window.SML_GCAT_NONCE || '';
