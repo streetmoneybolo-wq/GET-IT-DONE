@@ -3,7 +3,7 @@ if (!function_exists('sml_oh_is_home')) {
 /**
  * Plugin Name: StockMarketLoop Optimized Home
  * Description: Lightweight, server-rendered signed-in homepage with isolated assets.
- * Version: 1.3.1
+ * Version: 1.4.0
  * Author: StockMarketLoop
  */
 
@@ -156,17 +156,46 @@ function sml_oh_render() {
     $watchlist = array_slice((array) ($payload['watchlist'] ?? array('SPY', 'QQQ', 'NVDA', 'TSLA')), 0, 8);
     $groups = array_slice((array) ($payload['groups'] ?? array()), 0, 6);
 
-    echo '<div id="sml-optimized-home"><style>
-    html{overflow:hidden!important}#sml-optimized-home{position:fixed;inset:0;z-index:2147483000;overflow:auto;background:#020807;color:#eaf7f1;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;padding:14px}#sml-optimized-home *{box-sizing:border-box}.oh-top{display:flex;align-items:center;gap:16px;max-width:1440px;margin:0 auto 14px;padding:12px 16px;border:1px solid rgba(47,255,133,.2);border-radius:14px;background:#06120e}.oh-brand{font-size:22px;font-weight:900;color:#34ff89;text-decoration:none}.oh-search{display:flex;flex:1;gap:8px}.oh-search input{width:100%;min-width:0;background:#020c09;color:#fff;border:1px solid rgba(107,255,177,.25);border-radius:10px;padding:11px}.oh-btn{border:0;border-radius:10px;background:#38f58a;color:#03120a;font-weight:900;padding:11px 15px;text-decoration:none;cursor:pointer}.oh-grid{max-width:1440px;margin:auto;display:grid;grid-template-columns:240px minmax(0,1fr) 280px;gap:14px}.oh-card{border:1px solid rgba(107,255,177,.18);background:linear-gradient(180deg,#081813,#030c0a);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 14px 34px rgba(0,0,0,.22)}.oh-profile{display:flex;gap:10px;align-items:center}.oh-avatar{width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid #34ff89}.oh-nav{display:grid;gap:8px;margin-top:12px}.oh-nav a,.oh-chip{display:block;padding:9px 11px;border:1px solid rgba(107,255,177,.15);border-radius:9px;color:#dff8ee;text-decoration:none;background:#071611}.oh-chip{display:inline-block;margin:3px}.oh-post h2{font-size:18px;margin:0 0 8px}.oh-post h2 a{color:#eaf7f1;text-decoration:none}.oh-post p{color:#b7cbc4;line-height:1.55;margin:0}.oh-post img{width:100%;max-height:260px;object-fit:cover;border-radius:9px;margin-top:10px}.oh-meta{font-size:12px;color:#86a097;margin-bottom:7px}.oh-live{color:#8fffb9;font-weight:800}.oh-muted{color:#8fa69e;font-size:13px}@media(max-width:980px){.oh-grid{grid-template-columns:1fr}.oh-top{flex-wrap:wrap}.oh-search{order:3;min-width:100%}.oh-left,.oh-right{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}}@media(max-width:560px){#sml-optimized-home{padding:8px}.oh-top{gap:8px}.oh-brand{font-size:18px}}
+    /* The legacy server shell is now a hidden data source for home-feed.js.
+       Never reveal it as a fallback: if the controller is delayed, members see
+       this branded loading canvas instead of the retired three-column layout. */
+    echo '<style id="sml-oh-source-lock">
+    #sml-oh-loading{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:radial-gradient(900px 480px at 50% -120px,rgba(1,167,125,.2),transparent 62%),linear-gradient(180deg,#0d1622,#080d15);color:#e6edf5;font-family:Inter,system-ui,sans-serif}
+    #sml-oh-loading>div{display:grid;justify-items:center;gap:14px;padding:28px 34px;border:1px solid rgba(56,245,138,.22);border-radius:18px;background:linear-gradient(168deg,#1a2431,#0c121c);box-shadow:0 28px 70px rgba(0,0,0,.55)}
+    #sml-oh-loading b{font-size:18px;color:#38f58a}#sml-oh-loading span{font-size:12px;color:#93a4b8}
+    #sml-oh-loading i{width:34px;height:34px;border:3px solid rgba(56,245,138,.18);border-top-color:#38f58a;border-radius:50%;animation:smlOhLoad .75s linear infinite}
+    @keyframes smlOhLoad{to{transform:rotate(360deg)}}
+    body>#sml-optimized-home{visibility:hidden!important;pointer-events:none!important}
+    #sml-hf-shell #sml-optimized-home{visibility:visible!important;pointer-events:auto!important}
+    </style><div id="sml-oh-loading" role="status" aria-live="polite"><div><i aria-hidden="true"></i><b>Stock Market Loop</b><span>Loading your live market feed…</span></div></div>';
+    $source_watchlist = array();
+    foreach ( $watchlist as $source_symbol ) {
+        $source_symbol = preg_replace( '/[^A-Z0-9.\-]/', '', strtoupper( ltrim( (string) $source_symbol, '$' ) ) );
+        if ( '' !== $source_symbol ) { $source_watchlist[] = $source_symbol; }
+    }
+    $source_groups = array();
+    foreach ( $groups as $source_group ) {
+        if ( ! is_array( $source_group ) ) { continue; }
+        $source_groups[] = array(
+            'name' => sanitize_text_field( (string) ( $source_group['name'] ?? 'Group' ) ),
+            'href' => esc_url_raw( (string) ( $source_group['url'] ?? home_url( '/groups/' ) ) ),
+            'img'  => esc_url_raw( (string) ( $source_group['image'] ?? $source_group['icon'] ?? '' ) ),
+        );
+    }
+    $source_data = array(
+        'viewer' => array(
+            'name'   => sanitize_text_field( (string) ( $user->display_name ?: $user->user_login ) ),
+            'avatar' => esc_url_raw( (string) $avatar ),
+        ),
+        'watchlist' => $source_watchlist,
+        'groups'    => $source_groups,
+    );
+    echo '<script type="application/json" id="sml-oh-data">' . wp_json_encode( $source_data ) . '</script>';
+    echo '<div id="sml-optimized-home" data-sml-feed-source="1"><style>
+    html{overflow:hidden!important}#sml-optimized-home{color:#eaf7f1;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}#sml-optimized-home *{box-sizing:border-box}.oh-grid{display:block}.oh-card{border:1px solid rgba(107,255,177,.18);background:linear-gradient(180deg,#081813,#030c0a);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 14px 34px rgba(0,0,0,.22)}.oh-post h2{font-size:18px;margin:0 0 8px}.oh-post h2 a{color:#eaf7f1;text-decoration:none}.oh-post p{color:#b7cbc4;line-height:1.55;margin:0}.oh-post img{width:100%;max-height:260px;object-fit:cover;border-radius:9px;margin-top:10px}.oh-meta{font-size:12px;color:#86a097;margin-bottom:7px}
     .oh-post-author{display:flex;align-items:center;gap:10px;margin-bottom:10px;color:#eaf7f1;text-decoration:none}.oh-post img.oh-post-avatar{width:42px!important;height:42px!important;max-height:42px!important;flex:0 0 42px;border-radius:50%!important;object-fit:cover;margin:0!important;border:2px solid rgba(52,255,137,.7);background:#071611}.oh-post-author-name{display:block;font-size:14px;font-weight:800;color:#eaf7f1}
     </style>';
-    echo '<header class="oh-top"><a class="oh-brand" href="' . esc_url(home_url('/')) . '">SML</a><form class="oh-search" action="' . esc_url(home_url('/stock-chart/')) . '" method="get"><input name="symbol" aria-label="Search ticker" placeholder="Search a ticker, e.g. NVDA"><button class="oh-btn" type="submit">Search</button></form><a class="oh-btn" href="' . esc_url(home_url('/my-profile/')) . '">Profile</a></header>';
-    echo '<div class="oh-grid"><aside class="oh-left"><section class="oh-card"><div class="oh-profile"><img class="oh-avatar" src="' . esc_url($avatar) . '" alt=""><div><strong>' . esc_html($user->display_name ?: $user->user_login) . '</strong><div class="oh-muted">Signed in</div></div></div><nav class="oh-nav"><a href="' . esc_url(home_url('/groups/')) . '">Groups</a><a href="' . esc_url(home_url('/market-monitor/')) . '">Market Monitor</a><a href="' . esc_url(home_url('/analyst-dashboard/')) . '">Analyst Dashboard</a><a href="' . esc_url(home_url('/markets/')) . '">Market News</a><a href="' . esc_url(home_url('/creators/')) . '">Creators</a></nav></section><section class="oh-card"><strong>My Watchlist</strong><div>';
-    foreach ($watchlist as $symbol) {
-        $clean = preg_replace('/[^A-Z0-9.\-]/', '', strtoupper(ltrim((string) $symbol, '$')));
-        if ($clean !== '') { echo '<a class="oh-chip" href="' . esc_url(home_url('/stock-chart/?symbol=' . rawurlencode($clean))) . '">$' . esc_html($clean) . '</a>'; }
-    }
-    echo '</div></section></aside><main><section class="oh-card"><div class="oh-live">● Live Market Feed</div><div class="oh-muted">Fast, clean and optimized for signed-in members.</div></section>';
+    echo '<div class="oh-grid"><main>';
     foreach ($posts as $post) {
         if (!is_array($post)) { continue; }
         $body = wp_html_excerpt(trim(wp_strip_all_tags((string) ($post['body'] ?? ''))), 700, '...');
@@ -204,10 +233,7 @@ function sml_oh_render() {
         echo '</article>';
     }
     if (!$posts) { echo '<section class="oh-card">Your market feed is ready for new posts.</section>'; }
-    echo '</main><aside class="oh-right"><section class="oh-card"><strong>My Groups</strong><nav class="oh-nav">';
-    foreach ($groups as $group) { if (is_array($group)) { echo '<a href="' . esc_url((string) ($group['url'] ?? home_url('/groups/'))) . '">' . esc_html((string) ($group['name'] ?? 'Group')) . '</a>'; } }
-    if (!$groups) { echo '<a href="' . esc_url(home_url('/groups/')) . '">Browse Groups</a>'; }
-    echo '</nav></section><section class="oh-card"><strong>Popular Markets</strong><nav class="oh-nav"><a href="' . esc_url(home_url('/stock-chart/?symbol=SPY')) . '">$SPY</a><a href="' . esc_url(home_url('/stock-chart/?symbol=QQQ')) . '">$QQQ</a><a href="' . esc_url(home_url('/stock-chart/?symbol=NVDA')) . '">$NVDA</a><a href="' . esc_url(home_url('/stock-chart/?symbol=TSLA')) . '">$TSLA</a></nav></section><section class="oh-card"><strong>Community</strong><nav class="oh-nav"><a href="' . esc_url(home_url('/groups/')) . '">Browse Groups</a><a href="' . esc_url(home_url('/upload-video/')) . '">Upload Video</a><a href="' . esc_url(home_url('/go-live/')) . '">Go Live</a></nav></section></aside></div></div>';
+    echo '</main></div></div>';
 
     // This standalone homepage bypasses wp_head/wp_footer, so explicitly mount
     // the same proven UI modules it previously stripped away.

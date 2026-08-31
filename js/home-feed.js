@@ -147,6 +147,11 @@
   function boot() {
     var host = document.getElementById('sml-optimized-home');
     if (!host || document.getElementById('sml-hf-shell')) return;
+    var sourceData = {};
+    try {
+      var sourceNode = document.getElementById('sml-oh-data');
+      sourceData = sourceNode ? JSON.parse(sourceNode.textContent || '{}') : {};
+    } catch (e) { sourceData = {}; }
 
     if (!document.getElementById('sml-hf-fonts')) {
       var lk = document.createElement('link'); lk.id='sml-hf-fonts'; lk.rel='stylesheet';
@@ -308,6 +313,7 @@
 
     // ---- data (symbols from the feed's own $tags; NO fabricated prices) ----
     var syms = [];
+    try { (Array.isArray(sourceData.watchlist) ? sourceData.watchlist : []).forEach(function(s){ s=String(s||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); if(s&&syms.indexOf(s)<0) syms.push(s); }); } catch(e){}
     try { (host.innerText.match(/\$[A-Z]{1,5}\b/g)||[]).forEach(function(s){s=s.replace('$','');if(syms.indexOf(s)<0)syms.push(s);}); } catch(e){}
     if (syms.length < 6) syms = syms.concat(['SPY','QQQ','NVDA','AAPL','TSLA','MSFT','AMD','META','AMZN','SCKT','ILLR','MRAM']).filter(function(v,i,a){return a.indexOf(v)===i;});
     SYMS = syms.slice(); // symbols the modules render -> ask the quotes API for exactly these
@@ -317,16 +323,18 @@
     SNAP.forEach(function(x){ if(SYMS.indexOf(x)<0) SYMS.push(x); });
     try { (JSON.parse(localStorage.getItem('sml_hf_watchlist')||'[]')||[]).forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); } catch(e){}
     // profile identity from the page
-    var meName = 'You', meInit = 'You';
-    try { var og=(document.querySelector('meta[property="og:title"]')||{}).content||''; var au=host.querySelector('.oh-post-author-name'); meName = (au&&au.textContent.trim()) || og.split(/\s*[|—(]/)[0].trim() || 'You'; meInit = meName.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase(); } catch(e){}
+    var meName = sourceData.viewer && sourceData.viewer.name ? String(sourceData.viewer.name) : 'You', meInit = 'You';
+    try { var og=(document.querySelector('meta[property="og:title"]')||{}).content||''; var au=host.querySelector('.oh-post-author-name'); if(!(sourceData.viewer&&sourceData.viewer.name)) meName = (au&&au.textContent.trim()) || og.split(/\s*[|—(]/)[0].trim() || 'You'; meInit = meName.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase(); } catch(e){}
     // Current viewer's real avatar, stamped server-side by the CDN-loader snippet.
-    var meAvatar = null;
+    var meAvatar = sourceData.viewer && sourceData.viewer.avatar ? String(sourceData.viewer.avatar) : null;
     try { if (window.SML_ME) { if (SML_ME.name) { meName = String(SML_ME.name); meInit = meName.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase(); } if (SML_ME.avatar) meAvatar = String(SML_ME.avatar); } } catch(e){}
     var authors = []; // [{name, img, href}] — real avatars from the feed's own post markup
     try { host.querySelectorAll('.oh-post-author').forEach(function(a){ var nm=((a.querySelector('.oh-post-author-name')||{}).textContent||'').trim(); if(!nm) return; var im=a.querySelector('img.oh-post-avatar')||a.querySelector('img'); var src=im?(im.getAttribute('data-src')||im.getAttribute('src')||''):''; var hf=a.getAttribute('href')||''; var sm=hf.match(/^(?:https?:\/\/[^\/]+)?\/([a-z0-9_\-]+)\/?$/i); if(!authors.some(function(x){return x.name===nm;})) authors.push({name:nm,img:src,href:hf,slug:sm?sm[1]:''}); }); } catch(e){}
     while (authors.length < 6) authors.push({name:['Loop Desk','Momentum','Small Caps','Options Flow','Chart Room','Swing Trades'][authors.length]||'Loop',img:'',href:'',slug:''});
-    // per-user groups from the feed's own (hidden) right rail; logos merged in async from /groups/
+    // Per-user groups now arrive as structured source data. Keep the retired
+    // right-rail scan as rollback compatibility, but never require that layout.
     var myGroups = [];
+    try { (Array.isArray(sourceData.groups) ? sourceData.groups : []).forEach(function(g){ var hf=String((g&&g.href)||'/groups/'); var m=hf.match(/\/groups\/([a-z0-9-]+)/i); var slug=m?m[1]:''; var nm=String((g&&g.name)||'').replace(/\s+/g,' ').trim(); if(!nm||nm.length>48||(slug&&SML_BANNED_GROUP(slug,nm))) return; if(!myGroups.some(function(x){return x.slug===slug&&x.href===hf;})) myGroups.push({slug:slug,name:nm,href:hf,img:String((g&&g.img)||'')}); }); } catch(e){}
     try { host.querySelectorAll('.oh-right a[href*="/groups/"]').forEach(function(a){ var hf=a.getAttribute('href')||''; var m=hf.match(/\/groups\/([a-z0-9-]+)/i); if(!m) return; var im=a.querySelector('img'); var src=im?(im.getAttribute('data-src')||im.getAttribute('src')||''):''; var nm=(a.textContent||'').replace(/\s+/g,' ').trim(); if(!nm&&im) nm=(im.getAttribute('alt')||'').replace(/\s*group logo\s*/i,'').trim(); if(!nm||nm.length>48) return; if(SML_BANNED_GROUP(m[1],nm)) return; if(!myGroups.some(function(g){return g.slug===m[1];})) myGroups.push({slug:m[1],name:nm,href:hf,img:src}); }); } catch(e){}
 
     var CARD = 'background:linear-gradient(168deg,#1A2431 0%,#121A26 45%,#0C121C 100%);border:1px solid rgba(255,255,255,.07);border-top-color:rgba(255,255,255,.18);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 14px 28px -12px rgba(0,0,0,.75),0 34px 60px -30px rgba(0,0,0,.9);';
@@ -414,6 +422,8 @@
       '</div>';
 
     document.body.appendChild(shell);
+    var retiredLayoutGuard = document.getElementById('sml-oh-loading');
+    if (retiredLayoutGuard) retiredLayoutGuard.remove();
     /* PERF phase 2: mobile layout flag + bottom navigation (secondary nav moves
        off the compact mobile header). Kill: ?hfm=0 / localStorage sml_hfm=0 */
     var HFM = !/[?&]hfm=0/.test(location.search);
@@ -477,8 +487,9 @@
     try { optimizeCardImages(); } catch (e) {}
     try { if (!document.querySelector('link[href="https://i0.wp.com"]')) { var pc = document.createElement('link'); pc.rel = 'preconnect'; pc.href = 'https://i0.wp.com'; document.head.appendChild(pc); } } catch (e) {}
     try { document.documentElement.style.overflow='hidden'; document.body.style.overflow='hidden'; } catch(e){}
-    // pre-paint guard (wpcode/prepaint-guard.php): the old feed was held invisible
-    // until this shell exists — reveal now (CSS failsafe reveals at 2.5s regardless)
+    // Reveal only after the current shell exists. The server-side feed source is
+    // permanently hidden outside this shell, so a slow controller can no longer
+    // expose the retired layout.
     document.documentElement.classList.remove('sml-pp');
 
     // Reuse the site's real LOOP-KICK bridge so authentication, unread state,
