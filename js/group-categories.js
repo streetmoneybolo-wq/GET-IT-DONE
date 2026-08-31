@@ -1053,7 +1053,8 @@
       + '.sml-ghx-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 14px;background:none;border:0;cursor:pointer;'
       +   'color:#e2ece6;font-size:13.5px;font-family:inherit;}'
       + '.sml-ghx-menu button:hover{background:rgba(0,255,102,.1);color:#4dff97;}'
-      + '.sml-ghx-menu button + button{border-top:1px solid rgba(255,255,255,.06);}';
+      + '.sml-ghx-menu button + button{border-top:1px solid rgba(255,255,255,.06);}'
+      + '.sml-ghx-hidden-src{position:absolute !important;width:1px !important;height:1px !important;padding:0 !important;margin:-1px !important;overflow:hidden !important;clip:rect(0,0,0,0) !important;white-space:nowrap !important;border:0 !important;}';
     var s = document.createElement('style'); s.id = 'sml-ghx-css'; s.textContent = css;
     (document.head || document.documentElement).appendChild(s);
   }
@@ -1120,9 +1121,12 @@
     var bgBtn = findBg();
     if (!editBtn && !bgBtn) { return; } // viewer has neither control (non-manager)
 
-    // hide the originals every tick (the shell rebuilds them fresh)
+    // Visually remove the originals but keep them FUNCTIONAL. display:none makes
+    // offsetParent null and the shell's own click handler bails on that, so a
+    // proxied click to a display:none button does nothing. The sr-only style
+    // keeps the button laid out + clickable while invisible.
     [editBtn, bgBtn].forEach(function (b) {
-      if (b && b.style.display !== 'none') { b.style.setProperty('display', 'none', 'important'); }
+      if (b) { b.classList.add('sml-ghx-hidden-src'); b.style.removeProperty('display'); }
     });
 
     var anchor = banner || (editBtn && editBtn.parentElement) || (bgBtn && bgBtn.parentElement);
