@@ -1061,7 +1061,11 @@
   function findByText(re){
     var els = document.querySelectorAll('button, a, [role="button"]');
     for (var i = 0; i < els.length; i++) {
-      if (re.test((els[i].textContent || '').trim())) { return els[i]; }
+      var e = els[i];
+      // never match our own injected controls (our menu items carry the same
+      // labels as the real buttons, so a plain text search would proxy to itself)
+      if (e.id === 'sml-ghx-dots' || (e.closest && e.closest('#sml-ghx-menu'))) { continue; }
+      if (re.test((e.textContent || '').trim())) { return e; }
     }
     return null;
   }
