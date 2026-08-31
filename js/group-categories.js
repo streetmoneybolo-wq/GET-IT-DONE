@@ -57,6 +57,42 @@
   if (window.__smlGcatBooted) return;
   window.__smlGcatBooted = true;
 
+  /* ---------- Portal watermark: upgrade poster -> animated WebP ----------
+   * The server (WPCode "SML Group Watermark Optimizer") swaps the Portal
+   * watermark from a 33,062,888-byte GIF to a 1,226-byte static poster so the
+   * critical path stays tiny. Once the page is idle we quietly upgrade to the
+   * animated WebP (2,870,066 bytes, 91.3% smaller than the GIF) and hand it to
+   * the shell's config, which applyWatermark() reads by reference on every
+   * later call. No observers: we preload, then swap once.
+   * Skipped entirely for prefers-reduced-motion, Save-Data and 2g, which keep
+   * the poster deliberately. If the WebP fails to load the poster simply stays.
+   */
+  (function portalWatermarkUpgrade() {
+    var BASE = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@4befb9c/media/watermarks/';
+    var ANIM = BASE + 'portal-watermark.webp';
+    var POSTER_MARK = 'portal-watermark-poster.webp';
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var conn = navigator.connection || navigator.webkitConnection;
+      if (conn && (conn.saveData || /(^|-)2g$/.test(String(conn.effectiveType || '')))) return;
+    } catch (e) { /* capability probe only; never block the page */ }
+    function go() {
+      var cfg = window.SMLGroupShell;
+      if (!cfg || String(cfg.portalWatermarkUrl || '').indexOf(POSTER_MARK) === -1) return;
+      var pre = new Image();
+      pre.onload = function () {
+        cfg.portalWatermarkUrl = ANIM;
+        var layer = document.querySelector('[data-smlgs-watermark]');
+        if (layer && String(layer.style.backgroundImage || '').indexOf(POSTER_MARK) !== -1) {
+          layer.style.backgroundImage = 'url("' + ANIM + '")';
+        }
+      };
+      pre.src = ANIM;                       // failure leaves the poster in place
+    }
+    if (window.requestIdleCallback) { requestIdleCallback(go, { timeout: 3000 }); }
+    else { setTimeout(go, 1200); }
+  })();
+
   var m = location.pathname.match(/^\/groups\/([^/]+)\/?$/);
   if (!m) return;
   var SLUG = decodeURIComponent(m[1]);
