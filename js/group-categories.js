@@ -1103,10 +1103,19 @@
       if (b) { b.click(); }
     };
   }
-  function findEdit(){ return document.querySelector('.sml-goe-edit-btn') || findByText(/^Edit Group$/i); }
-  function findBg(){ return findByText(/^Channel Background$/i); }
+  // The channel-header controls (verified live): Edit Group = .sml-gshell__edit,
+  // Channel Background (channel watermark) = .sml-gshell__channel-watermark-button,
+  // both inside .sml-gshell__main-head. Text is the fallback if the shell renames.
+  // NOTE: the group-landing hero's .sml-goe-edit-btn is deliberately NOT matched —
+  // this menu only reworks the channel-view header the user asked about.
+  function findEdit(){ return document.querySelector('.sml-gshell__edit') || findByText(/^Edit Group$/i); }
+  function findBg(){ return document.querySelector('.sml-gshell__channel-watermark-button') || findByText(/^Channel Background$/i); }
 
   function ensureMenu(){
+    // channel-view only: the banner is the yellow-dot anchor and its absence
+    // means the landing/overview layout, which we leave untouched.
+    var banner = document.querySelector('.sml-gshell__header-banner');
+    if (!banner) { return; }
     var editBtn = findEdit();
     var bgBtn = findBg();
     if (!editBtn && !bgBtn) { return; } // viewer has neither control (non-manager)
@@ -1116,7 +1125,6 @@
       if (b && b.style.display !== 'none') { b.style.setProperty('display', 'none', 'important'); }
     });
 
-    var banner = document.querySelector('.sml-gshell__header-banner');
     var anchor = banner || (editBtn && editBtn.parentElement) || (bgBtn && bgBtn.parentElement);
     if (!anchor) { return; }
     if (getComputedStyle(anchor).position === 'static') { anchor.style.position = 'relative'; }
