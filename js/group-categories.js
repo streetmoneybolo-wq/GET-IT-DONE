@@ -1045,9 +1045,10 @@
       + '.sml-ghx-t-count{font-size:19px;font-weight:600;color:#e2ece6;line-height:1.15;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:.02em;}'
       + '.sml-ghx-t-at{font-size:10.5px;color:#64756d;margin-top:1px;}'
       + '.sml-ghx-dots{position:absolute;top:8px;right:8px;z-index:40;width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
+      +   'pointer-events:auto !important;' /* the banner sets pointer-events:none; re-enable ours or real clicks pass through */
       +   'font-size:20px;line-height:1;color:#cfe;background:rgba(8,18,24,.66);border:1px solid rgba(255,255,255,.14);border-radius:8px;cursor:pointer;backdrop-filter:blur(4px);}'
       + '.sml-ghx-dots:hover{background:rgba(0,255,102,.16);border-color:rgba(0,255,102,.4);}'
-      + '.sml-ghx-menu{position:absolute;top:44px;right:8px;z-index:41;min-width:186px;display:none;flex-direction:column;overflow:hidden;'
+      + '.sml-ghx-menu{position:absolute;top:44px;right:8px;z-index:41;min-width:186px;display:none;flex-direction:column;overflow:hidden;pointer-events:auto !important;'
       +   'background:#0d171e;border:1px solid rgba(0,255,102,.22);border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.5);}'
       + '.sml-ghx-menu.open{display:flex;}'
       + '.sml-ghx-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 14px;background:none;border:0;cursor:pointer;'
