@@ -213,12 +213,12 @@
         '@media (prefers-reduced-motion:no-preference){.sml-sig-dot--last::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1.5px solid currentColor;opacity:.6;animation:smlSigPulse 1.8s ease-out infinite;}}' +
         '@keyframes smlSigPulse{0%{transform:scale(.6);opacity:.7}80%{transform:scale(2.1);opacity:0}100%{transform:scale(2.1);opacity:0}}' +
         '#sml-optimized-home .sml-signal-feed-post:hover .sml-signal-watermark>svg{opacity:.72;}' +
-        '.sml-mm-tape{position:absolute;z-index:2;right:15px;top:15px;width:min(48%,420px);color:#DCE8F3;border:1px solid rgba(255,255,255,.09);border-radius:6px;background:rgba(10,12,16,.74);box-shadow:0 8px 22px rgba(0,0,0,.28);backdrop-filter:blur(6px);overflow:hidden;pointer-events:none;}' +
-        '.sml-mm-row{display:grid;grid-template-columns:58px 48px minmax(58px,1fr) minmax(76px,1.15fr) 76px;align-items:center;gap:6px;height:27px;padding:0 8px;color:#C0C5CA;font:700 8.5px "IBM Plex Mono",monospace;border-bottom:1px solid rgba(255,255,255,.055);animation:smlMmRowLife 20s linear forwards;}' +
+        '.sml-mm-tape{position:absolute;z-index:2;right:15px;top:15px;width:min(56%,520px);color:#DCE8F3;border:1px solid rgba(255,255,255,.09);border-radius:6px;background:rgba(10,12,16,.74);box-shadow:0 8px 22px rgba(0,0,0,.28);backdrop-filter:blur(6px);overflow:hidden;pointer-events:none;}' +
+        '.sml-mm-row{display:grid;grid-template-columns:58px 50px minmax(104px,1.4fr) minmax(84px,1fr) 104px;align-items:center;gap:7px;height:30px;padding:0 10px;color:#C0C5CA;font:700 9.5px "IBM Plex Mono",monospace;border-bottom:1px solid rgba(255,255,255,.055);animation:smlMmRowLife 20s linear forwards;}' +
         '.sml-mm-row:last-child{border-bottom:0}.sml-mm-row time{color:#D9DDE1}.sml-mm-row .sml-mm-row-symbol{color:#D9DDE1}.sml-mm-row .sml-mm-row-name,.sml-mm-event{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sml-mm-data{text-align:right;white-space:nowrap;}' +
         '.sml-mm-row.is-bull .sml-mm-event,.sml-mm-row.is-bull .sml-mm-data{color:#41E77D}.sml-mm-row.is-bear .sml-mm-event,.sml-mm-row.is-bear .sml-mm-data{color:#FF4858;}' +
         '@keyframes smlMmRowLife{0%,82%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-4px);visibility:hidden}}' +
-        '@media(max-width:620px){.sml-mm-tape{right:8px;top:10px;width:58%}.sml-mm-row{grid-template-columns:50px 40px minmax(0,1fr) 62px;height:25px;padding:0 6px;gap:4px;font-size:7px}.sml-mm-row-name{display:none}}' +
+        '@media(max-width:620px){.sml-mm-tape{right:8px;top:10px;width:74%}.sml-mm-row{grid-template-columns:48px 42px minmax(0,1fr) 82px;height:28px;padding:0 8px;gap:5px;font-size:8px}.sml-mm-row-name{display:none}}' +
         '#sml-optimized-home .sml-hfe-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:999px;border:1px solid rgba(255,255,255,.09);border-top-color:rgba(255,255,255,.2);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:12px;font-weight:600;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 3px 8px -3px rgba(0,0,0,.7);transition:transform .12s,color .15s,border-color .15s;}' +
         '#sml-optimized-home .sml-hfe-btn:hover{border-color:rgba(56,245,138,.55);color:#E6EDF5;}' +
         '#sml-optimized-home .sml-sth-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;}' +
@@ -808,7 +808,7 @@
     }
     function loadSignalCompany(sym){if(signalCompanies[sym]||signalCompanyPending[sym])return;signalCompanyPending[sym]=1;signalCompanyQueue.push({sym:sym,tries:0});runSignalCompanyQueue();}
     function paintSignalStream(card,sym,company,events,born){
-      events=(events||[]).slice(0,2);var age=Math.max(0,Date.now()-(born||Date.now())),remaining=Math.max(0,20000-age);
+      events=(events||[]).slice(0,1);var age=Math.max(0,Date.now()-(born||Date.now())),remaining=Math.max(0,20000-age);
       var rows=remaining?events.map(function(e){return'<div class="sml-mm-row '+(e.bull?'is-bull':'is-bear')+'" style="animation-delay:-'+Math.min(age,19999)+'ms"><time>'+esc(signalClock(e.t))+'</time><span class="sml-mm-row-symbol">$'+esc(sym)+'</span><span class="sml-mm-row-name">'+esc(company)+'</span><span class="sml-mm-event">'+esc(e.type)+'</span><span class="sml-mm-data">'+esc(e.data)+'</span></div>';}).join(''):'';
       var stream=card.querySelector('.sml-mm-tape');if(rows){if(!stream){stream=document.createElement('div');stream.className='sml-mm-tape';stream.setAttribute('role','status');stream.setAttribute('aria-live','polite');card.appendChild(stream);}stream.setAttribute('aria-label','$'+sym+' unusual activity');stream.innerHTML=rows;}else if(stream){stream.remove();}
       clearTimeout(card._smlMmTimer);if(remaining&&rows){card._smlMmTimer=setTimeout(function(){var el=card.querySelector('.sml-mm-tape');if(el)el.remove();},remaining+30);}
