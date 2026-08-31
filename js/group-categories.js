@@ -992,7 +992,7 @@
      inline because jsDelivr serves .html as text/plain (nosniff) so it can't be
      iframed. Rendered into a stable sidebar mount + scaled to fit. Every name
      below is local to cdStart(root); root is the 380px-native mount element. ---- */
-  var CD_NATIVE_W = 380, CD_STARTED = false;
+  var CD_NATIVE_W = 380, cdStartedMount = null, cdIntervalId = null;
   function cdStart(root){
     var fmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',hour12:false});
     function etParts(ts){var p={};fmt.formatToParts(ts).forEach(function(x){p[x.type]=x.value;});return{y:+p.year,mo:+p.month,d:+p.day,h:(+p.hour)%24,mi:+p.minute};}
@@ -1109,7 +1109,7 @@
       var bar=$('sml-bar');bar.style.width=Math.min(100,Math.max(0,(1-rem/total)*100)).toFixed(2)+'%';
       bar.style.background='linear-gradient(90deg, '+theme.accent+', '+urg+')';bar.style.boxShadow='0 0 10px '+urg+'99';
     }
-    tick();setInterval(tick,250);
+    tick(); return setInterval(tick, 250);
   }
 
   /* ---- styles (once) ---- */
@@ -1194,7 +1194,14 @@
     }
     var mount2 = box.querySelector('#sml-ghx-cd-mount');
     if (!mount2) { return; }
-    if (!CD_STARTED) { CD_STARTED = true; try { cdStart(mount2); } catch (e) {} }
+    // (Re)start the engine whenever a FRESH mount appears. The shell can replace the
+    // side-head's contents during load, so a once-only global guard would leave a
+    // replacement mount permanently empty. Clear the prior interval to avoid leaks.
+    if (mount2 !== cdStartedMount) {
+      if (cdIntervalId) { clearInterval(cdIntervalId); cdIntervalId = null; }
+      cdStartedMount = mount2;
+      try { cdIntervalId = cdStart(mount2); } catch (e) {}
+    }
     // Uniformly scale the 380px design down to the available width (never upscale).
     var avail = box.clientWidth;
     if (avail > 0) {
