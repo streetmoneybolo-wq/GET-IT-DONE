@@ -932,3 +932,221 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })();
+
+/* ============================================================================
+ * SML group HEADER enhancements (independent of the categories module above):
+ *   1. A US market-session countdown timer inside the sidebar group-name block
+ *      (the block is extended taller to hold it).
+ *   2. Fold "Edit Group" and (owner-only) "Channel Background" into a single
+ *      3-dots (⋮) menu at the top-right of the channel banner; the original
+ *      buttons are hidden and each menu item proxies a click to its original,
+ *      so no knowledge of their internals is needed.
+ * Self-contained: a 1s tick drives the clock AND re-applies both enhancements,
+ * healing the shell's ~10s full rebuild (same problem the categories layer has).
+ * Timer core verified by node tests (15/15: sessions, weekends, NYSE holidays,
+ * DST, boundaries, viewer-local 12h display).
+ * ========================================================================== */
+(function () {
+  'use strict';
+  if (!/^\/groups\/[^/]+\/?$/.test(location.pathname)) { return; }
+
+  /* ---- NYSE full-closure holidays (ET dates), 2026–2027; extend as needed.
+     Dates past the table degrade to weekend-only skipping. ---- */
+  var HOLIDAYS = {
+    '2026-01-01':1,'2026-01-19':1,'2026-02-16':1,'2026-04-03':1,'2026-05-25':1,
+    '2026-06-19':1,'2026-07-03':1,'2026-09-07':1,'2026-11-26':1,'2026-12-25':1,
+    '2027-01-01':1,'2027-01-18':1,'2027-02-15':1,'2027-03-26':1,'2027-05-31':1,
+    '2027-06-18':1,'2027-07-05':1,'2027-09-06':1,'2027-11-25':1,'2027-12-24':1
+  };
+  function p2(n){ return (n < 10 ? '0' : '') + n; }
+  function etOffsetMin(ms){
+    try {
+      var s = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', timeZoneName:'shortOffset' })
+        .formatToParts(new Date(ms)).find(function(p){ return p.type === 'timeZoneName'; }).value;
+      var m = /GMT([+-]?\d+)(?::(\d+))?/.exec(s);
+      if (!m) { return -300; }
+      var h = parseInt(m[1], 10), mi = m[2] ? parseInt(m[2], 10) : 0;
+      return (h < 0 ? -1 : 1) * (Math.abs(h) * 60 + mi);
+    } catch (e) { return -300; }
+  }
+  function etParts(ms){
+    var f = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hourCycle:'h23',
+      year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', weekday:'short' })
+      .formatToParts(new Date(ms));
+    var g = {}; f.forEach(function(p){ g[p.type] = p.value; });
+    var wd = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+    return { y:+g.year, mo:+g.month, d:+g.day, hh:+g.hour, mm:+g.minute, ss:+g.second, wd:wd[g.weekday] };
+  }
+  function etWallToMs(y, mo, d, h, mi){
+    var guess = Date.UTC(y, mo - 1, d, h, mi, 0);
+    var off = etOffsetMin(guess);
+    var ms = guess - off * 60000;
+    var off2 = etOffsetMin(ms);
+    if (off2 !== off) { ms = guess - off2 * 60000; }
+    return ms;
+  }
+  function dateKey(y, mo, d){ return y + '-' + p2(mo) + '-' + p2(d); }
+  function isTradingDay(y, mo, d, wd){
+    if (wd === 0 || wd === 6) { return false; }
+    if (HOLIDAYS[dateKey(y, mo, d)]) { return false; }
+    return true;
+  }
+  function nextTradingPremarket(y, mo, d){
+    for (var i = 1; i <= 10; i++) {
+      var probe = etWallToMs(y, mo, d, 12, 0) + i * 86400000;
+      var p = etParts(probe);
+      if (isTradingDay(p.y, p.mo, p.d, p.wd)) { return etWallToMs(p.y, p.mo, p.d, 4, 0); }
+    }
+    return etWallToMs(y, mo, d, 4, 0) + 86400000;
+  }
+  function compute(nowMs){
+    var p = etParts(nowMs);
+    var trading = isTradingDay(p.y, p.mo, p.d, p.wd);
+    var pre = etWallToMs(p.y, p.mo, p.d, 4, 0);
+    var reg = etWallToMs(p.y, p.mo, p.d, 9, 30);
+    var ah  = etWallToMs(p.y, p.mo, p.d, 16, 0);
+    if (trading) {
+      if (nowMs < pre) { return { phase:'premarket', label:'Pre-market opens', targetMs:pre }; }
+      if (nowMs < reg) { return { phase:'regular',   label:'Market opens',      targetMs:reg }; }
+      if (nowMs < ah)  { return { phase:'afterhours', label:'After-hours opens', targetMs:ah }; }
+      return { phase:'premarket', label:'Pre-market opens', targetMs:nextTradingPremarket(p.y, p.mo, p.d) };
+    }
+    return { phase:'premarket', label:'Pre-market opens', targetMs:nextTradingPremarket(p.y, p.mo, p.d) };
+  }
+  function model(nowMs){
+    var c = compute(nowMs);
+    var remain = Math.max(0, c.targetMs - nowMs);
+    var tot = Math.floor(remain / 1000);
+    var days = Math.floor(tot / 86400);
+    var hrs = Math.floor((tot % 86400) / 3600);
+    var mins = Math.floor((tot % 3600) / 60);
+    var secs = tot % 60;
+    var count = (days > 0 ? days + 'd ' : '') + p2(hrs) + ':' + p2(mins) + ':' + p2(secs);
+    var localTime;
+    try { localTime = new Intl.DateTimeFormat(undefined, { hour:'numeric', minute:'2-digit', hour12:true }).format(new Date(c.targetMs)); }
+    catch (e) { localTime = ''; }
+    return { phase:c.phase, label:c.label, countdown:count, localTime:localTime };
+  }
+
+  /* ---- styles (once) ---- */
+  function ensureStyles(){
+    if (document.getElementById('sml-ghx-css')) { return; }
+    var css = ''
+      + '.sml-gshell__side-head.sml-ghx-head{display:block !important;padding-bottom:12px;}'
+      + '.sml-ghx-timer{margin-top:10px;padding:9px 11px;border:1px solid rgba(0,255,102,.16);border-radius:10px;'
+      +   'background:linear-gradient(180deg,rgba(0,255,102,.05),rgba(0,0,0,.18));'
+      +   'font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;}'
+      + '.sml-ghx-t-row{display:flex;align-items:center;gap:7px;}'
+      + '.sml-ghx-t-dot{width:7px;height:7px;border-radius:50%;background:#64756d;box-shadow:0 0 7px currentColor;color:#64756d;flex:none;}'
+      + '.sml-ghx-t-dot.phase-regular{background:#34ff89;color:#34ff89;}'
+      + '.sml-ghx-t-dot.phase-premarket{background:#ffb454;color:#ffb454;}'
+      + '.sml-ghx-t-dot.phase-afterhours{background:#4da6ff;color:#4da6ff;}'
+      + '.sml-ghx-t-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#90a49b;}'
+      + '.sml-ghx-t-count{font-size:19px;font-weight:600;color:#e2ece6;line-height:1.15;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:.02em;}'
+      + '.sml-ghx-t-at{font-size:10.5px;color:#64756d;margin-top:1px;}'
+      + '.sml-ghx-dots{position:absolute;top:8px;right:8px;z-index:40;width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
+      +   'font-size:20px;line-height:1;color:#cfe;background:rgba(8,18,24,.66);border:1px solid rgba(255,255,255,.14);border-radius:8px;cursor:pointer;backdrop-filter:blur(4px);}'
+      + '.sml-ghx-dots:hover{background:rgba(0,255,102,.16);border-color:rgba(0,255,102,.4);}'
+      + '.sml-ghx-menu{position:absolute;top:44px;right:8px;z-index:41;min-width:186px;display:none;flex-direction:column;overflow:hidden;'
+      +   'background:#0d171e;border:1px solid rgba(0,255,102,.22);border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.5);}'
+      + '.sml-ghx-menu.open{display:flex;}'
+      + '.sml-ghx-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 14px;background:none;border:0;cursor:pointer;'
+      +   'color:#e2ece6;font-size:13.5px;font-family:inherit;}'
+      + '.sml-ghx-menu button:hover{background:rgba(0,255,102,.1);color:#4dff97;}'
+      + '.sml-ghx-menu button + button{border-top:1px solid rgba(255,255,255,.06);}';
+    var s = document.createElement('style'); s.id = 'sml-ghx-css'; s.textContent = css;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
+  function findByText(re){
+    var els = document.querySelectorAll('button, a, [role="button"]');
+    for (var i = 0; i < els.length; i++) {
+      if (re.test((els[i].textContent || '').trim())) { return els[i]; }
+    }
+    return null;
+  }
+
+  /* ---- timer injection ---- */
+  function ensureTimer(){
+    var head = document.querySelector('.sml-gshell__side-head');
+    if (!head) { return; }
+    head.classList.add('sml-ghx-head');
+    var t = head.querySelector('#sml-ghx-timer');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'sml-ghx-timer'; t.className = 'sml-ghx-timer';
+      t.innerHTML = '<div class="sml-ghx-t-row"><span class="sml-ghx-t-dot"></span><span class="sml-ghx-t-label"></span></div>'
+        + '<div class="sml-ghx-t-count"></div><div class="sml-ghx-t-at"></div>';
+      head.appendChild(t);
+    }
+    var m = model(Date.now());
+    var lab = t.querySelector('.sml-ghx-t-label'), cnt = t.querySelector('.sml-ghx-t-count'),
+        at = t.querySelector('.sml-ghx-t-at'), dot = t.querySelector('.sml-ghx-t-dot');
+    if (lab.textContent !== m.label) { lab.textContent = m.label; }
+    cnt.textContent = m.countdown;
+    at.textContent = m.localTime ? (m.localTime + ' your time') : '';
+    var dc = 'sml-ghx-t-dot phase-' + m.phase;
+    if (dot.className !== dc) { dot.className = dc; }
+  }
+
+  /* ---- 3-dots menu folding Edit Group + Channel Background ---- */
+  function proxyClick(finder){
+    return function (ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      var b = finder();
+      var menu = document.getElementById('sml-ghx-menu');
+      if (menu) { menu.classList.remove('open'); }
+      if (b) { b.click(); }
+    };
+  }
+  function findEdit(){ return document.querySelector('.sml-goe-edit-btn') || findByText(/^Edit Group$/i); }
+  function findBg(){ return findByText(/^Channel Background$/i); }
+
+  function ensureMenu(){
+    var editBtn = findEdit();
+    var bgBtn = findBg();
+    if (!editBtn && !bgBtn) { return; } // viewer has neither control (non-manager)
+
+    // hide the originals every tick (the shell rebuilds them fresh)
+    [editBtn, bgBtn].forEach(function (b) {
+      if (b && b.style.display !== 'none') { b.style.setProperty('display', 'none', 'important'); }
+    });
+
+    var banner = document.querySelector('.sml-gshell__header-banner');
+    var anchor = banner || (editBtn && editBtn.parentElement) || (bgBtn && bgBtn.parentElement);
+    if (!anchor) { return; }
+    if (getComputedStyle(anchor).position === 'static') { anchor.style.position = 'relative'; }
+
+    var dots = anchor.querySelector('#sml-ghx-dots');
+    if (!dots) {
+      dots = document.createElement('button');
+      dots.id = 'sml-ghx-dots'; dots.type = 'button'; dots.className = 'sml-ghx-dots';
+      dots.setAttribute('aria-label', 'Group options'); dots.textContent = '⋮';
+      var menu = document.createElement('div'); menu.id = 'sml-ghx-menu'; menu.className = 'sml-ghx-menu';
+      anchor.appendChild(dots); anchor.appendChild(menu);
+      dots.addEventListener('click', function (ev) { ev.stopPropagation(); menu.classList.toggle('open'); });
+      document.addEventListener('click', function (ev) { if (!menu.contains(ev.target) && ev.target !== dots) { menu.classList.remove('open'); } });
+    }
+    var menu = anchor.querySelector('#sml-ghx-menu');
+    // rebuild items to reflect which controls currently exist
+    var wantBg = !!bgBtn;
+    var sig = (editBtn ? 'e' : '') + (wantBg ? 'b' : '');
+    if (menu.getAttribute('data-sig') !== sig) {
+      menu.setAttribute('data-sig', sig);
+      menu.innerHTML = '';
+      if (editBtn) {
+        var e = document.createElement('button'); e.type = 'button'; e.textContent = 'Edit group';
+        e.addEventListener('click', proxyClick(findEdit)); menu.appendChild(e);
+      }
+      if (wantBg) {
+        var g = document.createElement('button'); g.type = 'button'; g.textContent = 'Channel background';
+        g.addEventListener('click', proxyClick(findBg)); menu.appendChild(g);
+      }
+    }
+  }
+
+  function tick(){ ensureStyles(); ensureTimer(); ensureMenu(); }
+  function boot(){ tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); }
+  else { boot(); }
+})();
