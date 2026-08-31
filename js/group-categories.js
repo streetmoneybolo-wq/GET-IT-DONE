@@ -986,24 +986,130 @@
   'use strict';
   if (!/^\/groups\/[^/]+\/?$/.test(location.pathname)) { return; }
 
-  /* ---- market-session countdown: the whole widget (session logic, seasonal/
-     holiday themes, animations) lives in the standalone market-countdown-embed.html,
-     which ensureTimer() iframes into the sidebar and scales to fit. Keeping it a
-     separate file means the design can be edited in one place. ---- */
-  var CD_REPO = 'streetmoneybolo-wq/GET-IT-DONE';
-  var CD_FILE = 'market-countdown-embed.html';
-  var CD_NATIVE_W = 380, CD_NATIVE_H = 176; // native box the iframe content occupies
-  // Resolve the CDN ref THIS script was loaded with, so the embed matches the
-  // deployed version and rides the same resolver freshness. Falls back to @main.
-  function cdEmbedUrl(){
-    try {
-      var scripts = document.getElementsByTagName('script');
-      for (var i = 0; i < scripts.length; i++) {
-        var m = /cdn\.jsdelivr\.net\/gh\/([^@]+)@([^/]+)\/[^"']*group-categories\.js/.exec(scripts[i].src || '');
-        if (m) { return 'https://cdn.jsdelivr.net/gh/' + m[1] + '@' + m[2] + '/' + CD_FILE; }
+  /* ---- market-session countdown, ported inline from the standalone
+     market-countdown-embed.html (4-phase NYSE session model, seasonal/holiday
+     themes, urgency tiers, progress bar, viewer-local "at X your time"). Runs
+     inline because jsDelivr serves .html as text/plain (nosniff) so it can't be
+     iframed. Rendered into a stable sidebar mount + scaled to fit. Every name
+     below is local to cdStart(root); root is the 380px-native mount element. ---- */
+  var CD_NATIVE_W = 380, CD_STARTED = false;
+  function cdStart(root){
+    var fmt=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',hour12:false});
+    function etParts(ts){var p={};fmt.formatToParts(ts).forEach(function(x){p[x.type]=x.value;});return{y:+p.year,mo:+p.month,d:+p.day,h:(+p.hour)%24,mi:+p.minute};}
+    function etTime(y,mo,d,h,mi){var ts=Date.UTC(y,mo-1,d,h,mi);for(var i=0;i<3;i++){var p=etParts(ts);var diff=Date.UTC(y,mo-1,d,h,mi)-Date.UTC(p.y,p.mo-1,p.d,p.h,p.mi);if(!diff)break;ts+=diff;}return ts;}
+    function nth(y,mo,dow,n){var first=new Date(Date.UTC(y,mo-1,1)).getUTCDay();return 1+((dow-first+7)%7)+(n-1)*7;}
+    function lastDow(y,mo,dow){var dim=new Date(Date.UTC(y,mo,0)).getUTCDate();var wd=new Date(Date.UTC(y,mo-1,dim)).getUTCDay();return dim-((wd-dow+7)%7);}
+    function easter(y){var a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);return[Math.floor((h+l-7*m+114)/31),((h+l-7*m+114)%31)+1];}
+    function dayKey(ts){var dt=new Date(ts);return dt.getUTCFullYear()+'-'+(dt.getUTCMonth()+1)+'-'+dt.getUTCDate();}
+    var holCache={};
+    function holidaySet(y){
+      if(holCache[y])return holCache[y];
+      var set={};
+      function add(mo,d,observe){var ts=Date.UTC(y,mo-1,d);if(observe){var wd=new Date(ts).getUTCDay();if(wd===6)ts-=864e5;if(wd===0)ts+=864e5;}set[dayKey(ts)]=1;}
+      add(1,1,true);add(1,nth(y,1,1,3));add(2,nth(y,2,1,3));
+      var e=easter(y);set[dayKey(Date.UTC(y,e[0]-1,e[1])-2*864e5)]=1;
+      add(5,lastDow(y,5,1));add(6,19,true);add(7,4,true);
+      add(9,nth(y,9,1,1));add(11,nth(y,11,4,4));add(12,25,true);
+      holCache[y]=set;return set;
+    }
+    function isTrading(y,mo,d){var wd=new Date(Date.UTC(y,mo-1,d)).getUTCDay();if(wd===0||wd===6)return false;return !holidaySet(y)[y+'-'+mo+'-'+d];}
+    function prevClose(p){var ts=Date.UTC(p.y,p.mo-1,p.d);for(var i=0;i<15;i++){ts-=864e5;var dt=new Date(ts),y=dt.getUTCFullYear(),mo=dt.getUTCMonth()+1,d=dt.getUTCDate();if(isTrading(y,mo,d))return etTime(y,mo,d,20,0);}return null;}
+    function schedule(now){
+      var p=etParts(now),trading=isTrading(p.y,p.mo,p.d);
+      if(trading){
+        var pre=etTime(p.y,p.mo,p.d,4,0);
+        if(now<pre)return{label:'PRE-MARKET OPENS',target:pre,start:prevClose(p)||pre-288e5};
+        var open=etTime(p.y,p.mo,p.d,9,30);
+        if(now<open)return{label:'MARKET OPENS',target:open,start:pre};
+        var ah=etTime(p.y,p.mo,p.d,16,0);
+        if(now<ah)return{label:'AFTER-HOURS BEGINS',target:ah,start:open};
+        var close=etTime(p.y,p.mo,p.d,20,0);
+        if(now<close)return{label:'AFTER-HOURS ENDS',target:close,start:ah};
       }
-    } catch (e) {}
-    return 'https://cdn.jsdelivr.net/gh/' + CD_REPO + '@main/' + CD_FILE;
+      var ts=Date.UTC(p.y,p.mo-1,p.d);
+      for(var i=0;i<15;i++){
+        ts+=864e5;var dt=new Date(ts),y=dt.getUTCFullYear(),mo=dt.getUTCMonth()+1,d=dt.getUTCDate();
+        if(isTrading(y,mo,d)){var target=etTime(y,mo,d,4,0);return{label:'PRE-MARKET OPENS',target:target,start:trading?etTime(p.y,p.mo,p.d,20,0):(prevClose(p)||target-864e5)};}
+      }
+    }
+    var THEMES={
+      winter:{name:'Winter',icon:'❄️',accent:'#7dd3fc',wash:'linear-gradient(180deg, rgba(125,211,252,.10), rgba(30,64,110,.14))',decor:['❄️','❄️','✦','❄️','✧','❄️']},
+      spring:{name:'Spring',icon:'🌱',accent:'#6ee7a0',wash:'linear-gradient(180deg, rgba(110,231,160,.10), rgba(34,84,61,.16))',decor:['🌱','🌸','🦋','🌷','🌸','🍃']},
+      summer:{name:'Summer',icon:'☀️',accent:'#ffd166',wash:'linear-gradient(180deg, rgba(255,209,102,.10), rgba(120,80,20,.14))',decor:['☀️','🌊','🍉','🌴','☀️','🐚']},
+      fall:{name:'Fall',icon:'🍂',accent:'#f4a261',wash:'linear-gradient(180deg, rgba(244,162,97,.10), rgba(110,50,20,.16))',decor:['🍂','🍁','🍂','🌰','🍁','🍂']},
+      newyear:{name:'New Year',icon:'🎆',accent:'#ffd700',wash:'linear-gradient(180deg, rgba(255,215,0,.12), rgba(60,40,110,.18))',decor:['🎆','✨','🥂','🎇','✨','🎉']},
+      valentine:{name:"Valentine's",icon:'💘',accent:'#ff6b9d',wash:'linear-gradient(180deg, rgba(255,107,157,.12), rgba(120,20,60,.16))',decor:['💘','❤️','💝','💕','❤️','🌹']},
+      stpatrick:{name:"St. Patrick's",icon:'🍀',accent:'#4ade80',wash:'linear-gradient(180deg, rgba(74,222,128,.12), rgba(20,90,45,.18))',decor:['🍀','🌈','🍀','💰','🍀','🎩']},
+      easter:{name:'Easter',icon:'🐣',accent:'#c4b5fd',wash:'linear-gradient(180deg, rgba(196,181,253,.12), rgba(90,70,140,.16))',decor:['🐣','🥚','🐰','🌷','🥚','🐣']},
+      memorial:{name:'Memorial Day',icon:'🇺🇸',accent:'#93c5fd',wash:'linear-gradient(180deg, rgba(147,197,253,.10), rgba(150,40,50,.14))',decor:['🇺🇸','⭐','🎗️','🇺🇸','⭐','🕊️']},
+      juneteenth:{name:'Juneteenth',icon:'✊🏾',accent:'#f87171',wash:'linear-gradient(180deg, rgba(248,113,113,.10), rgba(30,80,50,.16))',decor:['✊🏾','⭐','🎉','✊🏾','⭐','🎊']},
+      july4:{name:'4th of July',icon:'🎇',accent:'#60a5fa',wash:'linear-gradient(180deg, rgba(96,165,250,.12), rgba(150,40,50,.16))',decor:['🎇','🇺🇸','🎆','⭐','🇺🇸','🎇']},
+      laborday:{name:'Labor Day',icon:'🛠️',accent:'#fbbf24',wash:'linear-gradient(180deg, rgba(251,191,36,.10), rgba(90,60,20,.16))',decor:['🛠️','⚙️','🇺🇸','🔧','⭐','🛠️']},
+      halloween:{name:'Halloween',icon:'🎃',accent:'#fb923c',wash:'linear-gradient(180deg, rgba(251,146,60,.14), rgba(80,30,120,.20))',decor:['🎃','👻','🦇','🕸️','🎃','💀']},
+      thanksgiving:{name:'Thanksgiving',icon:'🦃',accent:'#e8a24a',wash:'linear-gradient(180deg, rgba(232,162,74,.12), rgba(110,55,20,.18))',decor:['🦃','🍂','🥧','🌽','🍁','🦃']},
+      christmas:{name:'Christmas',icon:'🎄',accent:'#f87171',wash:'linear-gradient(180deg, rgba(248,113,113,.10), rgba(20,90,50,.20))',decor:['🎄','❄️','🎁','⛄','🔔','🎅']}
+    };
+    function holidayDates(y){var e=easter(y);return[['newyear',1,1],['valentine',2,14],['stpatrick',3,17],['easter',e[0],e[1]],['memorial',5,lastDow(y,5,1)],['juneteenth',6,19],['july4',7,4],['laborday',9,nth(y,9,1,1)],['halloween',10,31],['thanksgiving',11,nth(y,11,4,4)],['christmas',12,25]];}
+    function activeThemeKey(now){
+      var p=etParts(now),nowU=Date.UTC(p.y,p.mo-1,p.d,p.h,p.mi),best=null;
+      [p.y-1,p.y,p.y+1].forEach(function(y){holidayDates(y).forEach(function(h){
+        var end=Date.UTC(y,h[1]-1,h[2])+864e5,startW=end-15*864e5;
+        if(nowU>=startW&&nowU<end&&(!best||end<best.end))best={k:h[0],end:end};
+      });});
+      if(best)return best.k;
+      var m=p.mo;return(m===12||m<=2)?'winter':m<=5?'spring':m<=8?'summer':'fall';
+    }
+    function z(n){return String(n).padStart(2,'0');}
+    var P=[[6,0,9],[22,3.2,11],[40,1.5,8.5],[57,4.4,10],[73,2.3,12],[88,5.6,9],[14,6.8,10.5],[65,7.5,8]];
+    var builtTheme=null;
+    function build(theme){
+      var parts='';
+      P.forEach(function(q,i){
+        parts+='<div style="position:absolute;bottom:-34px;left:'+q[0]+'%;font-size:'+(13+(i%3)*5)+'px;animation:smlFloatUp '+q[2]+'s linear '+q[1]+'s infinite;opacity:0;pointer-events:none;user-select:none">'+theme.decor[i%theme.decor.length]+'</div>';
+      });
+      root.innerHTML=
+        '<div style="position:relative;width:380px;border-radius:18px;overflow:hidden;background:#0d1512;border:1px solid #1e2c25;box-shadow:0 30px 80px rgba(0,0,0,.65);font-family:\'Sora\',sans-serif">'+
+          '<div style="position:absolute;inset:0;background:'+theme.wash+';pointer-events:none"></div>'+
+          '<div style="position:absolute;inset:0;border-radius:18px;border:1px solid '+theme.accent+'44;pointer-events:none"></div>'+parts+
+          '<div style="position:relative;padding:20px 22px 18px;display:flex;flex-direction:column;gap:12px">'+
+            '<div style="display:flex;align-items:center;gap:10px">'+
+              '<div id="sml-dot" style="width:10px;height:10px;border-radius:50%;flex-shrink:0"></div>'+
+              '<div id="sml-label" style="font-size:12px;font-weight:700;letter-spacing:3px;color:#cfe0d6;flex:1"></div>'+
+              '<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:'+theme.accent+';background:rgba(0,0,0,.35);border:1px solid '+theme.accent+'44;border-radius:999px;padding:3px 10px;white-space:nowrap"><span>'+theme.icon+'</span><span>'+theme.name+'</span></div>'+
+            '</div>'+
+            '<div style="display:flex;align-items:baseline;gap:12px">'+
+              '<div id="sml-days" style="display:none;font-family:\'JetBrains Mono\',monospace;font-size:26px;font-weight:800"></div>'+
+              '<div id="sml-clock" style="font-family:\'JetBrains Mono\',monospace;font-size:46px;font-weight:800;letter-spacing:2px;line-height:1"></div>'+
+            '</div>'+
+            '<div style="font-size:12px;color:#8fa89b">at <span id="sml-at" style="color:#d7e6dd;font-weight:600"></span> your time</div>'+
+            '<div style="height:6px;border-radius:999px;background:#14211b;overflow:hidden"><div id="sml-bar" style="height:100%;width:0%;border-radius:999px;transition:width .4s linear"></div></div>'+
+          '</div>'+
+        '</div>';
+    }
+    function tick(){
+      var now=Date.now(),sched=schedule(now);
+      var themeKey=activeThemeKey(now),theme=THEMES[themeKey];
+      if(builtTheme!==themeKey){build(theme);builtTheme=themeKey;}
+      var rem=Math.max(0,sched.target-now),total=sched.target-sched.start;
+      var sec=Math.floor(rem/1000),days=Math.floor(sec/86400),hh=Math.floor(sec%86400/3600),mm=Math.floor(sec%3600/60),ss=sec%60;
+      var tier=rem<6e4?4:rem<3e5?3:rem<9e5?2:rem<36e5?1:0;
+      var urg=[theme.accent,'#ffd24a','#ff9d3b','#ff5252','#ff2b4a'][tier];
+      var dur=[3,2.2,1.4,0.8,0.45][tier];
+      var tgt=new Date(sched.target);
+      var sameDay=tgt.toDateString()===new Date(now).toDateString();
+      var opts=sameDay?{hour:'numeric',minute:'2-digit'}:{weekday:'long',hour:'numeric',minute:'2-digit'};
+      var $=function(id){return root.querySelector('#'+id);};
+      $('sml-label').textContent=sched.label;
+      var dot=$('sml-dot');dot.style.background=urg;dot.style.boxShadow='0 0 12px '+urg;dot.style.animation='smlPulseDot '+dur+'s ease-in-out infinite';
+      var dEl=$('sml-days');
+      if(days>0){dEl.style.display='block';dEl.style.color=urg;dEl.style.textShadow='0 0 18px '+urg+'99';dEl.innerHTML=days+'<span style="font-size:14px;font-weight:700;opacity:.7">d</span>';}
+      else dEl.style.display='none';
+      var c=$('sml-clock');c.textContent=z(hh)+':'+z(mm)+':'+z(ss);c.style.color=urg;c.style.textShadow='0 0 22px '+urg+'99';c.style.animation='smlGlowPulse '+dur+'s ease-in-out infinite';
+      $('sml-at').textContent=tgt.toLocaleString([],opts);
+      var bar=$('sml-bar');bar.style.width=Math.min(100,Math.max(0,(1-rem/total)*100)).toFixed(2)+'%';
+      bar.style.background='linear-gradient(90deg, '+theme.accent+', '+urg+')';bar.style.boxShadow='0 0 10px '+urg+'99';
+    }
+    tick();setInterval(tick,250);
   }
 
   /* ---- styles (once) ---- */
@@ -1012,7 +1118,10 @@
     var css = ''
       + '.sml-gshell__side-head.sml-ghx-head{display:block !important;padding-bottom:12px;}'
       + '.sml-ghx-cd{margin-top:10px;position:relative;width:100%;overflow:hidden;}'
-      + '.sml-ghx-cd-frame{border:0;display:block;background:transparent;transform-origin:top left;color-scheme:normal;}'
+      + '.sml-ghx-cd-mount{width:380px;transform-origin:top left;}'
+      + '@keyframes smlFloatUp{0%{transform:translateY(0) rotate(-6deg);opacity:0}12%{opacity:.85}80%{opacity:.55}100%{transform:translateY(-190px) rotate(14deg);opacity:0}}'
+      + '@keyframes smlPulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.7);opacity:.45}}'
+      + '@keyframes smlGlowPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.45)}}'
       + '.sml-ghx-dots{position:absolute;top:8px;right:8px;z-index:40;width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
       +   'pointer-events:auto !important;' /* the banner sets pointer-events:none; re-enable ours or real clicks pass through */
       +   'font-size:20px;line-height:1;color:#cfe;background:rgba(8,18,24,.66);border:1px solid rgba(255,255,255,.14);border-radius:8px;cursor:pointer;backdrop-filter:blur(4px);}'
@@ -1046,6 +1155,12 @@
       + '.sml-ghx-tp-close{float:right;border:0;background:#1a2731;color:#cfe;border-radius:8px;padding:5px 9px;cursor:pointer;font:inherit;}';
     var s = document.createElement('style'); s.id = 'sml-ghx-css'; s.textContent = css;
     (document.head || document.documentElement).appendChild(s);
+    // countdown widget fonts (degrades to the inline monospace/sans fallbacks if CSP blocks it)
+    if (!document.getElementById('sml-ghx-fonts')) {
+      var fl = document.createElement('link'); fl.id = 'sml-ghx-fonts'; fl.rel = 'stylesheet';
+      fl.href = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Sora:wght@400;600;700&display=swap';
+      (document.head || document.documentElement).appendChild(fl);
+    }
   }
 
   function findByText(re){
@@ -1060,9 +1175,10 @@
     return null;
   }
 
-  /* ---- countdown widget: iframe the standalone embed, scaled to fit the sidebar.
-     The side-head is stable (only the channel LIST is rebuilt by the shell), so the
-     iframe is injected once and never reloads — only its scale is recomputed. ---- */
+  /* ---- countdown widget: render the ported widget into a stable sidebar mount and
+     uniformly scale the native 380px design down to fit the ~247px column. The
+     side-head is stable (only the channel LIST is rebuilt), so cdStart() runs once
+     and its own interval drives it; we only recompute scale + height here. ---- */
   function ensureTimer(){
     var head = document.querySelector('.sml-gshell__side-head');
     if (!head) { return; }
@@ -1071,26 +1187,23 @@
     if (!box) {
       box = document.createElement('div');
       box.id = 'sml-ghx-timer'; box.className = 'sml-ghx-cd';
-      var frame = document.createElement('iframe');
-      frame.className = 'sml-ghx-cd-frame';
-      frame.title = 'Market session countdown';
-      frame.setAttribute('scrolling', 'no');
-      frame.setAttribute('loading', 'eager');
-      frame.width = CD_NATIVE_W; frame.height = CD_NATIVE_H;
-      frame.style.width = CD_NATIVE_W + 'px'; frame.style.height = CD_NATIVE_H + 'px';
-      frame.src = cdEmbedUrl();
-      box.appendChild(frame);
+      var mount = document.createElement('div');
+      mount.id = 'sml-ghx-cd-mount'; mount.className = 'sml-ghx-cd-mount';
+      box.appendChild(mount);
       head.appendChild(box);
     }
-    // Uniformly scale the native-size (380px) iframe down to the available width so
-    // the exact design is preserved, just smaller. Never upscale past 1.
-    var frame2 = box.querySelector('.sml-ghx-cd-frame');
+    var mount2 = box.querySelector('#sml-ghx-cd-mount');
+    if (!mount2) { return; }
+    if (!CD_STARTED) { CD_STARTED = true; try { cdStart(mount2); } catch (e) {} }
+    // Uniformly scale the 380px design down to the available width (never upscale).
     var avail = box.clientWidth;
-    if (frame2 && avail > 0) {
+    if (avail > 0) {
       var s = Math.min(1, avail / CD_NATIVE_W);
       var tf = 'scale(' + s.toFixed(4) + ')';
-      if (frame2.style.transform !== tf) { frame2.style.transform = tf; }
-      box.style.height = Math.round(CD_NATIVE_H * s) + 'px';
+      if (mount2.style.transform !== tf) { mount2.style.transform = tf; }
+      var card = mount2.firstElementChild;
+      var nativeH = card ? card.offsetHeight : 170;
+      box.style.height = Math.round(nativeH * s) + 'px';
     }
   }
 
