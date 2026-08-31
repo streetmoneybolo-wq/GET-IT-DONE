@@ -1055,7 +1055,26 @@
       +   'color:#e2ece6;font-size:13.5px;font-family:inherit;}'
       + '.sml-ghx-menu button:hover{background:rgba(0,255,102,.1);color:#4dff97;}'
       + '.sml-ghx-menu button + button{border-top:1px solid rgba(255,255,255,.06);}'
-      + '.sml-ghx-hidden-src{position:absolute !important;width:1px !important;height:1px !important;padding:0 !important;margin:-1px !important;overflow:hidden !important;clip:rect(0,0,0,0) !important;white-space:nowrap !important;border:0 !important;}';
+      + '.sml-ghx-hidden-src{position:absolute !important;width:1px !important;height:1px !important;padding:0 !important;margin:-1px !important;overflow:hidden !important;clip:rect(0,0,0,0) !important;white-space:nowrap !important;border:0 !important;}'
+      /* per-channel custom title image overlaid on the banner */
+      + '.sml-ghx-title{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;max-width:88%;max-height:90%;width:auto;height:auto;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 12px rgba(0,0,0,.5));}'
+      /* title setter panel */
+      + '.sml-ghx-tp{position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;padding:18px;background:rgba(2,7,13,.72);backdrop-filter:blur(6px);font-family:inherit;}'
+      + '.sml-ghx-tp-card{width:min(460px,100%);max-height:calc(100vh - 36px);overflow:auto;padding:20px;border:1px solid rgba(0,255,102,.28);border-radius:16px;background:#0b141b;color:#e8f1ec;box-shadow:0 24px 70px rgba(0,0,0,.6);}'
+      + '.sml-ghx-tp-card h3{margin:0 0 4px;font-size:16px;color:#fff;}'
+      + '.sml-ghx-tp-note{margin:0 0 12px;font-size:12.5px;line-height:1.5;color:#94a89e;}'
+      + '.sml-ghx-tp-prev{display:block;max-width:100%;max-height:120px;margin:2px auto 12px;border-radius:8px;background:rgba(255,255,255,.03);}'
+      + '.sml-ghx-tp label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8aa89b;margin:12px 0 5px;}'
+      + '.sml-ghx-tp input[type=file],.sml-ghx-tp input[type=url]{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #263039;border-radius:8px;background:#060d14;color:#e8f1ec;font:inherit;font-size:13px;}'
+      + '.sml-ghx-tp-or{text-align:center;font-size:11px;color:#5f7268;margin:10px 0;}'
+      + '.sml-ghx-tp-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}'
+      + '.sml-ghx-tp-actions button{flex:1 1 40%;border:0;border-radius:9px;padding:10px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;}'
+      + '.sml-ghx-tp-save{background:#38F58A;color:#05130b;}'
+      + '.sml-ghx-tp-cancel{background:#1a2731;color:#cfe;}'
+      + '.sml-ghx-tp-remove{background:#3a1720 !important;color:#ff9aa6 !important;border:1px solid rgba(255,90,110,.3) !important;}'
+      + '.sml-ghx-tp-status{margin-top:10px;font-size:12.5px;min-height:16px;color:#7dffc0;}'
+      + '.sml-ghx-tp-status.err{color:#ff9aa6;}'
+      + '.sml-ghx-tp-close{float:right;border:0;background:#1a2731;color:#cfe;border-radius:8px;padding:5px 9px;cursor:pointer;font:inherit;}';
     var s = document.createElement('style'); s.id = 'sml-ghx-css'; s.textContent = css;
     (document.head || document.documentElement).appendChild(s);
   }
@@ -1120,7 +1139,9 @@
     if (!banner) { return; }
     var editBtn = findEdit();
     var bgBtn = findBg();
-    if (!editBtn && !bgBtn) { return; } // viewer has neither control (non-manager)
+    // Show the menu for anyone with a real control OR title-management rights
+    // (analysts may be allowed to set titles without seeing Edit/Background).
+    if (!editBtn && !bgBtn && !titleCanManage()) { return; }
 
     // Visually remove the originals but keep them FUNCTIONAL. display:none makes
     // offsetParent null and the shell's own click handler bails on that, so a
@@ -1147,7 +1168,8 @@
     var menu = anchor.querySelector('#sml-ghx-menu');
     // rebuild items to reflect which controls currently exist
     var wantBg = !!bgBtn;
-    var sig = (editBtn ? 'e' : '') + (wantBg ? 'b' : '');
+    var wantTitle = titleCanManage();
+    var sig = (editBtn ? 'e' : '') + (wantBg ? 'b' : '') + (wantTitle ? 't' : '');
     if (menu.getAttribute('data-sig') !== sig) {
       menu.setAttribute('data-sig', sig);
       menu.innerHTML = '';
@@ -1159,10 +1181,136 @@
         var g = document.createElement('button'); g.type = 'button'; g.textContent = 'Channel background';
         g.addEventListener('click', proxyClick(findBg)); menu.appendChild(g);
       }
+      if (wantTitle) {
+        var tt = document.createElement('button'); tt.type = 'button'; tt.textContent = 'Channel title';
+        tt.addEventListener('click', function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          var m = document.getElementById('sml-ghx-menu'); if (m) { m.classList.remove('open'); }
+          openTitlePanel();
+        });
+        menu.appendChild(tt);
+      }
     }
   }
 
-  function tick(){ ensureStyles(); ensureTimer(); ensureMenu(); }
+  /* ---- per-channel custom title overlay (SML Channel Title plugin) ----
+     The plugin injects window.SMLChannelTitle = { api, nonce } on group pages
+     and owns the storage + gated REST. Here we render the title image over the
+     banner and, for managers (owner/admin/analyst), add the "Channel title"
+     setter to the menu. Everything degrades to a no-op if the plugin is absent. */
+  var TITLE = { loaded:false, loading:false, titles:{}, canManage:false, gid:null };
+
+  function ghxCtx(){ return window.SMLGroupShellContext || {}; }
+  function ghxCfg(){ return window.SMLChannelTitle || null; }
+  function ghxGroupId(){
+    var c = ghxCtx();
+    if (c && c.groupId) { return String(c.groupId).replace(/\D/g,''); }
+    var root = document.getElementById('sml-group-root');
+    return (root && root.dataset && root.dataset.groupId) ? String(root.dataset.groupId).replace(/\D/g,'') : '';
+  }
+  function ghxChannelId(){ var c = ghxCtx(); return (c && c.channelId) ? String(c.channelId).replace(/\D/g,'') : ''; }
+  function titleCanManage(){ return !!(ghxCfg() && TITLE.canManage); }
+
+  function loadTitles(force){
+    var cfg = ghxCfg(), gid = ghxGroupId();
+    if (!cfg || !cfg.api || !gid || TITLE.loading) { return; }
+    if (TITLE.loaded && TITLE.gid === gid && !force) { return; }
+    TITLE.loading = true; TITLE.gid = gid;
+    var headers = {}; if (cfg.nonce) { headers['X-WP-Nonce'] = cfg.nonce; }
+    fetch(cfg.api + 'titles?group_id=' + encodeURIComponent(gid), { credentials:'same-origin', headers: headers, cache:'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { TITLE.titles = (j && j.titles) || {}; TITLE.canManage = !!(j && j.can_manage); TITLE.loaded = true; })
+      .catch(function () {})
+      .then(function () { TITLE.loading = false; });
+  }
+
+  function ensureTitle(){
+    loadTitles(false);
+    var banner = document.querySelector('.sml-gshell__header-banner');
+    if (!banner) { return; }
+    var cid = ghxChannelId();
+    var url = (cid && TITLE.titles) ? TITLE.titles[cid] : '';
+    var img = banner.querySelector('#sml-ghx-title');
+    if (!url) { if (img) { img.remove(); } return; }
+    if (!img) {
+      img = document.createElement('img');
+      img.id = 'sml-ghx-title'; img.className = 'sml-ghx-title'; img.alt = ''; img.setAttribute('aria-hidden','true');
+      banner.appendChild(img);
+    }
+    if (img.getAttribute('src') !== url) { img.setAttribute('src', url); }
+  }
+
+  function openTitlePanel(){
+    var cfg = ghxCfg(), gid = ghxGroupId(), cid = ghxChannelId();
+    if (!cfg || !gid || !cid) { return; }
+    var existing = document.querySelector('.sml-ghx-tp'); if (existing) { existing.remove(); }
+    var curUrl = (TITLE.titles && TITLE.titles[cid]) ? TITLE.titles[cid] : '';
+
+    var wrap = document.createElement('div'); wrap.className = 'sml-ghx-tp';
+    var card = document.createElement('section'); card.className = 'sml-ghx-tp-card'; card.setAttribute('role','dialog'); card.setAttribute('aria-modal','true');
+    card.innerHTML =
+      '<button type="button" class="sml-ghx-tp-close" aria-label="Close">Close</button>'
+      + '<h3>Channel title</h3>'
+      + '<p class="sml-ghx-tp-note">A custom title image overlaid on this channel’s banner. Design it in Canva, export a <strong>transparent PNG</strong>, then upload it here. Owner, admin, or analyst only.</p>'
+      + (curUrl ? '<img class="sml-ghx-tp-prev" src="' + curUrl.replace(/"/g,'&quot;') + '" alt="Current title">' : '')
+      + '<label>Upload image (PNG / JPG / WEBP / GIF · max 6MB)</label>'
+      + '<input type="file" class="sml-ghx-tp-file" accept="image/png,image/jpeg,image/webp,image/gif">'
+      + '<div class="sml-ghx-tp-actions">'
+      +   '<button type="button" class="sml-ghx-tp-save">Save title</button>'
+      +   (curUrl ? '<button type="button" class="sml-ghx-tp-remove">Remove</button>' : '')
+      +   '<button type="button" class="sml-ghx-tp-cancel">Cancel</button>'
+      + '</div>'
+      + '<div class="sml-ghx-tp-status" role="status"></div>';
+    wrap.appendChild(card); document.body.appendChild(wrap);
+
+    var fileEl = card.querySelector('.sml-ghx-tp-file');
+    var statusEl = card.querySelector('.sml-ghx-tp-status');
+    function close(){ wrap.remove(); }
+    function busy(b){ card.querySelectorAll('button,input').forEach(function (n) { n.disabled = b; }); }
+    function say(msg, err){ statusEl.textContent = msg || ''; statusEl.className = 'sml-ghx-tp-status' + (err ? ' err' : ''); }
+
+    wrap.addEventListener('click', function (ev) { if (ev.target === wrap) { close(); } });
+    card.querySelector('.sml-ghx-tp-close').addEventListener('click', close);
+    card.querySelector('.sml-ghx-tp-cancel').addEventListener('click', close);
+
+    card.querySelector('.sml-ghx-tp-save').addEventListener('click', function () {
+      var file = fileEl.files && fileEl.files[0];
+      if (!file) { say('Choose an image file to upload.', true); return; }
+      if (file.size > 6 * 1024 * 1024) { say('Image must be 6MB or smaller.', true); return; }
+      var fd = new FormData();
+      fd.append('group_id', gid); fd.append('channel_id', cid);
+      fd.append('file', file);
+      busy(true); say('Saving…');
+      fetch(cfg.api + 'title', { method:'POST', credentials:'same-origin', headers:{ 'X-WP-Nonce': cfg.nonce }, body: fd })
+        .then(function (r) { return r.json().then(function (j) { return { ok:r.ok, j:j }; }); })
+        .then(function (res) {
+          if (!res.ok) { throw new Error((res.j && res.j.message) || 'Save failed.'); }
+          say('Saved. Updating…');
+          loadTitles(true);
+          setTimeout(function () { ensureTitle(); close(); }, 400);
+        })
+        .catch(function (e) { busy(false); say(e.message || 'Save failed.', true); });
+    });
+
+    var rm = card.querySelector('.sml-ghx-tp-remove');
+    if (rm) {
+      rm.addEventListener('click', function () {
+        busy(true); say('Removing…');
+        fetch(cfg.api + 'title?group_id=' + encodeURIComponent(gid) + '&channel_id=' + encodeURIComponent(cid),
+          { method:'DELETE', credentials:'same-origin', headers:{ 'X-WP-Nonce': cfg.nonce } })
+          .then(function (r) { return r.json().then(function (j) { return { ok:r.ok, j:j }; }); })
+          .then(function (res) {
+            if (!res.ok) { throw new Error((res.j && res.j.message) || 'Remove failed.'); }
+            say('Removed.');
+            loadTitles(true);
+            setTimeout(function () { ensureTitle(); close(); }, 300);
+          })
+          .catch(function (e) { busy(false); say(e.message || 'Remove failed.', true); });
+      });
+    }
+  }
+
+  function tick(){ ensureStyles(); ensureTimer(); ensureTitle(); ensureMenu(); }
   function boot(){ tick(); setInterval(tick, 1000); }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); }
   else { boot(); }
