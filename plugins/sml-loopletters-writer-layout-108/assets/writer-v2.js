@@ -53,6 +53,105 @@
     return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   }
 
+  /* ---- Phase 2: persist SEO/Meta + real SEO score (needs the loop-letters-seo snippet) ---- */
+  var LETTER_ID = null;
+  (function captureLetterId() {
+    var of = window.fetch;
+    if (!of || of.__llw2Wrapped) { return; }
+    window.fetch = function (input) {
+      try {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        var m = /\/sml-letters\/v1\/letters\/(\d+)\b/.exec(url);
+        if (m) { LETTER_ID = m[1]; }
+      } catch (e) {}
+      return of.apply(this, arguments);
+    };
+    window.fetch.__llw2Wrapped = true;
+  })();
+
+  var SEO_STATE = { loadedFor: null, data: {} };
+  function seoApi(method, body) {
+    if (!LETTER_ID) { return Promise.reject(new Error('no-letter-id')); }
+    var cfg = window.smlLettersConfig || {};
+    var headers = { Accept: 'application/json' };
+    if (cfg.nonce) { headers['X-WP-Nonce'] = cfg.nonce; }
+    if (method === 'POST') { headers['Content-Type'] = 'application/json'; }
+    return fetch('/wp-json/sml-letters-seo/v1/letter/' + encodeURIComponent(LETTER_ID), {
+      method: method, credentials: 'same-origin', cache: 'no-store', headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { throw new Error((j && j.message) || 'error'); }); });
+  }
+  function collectSeoFields() {
+    var out = {};
+    document.querySelectorAll('#llw2 [data-seo],#llw2 [data-meta]').forEach(function (inp) {
+      var key = inp.getAttribute('data-seo') || inp.getAttribute('data-meta');
+      if (key) { out[key] = inp.value; }
+    });
+    var sent = document.querySelector('#llw2 [data-sent].is-on');
+    if (sent) { out.sentiment = sent.getAttribute('data-sent'); }
+    return out;
+  }
+  var saveTimer = null;
+  function saveSeoSoon() {
+    if (!LETTER_ID) { return; }
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(function () {
+      var data = collectSeoFields();
+      SEO_STATE.data = data;
+      seoApi('POST', { seo: data }).catch(function () {});
+    }, 700);
+  }
+  function hydrateSeoPane() {
+    if (!document.querySelector('#llw2 [data-seo],#llw2 [data-meta]')) { return; }
+    var apply = function () {
+      var d = SEO_STATE.data || {};
+      document.querySelectorAll('#llw2 [data-seo],#llw2 [data-meta]').forEach(function (inp) {
+        var key = inp.getAttribute('data-seo') || inp.getAttribute('data-meta');
+        if (key && d[key] != null && d[key] !== '' && !inp.value) { inp.value = d[key]; }
+      });
+      if (d.sentiment) {
+        document.querySelectorAll('#llw2 [data-sent]').forEach(function (b) { b.classList.toggle('is-on', b.getAttribute('data-sent') === d.sentiment); });
+      }
+      wireCounts(); scoreSeo();
+    };
+    if (SEO_STATE.loadedFor === LETTER_ID) { apply(); return; }
+    if (!LETTER_ID) { scoreSeo(); return; }
+    seoApi('GET').then(function (j) {
+      SEO_STATE.data = (j && j.seo) || {}; SEO_STATE.loadedFor = LETTER_ID; apply();
+    }).catch(function () { scoreSeo(); });
+  }
+  function scoreSeo() {
+    var mt = (document.querySelector('#llw2 [data-seo="meta_title"]') || {}).value || '';
+    var md = (document.querySelector('#llw2 [data-seo="meta_desc"]') || {}).value || '';
+    var kw = ((document.querySelector('#llw2 [data-seo="keyword"]') || {}).value || '').trim().toLowerCase();
+    var body = (titleVal() + ' ' + subtitleVal() + ' ' + bodyText()).toLowerCase();
+    var s = 0;
+    if (mt.length >= 30 && mt.length <= 60) { s += 25; } else if (mt.length >= 15) { s += 12; }
+    if (md.length >= 70 && md.length <= 160) { s += 25; } else if (md.length >= 40) { s += 12; }
+    var kwScore = 0;
+    if (kw) {
+      if ((mt.toLowerCase()).indexOf(kw) >= 0) { kwScore += 40; }
+      if ((md.toLowerCase()).indexOf(kw) >= 0) { kwScore += 30; }
+      if (body.indexOf(kw) >= 0) { kwScore += 30; }
+    }
+    s += Math.round(kwScore * 0.25);
+    if (tickersFound().length) { s += 10; }
+    if (wordCount() >= 150) { s += 15; }
+    s = Math.max(0, Math.min(100, s));
+    var readability = wordCount() ? Math.max(20, Math.min(100, 120 - Math.round(wordCount() / 25))) : 100;
+    var ring = document.querySelector('#llw2 [data-ring]');
+    if (ring) {
+      ring.setAttribute('data-ring', s);
+      var col = s >= 70 ? '#2ee27a' : s >= 40 ? '#e5a13a' : '#ff5c6a';
+      ring.style.background = 'conic-gradient(' + col + ' ' + s + '%, rgba(255,255,255,.08) 0)';
+      ring.style.color = col;
+    }
+    var km = document.querySelector('#llw2 .llw2-meters b'); // keyword meter
+    if (km) { km.textContent = kwScore + '/100'; km.className = kwScore >= 60 ? 'good' : 'bad'; }
+    var rm = document.querySelectorAll('#llw2 .llw2-meters b')[1];
+    if (rm) { rm.textContent = readability + '/100'; rm.className = readability >= 60 ? 'good' : 'bad'; }
+  }
+
   /* ---- stepper ---- */
   function stepperEl() {
     var wrap = el('nav', 'llw2-stepper', '');
@@ -233,7 +332,7 @@
     } else if (state.step === 'publish') {
       host.appendChild(panePublish());
     }
-    wireCounts();
+    hydrateSeoPane();
   }
 
   // Replace the core rail's publish panel with a "Draft · N words · Next: SEO" card.
@@ -268,11 +367,18 @@
     var w = document.getElementById('llw2'); if (w) { w.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
 
+  document.addEventListener('input', function (ev) {
+    var t = ev.target;
+    if (t && t.hasAttribute && (t.hasAttribute('data-seo') || t.hasAttribute('data-meta'))) {
+      saveSeoSoon(); scoreSeo();
+    }
+  });
+
   document.addEventListener('click', function (ev) {
     var s = ev.target.closest('[data-step]'); if (s) { goto(s.getAttribute('data-step')); return; }
     var g = ev.target.closest('[data-goto]'); if (g) { ev.preventDefault(); goto(g.getAttribute('data-goto')); return; }
     var sw = ev.target.closest('[data-paywall]'); if (sw) { var on = sw.getAttribute('aria-pressed') === 'true'; sw.setAttribute('aria-pressed', on ? 'false' : 'true'); sw.classList.toggle('is-on', !on); return; }
-    var seg = ev.target.closest('[data-sent]'); if (seg) { seg.parentElement.querySelectorAll('[data-sent]').forEach(function (b) { b.classList.remove('is-on'); }); seg.classList.add('is-on'); return; }
+    var seg = ev.target.closest('[data-sent]'); if (seg) { seg.parentElement.querySelectorAll('[data-sent]').forEach(function (b) { b.classList.remove('is-on'); }); seg.classList.add('is-on'); saveSeoSoon(); return; }
     var pub = ev.target.closest('[data-publish-proxy]');
     if (pub) {
       var real = $('#le-side [data-publish], #le-side button.le-publish') || Array.prototype.filter.call(document.querySelectorAll('#le-side button'), function (b) { return /^publish$/i.test(b.textContent.trim()); })[0];
