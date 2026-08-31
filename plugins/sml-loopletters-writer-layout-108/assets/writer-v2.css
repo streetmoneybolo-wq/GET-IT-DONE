@@ -1,4 +1,6 @@
 /* Loop Letters Writer v2 — 4-step workflow styles (Phase 1). Scoped to .llw2 / body.llw2-mode. */
+/* Off-screen but kept in layout (offsetParent stays non-null so proxied clicks work). */
+.llw2-off{position:absolute!important;left:-99999px!important;top:0!important;width:360px!important;max-height:1px!important;overflow:hidden!important;}
 .llw2{--l2-bg:#06090d;--l2-card:#0e1519;--l2-card2:#0b1114;--l2-line:rgba(255,255,255,.07);--l2-line2:rgba(255,255,255,.12);
   --l2-tx:#e8edf2;--l2-mut:#8b97a3;--l2-dim:#5c6672;--l2-grn:#2ee27a;--l2-grn-d:#0f3a24;--l2-blue:#3b5bfd;--l2-red:#ff5c6a;
   --l2-rad:16px;--l2-rad2:11px;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;

@@ -181,14 +181,14 @@
     return '<select class="llw2-in" data-seo="' + key + '">' + opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('') + '</select>';
   }
   function statBox(label, val) { return '<div class="llw2-statbox"><small>' + esc(label) + '</small><b>' + esc(val) + '</b></div>'; }
+  function stepLabel(key) { var s = STEPS.filter(function (x) { return x.key === key; })[0]; return s ? s.label : key; }
   function navRow(back, cur) {
     var nextIdx = STEPS.findIndex(function (s) { return s.key === cur; }) + 1;
     var next = STEPS[nextIdx];
     return '<div class="llw2-nav">'
-      + '<button type="button" class="llw2-btn llw2-btn-ghost" data-goto="' + back + '">← ' + esc(cap(back)) + '</button>'
+      + '<button type="button" class="llw2-btn llw2-btn-ghost" data-goto="' + back + '">← ' + esc(stepLabel(back)) + '</button>'
       + (next ? '<button type="button" class="llw2-btn llw2-btn-primary" data-goto="' + next.key + '">Next: ' + esc(next.label) + ' →</button>' : '') + '</div>';
   }
-  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
   /* ---- mount / render ---- */
   function mount() {
@@ -221,8 +221,10 @@
     // Write = show core editor + rail; other steps hide them and render a pane
     var writeOn = state.step === 'write';
     var ed = editorCard(); var rl = rail();
-    if (ed) { ed.style.display = writeOn ? '' : 'none'; }
-    if (rl) { rl.style.display = writeOn ? '' : 'none'; }
+    // Off-screen (not display:none) so the core Publish button stays clickable for
+    // the step-4 proxy (display:none would null its offsetParent and the handler bails).
+    if (ed) { ed.classList.toggle('llw2-off', !writeOn); }
+    if (rl) { rl.classList.toggle('llw2-off', !writeOn); }
     if (writeOn) {
       restyleWriteRail();
     } else if (state.step === 'seo') {
@@ -238,6 +240,10 @@
   // Replace the core rail's publish panel with a "Draft · N words · Next: SEO" card.
   function restyleWriteRail() {
     var rl = rail(); if (!rl) { return; }
+    // Hide the core Publish panel — the design moves publishing to step 4 (proxied).
+    var pubBtn = rl.querySelector('[data-publish]');
+    var pubPanel = pubBtn ? pubBtn.closest('.le-card') : null;
+    if (pubPanel) { pubPanel.classList.add('llw2-off'); }
     var draft = rl.querySelector('.llw2-draftcard');
     if (!draft) {
       draft = el('div', 'llw2-card llw2-draftcard');
