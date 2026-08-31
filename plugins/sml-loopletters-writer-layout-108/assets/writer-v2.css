@@ -4,8 +4,12 @@
 .llw2{--l2-bg:#06090d;--l2-card:#0e1519;--l2-card2:#0b1114;--l2-line:rgba(255,255,255,.07);--l2-line2:rgba(255,255,255,.12);
   --l2-tx:#e8edf2;--l2-mut:#8b97a3;--l2-dim:#5c6672;--l2-grn:#2ee27a;--l2-grn-d:#0f3a24;--l2-blue:#3b5bfd;--l2-red:#ff5c6a;
   --l2-rad:16px;--l2-rad2:11px;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
-  max-width:1180px;margin:0 auto;padding:6px 20px 60px;color:var(--l2-tx);box-sizing:border-box;}
+  padding:2px 0 44px;color:var(--l2-tx);box-sizing:border-box;grid-column:1 / -1;}
 .llw2 *{box-sizing:border-box;}
+/* Constrain the whole writer to the design's contained proportions (the core grid
+   is otherwise near full-window). Full-width stepper row above the editor + rail. */
+body.llw2-mode .le-body{max-width:1200px;margin-left:auto!important;margin-right:auto!important;
+  grid-template-columns:minmax(0,1fr) 340px!important;gap:24px!important;align-items:start;padding-left:20px;padding-right:20px;}
 
 /* ---- stepper ---- */
 .llw2-stepbar{margin:8px 0 22px;}

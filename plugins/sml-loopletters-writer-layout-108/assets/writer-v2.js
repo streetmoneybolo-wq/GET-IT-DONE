@@ -193,9 +193,8 @@
   /* ---- mount / render ---- */
   function mount() {
     if (state.mounted && document.getElementById('llw2')) { return; }
-    var card = editorCard();
-    if (!card) { return; }
-    var host = card.parentElement; // .cs-main or the editor grid parent
+    var root = document.getElementById('le-root');
+    var host = root && root.parentElement; // .le-body (the editor+rail grid)
     if (!host) { return; }
     document.body.classList.add('llw2-mode');
 
@@ -204,7 +203,7 @@
     var stepHost = el('div', 'llw2-stepwrap');
     wrap.appendChild(el('div', 'llw2-stepbar'));
     wrap.appendChild(stepHost);
-    host.insertBefore(wrap, host.firstChild);
+    host.insertBefore(wrap, root); // full-width row above the editor + rail
     state.mounted = true;
     render();
   }
@@ -220,7 +219,7 @@
     host.innerHTML = '';
     // Write = show core editor + rail; other steps hide them and render a pane
     var writeOn = state.step === 'write';
-    var ed = editorCard(); var rl = rail();
+    var ed = document.getElementById('le-root'); var rl = rail();
     // Off-screen (not display:none) so the core Publish button stays clickable for
     // the step-4 proxy (display:none would null its offsetParent and the handler bails).
     if (ed) { ed.classList.toggle('llw2-off', !writeOn); }
