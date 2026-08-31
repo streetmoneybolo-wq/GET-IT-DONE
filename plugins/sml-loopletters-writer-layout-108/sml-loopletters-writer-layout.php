@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: SML Loop Letters Writer Layout
- * Description: Applies the Loop Hub publication dashboard to the Loop Letters writer without replacing its storage or editor.
- * Version: 1.0.8
+ * Description: Applies the Loop Hub publication dashboard to the Loop Letters writer without replacing its storage or editor. v1.1 adds the 4-step Write→SEO→Meta→Publish workflow (writer-v2).
+ * Version: 1.1.0
  * Author: StockMarketLoop
  */
 
@@ -31,11 +31,20 @@ function sml_lh_writer_layout_filter( $html ) {
 		return $html;
 	}
 
+	// v1.1: the 4-step Write→SEO→Meta→Publish workflow layer (additive over the base skin).
+	$css2 = file_get_contents( __DIR__ . '/assets/writer-v2.css' );
+	$js2  = file_get_contents( __DIR__ . '/assets/writer-v2.js' );
+	if ( is_string( $css2 ) ) { $css .= "\n" . $css2; }
+
 	$fonts = '<link rel="preconnect" href="https://fonts.googleapis.com">'
 		. '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-		. '<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&amp;family=DM+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=Lora:wght@400;500;600;700&amp;family=Manrope:wght@400;500;600;700;800&amp;family=Merriweather:wght@400;700&amp;family=Montserrat:wght@400;500;600;700;800&amp;family=Playfair+Display:wght@400;600;700&amp;family=Poppins:wght@400;500;600;700&amp;family=Roboto+Slab:wght@400;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">';
+		. '<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800&amp;family=DM+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600;700;800&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700;800&amp;family=Lora:wght@400;500;600;700&amp;family=Manrope:wght@400;500;600;700;800&amp;family=Merriweather:wght@400;700&amp;family=Montserrat:wght@400;500;600;700;800&amp;family=Playfair+Display:wght@400;600;700&amp;family=Poppins:wght@400;500;600;700&amp;family=Roboto+Slab:wght@400;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">';
 	$html = str_replace( '</head>', $fonts . '<style data-sml-lh-writer-layout>' . $css . '</style></head>', $html );
-	return str_replace( '</body>', '<script data-sml-lh-writer-layout>' . $js . '</script></body>', $html );
+	$html = str_replace( '</body>', '<script data-sml-lh-writer-layout>' . $js . '</script></body>', $html );
+	if ( is_string( $js2 ) ) {
+		$html = str_replace( '</body>', '<script data-sml-lh-writer-v2>' . $js2 . '</script></body>', $html );
+	}
+	return $html;
 }
 
 function sml_lh_writer_layout_buffer() {
