@@ -231,7 +231,7 @@
     loading = true;
     /* each REST call here takes ~2s on this site — paint the balance the moment
        /me lands instead of holding the button until the leaderboard arrives */
-    var me = api('/me').then(function(d){ if (d && d.balance != null){ ME = d; renderBtn(); if (panelOpen) renderPanel(); } });
+    var me = api('/me').then(function(d){ if (d && d.balance != null){ ME = d; saveMe(); renderBtn(); if (panelOpen) renderPanel(); } });
     return Promise.all([ me, api('/earn'), api('/gates'), api('/leaderboard'), api(MSAPI + '/state') ]).then(function(a){
       loading = false;
       if (a[1] && a[1].ways) EARN = a[1];
@@ -242,13 +242,22 @@
     });
   }
 
+  /* Header only needs the balance. The panel's 4 heavier calls (~2s each) load
+     lazily on open (the click handler already calls refresh()), so a page load
+     no longer fires them. Balance is cached for an instant, revalidated header. */
+  function saveMe(){ try { if (ME) localStorage.setItem('sml_lb_me', JSON.stringify(ME)); } catch (e) {} }
+  function refreshBalance(){
+    return api('/me').then(function(d){ if (d && d.balance != null){ ME = d; saveMe(); renderBtn(); if (panelOpen) renderPanel(); } }).catch(function(){});
+  }
+
   function boot(){
-    mount();
+    try { var cached = localStorage.getItem('sml_lb_me'); if (cached) { ME = JSON.parse(cached); } } catch (e) {}
+    mount(); /* paints the header from cached balance immediately */
     mo.observe(document.body, { childList: true, subtree: false });
-    refresh();
+    refreshBalance(); /* revalidate the balance; panel data stays lazy */
     /* balance can change from other tabs/pages (watching, live, comments) — light refresh */
-    setInterval(function(){ if (document.visibilityState === 'visible') api('/me').then(function(d){ if (d && d.balance != null){ ME = d; renderBtn(); if (panelOpen) renderPanel(); } }); }, 120000);
-    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') refresh(); });
+    setInterval(function(){ if (document.visibilityState === 'visible') refreshBalance(); }, 120000);
+    document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') refreshBalance(); });
     window.addEventListener('resize', function(){ if (panelOpen) renderPanel(); });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
