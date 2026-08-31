@@ -368,3 +368,32 @@
     mo.observe(document.body, { childList: true, subtree: true });
   }
 })();
+
+/* ============================================================================
+ * Loop Letters writer v2 bootstrap (deploy bridge).
+ * The 4-step Write→SEO→Meta→Publish workflow lives in the sml-loopletters-writer-
+ * layout plugin (assets/writer-v2.*), but that plugin injects LOCAL files and
+ * cannot be hot-updated from here. This loads writer-v2 from jsDelivr on the
+ * writer page only, at THIS script's own ref, so it ships with a git push.
+ * Safe to remove once plugin v1.1.0+ (which loads writer-v2 natively) is uploaded.
+ * writer-v2.js self-guards with window.__llw2Booted, so a double-load is harmless.
+ * ========================================================================== */
+(function () {
+  'use strict';
+  if (!/^\/creator-studio\/loop-letters\/write\/?$/.test(location.pathname)) { return; }
+  if (window.__llw2Loaded) { return; }
+  window.__llw2Loaded = true;
+  var ref = 'streetmoneybolo-wq/GET-IT-DONE@main';
+  try {
+    var srcs = [].map.call(document.getElementsByTagName('script'), function (s) { return s.src || ''; });
+    for (var i = 0; i < srcs.length; i++) {
+      var m = /cdn\.jsdelivr\.net\/gh\/([^@]+)@([^/]+)\/[^"']*creator-gate\.js/.exec(srcs[i]);
+      if (m) { ref = m[1] + '@' + m[2]; break; }
+    }
+  } catch (e) {}
+  var base = 'https://cdn.jsdelivr.net/gh/' + ref + '/plugins/sml-loopletters-writer-layout-108/assets/writer-v2';
+  var link = document.createElement('link'); link.rel = 'stylesheet'; link.href = base + '.css';
+  (document.head || document.documentElement).appendChild(link);
+  var scr = document.createElement('script'); scr.src = base + '.js'; scr.async = false;
+  (document.body || document.documentElement).appendChild(scr);
+})();
