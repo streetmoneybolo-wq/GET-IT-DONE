@@ -11,6 +11,31 @@ const billingService = require('./billing-service');
 const { createUpgradeChatClient } = require('./upgrade-chat');
 const newsWebhook = require('./news-webhook');
 
+async function handleAlertRequest(request, response, options, action) {
+  if (!contentTypeIsJson(request)) return sendJson(response, 415, { ok: false, error: 'content_type_required' });
+  const body = await readRequestBody(request);
+  if (!body.ok) return sendJson(response, body.status, { ok: false, error: body.error });
+  const verified = verifySignature({
+    secret: options.alertRouterSecret,
+    timestamp: request.headers['x-sml-timestamp'],
+    signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) return sendJson(response, verified.status, { ok: false, error: verified.error });
+  let input;
+  try { input = JSON.parse(body.rawBody); } catch (_) { return sendJson(response, 400, { ok: false, error: 'invalid_json' }); }
+  try {
+    const result = await action(input);
+    sendJson(response, result && result.status === 'duplicate' ? 200 : 202, { ok: true, ...result });
+  } catch (error) {
+    const invalid = error instanceof TypeError;
+    options.logger(invalid ? 'warn' : 'error', 'alert_router_request_failed', { error });
+    sendJson(response, invalid ? 422 : 503, { ok: false, error: invalid ? 'invalid_request' : 'temporary_unavailable',
+      ...(invalid ? { message: String(error.message).slice(0, 240) } : {}) });
+  }
+}
+
 function sendJson(response, status, body) {
   const payload = JSON.stringify(body);
   response.writeHead(status, {
@@ -217,11 +242,29 @@ async function handleNewsWebhook(request, response, options) {
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
   acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
   pool = null, upgradeChat = null, upgradeChatPlanMap = {},
+  alertRouter = null, alertRouterSecret = '',
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
   newsIngestToken = '', logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
+    const alertOptions = { alertRouterSecret, logger, now };
+    const alertAction = (method) => (input) => {
+      if (!alertRouter || typeof alertRouter[method] !== 'function') throw new Error('alert router is not configured');
+      return alertRouter[method](...(method === 'listRoutes' ? [input.groupId, input.ownerUserId] : [input]));
+    };
+    if (request.method === 'POST' && path === '/v1/alerts/routes/list') {
+      await handleAlertRequest(request, response, alertOptions, (input) => alertAction('listRoutes')(input).then((routes) => ({ routes })));
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/alerts/routes/replace') {
+      await handleAlertRequest(request, response, alertOptions, alertAction('replaceRoutes'));
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/alerts/ingest') {
+      await handleAlertRequest(request, response, alertOptions, alertAction('ingest'));
+      return;
+    }
     if (request.method === 'POST' && path === '/v1/billing/loop-bucks/checkout') {
       await handleBillingRequest(request, response, billingOptions, billingService.createLoopBuckCheckout);
       return;
@@ -278,6 +321,8 @@ async function main() {
   const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
   const upgradeChat = config.upgradeChatClientId && config.upgradeChatClientSecret
     ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
+  const { createAlertRouter } = require('./alert-router');
+  const alertRouter = createAlertRouter(database.pool);
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
@@ -290,7 +335,9 @@ async function main() {
     stripe,
     pool: database.pool,
     enqueueNewsArticle: database.enqueueNewsArticle,
-    newsIngestToken: config.newsIngestToken
+    newsIngestToken: config.newsIngestToken,
+    alertRouter,
+    alertRouterSecret: config.alertRouterSecret
   });
   let shuttingDown = false;
 
@@ -318,4 +365,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, sendJson, handleBillingRequest };
+module.exports = { createServer, sendJson, handleBillingRequest, handleAlertRequest };

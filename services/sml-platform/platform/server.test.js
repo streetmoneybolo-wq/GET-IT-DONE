@@ -196,3 +196,34 @@ test('news webhook fails closed before storing unauthenticated or invalid reques
   });
   assert.equal(calls, 0);
 });
+
+test('alert routes are signed and owner-scoped before reaching the router', async () => {
+  const calls = [];
+  const body = JSON.stringify({ groupId: 7, ownerUserId: 42 });
+  await withServer({
+    alertRouterSecret: 'alert-test-secret',
+    alertRouter: { listRoutes: async (...args) => { calls.push(args); return [{ id: 1 }]; } }
+  }, async (base) => {
+    const response = await fetch(`${base}/v1/alerts/routes/list`, {
+      method: 'POST', body, headers: signedHeaders('alert-test-secret', body)
+    });
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), { ok: true, routes: [{ id: 1 }] });
+  });
+  assert.deepEqual(calls, [[7, 42]]);
+});
+
+test('alert ingestion rejects bad signatures before the router is called', async () => {
+  let calls = 0;
+  const body = JSON.stringify({ groupId: 7 });
+  await withServer({
+    alertRouterSecret: 'alert-test-secret',
+    alertRouter: { ingest: async () => { calls += 1; return { status: 'accepted' }; } }
+  }, async (base) => {
+    const response = await fetch(`${base}/v1/alerts/ingest`, {
+      method: 'POST', body, headers: signedHeaders('wrong-secret', body)
+    });
+    assert.equal(response.status, 401);
+  });
+  assert.equal(calls, 0);
+});

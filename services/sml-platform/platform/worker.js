@@ -13,6 +13,7 @@ const {
   createStripeRestoreHandler
 } = require('./billing-worker');
 const { createSyncClient } = require('../group-subs/src/discord-sync');
+const { createAlertRouter, createDiscordClient, createTelegramClient, createWordPressClient } = require('./alert-router');
 
 function createDiscordAccessHandler(token, fetchImpl = fetch) {
   if (!token) return null;
@@ -48,6 +49,18 @@ async function main() {
     secret: config.wordpressBillingBridgeSecret
   });
   const discord = createDiscordAccessHandler(config.discordBotToken);
+  const discordAlerts = createDiscordClient(config.discordBotToken);
+  const telegramAlerts = createTelegramClient(config.telegramBotToken);
+  const wordpressAlerts = createWordPressClient({
+    url: `${config.wordpressUrl}/wp-json/sml-alert-router/v1/deliver`,
+    secret: config.wordpressBillingBridgeSecret
+  });
+  const alertRouter = createAlertRouter(database.pool, {
+    discord: discordAlerts,
+    telegram: telegramAlerts,
+    wordpress: wordpressAlerts,
+    logger: log
+  });
   const membershipAccess = async (payload, row) => {
     await wordpress(payload, row);
     if (discord) await discord(payload, row);
@@ -64,6 +77,7 @@ async function main() {
     seller_restore: createStripeRestoreHandler(stripe)
   });
   let stopping = false;
+  let pollingAlerts = false;
   let pipeline = null;
 
   const missing = [
@@ -108,16 +122,40 @@ async function main() {
           newsJobsProcessed += 1;
         }
       }
+      let alertsProcessed = 0;
+      for (let i = 0; i < 50; i += 1) {
+        const outcome = await alertRouter.processOne();
+        if (outcome === 'empty') break;
+        alertsProcessed += 1;
+      }
       log('info', 'worker_ready_for_jobs', {
-        jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline'],
+        jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline', 'alert_router'],
         expired,
         promoted,
         billingProcessed,
         billingFailed,
-        newsJobsProcessed
+        newsJobsProcessed,
+        alertsProcessed
       });
     } catch (error) {
       log('error', 'worker_database_unavailable', { error });
+    }
+  }
+
+  async function pollAlerts() {
+    if (stopping || pollingAlerts) return;
+    pollingAlerts = true;
+    try {
+      const [discordResult, telegramResult] = await Promise.all([
+        alertRouter.pollDiscordOnce(), alertRouter.pollTelegramOnce()
+      ]);
+      if (discordResult.ingested || telegramResult.ingested) {
+        log('info', 'alert_sources_polled', { discord: discordResult, telegram: telegramResult });
+      }
+    } catch (error) {
+      log('error', 'alert_source_poll_failed', { error });
+    } finally {
+      pollingAlerts = false;
     }
   }
 
@@ -125,6 +163,7 @@ async function main() {
     if (stopping) return;
     stopping = true;
     clearInterval(timer);
+    clearInterval(alertTimer);
     log('info', 'worker_shutdown_started', { signal });
     await database.close();
     log('info', 'worker_shutdown_complete', { signal });
@@ -132,7 +171,9 @@ async function main() {
   }
 
   await tick();
+  await pollAlerts();
   const timer = setInterval(() => { void tick(); }, config.workerIntervalMs);
+  const alertTimer = setInterval(() => { void pollAlerts(); }, config.alertPollIntervalMs);
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
   process.once('SIGINT', () => { void shutdown('SIGINT'); });
 }
