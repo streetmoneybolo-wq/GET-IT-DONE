@@ -7,12 +7,14 @@ const { createArticleGenerator, createShortPostGenerator } = require('./article-
 const { createNewsPipeline } = require('./news-pipeline');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
+const { createSpotlightIntake } = require('./spotlight-intake');
 
 async function main() {
   const config = getConfig();
   const database = createDatabase(config);
   let stopping = false;
   let pipeline = null;
+  let spotlightIntake = null;
 
   const missing = [
     ['OPENAI_API_KEY', config.openaiApiKey],
@@ -30,6 +32,7 @@ async function main() {
       logger: log,
       workerId: `render-${process.pid}`
     });
+    spotlightIntake = createSpotlightIntake({ config, database, logger: log });
   } else {
     log('warn', 'news_pipeline_disabled', { missing });
   }
@@ -40,6 +43,7 @@ async function main() {
       await database.health();
       let processed = 0;
       if (pipeline) {
+        try { await spotlightIntake.run(); } catch (error) { log('error', 'spotlight_intake_failed', { error }); }
         /* Drain a small bounded batch each minute. A flood cannot starve the
            process or create an unbounded OpenAI bill in one tick. */
         for (let i = 0; i < 3; i += 1) {

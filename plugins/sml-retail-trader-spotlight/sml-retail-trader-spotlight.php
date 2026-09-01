@@ -2,14 +2,14 @@
 /**
  * Plugin Name: SML Retail Trader Spotlight
  * Description: Multi-tenant Discord alert monitoring, Loop Bucks subscriptions, and newsroom source records for eligible StockMarketLoop groups.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
 final class SML_Retail_Trader_Spotlight {
-	const VERSION = '1.0.0';
+	const VERSION = '1.1.0';
 	const DB_VERSION = '1';
 	const MIN_MEMBERS = 1000;
 	const BASE_MONTHLY_PRICE = 4000;
@@ -30,6 +30,8 @@ final class SML_Retail_Trader_Spotlight {
 		add_action( 'plugins_loaded', array( $this, 'maybe_upgrade' ) );
 		add_action( 'rest_api_init', array( $this, 'routes' ) );
 		add_action( self::CRON_HOOK, array( $this, 'renew_due_subscriptions' ) );
+		add_filter( 'cron_schedules', array( $this, 'cron_schedules' ) );
+		add_action( 'sml_rts_poll_discord', array( $this, 'poll_discord' ) );
 		add_shortcode( 'sml_retail_trader_spotlight', array( $this, 'shortcode' ) );
 		add_filter( 'sml_lb_reasons', array( $this, 'ledger_reasons' ) );
 	}
@@ -43,15 +45,18 @@ final class SML_Retail_Trader_Spotlight {
 		self::install();
 		self::ensure_author();
 		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) wp_schedule_event( time() + HOUR_IN_SECONDS, 'hourly', self::CRON_HOOK );
+		if ( ! wp_next_scheduled( 'sml_rts_poll_discord' ) ) wp_schedule_event( time() + 30, 'sml_rts_minute', 'sml_rts_poll_discord' );
 	}
 
 	public static function deactivate() {
 		wp_clear_scheduled_hook( self::CRON_HOOK );
+		wp_clear_scheduled_hook( 'sml_rts_poll_discord' );
 	}
 
 	public function maybe_upgrade() {
 		if ( self::DB_VERSION !== get_option( 'sml_rts_db_version' ) ) self::install();
 		self::ensure_author();
+		if ( ! wp_next_scheduled( 'sml_rts_poll_discord' ) ) wp_schedule_event( time() + 30, 'sml_rts_minute', 'sml_rts_poll_discord' );
 	}
 
 	private static function install() {
@@ -122,9 +127,20 @@ final class SML_Retail_Trader_Spotlight {
 				'role' => 'author',
 				'description' => 'Verified, timestamped retail-trader alert coverage published by StockMarketLoop.',
 			) );
-			if ( ! is_wp_error( $id ) ) update_user_meta( $id, 'sml_automated_editorial_desk', 'retail-trader-spotlight' );
+			if ( ! is_wp_error( $id ) ) $user = get_user_by( 'id', $id );
 		} elseif ( 'Retail Trader Spotlight' !== $user->display_name ) {
 			wp_update_user( array( 'ID' => $user->ID, 'display_name' => 'Retail Trader Spotlight' ) );
+		}
+		if ( $user ) {
+			update_user_meta( $user->ID, 'sml_automated_editorial_desk', '1' );
+			update_user_meta( $user->ID, 'sml_editorial_desk_key', 'retail-trader-spotlight' );
+			update_user_meta( $user->ID, 'sml_editorial_beat', 'Verified, timestamped alerts from eligible StockMarketLoop group communities.' );
+			$ids = get_option( 'sml_newsroom_author_ids', array() );
+			$ids = is_array( $ids ) ? $ids : array();
+			if ( (int) ( $ids['retail-trader-spotlight'] ?? 0 ) !== (int) $user->ID ) {
+				$ids['retail-trader-spotlight'] = (int) $user->ID;
+				update_option( 'sml_newsroom_author_ids', $ids, false );
+			}
 		}
 	}
 
@@ -132,6 +148,11 @@ final class SML_Retail_Trader_Spotlight {
 		if ( ! is_array( $reasons ) ) return $reasons;
 		$reasons['retail_spotlight_subscription'] = array( 'flow' => 'absorb', 'label' => 'Retail Trader Spotlight subscription' );
 		return $reasons;
+	}
+
+	public function cron_schedules( $schedules ) {
+		$schedules['sml_rts_minute'] = array( 'interval' => 60, 'display' => 'Every minute (Retail Trader Spotlight)' );
+		return $schedules;
 	}
 
 	private static function snowflake( $value ) {
@@ -208,6 +229,8 @@ final class SML_Retail_Trader_Spotlight {
 		register_rest_route( 'sml-retail-spotlight/v1', '/group/(?P<group_id>\d+)/subscribe', array( 'methods' => 'POST', 'callback' => array( $this, 'subscribe' ), 'permission_callback' => 'is_user_logged_in' ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/bot/configured-groups', array( 'methods' => 'GET', 'callback' => array( $this, 'bot_groups' ), 'permission_callback' => array( __CLASS__, 'bot_permission' ) ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/bot/alerts', array( 'methods' => 'POST', 'callback' => array( $this, 'bot_alert' ), 'permission_callback' => array( __CLASS__, 'bot_permission' ) ) );
+		register_rest_route( 'sml-retail-spotlight/v1', '/newsroom/pending', array( 'methods' => 'GET', 'callback' => array( $this, 'newsroom_pending' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
+		register_rest_route( 'sml-retail-spotlight/v1', '/newsroom/ack', array( 'methods' => 'POST', 'callback' => array( $this, 'newsroom_ack' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/source/(?P<uuid>[a-f0-9-]{36})', array( 'methods' => 'GET', 'callback' => array( $this, 'source' ), 'permission_callback' => '__return_true' ) );
 	}
 
@@ -323,6 +346,58 @@ final class SML_Retail_Trader_Spotlight {
 		}
 		self::audit( $config['group_id'], 'alert_accepted', array( 'event_uuid' => $uuid, 'discord_message_id' => $message, 'ticker' => $ticker ), $config['owner_user_id'] );
 		return new WP_REST_Response( array( 'accepted' => true, 'duplicate' => false, 'event_uuid' => $uuid, 'source_url' => rest_url( 'sml-retail-spotlight/v1/source/' . $uuid ) ), 201 );
+	}
+
+	public function poll_discord() {
+		if ( ! function_exists( 'sml_discord_api_request' ) || ! function_exists( 'sml_discord_option' ) ) return;
+		global $wpdb;
+		$configs = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . " WHERE status='active' AND paid_through>%s", self::now() ), ARRAY_A ) ?: array();
+		$cursors = get_option( 'sml_rts_discord_cursors', array() );
+		$cursors = is_array( $cursors ) ? $cursors : array();
+		foreach ( $configs as $config ) {
+			$key = $config['guild_id'] . ':' . $config['channel_id'];
+			$cursor = self::snowflake( $cursors[ $key ] ?? '' );
+			$path = '/channels/' . $config['channel_id'] . '/messages?limit=50' . ( $cursor ? '&after=' . rawurlencode( $cursor ) : '' );
+			$messages = sml_discord_api_request( 'GET', $path, null, (string) sml_discord_option( 'bot_token', '' ) );
+			if ( is_wp_error( $messages ) || ! is_array( $messages ) ) continue;
+			usort( $messages, static function ( $a, $b ) { return strlen( (string) ( $a['id'] ?? '' ) ) === strlen( (string) ( $b['id'] ?? '' ) ) ? strcmp( (string) ( $a['id'] ?? '' ), (string) ( $b['id'] ?? '' ) ) : strlen( (string) ( $a['id'] ?? '' ) ) - strlen( (string) ( $b['id'] ?? '' ) ); } );
+			$allowed = wp_list_pluck( json_decode( $config['monitored_users'], true ) ?: array(), 'id' );
+			foreach ( $messages as $message ) {
+				$message_id = self::snowflake( $message['id'] ?? '' );
+				if ( ! $message_id ) continue;
+				$author_id = self::snowflake( $message['author']['id'] ?? '' );
+				if ( empty( $message['author']['bot'] ) && empty( $message['webhook_id'] ) && in_array( $author_id, $allowed, true ) ) {
+					$content = trim( (string) ( $message['content'] ?? '' ) );
+					preg_match_all( '/\$([A-Z][A-Z0-9.-]{0,9})\b/i', $content, $ticker_matches );
+					$tickers = array_values( array_unique( array_map( 'strtoupper', $ticker_matches[1] ?? array() ) ) );
+					if ( 1 === count( $tickers ) ) {
+						$internal = new WP_REST_Request( 'POST' );
+						foreach ( array( 'guild_id' => $config['guild_id'], 'channel_id' => $config['channel_id'], 'message_id' => $message_id, 'user_id' => $author_id, 'display_name' => ( $message['member']['nick'] ?? $message['author']['global_name'] ?? $message['author']['username'] ?? '' ), 'ticker' => $tickers[0], 'alert_text' => $content, 'alerted_at' => ( $message['timestamp'] ?? gmdate( DATE_ATOM ) ) ) as $param => $value ) $internal->set_param( $param, $value );
+						$result = $this->bot_alert( $internal );
+						if ( is_wp_error( $result ) && (int) ( $result->get_error_data()['status'] ?? 500 ) >= 500 ) break;
+					}
+				}
+				$cursors[ $key ] = $message_id;
+			}
+		}
+		update_option( 'sml_rts_discord_cursors', $cursors, false );
+	}
+
+	public function newsroom_pending() {
+		global $wpdb;
+		$rows = $wpdb->get_results( "SELECT event_uuid,ticker,alerted_at,group_id,guild_id,discord_message_id,discord_display_name FROM " . self::table( 'events' ) . " WHERE status='accepted' ORDER BY created_at ASC LIMIT 20", ARRAY_A ) ?: array();
+		foreach ( $rows as &$row ) {
+			$row['source_url'] = rest_url( 'sml-retail-spotlight/v1/source/' . $row['event_uuid'] );
+			$row['source_event_key'] = 'discord:' . $row['guild_id'] . ':' . $row['discord_message_id'];
+		}
+		return rest_ensure_response( array( 'events' => $rows ) );
+	}
+
+	public function newsroom_ack( WP_REST_Request $request ) {
+		global $wpdb;
+		$uuid = sanitize_text_field( (string) $request->get_param( 'event_uuid' ) );
+		$updated = $wpdb->update( self::table( 'events' ), array( 'status' => 'handed_off' ), array( 'event_uuid' => $uuid, 'status' => 'accepted' ), array( '%s' ), array( '%s', '%s' ) );
+		return rest_ensure_response( array( 'acknowledged' => false !== $updated ) );
 	}
 
 	public function source( WP_REST_Request $request ) {
