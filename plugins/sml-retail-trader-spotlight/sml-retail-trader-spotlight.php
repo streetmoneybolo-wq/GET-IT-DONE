@@ -2,14 +2,14 @@
 /**
  * Plugin Name: SML Retail Trader Spotlight
  * Description: Multi-tenant Discord alert monitoring, Loop Bucks subscriptions, and newsroom source records for eligible StockMarketLoop groups.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
 final class SML_Retail_Trader_Spotlight {
-	const VERSION = '1.1.0';
+	const VERSION = '1.1.1';
 	const DB_VERSION = '1';
 	const MIN_MEMBERS = 1000;
 	const BASE_MONTHLY_PRICE = 4000;
@@ -34,6 +34,7 @@ final class SML_Retail_Trader_Spotlight {
 		add_action( 'sml_rts_poll_discord', array( $this, 'poll_discord' ) );
 		add_shortcode( 'sml_retail_trader_spotlight', array( $this, 'shortcode' ) );
 		add_filter( 'sml_lb_reasons', array( $this, 'ledger_reasons' ) );
+		add_filter( 'get_avatar_data', array( $this, 'avatar' ), 30, 2 );
 	}
 
 	private static function table( $name ) {
@@ -132,6 +133,8 @@ final class SML_Retail_Trader_Spotlight {
 			wp_update_user( array( 'ID' => $user->ID, 'display_name' => 'Retail Trader Spotlight' ) );
 		}
 		if ( $user ) {
+			$avatar_url = plugin_dir_url( __FILE__ ) . 'assets/retail-trader-spotlight.png';
+			update_user_meta( $user->ID, 'sml_avatar_url', esc_url_raw( $avatar_url ) );
 			update_user_meta( $user->ID, 'sml_automated_editorial_desk', '1' );
 			update_user_meta( $user->ID, 'sml_editorial_desk_key', 'retail-trader-spotlight' );
 			update_user_meta( $user->ID, 'sml_editorial_beat', 'Verified, timestamped alerts from eligible StockMarketLoop group communities.' );
@@ -142,6 +145,25 @@ final class SML_Retail_Trader_Spotlight {
 				update_option( 'sml_newsroom_author_ids', $ids, false );
 			}
 		}
+	}
+
+	private static function avatar_user( $id_or_email ) {
+		if ( $id_or_email instanceof WP_User ) return $id_or_email;
+		if ( $id_or_email instanceof WP_Post ) return get_user_by( 'id', $id_or_email->post_author );
+		if ( $id_or_email instanceof WP_Comment && $id_or_email->user_id ) return get_user_by( 'id', $id_or_email->user_id );
+		if ( is_numeric( $id_or_email ) ) return get_user_by( 'id', absint( $id_or_email ) );
+		if ( is_string( $id_or_email ) && is_email( $id_or_email ) ) return get_user_by( 'email', $id_or_email );
+		return false;
+	}
+
+	public function avatar( $args, $id_or_email ) {
+		$user = self::avatar_user( $id_or_email );
+		if ( ! $user || self::AUTHOR_LOGIN !== $user->user_login ) return $args;
+		$path = plugin_dir_path( __FILE__ ) . 'assets/retail-trader-spotlight.png';
+		if ( ! is_readable( $path ) ) return $args;
+		$args['url'] = plugin_dir_url( __FILE__ ) . 'assets/retail-trader-spotlight.png';
+		$args['found_avatar'] = true;
+		return $args;
 	}
 
 	public function ledger_reasons( $reasons ) {
