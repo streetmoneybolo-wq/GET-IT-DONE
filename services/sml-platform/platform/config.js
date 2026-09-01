@@ -5,6 +5,14 @@ function integer(value, fallback, minimum) {
   return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
 }
 
+function jsonObject(value, fallback = {}) {
+  if (!String(value || '').trim()) return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback;
+  } catch (_) { return fallback; }
+}
+
 function getConfig(env = process.env) {
   const databaseUrl = String(env.DATABASE_URL || '').trim();
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -28,8 +36,10 @@ function getConfig(env = process.env) {
     wordpressUsername: String(env.SML_WORDPRESS_USERNAME || '').trim(),
     wordpressAppPassword: String(env.SML_WORDPRESS_APP_PASSWORD || '').trim(),
     wordpressAuthorSlug: String(env.SML_WORDPRESS_AUTHOR_SLUG || 'stockmarketloop').trim(),
-    wordpressAuthorName: String(env.SML_WORDPRESS_AUTHOR_NAME || 'SML NEWS').trim()
+    wordpressAuthorName: String(env.SML_WORDPRESS_AUTHOR_NAME || 'SML NEWS').trim(),
+    /* Map editorial desk keys to existing numeric WordPress user IDs. */
+    wordpressEditorialAuthors: Object.freeze(jsonObject(env.SML_NEWSROOM_AUTHORS_JSON))
   });
 }
 
-module.exports = { getConfig };
+module.exports = { getConfig, jsonObject };

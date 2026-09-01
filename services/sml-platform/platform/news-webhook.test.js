@@ -23,3 +23,19 @@ test('bearer authentication fails closed and uses exact tokens', () => {
   assert.equal(verifyBearer('secret', 'Bearer wrong').status, 401);
   assert.equal(verifyBearer('secret', 'Bearer secret').ok, true);
 });
+
+test('routes verified market events to one specialist desk with a global fingerprint', () => {
+  const parsed = parseNewsRequest(JSON.stringify({
+    source_url: 'https://www.sec.gov/Archives/edgar/data/example',
+    market_event: {
+      ticker: 'NVDA', eventType: 'earnings', sourceEventId: 'nvda-q2-2026',
+      occurredAt: '2026-08-31T20:00:00Z', sector: 'Semiconductors'
+    },
+    market_snapshot: { as_of: '2026-08-31T20:01:00Z', price: 214.72 },
+    official_sources: [{ label: 'SEC filing', url: 'https://www.sec.gov/Archives/edgar/data/example' }]
+  }));
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.job.editorialDesk, 'earnings');
+  assert.equal(parsed.job.topicFingerprint, 'NVDA|earnings|nvda-q2-2026|2026-08-31');
+  assert.equal(parsed.job.marketSnapshot.price, 214.72);
+});

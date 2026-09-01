@@ -47,3 +47,29 @@ test('publishes with the verified author, SEO metadata, and source hash', async 
   assert.equal(body.meta._sml_source_url_hash, 'a'.repeat(64));
   assert.equal(body.meta.rank_math_focus_keyword, 'keyword');
 });
+
+test('publishes specialist stories under the configured desk author and fails closed without it', async () => {
+  const calls = [];
+  const publisher = createWordPressPublisher({
+    wordpressUrl: 'https://stockmarketloop.com',
+    wordpressUsername: 'stockmarketloop',
+    wordpressAppPassword: 'test',
+    wordpressAuthorSlug: 'stockmarketloop',
+    wordpressAuthorName: 'SML NEWS',
+    wordpressEditorialAuthors: { earnings: 144 }
+  }, {
+    fetchImpl: async (url, init = {}) => {
+      calls.push({ url, init });
+      if (url.includes('/users/me')) return response(200, { id: 55, slug: 'stockmarketloop', name: 'SML NEWS' });
+      if (url.includes('/posts?')) return response(200, []);
+      return response(201, { id: 101, link: 'https://stockmarketloop.com/earnings-test/' });
+    }
+  });
+  await publisher.publish({
+    article: { editorial_desk: 'earnings', title: 'Test', excerpt: 'Excerpt', slug: 'earnings-test', body_html: '<p>Body</p>', subtitle: 'Subtitle', meta_description: 'Meta', focus_keyword: 'keyword' },
+    sourceUrl: 'https://example.com/source', sourceUrlHash: 'b'.repeat(64)
+  });
+  assert.match(calls.at(-1).url, /sml-newsroom\/v1\/publish$/);
+  assert.equal(JSON.parse(calls.at(-1).init.body).editorial_desk, 'earnings');
+  await assert.rejects(publisher.authorFor({ editorial_desk: 'options-flow' }), { code: 'wordpress_author_not_configured' });
+});

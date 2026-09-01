@@ -52,16 +52,26 @@ function createDatabase({ databaseUrl, databaseSsl }) {
 
   async function enqueueNewsArticle(job) {
     const result = await pool.query(
-      `INSERT INTO news_article_jobs (source_url, source_url_hash, source_event_key)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (source_url_hash) DO NOTHING
+      `INSERT INTO news_article_jobs (
+         source_url, source_url_hash, source_event_key, editorial_desk,
+         topic_fingerprint, market_snapshot, official_sources
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+       ON CONFLICT DO NOTHING
        RETURNING id, status`,
-      [job.sourceUrl, job.sourceUrlHash, job.sourceEventKey]
+      [
+        job.sourceUrl, job.sourceUrlHash, job.sourceEventKey,
+        job.editorialDesk, job.topicFingerprint,
+        JSON.stringify(job.marketSnapshot), JSON.stringify(job.officialSources || [])
+      ]
     );
     if (result.rowCount === 1) return { ...result.rows[0], status: 'accepted' };
     const existing = await pool.query(
-      'SELECT id, status FROM news_article_jobs WHERE source_url_hash = $1',
-      [job.sourceUrlHash]
+      `SELECT id, status FROM news_article_jobs
+        WHERE source_url_hash = $1
+           OR ($2::text IS NOT NULL AND topic_fingerprint = $2)
+           OR ($3::text IS NOT NULL AND source_event_key = $3)
+        ORDER BY id LIMIT 1`,
+      [job.sourceUrlHash, job.topicFingerprint, job.sourceEventKey]
     );
     return { ...existing.rows[0], status: 'duplicate' };
   }

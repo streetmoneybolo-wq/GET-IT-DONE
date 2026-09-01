@@ -22,8 +22,8 @@ function createWordPressPublisher(config, options = {}) {
   const mediaFetcher = options.mediaFetcher || fetchPublicBuffer;
   let verifiedIdentity = null;
 
-  async function request(path, init = {}) {
-    const response = await fetchImpl(`${siteUrl}/wp-json/wp/v2${path}`, {
+  async function requestUrl(url, init = {}) {
+    const response = await fetchImpl(url, {
       ...init,
       headers: { accept: 'application/json', authorization: auth, ...(init.headers || {}) },
       signal: init.signal || AbortSignal.timeout(30_000)
@@ -37,6 +37,10 @@ function createWordPressPublisher(config, options = {}) {
       throw error;
     }
     return payload;
+  }
+
+  async function request(path, init = {}) {
+    return requestUrl(`${siteUrl}/wp-json/wp/v2${path}`, init);
   }
 
   async function verifyIdentity() {
@@ -56,6 +60,18 @@ function createWordPressPublisher(config, options = {}) {
   async function findExisting(slug) {
     const posts = await request(`/posts?context=edit&slug=${encodeURIComponent(slug)}&status=publish,draft,pending,private&per_page=1`);
     return Array.isArray(posts) && posts.length ? posts[0] : null;
+  }
+
+  async function authorFor(article) {
+    const desk = String(article.editorial_desk || 'sml-news');
+    if (desk === 'sml-news') return (await verifyIdentity()).id;
+    const id = Number(config.wordpressEditorialAuthors && config.wordpressEditorialAuthors[desk]);
+    if (!Number.isInteger(id) || id < 1) {
+      const error = new Error(`WordPress author is not configured for editorial desk ${desk}`);
+      error.code = 'wordpress_author_not_configured';
+      throw error;
+    }
+    return id;
   }
 
   async function uploadFeaturedImage(imageUrl, article) {
@@ -95,7 +111,8 @@ function createWordPressPublisher(config, options = {}) {
   }
 
   async function publish({ article, sourceUrl, sourceUrlHash, mediaId = null }) {
-    const identity = await verifyIdentity();
+    await verifyIdentity(); // The publishing service account itself must still be the approved account.
+    const authorId = await authorFor(article);
     const existing = await findExisting(article.slug);
     if (existing) return { duplicate: true, post: existing };
     const meta = {
@@ -103,16 +120,30 @@ function createWordPressPublisher(config, options = {}) {
       _sml_source_url_hash: sourceUrlHash,
       _sml_source_url: sourceUrl,
       _sml_subtitle: article.subtitle,
+      _sml_editorial_desk: article.editorial_desk || 'sml-news',
       rank_math_title: article.title,
       rank_math_description: article.meta_description,
       rank_math_focus_keyword: article.focus_keyword
     };
-    const post = await request('/posts', {
+    const payload = {
+      editorial_desk: article.editorial_desk || 'sml-news',
+      title: article.title,
+      excerpt: article.excerpt,
+      slug: article.slug,
+      content: article.body_html,
+      featured_media: mediaId || 0,
+      meta
+    };
+    const post = article.editorial_desk && article.editorial_desk !== 'sml-news'
+      ? await requestUrl(`${siteUrl}/wp-json/sml-newsroom/v1/publish`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(45_000)
+      })
+      : await request('/posts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         status: 'publish',
-        author: identity.id,
+        author: authorId,
         title: article.title,
         excerpt: article.excerpt,
         slug: article.slug,
@@ -125,7 +156,7 @@ function createWordPressPublisher(config, options = {}) {
     return { duplicate: false, post };
   }
 
-  return { findExisting, publish, uploadFeaturedImage, verifyIdentity };
+  return { authorFor, findExisting, publish, uploadFeaturedImage, verifyIdentity };
 }
 
 module.exports = { basicAuth, createWordPressPublisher, extensionFor };

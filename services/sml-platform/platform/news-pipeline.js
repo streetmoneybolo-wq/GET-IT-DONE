@@ -16,7 +16,7 @@ function isPermanent(error) {
     'unsafe_source_url', 'unsafe_source_host', 'source_not_found', 'source_not_html',
     'source_content_too_thin', 'source_too_large', 'unsupported_source_image',
     'invalid_article_output', 'invalid_article_length', 'duplicate_article',
-    'wordpress_author_mismatch', 'wordpress_duplicate'
+    'wordpress_author_mismatch', 'wordpress_author_not_configured', 'wordpress_duplicate'
   ]).has(error && error.code);
 }
 
@@ -24,6 +24,9 @@ function createNewsPipeline({ database, fetchSource, generateArticle, publisher,
   async function processJob(job) {
     try {
       const source = await fetchSource(job.source_url);
+      source.editorialDesk = job.editorial_desk || null;
+      source.marketSnapshot = job.market_snapshot || null;
+      source.officialSources = job.official_sources || [];
       await database.saveNewsSource(job.id, source);
       const article = job.generated_payload || await generateArticle(source);
       if (!job.generated_payload) {

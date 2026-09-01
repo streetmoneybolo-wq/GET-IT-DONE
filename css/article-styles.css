@@ -513,6 +513,22 @@ table { border-collapse: collapse; }
 .sml-market-links h2::before { content: none !important; }
 .sml-market-links ul { margin: 0; }
 
+.sml-official-sources {
+  margin: 20px 0;
+  padding: 22px 24px;
+  background: rgba(32, 140, 255, .07);
+  border: 1px solid rgba(91, 183, 255, .34);
+  border-radius: 12px;
+}
+.sml-official-sources h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  color: #dff4ff !important;
+}
+.sml-official-sources h2::before { content: none !important; }
+.sml-official-sources ul { margin: 0; }
+.sml-official-sources a { color: #74c7ff !important; }
+
 /* ── Trust box ──────────────────────────────────────────────────── */
 .sml-trust-box {
   max-width: 720px;

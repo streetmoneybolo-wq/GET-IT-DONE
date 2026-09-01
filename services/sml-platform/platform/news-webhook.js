@@ -1,8 +1,9 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { validateAssignment } = require('./editorial-desks');
 
-const MAX_BODY_BYTES = 16 * 1024;
+const MAX_BODY_BYTES = 128 * 1024;
 
 function fail(status, error) {
   return { ok: false, status, error };
@@ -46,12 +47,35 @@ function parseNewsRequest(rawBody) {
     sourceEventKey = String(body.source_event_key || body.sourceEventKey).trim();
     if (!/^[A-Za-z0-9._:-]{1,191}$/.test(sourceEventKey)) return fail(422, 'invalid_source_event_key');
   }
+  let assignment = null;
+  let marketSnapshot = null;
+  let officialSources = [];
+  if (body.market_event != null || body.marketEvent != null) {
+    const event = body.market_event || body.marketEvent;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return fail(422, 'invalid_market_event');
+    try { assignment = validateAssignment(event); } catch (_) { return fail(422, 'invalid_market_event'); }
+    if (!assignment.eligible) return fail(422, assignment.reason);
+    marketSnapshot = body.market_snapshot || body.marketSnapshot || null;
+    if (marketSnapshot && (typeof marketSnapshot !== 'object' || Array.isArray(marketSnapshot))) return fail(422, 'invalid_market_snapshot');
+    officialSources = body.official_sources || body.officialSources || [];
+    if (!Array.isArray(officialSources) || officialSources.length > 10) return fail(422, 'invalid_official_sources');
+    officialSources = officialSources.map((item) => ({
+      label: String(item && item.label || 'Official announcement').slice(0, 160),
+      url: normalizeSourceUrl(item && item.url),
+      verified: item && item.verified === true
+    }));
+    if (officialSources.some((item) => !item.url)) return fail(422, 'invalid_official_sources');
+  }
   return {
     ok: true,
     job: {
       sourceUrl,
       sourceUrlHash: crypto.createHash('sha256').update(sourceUrl, 'utf8').digest('hex'),
-      sourceEventKey
+      sourceEventKey,
+      editorialDesk: assignment && assignment.desk.key,
+      topicFingerprint: assignment && assignment.fingerprint,
+      marketSnapshot,
+      officialSources
     }
   };
 }

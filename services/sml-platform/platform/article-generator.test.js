@@ -94,10 +94,29 @@ test('uses the standard SML News template unless the source verifies a Grandmast
 
 test('renders ordinary reporting with the news template and transparency box', () => {
   const output = validateAndSanitize(article(), 'https://example.com/source', 'news');
-  assert.match(output.body_html, /<article class="sml-news-article">/);
+  assert.match(output.body_html, /<article class="sml-news-article sml-newsroom-story"/);
   assert.doesNotMatch(output.body_html, /sml-alert-report/);
   assert.match(output.body_html, /class="sml-trust-box"/);
   assert.match(output.body_html, /SML News/);
+});
+
+test('specialist stories get a live chart, an honest desk byline, and verified official links', () => {
+  const { deskForKey } = require('./editorial-desks');
+  const output = validateAndSanitize(article({
+    title: 'NVDA Earnings Data Changes the Market Debate',
+    tickers: ['$NVDA']
+  }), 'https://example.com/source', 'news', deskForKey('earnings'), [
+    { label: 'SEC filing', url: 'https://www.sec.gov/Archives/example', verified: false },
+    { label: 'Company investor relations release', url: 'https://investor.example.com/results', verified: true },
+    { label: 'Unverified blog', url: 'https://blog.example.net/post', verified: false }
+  ]);
+  assert.match(output.body_html, /data-editorial-desk="earnings"/);
+  assert.match(output.body_html, /class="sml-live-chart"/);
+  assert.match(output.body_html, /SML Earnings Desk/);
+  assert.match(output.body_html, /www\.sec\.gov/);
+  assert.match(output.body_html, /investor\.example\.com/);
+  assert.doesNotMatch(output.body_html, /blog\.example\.net/);
+  assert.equal(output.editorial_author_slug, 'sml-earnings-desk');
 });
 
 test('renders verified Grandmaster-OBI coverage with the alert template, TOC, chart, and ticker links', () => {
