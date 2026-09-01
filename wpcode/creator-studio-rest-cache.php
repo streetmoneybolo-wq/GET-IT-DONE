@@ -16,7 +16,7 @@
  *  - Never caches writes, /me (balance must stay fresh), or anything with errors.
  *  - TTL is short; stale-by-at-most-TTL is fine for dashboards/leaderboards.
  *
- * NO GLOBAL FUNCTIONS (guarded class). No eval/base64. No top-level return.
+ * NO GLOBAL FUNCTIONS (guarded class). No dynamic-code or encoding calls. No top-level return.
  * Kill switch: deactivate the snippet (caching simply stops).
  */
 
@@ -47,7 +47,12 @@ if ( ! class_exists( 'SML_Studio_REST_Cache' ) ) {
 		}
 
 		public function __construct() {
-			add_filter( 'rest_pre_dispatch', array( $this, 'serve' ), 8, 3 );
+			// rest_request_before_callbacks fires AFTER the route's permission_callback
+			// has already run and passed (unlike rest_pre_dispatch, which short-circuits
+			// BEFORE it). Serving the cache here means every hit is still permission-checked
+			// live, so a revoked/changed permission is enforced immediately — never up to
+			// TTL seconds stale.
+			add_filter( 'rest_request_before_callbacks', array( $this, 'serve' ), 8, 3 );
 			add_filter( 'rest_post_dispatch', array( $this, 'store' ), 8, 3 );
 		}
 
@@ -68,12 +73,19 @@ if ( ! class_exists( 'SML_Studio_REST_Cache' ) ) {
 			);
 		}
 
-		/** Serve a fresh cached copy before the slow handler ever runs. */
-		public function serve( $result, $server, $request ) {
-			if ( null !== $result || ! $this->eligible( $request ) ) { return $result; }
+		/**
+		 * Serve a fresh cached copy INSTEAD of the slow route callback — but only
+		 * after the route's permission_callback has already passed (this runs on
+		 * rest_request_before_callbacks). $result is null on a normal request; if a
+		 * prior filter or a failed permission produced a value/WP_Error we leave it.
+		 */
+		public function serve( $result, $handler, $request ) {
+			if ( null !== $result || ! ( $request instanceof WP_REST_Request ) || ! $this->eligible( $request ) ) {
+				return $result;
+			}
 			$hit = get_transient( $this->key( $request ) );
 			if ( is_array( $hit ) && isset( $hit['data'] ) ) {
-				$resp = new WP_REST_Response( $hit['data'], isset( $hit['status'] ) ? (int) $hit['status'] : 200 );
+				$resp = new WP_REST_Response( $hit['data'], 200 );
 				$resp->header( 'X-SML-Cache', 'HIT' );
 				return $resp;
 			}
@@ -85,12 +97,10 @@ if ( ! class_exists( 'SML_Studio_REST_Cache' ) ) {
 			if ( ! ( $response instanceof WP_REST_Response ) || ! $this->eligible( $request ) ) { return $response; }
 			$headers = $response->get_headers();
 			if ( isset( $headers['X-SML-Cache'] ) && 'HIT' === $headers['X-SML-Cache'] ) { return $response; } // already from cache
-			$status = $response->get_status();
-			if ( $status < 200 || $status >= 300 ) { return $response; }
+			if ( 200 !== (int) $response->get_status() ) { return $response; } // exactly 200 — never errors/redirects/other 2xx
 			$data = $response->get_data();
-			// Only cache plain serialisable payloads (arrays/objects); skip anything odd.
-			if ( is_array( $data ) || is_object( $data ) ) {
-				set_transient( $this->key( $request ), array( 'data' => $data, 'status' => $status ), self::TTL );
+			if ( is_array( $data ) ) { // only plain serialisable array payloads
+				set_transient( $this->key( $request ), array( 'data' => $data ), self::TTL );
 			}
 			return $response;
 		}
