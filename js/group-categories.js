@@ -68,9 +68,11 @@
    * the poster deliberately. If the WebP fails to load the poster simply stays.
    */
   (function portalWatermarkUpgrade() {
-    var BASE = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@4befb9c/media/watermarks/';
-    var ANIM = BASE + 'portal-watermark.webp';
-    var POSTER_MARK = 'portal-watermark-poster.webp';
+    /* The server serves a tiny static "<name>-poster.webp" so the critical path
+     * stays small; once idle we upgrade to the animated "<name>.webp" beside it.
+     * Deriving the animated URL from the poster URL keeps this working for any
+     * future background without another code change. */
+    var POSTER_RE = /-poster\.webp($|\?)/;
     try {
       if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       var conn = navigator.connection || navigator.webkitConnection;
@@ -78,16 +80,18 @@
     } catch (e) { /* capability probe only; never block the page */ }
     function go() {
       var cfg = window.SMLGroupShell;
-      if (!cfg || String(cfg.portalWatermarkUrl || '').indexOf(POSTER_MARK) === -1) return;
+      var poster = cfg && String(cfg.portalWatermarkUrl || '');
+      if (!poster || !POSTER_RE.test(poster)) return;
+      var anim = poster.replace(/-poster(\.webp)/, '$1');
       var pre = new Image();
       pre.onload = function () {
-        cfg.portalWatermarkUrl = ANIM;
+        cfg.portalWatermarkUrl = anim;
         var layer = document.querySelector('[data-smlgs-watermark]');
-        if (layer && String(layer.style.backgroundImage || '').indexOf(POSTER_MARK) !== -1) {
-          layer.style.backgroundImage = 'url("' + ANIM + '")';
+        if (layer && String(layer.style.backgroundImage || '').indexOf('-poster.webp') !== -1) {
+          layer.style.backgroundImage = 'url("' + anim + '")';
         }
       };
-      pre.src = ANIM;                       // failure leaves the poster in place
+      pre.src = anim;                       /* failure leaves the poster in place */
     }
     if (window.requestIdleCallback) { requestIdleCallback(go, { timeout: 3000 }); }
     else { setTimeout(go, 1200); }
