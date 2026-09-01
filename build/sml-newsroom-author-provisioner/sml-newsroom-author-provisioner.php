@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Newsroom Author Provisioner
  * Description: Activation-only provisioning for 15 transparent StockMarketLoop specialist editorial desks.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -82,6 +82,30 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 			) );
 		}
 
+		private static function avatar_user( $id_or_email ) {
+			if ( $id_or_email instanceof WP_User ) { return $id_or_email; }
+			if ( $id_or_email instanceof WP_Post ) { return get_user_by( 'id', $id_or_email->post_author ); }
+			if ( $id_or_email instanceof WP_Comment && $id_or_email->user_id ) { return get_user_by( 'id', $id_or_email->user_id ); }
+			if ( is_numeric( $id_or_email ) ) { return get_user_by( 'id', absint( $id_or_email ) ); }
+			if ( is_string( $id_or_email ) && is_email( $id_or_email ) ) { return get_user_by( 'email', $id_or_email ); }
+			return false;
+		}
+
+		public static function avatar( $args, $id_or_email ) {
+			$user = self::avatar_user( $id_or_email );
+			if ( ! $user ) { return $args; }
+			$key = (string) get_user_meta( $user->ID, 'sml_editorial_desk_key', true );
+			$desks = self::desks();
+			if ( ! isset( $desks[ $key ] ) ) { return $args; }
+			$file = $desks[ $key ][0] . '.png';
+			$path = plugin_dir_path( __FILE__ ) . 'assets/authors/' . $file;
+			if ( ! is_readable( $path ) ) { return $args; }
+			$url = plugin_dir_url( __FILE__ ) . 'assets/authors/' . rawurlencode( $file );
+			$args['url'] = $url;
+			$args['found_avatar'] = true;
+			return $args;
+		}
+
 		public static function register_routes() {
 			register_rest_route( 'sml-newsroom/v1', '/publish', array(
 				'methods'             => WP_REST_Server::CREATABLE,
@@ -152,5 +176,6 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 	register_activation_hook( __FILE__, array( 'SML_Newsroom_Author_Provisioner', 'activate' ) );
 	add_action( 'init', array( 'SML_Newsroom_Author_Provisioner', 'register_meta' ) );
 	add_action( 'rest_api_init', array( 'SML_Newsroom_Author_Provisioner', 'register_routes' ) );
+	add_filter( 'get_avatar_data', array( 'SML_Newsroom_Author_Provisioner', 'avatar' ), 20, 2 );
 	add_action( 'admin_notices', array( 'SML_Newsroom_Author_Provisioner', 'notice' ) );
 }
