@@ -53,3 +53,25 @@ test('fails closed and records a safe permanent failure', async () => {
   assert.doesNotMatch(failure[2].detail, /secret-value/);
   assert.equal(failure[3], true);
 });
+
+test('a short-post job uses the short generator and carries the shared topic lock to WordPress', async () => {
+  let articleCalls = 0;
+  let shortCalls = 0;
+  let published;
+  const { pipeline } = harness({
+    generateArticle: async () => { articleCalls += 1; return {}; },
+    generateShortPost: async () => {
+      shortCalls += 1;
+      return { title: '$ACME update', excerpt: 'Short update', body_html: '<p>Short verified update.</p>', slug: 'acme-short', content_kind: 'short_post' };
+    },
+    publisher: {
+      uploadFeaturedImage: async () => null,
+      publish: async (input) => { published = input.article; return { post: { id: 90, link: 'https://stockmarketloop.com/acme-short/' }, duplicate: false }; }
+    }
+  });
+  await pipeline.processJob({ id: 9, source_url: 'https://publisher.example/story', source_url_hash: 'c'.repeat(64), content_kind: 'short_post', subject_fingerprint: 'ACME|earnings|2026-09-01', attempts: 1 });
+  assert.equal(articleCalls, 0);
+  assert.equal(shortCalls, 1);
+  assert.equal(published.content_kind, 'short_post');
+  assert.equal(published.topic_signature, 'ACME|earnings|2026-09-01');
+});

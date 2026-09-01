@@ -3,7 +3,7 @@
 const { getConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { log } = require('./logger');
-const { createArticleGenerator } = require('./article-generator');
+const { createArticleGenerator, createShortPostGenerator } = require('./article-generator');
 const { createNewsPipeline } = require('./news-pipeline');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
@@ -25,6 +25,7 @@ async function main() {
       database,
       fetchSource: fetchSourceArticle,
       generateArticle: createArticleGenerator({ apiKey: config.openaiApiKey, model: config.openaiModel }),
+      generateShortPost: createShortPostGenerator({ apiKey: config.openaiApiKey, model: config.openaiModel }),
       publisher: createWordPressPublisher(config),
       logger: log,
       workerId: `render-${process.pid}`

@@ -121,12 +121,16 @@ function createWordPressPublisher(config, options = {}) {
       _sml_source_url: sourceUrl,
       _sml_subtitle: article.subtitle,
       _sml_editorial_desk: article.editorial_desk || 'sml-news',
+      _sml_content_kind: article.content_kind || 'article',
+      _sml_topic_signature: article.topic_signature || '',
       rank_math_title: article.title,
       rank_math_description: article.meta_description,
       rank_math_focus_keyword: article.focus_keyword
     };
     const payload = {
       editorial_desk: article.editorial_desk || 'sml-news',
+      content_kind: article.content_kind || 'article',
+      topic_signature: article.topic_signature || '',
       title: article.title,
       excerpt: article.excerpt,
       slug: article.slug,

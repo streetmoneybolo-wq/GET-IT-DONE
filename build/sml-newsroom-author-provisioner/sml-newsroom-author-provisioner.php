@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Newsroom Author Provisioner
  * Description: Activation-only provisioning for 15 transparent StockMarketLoop specialist editorial desks.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -80,6 +80,31 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 				'sanitize_callback' => 'sanitize_key',
 				'auth_callback'     => static function () { return current_user_can( 'publish_posts' ); },
 			) );
+			register_post_meta( 'post', '_sml_content_kind', array(
+				'type' => 'string', 'single' => true, 'show_in_rest' => true,
+				'sanitize_callback' => 'sanitize_key',
+				'auth_callback' => static function () { return current_user_can( 'publish_posts' ); },
+			) );
+			register_post_meta( 'post', '_sml_topic_signature', array(
+				'type' => 'string', 'single' => true, 'show_in_rest' => true,
+				'sanitize_callback' => 'sanitize_text_field',
+				'auth_callback' => static function () { return current_user_can( 'publish_posts' ); },
+			) );
+		}
+
+		public static function assets() {
+			if ( is_admin() ) { return; }
+			wp_enqueue_style( 'sml-newsroom-identities', plugin_dir_url( __FILE__ ) . 'assets/newsroom-identities.css', array(), '1.2.0' );
+		}
+
+		public static function body_classes( $classes ) {
+			if ( is_singular( 'post' ) ) {
+				$desk = sanitize_key( (string) get_post_meta( get_queried_object_id(), '_sml_editorial_desk', true ) );
+				$kind = sanitize_key( (string) get_post_meta( get_queried_object_id(), '_sml_content_kind', true ) );
+				if ( $desk ) { $classes[] = 'sml-desk-' . $desk; }
+				if ( $kind ) { $classes[] = 'sml-content-' . $kind; }
+			}
+			return $classes;
 		}
 
 		private static function avatar_user( $id_or_email ) {
@@ -149,8 +174,25 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 			if ( $existing instanceof WP_Post ) {
 				return new WP_Error( 'sml_duplicate_article', 'A post with this slug already exists.', array( 'status' => 409, 'post_id' => $existing->ID ) );
 			}
+			$content_kind = sanitize_key( isset( $body['content_kind'] ) ? $body['content_kind'] : 'article' );
+			if ( ! in_array( $content_kind, array( 'article', 'short_post' ), true ) ) {
+				return new WP_Error( 'sml_newsroom_content_kind_invalid', 'Content kind must be article or short_post.', array( 'status' => 422 ) );
+			}
+			$topic_signature = sanitize_text_field( isset( $body['topic_signature'] ) ? $body['topic_signature'] : '' );
+			$lock_name = '';
+			if ( $topic_signature ) {
+				$lock_name = 'sml_newsroom_topic_lock_' . md5( strtolower( $topic_signature ) );
+				$locked_at = (int) get_option( $lock_name, 0 );
+				if ( $locked_at && $locked_at > time() - DAY_IN_SECONDS ) {
+					return new WP_Error( 'sml_newsroom_topic_locked', 'This stock and topic already has newsroom coverage today.', array( 'status' => 409 ) );
+				}
+				if ( ! $locked_at && ! add_option( $lock_name, time(), '', false ) ) {
+					return new WP_Error( 'sml_newsroom_topic_locked', 'This stock and topic is already being written.', array( 'status' => 409 ) );
+				}
+				if ( $locked_at ) { update_option( $lock_name, time(), false ); }
+			}
 			$content = self::sanitize_content( isset( $body['content'] ) ? $body['content'] : '' );
-			if ( is_wp_error( $content ) ) { return $content; }
+			if ( is_wp_error( $content ) ) { if ( $lock_name ) { delete_option( $lock_name ); } return $content; }
 			$post_id = wp_insert_post( wp_slash( array(
 				'post_type'      => 'post',
 				'post_status'    => 'publish',
@@ -161,10 +203,12 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 				'post_content'   => $content,
 				'post_mime_type' => '',
 			) ), true );
-			if ( is_wp_error( $post_id ) ) { return $post_id; }
+			if ( is_wp_error( $post_id ) ) { if ( $lock_name ) { delete_option( $lock_name ); } return $post_id; }
 			if ( ! empty( $body['featured_media'] ) ) { set_post_thumbnail( $post_id, absint( $body['featured_media'] ) ); }
 			$meta = isset( $body['meta'] ) && is_array( $body['meta'] ) ? $body['meta'] : array();
-			$allowed_meta = array( '_sml_pipeline_version', '_sml_source_url_hash', '_sml_source_url', '_sml_subtitle', '_sml_editorial_desk', 'rank_math_title', 'rank_math_description', 'rank_math_focus_keyword' );
+			$meta['_sml_content_kind'] = $content_kind;
+			$meta['_sml_topic_signature'] = $topic_signature;
+			$allowed_meta = array( '_sml_pipeline_version', '_sml_source_url_hash', '_sml_source_url', '_sml_subtitle', '_sml_editorial_desk', '_sml_content_kind', '_sml_topic_signature', 'rank_math_title', 'rank_math_description', 'rank_math_focus_keyword' );
 			foreach ( $allowed_meta as $key ) {
 				if ( isset( $meta[ $key ] ) ) { update_post_meta( $post_id, $key, sanitize_text_field( $meta[ $key ] ) ); }
 			}
@@ -175,7 +219,9 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 
 	register_activation_hook( __FILE__, array( 'SML_Newsroom_Author_Provisioner', 'activate' ) );
 	add_action( 'init', array( 'SML_Newsroom_Author_Provisioner', 'register_meta' ) );
+	add_action( 'wp_enqueue_scripts', array( 'SML_Newsroom_Author_Provisioner', 'assets' ) );
 	add_action( 'rest_api_init', array( 'SML_Newsroom_Author_Provisioner', 'register_routes' ) );
+	add_filter( 'body_class', array( 'SML_Newsroom_Author_Provisioner', 'body_classes' ) );
 	add_filter( 'get_avatar_data', array( 'SML_Newsroom_Author_Provisioner', 'avatar' ), 20, 2 );
 	add_action( 'admin_notices', array( 'SML_Newsroom_Author_Provisioner', 'notice' ) );
 }

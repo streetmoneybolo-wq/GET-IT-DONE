@@ -54,13 +54,13 @@ function createDatabase({ databaseUrl, databaseSsl }) {
     const result = await pool.query(
       `INSERT INTO news_article_jobs (
          source_url, source_url_hash, source_event_key, editorial_desk,
-         topic_fingerprint, market_snapshot, official_sources
-       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+         topic_fingerprint, subject_fingerprint, content_kind, market_snapshot, official_sources
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)
        ON CONFLICT DO NOTHING
        RETURNING id, status`,
       [
         job.sourceUrl, job.sourceUrlHash, job.sourceEventKey,
-        job.editorialDesk, job.topicFingerprint,
+        job.editorialDesk, job.topicFingerprint, job.subjectFingerprint, job.contentKind,
         JSON.stringify(job.marketSnapshot), JSON.stringify(job.officialSources || [])
       ]
     );
@@ -70,8 +70,9 @@ function createDatabase({ databaseUrl, databaseSsl }) {
         WHERE source_url_hash = $1
            OR ($2::text IS NOT NULL AND topic_fingerprint = $2)
            OR ($3::text IS NOT NULL AND source_event_key = $3)
+           OR ($4::text IS NOT NULL AND subject_fingerprint = $4)
         ORDER BY id LIMIT 1`,
-      [job.sourceUrlHash, job.topicFingerprint, job.sourceEventKey]
+      [job.sourceUrlHash, job.topicFingerprint, job.sourceEventKey, job.subjectFingerprint]
     );
     return { ...existing.rows[0], status: 'duplicate' };
   }

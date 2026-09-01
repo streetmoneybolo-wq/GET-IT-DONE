@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { classifyArticleTemplate, createArticleGenerator, validateAndSanitize } = require('./article-generator');
+const { classifyArticleTemplate, createArticleGenerator, validateAndSanitize, validateShortPost } = require('./article-generator');
 
 function article(overrides = {}) {
   const paragraphs = Array.from({ length: 100 }, (_, i) => `<p>Markets paragraph ${i} explains verified developments and relevant context for readers following this unfolding business report today.</p>`).join('');
@@ -136,4 +136,21 @@ test('renders verified Grandmaster-OBI coverage with the alert template, TOC, ch
   assert.match(output.body_html, /stock-chart\/\?symbol=CRE/);
   assert.doesNotMatch(output.body_html, /symbol=\$CRE/);
   assert.match(output.body_html, /class="sml-market-links"/);
+});
+
+test('short posts keep the desk identity and remain compact', () => {
+  const { deskForKey } = require('./editorial-desks');
+  const output = validateShortPost({
+    title: 'NVDA Earnings Guidance Resets the Immediate Debate',
+    text: 'NVDA reported updated guidance after the close. The verified release changed the near-term comparison investors are watching, while the market snapshot remains time-sensitive and does not guarantee the next move.',
+    slug: 'nvda-earnings-guidance-update',
+    focus_keyword: 'NVDA earnings guidance',
+    meta_description: 'NVDA earnings guidance changed the immediate market debate as investors reviewed the verified release, timing, and remaining uncertainty.',
+    tags: ['NVDA', 'Earnings'],
+    tickers: ['$NVDA']
+  }, 'https://investor.example.com/results', deskForKey('earnings'));
+  assert.equal(output.content_kind, 'short_post');
+  assert.match(output.body_html, /class="sml-newsroom-short"/);
+  assert.match(output.body_html, /data-editorial-desk="earnings"/);
+  assert.ok(output.word_count <= 140);
 });

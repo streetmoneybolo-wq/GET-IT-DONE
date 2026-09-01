@@ -20,7 +20,7 @@ function isPermanent(error) {
   ]).has(error && error.code);
 }
 
-function createNewsPipeline({ database, fetchSource, generateArticle, publisher, logger, workerId }) {
+function createNewsPipeline({ database, fetchSource, generateArticle, generateShortPost, publisher, logger, workerId }) {
   async function processJob(job) {
     try {
       const source = await fetchSource(job.source_url);
@@ -28,7 +28,10 @@ function createNewsPipeline({ database, fetchSource, generateArticle, publisher,
       source.marketSnapshot = job.market_snapshot || null;
       source.officialSources = job.official_sources || [];
       await database.saveNewsSource(job.id, source);
-      const article = job.generated_payload || await generateArticle(source);
+      const generator = job.content_kind === 'short_post' && generateShortPost ? generateShortPost : generateArticle;
+      const article = job.generated_payload || await generator(source);
+      article.content_kind = article.content_kind || job.content_kind || 'article';
+      article.topic_signature = article.topic_signature || job.subject_fingerprint || job.topic_fingerprint || '';
       if (!job.generated_payload) {
         const suffix = job.source_url_hash.slice(0, 8);
         const base = article.slug.slice(0, Math.max(1, 60 - suffix.length - 1)).replace(/-+$/, '');

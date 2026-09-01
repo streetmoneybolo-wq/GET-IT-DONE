@@ -29,6 +29,21 @@ const ARTICLE_SCHEMA = {
   }
 };
 
+const SHORT_POST_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'text', 'slug', 'focus_keyword', 'meta_description', 'tags', 'tickers'],
+  properties: {
+    title: { type: 'string', minLength: 12, maxLength: 100 },
+    text: { type: 'string', minLength: 80, maxLength: 900 },
+    slug: { type: 'string', pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', maxLength: 60 },
+    focus_keyword: { type: 'string', minLength: 2, maxLength: 80 },
+    meta_description: { type: 'string', minLength: 120, maxLength: 160 },
+    tags: { type: 'array', minItems: 2, maxItems: 6, items: { type: 'string', minLength: 1, maxLength: 50 } },
+    tickers: { type: 'array', maxItems: 5, items: { type: 'string', pattern: '^\\$[A-Z][A-Z0-9.-]{0,9}$' } }
+  }
+};
+
 const SYSTEM_INSTRUCTIONS = `You are the StockMarketLoop SML NEWS financial newsroom editor.
 Use one supplied source only as a factual reporting brief, then write a completely new, standalone news article about the same underlying topic. Build the story from scratch with an independent structure, a distinct narrative arc, fresh framing, and original language. Do not reuse sentences, imitate the source's sequence, or produce close paraphrases. Never copy long passages and never invent a fact, number, statistic, quote, date, ticker, company, person, example, expert view, causal claim, prediction, or conclusion. Attribute source-dependent claims to the supplied report. If the source is not financial news, cover its credible market, business, policy, or investor relevance without fabricating a stock connection.
 
@@ -62,6 +77,8 @@ function editorialInstructions(desk) {
 SPECIALIST EDITORIAL DESK:
 - Publish as ${desk.name}, a transparent StockMarketLoop automated market-data editorial desk, never as a fictional human.
 - Your exclusive beat is: ${desk.beat}.
+- Your distinct editorial personality is: ${desk.voice}.
+- Structure the reporting to match the ${desk.layout} identity while preserving semantic HTML and factual clarity.
 - Do not broaden the story into another desk's beat. If the verified brief does not support this beat, refuse rather than manufacture a connection.
 - This is an original data-led article, not a rewrite. Explain only the supplied verified market snapshot and official-source facts.
 - Every time-sensitive number must identify its as-of timestamp. Distinguish publication-time snapshots from live embeds that can change later.
@@ -245,6 +262,8 @@ function validateAndSanitize(article, sourceUrl, template = 'news', desk = null,
     image_description: ensureTickerPrefixes(article.image_description.trim(), tickers),
     editorial_desk: desk ? desk.key : 'sml-news',
     editorial_author_slug: desk ? desk.authorSlug : 'stockmarketloop',
+    editorial_layout: desk ? desk.layout : 'news',
+    content_kind: 'article',
     word_count: wordCount
   };
 }
@@ -304,8 +323,69 @@ function createArticleGenerator({ apiKey, model = 'gpt-5-mini', fetchImpl = fetc
   };
 }
 
+function validateShortPost(post, sourceUrl, desk) {
+  if (!post || typeof post !== 'object' || Array.isArray(post)) throw Object.assign(new Error('short post output is not an object'), { code: 'invalid_article_output' });
+  for (const key of SHORT_POST_SCHEMA.required) if (post[key] == null) throw Object.assign(new Error(`short post output is missing ${key}`), { code: 'invalid_article_output' });
+  const text = sanitizeHtml(String(post.text), { allowedTags: [], allowedAttributes: {} }).trim();
+  const words = text.split(/\s+/).filter(Boolean).length;
+  if (words < 25 || words > 140) throw Object.assign(new Error(`short post word count ${words} is outside 25-140`), { code: 'invalid_article_length' });
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(post.slug) || post.slug.length > 60) throw Object.assign(new Error('invalid short post slug'), { code: 'invalid_article_output' });
+  const tickers = [...new Set(post.tickers.map((ticker) => String(ticker).toUpperCase()).filter((ticker) => /^\$[A-Z][A-Z0-9.-]{0,9}$/.test(ticker)))];
+  const prefixed = ensureTickerPrefixes(text, tickers);
+  const source = `<a href="${escapeAttribute(sourceUrl)}" rel="noopener">source</a>`;
+  const body = `<article class="sml-newsroom-short" data-editorial-desk="${escapeAttribute(desk.key)}"><span class="sml-short-label">${escapeAttribute(desk.name)} · Market update</span><p>${prefixed}</p><p class="sml-short-source">Verified ${source} · Informational only, not financial advice.</p></article>${buildTrustBox('news', desk)}`;
+  return {
+    title: ensureTickerPrefixes(String(post.title).trim(), tickers),
+    subtitle: `${desk.name} short market update`,
+    excerpt: prefixed,
+    slug: post.slug,
+    body_html: body,
+    focus_keyword: String(post.focus_keyword).trim(),
+    meta_description: ensureTickerPrefixes(String(post.meta_description).trim(), tickers),
+    category: 'Market Updates',
+    tags: [...new Set(post.tags.map((tag) => ensureTickerPrefixes(String(tag).trim(), tickers)).filter(Boolean))],
+    tickers,
+    image_alt: `${tickers[0] || 'Market'} update from ${desk.name}`,
+    image_title: `${desk.name} market update`,
+    image_caption: `${desk.name} verified market update.`,
+    image_description: `A short verified market-data update published by ${desk.name}.`,
+    editorial_desk: desk.key,
+    editorial_author_slug: desk.authorSlug,
+    editorial_layout: desk.layout,
+    content_kind: 'short_post',
+    word_count: words
+  };
+}
+
+function createShortPostGenerator({ apiKey, model = 'gpt-5-mini', fetchImpl = fetch }) {
+  if (!apiKey) throw new Error('OPENAI_API_KEY is required for short post generation');
+  return async function generateShortPost(source) {
+    const desk = deskForKey(source.editorialDesk);
+    if (!desk) throw Object.assign(new Error('short post desk is not configured'), { code: 'invalid_article_output' });
+    const response = await fetchImpl('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model, store: false, reasoning: { effort: 'low' },
+        input: [
+          { role: 'system', content: [{ type: 'input_text', text: `Write one factual 25-140 word StockMarketLoop market update as ${desk.name}. Voice: ${desk.voice}. Use only supplied facts. Lead with the verified development and timestamp. No hype, predictions, investment advice, invented links, hashtags, or repeated filler. Return only the required JSON.` }] },
+          { role: 'user', content: [{ type: 'input_text', text: sourcePrompt(source, 'news') }] }
+        ],
+        text: { format: { type: 'json_schema', name: 'sml_news_short_post', strict: true, schema: SHORT_POST_SCHEMA } }
+      }),
+      signal: AbortSignal.timeout(60_000)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw Object.assign(new Error(`OpenAI request failed with HTTP ${response.status}`), { code: response.status === 429 ? 'openai_rate_limited' : 'openai_request_failed' });
+    let parsed;
+    try { parsed = JSON.parse(extractOutputText(payload)); } catch (cause) { throw Object.assign(new Error('OpenAI returned invalid short post JSON'), { code: 'invalid_article_output', cause }); }
+    return validateShortPost(parsed, source.sourceUrl, desk);
+  };
+}
+
 module.exports = {
   ARTICLE_SCHEMA,
+  SHORT_POST_SCHEMA,
   SYSTEM_INSTRUCTIONS,
   addHeadingIds,
   buildLiveChart,
@@ -314,10 +394,12 @@ module.exports = {
   buildToc,
   classifyArticleTemplate,
   createArticleGenerator,
+  createShortPostGenerator,
   editorialInstructions,
   extractOutputText,
   ensureTickerPrefixes,
   ensureTickerPrefixesHtml,
   sourcePrompt,
-  validateAndSanitize
+  validateAndSanitize,
+  validateShortPost
 };

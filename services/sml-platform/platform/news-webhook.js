@@ -74,6 +74,8 @@ function parseNewsRequest(rawBody) {
       sourceEventKey,
       editorialDesk: assignment && assignment.desk.key,
       topicFingerprint: assignment && assignment.fingerprint,
+      subjectFingerprint: assignment && assignment.subjectFingerprint,
+      contentKind: assignment && assignment.contentKind,
       marketSnapshot,
       officialSources
     }
