@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Newsroom Author Provisioner
  * Description: Activation-only provisioning for 15 transparent StockMarketLoop specialist editorial desks.
- * Version: 1.2.0
+ * Version: 1.2.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -94,7 +94,7 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 
 		public static function assets() {
 			if ( is_admin() ) { return; }
-			wp_enqueue_style( 'sml-newsroom-identities', plugin_dir_url( __FILE__ ) . 'assets/newsroom-identities.css', array(), '1.2.0' );
+			wp_enqueue_style( 'sml-newsroom-identities', plugin_dir_url( __FILE__ ) . 'assets/newsroom-identities.css', array(), '1.2.1' );
 		}
 
 		public static function body_classes( $classes ) {
@@ -137,6 +137,16 @@ if ( ! class_exists( 'SML_Newsroom_Author_Provisioner' ) ) {
 				'permission_callback' => array( __CLASS__, 'can_publish' ),
 				'callback'            => array( __CLASS__, 'publish' ),
 			) );
+			register_rest_route( 'sml-newsroom/v1', '/authors', array(
+				'methods'             => WP_REST_Server::READABLE,
+				'permission_callback' => array( __CLASS__, 'can_publish' ),
+				'callback'            => array( __CLASS__, 'authors' ),
+			) );
+		}
+
+		public static function authors() {
+			$ids = get_option( self::OPTION, array() );
+			return rest_ensure_response( array( 'authors' => $ids, 'count' => count( $ids ) ) );
 		}
 
 		public static function can_publish() {

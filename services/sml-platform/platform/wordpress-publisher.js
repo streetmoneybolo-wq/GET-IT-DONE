@@ -21,6 +21,7 @@ function createWordPressPublisher(config, options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
   const mediaFetcher = options.mediaFetcher || fetchPublicBuffer;
   let verifiedIdentity = null;
+  let resolvedEditorialAuthors = null;
 
   async function requestUrl(url, init = {}) {
     const response = await fetchImpl(url, {
@@ -65,7 +66,14 @@ function createWordPressPublisher(config, options = {}) {
   async function authorFor(article) {
     const desk = String(article.editorial_desk || 'sml-news');
     if (desk === 'sml-news') return (await verifyIdentity()).id;
-    const id = Number(config.wordpressEditorialAuthors && config.wordpressEditorialAuthors[desk]);
+    if (!resolvedEditorialAuthors) {
+      resolvedEditorialAuthors = config.wordpressEditorialAuthors || {};
+      if (!Number(resolvedEditorialAuthors[desk])) {
+        const response = await requestUrl(`${siteUrl}/wp-json/sml-newsroom/v1/authors`);
+        resolvedEditorialAuthors = response && response.authors || {};
+      }
+    }
+    const id = Number(resolvedEditorialAuthors[desk]);
     if (!Number.isInteger(id) || id < 1) {
       const error = new Error(`WordPress author is not configured for editorial desk ${desk}`);
       error.code = 'wordpress_author_not_configured';
