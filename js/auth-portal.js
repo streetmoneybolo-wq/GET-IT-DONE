@@ -1,201 +1,432 @@
 /* ===========================================================================
- * SML Auth Portal reskin  —  js/auth-portal.js
- * Loaded on /register/ (staged behind ?authv2=1) by wpcode/auth-portal-loader.php.
+ * SML Auth Portal reskin  —  js/auth-portal.js   (design: "The Market Is Live")
+ * Loaded on /register/ by the auth-portal loader (WPCode). Always-on for
+ * logged-out visitors; the server-side loader also injects the prepaint guard
+ * and the #sml-auth-portal takeover style.
  *
- * PURE FRONT-END RESKIN. It does NOT touch authentication: the hardened
- * sml-members/v1 flow (register / login / verify / handle-availability / oauth)
- * and its own inline auth JS + the anti-bot /__challenge handshake keep running
- * exactly as before. This script only:
- *   1. paints the new marketing landing (design markup, verbatim copy),
- *   2. RELOCATES the existing, live .sml-auth-card (the real form — with the
- *      required handle field, the email-verify step, and Google/Facebook) out of
- *      its modal and into the hero, so the same hardened form shows inline,
- *   3. hides the old guest landing + the now-empty modal shell,
- *   4. wires the NEW landing-only widgets (persona tabs, scroll-to-form).
- *
- * If there is no .sml-auth-card (e.g. already signed in), it does nothing and
- * leaves the original page as-is. Idempotent. Kill switch = deactivate the
- * loader snippet, or drop ?authv2=1.
+ * PURE FRONT-END RESKIN — authentication is untouched. It paints the approved
+ * marketing landing and RELOCATES the live, hardened .sml-auth-card (register /
+ * login / verify / handle / Google / Facebook) into the hero, swapping out the
+ * phone-mockup column. If there is no .sml-auth-card (already signed in) it does
+ * nothing. Idempotent.
  * ======================================================================== */
 (function () {
   "use strict";
   if (window.__smlAuthPortalV2) { return; }
   window.__smlAuthPortalV2 = 1;
 
-  var scriptSrc = document.currentScript && document.currentScript.src ? document.currentScript.src : "";
-  var assetBase = scriptSrc ? new URL("../", scriptSrc).href : "https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/";
+  var LANDING = `<div id="sml-auth-portal" class="sml-auth-marketing"><div class="sc-host" data-sc-name="reference-signup"><div data-dc-tpl="5" style="position: relative; isolation: isolate; overflow: hidden; background: radial-gradient(circle at 20% 10%, rgba(22, 161, 93, 0.16), transparent 34rem), radial-gradient(circle at 92% 34%, rgba(36, 120, 255, 0.07), transparent 30rem), rgb(3, 7, 11); color: rgb(244, 248, 251); font-family: Inter, ui-sans-serif, system-ui, sans-serif; line-height: 1.55; min-height: 100vh;">
+  <div data-dc-tpl="6" style="position: absolute; inset: 0px; z-index: 0; pointer-events: none; background-image: linear-gradient(rgba(57, 240, 141, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(57, 240, 141, 0.03) 1px, transparent 1px); background-size: 56px 56px; mask-image: linear-gradient(rgb(0, 0, 0), transparent 88%);"></div>
 
-  var LANDING = `<main class="sml-auth" id="sml-auth-portal">
-		<div class="sml-auth-tape" aria-label="Stock Market Loop features">
-			<div><span>LIVE MARKETS</span><span>TRADINGFLOOR</span><span>GROUPS</span><span>MARKET Q&amp;A</span><span>LOOP LETTERS</span><span>LIVE VIDEO</span><span>CREATOR REVENUE</span><span>LOOP BUCKS</span></div>
-		</div>
-		<section class="sml-auth-hero">
-			<div class="sml-auth-story">
-				<p class="sml-auth-eyebrow"><i></i> THE FINANCIAL SOCIAL NETWORK</p>
-				<h1>The stock market community that <em>rewards participation.</em></h1>
-				<p class="sml-auth-lede">Connect with traders. Build an audience. Publish market content. Grow a community—all through one account built for the market.</p>
-				<div class="sml-auth-proof" aria-label="Platform highlights">
-					<span>Real-time market conversations</span><span>Creator-owned communities</span><span>Searchable market knowledge</span>
-				</div>
-				<!--LITE_VISUAL-->
-			</div>
+  <header data-dc-tpl="7" style="position: sticky; top: 0px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 12px clamp(20px, 3vw, 40px); border-bottom: 1px solid rgba(74, 255, 160, 0.12); background: rgba(3, 7, 11, 0.82); backdrop-filter: blur(14px);">
+    <img data-dc-tpl="8" src="blob:http://127.0.0.1:8795/e8d388bf-41b4-4cb9-854c-5a2a40a33935" alt="Stock Market Loop" style="display: block; height: clamp(34px, 3.4vw, 46px); width: auto;">
+    <div data-dc-tpl="9" style="display: flex; align-items: center; gap: 10px;">
+      <a data-dc-tpl="10" href="#" style="display: none; align-items: center; min-height: 42px; padding: 0px 18px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 11px; color: rgb(219, 230, 238); font-size: 14px; font-weight: 800;">Sign In</a>
+      <a data-dc-tpl="11" href="#" style="display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 0px 20px; border-radius: 11px; background: linear-gradient(135deg, rgb(54, 240, 141), rgb(15, 190, 102)); color: rgb(4, 20, 11); font-size: 14px; font-weight: 900; box-shadow: rgba(15, 190, 102, 0.28) 0px 8px 22px;">Create Account <span data-dc-tpl="12">→</span></a>
+    </div>
+  </header>
 
-			<!--CARD_SLOT-->
-		</section>
+  <section data-dc-tpl="13" style="position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0px, 1.15fr) minmax(300px, 0.72fr); gap: clamp(32px, 4.5vw, 72px); align-items: center; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(40px, 5vw, 72px) 0px clamp(48px, 6vw, 72px);">
+    <div data-dc-tpl="14">
+      <p data-dc-tpl="15" style="display: inline-flex; align-items: center; gap: 9px; margin: 0px 0px 20px; padding: 8px 16px 8px 12px; border: 1px solid rgba(255, 200, 87, 0.3); border-radius: 999px; background: rgba(255, 200, 87, 0.06); color: rgb(255, 200, 87); font: 800 12px / 1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.12em; text-transform: uppercase;">🏆 <span data-dc-tpl="16" style="color: rgb(244, 248, 251);">#1 Social Platform for Finance</span></p>
+      <h1 data-dc-tpl="17" style="margin: 0px; font-size: clamp(40px, 5.6vw, 82px); line-height: 0.98; letter-spacing: -0.05em; font-weight: 800;">The Market Is Live.<span data-dc-tpl="18" style="display: block; color: rgb(54, 240, 141); text-shadow: rgba(54, 240, 141, 0.25) 0px 0px 38px;">Your Platform Should Be Too.</span></h1>
+      <p data-dc-tpl="19" style="max-width: 660px; margin: 26px 0px 0px; color: rgb(198, 212, 223); font-size: clamp(19px, 1.8vw, 24px); font-weight: 500;">Stock Market Loop is the finance-first creator and community platform built for the way markets actually move—live.</p>
+      <p data-dc-tpl="20" style="max-width: 660px; margin: 18px 0px 0px; color: rgb(164, 180, 193); font-size: 17px;">Stream market coverage. Share your screen. Publish videos, articles and Loop Letters. Build a paid trading community. Connect every conversation to the stocks your audience follows—and keep 80% of eligible advertising revenue generated by your content.</p>
+      <div data-dc-tpl="21" style="display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0px 0px;">
+        <a data-dc-tpl="22" href="#" style="display: inline-flex; align-items: center; gap: 8px; min-height: 54px; padding: 0px 26px; border: 0px; border-radius: 13px; background: linear-gradient(135deg, rgb(54, 240, 141), rgb(15, 190, 102)); color: rgb(4, 20, 11); font-size: 16px; font-weight: 900; box-shadow: rgba(15, 190, 102, 0.32) 0px 12px 34px;">Create Your Free Account <span data-dc-tpl="23">→</span></a>
+        <a data-dc-tpl="24" href="#" style="display: inline-flex; align-items: center; min-height: 54px; padding: 0px 26px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 13px; background: rgba(255, 255, 255, 0.02); color: rgb(219, 230, 238); font-size: 16px; font-weight: 800;">Sign In</a>
+      </div>
+    </div>
+    <div data-dc-tpl="25" style="position: relative; display: flex; justify-content: center; align-items: center; justify-self: center; perspective: 1600px;">
+      <div data-dc-tpl="26" style="position: absolute; width: 82%; height: 74%; border-radius: 50%; background: radial-gradient(circle, rgba(54, 240, 141, 0.3), transparent 68%); filter: blur(34px); z-index: 0;"></div>
+      <div data-dc-tpl="27" style="position: relative; z-index: 1; width: min(322px, 84vw); border-radius: 52px; padding: 12px; background: linear-gradient(135deg, rgb(58, 66, 74) 0%, rgb(12, 16, 20) 26%, rgb(5, 8, 11) 55%, rgb(20, 26, 31) 78%, rgb(44, 52, 59) 100%); box-shadow: rgba(0, 0, 0, 0.72) -32px 46px 90px, rgba(0, 0, 0, 0.6) 0px 10px 30px, rgba(255, 255, 255, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.55) 0px 0px 0px 2px inset; transform: rotateY(-13deg) rotateX(3deg) rotate(-1deg); transform-origin: center center;">
+        <div data-dc-tpl="28" style="position: absolute; left: -3px; top: 120px; width: 3px; height: 34px; border-radius: 3px 0px 0px 3px; background: linear-gradient(rgb(64, 71, 78), rgb(34, 40, 45));"></div>
+        <div data-dc-tpl="29" style="position: absolute; left: -3px; top: 172px; width: 3px; height: 58px; border-radius: 3px 0px 0px 3px; background: linear-gradient(rgb(64, 71, 78), rgb(34, 40, 45));"></div>
+        <div data-dc-tpl="30" style="position: absolute; right: -3px; top: 150px; width: 3px; height: 76px; border-radius: 0px 3px 3px 0px; background: linear-gradient(rgb(64, 71, 78), rgb(34, 40, 45));"></div>
+        <div data-dc-tpl="31" style="position: relative; border-radius: 42px; overflow: hidden; background: rgb(4, 9, 13); box-shadow: rgb(0, 0, 0) 0px 0px 0px 2px inset;">
+          <div data-dc-tpl="32" style="position: absolute; inset: 0px; z-index: 9; pointer-events: none; border-radius: 42px; background: linear-gradient(118deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 16%, transparent 34%, transparent 66%, rgba(255, 255, 255, 0.02) 84%, rgba(255, 255, 255, 0.07) 100%);"></div>
 
-		<section class="sml-auth-one-account">
-			<p class="sml-auth-eyebrow">ONE ACCOUNT. EVERY PART OF YOUR MARKET JOURNEY.</p>
-			<h2>Choose what you want to build.</h2>
-			<div class="sml-auth-personas" role="tablist" aria-label="Reasons to join">
-									<button type="button" role="tab" aria-selected="true" data-persona="trader">Traders &amp; investors</button>
-									<button type="button" role="tab" aria-selected="false" data-persona="community">Community owners</button>
-									<button type="button" role="tab" aria-selected="false" data-persona="creator">Market creators</button>
-									<button type="button" role="tab" aria-selected="false" data-persona="journalist">Newsletters &amp; journalists</button>
-									<button type="button" role="tab" aria-selected="false" data-persona="qa">Market Q&amp;A contributors</button>
-							</div>
-							<article class="sml-auth-persona-copy" data-persona-panel="trader" >
-					<h3>Traders &amp; investors</h3><p>Follow tickers, discuss price action, build watchlists, and keep charts, news, filings, alerts, and market conversations together.</p><button type="button" data-scroll-register>Create your account →</button>
-				</article>
-							<article class="sml-auth-persona-copy" data-persona-panel="community" hidden>
-					<h3>Community owners</h3><p>Create branded groups, channels, roles, memberships, live sessions, and connected Discord or Telegram distribution.</p><button type="button" data-scroll-register>Create your account →</button>
-				</article>
-							<article class="sml-auth-persona-copy" data-persona-panel="creator" hidden>
-					<h3>Market creators</h3><p>Publish analysis, stream live, upload replays, build followers, offer memberships, and organize every part of your creator brand.</p><button type="button" data-scroll-register>Create your account →</button>
-				</article>
-							<article class="sml-auth-persona-copy" data-persona-panel="journalist" hidden>
-					<h3>Newsletters &amp; journalists</h3><p>Launch a Loop Letter, publish searchable reporting, connect coverage to tickers, and grow subscribers inside the market conversation.</p><button type="button" data-scroll-register>Create your account →</button>
-				</article>
-							<article class="sml-auth-persona-copy" data-persona-panel="qa" hidden>
-					<h3>Market Q&amp;A contributors</h3><p>Ask durable finance questions, share useful answers, build subject authority, and continue discussions through groups and live content.</p><button type="button" data-scroll-register>Create your account →</button>
-				</article>
-					</section>
+          <div data-dc-tpl="33" style="position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0px 26px 0px 24px;">
+            <span data-dc-tpl="34" style="font-size: 14px; font-weight: 800; color: rgb(244, 248, 251); letter-spacing: 0.02em;">9:41</span>
+            <div data-dc-tpl="35" style="position: absolute; left: 50%; top: 9px; transform: translateX(-50%); width: 88px; height: 26px; border-radius: 16px; background: rgb(0, 0, 0);"></div>
+            <div data-dc-tpl="36" style="display: flex; align-items: center; gap: 6px;">
+              <svg data-dc-tpl="37" width="17" height="12" viewBox="0 0 17 12"><rect data-dc-tpl="38" x="0" y="8" width="3" height="4" rx="1" fill="#f4f8fb"></rect><rect data-dc-tpl="39" x="4.5" y="5.5" width="3" height="6.5" rx="1" fill="#f4f8fb"></rect><rect data-dc-tpl="40" x="9" y="3" width="3" height="9" rx="1" fill="#f4f8fb"></rect><rect data-dc-tpl="41" x="13.5" y="0.5" width="3" height="11.5" rx="1" fill="#f4f8fb"></rect></svg>
+              <svg data-dc-tpl="42" width="16" height="12" viewBox="0 0 16 12"><path data-dc-tpl="43" d="M8 11.2 1 4.4a10 10 0 0 1 14 0Z" fill="none" stroke="#f4f8fb" stroke-width="1.4"></path><circle data-dc-tpl="44" cx="8" cy="9.6" r="1.4" fill="#f4f8fb"></circle></svg>
+              <svg data-dc-tpl="45" width="26" height="12" viewBox="0 0 26 12"><rect data-dc-tpl="46" x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="rgba(255,255,255,.5)"></rect><rect data-dc-tpl="47" x="2" y="2" width="17" height="8" rx="1.5" fill="#36f08d"></rect><rect data-dc-tpl="48" x="23" y="3.5" width="2" height="5" rx="1" fill="rgba(255,255,255,.5)"></rect></svg>
+            </div>
+          </div>
 
-		<section class="sml-auth-capabilities">
-			<header><p class="sml-auth-eyebrow">WHY STOCK MARKET LOOP</p><h2>Stop splitting your market life across disconnected platforms.</h2></header>
-			<div class="sml-auth-feature-grid">
-				<article class="sml-auth-feature"><span aria-hidden="true">⌁</span><div><h3>Ticker-first conversations</h3><p>Follow stocks and market events instead of sorting through unrelated social noise.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">⌁</span><div><h3>TradingFloor</h3><p>Bring interactive charts, market data, alerts, news, and trader discussion onto one ticker destination.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">◎</span><div><h3>Groups you can own</h3><p>Build branded public or private communities with channels, roles, permissions, and memberships.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">◉</span><div><h3>Live and replayable video</h3><p>Schedule live broadcasts, talk with viewers, upload videos, and keep permanent replay pages.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">✎</span><div><h3>Loop Letters</h3><p>Publish a branded newsletter where readers already follow and discuss the market.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">?</span><div><h3>Durable market Q&amp;A</h3><p>Build searchable financial knowledge and subject authority beyond a disappearing chat timeline.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">↗</span><div><h3>Cross-platform distribution</h3><p>Connect eligible Stock Market Loop activity with Discord and Telegram workflows.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">◇</span><div><h3>Creator identity</h3><p>Unify articles, newsletters, videos, groups, alerts, followers, and live sessions on one profile.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">★</span><div><h3>Creator opportunities</h3><p>Eligible creators and community owners can participate in supported subscription, reward, and advertising programs.</p></div></article><article class="sml-auth-feature"><span aria-hidden="true">∞</span><div><h3>Permanent content URLs</h3><p>Give market reporting, videos, questions, and streams shareable destinations that can remain discoverable.</p></div></article>			</div>
-		</section>
+          <div data-dc-tpl="49" style="position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 6px 18px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+            <div data-dc-tpl="50" style="display: flex; align-items: center; gap: 9px;"><span data-dc-tpl="51" style="color: rgb(127, 146, 161); font-size: 18px;">‹</span><img data-dc-tpl="52" src="blob:http://127.0.0.1:8795/e8d388bf-41b4-4cb9-854c-5a2a40a33935" alt="Stock Market Loop" style="display: block; height: 20px; width: auto;"></div>
+            <span data-dc-tpl="53" style="padding: 4px 9px; border-radius: 8px; background: rgba(54, 240, 141, 0.14); color: rgb(54, 240, 141); font-size: 10px; font-weight: 800; letter-spacing: 0.04em;">CREATOR STUDIO</span>
+          </div>
+          <div data-dc-tpl="54" style="position: relative; z-index: 2; display: flex; gap: 16px; padding: 10px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 12px; font-weight: 700;">
+            <span data-dc-tpl="55" style="color: rgb(54, 240, 141); padding-bottom: 6px; box-shadow: rgb(54, 240, 141) 0px -2px 0px inset;">Overview</span><span data-dc-tpl="56" style="color: rgb(127, 146, 161);">Audience</span><span data-dc-tpl="57" style="color: rgb(127, 146, 161);">Content</span><span data-dc-tpl="58" style="color: rgb(127, 146, 161);">Payouts</span>
+          </div>
 
-		<section class="sml-auth-audiences">
-			<header><p class="sml-auth-eyebrow">BUILT FOR EVERY SIDE OF THE MARKET CONVERSATION</p><h2>See exactly what your account can unlock.</h2><p>Explore the path that fits you now. Your account can grow into every other path later.</p></header>
-			<div class="sml-auth-audience-grid">
-				<details open><summary><span>01</span><strong>Traders &amp; investors</strong><i>+</i></summary><ul>
-					<li>Follow the tickers and market topics you care about.</li><li>Discuss price action beside relevant market data.</li><li>Find unusual activity, breaking developments, filings, and community insight.</li><li>Join public or private trading communities.</li><li>Build watchlists and discover ticker-specific conversations.</li><li>Ask questions and learn from experienced market participants.</li><li>Follow creators without losing alerts inside a general-purpose feed.</li><li>Reach live streams, replays, articles, and newsletters from one account.</li>
-				</ul></details>
-				<details><summary><span>02</span><strong>Trading-community owners</strong><i>+</i></summary><ul>
-					<li>Create branded groups with dedicated channels.</li><li>Offer free or paid membership access.</li><li>Manage roles, permissions, and private conversations.</li><li>Connect eligible Discord and Telegram community workflows.</li><li>Route supported alerts between your group and connected platforms.</li><li>Schedule live sessions and maintain permanent replay pages.</li><li>Publish announcements, alerts, education, and community updates.</li><li>Build a discoverable presence beyond a closed chat server.</li><li>Participate in supported subscriptions, gifts, content, and eligible advertising programs.</li><li>Keep your brand, content, followers, and monetization connected.</li>
-				</ul></details>
-				<details><summary><span>03</span><strong>Market creators &amp; influencers</strong><i>+</i></summary><ul>
-					<li>Publish market updates, ticker analysis, education, and breaking-news commentary.</li><li>Host live shows and preserve broadcasts for later viewing.</li><li>Upload videos with unique, shareable URLs.</li><li>Build followers through a unified creator profile.</li><li>Promote groups, newsletters, videos, and streams from one destination.</li><li>Engage through comments, reactions, shares, Q&amp;A, and discussions.</li><li>Create paid memberships and subscriber-only experiences where supported.</li><li>Earn Loop Bucks and participate in eligible creator-revenue programs.</li><li>Reach people searching for specific stocks beyond an algorithmic feed.</li>
-				</ul></details>
-				<details><summary><span>04</span><strong>Newsletter writers &amp; journalists</strong><i>+</i></summary><ul>
-					<li>Launch a branded Loop Letter publication.</li><li>Customize your publication identity, imagery, and typography.</li><li>Publish SEO-ready articles with titles, subtitles, metadata, and permanent URLs.</li><li>Connect stories to relevant tickers, charts, filings, and related coverage.</li><li>Grow subscribers from an audience already following the market.</li><li>Turn reporting into live discussions and Q&amp;A.</li><li>Distribute supported content through connected social channels.</li><li>Build a searchable reporting archive.</li><li>Establish clear attribution through a dedicated author profile.</li><li>Monetize without separating the publication from its community.</li>
-				</ul></details>
-				<details><summary><span>05</span><strong>Market Q&amp;A contributors</strong><i>+</i></summary><ul>
-					<li>Ask about stocks, options, terminology, market mechanics, and investing.</li><li>Give detailed answers and build subject authority.</li><li>Follow questions and topics that match your experience.</li><li>Connect explanations to ticker pages and current market information.</li><li>Build a searchable public profile around your expertise.</li><li>Continue discussions through groups, articles, newsletters, and live broadcasts.</li><li>Earn recognition and available platform rewards for useful participation.</li><li>Keep finance questions from being buried among unrelated topics.</li>
-				</ul></details>
-			</div>
-		</section>
+          <div data-dc-tpl="59" style="position: relative; z-index: 2; padding: 16px 16px 6px;">
+            <div data-dc-tpl="60" style="display: flex; align-items: center; justify-content: space-between;"><span data-dc-tpl="61" style="font-size: 11px; color: rgb(140, 160, 178); font-weight: 700; letter-spacing: 0.04em;">AD REVENUE · AUGUST</span><span data-dc-tpl="62" style="font-size: 10px; color: rgb(140, 160, 178);">Your 80% share</span></div>
+            <div data-dc-tpl="63" style="display: flex; align-items: flex-end; gap: 9px; margin-top: 4px;"><span data-dc-tpl="64" style="font-size: 34px; font-weight: 900; letter-spacing: -0.03em; color: rgb(244, 248, 251);">$78,412<span data-dc-tpl="65" style="font-size: 20px; color: rgb(159, 178, 194);">.65</span></span></div>
+            <div data-dc-tpl="66" style="display: flex; align-items: center; gap: 8px; margin-top: 5px;"><span data-dc-tpl="67" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 7px; background: rgba(54, 240, 141, 0.14); color: rgb(54, 240, 141); font-size: 11px; font-weight: 800;">▲ 23.4%</span><span data-dc-tpl="68" style="color: rgb(140, 160, 178); font-size: 11px;">vs. July</span></div>
+            <svg data-dc-tpl="69" viewBox="0 0 280 82" preserveAspectRatio="none" style="display: block; width: 100%; height: 74px; margin-top: 10px;">
+              <defs data-dc-tpl="70"><linearGradient data-dc-tpl="71" id="rg" x1="0" y1="0" x2="0" y2="1"><stop data-dc-tpl="72" offset="0" stop-color="rgba(54,240,141,.4)"></stop><stop data-dc-tpl="73" offset="1" stop-color="rgba(54,240,141,0)"></stop></linearGradient></defs>
+              <polygon data-dc-tpl="74" points="0,64 20,60 40,63 62,52 84,55 106,44 128,47 150,38 172,40 194,28 216,31 238,20 260,15 280,6 280,82 0,82" fill="url(#rg)"></polygon>
+              <polyline data-dc-tpl="75" points="0,64 20,60 40,63 62,52 84,55 106,44 128,47 150,38 172,40 194,28 216,31 238,20 260,15 280,6" fill="none" stroke="#36f08d" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            </svg>
+          </div>
 
-		<section class="sml-auth-final">
-			<div><p class="sml-auth-eyebrow">THE MARKET NEVER STOPS. NEITHER SHOULD YOUR NETWORK.</p><h2>Trade. Teach. Publish. Stream. Build.</h2><p>Connect what you know with the people looking for it.</p></div>
-			<button class="sml-auth-primary" type="button" data-scroll-register>Create your free account <span>→</span></button>
-		</section>
-	</main>`;
+          <div data-dc-tpl="76" style="position: relative; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 16px;">
+            
+              <div data-dc-tpl="78" style="padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; background: rgba(8, 17, 24, 0.6);"><div data-dc-tpl="79" style="font-size: 16px; font-weight: 900; color: rgb(231, 238, 244); letter-spacing: -0.01em;"><span class="sc-interp">4.2M</span></div><div data-dc-tpl="80" style="font-size: 10px; color: rgb(140, 160, 178); font-weight: 600; margin-top: 1px;"><span class="sc-interp">Impressions</span></div></div>
+            
+              <div data-dc-tpl="78" style="padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; background: rgba(8, 17, 24, 0.6);"><div data-dc-tpl="79" style="font-size: 16px; font-weight: 900; color: rgb(231, 238, 244); letter-spacing: -0.01em;"><span class="sc-interp">61.5K hrs</span></div><div data-dc-tpl="80" style="font-size: 10px; color: rgb(140, 160, 178); font-weight: 600; margin-top: 1px;"><span class="sc-interp">Watch time</span></div></div>
+            
+              <div data-dc-tpl="78" style="padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; background: rgba(8, 17, 24, 0.6);"><div data-dc-tpl="79" style="font-size: 16px; font-weight: 900; color: rgb(231, 238, 244); letter-spacing: -0.01em;"><span class="sc-interp">$3.41</span></div><div data-dc-tpl="80" style="font-size: 10px; color: rgb(140, 160, 178); font-weight: 600; margin-top: 1px;"><span class="sc-interp">Avg. RPM</span></div></div>
+            
+              <div data-dc-tpl="78" style="padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; background: rgba(8, 17, 24, 0.6);"><div data-dc-tpl="79" style="font-size: 16px; font-weight: 900; color: rgb(231, 238, 244); letter-spacing: -0.01em;"><span class="sc-interp">+12,847</span></div><div data-dc-tpl="80" style="font-size: 10px; color: rgb(140, 160, 178); font-weight: 600; margin-top: 1px;"><span class="sc-interp">New followers</span></div></div>
+            
+          </div>
+
+          <div data-dc-tpl="81" style="position: relative; z-index: 2; margin: 8px 16px 0px; padding: 12px 14px; border: 1px solid rgba(54, 240, 141, 0.22); border-radius: 13px; background: rgba(54, 240, 141, 0.06); display: flex; align-items: center; justify-content: space-between;">
+            <div data-dc-tpl="82"><div data-dc-tpl="83" style="font-size: 10px; color: rgb(140, 160, 178); font-weight: 700; letter-spacing: 0.03em;">NEXT PAYOUT · AUG 31</div><div data-dc-tpl="84" style="font-size: 15px; font-weight: 900; color: rgb(54, 240, 141);">$78,412.65</div></div>
+            <span data-dc-tpl="85" style="display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: 9px; background: rgb(54, 240, 141); color: rgb(4, 20, 11); font-size: 11px; font-weight: 900;">✓ Verified</span>
+          </div>
+
+          <div data-dc-tpl="86" style="position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 12px 22px 16px; margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.06); background: rgba(4, 9, 13, 0.6);">
+            <span data-dc-tpl="87" style="color: rgb(54, 240, 141); font-size: 10px; font-weight: 700; text-align: center;">⌂<br data-dc-tpl="88">Home</span>
+            <span data-dc-tpl="89" style="color: rgb(127, 146, 161); font-size: 10px; font-weight: 600; text-align: center;">⌕<br data-dc-tpl="90">Discover</span>
+            <span data-dc-tpl="91" style="display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, rgb(54, 240, 141), rgb(15, 190, 102)); color: rgb(4, 20, 11); font-size: 21px; font-weight: 800; margin-top: -6px; box-shadow: rgba(15, 190, 102, 0.4) 0px 8px 20px;">+</span>
+            <span data-dc-tpl="92" style="color: rgb(54, 240, 141); font-size: 10px; font-weight: 700; text-align: center;">▣<br data-dc-tpl="93">Studio</span>
+            <span data-dc-tpl="94" style="color: rgb(127, 146, 161); font-size: 10px; font-weight: 600; text-align: center;">◍<br data-dc-tpl="95">Profile</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-dc-tpl="96" style="position: relative; z-index: 1; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(40px, 5vw, 72px) 0px;">
+    <p data-dc-tpl="97" style="margin: 0px 0px 14px; color: rgb(54, 240, 141); font: 800 12px / 1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase;">Stock Market Loop: 80% to creators</p>
+    <h2 data-dc-tpl="98" style="margin: 0px 0px 32px; font-size: clamp(30px, 3.8vw, 54px); line-height: 1.03; letter-spacing: -0.04em; font-weight: 800;">Keep More of the Value You Create</h2>
+    <div data-dc-tpl="99" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 22px; background: linear-gradient(155deg, rgba(15, 27, 37, 0.9), rgba(5, 12, 18, 0.96)); overflow: hidden;">
+      <div data-dc-tpl="100" style="display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 18px clamp(20px, 2.4vw, 30px); border-bottom: 1px solid rgba(255, 255, 255, 0.07); color: rgb(140, 160, 178); font: 800 12px / 1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;"><span data-dc-tpl="101">Platform</span><span data-dc-tpl="102">Creator advertising share</span></div>
+      
+        <div data-dc-tpl="104" style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 18px clamp(20px, 2.4vw, 30px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); background: rgba(54, 240, 141, 0.05);">
+          <div data-dc-tpl="105" style="display: flex; align-items: center; gap: 12px; min-width: 0px;"><span data-dc-tpl="106" style="width: 9px; height: 9px; border-radius: 50%; background: rgb(54, 240, 141); box-shadow: rgb(54, 240, 141) 0px 0px 12px;"></span><span data-dc-tpl="107" style="font-size: 16px; font-weight: 700; color: rgb(231, 238, 244);"><span class="sc-interp">Stock Market Loop</span></span></div>
+          <div data-dc-tpl="108" style="display: flex; align-items: center; gap: 16px;">
+            <div data-dc-tpl="109" style="width: clamp(120px, 26vw, 320px); height: 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden;"><div data-dc-tpl="110" style="height: 100%; width: 80%; border-radius: 999px; animation: 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 0s 1 normal none running sml-grow; background: linear-gradient(90deg, rgb(15, 190, 102), rgb(54, 240, 141));"></div></div>
+            <span data-dc-tpl="111" style="min-width: 210px; text-align: right; font-size: 14px; font-weight: 800; color: rgb(54, 240, 141);"><span class="sc-interp">80% creator / 20% platform</span></span>
+          </div>
+        </div>
+      
+        <div data-dc-tpl="104" style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 18px clamp(20px, 2.4vw, 30px); border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+          <div data-dc-tpl="105" style="display: flex; align-items: center; gap: 12px; min-width: 0px;"><span data-dc-tpl="106" style="width: 9px; height: 9px; border-radius: 50%; background: rgb(74, 91, 106);"></span><span data-dc-tpl="107" style="font-size: 16px; font-weight: 700; color: rgb(231, 238, 244);"><span class="sc-interp">Rumble</span></span></div>
+          <div data-dc-tpl="108" style="display: flex; align-items: center; gap: 16px;">
+            <div data-dc-tpl="109" style="width: clamp(120px, 26vw, 320px); height: 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden;"><div data-dc-tpl="110" style="height: 100%; width: 60%; border-radius: 999px; animation: 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 0s 1 normal none running sml-grow; background: linear-gradient(90deg, rgb(58, 74, 88), rgb(88, 107, 124));"></div></div>
+            <span data-dc-tpl="111" style="min-width: 210px; text-align: right; font-size: 14px; font-weight: 800; color: rgb(150, 168, 185);"><span class="sc-interp">Approximately 60% creator / 40% platform</span></span>
+          </div>
+        </div>
+      
+        <div data-dc-tpl="104" style="display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 18px clamp(20px, 2.4vw, 30px); border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+          <div data-dc-tpl="105" style="display: flex; align-items: center; gap: 12px; min-width: 0px;"><span data-dc-tpl="106" style="width: 9px; height: 9px; border-radius: 50%; background: rgb(74, 91, 106);"></span><span data-dc-tpl="107" style="font-size: 16px; font-weight: 700; color: rgb(231, 238, 244);"><span class="sc-interp">YouTube watch-page ads</span></span></div>
+          <div data-dc-tpl="108" style="display: flex; align-items: center; gap: 16px;">
+            <div data-dc-tpl="109" style="width: clamp(120px, 26vw, 320px); height: 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden;"><div data-dc-tpl="110" style="height: 100%; width: 55%; border-radius: 999px; animation: 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 0s 1 normal none running sml-grow; background: linear-gradient(90deg, rgb(58, 74, 88), rgb(88, 107, 124));"></div></div>
+            <span data-dc-tpl="111" style="min-width: 210px; text-align: right; font-size: 14px; font-weight: 800; color: rgb(150, 168, 185);"><span class="sc-interp">55% creator / 45% platform</span></span>
+          </div>
+        </div>
+      
+    </div>
+    <p data-dc-tpl="112" style="margin: 16px 0px 0px; color: rgb(113, 133, 152); font-size: 13px; font-style: italic;">Comparisons concern eligible advertising revenue and do not represent every monetization product offered by each platform.</p>
+    <div data-dc-tpl="113" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; margin-top: 32px;">
+      <p data-dc-tpl="114" style="margin: 0px; color: rgb(219, 230, 238); font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">You create the audience. You should keep the bigger share.</p>
+      <p data-dc-tpl="115" style="margin: 0px; color: rgb(164, 180, 193); font-size: 16px;">Stock Market Loop is designed to return more of the value to the analysts, journalists, educators and market creators responsible for producing it.</p>
+    </div>
+  </section>
+
+  <section data-dc-tpl="116" style="position: relative; z-index: 1; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(28px, 4vw, 56px) 0px;">
+    <div data-dc-tpl="117" style="display: grid; grid-template-columns: minmax(0px, 0.9fr) minmax(0px, 1.1fr); gap: clamp(28px, 4vw, 56px); align-items: start;">
+      <div data-dc-tpl="118">
+        <p data-dc-tpl="119" style="margin: 0px 0px 14px; color: rgb(54, 240, 141); font: 800 12px / 1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase;">Live streaming</p>
+        <h2 data-dc-tpl="120" style="margin: 0px 0px 16px; font-size: clamp(28px, 3.4vw, 48px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800;">Live Streaming Designed Around the Market</h2>
+        <p data-dc-tpl="121" style="margin: 0px; color: rgb(164, 180, 193); font-size: 17px;">YouTube and Rumble can broadcast video. Stock Market Loop is being built to connect the broadcast directly to the market itself.</p>
+        <p data-dc-tpl="122" style="margin: 20px 0px 0px; color: rgb(219, 230, 238); font-size: 16px; font-weight: 600;">Creators can combine:</p>
+      </div>
+      <div data-dc-tpl="123" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;">
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Live video and desktop or mobile screen sharing</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Interactive ticker charts and real-time market information</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Watch pages connected to the underlying stock</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Multi-person live rooms</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Live group discussions</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Options intelligence and market-scanner tools</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Voice Super Chats that let viewers support creators using their actual voice</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Articles, videos and discussions distributed into relevant ticker communities</span></span></div>
+        
+          <div data-dc-tpl="125" style="display: flex; align-items: flex-start; gap: 11px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="126" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">✓</span><span data-dc-tpl="127" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Creator, stream and content analytics</span></span></div>
+        
+      </div>
+    </div>
+    <p data-dc-tpl="128" style="margin: 28px 0px 0px; max-width: 820px; color: rgb(182, 198, 211); font-size: 18px; font-weight: 500;">Your audience does not have to leave the stream, open another charting platform and search for the ticker being discussed. The market context lives beside the conversation.</p>
+  </section>
+
+  <section data-dc-tpl="129" style="position: relative; z-index: 1; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(28px, 4vw, 56px) 0px;">
+    <p data-dc-tpl="130" style="margin: 0px 0px 14px; color: rgb(54, 240, 141); font: 800 12px / 1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase;">Communities</p>
+    <h2 data-dc-tpl="131" style="margin: 0px 0px 20px; font-size: clamp(28px, 3.4vw, 48px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800;">A Better Home for Trading Communities</h2>
+    <div data-dc-tpl="132" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+      <span data-dc-tpl="133" style="padding: 10px 16px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; background: rgba(8, 17, 24, 0.6); color: rgb(167, 182, 195); font-size: 14px;"><b data-dc-tpl="134" style="color: rgb(231, 238, 244); font-weight: 700;">Discord</b> gives communities chat.</span>
+      <span data-dc-tpl="135" style="padding: 10px 16px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; background: rgba(8, 17, 24, 0.6); color: rgb(167, 182, 195); font-size: 14px;"><b data-dc-tpl="136" style="color: rgb(231, 238, 244); font-weight: 700;">Reddit</b> gives them threads.</span>
+      <span data-dc-tpl="137" style="padding: 10px 16px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; background: rgba(8, 17, 24, 0.6); color: rgb(167, 182, 195); font-size: 14px;"><b data-dc-tpl="138" style="color: rgb(231, 238, 244); font-weight: 700;">Facebook</b> gives them groups.</span>
+    </div>
+    <p data-dc-tpl="139" style="margin: 0px 0px 16px; max-width: 860px; color: rgb(219, 230, 238); font-size: 19px; font-weight: 600;">Stock Market Loop gives financial communities all three—and introduces a revenue-sharing model built around the value those communities create.</p>
+    <p data-dc-tpl="140" style="margin: 0px 0px 28px; max-width: 860px; color: rgb(164, 180, 193); font-size: 16px;">Group owners can organize channels, alerts, onboarding, announcements, videos, live rooms, charts, options tools and market scanners in one finance-native space.</p>
+    <div data-dc-tpl="141" style="display: grid; grid-template-columns: minmax(0px, 1fr) minmax(0px, 1fr); gap: clamp(20px, 3vw, 36px); align-items: start;">
+      <div data-dc-tpl="142" style="padding: clamp(22px, 2.6vw, 30px); border: 1px solid rgba(74, 255, 160, 0.18); border-radius: 20px; background: rgba(8, 17, 24, 0.72);">
+        <p data-dc-tpl="143" style="margin: 0px 0px 16px; color: rgb(219, 230, 238); font-size: 16px; font-weight: 600;">Under the Stock Market Loop community revenue program, eligible advertising revenue can be shared with approved:</p>
+        <div data-dc-tpl="144" style="display: flex; flex-wrap: wrap; gap: 8px;">
+          
+            <span data-dc-tpl="146" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(54, 240, 141, 0.28); border-radius: 999px; background: rgba(54, 240, 141, 0.08); color: rgb(159, 233, 194); font-size: 14px; font-weight: 700;"><span data-dc-tpl="147" style="color: rgb(54, 240, 141);">✓</span><span class="sc-interp">Group owners</span></span>
+          
+            <span data-dc-tpl="146" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(54, 240, 141, 0.28); border-radius: 999px; background: rgba(54, 240, 141, 0.08); color: rgb(159, 233, 194); font-size: 14px; font-weight: 700;"><span data-dc-tpl="147" style="color: rgb(54, 240, 141);">✓</span><span class="sc-interp">Administrators</span></span>
+          
+            <span data-dc-tpl="146" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(54, 240, 141, 0.28); border-radius: 999px; background: rgba(54, 240, 141, 0.08); color: rgb(159, 233, 194); font-size: 14px; font-weight: 700;"><span data-dc-tpl="147" style="color: rgb(54, 240, 141);">✓</span><span class="sc-interp">Moderators</span></span>
+          
+            <span data-dc-tpl="146" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(54, 240, 141, 0.28); border-radius: 999px; background: rgba(54, 240, 141, 0.08); color: rgb(159, 233, 194); font-size: 14px; font-weight: 700;"><span data-dc-tpl="147" style="color: rgb(54, 240, 141);">✓</span><span class="sc-interp">Analysts</span></span>
+          
+            <span data-dc-tpl="146" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(54, 240, 141, 0.28); border-radius: 999px; background: rgba(54, 240, 141, 0.08); color: rgb(159, 233, 194); font-size: 14px; font-weight: 700;"><span data-dc-tpl="147" style="color: rgb(54, 240, 141);">✓</span><span class="sc-interp">Contributing members</span></span>
+          
+        </div>
+      </div>
+      <blockquote data-dc-tpl="148" style="margin: 0px; padding: clamp(22px, 2.6vw, 30px); border-width: 1px 1px 1px 3px; border-style: solid; border-color: rgba(255, 255, 255, 0.09) rgba(255, 255, 255, 0.09) rgba(255, 255, 255, 0.09) rgb(54, 240, 141); border-image: initial; border-radius: 16px; background: linear-gradient(120deg, rgba(16, 32, 42, 0.9), rgba(6, 14, 20, 0.85));">
+        <p data-dc-tpl="149" style="margin: 0px; color: rgb(205, 217, 227); font-size: 16px; line-height: 1.6;">WallStreetBets demonstrated how valuable a financial community can become. Reddit reported roughly $2.1 billion in company-wide advertising revenue in 2025—but it does not publish WallStreetBets' contribution or promise its moderators a direct percentage of subreddit advertising revenue. <span data-dc-tpl="150" style="color: rgb(231, 238, 244); font-weight: 600;">Stock Market Loop is building a different model: when an eligible group creates value, the people operating and contributing to that group can participate in it.</span></p>
+      </blockquote>
+    </div>
+  </section>
+
+  <section data-dc-tpl="151" style="position: relative; z-index: 1; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(28px, 4vw, 56px) 0px;">
+    <p data-dc-tpl="152" style="margin: 0px 0px 14px; color: rgb(54, 240, 141); font: 800 12px / 1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase;">Why not the general-purpose apps</p>
+    <h2 data-dc-tpl="153" style="margin: 0px 0px 32px; max-width: 900px; font-size: clamp(28px, 3.4vw, 48px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800;">Built for Financial Creators—not General-Purpose Content</h2>
+    <div data-dc-tpl="154" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px;">
+      
+        <article data-dc-tpl="156" style="display: flex; flex-direction: column; gap: 12px; padding: clamp(22px, 2.4vw, 28px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; background: rgba(8, 17, 24, 0.72);">
+          <h3 data-dc-tpl="157" style="margin: 0px; font-size: 18px; font-weight: 800; color: rgb(231, 238, 244);"><span class="sc-interp">YouTube and Rumble</span></h3>
+          <p data-dc-tpl="158" style="margin: 0px; color: rgb(164, 180, 193); font-size: 15px; flex: 1 1 0%;"><span class="sc-interp">Strong video platforms, but they are not built around ticker terminals, live market charts, trading groups, options chains, alerts and finance-specific discovery.</span></p>
+          
+        </article>
+      
+        <article data-dc-tpl="156" style="display: flex; flex-direction: column; gap: 12px; padding: clamp(22px, 2.4vw, 28px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; background: rgba(8, 17, 24, 0.72);">
+          <h3 data-dc-tpl="157" style="margin: 0px; font-size: 18px; font-weight: 800; color: rgb(231, 238, 244);"><span class="sc-interp">Reddit, Discord and Facebook Groups</span></h3>
+          <p data-dc-tpl="158" style="margin: 0px; color: rgb(164, 180, 193); font-size: 15px; flex: 1 1 0%;"><span class="sc-interp">Strong community products, but they do not advertise a standard program that shares a defined percentage of each community’s advertising revenue with owners, moderators and members.</span></p>
+          
+        </article>
+      
+        <article data-dc-tpl="156" style="display: flex; flex-direction: column; gap: 12px; padding: clamp(22px, 2.4vw, 28px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; background: rgba(8, 17, 24, 0.72);">
+          <h3 data-dc-tpl="157" style="margin: 0px; font-size: 18px; font-weight: 800; color: rgb(231, 238, 244);"><span class="sc-interp">Stocktwits</span></h3>
+          <p data-dc-tpl="158" style="margin: 0px; color: rgb(164, 180, 193); font-size: 15px; flex: 1 1 0%;"><span class="sc-interp">Ticker-focused conversation, but not the complete combination of creator studios, long-form publishing, group tools, live video, voice support, newsletters and community revenue sharing.</span></p>
+          
+        </article>
+      
+        <article data-dc-tpl="156" style="display: flex; flex-direction: column; gap: 12px; padding: clamp(22px, 2.4vw, 28px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; background: rgba(8, 17, 24, 0.72);">
+          <h3 data-dc-tpl="157" style="margin: 0px; font-size: 18px; font-weight: 800; color: rgb(231, 238, 244);"><span class="sc-interp">Medium and Quora</span></h3>
+          <p data-dc-tpl="158" style="margin: 0px; color: rgb(164, 180, 193); font-size: 15px; flex: 1 1 0%;"><span class="sc-interp">Writing platforms whose earnings depend on member engagement or subscription pools. Medium primarily rewards eligible paywalled stories based on member activity; Quora’s writer monetization is tied to Quora+ and includes invite-only elements.</span></p>
+          
+            <p data-dc-tpl="160" style="margin: 0px; color: rgb(95, 114, 131); font-size: 12px; font-style: italic;"><span class="sc-interp">Medium’s earnings model, Quora monetization</span></p>
+          
+        </article>
+      
+        <article data-dc-tpl="156" style="display: flex; flex-direction: column; gap: 12px; padding: clamp(22px, 2.4vw, 28px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; background: rgba(8, 17, 24, 0.72);">
+          <h3 data-dc-tpl="157" style="margin: 0px; font-size: 18px; font-weight: 800; color: rgb(231, 238, 244);"><span class="sc-interp">Substack</span></h3>
+          <p data-dc-tpl="158" style="margin: 0px; color: rgb(164, 180, 193); font-size: 15px; flex: 1 1 0%;"><span class="sc-interp">Useful for paid newsletters, but Substack charges 10% of subscription transactions before payment-processing fees and does not provide Stock Market Loop’s integrated market and group-tool environment.</span></p>
+          
+            <p data-dc-tpl="160" style="margin: 0px; color: rgb(95, 114, 131); font-size: 12px; font-style: italic;"><span class="sc-interp">Substack’s pricing</span></p>
+          
+        </article>
+      
+    </div>
+  </section>
+
+  <section data-dc-tpl="161" style="position: relative; z-index: 1; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(28px, 4vw, 56px) 0px;">
+    <div data-dc-tpl="162" style="display: grid; grid-template-columns: minmax(0px, 0.9fr) minmax(0px, 1.1fr); gap: clamp(28px, 4vw, 56px); align-items: start;">
+      <div data-dc-tpl="163">
+        <p data-dc-tpl="164" style="margin: 0px 0px 14px; color: rgb(54, 240, 141); font: 800 12px / 1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase;">Journalists &amp; writers</p>
+        <h2 data-dc-tpl="165" style="margin: 0px 0px 16px; font-size: clamp(28px, 3.4vw, 48px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800;">For Market Journalists and Financial Writers</h2>
+        <p data-dc-tpl="166" style="margin: 0px; color: rgb(164, 180, 193); font-size: 17px;">Publish where readers can immediately act on their curiosity—not by trading, but by exploring the underlying information.</p>
+        <p data-dc-tpl="167" style="margin: 20px 0px 0px; color: rgb(219, 230, 238); font-size: 16px; font-weight: 600;">Every article or Loop Letter can connect readers to:</p>
+      </div>
+      <div data-dc-tpl="168" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;">
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">The underlying ticker terminal</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Live price action and historical charts</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Company financials</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Earnings information</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">SEC filings</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Options data</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Technical indicators</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Community discussion</span></span></div>
+        
+          <div data-dc-tpl="170" style="display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 13px; background: rgba(8, 17, 24, 0.72);"><span data-dc-tpl="171" style="flex: 0 0 auto; color: rgb(54, 240, 141); font-weight: 900; margin-top: 1px;">→</span><span data-dc-tpl="172" style="color: rgb(211, 222, 231); font-size: 14px;"><span class="sc-interp">Related videos and live streams</span></span></div>
+        
+      </div>
+    </div>
+    <p data-dc-tpl="173" style="margin: 28px 0px 0px; max-width: 820px; color: rgb(182, 198, 211); font-size: 18px; font-weight: 500;">Instead of sending readers across five disconnected platforms, the reporting, data, creator and community can live together.</p>
+  </section>
+
+  <section data-dc-tpl="174" style="position: relative; z-index: 1; width: min(1280px, 100% - 40px); margin: 0px auto; padding: clamp(28px, 4vw, 56px) 0px clamp(40px, 5vw, 72px);">
+    <div data-dc-tpl="175" style="padding: clamp(28px, 4vw, 52px); border: 1px solid rgba(255, 200, 87, 0.25); border-radius: 24px; background: radial-gradient(circle at 100% 0px, rgba(255, 200, 87, 0.1), transparent 45%), rgb(12, 19, 25);">
+      <p data-dc-tpl="176" style="margin: 0px 0px 14px; color: rgb(255, 200, 87); font: 800 12px / 1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.16em; text-transform: uppercase;">★ Loop Bucks</p>
+      <h2 data-dc-tpl="177" style="margin: 0px 0px 16px; font-size: clamp(28px, 3.4vw, 48px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800;">Loop Bucks Reward Participation</h2>
+      <p data-dc-tpl="178" style="margin: 0px 0px 22px; max-width: 820px; color: rgb(182, 198, 211); font-size: 17px;">Eligible users may receive Loop Bucks for approved activity, contributions, promotional programs, gifts or platform milestones.</p>
+      <p data-dc-tpl="179" style="margin: 0px 0px 12px; color: rgb(219, 230, 238); font-size: 16px; font-weight: 600;">Loop Bucks can support:</p>
+      <div data-dc-tpl="180" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px;">
+        
+          <span data-dc-tpl="182" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(255, 200, 87, 0.28); border-radius: 999px; background: rgba(255, 200, 87, 0.07); color: rgb(255, 224, 163); font-size: 14px; font-weight: 700;"><span data-dc-tpl="183" style="color: rgb(255, 200, 87);">★</span><span class="sc-interp">Creator gifts</span></span>
+        
+          <span data-dc-tpl="182" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(255, 200, 87, 0.28); border-radius: 999px; background: rgba(255, 200, 87, 0.07); color: rgb(255, 224, 163); font-size: 14px; font-weight: 700;"><span data-dc-tpl="183" style="color: rgb(255, 200, 87);">★</span><span class="sc-interp">Post, article, video and Loop Letter boosts</span></span>
+        
+          <span data-dc-tpl="182" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(255, 200, 87, 0.28); border-radius: 999px; background: rgba(255, 200, 87, 0.07); color: rgb(255, 224, 163); font-size: 14px; font-weight: 700;"><span data-dc-tpl="183" style="color: rgb(255, 200, 87);">★</span><span class="sc-interp">Group subscriptions or platform purchases</span></span>
+        
+          <span data-dc-tpl="182" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(255, 200, 87, 0.28); border-radius: 999px; background: rgba(255, 200, 87, 0.07); color: rgb(255, 224, 163); font-size: 14px; font-weight: 700;"><span data-dc-tpl="183" style="color: rgb(255, 200, 87);">★</span><span class="sc-interp">Community rewards</span></span>
+        
+          <span data-dc-tpl="182" style="display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(255, 200, 87, 0.28); border-radius: 999px; background: rgba(255, 200, 87, 0.07); color: rgb(255, 224, 163); font-size: 14px; font-weight: 700;"><span data-dc-tpl="183" style="color: rgb(255, 200, 87);">★</span><span class="sc-interp">Eligible creator payouts when approved under the published payout program</span></span>
+        
+      </div>
+      <p data-dc-tpl="184" style="margin: 0px; padding: 16px 18px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 12px; background: rgba(0, 0, 0, 0.25); color: rgb(139, 160, 176); font-size: 13px; font-style: italic;">Loop Bucks, advertising revenue and creator payouts are subject to eligibility, verification, anti-fraud review, payout minimums, applicable taxes and the current Stock Market Loop monetization terms. Loop Bucks should not be advertised as redeemable cash until the redemption rules are formally live.</p>
+    </div>
+  </section>
+
+  <section data-dc-tpl="185" style="position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 28px; flex-wrap: wrap; width: min(1280px, 100% - 40px); margin: 0px auto clamp(56px, 7vw, 96px); padding: clamp(36px, 5vw, 64px); border: 1px solid rgba(74, 255, 160, 0.18); border-radius: 28px; background: radial-gradient(circle at 100% 0px, rgba(54, 240, 141, 0.14), transparent 45%), rgb(9, 19, 27);">
+    <div data-dc-tpl="186">
+      <h2 data-dc-tpl="187" style="margin: 0px 0px 8px; font-size: clamp(28px, 3.4vw, 48px); line-height: 1.04; letter-spacing: -0.04em; font-weight: 800;">The market is live. Join it.</h2>
+      <p data-dc-tpl="188" style="margin: 0px; color: rgb(170, 185, 197); font-size: 17px;">Stream, publish, build community and keep the bigger share — one account.</p>
+    </div>
+    <div data-dc-tpl="189" style="display: flex; flex-wrap: wrap; gap: 12px;">
+      <a data-dc-tpl="190" href="#" style="display: inline-flex; align-items: center; gap: 8px; min-height: 56px; padding: 0px 28px; border: 0px; border-radius: 14px; background: linear-gradient(135deg, rgb(54, 240, 141), rgb(15, 190, 102)); color: rgb(4, 20, 11); font-size: 16px; font-weight: 900; box-shadow: rgba(15, 190, 102, 0.32) 0px 12px 34px;">Create Your Free Account <span data-dc-tpl="191">→</span></a>
+      <a data-dc-tpl="192" href="#" style="display: inline-flex; align-items: center; min-height: 56px; padding: 0px 28px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 14px; background: rgba(255, 255, 255, 0.02); color: rgb(219, 230, 238); font-size: 16px; font-weight: 800;">Sign In</a>
+    </div>
+  </section></div></div></div>
+
+Tab Context:
+- Executed on tabId: seed
+- Available tabs:
+  • tabId seed: "127.0.0.1:8795/reference-signup.html" (http://127.0.0.1:8795)`;
 
   function ready(fn) {
     if (document.readyState !== "loading") { fn(); }
     else { document.addEventListener("DOMContentLoaded", fn); }
   }
 
-  function boot() {
-    if (document.getElementById("sml-auth-portal")) { return; }   // already reskinned
-    var card = document.querySelector(".sml-auth-card");
-    if (!card) { return; }                                         // no live form (logged in / not rendered) -> leave page untouched
-
-    // Build the approved landing with its optimized 122 KB WebP artwork and a
-    // real slot where the hardened LIVE card will live.
-    var html = LANDING
-      .replace("<!--LITE_VISUAL-->", '<figure class="sml-auth-visual"><img src="' + assetBase + 'images/auth-portal/signup-hero.webp" width="1254" height="1254" decoding="async" fetchpriority="high" alt="Stock Market Loop connects active traders, trading communities, live creators, financial journalists, and market Q and A contributors."></figure>')
-      .replace("<!--CARD_SLOT-->", '<aside class="sml-auth-cardslot" aria-label="Stock Market Loop account access"></aside>');
-
-    var holder = document.createElement("div");
-    holder.innerHTML = html;
-    var portal = holder.querySelector("#sml-auth-portal");
-    if (!portal) { return; }
-
-    // Move the real card into the hero slot (event listeners travel with the nodes).
-    var slot = portal.querySelector(".sml-auth-cardslot");
+  function moveCardInto(slot, card) {
     slot.appendChild(card);
-    // Force it visible/interactive inline (it was styled as a closed modal child).
     card.removeAttribute("aria-hidden");
     card.style.removeProperty("display");
     card.style.opacity = "1";
     card.style.transform = "none";
     card.style.pointerEvents = "auto";
+  }
 
-    // Restore the approved card hierarchy without replacing any real form,
-    // field, nonce, event listener, or authentication endpoint.
-    var cardBody = card.querySelector(".sml-auth-body");
-    if (cardBody && !cardBody.querySelector(".sml-auth-card-intro")) {
-      var intro = document.createElement("div");
-      intro.className = "sml-auth-card-intro";
-      cardBody.insertBefore(intro, cardBody.firstChild);
+  // Contextual heading inside the card (Join / Welcome back / Verify), kept from
+  // the prior approved build.
+  function attachIntro(card) {
+    var body = card.querySelector(".sml-auth-body") || card.querySelector("section") || card;
+    if (!body || body.querySelector(".sml-auth-card-intro")) { return; }
+    var intro = document.createElement("div");
+    intro.className = "sml-auth-card-intro";
+    body.insertBefore(intro, body.firstChild);
+    var paint = function () {
+      var loginActive = !!card.querySelector('[data-auth-tab="login"][data-active="1"]');
+      var verifyVisible = !!card.querySelector('[data-verify-form]:not([data-hidden="1"])');
+      intro.innerHTML = verifyVisible
+        ? "<h2>Verify your account</h2><p>Enter the code from your email to finish joining Stock Market Loop.</p>"
+        : loginActive
+          ? "<h2>Welcome back</h2><p>Open your market network and continue where you left off.</p>"
+          : "<h2>Join Stock Market Loop</h2><p>Free market access. Paid memberships and creator services are optional.</p>";
+    };
+    paint();
+    Array.prototype.slice.call(card.querySelectorAll("[data-auth-tab]")).forEach(function (t) {
+      t.addEventListener("click", function () { setTimeout(paint, 0); });
+    });
+  }
 
-      var paintIntro = function () {
-        var loginActive = !!card.querySelector('[data-auth-tab="login"][data-active="1"]');
-        var verifyVisible = !!card.querySelector('[data-verify-form]:not([data-hidden="1"])');
-        intro.innerHTML = verifyVisible
-          ? "<h2>Verify your account</h2><p>Enter the code from your email to finish joining Stock Market Loop.</p>"
-          : loginActive
-            ? "<h2>Welcome back</h2><p>Open your market network and continue where you left off.</p>"
-            : "<h2>Join Stock Market Loop</h2><p>Free market access. Paid memberships and creator services are optional.</p>";
-      };
-      paintIntro();
-      Array.prototype.slice.call(card.querySelectorAll("[data-auth-tab]")).forEach(function (tabButton) {
-        tabButton.addEventListener("click", function () { setTimeout(paintIntro, 0); });
-      });
+  // Find the hero's phone-mockup column (2-col grid whose right cell holds the
+  // "$78,412" dashboard) so we can replace it with the auth card.
+  function findMockColumn(portal) {
+    var all = portal.querySelectorAll("*");
+    var anchor = null;
+    for (var i = 0; i < all.length; i++) {
+      if (!all[i].children.length && (all[i].textContent || "").indexOf("78,412") >= 0) { anchor = all[i]; break; }
     }
+    if (!anchor) { return null; }
+    var col = anchor, p = anchor.parentElement;
+    while (p && p !== portal) {
+      var cs = window.getComputedStyle(p);
+      if (cs.display === "grid" && p.children.length === 2) { return { grid: p, col: col }; }
+      col = p; p = p.parentElement;
+    }
+    return null;
+  }
 
-    // Insert the new landing and hide the old surfaces.
-    var oldLanding = document.getElementById("sml-guest-landing");
-    var modal = document.querySelector("[data-sml-auth-modal]");
-    var anchor = oldLanding || modal || document.body.firstChild;
-    anchor.parentNode.insertBefore(portal, anchor);
+  function boot() {
+    if (document.getElementById("sml-auth-portal")) { return; }
+    var card = document.querySelector(".sml-auth-card");
+    if (!card) { return; }                       // logged in / no form -> leave page as-is
+
+    var holder = document.createElement("div");
+    holder.innerHTML = LANDING;
+    var portal = holder.querySelector("#sml-auth-portal");
+    if (!portal) { return; }
+
+    // Insert as a sibling of the (hidden) guest landing — the plugin CSS +
+    // takeover style reveal #sml-auth-portal and hide everything else.
+    var host = document.getElementById("sml-guest-landing");
     document.body.classList.add("sml-auth-portal-live");
-    if (oldLanding) { oldLanding.style.display = "none"; }
-    if (modal) { modal.style.display = "none"; }          // shell is now empty (card moved out)
+    if (host) { host.parentNode.insertBefore(portal, host); host.style.display = "none"; }
+    else { document.body.appendChild(portal); }
+    var modal = document.querySelector("[data-sml-auth-modal]");
+    if (modal) { modal.style.display = "none"; }
 
-    wire(portal);
+    // Now portal is in the DOM: swap the mockup column for the real card.
+    var slot = document.createElement("div");
+    slot.className = "sml-auth-cardslot";
+    moveCardInto(slot, card);
+    attachIntro(card);
+    var hit = findMockColumn(portal);
+    if (hit) { hit.grid.replaceChild(slot, hit.col); }
+    else { portal.insertBefore(slot, portal.firstChild); }   // fallback: top of page
+
+    wire(portal, card);
   }
 
-  function wire(root) {
-    // Persona tablist (new landing widget).
-    var pBtns = Array.prototype.slice.call(root.querySelectorAll("[data-persona]"));
-    var pPanels = Array.prototype.slice.call(root.querySelectorAll("[data-persona-panel]"));
-    pBtns.forEach(function (b) {
-      b.addEventListener("click", function () {
-        var key = b.getAttribute("data-persona");
-        pBtns.forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
-        pPanels.forEach(function (p) { p.hidden = (p.getAttribute("data-persona-panel") !== key); });
-      });
-    });
-
-    // "Create your account" buttons -> focus the real signup form.
-    Array.prototype.slice.call(root.querySelectorAll("[data-scroll-register]")).forEach(function (b) {
-      b.addEventListener("click", function () {
-        var card = root.querySelector(".sml-auth-card");
-        if (!card) { return; }
-        var signupTab = card.querySelector('[data-auth-tab="signup"]');
-        if (signupTab) { signupTab.click(); }               // hardened JS switches to signup
+  function wire(root, card) {
+    // The design's "Sign In" / "Create Account" links (href="#") -> focus the
+    // real card and select the right tab.
+    Array.prototype.slice.call(root.querySelectorAll("a,button")).forEach(function (el) {
+      var t = (el.textContent || "").toLowerCase();
+      var wantsLogin = /sign\s*in|log\s*in/.test(t);
+      var wantsSignup = /create.*account|get started|sign\s*up|join the loop|join it/.test(t);
+      if (!wantsLogin && !wantsSignup) { return; }
+      if (el.tagName === "A" && (el.getAttribute("href") || "#") === "#") { el.setAttribute("href", "#sml-auth-portal-card"); }
+      el.addEventListener("click", function (e) {
+        e.preventDefault();
+        var tab = card.querySelector('[data-auth-tab="' + (wantsLogin ? "login" : "signup") + '"]');
+        if (tab) { tab.click(); }
         card.scrollIntoView({ behavior: "smooth", block: "center" });
-        var first = card.querySelector('[data-signup-form] input:not([type=hidden])');
-        setTimeout(function () { if (first) { try { first.focus(); } catch (e) {} } }, 420);
+        var first = card.querySelector('[data-' + (wantsLogin ? "login" : "signup") + '-form] input:not([type=hidden])');
+        setTimeout(function () { if (first) { try { first.focus(); } catch (e2) {} } }, 420);
       });
     });
-    // Audience accordion uses native <details> — no JS needed.
   }
 
-  // Small delay so the plugin's own auth JS finishes binding before we move nodes.
   ready(function () { setTimeout(boot, 80); });
 })();

@@ -15,6 +15,7 @@
  * forms, the handle field, the verify form, the oauth row, submit buttons).
  * ======================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 html,body{margin:0;background:#03070b}:root{--sml-bg:#03070b;--sml-panel:#0a121b;--sml-panel-2:#0d1722;--sml-line:rgba(74,255,160,.18);--sml-green:#36f08d;--sml-green-2:#0fbe66;--sml-text:#f4f8fb;--sml-muted:#96a8b9;--sml-gold:#ffc857;--sml-danger:#ff6a78;--sml-radius:24px}
 body.sml-auth-portal-live{padding-top:0!important}
 body.sml-auth-portal-live #sml-global-header,body.sml-auth-portal-live #sml-tkpop,body.sml-auth-portal-live #sml-ss-global-host{display:none!important}
@@ -73,3 +74,17 @@ body.sml-auth-portal-live #sml-global-header,body.sml-auth-portal-live #sml-tkpo
 
 /* Keep the injected landing from fighting the site header/footer spacing. */
 #sml-auth-portal{margin:0}
+
+/* ===========================================================================
+ * MARKETING LANDING v2  —  "The Market Is Live" (Claude Design Canvas export).
+ * The landing is fully inline-styled; we only add the box-sizing reset it was
+ * authored against, the Inter face, and fit the relocated hardened card into the
+ * hero's right column (where the phone mockup was).
+ * ======================================================================== */
+#sml-auth-portal.sml-auth-marketing{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--sml-text);background:var(--sml-bg)}
+#sml-auth-portal.sml-auth-marketing *{box-sizing:border-box}
+
+/* The card slot takes the hero's mockup cell; center the real card in it. */
+#sml-auth-portal .sml-auth-cardslot{display:flex;align-items:flex-start;justify-content:center;min-width:0}
+#sml-auth-portal .sml-auth-cardslot .sml-auth-card{position:static!important;inset:auto!important;top:auto!important;width:100%;max-width:460px;margin:0;transform:none!important;opacity:1!important;pointer-events:auto!important}
+@media(max-width:900px){#sml-auth-portal .sml-auth-cardslot{width:100%}#sml-auth-portal .sml-auth-cardslot .sml-auth-card{max-width:520px}}
