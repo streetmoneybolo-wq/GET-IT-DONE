@@ -2,6 +2,7 @@
 
 /* Branded editorial desks are transparent automated authors, not invented people. */
 const DESKS = Object.freeze([
+  { key: 'retail-trader-spotlight', name: 'Retail Trader Spotlight', authorSlug: 'retail-trader-spotlight', beat: 'verified, timestamped alerts from eligible StockMarketLoop group communities', voice: 'evidence-first alert reporter; distinguish what the trader posted from subsequent market action and never imply subscriber performance', layout: 'retail-spotlight', eventTypes: ['retail_trader_alert'] },
   { key: 'options-flow', name: 'SML Options Flow', authorSlug: 'sml-options-flow', beat: 'unusual options volume, premium, repeated strikes, 0DTE and contract activity', voice: 'fast tape-reader; lead with the contract, premium and what the flow does not prove', layout: 'flow-tape', eventTypes: ['options_flow', 'unusual_options', 'zero_dte'] },
   { key: 'gamma-volatility', name: 'SML Gamma & Volatility', authorSlug: 'sml-gamma-volatility', beat: 'gamma exposure, IV structure, max pain and volatility regimes', voice: 'measured derivatives quant; explain regimes, ranges and assumptions before directional implications', layout: 'volatility-grid', eventTypes: ['gamma', 'volatility', 'iv_skew'] },
   { key: 'earnings', name: 'SML Earnings Desk', authorSlug: 'sml-earnings-desk', beat: 'earnings calendars, reported results, guidance and post-earnings price action', voice: 'crisp scorecard reporter; separate reported results, guidance and market reaction', layout: 'earnings-scorecard', eventTypes: ['earnings', 'guidance'] },

@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node platform/server.js",
     "worker": "node platform/worker.js",
-    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js db/migrate.test.js platform/server.test.js platform/wordpress-gateway.test.js platform/stripe-webhook.test.js platform/stripe-event-store.test.js platform/news-webhook.test.js platform/editorial-desks.test.js platform/article-generator.test.js platform/wordpress-publisher.test.js platform/safe-fetch.test.js platform/source-article.test.js platform/news-pipeline.test.js",
+    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js group-subs/src/retail-spotlight-bot.test.js db/migrate.test.js platform/server.test.js platform/wordpress-gateway.test.js platform/stripe-webhook.test.js platform/stripe-event-store.test.js platform/news-webhook.test.js platform/editorial-desks.test.js platform/article-generator.test.js platform/wordpress-publisher.test.js platform/safe-fetch.test.js platform/source-article.test.js platform/news-pipeline.test.js",
     "db:status": "node db/migrate.js status",
     "db:dry-run": "node db/migrate.js up --dry-run",
     "db:migrate": "node db/migrate.js up",

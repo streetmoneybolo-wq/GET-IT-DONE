@@ -4,12 +4,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { DESKS, chooseContentKind, chooseDesk, eventFingerprint, subjectFingerprint, validateAssignment } = require('./editorial-desks');
 
-test('defines exactly fifteen distinct specialist desks and author slugs', () => {
-  assert.equal(DESKS.length, 15);
-  assert.equal(new Set(DESKS.map((desk) => desk.key)).size, 15);
-  assert.equal(new Set(DESKS.map((desk) => desk.authorSlug)).size, 15);
-  assert.equal(new Set(DESKS.map((desk) => desk.voice)).size, 15);
-  assert.equal(new Set(DESKS.map((desk) => desk.layout)).size, 15);
+test('defines fifteen market desks plus Retail Trader Spotlight with distinct identities', () => {
+  assert.equal(DESKS.length, 16);
+  assert.equal(new Set(DESKS.map((desk) => desk.key)).size, 16);
+  assert.equal(new Set(DESKS.map((desk) => desk.authorSlug)).size, 16);
+  assert.equal(new Set(DESKS.map((desk) => desk.voice)).size, 16);
+  assert.equal(new Set(DESKS.map((desk) => desk.layout)).size, 16);
 });
 
 test('one subject lock spans articles and short posts for the same ticker topic and day', () => {

@@ -22,10 +22,20 @@ test('extracts canonical article fields and resolves a relative social image', a
 test('rejects non-HTML and thin source responses', async () => {
   await assert.rejects(
     fetchSourceArticle('https://publisher.example/file', async () => ({ body: Buffer.from('{}'), contentType: 'application/json', finalUrl: 'https://publisher.example/file' })),
-    (error) => error.code === 'source_not_html'
+    (error) => error.code === 'source_json_untrusted'
   );
   await assert.rejects(
     fetchSourceArticle('https://publisher.example/thin', async () => ({ body: Buffer.from('<title>Thin</title><p>Short.</p>'), contentType: 'text/html', finalUrl: 'https://publisher.example/thin' })),
     (error) => error.code === 'source_content_too_thin'
   );
+});
+
+test('accepts only the verified StockMarketLoop Retail Trader Spotlight JSON source shape', async () => {
+  const output = await fetchSourceArticle('https://stockmarketloop.com/wp-json/sml-retail-spotlight/v1/source/123e4567-e89b-12d3-a456-426614174000', async () => ({
+    body: Buffer.from(JSON.stringify({ schema: 'sml.retail_trader_alert.v1', title: '$NVDA alert', description: 'Verified alert', text: '$NVDA calls watched above 220', ticker: '$NVDA', trader_display_name: 'Grandmaster-OBI', alerted_at: '2026-09-01T14:30:00Z', event_uuid: '123e4567-e89b-12d3-a456-426614174000', group_id: 9 })),
+    contentType: 'application/json',
+    finalUrl: 'https://stockmarketloop.com/wp-json/sml-retail-spotlight/v1/source/123e4567-e89b-12d3-a456-426614174000'
+  }));
+  assert.equal(output.editorialDesk, 'retail-trader-spotlight');
+  assert.match(output.text, /Grandmaster-OBI/);
 });

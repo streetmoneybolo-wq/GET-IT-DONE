@@ -45,6 +45,26 @@ function visibleText(html) {
 
 async function fetchSourceArticle(sourceUrl, fetcher = fetchPublicBuffer) {
   const response = await fetcher(sourceUrl, { maxBytes: 2 * 1024 * 1024, timeoutMs: 15_000 });
+  if (/^application\/json/.test(response.contentType)) {
+    let payload;
+    try { payload = JSON.parse(response.body.toString('utf8')); } catch (_) { payload = null; }
+    const isSpotlight = payload && payload.schema === 'sml.retail_trader_alert.v1' &&
+      /^https:\/\/stockmarketloop\.com\/wp-json\/sml-retail-spotlight\/v1\/source\/[a-f0-9-]{36}\/?$/i.test(response.finalUrl);
+    if (!isSpotlight || typeof payload.text !== 'string' || payload.text.trim().length < 10) {
+      const error = new Error('source JSON is not a verified Retail Trader Spotlight alert');
+      error.code = 'source_json_untrusted';
+      throw error;
+    }
+    return {
+      sourceUrl: response.finalUrl,
+      title: String(payload.title || '').slice(0, 300),
+      description: String(payload.description || '').slice(0, 1000),
+      imageUrl: null,
+      text: `Retail Trader Spotlight verified alert record. Trader: ${payload.trader_display_name}. Ticker: ${payload.ticker}. Alerted at: ${payload.alerted_at}. Alert: ${payload.text}`,
+      editorialDesk: 'retail-trader-spotlight',
+      marketSnapshot: { ticker: payload.ticker, alerted_at: payload.alerted_at, event_uuid: payload.event_uuid, group_id: payload.group_id }
+    };
+  }
   if (!/^(text\/html|application\/xhtml\+xml)$/.test(response.contentType)) {
     const error = new Error('source is not an HTML article');
     error.code = 'source_not_html';

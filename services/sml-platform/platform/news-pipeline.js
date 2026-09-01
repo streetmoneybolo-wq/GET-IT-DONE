@@ -24,8 +24,8 @@ function createNewsPipeline({ database, fetchSource, generateArticle, generateSh
   async function processJob(job) {
     try {
       const source = await fetchSource(job.source_url);
-      source.editorialDesk = job.editorial_desk || null;
-      source.marketSnapshot = job.market_snapshot || null;
+      source.editorialDesk = job.editorial_desk || source.editorialDesk || null;
+      source.marketSnapshot = job.market_snapshot || source.marketSnapshot || null;
       source.officialSources = job.official_sources || [];
       await database.saveNewsSource(job.id, source);
       const generator = job.content_kind === 'short_post' && generateShortPost ? generateShortPost : generateArticle;
