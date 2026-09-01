@@ -22,6 +22,9 @@
   if (window.__smlAuthPortalV2) { return; }
   window.__smlAuthPortalV2 = 1;
 
+  var scriptSrc = document.currentScript && document.currentScript.src ? document.currentScript.src : "";
+  var assetBase = scriptSrc ? new URL("../", scriptSrc).href : "https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/";
+
   var LANDING = `<main class="sml-auth" id="sml-auth-portal">
 		<div class="sml-auth-tape" aria-label="Stock Market Loop features">
 			<div><span>LIVE MARKETS</span><span>TRADINGFLOOR</span><span>GROUPS</span><span>MARKET Q&amp;A</span><span>LOOP LETTERS</span><span>LIVE VIDEO</span><span>CREATOR REVENUE</span><span>LOOP BUCKS</span></div>
@@ -110,10 +113,10 @@
     var card = document.querySelector(".sml-auth-card");
     if (!card) { return; }                                         // no live form (logged in / not rendered) -> leave page untouched
 
-    // Build the landing. Drop the decorative visual (was a 166KB PNG); put a real
-    // slot where the LIVE card will live.
+    // Build the approved landing with its optimized 122 KB WebP artwork and a
+    // real slot where the hardened LIVE card will live.
     var html = LANDING
-      .replace("<!--LITE_VISUAL-->", "")
+      .replace("<!--LITE_VISUAL-->", '<figure class="sml-auth-visual"><img src="' + assetBase + 'images/auth-portal/signup-hero.webp" width="1254" height="1254" decoding="async" fetchpriority="high" alt="Stock Market Loop connects active traders, trading communities, live creators, financial journalists, and market Q and A contributors."></figure>')
       .replace("<!--CARD_SLOT-->", '<aside class="sml-auth-cardslot" aria-label="Stock Market Loop account access"></aside>');
 
     var holder = document.createElement("div");
@@ -131,11 +134,35 @@
     card.style.transform = "none";
     card.style.pointerEvents = "auto";
 
+    // Restore the approved card hierarchy without replacing any real form,
+    // field, nonce, event listener, or authentication endpoint.
+    var cardBody = card.querySelector(".sml-auth-body");
+    if (cardBody && !cardBody.querySelector(".sml-auth-card-intro")) {
+      var intro = document.createElement("div");
+      intro.className = "sml-auth-card-intro";
+      cardBody.insertBefore(intro, cardBody.firstChild);
+
+      var paintIntro = function () {
+        var loginActive = !!card.querySelector('[data-auth-tab="login"][data-active="1"]');
+        var verifyVisible = !!card.querySelector('[data-verify-form]:not([data-hidden="1"])');
+        intro.innerHTML = verifyVisible
+          ? "<h2>Verify your account</h2><p>Enter the code from your email to finish joining Stock Market Loop.</p>"
+          : loginActive
+            ? "<h2>Welcome back</h2><p>Open your market network and continue where you left off.</p>"
+            : "<h2>Join Stock Market Loop</h2><p>Free market access. Paid memberships and creator services are optional.</p>";
+      };
+      paintIntro();
+      Array.prototype.slice.call(card.querySelectorAll("[data-auth-tab]")).forEach(function (tabButton) {
+        tabButton.addEventListener("click", function () { setTimeout(paintIntro, 0); });
+      });
+    }
+
     // Insert the new landing and hide the old surfaces.
     var oldLanding = document.getElementById("sml-guest-landing");
     var modal = document.querySelector("[data-sml-auth-modal]");
     var anchor = oldLanding || modal || document.body.firstChild;
     anchor.parentNode.insertBefore(portal, anchor);
+    document.body.classList.add("sml-auth-portal-live");
     if (oldLanding) { oldLanding.style.display = "none"; }
     if (modal) { modal.style.display = "none"; }          // shell is now empty (card moved out)
 
