@@ -80,11 +80,70 @@ async function promoteSubscriptionIntents(pool, limit = 100) {
   }
 }
 
-async function enrichAccessPayload(client, row) {
+const OPEN_DISPUTE_STATES = [
+  'open', 'evidence_building', 'ready_for_review', 'approved', 'submitting', 'submitted', 'provider_review'
+];
+const UNDEFINED_TABLE = '42P01';
+
+/**
+ * Disputed-access policy (DESIGN v2 §4b.6). The merchant's explicitly
+ * recorded policy for the subscription's merchant scope decides whether an
+ * open dispute suspends access; the safe default (no policy row, or
+ * keep_access) changes nothing. The decision is audited on the case chain
+ * and surfaced in the payload so the WordPress bridge and the Discord
+ * reconciler act on one deterministic answer. No other code touches roles.
+ */
+async function findDisputeSuspension(client, sub) {
+  const found = await client.query(
+    `SELECT c.id AS case_id, p.on_dispute
+       FROM dispute_access_policies p
+       JOIN dispute_cases c ON COALESCE(c.merchant_account, 'platform') = p.merchant_scope
+       JOIN billing_identities bi ON bi.id = c.identity_id
+      WHERE p.merchant_scope = COALESCE($1::text, 'platform')
+        AND p.on_dispute = 'suspend_access'
+        AND (bi.sml_user_id = $2 OR bi.wordpress_user_id = $2)
+        AND c.case_state = ANY($3)
+      ORDER BY c.id DESC
+      LIMIT 1`,
+    [sub.connected_account_id || null, Number(sub.user_id), OPEN_DISPUTE_STATES]
+  );
+  return found.rows[0] ? { caseId: Number(found.rows[0].case_id) } : null;
+}
+
+async function auditDisputeSuspension(client, store, sub, suspension, sourceKey) {
+  if (!store || typeof store.appendChained !== 'function') return;
+  const at = new Date().toISOString();
+  await client.query('BEGIN');
+  try {
+    await store.appendChained(client, {
+      table: 'dispute_audit_log',
+      scopeKey: suspension.caseId,
+      fields: {
+        case_id: suspension.caseId,
+        actor_kind: 'system',
+        actor_ref: null,
+        action: 'access_suspended_by_dispute_policy',
+        detail: { subscription_id: Number(sub.id), group_id: Number(sub.group_id), outbox_source_key: sourceKey || null },
+        source: 'sml_platform',
+        source_event_id: sourceKey ? `access-reconcile:${sourceKey}` : null,
+        provider_account: sub.connected_account_id || null,
+        occurred_at: at,
+        received_at: at,
+        provenance: { policy: 'suspend_access' }
+      }
+    });
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
+    throw error;
+  }
+}
+
+async function enrichAccessPayload(client, row, options = {}) {
   if (!row || row.intent_type !== 'subscription_access_reconcile') return row;
   const payload = row.payload || {};
   const result = await client.query(
-    `SELECT s.id,s.user_id,s.group_id,s.status,s.access_until,
+    `SELECT s.id,s.user_id,s.group_id,s.status,s.access_until,s.connected_account_id,
             di.discord_user_id,dg.guild_id,
             COALESCE(jsonb_agg(jsonb_build_object('target',g.target,'roleRef',g.role_ref))
               FILTER (WHERE g.id IS NOT NULL),'[]'::jsonb) AS grants
@@ -102,6 +161,18 @@ async function enrichAccessPayload(client, row) {
   const sub = result.rows[0];
   const active = sub.status === 'active' || sub.status === 'trialing' ||
     (['grace', 'past_due', 'unpaid'].includes(sub.status) && sub.access_until && new Date(sub.access_until) > new Date());
+  let suspension = null;
+  if (active && options.disputePolicyEnabled) {
+    try {
+      suspension = await findDisputeSuspension(client, sub);
+    } catch (error) {
+      /* The evidence schema may not be applied yet: no policy can exist, so
+         the safe default (keep access) applies. Any other error surfaces. */
+      if (!error || error.code !== UNDEFINED_TABLE) throw error;
+      suspension = null;
+    }
+    if (suspension) await auditDisputeSuspension(client, options.store, sub, suspension, row.source_key);
+  }
   return {
     ...row,
     payload: {
@@ -111,13 +182,18 @@ async function enrichAccessPayload(client, row) {
       groupId: String(sub.group_id),
       discordUserId: sub.discord_user_id,
       guildId: sub.guild_id,
-      active,
-      grants: sub.grants
+      active: suspension ? false : active,
+      grants: sub.grants,
+      ...(suspension ? {
+        disputeSuspended: true,
+        disputeCaseId: suspension.caseId,
+        suspensionReason: 'merchant_policy_suspend_access_while_dispute_open'
+      } : {})
     }
   };
 }
 
-async function claimOne(pool) {
+async function claimOne(pool, options = {}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -138,7 +214,7 @@ async function claimOne(pool) {
         WHERE id = $1`, [row.id]
     );
     await client.query('COMMIT');
-    return await enrichAccessPayload(client, { ...row, attempts: Number(row.attempts || 0) + 1 });
+    return await enrichAccessPayload(client, { ...row, attempts: Number(row.attempts || 0) + 1 }, options);
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
     throw error;
@@ -212,9 +288,9 @@ async function finish(pool, row, error) {
   }
 }
 
-function createOutboxWorker(pool, handlers) {
+function createOutboxWorker(pool, handlers, options = {}) {
   return async function processOne() {
-    const row = await claimOne(pool);
+    const row = await claimOne(pool, options);
     if (!row) return 'empty';
     const handler = handlers[row.intent_type];
     if (typeof handler !== 'function') {
@@ -326,5 +402,6 @@ module.exports = {
   createWordPressHandler,
   createStripeRecoveryHandler,
   createStripeRestoreHandler,
-  enrichAccessPayload
+  enrichAccessPayload,
+  findDisputeSuspension
 };

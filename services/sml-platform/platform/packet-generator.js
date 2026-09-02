@@ -251,6 +251,11 @@ function generatePacket(input) {
     contradictions: model.contradictions,
     generated_at: generatedAtIso,
     generator_version: GENERATOR_VERSION,
+    /* The provider mapping is part of the hashed manifest so the admin's
+     * approval (bound to packet_sha256) covers exactly the fields and file
+     * plan that will be transmitted. */
+    paypal_evidence: model.paypalEvidence || null,
+    stripe_evidence: model.stripeEvidence || null,
     timeline: model.timeline,
     version,
     warnings: model.warnings

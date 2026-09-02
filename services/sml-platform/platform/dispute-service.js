@@ -8,12 +8,22 @@
 // All cross-module dependencies are injected: no sibling new module is
 // required from here. Neutral, factual language only — templates never
 // characterize a customer and never assert facts without cited records.
+//
+// Merchant scope: every case belongs to exactly one scope, the Stripe
+// connected account it was raised against, or 'platform' for the SML
+// account itself. A caller that supplies `merchantScope` (the Connect bot,
+// or a review-page approval) only ever sees cases inside that scope; an
+// out-of-scope case reads as "not found" so existence never leaks.
 
 const crypto = require('node:crypto');
 
 const REVIEW_TOKEN_TTL_MS = 15 * 60 * 1000;
+const REVIEW_REF_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_LIST_STATES = [
   'open', 'evidence_building', 'ready_for_review', 'approved', 'submitting', 'provider_review'
+];
+const OPEN_CASE_STATES = [
+  'open', 'evidence_building', 'ready_for_review', 'approved', 'submitting', 'submitted', 'provider_review'
 ];
 const CASE_STATES = new Set([
   'open', 'evidence_building', 'ready_for_review', 'approved', 'submitting', 'submitted',
@@ -25,6 +35,8 @@ const DOC_KINDS = new Set(['terms', 'refund_policy', 'cancellation_policy', 'pri
 const ON_DISPUTE_POLICIES = new Set(['keep_access', 'suspend_access']);
 const SHA256_HEX_RE = /^[a-f0-9]{64}$/;
 const DISCORD_ID_RE = /^\d{15,24}$/;
+const SCOPE_RE = /^[A-Za-z0-9_.:-]{1,191}$/;
+const PACKET_PDF_FIELD = 'uncategorized_file';
 
 function invalid(message) { return new TypeError(message); }
 
@@ -46,6 +58,13 @@ function requireIso(value, name) {
   return new Date(ms).toISOString();
 }
 
+function optionalScope(value) {
+  if (value == null || value === '') return null;
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!SCOPE_RE.test(text)) throw invalid('merchantScope is malformed');
+  return text;
+}
+
 function sha256Hex(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
@@ -56,6 +75,10 @@ function submissionIdempotencyKey(caseId, responseCycle, packetVersion) {
 
 function hashReviewToken(rawToken) {
   return sha256Hex(Buffer.from(String(rawToken), 'utf8'));
+}
+
+function scopeOfCase(row) {
+  return (row && row.merchant_account) || 'platform';
 }
 
 function caseSummary(row) {
@@ -71,7 +94,8 @@ function caseSummary(row) {
     dueBy: row.due_by,
     caseState: row.case_state,
     responseCycle: Number(row.response_cycle),
-    merchantAccount: row.merchant_account
+    merchantAccount: row.merchant_account,
+    merchantScope: scopeOfCase(row)
   };
 }
 
@@ -84,16 +108,73 @@ function parseManifest(packetRow) {
   throw new Error('dispute packet manifest is unreadable');
 }
 
+function stripeMappingOf(manifest) {
+  return manifest.stripe_evidence || manifest.stripeEvidence || null;
+}
+
+function paypalMappingOf(manifest) {
+  return manifest.paypal_evidence || manifest.paypalEvidence || null;
+}
+
+function fileTypeOf(plan) {
+  if (plan && typeof plan.fileType === 'string' && plan.fileType) return plan.fileType.toLowerCase();
+  const name = plan && typeof plan.fileName === 'string' ? plan.fileName : '';
+  const match = /\.([A-Za-z0-9]+)$/.exec(name);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function contentTypeFor(fileType) {
+  return { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' }[fileType] || 'application/octet-stream';
+}
+
+/** What the admin sees as "exact fields and files that will be transmitted". */
+function transmitPlan(caseRow, manifest) {
+  if (caseRow.provider === 'stripe') {
+    const mapping = stripeMappingOf(manifest) || {};
+    return {
+      transmitFields: mapping.fieldsObj && typeof mapping.fieldsObj === 'object' ? mapping.fieldsObj : {},
+      transmitFiles: (Array.isArray(mapping.filesPlan) ? mapping.filesPlan : []).map((plan) => ({
+        field: plan.field,
+        fileName: plan.fileName || (plan.source === 'packet_pdf' ? 'dispute-packet.pdf' : null),
+        fileSha256: plan.fileSha256 || null,
+        source: plan.source || 'evidence_item',
+        evidenceItemId: plan.evidenceItemId == null ? null : plan.evidenceItemId
+      }))
+    };
+  }
+  const mapping = paypalMappingOf(manifest) || {};
+  const evidences = Array.isArray(mapping.evidences) ? mapping.evidences : [];
+  const transmitFields = {};
+  const transmitFiles = [];
+  for (const entry of evidences) {
+    if (!entry || typeof entry !== 'object') continue;
+    transmitFields[String(entry.evidence_type)] = entry.notes || '';
+    for (const doc of Array.isArray(entry.documents) ? entry.documents : []) {
+      transmitFiles.push({ evidenceType: entry.evidence_type, fileName: doc.name, fileSha256: doc.fileSha256 || null });
+    }
+  }
+  return { transmitFields, transmitFiles };
+}
+
+function completenessOf(manifest) {
+  const checklist = manifest && Array.isArray(manifest.checklist) ? manifest.checklist : null;
+  if (!checklist) return 'no packet';
+  const present = checklist.filter((entry) => entry && entry.state === 'present').length;
+  return `${present}/${checklist.length}`;
+}
+
 function createDisputeService(deps) {
   const {
     pool,
     store,               // evidence-store: appendChained/appendRow/encryptValue/activeKeyVersion
+    graph = null,        // identity-graph: linkVerified/resolveMerchantAdmins (admin linking + scope checks)
     stripe,              // stripe SDK-shaped client: disputes.update(id, params, opts)
     stripeFiles,         // stripe-files client: upload/uploadAll
     paypalClient,        // paypal client: provideEvidence(id, body)
     limits,              // provider-limits: validateStripeEvidence/validatePayPalEvidence
     engine,              // evidence-engine: buildPacketModel (pure)
     packetGenerator,     // packet-generator: generatePacket (pure)
+    reviewRefSecret = '',// HMAC secret for short-lived review-page approval references
     randomBytes = crypto.randomBytes,
     now = Date.now
   } = deps || {};
@@ -146,12 +227,97 @@ function createDisputeService(deps) {
     );
   }
 
-  async function loadCase(caseId) {
+  /* Out-of-scope cases read as not found: existence never leaks across scopes. */
+  function assertScope(caseRow, merchantScope) {
+    if (merchantScope && scopeOfCase(caseRow) !== merchantScope) throw invalid('dispute case not found');
+  }
+
+  async function loadCase(caseId, merchantScope) {
     const result = await pool.query(`SELECT * FROM dispute_cases WHERE id = $1`, [caseId]);
     const row = result.rows[0];
     if (!row) throw invalid('dispute case not found');
+    assertScope(row, merchantScope);
     return row;
   }
+
+  function actorOf(input) {
+    if (input && input.wpUserId != null) return { kind: 'wp_admin', ref: requireId(input.wpUserId, 'wpUserId') };
+    const discordUserId = String(input && input.discordUserId || '');
+    if (DISCORD_ID_RE.test(discordUserId)) return { kind: 'discord_user', ref: discordUserId };
+    throw invalid('wpUserId or a valid discordUserId is required');
+  }
+
+  /* ---- review-page approval references ---------------------------------- */
+
+  function issueReviewRef(caseId, wpUserId) {
+    if (!reviewRefSecret) return null;
+    const expires = now() + REVIEW_REF_TTL_MS;
+    const body = `${caseId}.${wpUserId}.${expires}`;
+    const signature = crypto.createHmac('sha256', reviewRefSecret).update(body, 'utf8').digest('hex');
+    return `${body}.${signature}`;
+  }
+
+  function verifyReviewRef(reviewRef, caseId, wpUserId) {
+    if (!reviewRefSecret) return false;
+    const parts = String(reviewRef || '').split('.');
+    if (parts.length !== 4) return false;
+    const [refCase, refUser, refExpires, signature] = parts;
+    if (Number(refCase) !== caseId || Number(refUser) !== wpUserId) return false;
+    if (!Number.isFinite(Number(refExpires)) || Number(refExpires) <= now()) return false;
+    const expected = crypto.createHmac('sha256', reviewRefSecret)
+      .update(`${refCase}.${refUser}.${refExpires}`, 'utf8').digest('hex');
+    const a = Buffer.from(String(signature), 'utf8');
+    const b = Buffer.from(expected, 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  async function wpUserIsMerchantAdmin(client, caseRow, wpUserId) {
+    if (!graph || typeof graph.resolveMerchantAdmins !== 'function') return false;
+    const admins = await graph.resolveMerchantAdmins(client, scopeOfCase(caseRow));
+    return admins.some((admin) => admin.wordpress_user_id != null && Number(admin.wordpress_user_id) === wpUserId);
+  }
+
+  /* ---- health ------------------------------------------------------------ */
+
+  async function webhookHealth() {
+    const [stripeRows, paypalRows, ucRows, wpRows] = await Promise.all([
+      pool.query(`SELECT MAX(event_created_at) AS last_event_at, MAX(processed_at) AS last_processed_at,
+                         COUNT(*) FILTER (WHERE error IS NOT NULL)::int AS failures
+                    FROM stripe_events`, []),
+      pool.query(`SELECT MAX(received_at) AS last_seen_at,
+                         COUNT(*) FILTER (WHERE status <> 'processed')::int AS unprocessed
+                    FROM paypal_events`, []),
+      pool.query(`SELECT MAX(received_at) AS last_seen_at FROM upgrade_chat_records`, []),
+      pool.query(`SELECT MAX(received_at) AS last_seen_at,
+                         COUNT(*) FILTER (WHERE failure_reason IS NOT NULL)::int AS failures
+                    FROM wordpress_gateway_events`, [])
+    ]);
+    const s = stripeRows.rows[0] || {};
+    const p = paypalRows.rows[0] || {};
+    const u = ucRows.rows[0] || {};
+    const w = wpRows.rows[0] || {};
+    return {
+      stripe: { lastSeenAt: s.last_event_at || null, lastProcessedAt: s.last_processed_at || null, failures: s.failures == null ? null : Number(s.failures) },
+      paypal: { lastSeenAt: p.last_seen_at || null, unprocessed: p.unprocessed == null ? null : Number(p.unprocessed) },
+      upgrade_chat: { lastSeenAt: u.last_seen_at || null },
+      wordpress_gateway: { lastSeenAt: w.last_seen_at || null, failures: w.failures == null ? null : Number(w.failures) }
+    };
+  }
+
+  async function latestPacketsFor(caseIds) {
+    if (!caseIds.length) return new Map();
+    const result = await pool.query(
+      `SELECT DISTINCT ON (case_id) case_id, id, version, manifest
+         FROM dispute_packets WHERE case_id = ANY($1)
+        ORDER BY case_id, version DESC`,
+      [caseIds]
+    );
+    const map = new Map();
+    for (const row of result.rows || []) map.set(Number(row.case_id), row);
+    return map;
+  }
+
+  /* ---- reads ------------------------------------------------------------- */
 
   async function listCases(input = {}) {
     let states = DEFAULT_LIST_STATES;
@@ -167,20 +333,68 @@ function createDisputeService(deps) {
       limit = Number(input.limit);
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw invalid('limit must be between 1 and 200');
     }
+    const merchantScope = optionalScope(input.merchantScope);
     const result = await pool.query(
       `SELECT * FROM dispute_cases
         WHERE case_state = ANY($1)
+          AND ($3::text IS NULL OR COALESCE(merchant_account, 'platform') = $3)
         ORDER BY due_by ASC NULLS LAST, id ASC
         LIMIT $2`,
-      [states, limit]
+      [states, limit, merchantScope]
     );
-    return { cases: result.rows.map(caseSummary) };
+    const rows = result.rows || [];
+    let packets = new Map();
+    try { packets = await latestPacketsFor(rows.map((row) => Number(row.id))); } catch (_) { packets = new Map(); }
+    let webhooks = null;
+    if (!merchantScope) {
+      try { webhooks = await webhookHealth(); } catch (_) { webhooks = null; }
+    }
+    return {
+      cases: rows.map((row) => {
+        const packet = packets.get(Number(row.id));
+        let manifest = null;
+        if (packet) { try { manifest = parseManifest(packet); } catch (_) { manifest = null; } }
+        return Object.assign(caseSummary(row), {
+          completeness: completenessOf(manifest),
+          latestPacketVersion: packet ? Number(packet.version) : null
+        });
+      }),
+      webhooks
+    };
+  }
+
+  async function latestPacketDetail(caseRow) {
+    const found = await pool.query(
+      `SELECT id, version, response_cycle, manifest, warnings, pdf_sha256, packet_sha256, generator_version, created_at
+         FROM dispute_packets WHERE case_id = $1 ORDER BY version DESC LIMIT 1`,
+      [Number(caseRow.id)]
+    );
+    const row = found.rows && found.rows[0];
+    if (!row) return { packet: null, transmitFields: {}, transmitFiles: [], checklist: null };
+    const manifest = parseManifest(row);
+    const plan = transmitPlan(caseRow, manifest);
+    return {
+      packet: {
+        id: Number(row.id),
+        version: Number(row.version),
+        responseCycle: Number(row.response_cycle),
+        manifest,
+        warnings: row.warnings || manifest.warnings || [],
+        pdfSha256: row.pdf_sha256,
+        packetSha256: row.packet_sha256,
+        generatorVersion: row.generator_version,
+        createdAt: row.created_at
+      },
+      transmitFields: plan.transmitFields,
+      transmitFiles: plan.transmitFiles,
+      checklist: Array.isArray(manifest.checklist) ? manifest.checklist : null
+    };
   }
 
   async function caseDetail(input) {
     const caseId = requireId(input && input.caseId, 'caseId');
-    const caseRow = await loadCase(caseId);
-    const [evidence, packets, submissions, auditRows] = await Promise.all([
+    const caseRow = await loadCase(caseId, optionalScope(input && input.merchantScope));
+    const [evidence, packets, submissions, auditRows, latest] = await Promise.all([
       pool.query(
         `SELECT id, kind, body_text, body_json, file_name, file_sha256, cited_records, superseded_by, occurred_at
            FROM dispute_evidence_items WHERE case_id = $1 ORDER BY id ASC`, [caseId]
@@ -197,7 +411,8 @@ function createDisputeService(deps) {
       pool.query(
         `SELECT id, actor_kind, actor_ref, action, detail, occurred_at
            FROM dispute_audit_log WHERE case_id = $1 ORDER BY id DESC LIMIT 50`, [caseId]
-      )
+      ),
+      latestPacketDetail(caseRow)
     ]);
     return {
       case: caseSummary(caseRow),
@@ -206,7 +421,11 @@ function createDisputeService(deps) {
       evidenceItems: evidence.rows,
       packets: packets.rows,
       submissions: submissions.rows,
-      auditLog: auditRows.rows
+      auditLog: auditRows.rows,
+      packet: latest.packet,
+      transmitFields: latest.transmitFields,
+      transmitFiles: latest.transmitFiles,
+      checklist: latest.checklist || (Array.isArray(caseRow.requested_evidence) ? caseRow.requested_evidence : [])
     };
   }
 
@@ -260,11 +479,52 @@ function createDisputeService(deps) {
     };
   }
 
+  /**
+   * The Stripe file plan is completed BEFORE the manifest is hashed, so the
+   * exact files (type + size) the admin approves are what gets validated
+   * and transmitted: stored evidence files get their real byte size, and the
+   * packet's own PDF is attached as `uncategorized_file` when the reason
+   * allows it and no evidence item already fills that field.
+   */
+  async function completeStripeFilePlan(caseRow, model, version) {
+    if (!model || !model.stripeEvidence || !Array.isArray(model.stripeEvidence.filesPlan)) return;
+    const plan = model.stripeEvidence.filesPlan;
+    const itemIds = plan.filter((entry) => entry.evidenceItemId != null).map((entry) => Number(entry.evidenceItemId));
+    const sizes = new Map();
+    if (itemIds.length) {
+      const found = await pool.query(
+        `SELECT id, file_name, octet_length(file_bytes) AS bytes FROM dispute_evidence_items WHERE id = ANY($1)`,
+        [itemIds]
+      );
+      for (const row of found.rows || []) sizes.set(Number(row.id), row);
+    }
+    for (const entry of plan) {
+      const meta = entry.evidenceItemId != null ? sizes.get(Number(entry.evidenceItemId)) : null;
+      if (meta) {
+        if (!entry.fileName && meta.file_name) entry.fileName = meta.file_name;
+        if (meta.bytes != null) entry.bytes = Number(meta.bytes);
+      }
+      if (!entry.fileType) entry.fileType = fileTypeOf(entry);
+    }
+    const allowed = limits && typeof limits.stripeAllowedFields === 'function'
+      ? limits.stripeAllowedFields(caseRow.reason || 'general') : null;
+    if (allowed && allowed.has(PACKET_PDF_FIELD) && !plan.some((entry) => entry.field === PACKET_PDF_FIELD)) {
+      plan.push({
+        field: PACKET_PDF_FIELD,
+        source: 'packet_pdf',
+        fileName: `dispute-packet-v${version}.pdf`,
+        fileType: 'pdf',
+        evidenceItemId: null
+      });
+    }
+  }
+
   async function buildPacket(input) {
     if (!engine || !packetGenerator) throw new Error('packet building is unconfigured');
     const caseId = requireId(input && input.caseId, 'caseId');
-    const wpUserId = requireId(input && input.wpUserId, 'wpUserId');
-    const caseRow = await loadCase(caseId);
+    const actor = actorOf(input);
+    const merchantScope = optionalScope(input && input.merchantScope);
+    const caseRow = await loadCase(caseId, merchantScope);
     if (!PACKET_BUILDABLE_STATES.has(caseRow.case_state)) {
       throw invalid(`a packet cannot be built while the case is in state ${caseRow.case_state}`);
     }
@@ -273,7 +533,7 @@ function createDisputeService(deps) {
       [caseId]
     )).rows;
     const registry = await loadRegistryRows(caseRow);
-    const model = engine.buildPacketModel({ now: now(), caseRow, evidenceItems, ...registry });
+    const model = engine.buildPacketModel({ now: now(), caseRow, evidenceItems, limits, ...registry });
 
     return withTransaction(async (client) => {
       const locked = await client.query(`SELECT * FROM dispute_cases WHERE id = $1 FOR UPDATE`, [caseId]);
@@ -286,6 +546,7 @@ function createDisputeService(deps) {
         `SELECT COALESCE(MAX(version), 0) AS max_version FROM dispute_packets WHERE case_id = $1`, [caseId]
       );
       const version = Number(versionResult.rows[0] ? versionResult.rows[0].max_version : 0) + 1;
+      await completeStripeFilePlan(current, model, version);
       const generated = packetGenerator.generatePacket({
         model, caseRow: current, version, generatedAt: nowIso()
       });
@@ -301,7 +562,7 @@ function createDisputeService(deps) {
       if (current.case_state !== 'ready_for_review') {
         await client.query(`UPDATE dispute_cases SET case_state = $2 WHERE id = $1`, [caseId, 'ready_for_review']);
       }
-      await audit(client, caseId, 'wp_admin', wpUserId, 'packet_built', {
+      await audit(client, caseId, actor.kind, actor.ref, 'packet_built', {
         packet_id: Number(inserted.rows[0].id),
         version,
         response_cycle: Number(current.response_cycle),
@@ -324,6 +585,7 @@ function createDisputeService(deps) {
     const discordUserId = String(input && input.discordUserId || '');
     if (!DISCORD_ID_RE.test(discordUserId)) throw invalid('a valid Discord user id is required');
     const identityId = input && input.identityId != null ? requireId(input.identityId, 'identityId') : null;
+    const merchantScope = optionalScope(input && input.merchantScope);
 
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = hashReviewToken(rawToken);
@@ -333,6 +595,7 @@ function createDisputeService(deps) {
     await withTransaction(async (client) => {
       const found = await client.query(`SELECT * FROM dispute_cases WHERE id = $1`, [caseId]);
       if (!found.rows[0]) throw invalid('dispute case not found');
+      assertScope(found.rows[0], merchantScope);
       const inserted = await client.query(
         `INSERT INTO dispute_review_tokens (
            token_hash, case_id, issued_to_discord_user, issued_to_identity, issued_at, expires_at
@@ -349,24 +612,24 @@ function createDisputeService(deps) {
   }
 
   /**
-   * Redeem a single-use review token and return the case summary scope for
-   * the WordPress /connect-review/ page.
+   * Redeem a single-use review token for the WordPress /connect-review/ page.
    *
-   * SECURITY: the token alone grants nothing. The caller (the WordPress
-   * plugin behind the signed admin API) MUST have already re-authorized the
-   * WordPress user server-side — logged in, with the required capability
-   * for the case's merchant scope — before calling this. This function only
-   * consumes the token (single-use, 15 minute TTL) and records who redeemed
-   * it; it does not perform WordPress authorization itself.
+   * SECURITY: the token alone grants nothing. The WordPress plugin has
+   * already required a login and reports `manageOptions` from its own
+   * server-side capability check. A user without manage_options is
+   * authorized ONLY when the identity graph lists their WordPress user id as
+   * a verified admin of the case's merchant scope. Unauthorized redeems
+   * consume the token (single-use), are audited, and return no case data.
    */
   async function redeemReviewToken(input) {
     const rawToken = typeof (input && input.token) === 'string' ? input.token.trim() : '';
     if (!rawToken || rawToken.length > 128) throw invalid('a review token is required');
     const wpUserId = requireId(input && input.wpUserId, 'wpUserId');
+    const manageOptions = !!(input && input.manageOptions === true);
     const tokenHash = hashReviewToken(rawToken);
     const at = nowIso();
 
-    return withTransaction(async (client) => {
+    const outcome = await withTransaction(async (client) => {
       const claimed = await client.query(
         `UPDATE dispute_review_tokens
             SET used_at = $2, used_by_wp_user = $3
@@ -379,30 +642,51 @@ function createDisputeService(deps) {
       const found = await client.query(`SELECT * FROM dispute_cases WHERE id = $1`, [Number(token.case_id)]);
       const caseRow = found.rows[0];
       if (!caseRow) throw invalid('dispute case not found');
-      await audit(client, Number(token.case_id), 'wp_admin', wpUserId, 'review_token_redeemed', {
-        token_id: Number(token.id),
-        issued_to_discord_user: token.issued_to_discord_user
-      });
-      return { case: caseSummary(caseRow) };
+      const authorized = manageOptions || await wpUserIsMerchantAdmin(client, caseRow, wpUserId);
+      await audit(client, Number(token.case_id), 'wp_admin', wpUserId,
+        authorized ? 'review_token_redeemed' : 'review_token_redeemed_unauthorized', {
+          token_id: Number(token.id),
+          issued_to_discord_user: token.issued_to_discord_user,
+          manage_options: manageOptions
+        });
+      return { authorized, caseRow };
     });
+
+    if (!outcome.authorized) return { authorized: false };
+    const latest = await latestPacketDetail(outcome.caseRow);
+    return {
+      authorized: true,
+      case: caseSummary(outcome.caseRow),
+      packet: latest.packet,
+      transmitFields: latest.transmitFields,
+      transmitFiles: latest.transmitFiles,
+      checklist: latest.checklist,
+      reviewRef: issueReviewRef(Number(outcome.caseRow.id), wpUserId)
+    };
   }
 
-  function validateAgainstProviderLimits(caseRow, manifest) {
+  function validateAgainstProviderLimits(caseRow, manifest, files) {
     if (!limits) throw new Error('provider limit validation is unconfigured');
     if (caseRow.provider === 'stripe') {
-      const evidence = manifest.stripeEvidence;
+      const evidence = stripeMappingOf(manifest);
       if (!evidence || typeof evidence !== 'object' || !evidence.fieldsObj) {
         throw invalid('packet has no Stripe evidence mapping');
       }
-      const result = limits.validateStripeEvidence(caseRow.reason, evidence.fieldsObj, evidence.filesPlan || []);
+      const validationFiles = (files || []).map((file) => ({
+        field: file.field,
+        fileType: file.fileType,
+        bytes: file.bytes.length
+      }));
+      const result = limits.validateStripeEvidence(caseRow.reason, evidence.fieldsObj, validationFiles);
       if (!result || !result.ok) {
-        const violations = (result && result.violations || ['unknown violation']).map(String).join('; ');
+        const violations = (result && result.violations || ['unknown violation'])
+          .map((violation) => (typeof violation === 'string' ? violation : JSON.stringify(violation))).join('; ');
         throw invalid(`evidence failed provider validation: ${violations.slice(0, 400)}`);
       }
       return { kind: 'stripe', evidence };
     }
     if (caseRow.provider === 'paypal') {
-      const evidence = manifest.paypalEvidence;
+      const evidence = paypalMappingOf(manifest);
       if (!evidence || typeof evidence !== 'object' || !Array.isArray(evidence.evidences)) {
         throw invalid('packet has no PayPal evidence mapping');
       }
@@ -410,7 +694,8 @@ function createDisputeService(deps) {
         caseRow.requested_evidence, caseRow.allowed_actions, evidence.evidences
       );
       if (!result || !result.ok) {
-        const violations = (result && result.violations || ['unknown violation']).map(String).join('; ');
+        const violations = (result && result.violations || ['unknown violation'])
+          .map((violation) => (typeof violation === 'string' ? violation : JSON.stringify(violation))).join('; ');
         throw invalid(`evidence failed provider validation: ${violations.slice(0, 400)}`);
       }
       return { kind: 'paypal', evidence };
@@ -425,6 +710,7 @@ function createDisputeService(deps) {
         files.push({
           field: plan.field,
           fileName: plan.fileName || `dispute-packet-v${packetRow.version}.pdf`,
+          fileType: 'pdf',
           contentType: 'application/pdf',
           bytes: Buffer.isBuffer(packetRow.pdf_bytes) ? packetRow.pdf_bytes : Buffer.from(packetRow.pdf_bytes || '')
         });
@@ -437,10 +723,12 @@ function createDisputeService(deps) {
       );
       const item = found.rows[0];
       if (!item || item.file_bytes == null) throw invalid('planned evidence file is missing its stored bytes');
+      const fileType = fileTypeOf({ fileType: plan.fileType, fileName: plan.fileName || item.file_name });
       files.push({
         field: plan.field,
         fileName: plan.fileName || item.file_name || `evidence-${evidenceItemId}.pdf`,
-        contentType: plan.contentType || 'application/pdf',
+        fileType,
+        contentType: plan.contentType || contentTypeFor(fileType),
         bytes: Buffer.isBuffer(item.file_bytes) ? item.file_bytes : Buffer.from(item.file_bytes)
       });
     }
@@ -484,11 +772,15 @@ function createDisputeService(deps) {
 
   // approveAndSubmit: the only code path that sends evidence to a provider.
   //
+  // Phase 0 (authorization): a signed WordPress admin call (manageOptions
+  //   true, or unstated for the trusted admin console) is accepted as-is. A
+  //   review-page approval (manageOptions false, or a reviewRef present)
+  //   must carry a valid short-lived reviewRef bound to this case and user,
+  //   and the user must be a verified merchant admin of the case's scope.
   // Phase 1 (no claim): load case + packet, verify the approving admin saw
-  //   the exact packet (input.packetSha256 must equal the stored hash and
-  //   the stored hash must re-derive from the stored bytes), then run
-  //   provider-limit validation. A validation failure throws before any
-  //   claim is taken.
+  //   the exact packet (input.packetSha256 must equal the stored hash), then
+  //   run provider-limit validation against the real file types and sizes.
+  //   A validation failure throws before any claim is taken.
   // Phase 2 (claim txn): SELECT the case row FOR UPDATE, re-validate
   //   case_state + response_cycle, INSERT the dispute_submissions row with
   //   status 'submitting'. The partial unique index on (case_id,
@@ -515,9 +807,18 @@ function createDisputeService(deps) {
         !confirmation.checkboxLabel.trim()) {
       throw invalid('an explicit confirmation with its displayed checkbox text is required');
     }
+    const reviewPageApproval = (input && input.manageOptions === false) || (input && input.reviewRef != null);
 
-    // Phase 1: read + validate. Nothing is claimed yet.
+    // Phase 0/1: read + authorize + validate. Nothing is claimed yet.
     const caseRow = await loadCase(caseId);
+    if (reviewPageApproval) {
+      if (!verifyReviewRef(input.reviewRef, caseId, wpUserId)) {
+        throw invalid('a valid review reference is required for this approval');
+      }
+      if (!await wpUserIsMerchantAdmin(pool, caseRow, wpUserId)) {
+        throw invalid('this WordPress user is not a verified admin of the case merchant scope');
+      }
+    }
     if (!SUBMITTABLE_STATES.has(caseRow.case_state)) {
       throw invalid(`the case is not ready for submission (state ${caseRow.case_state})`);
     }
@@ -531,14 +832,15 @@ function createDisputeService(deps) {
       throw invalid('packetSha256 does not match the stored packet; review the current packet');
     }
     const manifest = parseManifest(packetRow);
-    const mapping = validateAgainstProviderLimits(caseRow, manifest);
+    const stripeMapping = caseRow.provider === 'stripe' ? stripeMappingOf(manifest) : null;
+    // Resolve file bytes before validating and before claiming so a missing
+    // file never strands a claim, and validation sees real sizes.
+    const plannedFiles = stripeMapping && Array.isArray(stripeMapping.filesPlan)
+      ? await resolvePlannedFileBytes(caseId, packetRow, stripeMapping.filesPlan)
+      : [];
+    const mapping = validateAgainstProviderLimits(caseRow, manifest, plannedFiles);
     const responseCycle = Number(caseRow.response_cycle);
     const idempotencyKey = submissionIdempotencyKey(caseId, responseCycle, Number(packetRow.version));
-
-    // Resolve file bytes before claiming so a missing file never strands a claim.
-    const plannedFiles = mapping.kind === 'stripe'
-      ? await resolvePlannedFileBytes(caseId, packetRow, mapping.evidence.filesPlan || [])
-      : [];
 
     // Phase 2: claim.
     const submissionId = await withTransaction(async (client) => {
@@ -572,7 +874,8 @@ function createDisputeService(deps) {
         packet_id: packetId,
         packet_version: Number(packetRow.version),
         response_cycle: responseCycle,
-        packet_sha256: packetSha256
+        packet_sha256: packetSha256,
+        review_page: reviewPageApproval
       });
       return id;
     });
@@ -773,6 +1076,119 @@ function createDisputeService(deps) {
     });
   }
 
+  /* ---- Connect bot summaries (counts, amounts, dates; never identifiers) --- */
+
+  async function summarizePayments(input = {}) {
+    const merchantScope = optionalScope(input.merchantScope);
+    const result = await pool.query(
+      `SELECT amount_cents, currency, kind, status, occurred_at
+         FROM billing_transactions
+        WHERE ($1::text IS NULL OR COALESCE(provider_account, 'platform') = $1)
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT 10`,
+      [merchantScope]
+    );
+    return (result.rows || []).map((row) => ({
+      amount_cents: row.amount_cents == null ? null : Number(row.amount_cents),
+      currency: row.currency,
+      kind: row.kind,
+      status: row.status,
+      occurred_at: row.occurred_at
+    }));
+  }
+
+  async function summarizeSubscriptions(input = {}) {
+    const merchantScope = optionalScope(input.merchantScope);
+    const result = await pool.query(
+      `SELECT provider, price_cents, currency, billing_interval, origin
+         FROM billing_subscriptions
+        WHERE ($1::text IS NULL OR COALESCE(merchant_account, 'platform') = $1)
+        ORDER BY id DESC
+        LIMIT 10`,
+      [merchantScope]
+    );
+    return (result.rows || []).map((row) => ({
+      provider: row.provider,
+      price_cents: row.price_cents == null ? null : Number(row.price_cents),
+      currency: row.currency,
+      billing_interval: row.billing_interval,
+      origin: row.origin
+    }));
+  }
+
+  async function customerHistory(input = {}) {
+    const caseId = requireId(input.caseId, 'caseId');
+    const caseRow = await loadCase(caseId, optionalScope(input.merchantScope));
+    const identityId = caseRow.identity_id == null ? null : Number(caseRow.identity_id);
+    if (identityId == null) {
+      return { paymentsCount: 0, firstPaymentAt: null, lastPaymentAt: null, subscriptionsCount: 0, disputesCount: 1, identityResolved: false };
+    }
+    const [payments, subscriptions, disputes] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*)::int AS n, MIN(occurred_at) AS first_at, MAX(occurred_at) AS last_at
+           FROM billing_transactions
+          WHERE identity_id = $1 AND kind IN ('charge','capture') AND COALESCE(status, '') <> 'failed'`,
+        [identityId]
+      ),
+      pool.query(`SELECT COUNT(*)::int AS n FROM billing_subscriptions WHERE identity_id = $1`, [identityId]),
+      pool.query(`SELECT COUNT(*)::int AS n FROM dispute_cases WHERE identity_id = $1`, [identityId])
+    ]);
+    const p = payments.rows[0] || {};
+    return {
+      paymentsCount: Number(p.n || 0),
+      firstPaymentAt: p.first_at || null,
+      lastPaymentAt: p.last_at || null,
+      subscriptionsCount: Number((subscriptions.rows[0] || {}).n || 0),
+      disputesCount: Number((disputes.rows[0] || {}).n || 0),
+      identityResolved: true
+    };
+  }
+
+  /* ---- merchant admin linking (administrator confirmation = trusted event) */
+
+  async function linkMerchantAdmin(input = {}) {
+    if (!graph || typeof graph.linkVerified !== 'function') throw new Error('identity graph is unconfigured');
+    const approverWpUserId = requireId(input.wpUserId, 'wpUserId');
+    const targetWpUserId = input.targetWpUserId != null ? requireId(input.targetWpUserId, 'targetWpUserId') : approverWpUserId;
+    const merchantScope = optionalScope(input.merchantScope);
+    if (!merchantScope) throw invalid('merchantScope is required');
+    const discordUserId = String(input.discordUserId || '');
+    if (!DISCORD_ID_RE.test(discordUserId)) throw invalid('a valid Discord user id is required');
+    const at = nowIso();
+    return withTransaction(async (client) => {
+      const identityId = await graph.linkVerified(client, {
+        provider: 'sml',
+        refType: 'merchant',
+        refValue: merchantScope,
+        wordpress_user_id: targetWpUserId,
+        sml_user_id: targetWpUserId,
+        discord_user_id: discordUserId,
+        via: `wp_admin_confirmation:${approverWpUserId}`,
+        prov: {
+          source: 'wordpress',
+          source_event_id: null,
+          provider_account: merchantScope === 'platform' ? null : merchantScope,
+          occurred_at: at,
+          received_at: at,
+          provenance: { confirmed_by_wp_user: approverWpUserId }
+        }
+      });
+      await audit(client, null, 'wp_admin', approverWpUserId, 'merchant_admin_linked', {
+        identity_id: identityId,
+        target_wp_user_id: targetWpUserId,
+        merchant_scope: merchantScope
+      });
+      return { identityId, merchantScope };
+    });
+  }
+
+  async function listMerchantAdmins(input = {}) {
+    if (!graph || typeof graph.resolveMerchantAdmins !== 'function') return { admins: [] };
+    const merchantScope = optionalScope(input.merchantScope) || 'platform';
+    const admins = await graph.resolveMerchantAdmins(pool, merchantScope);
+    return { merchantScope, admins };
+  }
+
   return {
     listCases,
     caseDetail,
@@ -782,13 +1198,22 @@ function createDisputeService(deps) {
     approveAndSubmit,
     recordPolicy,
     recordTermsVersion,
-    recordConsent
+    recordConsent,
+    summarizePayments,
+    summarizeSubscriptions,
+    customerHistory,
+    linkMerchantAdmin,
+    listMerchantAdmins,
+    webhookHealth
   };
 }
 
 module.exports = {
+  OPEN_CASE_STATES,
+  REVIEW_REF_TTL_MS,
   REVIEW_TOKEN_TTL_MS,
   createDisputeService,
   hashReviewToken,
+  scopeOfCase,
   submissionIdempotencyKey
 };

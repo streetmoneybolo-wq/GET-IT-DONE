@@ -40,6 +40,31 @@ services:
         sync: false
       - key: SML_ALERT_ROUTER_SECRET
         sync: false
+      # --- dispute-evidence system (all disabled until set; values live only in Render) ---
+      - key: SML_DISPUTE_EVIDENCE_ENABLED
+        sync: false
+      - key: SML_EVIDENCE_ENCRYPTION_KEY
+        sync: false
+      - key: SML_PAYPAL_ENABLED
+        sync: false
+      - key: SML_PAYPAL_ENV
+        sync: false
+      - key: SML_PAYPAL_CLIENT_ID
+        sync: false
+      - key: SML_PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: SML_PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: SML_CONNECT_BOT_ENABLED
+        sync: false
+      - key: SML_DISCORD_CONNECT_PUBLIC_KEY
+        sync: false
+      - key: SML_DISCORD_CONNECT_APP_ID
+        sync: false
+      - key: SML_CONNECT_REVIEW_URL_SECRET
+        sync: false
+      - key: SML_UC_WEBHOOK_PATH_TOKEN
+        sync: false
 
   - type: worker
     name: sml-platform-worker
@@ -85,3 +110,24 @@ services:
         value: stockmarketloop
       - key: SML_WORDPRESS_AUTHOR_NAME
         value: SML NEWS
+      # --- dispute-evidence system (worker: sweeps, alerts, disputed-access policy) ---
+      - key: SML_DISPUTE_EVIDENCE_ENABLED
+        sync: false
+      - key: SML_EVIDENCE_ENCRYPTION_KEY
+        sync: false
+      - key: SML_PAYPAL_ENABLED
+        sync: false
+      - key: SML_PAYPAL_ENV
+        sync: false
+      - key: SML_PAYPAL_CLIENT_ID
+        sync: false
+      - key: SML_PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: SML_CONNECT_BOT_ENABLED
+        sync: false
+      - key: SML_DISCORD_CONNECT_BOT_TOKEN
+        sync: false
+      - key: UPGRADE_CHAT_CLIENT_ID
+        sync: false
+      - key: UPGRADE_CHAT_CLIENT_SECRET
+        sync: false

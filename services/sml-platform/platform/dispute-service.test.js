@@ -612,9 +612,11 @@ test('a review token is single-use: two concurrent redeems -> exactly one wins',
   const service = makeService(db);
   const issued = await service.issueReviewToken({ caseId: 1, discordUserId: '123456789012345678' });
 
+  /* manageOptions:true = the WordPress page verified manage_options before
+     calling; the race under test is the single-use token claim itself. */
   const outcomes = await Promise.allSettled([
-    service.redeemReviewToken({ token: issued.token, wpUserId: 7 }),
-    service.redeemReviewToken({ token: issued.token, wpUserId: 8 })
+    service.redeemReviewToken({ token: issued.token, wpUserId: 7, manageOptions: true }),
+    service.redeemReviewToken({ token: issued.token, wpUserId: 8, manageOptions: true })
   ]);
 
   const fulfilled = outcomes.filter((entry) => entry.status === 'fulfilled');

@@ -66,6 +66,7 @@ function getConfig(env = process.env) {
     discordConnectAppId: String(env.SML_DISCORD_CONNECT_APP_ID || '').trim(),
     discordConnectBotToken: String(env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim(),
     connectReviewUrlSecret: String(env.SML_CONNECT_REVIEW_URL_SECRET || '').trim(),
+    connectReviewUrlBase: String(env.SML_CONNECT_REVIEW_URL_BASE || 'https://stockmarketloop.com/connect-review/').trim(),
     upgradeChatWebhookPathToken: String(env.SML_UC_WEBHOOK_PATH_TOKEN || '').trim(),
     connectGuildIds: String(env.SML_CONNECT_GUILD_IDS || '').split(',').map((g) => g.trim()).filter(Boolean)
   });
