@@ -244,7 +244,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   pool = null, upgradeChat = null, upgradeChatPlanMap = {},
   alertRouter = null, alertRouterSecret = '',
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
-  newsIngestToken = '', logger = log, now = Date.now }) {
+  newsIngestToken = '', schemaVersion = null, logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
@@ -307,7 +307,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     try {
       await checkDatabase();
-      sendJson(response, 200, { ok: true, service: 'sml-platform-api', database: 'connected' });
+      /* The applied schema version is public metadata that lets a deploy be
+         verified without dashboard access; it reveals no data or secret. */
+      let schema;
+      if (typeof schemaVersion === 'function') {
+        try { schema = await schemaVersion(); } catch (_) { schema = null; }
+      }
+      sendJson(response, 200, {
+        ok: true, service: 'sml-platform-api', database: 'connected',
+        ...(schema !== undefined ? { schema } : {})
+      });
     } catch (error) {
       logger('error', 'health_database_unavailable', { error });
       sendJson(response, 503, { ok: false, service: 'sml-platform-api', database: 'unavailable' });
@@ -323,7 +332,12 @@ async function main() {
     ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
   const { createAlertRouter } = require('./alert-router');
   const alertRouter = createAlertRouter(database.pool);
+  const schemaVersion = async () => {
+    const found = await database.pool.query('SELECT MAX(version) AS version FROM schema_migrations', []);
+    return found.rows[0] && found.rows[0].version != null ? String(found.rows[0].version) : null;
+  };
   const server = createServer({
+    schemaVersion,
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
     wordpressWebhookSecret: config.wordpressWebhookSecret,
