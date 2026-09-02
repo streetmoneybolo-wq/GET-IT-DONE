@@ -1,22 +1,20 @@
 /**
- * SML /register/ SEO  (wpcode/register-seo.php)
+ * SML landing SEO  (wpcode/register-seo.php  — WPCode snippet #7942)
  *
- * Makes /register/ rank as a public "Join Stock Market Loop" marketing landing.
- * Output-buffers the page and rewrites the head so it beats whatever Rank Math /
- * the theme emitted:
- *   - robots     -> index, follow      (was noindex,nofollow — the blocker)
- *   - canonical  -> https://site/register/
- *   - <title>    -> Join-focused
- *   - description-> injected (there is none today)
+ * Makes app-shell landing pages that self-noindex rank as real marketing pages.
+ * Both /register/ and /loop-letters/ shipped rel=canonical->home and
+ * robots=noindex,nofollow (emitted by their rendering plugins), which blocks
+ * indexing. This output-buffers those pages and rewrites the head:
+ *   - robots     -> index, follow, max-image-preview:large
+ *   - canonical  -> the page's own URL
+ *   - <title>    + description (per-page)
  *   - Open Graph + Twitter tags
  *
  * Output-buffer (not filters): on this WPCOM setup head/robots filters don't
- * reliably stick; rewriting the final HTML does. Uses init ob_start — the same
- * pattern the auth-portal loader already runs on /register/.
+ * reliably stick; rewriting the final HTML does. init ob_start — the pattern the
+ * auth-portal loader uses. Sends X-SML-Reg-SEO: 1 so activation is verifiable.
  *
- * Sends X-SML-Reg-SEO: 1 on /register/ so activation is verifiable.
- *
- * WPCode: PHP snippet, **Auto Insert · Run Everywhere · ACTIVE**. Guarded class,
+ * WPCode: PHP snippet, Auto Insert · Run Everywhere · ACTIVE. Guarded class,
  * no dynamic-code/encoding calls, no top-level return. ROLLBACK: deactivate.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -25,29 +23,50 @@ if ( ! class_exists( 'SML_Register_SEO' ) ) {
 
 	final class SML_Register_SEO {
 
+		/** path (trailing-slash-insensitive) => title/description. */
+		private function targets() {
+			return array(
+				'/register/' => array(
+					'title' => 'Join Stock Market Loop — The Finance-First Social Platform',
+					'desc'  => 'Create a free Stock Market Loop account — the finance-first social platform to follow tickers, join trading groups, publish market content, and go live.',
+				),
+				'/loop-letters/' => array(
+					'title' => 'Loop Letters — Finance Newsletters & Market Analysis | Stock Market Loop',
+					'desc'  => 'Loop Letters on Stock Market Loop — read and publish finance newsletters, ticker analysis, and market commentary, connected to an active trading community.',
+				),
+			);
+		}
+
 		public function __construct() {
 			add_action( 'init', array( $this, 'maybe_buffer' ), 20 );
 		}
 
-		private function on_register() {
-			if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return false; }
+		/** Returns the matched target key (with trailing slash) or ''. */
+		private function match() {
+			if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return ''; }
 			$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-			$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
-			return (bool) preg_match( '#^/register/?$#', $path );
+			$path = '/' . trim( (string) wp_parse_url( $uri, PHP_URL_PATH ), '/' ) . '/';
+			return isset( $this->targets()[ $path ] ) ? $path : '';
 		}
 
 		public function maybe_buffer() {
-			if ( ! $this->on_register() ) { return; }
-			if ( ! headers_sent() ) { header( 'X-SML-Reg-SEO: 1' ); } // proof the snippet is live on /register/
+			$key = $this->match();
+			if ( '' === $key ) { return; }
+			if ( ! headers_sent() ) { header( 'X-SML-Reg-SEO: 1' ); }
+			$GLOBALS['sml_reg_seo_key'] = $key;
 			ob_start( array( $this, 'rewrite' ) );
 		}
 
 		public function rewrite( $html ) {
 			if ( ! is_string( $html ) || false === stripos( $html, '</head>' ) ) { return $html; }
 
-			$title = 'Join Stock Market Loop — The Finance-First Social Platform';
-			$desc  = 'Create a free Stock Market Loop account — the finance-first social platform to follow tickers, join trading groups, publish market content, and go live.';
-			$canon = home_url( '/register/' );
+			$key = isset( $GLOBALS['sml_reg_seo_key'] ) ? $GLOBALS['sml_reg_seo_key'] : '/register/';
+			$cfg = $this->targets();
+			$t   = isset( $cfg[ $key ] ) ? $cfg[ $key ] : reset( $cfg );
+
+			$title  = $t['title'];
+			$desc   = $t['desc'];
+			$canon  = home_url( $key );
 			$robots = 'index, follow, max-image-preview:large';
 
 			// 1) Force indexable — overwrite EVERY robots/googlebot meta.
@@ -58,7 +77,7 @@ if ( ! class_exists( 'SML_Register_SEO' ) ) {
 			// 2) Title.
 			$html = preg_replace( '#<title>.*?</title>#is', '<title>' . esc_html( $title ) . '</title>', $html, 1 );
 
-			// 3) Canonical -> /register/ (if a tag exists).
+			// 3) Canonical -> the page's own URL.
 			if ( preg_match( '#<link[^>]*rel=["\']canonical["\'][^>]*>#i', $html ) ) {
 				$html = preg_replace(
 					'#(<link[^>]*rel=["\']canonical["\'][^>]*href=["\']).*?(["\'])#is',
