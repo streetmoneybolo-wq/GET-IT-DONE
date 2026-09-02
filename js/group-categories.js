@@ -67,6 +67,42 @@
    * Skipped entirely for prefers-reduced-motion, Save-Data and 2g, which keep
    * the poster deliberately. If the WebP fails to load the poster simply stays.
    */
+  /* ---------- Portal watermark: swap the raw GIF for a WebP derivative ----------
+   * The Portal background is uploaded as a raw animated GIF and painted at 15%
+   * opacity: currently Untitled-800-x-800-px-2.gif at 34,851,089 bytes, ~82% of
+   * the whole page transfer. The shell reads config.portalWatermarkUrl by
+   * reference at apply time, and applyWatermark() does not run until the shell
+   * has booted (measured ~5.1s in), so replacing the value here means the GIF is
+   * never requested at all.
+   * Server-side rewriting was tried first and could not be made to run on this
+   * page, so this is deliberately done client-side where it is verifiable.
+   * No observers: a short bounded poll covers the case where the shell config
+   * has not been printed yet, and gives up on its own. */
+  (function portalWatermarkSwap() {
+    var BASE = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@179a35f/media/watermarks/';
+    var MAP = {
+      'Untitled-800-x-800-px-2.gif': BASE + 'portal-bg-2-poster.webp',
+      'portal-watermark.gif': BASE + 'portal-watermark-poster.webp'
+    };
+    function swap() {
+      var cfg = window.SMLGroupShell;
+      if (!cfg || !cfg.portalWatermarkUrl) return false;
+      var url = String(cfg.portalWatermarkUrl);
+      for (var name in MAP) {
+        if (Object.prototype.hasOwnProperty.call(MAP, name) && url.indexOf(name) !== -1) {
+          cfg.portalWatermarkUrl = MAP[name];
+          return true;
+        }
+      }
+      return true;                 /* already optimised or unknown: stop looking */
+    }
+    if (swap()) return;
+    var tries = 0;
+    var timer = setInterval(function () {
+      if (swap() || ++tries > 60) clearInterval(timer);   /* <=3s, then give up */
+    }, 50);
+  })();
+
   (function portalWatermarkUpgrade() {
     /* The server serves a tiny static "<name>-poster.webp" so the critical path
      * stays small; once idle we upgrade to the animated "<name>.webp" beside it.
