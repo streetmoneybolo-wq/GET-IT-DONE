@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Platform Billing Bridge
  * Description: Signed bridge between WordPress, the Render billing service, Loop Bucks, and group access.
- * Version: 0.4.0
+ * Version: 0.4.1
  * Author: Stock Market Loop
  */
 
@@ -19,7 +19,7 @@ function sml_platform_billing_grants_table() {
 }
 
 function sml_platform_billing_install() {
-	if ( '0.4.0' === get_option( 'sml_platform_billing_bridge_version' ) ) return;
+	if ( '0.4.1' === get_option( 'sml_platform_billing_bridge_version' ) ) return;
 	global $wpdb;
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	$table = sml_platform_billing_table();
@@ -46,7 +46,7 @@ function sml_platform_billing_install() {
 		UNIQUE KEY group_user (group_id,user_id),
 		KEY subscription_id (subscription_id)
 	) {$charset};" );
-	update_option( 'sml_platform_billing_bridge_version', '0.4.0', false );
+	update_option( 'sml_platform_billing_bridge_version', '0.4.1', false );
 }
 register_activation_hook( __FILE__, 'sml_platform_billing_install' );
 add_action( 'init', 'sml_platform_billing_install', 1 );
@@ -358,6 +358,6 @@ add_action( 'wp_footer', function () {
 	$nonce = wp_create_nonce( 'wp_rest' );
 	?>
 	<style>.sml-billing-action{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px!important;font-weight:900!important}.sml-billing-migrate{border:1px solid #f5c84b!important;background:linear-gradient(135deg,#fff3a3,#d69b00)!important;color:#251600!important;box-shadow:0 0 18px #f5c84b66;animation:smlBillingGlow 1.8s ease-in-out infinite}.sml-billing-setup{border:1px solid #19f28b!important;background:#071b14!important;color:#66ffb1!important}@keyframes smlBillingGlow{50%{transform:translateY(-1px);box-shadow:0 0 28px #f5c84baa}}</style>
-	<script>(function(){var nonce=<?php echo wp_json_encode( $nonce ); ?>;function call(url,body){return fetch(url,{method:'POST',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.message||'Billing request failed.');return j;});});}function boot(){var root=document.getElementById('sml-group-root'),gid=root&&String(root.dataset.groupId||'').replace(/\D/g,'');if(!gid||root.querySelector('[data-sml-billing-ready]'))return;fetch('/wp-json/sml-platform/v1/group/'+gid+'/migration-status',{headers:{'X-WP-Nonce':nonce}}).then(function(r){return r.json();}).then(function(s){var actions=root.querySelector('.sml-group-actions,.sml-gshell__group-actions,[data-group-actions]');if(!actions)return;root.dataset.smlBillingReady='1';if(s.canManageBilling){var setup=document.createElement('button');setup.type='button';setup.className='sml-group-btn sml-billing-action sml-billing-setup';setup.textContent='⚙ Membership Billing · 6%';setup.onclick=function(){if(!confirm('Enable StockMarketLoop membership billing? I accept the 6% platform fee deducted from each subscription payment and authorize dispute recovery under the seller terms.'))return;setup.disabled=true;setup.textContent='Opening secure setup…';call('/wp-json/sml-platform/v1/group/'+gid+'/seller-onboarding',{acceptFee:true}).then(function(j){location.href=j.onboardingUrl;}).catch(function(e){setup.disabled=false;setup.textContent='⚙ Membership Billing · 6%';alert(e.message);});};actions.appendChild(setup);}if(s.eligible){var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-action sml-billing-migrate';b.dataset.smlBillingMigrate='1';b.textContent='💳 Move Membership Billing';b.onclick=function(){if(!confirm('Move this membership to StockMarketLoop? Stripe will collect your payment method now but will not charge until your verified Upgrade.Chat renewal date. The group creator receives the payment after StockMarketLoop\'s disclosed 6% platform fee.'))return;b.disabled=true;b.textContent='Verifying membership…';call('/wp-json/sml-platform/v1/group/'+gid+'/migrate-upgrade-chat',{}).then(function(j){location.href=j.checkoutUrl;}).catch(function(e){b.disabled=false;b.textContent='💳 Move Membership Billing';alert(e.message);});};actions.appendChild(b);}}).catch(function(){});}boot();[400,1000,2200].forEach(function(ms){setTimeout(boot,ms);});})();</script>
+	<script>(function(){var nonce=<?php echo wp_json_encode( $nonce ); ?>;function call(url,body){return fetch(url,{method:'POST',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.message||'Billing request failed.');return j;});});}function boot(){var root=document.getElementById('sml-group-root'),gid=root&&String(root.dataset.groupId||'').replace(/\D/g,'');if(!gid||root.querySelector('[data-sml-billing-ready]'))return;fetch('/wp-json/sml-platform/v1/group/'+gid+'/migration-status',{headers:{'X-WP-Nonce':nonce}}).then(function(r){return r.json();}).then(function(s){var actions=root.querySelector('.sml-gshell__owner-menu,.sml-group-actions,.sml-gshell__group-actions,[data-group-actions]');if(!actions)return;root.dataset.smlBillingReady='1';if(s.canManageBilling){var setup=document.createElement('button');setup.type='button';setup.className='sml-group-btn sml-billing-action sml-billing-setup';setup.textContent='⚙ Membership Billing · 6%';setup.onclick=function(){if(!confirm('Enable StockMarketLoop membership billing? I accept the 6% platform fee deducted from each subscription payment and authorize dispute recovery under the seller terms.'))return;setup.disabled=true;setup.textContent='Opening secure setup…';call('/wp-json/sml-platform/v1/group/'+gid+'/seller-onboarding',{acceptFee:true}).then(function(j){location.href=j.onboardingUrl;}).catch(function(e){setup.disabled=false;setup.textContent='⚙ Membership Billing · 6%';alert(e.message);});};actions.appendChild(setup);}if(s.eligible){var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-action sml-billing-migrate';b.dataset.smlBillingMigrate='1';b.textContent='💳 Move Membership Billing';b.onclick=function(){if(!confirm('Move this membership to StockMarketLoop? Stripe will collect your payment method now but will not charge until your verified Upgrade.Chat renewal date. The group creator receives the payment after StockMarketLoop\'s disclosed 6% platform fee.'))return;b.disabled=true;b.textContent='Verifying membership…';call('/wp-json/sml-platform/v1/group/'+gid+'/migrate-upgrade-chat',{}).then(function(j){location.href=j.checkoutUrl;}).catch(function(e){b.disabled=false;b.textContent='💳 Move Membership Billing';alert(e.message);});};actions.appendChild(b);}}).catch(function(){});}boot();[400,1000,2200].forEach(function(ms){setTimeout(boot,ms);});})();</script>
 	<?php
 }, 100 );
