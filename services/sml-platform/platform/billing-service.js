@@ -67,7 +67,7 @@ async function createMembershipCheckout(pool, stripe, input) {
     );
     plan = planResult.rows[0];
     if (!plan) throw new Error('membership plan not found');
-    if (Number(plan.platform_fee_bps) !== MEMBERSHIP_FEE_BPS) throw new Error('membership plan fee is not 5%');
+    if (Number(plan.platform_fee_bps) !== MEMBERSHIP_FEE_BPS) throw new Error('membership plan fee is not 6%');
     const sellerResult = await client.query(
       `SELECT * FROM marketplace_sellers
         WHERE owner_user_id = $1 AND charges_enabled = true AND details_submitted = true
@@ -75,7 +75,9 @@ async function createMembershipCheckout(pool, stripe, input) {
     );
     seller = sellerResult.rows[0];
     if (!seller) throw new Error('seller Stripe account is not ready');
-    if (!seller.seller_terms_accepted_at || !seller.dispute_debit_consent_at) {
+    if (!seller.seller_terms_accepted_at || !seller.dispute_debit_consent_at ||
+        !seller.membership_fee_accepted_at ||
+        Number(seller.membership_fee_bps_accepted) !== MEMBERSHIP_FEE_BPS) {
       throw new Error('seller marketplace consent is incomplete');
     }
     if (input.importedSubscriptionId != null) {
@@ -145,12 +147,13 @@ async function createMembershipCheckout(pool, stripe, input) {
 }
 
 async function createSellerOnboarding(pool, stripe, input) {
+  if (!input.acceptedSellerTerms || !input.acceptedDisputeDebits ||
+      Number(input.acceptedMembershipFeeBps) !== MEMBERSHIP_FEE_BPS) {
+    throw new Error('seller terms, dispute debit consent, and the 6% membership fee acceptance are required');
+  }
   let found = await pool.query('SELECT * FROM marketplace_sellers WHERE owner_user_id = $1', [input.ownerUserId]);
   let seller = found.rows[0];
   if (!seller) {
-    if (!input.acceptedSellerTerms || !input.acceptedDisputeDebits) {
-      throw new Error('seller terms and dispute debit consent are required');
-    }
     const account = await stripe.accounts.create({
       type: 'express',
       country: input.country || 'US',
@@ -161,12 +164,29 @@ async function createSellerOnboarding(pool, stripe, input) {
     }, { idempotencyKey: `seller:${input.ownerUserId}` });
     const inserted = await pool.query(
       `INSERT INTO marketplace_sellers (
-         owner_user_id, connected_account_id, seller_terms_accepted_at, dispute_debit_consent_at
-       ) VALUES ($1,$2,now(),now())
-       ON CONFLICT (owner_user_id) DO UPDATE SET connected_account_id = EXCLUDED.connected_account_id
-       RETURNING *`, [input.ownerUserId, account.id]
+         owner_user_id, connected_account_id, seller_terms_accepted_at,
+         dispute_debit_consent_at, membership_fee_bps_accepted,
+         membership_fee_accepted_at
+       ) VALUES ($1,$2,now(),now(),$3,now())
+       ON CONFLICT (owner_user_id) DO UPDATE SET
+         connected_account_id = EXCLUDED.connected_account_id,
+         seller_terms_accepted_at = now(),
+         dispute_debit_consent_at = now(),
+         membership_fee_bps_accepted = EXCLUDED.membership_fee_bps_accepted,
+         membership_fee_accepted_at = now()
+       RETURNING *`, [input.ownerUserId, account.id, MEMBERSHIP_FEE_BPS]
     );
     seller = inserted.rows[0];
+  } else if (!seller.membership_fee_accepted_at ||
+      Number(seller.membership_fee_bps_accepted) !== MEMBERSHIP_FEE_BPS) {
+    const updated = await pool.query(
+      `UPDATE marketplace_sellers SET
+         seller_terms_accepted_at=now(), dispute_debit_consent_at=now(),
+         membership_fee_bps_accepted=$2, membership_fee_accepted_at=now(), updated_at=now()
+       WHERE owner_user_id=$1 RETURNING *`,
+      [input.ownerUserId, MEMBERSHIP_FEE_BPS]
+    );
+    seller = updated.rows[0];
   }
   const link = await stripe.accountLinks.create({
     account: seller.connected_account_id,

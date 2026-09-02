@@ -3,7 +3,7 @@
 ## What is implemented
 
 - Stripe Connect Express seller onboarding.
-- Native group subscription Checkout with a fixed 5% application fee.
+- Native group subscription Checkout with a fixed 6% application fee.
 - Loop Bucks Checkout using database-owned package prices, Stripe Tax, and a
   separate 2% StockMarketLoop service-fee line.
 - Signed, idempotent webhook fulfillment. Browser-supplied LB or dollar amounts
@@ -12,7 +12,7 @@
   before revoking access.
 - Provider-verified subscription migration: Discord identifies the member, the
   provider supplies the renewal timestamp, Stripe collects a payment method
-  immediately, and the first 5%-fee charge waits until that existing renewal
+  immediately, and the first 6%-fee charge waits until that existing renewal
   date. The imported membership remains active until the first SML payment.
 - Website/Discord access reconciliation through the existing role system.
 - Seller dispute accounting. Principal is recovered when a dispute opens. The
@@ -77,7 +77,7 @@ Upgrade.Chat migration is now concrete: the platform fetches the order by the
 linked Discord ID, checks the mapped product and last successful charge, and
 derives the paid-through date. Upgrade.Chat's documented public API is read-only
 for orders, so the member must cancel the old renewal before migration. Access
-continues until that verified date and Stripe's first 5%-fee charge is scheduled
+continues until that verified date and Stripe's first 6%-fee charge is scheduled
 for the same date. Dates under 48 hours away, stale orders, mismatched accounts,
 and uncanceled renewals all fail closed.
 

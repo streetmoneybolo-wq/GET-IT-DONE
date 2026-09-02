@@ -30,21 +30,21 @@ test('Loop Bucks checkout trusts the stored package, enables Tax, and has two li
   assert.equal(params.metadata.order_key, 'ord_1');
 });
 
-test('membership checkout sends 5% to platform and rest to seller', () => {
+test('membership checkout sends 6% to platform and rest to seller', () => {
   const params = B.buildMembershipCheckout({
-    plan: { stripe_price_id: 'price_1', platform_fee_bps: 500 },
+    plan: { stripe_price_id: 'price_1', platform_fee_bps: 600 },
     subscriptionKey: 'subkey_1', userId: 9, connectedAccountId: 'acct_seller',
     successUrl: 'https://stockmarketloop.com/groups/one/?joined=1',
     cancelUrl: 'https://stockmarketloop.com/groups/one/'
   });
-  assert.equal(params.subscription_data.application_fee_percent, 5);
+  assert.equal(params.subscription_data.application_fee_percent, 6);
   assert.equal(params.subscription_data.transfer_data.destination, 'acct_seller');
 });
 
 test('migration checkout collects payment method now and bills on verified renewal date', () => {
   const renewal = NOW + 7 * 24 * 3600 * 1000;
   const params = B.buildMembershipCheckout({
-    plan: { stripe_price_id: 'price_1', platform_fee_bps: 500 },
+    plan: { stripe_price_id: 'price_1', platform_fee_bps: 600 },
     subscriptionKey: 'subkey_2', userId: 9, connectedAccountId: 'acct_seller',
     successUrl: 'https://stockmarketloop.com/groups/one/?migrated=1',
     cancelUrl: 'https://stockmarketloop.com/groups/one/',
@@ -52,12 +52,12 @@ test('migration checkout collects payment method now and bills on verified renew
   });
   assert.equal(params.payment_method_collection, 'always');
   assert.equal(params.subscription_data.trial_end, Math.floor(renewal / 1000));
-  assert.equal(params.subscription_data.application_fee_percent, 5);
+  assert.equal(params.subscription_data.application_fee_percent, 6);
 });
 
 test('migration refuses a renewal date too close to prevent double billing', () => {
   assert.throws(() => B.buildMembershipCheckout({
-    plan: { stripe_price_id: 'price_1', platform_fee_bps: 500 },
+    plan: { stripe_price_id: 'price_1', platform_fee_bps: 600 },
     subscriptionKey: 'subkey_3', userId: 9, connectedAccountId: 'acct_seller',
     successUrl: 'https://stockmarketloop.com/groups/one/',
     cancelUrl: 'https://stockmarketloop.com/groups/one/',

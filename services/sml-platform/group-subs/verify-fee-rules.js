@@ -20,12 +20,12 @@ const accepts = (row) =>
 
 const cases = [
   // [label, row, shouldSave]
-  ['SML checkout with 5% fee + consent',
-    { origin: 'sml_checkout', fee: 500, consent: 'now', external: null }, true],
+  ['SML checkout with 6% fee + consent',
+    { origin: 'sml_checkout', fee: 600, consent: 'now', external: null }, true],
   ['SML checkout, fee but NO consent',
-    { origin: 'sml_checkout', fee: 500, consent: null, external: null }, false],
-  ['imported sub with a 5% fee  <-- the Stripe problem',
-    { origin: 'discord_imported', fee: 500, consent: 'now', external: 'upgrade_chat' }, false],
+    { origin: 'sml_checkout', fee: 600, consent: null, external: null }, false],
+  ['imported sub with a 6% fee  <-- the Stripe problem',
+    { origin: 'discord_imported', fee: 600, consent: 'now', external: 'upgrade_chat' }, false],
   ['imported sub, no fee',
     { origin: 'discord_imported', fee: null, consent: null, external: 'upgrade_chat' }, true],
   ['imported sub, explicit zero fee',
@@ -33,9 +33,9 @@ const cases = [
   ['imported sub with no external platform recorded',
     { origin: 'discord_imported', fee: null, consent: null, external: null }, false],
   ['migrated sub, fee + consent',
-    { origin: 'migrated', fee: 500, consent: 'now', external: null }, true],
+    { origin: 'migrated', fee: 600, consent: 'now', external: null }, true],
   ['migrated sub, fee but no consent',
-    { origin: 'migrated', fee: 500, consent: null, external: null }, false],
+    { origin: 'migrated', fee: 600, consent: null, external: null }, false],
   ['comped member, no fee',
     { origin: 'manual_comp', fee: null, consent: null, external: null }, true]
 ];

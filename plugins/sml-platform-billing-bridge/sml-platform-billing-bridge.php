@@ -224,12 +224,50 @@ function sml_platform_group_context( $group_id ) {
 	);
 }
 
+function sml_platform_can_manage_group_billing( $group_id ) {
+	if ( current_user_can( 'manage_options' ) ) return true;
+	if ( function_exists( 'sml_dgc_can_manage' ) && sml_dgc_can_manage( absint( $group_id ) ) ) return true;
+	global $wpdb;
+	if ( ! function_exists( 'sml_dgc_tables' ) ) return false;
+	$tables = sml_dgc_tables();
+	$owner_id = absint( $wpdb->get_var( $wpdb->prepare( "SELECT owner_id FROM {$tables['groups']} WHERE id=%d", absint( $group_id ) ) ) );
+	return $owner_id && get_current_user_id() === $owner_id;
+}
+
 function sml_platform_migration_status( WP_REST_Request $request ) {
 	$context = sml_platform_group_context( $request['group_id'] );
 	return rest_ensure_response( array(
 		'eligible' => (bool) ( $context && $context['plan_id'] ),
 		'connected' => (bool) $context,
+		'canManageBilling' => sml_platform_can_manage_group_billing( $request['group_id'] ),
+		'platformFeePercent' => 6,
 	) );
+}
+
+function sml_platform_start_seller_onboarding( WP_REST_Request $request ) {
+	$group_id = absint( $request['group_id'] );
+	if ( ! sml_platform_can_manage_group_billing( $group_id ) ) {
+		return new WP_Error( 'billing_forbidden', 'Only this group owner or an administrator can manage membership billing.', array( 'status' => 403 ) );
+	}
+	if ( true !== $request->get_param( 'acceptFee' ) ) {
+		return new WP_Error( 'billing_fee_consent', 'You must explicitly accept the 6% platform fee.', array( 'status' => 400 ) );
+	}
+	$context = sml_platform_group_context( $group_id );
+	if ( ! $context ) return new WP_Error( 'discord_required', 'Connect your Discord account and server to this group first.', array( 'status' => 409 ) );
+	$user = wp_get_current_user();
+	$group_url = wp_validate_redirect( wp_get_referer(), home_url( '/' ) );
+	$result = sml_platform_seller_onboarding( array(
+		'ownerUserId' => get_current_user_id(),
+		'email' => sanitize_email( $user->user_email ),
+		'country' => 'US',
+		'acceptedSellerTerms' => true,
+		'acceptedDisputeDebits' => true,
+		'acceptedMembershipFeeBps' => 600,
+		'refreshUrl' => add_query_arg( 'billing', 'onboarding-refresh', $group_url ),
+		'returnUrl' => add_query_arg( 'billing', 'onboarding-complete', $group_url ),
+	) );
+	if ( is_wp_error( $result ) ) return $result;
+	return rest_ensure_response( array( 'onboardingUrl' => esc_url_raw( $result['onboardingUrl'] ?? '' ) ) );
 }
 
 function sml_platform_start_upgrade_chat_migration( WP_REST_Request $request ) {
@@ -261,6 +299,9 @@ add_action( 'rest_api_init', function () {
 	) );
 	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/migrate-upgrade-chat', array(
 		'methods' => 'POST', 'callback' => 'sml_platform_start_upgrade_chat_migration', 'permission_callback' => 'is_user_logged_in',
+	) );
+	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/seller-onboarding', array(
+		'methods' => 'POST', 'callback' => 'sml_platform_start_seller_onboarding', 'permission_callback' => 'is_user_logged_in',
 	) );
 } );
 
@@ -316,7 +357,7 @@ add_action( 'wp_footer', function () {
 	if ( ! is_user_logged_in() ) return;
 	$nonce = wp_create_nonce( 'wp_rest' );
 	?>
-	<style>.sml-billing-migrate{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px!important;border:1px solid #f5c84b!important;background:linear-gradient(135deg,#fff3a3,#d69b00)!important;color:#251600!important;font-weight:900!important;box-shadow:0 0 18px #f5c84b66;animation:smlBillingGlow 1.8s ease-in-out infinite}@keyframes smlBillingGlow{50%{transform:translateY(-1px);box-shadow:0 0 28px #f5c84baa}}</style>
-	<script>(function(){var nonce=<?php echo wp_json_encode( $nonce ); ?>;function boot(){var root=document.getElementById('sml-group-root'),gid=root&&String(root.dataset.groupId||'').replace(/\D/g,'');if(!gid||root.querySelector('[data-sml-billing-migrate]'))return;fetch('/wp-json/sml-platform/v1/group/'+gid+'/migration-status',{headers:{'X-WP-Nonce':nonce}}).then(function(r){return r.json();}).then(function(s){if(!s.eligible)return;var actions=root.querySelector('.sml-group-actions,.sml-gshell__group-actions,[data-group-actions]');if(!actions)return;var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-migrate';b.dataset.smlBillingMigrate='1';b.textContent='💳 Move Membership Billing';b.onclick=function(){if(!confirm('Move this membership to StockMarketLoop? Stripe will collect your payment method now but will not charge until your verified Upgrade.Chat renewal date.'))return;b.disabled=true;b.textContent='Verifying membership…';fetch('/wp-json/sml-platform/v1/group/'+gid+'/migrate-upgrade-chat',{method:'POST',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:'{}'}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.message||'Migration could not start.');return j;});}).then(function(j){location.href=j.checkoutUrl;}).catch(function(e){b.disabled=false;b.textContent='💳 Move Membership Billing';alert(e.message);});};actions.appendChild(b);}).catch(function(){});}if(!boot())[400,1000,2200].forEach(function(ms){setTimeout(boot,ms);});})();</script>
+	<style>.sml-billing-action{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px!important;font-weight:900!important}.sml-billing-migrate{border:1px solid #f5c84b!important;background:linear-gradient(135deg,#fff3a3,#d69b00)!important;color:#251600!important;box-shadow:0 0 18px #f5c84b66;animation:smlBillingGlow 1.8s ease-in-out infinite}.sml-billing-setup{border:1px solid #19f28b!important;background:#071b14!important;color:#66ffb1!important}@keyframes smlBillingGlow{50%{transform:translateY(-1px);box-shadow:0 0 28px #f5c84baa}}</style>
+	<script>(function(){var nonce=<?php echo wp_json_encode( $nonce ); ?>;function call(url,body){return fetch(url,{method:'POST',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.message||'Billing request failed.');return j;});});}function boot(){var root=document.getElementById('sml-group-root'),gid=root&&String(root.dataset.groupId||'').replace(/\D/g,'');if(!gid||root.querySelector('[data-sml-billing-ready]'))return;fetch('/wp-json/sml-platform/v1/group/'+gid+'/migration-status',{headers:{'X-WP-Nonce':nonce}}).then(function(r){return r.json();}).then(function(s){var actions=root.querySelector('.sml-group-actions,.sml-gshell__group-actions,[data-group-actions]');if(!actions)return;root.dataset.smlBillingReady='1';if(s.canManageBilling){var setup=document.createElement('button');setup.type='button';setup.className='sml-group-btn sml-billing-action sml-billing-setup';setup.textContent='⚙ Membership Billing · 6%';setup.onclick=function(){if(!confirm('Enable StockMarketLoop membership billing? I accept the 6% platform fee deducted from each subscription payment and authorize dispute recovery under the seller terms.'))return;setup.disabled=true;setup.textContent='Opening secure setup…';call('/wp-json/sml-platform/v1/group/'+gid+'/seller-onboarding',{acceptFee:true}).then(function(j){location.href=j.onboardingUrl;}).catch(function(e){setup.disabled=false;setup.textContent='⚙ Membership Billing · 6%';alert(e.message);});};actions.appendChild(setup);}if(s.eligible){var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-action sml-billing-migrate';b.dataset.smlBillingMigrate='1';b.textContent='💳 Move Membership Billing';b.onclick=function(){if(!confirm('Move this membership to StockMarketLoop? Stripe will collect your payment method now but will not charge until your verified Upgrade.Chat renewal date. The group creator receives the payment after StockMarketLoop\'s disclosed 6% platform fee.'))return;b.disabled=true;b.textContent='Verifying membership…';call('/wp-json/sml-platform/v1/group/'+gid+'/migrate-upgrade-chat',{}).then(function(j){location.href=j.checkoutUrl;}).catch(function(e){b.disabled=false;b.textContent='💳 Move Membership Billing';alert(e.message);});};actions.appendChild(b);}}).catch(function(){});}boot();[400,1000,2200].forEach(function(ms){setTimeout(boot,ms);});})();</script>
 	<?php
 }, 100 );

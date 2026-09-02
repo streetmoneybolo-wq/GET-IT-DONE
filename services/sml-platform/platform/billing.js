@@ -1,6 +1,6 @@
 'use strict';
 
-const MEMBERSHIP_FEE_BPS = 500;
+const MEMBERSHIP_FEE_BPS = 600;
 const LOOP_BUCK_SERVICE_FEE_BPS = 200;
 const SELLER_DISPUTE_FEE_BPS = 1250;
 
@@ -94,12 +94,12 @@ function buildLoopBuckCheckout({ order, packageRow, successUrl, cancelUrl }) {
   };
 }
 
-/** A native SML membership uses Connect destination charges and exactly 5%. */
+/** A native SML membership uses Connect destination charges and exactly 6%. */
 function buildMembershipCheckout({ plan, subscriptionKey, userId, connectedAccountId,
   successUrl, cancelUrl, migrationRenewalAt = null, now = Date.now() }) {
   if (!plan || !plan.stripe_price_id) throw new TypeError('active Stripe price required');
   if (!/^acct_/.test(String(connectedAccountId || ''))) throw new TypeError('connected account required');
-  if (plan.platform_fee_bps !== MEMBERSHIP_FEE_BPS) throw new Error('native membership fee must be 5%');
+  if (plan.platform_fee_bps !== MEMBERSHIP_FEE_BPS) throw new Error('native membership fee must be 6%');
 
   const subscriptionData = {
     application_fee_percent: MEMBERSHIP_FEE_BPS / 100,

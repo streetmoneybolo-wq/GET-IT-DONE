@@ -8,14 +8,14 @@ const L = require('./lifecycle.js');
 const T0 = Date.parse('2026-08-22T12:00:00Z');
 const DAY = L.DAY_MS;
 
-const plan = { grace_days: 3, platform_fee_bps: 500 };
+const plan = { grace_days: 3, platform_fee_bps: 600 };
 
 function sub(over) {
   return Object.assign({
     id: 1, user_id: 100, group_id: 7, plan_id: 5,
     origin: 'sml_checkout', status: 'active',
     stripe_subscription_id: 'sub_123',
-    platform_fee_bps: 500, fee_consent_at: '2026-08-01T00:00:00Z',
+    platform_fee_bps: 600, fee_consent_at: '2026-08-01T00:00:00Z',
     access_until: null, first_failed_at: null, last_event_at: null
   }, over);
 }
@@ -103,13 +103,13 @@ test('payment success clears failure state and syncs roles', () => {
   assert.ok(find(r, 'sync_roles'));
 });
 
-test('the 5% fee is recorded for an SML-originated subscription', () => {
+test('the 6% fee is recorded for an SML-originated subscription', () => {
   const r = L.handleEvent(evt('invoice.paid', { id: 'in_1', subscription: 'sub_123', amount_paid: 9999, currency: 'usd' }),
     { subscription: sub(), plan, now: T0 });
   const fee = find(r, 'record_fee');
   assert.equal(fee.gross_cents, 9999);
-  assert.equal(fee.fee_cents, 500, '5% of 9999 rounds to 500');
-  assert.equal(fee.fee_bps, 500);
+  assert.equal(fee.fee_cents, 600, '6% of 9999 rounds to 600');
+  assert.equal(fee.fee_bps, 600);
   assert.ok(fee.consent_ref, 'the fee must cite its consent');
 });
 
@@ -247,7 +247,7 @@ test('a migrated subscription requests external cancellation at the old renewal 
 
 test('first migrated payment supersedes the imported row without changing roles twice', () => {
   const migrated = sub({ id: 22, origin: 'migrated', migration_from_subscription_id: 11,
-    platform_fee_bps: 500, fee_consent_at: new Date(T0 - 1000).toISOString() });
+    platform_fee_bps: 600, fee_consent_at: new Date(T0 - 1000).toISOString() });
   const r = L.handleEvent(evt('invoice.paid', {
     id: 'in_1', subscription: 'sub_123', amount_paid: 1000, currency: 'usd'
   }), { subscription: migrated, plan, now: T0 });
