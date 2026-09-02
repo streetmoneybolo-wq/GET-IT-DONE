@@ -9,7 +9,11 @@ const EVENT_TYPES = new Set([
   'creator.channel.updated',
   'creator.letter.published',
   'group.member.changed',
-  'news.article.published'
+  'news.article.published',
+  'usage.login',
+  'usage.group_access',
+  'usage.content_access',
+  'usage.stream_access'
 ]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

@@ -52,7 +52,22 @@ function getConfig(env = process.env) {
     wordpressUsername: String(env.SML_WORDPRESS_USERNAME || '').trim(),
     wordpressAppPassword: String(env.SML_WORDPRESS_APP_PASSWORD || '').trim(),
     wordpressAuthorSlug: String(env.SML_WORDPRESS_AUTHOR_SLUG || 'stockmarketloop').trim(),
-    wordpressAuthorName: String(env.SML_WORDPRESS_AUTHOR_NAME || 'SML NEWS').trim()
+    wordpressAuthorName: String(env.SML_WORDPRESS_AUTHOR_NAME || 'SML NEWS').trim(),
+    // --- dispute-evidence system (every surface fails closed while unset) ---
+    disputeEvidenceEnabled: String(env.SML_DISPUTE_EVIDENCE_ENABLED || '').trim() === '1',
+    evidenceEncryptionKeys: String(env.SML_EVIDENCE_ENCRYPTION_KEY || '').split(',').map((k) => k.trim()).filter(Boolean),
+    paypalEnabled: String(env.SML_PAYPAL_ENABLED || '').trim() === '1',
+    paypalClientId: String(env.SML_PAYPAL_CLIENT_ID || '').trim(),
+    paypalClientSecret: String(env.SML_PAYPAL_CLIENT_SECRET || '').trim(),
+    paypalEnv: String(env.SML_PAYPAL_ENV || 'sandbox').trim() === 'live' ? 'live' : 'sandbox',
+    paypalWebhookId: String(env.SML_PAYPAL_WEBHOOK_ID || '').trim(),
+    connectBotEnabled: String(env.SML_CONNECT_BOT_ENABLED || '').trim() === '1',
+    discordConnectPublicKey: String(env.SML_DISCORD_CONNECT_PUBLIC_KEY || '').trim(),
+    discordConnectAppId: String(env.SML_DISCORD_CONNECT_APP_ID || '').trim(),
+    discordConnectBotToken: String(env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim(),
+    connectReviewUrlSecret: String(env.SML_CONNECT_REVIEW_URL_SECRET || '').trim(),
+    upgradeChatWebhookPathToken: String(env.SML_UC_WEBHOOK_PATH_TOKEN || '').trim(),
+    connectGuildIds: String(env.SML_CONNECT_GUILD_IDS || '').split(',').map((g) => g.trim()).filter(Boolean)
   });
 }
 

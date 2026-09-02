@@ -39,3 +39,51 @@ test('client authenticates and filters by the linked Discord identity', async ()
   assert.match(calls[1].url, /userDiscordId=1051212765475377172/);
   assert.equal(calls[1].options.headers.Authorization, 'Bearer token');
 });
+
+function webhookClient(bodies = {}) {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).includes('/oauth/token')) {
+      return { ok: true, json: async () => ({ access_token: 'token', expires_in: 3600 }) };
+    }
+    if (bodies.status) return { ok: false, status: bodies.status, json: async () => ({}) };
+    return { ok: true, json: async () => (bodies.payload || { valid: true }) };
+  };
+  const client = createUpgradeChatClient({ clientId: 'id', clientSecret: 'secret', fetchImpl,
+    now: () => Date.parse('2026-08-30T00:00:00Z') });
+  return { calls, client };
+}
+
+test('webhook-event reads hit the authenticated API with the exact paths', async () => {
+  const eventId = '7f3b2c1d-9a8e-4f6b-8c5d-2e1f0a9b8c7d';
+  const { calls, client } = webhookClient({ payload: { valid: true } });
+
+  assert.deepEqual(await client.validateWebhookEvent(eventId), { valid: true });
+  await client.getWebhookEvent(eventId);
+  await client.getOrder('2b8e8d9e-1c2f-4a5b-9c3d-7e6f5a4b3c2d');
+
+  const apiCalls = calls.filter((call) => !call.url.includes('/oauth/token'));
+  assert.equal(apiCalls.length, 3);
+  assert.equal(apiCalls[0].url, `https://api.upgrade.chat/v1/webhook-events/${eventId}/validate`);
+  assert.equal(apiCalls[1].url, `https://api.upgrade.chat/v1/webhook-events/${eventId}`);
+  assert.equal(apiCalls[2].url, 'https://api.upgrade.chat/v1/orders/2b8e8d9e-1c2f-4a5b-9c3d-7e6f5a4b3c2d');
+  for (const call of apiCalls) {
+    assert.equal(call.options.headers.Authorization, 'Bearer token');
+  }
+});
+
+test('path-unsafe identifiers are rejected before any request is made', async () => {
+  const { calls, client } = webhookClient();
+  for (const bad of ['', '../secrets', 'a/b', 'id?x=1', 'x'.repeat(65), null]) {
+    await assert.rejects(() => client.validateWebhookEvent(bad), TypeError);
+    await assert.rejects(() => client.getWebhookEvent(bad), TypeError);
+    await assert.rejects(() => client.getOrder(bad), TypeError);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('non-OK API responses surface as errors with the status', async () => {
+  const { client } = webhookClient({ status: 429 });
+  await assert.rejects(() => client.getOrder('2b8e8d9e-1c2f-4a5b-9c3d-7e6f5a4b3c2d'), /429/);
+});

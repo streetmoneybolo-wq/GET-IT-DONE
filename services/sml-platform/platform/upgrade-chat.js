@@ -36,6 +36,17 @@ function orderRenewal(order, productUuid, now = Date.now()) {
   };
 }
 
+/* Identifier segments spliced into API paths. Upgrade.Chat ids are UUIDs, but
+   the check is deliberately a hair wider (plain alphanumerics with - and _)
+   so it stays a path-safety gate, not a provider-format oracle. */
+const PATH_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+function pathId(value, label) {
+  const id = String(value == null ? '' : value).trim();
+  if (!PATH_ID_RE.test(id)) throw new TypeError(`invalid Upgrade.Chat ${label}`);
+  return encodeURIComponent(id);
+}
+
 function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, now = Date.now }) {
   if (!clientId || !clientSecret) throw new Error('Upgrade.Chat API credentials are not configured');
   let cachedToken = null;
@@ -60,6 +71,31 @@ function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, no
     return cachedToken;
   }
 
+  async function apiGet(path) {
+    const accessToken = await token();
+    const response = await fetchImpl(`${API}${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!response.ok) throw new Error(`Upgrade.Chat request failed (${response.status})`);
+    return response.json();
+  }
+
+  /* Webhook-event support (dispute-evidence). Upgrade.Chat webhooks are
+     UNSIGNED, so the inbound POST body is never trusted: the webhook handler
+     only extracts an id, then uses these authenticated reads to confirm the
+     event is genuine and to fetch the authoritative body from the API. */
+  async function validateWebhookEvent(webhookEventId) {
+    return apiGet(`/webhook-events/${pathId(webhookEventId, 'webhook event id')}/validate`);
+  }
+
+  async function getWebhookEvent(webhookEventId) {
+    return apiGet(`/webhook-events/${pathId(webhookEventId, 'webhook event id')}`);
+  }
+
+  async function getOrder(orderUuid) {
+    return apiGet(`/orders/${pathId(orderUuid, 'order uuid')}`);
+  }
+
   async function findMembership({ discordUserId, productUuid }) {
     const accessToken = await token();
     const url = new URL(`${API}/orders`);
@@ -76,7 +112,7 @@ function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, no
     return matches[0];
   }
 
-  return { findMembership };
+  return { findMembership, validateWebhookEvent, getWebhookEvent, getOrder };
 }
 
 module.exports = { createUpgradeChatClient, orderRenewal, addUtc, API, TOKEN_URL };

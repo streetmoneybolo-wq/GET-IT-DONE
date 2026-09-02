@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Platform Billing Bridge
  * Description: Signed bridge between WordPress, the Render billing service, Loop Bucks, and group access.
- * Version: 0.3.0
+ * Version: 0.4.0
  * Author: Stock Market Loop
  */
 
@@ -19,7 +19,7 @@ function sml_platform_billing_grants_table() {
 }
 
 function sml_platform_billing_install() {
-	if ( '0.3.0' === get_option( 'sml_platform_billing_bridge_version' ) ) return;
+	if ( '0.4.0' === get_option( 'sml_platform_billing_bridge_version' ) ) return;
 	global $wpdb;
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	$table = sml_platform_billing_table();
@@ -46,7 +46,7 @@ function sml_platform_billing_install() {
 		UNIQUE KEY group_user (group_id,user_id),
 		KEY subscription_id (subscription_id)
 	) {$charset};" );
-	update_option( 'sml_platform_billing_bridge_version', '0.3.0', false );
+	update_option( 'sml_platform_billing_bridge_version', '0.4.0', false );
 }
 register_activation_hook( __FILE__, 'sml_platform_billing_install' );
 add_action( 'init', 'sml_platform_billing_install', 1 );
@@ -124,6 +124,11 @@ function sml_platform_billing_process_outbox( WP_REST_Request $request ) {
 			return new WP_Error( 'subscription_notify_adapter_missing', 'Subscription notification adapter unavailable.', array( 'status' => 503 ) );
 		}
 		do_action( 'sml_platform_subscription_notify', $data, $source );
+	} elseif ( 'dispute_notify' === $intent ) {
+		if ( ! has_action( 'sml_platform_dispute_notify' ) ) {
+			return new WP_Error( 'dispute_notify_adapter_missing', 'Dispute notification adapter unavailable.', array( 'status' => 503 ) );
+		}
+		do_action( 'sml_platform_dispute_notify', $data, $source );
 	} else {
 		return new WP_Error( 'billing_intent', 'Unsupported billing intent.', array( 'status' => 400 ) );
 	}

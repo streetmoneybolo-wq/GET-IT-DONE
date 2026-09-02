@@ -25,7 +25,11 @@ test('gateway only accepts an explicit small WordPress event allowlist', () => {
     'creator.letter.published',
     'group.member.changed',
     'news.article.published',
-    'system.integration.ping'
+    'system.integration.ping',
+    'usage.content_access',
+    'usage.group_access',
+    'usage.login',
+    'usage.stream_access'
   ]);
   assert.equal(parseEvent(rawEvent).ok, true);
   assert.deepEqual(parseEvent(rawEvent).event.data, { postId: 55 });
