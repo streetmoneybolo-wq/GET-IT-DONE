@@ -5,6 +5,7 @@
   var root = null;
   var groupId = '';
   var payload = null;
+  var dmPayload = null;
   var observer = null;
 
   function esc(value) {
@@ -53,15 +54,21 @@
   }
 
   function channelControl(data) {
-    var current = data.config && data.config.channel_id ? String(data.config.channel_id) : '';
+    var current = data.config && Array.isArray(data.config.channel_ids) ? data.config.channel_ids.map(String) : (data.config && data.config.channel_id ? [String(data.config.channel_id)] : []);
     var channels = data.catalog && Array.isArray(data.catalog.channels) ? data.catalog.channels : [];
     if (!channels.length) {
-      return '<label class="sml-rts-field"><span>Discord channel ID</span><input data-rts-channel inputmode="numeric" maxlength="24" placeholder="Run /sync-sml-channels in Discord, or paste the channel ID" value="' + esc(current) + '"></label>';
+      return '<label class="sml-rts-field"><span>Discord channel IDs</span><input data-rts-channel-text inputmode="numeric" placeholder="Paste channel IDs separated by commas" value="' + esc(current.join(', ')) + '"></label>';
     }
-    return '<label class="sml-rts-field"><span>Alert channel</span><select data-rts-channel>' +
-      '<option value="">Choose a Discord channel</option>' + channels.map(function (channel) {
-        return '<option value="' + esc(channel.id) + '" ' + (String(channel.id) === current ? 'selected' : '') + '># ' + esc(channel.name) + '</option>';
-      }).join('') + '</select></label>';
+    return '<label class="sml-rts-field"><span>Alert channels <small>(choose 1–25)</small></span><select data-rts-channels multiple size="' + Math.min(8, Math.max(3, channels.length)) + '">' + channels.map(function (channel) {
+        return '<option value="' + esc(channel.id) + '" ' + (current.indexOf(String(channel.id)) !== -1 ? 'selected' : '') + '># ' + esc(channel.name) + '</option>';
+      }).join('') + '</select><small>Hold Ctrl/Command to choose more than one channel.</small></label>';
+  }
+
+  function collectChannels(modal) {
+    var select = modal.querySelector('[data-rts-channels]');
+    if (select) return Array.prototype.slice.call(select.selectedOptions).map(function (option) { return option.value; });
+    var input = modal.querySelector('[data-rts-channel-text]');
+    return input ? input.value.split(/[\s,]+/).map(function (id) { return id.replace(/\D/g, ''); }).filter(Boolean) : [];
   }
 
   function bindUserRows(modal) {
@@ -95,10 +102,10 @@
 
   function diagnosticResult(modal, result) {
     var labels = {
-      eligible_members: 'Group has at least 1,000 members',
+      pricing_resolved: 'Monthly price and automatic member discount are resolved',
       discord_connected: 'Discord server is connected',
       configuration_saved: 'Channel and monitored traders are saved',
-      subscription_active: '2,000 Loop Bucks subscription is active',
+      subscription_active: 'Monthly Spotlight subscription is active',
       discord_bridge_ready: 'Discord polling bridge is available',
       polling_scheduled: 'One-minute polling job is scheduled',
       author_ready: 'Retail Trader Spotlight author is ready',
@@ -121,6 +128,8 @@
     var eligible = !!payload.eligible;
     var configured = !!payload.configured;
     var active = payload.status === 'active';
+    var discount = !!payload.discount_eligible;
+    var price = Number(payload.monthly_price || 0);
     var wallet = payload.wallet_balance == null ? 'Unavailable' : Number(payload.wallet_balance).toLocaleString() + ' Loop Bucks';
     var modal = document.createElement('div');
     modal.className = 'sml-rts-modal';
@@ -128,13 +137,13 @@
       '<button class="sml-rts-close" type="button" aria-label="Close Spotlight settings">×</button>' +
       '<header class="sml-rts-header"><img src="' + esc(C.avatar) + '" alt=""><div><span>GROUP CREATOR TOOL</span><h2 id="sml-rts-title">Retail Trader Spotlight</h2><p>Monitor selected Discord traders and turn verified alerts into timestamped StockMarketLoop coverage.</p></div></header>' +
       '<div class="sml-rts-stats"><div><small>Members</small><strong>' + Number(payload.member_count || 0).toLocaleString() + ' / 1,000</strong></div><div><small>Subscription</small><strong>' + esc(statusLabel(payload.status)) + '</strong></div><div><small>Wallet</small><strong>' + esc(wallet) + '</strong></div></div>' +
-      (!eligible ? '<div class="sml-rts-callout is-warning">This tool unlocks at 1,000 group members. The regular price is 4,000 Loop Bucks; qualified groups pay 2,000 per month.</div>' : '') +
+      (!discount ? '<div class="sml-rts-callout is-warning">Your group can use Spotlight now for ' + Number(payload.base_monthly_price || 0).toLocaleString() + ' Loop Bucks/month. At 1,000 verified members, the monthly price automatically drops 50% to ' + Math.floor(Number(payload.base_monthly_price || 0) / 2).toLocaleString() + ' Loop Bucks.</div>' : '<div class="sml-rts-callout is-success">1,000+ member discount active: your group receives 50% off every monthly renewal.</div>') +
       (!connected ? '<div class="sml-rts-callout is-warning">Connect and verify this group’s Discord server through <strong>Discord Access</strong> before saving Spotlight settings.</div>' : '') +
       '<section class="sml-rts-section"><h3>1. Choose the source</h3>' + channelControl(payload) +
       '<div class="sml-rts-field"><span>Monitored traders <small>(1–25)</small></span><div data-rts-users>' + users.map(userRow).join('') + '</div><button class="sml-rts-secondary" type="button" data-rts-add-user>Add trader</button></div>' +
       '<button class="sml-rts-primary" type="button" data-rts-save ' + (!connected ? 'disabled' : '') + '>Save Spotlight configuration</button></section>' +
-      '<section class="sml-rts-section"><h3>2. Activate monthly coverage</h3><p><del>4,000 Loop Bucks/month</del> <strong>2,000 Loop Bucks/month</strong> for groups with 1,000+ members.</p>' +
-      '<button class="sml-rts-primary" type="button" data-rts-subscribe ' + (!eligible || !configured || active ? 'disabled' : '') + '>' + (active ? 'Subscription active through ' + esc(payload.paid_through || '') : 'Activate for 2,000 Loop Bucks') + '</button></section>' +
+      '<section class="sml-rts-section"><h3>2. Activate monthly coverage</h3><p><strong>' + price.toLocaleString() + ' Loop Bucks/month</strong>' + (discount ? ' — automatic 50% group-growth discount.' : ' — automatically becomes 50% off at 1,000 members.') + '</p>' +
+      '<button class="sml-rts-primary" type="button" data-rts-subscribe ' + (!eligible || !configured || active ? 'disabled' : '') + '>' + (active ? 'Subscription active through ' + esc(payload.paid_through || '') : 'Activate for ' + price.toLocaleString() + ' Loop Bucks') + '</button></section>' +
       '<section class="sml-rts-section"><h3>3. Run a safe system test</h3><p>This validates every live dependency without publishing an article or spending Loop Bucks.</p><div class="sml-rts-test-grid"><input data-rts-test-ticker maxlength="10" placeholder="$NVDA"><input data-rts-test-text maxlength="4000" placeholder="Example: $NVDA breakout alert above resistance"></div><button class="sml-rts-secondary" type="button" data-rts-test>Run complete test</button><div data-rts-diagnostic-result></div></section>' +
       '<div class="sml-rts-message" data-rts-message aria-live="polite"></div>' +
       '</section>';
@@ -150,11 +159,11 @@
     };
     modal.querySelector('[data-rts-save]').onclick = function () {
       var button = this;
-      var channel = modal.querySelector('[data-rts-channel]').value.replace(/\D/g, '');
+      var channels = collectChannels(modal);
       var monitored = collectUsers(modal);
       button.disabled = true;
       setMessage(modal, 'Saving…', false);
-      api('group/' + groupId + '/config', { method: 'POST', body: JSON.stringify({ channel_id: channel, monitored_users: monitored }) }).then(function () {
+      api('group/' + groupId + '/config', { method: 'POST', body: JSON.stringify({ channel_ids: channels, monitored_users: monitored }) }).then(function () {
         return load(true);
       }).then(function () {
         setMessage(modal, 'Configuration saved. Reopen Spotlight to review the updated subscription state.', false);
@@ -208,6 +217,41 @@
     host.appendChild(button);
   }
 
+  function installDmButton() {
+    if (!dmPayload) return;
+    var host = document.querySelector('.sml-group-actions,.sml-gshell__group-actions,[data-group-actions]');
+    if (!host || host.querySelector('[data-sml-rts-dm]')) return;
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sml-group-btn sml-rts-dm';
+    button.dataset.smlRtsDm = '1';
+    button.textContent = dmPayload.active ? '🔔 Discord alerts: On' : '🔕 Get Discord alerts';
+    button.disabled = !dmPayload.active && (!dmPayload.linked || !dmPayload.tool_active);
+    button.title = !dmPayload.linked ? 'Connect your Discord account first.' : (!dmPayload.tool_active ? 'The group owner must activate Retail Trader Spotlight first.' : dmPayload.disclaimer);
+    button.onclick = function () {
+      var turningOn = !dmPayload.active;
+      if (turningOn && !window.confirm('Opt in to direct messages from Stock Market Loop for this group’s Retail Trader Spotlight alerts? Discord and device notification settings control sound and vibration.')) return;
+      button.disabled = true;
+      api('group/' + groupId + '/dm-subscription', { method: turningOn ? 'POST' : 'DELETE', body: turningOn ? JSON.stringify({ consent: true }) : null }).then(function () {
+        button.remove();
+        dmPayload = null;
+        return loadDm();
+      }).catch(function (error) {
+        button.disabled = false;
+        window.alert(error.message);
+      });
+    };
+    host.appendChild(button);
+  }
+
+  function loadDm() {
+    return api('group/' + groupId + '/dm-subscription').then(function (data) {
+      dmPayload = data;
+      installDmButton();
+      return data;
+    });
+  }
+
   function load(force) {
     if (!force && payload) return Promise.resolve(payload);
     return api('group/' + groupId + '/config').then(function (data) {
@@ -220,8 +264,9 @@
   function boot() {
     if (!findRoot()) return false;
     load(false).catch(function () { payload = null; });
+    loadDm().catch(function () { dmPayload = null; });
     if (!observer) {
-      observer = new MutationObserver(function () { installButton(); });
+      observer = new MutationObserver(function () { installButton(); installDmButton(); });
       observer.observe(root, { childList: true, subtree: true });
     }
     return true;

@@ -1,0 +1,9 @@
+.sml-rts-callout.is-success {
+  border: 1px solid #207c59;
+  background: #082b20;
+  color: #91f4c7;
+}
+
+.sml-rts-field select[multiple] {
+  min-height: 112px;
+}

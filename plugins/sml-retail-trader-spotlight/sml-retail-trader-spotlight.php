@@ -2,20 +2,20 @@
 /**
  * Plugin Name: SML Retail Trader Spotlight
  * Description: Multi-tenant Discord alert monitoring, Loop Bucks subscriptions, and newsroom source records for eligible StockMarketLoop groups.
- * Version: 1.2.0
+ * Version: 1.3.2
  * Author: StockMarketLoop
  */
 
 defined( 'ABSPATH' ) || exit;
 
 final class SML_Retail_Trader_Spotlight {
-	const VERSION = '1.2.0';
-	const DB_VERSION = '2';
+	const VERSION = '1.3.2';
+	const DB_VERSION = '3';
 	const MIN_MEMBERS = 1000;
 	const BASE_MONTHLY_PRICE = 4000;
-	const QUALIFIED_MONTHLY_PRICE = 2000;
 	const AUTHOR_LOGIN = 'retail-trader-spotlight';
 	const CRON_HOOK = 'sml_rts_monthly_renewals';
+	const DM_CRON_HOOK = 'sml_rts_deliver_discord_dms';
 
 	private static $instance;
 
@@ -32,10 +32,12 @@ final class SML_Retail_Trader_Spotlight {
 		add_action( self::CRON_HOOK, array( $this, 'renew_due_subscriptions' ) );
 		add_filter( 'cron_schedules', array( $this, 'cron_schedules' ) );
 		add_action( 'sml_rts_poll_discord', array( $this, 'poll_discord' ) );
+		add_action( self::DM_CRON_HOOK, array( $this, 'deliver_discord_dms' ) );
 		add_shortcode( 'sml_retail_trader_spotlight', array( $this, 'shortcode' ) );
 		add_filter( 'sml_lb_reasons', array( $this, 'ledger_reasons' ) );
 		add_filter( 'get_avatar_data', array( $this, 'avatar' ), 30, 2 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'group_assets' ) );
+		add_action( 'wp_footer', array( $this, 'group_asset_fallback' ), 999 );
 	}
 
 	private static function table( $name ) {
@@ -48,17 +50,20 @@ final class SML_Retail_Trader_Spotlight {
 		self::ensure_author();
 		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) wp_schedule_event( time() + HOUR_IN_SECONDS, 'hourly', self::CRON_HOOK );
 		if ( ! wp_next_scheduled( 'sml_rts_poll_discord' ) ) wp_schedule_event( time() + 30, 'sml_rts_minute', 'sml_rts_poll_discord' );
+		if ( ! wp_next_scheduled( self::DM_CRON_HOOK ) ) wp_schedule_event( time() + 45, 'sml_rts_minute', self::DM_CRON_HOOK );
 	}
 
 	public static function deactivate() {
 		wp_clear_scheduled_hook( self::CRON_HOOK );
 		wp_clear_scheduled_hook( 'sml_rts_poll_discord' );
+		wp_clear_scheduled_hook( self::DM_CRON_HOOK );
 	}
 
 	public function maybe_upgrade() {
 		if ( self::DB_VERSION !== get_option( 'sml_rts_db_version' ) ) self::install();
 		self::ensure_author();
 		if ( ! wp_next_scheduled( 'sml_rts_poll_discord' ) ) wp_schedule_event( time() + 30, 'sml_rts_minute', 'sml_rts_poll_discord' );
+		if ( ! wp_next_scheduled( self::DM_CRON_HOOK ) ) wp_schedule_event( time() + 45, 'sml_rts_minute', self::DM_CRON_HOOK );
 	}
 
 	private static function install() {
@@ -68,11 +73,14 @@ final class SML_Retail_Trader_Spotlight {
 		$configs = self::table( 'configs' );
 		$events = self::table( 'events' );
 		$audit = self::table( 'audit' );
+		$optins = self::table( 'dm_optins' );
+		$deliveries = self::table( 'dm_deliveries' );
 		dbDelta( "CREATE TABLE $configs (
 			group_id bigint(20) unsigned NOT NULL,
 			owner_user_id bigint(20) unsigned NOT NULL,
 			guild_id varchar(32) NOT NULL,
 			channel_id varchar(32) NOT NULL,
+			channel_ids longtext NULL,
 			monitored_users longtext NOT NULL,
 			status varchar(20) NOT NULL DEFAULT 'inactive',
 			monthly_price bigint(20) unsigned NOT NULL DEFAULT 2000,
@@ -84,6 +92,35 @@ final class SML_Retail_Trader_Spotlight {
 			PRIMARY KEY (group_id),
 			KEY status_paid (status,paid_through)
 		) $charset;" );
+		dbDelta( "CREATE TABLE $optins (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			group_id bigint(20) unsigned NOT NULL,
+			user_id bigint(20) unsigned NOT NULL,
+			discord_user_id varchar(32) NOT NULL,
+			status varchar(20) NOT NULL DEFAULT 'active',
+			consented_at datetime NOT NULL,
+			revoked_at datetime NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY (id),
+			UNIQUE KEY group_user (group_id,user_id),
+			KEY group_status (group_id,status)
+		) $charset;" );
+		dbDelta( "CREATE TABLE $deliveries (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			event_uuid char(36) NOT NULL,
+			optin_id bigint(20) unsigned NOT NULL,
+			status varchar(20) NOT NULL DEFAULT 'pending',
+			attempts tinyint(3) unsigned NOT NULL DEFAULT 0,
+			next_attempt_at datetime NOT NULL,
+			last_error varchar(255) NOT NULL DEFAULT '',
+			delivered_at datetime NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY (id),
+			UNIQUE KEY event_optin (event_uuid,optin_id),
+			KEY due (status,next_attempt_at)
+		) $charset;" );
+		$wpdb->query( 'UPDATE ' . $configs . " SET channel_ids=CONCAT('[\"',channel_id,'\"]') WHERE (channel_ids IS NULL OR channel_ids='') AND channel_id<>''" );
 		dbDelta( "CREATE TABLE $events (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			event_uuid char(36) NOT NULL,
@@ -213,15 +250,54 @@ final class SML_Retail_Trader_Spotlight {
 		return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(DISTINCT user_id) FROM {$t['members']} WHERE group_id=%d", absint( $group_id ) ) );
 	}
 
+	private static function is_group_member( $group_id, $user_id = 0 ) {
+		global $wpdb;
+		$user_id = $user_id ? absint( $user_id ) : get_current_user_id();
+		if ( self::can_manage( $group_id, $user_id ) ) return true;
+		$t = self::group_tables();
+		return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$t['members']} WHERE group_id=%d AND user_id=%d LIMIT 1", absint( $group_id ), $user_id ) );
+	}
+
+	private static function linked_discord_user_id( $user_id = 0 ) {
+		global $wpdb;
+		$user_id = $user_id ? absint( $user_id ) : get_current_user_id();
+		$table = $wpdb->prefix . 'sml_discord_site_links';
+		if ( function_exists( 'sml_dgc_tables' ) ) {
+			$tables = sml_dgc_tables();
+			if ( ! empty( $tables['links'] ) ) $table = $tables['links'];
+		}
+		return self::snowflake( $wpdb->get_var( $wpdb->prepare( "SELECT discord_user_id FROM $table WHERE user_id=%d LIMIT 1", $user_id ) ) );
+	}
+
 	private static function connector( $group_id ) {
 		global $wpdb;
 		$t = self::group_tables();
-		return $wpdb->get_row( $wpdb->prepare( "SELECT guild_id,state FROM {$t['connectors']} WHERE group_id=%d", absint( $group_id ) ), ARRAY_A );
+		return $wpdb->get_row( $wpdb->prepare( "SELECT guild_id,state,created_by_user_id,claimed_by_discord_user_id FROM {$t['connectors']} WHERE group_id=%d", absint( $group_id ) ), ARRAY_A );
 	}
 
 	private static function config( $group_id ) {
 		global $wpdb;
 		return $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . ' WHERE group_id=%d', absint( $group_id ) ), ARRAY_A );
+	}
+
+	private static function config_channel_ids( $config ) {
+		$ids = is_array( $config ) ? json_decode( (string) ( $config['channel_ids'] ?? '' ), true ) : array();
+		if ( ! is_array( $ids ) || ! $ids ) $ids = array( is_array( $config ) ? ( $config['channel_id'] ?? '' ) : '' );
+		$out = array();
+		foreach ( $ids as $id ) {
+			$id = self::snowflake( $id );
+			if ( $id ) $out[ $id ] = true;
+		}
+		return array_keys( $out );
+	}
+
+	private static function base_monthly_price() {
+		return max( 1, (int) apply_filters( 'sml_rts_base_monthly_price', self::BASE_MONTHLY_PRICE ) );
+	}
+
+	private static function monthly_price( $group_id ) {
+		$base = self::base_monthly_price();
+		return self::member_count( $group_id ) >= self::MIN_MEMBERS ? (int) floor( $base / 2 ) : $base;
 	}
 
 	private static function discord_catalog( $guild_id ) {
@@ -274,16 +350,19 @@ final class SML_Retail_Trader_Spotlight {
 		$config = self::config( $group_id );
 		$connector = self::connector( $group_id );
 		$count = self::member_count( $group_id );
-		$eligible = $count >= self::MIN_MEMBERS;
+		$discount_eligible = $count >= self::MIN_MEMBERS;
+		$base_price = self::base_monthly_price();
+		$monthly_price = self::monthly_price( $group_id );
 		return array(
 			'group_id' => absint( $group_id ), 'member_count' => $count, 'minimum_members' => self::MIN_MEMBERS,
-			'eligible' => $eligible, 'base_monthly_price' => self::BASE_MONTHLY_PRICE,
-			'discount_percent' => 50, 'monthly_price' => $eligible ? self::QUALIFIED_MONTHLY_PRICE : self::BASE_MONTHLY_PRICE,
+			'eligible' => true, 'discount_eligible' => $discount_eligible, 'base_monthly_price' => $base_price,
+			'discount_percent' => 50, 'monthly_price' => $monthly_price,
 			'status' => $config ? $config['status'] : 'not_configured',
 			'paid_through' => $config ? $config['paid_through'] : null,
-			'configured' => (bool) ( $config && $config['channel_id'] && json_decode( $config['monitored_users'], true ) ),
+			'configured' => (bool) ( $config && self::config_channel_ids( $config ) && json_decode( $config['monitored_users'], true ) ),
 			'connector_state' => $connector ? (string) $connector['state'] : 'not_connected',
 			'connector_guild_id' => $connector ? (string) $connector['guild_id'] : '',
+			'discord_manager_verified' => (bool) ( $connector && 'active' === $connector['state'] && self::snowflake( $connector['claimed_by_discord_user_id'] ?? '' ) ),
 			'wallet_balance' => class_exists( 'SML_Store' ) && method_exists( 'SML_Store', 'balance' ) ? (int) SML_Store::balance( get_current_user_id() ) : null,
 		);
 	}
@@ -293,6 +372,7 @@ final class SML_Retail_Trader_Spotlight {
 		register_rest_route( 'sml-retail-spotlight/v1', '/group/(?P<group_id>\d+)/config', array( 'methods' => array( 'GET', 'POST' ), 'callback' => array( $this, 'configuration' ), 'permission_callback' => 'is_user_logged_in' ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/group/(?P<group_id>\d+)/subscribe', array( 'methods' => 'POST', 'callback' => array( $this, 'subscribe' ), 'permission_callback' => 'is_user_logged_in' ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/group/(?P<group_id>\d+)/diagnostic', array( 'methods' => 'POST', 'callback' => array( $this, 'diagnostic' ), 'permission_callback' => 'is_user_logged_in' ) );
+		register_rest_route( 'sml-retail-spotlight/v1', '/group/(?P<group_id>\d+)/dm-subscription', array( 'methods' => array( 'GET', 'POST', 'DELETE' ), 'callback' => array( $this, 'dm_subscription' ), 'permission_callback' => 'is_user_logged_in' ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/bot/configured-groups', array( 'methods' => 'GET', 'callback' => array( $this, 'bot_groups' ), 'permission_callback' => array( __CLASS__, 'bot_permission' ) ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/bot/alerts', array( 'methods' => 'POST', 'callback' => array( $this, 'bot_alert' ), 'permission_callback' => array( __CLASS__, 'bot_permission' ) ) );
 		register_rest_route( 'sml-retail-spotlight/v1', '/newsroom/pending', array( 'methods' => 'GET', 'callback' => array( $this, 'newsroom_pending' ), 'permission_callback' => static function () { return current_user_can( 'edit_posts' ); } ) );
@@ -314,32 +394,41 @@ final class SML_Retail_Trader_Spotlight {
 			$config = self::config( $group_id );
 			$connector = self::connector( $group_id );
 			return rest_ensure_response( array_merge( self::public_status( $group_id ), array(
-				'config' => $config ? array( 'guild_id' => $config['guild_id'], 'channel_id' => $config['channel_id'], 'monitored_users' => json_decode( $config['monitored_users'], true ) ?: array() ) : null,
+				'config' => $config ? array( 'guild_id' => $config['guild_id'], 'channel_id' => $config['channel_id'], 'channel_ids' => self::config_channel_ids( $config ), 'monitored_users' => json_decode( $config['monitored_users'], true ) ?: array() ) : null,
 				'catalog' => $connector && 'active' === $connector['state'] ? self::spotlight_channels( $connector['guild_id'] ) : null,
 			) ) );
 		}
 		$connector = self::connector( $group_id );
-		if ( ! $connector || 'active' !== $connector['state'] || ! self::snowflake( $connector['guild_id'] ) ) return new WP_Error( 'discord_not_connected', 'Connect and verify this group’s Discord server first.', array( 'status' => 409 ) );
-		$channel_id = self::snowflake( $request->get_param( 'channel_id' ) );
+		if ( ! $connector || 'active' !== $connector['state'] || ! self::snowflake( $connector['guild_id'] ) || ! self::snowflake( $connector['claimed_by_discord_user_id'] ?? '' ) ) return new WP_Error( 'discord_not_connected', 'A Discord owner or admin must connect and verify this server to the StockMarketLoop group first.', array( 'status' => 409 ) );
+		$requested_channels = (array) $request->get_param( 'channel_ids' );
+		if ( ! $requested_channels ) $requested_channels = array( $request->get_param( 'channel_id' ) );
+		$channel_ids = array();
+		foreach ( $requested_channels as $candidate ) {
+			$id = self::snowflake( $candidate );
+			if ( $id ) $channel_ids[ $id ] = true;
+		}
+		$channel_ids = array_keys( $channel_ids );
 		$catalog = self::spotlight_channels( $connector['guild_id'] );
 		$catalog_ids = wp_list_pluck( $catalog['channels'], 'id' );
-		if ( $catalog_ids && ! in_array( $channel_id, $catalog_ids, true ) ) return new WP_Error( 'invalid_channel', 'Choose a message channel supplied by the connected Discord server.', array( 'status' => 422 ) );
+		if ( ! $catalog_ids ) return new WP_Error( 'channel_catalog_unavailable', 'Sync the connected Discord server’s channel catalog before choosing monitored channels.', array( 'status' => 409 ) );
+		if ( array_diff( $channel_ids, $catalog_ids ) ) return new WP_Error( 'invalid_channel', 'Choose only message channels supplied by the connected Discord server.', array( 'status' => 422 ) );
 		$users = array();
 		foreach ( (array) $request->get_param( 'monitored_users' ) as $row ) {
 			$id = self::snowflake( is_array( $row ) ? ( $row['id'] ?? '' ) : '' );
 			if ( ! $id ) continue;
 			$users[ $id ] = array( 'id' => $id, 'display_name' => sanitize_text_field( is_array( $row ) ? ( $row['display_name'] ?? '' ) : '' ) );
 		}
-		if ( ! $channel_id || ! $users || count( $users ) > 25 ) return new WP_Error( 'invalid_configuration', 'Choose one valid Discord channel and 1–25 monitored users.', array( 'status' => 422 ) );
+		if ( ! $channel_ids || count( $channel_ids ) > 25 || ! $users || count( $users ) > 25 ) return new WP_Error( 'invalid_configuration', 'Choose 1–25 valid Discord channels and 1–25 monitored traders.', array( 'status' => 422 ) );
 		$old = self::config( $group_id );
+		$current_price = self::monthly_price( $group_id );
 		$data = array(
-			'owner_user_id' => get_current_user_id(), 'guild_id' => $connector['guild_id'], 'channel_id' => $channel_id,
-			'monitored_users' => wp_json_encode( array_values( $users ) ), 'monthly_price' => self::QUALIFIED_MONTHLY_PRICE,
+			'owner_user_id' => get_current_user_id(), 'guild_id' => $connector['guild_id'], 'channel_id' => $channel_ids[0],
+			'channel_ids' => wp_json_encode( $channel_ids ), 'monitored_users' => wp_json_encode( array_values( $users ) ), 'monthly_price' => $current_price,
 			'updated_at' => self::now(),
 		);
 		if ( $old ) $wpdb->update( self::table( 'configs' ), $data, array( 'group_id' => $group_id ) );
 		else { $data['group_id'] = $group_id; $data['status'] = 'inactive'; $data['created_at'] = self::now(); $wpdb->insert( self::table( 'configs' ), $data ); }
-		self::audit( $group_id, 'configuration_saved', array( 'channel_id' => $channel_id, 'monitored_user_ids' => array_keys( $users ) ) );
+		self::audit( $group_id, 'configuration_saved', array( 'channel_ids' => $channel_ids, 'monitored_user_ids' => array_keys( $users ), 'monthly_price' => $current_price ) );
 		return rest_ensure_response( array( 'saved' => true ) );
 	}
 
@@ -351,7 +440,7 @@ final class SML_Retail_Trader_Spotlight {
 		$ticker = strtoupper( ltrim( sanitize_text_field( (string) $request->get_param( 'ticker' ) ), '$' ) );
 		$text = trim( wp_strip_all_tags( (string) $request->get_param( 'alert_text' ) ) );
 		$checks = array(
-			'eligible_members' => self::member_count( $group_id ) >= self::MIN_MEMBERS,
+			'pricing_resolved' => self::monthly_price( $group_id ) > 0,
 			'discord_connected' => (bool) ( $connector && 'active' === $connector['state'] && self::snowflake( $connector['guild_id'] ) ),
 			'configuration_saved' => (bool) ( $config && self::snowflake( $config['channel_id'] ) && json_decode( $config['monitored_users'], true ) ),
 			'subscription_active' => (bool) ( $config && 'active' === $config['status'] && $config['paid_through'] && strtotime( $config['paid_through'] . ' UTC' ) > time() ),
@@ -367,16 +456,51 @@ final class SML_Retail_Trader_Spotlight {
 			'passed' => ! in_array( false, $checks, true ),
 			'dry_run' => true,
 			'checks' => $checks,
-			'preview' => array( 'ticker' => $ticker ? '$' . $ticker : '', 'alert_text' => $text, 'author' => 'Retail Trader Spotlight' ),
+			'preview' => array( 'ticker' => $ticker ? '$' . $ticker : '', 'alert_text' => $text, 'author' => 'Retail Trader Spotlight', 'monthly_price' => self::monthly_price( $group_id ) ),
 			'recent_conflict' => $recent,
 			'message' => $recent ? 'The test was not queued because this ticker is inside the 30-minute duplicate cooldown.' : 'Dry-run only: no article, post, alert, or Loop Bucks transaction was created.',
 		) );
 	}
 
+	public function dm_subscription( WP_REST_Request $request ) {
+		global $wpdb;
+		$group_id = absint( $request['group_id'] );
+		$user_id = get_current_user_id();
+		$table = self::table( 'dm_optins' );
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT id,discord_user_id,status,consented_at,revoked_at FROM $table WHERE group_id=%d AND user_id=%d", $group_id, $user_id ), ARRAY_A );
+		if ( 'DELETE' === $request->get_method() ) {
+			if ( $row ) $wpdb->update( $table, array( 'status' => 'revoked', 'revoked_at' => self::now(), 'updated_at' => self::now() ), array( 'id' => $row['id'] ) );
+			self::audit( $group_id, 'discord_dm_revoked', array(), $user_id );
+			return rest_ensure_response( array( 'active' => false, 'revoked' => true ) );
+		}
+		if ( ! self::is_group_member( $group_id, $user_id ) ) return new WP_Error( 'not_group_member', 'Join this StockMarketLoop group before enabling Discord alerts.', array( 'status' => 403 ) );
+		$config = self::config( $group_id );
+		$tool_active = (bool) ( $config && 'active' === $config['status'] && $config['paid_through'] && strtotime( $config['paid_through'] . ' UTC' ) > time() );
+		$discord_user_id = self::linked_discord_user_id( $user_id );
+		if ( 'POST' === $request->get_method() ) {
+			if ( true !== rest_sanitize_boolean( $request->get_param( 'consent' ) ) ) return new WP_Error( 'consent_required', 'Explicit consent is required before StockMarketLoop can send Discord direct messages.', array( 'status' => 422 ) );
+			if ( ! $tool_active ) return new WP_Error( 'spotlight_inactive', 'This group’s Retail Trader Spotlight subscription is not active.', array( 'status' => 409 ) );
+			if ( ! $discord_user_id ) return new WP_Error( 'discord_link_required', 'Connect your Discord account to StockMarketLoop before enabling direct-message alerts.', array( 'status' => 409 ) );
+			$data = array( 'discord_user_id' => $discord_user_id, 'status' => 'active', 'consented_at' => self::now(), 'revoked_at' => null, 'updated_at' => self::now() );
+			if ( $row ) $wpdb->update( $table, $data, array( 'id' => $row['id'] ) );
+			else { $data['group_id'] = $group_id; $data['user_id'] = $user_id; $wpdb->insert( $table, $data ); }
+			self::audit( $group_id, 'discord_dm_consented', array( 'discord_user_id' => $discord_user_id ), $user_id );
+			$row = $wpdb->get_row( $wpdb->prepare( "SELECT id,discord_user_id,status,consented_at,revoked_at FROM $table WHERE group_id=%d AND user_id=%d", $group_id, $user_id ), ARRAY_A );
+		}
+		return rest_ensure_response( array(
+			'active' => (bool) ( $row && 'active' === $row['status'] ),
+			'linked' => (bool) $discord_user_id,
+			'tool_active' => $tool_active,
+			'consented_at' => $row ? $row['consented_at'] : null,
+			'disclaimer' => 'Discord delivery and sound or vibration depend on each member’s Discord and device notification settings.',
+		) );
+	}
+
 	private static function charge( $config, $period ) {
 		$reference = 'group:' . (int) $config['group_id'] . ':period:' . $period;
+		$price = self::monthly_price( $config['group_id'] );
 		if ( class_exists( 'SML_Store' ) && method_exists( 'SML_Store', 'transact' ) ) {
-			return SML_Store::transact( (int) $config['owner_user_id'], -self::QUALIFIED_MONTHLY_PRICE, 'spend', 'retail_spotlight', $reference, 'Retail Trader Spotlight monthly subscription', 0 );
+			return SML_Store::transact( (int) $config['owner_user_id'], -$price, 'spend', 'retail_spotlight', $reference, 'Retail Trader Spotlight monthly subscription', 0 );
 		}
 		return new WP_Error( 'ledger_unavailable', 'The verified Loop Bucks ledger bridge is unavailable.' );
 	}
@@ -385,17 +509,19 @@ final class SML_Retail_Trader_Spotlight {
 		global $wpdb;
 		$group_id = absint( $request['group_id'] );
 		if ( ! self::can_manage( $group_id ) ) return new WP_Error( 'forbidden', 'Only this group’s owner or admin can subscribe.', array( 'status' => 403 ) );
-		if ( self::member_count( $group_id ) < self::MIN_MEMBERS ) return new WP_Error( 'minimum_members', 'Retail Trader Spotlight unlocks when the StockMarketLoop group reaches 1,000 members.', array( 'status' => 403 ) );
 		$config = self::config( $group_id );
-		if ( ! $config || ! $config['channel_id'] || empty( json_decode( $config['monitored_users'], true ) ) ) return new WP_Error( 'configuration_required', 'Choose a Discord channel and monitored users first.', array( 'status' => 409 ) );
+		if ( ! $config || ! self::config_channel_ids( $config ) || empty( json_decode( $config['monitored_users'], true ) ) ) return new WP_Error( 'configuration_required', 'Choose Discord channels and monitored traders first.', array( 'status' => 409 ) );
+		$connector = self::connector( $group_id );
+		if ( ! $connector || 'active' !== $connector['state'] || ! self::snowflake( $connector['claimed_by_discord_user_id'] ?? '' ) ) return new WP_Error( 'discord_not_verified', 'The Discord server must remain verified by an owner or administrator.', array( 'status' => 409 ) );
 		$config['owner_user_id'] = get_current_user_id();
 		$wpdb->update( self::table( 'configs' ), array( 'owner_user_id' => $config['owner_user_id'] ), array( 'group_id' => $group_id ) );
 		$period = gmdate( 'Y-m' );
 		$result = self::charge( $config, $period );
 		if ( is_wp_error( $result ) && 'duplicate_transaction' !== $result->get_error_code() ) return $result;
 		$paid = gmdate( 'Y-m-d H:i:s', strtotime( '+1 month' ) );
-		$wpdb->update( self::table( 'configs' ), array( 'status' => 'active', 'monthly_price' => self::QUALIFIED_MONTHLY_PRICE, 'paid_through' => $paid, 'last_billed_period' => $period, 'last_error' => '', 'updated_at' => self::now() ), array( 'group_id' => $group_id ) );
-		self::audit( $group_id, 'subscription_activated', array( 'price' => self::QUALIFIED_MONTHLY_PRICE, 'period' => $period ) );
+		$price = self::monthly_price( $group_id );
+		$wpdb->update( self::table( 'configs' ), array( 'status' => 'active', 'monthly_price' => $price, 'paid_through' => $paid, 'last_billed_period' => $period, 'last_error' => '', 'updated_at' => self::now() ), array( 'group_id' => $group_id ) );
+		self::audit( $group_id, 'subscription_activated', array( 'price' => $price, 'discount_eligible' => self::member_count( $group_id ) >= self::MIN_MEMBERS, 'period' => $period ) );
 		return rest_ensure_response( self::public_status( $group_id ) );
 	}
 
@@ -403,22 +529,30 @@ final class SML_Retail_Trader_Spotlight {
 		global $wpdb;
 		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . " WHERE status='active' AND paid_through <= %s LIMIT 100", self::now() ), ARRAY_A ) ?: array();
 		foreach ( $rows as $config ) {
-			if ( self::member_count( $config['group_id'] ) < self::MIN_MEMBERS ) { $error = new WP_Error( 'minimum_members', 'Group membership fell below 1,000.' ); }
-			else { $error = self::charge( $config, gmdate( 'Y-m' ) ); }
+			$error = self::charge( $config, gmdate( 'Y-m' ) );
 			if ( is_wp_error( $error ) && 'duplicate_transaction' !== $error->get_error_code() ) {
 				$wpdb->update( self::table( 'configs' ), array( 'status' => 'paused', 'last_error' => sanitize_text_field( $error->get_error_message() ), 'updated_at' => self::now() ), array( 'group_id' => $config['group_id'] ) );
 				self::audit( $config['group_id'], 'renewal_paused', array( 'reason' => $error->get_error_code() ), $config['owner_user_id'] );
 				continue;
 			}
-			$wpdb->update( self::table( 'configs' ), array( 'paid_through' => gmdate( 'Y-m-d H:i:s', strtotime( '+1 month' ) ), 'last_billed_period' => gmdate( 'Y-m' ), 'last_error' => '', 'updated_at' => self::now() ), array( 'group_id' => $config['group_id'] ) );
+			$wpdb->update( self::table( 'configs' ), array( 'monthly_price' => self::monthly_price( $config['group_id'] ), 'paid_through' => gmdate( 'Y-m-d H:i:s', strtotime( '+1 month' ) ), 'last_billed_period' => gmdate( 'Y-m' ), 'last_error' => '', 'updated_at' => self::now() ), array( 'group_id' => $config['group_id'] ) );
 		}
 	}
 
 	public function bot_groups() {
 		global $wpdb;
-		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT group_id,guild_id,channel_id,monitored_users,paid_through FROM ' . self::table( 'configs' ) . " WHERE status='active' AND paid_through > %s", self::now() ), ARRAY_A ) ?: array();
-		foreach ( $rows as &$row ) $row['monitored_users'] = json_decode( $row['monitored_users'], true ) ?: array();
-		return rest_ensure_response( array( 'groups' => $rows ) );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT group_id,guild_id,channel_id,channel_ids,monitored_users,paid_through FROM ' . self::table( 'configs' ) . " WHERE status='active' AND paid_through > %s", self::now() ), ARRAY_A ) ?: array();
+		$groups = array();
+		foreach ( $rows as $row ) {
+			$row['monitored_users'] = json_decode( $row['monitored_users'], true ) ?: array();
+			foreach ( self::config_channel_ids( $row ) as $channel_id ) {
+				$copy = $row;
+				$copy['channel_id'] = $channel_id;
+				unset( $copy['channel_ids'] );
+				$groups[] = $copy;
+			}
+		}
+		return rest_ensure_response( array( 'groups' => $groups ) );
 	}
 
 	public function bot_alert( WP_REST_Request $request ) {
@@ -427,7 +561,11 @@ final class SML_Retail_Trader_Spotlight {
 		$channel = self::snowflake( $request->get_param( 'channel_id' ) );
 		$message = self::snowflake( $request->get_param( 'message_id' ) );
 		$user = self::snowflake( $request->get_param( 'user_id' ) );
-		$config = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . " WHERE guild_id=%s AND channel_id=%s AND status='active' AND paid_through>%s", $guild, $channel, self::now() ), ARRAY_A );
+		$config = null;
+		$configs = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . " WHERE guild_id=%s AND status='active' AND paid_through>%s", $guild, self::now() ), ARRAY_A ) ?: array();
+		foreach ( $configs as $candidate ) {
+			if ( in_array( $channel, self::config_channel_ids( $candidate ), true ) ) { $config = $candidate; break; }
+		}
 		if ( ! $config ) return new WP_Error( 'not_monitored', 'This channel does not have an active Spotlight subscription.', array( 'status' => 403 ) );
 		$allowed = wp_list_pluck( json_decode( $config['monitored_users'], true ) ?: array(), 'id' );
 		if ( ! in_array( $user, $allowed, true ) ) return new WP_Error( 'user_not_monitored', 'This Discord user is not monitored for the group.', array( 'status' => 403 ) );
@@ -452,13 +590,31 @@ final class SML_Retail_Trader_Spotlight {
 			return rest_ensure_response( array( 'accepted' => true, 'duplicate' => true, 'event_uuid' => $existing ) );
 		}
 		self::audit( $config['group_id'], 'alert_accepted', array( 'event_uuid' => $uuid, 'discord_message_id' => $message, 'ticker' => $ticker ), $config['owner_user_id'] );
+		$this->queue_discord_dms( $uuid, $config['group_id'] );
 		return new WP_REST_Response( array( 'accepted' => true, 'duplicate' => false, 'event_uuid' => $uuid, 'source_url' => rest_url( 'sml-retail-spotlight/v1/source/' . $uuid ) ), 201 );
+	}
+
+	private function queue_discord_dms( $event_uuid, $group_id ) {
+		global $wpdb;
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT id FROM ' . self::table( 'dm_optins' ) . " WHERE group_id=%d AND status='active'", absint( $group_id ) ), ARRAY_A ) ?: array();
+		$now = self::now();
+		foreach ( $rows as $row ) {
+			$wpdb->query( $wpdb->prepare( 'INSERT IGNORE INTO ' . self::table( 'dm_deliveries' ) . ' (event_uuid,optin_id,status,attempts,next_attempt_at,last_error,created_at,updated_at) VALUES (%s,%d,%s,0,%s,%s,%s,%s)', $event_uuid, absint( $row['id'] ), 'pending', $now, '', $now, $now ) );
+		}
 	}
 
 	public function poll_discord() {
 		if ( ! function_exists( 'sml_discord_api_request' ) || ! function_exists( 'sml_discord_option' ) ) return;
 		global $wpdb;
-		$configs = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . " WHERE status='active' AND paid_through>%s", self::now() ), ARRAY_A ) ?: array();
+		$stored_configs = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM ' . self::table( 'configs' ) . " WHERE status='active' AND paid_through>%s", self::now() ), ARRAY_A ) ?: array();
+		$configs = array();
+		foreach ( $stored_configs as $stored ) {
+			foreach ( self::config_channel_ids( $stored ) as $channel_id ) {
+				$copy = $stored;
+				$copy['channel_id'] = $channel_id;
+				$configs[] = $copy;
+			}
+		}
 		$cursors = get_option( 'sml_rts_discord_cursors', array() );
 		$cursors = is_array( $cursors ) ? $cursors : array();
 		foreach ( $configs as $config ) {
@@ -488,6 +644,44 @@ final class SML_Retail_Trader_Spotlight {
 			}
 		}
 		update_option( 'sml_rts_discord_cursors', $cursors, false );
+	}
+
+	public function deliver_discord_dms() {
+		if ( ! function_exists( 'sml_discord_api_request' ) || ! function_exists( 'sml_discord_option' ) ) return;
+		$token = (string) sml_discord_option( 'bot_token', '' );
+		if ( '' === $token ) return;
+		global $wpdb;
+		$deliveries = self::table( 'dm_deliveries' );
+		$optins = self::table( 'dm_optins' );
+		$events = self::table( 'events' );
+		$configs = self::table( 'configs' );
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT d.id,d.attempts,o.discord_user_id,e.event_uuid,e.ticker,e.alert_text,e.discord_display_name
+			FROM $deliveries d
+			JOIN $optins o ON o.id=d.optin_id AND o.status='active'
+			JOIN $events e ON e.event_uuid=d.event_uuid AND e.group_id=o.group_id
+			JOIN $configs c ON c.group_id=o.group_id AND c.status='active' AND c.paid_through>%s
+			WHERE d.status='pending' AND d.next_attempt_at<=%s ORDER BY d.id ASC LIMIT 50",
+			self::now(), self::now()
+		), ARRAY_A ) ?: array();
+		foreach ( $rows as $row ) {
+			$attempts = (int) $row['attempts'] + 1;
+			$dm = sml_discord_api_request( 'POST', '/users/@me/channels', array( 'recipient_id' => $row['discord_user_id'] ), $token );
+			$result = is_wp_error( $dm ) || empty( $dm['id'] ) ? $dm : sml_discord_api_request( 'POST', '/channels/' . self::snowflake( $dm['id'] ) . '/messages', array(
+				'content' => mb_substr( "🔔 **Stock Market Loop · Retail Trader Spotlight**\n**$" . $row['ticker'] . ' alert from ' . $row['discord_display_name'] . "**\n" . $row['alert_text'] . "\nVerified record: " . rest_url( 'sml-retail-spotlight/v1/source/' . $row['event_uuid'] ) . "\n\nYou opted in on StockMarketLoop. Manage or stop these alerts from the group page.", 0, 1950 ),
+				'allowed_mentions' => array( 'parse' => array() ),
+			), $token );
+			if ( ! is_wp_error( $result ) ) {
+				$wpdb->update( $deliveries, array( 'status' => 'sent', 'attempts' => $attempts, 'last_error' => '', 'delivered_at' => self::now(), 'updated_at' => self::now() ), array( 'id' => $row['id'] ) );
+				continue;
+			}
+			$final = $attempts >= 3;
+			$wpdb->update( $deliveries, array(
+				'status' => $final ? 'failed' : 'pending', 'attempts' => $attempts,
+				'next_attempt_at' => gmdate( 'Y-m-d H:i:s', time() + ( 60 * pow( 5, $attempts - 1 ) ) ),
+				'last_error' => sanitize_text_field( $result->get_error_message() ), 'updated_at' => self::now(),
+			), array( 'id' => $row['id'] ) );
+		}
 	}
 
 	public function newsroom_pending() {
@@ -534,20 +728,40 @@ final class SML_Retail_Trader_Spotlight {
 		$path = wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH );
 		if ( ! preg_match( '#^/groups/[^/]+/?$#i', (string) $path ) ) return;
 		$base = plugin_dir_url( __FILE__ ) . 'assets/';
-		wp_enqueue_style( 'sml-retail-trader-spotlight', $base . 'retail-trader-spotlight.css', array(), self::VERSION );
-		wp_enqueue_script( 'sml-retail-trader-spotlight', $base . 'retail-trader-spotlight.js', array(), self::VERSION, true );
-		wp_localize_script( 'sml-retail-trader-spotlight', 'SMLRetailSpotlight', array(
+		wp_enqueue_style( 'rts-spotlight-ui', $base . 'retail-trader-spotlight.css', array(), self::VERSION );
+		wp_enqueue_style( 'rts-spotlight-v13', $base . 'retail-trader-spotlight-v13.css', array( 'rts-spotlight-ui' ), self::VERSION );
+		wp_enqueue_script( 'rts-spotlight-ui', $base . 'retail-trader-spotlight.js', array(), self::VERSION, true );
+		wp_localize_script( 'rts-spotlight-ui', 'SMLRetailSpotlight', array(
 			'api' => esc_url_raw( rest_url( 'sml-retail-spotlight/v1/' ) ),
 			'nonce' => wp_create_nonce( 'wp_rest' ),
 			'avatar' => esc_url_raw( $base . 'retail-trader-spotlight.png' ),
 		) );
 	}
 
+	public function group_asset_fallback() {
+		if ( is_admin() ) return;
+		$path = wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '', PHP_URL_PATH );
+		if ( ! preg_match( '#^/groups/[^/]+/?$#i', (string) $path ) ) return;
+		$base = plugin_dir_url( __FILE__ ) . 'assets/';
+		$config = array(
+			'api' => esc_url_raw( rest_url( 'sml-retail-spotlight/v1/' ) ),
+			'nonce' => wp_create_nonce( 'wp_rest' ),
+			'avatar' => esc_url_raw( $base . 'retail-trader-spotlight.png' ),
+		);
+		echo '<link id="rts-spotlight-direct-css" rel="stylesheet" href="' . esc_url( $base . 'retail-trader-spotlight.css?ver=' . self::VERSION ) . '">';
+		echo '<link id="rts-spotlight-direct-v13-css" rel="stylesheet" href="' . esc_url( $base . 'retail-trader-spotlight-v13.css?ver=' . self::VERSION ) . '">';
+		echo '<script id="rts-spotlight-direct-config">window.SMLRetailSpotlight=' . wp_json_encode( $config ) . ';</script>';
+		echo '<script id="rts-spotlight-direct-js" src="' . esc_url( $base . 'retail-trader-spotlight.js?ver=' . self::VERSION ) . '"></script>';
+	}
+
 	public function shortcode( $attributes ) {
 		$group_id = absint( $attributes['group_id'] ?? 0 );
 		if ( ! $group_id || ! self::can_manage( $group_id ) ) return '';
 		$status = self::public_status( $group_id );
-		return '<section class="sml-rts-card" data-group-id="' . esc_attr( $group_id ) . '"><h3>Retail Trader Spotlight</h3><p>Monitor selected Discord alerts and publish verified coverage under Retail Trader Spotlight.</p><p><strong>' . esc_html( number_format_i18n( $status['member_count'] ) ) . ' / 1,000 members</strong></p><p><del>4,000 Loop Bucks/month</del> <strong>2,000 Loop Bucks/month at 1,000+ members</strong></p><p>Status: ' . esc_html( $status['status'] ) . '</p></section>';
+		$pricing = $status['discount_eligible']
+			? '<del>' . number_format_i18n( $status['base_monthly_price'] ) . ' Loop Bucks/month</del> <strong>' . number_format_i18n( $status['monthly_price'] ) . ' Loop Bucks/month — 50% discount active</strong>'
+			: '<strong>' . number_format_i18n( $status['monthly_price'] ) . ' Loop Bucks/month</strong> <span>— automatically 50% off at 1,000 members</span>';
+		return '<section class="sml-rts-card" data-group-id="' . esc_attr( $group_id ) . '"><h3>Retail Trader Spotlight</h3><p>Monitor selected Discord alert channels and publish verified coverage under the separate Retail Trader Spotlight author.</p><p><strong>' . esc_html( number_format_i18n( $status['member_count'] ) ) . ' members</strong></p><p>' . wp_kses_post( $pricing ) . '</p><p>Status: ' . esc_html( $status['status'] ) . '</p></section>';
 	}
 }
 
