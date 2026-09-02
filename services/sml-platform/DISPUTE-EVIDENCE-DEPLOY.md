@@ -43,6 +43,46 @@ Worker service adds: `SML_DISCORD_CONNECT_BOT_TOKEN` (private DM alerts + comman
 
 WordPress: `sml-connect-dispute-admin` reuses `SML_PLATFORM_API_URL` and `SML_PLATFORM_BILLING_API_SECRET` from the SML Platform Runtime Config plugin. Optional overrides: `SML_CONNECT_ADMIN_API_URL`, `SML_CONNECT_ADMIN_API_SECRET`.
 
+## 2b. Owner quick start (the only steps that need your accounts)
+
+Facts already confirmed from the live site (read-only): owner WordPress user
+`258456581` (login `ben`), owner Discord user `1087769175453339648`, merchant
+guild `938894329076940820` = group 7 "Making Easy Money", Stripe account
+`acct_1ND1yGBpqyUyWsXe`, Discord application "StockMarketLoop Connect" already
+exists in the developer portal.
+
+1. **Render (3 minutes, one command).** Create an API key in the Render
+   dashboard (Account settings → API keys), then in a terminal on your machine:
+
+   ```bash
+   cd services/sml-platform
+   RENDER_API_KEY=<your key> node scripts/render-configure-dispute-evidence.js --apply
+   ```
+
+   The script generates `SML_EVIDENCE_ENCRYPTION_KEY`,
+   `SML_CONNECT_REVIEW_URL_SECRET`, and `SML_UC_WEBHOOK_PATH_TOKEN` locally,
+   sets `SML_DISPUTE_EVIDENCE_ENABLED=1` on both services, never rotates a key
+   that already exists, and triggers both deploys. Without `--apply` it only
+   prints the plan. Secret values never leave your terminal. Add
+   `SML_DISCORD_CONNECT_PUBLIC_KEY`, `SML_DISCORD_CONNECT_APP_ID`,
+   `SML_DISCORD_CONNECT_BOT_TOKEN`, `SML_CONNECT_BOT_ENABLED=1`, or the
+   `SML_PAYPAL_*` names to the same command's environment and the script
+   forwards them to the right service.
+2. **WordPress (1 minute).** wp-admin → Disputes → "Merchant admins": WordPress
+   user id `258456581`, Discord user id `1087769175453339648`, scope
+   `platform`. Repeat with a connected-account id for any marketplace seller.
+3. **Discord (5 minutes).** Developer portal → StockMarketLoop Connect →
+   General Information: copy Application ID and Public Key into the Render
+   command above. Bot → Reset Token → paste as `SML_DISCORD_CONNECT_BOT_TOKEN`
+   (worker). After the deploy, set Interactions Endpoint URL to
+   `https://sml-platform-api.onrender.com/v1/discord/interactions`, invite the
+   bot to guild `938894329076940820`, then run
+   `SML_DISCORD_CONNECT_APP_ID=… SML_DISCORD_CONNECT_BOT_TOKEN=… SML_CONNECT_GUILD_IDS=938894329076940820 node scripts/register-connect-commands.js`.
+4. **Stripe (2 minutes).** Developers → Webhooks → the `sml-platform-api`
+   endpoint → confirm the events listed in §3 step 5.
+5. **PayPal and Upgrade.Chat** as in §3 steps 6–7; the Render script prints the
+   exact Upgrade.Chat webhook URL to register.
+
 ## 3. Rollout sequence (what has been done vs what the owner must do)
 
 1. **Schema** — migration 012 is applied by the API pre-deploy hook (`npm run db:release`, `SML_MIGRATION_MODE=apply`). Verify with `GET /health` → `"schema":"012"`.
