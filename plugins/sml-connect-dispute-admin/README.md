@@ -1,57 +1,39 @@
-# SML Connect Dispute Admin
+# SML Connect Dispute Admin (0.2.0)
 
-WordPress console for the SML platform dispute-evidence service. Provides:
-
-- an admin menu page (`SML Disputes`, capability `manage_options`) listing open
-  dispute cases (id, provider, reason, amount, response deadline, state,
-  completeness) from the platform's signed `/v1/billing/disputes/list` endpoint;
-- a case detail / packet review view showing every assertion with its cited
-  evidence item ids, packet warnings, and the exact fields and files that would
-  be transmitted to the provider;
-- a human approval flow: a confirmation checkbox whose exact label text is
-  posted back with the approval to `/v1/billing/disputes/approve-submit`
-  together with the approving WordPress user id — the platform re-verifies the
-  user and scope before anything is sent to a provider;
-- a connectivity health panel (`/health` plus a signed `disputes/list` ping,
-  including any webhook last-seen fields the API reports);
-- a per-merchant dispute access policy setting (`keep_access` /
-  `suspend_access`) recorded via `/v1/billing/disputes/record-policy`;
-- a `/connect-review/` front-end endpoint that redeems single-use review
-  tokens (issued through the Discord `/dispute-open-dashboard` command) via
-  `/v1/billing/disputes/redeem-review-token`. The page requires login and
-  either `manage_options` or platform-confirmed group-owner capability;
-  possession of the token alone renders nothing;
-- the `sml_platform_dispute_notify` adapter for the billing bridge's
-  `dispute_notify` intent: stores a dashboard admin notice and emails the site
-  admin address with neutral, factual wording.
+Narrowly scoped WordPress console for the dispute-evidence system held by the
+SML platform service (Render). Nothing here decides anything in browser
+JavaScript: every action is a nonce-checked, capability-checked, server-side
+signed call to the platform.
 
 ## Configuration
 
-Define both constants in `wp-config.php`. Never paste secret values into
-WPCode, options, or commits:
+The plugin reuses the SML Platform Runtime Config values already used by the
+billing bridge: `SML_PLATFORM_API_URL` and `SML_PLATFORM_BILLING_API_SECRET`.
+Optional overrides: `SML_CONNECT_ADMIN_API_URL`, `SML_CONNECT_ADMIN_API_SECRET`.
 
-```php
-define( 'SML_CONNECT_ADMIN_API_URL', 'https://YOUR-RENDER-SERVICE.onrender.com' );
-define( 'SML_CONNECT_ADMIN_API_SECRET', 'same value as SML_BILLING_API_SECRET on Render' );
-```
+The platform answers 503 `integration_unconfigured` until
+`SML_DISPUTE_EVIDENCE_ENABLED=1` and `SML_EVIDENCE_ENCRYPTION_KEY` are set in
+Render; the console shows that state on its health panel.
 
-Outbound calls are signed exactly like the billing bridge: HMAC-SHA256 over
-`"{timestamp}.{body}"`, sent as `x-sml-signature: sha256=<hex>` with
-`x-sml-timestamp`, JSON body, 10 second timeout.
+## Surfaces
 
-## Install order
+- **Disputes** admin menu (`manage_options`): connectivity health (platform
+  `/health` with schema version, signed API ping, webhook last-seen/failures),
+  disputed-access policy form, merchant-admin linking, open cases with
+  deadline/state/completeness, case review (facts, checklist, warnings,
+  contradictions, assertions with cited records, timeline, exact transmit
+  fields/files), packet build, and approval bound to the reviewed
+  `packet_sha256` with the confirmation checkbox text verified server-side.
+- **`/connect-review/`** front-end page for the single-use link issued by the
+  Connect bot's `/dispute-open-dashboard`. Requires login; the platform consumes
+  the token and authorizes only administrators or verified merchant admins of
+  the case's scope. Approval from this page also carries the platform's
+  15-minute review reference.
+- **`sml_platform_dispute_notify` adapter**: the bridge (0.4.0+) dispatches the
+  worker's `dispute_notify` intent here; it stores a capped admin-notice
+  transient and emails `admin_email` with neutral, identifier-only wording.
 
-Deploy this plugin (and billing bridge 0.4.0, which adds the `dispute_notify`
-intent) **before** enabling the platform worker's `dispute_notify` outbox
-handler; the bridge returns 503 for that intent until this adapter is active.
+## DOM / delivery
 
-After activation, visit Settings → Permalinks once (or rely on the activation
-hook) so the `/connect-review/` rewrite rule is registered.
-
-## Security notes
-
-- Every state-changing action requires a nonce and is authorized server-side;
-  no approval decision lives in browser JS.
-- All injected DOM ids use the `smlcda-` prefix (never `sml-`).
-- All output is escaped with `esc_html` / `esc_attr` / `esc_url`.
-- The plugin never logs or renders the API secret or raw review tokens.
+All injected ids use the `smlcda-` prefix (never `sml-`). No global CSS or
+JavaScript is enqueued.

@@ -81,6 +81,12 @@ function fakeDb(options = {}) {
           const row = state.packets.get(Number(values[0]));
           return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
         }
+        if (text.startsWith('SELECT id, version, response_cycle, manifest, warnings, pdf_sha256, packet_sha256, generator_version, created_at FROM dispute_packets WHERE case_id = $1')) {
+          const latest = [...state.packets.values()]
+            .filter((row) => Number(row.case_id) === Number(values[0]))
+            .sort((a, b) => Number(b.version) - Number(a.version))[0];
+          return { rows: latest ? [{ ...latest }] : [], rowCount: latest ? 1 : 0 };
+        }
         if (text.startsWith('SELECT COALESCE(MAX(version), 0) AS max_version FROM dispute_packets')) {
           const versions = [...state.packets.values()]
             .filter((row) => Number(row.case_id) === Number(values[0]))
@@ -302,6 +308,21 @@ function seedPacket(db, overrides = {}) {
   };
   db.state.packets.set(row.id, row);
   return row;
+}
+
+function serviceDeps(db, overrides = {}) {
+  return {
+    pool: db.pool,
+    store: overrides.store || fakeStore(),
+    stripe: overrides.stripe || fakeStripe(),
+    stripeFiles: overrides.stripeFiles || fakeStripeFiles(),
+    paypalClient: overrides.paypalClient || fakePayPal(),
+    limits: overrides.limits || okLimits(),
+    engine: overrides.engine,
+    packetGenerator: overrides.packetGenerator,
+    randomBytes: overrides.randomBytes || crypto.randomBytes,
+    now: overrides.now || (() => NOW)
+  };
 }
 
 function makeService(db, overrides = {}) {
@@ -627,6 +648,82 @@ test('a review token is single-use: two concurrent redeems -> exactly one wins',
   assert.match(rejected[0].reason.message, /invalid, expired, or already used/);
   assert.equal(fulfilled[0].value.case.caseId, 1);
   assert.equal(fulfilled[0].value.case.providerDisputeId, 'dp_1');
+});
+
+test('a redeem without manage_options and without a verified merchant-admin link consumes the token, is audited, and returns no case data', async () => {
+  const db = fakeDb();
+  seedCase(db);
+  const store = fakeStore();
+  const graph = { async resolveMerchantAdmins() { return [{ identityId: 1, wordpress_user_id: 99, discord_user_id: null }]; } };
+  const service = createDisputeService({ ...serviceDeps(db, { store }), graph });
+  const issued = await service.issueReviewToken({ caseId: 1, discordUserId: '123456789012345678' });
+  const result = await service.redeemReviewToken({ token: issued.token, wpUserId: 7, manageOptions: false });
+  assert.deepEqual(result, { authorized: false });
+  assert.ok(store.audits.some((entry) => entry.fields.action === 'review_token_redeemed_unauthorized'));
+  await assert.rejects(() => service.redeemReviewToken({ token: issued.token, wpUserId: 99, manageOptions: false }), /already used/);
+});
+
+test('a verified merchant admin without manage_options is authorized and receives a review reference that approve-submit requires', async () => {
+  const db = fakeDb();
+  seedCase(db);
+  seedPacket(db);
+  const stripe = fakeStripe();
+  const graph = { async resolveMerchantAdmins(_c, scope) { return scope === 'acct_seller_1' ? [{ identityId: 1, wordpress_user_id: 99, discord_user_id: null }] : []; } };
+  const service = createDisputeService({ ...serviceDeps(db, { stripe }), graph, reviewRefSecret: 'ref-secret' });
+  const issued = await service.issueReviewToken({ caseId: 1, discordUserId: '123456789012345678' });
+  const redeemed = await service.redeemReviewToken({ token: issued.token, wpUserId: 99, manageOptions: false });
+  assert.equal(redeemed.authorized, true);
+  assert.equal(redeemed.case.caseId, 1);
+  assert.equal(redeemed.packet.id, 11);
+  assert.equal(redeemed.packet.packetSha256, PACKET_SHA);
+  assert.deepEqual(redeemed.transmitFields, { product_description: 'Monthly group subscription with member access records' });
+  assert.match(redeemed.reviewRef, /^1\.99\.\d+\.[a-f0-9]{64}$/);
+
+  /* Without the reference (or with a stranger's), a review-page approval is refused before any claim. */
+  await assert.rejects(() => service.approveAndSubmit(approvalInput({ wpUserId: 99, manageOptions: false })), /review reference/);
+  await assert.rejects(() => service.approveAndSubmit(approvalInput({ wpUserId: 7, manageOptions: false, reviewRef: redeemed.reviewRef })), /review reference/);
+  assert.equal(stripe.updates.length, 0);
+  const result = await service.approveAndSubmit(approvalInput({ wpUserId: 99, manageOptions: false, reviewRef: redeemed.reviewRef }));
+  assert.equal(result.status, 'submitted');
+  assert.equal(stripe.updates.length, 1);
+});
+
+test('merchant scope isolation: a scoped caller never sees, builds, or links across another merchant', async () => {
+  const db = fakeDb();
+  seedCase(db);
+  const service = makeService(db);
+  await assert.rejects(() => service.caseDetail({ caseId: 1, merchantScope: 'acct_other' }), /not found/);
+  await assert.rejects(() => service.issueReviewToken({ caseId: 1, discordUserId: '123456789012345678', merchantScope: 'acct_other' }), /not found/);
+  await assert.rejects(() => service.customerHistory({ caseId: 1, merchantScope: 'platform' }), /not found/);
+  const listed = await service.listCases({ merchantScope: 'acct_seller_1' });
+  assert.equal(listed.cases.length, 1);
+  assert.equal(listed.cases[0].merchantScope, 'acct_seller_1');
+  assert.equal(listed.webhooks, null, 'scoped listings carry no platform-wide health');
+  const listSql = db.calls.find((call) => call.text.startsWith('SELECT * FROM dispute_cases WHERE case_state'));
+  assert.match(listSql.text, /COALESCE\(merchant_account, 'platform'\) = \$3/);
+  assert.equal(listSql.values[2], 'acct_seller_1');
+  await assert.rejects(() => service.listCases({ merchantScope: 'bad scope!' }), /malformed/);
+});
+
+test('bot summaries expose counts, amounts, and dates only, and linking an admin is a trusted, audited event', async () => {
+  const db = fakeDb();
+  seedCase(db, { identity_id: 4 });
+  const store = fakeStore();
+  const links = [];
+  const graph = { async linkVerified(_c, input) { links.push(input); return 21; }, async resolveMerchantAdmins() { return [{ identityId: 21, wordpress_user_id: 9, discord_user_id: '123456789012345678' }]; } };
+  const service = createDisputeService({ ...serviceDeps(db, { store }), graph });
+  const history = await service.customerHistory({ caseId: 1, merchantScope: 'acct_seller_1' });
+  assert.deepEqual(Object.keys(history).sort(), ['disputesCount', 'firstPaymentAt', 'identityResolved', 'lastPaymentAt', 'paymentsCount', 'subscriptionsCount']);
+  assert.deepEqual(await service.summarizePayments({ merchantScope: 'acct_seller_1' }), []);
+  const linked = await service.linkMerchantAdmin({ wpUserId: 9, targetWpUserId: 9, discordUserId: '123456789012345678', merchantScope: 'acct_seller_1' });
+  assert.deepEqual(linked, { identityId: 21, merchantScope: 'acct_seller_1' });
+  assert.equal(links[0].provider, 'sml');
+  assert.equal(links[0].refType, 'merchant');
+  assert.equal(links[0].via, 'wp_admin_confirmation:9');
+  assert.ok(store.audits.some((entry) => entry.fields.action === 'merchant_admin_linked'));
+  await assert.rejects(() => service.linkMerchantAdmin({ wpUserId: 9, discordUserId: 'nope', merchantScope: 'acct_seller_1' }), TypeError);
+  const admins = await service.listMerchantAdmins({ merchantScope: 'acct_seller_1' });
+  assert.equal(admins.admins.length, 1);
 });
 
 test('an expired review token is refused', async () => {

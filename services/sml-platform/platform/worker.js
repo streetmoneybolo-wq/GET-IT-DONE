@@ -39,6 +39,8 @@ const { createArticleGenerator } = require('./article-generator');
 const { createNewsPipeline } = require('./news-pipeline');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
+const { createUpgradeChatClient } = require('./upgrade-chat');
+const { createDisputeRuntime } = require('./dispute-runtime');
 
 async function main() {
   const config = getConfig();
@@ -61,72 +63,22 @@ async function main() {
     wordpress: wordpressAlerts,
     logger: log
   });
+  const upgradeChat = config.upgradeChatClientId && config.upgradeChatClientSecret
+    ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
+  /* Dispute-evidence subsystem: absent (no handlers, no sweeps, no policy)
+     until SML_DISPUTE_EVIDENCE_ENABLED and its encryption key are set. */
+  const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, wordpressNotify: wordpress, logger: log });
+  log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
+    paypal: !!disputes.paypalClient, upgradeChatReconcile: !!disputes.upgradeChatReconciler });
   const membershipAccess = async (payload, row) => {
     await wordpress(payload, row);
     if (discord) await discord(payload, row);
     else if ((payload.grants || []).some((g) => g.target === 'discord_guild_role')) {
       throw new Error('DISCORD_BOT_TOKEN is not configured');
     }
+    /* Evidence of the decision the existing engine just applied (never throws). */
+    if (disputes.enabled) await disputes.recordAccessOutcome(payload, row);
   };
-  /* ---- dispute-evidence stack (null while disabled; sweeps no-op) ---- */
-  let disputeCases = null;
-  let ucReconciler = null;
-  let disputePayPalClient = null;
-  if (config.disputeEvidenceEnabled && config.evidenceEncryptionKeys.length) {
-    const { createEvidenceStore } = require('./evidence-store');
-    const { createIdentityGraph } = require('./identity-graph');
-    const { createDisputeCases } = require('./dispute-cases');
-    const { createPayPalClient } = require('./paypal-client');
-    const { createUpgradeChatReconciler } = require('./upgrade-chat-reconcile');
-    const providerLimits = require('./provider-limits');
-    const store = createEvidenceStore({ pool: database.pool, keyList: config.evidenceEncryptionKeys });
-    const graph = createIdentityGraph({ pool: database.pool, store });
-    disputePayPalClient = config.paypalEnabled && config.paypalClientId && config.paypalClientSecret
-      ? createPayPalClient({ env: config.paypalEnv, clientId: config.paypalClientId, clientSecret: config.paypalClientSecret })
-      : null;
-    disputeCases = createDisputeCases({ pool: database.pool, store, graph, limits: providerLimits });
-    if (config.upgradeChatClientId && config.upgradeChatClientSecret) {
-      const { createUpgradeChatClient } = require('./upgrade-chat');
-      ucReconciler = createUpgradeChatReconciler({
-        pool: database.pool,
-        store,
-        graph,
-        upgradeChatClient: createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret })
-      });
-    }
-  }
-
-  /* dispute_alert rows fan out to WordPress (bridge intent 'dispute_notify' —
-     the 0.4.0 bridge dispatches it to the admin plugin's adapter) and, best-
-     effort, to a Discord DM via the Connect bot. WordPress delivery is the
-     success criterion; DM failures (closed DMs, no mutual guild) must never
-     wedge the outbox row, so they only log. */
-  const disputeAlert = wordpress ? async (payload, row) => {
-    await wordpress(payload, { ...row, intent_type: 'dispute_notify' });
-    if (config.discordConnectBotToken && payload && payload.discordUserId) {
-      try {
-        const open = await fetch('https://discord.com/api/v10/users/@me/channels', {
-          method: 'POST',
-          headers: { authorization: `Bot ${config.discordConnectBotToken}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ recipient_id: String(payload.discordUserId) })
-        });
-        if (open.ok) {
-          const channel = await open.json();
-          await fetch(`https://discord.com/api/v10/channels/${channel.id}/messages`, {
-            method: 'POST',
-            headers: { authorization: `Bot ${config.discordConnectBotToken}`, 'content-type': 'application/json' },
-            body: JSON.stringify({
-              content: String(payload.notice || 'A dispute case needs your attention on Stock Market Loop Connect.').slice(0, 1800),
-              allowed_mentions: { parse: [] }
-            })
-          });
-        }
-      } catch (dmError) {
-        log('warn', 'dispute_alert_dm_failed', { error: dmError });
-      }
-    }
-  } : null;
-
   const processOutbox = createOutboxWorker(database.pool, {
     loop_bucks_credit: wordpress,
     subscription_access_reconcile: membershipAccess,
@@ -134,8 +86,8 @@ async function main() {
     cancel_external_subscription: wordpress,
     seller_recovery: createStripeRecoveryHandler(stripe),
     seller_restore: createStripeRestoreHandler(stripe),
-    ...(disputeAlert ? { dispute_alert: disputeAlert } : {})
-  });
+    ...disputes.outboxHandlers
+  }, { disputePolicyEnabled: disputes.enabled, store: disputes.store });
   let stopping = false;
   let pollingAlerts = false;
   let pipeline = null;
@@ -188,27 +140,17 @@ async function main() {
         if (outcome === 'empty') break;
         alertsProcessed += 1;
       }
-      if (disputeCases) {
-        /* Bounded, isolated dispute sweeps: one failing sweep logs and never
-           blocks the others or the rest of the tick. */
-        const sweeps = [
-          ['dispute_catch_up', () => disputeCases.sweepStripeCatchUp(25)],
-          ['dispute_deadlines', () => disputeCases.sweepDeadlines(new Date())],
-          ['dispute_stuck_submissions', () => disputeCases.sweepStuckSubmissions({ stripe, paypalClient: disputePayPalClient })]
-        ];
-        if (ucReconciler) sweeps.push(['upgrade_chat_reconcile', () => ucReconciler.sweep({ limit: 25 })]);
-        for (const [name, run] of sweeps) {
-          try { await run(); } catch (sweepError) { log('error', `${name}_failed`, { error: sweepError }); }
-        }
-      }
+      const disputeSweeps = disputes.enabled ? await disputes.runSweeps() : null;
       log('info', 'worker_ready_for_jobs', {
-        jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline', 'alert_router'],
+        jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline', 'alert_router',
+          ...(disputes.enabled ? ['dispute_evidence_sweeps'] : [])],
         expired,
         promoted,
         billingProcessed,
         billingFailed,
         newsJobsProcessed,
-        alertsProcessed
+        alertsProcessed,
+        ...(disputeSweeps ? { disputeSweeps } : {})
       });
     } catch (error) {
       log('error', 'worker_database_unavailable', { error });

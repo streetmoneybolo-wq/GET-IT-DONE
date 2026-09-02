@@ -10,25 +10,31 @@ const Stripe = require('stripe');
 const billingService = require('./billing-service');
 const { createUpgradeChatClient } = require('./upgrade-chat');
 const newsWebhook = require('./news-webhook');
-const paypalWebhookMod = require('./paypal-webhook');
-const upgradeChatWebhookMod = require('./upgrade-chat-webhook');
-const discordInteractionsMod = require('./discord-interactions');
+const paypalWebhookModule = require('./paypal-webhook');
+const discordInteractionsModule = require('./discord-interactions');
 
-/* Dispute-evidence request handler: same HMAC scheme and error mapping as
-   handleBillingRequest, but gated on the dispute service being configured
-   (SML_DISPUTE_EVIDENCE_ENABLED) instead of the Stripe client, because
-   several actions (list, detail, tokens) are read paths that must work even
-   if Stripe is down. Fails closed with 503 while unconfigured. */
-async function handleDisputeRequest(request, response, options, action) {
-  if (!contentTypeIsJson(request)) {
-    sendJson(response, 415, { ok: false, error: 'content_type_required' });
-    return;
-  }
+/* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
+   Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
+   billing routes) and 503s while the dispute service is not enabled. */
+const DISPUTE_ACTIONS = Object.freeze({
+  list: 'listCases',
+  detail: 'caseDetail',
+  'build-packet': 'buildPacket',
+  'issue-review-token': 'issueReviewToken',
+  'redeem-review-token': 'redeemReviewToken',
+  'approve-submit': 'approveAndSubmit',
+  'record-policy': 'recordPolicy',
+  'record-terms-version': 'recordTermsVersion',
+  'record-consent': 'recordConsent',
+  'link-admin': 'linkMerchantAdmin',
+  admins: 'listMerchantAdmins',
+  health: 'webhookHealth'
+});
+
+async function handleDisputeRequest(request, response, options, methodName) {
+  if (!contentTypeIsJson(request)) return sendJson(response, 415, { ok: false, error: 'content_type_required' });
   const body = await readRequestBody(request);
-  if (!body.ok) {
-    sendJson(response, body.status, { ok: false, error: body.error });
-    return;
-  }
+  if (!body.ok) return sendJson(response, body.status, { ok: false, error: body.error });
   const verified = verifySignature({
     secret: options.billingApiSecret,
     timestamp: request.headers['x-sml-timestamp'],
@@ -36,32 +42,30 @@ async function handleDisputeRequest(request, response, options, action) {
     rawBody: body.rawBody,
     now: options.now()
   });
-  if (!verified.ok) {
-    sendJson(response, verified.status, { ok: false, error: verified.error });
-    return;
-  }
-  if (!options.disputeService) {
-    sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
-    return;
+  if (!verified.ok) return sendJson(response, verified.status, { ok: false, error: verified.error });
+  const service = options.disputeService;
+  if (!service || typeof service[methodName] !== 'function') {
+    return sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
   }
   let input;
   try {
     input = JSON.parse(body.rawBody);
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid');
   } catch (_) {
-    sendJson(response, 400, { ok: false, error: 'invalid_json' });
-    return;
+    return sendJson(response, 400, { ok: false, error: 'invalid_json' });
   }
   try {
-    const result = await action(input);
-    sendJson(response, 200, { ok: true, ...result });
+    const result = await service[methodName](input);
+    sendJson(response, 200, { ok: true, ...(result && typeof result === 'object' ? result : { result }) });
   } catch (error) {
-    const inputError = error instanceof TypeError;
-    options.logger(inputError ? 'warn' : 'error', 'dispute_request_failed', { error });
-    sendJson(response, inputError ? 400 : 503, {
+    const invalid = error instanceof TypeError;
+    /* Only the action name and error class reach the log: inputs may carry
+       review tokens and the service's own messages are neutral and PII-free. */
+    options.logger(invalid ? 'warn' : 'error', 'dispute_request_failed', { action: methodName, error });
+    sendJson(response, invalid ? 400 : 503, {
       ok: false,
-      error: inputError ? 'invalid_request' : 'temporary_unavailable',
-      ...(inputError ? { message: String(error.message).slice(0, 240) } : {})
+      error: invalid ? 'invalid_request' : 'temporary_unavailable',
+      ...(invalid ? { message: String(error.message).slice(0, 240) } : {})
     });
   }
 }
@@ -193,16 +197,6 @@ async function handleStripeWebhook(request, response, options) {
       account: parsed.event.account,
       status
     });
-    /* Dispute-evidence fast path: after the event store commits, hand dispute
-       events to the case projection in its own short transaction. Errors are
-       logged, never surfaced — the worker's catch-up sweep re-derives any case
-       this misses, so this stays strictly best-effort and cannot make Stripe
-       retry an already-committed event. */
-    if (options.onStripeEventAccepted) {
-      try { await options.onStripeEventAccepted(parsed.event, status); } catch (hookError) {
-        options.logger('error', 'stripe_dispute_hook_failed', { error: hookError, eventId: parsed.event.id });
-      }
-    }
     /* 'duplicate' is a success: Stripe retries aggressively and the event store
        is unique on event id, so a replay is the system working, not an error. */
     sendJson(response, 200, { ok: true, eventId: parsed.event.id, status });
@@ -309,55 +303,40 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   pool = null, upgradeChat = null, upgradeChatPlanMap = {},
   alertRouter = null, alertRouterSecret = '',
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
-  newsIngestToken = '', logger = log, now = Date.now,
-  disputeService = null, paypalWebhookHandler = null,
-  upgradeChatWebhookHandler = null, discordInteractions = null,
-  onStripeEventAccepted = null }) {
-  const disputeActions = disputeService ? {
-    '/v1/billing/disputes/list': (input) => disputeService.listCases(input),
-    '/v1/billing/disputes/detail': (input) => disputeService.caseDetail(input),
-    '/v1/billing/disputes/build-packet': (input) => disputeService.buildPacket(input),
-    '/v1/billing/disputes/issue-review-token': (input) => disputeService.issueReviewToken(input),
-    '/v1/billing/disputes/redeem-review-token': (input) => disputeService.redeemReviewToken(input),
-    '/v1/billing/disputes/approve-submit': (input) => disputeService.approveAndSubmit(input),
-    '/v1/billing/disputes/record-policy': (input) => disputeService.recordPolicy(input),
-    '/v1/billing/disputes/record-terms-version': (input) => disputeService.recordTermsVersion(input)
-  } : {};
+  newsIngestToken = '',
+  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
+  disputeService = null, schemaVersion = null,
+  logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
-    const alertOptions = { alertRouterSecret, logger, now };
+    /* ---- dispute-evidence surfaces: every one 503s until configured ---- */
     if (request.method === 'POST' && path === '/v1/paypal/webhook') {
-      if (!paypalWebhookHandler) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
-      const body = await readRequestBody(request, paypalWebhookMod.MAX_BODY_BYTES);
+      if (!paypalWebhook) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const body = await readRequestBody(request, paypalWebhookModule.MAX_BODY_BYTES);
       if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
-      await paypalWebhookHandler.handle(request, response, body.rawBody);
+      await paypalWebhook.handle(request, response, body.rawBody);
       return;
     }
-    if (request.method === 'POST' && path.startsWith('/v1/upgrade-chat/webhook')) {
-      if (!upgradeChatWebhookHandler) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
-      const body = await readRequestBody(request, upgradeChatWebhookMod.MAX_BODY_BYTES);
-      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
-      await upgradeChatWebhookHandler.handle(request, response, body.rawBody);
+    if (request.method === 'POST' && path.startsWith('/v1/upgrade-chat/webhook/')) {
+      if (!upgradeChatWebhook) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      await upgradeChatWebhook.handle(request, response);
       return;
     }
     if (request.method === 'POST' && path === '/v1/discord/interactions') {
       if (!discordInteractions) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
-      const body = await readRequestBody(request, discordInteractionsMod.MAX_BODY_BYTES);
+      const body = await readRequestBody(request, discordInteractionsModule.MAX_BODY_BYTES);
       if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
       await discordInteractions.handleRequest(request, response, body.rawBody);
       return;
     }
-    if (request.method === 'POST' && Object.prototype.hasOwnProperty.call(disputeActions, path)) {
-      await handleDisputeRequest(request, response, { billingApiSecret, disputeService, logger, now }, disputeActions[path]);
-      return;
-    }
     if (request.method === 'POST' && path.startsWith('/v1/billing/disputes/')) {
-      /* Route namespace exists but this action is unknown or the service is
-         disabled — fail closed the same way the other integrations do. */
-      sendJson(response, disputeService ? 404 : 503, { ok: false, error: disputeService ? 'not_found' : 'integration_unconfigured' });
+      const methodName = DISPUTE_ACTIONS[path.slice('/v1/billing/disputes/'.length)];
+      if (!methodName) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
+      await handleDisputeRequest(request, response, { billingApiSecret, disputeService, logger, now }, methodName);
       return;
     }
+    const alertOptions = { alertRouterSecret, logger, now };
     const alertAction = (method) => (input) => {
       if (!alertRouter || typeof alertRouter[method] !== 'function') throw new Error('alert router is not configured');
       return alertRouter[method](...(method === 'listRoutes' ? [input.groupId, input.ownerUserId] : [input]));
@@ -395,7 +374,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
     if (request.method === 'POST' && path === '/v1/stripe/webhook') {
-      await handleStripeWebhook(request, response, { acceptStripeEvent, stripeWebhookSecret, logger, now, onStripeEventAccepted });
+      await handleStripeWebhook(request, response, { acceptStripeEvent, stripeWebhookSecret, logger, now });
       return;
     }
 
@@ -416,7 +395,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     try {
       await checkDatabase();
-      sendJson(response, 200, { ok: true, service: 'sml-platform-api', database: 'connected' });
+      /* The applied schema version is public metadata that lets a deploy be
+         verified without dashboard access; it reveals no data or secret. */
+      let schema;
+      if (typeof schemaVersion === 'function') {
+        try { schema = await schemaVersion(); } catch (_) { schema = null; }
+      }
+      sendJson(response, 200, {
+        ok: true, service: 'sml-platform-api', database: 'connected',
+        ...(schema !== undefined ? { schema } : {})
+      });
     } catch (error) {
       logger('error', 'health_database_unavailable', { error });
       sendJson(response, 503, { ok: false, service: 'sml-platform-api', database: 'unavailable' });
@@ -432,69 +420,24 @@ async function main() {
     ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
   const { createAlertRouter } = require('./alert-router');
   const alertRouter = createAlertRouter(database.pool);
-
-  /* ---- dispute-evidence stack (every piece stays null while its flag or
-     secrets are unset, and each route fails closed on null) ---- */
-  let disputeService = null;
-  let paypalWebhookHandler = null;
-  let upgradeChatWebhookHandler = null;
-  let discordInteractions = null;
-  let onStripeEventAccepted = null;
-  if (config.disputeEvidenceEnabled && config.evidenceEncryptionKeys.length) {
-    const { createEvidenceStore } = require('./evidence-store');
-    const { createIdentityGraph } = require('./identity-graph');
-    const { createDisputeCases, STRIPE_DISPUTE_EVENT_TYPES } = require('./dispute-cases');
-    const { createPayPalClient } = require('./paypal-client');
-    const { createStripeFilesClient } = require('./stripe-files');
-    const providerLimits = require('./provider-limits');
-    const evidenceEngine = require('./evidence-engine');
-    const packetGenerator = require('./packet-generator');
-    const store = createEvidenceStore({ pool: database.pool, keyList: config.evidenceEncryptionKeys });
-    const graph = createIdentityGraph({ pool: database.pool, store });
-    const paypalClient = config.paypalEnabled && config.paypalClientId && config.paypalClientSecret
-      ? createPayPalClient({ env: config.paypalEnv, clientId: config.paypalClientId, clientSecret: config.paypalClientSecret })
-      : null;
-    const disputeCases = createDisputeCases({ pool: database.pool, store, graph, limits: providerLimits });
-    disputeService = require('./dispute-service').createDisputeService({
-      pool: database.pool,
-      store,
-      graph,
-      stripe,
-      stripeFiles: config.stripeSecretKey ? createStripeFilesClient({ apiKey: config.stripeSecretKey }) : null,
-      paypalClient,
-      limits: providerLimits,
-      engine: evidenceEngine,
-      packetGenerator,
-      config
-    });
-    if (paypalClient && config.paypalWebhookId) {
-      paypalWebhookHandler = paypalWebhookMod.createPayPalWebhookHandler({
-        pool: database.pool, config, paypalClient, disputeCases, store
-      });
-    }
-    if (upgradeChat && config.upgradeChatWebhookPathToken) {
-      upgradeChatWebhookHandler = upgradeChatWebhookMod.createUpgradeChatWebhookHandler({
-        pool: database.pool, config, upgradeChatClient: upgradeChat, store, logger: log
-      });
-    }
-    if (config.connectBotEnabled && config.discordConnectPublicKey) {
-      discordInteractions = discordInteractionsMod.createDiscordInteractions({
-        config, pool: database.pool, graph, disputeService, store
-      });
-    }
-    onStripeEventAccepted = async (event, status) => {
-      if (status !== 'accepted' && status !== 'duplicate') return;
-      if (!STRIPE_DISPUTE_EVENT_TYPES.has(event.type)) return;
-      const row = await database.pool.query('SELECT * FROM stripe_events WHERE event_id = $1', [event.id]);
-      if (row.rows[0]) await disputeCases.applyStripeDisputeEvent(row.rows[0]);
-    };
-  }
-
+  const { createDisputeRuntime } = require('./dispute-runtime');
+  const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
+  log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
+    paypal: !!disputes.paypalClient, connectBot: !!disputes.discordInteractions });
+  const schemaVersion = async () => {
+    const found = await database.pool.query('SELECT MAX(version) AS version FROM schema_migrations', []);
+    return found.rows[0] && found.rows[0].version != null ? String(found.rows[0].version) : null;
+  };
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
     wordpressWebhookSecret: config.wordpressWebhookSecret,
-    acceptStripeEvent: database.acceptStripeEvent,
+    acceptStripeEvent: disputes.wrapStripeAccept(database.acceptStripeEvent),
+    paypalWebhook: disputes.paypalWebhook,
+    upgradeChatWebhook: disputes.upgradeChatWebhook,
+    discordInteractions: disputes.discordInteractions,
+    disputeService: disputes.disputeService,
+    schemaVersion,
     stripeWebhookSecret: config.stripeWebhookSecret,
     billingApiSecret: config.billingApiSecret,
     upgradeChat,
@@ -504,12 +447,7 @@ async function main() {
     enqueueNewsArticle: database.enqueueNewsArticle,
     newsIngestToken: config.newsIngestToken,
     alertRouter,
-    alertRouterSecret: config.alertRouterSecret,
-    disputeService,
-    paypalWebhookHandler,
-    upgradeChatWebhookHandler,
-    discordInteractions,
-    onStripeEventAccepted
+    alertRouterSecret: config.alertRouterSecret
   });
   let shuttingDown = false;
 
@@ -537,4 +475,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, sendJson, handleBillingRequest, handleAlertRequest };
+module.exports = { createServer, sendJson, handleBillingRequest, handleAlertRequest, handleDisputeRequest, DISPUTE_ACTIONS };

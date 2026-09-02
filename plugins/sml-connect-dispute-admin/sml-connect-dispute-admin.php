@@ -1,25 +1,32 @@
 <?php
 /**
  * Plugin Name: SML Connect Dispute Admin
- * Description: Admin review console for payment dispute cases held by the SML platform service: case list, packet review, human-approved submission, review-link endpoint, and dispute notifications.
- * Version: 0.1.0
+ * Description: Admin review console for payment dispute cases held by the SML platform service: case list, packet review, human-approved submission, review-link endpoint, merchant-admin linking, and dispute notifications.
+ * Version: 0.2.0
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
 /* ---------------------------------------------------------------------------
- * Configuration (wp-config constants; values are never printed or logged).
+ * Configuration. Dedicated constants win; otherwise the plugin reuses the
+ * values the SML Platform Runtime Config plugin already defines for the
+ * billing bridge (same platform, same signed API secret). Values are never
+ * printed or logged.
  * ------------------------------------------------------------------------ */
 
 function smlcda_api_url() {
-	return defined( 'SML_CONNECT_ADMIN_API_URL' )
-		? untrailingslashit( trim( (string) SML_CONNECT_ADMIN_API_URL ) ) : '';
+	if ( defined( 'SML_CONNECT_ADMIN_API_URL' ) && '' !== trim( (string) SML_CONNECT_ADMIN_API_URL ) ) {
+		return untrailingslashit( trim( (string) SML_CONNECT_ADMIN_API_URL ) );
+	}
+	return defined( 'SML_PLATFORM_API_URL' ) ? untrailingslashit( trim( (string) SML_PLATFORM_API_URL ) ) : '';
 }
 
 function smlcda_api_secret() {
-	return defined( 'SML_CONNECT_ADMIN_API_SECRET' )
-		? trim( (string) SML_CONNECT_ADMIN_API_SECRET ) : '';
+	if ( defined( 'SML_CONNECT_ADMIN_API_SECRET' ) && '' !== trim( (string) SML_CONNECT_ADMIN_API_SECRET ) ) {
+		return trim( (string) SML_CONNECT_ADMIN_API_SECRET );
+	}
+	return defined( 'SML_PLATFORM_BILLING_API_SECRET' ) ? trim( (string) SML_PLATFORM_BILLING_API_SECRET ) : '';
 }
 
 function smlcda_configured() {
@@ -39,12 +46,12 @@ function smlcda_signature( $timestamp, $body, $secret ) {
 /** Server-to-server only. Never expose the secret or call this from browser JS. */
 function smlcda_call( $path, array $data ) {
 	if ( ! smlcda_configured() ) {
-		return new WP_Error( 'smlcda_unconfigured', 'Dispute admin API is not configured (SML_CONNECT_ADMIN_API_URL / SML_CONNECT_ADMIN_API_SECRET).' );
+		return new WP_Error( 'smlcda_unconfigured', 'Dispute admin API is not configured (platform API URL / billing API secret).' );
 	}
 	$body      = wp_json_encode( $data );
 	$timestamp = (string) time();
 	$response  = wp_remote_post( smlcda_api_url() . $path, array(
-		'timeout' => 10,
+		'timeout' => 20,
 		'headers' => array(
 			'Content-Type'    => 'application/json',
 			'X-SML-Timestamp' => $timestamp,
@@ -74,45 +81,50 @@ function smlcda_field( $row, array $keys, $fallback = '' ) {
 }
 
 function smlcda_money( $cents, $currency ) {
-	if ( '' === $cents || null === $cents || ! is_numeric( $cents ) ) return '-';
-	return sprintf( '%s %s', number_format_i18n( ( (int) $cents ) / 100, 2 ), strtoupper( sanitize_text_field( (string) $currency ) ) );
+	if ( null === $cents || '' === $cents || ! is_numeric( $cents ) ) return '-';
+	$amount = (int) $cents;
+	$sign   = $amount < 0 ? '-' : '';
+	$abs    = abs( $amount );
+	return sprintf( '%s%d.%02d %s', $sign, intdiv( $abs, 100 ), $abs % 100, strtoupper( sanitize_text_field( (string) $currency ) ) );
 }
-
-/* ---------------------------------------------------------------------------
- * Admin menu page.
- * ------------------------------------------------------------------------ */
 
 function smlcda_admin_url( array $args = array() ) {
 	return add_query_arg( $args, admin_url( 'admin.php?page=smlcda-disputes' ) );
 }
 
+/* ---------------------------------------------------------------------------
+ * Admin page (manage_options; every state change is nonce + capability
+ * checked server-side; nothing is decided in browser JavaScript).
+ * ------------------------------------------------------------------------ */
+
 add_action( 'admin_menu', function () {
 	add_menu_page(
-		'SML Disputes',
-		'SML Disputes',
+		'Dispute Console',
+		'Disputes',
 		'manage_options',
 		'smlcda-disputes',
 		'smlcda_render_admin_page',
-		'dashicons-shield-alt',
+		'dashicons-shield',
 		58
 	);
 } );
 
 function smlcda_render_admin_page() {
-	if ( ! current_user_can( 'manage_options' ) ) return;
-	echo '<div class="wrap" id="smlcda-wrap"><h1>SML Connect Disputes</h1>';
+	if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html( 'Insufficient permissions.' ), 403 );
+	echo '<div class="wrap" id="smlcda-wrap">';
+	echo '<h1>' . esc_html( 'SML Connect dispute console' ) . '</h1>';
 	smlcda_render_flash();
 	if ( ! smlcda_configured() ) {
-		echo '<div class="notice notice-error"><p>' . esc_html( 'Define SML_CONNECT_ADMIN_API_URL and SML_CONNECT_ADMIN_API_SECRET in wp-config.php to enable this page.' ) . '</p></div></div>';
-		return;
+		echo '<div class="notice notice-warning"><p>' . esc_html( 'The platform API URL or billing API secret is not configured. Activate SML Platform Runtime Config, or define SML_CONNECT_ADMIN_API_URL and SML_CONNECT_ADMIN_API_SECRET.' ) . '</p></div>';
 	}
-	$view    = isset( $_GET['smlcda_view'] ) ? sanitize_key( wp_unslash( $_GET['smlcda_view'] ) ) : 'list';
-	$case_id = isset( $_GET['smlcda_case'] ) ? absint( wp_unslash( $_GET['smlcda_case'] ) ) : 0;
-	if ( 'detail' === $view && $case_id ) {
+	$view = isset( $_GET['smlcda_view'] ) ? sanitize_key( wp_unslash( $_GET['smlcda_view'] ) ) : 'list';
+	if ( 'detail' === $view ) {
+		$case_id = isset( $_GET['smlcda_case'] ) ? absint( wp_unslash( $_GET['smlcda_case'] ) ) : 0;
 		smlcda_render_case_detail( $case_id );
 	} else {
 		smlcda_render_health_panel();
 		smlcda_render_policy_panel();
+		smlcda_render_admin_link_panel();
 		smlcda_render_cases_list();
 	}
 	echo '</div>';
@@ -132,11 +144,14 @@ function smlcda_render_health_panel() {
 	echo '<table class="widefat striped" id="smlcda-health" style="max-width:760px"><tbody>';
 
 	$health_row = 'unreachable';
+	$schema     = '';
 	$health     = wp_remote_get( smlcda_api_url() . '/health', array( 'timeout' => 10 ) );
 	if ( ! is_wp_error( $health ) && wp_remote_retrieve_response_code( $health ) < 300 ) {
 		$health_row = 'ok';
+		$parsed     = json_decode( wp_remote_retrieve_body( $health ), true );
+		if ( is_array( $parsed ) && isset( $parsed['schema'] ) ) $schema = sanitize_text_field( (string) $parsed['schema'] );
 	}
-	echo '<tr><td>Platform /health</td><td>' . esc_html( $health_row ) . '</td></tr>';
+	echo '<tr><td>Platform /health</td><td>' . esc_html( $health_row . ( '' !== $schema ? ' (schema ' . $schema . ')' : '' ) ) . '</td></tr>';
 
 	$ping = smlcda_call( '/v1/billing/disputes/list', array( 'limit' => 1 ) );
 	if ( is_wp_error( $ping ) ) {
@@ -149,7 +164,10 @@ function smlcda_render_health_panel() {
 				$last_seen = is_array( $info )
 					? smlcda_field( $info, array( 'lastSeenAt', 'last_seen_at', 'lastSeen', 'last_seen' ), 'never' )
 					: $info;
-				echo '<tr><td>' . esc_html( 'Webhook last seen: ' . sanitize_text_field( (string) $provider ) ) . '</td><td>' . esc_html( sanitize_text_field( (string) $last_seen ) ) . '</td></tr>';
+				$failures  = is_array( $info ) ? smlcda_field( $info, array( 'failures', 'unprocessed' ), '' ) : '';
+				$detail    = 'last seen ' . ( null === $last_seen || '' === $last_seen ? 'never' : (string) $last_seen );
+				if ( '' !== $failures && null !== $failures ) $detail .= ', failures ' . (string) $failures;
+				echo '<tr><td>' . esc_html( 'Webhook: ' . sanitize_text_field( (string) $provider ) ) . '</td><td>' . esc_html( sanitize_text_field( $detail ) ) . '</td></tr>';
 			}
 		} else {
 			echo '<tr><td>Webhook last-seen</td><td>' . esc_html( 'not reported by the API' ) . '</td></tr>';
@@ -166,11 +184,13 @@ function smlcda_render_policy_panel() {
 	wp_nonce_field( 'smlcda_policy' );
 	echo '<input type="hidden" name="action" value="smlcda_policy">';
 	echo '<table class="form-table" role="presentation" style="max-width:760px">';
-	echo '<tr><th><label for="smlcda-policy-scope">Merchant scope</label></th><td><input class="regular-text" id="smlcda-policy-scope" name="merchant_scope" type="text" required></td></tr>';
+	echo '<tr><th><label for="smlcda-policy-scope">Merchant scope</label></th><td><input class="regular-text" id="smlcda-policy-scope" name="merchant_scope" type="text" required placeholder="platform or acct_..."><p class="description">' . esc_html( '"platform" is the StockMarketLoop Stripe account; a connected account id scopes one marketplace seller.' ) . '</p></td></tr>';
 	echo '<tr><th><label for="smlcda-policy-choice">While a case is open</label></th><td><select id="smlcda-policy-choice" name="on_dispute">';
 	echo '<option value="keep_access">keep_access (default)</option>';
 	echo '<option value="suspend_access">suspend_access</option>';
-	echo '</select><p class="description">' . esc_html( 'Recorded on the platform; access changes flow only through the existing reconcile pipeline with an audit entry.' ) . '</p></td></tr>';
+	echo '</select><p class="description">' . esc_html( 'suspend_access requires a disclosed policy: supply the disclosure date and the terms version id below. Access changes flow only through the existing reconcile pipeline with an audit entry.' ) . '</p></td></tr>';
+	echo '<tr><th><label for="smlcda-policy-disclosed">Disclosed at (ISO 8601)</label></th><td><input class="regular-text" id="smlcda-policy-disclosed" name="disclosed_at" type="text" placeholder="2026-09-01T00:00:00Z"></td></tr>';
+	echo '<tr><th><label for="smlcda-policy-terms">Policy terms version id</label></th><td><input class="small-text" id="smlcda-policy-terms" name="policy_terms_version_id" type="number" min="1"></td></tr>';
 	echo '</table>';
 	submit_button( 'Record policy', 'secondary', 'submit', false );
 	echo '</form>';
@@ -185,14 +205,59 @@ add_action( 'admin_post_smlcda_policy', function () {
 		wp_safe_redirect( smlcda_admin_url( array( 'smlcda_msg' => 'Invalid policy input.', 'smlcda_ok' => '0' ) ) );
 		exit;
 	}
-	$result = smlcda_call( '/v1/billing/disputes/record-policy', array(
+	$payload = array(
 		'merchantScope' => $scope,
 		'onDispute'     => $choice,
 		'wpUserId'      => get_current_user_id(),
-	) );
+	);
+	$disclosed = isset( $_POST['disclosed_at'] ) ? sanitize_text_field( wp_unslash( $_POST['disclosed_at'] ) ) : '';
+	$terms_id  = isset( $_POST['policy_terms_version_id'] ) ? absint( wp_unslash( $_POST['policy_terms_version_id'] ) ) : 0;
+	if ( '' !== $disclosed ) $payload['disclosedAt'] = $disclosed;
+	if ( $terms_id ) $payload['policyTermsVersionId'] = $terms_id;
+	$result = smlcda_call( '/v1/billing/disputes/record-policy', $payload );
 	$args = is_wp_error( $result )
 		? array( 'smlcda_msg' => 'Policy update failed: ' . $result->get_error_message(), 'smlcda_ok' => '0' )
 		: array( 'smlcda_msg' => 'Policy recorded.', 'smlcda_ok' => '1' );
+	wp_safe_redirect( smlcda_admin_url( $args ) );
+	exit;
+} );
+
+/* ------------------------ merchant admin linking ------------------------- */
+
+function smlcda_render_admin_link_panel() {
+	echo '<h2 id="smlcda-link-title">Merchant admins for Stock Market Loop Connect</h2>';
+	echo '<p class="description">' . esc_html( 'Linking is an administrator confirmation: it records a verified identity edge between a WordPress user, their Discord account, and a merchant scope. Only linked admins can use the Connect bot commands or approve from a review link.' ) . '</p>';
+	echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="smlcda-link-form">';
+	wp_nonce_field( 'smlcda_link_admin' );
+	echo '<input type="hidden" name="action" value="smlcda_link_admin">';
+	echo '<table class="form-table" role="presentation" style="max-width:760px">';
+	echo '<tr><th><label for="smlcda-link-wp">WordPress user id</label></th><td><input class="small-text" id="smlcda-link-wp" name="target_wp_user_id" type="number" min="1" required></td></tr>';
+	echo '<tr><th><label for="smlcda-link-discord">Discord user id</label></th><td><input class="regular-text" id="smlcda-link-discord" name="discord_user_id" type="text" pattern="[0-9]{15,24}" required></td></tr>';
+	echo '<tr><th><label for="smlcda-link-scope">Merchant scope</label></th><td><input class="regular-text" id="smlcda-link-scope" name="merchant_scope" type="text" required placeholder="platform or acct_..."></td></tr>';
+	echo '</table>';
+	submit_button( 'Link merchant admin', 'secondary', 'submit', false );
+	echo '</form>';
+}
+
+add_action( 'admin_post_smlcda_link_admin', function () {
+	if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html( 'Insufficient permissions.' ), 403 );
+	check_admin_referer( 'smlcda_link_admin' );
+	$target  = isset( $_POST['target_wp_user_id'] ) ? absint( wp_unslash( $_POST['target_wp_user_id'] ) ) : 0;
+	$discord = isset( $_POST['discord_user_id'] ) ? preg_replace( '/\D/', '', (string) wp_unslash( $_POST['discord_user_id'] ) ) : '';
+	$scope   = isset( $_POST['merchant_scope'] ) ? sanitize_text_field( wp_unslash( $_POST['merchant_scope'] ) ) : '';
+	if ( ! $target || ! get_user_by( 'id', $target ) || '' === $discord || '' === $scope ) {
+		wp_safe_redirect( smlcda_admin_url( array( 'smlcda_msg' => 'Invalid admin link input.', 'smlcda_ok' => '0' ) ) );
+		exit;
+	}
+	$result = smlcda_call( '/v1/billing/disputes/link-admin', array(
+		'wpUserId'       => get_current_user_id(),
+		'targetWpUserId' => $target,
+		'discordUserId'  => $discord,
+		'merchantScope'  => $scope,
+	) );
+	$args = is_wp_error( $result )
+		? array( 'smlcda_msg' => 'Admin link failed: ' . $result->get_error_message(), 'smlcda_ok' => '0' )
+		: array( 'smlcda_msg' => 'Merchant admin linked.', 'smlcda_ok' => '1' );
 	wp_safe_redirect( smlcda_admin_url( $args ) );
 	exit;
 } );
@@ -212,13 +277,14 @@ function smlcda_render_cases_list() {
 		return;
 	}
 	echo '<table class="widefat striped" id="smlcda-cases"><thead><tr>';
-	foreach ( array( 'Case', 'Provider', 'Reason', 'Amount', 'Response due', 'State', 'Completeness', '' ) as $head ) {
+	foreach ( array( 'Case', 'Provider', 'Scope', 'Reason', 'Amount', 'Response due', 'State', 'Completeness', '' ) as $head ) {
 		echo '<th>' . esc_html( $head ) . '</th>';
 	}
 	echo '</tr></thead><tbody>';
 	foreach ( $cases as $case ) {
 		$id           = absint( smlcda_field( $case, array( 'id', 'caseId', 'case_id' ), 0 ) );
 		$provider     = sanitize_text_field( (string) smlcda_field( $case, array( 'provider' ) ) );
+		$scope        = sanitize_text_field( (string) smlcda_field( $case, array( 'merchantScope', 'merchant_scope' ), 'platform' ) );
 		$reason       = sanitize_text_field( (string) smlcda_field( $case, array( 'reason' ) ) );
 		$amount       = smlcda_money( smlcda_field( $case, array( 'amountCents', 'amount_cents' ), null ), smlcda_field( $case, array( 'currency' ) ) );
 		$due_by       = sanitize_text_field( (string) smlcda_field( $case, array( 'dueBy', 'due_by' ), '-' ) );
@@ -227,6 +293,7 @@ function smlcda_render_cases_list() {
 		echo '<tr>';
 		echo '<td>' . esc_html( (string) $id ) . '</td>';
 		echo '<td>' . esc_html( $provider ) . '</td>';
+		echo '<td>' . esc_html( $scope ) . '</td>';
 		echo '<td>' . esc_html( $reason ) . '</td>';
 		echo '<td>' . esc_html( $amount ) . '</td>';
 		echo '<td>' . esc_html( $due_by ) . '</td>';
@@ -265,6 +332,7 @@ function smlcda_render_review_ui( array $detail, array $context ) {
 	echo '<table class="widefat striped" id="smlcda-case-facts" style="max-width:760px"><tbody>';
 	$facts = array(
 		'Provider dispute id' => smlcda_field( $case, array( 'providerDisputeId', 'provider_dispute_id' ) ),
+		'Merchant scope'      => smlcda_field( $case, array( 'merchantScope', 'merchant_scope' ), 'platform' ),
 		'Amount'              => smlcda_money( smlcda_field( $case, array( 'amountCents', 'amount_cents' ), null ), smlcda_field( $case, array( 'currency' ) ) ),
 		'Response due'        => smlcda_field( $case, array( 'dueBy', 'due_by' ), '-' ),
 		'State'               => smlcda_field( $case, array( 'caseState', 'case_state' ) ),
@@ -275,6 +343,18 @@ function smlcda_render_review_ui( array $detail, array $context ) {
 		echo '<tr><td>' . esc_html( $label ) . '</td><td>' . esc_html( sanitize_text_field( (string) $value ) ) . '</td></tr>';
 	}
 	echo '</tbody></table>';
+
+	$checklist = isset( $detail['checklist'] ) && is_array( $detail['checklist'] ) ? $detail['checklist'] : array();
+	if ( $checklist ) {
+		echo '<h4>' . esc_html( 'Evidence checklist' ) . '</h4>';
+		echo '<table class="widefat striped" id="smlcda-checklist" style="max-width:760px"><tbody>';
+		foreach ( $checklist as $entry ) {
+			$kind  = is_array( $entry ) ? smlcda_field( $entry, array( 'kind', 'evidence_type' ) ) : (string) $entry;
+			$state = is_array( $entry ) ? smlcda_field( $entry, array( 'state' ), 'missing' ) : 'missing';
+			echo '<tr><td>' . esc_html( sanitize_text_field( (string) $kind ) ) . '</td><td>' . esc_html( sanitize_text_field( (string) $state ) ) . '</td></tr>';
+		}
+		echo '</tbody></table>';
+	}
 
 	if ( ! empty( $context['allow_build'] ) ) {
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="smlcda-build-form" style="margin:12px 0">';
@@ -292,13 +372,15 @@ function smlcda_render_review_ui( array $detail, array $context ) {
 	}
 	$packet_id      = absint( smlcda_field( $packet, array( 'id', 'packetId', 'packet_id' ), 0 ) );
 	$packet_version = absint( smlcda_field( $packet, array( 'version', 'packetVersion', 'packet_version' ), 0 ) );
+	$packet_sha     = strtolower( sanitize_text_field( (string) smlcda_field( $packet, array( 'packetSha256', 'packet_sha256' ) ) ) );
 	$manifest       = isset( $packet['manifest'] ) && is_array( $packet['manifest'] ) ? $packet['manifest'] : array();
 
 	echo '<h3 id="smlcda-packet-title">' . esc_html( sprintf( 'Evidence packet version %d', $packet_version ) ) . '</h3>';
+	echo '<p class="description">' . esc_html( 'Packet sha256: ' . $packet_sha ) . '</p>';
 
 	$warnings = isset( $packet['warnings'] ) && is_array( $packet['warnings'] ) ? $packet['warnings'] : array();
 	if ( $warnings ) {
-		echo '<div class="notice notice-warning inline" id="smlcda-warnings"><p><strong>' . esc_html( 'Warnings' ) . '</strong></p><ul>';
+		echo '<div class="notice notice-warning inline" id="smlcda-warnings"><p><strong>' . esc_html( 'Warnings (missing, weak, conflicting, or stale evidence)' ) . '</strong></p><ul>';
 		foreach ( $warnings as $warning ) {
 			$code   = is_array( $warning ) ? smlcda_field( $warning, array( 'code' ) ) : $warning;
 			$explan = is_array( $warning ) ? smlcda_field( $warning, array( 'detail' ) ) : '';
@@ -307,40 +389,63 @@ function smlcda_render_review_ui( array $detail, array $context ) {
 		echo '</ul></div>';
 	}
 
+	$contradictions = isset( $manifest['contradictions'] ) && is_array( $manifest['contradictions'] ) ? $manifest['contradictions'] : array();
+	if ( $contradictions ) {
+		echo '<div class="notice notice-error inline" id="smlcda-contradictions"><p><strong>' . esc_html( 'Contradictions found in the records' ) . '</strong></p><ul>';
+		foreach ( $contradictions as $item ) {
+			echo '<li>' . esc_html( trim( sanitize_text_field( (string) smlcda_field( $item, array( 'code' ) ) ) . ' ' . sanitize_text_field( (string) smlcda_field( $item, array( 'detail' ) ) ) ) ) . '</li>';
+		}
+		echo '</ul></div>';
+	}
+
 	$assertions = isset( $manifest['assertions'] ) && is_array( $manifest['assertions'] ) ? $manifest['assertions'] : array();
 	echo '<h4>' . esc_html( 'Assertions (each cites its evidence records)' ) . '</h4>';
 	if ( $assertions ) {
-		echo '<table class="widefat striped" id="smlcda-assertions"><thead><tr><th>' . esc_html( 'Assertion' ) . '</th><th>' . esc_html( 'Kind' ) . '</th><th>' . esc_html( 'Evidence item ids' ) . '</th></tr></thead><tbody>';
+		echo '<table class="widefat striped" id="smlcda-assertions"><thead><tr><th>' . esc_html( 'Assertion' ) . '</th><th>' . esc_html( 'Kind' ) . '</th><th>' . esc_html( 'Evidence item ids' ) . '</th><th>' . esc_html( 'Source records' ) . '</th></tr></thead><tbody>';
 		foreach ( $assertions as $assertion ) {
 			$text = sanitize_text_field( (string) smlcda_field( $assertion, array( 'text' ) ) );
 			$kind = sanitize_text_field( (string) smlcda_field( $assertion, array( 'kind' ) ) );
 			$ids  = array();
 			$raw_ids = isset( $assertion['evidence_item_ids'] ) ? $assertion['evidence_item_ids'] : ( isset( $assertion['evidenceItemIds'] ) ? $assertion['evidenceItemIds'] : array() );
 			foreach ( (array) $raw_ids as $eid ) $ids[] = absint( $eid );
-			echo '<tr><td>' . esc_html( $text ) . '</td><td>' . esc_html( $kind ) . '</td><td>' . esc_html( implode( ', ', $ids ) ) . '</td></tr>';
+			$cites = array();
+			$raw_cites = isset( $assertion['cited_records'] ) ? $assertion['cited_records'] : ( isset( $assertion['citedRecords'] ) ? $assertion['citedRecords'] : array() );
+			foreach ( (array) $raw_cites as $cite ) {
+				if ( is_array( $cite ) ) $cites[] = sanitize_key( (string) smlcda_field( $cite, array( 'table' ) ) ) . '#' . absint( smlcda_field( $cite, array( 'id' ), 0 ) );
+			}
+			echo '<tr><td>' . esc_html( $text ) . '</td><td>' . esc_html( $kind ) . '</td><td>' . esc_html( implode( ', ', $ids ) ) . '</td><td>' . esc_html( implode( ', ', $cites ) ) . '</td></tr>';
 		}
 		echo '</tbody></table>';
 	} else {
-		echo '<p>' . esc_html( 'The packet contains no assertions.' ) . '</p>';
+		echo '<p>' . esc_html( 'The packet contains no assertions: no assertion had at least one supporting evidence item.' ) . '</p>';
 	}
 
-	echo '<h4>' . esc_html( 'Exact files and fields that will be transmitted' ) . '</h4>';
+	$timeline = isset( $manifest['timeline'] ) && is_array( $manifest['timeline'] ) ? $manifest['timeline'] : array();
+	if ( $timeline ) {
+		echo '<h4>' . esc_html( 'Timeline' ) . '</h4>';
+		echo '<table class="widefat striped" id="smlcda-timeline"><tbody>';
+		foreach ( $timeline as $entry ) {
+			echo '<tr><td>' . esc_html( sanitize_text_field( (string) smlcda_field( $entry, array( 'at' ) ) ) ) . '</td><td>' . esc_html( sanitize_text_field( (string) smlcda_field( $entry, array( 'label' ) ) ) ) . '</td></tr>';
+		}
+		echo '</tbody></table>';
+	}
+
+	echo '<h4>' . esc_html( 'Exact fields and files that will be transmitted' ) . '</h4>';
 	echo '<table class="widefat striped" id="smlcda-transmit"><thead><tr><th>' . esc_html( 'Item' ) . '</th><th>' . esc_html( 'Value / file' ) . '</th></tr></thead><tbody>';
 	$transmit_rows = 0;
 	$fields = isset( $detail['transmitFields'] ) && is_array( $detail['transmitFields'] ) ? $detail['transmitFields'] : array();
-	if ( ! $fields && isset( $manifest['transmitFields'] ) && is_array( $manifest['transmitFields'] ) ) $fields = $manifest['transmitFields'];
 	foreach ( $fields as $name => $value ) {
 		$rendered = is_array( $value ) ? wp_json_encode( $value ) : (string) $value;
-		echo '<tr><td>' . esc_html( 'Field: ' . sanitize_text_field( (string) $name ) ) . '</td><td>' . esc_html( sanitize_textarea_field( $rendered ) ) . '</td></tr>';
+		echo '<tr><td>' . esc_html( 'Field: ' . sanitize_text_field( (string) $name ) ) . '</td><td>' . nl2br( esc_html( sanitize_textarea_field( $rendered ) ) ) . '</td></tr>';
 		$transmit_rows++;
 	}
 	$files = isset( $detail['transmitFiles'] ) && is_array( $detail['transmitFiles'] ) ? $detail['transmitFiles'] : array();
-	if ( ! $files && isset( $manifest['transmitFiles'] ) && is_array( $manifest['transmitFiles'] ) ) $files = $manifest['transmitFiles'];
 	foreach ( $files as $file ) {
 		$name   = sanitize_text_field( (string) smlcda_field( $file, array( 'fileName', 'file_name', 'name' ) ) );
 		$sha    = sanitize_text_field( (string) smlcda_field( $file, array( 'fileSha256', 'file_sha256', 'sha256' ) ) );
 		$target = sanitize_text_field( (string) smlcda_field( $file, array( 'evidenceType', 'evidence_type', 'field' ) ) );
-		echo '<tr><td>' . esc_html( 'File: ' . $name ) . '</td><td>' . esc_html( trim( $target . ' sha256:' . $sha ) ) . '</td></tr>';
+		$source = sanitize_text_field( (string) smlcda_field( $file, array( 'source' ), '' ) );
+		echo '<tr><td>' . esc_html( 'File: ' . $name ) . '</td><td>' . esc_html( trim( $target . ( '' !== $sha ? ' sha256:' . $sha : '' ) . ( 'packet_pdf' === $source ? ' (this packet PDF)' : '' ) ) ) . '</td></tr>';
 		$transmit_rows++;
 	}
 	if ( ! $transmit_rows ) {
@@ -348,7 +453,7 @@ function smlcda_render_review_ui( array $detail, array $context ) {
 	}
 	echo '</tbody></table>';
 
-	if ( empty( $context['approve_action'] ) || ! $packet_version ) return;
+	if ( empty( $context['approve_action'] ) || ! $packet_version || '' === $packet_sha ) return;
 
 	echo '<h3 id="smlcda-approve-title">' . esc_html( 'Approve and submit' ) . '</h3>';
 	echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" id="smlcda-approve-form">';
@@ -357,6 +462,7 @@ function smlcda_render_review_ui( array $detail, array $context ) {
 	echo '<input type="hidden" name="case_id" value="' . esc_attr( (string) $case_id ) . '">';
 	echo '<input type="hidden" name="packet_id" value="' . esc_attr( (string) $packet_id ) . '">';
 	echo '<input type="hidden" name="packet_version" value="' . esc_attr( (string) $packet_version ) . '">';
+	echo '<input type="hidden" name="packet_sha256" value="' . esc_attr( $packet_sha ) . '">';
 	if ( ! empty( $context['review_ref'] ) ) {
 		echo '<input type="hidden" name="review_ref" value="' . esc_attr( (string) $context['review_ref'] ) . '">';
 	}
@@ -390,37 +496,45 @@ add_action( 'admin_post_smlcda_build', function () {
 /**
  * Shared approval processor. Authorization is enforced server-side twice:
  * here (logged-in + nonce + capability) and again by the platform, which
- * re-verifies the WordPress user against the case's merchant scope before
- * submitting anything. Nothing about approval is decided in browser JS.
+ * binds the approval to the exact packet hash the admin reviewed and, for
+ * review-link approvals, re-verifies the review reference and the user's
+ * verified merchant-admin link. Nothing about approval is decided in
+ * browser JS.
  */
 function smlcda_process_approval( $require_manage_options ) {
 	if ( ! is_user_logged_in() ) wp_die( esc_html( 'Login required.' ), 403 );
-	if ( $require_manage_options && ! current_user_can( 'manage_options' ) ) wp_die( esc_html( 'Insufficient permissions.' ), 403 );
+	$has_manage = current_user_can( 'manage_options' );
+	if ( $require_manage_options && ! $has_manage ) wp_die( esc_html( 'Insufficient permissions.' ), 403 );
 	$case_id = isset( $_POST['case_id'] ) ? absint( wp_unslash( $_POST['case_id'] ) ) : 0;
 	check_admin_referer( 'smlcda_approve_' . $case_id );
 
 	$packet_id      = isset( $_POST['packet_id'] ) ? absint( wp_unslash( $_POST['packet_id'] ) ) : 0;
 	$packet_version = isset( $_POST['packet_version'] ) ? absint( wp_unslash( $_POST['packet_version'] ) ) : 0;
+	$packet_sha     = isset( $_POST['packet_sha256'] ) ? strtolower( preg_replace( '/[^a-f0-9]/i', '', (string) wp_unslash( $_POST['packet_sha256'] ) ) ) : '';
 	$confirmed      = isset( $_POST['smlcda_confirm'] ) && '1' === $_POST['smlcda_confirm'];
 	$posted_label   = isset( $_POST['confirmation_label'] ) ? sanitize_textarea_field( wp_unslash( $_POST['confirmation_label'] ) ) : '';
 	$review_ref     = isset( $_POST['review_ref'] ) ? sanitize_text_field( wp_unslash( $_POST['review_ref'] ) ) : '';
 
-	if ( ! $case_id || ! $packet_version || ! $confirmed || $posted_label !== smlcda_confirmation_label() ) {
-		return new WP_Error( 'smlcda_confirmation', 'The confirmation checkbox and its label must accompany an approval.' );
+	if ( ! $case_id || ! $packet_id || ! $packet_version || 64 !== strlen( $packet_sha ) || ! $confirmed || $posted_label !== smlcda_confirmation_label() ) {
+		return new WP_Error( 'smlcda_confirmation', 'The confirmation checkbox, its label, and the reviewed packet hash must accompany an approval.' );
 	}
 
-	return smlcda_call( '/v1/billing/disputes/approve-submit', array(
+	$payload = array(
 		'caseId'        => $case_id,
 		'packetId'      => $packet_id,
 		'packetVersion' => $packet_version,
+		'packetSha256'  => $packet_sha,
 		'wpUserId'      => get_current_user_id(),
-		'reviewRef'     => $review_ref,
+		'manageOptions' => $has_manage,
 		'confirmation'  => array(
+			'confirmed'     => true,
 			'checkboxLabel' => $posted_label,
 			'page'          => $require_manage_options ? 'wp-admin:smlcda-disputes' : 'connect-review',
 			'wpUserLogin'   => wp_get_current_user()->user_login,
 		),
-	) );
+	);
+	if ( '' !== $review_ref ) $payload['reviewRef'] = $review_ref;
+	return smlcda_call( '/v1/billing/disputes/approve-submit', $payload );
 }
 
 add_action( 'admin_post_smlcda_approve', function () {
@@ -433,10 +547,11 @@ add_action( 'admin_post_smlcda_approve', function () {
 	exit;
 } );
 
-/* Approval arriving from the /connect-review/ page: the platform re-verifies
-   the WordPress user's scope (group owner or admin) before submitting. */
+/* Approval arriving from the /connect-review/ page: the platform requires the
+   short-lived review reference issued at redeem time and re-verifies the
+   WordPress user's merchant-admin link before submitting. */
 add_action( 'admin_post_smlcda_review_approve', function () {
-	$result  = smlcda_process_approval( current_user_can( 'manage_options' ) ? true : false );
+	$result  = smlcda_process_approval( false );
 	$message = is_wp_error( $result )
 		? 'Submission failed: ' . $result->get_error_message()
 		: 'Evidence packet submitted for provider review.';
@@ -447,9 +562,9 @@ add_action( 'admin_post_smlcda_review_approve', function () {
 /* ---------------------------------------------------------------------------
  * /connect-review/ rewrite endpoint.
  * A review token arrives as ?t=... . Possession of the token alone renders
- * nothing: the visitor must be logged in AND hold manage_options, or the
- * platform must confirm group-owner capability for this WordPress user when
- * the token is redeemed. All checks are server-side.
+ * nothing: the visitor must be logged in AND either hold manage_options or
+ * be a verified merchant admin of the case's scope (the platform decides
+ * when the single-use token is redeemed). All checks are server-side.
  * ------------------------------------------------------------------------ */
 
 add_action( 'init', function () {
@@ -499,13 +614,13 @@ add_action( 'template_redirect', function () {
 	) );
 
 	if ( is_wp_error( $redeem ) ) {
-		/* Covers expired/used tokens AND WordPress users the platform does not
-		   recognize as an admin or the case's group owner. No case data is
-		   rendered in either situation. */
+		/* Covers expired/used tokens. No case data is rendered. */
 		smlcda_review_shell( 'This review link could not be validated for your account.', null );
 		exit;
 	}
-	if ( ! $has_manage && empty( $redeem['authorized'] ) ) {
+	if ( empty( $redeem['authorized'] ) ) {
+		/* The platform consumed the token and refused: this WordPress user is
+		   not an administrator or a verified admin of the case's merchant scope. */
 		smlcda_review_shell( 'Your account is not authorized to review this case.', null );
 		exit;
 	}
@@ -548,9 +663,13 @@ function smlcda_dispute_notify_adapter( $data, $source ) {
 	$provider = sanitize_text_field( (string) smlcda_field( $data, array( 'provider' ), 'unknown' ) );
 	$notice   = sanitize_text_field( (string) smlcda_field( $data, array( 'noticeType', 'notice_type', 'stage' ), 'update' ) );
 	$due_by   = sanitize_text_field( (string) smlcda_field( $data, array( 'dueBy', 'due_by' ), '' ) );
+	$state    = sanitize_text_field( (string) smlcda_field( $data, array( 'caseState', 'case_state' ), '' ) );
+	$result   = sanitize_text_field( (string) smlcda_field( $data, array( 'result' ), '' ) );
 
 	$message = sprintf( 'A payment dispute notification was received. Case: %s. Provider: %s. Type: %s.', $case_id, $provider, $notice );
+	if ( '' !== $state ) $message .= sprintf( ' State: %s.', $state );
 	if ( '' !== $due_by ) $message .= sprintf( ' Response due: %s.', $due_by );
+	if ( '' !== $result ) $message .= sprintf( ' Result: %s.', $result );
 
 	$notices = get_transient( 'smlcda_dispute_notices' );
 	if ( ! is_array( $notices ) ) $notices = array();

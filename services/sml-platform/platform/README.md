@@ -19,6 +19,16 @@ This folder is the deployment shell for the existing `news-engine`, `group-subs`
   event-id ledger to reject replays. Accepted events are recorded only; they
   cannot yet publish content, charge anyone, or change access.
 
+## Dispute & evidence system
+
+The Stock Market Loop Connect dispute-evidence subsystem (Stripe/PayPal/
+Upgrade.Chat ingestion, append-only hash-chained ledgers, deterministic
+evidence engine, admin-approved submission, Discord Connect commands) is
+assembled by `platform/dispute-runtime.js` and is **disabled until**
+`SML_DISPUTE_EVIDENCE_ENABLED=1` and `SML_EVIDENCE_ENCRYPTION_KEY` are set.
+Configuration, webhook registration, incident response, retention/privacy,
+and rollback are documented in `../DISPUTE-EVIDENCE-DEPLOY.md`.
+
 ## Local validation
 
 ```powershell
