@@ -1,4 +1,4 @@
-# SML Retail Trader Spotlight 1.3.0
+# SML Retail Trader Spotlight 1.4.0
 
 Retail Trader Spotlight is a paid creator tool for StockMarketLoop group owners and administrators who have connected a Discord server they own or manage.
 
@@ -22,3 +22,11 @@ Retail Trader Spotlight is a paid creator tool for StockMarketLoop group owners 
 ## Compatibility
 
 The legacy single `channel_id` is retained as the first selected channel. Existing integrations continue receiving one configuration row per monitored channel from `/bot/configured-groups`.
+
+## Missed-alert recovery and observability
+
+- The one-minute Discord poll records a bounded health summary: completion time, configured channel count, messages fetched, accepted alerts, duplicates, ignored messages, errors, and a safe last-error string.
+- Manager diagnostics fail visibly when polling has not completed within five minutes.
+- Each monitored human message that is skipped for no ticker, multiple tickers, or intake rejection receives a reason-coded audit row keyed to its Discord message ID.
+- Group owners/admins can trace an exact Discord message ID through poll cursor, event, newsroom handoff, and WordPress publication state.
+- Exact-message recovery re-reads only selected channels, revalidates the author and single `$TICKER` contract, and passes through the existing message-ID and ticker-cooldown protections, so retries remain idempotent.

@@ -108,6 +108,7 @@
       subscription_active: 'Monthly Spotlight subscription is active',
       discord_bridge_ready: 'Discord polling bridge is available',
       polling_scheduled: 'One-minute polling job is scheduled',
+      polling_recent: 'Discord polling completed within the last five minutes',
       author_ready: 'Retail Trader Spotlight author is ready',
       test_alert_valid: 'Test alert payload is valid',
       ticker_cooldown_clear: 'Ticker is outside the 30-minute duplicate window'
@@ -118,6 +119,21 @@
     });
     html += '<p>' + esc(result.message) + '</p></div>';
     modal.querySelector('[data-rts-diagnostic-result]').innerHTML = html;
+  }
+
+  function traceResult(modal, result) {
+    var event = result.event || null;
+    var publication = result.publication || null;
+    var html = '<div class="sml-rts-diagnostic ' + (event ? 'is-passed' : 'is-blocked') + '"><strong>' + (event ? 'Alert found' : 'Alert not recorded') + '</strong>';
+    html += '<div><span>' + (result.configuration_active ? '✓' : '×') + '</span> Subscription and configuration active</div>';
+    html += '<div><span>' + (event ? '✓' : '×') + '</span> Discord message stored as a Spotlight event</div>';
+    html += '<div><span>' + (event && event.status === 'handed_off' ? '✓' : '×') + '</span> Event handed to the newsroom</div>';
+    html += '<div><span>' + (publication ? '✓' : '×') + '</span> WordPress publication located</div>';
+    if (event) html += '<p>$' + esc(event.ticker) + ' · ' + esc(event.status) + ' · ' + esc(event.alerted_at) + '</p>';
+    if (publication && publication.url) html += '<p><a href="' + esc(publication.url) + '" target="_blank" rel="noopener">Open publication</a></p>';
+    if (!event && result.cursors && result.cursors.some(function (row) { return row.message_at_or_before_cursor; })) html += '<p>The channel cursor passed this message without an event. Use Recover alert to safely re-read it.</p>';
+    html += '</div>';
+    modal.querySelector('[data-rts-trace-result]').innerHTML = html;
   }
 
   function openPanel() {
@@ -145,6 +161,7 @@
       '<section class="sml-rts-section"><h3>2. Activate monthly coverage</h3><p><strong>' + price.toLocaleString() + ' Loop Bucks/month</strong>' + (discount ? ' — automatic 50% group-growth discount.' : ' — automatically becomes 50% off at 1,000 members.') + '</p>' +
       '<button class="sml-rts-primary" type="button" data-rts-subscribe ' + (!eligible || !configured || active ? 'disabled' : '') + '>' + (active ? 'Subscription active through ' + esc(payload.paid_through || '') : 'Activate for ' + price.toLocaleString() + ' Loop Bucks') + '</button></section>' +
       '<section class="sml-rts-section"><h3>3. Run a safe system test</h3><p>This validates every live dependency without publishing an article or spending Loop Bucks.</p><div class="sml-rts-test-grid"><input data-rts-test-ticker maxlength="10" placeholder="$NVDA"><input data-rts-test-text maxlength="4000" placeholder="Example: $NVDA breakout alert above resistance"></div><button class="sml-rts-secondary" type="button" data-rts-test>Run complete test</button><div data-rts-diagnostic-result></div></section>' +
+      '<section class="sml-rts-section"><h3>4. Trace or recover a Discord alert</h3><p>Enter the Discord message ID to see exactly where it stopped. Recovery is idempotent and cannot create a duplicate event.</p><div class="sml-rts-test-grid"><input data-rts-message-id inputmode="numeric" maxlength="24" placeholder="Discord message ID"><button class="sml-rts-secondary" type="button" data-rts-trace>Trace alert</button></div><button class="sml-rts-primary" type="button" data-rts-recover>Recover missed alert</button><div data-rts-trace-result></div></section>' +
       '<div class="sml-rts-message" data-rts-message aria-live="polite"></div>' +
       '</section>';
     document.body.appendChild(modal);
@@ -194,6 +211,33 @@
       var text = modal.querySelector('[data-rts-test-text]').value;
       api('group/' + groupId + '/diagnostic', { method: 'POST', body: JSON.stringify({ ticker: ticker, alert_text: text }) }).then(function (result) {
         diagnosticResult(modal, result);
+      }).catch(function (error) {
+        setMessage(modal, error.message, true);
+      }).finally(function () { button.disabled = false; });
+    };
+    modal.querySelector('[data-rts-trace]').onclick = function () {
+      var button = this;
+      var messageId = modal.querySelector('[data-rts-message-id]').value.replace(/\D/g, '');
+      if (!messageId) return setMessage(modal, 'Enter a Discord message ID.', true);
+      button.disabled = true;
+      api('group/' + groupId + '/trace/' + encodeURIComponent(messageId)).then(function (result) {
+        traceResult(modal, result);
+      }).catch(function (error) {
+        setMessage(modal, error.message, true);
+      }).finally(function () { button.disabled = false; });
+    };
+    modal.querySelector('[data-rts-recover]').onclick = function () {
+      var button = this;
+      var messageId = modal.querySelector('[data-rts-message-id]').value.replace(/\D/g, '');
+      if (!messageId) return setMessage(modal, 'Enter a Discord message ID.', true);
+      if (!window.confirm('Re-read this exact Discord message and queue it if eligible? Existing events and ticker cooldowns remain protected.')) return;
+      button.disabled = true;
+      setMessage(modal, 'Recovering the alert…', false);
+      api('group/' + groupId + '/recover', { method: 'POST', body: JSON.stringify({ message_id: messageId }) }).then(function () {
+        return api('group/' + groupId + '/trace/' + encodeURIComponent(messageId));
+      }).then(function (result) {
+        traceResult(modal, result);
+        setMessage(modal, 'Recovery completed. The newsroom worker will process an eligible queued event.', false);
       }).catch(function (error) {
         setMessage(modal, error.message, true);
       }).finally(function () { button.disabled = false; });
