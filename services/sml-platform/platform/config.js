@@ -5,6 +5,11 @@ function integer(value, fallback, minimum) {
   return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
 }
 
+function decimal(value, fallback, minimum = 0) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
+}
+
 function jsonObject(value, name) {
   if (!String(value || '').trim()) return Object.freeze({});
   let parsed;
@@ -68,7 +73,19 @@ function getConfig(env = process.env) {
     connectReviewUrlSecret: String(env.SML_CONNECT_REVIEW_URL_SECRET || '').trim(),
     connectReviewUrlBase: String(env.SML_CONNECT_REVIEW_URL_BASE || 'https://stockmarketloop.com/connect-review/').trim(),
     upgradeChatWebhookPathToken: String(env.SML_UC_WEBHOOK_PATH_TOKEN || '').trim(),
-    connectGuildIds: String(env.SML_CONNECT_GUILD_IDS || '').split(',').map((g) => g.trim()).filter(Boolean)
+    connectGuildIds: String(env.SML_CONNECT_GUILD_IDS || '').split(',').map((g) => g.trim()).filter(Boolean),
+    // --- bounded Claude <-> Codex orchestration (disabled until explicitly enabled) ---
+    aiOrchestratorEnabled: String(env.SML_AI_ORCHESTRATOR_ENABLED || '').trim() === '1',
+    anthropicApiKey: String(env.ANTHROPIC_API_KEY || '').trim(),
+    aiOpenAIModel: String(env.SML_AI_OPENAI_MODEL || 'gpt-5.4-mini').trim(),
+    aiAnthropicModel: String(env.SML_AI_ANTHROPIC_MODEL || 'claude-sonnet-5').trim(),
+    aiMaxOutputTokens: integer(env.SML_AI_MAX_OUTPUT_TOKENS, 3000, 256),
+    aiMaxTasksPerTick: Math.min(3, integer(env.SML_AI_MAX_TASKS_PER_TICK, 1, 1)),
+    aiVerifyHosts: String(env.SML_AI_VERIFY_HOSTS || 'sml-platform-api.onrender.com,stockmarketloop.com').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
+    aiOpenAIInputUsdPerMillion: decimal(env.SML_AI_OPENAI_INPUT_USD_PER_MILLION, 0),
+    aiOpenAIOutputUsdPerMillion: decimal(env.SML_AI_OPENAI_OUTPUT_USD_PER_MILLION, 0),
+    aiAnthropicInputUsdPerMillion: decimal(env.SML_AI_ANTHROPIC_INPUT_USD_PER_MILLION, 0),
+    aiAnthropicOutputUsdPerMillion: decimal(env.SML_AI_ANTHROPIC_OUTPUT_USD_PER_MILLION, 0)
   });
 }
 

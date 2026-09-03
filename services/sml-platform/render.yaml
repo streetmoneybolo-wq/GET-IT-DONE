@@ -127,6 +127,29 @@ services:
         sync: false
       - key: SML_DISCORD_CONNECT_BOT_TOKEN
         sync: false
+      # --- bounded Claude/Codex orchestrator; disabled until explicitly set to 1 ---
+      - key: SML_AI_ORCHESTRATOR_ENABLED
+        value: "0"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SML_AI_OPENAI_MODEL
+        value: gpt-5.4-mini
+      - key: SML_AI_ANTHROPIC_MODEL
+        value: claude-sonnet-5
+      - key: SML_AI_MAX_OUTPUT_TOKENS
+        value: "3000"
+      - key: SML_AI_MAX_TASKS_PER_TICK
+        value: "1"
+      - key: SML_AI_VERIFY_HOSTS
+        value: sml-platform-api.onrender.com,stockmarketloop.com
+      - key: SML_AI_OPENAI_INPUT_USD_PER_MILLION
+        sync: false
+      - key: SML_AI_OPENAI_OUTPUT_USD_PER_MILLION
+        sync: false
+      - key: SML_AI_ANTHROPIC_INPUT_USD_PER_MILLION
+        sync: false
+      - key: SML_AI_ANTHROPIC_OUTPUT_USD_PER_MILLION
+        sync: false
       - key: UPGRADE_CHAT_CLIENT_ID
         sync: false
       - key: UPGRADE_CHAT_CLIENT_SECRET

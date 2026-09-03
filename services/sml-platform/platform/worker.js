@@ -41,6 +41,13 @@ const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
 const { createUpgradeChatClient } = require('./upgrade-chat');
 const { createDisputeRuntime } = require('./dispute-runtime');
+const {
+  createAiOrchestrator,
+  createAiTaskStore,
+  createAnthropicOrchestratorClient,
+  createOpenAIOrchestratorClient,
+  createVerifier
+} = require('./ai-orchestrator');
 
 async function main() {
   const config = getConfig();
@@ -70,6 +77,32 @@ async function main() {
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, wordpressNotify: wordpress, logger: log });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, upgradeChatReconcile: !!disputes.upgradeChatReconciler });
+  let aiOrchestrator = null;
+  if (config.aiOrchestratorEnabled) {
+    const clients = {};
+    if (config.openaiApiKey) clients.codex = createOpenAIOrchestratorClient({
+      apiKey: config.openaiApiKey, model: config.aiOpenAIModel, maxOutputTokens: config.aiMaxOutputTokens
+    });
+    if (config.anthropicApiKey) clients.claude = createAnthropicOrchestratorClient({
+      apiKey: config.anthropicApiKey, model: config.aiAnthropicModel, maxOutputTokens: config.aiMaxOutputTokens
+    });
+    aiOrchestrator = createAiOrchestrator({
+      store: createAiTaskStore(database.pool), clients,
+      verifier: createVerifier({ allowedHosts: config.aiVerifyHosts }),
+      rates: {
+        codex: { inputPerMillion: config.aiOpenAIInputUsdPerMillion, outputPerMillion: config.aiOpenAIOutputUsdPerMillion },
+        claude: { inputPerMillion: config.aiAnthropicInputUsdPerMillion, outputPerMillion: config.aiAnthropicOutputUsdPerMillion }
+      },
+      logger: log,
+      workerId: `render-ai-${process.pid}`
+    });
+    log('info', 'ai_orchestrator_runtime', {
+      enabled: true, codex: !!clients.codex, claude: !!clients.claude,
+      maxTasksPerTick: config.aiMaxTasksPerTick, verifyHosts: config.aiVerifyHosts
+    });
+  } else {
+    log('info', 'ai_orchestrator_runtime', { enabled: false });
+  }
   const membershipAccess = async (payload, row) => {
     await wordpress(payload, row);
     if (discord) await discord(payload, row);
@@ -140,16 +173,25 @@ async function main() {
         if (outcome === 'empty') break;
         alertsProcessed += 1;
       }
+      let aiTasksProcessed = 0;
+      if (aiOrchestrator) {
+        for (let i = 0; i < config.aiMaxTasksPerTick; i += 1) {
+          if (!await aiOrchestrator.runOnce()) break;
+          aiTasksProcessed += 1;
+        }
+      }
       const disputeSweeps = disputes.enabled ? await disputes.runSweeps() : null;
       log('info', 'worker_ready_for_jobs', {
         jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline', 'alert_router',
-          ...(disputes.enabled ? ['dispute_evidence_sweeps'] : [])],
+          ...(disputes.enabled ? ['dispute_evidence_sweeps'] : []),
+          ...(aiOrchestrator ? ['ai_orchestrator'] : [])],
         expired,
         promoted,
         billingProcessed,
         billingFailed,
         newsJobsProcessed,
         alertsProcessed,
+        aiTasksProcessed,
         ...(disputeSweeps ? { disputeSweeps } : {})
       });
     } catch (error) {

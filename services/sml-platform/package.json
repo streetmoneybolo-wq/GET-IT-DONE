@@ -9,13 +9,15 @@
   "scripts": {
     "start": "node platform/server.js",
     "worker": "node platform/worker.js",
-    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js db/migrate.test.js platform/server.test.js platform/wordpress-gateway.test.js platform/stripe-webhook.test.js platform/stripe-event-store.test.js platform/billing.test.js platform/billing-service.test.js platform/marketplace-events.test.js platform/billing-worker.test.js platform/upgrade-chat.test.js platform/news-webhook.test.js platform/article-generator.test.js platform/wordpress-publisher.test.js platform/safe-fetch.test.js platform/source-article.test.js platform/news-pipeline.test.js platform/alert-router.test.js platform/evidence-store.test.js platform/identity-graph.test.js platform/dispute-cases.test.js platform/provider-limits.test.js platform/evidence-engine.test.js platform/packet-generator.test.js platform/paypal-client.test.js platform/paypal-webhook.test.js platform/dispute-service.test.js platform/stripe-files.test.js platform/discord-interactions.test.js platform/connect-commands.test.js platform/upgrade-chat-webhook.test.js platform/upgrade-chat-reconcile.test.js platform/stripe-ledger.test.js platform/usage-consumer.test.js platform/dispute-notifier.test.js platform/connect-adapter.test.js platform/dispute-integration.test.js",
+    "test": "node --test news-engine/src/seo/index.test.js news-engine/src/moderation/index.test.js news-engine/src/triggers/index.test.js news-engine/src/triggers/options.test.js group-subs/src/lifecycle.test.js group-subs/src/discord-sync.test.js db/migrate.test.js platform/server.test.js platform/wordpress-gateway.test.js platform/stripe-webhook.test.js platform/stripe-event-store.test.js platform/billing.test.js platform/billing-service.test.js platform/marketplace-events.test.js platform/billing-worker.test.js platform/upgrade-chat.test.js platform/news-webhook.test.js platform/article-generator.test.js platform/wordpress-publisher.test.js platform/safe-fetch.test.js platform/source-article.test.js platform/news-pipeline.test.js platform/alert-router.test.js platform/evidence-store.test.js platform/identity-graph.test.js platform/dispute-cases.test.js platform/provider-limits.test.js platform/evidence-engine.test.js platform/packet-generator.test.js platform/paypal-client.test.js platform/paypal-webhook.test.js platform/dispute-service.test.js platform/stripe-files.test.js platform/discord-interactions.test.js platform/connect-commands.test.js platform/upgrade-chat-webhook.test.js platform/upgrade-chat-reconcile.test.js platform/stripe-ledger.test.js platform/usage-consumer.test.js platform/dispute-notifier.test.js platform/connect-adapter.test.js platform/dispute-integration.test.js platform/ai-orchestrator.test.js",
     "db:status": "node db/migrate.js status",
     "db:dry-run": "node db/migrate.js up --dry-run",
     "db:migrate": "node db/migrate.js up",
     "db:release": "node platform/release-migrate.js",
     "db:verify": "node db/migrate.js verify",
-    "fees:verify": "node group-subs/verify-fee-rules.js"
+    "fees:verify": "node group-subs/verify-fee-rules.js",
+    "ai:enqueue": "node scripts/ai-orchestrator.js enqueue",
+    "ai:status": "node scripts/ai-orchestrator.js status"
   },
   "dependencies": {
     "pg": "^8.13.1",
