@@ -129,7 +129,7 @@ services:
         sync: false
       # --- bounded Claude/Codex orchestrator; disabled until explicitly set to 1 ---
       - key: SML_AI_ORCHESTRATOR_ENABLED
-        sync: false
+        value: "1"
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: SML_AI_OPENAI_MODEL
