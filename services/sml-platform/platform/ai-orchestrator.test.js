@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   createAiOrchestrator,
+  createAiTaskStore,
   createAnthropicOrchestratorClient,
   createOpenAIOrchestratorClient,
   createVerifier,
@@ -106,8 +107,19 @@ test('Anthropic client extracts text and usage', async () => {
   });
   const result = await client.run({ invocationId: 'inv', input: {} });
   assert.equal(body.model, 'test-claude');
+  assert.equal(Object.hasOwn(body, 'temperature'), false);
   assert.equal(result.providerRunId, 'msg_1');
   assert.equal(result.outputTokens, 4);
+});
+
+test('database failure retry uses one explicit integer type for retry count', async () => {
+  let statement;
+  const store = createAiTaskStore({
+    async query(text, params) { statement = { text, params }; return {}; }
+  });
+  assert.equal(await store.fail(task(), new Error('rate limited'), true), 'retry');
+  assert.match(statement.text, /power\(2::numeric,\$4::integer\)/);
+  assert.equal(statement.params[3], 1);
 });
 
 test('verifier only permits HTTPS 200 on an exact approved host', async () => {

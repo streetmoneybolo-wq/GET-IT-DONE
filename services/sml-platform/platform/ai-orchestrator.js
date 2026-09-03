@@ -158,7 +158,7 @@ function createAnthropicOrchestratorClient({ apiKey, model = 'claude-sonnet-5', 
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
-          model, max_tokens: maxOutputTokens, temperature: 0,
+          model, max_tokens: maxOutputTokens,
           system: CLAUDE_PROMPT,
           messages: [{ role: 'user', content: JSON.stringify(task.input) }]
         }),
@@ -253,7 +253,7 @@ function createAiTaskStore(pool) {
       const retry = safeToRetry && retries <= Number(task.max_retries || 0) && Number(task.max_hops_remaining || 0) > 1;
       await pool.query(
         `UPDATE ai_orchestrator_tasks SET status=$3,retry_count=$4,max_hops_remaining=GREATEST(0,max_hops_remaining-1),
-           run_after=CASE WHEN $3='retry' THEN now()+make_interval(secs=>LEAST(3600,30*power(2,$4)::integer)) ELSE run_after END,
+           run_after=CASE WHEN $3='retry' THEN now()+make_interval(secs=>LEAST(3600,30*power(2::numeric,$4::integer)::integer)) ELSE run_after END,
            last_error_code=$5,last_error_detail=$6,lease_owner=NULL,lease_expires_at=NULL,invocation_id=NULL,updated_at=now()
          WHERE id=$1 AND invocation_id=$2`,
         [task.id, task.invocation_id, retry ? 'retry' : 'needs_human', retries, String(error.code || 'model_call_failed').slice(0, 100), String(error.message || error).slice(0, 1000)]
