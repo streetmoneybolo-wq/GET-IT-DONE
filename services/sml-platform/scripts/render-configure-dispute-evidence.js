@@ -63,6 +63,15 @@ function createRenderClient({ apiKey, fetchImpl = globalThis.fetch }) {
     });
     if (!response.ok) {
       /* Status only: an error body could echo a value. */
+      if (response.status === 401 || response.status === 403) {
+        throw new Error([
+          `Render rejected the credential with HTTP ${response.status}: RENDER_API_KEY is not a valid Render API key.`,
+          'Create one at Render -> Account Settings -> API Keys. A real key begins with "rnd_".',
+          'This same error appears if the value is a deploy hook URL, a service id, a webhook secret,',
+          'the placeholder text, or a key that was truncated, quoted, or left with a trailing space.',
+          'Check the shape without revealing it:  "len=" + $env:RENDER_API_KEY.Length + " starts=" + $env:RENDER_API_KEY.Substring(0,4)'
+        ].join('\n'));
+      }
       throw new Error(`Render API ${method} ${path} failed with HTTP ${response.status}`);
     }
     if (response.status === 204) return null;

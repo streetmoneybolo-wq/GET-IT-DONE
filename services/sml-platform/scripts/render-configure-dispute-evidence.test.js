@@ -130,3 +130,16 @@ test('run: refuses without an API key and when a service is missing', async () =
   const fetchImpl = async () => ({ ok: true, status: 200, async json() { return [{ service: { id: 'x', name: API_SERVICE } }]; } });
   await assert.rejects(run({ env: { RENDER_API_KEY: 'k' }, argv: [], fetchImpl, log: () => {} }), /could not find both services/);
 });
+
+test('run: a rejected key produces an actionable message and never echoes the value', async () => {
+  const fetchImpl = async () => ({ ok: false, status: 401, async json() { return { message: 'unauthorized' }; } });
+  await assert.rejects(
+    run({ env: { RENDER_API_KEY: 'deploy-hook-url-pasted-by-mistake' }, argv: [], fetchImpl, log: () => {} }),
+    (error) => {
+      assert.match(error.message, /not a valid Render API key/);
+      assert.match(error.message, /rnd_/, 'the message states the expected key prefix');
+      assert.doesNotMatch(error.message, /deploy-hook-url-pasted-by-mistake/, 'the rejected credential is never echoed');
+      return true;
+    }
+  );
+});
