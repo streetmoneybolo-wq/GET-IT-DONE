@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Connect Dispute Admin
  * Description: Admin review console for payment dispute cases held by the SML platform service: case list, packet review, human-approved submission, review-link endpoint, merchant-admin linking, and dispute notifications.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Author: Stock Market Loop
  */
 
@@ -266,7 +266,9 @@ add_action( 'admin_post_smlcda_link_admin', function () {
 
 function smlcda_render_cases_list() {
 	echo '<h2 id="smlcda-cases-title">Open dispute cases</h2>';
-	$result = smlcda_call( '/v1/billing/disputes/list', array() );
+	// The platform requires a JSON object; wp_json_encode( array() ) produces
+	// an empty JSON array, which is correctly rejected as invalid_json.
+	$result = smlcda_call( '/v1/billing/disputes/list', array( 'limit' => 50 ) );
 	if ( is_wp_error( $result ) ) {
 		echo '<div class="notice notice-error"><p>' . esc_html( 'Could not load cases: ' . $result->get_error_message() ) . '</p></div>';
 		return;
