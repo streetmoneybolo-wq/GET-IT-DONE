@@ -12,6 +12,7 @@ const { createUpgradeChatClient } = require('./upgrade-chat');
 const newsWebhook = require('./news-webhook');
 const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
+const connectMigration = require('./connect-migration');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -259,6 +260,53 @@ async function handleBillingRequest(request, response, options, action) {
   }
 }
 
+async function handleConnectRequest(request, response, options, action) {
+  if (!contentTypeIsJson(request)) {
+    sendJson(response, 415, { ok: false, error: 'content_type_required' });
+    return;
+  }
+  const body = await readRequestBody(request);
+  if (!body.ok) {
+    sendJson(response, body.status, { ok: false, error: body.error });
+    return;
+  }
+  const verified = verifySignature({
+    secret: options.billingApiSecret,
+    timestamp: request.headers['x-sml-timestamp'],
+    signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) {
+    sendJson(response, verified.status, { ok: false, error: verified.error });
+    return;
+  }
+  if (!options.pool) {
+    sendJson(response, 503, { ok: false, error: 'database_unconfigured' });
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(body.rawBody);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid');
+  } catch (_) {
+    sendJson(response, 400, { ok: false, error: 'invalid_json' });
+    return;
+  }
+  try {
+    const result = await action(options.pool, input);
+    sendJson(response, 200, { ok: true, ...result });
+  } catch (error) {
+    const inputError = error instanceof TypeError;
+    options.logger(inputError ? 'warn' : 'error', 'connect_migration_request_failed', { error });
+    sendJson(response, inputError ? 400 : 503, {
+      ok: false,
+      error: inputError ? 'invalid_request' : 'temporary_unavailable',
+      ...(inputError ? { message: String(error.message).slice(0, 240) } : {})
+    });
+  }
+}
+
 async function handleNewsWebhook(request, response, options) {
   if (!contentTypeIsJson(request)) {
     sendJson(response, 415, { ok: false, error: 'content_type_required' });
@@ -310,6 +358,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
+    const connectOptions = { billingApiSecret, pool, logger, now };
     /* ---- dispute-evidence surfaces: every one 503s until configured ---- */
     if (request.method === 'POST' && path === '/v1/paypal/webhook') {
       if (!paypalWebhook) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -371,6 +420,36 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'POST' && path === '/v1/billing/migrations/upgrade-chat') {
       await handleBillingRequest(request, response, billingOptions, billingService.prepareUpgradeChatMigration);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/connect/migration/campaign') {
+      await handleConnectRequest(request, response, connectOptions, connectMigration.upsertCampaign);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/connect/migration/mappings') {
+      await handleConnectRequest(request, response, connectOptions, connectMigration.replacePlanMappings);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/connect/migration/dashboard') {
+      await handleConnectRequest(request, response, connectOptions, connectMigration.dashboard);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/connect/migration/event') {
+      await handleConnectRequest(request, response, connectOptions, connectMigration.recordEvent);
+      return;
+    }
+    if (request.method === 'GET' && path.startsWith('/v1/connect/public/')) {
+      if (!pool) { sendJson(response, 503, { ok: false, error: 'database_unconfigured' }); return; }
+      const slug = decodeURIComponent(path.slice('/v1/connect/public/'.length).replace(/\/$/, ''));
+      try {
+        const page = await connectMigration.publicHomepage(pool, slug, { recordView: true });
+        if (!page) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
+        sendJson(response, 200, { ok: true, ...page });
+      } catch (error) {
+        const inputError = error instanceof TypeError;
+        logger(inputError ? 'warn' : 'error', 'connect_public_request_failed', { error });
+        sendJson(response, inputError ? 400 : 503, { ok: false, error: inputError ? 'invalid_request' : 'temporary_unavailable' });
+      }
       return;
     }
     if (request.method === 'POST' && path === '/v1/stripe/webhook') {
@@ -475,4 +554,12 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, sendJson, handleBillingRequest, handleAlertRequest, handleDisputeRequest, DISPUTE_ACTIONS };
+module.exports = {
+  createServer,
+  sendJson,
+  handleBillingRequest,
+  handleAlertRequest,
+  handleDisputeRequest,
+  handleConnectRequest,
+  DISPUTE_ACTIONS
+};
