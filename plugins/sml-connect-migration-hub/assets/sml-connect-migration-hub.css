@@ -87,6 +87,27 @@
   margin-top: 18px;
 }
 .smlcmh-grid-2 { align-items: start; }
+.smlcmh-flow-card { margin-top: 18px; }
+.smlcmh-step {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(25,244,122,.16);
+}
+.smlcmh-step strong {
+  display: block;
+  color: #fff;
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.smlcmh-answer {
+  margin-top: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,211,106,.44);
+  background: linear-gradient(135deg, rgba(255,211,106,.16), rgba(25,244,122,.08));
+}
 .smlcmh-card {
   background: var(--sml-card);
   border: 1px solid rgba(112, 139, 163, .22);

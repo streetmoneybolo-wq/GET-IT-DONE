@@ -1,20 +1,23 @@
 <?php
 /**
  * Plugin Name: SML Connect Migration Hub
- * Description: StockMarketLoop Connect owner dashboard, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.0
+ * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
+ * Version: 0.1.1
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.0';
+const SMLCMH_VERSION = '0.1.1';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
 	return array(
 		'api_url'    => defined( 'SML_PLATFORM_API_URL' ) ? untrailingslashit( (string) SML_PLATFORM_API_URL ) : 'https://sml-platform-api.onrender.com',
 		'api_secret' => defined( 'SML_PLATFORM_BILLING_API_SECRET' ) ? (string) SML_PLATFORM_BILLING_API_SECRET : '',
+		'discord_app_id'    => defined( 'SML_DISCORD_CONNECT_APP_ID' ) ? (string) SML_DISCORD_CONNECT_APP_ID : '1537698927401377894',
+		'discord_permissions' => '268504064',
+		'create_group_url'  => home_url( '/groups/create/' ),
 	);
 }
 
@@ -114,6 +117,41 @@ function smlcmh_public_url( $slug = '' ) {
 	return $slug ? trailingslashit( $base . sanitize_title( $slug ) ) : $base;
 }
 
+function smlcmh_discord_install_url() {
+	$options     = smlcmh_options();
+	$app_id      = preg_replace( '/\D/', '', (string) ( $options['discord_app_id'] ?? '' ) );
+	$permissions = preg_replace( '/\D/', '', (string) ( $options['discord_permissions'] ?? '268504064' ) );
+	if ( '' === $app_id ) return 'https://discord.com/developers/applications';
+	return add_query_arg(
+		array(
+			'client_id'   => $app_id,
+			'permissions' => '' === $permissions ? '268504064' : $permissions,
+			'scope'       => 'bot applications.commands',
+		),
+		'https://discord.com/oauth2/authorize'
+	);
+}
+
+function smlcmh_create_group_url( $guild_name = '' ) {
+	$options = smlcmh_options();
+	$base    = ! empty( $options['create_group_url'] ) ? esc_url_raw( $options['create_group_url'] ) : home_url( '/groups/create/' );
+	$args    = array( 'sml_connect' => '1' );
+	if ( '' !== trim( (string) $guild_name ) ) {
+		$args['default_name'] = sanitize_text_field( $guild_name );
+	}
+	return add_query_arg( $args, $base );
+}
+
+function smlcmh_signup_url( $guild_name = '' ) {
+	return add_query_arg(
+		array(
+			'sml_connect' => '1',
+			'redirect_to' => smlcmh_create_group_url( $guild_name ),
+		),
+		home_url( '/register/' )
+	);
+}
+
 /* -------------------------------------------------------------------------
  * Activation: create helpful pages but keep all rendering shortcode-driven.
  * ---------------------------------------------------------------------- */
@@ -179,6 +217,9 @@ function smlcmh_enqueue_assets() {
 		'nonce'     => wp_create_nonce( 'wp_rest' ),
 		'currentId' => get_current_user_id(),
 		'publicUrl' => smlcmh_public_url(),
+		'createGroupUrl' => esc_url_raw( smlcmh_create_group_url() ),
+		'signupUrl' => esc_url_raw( smlcmh_signup_url() ),
+		'isLoggedIn' => is_user_logged_in(),
 	) );
 }
 add_action( 'wp_enqueue_scripts', 'smlcmh_enqueue_assets' );
@@ -212,7 +253,7 @@ function smlcmh_admin_page() {
 	?>
 	<div class="wrap smlcmh-admin">
 		<h1>StockMarketLoop Connect</h1>
-		<p>Upgrade.Chat replacement dashboard: publish Discord group homepages, map paid roles, start subscription migration, and unlock Connect-only perks.</p>
+		<p>Bot-first onboarding: install StockMarketLoop Connect into Discord, detect or ask about Upgrade.Chat, offer a no-double-billing migration, then create a StockMarketLoop group named exactly like the Discord server.</p>
 		<form method="post" action="options.php" class="smlcmh-card smlcmh-settings">
 			<?php settings_fields( 'smlcmh_settings' ); ?>
 			<h2>Platform connection</h2>
@@ -222,6 +263,15 @@ function smlcmh_admin_page() {
 			</label>
 			<label>Billing API secret
 				<input class="regular-text code" type="password" name="<?php echo esc_attr( SMLCMH_OPTION ); ?>[api_secret]" value="<?php echo esc_attr( $options['api_secret'] ); ?>">
+			</label>
+			<label>Discord Connect application ID
+				<input class="regular-text code" type="text" name="<?php echo esc_attr( SMLCMH_OPTION ); ?>[discord_app_id]" value="<?php echo esc_attr( $options['discord_app_id'] ); ?>">
+			</label>
+			<label>Discord bot permissions integer
+				<input class="regular-text code" type="text" name="<?php echo esc_attr( SMLCMH_OPTION ); ?>[discord_permissions]" value="<?php echo esc_attr( $options['discord_permissions'] ); ?>">
+			</label>
+			<label>StockMarketLoop group creation URL
+				<input class="regular-text" type="url" name="<?php echo esc_attr( SMLCMH_OPTION ); ?>[create_group_url]" value="<?php echo esc_attr( $options['create_group_url'] ); ?>">
 			</label>
 			<?php submit_button( 'Save Connect settings' ); ?>
 		</form>
@@ -242,6 +292,9 @@ function smlcmh_sanitize_options( $input ) {
 	$output  = $current;
 	if ( isset( $input['api_url'] ) ) $output['api_url'] = untrailingslashit( esc_url_raw( $input['api_url'] ) );
 	if ( isset( $input['api_secret'] ) ) $output['api_secret'] = sanitize_text_field( wp_unslash( $input['api_secret'] ) );
+	if ( isset( $input['discord_app_id'] ) ) $output['discord_app_id'] = preg_replace( '/\D/', '', (string) wp_unslash( $input['discord_app_id'] ) );
+	if ( isset( $input['discord_permissions'] ) ) $output['discord_permissions'] = preg_replace( '/\D/', '', (string) wp_unslash( $input['discord_permissions'] ) );
+	if ( isset( $input['create_group_url'] ) ) $output['create_group_url'] = esc_url_raw( wp_unslash( $input['create_group_url'] ) );
 	return $output;
 }
 
@@ -251,23 +304,53 @@ function smlcmh_sanitize_options( $input ) {
 
 add_shortcode( 'sml_connect_landing', function () {
 	smlcmh_use_assets();
+	$install_url = smlcmh_discord_install_url();
+	$signup_url  = smlcmh_signup_url();
+	$group_url   = smlcmh_create_group_url();
 	ob_start();
 	?>
-	<section class="smlcmh-shell smlcmh-landing">
+	<section class="smlcmh-shell smlcmh-landing" data-smlcmh-onboarding>
 		<div class="smlcmh-hero">
 			<p class="smlcmh-kicker">StockMarketLoop Connect</p>
-			<h1>Replace Upgrade.Chat with a trading-first membership engine.</h1>
-			<p>Bring Discord roles, paid subscriptions, dispute defense, Retail Trader Spotlight, live watch pages, stores, Loop Letters, and indexed community pages under one StockMarketLoop account.</p>
+			<h1>Install the StockMarketLoop Connect Bot first.</h1>
+			<p>The owner installs the bot into their Discord server, then StockMarketLoop asks whether they use Upgrade.Chat, offers a no-double-billing migration if needed, and helps create a StockMarketLoop group named exactly like their Discord server.</p>
 			<div class="smlcmh-actions">
-				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( home_url( '/connect-dashboard/' ) ); ?>">Owner dashboard</a>
-				<a class="smlcmh-btn" href="<?php echo esc_url( home_url( '/connect-migrate/' ) ); ?>">Migrate membership</a>
+				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( $install_url ); ?>" target="_blank" rel="noopener">1. Install StockMarketLoop Connect Bot</a>
+				<a class="smlcmh-btn" href="<?php echo esc_url( home_url( '/connect-dashboard/' ) ); ?>">Owner dashboard</a>
+			</div>
+		</div>
+		<div class="smlcmh-card smlcmh-flow-card">
+			<p class="smlcmh-kicker">Owner setup flow</p>
+			<h2>After the bot is installed, answer two quick questions.</h2>
+			<label>Discord server name
+				<input data-smlcmh-guild-name type="text" maxlength="120" placeholder="Example: Making Easy Money">
+			</label>
+			<div class="smlcmh-step">
+				<strong>Do you already use Upgrade.Chat?</strong>
+				<div class="smlcmh-actions">
+					<button class="smlcmh-btn smlcmh-btn-gold" type="button" data-smlcmh-upgrade="yes">Yes — show free migration</button>
+					<button class="smlcmh-btn" type="button" data-smlcmh-upgrade="no">No — skip migration</button>
+				</div>
+			</div>
+			<div class="smlcmh-answer" data-smlcmh-upgrade-panel hidden>
+				<h3>Migrate with no migration fee and no double billing.</h3>
+				<p>Members keep access through their verified paid-through date. StockMarketLoop takes over billing on the same renewal day, so the Discord owner does not lose upcoming payments and members do not get charged twice.</p>
+				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( home_url( '/connect-migrate/' ) ); ?>">Start Upgrade.Chat migration</a>
+			</div>
+			<div class="smlcmh-step">
+				<strong>Do you want to make a StockMarketLoop Group for this Discord?</strong>
+				<p class="smlcmh-muted">Perks: indexed Google/Bing group homepage, live Discord message stream, membership store, live watch page, Loop Letter, Retail Trader Spotlight, security management, dispute evidence, Stripe/PayPal billing, analytics, and faster community growth than a locked Discord-only server.</p>
+				<div class="smlcmh-actions">
+					<a class="smlcmh-btn smlcmh-btn-gold" data-smlcmh-create-group href="<?php echo esc_url( is_user_logged_in() ? $group_url : $signup_url ); ?>">Yes — create SML group</a>
+					<a class="smlcmh-btn" href="<?php echo esc_url( home_url( '/connect-dashboard/' ) ); ?>">No — manage bot only</a>
+				</div>
 			</div>
 		</div>
 		<div class="smlcmh-grid">
-			<div class="smlcmh-card"><h3>Same next payment date</h3><p>SML collects the payment method now, then starts billing on the verified renewal date so the owner does not lose upcoming revenue.</p></div>
-			<div class="smlcmh-card"><h3>Discord role takeover</h3><p>Map plans to Discord roles and let the Connect bot grant/revoke access through the existing role reconciler.</p></div>
-			<div class="smlcmh-card"><h3>Indexed group homepage</h3><p>Give every migrated Discord group a real StockMarketLoop homepage Google and Bing can index.</p></div>
-			<div class="smlcmh-card"><h3>Dispute defense built in</h3><p>Stripe, PayPal, Upgrade.Chat evidence, usage records, and subscription history are tied into the dispute console.</p></div>
+			<div class="smlcmh-card"><h3>Bot first, migration second</h3><p>The Discord owner installs StockMarketLoop Connect before any migration, so role sync, security, and server detection can start from the actual Discord server.</p></div>
+			<div class="smlcmh-card"><h3>Ask when detection is unclear</h3><p>If Upgrade.Chat cannot be detected, the page directly asks the owner whether they use it, then shows the correct migration or non-migration path.</p></div>
+			<div class="smlcmh-card"><h3>Exact Discord name by default</h3><p>When the owner creates a StockMarketLoop group, the default name is the Discord server name so branding stays stable.</p></div>
+			<div class="smlcmh-card"><h3>Perks unlock with SML</h3><p>Connect can become the Upgrade.Chat alternative plus public homepage, live page, store, Loop Letter, analytics, roles, dispute defense, and Retail Trader Spotlight.</p></div>
 		</div>
 	</section>
 	<?php
@@ -283,11 +366,15 @@ add_shortcode( 'sml_connect_dashboard', function () {
 		<div class="smlcmh-hero smlcmh-hero-compact">
 			<p class="smlcmh-kicker">Owner command center</p>
 			<h2>StockMarketLoop Connect migration dashboard</h2>
-			<p>Create the clickable Discord group card, publish the indexed homepage, map prices/roles, and unlock Connect perks after billing migration.</p>
+			<p>Install the bot first, create the clickable Discord card, publish the indexed homepage, map prices/roles, and unlock Connect perks after billing migration.</p>
+			<div class="smlcmh-actions">
+				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( smlcmh_discord_install_url() ); ?>" target="_blank" rel="noopener">Install StockMarketLoop Connect Bot</a>
+			</div>
 		</div>
 		<div class="smlcmh-grid smlcmh-grid-2">
 			<form class="smlcmh-card" data-smlcmh-campaign-form>
 				<h3>1. Publish Discord group page</h3>
+				<label>Discord server name <input name="guildName" maxlength="120" required placeholder="Making Easy Money"></label>
 				<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
 				<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
 				<label>Discord server ID <input name="guildId" required placeholder="938894329076940820"></label>
@@ -296,7 +383,7 @@ add_shortcode( 'sml_connect_dashboard', function () {
 				<label>Discord avatar/logo URL <input name="discordAvatarUrl" type="url" placeholder="https://..."></label>
 				<label>Discord banner URL <input name="discordBannerUrl" type="url" placeholder="https://..."></label>
 				<label>Headline <input name="headline" maxlength="140" value="Join this StockMarketLoop-powered Discord community"></label>
-				<label>Description <textarea name="description" maxlength="500">Click the link to join the underlying Discord group, unlock premium alerts, and manage your membership through StockMarketLoop Connect.</textarea></label>
+				<label>Description <textarea name="description" maxlength="500">Click the link to Join the Underlying Discord Group, unlock premium alerts, and manage your membership through StockMarketLoop Connect.</textarea></label>
 				<label>SEO title <input name="seoTitle" maxlength="160" placeholder="Making Easy Money Discord Group | StockMarketLoop Connect"></label>
 				<label>SEO description <textarea name="seoDescription" maxlength="300" placeholder="Join this trading Discord through StockMarketLoop Connect with premium alerts, subscriptions, and live market tools."></textarea></label>
 				<label class="smlcmh-check"><input type="checkbox" name="migratedPerksEnabled"> Billing migrated — unlock Connect perks</label>
@@ -501,6 +588,13 @@ function smlcmh_rest_campaign( WP_REST_Request $request ) {
 	}
 	$data['ownerUserId'] = smlcmh_current_owner_id( $data );
 	if ( empty( $data['publicSlug'] ) ) $data['publicSlug'] = smlcmh_group_slug_default( $group_id );
+	if ( ! empty( $data['guildName'] ) ) {
+		$data['guildName'] = sanitize_text_field( (string) $data['guildName'] );
+		$data['groupName'] = $data['guildName'];
+		$settings = isset( $data['settings'] ) && is_array( $data['settings'] ) ? $data['settings'] : array();
+		$settings['guildName'] = $data['guildName'];
+		$data['settings'] = $settings;
+	}
 	return rest_ensure_response( smlcmh_platform_post( '/v1/connect/migration/campaign', $data ) );
 }
 

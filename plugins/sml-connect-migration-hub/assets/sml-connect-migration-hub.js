@@ -32,7 +32,89 @@
       if (data[key] != null && data[key] !== '') data[key] = Number(data[key]);
     }
     if (form.elements.migratedPerksEnabled) data.migratedPerksEnabled = !!form.elements.migratedPerksEnabled.checked;
+    if (data.guildName) {
+      data.groupName = data.guildName;
+      data.settings = Object.assign({}, data.settings || {}, { guildName: data.guildName });
+    }
     return data;
+  }
+
+  function slugify(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/['’]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+  }
+
+  function withParam(url, key, value) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      if (value) parsed.searchParams.set(key, value);
+      return parsed.toString();
+    } catch (_) {
+      return url;
+    }
+  }
+
+  function signupWithRedirect(groupUrl) {
+    try {
+      const parsed = new URL(cfg.signupUrl || '/register/', window.location.origin);
+      parsed.searchParams.set('redirect_to', groupUrl);
+      parsed.searchParams.set('sml_connect', '1');
+      return parsed.toString();
+    } catch (_) {
+      return cfg.signupUrl || '/register/';
+    }
+  }
+
+  function bindOnboarding(root) {
+    const guildInput = root.querySelector('[data-smlcmh-guild-name]');
+    const upgradePanel = root.querySelector('[data-smlcmh-upgrade-panel]');
+    const createLink = root.querySelector('[data-smlcmh-create-group]');
+
+    root.querySelectorAll('[data-smlcmh-upgrade]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (!upgradePanel) return;
+        upgradePanel.hidden = button.getAttribute('data-smlcmh-upgrade') !== 'yes';
+      });
+    });
+
+    function refreshCreateLink() {
+      if (!createLink) return;
+      const name = guildInput ? guildInput.value.trim() : '';
+      const groupUrl = withParam(cfg.createGroupUrl || '/groups/create/', 'default_name', name);
+      createLink.href = cfg.isLoggedIn ? groupUrl : signupWithRedirect(groupUrl);
+      createLink.textContent = name ? `Yes — create "${name}" on StockMarketLoop` : 'Yes — create SML group';
+    }
+
+    if (guildInput) guildInput.addEventListener('input', refreshCreateLink);
+    refreshCreateLink();
+  }
+
+  function bindCampaignDefaults(form) {
+    const guildName = form.elements.guildName;
+    const slug = form.elements.publicSlug;
+    const headline = form.elements.headline;
+    const seoTitle = form.elements.seoTitle;
+    const seoDescription = form.elements.seoDescription;
+    if (!guildName) return;
+
+    guildName.addEventListener('input', () => {
+      const name = guildName.value.trim();
+      if (!name) return;
+      if (slug && !slug.dataset.userEdited) slug.value = slugify(name);
+      if (headline && !headline.dataset.userEdited) headline.value = `Join ${name} on StockMarketLoop Connect`;
+      if (seoTitle && !seoTitle.dataset.userEdited) seoTitle.value = `${name} Discord Group | StockMarketLoop Connect`;
+      if (seoDescription && !seoDescription.dataset.userEdited) seoDescription.value = `Join ${name} through StockMarketLoop Connect with premium Discord alerts, subscriptions, live market tools, and creator analytics.`;
+    });
+
+    [slug, headline, seoTitle, seoDescription].forEach((field) => {
+      if (!field) return;
+      field.addEventListener('input', () => { field.dataset.userEdited = '1'; });
+    });
   }
 
   function bindCampaign(form) {
@@ -100,7 +182,11 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-smlcmh-campaign-form]').forEach(bindCampaign);
+    document.querySelectorAll('[data-smlcmh-onboarding]').forEach(bindOnboarding);
+    document.querySelectorAll('[data-smlcmh-campaign-form]').forEach((form) => {
+      bindCampaignDefaults(form);
+      bindCampaign(form);
+    });
     document.querySelectorAll('[data-smlcmh-mapping-form]').forEach(bindMappings);
     document.querySelectorAll('[data-smlcmh-dashboard-form]').forEach(bindDashboard);
     document.querySelectorAll('[data-smlcmh-migrate-form]').forEach(bindMigrate);

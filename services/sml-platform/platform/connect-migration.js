@@ -67,6 +67,7 @@ function cleanImageUrl(value, field) {
 function cleanSettings(input = {}) {
   const settings = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   return {
+    guildName: cleanOptionalText(settings.guildName, 'guildName', 120),
     requireMigrationForPerks: settings.requireMigrationForPerks !== false,
     showLiveMessages: settings.showLiveMessages !== false,
     showStorefront: settings.showStorefront !== false,
