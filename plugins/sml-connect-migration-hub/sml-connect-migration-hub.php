@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Connect Migration Hub
  * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.6
+ * Version: 0.1.7
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.6';
+const SMLCMH_VERSION = '0.1.7';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
@@ -79,8 +79,20 @@ function smlcmh_decode_response( $response, $fallback ) {
 
 function smlcmh_can_manage_group( $group_id ) {
 	if ( current_user_can( 'manage_options' ) ) return true;
-	if ( function_exists( 'sml_dgc_can_manage' ) && sml_dgc_can_manage( absint( $group_id ) ) ) return true;
-	if ( function_exists( 'sml_platform_can_manage_group_billing' ) && sml_platform_can_manage_group_billing( absint( $group_id ) ) ) return true;
+	if ( function_exists( 'sml_dgc_can_manage' ) ) {
+		try {
+			if ( sml_dgc_can_manage( absint( $group_id ) ) ) return true;
+		} catch ( Throwable $e ) {
+			error_log( 'SML Connect manage check failed: sml_dgc_can_manage' );
+		}
+	}
+	if ( function_exists( 'sml_platform_can_manage_group_billing' ) ) {
+		try {
+			if ( sml_platform_can_manage_group_billing( absint( $group_id ) ) ) return true;
+		} catch ( Throwable $e ) {
+			error_log( 'SML Connect manage check failed: sml_platform_can_manage_group_billing' );
+		}
+	}
 	return false;
 }
 
