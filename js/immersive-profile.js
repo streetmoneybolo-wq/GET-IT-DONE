@@ -244,7 +244,11 @@
     '.sip-post-badge{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:1.4px;border-radius:999px;padding:3px 9px;}' +
     '.sip-post-time{font-size:11px;color:#6B7C90;font-family:"IBM Plex Mono",monospace;}' +
     '.sip-post-ctx{font-size:11.5px;color:#6B7C90;margin-bottom:4px;}' +
-    '.sip-post-text{font-size:13.5px;line-height:1.6;color:#E6EDF5;}' +
+    '.sip-post-text{font-size:13.5px;line-height:1.6;color:#E6EDF5;word-break:break-word;}' +
+    '.sip-post-text a.sip-tk{color:#35FF8D;font-weight:700;text-decoration:none;}' +
+    '.sip-post-text a.sip-mn{color:#5DB9FF;font-weight:700;text-decoration:none;white-space:nowrap;}.sip-post-text a.sip-mn:hover{text-decoration:underline;}' +
+    '.sip-post-text img.sip-mn-av,.sip-post-text .sip-mn-ph{display:inline-block;width:17px;height:17px;border-radius:50%;object-fit:cover;vertical-align:-3px;margin:0 4px 0 0;box-shadow:0 0 0 1.5px rgba(93,185,255,.75);background:linear-gradient(160deg,#24323F,#0E1620);}' +
+    '.sip-post-link{font-size:11.5px;line-height:1.4;color:#6B7C90;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.sip-post-link a{color:#6B7C90;text-decoration:none;}.sip-post-link a:hover{color:#93A4B8;text-decoration:underline;}' +
     '.sip-socials{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;}' +
     '.sip-social{display:flex;gap:12px;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(11,19,31,.6);border-radius:14px;padding:12px 14px;color:#E6EDF5;transform:translateY(calc(var(--kick,0)*-4px));}' +
     '.sip-social:hover{border-color:rgba(56,245,138,.6);background:rgba(56,245,138,.06);}' +
@@ -397,7 +401,9 @@
     var postHtml = cfg.posts.map(function (po) {
       return '<div class="sip-post"><div class="sip-post-h"><span class="sip-post-badge" style="color:' + esc(po.color) + ';border:1px solid ' + esc(po.color) + '">' + esc(po.type) + '</span><span class="sip-post-time">' + esc(po.time) + '</span></div>' +
         (po.ctx ? '<div class="sip-post-ctx">' + esc(po.ctx) + '</div>' : '') +
-        '<div class="sip-post-text">' + esc(po.text) + '</div></div>';
+        '<div class="sip-post-text">' + (po.html || esc(po.text)) + '</div>' +
+        (po.links && po.links.length ? '<div class="sip-post-link">' + po.links.slice(0, 3).map(function (u) { var href = /^https?:\/\//i.test(u) ? u : ('https://' + u); return '<a href="' + esc(href) + '" target="_blank" rel="noopener nofollow ugc">' + esc(u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')) + '</a>'; }).join(' · ') + '</div>' : '') +
+        '</div>';
     }).join('');
     var socialHtml = cfg.socials.map(function (so) {
       return '<a class="sip-social" href="' + esc(so.url || '#') + '"><span class="sip-social-tile" style="background:' + esc(so.tile) + ';color:' + esc(so.glyphColor || '#fff') + ';">' + esc(so.glyph) + '</span>' +
@@ -1493,9 +1499,37 @@
       uid ? get(mediaBase + uid + '/media') : null,
       att(mediaIds.banner_id), att(mediaIds.background_id),
       uid ? get('/wp-json/sml-social-profile/v1/public/' + uid) : null,
-      uid ? get('/wp-json/sml-profile/v2/profile/' + uid + '/customization') : null
+      uid ? get('/wp-json/sml-profile/v2/profile/' + uid + '/customization') : null,
+      uid ? get('/wp-json/sml-members/v1/profile-chart?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null
     ]).then(function (r) {
       var media = r[0] || {}, banner = r[1], bgm = r[2], soc = r[3], customization = r[4] || {};
+      /* Recent Activity = the member's real chart posts (sml-members profile-chart,
+         the same store the homepage feed shows). Owner call 2026-09-05: one body,
+         @tags as the tagged member's avatar + blue name, a typed link on the grey
+         line — nothing else under a post. */
+      var chart = (r[5] && Array.isArray(r[5].posts)) ? r[5].posts.slice(0, 12) : [];
+      var handles = {}; chart.forEach(function (po) { (po.mentions || []).forEach(function (h) { h = String(h || '').toLowerCase(); if (h) handles[h] = 1; }); });
+      var URL_RX = /\b(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
+      base.__chartPending = Promise.all(Object.keys(handles).slice(0, 10).map(function (h) {
+        return get('/wp-json/sml-site-search/v1/search?q=' + encodeURIComponent(h)).then(function (d) { var row = null; ((d && d.groups && d.groups.people) || []).forEach(function (p) { if (String(p.handle || '').toLowerCase() === h) row = p; }); return [h, row]; });
+      })).then(function (pairs) {
+        var MN = {}; pairs.forEach(function (pr) { if (pr[1]) MN[pr[0]] = pr[1]; });
+        function rich(text) {
+          return esc(text)
+            .replace(/(^|[\s(])(\$[A-Za-z][A-Za-z0-9.\-]{0,9})\b/g, function (m, pre, tok) { return pre + '<a class="sip-tk" href="/stock-chart/?symbol=' + encodeURIComponent(tok.slice(1).toUpperCase()) + '">' + tok + '</a>'; })
+            .replace(/(^|[\s(])@([A-Za-z0-9_.]{2,30})/g, function (m, pre, h) {
+              var tail = '', mm = h.match(/^(.*?)(\.+)$/); if (mm) { h = mm[1]; tail = mm[2]; } if (h.length < 2) return m;
+              var row = MN[h.toLowerCase()] || {}; var av = row.avatar ? '<img class="sip-mn-av" src="' + esc(row.avatar) + '" alt="" referrerpolicy="no-referrer">' : '<span class="sip-mn-ph"></span>';
+              return pre + '<a class="sip-mn" href="' + esc(row.url || ('/' + h.toLowerCase() + '/')) + '">' + av + esc(row.name || h) + '</a>' + tail;
+            });
+        }
+        base.posts = chart.map(function (po) {
+          var raw = String(po.text || '').replace(/\s+/g, ' ').trim(); var links = [];
+          var body = raw.replace(URL_RX, function (u) { links.push(u); return ' '; }).replace(/\s{2,}/g, ' ').trim();
+          var when = ''; try { var d = new Date(po.date); if (!isNaN(+d)) when = d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); } catch (e) {}
+          return { type: 'POST', color: '#38F58A', time: when, ctx: '', text: body, html: body ? rich(body) : '', links: links };
+        }).filter(function (po) { return po.text || po.links.length; });
+      }).catch(function () {});
       base.moduleVisibility = customization.module_visibility && typeof customization.module_visibility === 'object' ? customization.module_visibility : {};
       var orb = (media.orbital || []).slice(); var ov = (media.orbital_video || []).slice();
       var galleryPhoto = (media.gallery_photo || []).slice(); var galleryVideo = (media.gallery_video || []).slice();
@@ -1520,7 +1554,8 @@
         var v = String(it.value); var url = /^https?:\/\//i.test(v) ? v : (key === 'x' || key === 'twitter' ? 'https://x.com/' + v.replace(/^@/, '') : key === 'instagram' ? 'https://instagram.com/' + v.replace(/^@/, '') : key === 'youtube' ? 'https://youtube.com/' + (v[0] === '@' ? v : '@' + v) : key === 'tiktok' ? 'https://tiktok.com/@' + v.replace(/^@/, '') : /^[\w.-]+\.[a-z]{2,}/i.test(v) ? 'https://' + v : '#');
         return { name: it.label || key, handle: v, url: url, glyph: t[0], tile: t[1], glyphColor: '#fff', glow: 'rgba(56,245,138,.25)', desc: '' };
       });
-      return base;
+      var pending = base.__chartPending; delete base.__chartPending;
+      return pending ? pending.then(function () { return base; }) : base;
     });
   }
   function syncOverlayTop(mount) {
