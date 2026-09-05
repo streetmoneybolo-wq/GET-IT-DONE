@@ -1165,9 +1165,9 @@
     // Seeded by the member typeahead (the picker row already carries it) and
     // completed from the site's own people search; kept for the session. ----
     var MN={}, mnPending={};
-    try{ var mnS=JSON.parse(sessionStorage.getItem('sml-hf-mn')||'{}'); if(mnS&&typeof mnS==='object') MN=mnS; }catch(e){}
-    function mnSave(){ try{ sessionStorage.setItem('sml-hf-mn', JSON.stringify(MN)); }catch(e){} }
-    function mnGet(h){ return MN[String(h||'').toLowerCase()]||null; }
+    try{ var mnS=JSON.parse(sessionStorage.getItem('sml-hf-mn2')||'{}'); if(mnS&&typeof mnS==='object') MN=mnS; }catch(e){}
+    function mnSave(){ try{ sessionStorage.setItem('sml-hf-mn2', JSON.stringify(MN)); }catch(e){} }
+    function mnGet(h){ var r=MN[String(h||'').toLowerCase()]||null; return (r&&!r.miss&&!r.id)?null:r; /* id-less rows are stale */ }
     function mnSet(h,row){ h=String(h||'').toLowerCase(); if(!h||!row) return; MN[h]={n:String(row.n||row.name||h),av:String(row.av||row.avatar||''),u:String(row.u||row.url||('/'+h+'/')),id:Number(row.id||0)||0}; mnSave(); }
     /* the member id on the link is what the site's hover-card plugin keys on
        (a[data-sml-user-id]) — hovering a tagged name shows their profile card */
