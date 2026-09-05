@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Connect Migration Hub
  * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.5
+ * Version: 0.1.6
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.5';
+const SMLCMH_VERSION = '0.1.6';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
@@ -182,14 +182,6 @@ function smlcmh_install_pages() {
 	smlcmh_ensure_page( 'connect-dashboard', 'StockMarketLoop Connect Dashboard', '[sml_connect_dashboard]' );
 	smlcmh_ensure_page( 'connect-migrate', 'Move Your Discord Membership to StockMarketLoop', '[sml_connect_migrate]' );
 }
-
-add_action( 'plugins_loaded', function () {
-	if ( get_option( 'smlcmh_version' ) === SMLCMH_VERSION ) return;
-	smlcmh_install_pages();
-	smlcmh_rewrite_rules();
-	flush_rewrite_rules();
-	update_option( 'smlcmh_version', SMLCMH_VERSION, false );
-} );
 
 function smlcmh_deactivate() {
 	flush_rewrite_rules();
