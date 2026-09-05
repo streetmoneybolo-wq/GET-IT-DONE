@@ -400,7 +400,7 @@
 
     var postHtml = cfg.posts.map(function (po) {
       return '<div class="sip-post"><div class="sip-post-h"><span class="sip-post-badge" style="color:' + esc(po.color) + ';border:1px solid ' + esc(po.color) + '">' + esc(po.type) + '</span><span class="sip-post-time">' + esc(po.time) + '</span></div>' +
-        (po.ctx ? '<div class="sip-post-ctx">' + esc(po.ctx) + '</div>' : '') +
+        (po.ctx ? '<div class="sip-post-ctx">' + (po.ctxUrl ? '<a href="' + esc(po.ctxUrl) + '" style="color:inherit;text-decoration:none">' + esc(po.ctx) + '</a>' : esc(po.ctx)) + '</div>' : '') +
         '<div class="sip-post-text">' + (po.html || esc(po.text)) + '</div>' +
         (po.links && po.links.length ? '<div class="sip-post-link">' + po.links.slice(0, 3).map(function (u) { var href = /^https?:\/\//i.test(u) ? u : ('https://' + u); return '<a href="' + esc(href) + '" target="_blank" rel="noopener nofollow ugc">' + esc(u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')) + '</a>'; }).join(' · ') + '</div>' : '') +
         '</div>';
@@ -1500,7 +1500,8 @@
       att(mediaIds.banner_id), att(mediaIds.background_id),
       uid ? get('/wp-json/sml-social-profile/v1/public/' + uid) : null,
       uid ? get('/wp-json/sml-profile/v2/profile/' + uid + '/customization') : null,
-      uid ? get('/wp-json/sml-members/v1/profile-chart?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null
+      uid ? get('/wp-json/sml-members/v1/profile-chart?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null,
+      uid ? get('/wp-json/sml-members/v1/tagged-posts?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null
     ]).then(function (r) {
       var media = r[0] || {}, banner = r[1], bgm = r[2], soc = r[3], customization = r[4] || {};
       /* Recent Activity = the member's real chart posts (sml-members profile-chart,
@@ -1508,6 +1509,11 @@
          @tags as the tagged member's avatar + blue name, a typed link on the grey
          line — nothing else under a post. */
       var chart = (r[5] && Array.isArray(r[5].posts)) ? r[5].posts.slice(0, 12) : [];
+      /* a friend's post that @tags this member shows up here too (owner call
+         2026-09-05); the route excludes the member's own posts, so no doubles */
+      var tagged = (r[6] && Array.isArray(r[6].posts)) ? r[6].posts.slice(0, 12) : [];
+      tagged.forEach(function (po) { po.__tagged = true; });
+      chart = chart.concat(tagged).sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); }).slice(0, 20);
       var handles = {}; chart.forEach(function (po) { (po.mentions || []).forEach(function (h) { h = String(h || '').toLowerCase(); if (h) handles[h] = 1; }); });
       var URL_RX = /\b(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
       base.__chartPending = Promise.all(Object.keys(handles).slice(0, 10).map(function (h) {
@@ -1527,7 +1533,8 @@
           var raw = String(po.text || '').replace(/\s+/g, ' ').trim(); var links = [];
           var body = raw.replace(URL_RX, function (u) { links.push(u); return ' '; }).replace(/\s{2,}/g, ' ').trim();
           var when = ''; try { var d = new Date(po.date); if (!isNaN(+d)) when = d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); } catch (e) {}
-          return { type: 'POST', color: '#38F58A', time: when, ctx: '', text: body, html: body ? rich(body) : '', links: links };
+          var by = po.__tagged ? (po.tagged_by || {}) : null;
+          return { type: by ? 'TAGGED' : 'POST', color: by ? '#5DB9FF' : '#38F58A', time: when, ctx: by ? ('Tagged by ' + (by.name || by.handle || 'a member')) : '', ctxUrl: by ? (by.url || '') : '', text: body, html: body ? rich(body) : '', links: links };
         }).filter(function (po) { return po.text || po.links.length; });
       }).catch(function () {});
       base.moduleVisibility = customization.module_visibility && typeof customization.module_visibility === 'object' ? customization.module_visibility : {};
