@@ -149,6 +149,84 @@
     });
   }
 
+  function dollarsToCents(value) {
+    const normalized = String(value || '').replace(/[^0-9.]/g, '');
+    if (!normalized) return 0;
+    return Math.round(Number(normalized) * 100);
+  }
+
+  function roleRefs(value) {
+    return String(value || '')
+      .split(/[,\n]/)
+      .map((entry) => entry.replace(/\D/g, '').trim())
+      .filter((entry) => /^[0-9]{15,24}$/.test(entry));
+  }
+
+  function bindMemberships(form) {
+    const root = form.closest('[data-smlcmh-dashboard]') || document;
+    const rows = form.querySelector('[data-smlcmh-membership-rows]');
+    const add = form.querySelector('[data-smlcmh-add-membership]');
+    if (!rows) return;
+
+    function rowData(row) {
+      const get = (field) => {
+        const el = row.querySelector(`[data-field="${field}"]`);
+        return el ? el.value.trim() : '';
+      };
+      const name = get('name');
+      return {
+        name,
+        slug: slugify(name),
+        priceCents: dollarsToCents(get('priceDollars')),
+        interval: get('interval') || 'monthly',
+        currency: 'usd',
+        trialDays: Number(get('trialDays') || 0),
+        externalProductRef: get('externalProductRef'),
+        discordRoleRefs: roleRefs(get('discordRoleRefs')),
+        cardTitle: name,
+        cardDescription: get('cardDescription') || `${name || 'Membership'} managed by StockMarketLoop Connect.`
+      };
+    }
+
+    function bindRow(row) {
+      const remove = row.querySelector('[data-smlcmh-remove-membership]');
+      if (remove) {
+        remove.addEventListener('click', () => {
+          if (rows.querySelectorAll('[data-smlcmh-membership-row]').length > 1) row.remove();
+        });
+      }
+    }
+
+    rows.querySelectorAll('[data-smlcmh-membership-row]').forEach(bindRow);
+    if (add) {
+      add.addEventListener('click', () => {
+        const first = rows.querySelector('[data-smlcmh-membership-row]');
+        if (!first) return;
+        const clone = first.cloneNode(true);
+        clone.querySelectorAll('input, textarea').forEach((el) => { el.value = ''; });
+        clone.querySelectorAll('select').forEach((el) => { el.value = 'monthly'; });
+        rows.appendChild(clone);
+        bindRow(clone);
+      });
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      output(root, 'Saving memberships, prices, intervals, products, and Discord roles…');
+      try {
+        const data = formData(form);
+        data.memberships = [...rows.querySelectorAll('[data-smlcmh-membership-row]')]
+          .map(rowData)
+          .filter((row) => row.name && row.priceCents >= 0);
+        if (!data.memberships.length) throw new Error('Add at least one membership.');
+        const result = await post('memberships', data);
+        output(root, result);
+      } catch (error) {
+        output(root, `Error: ${error.message}`);
+      }
+    });
+  }
+
   function bindDashboard(form) {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -187,6 +265,7 @@
       bindCampaign(form);
     });
     document.querySelectorAll('[data-smlcmh-mapping-form]').forEach(bindMappings);
+    document.querySelectorAll('[data-smlcmh-membership-form]').forEach(bindMemberships);
     document.querySelectorAll('[data-smlcmh-dashboard-form]').forEach(bindDashboard);
     document.querySelectorAll('[data-smlcmh-migrate-form]').forEach(bindMigrate);
   });

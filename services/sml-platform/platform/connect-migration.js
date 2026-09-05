@@ -13,6 +13,7 @@ const DEFAULT_PERKS = Object.freeze([
   'loop_letter_bundle',
   'discord_role_sync'
 ]);
+const INTERVALS = new Set(['daily', 'weekly', 'monthly', 'yearly', 'lifetime']);
 
 function cleanText(value, field, { min = 1, max = 240 } = {}) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -24,6 +25,22 @@ function cleanText(value, field, { min = 1, max = 240 } = {}) {
 function cleanOptionalText(value, field, max = 240) {
   if (value == null || String(value).trim() === '') return null;
   return cleanText(value, field, { min: 1, max });
+}
+
+function cleanPlanSlug(value, fallback) {
+  return cleanSlug(value || fallback || 'membership-plan');
+}
+
+function cleanMoneyCents(value, field) {
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 0 || n > 1_000_000_00) throw new TypeError(`${field} must be a valid cent amount`);
+  return n;
+}
+
+function cleanInterval(value) {
+  const interval = String(value || 'monthly').trim().toLowerCase();
+  if (!INTERVALS.has(interval)) throw new TypeError('interval must be daily, weekly, monthly, yearly, or lifetime');
+  return interval;
 }
 
 function cleanSlug(value) {
@@ -247,6 +264,96 @@ async function replacePlanMappings(pool, input = {}) {
   return dashboard(pool, { groupId, ownerUserId });
 }
 
+async function replaceMemberships(pool, input = {}) {
+  const { groupId, ownerUserId } = assertOwner(input);
+  const memberships = Array.isArray(input.memberships) ? input.memberships : [];
+  if (!memberships.length) throw new TypeError('at least one membership is required');
+  const campaign = await pool.query(
+    `SELECT * FROM connect_migration_campaigns WHERE group_id = $1 AND owner_user_id = $2 AND status <> 'archived'`,
+    [groupId, ownerUserId]
+  );
+  const campaignRow = campaign.rows[0];
+  if (!campaignRow) throw new TypeError('connect campaign not found for this owner and group');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE connect_plan_mappings SET active = false WHERE campaign_id = $1', [campaignRow.id]);
+    let order = 0;
+    for (const membership of memberships.slice(0, 50)) {
+      const name = cleanText(membership.name || membership.cardTitle, 'membership name', { max: 120 });
+      const slug = cleanPlanSlug(membership.slug, name);
+      const interval = cleanInterval(membership.interval);
+      const priceCents = cleanMoneyCents(membership.priceCents, 'priceCents');
+      const currency = /^[A-Za-z]{3}$/.test(String(membership.currency || 'usd')) ? String(membership.currency || 'usd').toLowerCase() : 'usd';
+      const trialDays = Number.isSafeInteger(Number(membership.trialDays)) && Number(membership.trialDays) >= 0 && Number(membership.trialDays) <= 365
+        ? Number(membership.trialDays) : 0;
+      const externalProductRef = cleanOptionalText(membership.externalProductRef || membership.upgradeChatProductRef, 'externalProductRef', 120);
+      const roleRefs = Array.isArray(membership.discordRoleRefs)
+        ? membership.discordRoleRefs.map((r) => cleanSnowflake(r, 'discordRoleRef')).slice(0, 20)
+        : [];
+      const cardTitle = cleanOptionalText(membership.cardTitle || name, 'cardTitle', 140);
+      const cardDescription = cleanOptionalText(membership.cardDescription || `${name} membership managed by StockMarketLoop Connect.`, 'cardDescription', 300);
+
+      const plan = await client.query(
+        `INSERT INTO group_plans (
+           group_id, slug, name, interval_key, price_cents, currency, platform_fee_bps, trial_days, grace_days, active
+         ) VALUES ($1,$2,$3,$4,$5,$6,500,$7,3,true)
+         ON CONFLICT (group_id, slug) DO UPDATE SET
+           name = EXCLUDED.name,
+           interval_key = EXCLUDED.interval_key,
+           price_cents = EXCLUDED.price_cents,
+           currency = EXCLUDED.currency,
+           trial_days = EXCLUDED.trial_days,
+           active = true
+         RETURNING id`,
+        [groupId, slug, name, interval, priceCents, currency, trialDays]
+      );
+      const planId = Number(plan.rows[0].id);
+
+      await client.query(`DELETE FROM plan_role_grants WHERE plan_id = $1 AND target = 'discord_guild_role'`, [planId]);
+      for (const roleRef of roleRefs) {
+        await client.query(
+          `INSERT INTO plan_role_grants (plan_id, target, role_ref)
+           VALUES ($1, 'discord_guild_role', $2)
+           ON CONFLICT DO NOTHING`,
+          [planId, roleRef]
+        );
+      }
+
+      await client.query(
+        `INSERT INTO connect_plan_mappings (
+           campaign_id, group_plan_id, external_product_ref, discord_role_refs,
+           card_title, card_description, display_order, active
+         ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,true)
+         ON CONFLICT (campaign_id, group_plan_id) DO UPDATE SET
+           external_product_ref = EXCLUDED.external_product_ref,
+           discord_role_refs = EXCLUDED.discord_role_refs,
+           card_title = EXCLUDED.card_title,
+           card_description = EXCLUDED.card_description,
+           display_order = EXCLUDED.display_order,
+           active = true,
+           updated_at = now()`,
+        [campaignRow.id, planId, externalProductRef, JSON.stringify(roleRefs), cardTitle, cardDescription, order++]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
+    throw error;
+  } finally {
+    client.release();
+  }
+  await recordEvent(pool, {
+    campaignId: campaignRow.id,
+    groupId,
+    ownerUserId,
+    eventType: 'settings_updated',
+    metadata: { memberships: memberships.length }
+  });
+  return dashboard(pool, { groupId, ownerUserId });
+}
+
 async function dashboard(pool, input = {}) {
   const { groupId, ownerUserId } = assertOwner(input);
   const campaign = await pool.query(
@@ -422,6 +529,7 @@ module.exports = {
   migrationRequiredBanner,
   publicHomepage,
   replacePlanMappings,
+  replaceMemberships,
   dashboard,
   recordEvent,
   upsertCampaign

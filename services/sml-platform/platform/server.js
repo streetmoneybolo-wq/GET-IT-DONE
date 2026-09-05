@@ -430,6 +430,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       await handleConnectRequest(request, response, connectOptions, connectMigration.replacePlanMappings);
       return;
     }
+    if (request.method === 'POST' && path === '/v1/connect/migration/memberships') {
+      await handleConnectRequest(request, response, connectOptions, connectMigration.replaceMemberships);
+      return;
+    }
     if (request.method === 'POST' && path === '/v1/connect/migration/dashboard') {
       await handleConnectRequest(request, response, connectOptions, connectMigration.dashboard);
       return;

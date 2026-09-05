@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Connect Migration Hub
  * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.3
+ * Version: 0.1.4
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.3';
+const SMLCMH_VERSION = '0.1.4';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
@@ -390,21 +390,35 @@ add_shortcode( 'sml_connect_dashboard', function () {
 				<button class="smlcmh-btn smlcmh-btn-gold" type="submit">Save group page</button>
 			</form>
 			<div class="smlcmh-card">
-				<h3>2. Map Upgrade.Chat products, Discord roles, and SML plans</h3>
-				<p class="smlcmh-muted">Paste JSON mappings. This tells StockMarketLoop which old Upgrade.Chat product equals which StockMarketLoop subscription plan and which Discord role(s) the bot keeps active.</p>
-				<form data-smlcmh-mapping-form>
+				<h3>2. Build memberships like Upgrade.Chat — no code</h3>
+				<p class="smlcmh-muted">Create subscription prices, choose billing intervals, attach the old Upgrade.Chat product, and link the Discord role the member should receive. Owners should select things — not paste code.</p>
+				<form data-smlcmh-membership-form>
 					<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
 					<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
-					<textarea name="mappings" rows="12">[
-  {
-    "planId": 1,
-    "externalProductRef": "upgrade-chat-product-uuid",
-    "discordRoleRefs": ["123456789012345678"],
-    "cardTitle": "VIP Alerts",
-    "cardDescription": "Premium Discord alerts powered by StockMarketLoop Connect."
-  }
-]</textarea>
-					<button class="smlcmh-btn" type="submit">Save mappings</button>
+					<div class="smlcmh-membership-rows" data-smlcmh-membership-rows>
+						<div class="smlcmh-membership-row" data-smlcmh-membership-row>
+							<label>Membership name <input data-field="name" placeholder="VIP Alerts"></label>
+							<label>Price <input data-field="priceDollars" inputmode="decimal" placeholder="49.99"></label>
+							<label>Billing interval
+								<select data-field="interval">
+									<option value="monthly">Monthly</option>
+									<option value="weekly">Weekly</option>
+									<option value="yearly">Yearly</option>
+									<option value="daily">Daily</option>
+									<option value="lifetime">Lifetime</option>
+								</select>
+							</label>
+							<label>Free trial days <input data-field="trialDays" inputmode="numeric" placeholder="0"></label>
+							<label>Imported Upgrade.Chat product <input data-field="externalProductRef" placeholder="Product name or imported product ID"></label>
+							<label>Discord role to give <input data-field="discordRoleRefs" placeholder="Select role when imported, or paste role ID"></label>
+							<label>Store card description <textarea data-field="cardDescription" placeholder="Premium Discord alerts powered by StockMarketLoop Connect."></textarea></label>
+							<button class="smlcmh-btn smlcmh-btn-small" type="button" data-smlcmh-remove-membership>Remove membership</button>
+						</div>
+					</div>
+					<div class="smlcmh-actions">
+						<button class="smlcmh-btn" type="button" data-smlcmh-add-membership>Add membership</button>
+						<button class="smlcmh-btn smlcmh-btn-gold" type="submit">Save memberships</button>
+					</div>
 				</form>
 				<hr>
 				<form data-smlcmh-dashboard-form>
@@ -565,6 +579,11 @@ add_action( 'rest_api_init', function () {
 		'callback'            => 'smlcmh_rest_dashboard',
 		'permission_callback' => 'is_user_logged_in',
 	) );
+	register_rest_route( 'sml-connect/v1', '/memberships', array(
+		'methods'             => 'POST',
+		'callback'            => 'smlcmh_rest_memberships',
+		'permission_callback' => 'is_user_logged_in',
+	) );
 	register_rest_route( 'sml-connect/v1', '/migrate/upgrade-chat', array(
 		'methods'             => 'POST',
 		'callback'            => 'smlcmh_rest_migrate_upgrade_chat',
@@ -613,6 +632,16 @@ function smlcmh_rest_dashboard( WP_REST_Request $request ) {
 	}
 	$data['ownerUserId'] = smlcmh_current_owner_id( $data );
 	return rest_ensure_response( smlcmh_platform_post( '/v1/connect/migration/dashboard', $data ) );
+}
+
+function smlcmh_rest_memberships( WP_REST_Request $request ) {
+	$data     = smlcmh_rest_payload( $request );
+	$group_id = isset( $data['groupId'] ) ? absint( $data['groupId'] ) : 0;
+	if ( ! $group_id || ! smlcmh_can_manage_group( $group_id ) ) {
+		return new WP_Error( 'smlcmh_forbidden', 'Only the group owner or an administrator can manage Connect memberships.', array( 'status' => 403 ) );
+	}
+	$data['ownerUserId'] = smlcmh_current_owner_id( $data );
+	return rest_ensure_response( smlcmh_platform_post( '/v1/connect/migration/memberships', $data ) );
 }
 
 function smlcmh_rest_migrate_upgrade_chat( WP_REST_Request $request ) {
