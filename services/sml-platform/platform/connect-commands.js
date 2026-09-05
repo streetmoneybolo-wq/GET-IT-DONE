@@ -249,6 +249,14 @@ function createConnectCommands(deps = {}) {
     });
   }
 
+  function ownerDashboardUrl({ guildId, guildName } = {}) {
+    return urlWithParams('/connect-dashboard/', {
+      guild_id: guildId || '',
+      default_name: guildName || '',
+      flow: 'upgrade-chat-migration'
+    });
+  }
+
   function setupIntro({ guildId, guildName } = {}) {
     const server = guildName ? `Server detected: ${guildName}.` : `Server detected by ID: ${guildId || 'unknown'}.`;
     return {
@@ -275,8 +283,11 @@ function createConnectCommands(deps = {}) {
     return {
       content: [
         migrated
-          ? 'Migration path selected. No migration fee, no double billing, and members keep their verified next payment date.'
+          ? 'Migration path selected. Next step: map Upgrade.Chat products, Discord roles, and StockMarketLoop subscription plans on the owner dashboard.'
           : 'Upgrade.Chat migration skipped. You can still use StockMarketLoop Connect for this Discord server.',
+        migrated
+          ? 'After mapping, members get their own migration checkout link. Each member confirms Discord, accepts StockMarketLoop billing, keeps access, and their new SML subscription starts on the same verified next billing date.'
+          : '',
         '',
         'Do you want to create a StockMarketLoop Group for this Discord?',
         nameLine,
@@ -286,10 +297,15 @@ function createConnectCommands(deps = {}) {
       components: [{
         type: 1,
         components: [
-          { type: 2, style: 5, label: 'Yes — create SML group', url: groupCreateUrl({ guildId, guildName }) },
           migrated
-            ? { type: 2, style: 5, label: 'Start Upgrade.Chat migration', url: migrateUrl({ guildId, guildName }) }
-            : { type: 2, style: 2, label: 'No — bot only for now', custom_id: 'sml_connect:group:no' }
+            ? { type: 2, style: 5, label: 'Map products / roles / plans', url: ownerDashboardUrl({ guildId, guildName }) }
+            : { type: 2, style: 5, label: 'Yes — create SML group', url: groupCreateUrl({ guildId, guildName }) },
+          migrated
+            ? { type: 2, style: 5, label: 'Create SML group', url: groupCreateUrl({ guildId, guildName }) }
+            : { type: 2, style: 2, label: 'No — bot only for now', custom_id: 'sml_connect:group:no' },
+          migrated
+            ? { type: 2, style: 5, label: 'Member migration page', url: migrateUrl({ guildId, guildName }) }
+            : { type: 2, style: 2, label: 'Run setup later', custom_id: 'sml_connect:group:no' }
         ]
       }]
     };

@@ -257,7 +257,7 @@ test('a signed component button is routed to the Connect setup handler', async (
   const parsed = response.json();
   assert.equal(parsed.type, 4);
   assert.equal(parsed.data.flags, 64);
-  assert.match(parsed.data.content, /No migration fee/);
+  assert.match(parsed.data.content, /map Upgrade.Chat products/);
   assert.match(parsed.data.content, /Making Easy Money/);
 });
 

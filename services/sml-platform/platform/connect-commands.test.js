@@ -152,12 +152,14 @@ test('Upgrade.Chat yes button offers migration and group creation with Discord n
     data: { custom_id: 'sml_connect:uc:yes' }
   }));
   assert.equal(result.response.data.flags, 64);
-  assert.match(result.response.data.content, /No migration fee/);
+  assert.match(result.response.data.content, /map Upgrade.Chat products, Discord roles, and StockMarketLoop subscription plans/);
+  assert.match(result.response.data.content, /same verified next billing date/);
   assert.match(result.response.data.content, /Making Easy Money/);
   const buttons = result.response.data.components[0].components;
   assert.equal(buttons[0].style, 5);
-  assert.match(buttons[0].url, /default_name=Making\+Easy\+Money/);
-  assert.match(buttons[1].url, /connect-migrate/);
+  assert.match(buttons[0].url, /connect-dashboard/);
+  assert.match(buttons[1].url, /default_name=Making\+Easy\+Money/);
+  assert.match(buttons[2].url, /connect-migrate/);
   assert.equal(audits.at(-1).fields.detail.outcome, 'upgrade_chat_yes');
 });
 

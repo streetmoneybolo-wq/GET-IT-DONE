@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Connect Migration Hub
  * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.2
+ * Version: 0.1.3
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.2';
+const SMLCMH_VERSION = '0.1.3';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
@@ -313,7 +313,7 @@ add_shortcode( 'sml_connect_landing', function () {
 		<div class="smlcmh-hero">
 			<p class="smlcmh-kicker">StockMarketLoop Connect</p>
 			<h1>Install the StockMarketLoop Connect Bot first.</h1>
-			<p>The Discord owner installs the bot into their server first. Then they run <code>/connect-setup</code> inside Discord and answer the Upgrade.Chat and StockMarketLoop Group questions with yes/no buttons from the bot.</p>
+			<p>The Discord owner installs the bot first, runs <code>/connect-setup</code>, answers the yes/no buttons inside Discord, maps products/roles/plans on StockMarketLoop, then sends members their own migration checkout link.</p>
 			<div class="smlcmh-actions">
 				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( $install_url ); ?>" target="_blank" rel="noopener">1. Install StockMarketLoop Connect Bot</a>
 				<a class="smlcmh-btn" href="<?php echo esc_url( home_url( '/connect-dashboard/' ) ); ?>">Owner dashboard</a>
@@ -321,7 +321,7 @@ add_shortcode( 'sml_connect_landing', function () {
 		</div>
 		<div class="smlcmh-card smlcmh-flow-card">
 			<p class="smlcmh-kicker">Owner setup flow</p>
-			<h2>The bot handles the questions inside Discord.</h2>
+			<h2>The migration starts with a button, but each member confirms their own billing.</h2>
 			<div class="smlcmh-step">
 				<strong>1. Run <code>/connect-setup</code> in the Discord server.</strong>
 				<p>The bot detects the server ID and, when available from Discord, the server name.</p>
@@ -331,13 +331,21 @@ add_shortcode( 'sml_connect_landing', function () {
 				<p>If yes, it offers migration with no migration fee, no double billing, and the same verified next payment date. If no, it skips migration.</p>
 			</div>
 			<div class="smlcmh-step">
-				<strong>3. The bot asks: “Create a StockMarketLoop Group?”</strong>
-				<p class="smlcmh-muted">If yes, the owner is sent to create a StockMarketLoop account and group. The group name defaults to the exact Discord server name.</p>
+				<strong>3. Owner maps the migration on StockMarketLoop.</strong>
+				<p class="smlcmh-muted">The owner connects/logs into StockMarketLoop, maps Upgrade.Chat products, Discord roles, and StockMarketLoop subscription plans, then publishes the migration link.</p>
+			</div>
+			<div class="smlcmh-step">
+				<strong>4. Members opt in and keep access.</strong>
+				<p class="smlcmh-muted">Each member clicks their migration link, confirms Discord, accepts StockMarketLoop billing, keeps their role active, and starts the SML subscription on the same verified next billing date.</p>
+			</div>
+			<div class="smlcmh-step">
+				<strong>5. StockMarketLoop takes over after migration.</strong>
+				<p class="smlcmh-muted">After migration, StockMarketLoop controls billing, Discord roles, analytics, dispute evidence, storefront, live pages, Loop Letters, and Retail Trader Spotlight.</p>
 			</div>
 		</div>
 		<div class="smlcmh-grid">
 			<div class="smlcmh-card"><h3>Bot first, migration second</h3><p>The Discord owner installs StockMarketLoop Connect before any migration, so role sync, security, and server detection can start from the actual Discord server.</p></div>
-			<div class="smlcmh-card"><h3>Ask when detection is unclear</h3><p>If Upgrade.Chat cannot be detected, the page directly asks the owner whether they use it, then shows the correct migration or non-migration path.</p></div>
+			<div class="smlcmh-card"><h3>Ask when detection is unclear</h3><p>If Upgrade.Chat cannot be detected, the bot asks the owner whether they use it, then shows the correct migration or non-migration path.</p></div>
 			<div class="smlcmh-card"><h3>Exact Discord name by default</h3><p>When the owner creates a StockMarketLoop group, the default name is the Discord server name so branding stays stable.</p></div>
 			<div class="smlcmh-card"><h3>Perks unlock with SML</h3><p>Connect can become the Upgrade.Chat alternative plus public homepage, live page, store, Loop Letter, analytics, roles, dispute defense, and Retail Trader Spotlight.</p></div>
 		</div>
@@ -355,14 +363,14 @@ add_shortcode( 'sml_connect_dashboard', function () {
 		<div class="smlcmh-hero smlcmh-hero-compact">
 			<p class="smlcmh-kicker">Owner command center</p>
 			<h2>StockMarketLoop Connect migration dashboard</h2>
-			<p>Install the bot first, create the clickable Discord card, publish the indexed homepage, map prices/roles, and unlock Connect perks after billing migration.</p>
+			<p>Install the bot first, create the clickable Discord card, map Upgrade.Chat products to Discord roles and StockMarketLoop plans, then publish member migration links.</p>
 			<div class="smlcmh-actions">
 				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( smlcmh_discord_install_url() ); ?>" target="_blank" rel="noopener">Install StockMarketLoop Connect Bot</a>
 			</div>
 		</div>
 		<div class="smlcmh-grid smlcmh-grid-2">
 			<form class="smlcmh-card" data-smlcmh-campaign-form>
-				<h3>1. Publish Discord group page</h3>
+				<h3>1. Create the Discord group homepage</h3>
 				<label>Discord server name <input name="guildName" maxlength="120" required placeholder="Making Easy Money"></label>
 				<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
 				<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
@@ -382,8 +390,8 @@ add_shortcode( 'sml_connect_dashboard', function () {
 				<button class="smlcmh-btn smlcmh-btn-gold" type="submit">Save group page</button>
 			</form>
 			<div class="smlcmh-card">
-				<h3>2. Map plans and Discord roles</h3>
-				<p class="smlcmh-muted">Paste JSON mappings. This lets SML know which SML plan equals which Upgrade.Chat product and which Discord role(s) the bot manages.</p>
+				<h3>2. Map Upgrade.Chat products, Discord roles, and SML plans</h3>
+				<p class="smlcmh-muted">Paste JSON mappings. This tells StockMarketLoop which old Upgrade.Chat product equals which StockMarketLoop subscription plan and which Discord role(s) the bot keeps active.</p>
 				<form data-smlcmh-mapping-form>
 					<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
 					<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
@@ -421,8 +429,8 @@ add_shortcode( 'sml_connect_migrate', function () {
 	<section class="smlcmh-shell" data-smlcmh-migrate>
 		<div class="smlcmh-hero smlcmh-hero-compact">
 			<p class="smlcmh-kicker">Subscriber migration</p>
-			<h2>Move your Discord membership without changing your next payment date.</h2>
-			<p>StockMarketLoop verifies your existing Upgrade.Chat membership, keeps your paid access through the verified renewal date, then starts your SML subscription on that same billing day.</p>
+			<h2>Confirm your move to StockMarketLoop without changing your next payment date.</h2>
+			<p>Each member confirms their own migration. StockMarketLoop verifies the existing Upgrade.Chat membership, keeps paid Discord access through the verified renewal date, then starts the SML subscription on that same billing day.</p>
 		</div>
 		<form class="smlcmh-card" data-smlcmh-migrate-form>
 			<label>Group ID <input name="groupId" inputmode="numeric" required></label>
