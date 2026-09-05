@@ -1191,10 +1191,17 @@
         .replace(/(^|[\s(])@([A-Za-z0-9_.]{2,30})/g,function(m,pre,h){ var tail='', mm=h.match(/^(.*?)(\.+)$/); if(mm){ h=mm[1]; tail=mm[2]; } if(h.length<2) return m; return pre+mentionHTML(h)+tail; });
     }
     function richenChartCards(){
-      host.querySelectorAll('article.oh-post[data-hfe-item^="chart-"]').forEach(function(card){
-        if(card.getAttribute('data-sml-rich')) return;
+      host.querySelectorAll('article.oh-post[data-hfe-item]').forEach(function(card){
+        if(card.getAttribute('data-sml-rich')||card.classList.contains('sml-signal-feed-post')) return;
+        var item=card.getAttribute('data-hfe-item')||'';
+        if(/^wp-/.test(item)) return; /* articles keep headline + excerpt */
         var h2=card.querySelector(':scope > h2'), p=card.querySelector(':scope > p');
-        var raw=String((p||h2||{}).textContent||'').replace(/\s+/g,' ').trim();
+        var hn=h2?String(h2.textContent||'').replace(/\s+/g,' ').trim():'', pn=p?String(p.textContent||'').replace(/\s+/g,' ').trim():'';
+        /* chart posts always; any other activity card (ticker-stream comments
+           etc.) only when its headline is the body again, or a trimmed copy */
+        var dup=!!(hn&&pn&&(hn===pn||(/\.\.\.$/.test(hn)&&pn.indexOf(hn.replace(/\.\.\.$/,'').trim())===0)||(/\.\.\.$/.test(pn)&&hn.indexOf(pn.replace(/\.\.\.$/,'').trim())===0)));
+        if(!/^chart-/.test(item)&&!dup) return;
+        var raw=pn||hn;
         if(!raw) return;
         card.setAttribute('data-sml-rich','1'); /* CSS hides the duplicate h2; it stays for feed keys */
         if(!p){ p=document.createElement('p'); if(h2) h2.insertAdjacentElement('afterend',p); else card.appendChild(p); }
@@ -1392,7 +1399,7 @@
           composerInput.style.caretColor=cs.color; /* keep the native caret visible... */
           composerInput.style.color='transparent'; /* ...while the overlay owns the glyphs */
         }
-        var atW=0; try{ var mc=paint.__mc||(paint.__mc=document.createElement('canvas').getContext('2d')); mc.font='800 '+cs.fontSize+' '+cs.fontFamily; atW=mc.measureText('@').width; }catch(e){}
+        var atW=0; try{ var ms=paint.__ms; if(!ms){ ms=paint.__ms=document.createElement('span'); ms.textContent='@'; ms.setAttribute('aria-hidden','true'); wrap.appendChild(ms); } ms.style.cssText='position:absolute;left:0;top:-9999px;visibility:hidden;pointer-events:none;white-space:pre;font:'+cs.font+';font-weight:800;letter-spacing:'+cs.letterSpacing; atW=ms.getBoundingClientRect().width; }catch(e){}
         var html=v.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})
           .replace(/(^|[\s(])(\$[A-Za-z][A-Za-z0-9.\-]{0,9}|@[A-Za-z0-9_.]{2,30})/g,function(m,pre,tok,off,str){
             if(tok.charAt(0)==='@'){
