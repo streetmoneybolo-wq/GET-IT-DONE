@@ -20,10 +20,60 @@
   var LOGGED = document.body.classList.contains('logged-in');
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function rel(ts) { var t = typeof ts === 'number' ? (ts < 2e10 ? ts * 1000 : ts) : Date.parse(String(ts).replace(' ', 'T')); if (isNaN(t)) return ''; var d = Math.max(0, (Date.now() - t) / 1000); if (d < 60) return 'now'; if (d < 3600) return Math.floor(d / 60) + 'm'; if (d < 86400) return Math.floor(d / 3600) + 'h'; return Math.floor(d / 86400) + 'd'; }
-  function linkify(text) { /* $TICKER → terminal link, urls → links (rel noopener), everything else escaped */
+  function linkify(text) { /* $TICKER → terminal link, urls → links (rel noopener), @member → avatar + blue name, everything else escaped */
     return esc(text).replace(/(https?:\/\/[^\s<]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener nofollow">' + u.replace(/^https?:\/\//, '').slice(0, 40) + '</a>'; })
-      .replace(/\$([A-Za-z]{1,6})\b/g, function (m, s) { return '<a class="tk" href="/stock-chart/?symbol=' + s.toUpperCase() + '">$' + s.toUpperCase() + '</a>'; });
+      .replace(/\$([A-Za-z]{1,6})\b/g, function (m, s) { return '<a class="tk" href="/stock-chart/?symbol=' + s.toUpperCase() + '">$' + s.toUpperCase() + '</a>'; })
+      .replace(/(^|[\s(])@([A-Za-z0-9_.]{2,30})/g, function (m, pre, h) { var tail = '', mm = h.match(/^(.*?)(\.+)$/); if (mm) { h = mm[1]; tail = mm[2]; } if (h.length < 2) return m; return pre + mentionHTML(h) + tail; });
   }
+  /* ---- tagged members: @handle -> the member's mini avatar + blue name, carrying
+     data-sml-user-id (the site's hover-card hook). Identity comes from the site's
+     own people search; cached for the session. Same contract as the homepage feed. */
+  var MN = {}; try { var mnS = JSON.parse(sessionStorage.getItem('sml-hf-mn2') || '{}'); if (mnS && typeof mnS === 'object') MN = mnS; } catch (e) {}
+  var mnPending = {};
+  function mnGet(h) { var r = MN[String(h || '').toLowerCase()] || null; return (r && !r.miss && !r.id) ? null : r; }
+  function mnSet(h, row) { h = String(h || '').toLowerCase(); if (!h || !row) return; MN[h] = { n: String(row.name || h), av: String(row.avatar || ''), u: String(row.url || ('/' + h + '/')), id: Number(row.id || 0) || 0 }; try { sessionStorage.setItem('sml-hf-mn2', JSON.stringify(MN)); } catch (e) {} }
+  function mnResolve(h, cb) {
+    h = String(h || '').toLowerCase(); if (!h) return;
+    var hit = mnGet(h); if (hit) { cb(hit); return; }
+    if (mnPending[h]) { mnPending[h].push(cb); return; }
+    mnPending[h] = [cb];
+    var done = function (row) { var cbs = mnPending[h] || []; delete mnPending[h]; cbs.forEach(function (fn) { try { fn(row); } catch (e) {} }); };
+    fetch('/wp-json/sml-site-search/v1/search?q=' + encodeURIComponent(h), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+      var row = null; ((d && d.groups && d.groups.people) || []).forEach(function (p) { if (String(p.handle || '').toLowerCase() === h) row = p; });
+      if (row) mnSet(h, row); else MN[h] = { n: h, av: '', u: '/' + h + '/', miss: 1 };
+      done(MN[h]);
+    }).catch(function () { done(null); });
+  }
+  function mnAvatar(row) { return row && row.av ? '<img class="tv2-lf-mn-av" src="' + esc(row.av) + '" alt="" referrerpolicy="no-referrer">' : '<span class="tv2-lf-mn-av"></span>'; }
+  function mentionHTML(h) { var row = mnGet(h) || {}; return '<a class="tv2-lf-mn" href="' + esc(row.u || ('/' + h.toLowerCase() + '/')) + '" data-mn="' + esc(h.toLowerCase()) + '"' + (row.id ? ' data-sml-user-id="' + esc(String(row.id)) + '"' : '') + '>' + mnAvatar(row) + esc(row.n || h) + '</a>'; }
+  function resolveMentions(scope) {
+    scope.querySelectorAll('a.tv2-lf-mn[data-mn]').forEach(function (a) {
+      var h = a.getAttribute('data-mn'); if (!h || mnGet(h)) return;
+      mnResolve(h, function (row) { if (!row || row.miss) return; if (row.u) a.href = row.u; if (row.id) a.setAttribute('data-sml-user-id', String(row.id)); a.innerHTML = mnAvatar(row) + esc(row.n || h); });
+    });
+  }
+  /* ---- signed-out viewers: instead of the member hover card / an action that 401s,
+     one prompt — create an account — which takes them to the signup page ---- */
+  var SIGNUP_URL = '/register/';
+  var promptEl = null, promptTimer = 0;
+  function showPrompt(anchor) {
+    if (!anchor) return;
+    if (!promptEl) {
+      promptEl = document.createElement('a'); promptEl.className = 'tv2-lf-prompt'; promptEl.href = SIGNUP_URL; promptEl.setAttribute('role', 'dialog');
+      promptEl.innerHTML = '<strong>Create a StockMarketLoop account</strong><span>to interact with other users &amp; more</span><em>Join free →</em>';
+      promptEl.addEventListener('pointerenter', function () { clearTimeout(promptTimer); });
+      promptEl.addEventListener('pointerleave', hidePromptSoon);
+      document.body.appendChild(promptEl);
+    }
+    clearTimeout(promptTimer);
+    var r = anchor.getBoundingClientRect(); var w = 280;
+    promptEl.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    var top = r.bottom + 8; promptEl.classList.add('on');
+    var h = promptEl.offsetHeight || 96; if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+    promptEl.style.top = (top + window.scrollY) + 'px'; promptEl.style.position = 'absolute';
+  }
+  function hidePromptSoon() { clearTimeout(promptTimer); promptTimer = setTimeout(function () { if (promptEl) promptEl.classList.remove('on'); }, 260); }
+  window.__tv2lfPrompt = showPrompt; /* test hook */
 
   var CSS = '' +
     '.tv2-lf{display:flex;flex-direction:column;gap:12px}' +
@@ -71,7 +121,26 @@
     '.tv2-lf-vm[data-speaking="1"] .role{color:#00ff88}' +
     '.tv2-lf-vm[data-speaking="1"] .dot{background:#00ff88;box-shadow:0 0 0 3px rgba(0,255,136,.15)}';
 
-  var S = { tab: 'sml', msgs: [], seen: {}, side: 'bull', pollT: null, mm: null, wb: null };
+  CSS += '' +
+    /* the site's engagement engines (engagement.js + gifts.js) hydrate .sml-sth-post
+       cards that carry a .sml-sth-actions row — stream messages are now such cards */
+    '.tv2-lf-msg.sml-sth-post{flex-wrap:wrap}.tv2-lf-msg .sml-sth-actions{flex:1 1 100%;margin:4px 0 0 44px;font:500 11px/1.4 Archivo,sans-serif;color:#5d7085}' +
+    '.tv2-lf-msg .sml-hfe-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}' +
+    '.tv2-lf-msg .sml-hfe-btn,.tv2-lf-msg .sml-gift-button{font:600 11px/1 Archivo,sans-serif;color:#8fa3b5;background:#0d141c;border:1px solid #16202b;border-radius:999px;padding:6px 10px;cursor:pointer}' +
+    '.tv2-lf-msg .sml-hfe-btn[aria-pressed="true"]{color:#04060a;background:#00ff88;border-color:#00ff88}' +
+    '.tv2-lf-msg .sml-hfe-open{font:600 11px/1 Archivo,sans-serif;color:#00ff88;text-decoration:none;margin-left:auto}' +
+    '.tv2-lf-msg[data-no-gift="1"] .sml-gift-button{display:none!important}' +
+    '.tv2-lf-msg .sml-hfe-comment-panel{display:none;margin-top:8px}.tv2-lf-msg .sml-hfe-comment-panel.is-open{display:block}' +
+    '.tv2-lf-msg .sml-hfe-form textarea{width:100%;min-height:48px;background:#080c12;border:1px solid #16202b;border-radius:8px;color:#e6edf3;font:400 12px/1.5 Archivo,sans-serif;padding:8px;box-sizing:border-box}' +
+    '.tv2-lf-msg .sml-hfe-form button{margin-top:6px;font:700 11px/1 Archivo,sans-serif;color:#04060a;background:#00ff88;border:none;border-radius:999px;padding:7px 12px;cursor:pointer}' +
+    '.tv2-lf-msg .sml-hfe-comments{display:flex;flex-direction:column;gap:6px;font:400 12px/1.5 Archivo,sans-serif;color:#c9d4df}' +
+    '.tv2-lf-user a[data-sml-user-id]{color:inherit;text-decoration:none}' +
+    '.tv2-lf-text a.tv2-lf-mn{color:#5DB9FF;font-weight:700;text-decoration:none;white-space:nowrap}.tv2-lf-text a.tv2-lf-mn:hover{text-decoration:underline}' +
+    '.tv2-lf-text .tv2-lf-mn-av{display:inline-block;width:16px;height:16px;border-radius:50%;object-fit:cover;vertical-align:-3px;margin:0 4px 0 0;box-shadow:0 0 0 1.5px rgba(93,185,255,.75);background:linear-gradient(160deg,#24323F,#0E1620)}' +
+    '.tv2-lf-prompt{position:absolute;z-index:2147483600;width:280px;display:none;flex-direction:column;gap:3px;padding:12px 14px;border-radius:12px;background:linear-gradient(168deg,#1B2532,#0B111A);border:1px solid rgba(0,255,136,.35);box-shadow:0 18px 40px rgba(0,0,0,.6);text-decoration:none;color:#E6EDF5;font-family:Archivo,sans-serif}' +
+    '.tv2-lf-prompt.on{display:flex}.tv2-lf-prompt strong{font-size:13px}.tv2-lf-prompt span{font-size:12px;color:#93A4B8}.tv2-lf-prompt em{font-style:normal;font-size:12px;font-weight:700;color:#00ff88;margin-top:4px}';
+
+  var S = { tab: 'sml', msgs: [], seen: {}, side: 'bull', pollT: null, mm: null, wb: null, nodes: {} };
 
   function card(root) {
     var el = document.createElement('div'); el.className = 'tv2-lf'; el.setAttribute('data-tv2-keep', '1');
@@ -99,15 +168,38 @@
   }
 
   function avatarHTML(name, url) { return url ? '<div class="tv2-lf-av" style="background-image:url(\'' + esc(url) + '\')"></div>' : '<div class="tv2-lf-av">' + esc(String(name || '?').replace(/^@/, '').slice(0, 2).toUpperCase()) + '</div>'; }
-  function userOf(m) { var u = m.user; if (u && typeof u === 'object') return { name: u.display_name || u.name || u.handle || u.login || 'member', handle: u.handle || u.public_handle || '', avatar: u.avatar || u.avatar_url || '', url: u.url || u.profile_url || '' }; return { name: String(u || m.handle || m.author || 'member'), handle: '', avatar: m.avatar || m.avatar_url || '', url: '' }; }
+  function userOf(m) { var u = m.user; if (u && typeof u === 'object') return { name: u.display_name || u.name || u.handle || u.login || 'member', handle: u.handle || u.public_handle || '', avatar: u.avatar || u.avatar_url || '', url: u.url || u.profile_url || '', uid: Number(u.id || u.user_id || m.uid || 0) || 0 }; return { name: String(u || m.handle || m.author || 'member'), handle: m.handle || '', avatar: m.avatar || m.avatar_url || '', url: m.url || '', uid: Number(m.uid || 0) || 0 }; }
 
+  function msgHTML(m) {
+    var u = userOf(m); var side = (m.side === 'bear' || m.side === 'bearish') ? 'bear' : ((m.side === 'bull' || m.side === 'bullish') ? 'bull' : '');
+    var item = String(m.item || ('tvstream-' + m.id)), url = String(m.item_url || (location.origin + '/tradingfloor/' + SYM.toLowerCase() + '/#tv2lf-' + m.id));
+    var uidAttr = u.uid ? ' data-sml-user-id="' + esc(String(u.uid)) + '"' : '';
+    var nameHtml = u.url ? '<a href="' + esc(u.url) + '"' + uidAttr + '>' + esc(u.name.replace(/^@/, '')) + '</a>' : esc(u.name.replace(/^@/, ''));
+    return avatarHTML(u.name, u.avatar) + '<div class="tv2-lf-bd"><div class="tv2-lf-meta"><span class="tv2-lf-user">' + nameHtml + '</span>' + (side ? '<span class="tv2-lf-badge ' + side + '">' + (side === 'bull' ? 'BULLISH' : 'BEARISH') + '</span>' : '') + '<span class="tv2-lf-time">' + esc(rel(m.t || m.time || m.created || m.at)) + '</span></div><div class="tv2-lf-text">' + linkify(m.body || m.text || m.message || '') + '</div></div>' +
+      /* the engagement engine reads these seed counts + the Open link, then replaces the row with Like / Comment / Share (+ Gift from gifts.js) */
+      '<div class="sml-sth-actions"><span>Likes ' + esc(Number(m.likes || 0)) + '</span> <span>Comments ' + esc(Number(m.comments || 0)) + '</span> <span>Shares ' + esc(Number(m.shares || 0)) + '</span> <a href="' + esc(url) + '">Open</a></div>';
+  }
+  function msgNode(m) {
+    var a = document.createElement('article'); a.className = 'tv2-lf-msg sml-sth-post'; a.id = 'tv2lf-' + String(m.id);
+    a.setAttribute('data-id', String(m.id)); a.setAttribute('data-hfe-item', String(m.item || ('tvstream-' + m.id)));
+    a.setAttribute('data-hfe-url', String(m.item_url || (location.origin + '/tradingfloor/' + SYM.toLowerCase() + '/#tv2lf-' + m.id)));
+    if (!m.can_gift) a.setAttribute('data-no-gift', '1'); /* gifts need a member-owned post (a mirrored chart post) to pay out to */
+    a.innerHTML = msgHTML(m); resolveMentions(a); return a;
+  }
   function renderStream(el) {
     var list = el.querySelector('#tv2lf-list');
-    if (!S.msgs.length) { list.innerHTML = '<div class="tv2-lf-empty">No posts on the $' + esc(SYM) + ' stream yet' + (LOGGED ? ' — be the first.' : '.') + '</div>'; return; }
-    list.innerHTML = S.msgs.map(function (m) {
-      var u = userOf(m); var side = (m.side === 'bear' || m.side === 'bearish') ? 'bear' : ((m.side === 'bull' || m.side === 'bullish') ? 'bull' : '');
-      return '<div class="tv2-lf-msg" data-id="' + esc(m.id) + '">' + avatarHTML(u.name, u.avatar) + '<div class="tv2-lf-bd"><div class="tv2-lf-meta"><span class="tv2-lf-user">' + (u.url ? '<a href="' + esc(u.url) + '">' : '') + esc(u.name.replace(/^@/, '')) + (u.url ? '</a>' : '') + '</span>' + (side ? '<span class="tv2-lf-badge ' + side + '">' + (side === 'bull' ? 'BULLISH' : 'BEARISH') + '</span>' : '') + '<span class="tv2-lf-time">' + esc(rel(m.t || m.time || m.created || m.at)) + '</span></div><div class="tv2-lf-text">' + linkify(m.body || m.text || m.message || '') + '</div></div></div>';
-    }).join('');
+    if (!S.msgs.length) { list.innerHTML = '<div class="tv2-lf-empty">No posts on the $' + esc(SYM) + ' stream yet' + (LOGGED ? ' — be the first.' : '.') + '</div>'; S.nodes = {}; return; }
+    var empty = list.querySelector('.tv2-lf-empty'); if (empty) empty.remove();
+    var keep = {};
+    S.msgs.forEach(function (m, i) {
+      var id = String(m.id); keep[id] = 1;
+      var node = S.nodes[id];
+      if (!node) { node = msgNode(m); S.nodes[id] = node; }
+      else { var t = node.querySelector('.tv2-lf-time'); if (t) t.textContent = rel(m.t || m.time || m.created || m.at); }
+      var ref = list.children[i];
+      if (ref !== node) list.insertBefore(node, ref || null);
+    });
+    Object.keys(S.nodes).forEach(function (id) { if (!keep[id]) { var n = S.nodes[id]; if (n && n.parentNode) n.parentNode.removeChild(n); delete S.nodes[id]; } });
   }
   var firstLoad = true;
   function pollStream(el) {
@@ -242,6 +334,18 @@
     Array.prototype.forEach.call(el.querySelectorAll('.tv2-lf-side'), function (b) { b.addEventListener('click', function () { S.side = b.getAttribute('data-side'); Array.prototype.forEach.call(el.querySelectorAll('.tv2-lf-side'), function (x) { x.classList.toggle('on', x === b); }); }); });
     var pb = el.querySelector('#tv2lf-post'); if (pb) pb.addEventListener('click', function () { post(el); });
     var ta = el.querySelector('#tv2lf-text'); if (ta) ta.addEventListener('keydown', function (e) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') post(el); });
+    if (!LOGGED) {
+      var list = el.querySelector('#tv2lf-list');
+      list.addEventListener('click', function (ev) {
+        var b = ev.target.closest('.sml-hfe-btn, .sml-gift-button, [data-hfe-platform], .sml-hfe-form button');
+        if (!b) return; ev.preventDefault(); ev.stopPropagation(); showPrompt(b);
+      }, true);
+      list.addEventListener('submit', function (ev) { if (ev.target.closest('.sml-hfe-form')) { ev.preventDefault(); ev.stopPropagation(); showPrompt(ev.target); } }, true);
+      list.addEventListener('pointerover', function (ev) { var a = ev.target.closest('a[data-sml-user-id], a.tv2-lf-mn'); if (a) showPrompt(a); });
+      list.addEventListener('pointerout', function (ev) { var a = ev.target.closest('a[data-sml-user-id], a.tv2-lf-mn'); if (a && !(ev.relatedTarget && promptEl && promptEl.contains(ev.relatedTarget))) hidePromptSoon(); });
+      list.addEventListener('focusin', function (ev) { var a = ev.target.closest('a[data-sml-user-id], a.tv2-lf-mn'); if (a) showPrompt(a); });
+      document.addEventListener('click', function (ev) { if (promptEl && promptEl.classList.contains('on') && !promptEl.contains(ev.target) && !ev.target.closest('#tv2lf-list')) promptEl.classList.remove('on'); });
+    }
     pollStream(el); S.pollT = setInterval(function () { pollStream(el); }, 3000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) pollStream(el); });
   }
