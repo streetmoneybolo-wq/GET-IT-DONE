@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Connect Migration Hub
  * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.4
+ * Version: 0.1.5
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.4';
+const SMLCMH_VERSION = '0.1.5';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
@@ -170,13 +170,26 @@ function smlcmh_ensure_page( $slug, $title, $content ) {
 
 function smlcmh_activate() {
 	update_option( SMLCMH_OPTION, smlcmh_options(), false );
+	smlcmh_install_pages();
+	smlcmh_rewrite_rules();
+	flush_rewrite_rules();
+	update_option( 'smlcmh_version', SMLCMH_VERSION, false );
+}
+register_activation_hook( __FILE__, 'smlcmh_activate' );
+
+function smlcmh_install_pages() {
 	smlcmh_ensure_page( 'connect', 'StockMarketLoop Connect', '[sml_connect_landing]' );
 	smlcmh_ensure_page( 'connect-dashboard', 'StockMarketLoop Connect Dashboard', '[sml_connect_dashboard]' );
 	smlcmh_ensure_page( 'connect-migrate', 'Move Your Discord Membership to StockMarketLoop', '[sml_connect_migrate]' );
+}
+
+add_action( 'plugins_loaded', function () {
+	if ( get_option( 'smlcmh_version' ) === SMLCMH_VERSION ) return;
+	smlcmh_install_pages();
 	smlcmh_rewrite_rules();
 	flush_rewrite_rules();
-}
-register_activation_hook( __FILE__, 'smlcmh_activate' );
+	update_option( 'smlcmh_version', SMLCMH_VERSION, false );
+} );
 
 function smlcmh_deactivate() {
 	flush_rewrite_rules();
@@ -349,6 +362,20 @@ add_shortcode( 'sml_connect_landing', function () {
 			<div class="smlcmh-card"><h3>Exact Discord name by default</h3><p>When the owner creates a StockMarketLoop group, the default name is the Discord server name so branding stays stable.</p></div>
 			<div class="smlcmh-card"><h3>Perks unlock with SML</h3><p>Connect can become the Upgrade.Chat alternative plus public homepage, live page, store, Loop Letter, analytics, roles, dispute defense, and Retail Trader Spotlight.</p></div>
 		</div>
+		<?php if ( is_user_logged_in() ) : ?>
+			<div class="smlcmh-card">
+				<p class="smlcmh-kicker">Logged-in owner tools</p>
+				<h2>Set up memberships, prices, intervals, products, and roles here.</h2>
+				<p class="smlcmh-muted">This is the no-code setup area: create the Discord homepage, build subscription products, and map Upgrade.Chat migration details without pasting developer JSON.</p>
+			</div>
+			<?php echo do_shortcode( '[sml_connect_dashboard]' ); ?>
+		<?php else : ?>
+			<div class="smlcmh-card">
+				<h2>Ready to migrate your Discord memberships?</h2>
+				<p class="smlcmh-muted">Sign in or create a StockMarketLoop account after installing the bot, then the owner dashboard appears here automatically.</p>
+				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( $signup_url ); ?>">Create or sign in to StockMarketLoop</a>
+			</div>
+		<?php endif; ?>
 	</section>
 	<?php
 	return ob_get_clean();
