@@ -194,6 +194,18 @@
         '#sml-optimized-home .sml-signal-feed-post .oh-post-avatar{width:38px !important;height:38px !important;}' +
         '#sml-optimized-home .sml-hfe-btn{padding:5px 10px;font-size:11px;}' +
         '#sml-optimized-home .oh-post>p{font-size:13.5px;color:#93A4B8;line-height:1.6;margin:0 0 14px;}' +
+        /* owner call 2026-09-05: a member's chart post is ONE body (the server
+           prints the same text as headline AND body — the headline is hidden),
+           @tags render as the member's mini avatar + blue name (no "@"), and the
+           only grey line under a post is a link the member typed, if any */
+        '#sml-optimized-home .oh-post[data-sml-rich] > h2{display:none !important;}' +
+        '#sml-optimized-home .oh-post[data-sml-rich] > p{display:block;-webkit-line-clamp:unset;overflow:visible;font-size:14px;line-height:1.55;color:#E6EDF5;word-break:break-word;}' +
+        '#sml-optimized-home .oh-post .hf-mn{color:#5DB9FF;font-weight:700;text-decoration:none;white-space:nowrap;}' +
+        '#sml-optimized-home .oh-post .hf-mn:hover{text-decoration:underline;}' +
+        '#sml-hf-shell #sml-optimized-home .oh-post img.hf-mn-av,#sml-hf-shell #sml-optimized-home .oh-post .hf-mn-ph{display:inline-block !important;width:17px !important;height:17px !important;max-height:17px !important;min-height:0 !important;margin:0 4px -3px 0 !important;padding:0 !important;border-radius:50% !important;object-fit:cover !important;vertical-align:baseline;box-shadow:0 0 0 1.5px rgba(93,185,255,.75);background:linear-gradient(160deg,#24323F,#0E1620);}' +
+        '#sml-optimized-home .oh-post .hf-tk{color:#35FF8D;font-weight:700;text-decoration:none;}' +
+        '#sml-optimized-home .oh-post .hf-post-link{font-size:11.5px;line-height:1.4;color:#6B7C90;margin:-9px 0 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+        '#sml-optimized-home .oh-post .hf-post-link a{color:#6B7C90;text-decoration:none;}#sml-optimized-home .oh-post .hf-post-link a:hover{color:#93A4B8;text-decoration:underline;}' +
         // Signal News / non-article market activity cards: real intraday data
         // becomes a visible watermark while copy and controls stay readable.
         '#sml-optimized-home .sml-signal-feed-post{min-height:160px;padding:13px 15px;border-color:rgba(0,208,255,.30);background:linear-gradient(148deg,rgba(5,18,25,.97),rgba(4,13,20,.98));isolation:isolate;}' +
@@ -474,7 +486,7 @@
           if (v !== im.src) im.src = v;
           im.loading = 'lazy'; im.decoding = 'async';
         });
-        card.querySelectorAll('img:not(.oh-post-avatar)').forEach(function (im) {
+        card.querySelectorAll('img:not(.oh-post-avatar):not(.hf-mn-av)').forEach(function (im) {
           if (im.__smlOpt) return; im.__smlOpt = 1;
           var v = photonW(im.currentSrc || im.src || '', tw);
           if (v !== im.src) im.src = v;
@@ -755,7 +767,7 @@
       if (/\blik/.test(meta)) return 'like';
       if (card.querySelector('video,iframe')) return 'video';
       var imgs = card.querySelectorAll('img');
-      for (var i=0;i<imgs.length;i++){ if (!imgs[i].classList.contains('oh-post-avatar')) return 'photo'; }
+      for (var i=0;i<imgs.length;i++){ if (!imgs[i].classList.contains('oh-post-avatar')&&!imgs[i].classList.contains('hf-mn-av')) return 'photo'; }
       return 'post';
     }
     // Nonce for the site's own authed REST routes (harvested from its inline boot scripts).
@@ -1149,7 +1161,58 @@
       host.querySelectorAll('.sml-hfe-reaction-menu').forEach(function(m){ m.remove(); });
     }
 
-    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); try{optimizeCardImages();}catch(e){} }
+    // ---- @mention identity: handle -> {n: name, av: avatar, u: profile url}.
+    // Seeded by the member typeahead (the picker row already carries it) and
+    // completed from the site's own people search; kept for the session. ----
+    var MN={}, mnPending={};
+    try{ var mnS=JSON.parse(sessionStorage.getItem('sml-hf-mn')||'{}'); if(mnS&&typeof mnS==='object') MN=mnS; }catch(e){}
+    function mnSave(){ try{ sessionStorage.setItem('sml-hf-mn', JSON.stringify(MN)); }catch(e){} }
+    function mnGet(h){ return MN[String(h||'').toLowerCase()]||null; }
+    function mnSet(h,row){ h=String(h||'').toLowerCase(); if(!h||!row) return; MN[h]={n:String(row.n||row.name||h),av:String(row.av||row.avatar||''),u:String(row.u||row.url||('/'+h+'/'))}; mnSave(); }
+    function mnResolve(h,cb){
+      h=String(h||'').toLowerCase(); if(!h) return;
+      var hit=mnGet(h); if(hit){ cb(hit); return; }
+      if(mnPending[h]){ mnPending[h].push(cb); return; }
+      mnPending[h]=[cb];
+      var done=function(row){ var cbs=mnPending[h]||[]; delete mnPending[h]; cbs.forEach(function(f){ try{f(row);}catch(e){} }); };
+      fetch('/wp-json/sml-site-search/v1/search?q='+encodeURIComponent(h),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
+        var row=null; ((d&&d.groups&&d.groups.people)||[]).forEach(function(p){ if(String(p.handle||'').toLowerCase()===h) row=p; });
+        if(row) mnSet(h,row); else MN[h]={n:h,av:'',u:'/'+h+'/',miss:1}; /* unknown handle: plain, not saved */
+        done(MN[h]);
+      }).catch(function(){ done(null); });
+    }
+    function mnAvatarHTML(row){ return row&&row.av?'<img class="hf-mn-av" src="'+esc(photonImg(row.av,34,34))+'" alt="" referrerpolicy="no-referrer">':'<span class="hf-mn-ph"></span>'; }
+    function mentionHTML(h){ var row=mnGet(h)||{}; return '<a class="hf-mn" href="'+esc(row.u||('/'+h.toLowerCase()+'/'))+'" data-mn="'+esc(h.toLowerCase())+'">'+mnAvatarHTML(row)+esc(row.n||h)+'</a>'; }
+    var URL_RX=/\b(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
+    function richText(text){
+      /* escape first, then tokens: $TICKER -> chart link, @member -> avatar + name */
+      return esc(text)
+        .replace(/(^|[\s(])(\$[A-Za-z][A-Za-z0-9.\-]{0,9})\b/g,function(m,pre,tok){ return pre+'<a class="hf-tk" href="/stock-chart/?symbol='+encodeURIComponent(tok.slice(1).toUpperCase())+'">'+tok+'</a>'; })
+        .replace(/(^|[\s(])@([A-Za-z0-9_.]{2,30})/g,function(m,pre,h){ var tail='', mm=h.match(/^(.*?)(\.+)$/); if(mm){ h=mm[1]; tail=mm[2]; } if(h.length<2) return m; return pre+mentionHTML(h)+tail; });
+    }
+    function richenChartCards(){
+      host.querySelectorAll('article.oh-post[data-hfe-item^="chart-"]').forEach(function(card){
+        if(card.getAttribute('data-sml-rich')) return;
+        var h2=card.querySelector(':scope > h2'), p=card.querySelector(':scope > p');
+        var raw=String((p||h2||{}).textContent||'').replace(/\s+/g,' ').trim();
+        if(!raw) return;
+        card.setAttribute('data-sml-rich','1'); /* CSS hides the duplicate h2; it stays for feed keys */
+        if(!p){ p=document.createElement('p'); if(h2) h2.insertAdjacentElement('afterend',p); else card.appendChild(p); }
+        var links=[]; var body=raw.replace(URL_RX,function(u){ links.push(u); return ' '; }).replace(/\s{2,}/g,' ').trim();
+        p.innerHTML=body?richText(body):''; p.style.display=body?'':'none';
+        var old=card.querySelector(':scope > .hf-post-link'); if(old) old.remove();
+        if(links.length){
+          var box=document.createElement('div'); box.className='hf-post-link';
+          box.innerHTML=links.slice(0,3).map(function(u){ var href=/^https?:\/\//i.test(u)?u:('https://'+u); var show=u.replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/$/,''); return '<a href="'+esc(href)+'" target="_blank" rel="noopener nofollow ugc">'+esc(show)+'</a>'; }).join(' · ');
+          p.insertAdjacentElement('afterend',box);
+        }
+        card.querySelectorAll('a.hf-mn').forEach(function(a){
+          var h=a.getAttribute('data-mn'); if(!h||mnGet(h)) return;
+          mnResolve(h,function(row){ if(!row||row.miss) return; if(row.u) a.href=row.u; a.innerHTML=mnAvatarHTML(row)+esc(row.n||h); });
+        });
+      });
+    }
+    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); try{richenChartCards();}catch(e){} try{optimizeCardImages();}catch(e){} }
     feedSweep(); setInterval(feedSweep, 3000); /* also covers cards slid in by pollFeed */
 
     // ---- $ticker / @member typeahead: typing $PL in any feed text field
@@ -1197,7 +1260,7 @@
       fetch('/wp-json/sml-site-search/v1/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
         var g=(d&&d.groups)||{}, out;
         if(kind==='$') out=(g.quotes||[]).map(function(x){return {kind:'$',sym:String(x.symbol||'').toUpperCase(),n:String(x.name||''),ins:'$'+String(x.symbol||'').toUpperCase()};}).filter(function(x){return x.sym;});
-        else out=(g.people||[]).map(function(x){return {kind:'@',h:String(x.handle||''),n:String(x.name||x.handle||''),av:String(x.avatar||''),ins:'@'+String(x.handle||'')};}).filter(function(x){return x.h;});
+        else { out=(g.people||[]).map(function(x){return {kind:'@',h:String(x.handle||''),n:String(x.name||x.handle||''),av:String(x.avatar||''),u:String(x.url||''),ins:'@'+String(x.handle||'')};}).filter(function(x){return x.h;}); out.forEach(function(x){ if(!mnGet(x.h)) mnSet(x.h,{n:x.n,av:x.av,u:x.u||('/'+x.h+'/')}); }); }
         TA.cache[key]=out; cb(out);
       }).catch(function(){cb(null);});
     }
@@ -1225,6 +1288,7 @@
     function taApply(it){
       if(!it||!TA.el||!TA.tok) return;
       var el=TA.el, tok=TA.tok, v=String(el.value||'');
+      if(it.kind==='@') mnSet(it.h,{n:it.n,av:it.av,u:it.u||('/'+it.h+'/')}); /* the picked member paints as avatar + name */
       el.value=v.slice(0,tok.start)+it.ins+' '+v.slice(tok.end);
       var caret=tok.start+it.ins.length+1;
       taClose();
@@ -1308,7 +1372,10 @@
         '.hf-ci-wrap input{flex:1;width:100%;min-width:0}'+
         '.hf-ci-ov{position:absolute;inset:0;z-index:2;display:flex;align-items:center;overflow:hidden;pointer-events:none;white-space:pre}'+
         '.hf-ci-ov .t{color:#35ff8d;font-weight:800;text-shadow:0 0 12px rgba(0,255,102,.35)}'+
-        '.hf-ci-ov .u{color:#5db9ff;font-weight:800;text-shadow:0 0 12px rgba(93,185,255,.3)}';
+        '.hf-ci-ov .u{color:#5db9ff;font-weight:800;text-shadow:0 0 12px rgba(93,185,255,.3)}'+
+        /* the avatar takes exactly the width of the "@" it replaces, so the
+           overlay stays glyph-aligned with the input's caret */
+        '.hf-ci-ov .u img{display:inline-block;border-radius:50%;object-fit:cover;vertical-align:-2px;box-shadow:0 0 0 1px rgba(93,185,255,.75);background:#1B2532}';
       document.head.appendChild(st);
       var wrap=document.createElement('div'); wrap.className='hf-ci-wrap';
       composerInput.parentNode.insertBefore(wrap,composerInput); wrap.appendChild(composerInput);
@@ -1325,8 +1392,15 @@
           composerInput.style.caretColor=cs.color; /* keep the native caret visible... */
           composerInput.style.color='transparent'; /* ...while the overlay owns the glyphs */
         }
+        var atW=0; try{ var mc=paint.__mc||(paint.__mc=document.createElement('canvas').getContext('2d')); mc.font='800 '+cs.fontSize+' '+cs.fontFamily; atW=mc.measureText('@').width; }catch(e){}
         var html=v.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})
-          .replace(/(^|[\s(])(\$[A-Za-z][A-Za-z0-9.\-]{0,9}|@[A-Za-z0-9_.]{2,30})/g,function(m,pre,tok){
+          .replace(/(^|[\s(])(\$[A-Za-z][A-Za-z0-9.\-]{0,9}|@[A-Za-z0-9_.]{2,30})/g,function(m,pre,tok,off,str){
+            if(tok.charAt(0)==='@'){
+              var h=tok.slice(1).replace(/\.+$/,''), row=mnGet(h);
+              if(row&&row.av&&atW>0) return pre+'<span class="u"><img src="'+esc(photonImg(row.av,32,32))+'" alt="" referrerpolicy="no-referrer" style="width:'+atW.toFixed(2)+'px;height:'+atW.toFixed(2)+'px">'+tok.slice(1)+'</span>';
+              /* a handle typed by hand (not picked): look it up once it is complete */
+              if(!row&&off+m.length<str.length) mnResolve(h,function(r){ if(r&&r.av) paint(); });
+            }
             return pre+'<span class="'+(tok.charAt(0)==='$'?'t':'u')+'">'+tok+'</span>';
           });
         ov.innerHTML=html;
@@ -1355,7 +1429,7 @@
           main.insertBefore(node, main.firstChild);
           feedSeen[cardKeyOf(node)] = 1;
         }
-        fbComments(); enhanceSignalCards(host); dedupeFeed(); applyQuotes();
+        fbComments(); enhanceSignalCards(host); dedupeFeed(); applyQuotes(); try{richenChartCards();}catch(e){}
       }).catch(function(){});
     }
     setInterval(pollFeed, 45000);
