@@ -182,7 +182,6 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-smlcmh-onboarding]').forEach(bindOnboarding);
     document.querySelectorAll('[data-smlcmh-campaign-form]').forEach((form) => {
       bindCampaignDefaults(form);
       bindCampaign(form);

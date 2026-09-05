@@ -32,6 +32,7 @@ const SNOWFLAKE_RE = /^[0-9]{15,24}$/;
 const WEBHOOK_TOKEN_RE = /^[A-Za-z0-9._-]{1,300}$/;
 const FOLLOW_UP_ATTEMPTS = 3;
 const MAX_RETRY_DELAY_MS = 5000;
+const DISCORD_API = 'https://discord.com/api/v10';
 
 const EPHEMERAL = connectCommands.EPHEMERAL;
 
@@ -86,6 +87,18 @@ function createDiscordInteractions(deps = {}) {
   const publicKeyObject = buildPublicKey(config.discordConnectPublicKey);
   const appId = SNOWFLAKE_RE.test(String(config.discordConnectAppId || ''))
     ? String(config.discordConnectAppId) : null;
+  const botToken = typeof config.discordConnectBotToken === 'string' ? config.discordConnectBotToken.trim() : '';
+
+  async function fetchGuild(guildId) {
+    if (!botToken || !SNOWFLAKE_RE.test(String(guildId)) || typeof fetchImpl !== 'function') return null;
+    const result = await fetchImpl(`${DISCORD_API}/guilds/${guildId}`, {
+      method: 'GET',
+      headers: { authorization: `Bot ${botToken}` }
+    });
+    if (!result || Number(result.status) < 200 || Number(result.status) >= 300) return null;
+    const json = typeof result.json === 'function' ? await result.json() : null;
+    return json && typeof json === 'object' ? { name: typeof json.name === 'string' ? json.name : '' } : null;
+  }
 
   /* Command handlers live in ./connect-commands (same package); every
    * cross-package collaborator is still injected, never required. */
@@ -98,6 +111,8 @@ function createDiscordInteractions(deps = {}) {
     reconciler: deps.reconciler,
     now,
     reviewUrlBase: config.reviewUrlBase
+    , siteBase: config.siteBase
+    , guildResolver: fetchGuild
   });
 
   /* 429-aware follow-up sender. The webhook URL embeds the interaction token,
@@ -178,7 +193,7 @@ function createDiscordInteractions(deps = {}) {
       return;
     }
 
-    if (interaction.type !== 2) {
+    if (interaction.type !== 2 && interaction.type !== 3) {
       respond(response, 200, {
         type: 4,
         data: { content: 'This interaction is not supported.', flags: EPHEMERAL }
@@ -188,7 +203,9 @@ function createDiscordInteractions(deps = {}) {
 
     let result;
     try {
-      result = await commands.handleCommand(interaction);
+      result = interaction.type === 3 && typeof commands.handleComponent === 'function'
+        ? await commands.handleComponent(interaction)
+        : await commands.handleCommand(interaction);
     } catch (_) {
       respond(response, 200, {
         type: 4,

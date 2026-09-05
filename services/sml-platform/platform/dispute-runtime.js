@@ -136,7 +136,9 @@ function createDisputeRuntime({
         config: {
           discordConnectPublicKey: config.discordConnectPublicKey,
           discordConnectAppId: config.discordConnectAppId,
-          reviewUrlBase: config.connectReviewUrlBase
+          discordConnectBotToken: config.discordConnectBotToken,
+          reviewUrlBase: config.connectReviewUrlBase,
+          siteBase: 'https://stockmarketloop.com'
         },
         pool, graph, store, authorize,
         disputeService: connectService,

@@ -27,6 +27,8 @@ const BUCKET_IDLE_MS = 10 * 60 * 1000;
 const MAX_LIST_LINES = 10;
 
 const DEFAULT_REVIEW_URL_BASE = 'https://stockmarketloop.com/connect-review/';
+const DEFAULT_SITE_BASE = 'https://stockmarketloop.com';
+const MANAGE_GUILD_PERMISSION = '32';
 
 const CASE_ID_OPTION = {
   type: 3, // STRING — a BIGSERIAL id can exceed the safe range of Discord's INTEGER option
@@ -39,6 +41,7 @@ const CASE_ID_OPTION = {
  * from everyone until a guild admin grants access; contexts [0] = guild only.
  * Registered by scripts/register-connect-commands.js. */
 const COMMAND_DEFINITIONS = [
+  { type: 1, name: 'connect-setup', description: 'Start StockMarketLoop Connect setup for this Discord server', default_member_permissions: MANAGE_GUILD_PERMISSION, contexts: [0], options: [] },
   { type: 1, name: 'payments', description: 'Summarize recent payment records for your merchant scope', default_member_permissions: '0', contexts: [0], options: [] },
   { type: 1, name: 'subscriptions', description: 'Summarize subscription records for your merchant scope', default_member_permissions: '0', contexts: [0], options: [] },
   { type: 1, name: 'customer-history', description: 'Billing history counts for the account behind a dispute case', default_member_permissions: '0', contexts: [0], options: [CASE_ID_OPTION] },
@@ -137,6 +140,9 @@ function createConnectCommands(deps = {}) {
   const now = deps.now || Date.now;
   const reviewUrlBase = typeof deps.reviewUrlBase === 'string' && deps.reviewUrlBase.startsWith('https://')
     ? deps.reviewUrlBase : DEFAULT_REVIEW_URL_BASE;
+  const siteBase = typeof deps.siteBase === 'string' && deps.siteBase.startsWith('https://')
+    ? deps.siteBase.replace(/\/+$/, '') : DEFAULT_SITE_BASE;
+  const guildResolver = typeof deps.guildResolver === 'function' ? deps.guildResolver : null;
 
   /* Per-user token bucket: RATE_LIMIT_PER_MINUTE commands / minute. In-memory
    * by design — the limit protects downstream services, not billing state. */
@@ -188,6 +194,105 @@ function createConnectCommands(deps = {}) {
   function serviceFn(name) {
     return disputeService && typeof disputeService[name] === 'function'
       ? disputeService[name].bind(disputeService) : null;
+  }
+
+  function cleanGuildName(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text && text.length <= 120 ? text : '';
+  }
+
+  function guildNameFromInteraction(interaction) {
+    return cleanGuildName(
+      interaction && interaction.guild && typeof interaction.guild.name === 'string'
+        ? interaction.guild.name
+        : ''
+    );
+  }
+
+  async function resolveGuildName(interaction, guildId) {
+    const embedded = guildNameFromInteraction(interaction);
+    if (embedded) return embedded;
+    if (!guildResolver || !guildId) return '';
+    try {
+      const detail = await guildResolver(guildId);
+      return cleanGuildName(detail && detail.name);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function urlWithParams(path, params = {}) {
+    const url = new URL(path, siteBase);
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null && String(value).trim() !== '') url.searchParams.set(key, String(value));
+    }
+    return url.toString();
+  }
+
+  function groupCreateUrl({ guildId, guildName } = {}) {
+    return urlWithParams('/register/', {
+      sml_connect: '1',
+      discord_guild_id: guildId || '',
+      default_name: guildName || '',
+      redirect_to: urlWithParams('/groups/create/', {
+        sml_connect: '1',
+        discord_guild_id: guildId || '',
+        default_name: guildName || ''
+      })
+    });
+  }
+
+  function migrateUrl({ guildId, guildName } = {}) {
+    return urlWithParams('/connect-migrate/', {
+      guild_id: guildId || '',
+      default_name: guildName || ''
+    });
+  }
+
+  function setupIntro({ guildId, guildName } = {}) {
+    const server = guildName ? `Server detected: ${guildName}.` : `Server detected by ID: ${guildId || 'unknown'}.`;
+    return {
+      content: [
+        'StockMarketLoop Connect is installed. Now finish setup inside Discord.',
+        server,
+        '',
+        'Do you already use Upgrade.Chat for this server?'
+      ].join('\n'),
+      components: [{
+        type: 1,
+        components: [
+          { type: 2, style: 3, label: 'Yes, we use Upgrade.Chat', custom_id: 'sml_connect:uc:yes' },
+          { type: 2, style: 2, label: 'No, skip migration', custom_id: 'sml_connect:uc:no' }
+        ]
+      }]
+    };
+  }
+
+  function createGroupQuestion({ guildId, guildName, migrated }) {
+    const nameLine = guildName
+      ? `If you say yes, your StockMarketLoop group starts with this exact name: ${guildName}.`
+      : 'If you say yes, StockMarketLoop will use this Discord server as the source and ask for the group name on signup.';
+    return {
+      content: [
+        migrated
+          ? 'Migration path selected. No migration fee, no double billing, and members keep their verified next payment date.'
+          : 'Upgrade.Chat migration skipped. You can still use StockMarketLoop Connect for this Discord server.',
+        '',
+        'Do you want to create a StockMarketLoop Group for this Discord?',
+        nameLine,
+        '',
+        'Perks: indexed Google/Bing group homepage, live Discord feed, membership store, live watch page, Loop Letter, Stripe/PayPal billing, role sync, analytics, dispute defense, Retail Trader Spotlight, and more growth than a locked Discord-only server.'
+      ].join('\n'),
+      components: [{
+        type: 1,
+        components: [
+          { type: 2, style: 5, label: 'Yes — create SML group', url: groupCreateUrl({ guildId, guildName }) },
+          migrated
+            ? { type: 2, style: 5, label: 'Start Upgrade.Chat migration', url: migrateUrl({ guildId, guildName }) }
+            : { type: 2, style: 2, label: 'No — bot only for now', custom_id: 'sml_connect:group:no' }
+        ]
+      }]
+    };
   }
 
   /* --------------------------------------------------------------------- */
@@ -397,6 +502,14 @@ function createConnectCommands(deps = {}) {
     if (!discordUserId) {
       return { response: ephemeralMessage(MSG_UNLINKED) };
     }
+    if (commandName === 'connect-setup') {
+      if (!guildId) {
+        return { response: ephemeralMessage('Run this setup command inside the Discord server you want to connect.') };
+      }
+      const guildName = await resolveGuildName(interaction, guildId);
+      await audit(Object.assign({ outcome: 'setup_started' }, auditBase));
+      return { response: { type: 4, data: Object.assign(setupIntro({ guildId, guildName }), { flags: EPHEMERAL }) } };
+    }
     if (!handler) {
       await audit(Object.assign({ outcome: 'unknown_command' }, auditBase));
       return { response: ephemeralMessage(MSG_UNKNOWN) };
@@ -487,7 +600,45 @@ function createConnectCommands(deps = {}) {
     }
   }
 
-  return { handleCommand };
+  async function handleComponent(interaction) {
+    const customId = interaction && interaction.data && typeof interaction.data.custom_id === 'string'
+      ? interaction.data.custom_id : '';
+    const invoker = (interaction && interaction.member && interaction.member.user) || (interaction && interaction.user) || {};
+    const discordUserId = typeof invoker.id === 'string' && /^[0-9]{5,24}$/.test(invoker.id) ? invoker.id : null;
+    const guildId = interaction && typeof interaction.guild_id === 'string' ? interaction.guild_id : null;
+    const auditBase = { interaction, commandName: customId.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 64) || 'component', discordUserId, guildId };
+
+    if (!discordUserId || !guildId) {
+      return { response: ephemeralMessage('Run this setup inside the Discord server you want to connect.') };
+    }
+    if (!customId.startsWith('sml_connect:')) {
+      await audit(Object.assign({ outcome: 'unknown_component' }, auditBase));
+      return { response: ephemeralMessage('This StockMarketLoop Connect button is not recognized. Run /connect-setup again.') };
+    }
+    if (!takeToken(discordUserId, now())) {
+      await audit(Object.assign({ outcome: 'rate_limited' }, auditBase));
+      return { response: ephemeralMessage(MSG_RATE_LIMITED) };
+    }
+
+    const guildName = await resolveGuildName(interaction, guildId);
+    if (customId === 'sml_connect:uc:yes') {
+      await audit(Object.assign({ outcome: 'upgrade_chat_yes' }, auditBase));
+      return { response: { type: 4, data: Object.assign(createGroupQuestion({ guildId, guildName, migrated: true }), { flags: EPHEMERAL }) } };
+    }
+    if (customId === 'sml_connect:uc:no') {
+      await audit(Object.assign({ outcome: 'upgrade_chat_no' }, auditBase));
+      return { response: { type: 4, data: Object.assign(createGroupQuestion({ guildId, guildName, migrated: false }), { flags: EPHEMERAL }) } };
+    }
+    if (customId === 'sml_connect:group:no') {
+      await audit(Object.assign({ outcome: 'group_declined' }, auditBase));
+      return { response: ephemeralMessage('No problem. The bot can stay installed, and you can run /connect-setup anytime when you are ready to create a StockMarketLoop group.') };
+    }
+
+    await audit(Object.assign({ outcome: 'unknown_component' }, auditBase));
+    return { response: ephemeralMessage('This StockMarketLoop Connect button expired. Run /connect-setup again.') };
+  }
+
+  return { handleCommand, handleComponent };
 }
 
 module.exports = {

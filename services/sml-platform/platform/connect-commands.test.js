@@ -112,18 +112,67 @@ function allStrings(value, out = []) {
   return out;
 }
 
-test('command definitions: 10 commands, permissions 0, guild contexts only', () => {
-  assert.equal(COMMAND_DEFINITIONS.length, 10);
+test('command definitions include public owner setup plus protected merchant tools', () => {
+  assert.equal(COMMAND_DEFINITIONS.length, 11);
   const names = COMMAND_DEFINITIONS.map((definition) => definition.name);
   assert.deepEqual(names, [
+    'connect-setup',
     'payments', 'subscriptions', 'customer-history', 'disputes', 'dispute-view',
     'dispute-build', 'dispute-missing', 'dispute-open-dashboard', 'role-status', 'role-reconcile'
   ]);
   for (const definition of COMMAND_DEFINITIONS) {
-    assert.equal(definition.default_member_permissions, '0');
+    assert.equal(definition.default_member_permissions, definition.name === 'connect-setup' ? '32' : '0');
     assert.deepEqual(definition.contexts, [0]);
     assert.equal(definition.type, 1);
   }
+});
+
+test('connect-setup is available before SML account linking and asks Upgrade.Chat by button', async () => {
+  const { deps, audits } = fakes({
+    graph: { async findByRef() { throw new Error('setup should not require account graph lookup'); } }
+  });
+  const result = await createConnectCommands(deps).handleCommand(interaction('connect-setup', [], {
+    guild: { name: 'Making Easy Money' }
+  }));
+  assert.equal(result.response.type, 4);
+  assert.equal(result.response.data.flags, 64);
+  assert.match(result.response.data.content, /StockMarketLoop Connect is installed/);
+  assert.match(result.response.data.content, /Making Easy Money/);
+  const buttons = result.response.data.components[0].components;
+  assert.equal(buttons[0].custom_id, 'sml_connect:uc:yes');
+  assert.equal(buttons[1].custom_id, 'sml_connect:uc:no');
+  assert.equal(audits.at(-1).fields.detail.outcome, 'setup_started');
+});
+
+test('Upgrade.Chat yes button offers migration and group creation with Discord name', async () => {
+  const { deps, audits } = fakes();
+  const result = await createConnectCommands(deps).handleComponent(interaction('', [], {
+    type: 3,
+    guild: { name: 'Making Easy Money' },
+    data: { custom_id: 'sml_connect:uc:yes' }
+  }));
+  assert.equal(result.response.data.flags, 64);
+  assert.match(result.response.data.content, /No migration fee/);
+  assert.match(result.response.data.content, /Making Easy Money/);
+  const buttons = result.response.data.components[0].components;
+  assert.equal(buttons[0].style, 5);
+  assert.match(buttons[0].url, /default_name=Making\+Easy\+Money/);
+  assert.match(buttons[1].url, /connect-migrate/);
+  assert.equal(audits.at(-1).fields.detail.outcome, 'upgrade_chat_yes');
+});
+
+test('Upgrade.Chat no button skips migration but still offers StockMarketLoop group creation', async () => {
+  const { deps } = fakes();
+  const result = await createConnectCommands(deps).handleComponent(interaction('', [], {
+    type: 3,
+    guild: { name: 'Making Easy Money' },
+    data: { custom_id: 'sml_connect:uc:no' }
+  }));
+  assert.match(result.response.data.content, /migration skipped/i);
+  assert.match(result.response.data.content, /create a StockMarketLoop Group/);
+  const buttons = result.response.data.components[0].components;
+  assert.equal(buttons[0].label, 'Yes — create SML group');
+  assert.equal(buttons[1].custom_id, 'sml_connect:group:no');
 });
 
 test('an unlinked Discord account is refused with a neutral ephemeral message', async () => {
@@ -169,6 +218,7 @@ test('no reply string ever contains planted PII, and every reply is ephemeral', 
   const commands = createConnectCommands(deps);
   const caseOption = [{ name: 'case_id', value: '12' }];
   const invocations = [
+    interaction('connect-setup'),
     interaction('payments'), interaction('subscriptions'),
     interaction('customer-history', caseOption), interaction('disputes'),
     interaction('dispute-view', caseOption), interaction('dispute-build', caseOption),

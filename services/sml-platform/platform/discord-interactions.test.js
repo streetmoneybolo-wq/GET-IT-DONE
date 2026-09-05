@@ -62,6 +62,18 @@ function commandInteraction(name, options = []) {
   });
 }
 
+function componentInteraction(customId, overrides = {}) {
+  return JSON.stringify(Object.assign({
+    id: 'interaction_button_1',
+    type: 3,
+    guild_id: GUILD,
+    token: 'follow-up-token-xyz',
+    member: { user: { id: USER } },
+    guild: { name: 'Making Easy Money' },
+    data: { custom_id: customId }
+  }, overrides));
+}
+
 function build(overrides = {}) {
   const fetched = fakeFetch(overrides.fetchStatuses);
   const slept = [];
@@ -227,14 +239,26 @@ test('the follow-up sender retries after a 429 using the returned retry_after', 
   }
 });
 
-test('interaction types other than PING and command get an ephemeral not-supported reply', async () => {
+test('interaction types other than PING, command, and component get an ephemeral not-supported reply', async () => {
   const { handler } = build();
-  const body = JSON.stringify({ id: 'interaction_c', type: 3, token: 'tok', data: {} });
+  const body = JSON.stringify({ id: 'interaction_c', type: 99, token: 'tok', data: {} });
   const response = fakeResponse();
   await handler.handleRequest(fakeRequest(body), response, body);
   const parsed = response.json();
   assert.equal(parsed.type, 4);
   assert.equal(parsed.data.flags, 64);
+});
+
+test('a signed component button is routed to the Connect setup handler', async () => {
+  const { handler } = build();
+  const body = componentInteraction('sml_connect:uc:yes');
+  const response = fakeResponse();
+  await handler.handleRequest(fakeRequest(body), response, body);
+  const parsed = response.json();
+  assert.equal(parsed.type, 4);
+  assert.equal(parsed.data.flags, 64);
+  assert.match(parsed.data.content, /No migration fee/);
+  assert.match(parsed.data.content, /Making Easy Money/);
 });
 
 test('a follow-up with a malformed webhook token is dropped, not sent', async () => {
