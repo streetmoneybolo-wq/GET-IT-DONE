@@ -1168,7 +1168,10 @@
     try{ var mnS=JSON.parse(sessionStorage.getItem('sml-hf-mn')||'{}'); if(mnS&&typeof mnS==='object') MN=mnS; }catch(e){}
     function mnSave(){ try{ sessionStorage.setItem('sml-hf-mn', JSON.stringify(MN)); }catch(e){} }
     function mnGet(h){ return MN[String(h||'').toLowerCase()]||null; }
-    function mnSet(h,row){ h=String(h||'').toLowerCase(); if(!h||!row) return; MN[h]={n:String(row.n||row.name||h),av:String(row.av||row.avatar||''),u:String(row.u||row.url||('/'+h+'/'))}; mnSave(); }
+    function mnSet(h,row){ h=String(h||'').toLowerCase(); if(!h||!row) return; MN[h]={n:String(row.n||row.name||h),av:String(row.av||row.avatar||''),u:String(row.u||row.url||('/'+h+'/')),id:Number(row.id||0)||0}; mnSave(); }
+    /* the member id on the link is what the site's hover-card plugin keys on
+       (a[data-sml-user-id]) — hovering a tagged name shows their profile card */
+    function mnIdAttr(row){ return row&&row.id?' data-sml-user-id="'+esc(String(row.id))+'"':''; }
     function mnResolve(h,cb){
       h=String(h||'').toLowerCase(); if(!h) return;
       var hit=mnGet(h); if(hit){ cb(hit); return; }
@@ -1182,7 +1185,7 @@
       }).catch(function(){ done(null); });
     }
     function mnAvatarHTML(row){ return row&&row.av?'<img class="hf-mn-av" src="'+esc(photonImg(row.av,34,34))+'" alt="" referrerpolicy="no-referrer">':'<span class="hf-mn-ph"></span>'; }
-    function mentionHTML(h){ var row=mnGet(h)||{}; return '<a class="hf-mn" href="'+esc(row.u||('/'+h.toLowerCase()+'/'))+'" data-mn="'+esc(h.toLowerCase())+'">'+mnAvatarHTML(row)+esc(row.n||h)+'</a>'; }
+    function mentionHTML(h){ var row=mnGet(h)||{}; return '<a class="hf-mn" href="'+esc(row.u||('/'+h.toLowerCase()+'/'))+'" data-mn="'+esc(h.toLowerCase())+'"'+mnIdAttr(row)+'>'+mnAvatarHTML(row)+esc(row.n||h)+'</a>'; }
     var URL_RX=/\b(?:https?:\/\/|www\.)[^\s<>"')\]]+/gi;
     function richText(text){
       /* escape first, then tokens: $TICKER -> chart link, @member -> avatar + name */
@@ -1215,7 +1218,7 @@
         }
         card.querySelectorAll('a.hf-mn').forEach(function(a){
           var h=a.getAttribute('data-mn'); if(!h||mnGet(h)) return;
-          mnResolve(h,function(row){ if(!row||row.miss) return; if(row.u) a.href=row.u; a.innerHTML=mnAvatarHTML(row)+esc(row.n||h); });
+          mnResolve(h,function(row){ if(!row||row.miss) return; if(row.u) a.href=row.u; if(row.id) a.setAttribute('data-sml-user-id',String(row.id)); a.innerHTML=mnAvatarHTML(row)+esc(row.n||h); });
         });
       });
     }
@@ -1267,7 +1270,7 @@
       fetch('/wp-json/sml-site-search/v1/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
         var g=(d&&d.groups)||{}, out;
         if(kind==='$') out=(g.quotes||[]).map(function(x){return {kind:'$',sym:String(x.symbol||'').toUpperCase(),n:String(x.name||''),ins:'$'+String(x.symbol||'').toUpperCase()};}).filter(function(x){return x.sym;});
-        else { out=(g.people||[]).map(function(x){return {kind:'@',h:String(x.handle||''),n:String(x.name||x.handle||''),av:String(x.avatar||''),u:String(x.url||''),ins:'@'+String(x.handle||'')};}).filter(function(x){return x.h;}); out.forEach(function(x){ if(!mnGet(x.h)) mnSet(x.h,{n:x.n,av:x.av,u:x.u||('/'+x.h+'/')}); }); }
+        else { out=(g.people||[]).map(function(x){return {kind:'@',h:String(x.handle||''),n:String(x.name||x.handle||''),av:String(x.avatar||''),u:String(x.url||''),id:Number(x.id||0)||0,ins:'@'+String(x.handle||'')};}).filter(function(x){return x.h;}); out.forEach(function(x){ if(!mnGet(x.h)) mnSet(x.h,{n:x.n,av:x.av,u:x.u||('/'+x.h+'/'),id:x.id}); }); }
         TA.cache[key]=out; cb(out);
       }).catch(function(){cb(null);});
     }
@@ -1295,7 +1298,7 @@
     function taApply(it){
       if(!it||!TA.el||!TA.tok) return;
       var el=TA.el, tok=TA.tok, v=String(el.value||'');
-      if(it.kind==='@') mnSet(it.h,{n:it.n,av:it.av,u:it.u||('/'+it.h+'/')}); /* the picked member paints as avatar + name */
+      if(it.kind==='@') mnSet(it.h,{n:it.n,av:it.av,u:it.u||('/'+it.h+'/'),id:it.id}); /* the picked member paints as avatar + name */
       el.value=v.slice(0,tok.start)+it.ins+' '+v.slice(tok.end);
       var caret=tok.start+it.ins.length+1;
       taClose();

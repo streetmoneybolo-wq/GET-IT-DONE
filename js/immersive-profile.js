@@ -400,7 +400,7 @@
 
     var postHtml = cfg.posts.map(function (po) {
       return '<div class="sip-post"><div class="sip-post-h"><span class="sip-post-badge" style="color:' + esc(po.color) + ';border:1px solid ' + esc(po.color) + '">' + esc(po.type) + '</span><span class="sip-post-time">' + esc(po.time) + '</span></div>' +
-        (po.ctx ? '<div class="sip-post-ctx">' + (po.ctxUrl ? '<a href="' + esc(po.ctxUrl) + '" style="color:inherit;text-decoration:none">' + esc(po.ctx) + '</a>' : esc(po.ctx)) + '</div>' : '') +
+        (po.ctx ? '<div class="sip-post-ctx">' + (po.ctxUrl ? '<a href="' + esc(po.ctxUrl) + '"' + (po.ctxUid ? ' data-sml-user-id="' + esc(String(po.ctxUid)) + '"' : '') + ' style="color:inherit;text-decoration:none">' + esc(po.ctx) + '</a>' : esc(po.ctx)) + '</div>' : '') +
         '<div class="sip-post-text">' + (po.html || esc(po.text)) + '</div>' +
         (po.links && po.links.length ? '<div class="sip-post-link">' + po.links.slice(0, 3).map(function (u) { var href = /^https?:\/\//i.test(u) ? u : ('https://' + u); return '<a href="' + esc(href) + '" target="_blank" rel="noopener nofollow ugc">' + esc(u.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')) + '</a>'; }).join(' · ') + '</div>' : '') +
         '</div>';
@@ -1526,7 +1526,8 @@
             .replace(/(^|[\s(])@([A-Za-z0-9_.]{2,30})/g, function (m, pre, h) {
               var tail = '', mm = h.match(/^(.*?)(\.+)$/); if (mm) { h = mm[1]; tail = mm[2]; } if (h.length < 2) return m;
               var row = MN[h.toLowerCase()] || {}; var av = row.avatar ? '<img class="sip-mn-av" src="' + esc(row.avatar) + '" alt="" referrerpolicy="no-referrer">' : '<span class="sip-mn-ph"></span>';
-              return pre + '<a class="sip-mn" href="' + esc(row.url || ('/' + h.toLowerCase() + '/')) + '">' + av + esc(row.name || h) + '</a>' + tail;
+              /* data-sml-user-id = the site's hover-card hook (sml-member-hover-cards) */
+              return pre + '<a class="sip-mn" href="' + esc(row.url || ('/' + h.toLowerCase() + '/')) + '"' + (row.id ? ' data-sml-user-id="' + esc(String(row.id)) + '"' : '') + '>' + av + esc(row.name || h) + '</a>' + tail;
             });
         }
         base.posts = chart.map(function (po) {
@@ -1534,7 +1535,7 @@
           var body = raw.replace(URL_RX, function (u) { links.push(u); return ' '; }).replace(/\s{2,}/g, ' ').trim();
           var when = ''; try { var d = new Date(po.date); if (!isNaN(+d)) when = d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); } catch (e) {}
           var by = po.__tagged ? (po.tagged_by || {}) : null;
-          return { type: by ? 'TAGGED' : 'POST', color: by ? '#5DB9FF' : '#38F58A', time: when, ctx: by ? ('Tagged by ' + (by.name || by.handle || 'a member')) : '', ctxUrl: by ? (by.url || '') : '', text: body, html: body ? rich(body) : '', links: links };
+          return { type: by ? 'TAGGED' : 'POST', color: by ? '#5DB9FF' : '#38F58A', time: when, ctx: by ? ('Tagged by ' + (by.name || by.handle || 'a member')) : '', ctxUrl: by ? (by.url || '') : '', ctxUid: by ? Number(by.user_id || 0) || 0 : 0, text: body, html: body ? rich(body) : '', links: links };
         }).filter(function (po) { return po.text || po.links.length; });
       }).catch(function () {});
       base.moduleVisibility = customization.module_visibility && typeof customization.module_visibility === 'object' ? customization.module_visibility : {};
