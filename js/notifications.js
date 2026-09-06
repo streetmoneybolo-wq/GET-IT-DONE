@@ -19,7 +19,8 @@
   var CFG = window.SML_NOTIFY || {};
   var NONCE = CFG.nonce || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
   var ME = Number(CFG.me || (window.SML_ME && window.SML_ME.id) || 0) || 0;
-  var API = '/wp-json/sml-members/v1/notifications';
+  /* the SAME feed the Loop-Kick device's Alerts tab shows (messenger hub: members store + the app's own read marks), so the badge and the dropdown always agree */
+  var API = '/wp-json/sml-mhub/v1/notifications';
   var POLL_MS = 40000;
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -152,15 +153,15 @@
   function markRead(silent) {
     if (!S.unread) return;
     S.unread = 0; S.items.forEach(function (n) { n.read = true; }); decorate(); if (!silent) render();
-    api(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read' }) }).catch(function () {});
+    api(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read_all' }) }).catch(function () {});
   }
 
   /* ---- data ---- */
   function poll() {
     if (document.hidden && S.items.length) return;
     api(API + '?_=' + Date.now()).then(function (j) {
-      S.items = Array.isArray(j.notifications) ? j.notifications : [];
-      S.unread = Number(j.unread_count || 0) || 0;
+      S.items = Array.isArray(j.items) ? j.items : (Array.isArray(j.notifications) ? j.notifications : []);
+      var c = j.counts || {}; S.unread = j.unread_count != null ? (Number(j.unread_count) || 0) : (Number((c.general || {}).unread || 0) + Number((c.priority || {}).unread || 0));
       decorate(); if (S.panel && S.panel.classList.contains('on')) render();
     }).catch(function () {});
   }
