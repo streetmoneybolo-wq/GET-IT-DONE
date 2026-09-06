@@ -168,13 +168,9 @@
   /* ---- attach to the header button (rendered by site-search.js / home-feed.js) ---- */
   function bind(btn) {
     S.btn = btn; ensureCss();
-    /* capture phase: with unread notifications the click opens the panel instead of the messenger */
-    document.addEventListener('click', function (ev) {
-      if (!S.btn || !S.btn.contains(ev.target)) return;
-      if (S.unread <= 0 && !(S.panel && S.panel.classList.contains('on'))) return; /* normal LOOP-KICK behaviour */
-      ev.preventDefault(); ev.stopImmediatePropagation(); ev.stopPropagation();
-      if (S.panel && S.panel.classList.contains('on')) closePanel(); else openPanel();
-    }, true);
+    /* owner call 2026-09-05: the LOOP-KICK click is NOT intercepted — notifications
+       live inside the Loop-Kick app (the dropdown the owner built). This module only
+       blinks the button, shows the count, and feeds the app (see bridge below). */
     decorate();
   }
   var tries = 0;
