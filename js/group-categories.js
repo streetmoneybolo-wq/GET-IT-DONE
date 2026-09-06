@@ -1951,3 +1951,100 @@
   function boot() { tick(); setInterval(tick, 1000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
+
+
+/* ---- Transparent banners + backgrounds (owner call 2026-09-06):
+   (1) A channel background whose image has real transparency also runs OVER the channel banner —
+       one continuous picture across the header and the chat, not a strip that stops at the banner.
+   (2) A banner image with transparency gets no backing at all: the header's black fill, its
+       gradient wash and the group-banner layer beneath are switched off, so the picture is 100%
+       see-through where its pixels are. Opaque images behave exactly as before.
+   Transparency is measured, not guessed: the image is drawn to a 64×64 canvas and counted. ---- */
+(function () {
+  'use strict';
+  if (window.__smlTransparentLayers) return;
+  window.__smlTransparentLayers = 1;
+  var css = '' +
+    '.sml-gshell__main-head.sml-banner-transparent{background:transparent!important}' +
+    '.sml-gshell__main-head.sml-banner-transparent::after{display:none!important}' +
+    '.sml-gshell__main-head.sml-banner-transparent > .sml-gshell__header-banner{background-color:transparent!important}' +
+    '.sml-gshell__main-head.sml-banner-transparent-own > .sml-gshell__header-banner{visibility:hidden!important}' +
+    '.sml-bg-over{position:absolute;inset:0;z-index:1;pointer-events:none;background-repeat:no-repeat}';
+  function ensureCss() { if (document.getElementById('sml-transparent-layers-css')) return; var st = document.createElement('style'); st.id = 'sml-transparent-layers-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
+  function urlOf(bgi) { var m = /url\(["']?(.*?)["']?\)/.exec(bgi || ''); return m ? m[1] : ''; }
+
+  /* alpha probe, cached per URL: {done, alpha, nw, nh} */
+  var A = {};
+  function probe(url) {
+    if (!url || url.indexOf('data:') === 0 && url.length > 200000) return null;
+    if (A[url]) return A[url].done ? A[url] : null;
+    var rec = A[url] = { done: false, alpha: false, nw: 0, nh: 0 };
+    var im = new Image();
+    if (url.indexOf('data:') !== 0) im.crossOrigin = 'anonymous';
+    im.onload = function () {
+      rec.nw = im.naturalWidth; rec.nh = im.naturalHeight;
+      try {
+        var w = 64, h = 64, c = document.createElement('canvas'); c.width = w; c.height = h;
+        var cx = c.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0, w, h);
+        var d = cx.getImageData(0, 0, w, h).data, t = 0;
+        for (var i = 3; i < d.length; i += 4) { if (d[i] < 128) t++; }
+        rec.alpha = t >= (w * h) * 0.02;   /* at least 2% of the picture is see-through */
+      } catch (e) { rec.alpha = false; }     /* cross-origin taint etc.: treat as opaque */
+      rec.done = true;
+    };
+    im.onerror = function () { rec.done = true; };
+    im.src = url;
+    return null;
+  }
+
+  function head() { return document.querySelector('.sml-gshell__main-head'); }
+  function layer() { return document.querySelector('[data-smlgs-watermark]'); }
+
+  /* (2) transparent banner → no backing */
+  function bannerPass(H) {
+    var img = H.querySelector('.sml-cbanner-image');
+    var own = img && (img.currentSrc || img.src) ? probe(img.currentSrc || img.src) : null;
+    var ownAlpha = !!(own && own.alpha);
+    var groupLayer = H.querySelector('.sml-gshell__header-banner');
+    var gUrl = groupLayer ? urlOf(getComputedStyle(groupLayer).backgroundImage) : '';
+    var grp = (!img && gUrl) ? probe(gUrl) : null;
+    var grpAlpha = !!(grp && grp.alpha);
+    H.classList.toggle('sml-banner-transparent-own', ownAlpha);
+    H.classList.toggle('sml-banner-transparent', ownAlpha || grpAlpha);
+  }
+
+  /* (1) transparent channel background → continue it over the banner */
+  function overlayPass(H) {
+    var L = layer(); var url = L ? urlOf(L.style.backgroundImage || getComputedStyle(L).backgroundImage) : '';
+    var over = H.querySelector('.sml-bg-over');
+    var rec = url ? probe(url) : null;
+    var want = !!(rec && rec.alpha && rec.nw > 0 && rec.nh > 0) && String(L.style.opacity || getComputedStyle(L).opacity) !== '0';
+    if (!want) { if (over) over.remove(); return; }
+    if (!over) { over = document.createElement('div'); over.className = 'sml-bg-over'; var img = H.querySelector('.sml-cbanner-image'); if (img && img.nextSibling) H.insertBefore(over, img.nextSibling); else H.appendChild(over); }
+    var Lr = L.getBoundingClientRect(), Hr = H.getBoundingClientRect(), lcs = getComputedStyle(L);
+    var nw = rec.nw, nh = rec.nh, iw, ih;
+    var size = String(lcs.backgroundSize || 'cover').trim();
+    if (size === 'cover') { var sc = Math.max(Lr.width / nw, Lr.height / nh); iw = nw * sc; ih = nh * sc; }
+    else if (size === 'contain') { var sc2 = Math.min(Lr.width / nw, Lr.height / nh); iw = nw * sc2; ih = nh * sc2; }
+    else {
+      var parts = size.split(/\s+/), a = parts[0], b = parts[1] || 'auto';
+      iw = /%$/.test(a) ? Lr.width * parseFloat(a) / 100 : (/px$/.test(a) ? parseFloat(a) : nw);
+      ih = b === 'auto' ? iw * nh / nw : (/%$/.test(b) ? Lr.height * parseFloat(b) / 100 : parseFloat(b));
+      if (a === 'auto' && b !== 'auto') iw = ih * nw / nh;
+    }
+    var pos = String(lcs.backgroundPosition || '50% 50%').split(/\s+/), px, py;
+    px = /%$/.test(pos[0]) ? (Lr.width - iw) * parseFloat(pos[0]) / 100 : parseFloat(pos[0]) || 0;
+    py = /%$/.test(pos[1] || '50%') ? (Lr.height - ih) * parseFloat(pos[1] || '50%') / 100 : parseFloat(pos[1]) || 0;
+    var bx = px + (Lr.left - Hr.left), by = py + (Lr.top - Hr.top);
+    var bgi = 'url("' + url.replace(/["\\]/g, '\\$&') + '")';
+    if (over.style.backgroundImage !== bgi) over.style.backgroundImage = bgi;
+    over.style.backgroundSize = iw.toFixed(1) + 'px ' + ih.toFixed(1) + 'px';
+    over.style.backgroundPosition = bx.toFixed(1) + 'px ' + by.toFixed(1) + 'px';
+    over.style.opacity = String(L.style.opacity || lcs.opacity || 1);
+  }
+
+  function tick() { var H = head(); if (!H) return; ensureCss(); bannerPass(H); overlayPass(H); }
+  function boot() { tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.SMLTransparentLayers = { probe: probe, cache: A, tick: tick };
+})();
