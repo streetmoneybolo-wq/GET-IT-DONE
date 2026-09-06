@@ -1706,3 +1706,35 @@
   var st = document.createElement('style'); st.id = 'sml-msgrow-css'; st.textContent = css;
   (document.head || document.documentElement).appendChild(st);
 })();
+
+
+/* ---- Right rail (owner call 2026-09-05): when a channel shows its VERIFIED 5-DAY RECORD,
+   the Watchlist 24h block is hidden — the two together crowd the rail. Channels without a
+   record (and the Portal chat) keep the watchlist. Re-evaluated every second because the
+   shell rebuilds the rail per channel. ---- */
+(function () {
+  'use strict';
+  if (window.__smlAsideRecord) return;
+  window.__smlAsideRecord = 1;
+  var css = '.sml-gshell__aside.sml-has-record > .sml-sw-group{display:none!important}';
+  function ensureCss() { if (document.getElementById('sml-aside-record-css')) return; var st = document.createElement('style'); st.id = 'sml-aside-record-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
+  function hasRecord(aside) {
+    var kids = aside.children;
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i];
+      if (k.classList.contains('sml-sw-group')) continue;
+      var head = (k.querySelector('h1,h2,h3,h4,strong,.sml-gshell__aside-title') || k);
+      var t = (head.textContent || k.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (/5-?DAY RECORD/i.test(t) && k.getBoundingClientRect().height > 0) return true;
+    }
+    return false;
+  }
+  function tick() {
+    ensureCss();
+    var aside = document.querySelector('.sml-gshell__aside');
+    if (!aside) return;
+    aside.classList.toggle('sml-has-record', hasRecord(aside));
+  }
+  function boot() { tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
