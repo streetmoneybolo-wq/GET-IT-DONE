@@ -1725,7 +1725,7 @@
       if (k.classList.contains('sml-sw-group')) continue;
       var head = (k.querySelector('h1,h2,h3,h4,strong,.sml-gshell__aside-title') || k);
       var t = (head.textContent || k.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
-      if (/5-?DAY RECORD/i.test(t) && k.getBoundingClientRect().height > 0) return true;
+      if (/5-?DAY RECORD/i.test(t) && getComputedStyle(k).display !== 'none' && !k.hidden) return true;
     }
     return false;
   }
@@ -1735,6 +1735,89 @@
     if (!aside) return;
     aside.classList.toggle('sml-has-record', hasRecord(aside));
   }
+  function boot() { tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+
+
+/* ---- Owner calls 2026-09-05/06:
+   (1) Banner resize handle: the channel-banner "pull-down" is hidden unless the owner
+       chooses "Resize banner" from the ⋯ menu (strict — no accidental drags).
+   (2) Portal chat right rail: "Online" becomes "Groups in the Portal" — which groups have
+       members online right now (sml-portal/v1/online-groups), instead of one group's roster. ---- */
+(function () {
+  'use strict';
+  if (window.__smlPortalOnline) return;
+  window.__smlPortalOnline = 1;
+  var css = '' +
+    '.sml-gshell .sml-cbanner-resize{display:none!important}' +
+    '.sml-gshell.sml-banner-edit .sml-cbanner-resize{display:flex!important}' +
+    '.sml-banner-edit-done{position:absolute;top:8px;left:8px;z-index:62;border:1px solid rgba(0,255,102,.55);background:#00ff66;color:#031008;border-radius:8px;padding:6px 10px;font:800 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
+    '.sml-pgo-list{display:flex;flex-direction:column;gap:6px}' +
+    '.sml-pgo-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);text-decoration:none;color:inherit}' +
+    '.sml-pgo-row:hover{border-color:rgba(0,255,102,.35);background:rgba(0,255,102,.06)}' +
+    '.sml-pgo-row img,.sml-pgo-row .ph{width:28px;height:28px;border-radius:8px;object-fit:cover;flex:none;background:#0b1a13;display:flex;align-items:center;justify-content:center;color:#7ee2a8;font:800 12px/1 Inter,system-ui,sans-serif}' +
+    '.sml-pgo-row .nm{flex:1;min-width:0;font:700 12px/1.3 Inter,system-ui,sans-serif;color:#e6f5ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.sml-pgo-row .ct{flex:none;display:inline-flex;align-items:center;gap:5px;font:700 11px/1 "IBM Plex Mono",monospace;color:#00ff88}' +
+    '.sml-pgo-row .ct i{width:7px;height:7px;border-radius:50%;background:#00ff88;box-shadow:0 0 0 3px rgba(0,255,136,.18)}' +
+    '.sml-pgo-empty{color:#7e8a96;font:500 12px/1.5 Inter,system-ui,sans-serif}';
+  function ensureCss() { if (document.getElementById('sml-portal-online-css')) return; var st = document.createElement('style'); st.id = 'sml-portal-online-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function ctx() { return window.SMLGroupShellContext || {}; }
+  function isPortal() { return String(ctx().mode || '') === 'chat' || !ctx().channelId; }
+
+  /* (1) strict banner resize */
+  function ensureBannerRule() {
+    var shell = document.querySelector('.sml-gshell'); if (!shell) return;
+    var menu = document.getElementById('sml-ghx-menu');
+    var handle = document.querySelector('.sml-cbanner-resize');
+    if (menu && handle && !menu.querySelector('[data-banner-edit]')) {
+      var b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-banner-edit', '1'); b.textContent = 'Resize banner';
+      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); shell.classList.add('sml-banner-edit'); ensureDone(shell); });
+      menu.appendChild(b);
+    }
+    if (!handle || !shell.classList.contains('sml-banner-edit')) { var d = document.querySelector('.sml-banner-edit-done'); if (d) d.remove(); }
+  }
+  function ensureDone(shell) {
+    var head = document.querySelector('.sml-gshell__main-head'); if (!head || head.querySelector('.sml-banner-edit-done')) return;
+    if (getComputedStyle(head).position === 'static') head.style.position = 'relative';
+    var d = document.createElement('button'); d.type = 'button'; d.className = 'sml-banner-edit-done'; d.textContent = 'Done resizing';
+    d.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); shell.classList.remove('sml-banner-edit'); d.remove(); });
+    head.appendChild(d);
+  }
+
+  /* (2) Portal: groups online */
+  var P = { data: null, at: 0, inflight: false, saved: null };
+  function fetchGroups() {
+    if (P.inflight || Date.now() - P.at < 15000) return;
+    P.inflight = true;
+    fetch('/wp-json/sml-portal/v1/online-groups?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json(); }).then(function (j) { P.data = j || {}; P.at = Date.now(); P.inflight = false; render(); })
+      .catch(function () { P.inflight = false; P.at = Date.now(); });
+  }
+  function onlineSection() {
+    var aside = document.querySelector('.sml-gshell__aside'); if (!aside) return null;
+    var box = aside.querySelector('[data-smlgs-online]'); return box ? box.closest('section') || box.parentElement : null;
+  }
+  function render() {
+    var sec = onlineSection(); if (!sec) return;
+    var title = sec.querySelector('.sml-gshell__section-title'); var box = sec.querySelector('[data-smlgs-online]');
+    if (!box) return;
+    if (!isPortal()) {
+      if (sec.getAttribute('data-pgo') === '1') { sec.removeAttribute('data-pgo'); if (title) title.innerHTML = 'Online <span data-smlgs-online-count></span>'; box.innerHTML = '<p class="sml-gshell__empty">Checking who is online…</p>'; }
+      return;
+    }
+    var groups = (P.data && P.data.groups) || [];
+    sec.setAttribute('data-pgo', '1');
+    if (title) title.innerHTML = 'Groups in the Portal <span data-smlgs-online-count>' + (groups.length ? '— ' + esc(groups.length) : '') + '</span>';
+    if (!P.data) { box.innerHTML = '<p class="sml-pgo-empty">Checking which groups are here…</p>'; return; }
+    if (!groups.length) { box.innerHTML = '<p class="sml-pgo-empty">No groups have members in the Portal right now.</p>'; return; }
+    box.innerHTML = '<div class="sml-pgo-list">' + groups.map(function (g) {
+      var ic = g.icon_url ? '<img src="' + esc(g.icon_url) + '" alt="">' : '<span class="ph">' + esc(String(g.name || '?').slice(0, 1).toUpperCase()) + '</span>';
+      return '<a class="sml-pgo-row" href="' + esc(g.url || ('/groups/' + g.slug + '/')) + '">' + ic + '<span class="nm">' + esc(g.name) + '</span><span class="ct"><i></i>' + esc(g.online) + ' online</span></a>';
+    }).join('') + '</div>';
+  }
+  function tick() { ensureCss(); ensureBannerRule(); if (isPortal()) fetchGroups(); render(); }
   function boot() { tick(); setInterval(tick, 1000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
