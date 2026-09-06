@@ -41,11 +41,11 @@
     '.sml-nk-head strong{font-size:14px;flex:1}.sml-nk-head strong em{font-style:normal;color:#ff4757;margin-left:6px;font-size:12px}' +
     '.sml-nk-head button{font:600 11px/1 Inter,system-ui,sans-serif;color:#8fa3b5;background:#0d141c;border:1px solid #16202b;border-radius:999px;padding:7px 10px;cursor:pointer}.sml-nk-head button:hover{color:#E6EDF5;border-color:#2a3d4b}' +
     '.sml-nk-list{overflow:auto;flex:1;display:flex;flex-direction:column}' +
-    '.sml-nk-item{display:grid;grid-template-columns:36px 1fr auto;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:start;text-decoration:none;color:inherit}' +
+    '.sml-nk-item{display:grid;grid-template-columns:36px 1fr auto;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.05);align-items:start;text-decoration:none;color:inherit;cursor:pointer}' +
     '.sml-nk-item.unread{background:rgba(0,255,136,.05)}.sml-nk-item:hover{background:rgba(255,255,255,.04)}' +
     '.sml-nk-av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:linear-gradient(160deg,#24323F,#0E1620);display:flex;align-items:center;justify-content:center;font:700 12px/1 Inter,system-ui,sans-serif;color:#38F58A;box-shadow:0 0 0 2px #0B131F,0 0 0 3px rgba(34,224,122,.6)}' +
     '.sml-nk-av img{width:36px;height:36px;border-radius:50%;object-fit:cover;display:block}' +
-    '.sml-nk-body{min-width:0;font-size:13px;line-height:1.45;color:#CFDAE4}.sml-nk-body a.who{color:#5DB9FF;font-weight:700;text-decoration:none}.sml-nk-body a.who:hover{text-decoration:underline}' +
+    '.sml-nk-body{min-width:0;font-size:13px;line-height:1.45;color:#CFDAE4;font-family:Inter,system-ui,sans-serif}.sml-nk-body a.who{color:#5DB9FF!important;font-weight:700;font-size:inherit;text-decoration:none;display:inline}.sml-nk-body a.who:hover{text-decoration:underline}' +
     '.sml-nk-meta{display:flex;gap:8px;align-items:center;margin-top:5px;font:600 11px/1 "IBM Plex Mono",monospace;color:#6B7C90}' +
     '.sml-nk-meta .t{color:#ff4757}.sml-nk-meta a{color:#00ff88;text-decoration:none}.sml-nk-meta a:hover{text-decoration:underline}' +
     '.sml-nk-side{display:flex;flex-direction:column;gap:6px;align-items:flex-end}' +
@@ -98,13 +98,15 @@
       if (t.closest('[data-nk-kick]')) { closePanel(); openLoopKick(); return; }
       var fb = t.closest('[data-nk-follow]');
       if (fb) { ev.preventDefault(); followBack(fb); return; }
+      if (t.closest('a.who')) { markRead(true); return; } /* the actor's own profile link navigates by itself */
       var dm = t.closest('[data-nk-dm]');
       if (dm) { ev.preventDefault(); markRead(); closePanel(); openLoopKick(); return; }
-      var open = t.closest('a.sml-nk-item, .sml-nk-meta a');
-      if (open) { markRead(true); /* navigation continues */ }
+      var item = t.closest('.sml-nk-item');
+      if (item && !t.closest('a,button')) { var href = item.getAttribute('data-href'); markRead(true); if (href && href !== '#') location.href = href; }
     });
     document.addEventListener('click', function (ev) { if (S.panel && S.panel.classList.contains('on') && !S.panel.contains(ev.target) && !(S.btn && S.btn.contains(ev.target))) closePanel(); });
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closePanel(); });
+    p.addEventListener('keydown', function (ev) { if (ev.key !== 'Enter') return; var item = ev.target.closest('.sml-nk-item'); if (item && ev.target === item) item.click(); });
     window.addEventListener('resize', position);
     S.panel = p; return p;
   }
@@ -115,21 +117,22 @@
     S.panel.style.left = Math.max(8, Math.min(Math.round(r.right - w), window.innerWidth - w - 8)) + 'px';
   }
   function avatarHTML(a) { return a && a.avatar ? '<span class="sml-nk-av"><img src="' + esc(a.avatar) + '" alt="" referrerpolicy="no-referrer"></span>' : '<span class="sml-nk-av">' + esc(String((a && a.name) || 'S').replace(/^@/, '').slice(0, 2).toUpperCase()) + '</span>'; }
-  function labelFor(type) { return ({ follow: 'FOLLOW', mention: 'TAGGED YOU', like: 'LIKE', comment: 'COMMENT', share: 'SHARE', gift: 'GIFT', dm: 'MESSAGE', video: 'NEW VIDEO', live: 'LIVE NOW', profile_chart: 'POST' })[type] || String(type || '').toUpperCase(); }
+  function labelFor(type) { return ({ follow: 'FOLLOW', mention: 'TAGGED YOU', like: 'LIKE', chart_like: 'LIKE', stream_like: 'LIKE', comment: 'COMMENT', share: 'SHARE', gift: 'GIFT', dm: 'MESSAGE', video: 'NEW VIDEO', live: 'LIVE NOW', profile_chart: 'POST' })[type] || String(type || '').replace(/_/g, ' ').toUpperCase(); }
   function itemHTML(n) {
     var a = n.actor || {}; var msg = String(n.message || '');
-    var name = a.name || '';
-    /* the actor's name leads the sentence — make it the blue, clickable part */
-    var body = name && msg.indexOf(name) === 0 ? '<a class="who" href="' + esc(a.url || '#') + '"' + (a.id ? ' data-sml-user-id="' + esc(String(a.id)) + '"' : '') + '>' + esc(name) + '</a>' + esc(msg.slice(name.length)) : esc(msg);
+    /* the actor's name (or the handle the message was written with) leads the sentence — make it the blue, clickable part */
+    var lead = '';
+    [a.name || '', a.handle || ''].forEach(function (cand) { if (!lead && cand && msg.toLowerCase().indexOf(String(cand).toLowerCase()) === 0) lead = msg.slice(0, cand.length); });
+    var body = lead ? '<a class="who" href="' + esc(a.url || '#') + '"' + (a.id ? ' data-sml-user-id="' + esc(String(a.id)) + '"' : '') + '>' + esc(lead) + '</a>' + esc(msg.slice(lead.length)) : esc(msg);
     var isDm = n.type === 'dm';
     var link = isDm ? '#loop-kick' : (n.link || '#');
     var side = '';
     if (n.type === 'follow' && a.id && n.can_follow_back) side = '<button type="button" class="sml-nk-fb" data-nk-follow="' + esc(String(a.id)) + '">Follow back</button>';
     else if (n.type === 'follow' && a.id && n.can_follow_back === false) side = '<button type="button" class="sml-nk-fb done" disabled>Following</button>';
     var openLabel = ({ dm: 'Open messages', video: 'Watch', live: 'Watch live', follow: 'View profile', mention: 'View post', like: 'View post', comment: 'View post', share: 'View post', gift: 'View post', profile_chart: 'View post' })[n.type] || 'Open';
-    return '<a class="sml-nk-item' + (n.read ? '' : ' unread') + '" href="' + esc(link) + '"' + (isDm ? ' data-nk-dm="1"' : '') + '>' + avatarHTML(a) +
+    return '<div class="sml-nk-item' + (n.read ? '' : ' unread') + '" role="link" tabindex="0" data-href="' + esc(link) + '"' + (isDm ? ' data-nk-dm="1"' : '') + '>' + avatarHTML(a) +
       '<span class="sml-nk-body">' + body + '<span class="sml-nk-meta"><span class="t">' + esc(labelFor(n.type)) + '</span><span>' + esc(ago(n.date)) + '</span><span>' + esc(openLabel) + ' →</span></span></span>' +
-      '<span class="sml-nk-side">' + side + '</span></a>';
+      '<span class="sml-nk-side">' + side + '</span></div>';
   }
   function render() {
     var p = panel(); var list = p.querySelector('[data-nk-list]'); var cnt = p.querySelector('[data-nk-count]');
