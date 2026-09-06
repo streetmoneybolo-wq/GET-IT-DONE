@@ -1666,9 +1666,11 @@
     if (isPortal()) return !!(F.portal && F.portal.can_edit);
     return !!document.querySelector('[data-smlgs-owner-controls], .sml-gshell__channel-watermark-button, #sml-ghx-menu');
   }
+  function menuNode() { return document.querySelector('[data-smlgs-owner-menu]') || document.getElementById('sml-ghx-menu'); }
+  function closeMenu(menu) { if (menu) menu.classList.remove('open'); var d = document.querySelector('.sml-gshell__owner-dots'); if (d) d.setAttribute('aria-expanded', 'false'); }
   function ensureEntry() {
     ensureCss();
-    var menu = document.getElementById('sml-ghx-menu');
+    var menu = menuNode();
     var L = layer();
     var show = !!L && canManageHere();
     if (menu) {
@@ -1676,7 +1678,7 @@
       if (show && !mine) {
         var b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-cbg-menu', '1');
         b.textContent = isPortal() ? 'Portal background' : 'Adjust background (drag & zoom)';
-        b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); openEditor({ allowEmpty: isPortal() }); });
+        b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); closeMenu(menu); openEditor({ allowEmpty: isPortal() }); });
         menu.appendChild(b);
       } else if (mine) {
         var label = isPortal() ? 'Portal background' : 'Adjust background (drag & zoom)';
@@ -1806,11 +1808,11 @@
   /* (1) strict banner resize */
   function ensureBannerRule() {
     var shell = document.querySelector('.sml-gshell'); if (!shell) return;
-    var menu = document.getElementById('sml-ghx-menu');
+    var menu = document.querySelector('[data-smlgs-owner-menu]') || document.getElementById('sml-ghx-menu');
     var handle = document.querySelector('.sml-cbanner-resize');
     if (menu && handle && !menu.querySelector('[data-banner-edit]')) {
       var b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-banner-edit', '1'); b.textContent = 'Resize banner';
-      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); shell.classList.add('sml-banner-edit'); ensureDone(shell); });
+      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); var d = document.querySelector('.sml-gshell__owner-dots'); if (d) d.setAttribute('aria-expanded', 'false'); shell.classList.add('sml-banner-edit'); ensureDone(shell); });
       menu.appendChild(b);
     }
     if (!handle || !shell.classList.contains('sml-banner-edit')) { var d = document.querySelector('.sml-banner-edit-done'); if (d) d.remove(); }
