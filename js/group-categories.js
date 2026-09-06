@@ -1805,25 +1805,116 @@
   function ctx() { return window.SMLGroupShellContext || {}; }
   function isPortal() { return String(ctx().mode || '') === 'chat' || !ctx().channelId; }
 
-  /* (1) strict banner resize */
+  /* (1) strict banner resize — and, since 2026-09-06 (owner call), PLACEMENT: while "Resize
+     banner" is on, the banner image can be dragged into position and zoomed with the wheel or
+     the slider, on top of the height handle. Saves through the banner plugin's own route with the
+     same zoom / pos_x / pos_y it already stores, so the "Channel banner" dialog and this agree. */
+  var BCSS = '' +
+    '.sml-gshell.sml-banner-edit .sml-cbanner-resize{position:relative;z-index:4}' +
+    '.sml-banner-drag{position:absolute;inset:0;z-index:2;cursor:grab;outline:2px dashed rgba(0,255,102,.5);outline-offset:-2px;background:rgba(0,0,0,.06);touch-action:none}' +
+    '.sml-banner-drag.is-dragging{cursor:grabbing}' +
+    '.sml-banner-bar{position:absolute;top:8px;left:8px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:calc(100% - 60px);padding:8px 10px;border-radius:10px;background:rgba(6,14,10,.94);border:1px solid rgba(0,255,102,.35);box-shadow:0 10px 26px rgba(0,0,0,.5);color:#dfe;font:600 11px/1.3 Inter,system-ui,sans-serif}' +
+    '.sml-banner-bar .hint{flex:1 1 100%;color:#9fb3a8;font-weight:500}' +
+    '.sml-banner-bar label{display:flex;align-items:center;gap:6px;color:#bcd}' +
+    '.sml-banner-bar input[type=range]{width:110px;accent-color:#00ff66}' +
+    '.sml-banner-bar button{border:1px solid rgba(255,255,255,.14);background:#101923;color:#fff;border-radius:8px;padding:6px 10px;font:700 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
+    '.sml-banner-bar button.pri{background:#00ff66;color:#031008;border-color:#00ff66}' +
+    '.sml-banner-bar .st{flex:1 1 100%;color:#7ee2a8;min-height:1em}';
+  function bannerCss() { if (document.getElementById('sml-banner-place-css')) return; var st = document.createElement('style'); st.id = 'sml-banner-place-css'; st.textContent = BCSS; (document.head || document.documentElement).appendChild(st); }
+  function bannerCid() { var c = ctx(); if (c && c.mode) return c.mode === 'channel' && c.channelId ? String(c.channelId) : ''; var a = document.querySelector('.sml-gshell button.sml-gshell__channel.is-active[data-smlgs-channel]'); return a ? String(a.getAttribute('data-smlgs-channel') || '') : ''; }
+  function bannerCfg() { return window.SMLChannelBanners || {}; }
+  function bannerEntry(cid) { var b = bannerCfg().banners; return b && b[cid] ? b[cid] : null; }
+  var B = { on: false, cid: '', st: null, orig: null, ui: null, drag: null };
+
   function ensureBannerRule() {
     var shell = document.querySelector('.sml-gshell'); if (!shell) return;
     var menu = document.querySelector('[data-smlgs-owner-menu]') || document.getElementById('sml-ghx-menu');
     var handle = document.querySelector('.sml-cbanner-resize');
     if (menu && handle && !menu.querySelector('[data-banner-edit]')) {
       var b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-banner-edit', '1'); b.textContent = 'Resize banner';
-      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); var d = document.querySelector('.sml-gshell__owner-dots'); if (d) d.setAttribute('aria-expanded', 'false'); shell.classList.add('sml-banner-edit'); ensureDone(shell); });
+      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); var d = document.querySelector('.sml-gshell__owner-dots'); if (d) d.setAttribute('aria-expanded', 'false'); shell.classList.add('sml-banner-edit'); openBannerEditor(shell); });
       menu.appendChild(b);
     }
-    if (!handle || !shell.classList.contains('sml-banner-edit')) { var d = document.querySelector('.sml-banner-edit-done'); if (d) d.remove(); }
+    if (!handle || !shell.classList.contains('sml-banner-edit')) { if (B.on) closeBannerEditor(shell, true); var d = document.querySelector('.sml-banner-edit-done'); if (d) d.remove(); }
+    else if (B.on && (B.cid !== bannerCid() || !document.querySelector('.sml-banner-bar'))) { closeBannerEditor(shell, true); }
   }
-  function ensureDone(shell) {
-    var head = document.querySelector('.sml-gshell__main-head'); if (!head || head.querySelector('.sml-banner-edit-done')) return;
+  function ensureDone(shell) { openBannerEditor(shell); }
+
+  function bannerPaint() {
+    var img = document.querySelector('.sml-gshell__main-head .sml-cbanner-image'); var st = B.st; if (!st) return;
+    /* the plugin's render() repaints from its state on every shell mutation — keep state in step */
+    var e = bannerEntry(B.cid); if (e) { e.zoom = Math.round(st.zoom); e.pos_x = Math.round(st.x); e.pos_y = Math.round(st.y); }
+    if (img) { img.style.objectPosition = st.x.toFixed(1) + '% ' + st.y.toFixed(1) + '%'; img.style.transform = 'scale(' + (st.zoom / 100).toFixed(3) + ')'; }
+    if (B.ui) { var z = B.ui.querySelector('[data-bz]'); if (z && Number(z.value) !== Math.round(st.zoom)) z.value = String(Math.round(st.zoom)); var o = B.ui.querySelector('[data-bz-out]'); if (o) o.textContent = Math.round(st.zoom) + '%'; }
+  }
+  function bannerSay(msg, bad) { if (!B.ui) return; var el = B.ui.querySelector('.st'); if (el) { el.textContent = msg || ''; el.style.color = bad ? '#ff8fa3' : '#7ee2a8'; } }
+
+  function openBannerEditor(shell) {
+    var head = document.querySelector('.sml-gshell__main-head'); if (!head || B.on) return;
+    bannerCss();
+    var cid = bannerCid(); var entry = bannerEntry(cid); var img = head.querySelector('.sml-cbanner-image');
+    var placeable = !!(cid && entry && entry.url && !entry.hidden && img);
     if (getComputedStyle(head).position === 'static') head.style.position = 'relative';
-    var d = document.createElement('button'); d.type = 'button'; d.className = 'sml-banner-edit-done'; d.textContent = 'Done resizing';
-    d.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); shell.classList.remove('sml-banner-edit'); d.remove(); });
-    head.appendChild(d);
+    B.on = true; B.cid = cid;
+    B.st = placeable ? { zoom: Number(entry.zoom) || 100, x: entry.pos_x == null ? 50 : Number(entry.pos_x), y: entry.pos_y == null ? 50 : Number(entry.pos_y) } : null;
+    B.orig = B.st ? { zoom: B.st.zoom, x: B.st.x, y: B.st.y } : null;
+    var bar = document.createElement('div'); bar.className = 'sml-banner-bar';
+    bar.innerHTML = '<div class="hint">' + (placeable ? 'Drag the banner to place it · scroll or slide to zoom · pull the handle below to change its height.' : 'Pull the handle below to change the banner height. To drag a picture into place, give this channel its own image first (⋮ → Channel banner).') + '</div>' +
+      (placeable ? '<label>Zoom <input type="range" min="100" max="300" step="1" data-bz value="' + Math.round(B.st.zoom) + '"><span data-bz-out>' + Math.round(B.st.zoom) + '%</span></label><button type="button" data-b="center">Center</button>' : '') +
+      '<button type="button" data-b="cancel">Cancel</button><button type="button" class="pri" data-b="done">' + (placeable ? 'Save' : 'Done') + '</button><div class="st"></div>';
+    head.appendChild(bar); B.ui = bar;
+    if (placeable) {
+      var drag = document.createElement('div'); drag.className = 'sml-banner-drag'; drag.title = 'Drag to place the banner'; head.appendChild(drag); B.drag = drag;
+      var down = null;
+      drag.addEventListener('pointerdown', function (e) { down = { x: e.clientX, y: e.clientY, sx: B.st.x, sy: B.st.y }; drag.classList.add('is-dragging'); try { drag.setPointerCapture(e.pointerId); } catch (err) {} e.preventDefault(); });
+      drag.addEventListener('pointermove', function (e) {
+        if (!down || !img) return;
+        var box = head.getBoundingClientRect(), nw = img.naturalWidth || box.width, nh = img.naturalHeight || box.height;
+        var cover = Math.max(box.width / nw, box.height / nh), z = B.st.zoom / 100;
+        var ovX = (nw * cover - box.width) * z, ovY = (nh * cover - box.height) * z;   /* px the image overhangs the box, per axis */
+        if (ovX > 1) B.st.x = Math.max(0, Math.min(100, down.sx - (e.clientX - down.x) * 100 / ovX));
+        if (ovY > 1) B.st.y = Math.max(0, Math.min(100, down.sy - (e.clientY - down.y) * 100 / ovY));
+        bannerPaint();
+      });
+      var up = function () { down = null; drag.classList.remove('is-dragging'); };
+      drag.addEventListener('pointerup', up); drag.addEventListener('pointercancel', up);
+      drag.addEventListener('wheel', function (e) { e.preventDefault(); B.st.zoom = Math.max(100, Math.min(300, B.st.zoom * (e.deltaY < 0 ? 1.06 : 0.94))); bannerPaint(); }, { passive: false });
+      bar.querySelector('[data-bz]').addEventListener('input', function (e) { B.st.zoom = Math.max(100, Math.min(300, Number(e.target.value) || 100)); bannerPaint(); });
+      bannerPaint();
+    }
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-b]'); if (!b) return; e.preventDefault(); e.stopPropagation();
+      var act = b.getAttribute('data-b');
+      if (act === 'center') { B.st.x = 50; B.st.y = 50; bannerPaint(); }
+      else if (act === 'cancel') { closeBannerEditor(shell, true); }
+      else if (act === 'done') { if (!placeable) { closeBannerEditor(shell, false); return; } saveBannerPlacement(shell); }
+    });
   }
+  function closeBannerEditor(shell, restore) {
+    if (restore && B.st && B.orig) { B.st.zoom = B.orig.zoom; B.st.x = B.orig.x; B.st.y = B.orig.y; bannerPaint(); }
+    if (B.ui) B.ui.remove(); if (B.drag) B.drag.remove();
+    B.on = false; B.ui = null; B.drag = null; B.st = null; B.orig = null; B.cid = '';
+    if (shell) shell.classList.remove('sml-banner-edit');
+  }
+  function saveBannerPlacement(shell) {
+    var cfg = bannerCfg(); var st = B.st; if (!st) return;
+    bannerSay('Saving…');
+    var fd = new FormData(); fd.append('group_id', String(gid())); fd.append('channel_id', String(B.cid));
+    fd.append('zoom', String(Math.round(st.zoom))); fd.append('pos_x', String(Math.round(st.x))); fd.append('pos_y', String(Math.round(st.y)));
+    var hdrs = {}; if (cfg.nonce) hdrs['X-WP-Nonce'] = cfg.nonce;
+    fetch(cfg.saveApi || '/wp-json/sml/v1/group/channel/banner', { method: 'POST', credentials: 'same-origin', headers: hdrs, body: fd })
+      .then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (err) { j = null; }
+        if (!j && /Checking your browser|Javascript required/i.test(t)) throw new Error('WordPress.com is verifying your browser. Reload this page once, then save again.');
+        if (!r.ok || !j) throw new Error((j && j.message) || 'Could not save the banner placement.');
+        return j; }); })
+      .then(function (j) {
+        if (j && j.banner && cfg.banners) cfg.banners[B.cid] = j.banner;
+        B.orig = { zoom: st.zoom, x: st.x, y: st.y };
+        bannerSay('Saved.');
+        setTimeout(function () { closeBannerEditor(shell, false); }, 350);
+      }).catch(function (e) { bannerSay(e.message || 'Could not save.', true); });
+  }
+  function gid() { var c = ctx(); if (c && c.groupId) return String(c.groupId); var cfg = window.SMLGroupShell; return cfg && cfg.groupId ? String(cfg.groupId) : String(bannerCfg().groupId || ''); }
 
   /* (2) Portal: groups online */
   var P = { data: null, at: 0, inflight: false, saved: null };
