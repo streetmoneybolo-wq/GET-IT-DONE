@@ -1587,9 +1587,15 @@
         if (!down) return;
         var r = L.getBoundingClientRect(); var ar = st.nat ? st.nat.w / st.nat.h : 1;
         var imgW = st.scale * r.width, imgH = imgW / ar;
+        /* when the image is about the box's size the true denominator is ~0 and a 1px drag
+           would fling the image; keep the denominator at least a quarter of the box so drags
+           stay smooth and proportional in every case */
         var dX = r.width - imgW, dY = r.height - imgH;
-        if (Math.abs(dX) > 1) st.x = Math.max(-100, Math.min(200, down.sx + (e.clientX - down.x) * 100 / dX));
-        if (Math.abs(dY) > 1) st.y = Math.max(-100, Math.min(200, down.sy + (e.clientY - down.y) * 100 / dY));
+        var minX = r.width * 0.25, minY = r.height * 0.25;
+        dX = (dX < 0 ? -1 : 1) * Math.max(Math.abs(dX), minX);
+        dY = (dY < 0 ? -1 : 1) * Math.max(Math.abs(dY), minY);
+        st.x = Math.max(-100, Math.min(200, down.sx + (e.clientX - down.x) * 100 / dX));
+        st.y = Math.max(-100, Math.min(200, down.sy + (e.clientY - down.y) * 100 / dY));
         paint(st, L);
       });
       var up = function () { down = null; drag.classList.remove('is-dragging'); };
