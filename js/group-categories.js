@@ -1455,3 +1455,227 @@
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); }
   else { boot(); }
 })();
+
+
+/* ---- Background fit: position & zoom for channel / group backgrounds and the site-wide
+   Portal chat background (owner call 2026-09-05). The shell paints backgrounds with
+   background-size:cover + center, which cut most images off. Managers now drag the image
+   to place it and scroll/slide to zoom, like a photo app; the result is saved per channel
+   (or for the whole group) through sml-cbg/v1/fit and applied for every viewer. Site admins
+   get the same editor — plus upload and opacity — for the Portal chat background
+   (sml-portal-bg/v1/background), which is the default canvas every group opens on. ---- */
+(function () {
+  'use strict';
+  if (window.__smlBgFit) return;
+  window.__smlBgFit = 1;
+  var NONCE = window.SML_GCAT_NONCE || (window.SMLGroupShell && window.SMLGroupShell.nonce) || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
+  var F = { gid: '', fits: null, portal: null, natural: {}, edit: null, ui: null, lastApplied: '' };
+
+  function ctx() { return window.SMLGroupShellContext || {}; }
+  function gid() { var c = ctx(); if (c.groupId) return String(c.groupId).replace(/\D/g, ''); var cfg = window.SMLGroupShell; return cfg && cfg.groupId ? String(cfg.groupId).replace(/\D/g, '') : ''; }
+  function cid() { var c = ctx(); return c.channelId ? String(c.channelId).replace(/\D/g, '') : ''; }
+  function layer() { return document.querySelector('.sml-gshell__watermark'); }
+  function conv() { return document.querySelector('.sml-gshell__conversation'); }
+  function isPortal() { return !cid(); } /* the Portal chat is the group's channel-less canvas */
+  function hdr() { return NONCE ? { 'X-WP-Nonce': NONCE } : {}; }
+  function bgUrl(L) { var m = /url\(["']?(.*?)["']?\)/.exec((L && L.style.backgroundImage) || ''); return m ? m[1] : ''; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  function load(force) {
+    var g = gid(); if (!g) return;
+    if (F.gid !== g || force) {
+      F.gid = g;
+      fetch('/wp-json/sml-cbg/v1/fit?group_id=' + encodeURIComponent(g), { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.json(); }).then(function (j) { F.fits = (j && j.fits) || {}; apply(); }).catch(function () { F.fits = F.fits || {}; });
+    }
+    if (!F.portal || force) {
+      fetch('/wp-json/sml-portal-bg/v1/background?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store', headers: hdr() })
+        .then(function (r) { return r.json(); }).then(function (j) { F.portal = j || {}; apply(); }).catch(function () { F.portal = F.portal || {}; });
+    }
+  }
+  function currentFit() {
+    if (isPortal()) { var p = F.portal || {}; return p.url ? { x: Number(p.x), y: Number(p.y), scale: Number(p.scale) || 0, opacity: p.opacity, portal: true } : null; }
+    var fits = F.fits || {}; return fits['c' + cid()] || fits.g || null;
+  }
+  function apply() {
+    var L = layer(); if (!L || F.edit) return;
+    var f = currentFit();
+    var size = f && f.scale > 0 ? (f.scale * 100).toFixed(2) + '% auto' : '';
+    var pos = f && f.scale > 0 ? f.x + '% ' + f.y + '%' : '';
+    if (L.style.backgroundSize !== size) L.style.backgroundSize = size;
+    if (L.style.backgroundPosition !== pos) L.style.backgroundPosition = pos;
+    /* the shell re-paints the Portal layer at its 15% default every render; the admin's opacity wins */
+    if (f && f.portal && f.opacity != null && L.style.backgroundImage && L.style.backgroundImage.indexOf('none') < 0) {
+      var o = String(Math.max(0, Math.min(100, Number(f.opacity))) / 100);
+      if (L.style.opacity !== o) L.style.opacity = o;
+    }
+  }
+
+  /* ---------------- editor ---------------- */
+  var CSS = '' +
+    '.sml-cbg-drag{position:absolute;inset:0;z-index:66;cursor:grab;background:rgba(0,0,0,.08);outline:2px dashed rgba(0,255,102,.45);outline-offset:-2px;touch-action:none}' +
+    '.sml-cbg-drag.is-dragging{cursor:grabbing}' +
+    '.sml-cbg-bar{position:absolute;left:12px;right:12px;bottom:12px;z-index:67;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-radius:12px;background:rgba(6,14,10,.94);border:1px solid rgba(0,255,102,.35);box-shadow:0 14px 34px rgba(0,0,0,.5);color:#dfe;font:600 12px/1.3 Inter,system-ui,sans-serif}' +
+    '.sml-cbg-bar .hint{flex:1 1 100%;color:#9fb3a8;font-weight:500;font-size:11px}' +
+    '.sml-cbg-bar label{display:flex;align-items:center;gap:6px;color:#bcd}' +
+    '.sml-cbg-bar input[type=range]{width:130px;accent-color:#00ff66}' +
+    '.sml-cbg-bar button{border:1px solid rgba(255,255,255,.14);background:#101923;color:#fff;border-radius:8px;padding:7px 11px;font:700 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
+    '.sml-cbg-bar button.pri{background:#00ff66;color:#031008;border-color:#00ff66}' +
+    '.sml-cbg-bar button.warn{border-color:rgba(255,92,122,.5);color:#ff8fa3}' +
+    '.sml-cbg-bar .st{flex:1 1 100%;color:#7ee2a8;font-size:11px;min-height:1em}' +
+    '.sml-cbg-portal-btn{position:absolute;top:8px;right:46px;z-index:61;border:1px solid rgba(0,255,102,.45);background:rgba(8,18,24,.86);color:#cfe;border-radius:8px;padding:6px 10px;font:700 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
+    '.sml-cbg-hidden{display:none!important}';
+  function ensureCss() { if (document.getElementById('sml-cbg-css')) return; var s = document.createElement('style'); s.id = 'sml-cbg-css'; s.textContent = CSS; document.head.appendChild(s); }
+
+  function natural(url, cb) {
+    if (F.natural[url]) return cb(F.natural[url]);
+    var im = new Image(); im.onload = function () { F.natural[url] = { w: im.naturalWidth, h: im.naturalHeight }; cb(F.natural[url]); }; im.onerror = function () { cb(null); }; im.src = url;
+  }
+  function coverScale(nat, rect) { var ar = nat.w / nat.h, cr = rect.width / Math.max(1, rect.height); return Math.max(1, ar / cr); }
+  function paint(st, L) {
+    L.style.backgroundSize = (st.scale * 100).toFixed(2) + '% auto';
+    L.style.backgroundPosition = st.x.toFixed(2) + '% ' + st.y.toFixed(2) + '%';
+    if (st.portal && st.opacity != null) L.style.opacity = String(st.opacity / 100);
+    if (F.ui) { var z = F.ui.querySelector('[data-cbg-zoom]'); if (z && Number(z.value) !== Math.round(st.scale * 100)) z.value = String(Math.round(st.scale * 100)); var zo = F.ui.querySelector('[data-cbg-zoom-out]'); if (zo) zo.textContent = Math.round(st.scale * 100) + '%'; }
+  }
+  function say(msg, bad) { if (!F.ui) return; var s = F.ui.querySelector('.st'); if (s) { s.textContent = msg || ''; s.style.color = bad ? '#ff8fa3' : '#7ee2a8'; } }
+
+  function closeEditor(restore) {
+    var L = layer();
+    F.edit = null;
+    if (F.ui) { F.ui.remove(); F.ui = null; }
+    var d = document.querySelector('.sml-cbg-drag'); if (d) d.remove();
+    if (restore && L) { L.style.backgroundSize = ''; L.style.backgroundPosition = ''; apply(); }
+  }
+
+  function openEditor(opts) {
+    var L = layer(), C = conv(); if (!L || !C) return;
+    var portal = isPortal();
+    var url = bgUrl(L);
+    if (!url && !(portal && opts && opts.allowEmpty)) { alert('Set a background image first (Channel background), then adjust it here.'); return; }
+    ensureCss();
+    var rect = L.getBoundingClientRect();
+    var f = currentFit() || {};
+    var start = function (nat) {
+      var st = {
+        portal: portal, url: url, nat: nat,
+        x: f.x != null ? Number(f.x) : 50, y: f.y != null ? Number(f.y) : 50,
+        scale: f.scale > 0 ? Number(f.scale) : (nat ? coverScale(nat, rect) : 1),
+        opacity: portal ? (F.portal && F.portal.opacity != null ? Number(F.portal.opacity) : 35) : null,
+        all: false, file: null
+      };
+      F.edit = st;
+      if (getComputedStyle(C).position === 'static') C.style.position = 'relative';
+      var drag = document.createElement('div'); drag.className = 'sml-cbg-drag'; drag.title = 'Drag to move the background';
+      var bar = document.createElement('div'); bar.className = 'sml-cbg-bar';
+      bar.innerHTML =
+        '<div class="hint">' + (portal ? 'Portal chat background (site-wide default, admins only)' : 'Channel background') + ' — drag the image to place it, scroll or slide to zoom.</div>' +
+        '<label>Zoom <input type="range" min="20" max="400" step="1" data-cbg-zoom value="' + Math.round(st.scale * 100) + '"><span data-cbg-zoom-out>' + Math.round(st.scale * 100) + '%</span></label>' +
+        '<button type="button" data-cbg="cover">Fill</button><button type="button" data-cbg="width">Fit width</button><button type="button" data-cbg="center">Center</button>' +
+        (portal ? '<label>Opacity <input type="range" min="5" max="100" step="1" data-cbg-op value="' + st.opacity + '"><span data-cbg-op-out>' + st.opacity + '%</span></label><label><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-cbg-file hidden><button type="button" data-cbg="upload">Upload new image</button></label>' :
+                  '<label><input type="checkbox" data-cbg-all> Use for every channel in this group</label>') +
+        '<button type="button" class="warn" data-cbg="reset">Reset</button><button type="button" data-cbg="cancel">Cancel</button><button type="button" class="pri" data-cbg="save">Save</button>' +
+        '<div class="st"></div>';
+      C.appendChild(drag); C.appendChild(bar); F.ui = bar;
+      paint(st, L);
+
+      /* drag → background-position: with the image wider than the box, moving from 0% to 100%
+         shifts it by (image − box), so dx pixels = dx·100/(box − image) percent (sign included) */
+      var down = null;
+      drag.addEventListener('pointerdown', function (e) { down = { x: e.clientX, y: e.clientY, sx: st.x, sy: st.y }; drag.classList.add('is-dragging'); drag.setPointerCapture(e.pointerId); e.preventDefault(); });
+      drag.addEventListener('pointermove', function (e) {
+        if (!down) return;
+        var r = L.getBoundingClientRect(); var ar = st.nat ? st.nat.w / st.nat.h : 1;
+        var imgW = st.scale * r.width, imgH = imgW / ar;
+        var dX = r.width - imgW, dY = r.height - imgH;
+        if (Math.abs(dX) > 1) st.x = Math.max(-100, Math.min(200, down.sx + (e.clientX - down.x) * 100 / dX));
+        if (Math.abs(dY) > 1) st.y = Math.max(-100, Math.min(200, down.sy + (e.clientY - down.y) * 100 / dY));
+        paint(st, L);
+      });
+      var up = function () { down = null; drag.classList.remove('is-dragging'); };
+      drag.addEventListener('pointerup', up); drag.addEventListener('pointercancel', up);
+      drag.addEventListener('wheel', function (e) { e.preventDefault(); st.scale = Math.max(0.2, Math.min(6, st.scale * (e.deltaY < 0 ? 1.06 : 0.94))); paint(st, L); }, { passive: false });
+
+      bar.querySelector('[data-cbg-zoom]').addEventListener('input', function (e) { st.scale = Math.max(0.2, Math.min(6, Number(e.target.value) / 100)); paint(st, L); });
+      var op = bar.querySelector('[data-cbg-op]');
+      if (op) op.addEventListener('input', function (e) { st.opacity = Number(e.target.value); bar.querySelector('[data-cbg-op-out]').textContent = st.opacity + '%'; paint(st, L); });
+      var fileIn = bar.querySelector('[data-cbg-file]');
+      if (fileIn) fileIn.addEventListener('change', function () {
+        var fl = fileIn.files && fileIn.files[0]; if (!fl) return; st.file = fl;
+        var fr = new FileReader(); fr.onload = function () { st.url = fr.result; L.style.backgroundImage = 'url("' + fr.result + '")'; natural(fr.result, function (n) { st.nat = n; st.scale = n ? coverScale(n, L.getBoundingClientRect()) : 1; st.x = 50; st.y = 50; paint(st, L); say('New image loaded — place it, then Save.'); }); }; fr.readAsDataURL(fl);
+      });
+      var allIn = bar.querySelector('[data-cbg-all]');
+      if (allIn) allIn.addEventListener('change', function () { st.all = !!allIn.checked; });
+
+      bar.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-cbg]'); if (!b) return; e.preventDefault(); e.stopPropagation();
+        var act = b.getAttribute('data-cbg'); var r = L.getBoundingClientRect();
+        if (act === 'cover') { st.scale = st.nat ? coverScale(st.nat, r) : 1; st.x = 50; st.y = 50; paint(st, L); }
+        else if (act === 'width') { st.scale = 1; st.x = 50; paint(st, L); }
+        else if (act === 'center') { st.x = 50; st.y = 50; paint(st, L); }
+        else if (act === 'upload') { if (fileIn) fileIn.click(); }
+        else if (act === 'cancel') { closeEditor(true); }
+        else if (act === 'reset') { save(st, true); }
+        else if (act === 'save') { save(st, false); }
+      });
+    };
+    if (url) natural(url, start); else start(null);
+  }
+
+  function save(st, reset) {
+    say(reset ? 'Resetting…' : 'Saving…');
+    var p;
+    if (st.portal) {
+      var fd = new FormData();
+      if (reset) { fd.append('reset_fit', '1'); } else { fd.append('x', st.x.toFixed(2)); fd.append('y', st.y.toFixed(2)); fd.append('scale', st.scale.toFixed(3)); }
+      fd.append('opacity', String(st.opacity));
+      if (st.file) fd.append('file', st.file);
+      p = fetch('/wp-json/sml-portal-bg/v1/background', { method: 'POST', credentials: 'same-origin', headers: hdr(), body: fd });
+    } else {
+      var body = { group_id: Number(gid()), channel_id: st.all ? 0 : Number(cid()) };
+      if (reset) body.reset = true; else { body.x = Number(st.x.toFixed(2)); body.y = Number(st.y.toFixed(2)); body.scale = Number(st.scale.toFixed(3)); }
+      p = fetch('/wp-json/sml-cbg/v1/fit', { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify(body) });
+    }
+    p.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
+      if (!res.ok) throw new Error((res.j && res.j.message) || 'Could not save.');
+      say('Saved.');
+      setTimeout(function () { closeEditor(false); load(true); if (st.portal && st.file) location.reload(); }, 400);
+    }).catch(function (e) { say(e.message || 'Could not save.', true); });
+  }
+
+  /* ---------------- entry points ---------------- */
+  function canManageHere() {
+    if (isPortal()) return !!(F.portal && F.portal.can_edit);
+    return !!document.querySelector('[data-smlgs-owner-controls], .sml-gshell__channel-watermark-button, #sml-ghx-menu');
+  }
+  function ensureEntry() {
+    ensureCss();
+    var menu = document.getElementById('sml-ghx-menu');
+    var L = layer();
+    var show = !!L && canManageHere();
+    if (menu) {
+      var mine = menu.querySelector('[data-cbg-menu]');
+      if (show && !mine) {
+        var b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-cbg-menu', '1');
+        b.textContent = isPortal() ? 'Portal background' : 'Adjust background (drag & zoom)';
+        b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); menu.classList.remove('open'); openEditor({ allowEmpty: isPortal() }); });
+        menu.appendChild(b);
+      } else if (mine) {
+        var label = isPortal() ? 'Portal background' : 'Adjust background (drag & zoom)';
+        if (mine.textContent !== label) mine.textContent = label;
+        if (!show) mine.remove();
+      }
+    }
+    /* Portal chat with no ⋯ menu on this layout: give admins a direct button on the canvas */
+    var C = conv();
+    var direct = document.querySelector('.sml-cbg-portal-btn');
+    if (isPortal() && F.portal && F.portal.can_edit && !menu && C) {
+      if (!direct) { direct = document.createElement('button'); direct.type = 'button'; direct.className = 'sml-cbg-portal-btn'; direct.textContent = 'Portal background'; direct.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); openEditor({ allowEmpty: true }); }); if (getComputedStyle(C).position === 'static') C.style.position = 'relative'; C.appendChild(direct); }
+    } else if (direct) { direct.remove(); }
+  }
+
+  function tick() { load(false); apply(); ensureEntry(); }
+  function boot() { tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.SMLBgFit = { open: openEditor, close: closeEditor, reload: function () { load(true); }, state: F };
+})();
