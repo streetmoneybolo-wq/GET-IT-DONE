@@ -2048,3 +2048,187 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.SMLTransparentLayers = { probe: probe, cache: A, tick: tick };
 })();
+
+
+/* ---- Sidebar, owner calls 2026-09-06:
+   (1) Categories collapse like Discord: click a category header to fold its channels (the
+       active channel and channels with unread messages stay visible, as Discord does); the
+       fold is remembered per group in this browser. Folding never moves an engine node — it
+       is a <head> stylesheet keyed by channel id, the same way the categories are ordered.
+   (2) Unread = a tiny red counter on the channel (the shell's own "NEW" stamp, restyled and
+       given the number it already carries), a counter on the Portal Chat button, and a summed
+       counter on a folded category so nothing hides.
+   (3) Landing channel: on arrival members open the owner's chosen channel (Edit Group →
+       Landing channel, plugin sml-group-landing) — never the Portal chat; unset = the first
+       open channel in the sidebar. ---- */
+(function () {
+  'use strict';
+  if (window.__smlSidebarPlus) return;
+  window.__smlSidebarPlus = 1;
+  var STRIDE = 1000000, NATIVE = 1000000000;
+  var css = '' +
+    '.sml-gshell__channels .sml-gshell__category[data-sml-gcat],.sml-gshell__channels .sml-gshell__category:not([data-sml-gcat]){cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}' +
+    '.sml-gshell__channels .sml-gshell__category::before{content:"\\25BE";font-size:10px;opacity:.7;transition:transform .15s ease;display:inline-block}' +
+    '.sml-gshell__channels .sml-gshell__category.is-collapsed::before{transform:rotate(-90deg)}' +
+    '.sml-gshell__category-row .sml-gshell__category::before{content:none}' +
+    '.sml-gshell__new-stamp,.sml-sb-badge{display:inline-flex!important;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:auto;border-radius:999px;background:#ff3b4a!important;color:#fff!important;font:800 10.5px/1 Inter,system-ui,sans-serif!important;letter-spacing:0;box-shadow:0 0 0 2px rgba(6,14,10,.9);flex:none}' +
+    '.sml-gshell__channel.has-mention .sml-gshell__new-stamp{box-shadow:0 0 0 2px rgba(6,14,10,.9),0 0 10px rgba(255,59,74,.7)}' +
+    '.sml-gshell__channels .sml-gshell__category[data-sb-unread]::after{content:attr(data-sb-unread);display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:auto;border-radius:999px;background:#ff3b4a;color:#fff;font:800 10.5px/1 Inter,system-ui,sans-serif;letter-spacing:0;box-shadow:0 0 0 2px rgba(6,14,10,.9)}' +
+    '.sml-gl-field{display:block;margin:12px 0}.sml-gl-field span{display:block;font:700 12px/1.3 inherit;margin-bottom:4px}.sml-gl-field select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.28);color:inherit;font:inherit}.sml-gl-field small{display:block;color:#8fa89b;font-size:11px;margin-top:4px}';
+  function ensureCss() { if (document.getElementById('sml-sidebar-plus-css')) return; var st = document.createElement('style'); st.id = 'sml-sidebar-plus-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
+  function ctx() { return window.SMLGroupShellContext || {}; }
+  function slug() { var m = /\/groups\/([^\/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : ''; }
+  function gid() { var c = ctx(); if (c.groupId) return String(c.groupId); var cfg = window.SMLGroupShell; return cfg && cfg.groupId ? String(cfg.groupId) : ''; }
+  function box() { return document.querySelector('.sml-gshell__channels'); }
+  function ord(el) { var v = parseFloat(el.style.order || getComputedStyle(el).order); return isFinite(v) ? v : 0; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  /* ---------- unread map, read off the shell's own poll (no extra requests) ---------- */
+  var unread = { chat: 0, channels: {} };
+  (function observeUnread() {
+    var F = window.fetch; if (!F || F.__smlSb) return;
+    var W = function (input, init) {
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      var p = F.apply(this, arguments);
+      if (/\/group\/unread\b/.test(url)) {
+        p.then(function (res) { try { res.clone().json().then(function (d) { if (!d) return; unread.chat = Number(d.chat && d.chat.unread || 0); var m = {}; Object.keys(d.channels || {}).forEach(function (k) { m[k] = Number(d.channels[k].unread || 0); }); unread.channels = m; }).catch(function () {}); } catch (e) {} });
+      }
+      return p;
+    };
+    W.__smlSb = 1; window.fetch = W;
+  })();
+  function countOf(btn) {
+    var id = btn.getAttribute('data-smlgs-channel');
+    if (id) return Number(unread.channels[String(Number(id))] || 0) || (function () { var s = btn.querySelector('.sml-gshell__new-stamp'); var m = s && /(\d+)/.exec(s.getAttribute('aria-label') || ''); return m ? Number(m[1]) : 0; })();
+    return btn.classList.contains('sml-gshell__portal-channel') ? unread.chat : 0;
+  }
+  function fmt(n) { return n > 99 ? '99+' : String(n); }
+  function badgePass(B) {
+    [].slice.call(B.querySelectorAll('.sml-gshell__channel')).forEach(function (btn) {
+      var n = countOf(btn), active = btn.classList.contains('is-active');
+      var stamp = btn.querySelector('.sml-gshell__new-stamp, .sml-sb-badge');
+      if (active || n < 1) { if (stamp && stamp.classList.contains('sml-sb-badge')) stamp.remove(); else if (stamp && stamp.textContent !== 'NEW') { /* shell stamp, count hidden by shell next render */ } return; }
+      if (!stamp) { stamp = document.createElement('span'); stamp.className = 'sml-sb-badge'; stamp.setAttribute('aria-label', n + ' unread'); btn.appendChild(stamp); }
+      var t = fmt(n); if (stamp.textContent !== t) stamp.textContent = t;
+    });
+  }
+
+  /* ---------- category membership (by CSS order, never by moving nodes) ---------- */
+  function headers(B) { return [].slice.call(B.querySelectorAll(':scope > .sml-gshell__category')); }
+  function membersOf(B, h) {
+    var btns = [].slice.call(B.querySelectorAll(':scope > .sml-gshell__channel[data-smlgs-channel]'));
+    if (h.hasAttribute('data-sml-gcat')) {
+      var o = ord(h), lo = o, hi = o + STRIDE;          /* header = (n)*STRIDE-1; its channels = (n)*STRIDE + rank */
+      return btns.filter(function (b) { var v = ord(b); return v > lo && v < hi; });
+    }
+    /* native header: the engine's own following siblings until the next header, only those not
+       claimed by a custom category (they keep the NATIVE order) */
+    var out = [], n = h.nextElementSibling;
+    while (n && !(n.classList && n.classList.contains('sml-gshell__category'))) {
+      if (n.classList && n.classList.contains('sml-gshell__channel') && n.hasAttribute('data-smlgs-channel') && (!B.hasAttribute('data-sml-gcat-active') || ord(n) >= NATIVE)) out.push(n);
+      n = n.nextElementSibling;
+    }
+    return out;
+  }
+  function keyOf(h) { return String(h.textContent || '').replace(/\s+/g, ' ').trim(); }
+  var LS = 'sml-gcat-collapsed:' + slug();
+  function loadFolds() { try { return JSON.parse(localStorage.getItem(LS) || '[]') || []; } catch (e) { return []; } }
+  function saveFolds(a) { try { localStorage.setItem(LS, JSON.stringify(a)); } catch (e) {} }
+  var folds = loadFolds();
+  var SHEET = 'sml-gcat-collapse-style', sheetKey = '';
+  function foldPass(B) {
+    var rules = [];
+    headers(B).forEach(function (h) {
+      if (h.parentElement !== B) return;
+      var k = keyOf(h), on = folds.indexOf(k) !== -1;
+      h.classList.toggle('is-collapsed', on);
+      var mem = membersOf(B, h), hidden = 0, sum = 0;
+      if (on) {
+        mem.forEach(function (b) {
+          var n = countOf(b);
+          if (b.classList.contains('is-active') || n > 0) { sum += n; return; }   /* Discord keeps these visible */
+          hidden++;
+          rules.push('.sml-gshell__channels>[data-smlgs-channel="' + b.getAttribute('data-smlgs-channel') + '"]{display:none!important}');
+        });
+      }
+      /* the summed counter is a ::after on the header (attr), never a child node: the categories
+         module matches headers by textContent and would drop a header whose text changed */
+      if (on && sum > 0) { var t = fmt(sum); if (h.getAttribute('data-sb-unread') !== t) h.setAttribute('data-sb-unread', t); }
+      else if (h.hasAttribute('data-sb-unread')) h.removeAttribute('data-sb-unread');
+    });
+    var want = rules.join('\n');
+    var sheet = document.getElementById(SHEET);
+    if (!sheet) { sheet = document.createElement('style'); sheet.id = SHEET; (document.head || document.documentElement).appendChild(sheet); }
+    if (sheetKey !== want) { sheet.textContent = want; sheetKey = want; }
+  }
+  document.addEventListener('click', function (ev) {
+    var h = ev.target.closest && ev.target.closest('.sml-gshell__channels > .sml-gshell__category');
+    if (!h || ev.target.closest('button, a, input')) return;
+    var k = keyOf(h); if (!k) return;
+    var i = folds.indexOf(k); if (i === -1) folds.push(k); else folds.splice(i, 1);
+    saveFolds(folds); var B = box(); if (B) foldPass(B);
+  }, true);
+
+  /* ---------- landing channel ---------- */
+  var L = { done: false, touched: false, fetched: false, id: 0, t0: Date.now() };
+  ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function (e) { if (e.target && e.target.closest && e.target.closest('.sml-gshell')) L.touched = true; }, true); });
+  function deepLinked() { return /channel|#/.test(location.hash) && location.hash.length > 1 || /[?&](channel|c|tool)=/.test(location.search); }
+  function fetchLanding() {
+    var g = gid(); if (!g || L.fetched) return; L.fetched = true;
+    fetch('/wp-json/sml-group-landing/v1/group/' + encodeURIComponent(g) + '?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json(); }).then(function (j) { L.id = Number(j && j.channel_id || 0); L.can = !!(j && j.can_manage); L.ready = true; })
+      .catch(function () { L.ready = true; });
+  }
+  function firstOpen(B) {
+    var btns = [].slice.call(B.querySelectorAll(':scope > .sml-gshell__channel[data-smlgs-channel]')).filter(function (b) { return !b.disabled && !b.classList.contains('is-locked') && !/🔒/.test(b.textContent || '') && getComputedStyle(b).display !== 'none'; });
+    btns.sort(function (a, b) { return ord(a) - ord(b); });
+    return btns[0] || null;
+  }
+  function landingPass(B) {
+    if (L.done) return;
+    if (!L.fetched) fetchLanding();
+    if (deepLinked() || L.touched) { L.done = true; return; }
+    var c = ctx(); if (c.mode && c.mode !== 'chat') { L.done = true; return; }       /* already somewhere */
+    if (!L.ready) { if (Date.now() - L.t0 > 12000) { L.ready = true; } else return; }  /* give the setting a moment; then default */
+    var target = L.id ? B.querySelector(':scope > .sml-gshell__channel[data-smlgs-channel="' + L.id + '"]') : null;
+    if (!target) target = firstOpen(B);
+    if (!target) { if (Date.now() - L.t0 > 15000) L.done = true; return; }
+    if (target.classList.contains('is-active')) { L.done = true; return; }
+    /* the shell may still be binding its handlers on the first tick: click, then confirm next tick */
+    L.tries = (L.tries || 0) + 1;
+    if (L.tries > 5) { L.done = true; return; }
+    target.click();
+  }
+
+  /* ---------- Edit Group → Landing channel picker (owner editor form) ---------- */
+  function editorPass() {
+    var form = document.querySelector('form[data-sml-goe-form]'); if (!form || form.querySelector('.sml-gl-field')) return;
+    var B = box(); if (!B) return;
+    var btns = [].slice.call(B.querySelectorAll(':scope > .sml-gshell__channel[data-smlgs-channel]')).sort(function (a, b) { return ord(a) - ord(b); });
+    if (!btns.length) return;
+    var wrap = document.createElement('label'); wrap.className = 'sml-gl-field';
+    wrap.innerHTML = '<span>Landing channel</span><select name="sml_landing_channel"><option value="0">First open channel (automatic)</option>' +
+      btns.map(function (b) { var nm = (b.querySelector('.sml-gshell__channel-name') || b).textContent.trim(); return '<option value="' + esc(b.getAttribute('data-smlgs-channel')) + '">#' + esc(nm) + '</option>'; }).join('') +
+      '</select><small>The channel members open into when they arrive — never the Portal chat.</small>';
+    var submit = form.querySelector('button[type="submit"]'); var anchor = submit ? (submit.closest('.sml-goe-actions') || submit.parentElement) : null;
+    if (anchor && anchor.parentElement === form) form.insertBefore(wrap, anchor); else form.appendChild(wrap);
+    var sel = wrap.querySelector('select'); sel.value = String(L.id || 0);
+    if (!form.__smlGl) {
+      form.__smlGl = 1;
+      form.addEventListener('submit', function () {
+        var v = Number(sel.value || 0), g = gid(); if (!g) return;
+        var nonce = window.SML_GCAT_NONCE || (window.SMLGroupShell && window.SMLGroupShell.nonce) || (window.SMLChannelBanners && window.SMLChannelBanners.nonce) || '';
+        fetch('/wp-json/sml-group-landing/v1/group/' + encodeURIComponent(g), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ channel_id: v }) })
+          .then(function (r) { return r.json(); }).then(function (j) { if (j && j.ok) L.id = Number(j.channel_id || 0); }).catch(function () {});
+      }, true);
+    }
+  }
+
+  function tick() {
+    var B = box(); if (!B) return;
+    ensureCss(); badgePass(B); foldPass(B); landingPass(B); editorPass();
+  }
+  function boot() { tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.SMLSidebarPlus = { unread: unread, folds: folds, landing: L, tick: tick };
+})();
