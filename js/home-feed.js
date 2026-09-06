@@ -1124,7 +1124,7 @@
     var FEED_MAX_AGE=48*3600*1000, wpDates=null;
     function pruneStale(){
       var now=Date.now();
-      host.querySelectorAll('article[data-hfe-item]').forEach(function(card){
+      host.querySelectorAll('article[data-hfe-item]:not([data-sml-pinned])').forEach(function(card){
         var id=card.getAttribute('data-hfe-item')||'';
         var ch=id.match(/^chart-\d+-(\d{9,11})-/);
         if(ch && now-(+ch[1]*1000)>FEED_MAX_AGE){ card.remove(); return; }
@@ -1468,4 +1468,64 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   var tries=0, iv=setInterval(function(){ if(document.getElementById('sml-hf-shell')||++tries>40){clearInterval(iv);return;} boot(); },250);
+})();
+
+
+/* ---- Notification focus (owner call 2026-09-06): every tag / mention / like / comment / news alert
+   links to /?focus=<item>. The home feed opens fresh with that post pinned at the top and lit up;
+   an article that has already left the feed window is fetched and pinned as a card of its own. ---- */
+(function () {
+  'use strict';
+  if (window.__smlFeedFocus) return;
+  var m = /[?&]focus=([^&#]+)/.exec(location.search); if (!m) return;
+  var want = ''; try { want = decodeURIComponent(m[1]); } catch (e) { want = m[1]; }
+  want = String(want).replace(/[^A-Za-z0-9._:-]/g, ''); if (!want) return;
+  window.__smlFeedFocus = want;
+  var css = '.sml-focus-card{outline:2px solid #5db9ff!important;outline-offset:3px;border-radius:16px;box-shadow:0 0 0 8px rgba(93,185,255,.14)!important;animation:smlFocusIn .9s ease}' +
+    '@keyframes smlFocusIn{0%{box-shadow:0 0 0 0 rgba(93,185,255,.6)}100%{box-shadow:0 0 0 8px rgba(93,185,255,.14)}}' +
+    '.sml-focus-tag{font:800 10.5px/1 Inter,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#5db9ff;padding:12px 16px 0}' +
+    '.sml-focus-fetched{display:block;text-decoration:none;color:inherit;padding:0 0 16px}.sml-focus-fetched h3{font:800 18px/1.3 Inter,system-ui,sans-serif;margin:8px 16px;color:#fff}' +
+    '.sml-focus-fetched p{margin:0 16px 10px;color:#93A4B8;font-size:13.5px;line-height:1.55}.sml-focus-fetched img{display:block;width:100%;max-height:340px;object-fit:cover;margin:8px 0 0}' +
+    '.sml-focus-fetched .sml-focus-by{margin:0 16px;color:#CFDAE4;font-size:12.5px;font-weight:600}';
+  function ensureCss() { if (document.getElementById('sml-feed-focus-css')) return; var st = document.createElement('style'); st.id = 'sml-feed-focus-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function host() { return document.getElementById('sml-optimized-home'); }
+  function cardFor(id) { var hst = host(); if (!hst) return null; var sel = '.oh-post[data-hfe-item="' + id + '"],article[data-hfe-item="' + id + '"]'; try { return hst.querySelector(sel); } catch (e) { return null; } }
+  function firstCard() { var hst = host(); return hst ? hst.querySelector('.oh-post,article[data-hfe-item]') : null; }
+  function settle(card) {
+    ensureCss();
+    card.setAttribute('data-sml-pinned', '1'); card.classList.add('sml-focus-card'); card.style.display = '';
+    if (!card.querySelector('.sml-focus-tag')) { var t = document.createElement('div'); t.className = 'sml-focus-tag'; t.textContent = 'From your notification'; card.insertBefore(t, card.firstChild); }
+    setTimeout(function () { try { card.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { card.scrollIntoView(); } }, 150);
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* the pin is already on screen */ }
+  }
+  function pin(card) {
+    var first = firstCard();
+    if (first && first !== card && first.parentNode) first.parentNode.insertBefore(card, first);
+    settle(card);
+  }
+  function fetchArticle(pid) {
+    fetch('/wp-json/wp/v2/posts/' + pid + '?_embed=1', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (p) {
+        if (!p || !p.id) return;
+        var first = firstCard(); if (!first || !first.parentNode) return;
+        var img = ''; try { img = p._embedded['wp:featuredmedia'][0].source_url || ''; } catch (e) { img = ''; }
+        var by = ''; try { by = p._embedded.author[0].name || ''; } catch (e) { by = ''; }
+        var title = (p.title && p.title.rendered) || ''; var ex = String((p.excerpt && p.excerpt.rendered) || '').replace(/<[^>]+>/g, '').trim();
+        var card = document.createElement('article');
+        card.className = 'oh-post'; card.setAttribute('data-hfe-item', 'wp-' + p.id); card.setAttribute('data-hfe-url', p.link || '');
+        card.innerHTML = '<a class="sml-focus-fetched" href="' + esc(p.link || '#') + '">' + (img ? '<img src="' + esc(img) + '" alt="">' : '') + '<h3>' + title + '</h3>' + (by ? '<div class="sml-focus-by">' + esc(by) + '</div>' : '') + (ex ? '<p>' + esc(ex.slice(0, 260)) + (ex.length > 260 ? '…' : '') + '</p>' : '') + '</a>';
+        first.parentNode.insertBefore(card, first);
+        settle(card);
+      }).catch(function () { /* nothing to pin */ });
+  }
+  var tries = 0;
+  function tick() {
+    var c = cardFor(want);
+    if (c) { pin(c); return; }
+    if (++tries > 40) { var wp = /^wp-(\d+)$/.exec(want); if (wp) fetchArticle(wp[1]); return; }
+    setTimeout(tick, 250);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', tick); else tick();
 })();

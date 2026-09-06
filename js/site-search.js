@@ -419,9 +419,27 @@
     document.body.classList.add('sml-gh-loop-kick-nav');
     function parts() { return { popup: el('#sml-loop-popup'), frame: el('#sml-loop-popup-frame') }; }
     function closeKick() { var item = parts(); if (!item.popup) return; item.popup.hidden = true; document.body.classList.remove('sml-loop-open'); button.setAttribute('aria-expanded', 'false'); }
+    /* Pages whose custom render never runs wp_footer (the Analyst Dashboard and friends) have no popup to
+       open: ask the bridge for the same markup + styles + controller and build it in place (owner call 2026-09-06). */
+    var building = false;
+    function restNonce() { try { return (window.SML_NOTIFY && SML_NOTIFY.nonce) || (window.wpApiSettings && wpApiSettings.nonce) || (window.SMLHomeFeedEngagement && SMLHomeFeedEngagement.nonce) || ''; } catch (e) { return ''; } }
+    function buildKick(done) {
+      if (building) return; building = true;
+      var n = restNonce();
+      fetch('/wp-json/sml-loop-kick/v1/launch', { credentials: 'same-origin', cache: 'no-store', headers: n ? { 'X-WP-Nonce': n } : {} })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          building = false;
+          if (!j || !j.markup) return;
+          if (!el('#sml-loop-popup')) { var box = document.createElement('div'); box.innerHTML = j.markup + (j.styles || ''); while (box.firstChild) document.body.appendChild(box.firstChild); }
+          if (j.script && !document.querySelector('script[src*="loop-kick-bridge.js"]')) { var sc = document.createElement('script'); sc.src = j.script; sc.setAttribute('data-sml-oh-allow', ''); document.body.appendChild(sc); }
+          done();
+        })
+        .catch(function () { building = false; });
+    }
     function openKick() {
       var item = parts();
-      if (!item.popup) { var launcher = el('.sml-loop-launcher'); if (launcher) launcher.click(); return; }
+      if (!item.popup) { var launcher = el('.sml-loop-launcher'); if (launcher) { launcher.click(); return; } buildKick(openKick); return; }
       if (item.frame) { var src = item.frame.getAttribute('src'); var wanted = item.frame.dataset.src || src; if (!src && wanted) item.frame.setAttribute('src', wanted); }
       item.popup.hidden = false; document.body.classList.add('sml-loop-open'); button.setAttribute('aria-expanded', 'true');
     }
