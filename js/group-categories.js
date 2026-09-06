@@ -1685,3 +1685,24 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.SMLBgFit = { open: openEditor, close: closeEditor, reload: function () { load(true); }, state: F };
 })();
+
+
+/* ---- Message rows (owner call 2026-09-05): Discord-style row surfaces. Over a channel or
+   Portal background the shell's messages had no row of their own (a 1.8% hover tint only),
+   so replies/reactions landed on the wrong message. Every message now sits on its own
+   translucent row with a clear hover/focus state (brighter row + green edge) and the action
+   bar appears on hover, not only on keyboard focus. Pure CSS; the shell's markup is untouched. */
+(function () {
+  'use strict';
+  if (document.getElementById('sml-msgrow-css')) return;
+  var css = '' +
+    '.sml-gshell__messages .sml-gshell__message{margin:0 0 6px!important;padding:8px 10px!important;border-radius:10px;background:rgba(6,14,10,.62);border:1px solid rgba(255,255,255,.05);box-shadow:inset 3px 0 0 transparent;transition:background .12s ease,border-color .12s ease,box-shadow .12s ease}' +
+    '.sml-gshell__messages .sml-gshell__message:hover,.sml-gshell__messages .sml-gshell__message:focus-within{background:rgba(12,26,18,.9)!important;border-color:rgba(0,255,102,.3);box-shadow:inset 3px 0 0 rgba(0,255,102,.6)}' +
+    '.sml-gshell__messages .sml-gshell__message.is-reply-highlight{border-color:rgba(0,255,102,.55)}' +
+    '.sml-gshell__messages .sml-gshell__message.is-thread-reply{background:rgba(6,14,10,.5)}' +
+    '.sml-gshell__message:hover .sml-gshell__message-actions{opacity:1;pointer-events:auto;transform:translateY(0)}' +
+    '.sml-gshell__messages .sml-gshell__message .sml-gshell__message-actions{top:-12px;right:8px}' +
+    '@media (prefers-reduced-motion:reduce){.sml-gshell__messages .sml-gshell__message{transition:none}}';
+  var st = document.createElement('style'); st.id = 'sml-msgrow-css'; st.textContent = css;
+  (document.head || document.documentElement).appendChild(st);
+})();
