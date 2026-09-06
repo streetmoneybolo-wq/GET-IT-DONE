@@ -2253,7 +2253,8 @@
   function load() {
     if (R.inflight || Date.now() - R.at < 300000) return;
     R.inflight = true;
-    fetch('/wp-json/sml-group-landing/v1/my-groups?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+    var nonce = window.SML_GCAT_NONCE || (window.SMLGroupShell && window.SMLGroupShell.nonce) || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
+    fetch('/wp-json/sml-group-landing/v1/my-groups?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store', headers: nonce ? { 'X-WP-Nonce': nonce } : {} })   /* logged-in route: the REST nonce is what makes the cookie count */
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) { R.groups = (j && j.groups) || []; R.at = Date.now(); R.inflight = false; paint(); })
       .catch(function () { R.inflight = false; R.at = Date.now(); });
