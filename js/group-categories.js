@@ -1650,8 +1650,12 @@
       if (reset) body.reset = true; else { body.x = Number(st.x.toFixed(2)); body.y = Number(st.y.toFixed(2)); body.scale = Number(st.scale.toFixed(3)); }
       p = fetch('/wp-json/sml-cbg/v1/fit', { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify(body) });
     }
-    p.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
-      if (!res.ok) throw new Error((res.j && res.j.message) || 'Could not save.');
+    p.then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { j = null; }
+      if (!j && /Checking your browser|Javascript required/i.test(t)) throw new Error('WordPress.com is verifying your browser. Reload this page once, then save again.');
+      if (!j && !r.ok && !st.__retried) { st.__retried = true; return new Promise(function (ok) { setTimeout(function () { ok(save(st, reset)); }, 1500); }); }
+      return { ok: r.ok, j: j || {} }; }); }).then(function (res) {
+      if (!res) return;
+      if (!res.ok) throw new Error((res.j && res.j.message) || 'Could not save (HTTP error).');
       say('Saved.');
       setTimeout(function () { closeEditor(false); load(true); if (st.portal && st.file) location.reload(); }, 400);
     }).catch(function (e) { say(e.message || 'Could not save.', true); });
