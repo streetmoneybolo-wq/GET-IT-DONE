@@ -1473,7 +1473,15 @@
 
   function ctx() { return window.SMLGroupShellContext || {}; }
   function gid() { var c = ctx(); if (c.groupId) return String(c.groupId).replace(/\D/g, ''); var cfg = window.SMLGroupShell; return cfg && cfg.groupId ? String(cfg.groupId).replace(/\D/g, '') : ''; }
-  function cid() { var c = ctx(); return c.channelId ? String(c.channelId).replace(/\D/g, '') : ''; }
+  /* The shell publishes SMLGroupShellContext only when it announces a render; on a load where
+     that never happened the editor used to think every channel was the Portal (owner report
+     2026-09-06). The active sidebar button carries the truth, so read it when the context is missing. */
+  function cid() {
+    var c = ctx();
+    if (c && c.mode) return c.mode === 'channel' && c.channelId ? String(c.channelId).replace(/\D/g, '') : '';
+    var act = document.querySelector('.sml-gshell button.sml-gshell__channel.is-active[data-smlgs-channel]');
+    return act ? String(act.getAttribute('data-smlgs-channel') || '').replace(/\D/g, '') : '';
+  }
   function layer() { return document.querySelector('.sml-gshell__watermark'); }
   function conv() { return document.querySelector('.sml-gshell__conversation'); }
   function isPortal() { return !cid(); } /* the Portal chat is the group's channel-less canvas */
@@ -1680,7 +1688,22 @@
     } else if (direct) { direct.remove(); }
   }
 
-  function tick() { load(false); apply(); ensureEntry(); }
+  /* New image in the same channel (the owner just saved a Channel background): the server
+     drops the old fit for it and we open the editor so they place + size the new picture. */
+  var seen = { key: '', url: '' };
+  function watchNewImage() {
+    var L = layer(); if (!L) return;
+    var key = (gid() || '') + ':' + (cid() || 'portal'), url = bgUrl(L);
+    if (key !== seen.key) { seen.key = key; seen.url = url; return; }
+    if (!url || url === seen.url) { seen.url = url; return; }
+    var was = seen.url; seen.url = url;
+    if (!was || isPortal() || F.edit || !canManageHere() || url.indexOf('data:') === 0) return;
+    var modal = document.querySelector('[data-smlgs-channel-watermark-modal]');
+    if (modal && !modal.hidden) return;   /* still inside the upload dialog */
+    load(true);
+    setTimeout(function () { if (!F.edit && bgUrl(layer()) === url) { openEditor({}); say('New background — drag to place it, zoom, then Save.'); } }, 600);
+  }
+  function tick() { load(false); apply(); ensureEntry(); watchNewImage(); }
   function boot() { tick(); setInterval(tick, 1000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.SMLBgFit = { open: openEditor, close: closeEditor, reload: function () { load(true); }, state: F };
