@@ -172,7 +172,7 @@
 
   function msgHTML(m) {
     var u = userOf(m); var side = (m.side === 'bear' || m.side === 'bearish') ? 'bear' : ((m.side === 'bull' || m.side === 'bullish') ? 'bull' : '');
-    var item = String(m.item || ('tvstream-' + m.id)), url = String(m.item_url || (location.origin + '/tradingfloor/' + SYM.toLowerCase() + '/#tv2lf-' + m.id));
+    var item = String(m.item || ('tvstream-' + SYM + '-' + m.id)), url = String(m.item_url || (location.origin + '/tradingfloor/' + SYM.toLowerCase() + '/#tv2lf-' + m.id));
     var uidAttr = u.uid ? ' data-sml-user-id="' + esc(String(u.uid)) + '"' : '';
     var nameHtml = u.url ? '<a href="' + esc(u.url) + '"' + uidAttr + '>' + esc(u.name.replace(/^@/, '')) + '</a>' : esc(u.name.replace(/^@/, ''));
     return avatarHTML(u.name, u.avatar) + '<div class="tv2-lf-bd"><div class="tv2-lf-meta"><span class="tv2-lf-user">' + nameHtml + '</span>' + (side ? '<span class="tv2-lf-badge ' + side + '">' + (side === 'bull' ? 'BULLISH' : 'BEARISH') + '</span>' : '') + '<span class="tv2-lf-time">' + esc(rel(m.t || m.time || m.created || m.at)) + '</span></div><div class="tv2-lf-text">' + linkify(m.body || m.text || m.message || '') + '</div></div>' +
@@ -181,7 +181,7 @@
   }
   function msgNode(m) {
     var a = document.createElement('article'); a.className = 'tv2-lf-msg sml-sth-post'; a.id = 'tv2lf-' + String(m.id);
-    a.setAttribute('data-id', String(m.id)); a.setAttribute('data-hfe-item', String(m.item || ('tvstream-' + m.id)));
+    a.setAttribute('data-id', String(m.id)); a.setAttribute('data-hfe-item', String(m.item || ('tvstream-' + SYM + '-' + m.id)));
     a.setAttribute('data-hfe-url', String(m.item_url || (location.origin + '/tradingfloor/' + SYM.toLowerCase() + '/#tv2lf-' + m.id)));
     if (!m.can_gift) a.setAttribute('data-no-gift', '1'); /* gifts need a member-owned post (a mirrored chart post) to pay out to */
     a.innerHTML = msgHTML(m); resolveMentions(a); return a;
