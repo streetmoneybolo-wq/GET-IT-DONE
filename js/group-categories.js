@@ -1688,18 +1688,28 @@
     } else if (direct) { direct.remove(); }
   }
 
-  /* New image in the same channel (the owner just saved a Channel background): the server
-     drops the old fit for it and we open the editor so they place + size the new picture. */
-  var seen = { key: '', url: '' };
+  /* After the owner UPLOADS a new Channel background (the shell modal's form submit), the
+     server drops the old fit for that channel and we open the editor so they place the new
+     picture. Keyed on the submit, never on the layer's URL: the shell repaints the URL on every
+     channel switch, and watching it opened the editor on switches (owner report 2026-09-06). */
+  var pending = null;
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target;
+    if (!form || !form.matches || !form.matches('[data-smlgs-channel-watermark-form]')) return;
+    if (isPortal()) return;
+    pending = { key: gid() + ':' + cid(), url: bgUrl(layer()), t: Date.now() };
+  }, true);
   function watchNewImage() {
+    if (!pending) return;
+    if (Date.now() - pending.t > 90000) { pending = null; return; }
     var L = layer(); if (!L) return;
-    var key = (gid() || '') + ':' + (cid() || 'portal'), url = bgUrl(L);
-    if (key !== seen.key) { seen.key = key; seen.url = url; return; }
-    if (!url || url === seen.url) { seen.url = url; return; }
-    var was = seen.url; seen.url = url;
-    if (!was || isPortal() || F.edit || !canManageHere() || url.indexOf('data:') === 0) return;
+    if (gid() + ':' + cid() !== pending.key) { pending = null; return; }
     var modal = document.querySelector('[data-smlgs-channel-watermark-modal]');
     if (modal && !modal.hidden) return;   /* still inside the upload dialog */
+    var url = bgUrl(L);
+    if (!url || url === pending.url || url.indexOf('data:') === 0) return;
+    pending = null;
+    if (F.edit || !canManageHere()) return;
     load(true);
     setTimeout(function () { if (!F.edit && bgUrl(layer()) === url) { openEditor({}); say('New background — drag to place it, zoom, then Save.'); } }, 600);
   }
