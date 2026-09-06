@@ -237,8 +237,7 @@
     dockLegacyAccount(header);
     bindAccountMenu(header);
     bindLoopKick(header);
-    pollHeaderQuotes();
-    headerQuoteTimer = window.setInterval(pollHeaderQuotes, 5000);
+    ensureQuoteTimer();
   }
 
   /* ONE account control: the theme's floating account chip (.sml-acct, printed in
@@ -269,23 +268,133 @@
     });
   }
 
+  function fmtLast(value) { return '$' + (Math.abs(value) >= 1000 ? value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value.toFixed(2)); }
+  function fmtPct(value) { return (value >= 0 ? '▲ +' : '▼ ') + value.toFixed(2) + '%'; }
+  function tapeSymbols() {
+    var seen = {}, out = [];
+    all('[data-gh-quote]').forEach(function (node) { var s = String(node.getAttribute('data-gh-quote') || '').toUpperCase(); if (s && !seen[s]) { seen[s] = 1; out.push(s); } });
+    return out;
+  }
+  /* Owner report 2026-09-06 ("some tickers don't have prices"): this poll only ever asked
+     the quotes API for the 12 fixed HEADER_SYMBOLS, so every other symbol the roller put on
+     the tape rolled without a price. Ask for exactly the symbols on screen instead. */
   function pollHeaderQuotes() {
-    var header = el('#sml-global-header');
-    if (!header) { if (headerQuoteTimer) clearInterval(headerQuoteTimer); return; }
-    fetch(QUOTES_URL + '?symbols=' + encodeURIComponent(HEADER_SYMBOLS.join(',')), { cache: 'no-store' })
+    if (document.hidden) return;
+    var symbols = tapeSymbols();
+    if (!symbols.length) return;
+    fetch(QUOTES_URL + '?symbols=' + encodeURIComponent(symbols.join(',')), { cache: 'no-store' })
       .then(function (response) { if (!response.ok) throw new Error('quotes unavailable'); return response.json(); })
       .then(function (payload) {
         var quotes = payload && payload.quotes ? payload.quotes : {};
-        all('[data-gh-quote]', header).forEach(function (node) {
+        all('[data-gh-quote]').forEach(function (node) {
           var quote = quotes[node.getAttribute('data-gh-quote')];
           if (!quote) return;
           var field = node.getAttribute('data-field');
           var value = Number(quote[field]);
           if (!Number.isFinite(value)) return;
-          if (field === 'last') node.textContent = '$' + (Math.abs(value) >= 1000 ? value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value.toFixed(2));
-          else { node.textContent = (value >= 0 ? '▲ +' : '▼ ') + value.toFixed(2) + '%'; node.classList.toggle('is-up', value >= 0); node.classList.toggle('is-down', value < 0); }
+          if (field === 'last') { node.textContent = fmtLast(value); return; }
+          node.textContent = fmtPct(value); node.classList.toggle('is-up', value >= 0); node.classList.toggle('is-down', value < 0);
+          var item = node.closest ? node.closest('.sml-hot-stock') : null;
+          if (item) { item.classList.remove('is-good', 'is-bad', 'is-neutral'); item.classList.add(value > 0 ? 'is-good' : value < 0 ? 'is-bad' : 'is-neutral'); }
         });
       }).catch(function () { /* Honest empty state remains —; never fabricate quotes. */ });
+  }
+  function ensureQuoteTimer() { if (headerQuoteTimer) return; pollHeaderQuotes(); headerQuoteTimer = window.setInterval(pollHeaderQuotes, 5000); }
+
+  /* ---- Hot Stocks Roller, site-wide (owner call 2026-09-06) ------------------
+     The tape looked different in groups than everywhere else because the SML Hot
+     Stocks Roller plugin script only loaded on some page types (groups, markets,
+     profiles) and swapped the fixed 12-symbol tape for its live hot-stocks +
+     NEWS FLASH roller there. Now THIS script owns the roller on every page: it
+     renders the plugin's feed (sml-hot-roller/v1/feed, priced + toned server-side
+     from real quotes since plugin 0.2.0) into the global header tape AND the
+     homepage's own tape, in one look. Real data only: a symbol the quotes API
+     cannot price never shows a number, and the feed drops such symbols. */
+  var ROLLER_FEED = CFG.roller_feed || '/wp-json/sml-hot-roller/v1/feed';
+  var roller = { items: null, timer: null, watch: null, sig: '' };
+  function rollerRows() { return all('.sml-gh-tape .sml-gh-tape-row, #sml-hf-shell .tape-row'); }
+  function rollerCss() {
+    if (document.getElementById('sml-hot-roller-css')) return;
+    var st = document.createElement('style'); st.id = 'sml-hot-roller-css';
+    st.textContent = ':where(.sml-hot-roller-item){display:inline-flex;align-items:center;gap:10px;padding:0 24px;border-right:1px solid rgba(255,255,255,.06);color:#cfd9e4;text-decoration:none!important;white-space:nowrap;font:600 14px/1.2 "IBM Plex Mono",Consolas,monospace}' +
+      ':where(.sml-hot-roller-item) b{font-weight:900;color:#cfd9e4}:where(.sml-hot-roller-item) span{color:#aab6c4;font-weight:500}:where(.sml-hot-roller-item) em{color:#6b7c90;font-style:normal}' +
+      ':where(.sml-hot-roller-item) em.is-up{color:#38f58a}:where(.sml-hot-roller-item) em.is-down{color:#f2495c}' +
+      '.sml-hot-roller-item.sml-hot-stock.is-good b,.sml-hot-roller-item.sml-hot-stock.is-good em{color:#00f08a}.sml-hot-roller-item.sml-hot-stock.is-bad b,.sml-hot-roller-item.sml-hot-stock.is-bad em{color:#ff4968}' +
+      '.sml-hot-roller-item.sml-news-flash{box-shadow:0 0 18px rgba(255,255,255,.12),inset 0 0 0 1px rgba(255,255,255,.16);font-weight:800;letter-spacing:.02em;color:#fff}' +
+      '.sml-hot-roller-item.sml-news-flash b{color:#fff;margin-right:8px}.sml-hot-roller-item.sml-news-flash span{color:#fff;max-width:560px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:bottom}' +
+      '.sml-hot-roller-item.sml-news-flash.is-good{background:linear-gradient(90deg,#009a4b,#00d26a)}.sml-hot-roller-item.sml-news-flash.is-bad{background:linear-gradient(90deg,#b40724,#ff244d)}.sml-hot-roller-item.sml-news-flash.is-neutral{background:linear-gradient(90deg,#1647c7,#00a9ff)}' +
+      '@media(max-width:720px){.sml-hot-roller-item.sml-news-flash span{max-width:320px}}';
+    document.head.appendChild(st);
+  }
+  function rollerTone(t) { t = String(t || ''); return /^(good|positive|bullish)$/.test(t) ? 'is-good' : /^(bad|negative|bearish)$/.test(t) ? 'is-bad' : 'is-neutral'; }
+  function rollerItem(item) {
+    var a = document.createElement('a');
+    a.className = 'sml-gh-tick sml-hot-roller-item ' + rollerTone(item.sentiment);
+    a.href = item.url || '#';
+    a.setAttribute('data-hot-roller-key', item.key || item.symbol || '');
+    var b = document.createElement('b'), span = document.createElement('span'), em = document.createElement('em');
+    if (item.type === 'news') {
+      a.className += ' sml-news-flash';
+      b.textContent = item.label || 'NEWS FLASH'; span.textContent = item.title || 'Breaking market news';
+      a.setAttribute('aria-label', b.textContent + ': ' + span.textContent);
+      a.appendChild(b); a.appendChild(span);
+      return a;
+    }
+    var symbol = String(item.symbol || '').toUpperCase();
+    a.className += ' sml-hot-stock';
+    if (symbol) { a.setAttribute('data-tkpop', symbol); a.setAttribute('data-hot-symbol', symbol); span.setAttribute('data-gh-quote', symbol); span.setAttribute('data-field', 'last'); em.setAttribute('data-gh-quote', symbol); em.setAttribute('data-field', 'pct'); }
+    b.textContent = item.label || (symbol ? '$' + symbol : 'HOT STOCK');
+    var last = Number(item.last), pct = Number(item.pct);
+    span.textContent = (item.last !== '' && item.last != null && Number.isFinite(last)) ? fmtLast(last) : '—';
+    if (item.pct !== '' && item.pct != null && Number.isFinite(pct)) { em.textContent = fmtPct(pct); em.className = pct >= 0 ? 'is-up' : 'is-down'; } else em.textContent = '—';
+    a.setAttribute('aria-label', (b.textContent + ' ' + span.textContent + ' ' + em.textContent).trim());
+    a.appendChild(b); a.appendChild(span); a.appendChild(em);
+    return a;
+  }
+  function renderRoller() {
+    if (!roller.items || !roller.items.length) return;
+    rollerCss();
+    var painted = false;
+    rollerRows().forEach(function (row) {
+      if (row.getAttribute('data-hot-roller-sig') === roller.sig) return;
+      var nodes = roller.items.map(rollerItem);
+      var frag = document.createDocumentFragment();
+      nodes.forEach(function (n) { frag.appendChild(n); });
+      nodes.forEach(function (n) { frag.appendChild(n.cloneNode(true)); });   /* second copy = the seamless -50% loop */
+      while (row.firstChild) row.removeChild(row.firstChild);
+      row.appendChild(frag);
+      row.setAttribute('data-hot-roller', '1'); row.setAttribute('data-hot-roller-sig', roller.sig);
+      var tape = row.parentNode;
+      if (tape && tape.classList && tape.classList.contains('sml-gh-tape')) tape.setAttribute('data-hot-roller', '1');
+      painted = true;
+    });
+    if (painted) pollHeaderQuotes();
+  }
+  function loadRoller() {
+    if (document.hidden && roller.items) return;
+    fetch(ROLLER_FEED + '?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (json) {
+        if (!json || !json.ok || !Array.isArray(json.items)) return;
+        var seen = {}, items = [];
+        json.items.forEach(function (it) { if (!it) return; var k = it.key || (it.type === 'ticker' ? 'ticker-' + it.symbol : 'news-' + it.url); if (!k || seen[k]) return; seen[k] = 1; items.push(it); });
+        if (!items.length) return;
+        roller.items = items.slice(0, 26);
+        roller.sig = roller.items.map(function (it) { return it.key || it.symbol || it.url; }).join('|');
+        renderRoller();
+      }).catch(function () { /* keep whatever is rolling */ });
+  }
+  function mountHotRoller() {
+    if (roller.timer || EMBED_TOOL || isLoginPage()) return;
+    loadRoller();
+    roller.timer = window.setInterval(loadRoller, 30000);
+    /* the header (this script) and the homepage shell (home-feed.js) mount their tapes at
+       different moments, and the group shell can rebuild; re-paint any tape that is behind */
+    roller.watch = window.setInterval(function () {
+      if (!roller.items) return;
+      if (rollerRows().some(function (row) { return row.getAttribute('data-hot-roller-sig') !== roller.sig; })) renderRoller();
+    }, 1000);
+    ensureQuoteTimer();
   }
 
   function bindLoopKick(header) {
@@ -595,6 +704,7 @@
     if (isLoginPage()) { mountLoginCleanup(); return; }
     mountDetectFade();
     mountTickerPop();
+    mountHotRoller();
     if (EMBED_TOOL) { mountEmbedTool(); return; }
     if (el('#sml-ss-panel')) return;
     mountGlobalHeader();
