@@ -304,11 +304,36 @@
     window.addEventListener('message', function (event) { var item = parts(); var data = event.data; if (item.frame && event.source === item.frame.contentWindow && data && data.type === 'sml-loop-kick:surface' && data.surface === 'closed') closeKick(); });
   }
 
+  /* Owner call 2026-09-05: inside the group tools the dashboard's market-data strip
+     (#idxstrip, a fixed 130px-column grid ~1265px wide) was cut off at the frame edge.
+     "Make it smaller so it fits": scale the strip to the frame width (zoom keeps every
+     card, number and sparkline intact), re-fitted on resize. Frames wider than the strip
+     are left at 1:1. */
+  function fitEmbedRows() {
+    var rows = ['#idxstrip'].map(function (sel) { return el(sel); }).filter(Boolean);
+    if (!rows.length) return;
+    var avail = Math.max(320, document.documentElement.clientWidth || window.innerWidth || 0);
+    rows.forEach(function (row) {
+      row.style.zoom = '1';
+      var natural = row.scrollWidth || row.getBoundingClientRect().width;
+      if (!natural) return;
+      var pad = 16; /* the page's own side padding */
+      var z = Math.min(1, (avail - pad) / natural);
+      row.style.zoom = z < 0.999 ? z.toFixed(3) : '1';
+      row.setAttribute('data-sml-fit', z < 0.999 ? z.toFixed(2) : '1');
+    });
+  }
   function mountEmbedTool() {
     document.body.classList.add('sml-embed-tool');
     /* the admin bar forces html{margin-top:32px!important} — cancel it */
     try { document.documentElement.style.setProperty('margin-top', '0', 'important'); } catch (e) {}
     replaceKnownHeader();
+    if (/\/analyst-dashboard\b/.test(location.pathname)) {
+      var fitT = 0, fit = function () { clearTimeout(fitT); fitT = setTimeout(fitEmbedRows, 60); };
+      fit(); setTimeout(fit, 800); setTimeout(fit, 2500);
+      window.addEventListener('resize', fit);
+      try { new MutationObserver(fit).observe(document.body, { childList: true }); } catch (e) {}
+    }
     if (!/\/analyst-dashboard\b/.test(location.pathname)) return;
     if (el('#sml-ets')) return;
     var bar = document.createElement('div');

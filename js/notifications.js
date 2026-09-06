@@ -33,8 +33,8 @@
 
   var CSS = '' +
     '.sml-nk-host{position:relative!important;overflow:visible!important}' +
-    '.sml-nk-alt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:inherit;background:linear-gradient(180deg,#ff6b7a 0%,#ff4757 55%,#d9303f 100%);color:#fff;font-weight:800;letter-spacing:.4px;font-size:inherit;pointer-events:none;opacity:0;animation:smlNkBlink 2.8s ease-in-out infinite;box-shadow:0 0 18px rgba(255,71,87,.55)}' +
-    '@keyframes smlNkBlink{0%,38%{opacity:0}50%,88%{opacity:1}100%{opacity:0}}' +
+    '.sml-nk-alt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:inherit;background:linear-gradient(180deg,#ff6b7a 0%,#ff4757 55%,#d9303f 100%);color:#fff;font-weight:800;letter-spacing:.4px;font-size:inherit;pointer-events:none;opacity:0;animation:smlNkBlink 2.8s steps(1,end) infinite;box-shadow:0 0 18px rgba(255,71,87,.55)}' +
+    '@keyframes smlNkBlink{0%,49.9%{opacity:0}50%,100%{opacity:1}}' +
     '.sml-nk-badge{position:absolute;top:-7px;right:-7px;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#ff4757;color:#fff;font:800 11px/20px Inter,system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #0b131f;pointer-events:none;z-index:2}' +
     '.sml-nk-panel{position:fixed;z-index:2147483600;width:380px;max-width:calc(100vw - 16px);max-height:min(72vh,640px);display:none;flex-direction:column;background:linear-gradient(168deg,#1B2532 0%,#121A26 44%,#0B111A 100%);border:1px solid rgba(255,255,255,.09);border-top-color:rgba(255,255,255,.18);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.7);color:#E6EDF5;font-family:Inter,system-ui,sans-serif;overflow:hidden}' +
     '.sml-nk-panel.on{display:flex}' +
