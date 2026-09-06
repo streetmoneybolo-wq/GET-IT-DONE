@@ -2232,3 +2232,57 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.SMLSidebarPlus = { unread: unread, folds: folds, landing: L, tick: tick };
 })();
+
+
+/* ---- Group rail = Discord's server column (owner call 2026-09-06): every group the member
+   belongs to sits in the left rail, current group first, then the rest, then "+". Icons are the
+   shell's own rail tiles (`.sml-gshell__rail-item`); list from sml-group-landing/v1/my-groups.
+   The shell rebuilds the rail on its own renders, so the tick re-adds what is missing. ---- */
+(function () {
+  'use strict';
+  if (window.__smlGroupRail) return;
+  window.__smlGroupRail = 1;
+  var css = '' +
+    '.sml-gshell__rail-item.sml-rail-mine{position:relative;overflow:hidden;font:800 12px/1 Inter,system-ui,sans-serif;letter-spacing:.02em}' +
+    '.sml-gshell__rail-item.sml-rail-mine img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}' +
+    '.sml-gshell__rail-item.sml-rail-mine[data-role="owner"]::after{content:"";position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-radius:50%;background:#38f58a;box-shadow:0 0 0 2px #06100b}';
+  function ensureCss() { if (document.getElementById('sml-group-rail-css')) return; var st = document.createElement('style'); st.id = 'sml-group-rail-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function slug() { var m = /\/groups\/([^\/?#]+)/.exec(location.pathname); return m ? decodeURIComponent(m[1]) : ''; }
+  var R = { groups: null, at: 0, inflight: false };
+  function load() {
+    if (R.inflight || Date.now() - R.at < 300000) return;
+    R.inflight = true;
+    fetch('/wp-json/sml-group-landing/v1/my-groups?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { R.groups = (j && j.groups) || []; R.at = Date.now(); R.inflight = false; paint(); })
+      .catch(function () { R.inflight = false; R.at = Date.now(); });
+  }
+  function tile(g) {
+    var a = document.createElement('a');
+    a.className = 'sml-gshell__rail-item sml-rail-mine';
+    a.href = g.url || ('/groups/' + encodeURIComponent(g.slug) + '/');
+    a.setAttribute('aria-label', g.name); a.title = g.name;
+    a.setAttribute('data-gid', String(g.id)); a.setAttribute('data-role', g.role || 'member');
+    a.innerHTML = g.icon_url ? '<img src="' + esc(g.icon_url) + '" alt="" loading="lazy">' : esc(String(g.name || 'G').replace(/[^A-Za-z0-9 ]/g, '').trim().slice(0, 2).toUpperCase() || 'G');
+    return a;
+  }
+  function paint() {
+    var rail = document.querySelector('.sml-gshell__rail'); if (!rail || !R.groups) return;
+    var here = slug();
+    var want = R.groups.filter(function (g) { return g.slug !== here; });
+    var have = {}; [].slice.call(rail.querySelectorAll('.sml-rail-mine')).forEach(function (a) { have[a.getAttribute('data-gid')] = a; });
+    var plus = [].slice.call(rail.querySelectorAll('.sml-gshell__rail-item')).filter(function (a) { return /create=1/.test(a.getAttribute('href') || '') || (a.textContent || '').trim() === '+'; })[0] || null;
+    want.forEach(function (g) {
+      var key = String(g.id);
+      if (have[key]) { delete have[key]; return; }
+      var t = tile(g);
+      if (plus) rail.insertBefore(t, plus); else rail.appendChild(t);
+    });
+    Object.keys(have).forEach(function (k) { have[k].remove(); });   /* left a group: drop its tile */
+  }
+  function tick() { if (!document.querySelector('.sml-gshell__rail')) return; ensureCss(); load(); paint(); }
+  function boot() { tick(); setInterval(tick, 1000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.SMLGroupRail = { state: R, reload: function () { R.at = 0; load(); } };
+})();
