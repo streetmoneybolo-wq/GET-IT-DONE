@@ -462,6 +462,9 @@
       }
       push();
     }
+    /* The watch pages hide every other body child (css/live-watch.css: body.slw-on > :not(#sml-lw-root)... display:none
+       !important, three id-level :not()s). Out-specify it for the popup while it is open so the phone can float over the player. */
+    if (!document.getElementById('sml-kick-unhide')) { var us = document.createElement('style'); us.id = 'sml-kick-unhide'; us.textContent = 'body.slw-on > #sml-loop-popup#sml-loop-popup#sml-loop-popup#sml-loop-popup:not([hidden]){display:flex!important}'; (document.head || document.documentElement).appendChild(us); }
     window.SMLLoopKick = { open: openKick, close: closeKick, watch: watchInKick };
     button.addEventListener('click', function (event) { event.preventDefault(); var item = parts(); if (item.popup && !item.popup.hidden) closeKick(); else openKick(); });
     window.addEventListener('message', function (event) { var item = parts(); var data = event.data; if (item.frame && event.source === item.frame.contentWindow && data && data.type === 'sml-loop-kick:surface' && data.surface === 'closed') closeKick(); });
