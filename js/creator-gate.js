@@ -122,13 +122,34 @@
       letters.insertAdjacentElement('afterend', letter);
     } else if (letter) letter.remove();
 
-    return (!status.hasChannel || !!el('sml-cg-my-channel')) && (!status.hasLetter || !!el('sml-cg-my-letter'));
+    /* Groups (owner call 2026-09-06): a member who OWNS a group gets 'My Group' under Groups, a direct link to it,
+       exactly like My Channel / My Loop Letter. One row per owned group (owner-first list from sml-group-landing). */
+    var groupsNav = findHomeNavLink('/groups');
+    var owned = Array.isArray(status.ownedGroups) ? status.ownedGroups : [];
+    var wantIds = {};
+    if (groupsNav) {
+      var anchor = groupsNav;
+      owned.slice(0, 3).forEach(function (g, i) {
+        var id = 'sml-cg-my-group-' + g.id; wantIds[id] = 1;
+        var row = el(id);
+        if (!row) row = shortcutMarkup(id, owned.length > 1 ? 'My Group · ' + g.name : 'My Group', g.url || ('/groups/' + encodeURIComponent(g.slug) + '/'));
+        anchor.insertAdjacentElement('afterend', row); anchor = row;
+      });
+    }
+    Array.prototype.slice.call(document.querySelectorAll('a[id^="sml-cg-my-group-"]')).forEach(function (row) { if (!wantIds[row.id]) row.remove(); });
+
+    return (!status.hasChannel || !!el('sml-cg-my-channel')) && (!status.hasLetter || !!el('sml-cg-my-letter')) && (!owned.length || !!el('sml-cg-my-group-' + owned[0].id));
   }
   function loadCreatorShortcuts() {
     if (!LOGGED_IN) return;
-    api('/sml-creator-gate/v1/status').then(function (res) { rememberEntitlement(res && res.j);
+    /* the gate status + the member's own groups (owner role only) in parallel; a groups failure never hides the rest */
+    Promise.all([
+      api('/sml-creator-gate/v1/status'),
+      api('/sml-group-landing/v1/my-groups').then(function (r) { return (r.ok && r.j && Array.isArray(r.j.groups)) ? r.j.groups.filter(function (g) { return g && g.role === 'owner'; }) : []; }, function () { return []; })
+    ]).then(function (both) { var res = both[0]; rememberEntitlement(res && res.j);
       if (!res.ok || !res.j) return;
       var status = res.j;
+      status.ownedGroups = both[1];
       var attempts = 0;
       var timer = setInterval(function () {
         attempts++;
