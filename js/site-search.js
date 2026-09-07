@@ -443,6 +443,26 @@
       if (item.frame) { var src = item.frame.getAttribute('src'); var wanted = item.frame.dataset.src || src; if (!src && wanted) item.frame.setAttribute('src', wanted); }
       item.popup.hidden = false; document.body.classList.add('sml-loop-open'); button.setAttribute('aria-expanded', 'true');
     }
+    /* Mini player hand-off (owner call 2026-09-06): a watch page hands its video or live stream to the phone's
+       Watch deck and it keeps playing there. The frame may still be loading, so the message repeats until the
+       app answers with sml-loop-kick:watch-ack. */
+    function frameOrigin(frame) { try { return new URL(frame.getAttribute('src') || frame.dataset.src || '', location.href).origin; } catch (e) { return ''; } }
+    function watchInKick(item) {
+      if (!item) return;
+      var tries = 0, done = false;
+      function onAck(ev) { var d = ev.data; if (d && d.type === 'sml-loop-kick:watch-ack' && d.id === item.id) { done = true; window.removeEventListener('message', onAck); } }
+      window.addEventListener('message', onAck);
+      function push() {
+        if (done) return;
+        var it = parts();
+        if (!it.popup || it.popup.hidden) openKick();
+        var f = el('#sml-loop-popup-frame');
+        if (f && f.contentWindow) { try { f.contentWindow.postMessage({ type: 'sml-loop-kick:watch', version: 1, item: item, time: item.time || 0 }, frameOrigin(f) || '*'); } catch (e) { /* not ready */ } }
+        if (++tries < 50) setTimeout(push, 400); else window.removeEventListener('message', onAck);
+      }
+      push();
+    }
+    window.SMLLoopKick = { open: openKick, close: closeKick, watch: watchInKick };
     button.addEventListener('click', function (event) { event.preventDefault(); var item = parts(); if (item.popup && !item.popup.hidden) closeKick(); else openKick(); });
     window.addEventListener('message', function (event) { var item = parts(); var data = event.data; if (item.frame && event.source === item.frame.contentWindow && data && data.type === 'sml-loop-kick:surface' && data.surface === 'closed') closeKick(); });
   }

@@ -90,6 +90,7 @@
             '<button class="slw-btn-term" id="vw-term" style="display:none">Open terminal →</button>' +
             '<button class="slw-like" id="vw-like"><span class="g">👍</span> <span id="vw-likes">—</span></button>' +
             '<button class="slw-share" id="vw-share">⤴ Share</button>' +
+            '<button class="slw-gear" id="vw-mini" title="Keep watching in Loop-Kick (mini player)">⧉</button>' +
             '<button class="slw-gear" id="vw-fs" title="Fullscreen">⛶</button>' +
           '</div></div>' +
         '</div>' +
@@ -171,6 +172,14 @@
     muted = !muted; v.muted = muted;
     var b = el('#vw-vol'); b.className = 'slw-vol' + (muted ? ' muted' : '');
     b.innerHTML = muted ? '<span class="g">◂✕</span><span class="ml">MUTED</span>' : '<span class="g">◂))</span><span class="bar"><i></i></span>';
+  };
+  /* Mini player (owner call 2026-09-06): the video continues in the Loop-Kick Watch deck from this exact second. */
+  el('#vw-mini').onclick = function () {
+    var item = { kind: 'vod', id: VID.id || VID.url, title: VID.title, src: VID.src, poster: VID.poster, url: VID.url, creator: VID.creator, duration: VID.duration || 0, time: v.currentTime || 0 };
+    if (!item.src) return;
+    try { v.pause(); } catch (e) { /* nothing playing */ }
+    if (window.SMLLoopKick && window.SMLLoopKick.watch) window.SMLLoopKick.watch(item);
+    else { var b = document.getElementById('sml-hf-loop-kick'); if (b) b.click(); }
   };
   el('#vw-fs').onclick = function () { var p = el('.slw-player'); if (document.fullscreenElement) document.exitFullscreen(); else if (p.requestFullscreen) p.requestFullscreen(); };
   paintPlay();

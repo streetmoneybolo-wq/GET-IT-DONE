@@ -124,6 +124,7 @@
             '<button class="slw-like" id="slw-like"><span class="g">👍</span> <span id="slw-likes">4,183</span><span class="slw-facepile" id="slw-likers" style="display:none"><i>QV</i><i>MS</i><i>HZ</i></span></button>' +
             '<button class="slw-tom-btn" id="slw-tom">🍅 <span id="slw-tom-lbl">Toss tomato</span> <span class="slw-tom-count" id="slw-tom-ct">3/3</span></button>' +
             '<button class="slw-share" id="slw-share">⤴ Share</button>' +
+            '<button class="slw-gear" id="slw-mini" title="Keep watching in Loop-Kick (mini player)">⧉</button>' +
             '<button class="slw-gear" id="slw-gear" title="Settings">⚙</button>' +
             '<div id="slw-tom-pop"></div><div id="slw-menu"></div>' +
           '</div></div>' +
@@ -731,6 +732,21 @@
   }
 
   /* settings menu */
+  /* Mini player (owner call 2026-09-06): the stream (or replay) continues in the Loop-Kick Watch deck. */
+  el('#slw-mini').onclick = function () {
+    var h = root.querySelector('.slw-titleblk h1'); var title = h ? (h.textContent || '').replace(/\s+/g, ' ').trim() : 'StockMarketLoop Live';
+    var item = null;
+    if (P.mode === 'slot' && P.hlsUrl) {
+      var isStream = /\.m3u8(\?|$)/i.test(P.hlsUrl);
+      item = { kind: isStream ? 'live' : 'vod', id: (isStream ? 'live-' : 'replay-') + HANDLE, title: title, src: P.hlsUrl, url: location.href, creator: HANDLE, handle: HANDLE, time: (!isStream && P.video) ? (P.video.currentTime || 0) : 0 };
+    } else if (P.mode === 'yt' && P.ytId) {
+      item = { kind: 'live', id: 'yt-' + P.ytId, title: title, ytId: P.ytId, url: location.href, creator: HANDLE, handle: HANDLE, time: 0 };
+    }
+    if (!item) return;
+    try { if (P.video) P.video.pause(); if (P.yt && P.yt.pauseVideo) P.yt.pauseVideo(); } catch (e) { /* nothing to pause */ }
+    if (window.SMLLoopKick && window.SMLLoopKick.watch) window.SMLLoopKick.watch(item);
+    else { var b = document.getElementById('sml-hf-loop-kick'); if (b) b.click(); }
+  };
   el('#slw-gear').onclick = function () {
     S.vidSet = !S.vidSet;
     el('#slw-gear').classList.toggle('on', S.vidSet);
