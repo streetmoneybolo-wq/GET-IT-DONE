@@ -1722,7 +1722,7 @@
   function tick() { load(false); apply(); ensureEntry(); watchNewImage(); }
   function boot() { tick(); setInterval(tick, 1000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  window.SMLBgFit = { open: openEditor, close: closeEditor, reload: function () { load(true); }, state: F };
+  window.SMLBgFit = { open: openEditor, close: closeEditor, reload: function () { load(true); }, apply: apply, state: F };
 })();
 
 
@@ -2286,4 +2286,70 @@
   function boot() { tick(); setInterval(tick, 1000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.SMLGroupRail = { state: R, reload: function () { R.at = 0; load(); } };
+})();
+
+
+/* ---- Background switch (owner call 2026-09-07): clicking through channels showed the PREVIOUS
+   background until the next one had downloaded, because Chrome keeps painting the old CSS image
+   while the new URL loads, and the per-channel fit + banner overlay only caught up on their timers.
+   Now every channel's background is preloaded when the group opens, the layer is hidden for the
+   instant an image is still loading (no stale picture), and the fit + overlay are applied the moment
+   the shell swaps the image, before the first paint. ---- */
+(function () {
+  'use strict';
+  if (window.__smlBgSwitch) return;
+  window.__smlBgSwitch = 1;
+  var NONCE = (window.wpApiSettings && wpApiSettings.nonce) || (window.SML_NOTIFY && SML_NOTIFY.nonce) || '';
+  var loaded = {}, pending = {}, preloadedFor = 0, lastSeen = '';
+  function css() { if (document.getElementById('sml-bgswitch-css')) return; var st = document.createElement('style'); st.id = 'sml-bgswitch-css'; st.textContent = '.sml-gshell__watermark.sml-bg-pending{opacity:0!important;transition:none!important}'; (document.head || document.documentElement).appendChild(st); }
+  function layer() { return document.querySelector('[data-smlgs-watermark]'); }
+  function gid() { var c = window.SMLGroupShellContext || {}; if (c.groupId) return Number(String(c.groupId).replace(/D/g, '')); var cfg = window.SMLGroupShell; return cfg && cfg.groupId ? Number(String(cfg.groupId).replace(/D/g, '')) : 0; }
+  function urlOf(v) { var m = /url\(["']?(.*?)["']?\)/.exec(String(v || '')); return m ? m[1] : ''; }
+  function preload(url, cb) {
+    if (!url || loaded[url]) { if (cb) cb(); return; }
+    if (pending[url]) { if (cb) pending[url].push(cb); return; }
+    pending[url] = cb ? [cb] : [];
+    var im = new Image();
+    im.onload = im.onerror = function () { loaded[url] = 1; var cbs = pending[url] || []; delete pending[url]; cbs.forEach(function (f) { try { f(); } catch (e) {} }); };
+    im.src = url;
+  }
+  /* warm every channel background of this group once (the fit plugin injects watermark urls into the channel list) */
+  function warm() {
+    var g = gid(); if (!g || preloadedFor === g) return;
+    preloadedFor = g;
+    fetch('/wp-json/sml/v1/group/channels?group_id=' + encodeURIComponent(g) + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var list = (j && (j.channels || j.items || j)) || [];
+        if (!Array.isArray(list)) return;
+        list.forEach(function (c) { var u = c && c.watermark && c.watermark.url; if (u) preload(u); });
+        var grp = window.SMLGroupShellContext && window.SMLGroupShellContext.group; if (grp && grp.watermark && grp.watermark.url) preload(grp.watermark.url);
+      }).catch(function () { preloadedFor = 0; });
+  }
+  function settle() {
+    try { if (window.SMLBgFit && SMLBgFit.apply) SMLBgFit.apply(); } catch (e) {}
+    try { if (window.SMLTransparentLayers && SMLTransparentLayers.tick) SMLTransparentLayers.tick(); } catch (e) {}
+  }
+  function onChange() {
+    var L = layer(); if (!L) return;
+    var url = urlOf(L.style.backgroundImage);
+    if (url === lastSeen) return;
+    lastSeen = url;
+    if (url && !loaded[url]) {
+      L.classList.add('sml-bg-pending');
+      preload(url, function () { if (urlOf(L.style.backgroundImage) === url) { L.classList.remove('sml-bg-pending'); settle(); } });
+    } else { L.classList.remove('sml-bg-pending'); }
+    settle();
+  }
+  var watching = null;
+  function watch() {
+    var L = layer(); if (!L || L === watching) return;
+    watching = L;
+    new MutationObserver(onChange).observe(L, { attributes: true, attributeFilter: ['style'] });
+    var u = urlOf(L.style.backgroundImage); if (u) { loaded[u] = 1; lastSeen = u; }
+  }
+  function tick() { css(); watch(); warm(); }
+  function boot() { tick(); setInterval(tick, 2000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  window.SMLBgSwitch = { loaded: loaded, warm: function () { preloadedFor = 0; warm(); } };
 })();
