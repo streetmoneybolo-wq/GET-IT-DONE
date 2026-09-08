@@ -25,7 +25,7 @@
     editUrl: '', visitorUrl: '',
     isOwner: true,            /* demo/non-profile mounts keep the full UI; profile pages set the real value */
     followUid: 0, isFollowing: false,
-    stats: [], tickers: [], about: [], friends: [], posts: [], socials: [], moduleVisibility: {},
+    stats: [], tickers: [], about: [], friends: [], friendsTotal: 0, posts: [], socials: [], moduleVisibility: {},
     bio: '',
     disclaimer: 'Market data and content on Stock Market Loop are for informational purposes only and do not constitute investment advice.',
     orbitalPhotos: ['', '', '', '', '', ''],           // 6 URLs (ring)  — orbital media 0..5
