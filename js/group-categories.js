@@ -1503,7 +1503,13 @@
   }
   function currentFit() {
     if (isPortal()) { var p = F.portal || {}; return p.url ? { x: Number(p.x), y: Number(p.y), scale: Number(p.scale) || 0, opacity: p.opacity, portal: true } : null; }
-    var fits = F.fits || {}; return fits['c' + cid()] || fits.g || null;
+    var fits = F.fits || {}; var own = fits['c' + cid()];
+    if (own) return own;
+    /* owner call 2026-09-07: a previous group-wide size must never be applied to a channel's own background */
+    var urls = window.SMLBgSwitch && SMLBgSwitch.urls; var L = layer();
+    var mine = urls && urls[String(cid())]; var showing = L ? bgUrl(L) : '';
+    if (mine && showing && showing.indexOf(mine) !== -1) return null;
+    return fits.g || null;
   }
   function apply() {
     var L = layer(); if (!L || F.edit) return;
@@ -1513,6 +1519,7 @@
     if (L.style.backgroundSize !== size) L.style.backgroundSize = size;
     if (L.style.backgroundPosition !== pos) L.style.backgroundPosition = pos;
     /* the shell re-paints the Portal layer at its 15% default every render; the admin's opacity wins */
+    if (f && f.portal) { var cfg = window.SMLGroupShell; if (cfg) { if (f.opacity != null) cfg.portalWatermarkOpacity = Number(f.opacity); if (F.portal && F.portal.url) cfg.portalWatermarkUrl = F.portal.url; } }
     if (f && f.portal && f.opacity != null && L.style.backgroundImage && L.style.backgroundImage.indexOf('none') < 0) {
       var o = String(Math.max(0, Math.min(100, Number(f.opacity))) / 100);
       if (L.style.opacity !== o) L.style.opacity = o;
@@ -2209,8 +2216,9 @@
     if (!target) { if (Date.now() - L.t0 > 15000) L.done = true; return; }
     if (target.classList.contains('is-active')) { release(); return; }
     /* the shell may still be binding its handlers on the first tick: click, then confirm next tick */
-    L.tries = (L.tries || 0) + 1;
-    if (L.tries > 5) { L.done = true; return; }
+    if (Date.now() - L.t0 > 8000) { release(); return; }
+    if (L.lastClick && Date.now() - L.lastClick < 400) return;
+    L.lastClick = Date.now(); L.tries = (L.tries || 0) + 1;
     target.click();
   }
 
@@ -2320,7 +2328,7 @@
   if (window.__smlBgSwitch) return;
   window.__smlBgSwitch = 1;
   var NONCE = (window.wpApiSettings && wpApiSettings.nonce) || (window.SML_NOTIFY && SML_NOTIFY.nonce) || '';
-  var loaded = {}, pending = {}, preloadedFor = 0, lastSeen = '';
+  var loaded = {}, pending = {}, preloadedFor = 0, lastSeen = '', urls = {}, fitsAt = Date.now();
   function css() { if (document.getElementById('sml-bgswitch-css')) return; var st = document.createElement('style'); st.id = 'sml-bgswitch-css'; st.textContent = '.sml-gshell__watermark.sml-bg-pending{opacity:0!important;transition:none!important}'; (document.head || document.documentElement).appendChild(st); }
   function layer() { return document.querySelector('[data-smlgs-watermark]'); }
   function gid() { var c = window.SMLGroupShellContext || {}; if (c.groupId) return Number(String(c.groupId).replace(/D/g, '')); var cfg = window.SMLGroupShell; return cfg && cfg.groupId ? Number(String(cfg.groupId).replace(/D/g, '')) : 0; }
@@ -2342,11 +2350,12 @@
       .then(function (j) {
         var list = (j && (j.channels || j.items || j)) || [];
         if (!Array.isArray(list)) return;
-        list.forEach(function (c) { var u = c && c.watermark && c.watermark.url; if (u) preload(u); });
+        list.forEach(function (c) { var u = c && c.watermark && c.watermark.url; if (u) { preload(u); urls[String(c.id)] = u; } });
         var grp = window.SMLGroupShellContext && window.SMLGroupShellContext.group; if (grp && grp.watermark && grp.watermark.url) preload(grp.watermark.url);
       }).catch(function () { preloadedFor = 0; });
   }
   function settle() {
+    if (window.SMLBgFit && SMLBgFit.reload && Date.now() - fitsAt > 30000) { fitsAt = Date.now(); try { SMLBgFit.reload(); } catch (e) {} }
     try { if (window.SMLBgFit && SMLBgFit.apply) SMLBgFit.apply(); } catch (e) {}
     try { if (window.SMLTransparentLayers && SMLTransparentLayers.tick) SMLTransparentLayers.tick(); } catch (e) {}
   }
@@ -2371,5 +2380,5 @@
   function tick() { css(); watch(); warm(); }
   function boot() { tick(); setInterval(tick, 2000); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  window.SMLBgSwitch = { loaded: loaded, warm: function () { preloadedFor = 0; warm(); } };
+  window.SMLBgSwitch = { loaded: loaded, urls: urls, warm: function () { preloadedFor = 0; warm(); } };
 })();
