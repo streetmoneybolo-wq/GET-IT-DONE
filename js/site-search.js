@@ -940,3 +940,14 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build); else build();
 }());
+
+
+/* ---- Loop Bucks panel above the header (owner call 2026-09-08): the site header is sticky at z-index 2147483060
+   and the Loop Bucks dropdown opened at 2147483004, so on the group page (and anywhere the tape sits in the header)
+   the panel slid in BEHIND the rolling ticker. The panel now stacks above the header. ---- */
+(function () {
+  if (document.getElementById("sml-lb-zfix")) return;
+  var st = document.createElement("style"); st.id = "sml-lb-zfix";
+  st.textContent = "#sml-lb-panel{z-index:2147483200!important}";
+  (document.head || document.documentElement).appendChild(st);
+})();
