@@ -387,7 +387,8 @@
   }
   function loadRoller() {
     if (document.hidden && roller.items) return;
-    fetch(ROLLER_FEED + '?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+    /* no cache-buster: the feed is edge-cached for a minute (45ms) instead of a 1.4s WordPress boot on every poll */
+    fetch(ROLLER_FEED, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (json) {
         if (!json || !json.ok || !Array.isArray(json.items)) return;
@@ -397,10 +398,23 @@
         roller.items = items.slice(0, 26);
         roller.sig = roller.items.map(function (it) { return it.key || it.symbol || it.url; }).join('|');
         renderRoller();
+        try { localStorage.setItem(ROLLER_SNAP, JSON.stringify({ at: Date.now(), items: roller.items })); } catch (e) {}
       }).catch(function () { /* keep whatever is rolling */ });
+  }
+  /* instant paint: the last feed this browser saw rolls immediately; the live feed replaces it a moment later */
+  var ROLLER_SNAP = 'sml:tape:feed';
+  function paintRollerSnapshot() {
+    try {
+      var snap = JSON.parse(localStorage.getItem(ROLLER_SNAP) || 'null');
+      if (!snap || !Array.isArray(snap.items) || !snap.items.length || Date.now() - snap.at > 6 * 3600000) return;
+      roller.items = snap.items.slice(0, 26);
+      roller.sig = roller.items.map(function (it) { return it.key || it.symbol || it.url; }).join('|');
+      renderRoller();
+    } catch (e) {}
   }
   function mountHotRoller() {
     if (roller.timer || EMBED_TOOL || isLoginPage()) return;
+    paintRollerSnapshot();
     loadRoller();
     roller.timer = window.setInterval(loadRoller, 30000);
     /* the header (this script) and the homepage shell (home-feed.js) mount their tapes at
