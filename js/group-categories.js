@@ -2170,13 +2170,22 @@
   }, true);
 
   /* ---------- landing channel ---------- */
-  var L = { done: false, touched: false, fetched: false, id: 0, t0: Date.now() };
+  var L = { done: false, touched: false, fetched: false, id: 0, t0: Date.now(), doneAt: 0 };
+  /* Owner call 2026-09-07: the Portal must never show first. Until the landing channel is open, the conversation
+     area is kept invisible (the sidebar, banner and rail still paint), so arrival goes straight to the channel. */
+  var GATE = 'sml-landing-wait';
+  (function () {
+    var st = document.createElement('style'); st.id = 'sml-landing-gate-css';
+    st.textContent = 'html.' + GATE + ' [data-smlgs-conversation],html.' + GATE + ' [data-smlgs-composer],html.' + GATE + ' .sml-gshell__composer{visibility:hidden!important}';
+    (document.head || document.documentElement).appendChild(st);
+  })();
+  function release() { if (!L.doneAt) L.doneAt = Date.now(); L.done = true; document.documentElement.classList.remove(GATE); }
   ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function (e) { if (e.target && e.target.closest && e.target.closest('.sml-gshell')) L.touched = true; }, true); });
   function deepLinked() { return /channel|#/.test(location.hash) && location.hash.length > 1 || /[?&](channel|c|tool)=/.test(location.search); }
   function fetchLanding() {
     var g = gid(); if (!g || L.fetched) return; L.fetched = true;
     fetch('/wp-json/sml-group-landing/v1/group/' + encodeURIComponent(g) + '?_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (r) { return r.json(); }).then(function (j) { L.id = Number(j && j.channel_id || 0); L.can = !!(j && j.can_manage); L.ready = true; })
+      .then(function (r) { return r.json(); }).then(function (j) { L.id = Number(j && j.channel_id || 0); L.can = !!(j && j.can_manage); L.ready = true; try { localStorage.setItem('sml-landing:' + g, String(L.id)); } catch (e) {} })
       .catch(function () { L.ready = true; });
   }
   function firstOpen(B) {
@@ -2185,15 +2194,20 @@
     return btns[0] || null;
   }
   function landingPass(B) {
-    if (L.done) return;
+    if (L.done) { document.documentElement.classList.remove(GATE); return; }
     if (!L.fetched) fetchLanding();
     if (deepLinked() || L.touched) { L.done = true; return; }
     var c = ctx(); if (c.mode && c.mode !== 'chat') { L.done = true; return; }       /* already somewhere */
-    if (!L.ready) { if (Date.now() - L.t0 > 12000) { L.ready = true; } else return; }  /* give the setting a moment; then default */
+    if (!L.ready) {
+      var cached = null; try { cached = localStorage.getItem('sml-landing:' + gid()); } catch (e) {}
+      if (cached !== null) { L.id = Number(cached) || 0; }                       /* remembered from the last visit: open it now, the fresh setting confirms next time */
+      else if (Date.now() - L.t0 > 12000) { L.ready = true; }
+      else return;
+    }
     var target = L.id ? B.querySelector(':scope > .sml-gshell__channel[data-smlgs-channel="' + L.id + '"]') : null;
     if (!target) target = firstOpen(B);
     if (!target) { if (Date.now() - L.t0 > 15000) L.done = true; return; }
-    if (target.classList.contains('is-active')) { L.done = true; return; }
+    if (target.classList.contains('is-active')) { release(); return; }
     /* the shell may still be binding its handlers on the first tick: click, then confirm next tick */
     L.tries = (L.tries || 0) + 1;
     if (L.tries > 5) { L.done = true; return; }
@@ -2228,9 +2242,15 @@
     var B = box(); if (!B) return;
     ensureCss(); badgePass(B); foldPass(B); landingPass(B); editorPass();
   }
-  function boot() { tick(); setInterval(tick, 1000); }
+  function boot() {
+    if (!deepLinked()) { document.documentElement.classList.add(GATE); fetchLanding(); }
+    tick(); setInterval(tick, 1000);
+    /* the first seconds: check every 60ms so the landing channel opens on the shell's first render */
+    var fast = setInterval(function () { var B = box(); if (B) landingPass(B); if (L.done || Date.now() - L.t0 > 8000) { clearInterval(fast); release(); } }, 60);
+    setTimeout(function () { release(); }, 8000);   /* never keep the conversation hidden longer than this */
+  }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-  window.SMLSidebarPlus = { unread: unread, folds: folds, landing: L, tick: tick };
+  window.SMLSidebarPlus = { unread: unread, folds: folds, landing: L, tick: tick, release: release };
 })();
 
 
