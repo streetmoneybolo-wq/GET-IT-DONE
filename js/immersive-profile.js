@@ -238,7 +238,13 @@
     '.sip-galvids{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;}' +
     '.sip-galvid{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);cursor:pointer;transform:scale(calc(1 + var(--bass,0)*0.03));box-shadow:0 10px 26px rgba(0,0,0,.4);}' +
     '.sip-galvid video{width:100%;height:100%;object-fit:cover;}' +
-    '.sip-posts{display:flex;flex-direction:column;gap:10px;max-width:720px;}' +
+    '.sip-posts{display:flex;flex-direction:column;gap:10px;max-width:720px;min-width:0;}' +
+    '.sip-activity{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start;}' +
+    '.sip-friendbox{position:sticky;top:10px;max-height:calc(100vh - 140px);overflow:auto;}' +
+    '.sip-friendlist{display:flex;flex-direction:column;}' +
+    '.sip-friend{color:inherit;text-decoration:none;border-radius:12px;padding:4px 6px;margin:2px -6px 0;}a.sip-friend:hover{background:rgba(255,255,255,.06);}' +
+    '.sip-friend-av{position:relative;}.sip-friend-live{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:#38F58A;border:2px solid #0B131F;box-shadow:0 0 8px rgba(56,245,138,.8);}' +
+    '@media (max-width:900px){.sip-activity{grid-template-columns:1fr;}.sip-friendbox{position:static;max-height:none;}.sip-friendlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:0 10px;}}' +
     '.sip-post{background:var(--card-bg);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:14px 16px;backdrop-filter:blur(8px);transform:translateY(calc(var(--kick,0)*-3px));}' +
     '.sip-post-h{display:flex;gap:8px;align-items:center;margin-bottom:6px;}' +
     '.sip-post-badge{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:1.4px;border-radius:999px;padding:3px 9px;}' +
@@ -355,8 +361,12 @@
     var friendHtml = cfg.friends.map(function (f) {
       var initials = esc((f.name || '?').split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase());
       var av = f.avatarUrl ? ' style="background-image:url(\'' + esc(f.avatarUrl) + '\')"' : '';
-      return '<div class="sip-friend"><div class="sip-friend-av"' + av + '>' + (f.avatarUrl ? '' : initials) + '</div><div><div style="font-weight:600;font-size:13.5px;">' + esc(f.name) + '</div><div style="font-size:11.5px;color:#6B7C90;">' + esc(f.handle) + '</div></div></div>';
+      var sub = [f.place, f.meta].filter(Boolean).join(' · ') || f.handle;
+      var open = f.url ? ' href="' + esc(f.url) + '"' : '';
+      return '<a class="sip-friend"' + open + (f.id ? ' data-sml-user-id="' + f.id + '"' : '') + '><div class="sip-friend-av"' + av + '>' + (f.avatarUrl ? '' : initials) + (f.live ? '<i class="sip-friend-live"></i>' : '') + '</div><div style="min-width:0;"><div style="font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name) + '</div><div style="font-size:11.5px;color:#6B7C90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(sub) + '</div></div></a>';
     }).join('');
+    var friendsBox = '<div class="sip-card sip-friendbox"><div class="sip-card-h">FRIENDS' + (cfg.friendsTotal ? ' · ' + cfg.friendsTotal : '') + '</div>' +
+      (friendHtml ? '<div class="sip-friendlist">' + friendHtml + '</div>' : '<div class="sip-emptynote">No friends yet. When two members follow each other they become friends and show up here.</div>') + '</div>';
 
     // Orbital photo ring (6)
     var orbPhotos = '', nOrbP = 0;
@@ -469,7 +479,7 @@
     // World 2: VIDEOS
     var world2 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Video Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="video">＋ Upload video</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
     // World 3: POSTS
-    var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES — SWIPE LEFT FOR CONTACT →</div><div class="sip-posts">' + (postHtml || '<div class="sip-emptynote">No recent activity shared yet.</div>') + '</div></div>';
+    var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES · FRIENDS — SWIPE LEFT FOR CONTACT →</div><div class="sip-activity"><div class="sip-posts">' + (postHtml || '<div class="sip-emptynote">No recent activity shared yet.</div>') + '</div>' + friendsBox + '</div></div>';
     // World 4: CONTACT
     var c = cfg.contact || {};
     var contactRows = (c.email ? '<div class="sip-row"><span class="k">Email</span><a href="mailto:' + esc(c.email) + '" class="v">' + esc(c.email) + '</a></div>' : '') +
@@ -1501,9 +1511,18 @@
       uid ? get('/wp-json/sml-social-profile/v1/public/' + uid) : null,
       uid ? get('/wp-json/sml-profile/v2/profile/' + uid + '/customization') : null,
       uid ? get('/wp-json/sml-members/v1/profile-chart?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null,
-      uid ? get('/wp-json/sml-members/v1/tagged-posts?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null
+      uid ? get('/wp-json/sml-members/v1/tagged-posts?user_id=' + encodeURIComponent(uid) + '&_=' + Date.now()) : null,
+      /* friends = members who follow each other (sml-friends-profile; 24 shown with city/state/age/relationship as their privacy allows) */
+      uid ? get('/wp-json/sml-friends-profile/v1/list?user_id=' + encodeURIComponent(uid) + '&limit=24&_=' + Date.now()) : null
     ]).then(function (r) {
       var media = r[0] || {}, banner = r[1], bgm = r[2], soc = r[3], customization = r[4] || {};
+      var fr = r[7] || {};
+      base.friendsTotal = Number(fr.total || 0) || 0;
+      base.friends = (Array.isArray(fr.friends) ? fr.friends : []).map(function (f) {
+        var place = [f.city, f.state].filter(Boolean).join(', ');
+        var meta = [f.age ? (f.age + ' yrs') : '', f.relationship || ''].filter(Boolean).join(' · ');
+        return { id: Number(f.id || 0) || 0, name: f.name || 'Member', handle: f.handle ? ('@' + String(f.handle).replace(/^@/, '')) : '', avatarUrl: f.avatar || '', url: f.url || '', place: place, meta: meta, live: !!f.live };
+      });
       /* Recent Activity = the member's real chart posts (sml-members profile-chart,
          the same store the homepage feed shows). Owner call 2026-09-05: one body,
          @tags as the tagged member's avatar + blue name, a typed link on the grey
