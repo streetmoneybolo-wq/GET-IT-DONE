@@ -147,41 +147,29 @@
     }).catch(function () { scheduleBreaking(12000); });
   }
 
+  /* Owner call 2026-09-08: a breaking headline FLOWS WITH the stock ticker as one more tape cell (the flashy
+     news-flash style) instead of a separate lane that halted the stocks. It rides for 2.5 minutes, survives
+     the feed refresh (merged back in by loadRoller), then drops out on its own. */
+  breaking.live = [];
+  function breakingEntries() { var now = Date.now(); breaking.live = breaking.live.filter(function (b) { return b.until > now; }); return breaking.live; }
+  function rollerSig() { return (roller.items || []).map(function (it) { return it.key || it.symbol || it.url; }).join("|"); }
   function runBreaking() {
-    if (breaking.active || !breaking.queue.length || !breaking.lane || document.hidden) return;
+    if (!breaking.queue.length || document.hidden) return;
     var item = breaking.queue.shift();
-    var link = document.createElement('a');
-    var ticker = String(item.ticker || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
-    link.className = 'sml-gh-breaking-item';
-    link.href = String(item.url);
-    link.setAttribute('aria-label', 'Breaking market post: ' + String(item.title));
-    link.innerHTML = '<span class="sml-gh-breaking-flag">BREAKING</span>' +
-      (ticker ? '<span class="sml-gh-breaking-symbol">$' + esc(ticker) + '</span>' : '') +
-      '<strong class="sml-gh-breaking-title">' + esc(item.title) + '</strong>' +
-      '<span class="sml-gh-breaking-open">READ NOW →</span>';
-    breaking.active = true;
-    breaking.lane.setAttribute('aria-hidden', 'false');
-    breaking.lane.appendChild(link);
-    breaking.tape.classList.add('has-breaking');
-
-    var finish = function () {
-      if (!breaking.active) return;
-      breaking.active = false;
-      if (link.parentNode) link.parentNode.removeChild(link);
-      if (!breaking.queue.length) {
-        breaking.lane.setAttribute('aria-hidden', 'true');
-        breaking.tape.classList.remove('has-breaking');
-      }
-      setTimeout(runBreaking, 220);
-    };
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setTimeout(finish, 9000);
-    } else {
-      var duration = Math.max(12, Math.min(24, (window.innerWidth + link.offsetWidth) / 105));
-      link.style.setProperty('--sml-breaking-duration', duration.toFixed(2) + 's');
-      link.addEventListener('animationend', finish, { once: true });
-    }
+    var ticker = String(item.ticker || "").toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 12);
+    var key = "breaking-" + String(item.id || item.url || Date.now());
+    var entry = { type: "news", key: key, label: "BREAKING" + (ticker ? " $" + ticker : ""), title: String(item.title || "Breaking market post"), url: String(item.url || "#"), sentiment: String(item.sentiment || "good"), breaking: true, until: Date.now() + 150000 };
+    breakingEntries(); breaking.live = [entry].concat(breaking.live.filter(function (b) { return b.key !== key; })).slice(0, 3);
+    roller.items = breaking.live.concat((roller.items || []).filter(function (it) { return !it.breaking; })).slice(0, 29);
+    roller.sig = rollerSig(); renderRoller();
+    setTimeout(function () {
+      breakingEntries();
+      roller.items = breaking.live.concat((roller.items || []).filter(function (it) { return !it.breaking; })).slice(0, 29);
+      roller.sig = rollerSig(); renderRoller();
+    }, 150500);
+    if (breaking.queue.length) setTimeout(runBreaking, 250);
   }
+  window.SMLTapeBreaking = function (item) { breaking.queue.push(item || {}); runBreaking(); };
 
   function mountBreakingTape() {
     var tape = el('.sml-gh-tape');
@@ -395,10 +383,10 @@
         var seen = {}, items = [];
         json.items.forEach(function (it) { if (!it) return; var k = it.key || (it.type === 'ticker' ? 'ticker-' + it.symbol : 'news-' + it.url); if (!k || seen[k]) return; seen[k] = 1; items.push(it); });
         if (!items.length) return;
-        roller.items = items.slice(0, 26);
-        roller.sig = roller.items.map(function (it) { return it.key || it.symbol || it.url; }).join('|');
+        roller.items = breakingEntries().concat(items.slice(0, 26));
+        roller.sig = rollerSig();
         renderRoller();
-        try { localStorage.setItem(ROLLER_SNAP, JSON.stringify({ at: Date.now(), items: roller.items })); } catch (e) {}
+        try { localStorage.setItem(ROLLER_SNAP, JSON.stringify({ at: Date.now(), items: items.slice(0, 26) })); } catch (e) {}
       }).catch(function () { /* keep whatever is rolling */ });
   }
   /* instant paint: the last feed this browser saw rolls immediately; the live feed replaces it a moment later */
