@@ -1551,13 +1551,13 @@
     base.immersive = imSrv;
     var rel = P.relationship || {}; var stats = [];
     if (rel.follower_count != null) stats.push({ label: 'FOLLOWERS', value: String(rel.follower_count) });
-    if (rel.subscriber_count != null) stats.push({ label: 'SUBSCRIBERS', value: String(rel.subscriber_count) });
+    /* owner call 2026-09-09: subscribers belong to the member's Loop Channel, never to the profile page */
     /* the unified profile below already renders real counters — read them */
     try {
       var txt = (document.querySelector('main.sml-profile') || document.body).innerText || '';
       [['FOLLOWING', /FOLLOWING\s+([\d,\.KM]+)/i], ['CHARTS', /CHARTS\s+([\d,\.KM]+)/i], ['POSTS', /POSTS\s+([\d,\.KM]+)/i], ['PROFILE VIEWS', /PROFILE VIEWS\s+([\d,\.KM]+)/i], ['LIKES', /LIKES\s+([\d,\.KM]+)/i], ['FRIENDS', /FRIENDS\s+([\d,\.KM]+)/i]].forEach(function (d) { var m = txt.match(d[1]); if (m && !stats.some(function (x) { return x.label === d[0]; })) stats.push({ label: d[0], value: m[1] }); });
     } catch (e) {}
-    base.stats = stats;
+    base.stats = stats.filter(function (st) { return !/subscri/i.test(String(st.label || '')); });
     var mediaBase = '/wp-json/sml-profile/v2/profile/';
     function get(u) { return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
     function att(id) { return id ? get('/wp-json/wp/v2/media/' + id) : Promise.resolve(null); }
