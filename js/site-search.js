@@ -753,6 +753,42 @@
     if (hfs) hfs.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); });
   }
 
+  /* ---- device layers (owner call 2026-09-09) ----------------------------------------------------
+     The mu-plugin sml-device-layers stamps html.sml-mobile / html.sml-desktop (+ sml-touch) before first paint; keep it
+     honest across rotations/resizes, and give the shared header a real phone layout: brand + Loop Bucks + LOOP-KICK +
+     account on one row, the search on its own row, the nav as a swipeable strip. */
+  (function () {
+    var d = document.documentElement;
+    function classify() {
+      var w = window.innerWidth || screen.width || 0;
+      var touch = !!(window.matchMedia && matchMedia('(pointer:coarse)').matches) || d.classList.contains('sml-touch');
+      var mobile = (w < 1024 && (touch || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || ''))) || w < 768;
+      d.classList.toggle('sml-mobile', mobile); d.classList.toggle('sml-desktop', !mobile); if (touch) d.classList.add('sml-touch');
+      window.SMLDevice = { mobile: mobile, touch: touch, width: w };
+    }
+    if (!d.classList.contains('sml-mobile') && !d.classList.contains('sml-desktop')) classify();
+    var t; window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(classify, 120); });
+    window.addEventListener('orientationchange', function () { setTimeout(classify, 60); });
+    if (!document.getElementById('sml-device-css')) {
+      var st = document.createElement('style'); st.id = 'sml-device-css';
+      st.textContent = '' +
+        'html.sml-mobile #sml-global-header .sml-gh-main{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 10px 6px}' +
+        'html.sml-mobile #sml-global-header .sml-gh-brand{order:1;margin-right:auto;height:32px}html.sml-mobile #sml-global-header .sml-gh-brand img{height:30px;width:auto}' +
+        'html.sml-mobile #sml-global-header #sml-lb-btn{order:2;padding:5px 9px;min-height:32px}' +
+        'html.sml-mobile #sml-global-header #sml-hf-loop-kick{order:3;padding:7px 10px;font-size:11px;min-height:32px}' +
+        'html.sml-mobile #sml-global-header .sml-gh-account{order:4;width:32px;height:32px}' +
+        'html.sml-mobile #sml-global-header .sml-gh-search{order:5;flex:1 1 100%;width:100%;margin:0;min-height:38px}' +
+        'html.sml-mobile #sml-global-header .sml-gh-nav{order:6;flex:1 1 100%;width:100%;margin:0;display:flex;flex-wrap:nowrap;gap:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 4px;white-space:nowrap}' +
+        'html.sml-mobile #sml-global-header .sml-gh-nav::-webkit-scrollbar{display:none}html.sml-mobile #sml-global-header .sml-gh-nav a{flex:none;padding:6px 2px;font-size:13px}' +
+        'html.sml-mobile #sml-global-header .sml-gh-tape{font-size:11px}' +
+        /* every tap target on phones is at least 40px tall */
+        'html.sml-mobile.sml-touch button,html.sml-mobile.sml-touch .sml-acct__item{min-height:36px}' +
+        /* the phone (LOOP-KICK) fills the screen on phones */
+        'html.sml-mobile #sml-loop-popup{align-items:stretch;justify-content:stretch}html.sml-mobile #sml-loop-popup-inner{width:100vw!important;max-width:100vw;height:100dvh;border-radius:0}';
+      document.head.appendChild(st);
+    }
+  })();
+
   /* ---- profile pre-warm (owner call 2026-09-08) ------------------------------------------------
      The member's own profile page is prerendered from the homepage (Speculation Rules), so My profile opens
      instantly; any other profile link is prefetched on hover; the immersive profile script is prefetched too. */

@@ -1617,8 +1617,26 @@
       base.moduleVisibility = customization.module_visibility && typeof customization.module_visibility === 'object' ? customization.module_visibility : {};
       var orb = (media.orbital || []).slice(); var ov = (media.orbital_video || []).slice();
       var galleryPhoto = (media.gallery_photo || []).slice(); var galleryVideo = (media.gallery_video || []).slice();
+      /* owner call 2026-09-09: desktop shows every photo at its full original resolution (the media API only hands
+         out 300px Photon thumbs); phones get a Photon size that matches their screen (width × pixel ratio, ≤ 1600). */
+      var DESKTOP = !(window.SMLDevice && window.SMLDevice.mobile) && !document.documentElement.classList.contains('sml-mobile') && (window.innerWidth || 1024) >= 1024;
+      var PHONE_W = Math.min(1600, Math.ceil(((window.innerWidth || 390) * (window.devicePixelRatio || 1)) / 100) * 100);
+      function mediaUrlFor(url) {
+        url = String(url || ''); if (!url) return '';
+        try {
+          var u = new URL(url, location.href);
+          var photon = /(^|\.)wp\.com$/.test(u.hostname) || /^i[0-9]\.wp\.com$/.test(u.hostname);
+          if (DESKTOP) {
+            ['fit', 'resize', 'w', 'h', 'crop', 'zoom'].forEach(function (k) { u.searchParams.delete(k); });
+            u.pathname = u.pathname.replace(/-\d{2,4}x\d{2,4}(\.[a-z0-9]{2,5})$/i, '$1');
+            return u.toString();
+          }
+          if (photon) { ['fit', 'resize', 'h', 'crop', 'zoom'].forEach(function (k) { u.searchParams.delete(k); }); u.searchParams.set('w', String(PHONE_W)); return u.toString(); }
+          return url;
+        } catch (e) { return url; }
+      }
       var pick = function (it) { return it ? (it.url || it.thumb || '') : ''; };
-      var pickThumb = function (it) { return it ? (it.thumb || it.url || '') : ''; };
+      var pickThumb = function (it) { return it ? mediaUrlFor(it.url || it.thumb || '') : ''; };
       base.orbitalPhotos = [0, 1, 2, 3, 4, 5].map(function (i) { return pickThumb(orb[i]); });
       base.galleryPhotos = [0, 1, 2, 3, 4, 5, 6, 7].map(function (i) { return pickThumb(galleryPhoto[i] || orb[6 + i]); });
       base.orbitalVideos = [0, 1, 2].map(function (i) { return pick(ov[i]); });
