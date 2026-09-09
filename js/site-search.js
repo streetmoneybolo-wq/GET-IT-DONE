@@ -761,10 +761,21 @@
     var mark = document.createElement('meta'); mark.id = 'sml-profile-prewarm'; document.head.appendChild(mark);
     var specOk = !!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules'));
     if (assetBase) link('prefetch', assetBase + 'js/immersive-profile.js', 'script');
-    var mine = myProfile();
-    if (mine && mine !== here && location.pathname.replace(/\/+$/, '') === '') {
-      if (specOk) rules({ prerender: [{ urls: [mine], eagerness: 'immediate' }] }); else link('prefetch', mine, 'document');
+    /* the canonical handle URL (no 301 hop for the prerender to follow); the menu's nicename link is the fallback */
+    function canonical(cb) {
+      var n = ''; try { n = (window.SML_NOTIFY && SML_NOTIFY.nonce) || (window.wpApiSettings && wpApiSettings.nonce) || (window.SMLHomeFeedEngagement && SMLHomeFeedEngagement.nonce) || (window.SMLHomeOwnerControls && SMLHomeOwnerControls.nonce) || ''; } catch (e) {}
+      if (!n) { cb(''); return; }
+      fetch('/wp-json/sml-friends-profile/v1/me', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': n } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { var u = null; try { u = j && j.url ? new URL(j.url, location.href) : null; } catch (e) {} cb(u && u.origin === location.origin ? u.pathname.replace(/\/+$/, '') + '/' : ''); })
+        .catch(function () { cb(''); });
     }
+    if (location.pathname.replace(/\/+$/, '') === '') canonical(function (c) {
+      var mine = c || myProfile();
+      if (!mine || mine === here) return;
+      if (specOk) rules({ prerender: [{ urls: [mine], eagerness: 'immediate' }], prefetch: [{ urls: [mine], eagerness: 'immediate' }] });
+      else link('prefetch', mine, 'document');
+    });
     /* other members: prefetch (HTML only, no scripts run, so nothing counts as a visit) when the pointer settles on the link */
     if (specOk) rules({ prefetch: [{ where: { and: [{ href_matches: '/*' }, { selector_matches: 'a.hf-mn, a[data-sml-user-id], a.sip-friend, a.sip-mn, a.sml-acct__item' }] }, eagerness: 'moderate' }] });
   }
