@@ -338,7 +338,8 @@
     + '.sip-gallery-pick{display:none;position:absolute;left:8px;top:8px;z-index:4;width:28px;height:28px;border-radius:8px;background:rgba(2,7,11,.72);border:1px solid rgba(255,255,255,.35);align-items:center;justify-content:center;cursor:pointer;}'
     + '.sip-gallery-pick input{width:16px;height:16px;margin:0;accent-color:#ff5c77;cursor:pointer;}'
     + '.sip-root.sip-manage .sip-gallery-pick{display:flex;}'
-    + '.sip-galphoto.sip-picked,.sip-galvid.sip-picked{outline:3px solid #ff5c77;outline-offset:-3px;}'
+    + '.sip-galphoto.sip-picked,.sip-galvid.sip-picked,.sip-orb-photo.sip-picked,.sip-orb-video.sip-picked{outline:3px solid #ff5c77;outline-offset:-3px;}'
+    + '.sip-orbhead .sip-gallery-manage,.sip-orbhead .sip-gallery-bulk{padding:5px 9px;font-size:10px;}'
     + '.sip-gallery-bulk{padding:7px 12px;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(255,92,119,.16);color:#ff8299;font:800 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}.sip-gallery-bulk[hidden]{display:none;}' +
     '.sip-gallery-delete{display:none;position:absolute;right:8px;top:8px;z-index:3;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(40,5,12,.9);color:#ff8299;padding:6px 9px;font:800 10px/1 Archivo,sans-serif;cursor:pointer;}' +
     '.sip-media-caption{position:absolute;left:0;right:0;bottom:0;padding:28px 10px 9px;background:linear-gradient(transparent,rgba(2,7,11,.9));color:#fff;font:700 11px/1.25 Archivo,sans-serif}.sip-media-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}.sip-media-tags a{color:#62bfff;text-decoration:none;font-size:10px;}' +
@@ -382,7 +383,9 @@
     var orbPhotos = '', nOrbP = 0;
     for (var i = 0; i < 6; i++) {
       var p = ph(cfg.orbitalPhotos[i], 'photo ' + (i + 1)); if (cfg.orbitalPhotos[i]) nOrbP++;
-      orbPhotos += '<div class="sip-orb-photo' + (cfg.orbitalPhotos[i] ? '' : ' sip-slot-empty') + '" data-ophoto="' + i + '"' + p.st + '>' + p.inner +
+      var opItem = ((cfg.__media && cfg.__media.orbital) || [])[i] || null;
+      var opCtl = (cfg.isOwner && opItem && opItem.attachment_id) ? '<label class="sip-gallery-pick" title="Select"><input type="checkbox" data-gallery-pick="orbital:' + i + ':' + Number(opItem.attachment_id) + '"></label><button type="button" class="sip-gallery-delete" data-gallery-delete="orbital:' + i + ':' + Number(opItem.attachment_id) + '">Delete</button>' : '';
+      orbPhotos += '<div class="sip-orb-photo' + (cfg.orbitalPhotos[i] ? '' : ' sip-slot-empty') + '" data-ophoto="' + i + '"' + p.st + '>' + p.inner + opCtl +
         '<div class="sip-itembtns" data-editonly hidden><button class="sip-ibtn z" data-ozoom="' + i + '" title="Bring to front">⤢</button>' +
         '<button class="sip-ibtn" data-osmall="photo:' + i + '" title="Smaller">−</button>' +
         '<button class="sip-ibtn" data-obig="photo:' + i + '" title="Bigger">＋</button></div></div>';
@@ -391,7 +394,9 @@
     var orbVids = '', nOrbV = 0;
     for (var j = 0; j < 3; j++) {
       var ov = (cfg.orbitalVideos || [])[j] || ''; if (ov) nOrbV++;
-      orbVids += '<div class="sip-orb-video' + (ov ? '' : ' sip-slot-empty') + '" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" data-lazyvid preload="metadata" src="' + esc(ov) + '" muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
+      var ovItem = ((cfg.__media && cfg.__media.orbital_video) || [])[j] || null;
+      var ovCtl = (cfg.isOwner && ovItem && ovItem.attachment_id) ? '<label class="sip-gallery-pick" title="Select"><input type="checkbox" data-gallery-pick="orbital_video:' + j + ':' + Number(ovItem.attachment_id) + '"></label><button type="button" class="sip-gallery-delete" data-gallery-delete="orbital_video:' + j + ':' + Number(ovItem.attachment_id) + '">Delete</button>' : '';
+      orbVids += '<div class="sip-orb-video' + (ov ? '' : ' sip-slot-empty') + '" data-ovideo="' + j + '">' + (ov ? '<video class="sip-mediavid" data-lazyvid preload="metadata" src="' + esc(ov) + '" muted loop playsinline></video>' : '') + ovCtl + '<div class="sip-cellph" data-vph' + (ov ? ' style="display:none"' : '') + '><span style="font-size:20px;color:#38F58A;">＋</span><span>add clip ' + (j + 1) + '</span></div>' +
         '<div class="sip-itembtns" data-editonly hidden><button class="sip-ibtn" data-osmall="video:' + j + '" title="Smaller">−</button>' +
         '<button class="sip-ibtn" data-obig="video:' + j + '" title="Bigger">＋</button></div></div>';
     }
@@ -471,9 +476,9 @@
       '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="tickers"' + (tickHtml ? '' : ' data-empty="1"') + '><div class="sip-ticks">' + tickHtml + '</div></div>' +
       '<div class="sip-sec" data-sec="orbitals"' + ((!showOrbitalPhotos && !showOrbitalVideos) || (!cfg.isOwner && !nOrbP && !nOrbV) ? ' data-empty="1"' : '') + '><div class="sip-orbwrap">' +
-      '<div class="sip-orbcol" data-orbital-kind="photos"' + (!showOrbitalPhotos ? ' style="display:none"' : '') + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-orbcol" data-orbital-kind="photos"' + (!showOrbitalPhotos ? ' style="display:none"' : '') + (nOrbP ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL PHOTOS</div><input type="range" min="180" max="560" step="10" class="sip-psize" data-editonly hidden title="Photo size" style="width:110px;accent-color:#38F58A;">' + (cfg.isOwner && nOrbP ? '<button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button><button class="sip-gallery-bulk" type="button" data-gallery-bulk hidden>Delete selected</button>' : '') + '</div>' +
       '<div class="sip-stage sip-pstage"><div class="sip-ring sip-pring">' + orbPhotos + '</div></div></div>' +
-      '<div class="sip-orbcol" data-orbital-kind="videos"' + (!showOrbitalVideos ? ' style="display:none"' : '') + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;"></div>' +
+      '<div class="sip-orbcol" data-orbital-kind="videos"' + (!showOrbitalVideos ? ' style="display:none"' : '') + (nOrbV ? '' : ' data-empty="1"') + '><div class="sip-orbhead"><div class="sip-orbhead-t">ORBITAL VIDEOS</div><input type="range" min="180" max="560" step="10" class="sip-vsize" data-editonly hidden title="Video size" style="width:110px;accent-color:#38F58A;">' + (cfg.isOwner && nOrbV ? '<button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button><button class="sip-gallery-bulk" type="button" data-gallery-bulk hidden>Delete selected</button>' : '') + '</div>' +
       '<div class="sip-stage sip-vstage"><div class="sip-ring sip-vring">' + orbVids + '</div></div></div>' +
       '</div></div>' +
       '<div class="sip-sec" data-sec="about"><div class="sip-grid">' +
@@ -956,7 +961,7 @@
     function picked() { return $$('[data-gallery-pick]').filter(function (c) { return c.checked; }); }
     function syncPicks() {
       var n = picked().length;
-      $$('[data-gallery-pick]').forEach(function (c) { var tile = c.closest('.sip-galphoto,.sip-galvid'); if (tile) tile.classList.toggle('sip-picked', c.checked); });
+      $$('[data-gallery-pick]').forEach(function (c) { var tile = c.closest('.sip-galphoto,.sip-galvid,.sip-orb-photo,.sip-orb-video'); if (tile) tile.classList.toggle('sip-picked', c.checked); });
       $$('[data-gallery-bulk]').forEach(function (b) { b.hidden = n === 0; b.textContent = 'Delete selected (' + n + ')'; });
     }
     $$('[data-gallery-pick]').forEach(function (c) {
@@ -1201,8 +1206,9 @@
       // orbital rings
       var spin = 0.12 + mid * m * 1.3 + kick * m * 1.1;
       var ease = function (ang, rot) { var diff = ((((-rot) - ang) % 360) + 540) % 360 - 180; return ang + diff * 0.14; };
-      if (enlarged && enlarged.ring === 'photo') orbAngle = ease(orbAngle, enlarged.i * 60); else orbAngle += spin;
-      if (enlarged && enlarged.ring === 'video') angV = ease(angV, enlarged.i * 120); else angV -= spin * 0.8;
+      var managing = root.classList.contains('sip-manage');
+      if (enlarged && enlarged.ring === 'photo') orbAngle = ease(orbAngle, enlarged.i * 60); else if (!managing) orbAngle += spin;
+      if (enlarged && enlarged.ring === 'video') angV = ease(angV, enlarged.i * 120); else if (!managing) angV -= spin * 0.8;
       var pScale = Math.min(orbSize('photo') / 300, pStage && pStage.clientWidth ? pStage.clientWidth / 440 : 1);
       var vScale = Math.min(orbSize('video') / 300, vStage && vStage.clientWidth ? vStage.clientWidth / 426 : 1);
       var pH = Math.round(pScale * 300) + 'px', vH = Math.round(vScale * 300) + 'px';
