@@ -1619,7 +1619,8 @@
       var galleryPhoto = (media.gallery_photo || []).slice(); var galleryVideo = (media.gallery_video || []).slice();
       /* owner call 2026-09-09: desktop shows every photo at its full original resolution (the media API only hands
          out 300px Photon thumbs); phones get a Photon size that matches their screen (width × pixel ratio, ≤ 1600). */
-      var DESKTOP = !(window.SMLDevice && window.SMLDevice.mobile) && !document.documentElement.classList.contains('sml-mobile') && (window.innerWidth || 1024) >= 1024;
+      /* the device layer already encodes the rule (html.sml-desktop from sml-device-layers / site-search.js); any desktop window gets the original file */
+      var DESKTOP = document.documentElement.classList.contains('sml-desktop') || (!(window.SMLDevice && window.SMLDevice.mobile) && !document.documentElement.classList.contains('sml-mobile') && (window.innerWidth || 1024) >= 1024);
       var PHONE_W = Math.min(1600, Math.ceil(((window.innerWidth || 390) * (window.devicePixelRatio || 1)) / 100) * 100);
       function mediaUrlFor(url) {
         url = String(url || ''); if (!url) return '';
