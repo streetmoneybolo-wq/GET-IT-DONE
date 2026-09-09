@@ -1798,6 +1798,9 @@
   var css = '' +
     '.sml-gshell .sml-cbanner-resize{display:none!important}' +
     '.sml-gshell.sml-banner-edit .sml-cbanner-resize{display:flex!important}' +
+    /* the shell's own '.sml-gshell__main-head > button{position:relative}' out-specifies the banner plugin's absolute handle and
+       floated it into the middle of the banner — pin it back to the bottom edge (owner report 2026-09-09) */
+    '.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize{position:absolute!important;left:50%!important;bottom:-8px!important;top:auto!important;transform:translateX(-50%)!important;z-index:40!important;cursor:ns-resize}' +
     /* desktop managers can grab the bottom edge straight away: the handle appears while the pointer is over the banner */
     'html.sml-desktop .sml-gshell .sml-gshell__main-head:hover .sml-cbanner-resize,html.sml-desktop .sml-gshell .sml-cbanner-resize.is-dragging{display:flex!important}' +
     '.sml-banner-edit-done{position:absolute;top:8px;left:8px;z-index:62;border:1px solid rgba(0,255,102,.55);background:#00ff66;color:#031008;border-radius:8px;padding:6px 10px;font:800 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
