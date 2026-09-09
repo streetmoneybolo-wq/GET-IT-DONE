@@ -2398,3 +2398,56 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   window.SMLBgSwitch = { loaded: loaded, urls: urls, warm: function () { preloadedFor = 0; warm(); } };
 })();
+
+
+/* ---- Owner call 2026-09-09: the channel-banner height drag must ALWAYS respond.
+   The banner plugin (sml-channel-banners) binds its pointerdown once, on the handle it creates; the group shell then
+   rebuilds the banner head and the plugin re-uses the rebuilt `[data-sml-cbanner-resize]` node — which has no listener.
+   Result: a visible strip that ignores the grab (verified live: dispatching pointerdown on it set no is-dragging).
+   This module owns the drag from a capture-phase document listener (survives every rebuild), applies the height live
+   and saves through the plugin's own route + payload (group_id, channel_id, resize=1, height), keeping its state in step. */
+(function () {
+  'use strict';
+  if (window.__smlBannerDragV2) return;
+  window.__smlBannerDragV2 = 1;
+  function cfg() { return window.SMLChannelBanners || {}; }
+  function activeCid() { var a = document.querySelector('.sml-gshell__channel[data-smlgs-channel].is-active'); return a ? (parseInt(a.getAttribute('data-smlgs-channel'), 10) || 0) : 0; }
+  function groupId() { try { var root = document.getElementById('sml-group-shell'); return parseInt(JSON.parse(root.getAttribute('data-config') || '{}').groupId, 10) || 0; } catch (e) { return 0; } }
+  function clamp(v) { return Math.max(1, Math.min(400, parseInt(v, 10) || 152)); }
+  function apply(head, h) { head.classList.add('sml-cbanner-has-height'); head.style.setProperty('--sml-cbanner-height', h + 'px'); }
+  function entryOf(cid) { var b = cfg().banners; return (b && b[String(cid)]) || {}; }
+  function remember(cid, h) { var c = cfg(); if (!c.banners) c.banners = {}; c.banners[String(cid)] = Object.assign({}, c.banners[String(cid)] || {}, { height: h }); }
+  function save(cid, gid, h, prev, handle, head) {
+    var c = cfg(); if (!c.api) return;
+    var fd = new FormData(); fd.append('group_id', String(gid)); fd.append('channel_id', String(cid)); fd.append('resize', '1'); fd.append('height', String(h));
+    remember(cid, h);
+    handle.classList.add('is-saving');
+    fetch(c.api + (c.saveApi || 'visual'), { method: 'POST', body: fd, credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': c.nonce || '' } })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || 'The channel banner height could not be saved.'); if (j.banner && c.banners) c.banners[String(cid)] = j.banner; handle.classList.remove('is-error'); handle.title = 'Channel banner height saved at ' + h + 'px'; }); })
+      .catch(function (err) { remember(cid, prev); apply(head, prev); handle.classList.add('is-error'); handle.title = err.message || 'The channel banner height could not be saved.'; })
+      .then(function () { handle.classList.remove('is-saving'); });
+  }
+  document.addEventListener('pointerdown', function (e) {
+    var handle = e.target && e.target.closest ? e.target.closest('.sml-cbanner-resize') : null;
+    if (!handle) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (handle.classList.contains('is-saving')) return;
+    var cid = activeCid(), gid = groupId(); if (!cid || !gid) return;
+    var head = document.querySelector('.sml-gshell__main-head'); if (!head) return;
+    e.preventDefault(); e.stopPropagation();
+    var entry = entryOf(cid);
+    var start = clamp(entry.height != null ? entry.height : head.getBoundingClientRect().height), y0 = e.clientY, next = start, pid = e.pointerId;
+    var out = handle.querySelector('output');
+    handle.classList.add('is-dragging'); document.body.classList.add('sml-cbanner-resizing');
+    try { handle.setPointerCapture(pid); } catch (err) {}
+    function move(ev) { if (ev.pointerId !== pid) return; next = clamp(start + ev.clientY - y0); apply(head, next); if (out) out.textContent = next + 'px'; handle.setAttribute('aria-valuenow', String(next)); ev.preventDefault(); }
+    function cleanup() {
+      window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', end, true); window.removeEventListener('pointercancel', cancel, true);
+      handle.classList.remove('is-dragging'); document.body.classList.remove('sml-cbanner-resizing');
+      try { handle.releasePointerCapture(pid); } catch (err) {}
+    }
+    function end(ev) { if (ev.pointerId !== pid) return; cleanup(); if (next !== start) save(cid, gid, next, start, handle, head); }
+    function cancel(ev) { if (ev && ev.pointerId !== pid) return; cleanup(); apply(head, start); if (out) out.textContent = start + 'px'; }
+    window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', cancel, true);
+  }, true);
+})();
