@@ -2426,7 +2426,8 @@
     var fd = new FormData(); fd.append('group_id', String(gid)); fd.append('channel_id', String(cid)); fd.append('resize', '1'); fd.append('height', String(h));
     remember(cid, h);
     handle.classList.add('is-saving');
-    fetch(c.api + (c.saveApi || 'visual'), { method: 'POST', body: fd, credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': c.nonce || '' } })
+    var path = c.saveApi || 'visual'; var url = /^https?:\/\//i.test(path) ? path : c.api + path;   /* same rule as the plugin's request(): saveApi is absolute */
+    fetch(url, { method: 'POST', body: fd, credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': c.nonce || '' } })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.message || 'The channel banner height could not be saved.'); if (j.banner && c.banners) c.banners[String(cid)] = j.banner; handle.classList.remove('is-error'); handle.title = 'Channel banner height saved at ' + h + 'px'; }); })
       .catch(function (err) { remember(cid, prev); apply(head, prev); handle.classList.add('is-error'); handle.title = err.message || 'The channel banner height could not be saved.'; })
       .then(function () { handle.classList.remove('is-saving'); });
