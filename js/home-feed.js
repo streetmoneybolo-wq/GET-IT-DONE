@@ -268,6 +268,12 @@
           '#sml-hf-shell.hfm #sml-hf-grid{padding:12px 12px calc(76px + env(safe-area-inset-bottom,0px)) !important;gap:14px !important;}' +
           '#sml-hf-shell.hfm .hf-stories{gap:10px !important;margin-bottom:12px !important;-webkit-overflow-scrolling:touch;scrollbar-width:none;}' +
           '#sml-hf-shell.hfm .hf-stories::-webkit-scrollbar{display:none;}' +
+          /* owner call 2026-09-09 (phone pass): the profile strip swipes instead of hiding members behind an off-screen arrow; small labels readable */
+          '#sml-hf-shell.hfm .hf-stories.sml-feed-profile-strip{overflow-x:auto !important;overflow-y:hidden;scroll-snap-type:x proximity;padding-right:12px;}' +
+          '#sml-hf-shell.hfm .sml-fps-item{scroll-snap-align:start;flex:none;}' +
+          '#sml-hf-shell.hfm .sml-fps-next,#sml-hf-shell.hfm .sml-fps-prev{display:none !important;}' +
+          '#sml-hf-shell.hfm .sml-fps-name{font-size:11px !important;}' +
+          '#sml-hf-shell.hfm .sml-feed-time-badge,#sml-hf-shell.hfm .oh-meta{font-size:10.5px !important;}' +
           '#sml-hf-shell.hfm .hf-composer{flex-wrap:wrap;padding:12px 14px !important;}' +
           '#sml-hf-shell.hfm .hf-composer input{flex:1 1 140px !important;font-size:16px !important;}' +
           '#sml-hf-shell.hfm .hf-composer a{padding:12px 20px !important;}' +

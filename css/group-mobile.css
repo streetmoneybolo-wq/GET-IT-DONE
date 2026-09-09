@@ -65,3 +65,40 @@
   #sml-group-root .sml-group-form { padding: 12px; }
   #sml-group-root .sml-group-chat-log { max-height: 56dvh; }
 }
+
+/* ------------------------------------------------------------------ phone layer (owner call 2026-09-09)
+   html.sml-mobile is stamped before first paint by mu-plugin sml-device-layers. The group shell (Group Shell v11)
+   turns its channel sidebar into a 25px-tall strip on phones and clips the 36px channel pills; the conversation
+   gets a short fixed box. Give phones a real chat layout. */
+html.sml-mobile .sml-gshell__channels {
+  height: auto !important;
+  min-height: 56px;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  gap: 8px !important;
+  padding: 8px 10px 10px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+html.sml-mobile .sml-gshell__channels::-webkit-scrollbar { display: none; }
+html.sml-mobile .sml-gshell__channel {
+  flex: 0 0 auto !important;
+  min-height: 40px !important;
+  padding: 8px 12px !important;
+  scroll-snap-align: start;
+  white-space: nowrap;
+}
+html.sml-mobile .sml-gshell__category-head { flex: 0 0 auto; }
+html.sml-mobile .sml-gshell__conversation { min-height: 58dvh !important; }
+html.sml-mobile .sml-gshell__messages { max-height: none !important; }
+html.sml-mobile .sml-gshell__composer { position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); z-index: 5; }
+html.sml-mobile .sml-gshell__composer input,
+html.sml-mobile .sml-gshell__composer textarea { font-size: 16px !important; }  /* no iOS zoom-on-focus */
+html.sml-mobile .sml-gshell__composer button { min-height: 44px; }
+/* the shell's phone grid reserves the first row at ~50vh for a 190px sidebar → a 215px hole above the chat */
+html.sml-mobile .sml-gshell { grid-template-rows: auto minmax(0, 1fr) !important; height: auto !important; min-height: 0 !important; }
+html.sml-mobile .sml-gshell__side { height: auto !important; }

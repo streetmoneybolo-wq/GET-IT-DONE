@@ -768,6 +768,19 @@
     }
     if (!d.classList.contains('sml-mobile') && !d.classList.contains('sml-desktop')) classify();
     var t; window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(classify, 120); });
+    /* phones: the sticky header slides away while scrolling down and returns on the first scroll up, so the
+       conversation / feed gets the screen; LOOP-KICK is one flick up. */
+    (function () {
+      var last = 0, hidden = false, header = null;
+      function hdr() { return header || (header = document.getElementById('sml-global-header')); }
+      function set(h) { var H = hdr(); if (!H || h === hidden) return; hidden = h; H.classList.toggle('sml-gh-collapsed', h); }
+      window.addEventListener('scroll', function () {
+        if (!d.classList.contains('sml-mobile')) { set(false); return; }
+        var y = window.pageYOffset || 0, dy = y - last; last = y;
+        if (y < 120) set(false); else if (dy > 6) set(true); else if (dy < -6) set(false);
+      }, { passive: true });
+    })();
+
     window.addEventListener('orientationchange', function () { setTimeout(classify, 60); });
     if (!document.getElementById('sml-device-css')) {
       var st = document.createElement('style'); st.id = 'sml-device-css';
@@ -781,6 +794,7 @@
         'html.sml-mobile #sml-global-header .sml-gh-nav{order:6;flex:1 1 100%;width:100%;margin:0;display:flex;flex-wrap:nowrap;gap:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 4px;white-space:nowrap}' +
         'html.sml-mobile #sml-global-header .sml-gh-nav::-webkit-scrollbar{display:none}html.sml-mobile #sml-global-header .sml-gh-nav a{flex:none;padding:6px 2px;font-size:13px}' +
         'html.sml-mobile #sml-global-header .sml-gh-tape{font-size:11px}' +
+        'html.sml-mobile #sml-global-header{transition:transform .28s ease}html.sml-mobile #sml-global-header.sml-gh-collapsed{transform:translateY(-100%)}' +
         /* every tap target on phones is at least 40px tall */
         'html.sml-mobile.sml-touch button,html.sml-mobile.sml-touch .sml-acct__item{min-height:36px}' +
         /* the phone (LOOP-KICK) fills the screen on phones */
