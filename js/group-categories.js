@@ -1809,7 +1809,9 @@
     '.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize:hover > span,.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize.is-dragging > span{border-color:#7dffb5!important;background:#0b3a22!important}' +
     'html.sml-mobile .sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize{height:34px!important;bottom:-17px!important}html.sml-mobile .sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize > span{width:120px!important;height:26px!important}' +
     /* desktop managers can grab the bottom edge straight away: the handle appears while the pointer is over the banner */
-    'html.sml-desktop .sml-gshell .sml-gshell__main-head:hover .sml-cbanner-resize,html.sml-desktop .sml-gshell .sml-cbanner-resize.is-dragging{display:flex!important}' +
+    /* owner call 2026-09-09: managers always see the grab strip on the banner's bottom edge (the plugin only creates it for
+       managers); hover-only left it invisible at mousedown, so drags never started */
+    '.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize{display:flex!important}.sml-gshell .sml-gshell__main-head.sml-cbanner-is-hidden > button.sml-cbanner-resize{display:none!important}' +
     '.sml-banner-edit-done{position:absolute;top:8px;left:8px;z-index:62;border:1px solid rgba(0,255,102,.55);background:#00ff66;color:#031008;border-radius:8px;padding:6px 10px;font:800 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
     '.sml-pgo-list{display:flex;flex-direction:column;gap:6px}' +
     '.sml-pgo-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);text-decoration:none;color:inherit}' +
