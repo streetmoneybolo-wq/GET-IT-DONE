@@ -180,5 +180,19 @@
     if (btn) { clearInterval(find); bind(btn); poll(); S.timer = setInterval(poll, POLL_MS); document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); }); }
     else if (++tries > 120) clearInterval(find);
   }, 500);
+  /* Owner call 2026-09-09: the button reacts the INSTANT the Loop-Kick phone changes its alerts (Clear all / Mark all read /
+     a tap on one). The phone posts its Alerts-tab unread count; apply it at once, then re-poll shortly after to reconcile the list. */
+  var reconcile = 0;
+  window.addEventListener('message', function (ev) {
+    var d = ev.data; if (!d || d.type !== 'sml-loop-kick:notifications') return;
+    var frame = document.getElementById('sml-loop-popup-frame');
+    if (!frame || ev.source !== frame.contentWindow) return;
+    S.unread = Math.max(0, Number(d.unread) || 0);
+    if (S.unread === 0) S.items.forEach(function (n) { n.read = true; });
+    decorate(); if (S.panel && S.panel.classList.contains('on')) render();
+    clearTimeout(reconcile); reconcile = setTimeout(poll, 2500);
+  });
+  /* closing the phone re-checks the count too (the phone may have been closed mid-change) */
+  new MutationObserver(function () { if (!document.body.classList.contains('sml-loop-open')) { clearTimeout(reconcile); reconcile = setTimeout(poll, 300); } }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   window.SMLNotify = { refresh: poll, open: openPanel, close: closePanel, state: S };
 })();
