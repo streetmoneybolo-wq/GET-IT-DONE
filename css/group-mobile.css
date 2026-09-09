@@ -110,3 +110,19 @@ html.sml-mobile .sml-gshell__channels { position: relative; z-index: 2; }
    (flex 0 1 auto) to fit — so the countdown card spilled over the strip. Lift the cap and stop the head shrinking. */
 html.sml-mobile .sml-gshell__side { max-height: none !important; height: auto !important; }
 html.sml-mobile .sml-gshell__side-head { flex: 0 0 auto !important; }
+
+/* ---- channel banner resize by touch (owner call 2026-09-09) ----
+   Phones have no hover, so managers see the grip on the banner's bottom edge whenever the channel has a banner;
+   it is bigger than the desktop pill and touch-action:none so a finger drag resizes instead of scrolling the page. */
+html.sml-mobile .sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize {
+  display: flex !important;
+  touch-action: none;
+  width: 140px !important;
+  height: 30px !important;
+  bottom: -15px !important;
+  border-radius: 999px;
+}
+html.sml-mobile .sml-gshell .sml-gshell__main-head.sml-cbanner-is-hidden > button.sml-cbanner-resize { display: none !important; }
+html.sml-mobile .sml-gshell .sml-cbanner-resize > span { top: 10px !important; width: 44px !important; height: 4px !important; }
+html.sml-mobile .sml-gshell .sml-cbanner-resize output { font-size: 12px !important; }
+html.sml-mobile body.sml-cbanner-resizing { overflow: hidden; touch-action: none; overscroll-behavior: none; }
