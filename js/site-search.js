@@ -420,7 +420,18 @@
     if (!button) return;
     document.body.classList.add('sml-gh-loop-kick-nav');
     function parts() { return { popup: el('#sml-loop-popup'), frame: el('#sml-loop-popup-frame') }; }
-    function closeKick() { var item = parts(); if (!item.popup) return; item.popup.hidden = true; document.body.classList.remove('sml-loop-open'); button.setAttribute('aria-expanded', 'false'); }
+    function closeKick() { var item = parts(); if (!item.popup) return; item.popup.hidden = true; document.body.classList.remove('sml-loop-open'); button.setAttribute('aria-expanded', 'false'); tellKickFrame('close'); }
+    /* Owner call 2026-09-08: the phone's own X leaves the app closed (it reports a dock-sized surface and the page hides the
+       popup). Reopening must tell the app to come back up and must not keep the frame masked to that dock rectangle. */
+    function tellKickFrame(type) {
+      var f = el('#sml-loop-popup-frame'); if (!f || !f.contentWindow) return;
+      var origin = frameOrigin(f); if (!origin) return;
+      try { f.contentWindow.postMessage({ type: 'sml-loop-kick:' + type, version: 1 }, origin); } catch (e) { /* frame not ready */ }
+    }
+    function unmaskKickFrame() {
+      var f = el('#sml-loop-popup-frame'); if (!f) return;
+      try { f.style.removeProperty('-webkit-mask-image'); f.style.removeProperty('mask-image'); } catch (e) {}
+    }
     /* Pages whose custom render never runs wp_footer (the Analyst Dashboard and friends) have no popup to
        open: ask the bridge for the same markup + styles + controller and build it in place (owner call 2026-09-06). */
     var building = false;
@@ -444,6 +455,8 @@
       if (!item.popup) { var launcher = el('.sml-loop-launcher'); if (launcher) { launcher.click(); return; } buildKick(openKick); return; }
       if (item.frame) { var src = item.frame.getAttribute('src'); var wanted = item.frame.dataset.src || src; if (!src && wanted) item.frame.setAttribute('src', wanted); }
       item.popup.hidden = false; document.body.classList.add('sml-loop-open'); button.setAttribute('aria-expanded', 'true');
+      unmaskKickFrame();
+      tellKickFrame('open'); setTimeout(function () { tellKickFrame('open'); }, 400);
       ensureOnTop(item.popup);
     }
     /* Owner call 2026-09-08: the phone must be clickable on EVERY page. Profile pages float the immersive overlay at
