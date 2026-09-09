@@ -333,7 +333,13 @@
     /* owner call 2026-09-09: Delete stays out of sight until the owner taps Manage (then Done) */
     + '.sip-root.sip-manage .sip-gallery-delete{display:inline-block;}'
     + '.sip-gallery-manage{padding:7px 12px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(255,255,255,.06);color:#E6EDF5;font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}'
-    + '.sip-root.sip-manage .sip-gallery-manage{border-color:rgba(255,92,119,.65);background:rgba(40,5,12,.6);color:#ff8299;}' +
+    + '.sip-root.sip-manage .sip-gallery-manage{border-color:rgba(255,92,119,.65);background:rgba(40,5,12,.6);color:#ff8299;}'
+    /* owner call 2026-09-09: select several uploads and delete them at once */
+    + '.sip-gallery-pick{display:none;position:absolute;left:8px;top:8px;z-index:4;width:28px;height:28px;border-radius:8px;background:rgba(2,7,11,.72);border:1px solid rgba(255,255,255,.35);align-items:center;justify-content:center;cursor:pointer;}'
+    + '.sip-gallery-pick input{width:16px;height:16px;margin:0;accent-color:#ff5c77;cursor:pointer;}'
+    + '.sip-root.sip-manage .sip-gallery-pick{display:flex;}'
+    + '.sip-galphoto.sip-picked,.sip-galvid.sip-picked{outline:3px solid #ff5c77;outline-offset:-3px;}'
+    + '.sip-gallery-bulk{padding:7px 12px;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(255,92,119,.16);color:#ff8299;font:800 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}.sip-gallery-bulk[hidden]{display:none;}' +
     '.sip-gallery-delete{display:none;position:absolute;right:8px;top:8px;z-index:3;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(40,5,12,.9);color:#ff8299;padding:6px 9px;font:800 10px/1 Archivo,sans-serif;cursor:pointer;}' +
     '.sip-media-caption{position:absolute;left:0;right:0;bottom:0;padding:28px 10px 9px;background:linear-gradient(transparent,rgba(2,7,11,.9));color:#fff;font:700 11px/1.25 Archivo,sans-serif}.sip-media-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}.sip-media-tags a{color:#62bfff;text-decoration:none;font-size:10px;}' +
     '.sip-media-meta{position:fixed;inset:0;z-index:2147483645;background:rgba(2,7,11,.86);display:flex;align-items:center;justify-content:center;padding:20px;}' +
@@ -401,7 +407,7 @@
     for (var g = 0; g < 8; g++) {
       var gp = ph(cfg.galleryPhotos[g], 'gallery photo ' + (g + 1)); if (cfg.galleryPhotos[g]) nGalP++;
       var gpItem = ((cfg.__media && cfg.__media.gallery_photo) || [])[g] || null;
-      galP += '<div class="sip-galphoto' + (cfg.galleryPhotos[g] ? '' : ' sip-slot-empty') + '" data-gphoto="' + g + '"' + gp.st + '>' + gp.inner + mediaCaption(gpItem) + (cfg.isOwner && gpItem && gpItem.attachment_id ? '<button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_photo:' + g + ':' + Number(gpItem.attachment_id) + '">Delete</button>' : '') + '</div>';
+      galP += '<div class="sip-galphoto' + (cfg.galleryPhotos[g] ? '' : ' sip-slot-empty') + '" data-gphoto="' + g + '"' + gp.st + '>' + gp.inner + mediaCaption(gpItem) + (cfg.isOwner && gpItem && gpItem.attachment_id ? '<label class="sip-gallery-pick" title="Select"><input type="checkbox" data-gallery-pick="gallery_photo:' + g + ':' + Number(gpItem.attachment_id) + '"></label><button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_photo:' + g + ':' + Number(gpItem.attachment_id) + '">Delete</button>' : '') + '</div>';
     }
     if (!nGalP) galP += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No photos shared yet.</div>';
     // Gallery videos (6)
@@ -409,7 +415,7 @@
     for (var gvi = 0; gvi < 6; gvi++) {
       var gvu = (cfg.galleryVideos || [])[gvi] || ''; if (gvu) nGalV++;
       var gvItem = ((cfg.__media && cfg.__media.gallery_video) || [])[gvi] || null;
-      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" data-lazyvid preload="metadata" src="' + esc(gvu) + '" muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div>' + mediaCaption(gvItem) + (cfg.isOwner && gvItem && gvItem.attachment_id ? '<button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_video:' + gvi + ':' + Number(gvItem.attachment_id) + '">Delete</button>' : '') + '</div>';
+      galV += '<div class="sip-galvid' + (gvu ? '' : ' sip-slot-empty') + '" data-gvideo="' + gvi + '">' + (gvu ? '<video class="sip-mediavid" data-lazyvid preload="metadata" src="' + esc(gvu) + '" muted loop playsinline></video>' : '') + '<div class="sip-cellph" data-vph' + (gvu ? ' style="display:none"' : '') + '><span style="font-size:22px;color:#38F58A;">＋</span><span>add video ' + (gvi + 1) + '</span><span style="opacity:.6;">(in edit mode)</span></div>' + mediaCaption(gvItem) + (cfg.isOwner && gvItem && gvItem.attachment_id ? '<label class="sip-gallery-pick" title="Select"><input type="checkbox" data-gallery-pick="gallery_video:' + gvi + ':' + Number(gvItem.attachment_id) + '"></label><button type="button" class="sip-gallery-delete" data-gallery-delete="gallery_video:' + gvi + ':' + Number(gvItem.attachment_id) + '">Delete</button>' : '') + '</div>';
     }
 
     var postHtml = cfg.posts.map(function (po) {
@@ -478,10 +484,10 @@
       '</div></div></div>' +
       '</div></div>';
     // World 1: PHOTOS
-    var world1 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Photo Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="photo">＋ Upload photo</button><button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
+    var world1 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Photo Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="photo">＋ Upload photo</button><button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button><button class="sip-gallery-bulk" type="button" data-gallery-bulk hidden>Delete selected</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
     if (!nGalV) galV += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No videos shared yet.</div>';
     // World 2: VIDEOS
-    var world2 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Video Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="video">＋ Upload video</button><button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
+    var world2 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Video Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="video">＋ Upload video</button><button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button><button class="sip-gallery-bulk" type="button" data-gallery-bulk hidden>Delete selected</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
     // World 3: POSTS
     var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES · FRIENDS — SWIPE LEFT FOR CONTACT →</div><div class="sip-activity"><div class="sip-posts">' + (postHtml || '<div class="sip-emptynote">No recent activity shared yet.</div>') + '</div>' + friendsBox + '</div></div>';
     // World 4: CONTACT
@@ -943,7 +949,35 @@
         e.preventDefault(); e.stopPropagation();
         var on = !root.classList.contains('sip-manage');
         root.classList.toggle('sip-manage', on);
+        if (!on) { $$('[data-gallery-pick]').forEach(function (c) { c.checked = false; }); syncPicks(); }
         $$('[data-gallery-manage]').forEach(function (b) { b.textContent = on ? 'Done' : 'Manage'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      });
+    });
+    function picked() { return $$('[data-gallery-pick]').filter(function (c) { return c.checked; }); }
+    function syncPicks() {
+      var n = picked().length;
+      $$('[data-gallery-pick]').forEach(function (c) { var tile = c.closest('.sip-galphoto,.sip-galvid'); if (tile) tile.classList.toggle('sip-picked', c.checked); });
+      $$('[data-gallery-bulk]').forEach(function (b) { b.hidden = n === 0; b.textContent = 'Delete selected (' + n + ')'; });
+    }
+    $$('[data-gallery-pick]').forEach(function (c) {
+      c.addEventListener('click', function (e) { e.stopPropagation(); });
+      c.parentNode.addEventListener('click', function (e) { e.stopPropagation(); });
+      c.addEventListener('change', syncPicks);
+    });
+    $$('[data-gallery-bulk]').forEach(function (button) {
+      button.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var list = picked(); if (!list.length || !canPersist()) return;
+        if (!window.confirm('Delete ' + list.length + ' upload' + (list.length === 1 ? '' : 's') + ' permanently? This removes them from the gallery and the files from the website.')) return;
+        $$('[data-gallery-bulk]').forEach(function (b) { b.disabled = true; b.textContent = 'Deleting…'; });
+        var failed = 0;
+        list.reduce(function (chain, c) {
+          var parts = c.dataset.galleryPick.split(':'), slot = parts[0], attachmentId = Number(parts[2] || 0);
+          return chain.then(function () { return attachmentId ? mediaEndpoint('media/delete', { slot_type: slot, attachment_id: attachmentId }).catch(function () { failed++; }) : null; });
+        }, Promise.resolve()).then(function () {
+          toast(failed ? ((list.length - failed) + ' deleted, ' + failed + ' failed.') : (list.length + ' upload' + (list.length === 1 ? '' : 's') + ' permanently deleted.'));
+          setTimeout(function () { location.reload(); }, 600);
+        });
       });
     });
     $$('[data-gallery-delete]').forEach(function (button) {
