@@ -638,15 +638,18 @@
     var BPM = (cfg.bpm >= 50 && cfg.bpm <= 220) ? cfg.bpm : 120;
     var wavePeaks = (function () { var a = []; for (var i = 0; i < 160; i++) a.push(0.12 + Math.abs(Math.sin(i * 0.7) * 0.5) + Math.random() * 0.28); var mx = Math.max.apply(null, a); return a.map(function (v) { return v / mx; }); })();
     function isYT(o) { return /(^|\.)youtube(-nocookie)?\.com$/.test(String(o).replace(/^https?:\/\//, '')); }
-    function cmd(func, args) { try { frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*'); } catch (e) {} }
-    function register() { if (registered || !frame || !frame.contentWindow) return; try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 8, channel: 'widget' }), '*'); registered = true; } catch (e) {} }
+    /* optimistic transport (owner call 2026-09-08): the button reflects the tap at once, the player confirms a moment later */
+    function cmd(func, args) { listen(); try { frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: func, args: args || [] }), '*'); } catch (e) {} }
+    function listen() { if (!frame || !frame.contentWindow) return; try { frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 8, channel: 'widget' }), '*'); } catch (e) {} }
+    function register() { if (registered) return; listen(); registered = true; }
+    function markPlaying(on) { playing = !!on; lastTime = nowTime(); lastStamp = performance.now(); }
     window.addEventListener('message', function (ev) {
       if (GEN !== INIT_GEN) return;
       if (!frame || !isYT(ev.origin)) return;
       var d = ev.data; if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
       if (!d || !d.info) return;
       if (d.event !== 'infoDelivery' && d.event !== 'initialDelivery') return;
-      if (typeof d.info.playerState === 'number') playing = (d.info.playerState === 1);
+      if (typeof d.info.playerState === 'number') { registered = true; playing = (d.info.playerState === 1); }
       if (typeof d.info.currentTime === 'number') { lastTime = d.info.currentTime; lastStamp = performance.now(); }
       if (typeof d.info.duration === 'number' && d.info.duration) duration = d.info.duration;
     }, false);
@@ -657,7 +660,9 @@
     function startPlayback(unmute) {
       if (!frame) { overlay.style.display = 'none'; return; }
       register();
-      setTimeout(function () { cmd('mute'); cmd('playVideo'); if (unmute) { cmd('unMute'); cmd('setVolume', [60]); } }, 250);
+      if (unmute) { cmd('unMute'); cmd('setVolume', [60]); cmd('playVideo'); }
+      else { cmd('mute'); cmd('playVideo'); }
+      markPlaying(true);
       soundEnabled = !!unmute;
       overlay.style.display = 'none';
       playBtn.textContent = unmute ? '❚❚' : '🔇';
@@ -984,7 +989,7 @@
     playBtn.addEventListener('click', function () {
       if (!frame) return;
       if (playing && !soundEnabled) { startPlayback(true); }
-      else if (playing) { cmd('pauseVideo'); playBtn.textContent = '▶'; playBtn.title = 'Play profile music'; }
+      else if (playing) { cmd('pauseVideo'); markPlaying(false); playBtn.textContent = '▶'; playBtn.title = 'Play profile music'; }
       else { startPlayback(true); }
     });
     wfWrap.addEventListener('click', function (e) { if (!duration) return; var r = wfWrap.getBoundingClientRect(); cmd('seekTo', [duration * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), true]); });
@@ -1185,7 +1190,7 @@
 
     // boot playback listeners
     if (frame) {
-      var tries = 0; var iv = setInterval(function () { register(); if (++tries > 40 || registered) clearInterval(iv); }, 250);
+      var tries = 0; var iv = setInterval(function () { listen(); if (++tries > 240 || lastStamp) clearInterval(iv); }, 250);
       if (!cfg.useExistingPlayer) frame.addEventListener('load', function () { register(); setTimeout(function () { cmd('mute'); cmd('playVideo'); }, 600); });
     } else {
       /* no music: don't gate the profile behind "Tap for sound" */

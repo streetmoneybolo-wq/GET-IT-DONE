@@ -444,6 +444,19 @@
       if (!item.popup) { var launcher = el('.sml-loop-launcher'); if (launcher) { launcher.click(); return; } buildKick(openKick); return; }
       if (item.frame) { var src = item.frame.getAttribute('src'); var wanted = item.frame.dataset.src || src; if (!src && wanted) item.frame.setAttribute('src', wanted); }
       item.popup.hidden = false; document.body.classList.add('sml-loop-open'); button.setAttribute('aria-expanded', 'true');
+      ensureOnTop(item.popup);
+    }
+    /* Owner call 2026-09-08: the phone must be clickable on EVERY page. Profile pages float the immersive overlay at
+       z-index 2147483000, above the popup's 99998, so the phone opened invisibly. Out-stack it, then verify. */
+    if (!document.getElementById('sml-kick-zfix')) { var zs = document.createElement('style'); zs.id = 'sml-kick-zfix'; zs.textContent = '#sml-loop-popup:not([hidden]){z-index:2147483300!important}'; document.head.appendChild(zs); }
+    function ensureOnTop(popup) {
+      setTimeout(function () {
+        try {
+          var inner = el('#sml-loop-popup-inner') || popup; var r = inner.getBoundingClientRect(); if (!r.width) return;
+          var top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          if (top && !popup.contains(top)) { popup.style.setProperty('z-index', '2147483646', 'important'); }
+        } catch (e) {}
+      }, 60);
     }
     /* Mini player hand-off (owner call 2026-09-06): a watch page hands its video or live stream to the phone's
        Watch deck and it keeps playing there. The frame may still be loading, so the message repeats until the
@@ -726,6 +739,34 @@
     var hfs = document.getElementById('sml-hf-shell');
     if (hfs) hfs.addEventListener('scroll', function () { if (pop.classList.contains('on')) scheduleHide(); });
   }
+
+  /* ---- profile pre-warm (owner call 2026-09-08) ------------------------------------------------
+     The member's own profile page is prerendered from the homepage (Speculation Rules), so My profile opens
+     instantly; any other profile link is prefetched on hover; the immersive profile script is prefetched too. */
+  function mountProfilePrewarm() {
+    if (document.getElementById('sml-profile-prewarm') || !document.body || !document.body.classList.contains('logged-in')) return;
+    var here = location.pathname.replace(/\/+$/, '') + '/';
+    function myProfile() {
+      var a = null;
+      Array.prototype.some.call(document.querySelectorAll('a.sml-acct__item[href], #sml-hf-memenu a[href]'), function (x) { if (/^\s*(my )?profile\s*$/i.test(x.textContent || '')) { a = x; return true; } return false; });
+      if (!a) return '';
+      var u; try { u = new URL(a.getAttribute('href'), location.href); } catch (e) { return ''; }
+      if (u.origin !== location.origin || /\/(my-profile|customize-profile)\/?$/.test(u.pathname)) return '';
+      return u.pathname.replace(/\/+$/, '') + '/';
+    }
+    function rules(json) { var sc = document.createElement('script'); sc.type = 'speculationrules'; sc.textContent = JSON.stringify(json); document.head.appendChild(sc); }
+    function link(rel, href, as) { var l = document.createElement('link'); l.rel = rel; l.href = href; if (as) l.as = as; document.head.appendChild(l); }
+    var mark = document.createElement('meta'); mark.id = 'sml-profile-prewarm'; document.head.appendChild(mark);
+    var specOk = !!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules'));
+    if (assetBase) link('prefetch', assetBase + 'js/immersive-profile.js', 'script');
+    var mine = myProfile();
+    if (mine && mine !== here && location.pathname.replace(/\/+$/, '') === '') {
+      if (specOk) rules({ prerender: [{ urls: [mine], eagerness: 'immediate' }] }); else link('prefetch', mine, 'document');
+    }
+    /* other members: prefetch (HTML only, no scripts run, so nothing counts as a visit) when the pointer settles on the link */
+    if (specOk) rules({ prefetch: [{ where: { and: [{ href_matches: '/*' }, { selector_matches: 'a.hf-mn, a[data-sml-user-id], a.sip-friend, a.sip-mn, a.sml-acct__item' }] }, eagerness: 'moderate' }] });
+  }
+  if (document.readyState === 'complete') setTimeout(mountProfilePrewarm, 1200); else window.addEventListener('load', function () { setTimeout(mountProfilePrewarm, 1200); });
 
   /* wp-login.php: the sign-in page must stay CLEAN — no injected site header,
      no ticker tape, no ad slots, no floating buttons. (They were all rendering

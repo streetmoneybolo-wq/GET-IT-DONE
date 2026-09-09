@@ -584,6 +584,18 @@
       });
       var seen={}; return out.filter(function(x){ if(seen[x.k]) return false; seen[x.k]=1; return true; });
     }
+    function isAliasHref(h){ return !h || /\/(my-profile|customize-profile)\/?(?:[?#].*)?$/i.test(String(h)); }
+    var meHref='';
+    function realProfileHref(current){
+      if(!isAliasHref(current)) return current;
+      if(meHref) return meHref;
+      var found='';
+      Array.prototype.some.call(document.querySelectorAll('a.sml-acct__item[href]'),function(a){ var t=(a.textContent||'').replace(/\s+/g,' ').trim().toLowerCase(); var hf=a.getAttribute('href')||''; if((t==='my profile'||t==='profile')&&!isAliasHref(hf)){ found=hf; return true; } return false; });
+      if(found){ meHref=found; return found; }
+      /* last resort: ask the site (sml-friends-profile/v1/me) and repair the open menu when it answers */
+      fetch('/wp-json/sml-friends-profile/v1/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(j){ if(j&&j.url){ meHref=j.url; var p=document.getElementById('sml-hf-memenu'); if(p) p.querySelectorAll('a').forEach(function(a){ if(isAliasHref(a.getAttribute('href'))&&/my profile/i.test(a.textContent||'')) a.href=j.url; }); } }).catch(function(){});
+      return '/me/';
+    }
     function menuIcon(k){
       var P={'home':'M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10','my profile':'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 8.5c1.4-3.6 5-5 8-5s6.6 1.4 8 5','creator studio':'M4 6h16M4 12h16M4 18h16M9 4v4M15 10v4M7 16v4','go live':'M3 7.5A1.5 1.5 0 0 1 4.5 6h9A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 16.5v-9ZM15 10l6-3.5v11L15 14','settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8-3-1.8-.6.4-1.9-1.6-1.6-1.9.4L14.5 6h-5L8.9 7.9 7 7.5 5.4 9.1l.4 1.9L4 12l1.8.6-.4 1.9 1.6 1.6 1.9-.4 1.6 1.8h5l.6-1.8 1.9.4 1.6-1.6-.4-1.9L20 12Z','customize profile':'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 6l3 3','wallet':'M3 8a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Zm17 3.5h-4.5a2 2 0 0 0 0 4H20M17 6V5a1.5 1.5 0 0 0-1.5-1.5h-9','store':'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm0-13v10m2.4-8.2c-.5-.7-1.4-1.1-2.4-1.1-1.5 0-2.6.8-2.6 1.9 0 2.4 5.2 1.2 5.2 3.6 0 1.1-1.1 1.9-2.6 1.9-1 0-1.9-.4-2.4-1.1','out':'M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M9 12h11m-3-3 3 3-3 3'};
       return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="'+(P[k]||P['home'])+'"/></svg>';
@@ -622,6 +634,9 @@
       ];
       var have={}; m.forEach(function(x){ have[x.k]=x; });
       m=DEFAULTS.map(function(d){ return have[d.k]||d; });
+      /* owner call 2026-09-08: My profile must open the member's PROFILE PAGE. /my-profile/ is the editor mount (it
+         forwards to /customize-profile/), so it is never an acceptable href for this item. */
+      m.forEach(function(it){ if(it.k==='my profile'){ var real=realProfileHref(it.h); if(real) it.h=real; } });
       /* /my-profile/ is the generic alias, not the member's handle — never show it as one */
       var handle=''; m.forEach(function(it){ if(it.k==='my profile'){ var hm=it.h.match(/\/([a-z0-9_\-]+)\/?$/i); if(hm&&hm[1]!=='my-profile') handle='@'+hm[1]; } });
       var SEP={'creator studio':1,'settings':1,'wallet':1,'out':1}, rows='';
