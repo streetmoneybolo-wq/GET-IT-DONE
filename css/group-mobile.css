@@ -106,3 +106,7 @@ html.sml-mobile .sml-gshell__side { height: auto !important; }
    it spilled over the channel strip and hid the pills. Let the head grow; the strip always sits below it. */
 html.sml-mobile .sml-gshell__side-head { height: auto !important; max-height: none !important; min-height: 0 !important; overflow: visible !important; }
 html.sml-mobile .sml-gshell__channels { position: relative; z-index: 2; }
+/* measured live 2026-09-09: the sidebar is a flex column capped at max-height:190px by the shell and its head shrinks
+   (flex 0 1 auto) to fit — so the countdown card spilled over the strip. Lift the cap and stop the head shrinking. */
+html.sml-mobile .sml-gshell__side { max-height: none !important; height: auto !important; }
+html.sml-mobile .sml-gshell__side-head { flex: 0 0 auto !important; }
