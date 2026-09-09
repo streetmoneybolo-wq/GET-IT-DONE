@@ -1798,6 +1798,8 @@
   var css = '' +
     '.sml-gshell .sml-cbanner-resize{display:none!important}' +
     '.sml-gshell.sml-banner-edit .sml-cbanner-resize{display:flex!important}' +
+    /* desktop managers can grab the bottom edge straight away: the handle appears while the pointer is over the banner */
+    'html.sml-desktop .sml-gshell .sml-gshell__main-head:hover .sml-cbanner-resize,html.sml-desktop .sml-gshell .sml-cbanner-resize.is-dragging{display:flex!important}' +
     '.sml-banner-edit-done{position:absolute;top:8px;left:8px;z-index:62;border:1px solid rgba(0,255,102,.55);background:#00ff66;color:#031008;border-radius:8px;padding:6px 10px;font:800 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
     '.sml-pgo-list{display:flex;flex-direction:column;gap:6px}' +
     '.sml-pgo-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);text-decoration:none;color:inherit}' +
@@ -1817,7 +1819,9 @@
      the slider, on top of the height handle. Saves through the banner plugin's own route with the
      same zoom / pos_x / pos_y it already stores, so the "Channel banner" dialog and this agree. */
   var BCSS = '' +
-    '.sml-gshell.sml-banner-edit .sml-cbanner-resize{position:relative;z-index:4}' +
+    /* the banner plugin pins the handle to the banner's bottom edge (position:absolute; bottom:-8px); never override that —
+       'position:relative' pulled it up into the toolbar (owner report 2026-09-09: could not grab the bottom to shrink it) */
+    '.sml-gshell.sml-banner-edit .sml-cbanner-resize{z-index:40}' +
     '.sml-banner-drag{position:absolute;inset:0;z-index:2;cursor:grab;outline:2px dashed rgba(0,255,102,.5);outline-offset:-2px;background:rgba(0,0,0,.06);touch-action:none}' +
     '.sml-banner-drag.is-dragging{cursor:grabbing}' +
     '.sml-banner-bar{position:absolute;top:8px;left:8px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:calc(100% - 60px);padding:8px 10px;border-radius:10px;background:rgba(6,14,10,.94);border:1px solid rgba(0,255,102,.35);box-shadow:0 10px 26px rgba(0,0,0,.5);color:#dfe;font:600 11px/1.3 Inter,system-ui,sans-serif}' +
