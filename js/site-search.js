@@ -766,6 +766,12 @@
       d.classList.toggle('sml-mobile', mobile); d.classList.toggle('sml-desktop', !mobile); if (touch) d.classList.add('sml-touch');
       window.SMLDevice = { mobile: mobile, touch: touch, width: w };
     }
+    /* group pages on phones: the channel strip swipes; a tapped pill (often half off-screen) slides fully into view */
+    document.addEventListener('click', function (ev) {
+      if (!d.classList.contains('sml-mobile')) return;
+      var pill = ev.target && ev.target.closest ? ev.target.closest('.sml-gshell__channel') : null;
+      if (pill && pill.scrollIntoView) { try { pill.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
+    }, true);
     if (!d.classList.contains('sml-mobile') && !d.classList.contains('sml-desktop')) classify();
     var t; window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(classify, 120); });
     /* phones: the sticky header slides away while scrolling down and returns on the first scroll up, so the
