@@ -233,9 +233,9 @@
     '.sip-disc{background:rgba(11,19,31,.6);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:14px 20px;backdrop-filter:blur(10px);}' +
     '.sip-disc-h{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.8px;color:#6B7C90;margin-bottom:6px;}' +
     '.sip-disc-t{font-size:11.5px;color:#93A4B8;line-height:1.6;}' +
-    '.sip-galphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}' +
+    '.sip-galphotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}' +
     '.sip-galphoto{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);transform:scale(calc(1 + var(--kick,0)*0.04));box-shadow:0 10px 26px rgba(0,0,0,.4);background-size:cover;background-position:center;cursor:pointer;}' +
-    '.sip-galvids{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;}' +
+    '.sip-galvids{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;}' +
     '.sip-galvid{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--card-bg);border:1px solid rgba(255,255,255,.09);cursor:pointer;transform:scale(calc(1 + var(--bass,0)*0.03));box-shadow:0 10px 26px rgba(0,0,0,.4);}' +
     '.sip-galvid video{width:100%;height:100%;object-fit:cover;}' +
     '.sip-posts{display:flex;flex-direction:column;gap:10px;max-width:720px;min-width:0;}' +
@@ -305,7 +305,7 @@
       '.sip-stats{grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;}.sip-stat{padding:8px 9px;}.sip-stat-v{font-size:17px;}' +
       '.sip-orbwrap{gap:8px;}.sip-orbcol{min-width:0;flex:1 1 100%;}.sip-stage{height:250px;}' +
       '.sip-card{padding:14px 14px;}.sip-grid{gap:10px;}' +
-      '.sip-galphotos{grid-template-columns:repeat(2,1fr);gap:8px;}.sip-galvids{grid-template-columns:repeat(2,1fr);gap:8px;}' +
+      '.sip-galphotos{grid-template-columns:1fr;gap:10px;}.sip-galvids{grid-template-columns:1fr;gap:10px;}' +
       '.sip-worldtitle{font-size:22px;}' +
       '.sip-editbadge{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px);max-width:calc(100vw - 20px);white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
       '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
@@ -329,8 +329,12 @@
     '.sip-overlay-t{font-family:Archivo,sans-serif;font-weight:800;font-size:22px;letter-spacing:.5px;}' +
     '.sip-overlay-s{font-size:13px;color:#93A4B8;max-width:340px;text-align:center;line-height:1.6;}' +
     '.sip-gallery-add{margin-left:auto;padding:7px 12px;border:1px solid rgba(56,245,138,.55);border-radius:999px;background:rgba(56,245,138,.1);color:#38F58A;font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}' +
-    '.sip-gallery-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}' +
-    '.sip-gallery-delete{position:absolute;right:8px;top:8px;z-index:3;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(40,5,12,.9);color:#ff8299;padding:6px 9px;font:800 10px/1 Archivo,sans-serif;cursor:pointer;}' +
+    '.sip-gallery-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}'
+    /* owner call 2026-09-09: Delete stays out of sight until the owner taps Manage (then Done) */
+    + '.sip-root.sip-manage .sip-gallery-delete{display:inline-block;}'
+    + '.sip-gallery-manage{padding:7px 12px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(255,255,255,.06);color:#E6EDF5;font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}'
+    + '.sip-root.sip-manage .sip-gallery-manage{border-color:rgba(255,92,119,.65);background:rgba(40,5,12,.6);color:#ff8299;}' +
+    '.sip-gallery-delete{display:none;position:absolute;right:8px;top:8px;z-index:3;border:1px solid rgba(255,92,119,.65);border-radius:999px;background:rgba(40,5,12,.9);color:#ff8299;padding:6px 9px;font:800 10px/1 Archivo,sans-serif;cursor:pointer;}' +
     '.sip-media-caption{position:absolute;left:0;right:0;bottom:0;padding:28px 10px 9px;background:linear-gradient(transparent,rgba(2,7,11,.9));color:#fff;font:700 11px/1.25 Archivo,sans-serif}.sip-media-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}.sip-media-tags a{color:#62bfff;text-decoration:none;font-size:10px;}' +
     '.sip-media-meta{position:fixed;inset:0;z-index:2147483645;background:rgba(2,7,11,.86);display:flex;align-items:center;justify-content:center;padding:20px;}' +
     '.sip-media-meta-card{width:min(440px,100%);background:#09121a;border:1px solid rgba(56,245,138,.4);border-radius:18px;padding:20px;box-shadow:0 24px 80px #000;}' +
@@ -474,10 +478,10 @@
       '</div></div></div>' +
       '</div></div>';
     // World 1: PHOTOS
-    var world1 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Photo Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="photo">＋ Upload photo</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
+    var world1 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Photo Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="photo">＋ Upload photo</button><button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR VIDEOS →</div><div class="sip-galphotos">' + galP + '</div></div>';
     if (!nGalV) galV += '<div class="sip-emptynote sip-visitor-only" style="grid-column:1/-1">No videos shared yet.</div>';
     // World 2: VIDEOS
-    var world2 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Video Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="video">＋ Upload video</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
+    var world2 = '<div class="sip-screen"><div class="sip-gallery-head"><div class="sip-worldtitle">Video Gallery</div>' + (cfg.isOwner ? '<button class="sip-gallery-add" type="button" data-gallery-add="video">＋ Upload video</button><button class="sip-gallery-manage" type="button" data-gallery-manage aria-pressed="false">Manage</button>' : '') + '</div><div class="sip-worldsub">SWIPE LEFT FOR POSTS →</div><div class="sip-galvids">' + galV + '</div></div>';
     // World 3: POSTS
     var world3 = '<div class="sip-screen"><div class="sip-worldtitle">Recent Activity</div><div class="sip-worldsub">POSTS · COMMENTS · SHARES · FRIENDS — SWIPE LEFT FOR CONTACT →</div><div class="sip-activity"><div class="sip-posts">' + (postHtml || '<div class="sip-emptynote">No recent activity shared yet.</div>') + '</div>' + friendsBox + '</div></div>';
     // World 4: CONTACT
@@ -934,6 +938,14 @@
       }, { threshold: 0.2 });
       lazies.forEach(function (v) { io.observe(v); });
     })();
+    $$('[data-gallery-manage]').forEach(function (button) {
+      button.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var on = !root.classList.contains('sip-manage');
+        root.classList.toggle('sip-manage', on);
+        $$('[data-gallery-manage]').forEach(function (b) { b.textContent = on ? 'Done' : 'Manage'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      });
+    });
     $$('[data-gallery-delete]').forEach(function (button) {
       button.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
