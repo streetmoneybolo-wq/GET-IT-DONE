@@ -540,6 +540,7 @@
     document.body.insertBefore(bar, document.body.firstChild);
     var input = bar.querySelector('input'), drop = bar.querySelector('.drop');
     var t = null, ab = null;
+    input.addEventListener('focus', function () { if (window.SMLSymbolIndex) window.SMLSymbolIndex.load(); }, { passive: true });
     function closeDrop() { drop.hidden = true; drop.innerHTML = ''; }
     function apply(sym) {
       sym = String(sym || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
@@ -564,6 +565,10 @@
       clearTimeout(t);
       var q = input.value.trim().replace(/^\$/, '');
       if (q.length < 1) { closeDrop(); return; }
+      /* owner call 2026-09-09: answered from the local symbol index (instant, same ranking + aliases as the header
+         search); the site search REST is only the fallback while the index is still downloading */
+      if (window.SMLSymbolIndex && window.SMLSymbolIndex.ready()) { if (ab) ab.abort(); rows(window.SMLSymbolIndex.search(q, 8)); return; }
+      if (window.SMLSymbolIndex) window.SMLSymbolIndex.load();
       t = setTimeout(function () {
         if (ab) ab.abort();
         ab = 'AbortController' in window ? new AbortController() : null;
