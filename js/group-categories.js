@@ -1808,6 +1808,10 @@
     '.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize output{position:static!important;transform:none!important;margin-left:8px;color:#bafbd7;font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}' +
     '.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize:hover > span,.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize.is-dragging > span{border-color:#7dffb5!important;background:#0b3a22!important}' +
     'html.sml-mobile .sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize{height:34px!important;bottom:-17px!important}html.sml-mobile .sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize > span{width:120px!important;height:26px!important}' +
+    /* owner call 2026-09-09: while the banner editor is open (drag the picture left/right, zoom) the strip must not sit over the
+       picture — shrink it to the pill and hang it fully below the edge so the placement drag owns the whole banner */
+    '.sml-gshell.sml-banner-edit .sml-gshell__main-head > button.sml-cbanner-resize{left:50%!important;right:auto!important;width:132px!important;transform:translateX(-50%)!important;bottom:-24px!important;height:24px!important}' +
+    'html.sml-mobile .sml-gshell.sml-banner-edit .sml-gshell__main-head > button.sml-cbanner-resize{bottom:-34px!important;height:34px!important;width:160px!important}' +
     /* desktop managers can grab the bottom edge straight away: the handle appears while the pointer is over the banner */
     /* owner call 2026-09-09: managers always see the grab strip on the banner's bottom edge (the plugin only creates it for
        managers); hover-only left it invisible at mousedown, so drags never started */
