@@ -106,7 +106,9 @@
 
   function scheduleBreaking(delay) {
     clearTimeout(breaking.timer);
-    breaking.timer = setTimeout(pollBreaking, delay || 4000);
+    /* owner call 2026-09-09 (dashboard speed): every poll is a full WordPress bootstrap (~1.7s) from EVERY open tab —
+       15s between polls keeps headlines flowing within seconds while freeing the server for the pages themselves */
+    breaking.timer = setTimeout(pollBreaking, delay || 15000);
   }
 
   function breakingRequest(query) {
@@ -143,7 +145,7 @@
         if (rememberBreaking(String(id))) breaking.queue.push(item);
       });
       runBreaking();
-      scheduleBreaking(data && data.has_more ? 250 : 3500);
+      scheduleBreaking(data && data.has_more ? 250 : 15000);
     }).catch(function () { scheduleBreaking(12000); });
   }
 
