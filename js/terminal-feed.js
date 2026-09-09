@@ -150,13 +150,13 @@
          with no community posts, so the old webull-feed only surfaced scraped
          quote-page text + legal disclaimers, never real user comments. Real
          community lives in the StockMarketLoop, moomoo, and Stocktwits tabs. */
-      '<div class="tv2-lf-tabs">' + [['sml', 'StockMarketLoop'], ['moomoo', 'moomoo'], ['stocktwits', 'Stocktwits'], ['voice', '🎙 Voice Room']].map(function (t) { return '<button type="button" class="tv2-lf-tab' + (t[0] === S.tab ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="tv2-lf-tabs">' + [['sml', 'StockMarketLoop'], ['moomoo', 'Community'], ['stocktwits', 'Stocktwits'], ['voice', '🎙 Voice Room']].map(function (t) { return '<button type="button" class="tv2-lf-tab' + (t[0] === S.tab ? ' on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div>' +
       '<div class="tv2-lf-pane on" data-pane="sml">' +
         (LOGGED ? '<div class="tv2-lf-comp"><textarea id="tv2lf-text" maxlength="600" placeholder="Share your take on $' + esc(SYM) + '…"></textarea><div class="tv2-lf-comp-row"><button type="button" class="tv2-lf-side bull on" data-side="bull">Bullish</button><button type="button" class="tv2-lf-side bear" data-side="bear">Bearish</button><span class="tv2-lf-note" id="tv2lf-note"></span><button type="button" class="tv2-lf-post" id="tv2lf-post">Post</button></div></div>'
                 : '<div class="tv2-lf-gate"><a href="/login/?redirect_to=' + encodeURIComponent(location.href) + '">Sign in</a> to post on the $' + esc(SYM) + ' stream. Reading is open to everyone.</div>') +
         '<div class="tv2-lf-list" id="tv2lf-list"><div class="tv2-lf-empty">Loading the $' + esc(SYM) + ' stream…</div></div>' +
       '</div>' +
-      '<div class="tv2-lf-pane" data-pane="moomoo"><div class="tv2-lf-list" id="tv2lf-mm"><div class="tv2-lf-empty">Loading moomoo posts…</div></div></div>' +
+      '<div class="tv2-lf-pane" data-pane="moomoo"><div class="tv2-lf-list" id="tv2lf-mm"><div class="tv2-lf-empty">Loading community posts…</div></div></div>' +
       '<div class="tv2-lf-pane" data-pane="stocktwits"><div class="tv2-lf-ext"><span>Stocktwits conversation for $' + esc(SYM) + ' opens on stocktwits.com (no on-site feed).</span><a href="https://stocktwits.com/symbol/' + encodeURIComponent(SYM) + '" target="_blank" rel="noopener nofollow">Open Stocktwits ↗</a></div></div>' +
       '<div class="tv2-lf-pane" data-pane="voice"><div class="tv2-lf-voice">' +
         '<div class="vhead"><h4>Live Voice Room</h4><span class="tv2-lf-vcount" id="tv2lf-vcount" data-empty="1">0 live</span></div>' +
@@ -243,7 +243,7 @@
     // moomoo only — the webull branch was removed with the Webull tab (see the
     // tabs comment in card(): no public Webull comments API)
     var url = '/wp-json/sml-ticker-community/v1/moomoo?symbol=';
-    var id = '#tv2lf-mm', label = 'moomoo';
+    var id = '#tv2lf-mm', label = 'community';
     fetch(url + encodeURIComponent(SYM), { credentials: 'same-origin' }).then(function (r) { return r.json(); })
       .then(function (j) { renderExternal(el, id, j, label); })
       .catch(function () { el.querySelector(id).innerHTML = '<div class="tv2-lf-empty">' + label + ' is not responding right now.</div>'; });

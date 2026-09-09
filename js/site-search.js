@@ -939,6 +939,7 @@
       input.addEventListener('focus', function () { open(input); });
       input.addEventListener('click', function () { open(input); });
       input.addEventListener('input', function () { open(input); queue(input.value); });
+      input.addEventListener('focus', function () { window.SMLSymbolIndex.load(); }, { passive: true });
       var form = input.closest('form');
       if (form && !form.dataset.smlSsV2Bound) {
         form.dataset.smlSsV2Bound = '1';
@@ -1011,21 +1012,60 @@
     }
   }
 
+  /* ---- local symbol index (owner call 2026-09-09): the whole active US listing universe, downloaded once a day from
+     the market service and searched in the page — the Quotes group appears the instant you type. ---- */
+  window.SMLSymbolIndex = window.SMLSymbolIndex || (function () {
+    var RENDER = 'https://stockmarketloop-loop-kick.onrender.com', KEY = 'sml-symbol-universe';
+    var U = { rows: null, at: 0, loading: null, tries: 0 };
+    var POPULAR = 'SPY QQQ NVDA AAPL TSLA MSFT AMD META AMZN GOOGL GOOG NFLX COIN AVGO SMCI PLTR SOFI RIVN MSTR INTC MU CRM ORCL ADBE UBER ABNB SHOP PYPL HOOD DKNG BA CAT DIS NKE SBUX MCD WMT COST TGT HD JPM BAC WFC GS MS V MA XOM CVX OXY COP PFE MRNA JNJ LLY UNH ABBV AMGN T VZ TMUS F GM NIO LCID CCL AAL UAL DAL MARA RIOT CLSK GME AMC SOUN BBAI IONQ RGTI QUBT ARM SNOW NET DDOG CRWD PANW ROKU SPOT IWM DIA VXX TQQQ SQQQ SOXL SOXS UVXY TLT GLD SLV USO XLF XLE XLK ARKK BRK.B TSM BABA JD PDD BIDU NVO ASML LMT RTX NOC GE HON IBM CSCO QCOM TXN AMAT LRCX KLAC MRVL ON MCHP ADI ANET DELL HPQ WDC STX SNDK'.split(' '), POP = {}; POPULAR.forEach(function (x, i) { POP[x] = i + 1; });
+    var ALIASES = 'TESLA:TSLA APPLE:AAPL GOOGLE:GOOGL ALPHABET:GOOGL AMAZON:AMZN MICROSOFT:MSFT NVIDIA:NVDA FACEBOOK:META META:META NETFLIX:NFLX DISNEY:DIS WALMART:WMT COSTCO:COST BOEING:BA NIKE:NKE STARBUCKS:SBUX MCDONALDS:MCD COINBASE:COIN PALANTIR:PLTR SPDR:SPY SP500:SPY NASDAQ:QQQ BERKSHIRE:BRK.B INTEL:INTC MICRON:MU ORACLE:ORCL SALESFORCE:CRM ADOBE:ADBE UBER:UBER AIRBNB:ABNB SHOPIFY:SHOP PAYPAL:PYPL ROBINHOOD:HOOD DRAFTKINGS:DKNG CATERPILLAR:CAT HOMEDEPOT:HD JPMORGAN:JPM CHASE:JPM GOLDMAN:GS MORGANSTANLEY:MS VISA:V MASTERCARD:MA EXXON:XOM CHEVRON:CVX PFIZER:PFE MODERNA:MRNA JOHNSON:JNJ LILLY:LLY UNITEDHEALTH:UNH VERIZON:VZ TMOBILE:TMUS FORD:F GENERALMOTORS:GM RIVIAN:RIVN LUCID:LCID CARNIVAL:CCL AMERICANAIRLINES:AAL UNITEDAIRLINES:UAL DELTA:DAL GAMESTOP:GME SOUNDHOUND:SOUN SNOWFLAKE:SNOW CLOUDFLARE:NET DATADOG:DDOG CROWDSTRIKE:CRWD PALOALTO:PANW SPOTIFY:SPOT RUSSELL:IWM DOWJONES:DIA GOLD:GLD SILVER:SLV OIL:USO TAIWAN:TSM TSMC:TSM ALIBABA:BABA NOVONORDISK:NVO LOCKHEED:LMT BROADCOM:AVGO SUPERMICRO:SMCI MICROSTRATEGY:MSTR STRATEGY:MSTR MARATHON:MARA CISCO:CSCO QUALCOMM:QCOM TEXASINSTRUMENTS:TXN APPLIED:AMAT LAMRESEARCH:LRCX MARVELL:MRVL DELL:DELL HEWLETT:HPQ WESTERNDIGITAL:WDC SEAGATE:STX SANDISK:SNDK IBM:IBM HONEYWELL:HON GENERALELECTRIC:GE RAYTHEON:RTX NORTHROP:NOC AMD:AMD ARM:ARM'.split(' ').map(function (x) { var p = x.split(':'); return [p[0], p[1]]; });
+    function aliasHits(q) { q = String(q || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (q.length < 2) return []; var out = [], seen = {}; ALIASES.forEach(function (a) { if (a[0].indexOf(q) === 0 && !seen[a[1]]) { seen[a[1]] = 1; out.push(a[1]); } }); return out; }
+    function byPop(a, b) { var pa = POP[a[0]] || 9999, pb = POP[b[0]] || 9999; return pa - pb || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0); }
+    function load() {
+      if (U.rows || U.loading) return U.loading || Promise.resolve(U.rows);
+      try { var c = JSON.parse(localStorage.getItem(KEY) || 'null'); if (c && Array.isArray(c.rows) && c.rows.length > 1000 && Date.now() - c.at < 86400000) { U.rows = c.rows; U.at = c.at; return Promise.resolve(U.rows); } } catch (e) {}
+      U.loading = fetch(RENDER + '/api/symbols/all').then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+        if (j && j.ok && Array.isArray(j.rows) && j.rows.length > 1000) { U.rows = j.rows; U.at = Date.now(); try { localStorage.setItem(KEY, JSON.stringify({ at: U.at, rows: j.rows })); } catch (e) {} }
+      }).catch(function () {}).then(function () { U.loading = null; if (!U.rows && U.tries++ < 6) setTimeout(load, 15000 * U.tries); return U.rows; });
+      return U.loading;
+    }
+    function row(x) { var exch = x[2] || ''; return { symbol: x[0], code: 'US.' + x[0], name: x[1], exchange: exch, type: x[3], source: 'StockMarketLoop market directory', verified: true, tradable: true, message: 'Verified active U.S. market listing.', tradingview_symbol: (exch === 'NYSE ARCA' ? 'AMEX' : exch.replace(/\s.*$/, '')) + ':' + x[0], terminal_url: 'https://stockmarketloop.com/stock-chart/?symbol=' + encodeURIComponent(x[0]) + '&exchange=' + encodeURIComponent(exch), community_url: 'https://stockmarketloop.com/stock-chart/?symbol=' + encodeURIComponent(x[0]), has_moomoo_community_id: false }; }
+    function search(q, limit) {
+      var rows = U.rows; if (!rows) return null; limit = limit || 8; q = String(q || '').trim().toUpperCase(); var ql = q.toLowerCase(); if (!q) return [];
+      var out = [], seen = {}, i, x; function push(y) { if (!seen[y[0]]) { seen[y[0]] = 1; out.push(y); } }
+      for (i = 0; i < rows.length; i++) { if (rows[i][0] === q) push(rows[i]); }
+      var al = aliasHits(q); if (al.length) { var bySym = {}; for (i = 0; i < rows.length; i++) bySym[rows[i][0]] = rows[i]; al.forEach(function (sym) { if (bySym[sym]) push(bySym[sym]); }); }
+      var pre = []; for (i = 0; i < rows.length; i++) { x = rows[i]; if (x[0].indexOf(q) === 0 && x[0] !== q) pre.push(x); } pre.sort(byPop); for (i = 0; i < pre.length && out.length < limit; i++) push(pre[i]);
+      var np = []; for (i = 0; i < rows.length; i++) { x = rows[i]; if (x[1].toLowerCase().indexOf(ql) === 0) np.push(x); } np.sort(byPop); for (i = 0; i < np.length && out.length < limit; i++) push(np[i]);
+      for (i = 0; i < rows.length && out.length < limit; i++) { x = rows[i]; if (x[0].indexOf(q) !== -1 || x[1].toLowerCase().indexOf(ql) !== -1) push(x); }
+      return out.slice(0, limit).map(row);
+    }
+    return { load: load, search: search, ready: function () { return !!U.rows; } };
+  })();
+
   function queue(q, immediate) {
     clearTimeout(state.timer);
     q = String(q || '').trim();
     el('#sml-ss-query-label').textContent = q ? 'Results for “' + q + '”' : 'Search StockMarketLoop';
     if (q.length < 2) { state.data = null; el('#sml-ss-body').innerHTML = '<div class="sml-ss-hint">Enter at least 2 characters. Search by ticker, company, topic, headline, display name, or @handle.</div>'; return; }
-    state.timer = setTimeout(function () { run(q); }, immediate ? 0 : 240);
+    var local = window.SMLSymbolIndex.ready() ? window.SMLSymbolIndex.search(q, 8) : null;
+    if (local) { state.local = { q: q, quotes: local }; state.data = { query: q, symbol: local.length ? local[0].symbol : '', groups: { quotes: local }, pending: true }; render(); }
+    else { state.local = null; window.SMLSymbolIndex.load(); }
+    state.timer = setTimeout(function () { run(q); }, immediate ? 0 : (local ? 120 : 240));
   }
 
   function run(q) {
     if (state.abort) state.abort.abort();
     state.abort = 'AbortController' in window ? new AbortController() : null;
-    el('#sml-ss-body').innerHTML = '<div class="sml-ss-loading">Searching StockMarketLoop</div>';
+    if (!(state.local && state.local.q === q)) el('#sml-ss-body').innerHTML = '<div class="sml-ss-loading">Searching StockMarketLoop</div>';
     fetch(REST + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', cache: 'no-store', signal: state.abort ? state.abort.signal : undefined })
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Search failed.'); return j; }); })
-      .then(function (data) { state.data = data || {}; render(); })
+      .then(function (data) {
+        data = data || {}; data.groups = data.groups || {};
+        /* the local index ranks tickers better than the directory lookup (NV → NVDA, not ACIO): keep ours when we have it */
+        if (state.local && state.local.q === q && state.local.quotes.length) { data.groups.quotes = state.local.quotes; data.symbol = state.local.quotes[0].symbol; }
+        state.data = data; render();
+      })
       .catch(function (e) { if (e.name !== 'AbortError') el('#sml-ss-body').innerHTML = '<div class="sml-ss-error">' + esc(e.message || 'Search failed.') + '</div>'; });
   }
 
@@ -1041,6 +1081,7 @@
   function cardPerson(x) { return '<a class="sml-ss-card sml-ss-card--person" href="' + attr(x.url) + '"><img src="' + attr(x.avatar || '') + '" alt="" loading="lazy"><span class="sml-ss-copy"><span class="sml-ss-name">' + esc(x.name || x.handle) + '</span><span class="sml-ss-meta">@' + esc(x.handle) + '</span></span></a>'; }
   function section(key, title, rows, renderer) {
     var show = state.tab === 'all' || state.tab === key || (state.tab === 'news' && key === 'letters');
+    if (state.data && state.data.pending && key !== 'quotes') return '<section class="sml-ss-section" data-section="' + key + '"' + (show ? '' : ' hidden') + '><h2 class="sml-ss-title">' + title + '<span class="sml-ss-count">…</span></h2><div class="sml-ss-loading">Searching StockMarketLoop</div></section>';
     return '<section class="sml-ss-section" data-section="' + key + '"' + (show ? '' : ' hidden') + '><h2 class="sml-ss-title">' + title + '<span class="sml-ss-count">' + rows.length + '</span></h2>' + (rows.length ? '<div class="sml-ss-grid">' + rows.map(renderer).join('') + '</div>' : '<div class="sml-ss-empty">No matching ' + title.toLowerCase() + ' found.</div>') + '</section>';
   }
 
