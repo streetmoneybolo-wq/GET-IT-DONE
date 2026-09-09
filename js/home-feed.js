@@ -593,7 +593,7 @@
       Array.prototype.some.call(document.querySelectorAll('a.sml-acct__item[href]'),function(a){ var t=(a.textContent||'').replace(/\s+/g,' ').trim().toLowerCase(); var hf=a.getAttribute('href')||''; if((t==='my profile'||t==='profile')&&!isAliasHref(hf)){ found=hf; return true; } return false; });
       if(found){ meHref=found; return found; }
       /* last resort: ask the site (sml-friends-profile/v1/me) and repair the open menu when it answers */
-      fetch('/wp-json/sml-friends-profile/v1/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(j){ if(j&&j.url){ meHref=j.url; var p=document.getElementById('sml-hf-memenu'); if(p) p.querySelectorAll('a').forEach(function(a){ if(isAliasHref(a.getAttribute('href'))&&/my profile/i.test(a.textContent||'')) a.href=j.url; }); } }).catch(function(){});
+      fetch('/wp-json/sml-friends-profile/v1/me',{credentials:'same-origin',cache:'no-store',headers:(function(){ var n=(window.SMLHomeOwnerControls&&SMLHomeOwnerControls.nonce)||(window.wpApiSettings&&wpApiSettings.nonce)||(window.SMLHomeFeedEngagement&&SMLHomeFeedEngagement.nonce)||''; return n?{'X-WP-Nonce':n}:{}; })()}).then(function(r){ return r.ok?r.json():null; }).then(function(j){ if(j&&j.url){ meHref=j.url; var p=document.getElementById('sml-hf-memenu'); if(p) p.querySelectorAll('a').forEach(function(a){ if(isAliasHref(a.getAttribute('href'))&&/my profile/i.test(a.textContent||'')) a.href=j.url; }); } }).catch(function(){});
       return '/me/';
     }
     function menuIcon(k){

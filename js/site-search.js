@@ -744,7 +744,9 @@
      The member's own profile page is prerendered from the homepage (Speculation Rules), so My profile opens
      instantly; any other profile link is prefetched on hover; the immersive profile script is prefetched too. */
   function mountProfilePrewarm() {
-    if (document.getElementById('sml-profile-prewarm') || !document.body || !document.body.classList.contains('logged-in')) return;
+    if (document.getElementById('sml-profile-prewarm') || !document.body) return;
+    /* the homepage is a custom render without the logged-in body class: the account menu / popup only exist for members */
+    if (!document.body.classList.contains('logged-in') && !document.querySelector('.sml-acct, #sml-loop-popup')) return;
     var here = location.pathname.replace(/\/+$/, '') + '/';
     function myProfile() {
       var a = null;
