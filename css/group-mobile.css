@@ -102,3 +102,7 @@ html.sml-mobile .sml-gshell__composer button { min-height: 44px; }
 /* the shell's phone grid reserves the first row at ~50vh for a 190px sidebar → a 215px hole above the chat */
 html.sml-mobile .sml-gshell { grid-template-rows: auto minmax(0, 1fr) !important; height: auto !important; min-height: 0 !important; }
 html.sml-mobile .sml-gshell__side { height: auto !important; }
+/* the sidebar head is height-capped by the shell on phones while the market countdown card (.sml-ghx-cd) inside it is taller —
+   it spilled over the channel strip and hid the pills. Let the head grow; the strip always sits below it. */
+html.sml-mobile .sml-gshell__side-head { height: auto !important; max-height: none !important; min-height: 0 !important; overflow: visible !important; }
+html.sml-mobile .sml-gshell__channels { position: relative; z-index: 2; }
