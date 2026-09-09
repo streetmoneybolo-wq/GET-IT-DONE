@@ -940,6 +940,8 @@
       input.addEventListener('click', function () { open(input); });
       input.addEventListener('input', function () { open(input); queue(input.value); });
       input.addEventListener('focus', function () { window.SMLSymbolIndex.load(); }, { passive: true });
+      /* first-time visitors: warm the index on idle after load (cached for a day), so even the first keystroke is local */
+      (function warm(){ var go = function () { try { window.SMLSymbolIndex.load(); } catch (e) {} }; if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 6000 }); else setTimeout(go, 3000); })();
       var form = input.closest('form');
       if (form && !form.dataset.smlSsV2Bound) {
         form.dataset.smlSsV2Bound = '1';
