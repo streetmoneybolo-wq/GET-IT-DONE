@@ -772,7 +772,11 @@
     }
     if (location.pathname.replace(/\/+$/, '') === '') canonical(function (c) {
       var mine = c || myProfile();
-      if (!mine || mine === here) return;
+      if (!mine) return;
+      window.SML_ME_PROFILE = mine;
+      /* every My profile link goes straight to the canonical page: the nicename form 301s there and would not match the prerender */
+      Array.prototype.forEach.call(document.querySelectorAll('a.sml-acct__item[href], #sml-hf-memenu a[href]'), function (x) { if (/^\s*(my )?profile\s*$/i.test(x.textContent || '')) x.setAttribute('href', mine); });
+      if (mine === here) return;
       if (specOk) rules({ prerender: [{ urls: [mine], eagerness: 'immediate' }], prefetch: [{ urls: [mine], eagerness: 'immediate' }] });
       else link('prefetch', mine, 'document');
     });

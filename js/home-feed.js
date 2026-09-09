@@ -587,6 +587,7 @@
     function isAliasHref(h){ return !h || /\/(my-profile|customize-profile)\/?(?:[?#].*)?$/i.test(String(h)); }
     var meHref='';
     function realProfileHref(current){
+      if(window.SML_ME_PROFILE) return window.SML_ME_PROFILE; /* canonical handle URL published by site-search.js */
       if(!isAliasHref(current)) return current;
       if(meHref) return meHref;
       var found='';
