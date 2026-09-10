@@ -1116,3 +1116,87 @@
   st.textContent = "#sml-lb-panel{z-index:2147483200!important}";
   (document.head || document.documentElement).appendChild(st);
 })();
+
+/* ===== LOOP-KICK: grab it and put it anywhere (owner call 2026-09-10) =====
+   The popup is an iframe (it swallows pointer events), so the grab handle lives in the host page: a ⠿ grip docked to the
+   top-right corner of #sml-loop-popup-inner. Drag it to move the whole phone, double-click it to snap back to the corner.
+   The position is remembered per browser (localStorage), clamped to the viewport, and re-clamped on resize.
+   Phones keep the full-screen layout (nothing to drag there). */
+(function () {
+  'use strict';
+  if (document.documentElement.classList.contains('sml-mobile')) return;
+  var KEY = 'sml_lk_pos';
+  var css = document.createElement('style'); css.id = 'sml-lk-drag-css';
+  css.textContent = '#sml-loop-popup-inner{will-change:left,top}'
+    + '.sml-lk-grip{position:absolute;top:8px;right:8px;z-index:5;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:rgba(8,13,23,.92);color:#cfe0f2;font:700 18px/1 Inter,Archivo,sans-serif;display:flex;align-items:center;justify-content:center;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;box-shadow:0 10px 24px -10px rgba(0,0,0,.9);opacity:.75;transition:opacity .15s,transform .15s}'
+    + '.sml-lk-grip:hover{opacity:1;transform:scale(1.06)}.sml-lk-grip.dragging{cursor:grabbing;opacity:1;background:#00ff88;color:#06120c;border-color:#00ff88}'
+    + '.sml-lk-grip span{position:absolute;right:46px;top:50%;transform:translateY(-50%);white-space:nowrap;font:600 11px/1 Inter,sans-serif;color:#cfe0f2;background:rgba(8,13,23,.92);border-radius:999px;padding:6px 9px;opacity:0;pointer-events:none;transition:opacity .15s}'
+    + '.sml-lk-grip:hover span{opacity:1}'
+    + '#sml-loop-popup.sml-lk-dragging #sml-loop-popup-frame{pointer-events:none}';
+  document.head.appendChild(css);
+
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+  function place(inner, x, y, save) {
+    var r = inner.getBoundingClientRect();
+    x = clamp(Math.round(x), 0, Math.max(0, window.innerWidth - r.width));
+    y = clamp(Math.round(y), 0, Math.max(0, window.innerHeight - r.height));
+    inner.style.setProperty('position', 'fixed', 'important');
+    inner.style.setProperty('left', x + 'px', 'important');
+    inner.style.setProperty('top', y + 'px', 'important');
+    inner.style.setProperty('right', 'auto', 'important');
+    inner.style.setProperty('bottom', 'auto', 'important');
+    inner.style.setProperty('margin', '0', 'important');
+    if (save) { try { localStorage.setItem(KEY, JSON.stringify({ x: x, y: y, vw: window.innerWidth, vh: window.innerHeight })); } catch (e) {} }
+  }
+  function reset(inner) {
+    ['position', 'left', 'top', 'right', 'bottom', 'margin'].forEach(function (p) { inner.style.removeProperty(p); });
+    try { localStorage.removeItem(KEY); } catch (e) {}
+  }
+  function restore(inner) {
+    var saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (!saved || typeof saved.x !== 'number') return;
+    /* keep the same relative spot when the window size changed */
+    var x = saved.vw ? saved.x * (window.innerWidth / saved.vw) : saved.x;
+    var y = saved.vh ? saved.y * (window.innerHeight / saved.vh) : saved.y;
+    place(inner, x, y, false);
+  }
+  function setup() {
+    var popup = document.getElementById('sml-loop-popup'), inner = document.getElementById('sml-loop-popup-inner');
+    if (!popup || !inner || inner.querySelector('.sml-lk-grip')) return;
+    var grip = document.createElement('div'); grip.className = 'sml-lk-grip'; grip.setAttribute('role', 'button'); grip.setAttribute('aria-label', 'Drag LOOP-KICK anywhere · double-click to snap back');
+    grip.title = 'Drag me anywhere · double-click to snap back';
+    grip.innerHTML = '⠿<span>Drag me anywhere · double-click to snap back</span>';
+    inner.appendChild(grip);
+    if (getComputedStyle(inner).position === 'static') inner.style.position = 'relative';
+    restore(inner);
+    var drag = null;
+    grip.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+      ev.preventDefault(); ev.stopPropagation();
+      var r = inner.getBoundingClientRect();
+      drag = { id: ev.pointerId, dx: ev.clientX - r.left, dy: ev.clientY - r.top, moved: false };
+      try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+      grip.classList.add('dragging'); popup.classList.add('sml-lk-dragging');
+    });
+    grip.addEventListener('pointermove', function (ev) {
+      if (!drag || ev.pointerId !== drag.id) return;
+      ev.preventDefault();
+      drag.moved = true;
+      place(inner, ev.clientX - drag.dx, ev.clientY - drag.dy, false);
+    });
+    function end(ev) {
+      if (!drag || (ev && ev.pointerId !== drag.id)) return;
+      var r = inner.getBoundingClientRect();
+      if (drag.moved) place(inner, r.left, r.top, true);
+      drag = null;
+      grip.classList.remove('dragging'); popup.classList.remove('sml-lk-dragging');
+    }
+    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+    grip.addEventListener('dblclick', function (ev) { ev.preventDefault(); ev.stopPropagation(); reset(inner); });
+    grip.addEventListener('click', function (ev) { ev.stopPropagation(); });   /* the backdrop's click-to-close must not fire */
+    window.addEventListener('resize', function () { if (inner.style.getPropertyValue('left')) { var r = inner.getBoundingClientRect(); place(inner, r.left, r.top, true); } });
+  }
+  setup();
+  var tries = 0; var t = setInterval(function () { setup(); if (document.querySelector('#sml-loop-popup-inner .sml-lk-grip') || ++tries > 60) clearInterval(t); }, 1000);
+  if (window.MutationObserver) { new MutationObserver(function () { if (document.getElementById('sml-loop-popup-inner') && !document.querySelector('#sml-loop-popup-inner .sml-lk-grip')) setup(); }).observe(document.body, { childList: true }); }
+})();
