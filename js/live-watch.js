@@ -3096,6 +3096,9 @@
   /* ---- wire into the table flow ---- */
   var gpPaintOrig = paintTable;
   paintTable = function (t) {
+    /* a poll that started before Leave/forfeit must not repaint a table we already left */
+    if (t && t.id && G.tableId && String(t.id) !== String(G.tableId)) return;
+    if (t && t.id && !G.tableId) return;
     GP.lastT = t;
     var st = t.status || 'waiting';
     if (st === 'waiting') { paintWait(t); return; }
