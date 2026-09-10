@@ -2643,7 +2643,8 @@
   function paintLive() {
     var b = document.getElementById('sml-gk-me'); if (!b || !G) return;
     var st = liveState; var live = !!(st && st.joined && st.speakers > 0);
-    var talkers = st ? (st.members || []).filter(function (m) { return m.talking && m.key !== st.self; }) : [];
+    /* a talk flag older than 45 s is a lost "off" signal, not a speaker still talking */
+    var talkers = st ? (st.members || []).filter(function (m) { return m.talking && m.key !== st.self && (Date.now() - Number(m.talking)) < 45000; }) : [];
     var talking = talkers.length > 0;
     b.classList.toggle('live', live); b.classList.toggle('talking', talking);
     /* a fixed "LIVE · <name> is talking" banner (bottom of the screen) — visible on phones even when the header has scrolled away */
