@@ -3141,11 +3141,15 @@
       else if (key === 'spades') { var n = document.createElement('span'); n.className = 'slw-gnote'; n.textContent = '2 vs 2 · CPU partners available'; cta.insertAdjacentElement('afterend', n); }
     });
   }
+  /* the original lobby refresh timer still calls the old loadLobby (it captured the function reference), so the
+     decorations live in renderLobbyReal itself — every render, whichever caller, gets the CPU buttons + wide list */
+  var gpRenderLobbyOrig = renderLobbyReal;
+  renderLobbyReal = function (j) { gpRenderLobbyOrig(j); gpDecorateTiles(); gpRenderWide(GP.wide || []); };
   loadLobby = function () {
     if (SIM || document.hidden || S.tab !== 4 || G.mode !== 'lobby') return;
     Promise.all([api('/sml-games/v1/lobby?context=video&context_id=' + encodeURIComponent(gpCtx())), api('/sml-games-plus/v1/wide?context_id=' + encodeURIComponent(gpCtx()))]).then(function (rs) {
       var j = rs[0].j; if (!j || !j.catalogue) return;
-      renderLobbyReal(j); gpDecorateTiles(); gpRenderWide((rs[1] && rs[1].j && rs[1].j.tables) || []);
+      GP.wide = (rs[1] && rs[1].j && rs[1].j.tables) || []; renderLobbyReal(j);
     }).catch(function () {});
   };
   if (!SIM) setInterval(function () { if (S.tab === 4 && G.mode === 'lobby') loadLobby(); }, 8000);
