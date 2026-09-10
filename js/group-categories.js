@@ -2657,8 +2657,7 @@
     var g = gid(); if (!g || !member || !loaded) return;
     get('chirps?group_id=' + encodeURIComponent(g) + '&since=' + last).then(function (j) {
       var l = Number(j.last) || 0;
-      if (!last) { last = l; return; }
-      last = Math.max(last, l);
+      last = Math.max(last, l);   /* with no cursor the server only sends the last 45 s, so the first chirp ever still plays */
       if (j.chirps && j.chirps.length) { queue = queue.concat(j.chirps); playNext(); }
     }).catch(function () {});
   }
