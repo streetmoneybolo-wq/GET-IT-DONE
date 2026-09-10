@@ -2486,13 +2486,13 @@
   }
   function get(path, retried) {
     return fetch(API + path, { credentials: 'same-origin', headers: hdr(false), cache: 'no-store' }).then(parse).catch(function (e) {
-      if (!retried && /nonce|401|403/.test(String(e.message) + ' ' + String(e.code))) return freshNonce().then(function () { return get(path, true); });
+      if (!retried && /nonce/i.test(String(e.message) + ' ' + String(e.code))) return freshNonce().then(function () { return get(path, true); });
       throw e;
     });
   }
   function post(path, body, retried) {
     return fetch(API + path, { method: 'POST', credentials: 'same-origin', headers: hdr(true), body: JSON.stringify(body) }).then(parse).catch(function (e) {
-      if (!retried && /nonce|401/.test(String(e.message) + ' ' + String(e.code))) return freshNonce().then(function () { return post(path, body, true); });
+      if (!retried && /nonce/i.test(String(e.message) + ' ' + String(e.code))) return freshNonce().then(function () { return post(path, body, true); });
       throw e;
     });
   }
@@ -2582,8 +2582,9 @@
       if (!last) last = Number(j.lastChirp) || 0;
       paint();
     }).catch(function () {
-      /* the group page fires a burst of requests at boot and the edge answers 429 to some of them — try again, later */
-      if (loadTries++ < 8) setTimeout(load, 2000 * loadTries); else { loaded = true; member = false; }
+      /* the group page fires a burst of requests at boot and the edge answers 429 (then 403 for a while) to a client that keeps
+         hammering — back off for real: 6, 12, 18 … seconds, up to ~2 minutes */
+      if (loadTries++ < 8) setTimeout(load, 6000 * loadTries); else { loaded = true; member = false; }
     });
   }
 
@@ -2833,6 +2834,6 @@
     }, 500);
   })();
 
-  load().then(function () { setInterval(function () { if (G) paint(); }, 2500); (function tick() { pollSignal(); setTimeout(tick, G && G.chirp ? 1000 : 4000); })(); });
+  setTimeout(function () { load().then(function () { setInterval(function () { if (G) paint(); }, 2500); (function tick() { pollSignal(); setTimeout(tick, G && G.chirp ? 1000 : 4000); })(); }); }, 4000);
   document.addEventListener('sml:group-context-change', function () { setTimeout(paint, 50); });
 })();
