@@ -1124,8 +1124,18 @@
    Phones keep the full-screen layout (nothing to drag there). */
 (function () {
   'use strict';
-  if (document.documentElement.classList.contains('sml-mobile')) return;
+  /* phones: the popup fills the screen by default; the first drag turns it into a floating window (86vw × 78dvh) that
+     can be put anywhere, and a double-tap on the grip makes it full-screen again */
+  var MOBILE = document.documentElement.classList.contains('sml-mobile');
   var KEY = 'sml_lk_pos';
+  function floatSize(inner) {
+    if (!MOBILE) return;
+    inner.style.setProperty('width', 'min(86vw, 420px)', 'important');
+    inner.style.setProperty('max-width', '86vw', 'important');
+    inner.style.setProperty('height', 'min(78dvh, 760px)', 'important');
+    inner.style.setProperty('border-radius', '18px', 'important');
+    inner.style.setProperty('box-shadow', '0 24px 60px -18px rgba(0,0,0,.95), 0 0 0 1px rgba(255,255,255,.08)', 'important');
+  }
   var css = document.createElement('style'); css.id = 'sml-lk-drag-css';
   css.textContent = '#sml-loop-popup-inner{will-change:left,top}'
     + '.sml-lk-grip{position:absolute;top:8px;right:8px;z-index:5;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:rgba(8,13,23,.92);color:#cfe0f2;font:700 18px/1 Inter,Archivo,sans-serif;display:flex;align-items:center;justify-content:center;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;box-shadow:0 10px 24px -10px rgba(0,0,0,.9);opacity:.75;transition:opacity .15s,transform .15s}'
@@ -1137,6 +1147,7 @@
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
   function place(inner, x, y, save) {
+    floatSize(inner);
     var r = inner.getBoundingClientRect();
     x = clamp(Math.round(x), 0, Math.max(0, window.innerWidth - r.width));
     y = clamp(Math.round(y), 0, Math.max(0, window.innerHeight - r.height));
@@ -1149,7 +1160,7 @@
     if (save) { try { localStorage.setItem(KEY, JSON.stringify({ x: x, y: y, vw: window.innerWidth, vh: window.innerHeight })); } catch (e) {} }
   }
   function reset(inner) {
-    ['position', 'left', 'top', 'right', 'bottom', 'margin'].forEach(function (p) { inner.style.removeProperty(p); });
+    ['position', 'left', 'top', 'right', 'bottom', 'margin', 'width', 'max-width', 'height', 'border-radius', 'box-shadow'].forEach(function (p) { inner.style.removeProperty(p); });
     try { localStorage.removeItem(KEY); } catch (e) {}
   }
   function restore(inner) {
@@ -1164,8 +1175,8 @@
     var popup = document.getElementById('sml-loop-popup'), inner = document.getElementById('sml-loop-popup-inner');
     if (!popup || !inner || inner.querySelector('.sml-lk-grip')) return;
     var grip = document.createElement('div'); grip.className = 'sml-lk-grip'; grip.setAttribute('role', 'button'); grip.setAttribute('aria-label', 'Drag LOOP-KICK anywhere · double-click to snap back');
-    grip.title = 'Drag me anywhere · double-click to snap back';
-    grip.innerHTML = '⠿<span>Drag me anywhere · double-click to snap back</span>';
+    grip.title = MOBILE ? 'Drag me anywhere · double-tap for full screen' : 'Drag me anywhere · double-click to snap back';
+    grip.innerHTML = '⠿<span>' + grip.title + '</span>';
     inner.appendChild(grip);
     if (getComputedStyle(inner).position === 'static') inner.style.position = 'relative';
     restore(inner);
@@ -1193,6 +1204,9 @@
     }
     grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
     grip.addEventListener('dblclick', function (ev) { ev.preventDefault(); ev.stopPropagation(); reset(inner); });
+    /* double-TAP on touch (no dblclick on some phones) */
+    var lastTap = 0;
+    grip.addEventListener('pointerup', function (ev) { if (ev.pointerType === 'mouse') return; var now = Date.now(); if (now - lastTap < 350 && !(drag && drag.moved)) { reset(inner); } lastTap = now; });
     grip.addEventListener('click', function (ev) { ev.stopPropagation(); });   /* the backdrop's click-to-close must not fire */
     window.addEventListener('resize', function () { if (inner.style.getPropertyValue('left')) { var r = inner.getBoundingClientRect(); place(inner, r.left, r.top, true); } });
   }
