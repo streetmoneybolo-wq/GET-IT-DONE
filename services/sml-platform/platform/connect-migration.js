@@ -81,6 +81,13 @@ function cleanImageUrl(value, field) {
   return url;
 }
 
+function maskRef(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (text.length <= 8) return text;
+  return `${text.slice(0, 4)}…${text.slice(-4)}`;
+}
+
 function cleanSettings(input = {}) {
   const settings = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   return {
@@ -231,20 +238,22 @@ async function replacePlanMappings(pool, input = {}) {
         : [];
       const cardTitle = cleanOptionalText(mapping.cardTitle, 'cardTitle', 140);
       const cardDescription = cleanOptionalText(mapping.cardDescription, 'cardDescription', 300);
+      const cardImageUrl = cleanImageUrl(mapping.cardImageUrl || mapping.cardImage || mapping.imageUrl, 'cardImageUrl');
       await client.query(
         `INSERT INTO connect_plan_mappings (
            campaign_id, group_plan_id, external_product_ref, discord_role_refs,
-           card_title, card_description, display_order, active
-         ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,true)
+           card_title, card_description, card_image_url, display_order, active
+         ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,true)
          ON CONFLICT (campaign_id, group_plan_id) DO UPDATE SET
            external_product_ref = EXCLUDED.external_product_ref,
            discord_role_refs = EXCLUDED.discord_role_refs,
            card_title = EXCLUDED.card_title,
            card_description = EXCLUDED.card_description,
+           card_image_url = EXCLUDED.card_image_url,
            display_order = EXCLUDED.display_order,
            active = true,
            updated_at = now()`,
-        [campaignRow.id, planId, externalProductRef, JSON.stringify(roleRefs), cardTitle, cardDescription, order++]
+        [campaignRow.id, planId, externalProductRef, JSON.stringify(roleRefs), cardTitle, cardDescription, cardImageUrl, order++]
       );
     }
     await client.query('COMMIT');
@@ -294,6 +303,7 @@ async function replaceMemberships(pool, input = {}) {
         : [];
       const cardTitle = cleanOptionalText(membership.cardTitle || name, 'cardTitle', 140);
       const cardDescription = cleanOptionalText(membership.cardDescription || `${name} membership managed by StockMarketLoop Connect.`, 'cardDescription', 300);
+      const cardImageUrl = cleanImageUrl(membership.cardImageUrl || membership.cardImage || membership.imageUrl, 'cardImageUrl');
 
       const plan = await client.query(
         `INSERT INTO group_plans (
@@ -324,17 +334,18 @@ async function replaceMemberships(pool, input = {}) {
       await client.query(
         `INSERT INTO connect_plan_mappings (
            campaign_id, group_plan_id, external_product_ref, discord_role_refs,
-           card_title, card_description, display_order, active
-         ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,true)
+           card_title, card_description, card_image_url, display_order, active
+         ) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,true)
          ON CONFLICT (campaign_id, group_plan_id) DO UPDATE SET
            external_product_ref = EXCLUDED.external_product_ref,
            discord_role_refs = EXCLUDED.discord_role_refs,
            card_title = EXCLUDED.card_title,
            card_description = EXCLUDED.card_description,
+           card_image_url = EXCLUDED.card_image_url,
            display_order = EXCLUDED.display_order,
            active = true,
            updated_at = now()`,
-        [campaignRow.id, planId, externalProductRef, JSON.stringify(roleRefs), cardTitle, cardDescription, order++]
+        [campaignRow.id, planId, externalProductRef, JSON.stringify(roleRefs), cardTitle, cardDescription, cardImageUrl, order++]
       );
     }
     await client.query('COMMIT');
@@ -364,7 +375,7 @@ async function dashboard(pool, input = {}) {
   const plans = await pool.query(
     `SELECT p.id, p.slug, p.name, p.interval_key, p.price_cents, p.currency, p.trial_days,
             p.platform_fee_bps, p.active,
-            m.external_product_ref, m.discord_role_refs, m.card_title, m.card_description, m.display_order
+            m.external_product_ref, m.discord_role_refs, m.card_title, m.card_description, m.card_image_url, m.display_order
        FROM group_plans p
        LEFT JOIN connect_plan_mappings m
          ON m.group_plan_id = p.id
@@ -387,8 +398,172 @@ async function dashboard(pool, input = {}) {
      FROM subscriptions WHERE group_id = $1`,
     [groupId]
   );
+  const customers = await pool.query(
+    `SELECT
+       s.id, s.user_id, s.group_id, s.plan_id, s.origin, s.status,
+       s.external_platform, s.external_reference, s.superseded_by,
+       s.current_period_end, s.cancel_at_period_end,
+       s.first_failed_at, s.failed_payment_count, s.access_until,
+       s.fee_consent_at, s.platform_fee_bps,
+       s.created_at, s.updated_at, s.canceled_at,
+       p.name AS plan_name, p.interval_key, p.price_cents, p.currency,
+       COUNT(rg.id)::int AS role_grant_count,
+       COUNT(rg.id) FILTER (WHERE rg.state = 'granted')::int AS roles_granted,
+       COUNT(rg.id) FILTER (WHERE rg.state IN ('pending','revoking','failed'))::int AS roles_pending
+     FROM subscriptions s
+     LEFT JOIN group_plans p ON p.id = s.plan_id
+     LEFT JOIN role_grants rg ON rg.subscription_id = s.id
+     WHERE s.group_id = $1
+     GROUP BY s.id, p.name, p.interval_key, p.price_cents, p.currency
+     ORDER BY
+       CASE WHEN s.status IN ('active','trialing','grace') THEN 0 ELSE 1 END,
+       s.updated_at DESC,
+       s.id DESC
+     LIMIT 500`,
+    [groupId]
+  );
+  const roleLinks = await pool.query(
+    `SELECT rg.subscription_id, rg.user_id, rg.target, rg.role_ref, rg.state,
+            rg.attempts, rg.last_attempt_at, rg.granted_at, rg.revoked_at,
+            s.plan_id, p.name AS plan_name
+       FROM role_grants rg
+       JOIN subscriptions s ON s.id = rg.subscription_id
+       LEFT JOIN group_plans p ON p.id = s.plan_id
+      WHERE s.group_id = $1
+      ORDER BY rg.created_at DESC
+      LIMIT 500`,
+    [groupId]
+  );
+  const revenue = await pool.query(
+    `SELECT
+       COALESCE(SUM(gross_cents), 0)::bigint AS gross_cents,
+       COALESCE(SUM(fee_cents), 0)::bigint AS platform_fee_cents,
+       COALESCE(SUM(gross_cents - fee_cents), 0)::bigint AS seller_net_cents,
+       COUNT(*)::int AS fee_events,
+       COALESCE(MAX(created_at), NULL) AS last_fee_at
+     FROM platform_fee_ledger
+    WHERE group_id = $1`,
+    [groupId]
+  );
+  const disputes = await pool.query(
+    `SELECT
+       dc.id, dc.provider, dc.provider_dispute_id, dc.reason, dc.provider_status,
+       dc.lifecycle_stage, dc.amount_cents, dc.currency, dc.due_by, dc.case_state,
+       dc.response_cycle, dc.transaction_id, dc.subscription_id, dc.merchant_account,
+       bi.email_candidate,
+       COALESCE(dc.provenance->>'customer_name', dc.provenance->>'customerName') AS customer_name,
+       COALESCE(dc.provenance->>'customer_phone', dc.provenance->>'customerPhone') AS customer_phone,
+       bt.provider_transaction_id, bt.amount_cents AS payment_amount_cents, bt.status AS payment_status,
+       COUNT(dei.id)::int AS evidence_count,
+       lp.packet_sha256 AS latest_packet_sha256,
+       lp.version AS latest_packet_version
+     FROM dispute_cases dc
+     LEFT JOIN billing_identities bi ON bi.id = dc.identity_id
+     LEFT JOIN billing_transactions bt ON bt.id = dc.transaction_id
+     LEFT JOIN billing_subscriptions bs ON bs.id = dc.subscription_id
+     LEFT JOIN subscriptions s ON s.id = bs.engine_subscription_id OR s.id = dc.subscription_id
+     LEFT JOIN dispute_evidence_items dei ON dei.case_id = dc.id AND dei.superseded_by IS NULL
+     LEFT JOIN LATERAL (
+       SELECT packet_sha256, version
+       FROM dispute_packets
+       WHERE case_id = dc.id
+       ORDER BY version DESC
+       LIMIT 1
+     ) lp ON true
+     WHERE (
+       s.group_id = $1
+       OR dc.merchant_account IN (
+         SELECT connected_account_id FROM marketplace_sellers WHERE owner_user_id = $2
+       )
+     )
+     GROUP BY dc.id, bi.email_candidate, bt.provider_transaction_id, bt.amount_cents, bt.status, lp.packet_sha256, lp.version
+     ORDER BY
+       CASE WHEN dc.case_state IN ('open','evidence_building','ready_for_review') THEN 0 ELSE 1 END,
+       dc.due_by NULLS LAST,
+       dc.received_at DESC
+     LIMIT 50`,
+    [groupId, ownerUserId]
+  );
   const mappedPlans = plans.rows.filter((p) => p.external_product_ref || (Array.isArray(p.discord_role_refs) && p.discord_role_refs.length));
   const mappedPlanIds = new Set(mappedPlans.map((p) => Number(p.id)));
+  const roleRows = roleLinks.rows.map((r) => ({
+    subscriptionId: Number(r.subscription_id),
+    userId: Number(r.user_id),
+    planId: r.plan_id == null ? null : Number(r.plan_id),
+    planName: r.plan_name || 'Unmapped membership',
+    target: r.target,
+    roleRef: maskRef(r.role_ref),
+    state: r.state,
+    attempts: Number(r.attempts || 0),
+    lastAttemptAt: r.last_attempt_at,
+    grantedAt: r.granted_at,
+    revokedAt: r.revoked_at
+  }));
+  const roleRowsBySubscription = new Map();
+  for (const row of roleRows) {
+    const list = roleRowsBySubscription.get(row.subscriptionId) || [];
+    list.push(row);
+    roleRowsBySubscription.set(row.subscriptionId, list);
+  }
+  const customerRows = customers.rows.map((s) => ({
+    subscriptionId: Number(s.id),
+    userId: Number(s.user_id),
+    planId: s.plan_id == null ? null : Number(s.plan_id),
+    planName: s.plan_name || 'Unmapped membership',
+    interval: s.interval_key || null,
+    priceCents: s.price_cents == null ? 0 : Number(s.price_cents),
+    currency: s.currency || 'usd',
+    origin: s.origin,
+    status: s.status,
+    migrationStatus: s.origin === 'discord_imported' && !s.superseded_by ? 'pending'
+      : s.origin === 'migrated' || s.superseded_by ? 'migrated'
+        : 'native',
+    externalPlatform: s.external_platform || null,
+    externalReference: maskRef(s.external_reference),
+    currentPeriodEnd: s.current_period_end,
+    accessUntil: s.access_until,
+    failedPaymentCount: Number(s.failed_payment_count || 0),
+    cancelAtPeriodEnd: !!s.cancel_at_period_end,
+    feeBps: s.platform_fee_bps == null ? 0 : Number(s.platform_fee_bps),
+    roleGrantCount: Number(s.role_grant_count || 0),
+    rolesGranted: Number(s.roles_granted || 0),
+    rolesPending: Number(s.roles_pending || 0),
+    updatedAt: s.updated_at,
+    canceledAt: s.canceled_at
+  }));
+  const overdueMemberships = customerRows
+    .filter((s) => ['past_due', 'grace', 'unpaid'].includes(s.status) || Number(s.failedPaymentCount || 0) > 0)
+    .map((s) => {
+      const roles = roleRowsBySubscription.get(s.subscriptionId) || [];
+      const roleName = roles.find((r) => r.target === 'discord_guild_role')?.roleRef || 'Premium Member';
+      const roleState = roles.find((r) => r.target === 'discord_guild_role')?.state || (s.status === 'unpaid' ? 'scheduled_for_review' : 'protected_until_deadline');
+      return {
+        id: `subscription:${s.subscriptionId}`,
+        subscriptionId: s.subscriptionId,
+        userId: s.userId,
+        memberName: `User #${s.userId}`,
+        discordUserId: null,
+        provider: s.externalPlatform || (s.origin === 'sml_checkout' || s.origin === 'migrated' ? 'Stripe' : 'billing'),
+        product: s.planName,
+        membership: s.planName,
+        planName: s.planName,
+        status: s.status,
+        dmStatus: 'not_sent',
+        amountCents: s.priceCents,
+        currency: s.currency,
+        deadlineAt: s.accessUntil || s.currentPeriodEnd,
+        responseDueAt: s.accessUntil || s.currentPeriodEnd,
+        sentAt: null,
+        evidenceUrl: null,
+        membershipUrl: null,
+        responseStatus: 'No response yet',
+        roleName,
+        roleState,
+        failedPaymentCount: s.failedPaymentCount,
+        source: s.externalPlatform || s.origin,
+        externalReference: s.externalReference
+      };
+    });
   return {
     campaign: rowToCampaign(campaignRow),
     perkGate: campaignRow ? migrationRequiredBanner(rowToCampaign(campaignRow)) : {
@@ -409,7 +584,8 @@ async function dashboard(pool, input = {}) {
       externalProductRef: p.external_product_ref || null,
       discordRoleRefs: Array.isArray(p.discord_role_refs) ? p.discord_role_refs : [],
       cardTitle: p.card_title || null,
-      cardDescription: p.card_description || null
+      cardDescription: p.card_description || null,
+      cardImageUrl: p.card_image_url || null
     })),
     analytics: analytics.rows[0] || {
       homepage_views: 0,
@@ -425,6 +601,42 @@ async function dashboard(pool, input = {}) {
       migrated_native: 0,
       native_checkout: 0,
       at_risk: 0
+    },
+    customers: customerRows,
+    overdueMemberships,
+    migrations: {
+      pending: customerRows.filter((s) => s.migrationStatus === 'pending'),
+      completed: customerRows.filter((s) => s.migrationStatus === 'migrated')
+    },
+    roleLinks: roleRows,
+    disputes: disputes.rows.map((d) => ({
+      caseId: Number(d.id),
+      provider: d.provider,
+      providerDisputeId: maskRef(d.provider_dispute_id),
+      reason: d.reason || null,
+      providerStatus: d.provider_status || null,
+      lifecycleStage: d.lifecycle_stage || null,
+      amountCents: d.amount_cents == null ? 0 : Number(d.amount_cents),
+      paymentAmountCents: d.payment_amount_cents == null ? null : Number(d.payment_amount_cents),
+      currency: d.currency || 'usd',
+      dueBy: d.due_by || null,
+      caseState: d.case_state,
+      responseCycle: Number(d.response_cycle || 1),
+      paymentId: maskRef(d.provider_transaction_id),
+      paymentStatus: d.payment_status || null,
+      customerName: d.customer_name || null,
+      customerEmail: d.email_candidate || null,
+      customerPhone: d.customer_phone || null,
+      evidenceCount: Number(d.evidence_count || 0),
+      packetSha256: maskRef(d.latest_packet_sha256),
+      packetVersion: d.latest_packet_version == null ? null : Number(d.latest_packet_version)
+    })),
+    revenue: {
+      grossCents: Number(revenue.rows[0]?.gross_cents || 0),
+      platformFeeCents: Number(revenue.rows[0]?.platform_fee_cents || 0),
+      sellerNetCents: Number(revenue.rows[0]?.seller_net_cents || 0),
+      feeEvents: Number(revenue.rows[0]?.fee_events || 0),
+      lastFeeAt: revenue.rows[0]?.last_fee_at || null
     },
     requirements: {
       stripeSellerConnected: true,

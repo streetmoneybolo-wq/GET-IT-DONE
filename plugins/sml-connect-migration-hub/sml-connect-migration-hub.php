@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name: SML Connect Migration Hub
- * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, public indexed Discord group pages, and subscriber migration flow for replacing Upgrade.Chat-style memberships.
- * Version: 0.1.7
+ * Description: StockMarketLoop Connect owner dashboard, bot-first Discord onboarding, and full Upgrade.Chat subscriber migration flow.
+ * Version: 0.3.2
  * Author: Stock Market Loop
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const SMLCMH_VERSION = '0.1.7';
+const SMLCMH_VERSION = '0.3.2';
 const SMLCMH_OPTION  = 'sml_connect_migration_hub_options';
 
 function smlcmh_defaults() {
@@ -164,6 +164,38 @@ function smlcmh_signup_url( $guild_name = '' ) {
 	);
 }
 
+function smlcmh_account_url( $return_url = '' ) {
+	$return_url = $return_url ? esc_url_raw( $return_url ) : home_url( '/connect-dashboard/' );
+	return add_query_arg(
+		array(
+			'sml_connect' => '1',
+			'redirect_to' => $return_url,
+		),
+		home_url( '/register/' )
+	);
+}
+
+function smlcmh_auth_gate( $headline, $copy, $return_url = '' ) {
+	smlcmh_use_assets();
+	$account_url = smlcmh_account_url( $return_url );
+	$login_url   = wp_login_url( $return_url ? esc_url_raw( $return_url ) : home_url( '/connect-dashboard/' ) );
+	ob_start();
+	?>
+	<section class="smlcmh-shell smlcmh-auth-gate">
+		<div class="smlcmh-hero smlcmh-hero-compact">
+			<p class="smlcmh-kicker">StockMarketLoop account required</p>
+			<h2><?php echo esc_html( $headline ); ?></h2>
+			<p><?php echo esc_html( $copy ); ?></p>
+			<div class="smlcmh-actions">
+				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( $account_url ); ?>">Create StockMarketLoop account</a>
+				<a class="smlcmh-btn" href="<?php echo esc_url( $login_url ); ?>">Sign in</a>
+			</div>
+		</div>
+	</section>
+	<?php
+	return ob_get_clean();
+}
+
 /* -------------------------------------------------------------------------
  * Activation: create helpful pages but keep all rendering shortcode-driven.
  * ---------------------------------------------------------------------- */
@@ -245,6 +277,9 @@ add_action( 'admin_enqueue_scripts', 'smlcmh_enqueue_assets' );
 function smlcmh_use_assets() {
 	wp_enqueue_style( 'sml-connect-migration-hub' );
 	wp_enqueue_script( 'sml-connect-migration-hub' );
+	if ( is_user_logged_in() ) {
+		wp_enqueue_media();
+	}
 }
 
 /* -------------------------------------------------------------------------
@@ -330,7 +365,7 @@ add_shortcode( 'sml_connect_landing', function () {
 		<div class="smlcmh-hero">
 			<p class="smlcmh-kicker">StockMarketLoop Connect</p>
 			<h1>Install the StockMarketLoop Connect Bot first.</h1>
-			<p>The Discord owner installs the bot first, runs <code>/connect-setup</code>, answers the yes/no buttons inside Discord, maps products/roles/plans on StockMarketLoop, then sends members their own migration checkout link.</p>
+			<p>The Discord owner installs the bot first, runs <code>/connect-setup</code>, answers the yes/no buttons inside Discord, imports every available Upgrade.Chat record, then sends members their own migration checkout link.</p>
 			<div class="smlcmh-actions">
 				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( $install_url ); ?>" target="_blank" rel="noopener">1. Install StockMarketLoop Connect Bot</a>
 				<a class="smlcmh-btn" href="<?php echo esc_url( home_url( '/connect-dashboard/' ) ); ?>">Owner dashboard</a>
@@ -348,8 +383,8 @@ add_shortcode( 'sml_connect_landing', function () {
 				<p>If yes, it offers migration with no migration fee, no double billing, and the same verified next payment date. If no, it skips migration.</p>
 			</div>
 			<div class="smlcmh-step">
-				<strong>3. Owner maps the migration on StockMarketLoop.</strong>
-				<p class="smlcmh-muted">The owner connects/logs into StockMarketLoop, maps Upgrade.Chat products, Discord roles, and StockMarketLoop subscription plans, then publishes the migration link.</p>
+				<strong>3. All available Upgrade.Chat information carries over.</strong>
+				<p class="smlcmh-muted">Products, prices, billing intervals, Discord roles, customer/member status, pending renewals, payment history, revenue records, links, and imported subscription data are pulled into the StockMarketLoop owner dashboard where available from Upgrade.Chat/API/export.</p>
 			</div>
 			<div class="smlcmh-step">
 				<strong>4. Members opt in and keep access.</strong>
@@ -357,22 +392,25 @@ add_shortcode( 'sml_connect_landing', function () {
 			</div>
 			<div class="smlcmh-step">
 				<strong>5. StockMarketLoop takes over after migration.</strong>
-				<p class="smlcmh-muted">After migration, StockMarketLoop controls billing, Discord roles, analytics, dispute evidence, storefront, live pages, Loop Letters, and Retail Trader Spotlight.</p>
+				<p class="smlcmh-muted">After migration, StockMarketLoop controls billing, Discord roles, analytics, dispute evidence, storefront, live pages, Loop Letters, and Retail Trader Spotlight while preserving the verified renewal schedule.</p>
 			</div>
 		</div>
 		<div class="smlcmh-grid">
 			<div class="smlcmh-card"><h3>Bot first, migration second</h3><p>The Discord owner installs StockMarketLoop Connect before any migration, so role sync, security, and server detection can start from the actual Discord server.</p></div>
-			<div class="smlcmh-card"><h3>Ask when detection is unclear</h3><p>If Upgrade.Chat cannot be detected, the bot asks the owner whether they use it, then shows the correct migration or non-migration path.</p></div>
+			<div class="smlcmh-card"><h3>Full Upgrade.Chat carryover</h3><p>Subscriptions, members, products, prices, intervals, role links, customer status, revenue, and migration state follow into StockMarketLoop wherever the source data is available.</p></div>
 			<div class="smlcmh-card"><h3>Exact Discord name by default</h3><p>When the owner creates a StockMarketLoop group, the default name is the Discord server name so branding stays stable.</p></div>
-			<div class="smlcmh-card"><h3>Perks unlock with SML</h3><p>Connect can become the Upgrade.Chat alternative plus public homepage, live page, store, Loop Letter, analytics, roles, dispute defense, and Retail Trader Spotlight.</p></div>
+			<div class="smlcmh-card"><h3>Perks unlock with SML</h3><p>Connect can become the Upgrade.Chat alternative plus live page, store, Loop Letter, analytics, roles, dispute defense, and Retail Trader Spotlight.</p></div>
 		</div>
 		<?php if ( is_user_logged_in() ) : ?>
 			<div class="smlcmh-card">
 				<p class="smlcmh-kicker">Logged-in owner tools</p>
-				<h2>Set up memberships, prices, intervals, products, and roles here.</h2>
-				<p class="smlcmh-muted">This is the no-code setup area: create the Discord homepage, build subscription products, and map Upgrade.Chat migration details without pasting developer JSON.</p>
+				<h2>Set up memberships, prices, intervals, products, and roles from the owner dashboard.</h2>
+				<p class="smlcmh-muted">The public Connect landing page stays lightweight. Logged-in owners use the dashboard page for the no-code setup area: import Upgrade.Chat data, review products and members, build subscription products, map Discord roles, and manage migrations without pasting developer JSON.</p>
+				<div class="smlcmh-actions">
+					<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( home_url( '/connect-dashboard/' ) ); ?>">Open owner dashboard</a>
+					<a class="smlcmh-btn" href="<?php echo esc_url( $install_url ); ?>" target="_blank" rel="noopener">Install StockMarketLoop Connect Bot</a>
+				</div>
 			</div>
-			<?php echo do_shortcode( '[sml_connect_dashboard]' ); ?>
 		<?php else : ?>
 			<div class="smlcmh-card">
 				<h2>Ready to migrate your Discord memberships?</h2>
@@ -386,79 +424,226 @@ add_shortcode( 'sml_connect_landing', function () {
 } );
 
 add_shortcode( 'sml_connect_dashboard', function () {
-	if ( ! is_user_logged_in() ) return '<p>Please sign in to manage StockMarketLoop Connect.</p>';
+	if ( ! is_user_logged_in() ) {
+		return smlcmh_auth_gate(
+			'Create your account to open the Connect Dashboard.',
+			'After migration, this dashboard is where Discord owners manage memberships, products, roles, customers, revenue, migration status, and dispute evidence.',
+			home_url( '/connect-dashboard/' )
+		);
+	}
 	smlcmh_use_assets();
 	ob_start();
 	?>
-	<section class="smlcmh-shell" data-smlcmh-dashboard>
-		<div class="smlcmh-hero smlcmh-hero-compact">
-			<p class="smlcmh-kicker">Owner command center</p>
-			<h2>StockMarketLoop Connect migration dashboard</h2>
-			<p>Install the bot first, create the clickable Discord card, map Upgrade.Chat products to Discord roles and StockMarketLoop plans, then publish member migration links.</p>
-			<div class="smlcmh-actions">
+	<section class="smlcmh-shell smlcmh-owner-app" data-smlcmh-dashboard>
+		<aside class="smlcmh-owner-nav" aria-label="StockMarketLoop Connect dashboard sections">
+			<div class="smlcmh-owner-brand">
+				<span class="smlcmh-owner-orb">SML</span>
+				<div><strong>Connect</strong><small>Owner Console</small></div>
+			</div>
+			<button type="button" class="is-active" data-smlcmh-tab-button="overview">Overview</button>
+			<button type="button" data-smlcmh-tab-button="migration">Migration</button>
+			<button type="button" data-smlcmh-tab-button="overdue">Overdue Memberships</button>
+			<button type="button" data-smlcmh-tab-button="disputes">Dispute Shield</button>
+			<button type="button" data-smlcmh-tab-button="products">Products</button>
+			<button type="button" data-smlcmh-tab-button="roles">Roles</button>
+			<button type="button" data-smlcmh-tab-button="members">Members</button>
+			<button type="button" data-smlcmh-tab-button="store">Store</button>
+			<button type="button" data-smlcmh-tab-button="analytics">Analytics</button>
+			<a class="smlcmh-owner-install" href="<?php echo esc_url( smlcmh_discord_install_url() ); ?>" target="_blank" rel="noopener">Install Bot</a>
+		</aside>
+		<div class="smlcmh-owner-main">
+			<div class="smlcmh-owner-topbar">
+				<div>
+					<p class="smlcmh-kicker">Upgrade.Chat-style control center</p>
+					<h2>StockMarketLoop Connect owner dashboard</h2>
+					<p>Import the Upgrade.Chat setup, review every carried-over record, then let StockMarketLoop Connect take over renewals, roles, and member access.</p>
+				</div>
 				<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( smlcmh_discord_install_url() ); ?>" target="_blank" rel="noopener">Install StockMarketLoop Connect Bot</a>
 			</div>
-		</div>
-		<div class="smlcmh-grid smlcmh-grid-2">
-			<form class="smlcmh-card" data-smlcmh-campaign-form>
-				<h3>1. Create the Discord group homepage</h3>
-				<label>Discord server name <input name="guildName" maxlength="120" required placeholder="Making Easy Money"></label>
-				<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
-				<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
-				<label>Discord server ID <input name="guildId" required placeholder="938894329076940820"></label>
-				<label>Public slug <input name="publicSlug" required placeholder="making-easy-money"></label>
-				<label>Discord invite URL <input name="discordInviteUrl" type="url" placeholder="https://discord.gg/..."></label>
-				<label>Discord avatar/logo URL <input name="discordAvatarUrl" type="url" placeholder="https://..."></label>
-				<label>Discord banner URL <input name="discordBannerUrl" type="url" placeholder="https://..."></label>
-				<label>Headline <input name="headline" maxlength="140" value="Join this StockMarketLoop-powered Discord community"></label>
-				<label>Description <textarea name="description" maxlength="500">Click the link to Join the Underlying Discord Group, unlock premium alerts, and manage your membership through StockMarketLoop Connect.</textarea></label>
-				<label>SEO title <input name="seoTitle" maxlength="160" placeholder="Making Easy Money Discord Group | StockMarketLoop Connect"></label>
-				<label>SEO description <textarea name="seoDescription" maxlength="300" placeholder="Join this trading Discord through StockMarketLoop Connect with premium alerts, subscriptions, and live market tools."></textarea></label>
-				<label class="smlcmh-check"><input type="checkbox" name="migratedPerksEnabled"> Billing migrated — unlock Connect perks</label>
-				<label>Status
-					<select name="status"><option value="draft">Draft</option><option value="live">Live / indexable</option><option value="paused">Paused</option></select>
-				</label>
-				<button class="smlcmh-btn smlcmh-btn-gold" type="submit">Save group page</button>
-			</form>
-			<div class="smlcmh-card">
-				<h3>2. Build memberships like Upgrade.Chat — no code</h3>
-				<p class="smlcmh-muted">Create subscription prices, choose billing intervals, attach the old Upgrade.Chat product, and link the Discord role the member should receive. Owners should select things — not paste code.</p>
-				<form data-smlcmh-membership-form>
-					<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
-					<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
-					<div class="smlcmh-membership-rows" data-smlcmh-membership-rows>
-						<div class="smlcmh-membership-row" data-smlcmh-membership-row>
-							<label>Membership name <input data-field="name" placeholder="VIP Alerts"></label>
-							<label>Price <input data-field="priceDollars" inputmode="decimal" placeholder="49.99"></label>
-							<label>Billing interval
-								<select data-field="interval">
-									<option value="monthly">Monthly</option>
-									<option value="weekly">Weekly</option>
-									<option value="yearly">Yearly</option>
-									<option value="daily">Daily</option>
-									<option value="lifetime">Lifetime</option>
-								</select>
-							</label>
-							<label>Free trial days <input data-field="trialDays" inputmode="numeric" placeholder="0"></label>
-							<label>Imported Upgrade.Chat product <input data-field="externalProductRef" placeholder="Product name or imported product ID"></label>
-							<label>Discord role to give <input data-field="discordRoleRefs" placeholder="Select role when imported, or paste role ID"></label>
-							<label>Store card description <textarea data-field="cardDescription" placeholder="Premium Discord alerts powered by StockMarketLoop Connect."></textarea></label>
-							<button class="smlcmh-btn smlcmh-btn-small" type="button" data-smlcmh-remove-membership>Remove membership</button>
+
+			<div class="smlcmh-owner-grid">
+				<div class="smlcmh-tab-panel is-active" data-smlcmh-tab-panel="overview">
+					<div class="smlcmh-stat-grid">
+						<div class="smlcmh-stat-card"><span>MRR</span><strong>$0.00</strong><small>Loads from Stripe/PayPal after setup</small></div>
+						<div class="smlcmh-stat-card"><span>Active members</span><strong>—</strong><small>Synced from Discord + billing</small></div>
+						<div class="smlcmh-stat-card"><span>Failed renewals</span><strong>0</strong><small>Role removal after retry rules</small></div>
+					</div>
+					<div class="smlcmh-panel smlcmh-panel-wide">
+						<div class="smlcmh-panel-head">
+							<div><p class="smlcmh-kicker">Quick status</p><h3>Connect account health</h3></div>
+							<span class="smlcmh-pill">Owner overview</span>
 						</div>
+						<p class="smlcmh-muted">Use the left buttons to manage one subject at a time: migration, dispute shield, products, roles, members, store, or analytics.</p>
 					</div>
-					<div class="smlcmh-actions">
-						<button class="smlcmh-btn" type="button" data-smlcmh-add-membership>Add membership</button>
-						<button class="smlcmh-btn smlcmh-btn-gold" type="submit">Save memberships</button>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="migration">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="migration">
+					<div class="smlcmh-panel-head">
+						<div>
+							<p class="smlcmh-kicker">Migration setup</p>
+							<h3>Carry over Upgrade.Chat data without double charging</h3>
+						</div>
+						<span class="smlcmh-pill">Bot detects server first</span>
 					</div>
-				</form>
-				<hr>
-				<form data-smlcmh-dashboard-form>
-					<h3>3. Load analytics</h3>
-					<label>Group ID <input name="groupId" inputmode="numeric" required placeholder="7"></label>
-					<label>Owner WordPress user ID <input name="ownerUserId" inputmode="numeric" value="<?php echo esc_attr( get_current_user_id() ); ?>" required></label>
-					<button class="smlcmh-btn" type="submit">Load dashboard</button>
-				</form>
-				<pre class="smlcmh-output" data-smlcmh-output>Waiting for action…</pre>
+					<div class="smlcmh-migration-steps">
+						<div><strong>1</strong><span>Install bot</span><small>Owner adds StockMarketLoop Connect to Discord.</small></div>
+						<div><strong>2</strong><span>Answer buttons</span><small>Bot asks if they use Upgrade.Chat.</small></div>
+						<div><strong>3</strong><span>Import everything</span><small>Products, prices, intervals, roles, members, links, revenue, and history carry over.</small></div>
+						<div><strong>4</strong><span>Send link</span><small>Members opt in and keep their next billing date.</small></div>
+					</div>
+				</div>
+				<div class="smlcmh-panel smlcmh-panel-wide">
+					<div class="smlcmh-panel-head">
+						<div><p class="smlcmh-kicker">Migration status</p><h3>Migrated vs pending</h3></div>
+						<span class="smlcmh-pill">Upgrade.Chat takeover</span>
+					</div>
+					<div class="smlcmh-live-panel" data-smlcmh-migrations>
+						<p class="smlcmh-muted">Pending members, completed migrations, imported renewal dates, source products, and carried-over Upgrade.Chat subscription state appear here after the owner loads the dashboard.</p>
+					</div>
+				</div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="overdue">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="overdue-memberships">
+					<div class="smlcmh-panel-head">
+						<div>
+							<p class="smlcmh-kicker">Overdue Memberships</p>
+							<h3>DM notices, evidence, and responses</h3>
+						</div>
+						<span class="smlcmh-pill">Per Discord server</span>
+					</div>
+					<p class="smlcmh-muted">After a Discord owner connects StockMarketLoop Connect, overdue or manually-granted membership reviews appear here for that server. Each record shows the billing evidence sent, the exact membership link, DM delivery state, 24-hour deadline, member response, and whether the role is still protected or scheduled for removal.</p>
+					<div class="smlcmh-live-panel" data-smlcmh-overdue-memberships>
+						<p class="smlcmh-muted">Load dashboard to show overdue members, sent DMs, screenshots, quick links, and replies.</p>
+					</div>
+				</div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="disputes">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="disputes">
+					<div class="smlcmh-panel-head">
+						<div>
+							<p class="smlcmh-kicker">Dispute Shield</p>
+							<h3>Disputes, evidence, and member notice</h3>
+						</div>
+						<span class="smlcmh-pill">Placed after migration</span>
+					</div>
+					<p class="smlcmh-muted">Every reported Stripe, PayPal, or Upgrade.Chat dispute appears here with the disputed payment, member contact fields available to the authorized owner, reason, status, deadline, evidence count, and latest packet hash.</p>
+					<div class="smlcmh-live-panel" data-smlcmh-disputes>
+						<p class="smlcmh-muted">Load dashboard to show open disputes and the counter-evidence gathered beside each case.</p>
+					</div>
+				</div>
+				<div class="smlcmh-panel smlcmh-panel-wide">
+					<div class="smlcmh-panel-head">
+						<div><p class="smlcmh-kicker">48-hour reconsider notice</p><h3>Email before countering</h3></div>
+						<span class="smlcmh-pill">13% won-dispute fee notice</span>
+					</div>
+					<p class="smlcmh-muted">The action button prepares a customer notice asking whether the dispute was opened by mistake, giving 48 hours to reconsider before a counter is filed. The message also states that if StockMarketLoop wins, the site may apply the disclosed 13% dispute recovery fee under the seller/customer terms.</p>
+				</div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="products">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="products">
+					<div class="smlcmh-panel-head">
+						<div>
+							<p class="smlcmh-kicker">Products & prices</p>
+							<h3>Build memberships like Upgrade.Chat — no code</h3>
+						</div>
+						<span class="smlcmh-pill">Select roles, don’t code</span>
+					</div>
+					<p class="smlcmh-muted">Imported Upgrade.Chat products, prices, intervals, product links, and connected Discord roles carry into this section. Owners can then adjust or create new plans with selection controls instead of code.</p>
+					<form data-smlcmh-membership-form>
+						<input type="hidden" name="groupId" data-smlcmh-hidden-group-id>
+						<input type="hidden" name="ownerUserId" value="<?php echo esc_attr( get_current_user_id() ); ?>">
+						<div class="smlcmh-membership-rows" data-smlcmh-membership-rows>
+							<div class="smlcmh-membership-row smlcmh-product-row" data-smlcmh-membership-row>
+								<label>Membership name <input data-field="name" placeholder="VIP Alerts"></label>
+								<label>Price <input data-field="priceDollars" inputmode="decimal" placeholder="49.99"></label>
+								<label>Billing interval
+									<select data-field="interval">
+										<option value="monthly">Monthly</option>
+										<option value="weekly">Weekly</option>
+										<option value="yearly">Yearly</option>
+										<option value="daily">Daily</option>
+										<option value="lifetime">Lifetime</option>
+									</select>
+								</label>
+								<label>Free trial days <input data-field="trialDays" inputmode="numeric" placeholder="0"></label>
+								<label>Imported Upgrade.Chat product <input data-field="externalProductRef" placeholder="Select imported product"></label>
+								<label>Discord role to give <input data-field="discordRoleRefs" placeholder="Select Discord role"></label>
+								<label class="smlcmh-product-description">Store card description <textarea data-field="cardDescription" placeholder="Premium Discord alerts powered by StockMarketLoop Connect."></textarea></label>
+								<label class="smlcmh-upload-field smlcmh-product-image" data-smlcmh-upload-field>
+									Membership card image
+									<input type="hidden" data-field="cardImageUrl" data-smlcmh-upload-value>
+									<span class="smlcmh-upload-preview" data-smlcmh-upload-preview></span>
+									<button class="smlcmh-btn smlcmh-btn-small" type="button" data-smlcmh-upload>Upload group / Discord image</button>
+								</label>
+								<button class="smlcmh-btn smlcmh-btn-small" type="button" data-smlcmh-remove-membership>Remove</button>
+							</div>
+						</div>
+						<div class="smlcmh-actions">
+							<button class="smlcmh-btn" type="button" data-smlcmh-add-membership>Add membership</button>
+							<button class="smlcmh-btn smlcmh-btn-gold" type="submit">Save memberships</button>
+						</div>
+					</form>
+				</div>
+				<div class="smlcmh-panel smlcmh-panel-wide" data-smlcmh-products><p class="smlcmh-muted">Imported Upgrade.Chat products, SML memberships, prices, intervals, source links, and mapped roles load here.</p></div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="roles">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="roles">
+					<div class="smlcmh-panel-head">
+						<div><p class="smlcmh-kicker">Role automation</p><h3>Discord role sync</h3></div>
+					</div>
+					<ul class="smlcmh-clean-list">
+						<li><strong>Paid role granted</strong><span>Immediately after successful checkout.</span></li>
+						<li><strong>Retry protection</strong><span>Failed payment gets retries before removal.</span></li>
+						<li><strong>Migration safe</strong><span>Existing members keep access through the verified renewal date carried over from Upgrade.Chat.</span></li>
+						<li><strong>Owner controls</strong><span>Products and roles are selected in the dashboard, not hard-coded.</span></li>
+					</ul>
+				</div>
+				<div class="smlcmh-panel smlcmh-panel-wide" data-smlcmh-role-links><p class="smlcmh-muted">Imported Discord role links, membership mappings, grant status, and renewal-protected access rules load here.</p></div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="members">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="members">
+					<div class="smlcmh-panel-head">
+						<div><p class="smlcmh-kicker">Members</p><h3>Membership ledger</h3></div>
+						<span class="smlcmh-pill">Live customer records</span>
+					</div>
+					<div class="smlcmh-live-panel" data-smlcmh-customers>
+						<p class="smlcmh-muted">Load dashboard to show all customers, active subscribers, migrated members, pending Upgrade.Chat imports, current roles, plan, status, renewal date, and failed-payment state.</p>
+					</div>
+				</div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="store">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="store">
+					<div class="smlcmh-panel-head">
+						<div><p class="smlcmh-kicker">Store</p><h3>Memberships</h3></div>
+					</div>
+					<div class="smlcmh-store-preview" data-smlcmh-store>
+						<p class="smlcmh-muted">No memberships found yet.</p>
+					</div>
+				</div>
+				</div>
+
+				<div class="smlcmh-tab-panel" data-smlcmh-tab-panel="analytics">
+				<div class="smlcmh-panel smlcmh-panel-wide" id="analytics">
+					<div class="smlcmh-panel-head">
+						<div><p class="smlcmh-kicker">Analytics</p><h3>Load real dashboard data</h3></div>
+						<span class="smlcmh-pill">Revenue + roles + disputes</span>
+					</div>
+					<form class="smlcmh-analytics-form" data-smlcmh-dashboard-form>
+						<input type="hidden" name="groupId" data-smlcmh-hidden-group-id>
+						<input type="hidden" name="ownerUserId" value="<?php echo esc_attr( get_current_user_id() ); ?>">
+						<button class="smlcmh-btn" type="submit">Load dashboard</button>
+					</form>
+					<pre class="smlcmh-output" data-smlcmh-output>Waiting for action…</pre>
+				</div>
+				<div class="smlcmh-panel smlcmh-panel-wide" data-smlcmh-revenue><p class="smlcmh-muted">Imported revenue history, Stripe/PayPal processed totals, StockMarketLoop fees, owner net, refunds, disputes, and latest fee events load here.</p></div>
+				</div>
 			</div>
 		</div>
 	</section>
@@ -467,7 +652,13 @@ add_shortcode( 'sml_connect_dashboard', function () {
 } );
 
 add_shortcode( 'sml_connect_migrate', function () {
-	if ( ! is_user_logged_in() ) return '<p>Please sign in before moving your Discord membership to StockMarketLoop.</p>';
+	if ( ! is_user_logged_in() ) {
+		return smlcmh_auth_gate(
+			'Create your account to finish migration.',
+			'StockMarketLoop needs an account before it can connect your Discord membership, protect your renewal date, and keep your access tied to the right person.',
+			home_url( '/connect-migrate/' )
+		);
+	}
 	smlcmh_use_assets();
 	ob_start();
 	?>
@@ -513,9 +704,19 @@ add_action( 'template_redirect', function () {
 	} );
 	add_action( 'wp_head', function () use ( $page ) {
 		$seo = isset( $page['seo'] ) && is_array( $page['seo'] ) ? $page['seo'] : array();
+		$share = smlcmh_public_share_meta( $page );
 		if ( ! empty( $seo['description'] ) ) echo '<meta name="description" content="' . esc_attr( $seo['description'] ) . '">' . "\n";
 		if ( ! empty( $seo['canonical'] ) ) echo '<link rel="canonical" href="' . esc_url( $seo['canonical'] ) . '">' . "\n";
 		echo '<meta name="robots" content="index,follow">' . "\n";
+		echo '<meta property="og:type" content="website">' . "\n";
+		echo '<meta property="og:title" content="' . esc_attr( $share['title'] ) . '">' . "\n";
+		echo '<meta property="og:description" content="' . esc_attr( $share['description'] ) . '">' . "\n";
+		echo '<meta property="og:url" content="' . esc_url( $share['url'] ) . '">' . "\n";
+		if ( ! empty( $share['image'] ) ) echo '<meta property="og:image" content="' . esc_url( $share['image'] ) . '">' . "\n";
+		echo '<meta name="twitter:card" content="summary_large_image">' . "\n";
+		echo '<meta name="twitter:title" content="' . esc_attr( $share['title'] ) . '">' . "\n";
+		echo '<meta name="twitter:description" content="' . esc_attr( $share['description'] ) . '">' . "\n";
+		if ( ! empty( $share['image'] ) ) echo '<meta name="twitter:image" content="' . esc_url( $share['image'] ) . '">' . "\n";
 	}, 1 );
 	get_header();
 	echo smlcmh_render_public_page( $page ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
@@ -528,15 +729,17 @@ function smlcmh_render_public_page( array $page ) {
 	$card     = isset( $page['joinCard'] ) && is_array( $page['joinCard'] ) ? $page['joinCard'] : array();
 	$plans    = isset( $page['plans'] ) && is_array( $page['plans'] ) ? $page['plans'] : array();
 	$messages = isset( $page['liveMessages'] ) && is_array( $page['liveMessages'] ) ? $page['liveMessages'] : array();
+	$selected = smlcmh_selected_plan( $plans );
+	$hero_img = ! empty( $selected['cardImageUrl'] ) ? $selected['cardImageUrl'] : ( $card['bannerUrl'] ?? '' );
 	ob_start();
 	?>
 	<main class="smlcmh-shell smlcmh-public">
-		<section class="smlcmh-public-hero" style="<?php echo ! empty( $card['bannerUrl'] ) ? 'background-image:linear-gradient(90deg,rgba(2,8,14,.92),rgba(2,8,14,.54)),url(' . esc_url( $card['bannerUrl'] ) . ')' : ''; ?>">
+		<section class="smlcmh-public-hero" style="<?php echo ! empty( $hero_img ) ? 'background-image:linear-gradient(90deg,rgba(2,8,14,.92),rgba(2,8,14,.54)),url(' . esc_url( $hero_img ) . ')' : ''; ?>">
 			<div class="smlcmh-public-logo"><?php if ( ! empty( $card['avatarUrl'] ) ) : ?><img src="<?php echo esc_url( $card['avatarUrl'] ); ?>" alt="Discord group logo"><?php else : ?>SML<?php endif; ?></div>
 			<div>
 				<p class="smlcmh-kicker">Discord group powered by StockMarketLoop Connect</p>
-				<h1><?php echo esc_html( smlcmh_array_text( $campaign, 'headline', 'Join this Discord group' ) ); ?></h1>
-				<p><?php echo esc_html( smlcmh_array_text( $campaign, 'description', 'Click the link to join the underlying Discord group.' ) ); ?></p>
+				<h1><?php echo esc_html( ! empty( $selected ) ? smlcmh_share_title( $campaign, $selected ) : smlcmh_array_text( $campaign, 'headline', 'Join this Discord group' ) ); ?></h1>
+				<p><?php echo esc_html( ! empty( $selected ) ? smlcmh_share_description( $campaign, $selected ) : smlcmh_array_text( $campaign, 'description', 'Click the link to join the underlying Discord group.' ) ); ?></p>
 				<?php if ( ! empty( $card['url'] ) ) : ?>
 					<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( $card['url'] ); ?>" rel="nofollow noopener">Click the link to Join the Underlying Discord Group</a>
 				<?php endif; ?>
@@ -546,14 +749,16 @@ function smlcmh_render_public_page( array $page ) {
 			<div class="smlcmh-lock">Connect perks unlock when this Discord owner migrates billing to StockMarketLoop.</div>
 		<?php endif; ?>
 		<section class="smlcmh-grid">
-			<div class="smlcmh-card smlcmh-span-2">
+			<div class="smlcmh-card smlcmh-span-2" id="memberships">
 				<h2>Memberships</h2>
 				<div class="smlcmh-plan-list">
 					<?php foreach ( $plans as $plan ) : ?>
-						<div class="smlcmh-plan">
+						<div class="smlcmh-plan <?php echo ! empty( $selected['slug'] ) && $selected['slug'] === ( $plan['slug'] ?? '' ) ? 'is-featured' : ''; ?>">
+							<?php if ( ! empty( $plan['cardImageUrl'] ) ) : ?><img class="smlcmh-plan-image" src="<?php echo esc_url( $plan['cardImageUrl'] ); ?>" alt="<?php echo esc_attr( smlcmh_array_text( $plan, 'name', 'Membership' ) ); ?>"><?php endif; ?>
 							<strong><?php echo esc_html( smlcmh_array_text( $plan, 'name', 'Membership' ) ); ?></strong>
 							<span><?php echo esc_html( smlcmh_money( $plan['priceCents'] ?? 0, $plan['currency'] ?? 'usd' ) . ' / ' . smlcmh_array_text( $plan, 'interval', 'month' ) ); ?></span>
 							<p><?php echo esc_html( smlcmh_array_text( $plan, 'description', 'Premium Discord access managed by StockMarketLoop Connect.' ) ); ?></p>
+							<a class="smlcmh-btn smlcmh-btn-gold" href="<?php echo esc_url( smlcmh_group_store_url( $page ) ); ?>">Open group store</a>
 						</div>
 					<?php endforeach; ?>
 					<?php if ( empty( $plans ) ) : ?><p>No public membership plans are published yet.</p><?php endif; ?>
@@ -579,6 +784,48 @@ function smlcmh_render_public_page( array $page ) {
 	</main>
 	<?php
 	return ob_get_clean();
+}
+
+function smlcmh_selected_plan( array $plans ) {
+	$slug = isset( $_GET['plan'] ) ? sanitize_title( wp_unslash( $_GET['plan'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	if ( '' === $slug ) return array();
+	foreach ( $plans as $plan ) {
+		if ( is_array( $plan ) && isset( $plan['slug'] ) && sanitize_title( (string) $plan['slug'] ) === $slug ) return $plan;
+	}
+	return array();
+}
+
+function smlcmh_share_title( array $campaign, array $plan ) {
+	$name  = smlcmh_array_text( $plan, 'name', 'Premium Membership' );
+	$group = smlcmh_array_text( $campaign, 'homepageTitle', smlcmh_array_text( $campaign, 'headline', 'this Discord group' ) );
+	return $name . ' for ' . $group;
+}
+
+function smlcmh_share_description( array $campaign, array $plan ) {
+	$plan_desc = smlcmh_array_text( $plan, 'description', '' );
+	if ( $plan_desc ) return $plan_desc;
+	$group = smlcmh_array_text( $campaign, 'homepageTitle', 'this trading community' );
+	return 'Join ' . $group . ' with premium Discord access, StockMarketLoop billing protection, role automation, alerts, and creator-backed membership tools.';
+}
+
+function smlcmh_public_share_meta( array $page ) {
+	$campaign = isset( $page['campaign'] ) && is_array( $page['campaign'] ) ? $page['campaign'] : array();
+	$card     = isset( $page['joinCard'] ) && is_array( $page['joinCard'] ) ? $page['joinCard'] : array();
+	$plans    = isset( $page['plans'] ) && is_array( $page['plans'] ) ? $page['plans'] : array();
+	$selected = smlcmh_selected_plan( $plans );
+	$canonical = isset( $page['seo']['canonical'] ) ? esc_url_raw( $page['seo']['canonical'] ) : home_url( '/connect/' );
+	$url = smlcmh_group_store_url( $page );
+	return array(
+		'title'       => ! empty( $selected ) ? smlcmh_share_title( $campaign, $selected ) : smlcmh_array_text( $campaign, 'headline', 'StockMarketLoop Connect Memberships' ),
+		'description' => ! empty( $selected ) ? smlcmh_share_description( $campaign, $selected ) : smlcmh_array_text( $campaign, 'description', 'Join this Discord group through StockMarketLoop Connect.'),
+		'image'       => ! empty( $selected['cardImageUrl'] ) ? esc_url_raw( $selected['cardImageUrl'] ) : ( ! empty( $card['bannerUrl'] ) ? esc_url_raw( $card['bannerUrl'] ) : esc_url_raw( $card['avatarUrl'] ?? '' ) ),
+		'url'         => $url,
+	);
+}
+
+function smlcmh_group_store_url( array $page ) {
+	$canonical = isset( $page['seo']['canonical'] ) ? esc_url_raw( $page['seo']['canonical'] ) : home_url( '/connect/' );
+	return untrailingslashit( $canonical ) . '/#memberships';
 }
 
 function smlcmh_array_text( $row, $key, $fallback = '' ) {
