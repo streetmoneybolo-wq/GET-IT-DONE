@@ -197,7 +197,7 @@
           '<div class="slw-feed" id="slw-feed"><div class="slw-chat-empty" id="slw-chat-empty" style="display:none">No messages yet — say something to the room.</div><div class="slw-feed-inner" id="slw-feed-inner"></div></div>' +
           '<div class="slw-thread" id="slw-thread"></div>' +
           '<div class="slw-gaterow" id="slw-gaterow" style="display:none"></div>' +
-          '<div class="slw-composer" id="slw-composer"><input class="cin" id="slw-cin" type="text" maxlength="500" placeholder="Say something to the room" autocomplete="off"><button class="slw-send" id="slw-csend">Send</button></div></div>' +
+          '<div class="slw-composer" id="slw-composer"><button class="slw-gift" id="slw-gift" type="button" title="Send a Super Chat gift to the creator" aria-label="Send a Super Chat gift">🎁</button><div class="slw-giftpop" id="slw-giftpop" hidden></div><input class="cin" id="slw-cin" type="text" maxlength="500" placeholder="Say something to the room" autocomplete="off"><button class="slw-send" id="slw-csend">Send</button></div></div>' +
 
         /* speak */
         '<div id="slw-pane-1" style="display:none">' + (NATIVE_VOICE
@@ -323,7 +323,7 @@
     var rl = replyCount(m);
     var avExtra = avatarExtra(m.avatar);
     var canRm = !!(m.rawId != null && (S.canMod || (S.me && m.uid && m.uid === S.me)));
-    return '<div class="slw-msg" data-id="' + m.id + '"><div class="av" style="' + avStyle(i) + avExtra + '">' + (avExtra ? '' : m.ini) + '</div><div class="bd">' +
+    return '<div class="slw-msg' + (m.sc ? ' sc' : '') + '" data-id="' + m.id + '"><div class="av" style="' + avStyle(i) + avExtra + '">' + (avExtra ? '' : m.ini) + '</div><div class="bd">' +
       '<div class="hd"><span class="hn" style="' + avStyle(i) + '">@' + m.h + '</span><span class="at">' + m.at + '</span>' +
       '<button class="rp" data-th="' + m.id + '">↩ Reply</button>' +
       (canRm ? '<button class="rm" data-rm="' + esc(String(m.rawId)) + '" title="' + (S.canMod ? 'Remove (moderator)' : 'Remove my message') + '">✕</button>' : '') + '</div>' +
@@ -1684,7 +1684,7 @@
     if (!name) name = 'StockMarketLoop User';
     var text = String(m.message || m.text || m.body || '');
     var id = 'r' + String(m.id != null ? m.id : (m.at || m.time || m.created || '') + name + text.slice(0, 12));
-    return { id: id, rawId: m.id, uid: parseInt(m.user_id || m.uid || 0, 10) || 0, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
+    return { sc: String(m.message_type || m.kind || '') === 'superchat', id: id, rawId: m.id, uid: parseInt(m.user_id || m.uid || 0, 10) || 0, ini: (m.initials || name.slice(0, 2)).toUpperCase(), h: name, tx: text, at: relTime(m.at || m.time || m.created || ''), replies: [], avatar: m.avatar || m.avatar_url || '' };
   }
   var threadCountsPending = false, threadCountsAt = 0;
   function refreshThreadCounts(force) {
@@ -1819,6 +1819,61 @@
     }).catch(function () { done(false, 'Message did not send — check your connection.'); });
   }
   el('#slw-csend').onclick = sendChat;
+  /* ---------- Super Chat gift (owner call 2026-09-10): Gift button left of the chat box → tier picker → pays through the
+     site's Super Chat handler and lands in the chat as a highlighted superchat row ---------- */
+  var GIFT = { open: false, opts: null, tier: '', busy: false, note: '' };
+  function giftRender() {
+    var pop = el('#slw-giftpop'); if (!pop) return;
+    if (!GIFT.open) { pop.hidden = true; return; }
+    pop.hidden = false;
+    var o = GIFT.opts;
+    if (!o) { pop.innerHTML = '<div class="gp-h"><b>🎁 Super Chat</b><button type="button" class="gp-x" data-gift-close>✕</button></div><div class="gp-note">Loading tiers…</div>'; return; }
+    if (!o.logged_in) { pop.innerHTML = '<div class="gp-h"><b>🎁 Super Chat</b><button type="button" class="gp-x" data-gift-close>✕</button></div><div class="gp-note">Sign in to send a Super Chat. <a href="/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname + location.search) + '">Sign in</a></div>'; return; }
+    var tiers = o.tiers || [];
+    if (!GIFT.tier) { var firstOk = tiers.filter(function (t) { return !t.locked; })[0]; GIFT.tier = firstOk ? firstOk.slug : ''; }
+    var cur = tiers.filter(function (t) { return t.slug === GIFT.tier; })[0];
+    var short = cur ? Math.max(0, cur.loop_bucks - (o.balance || 0)) : 0;
+    pop.innerHTML = '<div class="gp-h"><b>🎁 Super Chat' + (o.creator ? ' for ' + esc(o.creator) : '') + '</b><span class="gp-bal">' + Number(o.balance || 0).toLocaleString() + ' LB</span><button type="button" class="gp-x" data-gift-close>✕</button></div>' +
+      (o.enabled === false ? '<div class="gp-note">Super Chat is off for this stream.</div>' : '') +
+      '<div class="gp-tiers">' + (tiers.length ? tiers.map(function (t) { return '<button type="button" class="gp-tier' + (t.slug === GIFT.tier ? ' on' : '') + (t.locked ? ' locked' : '') + '" data-gift-tier="' + esc(t.slug) + '"' + (t.locked ? ' disabled' : '') + '><b>' + Number(t.loop_bucks).toLocaleString() + ' LB</b><span>' + esc(t.label) + (t.seconds ? ' · ' + t.seconds + 's on the mic' : '') + (t.locked ? ' · members' : '') + '</span></button>'; }).join('') : '<div class="gp-note">No Super Chat tiers are set up yet.</div>') + '</div>' +
+      '<input class="gp-msg" id="slw-giftmsg" maxlength="' + (o.message_limit || 200) + '" placeholder="Say something with your gift (optional)" value="' + esc((el('#slw-cin') && el('#slw-cin').value) || '') + '">' +
+      '<div class="gp-row"><button type="button" class="gp-send" data-gift-send' + (!cur || short > 0 || GIFT.busy ? ' disabled' : '') + '>' + (GIFT.busy ? 'Sending…' : (cur ? 'Send ' + Number(cur.loop_bucks).toLocaleString() + ' LB gift' : 'Pick a tier')) + '</button>' +
+      (short > 0 ? '<a class="gp-top" href="' + esc(o.store_url || '/wallet/') + '">' + short.toLocaleString() + ' LB short · top up</a>' : '') + '</div>' +
+      (GIFT.note ? '<div class="gp-note' + (GIFT.note.indexOf('!') === 0 ? ' bad' : '') + '">' + esc(GIFT.note.replace(/^!/, '')) + '</div>' : '') +
+      '<div class="gp-fine">Your gift shows in the chat and on the creator\'s stream. Paid gifts also give you a Voice Queue pass for this stream.</div>';
+  }
+  function giftLoad() {
+    api('/sml-superchat/v1/options?room_id=' + encodeURIComponent(CHAT_ROOM)).then(function (res) { GIFT.opts = res.j || { logged_in: false, tiers: [] }; giftRender(); }).catch(function () { GIFT.opts = { logged_in: false, tiers: [] }; giftRender(); });
+  }
+  function giftToggle(force) {
+    GIFT.open = typeof force === 'boolean' ? force : !GIFT.open;
+    GIFT.note = '';
+    if (GIFT.open) giftLoad();
+    giftRender();
+  }
+  function giftSend() {
+    if (GIFT.busy || !GIFT.tier) return;
+    var msg = (el('#slw-giftmsg') && el('#slw-giftmsg').value.trim()) || '';
+    GIFT.busy = true; GIFT.note = ''; giftRender();
+    api('/sml-superchat/v1/gift', { method: 'POST', body: JSON.stringify({ room_id: CHAT_ROOM, tier: GIFT.tier, message: msg }) }).then(function (res) {
+      GIFT.busy = false;
+      if (!res.ok) { GIFT.note = '!' + ((res.j && res.j.message) || 'The gift did not go through.'); giftRender(); return; }
+      GIFT.note = 'Gift sent — thank you!';
+      if (GIFT.opts && res.j && typeof res.j.balance === 'number') GIFT.opts.balance = res.j.balance;
+      if (el('#slw-cin')) el('#slw-cin').value = '';
+      chatCursor = ''; pollChat(); loadWallet();
+      giftRender();
+      setTimeout(function () { giftToggle(false); }, 1800);
+    }).catch(function () { GIFT.busy = false; GIFT.note = '!Check your connection and try again.'; giftRender(); });
+  }
+  if (el('#slw-gift')) el('#slw-gift').onclick = function () { giftToggle(); };
+  document.addEventListener('click', function (e) {
+    var pop = el('#slw-giftpop'); if (!pop || pop.hidden) return;
+    if (e.target.closest('[data-gift-close]')) { giftToggle(false); return; }
+    var t = e.target.closest('[data-gift-tier]'); if (t) { GIFT.tier = t.getAttribute('data-gift-tier'); giftRender(); return; }
+    if (e.target.closest('[data-gift-send]')) { giftSend(); return; }
+    if (!e.target.closest('#slw-giftpop') && !e.target.closest('#slw-gift')) giftToggle(false);
+  });
   el('#slw-cin').addEventListener('keydown', function (e) { if (e.key === 'Enter') sendChat(); });
   /* wallet chip + gates (Speak balance, chat gate, Play gate) */
   function loadWallet() {
