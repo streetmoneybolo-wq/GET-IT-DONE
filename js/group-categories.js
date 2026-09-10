@@ -2563,8 +2563,12 @@
     });
   }
 
+  /* owner call 2026-09-10 (later): no alerts/chirp bar or floating pill on the group page — the mic lives on the Analyst
+     Dashboard, alert picks on the channel bells here and in the LOOP-KICK Groups tab. Members still HEAR chirps on the page. */
   function paint() {
-    ensureBar(); decorate();
+    decorate();
+    var stale = document.getElementById('sml-gk-bar'); if (stale) stale.remove();
+    var fab = document.getElementById('sml-gk-fab'); if (fab) fab.remove();
   }
 
   function ensureFab() {
