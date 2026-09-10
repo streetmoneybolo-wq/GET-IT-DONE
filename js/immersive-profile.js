@@ -289,6 +289,9 @@
     '.sip-mini .sip-dock{left:auto;right:14px;bottom:14px;transform:none;width:auto;min-width:0;padding:6px;gap:0;border-radius:999px;flex-wrap:nowrap;}' +
     '.sip-mini .sip-dock .sip-track,.sip-mini .sip-dock .sip-wave,.sip-mini .sip-dock .sip-eq,.sip-mini .sip-dock .sip-ctl,.sip-mini .sip-dock .sip-dock-more,.sip-mini .sip-dock .sip-panel{display:none!important;}' +
     '.sip-mini .sip-dock .sip-play{margin:0;}' +
+    '.sip-gift{background:linear-gradient(120deg,#38F58A,#7dffb8 50%,#ffd166);color:#06120c;border:0;font-weight:900;box-shadow:0 0 0 2px rgba(56,245,138,.25),0 0 18px rgba(56,245,138,.5);animation:sipGiftPulse 2.2s ease-in-out infinite;white-space:nowrap;}' +
+    '@keyframes sipGiftPulse{0%,100%{box-shadow:0 0 0 2px rgba(56,245,138,.25),0 0 14px rgba(56,245,138,.45);}50%{box-shadow:0 0 0 4px rgba(56,245,138,.35),0 0 30px rgba(56,245,138,.85);}}' +
+    '.sip-mini .sip-dock .sip-gift{margin-left:6px;font-size:12px;padding:7px 12px;}' +
     '.sip-mini .sip-dock.sip-dock--none{display:none!important;}' +
     '@media (max-width:640px){' +
       '.sip-content{padding:10px 10px 150px;}' +
@@ -527,6 +530,7 @@
       // Dock
       '<div class="sip-dock">' +
       '<button class="sip-play">▶</button>' +
+      '<button class="sip-chip sip-gift" type="button" hidden title="Leave a song on this profile for Loop Bucks — it plays right after the owner’s tracks">🎁 Leave a song</button>' +
       '<div class="sip-track"><div class="sip-track-l">PROFILE MUSIC · YOUTUBE</div><div class="sip-track-t">' + esc(cfg.music.title) + '</div><div class="sip-time">0:00 / 0:00</div></div>' +
       '<div class="sip-wave"><canvas></canvas></div>' +
       '<div class="sip-eq">' + eqHtml + '</div>' +
