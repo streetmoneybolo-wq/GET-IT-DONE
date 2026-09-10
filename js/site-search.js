@@ -1205,7 +1205,8 @@
       drag = null;
       grip.classList.remove('dragging'); popup.classList.remove('sml-lk-dragging');
     }
-    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end); grip.addEventListener('lostpointercapture', function () { if (drag) end({ pointerId: drag.id }); });
+    window.addEventListener('pointerup', function (ev) { if (drag && ev.pointerId === drag.id) end(ev); }, true);
     /* touch fallback for webviews without pointer events */
     if (!window.PointerEvent) {
       grip.addEventListener('touchstart', function (ev) { var t = ev.touches[0]; if (!t) return; ev.preventDefault(); var r = inner.getBoundingClientRect(); drag = { id: t.identifier, dx: t.clientX - r.left, dy: t.clientY - r.top, moved: false }; grip.classList.add('dragging'); popup.classList.add('sml-lk-dragging'); }, { passive: false });
