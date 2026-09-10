@@ -437,7 +437,7 @@
     ST.lSite = l.site || ''; ST.lX = l.x || ''; ST.lYt = l.youtube || '';
   }
   function studioHTML() {
-    var tabs = [['theme', 'Theme'], ['links', 'Links'], ['mod', 'Moderation'], ['live', 'Live chat'], ['chan', 'Channel']];
+    var tabs = [['theme', 'Theme'], ['links', 'Links'], ['mod', 'Moderation'], ['live', 'Live chat'], ['pl', 'Playlists'], ['chan', 'Channel']];
     var body = '';
     if (ST.tab === 'theme') {
       body = '<div class="lch-f-group"><span class="lch-f-label">ACCENT COLOR</span><div class="lch-swatches">' +
@@ -465,6 +465,16 @@
         ST.bl.map(function (l, i) { return '<button class="lch-chipban" data-rmbl="' + i + '">' + esc(l) + ' ✕</button>'; }).join('') + '</div>' +
         '<div class="lch-f-row"><input class="lch-f-input mono" id="ch-bldraft" placeholder="Domain or pattern, e.g. t.me/*" value="' + esc(ST.blDraft) + '"><button class="lch-f-add" id="ch-bladd">Ban</button></div></div>' +
         '<span class="lch-f-note">saved to your channel · enforced in channel chat, community posts AND your live-stream chat (blocked posts get a 403; you and your mods are exempt)</span>' +
+        '<span class="lch-pending" id="ch-theme-save-note" style="display:' + (ST.saveNote ? '' : 'none') + '">' + esc(ST.saveNote) + '</span>';
+    } else if (ST.tab === 'pl') {
+      /* owner call 2026-09-10: playlists are a channel option — show them or not, and where */
+      var plShow = ST.plShow !== false, plPlace = ST.plPlace || 'below';
+      body = '<div class="lch-f-group"><span class="lch-f-label">PLAYLISTS ON THIS CHANNEL</span>' +
+        '<label class="lch-f-row" style="gap:8px;cursor:pointer"><input type="checkbox" id="ch-plshow"' + (plShow ? ' checked' : '') + '> <span>Show my playlists on my Loop Channel</span></label></div>' +
+        '<div class="lch-f-group"><span class="lch-f-label">WHERE</span><select class="lch-f-input" id="ch-plplace">' +
+        [['above', 'Above latest content'], ['below', 'Below latest content'], ['sidebar', 'In the sidebar']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === plPlace ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="lch-f-row"><a class="lch-f-add ghost" href="/creator-studio/?tab=playlists">Manage playlists in Creator Studio →</a></div>' +
+        '<span class="lch-f-note">' + (ST.plLoaded ? (ST.plCount || 0) + ' public playlist' + (ST.plCount === 1 ? '' : 's') + ' · each has its own indexable page and auto-plays on the watch page' : 'Loading…') + '</span>' +
         '<span class="lch-pending" id="ch-theme-save-note" style="display:' + (ST.saveNote ? '' : 'none') + '">' + esc(ST.saveNote) + '</span>';
     } else if (ST.tab === 'live') {
       var rows = (ST.liveMsgs || []).slice().reverse().map(function (m) {
@@ -497,6 +507,24 @@
     Array.prototype.forEach.call(root.querySelectorAll('[data-tab]'), function (b) { b.onclick = function () { ST.tab = b.getAttribute('data-tab'); renderStudio(); }; });
     /* upload buttons inside the drawer reuse the same slot uploader as drag-drop */
     Array.prototype.forEach.call(root.querySelectorAll('[data-upload]'), function (b) { b.onclick = function () { pendingSlot = b.getAttribute('data-upload'); el('#ch-file').value = ''; el('#ch-file').click(); }; });
+    if (ST.tab === 'pl') {
+      if (!ST.plLoaded) {
+        api('/sml-playlists/v1/channel?handle=' + encodeURIComponent(HANDLE)).then(function (r) {
+          var st = (r.j && r.j.settings) || {}; ST.plShow = st.show !== false; ST.plPlace = st.placement || 'below'; ST.plCount = ((r.j && r.j.playlists) || []).length; ST.plLoaded = true; renderStudio();
+        }).catch(function () { ST.plLoaded = true; renderStudio(); });
+      }
+      var savePl = function () {
+        var body = { show: el('#ch-plshow').checked, placement: el('#ch-plplace').value };
+        ST.plShow = body.show; ST.plPlace = body.placement; ST.saveNote = 'Saving…'; var note = el('#ch-theme-save-note'); if (note) { note.style.display = ''; note.textContent = ST.saveNote; }
+        api('/sml-playlists/v1/channel-settings', { method: 'POST', body: JSON.stringify(body) }).then(function (r) {
+          ST.saveNote = r.ok ? 'Saved — live on your channel.' : ((r.j && r.j.message) || 'Could not save.');
+          note = el('#ch-theme-save-note'); if (note) { note.style.display = ''; note.textContent = ST.saveNote; }
+          var sec = document.getElementById('ch-playlists'); if (sec) sec.remove(); if (window.__smlPlaylistChannel) { window.__smlPlaylistChannel = 0; var sc = document.getElementById('sml-playlist-channel'); if (sc) { try { (new Function(sc.textContent))(); } catch (e) {} } }
+        });
+      };
+      if (el('#ch-plshow')) el('#ch-plshow').onchange = savePl;
+      if (el('#ch-plplace')) el('#ch-plplace').onchange = savePl;
+    }
     if (ST.tab === 'theme') {
       Array.prototype.forEach.call(root.querySelectorAll('[data-acc]'), function (b) { b.onclick = function () { ST.accent = b.getAttribute('data-acc'); applyTheme(); saveSettings({ accent: ST.accent }); renderStudio(); }; });
       Array.prototype.forEach.call(root.querySelectorAll('[data-font]'), function (b) { b.onclick = function () { ST.font = b.getAttribute('data-font'); applyTheme(); saveSettings({ font: ST.font }); renderStudio(); }; });
