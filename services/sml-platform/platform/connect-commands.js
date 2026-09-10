@@ -42,6 +42,7 @@ const CASE_ID_OPTION = {
  * Registered by scripts/register-connect-commands.js. */
 const COMMAND_DEFINITIONS = [
   { type: 1, name: 'connect-setup', description: 'Start StockMarketLoop Connect setup for this Discord server', default_member_permissions: MANAGE_GUILD_PERMISSION, contexts: [0], options: [] },
+  { type: 1, name: 'connect-dashboard', description: 'Get the StockMarketLoop Connect dashboard link for this Discord server', default_member_permissions: MANAGE_GUILD_PERMISSION, contexts: [0], options: [] },
   { type: 1, name: 'payments', description: 'Summarize recent payment records for your merchant scope', default_member_permissions: '0', contexts: [0], options: [] },
   { type: 1, name: 'subscriptions', description: 'Summarize subscription records for your merchant scope', default_member_permissions: '0', contexts: [0], options: [] },
   { type: 1, name: 'customer-history', description: 'Billing history counts for the account behind a dispute case', default_member_permissions: '0', contexts: [0], options: [CASE_ID_OPTION] },
@@ -262,6 +263,22 @@ function createConnectCommands(deps = {}) {
       { type: 2, style: 5, label: 'Migrate', url: migrateUrl({ guildId, guildName }) },
       { type: 2, style: 5, label: 'Dashboard', url: ownerDashboardUrl({ guildId, guildName }) }
     ];
+  }
+
+  function ownerDashboardCard({ guildId, guildName } = {}) {
+    const server = guildName ? `Server detected: ${guildName}.` : `Server detected by ID: ${guildId || 'unknown'}.`;
+    return {
+      content: [
+        'StockMarketLoop Connect dashboard is ready for this server.',
+        server,
+        '',
+        'Use Dashboard for memberships, roles, migration status, overdue notices, analytics, and billing tools.'
+      ].join('\n'),
+      components: [{
+        type: 1,
+        components: ownerActionButtons({ guildId, guildName })
+      }]
+    };
   }
 
   function migrationChoice({ guildId, guildName } = {}) {
@@ -547,6 +564,14 @@ function createConnectCommands(deps = {}) {
       const guildName = await resolveGuildName(interaction, guildId);
       await audit(Object.assign({ outcome: 'setup_started' }, auditBase));
       return { response: { type: 4, data: Object.assign(setupIntro({ guildId, guildName }), { flags: EPHEMERAL }) } };
+    }
+    if (commandName === 'connect-dashboard') {
+      if (!guildId) {
+        return { response: ephemeralMessage('Run this dashboard command inside the Discord server you want to manage.') };
+      }
+      const guildName = await resolveGuildName(interaction, guildId);
+      await audit(Object.assign({ outcome: 'dashboard_link_requested' }, auditBase));
+      return { response: { type: 4, data: Object.assign(ownerDashboardCard({ guildId, guildName }), { flags: EPHEMERAL }) } };
     }
     if (!handler) {
       await audit(Object.assign({ outcome: 'unknown_command' }, auditBase));

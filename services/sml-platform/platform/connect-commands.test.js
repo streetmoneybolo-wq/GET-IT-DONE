@@ -113,18 +113,38 @@ function allStrings(value, out = []) {
 }
 
 test('command definitions include public owner setup plus protected merchant tools', () => {
-  assert.equal(COMMAND_DEFINITIONS.length, 11);
+  assert.equal(COMMAND_DEFINITIONS.length, 12);
   const names = COMMAND_DEFINITIONS.map((definition) => definition.name);
   assert.deepEqual(names, [
-    'connect-setup',
+    'connect-setup', 'connect-dashboard',
     'payments', 'subscriptions', 'customer-history', 'disputes', 'dispute-view',
     'dispute-build', 'dispute-missing', 'dispute-open-dashboard', 'role-status', 'role-reconcile'
   ]);
   for (const definition of COMMAND_DEFINITIONS) {
-    assert.equal(definition.default_member_permissions, definition.name === 'connect-setup' ? '32' : '0');
+    assert.equal(definition.default_member_permissions, ['connect-setup', 'connect-dashboard'].includes(definition.name) ? '32' : '0');
     assert.deepEqual(definition.contexts, [0]);
     assert.equal(definition.type, 1);
   }
+});
+
+test('connect-dashboard is available before SML account linking and returns owner links', async () => {
+  const { deps, audits } = fakes({
+    graph: { async findByRef() { throw new Error('dashboard link should not require account graph lookup'); } }
+  });
+  const result = await createConnectCommands(deps).handleCommand(interaction('connect-dashboard', [], {
+    guild: { name: 'Making Easy Money' }
+  }));
+  assert.equal(result.response.type, 4);
+  assert.equal(result.response.data.flags, 64);
+  assert.match(result.response.data.content, /dashboard is ready/i);
+  assert.match(result.response.data.content, /Making Easy Money/);
+  const buttons = result.response.data.components[0].components;
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0].label, 'Migrate');
+  assert.match(buttons[0].url, /connect-migrate/);
+  assert.equal(buttons[1].label, 'Dashboard');
+  assert.match(buttons[1].url, /connect-dashboard/);
+  assert.equal(audits.at(-1).fields.detail.outcome, 'dashboard_link_requested');
 });
 
 test('connect-setup is available before SML account linking and asks Upgrade.Chat by button', async () => {
