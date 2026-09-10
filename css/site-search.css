@@ -67,4 +67,4 @@ body.sml-embed-tool{padding-top:0!important;margin-top:0!important}
 #sml-ets .drop .ex{font:500 9px/1 'IBM Plex Mono',monospace;color:#5d7085;flex:0 0 auto}
 /* STRICT RULE (owner, 2026-09-10): the site header — logo/home, Loop Bucks and LOOP-KICK — is clickable on every page. Page skins that blank the body (analytics, live watch, group tools…) must exempt it; this guard wins over any :not() hide-rule they ship. The logged-out auth portal and embedded tool frames are the only exceptions. */
 body.sml-global-header-on:not(.sml-auth-portal-live):not(.sml-embed-tool)>#sml-global-header{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
-body.sml-global-header-on:not(.sml-auth-portal-live):not(.sml-embed-tool) #sml-global-header .sml-gh-kick{display:inline-flex!important;visibility:visible!important;pointer-events:auto!important}
+body.sml-global-header-on:not(.sml-auth-portal-live):not(.sml-embed-tool) #sml-global-header .sml-gh-kick{display:inline-flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;visibility:visible!important;pointer-events:auto!important}
