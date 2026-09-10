@@ -2399,6 +2399,7 @@
   function resetMatchChrome() {
     var ttt = el('#slw-ttt'); if (ttt) ttt.style.display = '';
     var ch = el('#slw-chess'); if (ch) ch.style.display = 'none';
+    ['#slw-c4', '#slw-ck', '#slw-sp'].forEach(function (id) { var b = el(id); if (b) b.style.display = 'none'; });
     var gm = el('#slw-gmatch');
     var title = gm && gm.querySelector('.slw-gmatch-h .l b'); if (title) title.textContent = 'Tic-Tac-Toe';
     var ym = el('#slw-chipyou') && el('#slw-chipyou').querySelector('.m'); if (ym) ym.textContent = '✕';
@@ -2569,7 +2570,7 @@
             else gErr((res.j && res.j.message) || 'Move refused.');
           });
         };
-        attempt(['move', 'cell', 'index', 'position'], 0);
+        attempt(['move[cell]'], 0);
       };
     });
     el('#slw-tclk').style.display = 'none'; /* server owns timing */
@@ -2943,6 +2944,211 @@
   }
 
   if (!SIM) { hardenPublic(); loadCreator(); loadOrbit(); }
+
+  /* ===================== Games Plus (owner call 2026-09-10) =====================
+     CPU players for every 2-player game (+ CPU partners in Spades), a visual lobby with seats, chat alerts
+     when a table in THIS stream needs players, 20 s stream-first → site-wide matchmaking, and the Connect Four,
+     Checkers and Spades boards (the server owns legality; these paint state and name moves). */
+  var GP = { waitStart: 0, waitTick: 0, lastWide: 0, wideBusy: false, alerted: {}, ckSel: -1, lastT: null };
+  function gpCtx() { return CHAT_ROOM; }
+  function gpPlayers(t) { var p = t.players || {}; var out = []; var n = Math.max(2, t.seatCount || 2); for (var i = 1; i <= n; i++) out.push({ seat: i, p: p[i] || p[String(i)] || null }); return out; }
+  function gpIsCpu(p) { return !!(p && (p.cpu || (Number(p.id) > 999999900 && Number(p.id) <= 999999908))); }
+  function gpOpen(t) { return gpPlayers(t).filter(function (s2) { return !s2.p; }).length; }
+  function gpDone(t) { return (t.status || '') === 'finished'; }
+  function gpMeWon(t) { return gpDone(t) && String(t.winner) === String(t.yourSeat); }
+  function gpAlert(t, kind) {
+    var open = gpOpen(t); if (!open || !t.id) return;
+    var key = 'g' + t.id + '-' + kind; if (GP.alerted[key]) return; GP.alerted[key] = 1;
+    sendArena('🎮', (kind === 'open' ? 'opened a ' : 'joined a ') + (t.label || t.game) + ' table — ' + open + ' seat' + (open === 1 ? '' : 's') + ' open. Tap ▦ Play to jump in!', key);
+  }
+  function gpStopWait() { clearInterval(GP.waitTick); GP.waitTick = 0; }
+  function gpWaitMsg(t) {
+    var e = Math.floor((Date.now() - GP.waitStart) / 1000);
+    if (t.yourSeat !== 1) return 'Seated · waiting for the table to fill';
+    if (t.canStart) return 'Everyone is here — start the match when you are ready';
+    if (e < 20) return 'Looking for players in this stream · ' + (20 - e) + 's before we search every live stream';
+    return 'Searching all live streams for players… you can also play vs CPU now';
+  }
+  function gpWide() {
+    if (GP.wideBusy || !G.tableId || !G.game) return;
+    GP.wideBusy = true; GP.lastWide = Date.now();
+    vFormG('/sml-games-plus/v1/matchmake-wide', { game: G.game, table_id: G.tableId }).then(function (res) {
+      GP.wideBusy = false;
+      if (res.ok && res.j && res.j.found && res.j.table) { gErr('Matched with a player from another live stream!'); adoptTable(res.j.table); }
+    }).catch(function () { GP.wideBusy = false; });
+  }
+  function gpStartWait(t) {
+    gpStopWait();
+    GP.waitTick = setInterval(function () {
+      if (G.mode !== 'wait' || !G.tableId) { gpStopWait(); return; }
+      var m = el('#slw-gwmsg'); if (m && GP.lastT) m.textContent = gpWaitMsg(GP.lastT);
+      var e = (Date.now() - GP.waitStart) / 1000;
+      if (e >= 20 && GP.lastT && GP.lastT.yourSeat === 1 && !GP.lastT.canStart && gpOpen(GP.lastT) > 0 && Date.now() - GP.lastWide > 10000) gpWide();
+    }, 1000);
+  }
+  function gpCpu(mode) {
+    if (!G.tableId) return;
+    vFormG('/sml-games-plus/v1/tables/' + G.tableId + '/cpu', { mode: mode }).then(function (res) {
+      if (!res.ok) { gErr((res.j && res.j.message) || 'Could not add a CPU player.'); return; }
+      adoptTable((res.j && res.j.table) || { id: G.tableId });
+    }).catch(function () { gErr('Could not reach the games desk.'); });
+  }
+  function gpSeatChip(s2, t) {
+    var p = s2.p, me = p && t.yourSeat === s2.seat, team = t.game === 'spades' ? (s2.seat % 2 === 1 ? 'Team A' : 'Team B') : '';
+    if (!p) return '<div class="slw-gseat empty"><span class="av"><i></i></span><b>Open seat</b><small>' + (team || 'waiting…') + '</small></div>';
+    var av = gpIsCpu(p) ? '<span class="av cpu">🤖</span>' : (p.avatar ? '<span class="av" style="background-image:url(&quot;' + esc(p.avatar) + '&quot;)"></span>' : '<span class="av">' + esc(String(p.name || '?').slice(0, 2).toUpperCase()) + '</span>');
+    return '<div class="slw-gseat' + (me ? ' me' : '') + (gpIsCpu(p) ? ' cpu' : '') + '">' + av + '<b>' + (me ? 'You' : esc(gpIsCpu(p) ? p.name : '@' + (p.handle || p.name))) + '</b><small>' + (team || (s2.seat === 1 ? 'host' : 'seat ' + s2.seat)) + '</small></div>';
+  }
+  function paintWait(t) {
+    GP.lastT = t; gShow('wait');
+    var w = el('#slw-gwait'); var gl = GLYPHS[t.game] || ['▦', '#8fa3b5']; var open = gpOpen(t); var host = t.yourSeat === 1;
+    var acts = '';
+    if (host && open > 0 && (t.seatCount || 2) === 2 && t.game !== 'blackjack') acts += '<button class="slw-rematch" data-gp-cpu="opponent">🤖 Play vs CPU now</button>';
+    if (host && t.game === 'spades') { var seats = t.players || {}; if (!(seats[3] || seats['3'])) acts += '<button class="slw-rematch" data-gp-cpu="partner">🤖 CPU partner</button>'; if (open > 0) acts += '<button class="slw-btn2" data-gp-cpu="fill">🤖 Fill empty seats with CPUs</button>'; }
+    if (t.canStart) acts += '<button class="slw-rematch slw-gstart" data-gp-start>Start the match</button>';
+    w.innerHTML = '<span class="bg" style="color:' + gl[1] + ';background:' + (GACC[gl[1]] || '#0b1119') + '">' + gl[0] + '</span><b>' + esc(t.label || t.game) + ' · table #' + t.id + '</b>' +
+      '<div class="slw-gseats">' + gpPlayers(t).map(function (s2) { return gpSeatChip(s2, t); }).join('') + '</div>' +
+      '<span class="n" id="slw-gwmsg">' + esc(gpWaitMsg(t)) + '</span>' +
+      (t.joinCode ? '<div class="code"><b>' + esc(t.joinCode) + '</b><button class="slw-btn2" style="padding:11px 12px;font-size:9px" data-gp-copy="' + esc(t.joinCode) + '">Copy code</button></div>' : '') +
+      '<div class="slw-gwacts">' + acts + '<button class="slw-back" id="slw-gwback">' + (host ? 'Close table' : 'Leave table') + '</button></div>' +
+      (t.game === 'spades' ? '<span class="n">Spades is 2 vs 2 — you and seat 3 are Team A. Two players can team up with CPU partners; everyone-for-themselves games need real players in every seat.</span>' : '');
+    el('#slw-gwback').onclick = leaveTable;
+    Array.prototype.forEach.call(w.querySelectorAll('[data-gp-cpu]'), function (b) { b.onclick = function () { gpCpu(b.getAttribute('data-gp-cpu')); }; });
+    var st = w.querySelector('[data-gp-start]'); if (st) st.onclick = function () { vFormG('/sml-games/v1/tables/' + G.tableId + '/start', {}).then(pollTable); };
+    var cp = w.querySelector('[data-gp-copy]'); if (cp) cp.onclick = function () { try { navigator.clipboard.writeText(cp.getAttribute('data-gp-copy')); cp.textContent = 'Copied'; } catch (e) {} };
+    if (!GP.waitTick) gpStartWait(t);
+  }
+  /* ---- boards ---- */
+  function gpHost(id) { var wrap = el('#slw-gmatch').querySelector('.slw-ttt-wrap'); var b = el(id); if (!b) { b = document.createElement('div'); b.id = id.slice(1); wrap.appendChild(b); } b.style.display = ''; return b; }
+  function gpChrome(t, title, youMark, oppMark) {
+    resetMatchChrome(); gShow('match');
+    var gm = el('#slw-gmatch'); var tt = gm.querySelector('.slw-gmatch-h .l b'); if (tt) tt.textContent = title;
+    el('#slw-tclk').style.display = 'none'; var ttt = el('#slw-ttt'); if (ttt) ttt.style.display = 'none';
+    var ym = el('#slw-chipyou').querySelector('.m'); if (ym) ym.textContent = youMark; var om = el('#slw-chipopp').querySelector('.m'); if (om) om.textContent = oppMark;
+    var opp = gpPlayers(t).filter(function (s2) { return s2.p && s2.seat !== t.yourSeat; }).map(function (s2) { return gpIsCpu(s2.p) ? '🤖 ' + s2.p.name : '@' + (s2.p.handle || s2.p.name); });
+    el('#slw-chipopp').querySelector('.n').textContent = opp[0] || 'opponent';
+    var done = gpDone(t); el('#slw-tbtns').classList.toggle('show', done);
+    el('#slw-chipyou').classList.toggle('on', !!t.yourTurn && !done); el('#slw-chipopp').classList.toggle('on', !t.yourTurn && !done);
+    if (done) { clearInterval(G.pollT); gpStopWait(); api('/sml-games/v1/scores').then(function () {}); }
+  }
+  function gpStatus(t, yourMoveText, waitText) {
+    var stat = el('#slw-tstat'); var done = gpDone(t);
+    if (done) { var won = gpMeWon(t), draw = Number(t.winner) === 0; stat.textContent = draw ? 'Draw — honours even.' : (won ? 'You win the match! 🏁' : (t.spectating ? 'Match over.' : 'They take it.')); stat.className = 'slw-ttt-status' + (won ? ' win' : draw ? '' : ' lose'); if (won) sendArena('🏁', 'won a ' + (t.label || t.game) + ' match in the arena', 'm' + G.tableId + '-end'); }
+    else { stat.textContent = t.spectating ? 'Spectating — ' + (t.label || t.game) : (t.yourTurn ? yourMoveText : waitText); stat.className = 'slw-ttt-status'; }
+  }
+  function gpMove(body) { vFormG('/sml-games/v1/tables/' + G.tableId + '/move', body).then(function (res) { if (res.ok) pollTable(); else gErr((res.j && res.j.message) || 'Move refused.'); }); }
+  /* Tic-Tac-Toe repainted: seat 1 = ✕, seat 2 = ◯; board 0 = empty; finished = status */
+  paintServerTTT = function (t) {
+    gpChrome(t, 'Tic-Tac-Toe', t.yourSeat === 2 ? '◯' : '✕', t.yourSeat === 2 ? '✕' : '◯');
+    var ttt = el('#slw-ttt'); ttt.style.display = '';
+    var raw = (t.state && t.state.board) || []; var done = gpDone(t);
+    ttt.innerHTML = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(function (i) { var v = Number(raw[i] || 0); return '<button class="slw-cell' + (v === 1 ? ' x' : v === 2 ? ' o' : '') + '" data-scell="' + i + '">' + (v === 1 ? '✕' : v === 2 ? '◯' : '') + '</button>'; }).join('');
+    Array.prototype.forEach.call(ttt.children, function (c) { c.onclick = function () { if (!t.yourTurn || done) return; var i = +c.getAttribute('data-scell'); if (Number(raw[i] || 0)) return; gpMove({ 'move[cell]': i }); }; });
+    gpStatus(t, 'Your move — place ' + (t.yourSeat === 2 ? 'a ◯' : 'an ✕'), 'Waiting on the other seat…');
+  };
+  function paintServerC4(t) {
+    gpChrome(t, 'Connect Four', t.yourSeat === 2 ? '🟡' : '🔴', t.yourSeat === 2 ? '🔴' : '🟡');
+    var host = gpHost('#slw-c4'); var st = t.state || {}; var board = st.board || []; var rows = st.rows || 6, cols = st.cols || 7; var done = gpDone(t);
+    var h = '<div class="slw-c4" style="grid-template-columns:repeat(' + cols + ',1fr)">';
+    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) { var v = Number(board[r * cols + c] || 0); h += '<button class="slw-c4c' + (v === 1 ? ' p1' : v === 2 ? ' p2' : '') + '" data-col="' + c + '"' + (t.yourTurn && !done ? '' : ' disabled') + '><i></i></button>'; }
+    host.innerHTML = h + '</div>';
+    Array.prototype.forEach.call(host.querySelectorAll('[data-col]'), function (b) { b.onclick = function () { if (!t.yourTurn || done) return; gpMove({ 'move[col]': b.getAttribute('data-col') }); }; });
+    gpStatus(t, 'Your move — drop a disc in a column', 'Waiting on the other seat…');
+  }
+  function paintServerCK(t) {
+    gpChrome(t, 'Checkers', t.yourSeat === 2 ? '⚫' : '⚪', t.yourSeat === 2 ? '⚪' : '⚫');
+    var host = gpHost('#slw-ck'); var st = t.state || {}; var board = st.board || []; var kings = (st.kings || []).map(Number); var done = gpDone(t); var flip = t.yourSeat === 2; var chain = Number(st.chain != null ? st.chain : -1);
+    if (chain >= 0 && t.yourTurn) GP.ckSel = chain;
+    var order = []; for (var i = 0; i < 64; i++) order.push(flip ? 63 - i : i);
+    host.innerHTML = '<div class="slw-ck">' + order.map(function (i) { var v = Number(board[i] || 0); var dark = ((Math.floor(i / 8) + (i % 8)) % 2) === 1; return '<button class="slw-ckc' + (dark ? ' d' : ' l') + (GP.ckSel === i ? ' sel' : '') + '" data-i="' + i + '"' + (dark ? '' : ' disabled') + '>' + (v ? '<i class="' + (v === 1 ? 'p1' : 'p2') + (kings.indexOf(i) > -1 ? ' k' : '') + '">' + (kings.indexOf(i) > -1 ? '♔' : '') + '</i>' : '') + '</button>'; }).join('') + '</div>';
+    Array.prototype.forEach.call(host.querySelectorAll('[data-i]'), function (b) { b.onclick = function () {
+      if (!t.yourTurn || done) return; var i = +b.getAttribute('data-i'); var v = Number(board[i] || 0);
+      if (v === t.yourSeat) { if (chain >= 0 && i !== chain) return; GP.ckSel = i; paintServerCK(t); return; }
+      if (v === 0 && GP.ckSel >= 0) { var from = GP.ckSel; GP.ckSel = -1; gpMove({ 'move[from]': from, 'move[to]': i }); }
+    }; });
+    gpStatus(t, chain >= 0 ? 'Keep jumping with the same piece' : (GP.ckSel >= 0 ? 'Now tap the square to move to' : 'Your move — tap a piece, then a square'), 'Waiting on the other seat…');
+  }
+  var SUIT = { S: ['♠', '#e6edf3'], H: ['♥', '#ff5b6e'], D: ['♦', '#ff8f45'], C: ['♣', '#8fd0ff'] };
+  function gpCard(c, extra) { var r = c.slice(0, -1), su = c.slice(-1); var sy = SUIT[su] || ['?', '#fff']; return '<span class="slw-card' + (extra || '') + '" data-card="' + esc(c) + '" style="color:' + sy[1] + '"><b>' + (r === 'T' ? '10' : esc(r)) + '</b><i>' + sy[0] + '</i></span>'; }
+  function gpSpLegal(st, hand) {
+    var lead = st.leadSuit || ''; if (lead) { var f = hand.filter(function (c) { return c.slice(-1) === lead; }); return f.length ? f : hand; }
+    if (!st.broken) { var ns = hand.filter(function (c) { return c.slice(-1) !== 'S'; }); return ns.length ? ns : hand; }
+    return hand;
+  }
+  function paintServerSP(t) {
+    gpChrome(t, 'Spades', '♠', '♠');
+    var host = gpHost('#slw-sp'); var st = t.state || {}; var done = gpDone(t); var me = t.yourSeat || 1; var pl = t.players || {};
+    var seatName = function (n) { var p = pl[n] || pl[String(n)]; return !p ? 'open' : (n === t.yourSeat ? 'You' : (gpIsCpu(p) ? '🤖 ' + p.name : '@' + (p.handle || p.name))); };
+    var rel = function (k) { return ((me - 1 + k) % 4) + 1; }; // k=0 me, 1 left, 2 partner, 3 right
+    var bids = st.bids || {}, won = st.won || {}, counts = st.counts || {}, trick = st.trick || {};
+    var seatBox = function (n, pos) { return '<div class="slw-spseat ' + pos + (Number(t.turn) === n && !done ? ' turn' : '') + '"><b>' + esc(seatName(n)) + '</b><small>' + (n % 2 === 1 ? 'A' : 'B') + ' · bid ' + (bids[n] != null ? bids[n] : '–') + ' · won ' + (won[n] || 0) + ' · ' + (counts[n] != null ? counts[n] : '?') + ' cards</small>' + (trick[n] ? gpCard(String(trick[n]), ' played') : '<span class="slw-card slot"></span>') + '</div>'; };
+    var hand = (st.hand_cards || []).map(String); var legal = t.yourTurn && st.phase === 'playing' ? gpSpLegal(st, hand) : [];
+    var bidUi = (st.phase === 'bidding' && t.yourTurn && !done) ? '<div class="slw-spbid"><span>Your bid:</span>' + [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(function (b) { return '<button data-bid="' + b + '">' + (b === 0 ? 'Nil' : b) + '</button>'; }).join('') + '</div>' : '';
+    host.innerHTML = '<div class="slw-sp"><div class="slw-spscore"><span>Team A <b>' + (st.scores && st.scores.A || 0) + '</b> · bags ' + (st.bags && st.bags.A || 0) + '</span><span>Hand ' + (st.hand || 1) + ' · ' + esc(st.phase || '') + '</span><span>Team B <b>' + (st.scores && st.scores.B || 0) + '</b> · bags ' + (st.bags && st.bags.B || 0) + '</span></div>' +
+      '<div class="slw-sptable">' + seatBox(rel(2), 'top') + '<div class="slw-sprow">' + seatBox(rel(1), 'left') + '<div class="slw-spmid">' + (st.leadSuit ? 'Lead: ' + (SUIT[st.leadSuit] || ['?'])[0] : (st.phase === 'playing' ? 'Lead the trick' : '')) + '</div>' + seatBox(rel(3), 'right') + '</div>' + seatBox(rel(0), 'bottom') + '</div>' +
+      bidUi + '<div class="slw-sphand">' + hand.map(function (c) { return gpCard(c, legal.indexOf(c) > -1 ? ' ok' : (t.yourTurn && st.phase === 'playing' ? ' dim' : '')); }).join('') + '</div></div>';
+    Array.prototype.forEach.call(host.querySelectorAll('[data-bid]'), function (b) { b.onclick = function () { gpMove({ 'move[action]': 'bid', 'move[bid]': b.getAttribute('data-bid') }); }; });
+    Array.prototype.forEach.call(host.querySelectorAll('.slw-sphand .slw-card.ok'), function (c) { c.onclick = function () { gpMove({ 'move[action]': 'play', 'move[card]': c.getAttribute('data-card') }); }; });
+    var myTeam = me % 2 === 1 ? 'A' : 'B', winTeam = Number(t.winner) === 1 ? 'A' : (Number(t.winner) === 2 ? 'B' : '');
+    if (done) { var stat = el('#slw-tstat'); stat.textContent = winTeam ? (winTeam === myTeam ? 'Your team wins the game! 🏁' : 'Team ' + winTeam + ' takes it.') : 'Game over — a tie.'; stat.className = 'slw-ttt-status' + (winTeam === myTeam ? ' win' : ' lose'); if (winTeam === myTeam) sendArena('🏁', 'won a Spades game in the arena', 'm' + G.tableId + '-end'); }
+    else gpStatus(t, st.phase === 'bidding' ? 'Your bid — how many tricks will you take?' : 'Your play — tap a highlighted card', st.phase === 'bidding' ? 'Waiting for bids…' : 'Waiting on ' + esc(seatName(Number(t.turn))) + '…');
+  }
+  /* ---- wire into the table flow ---- */
+  var gpPaintOrig = paintTable;
+  paintTable = function (t) {
+    GP.lastT = t;
+    var st = t.status || 'waiting';
+    if (st === 'waiting') { paintWait(t); return; }
+    gpStopWait();
+    if (t.game === 'connect4') { paintServerC4(t); return; }
+    if (t.game === 'checkers') { paintServerCK(t); return; }
+    if (t.game === 'spades') { paintServerSP(t); return; }
+    gpPaintOrig(t);
+  };
+  var gpAdoptOrig = adoptTable;
+  adoptTable = function (t) {
+    if ((t.status || 'waiting') === 'waiting') { if (!GP.lastT || GP.lastT.id !== t.id) GP.waitStart = Date.now(); }
+    GP.ckSel = -1;
+    gpAdoptOrig(t);
+    if ((t.status || 'waiting') === 'waiting' && t.id) gpAlert(t, t.yourSeat === 1 ? 'open' : 'join');
+  };
+  var gpLeaveOrig = leaveTable;
+  leaveTable = function () { gpStopWait(); GP.lastT = null; gpLeaveOrig(); };
+  startServerGame = function (key, opts) {
+    vFormG('/sml-games/v1/matchmake', { game: key, context: 'video', context_id: gpCtx() }).then(function (res) {
+      if (!res.ok) { gErr((res.j && res.j.message) || 'Could not open a table.'); return; }
+      var t = (res.j && (res.j.table || res.j)) || {};
+      if (!t.id) { gErr('The table did not open — try again.'); return; }
+      adoptTable(t);
+      if (opts && opts.cpu && (t.status || 'waiting') === 'waiting' && t.yourSeat === 1) gpCpu('opponent');
+    }).catch(function () { gErr('Could not reach the games desk.'); });
+  };
+  function gpRenderWide(tables) {
+    var lob = el('#slw-glob'); if (!lob) return;
+    var old = lob.querySelector('.slw-gwide'); if (old) old.remove();
+    var sec = document.createElement('div'); sec.className = 'slw-gopen slw-gwide';
+    sec.innerHTML = '<div class="hd"><b>OPEN TABLES IN OTHER LIVE STREAMS</b><span style="font:500 9px/1 \'IBM Plex Mono\',monospace;color:#5d7085">' + tables.length + ' waiting</span></div>' +
+      (tables.length ? tables.map(function (t) { var gl = GLYPHS[t.game] || ['▦', '#8fa3b5']; var host = gpPlayers(t).filter(function (s2) { return s2.p; }).map(function (s2) { return gpIsCpu(s2.p) ? '🤖' : '@' + (s2.p.handle || s2.p.name); }).join(', '); return '<div class="slw-gtable"><div class="l"><span class="bg" style="color:' + gl[1] + ';background:' + (GACC[gl[1]] || '#0b1119') + '">' + gl[0] + '</span><div class="bd"><span class="nm">' + esc(t.label || t.game) + ' · ' + (gpPlayers(t).length - gpOpen(t)) + '/' + gpPlayers(t).length + ' seats</span><span class="hs">' + esc(host || 'open') + ' · ' + esc(t.stream || 'another stream') + '</span></div></div><button class="slw-gjoin" data-join="' + t.id + '">Join</button></div>'; }).join('') : '<div class="slw-chat-empty" style="display:block">Nobody is waiting on another stream right now — tables opened here are matched site-wide after 20 seconds.</div>');
+    lob.appendChild(sec);
+    Array.prototype.forEach.call(sec.querySelectorAll('.slw-gjoin'), function (b) { b.onclick = function () { joinTable(+b.getAttribute('data-join')); }; });
+  }
+  function gpDecorateTiles() {
+    Array.prototype.forEach.call(el('#slw-glob').querySelectorAll('.slw-gtile'), function (tile) {
+      var cta = tile.querySelector('.slw-gcta'); if (!cta || tile.querySelector('.slw-gcpu')) return;
+      var key = cta.getAttribute('data-gkey'); var g = (G.catalogue || []).filter(function (x) { return x.key === key; })[0];
+      if (!g) return;
+      if (g.seats === 2) { var b = document.createElement('button'); b.className = 'slw-gcta slw-gcpu'; b.textContent = '🤖 Play vs CPU'; b.onclick = function () { startServerGame(key, { cpu: true }); }; cta.insertAdjacentElement('afterend', b); }
+      else if (key === 'spades') { var n = document.createElement('span'); n.className = 'slw-gnote'; n.textContent = '2 vs 2 · CPU partners available'; cta.insertAdjacentElement('afterend', n); }
+    });
+  }
+  loadLobby = function () {
+    if (SIM || document.hidden || S.tab !== 4 || G.mode !== 'lobby') return;
+    Promise.all([api('/sml-games/v1/lobby?context=video&context_id=' + encodeURIComponent(gpCtx())), api('/sml-games-plus/v1/wide?context_id=' + encodeURIComponent(gpCtx()))]).then(function (rs) {
+      var j = rs[0].j; if (!j || !j.catalogue) return;
+      renderLobbyReal(j); gpDecorateTiles(); gpRenderWide((rs[1] && rs[1].j && rs[1].j.tables) || []);
+    }).catch(function () {});
+  };
+  if (!SIM) setInterval(function () { if (S.tab === 4 && G.mode === 'lobby') loadLobby(); }, 8000);
 
   /* ---------- timers ---------- */
   renderFeed();
