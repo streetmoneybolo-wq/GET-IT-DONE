@@ -2456,3 +2456,234 @@
     window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', cancel, true);
   }, true);
 })();
+
+/* ===== Group alerts → LOOP-KICK + group Chirp on the group page (owner call 2026-09-10; WordPress mu-plugin sml-group-kick) =====
+   Members: a 🔔 on every channel button (alerts for that channel land in their LOOP-KICK), an "All alerts" switch,
+   a 🔊 Chirp switch (hear this group's chirps anywhere on the site), and — when the owner gave them the mic —
+   a hold-to-talk 🎙 button. Everyone in the group who is on the page hears a chirp within ~4s (polled). */
+(function () {
+  'use strict';
+  if (!document.querySelector('#sml-group-shell, .sml-gshell')) return;
+  var NONCE = window.SML_GCAT_NONCE || (window.SMLGroupShell && window.SMLGroupShell.nonce) || (window.wpApiSettings && window.wpApiSettings.nonce) || '';
+  var API = '/wp-json/sml-group-kick/v1/';
+  function ctx() { return window.SMLGroupShellContext || {}; }
+  function gid() {
+    var c = ctx(); if (c.groupId) return String(c.groupId).replace(/\D/g, '');
+    var cfg = window.SMLGroupShell; if (cfg && cfg.groupId) return String(cfg.groupId).replace(/\D/g, '');
+    try { var root = document.getElementById('sml-group-shell'); var conf = root && root.getAttribute('data-config') ? JSON.parse(root.getAttribute('data-config')) : null; if (conf && conf.groupId) return String(conf.groupId).replace(/\D/g, ''); } catch (e) {}
+    return '';
+  }
+  function cid() {
+    var c = ctx(); if (c && c.mode) return c.mode === 'channel' && c.channelId ? String(c.channelId).replace(/\D/g, '') : '';
+    var act = document.querySelector('.sml-gshell button.sml-gshell__channel.is-active[data-smlgs-channel]');
+    return act ? String(act.getAttribute('data-smlgs-channel') || '').replace(/\D/g, '') : '';
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function hdr(json) { var h = {}; if (NONCE) h['X-WP-Nonce'] = NONCE; if (json) h['Content-Type'] = 'application/json'; return h; }
+  function parse(r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error((j && j.message) || ('HTTP ' + r.status)); e.code = j && j.code; throw e; } return j; }); }
+  function freshNonce() {
+    return fetch('/wp-admin/admin-ajax.php?action=rest-nonce', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) { t = String(t || '').trim(); if (/^[a-f0-9]{8,12}$/i.test(t)) NONCE = t; return NONCE; });
+  }
+  function get(path, retried) {
+    return fetch(API + path, { credentials: 'same-origin', headers: hdr(false), cache: 'no-store' }).then(parse).catch(function (e) {
+      if (!retried && /nonce|401|403/.test(String(e.message) + ' ' + String(e.code))) return freshNonce().then(function () { return get(path, true); });
+      throw e;
+    });
+  }
+  function post(path, body, retried) {
+    return fetch(API + path, { method: 'POST', credentials: 'same-origin', headers: hdr(true), body: JSON.stringify(body) }).then(parse).catch(function (e) {
+      if (!retried && /nonce|401/.test(String(e.message) + ' ' + String(e.code))) return freshNonce().then(function () { return post(path, body, true); });
+      throw e;
+    });
+  }
+
+  var G = null;          /* my membership entry for this group (null = not a member / not loaded) */
+  var loaded = false, member = true;
+  var last = 0, queue = [], audio = null, playing = null;
+  var rec = null, chunks = [], recStart = 0, recTimer = null, busy = '';
+
+  var style = document.createElement('style');
+  style.id = 'sml-gk-css';
+  style.textContent = ''
+    + '#sml-gk-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px 10px;border-bottom:1px solid rgba(255,255,255,.06)}'
+    + '#sml-gk-bar .sml-gk-t{width:100%;font:700 9.5px/1.2 Archivo,Inter,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#7e8a96}'
+    + '.sml-gk-btn{border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:5px 9px;font:700 10px/1 Inter,Archivo,sans-serif;background:#0e1721;color:#b9c6d2;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;user-select:none}'
+    + '.sml-gk-btn.on{background:#00ff88;border-color:#00ff88;color:#06120c}'
+    + '.sml-gk-btn.rec{background:#ff3b5c;border-color:#ff3b5c;color:#fff}'
+    + '.sml-gk-btn.mic{background:linear-gradient(140deg,#3d8bfd,#1f5fd0);border-color:transparent;color:#fff;touch-action:none}'
+    + '.sml-gk-btn[disabled]{opacity:.55;cursor:default}'
+    + '#sml-gk-status{width:100%;font:500 10px/1.35 Inter,sans-serif;color:#8b98a5;min-height:0}'
+    + '#sml-gk-status.err{color:#ff7a90}'
+    + '.sml-gk-bell{margin-left:auto;padding:2px 4px;border-radius:6px;font-size:11px;line-height:1;opacity:.4;cursor:pointer;flex:none}'
+    + '.sml-gk-bell.on{opacity:1;filter:drop-shadow(0 0 4px rgba(0,255,136,.6))}'
+    + '.sml-gk-bell:hover{opacity:1;background:rgba(255,255,255,.08)}'
+    + '#sml-gk-perms{width:100%;display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:6px 0 2px;font:600 10px/1 Inter,sans-serif;color:#8b98a5}'
+    + '#sml-gk-perms .sml-gk-btn{padding:4px 8px;font-size:9.5px}'
+    + '#sml-gk-toast{position:fixed;right:16px;bottom:16px;z-index:2147483600;display:flex;align-items:center;gap:9px;max-width:320px;padding:10px 12px;border-radius:13px;background:#0b1f18;color:#e8edf2;box-shadow:0 0 0 1px rgba(0,255,136,.35),0 18px 40px -12px rgba(0,0,0,.9);font:600 12px/1.3 Inter,Archivo,sans-serif;cursor:default}'
+    + '#sml-gk-toast.tap{cursor:pointer}'
+    + '#sml-gk-toast img{width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none}'
+    + '#sml-gk-toast b{color:#00ff88}';
+  document.head.appendChild(style);
+
+  function status(text, err) { var s = document.getElementById('sml-gk-status'); if (!s) return; s.textContent = text || ''; s.className = err ? 'err' : ''; if (text && !err) { clearTimeout(status._t); status._t = setTimeout(function () { if (s.textContent === text) s.textContent = ''; }, 6000); } }
+
+  function load() {
+    var g = gid(); if (!g) return Promise.resolve();
+    return get('me').then(function (j) {
+      loaded = true;
+      G = null;
+      (j.groups || []).forEach(function (x) { if (String(x.id) === String(g)) G = x; });
+      member = !!G;
+      if (!last) last = Number(j.lastChirp) || 0;
+      paint();
+    }).catch(function () { loaded = true; member = false; });
+  }
+
+  function paint() {
+    ensureBar(); decorate();
+  }
+
+  function ensureBar() {
+    var head = document.querySelector('.sml-gshell__side-head'); if (!head || !G) return;
+    var bar = document.getElementById('sml-gk-bar');
+    if (!bar) {
+      bar = document.createElement('div'); bar.id = 'sml-gk-bar';
+      head.insertAdjacentElement('afterend', bar);
+      bar.addEventListener('click', onBarClick);
+      bar.addEventListener('pointerdown', function (ev) { var b = ev.target.closest && ev.target.closest('[data-gk="rec"]'); if (!b || b.disabled) return; ev.preventDefault(); try { b.setPointerCapture(ev.pointerId); } catch (e) {} recStartNow(); });
+      bar.addEventListener('pointerup', function (ev) { if (ev.target.closest && ev.target.closest('[data-gk="rec"]')) { ev.preventDefault(); recStop(); } });
+      bar.addEventListener('pointercancel', function () { recStop(); });
+    }
+    var html = '<span class="sml-gk-t">Loop Kick · alerts &amp; chirp</span>'
+      + '<button type="button" class="sml-gk-btn' + (G.alertsAll ? ' on' : '') + '" data-gk="all" title="Every channel in this group alerts your LOOP-KICK">' + (G.alertsAll ? '🔔 All alerts on' : '🔔 All alerts') + '</button>'
+      + '<button type="button" class="sml-gk-btn' + (G.chirp ? ' on' : '') + '" data-gk="chirp" title="Hear this group\'s chirps anywhere on the site">' + (G.chirp ? '🔊 Chirp on' : '🔊 Chirp') + '</button>'
+      + (G.canChirp ? '<button type="button" class="sml-gk-btn ' + (busy === 'rec' ? 'rec' : 'mic') + '" data-gk="rec"' + (busy === 'send' ? ' disabled' : '') + ' title="Hold to talk — everyone in the group hears it">' + (busy === 'rec' ? '● Recording… release to send' : busy === 'send' ? 'Sending…' : '🎙 Hold to Chirp') + '</button>' : '')
+      + (G.canManage ? '<button type="button" class="sml-gk-btn" data-gk="perms" title="Choose who can Chirp this group">⚙ Who can Chirp</button>' : '')
+      + '<div id="sml-gk-status"></div>'
+      + (G.canManage && bar.getAttribute('data-perms') === '1' ? permsHtml() : '');
+    if (bar.getAttribute('data-html') !== html) { var st = document.getElementById('sml-gk-status'); var keep = st ? st.textContent : ''; bar.innerHTML = html; bar.setAttribute('data-html', html); if (keep) { var s2 = document.getElementById('sml-gk-status'); if (s2) s2.textContent = keep; } }
+  }
+  function permsHtml() {
+    var rule = G.chirpRule || { mode: 'owner', users: [] };
+    var modes = [['owner', 'Only me'], ['staff', 'Admins & analysts'], ['members', 'Everyone'], ['list', 'Pick members']];
+    var h = '<div id="sml-gk-perms"><span>Who can Chirp:</span>' + modes.map(function (m) { return '<button type="button" class="sml-gk-btn' + (rule.mode === m[0] ? ' on' : '') + '" data-gk-mode="' + m[0] + '">' + m[1] + '</button>'; }).join('');
+    if (rule.mode === 'list') {
+      h += (G.members || []).map(function (m) { var on = rule.users.indexOf(m.id) >= 0; return '<button type="button" class="sml-gk-btn' + (on ? ' on' : '') + '" data-gk-user="' + m.id + '">' + (on ? '✓ ' : '') + esc(m.name) + '</button>'; }).join('');
+      if (!G.members) h += '<span>loading members…</span>'; else if (!G.members.length) h += '<span>no other members yet</span>';
+    }
+    return h + '</div>';
+  }
+  function onBarClick(ev) {
+    var t = ev.target.closest && ev.target.closest('[data-gk],[data-gk-mode],[data-gk-user]'); if (!t || !G) return;
+    var bar = document.getElementById('sml-gk-bar');
+    if (t.getAttribute('data-gk') === 'all') return toggle(0, 'alerts', !G.alertsAll);
+    if (t.getAttribute('data-gk') === 'chirp') return toggle(0, 'chirp', !G.chirp);
+    if (t.getAttribute('data-gk') === 'perms') { bar.setAttribute('data-perms', bar.getAttribute('data-perms') === '1' ? '0' : '1'); if (!G.members) refreshMembers(); return paint(); }
+    if (t.hasAttribute('data-gk-mode')) return savePerms(t.getAttribute('data-gk-mode'), (G.chirpRule || {}).users || []);
+    if (t.hasAttribute('data-gk-user')) { var id = Number(t.getAttribute('data-gk-user')); var users = ((G.chirpRule || {}).users || []).slice(); var i = users.indexOf(id); if (i >= 0) users.splice(i, 1); else users.push(id); return savePerms('list', users); }
+  }
+  function refreshMembers() { get('me?members=1').then(function (j) { (j.groups || []).forEach(function (x) { if (G && x.id === G.id) { G.members = x.members || []; } }); paint(); }).catch(function () {}); }
+  function toggle(channelId, field, on) {
+    var body = { group_id: Number(G.id), channel_id: Number(channelId) }; body[field] = on;
+    post('sub', body).then(function (j) { var members = G.members; G = j.group; G.members = members; paint();
+      if (field === 'chirp') status(on ? '🔊 You will hear this group\'s chirps anywhere on the site (Loop Kick open or not on this page).' : 'Chirp off for this group.');
+      else if (!channelId) status(on ? '🔔 Every channel now alerts your Loop Kick in real time.' : 'Group alerts off.');
+      else status(on ? '🔔 This channel now alerts your Loop Kick.' : 'Channel alerts off.');
+    }).catch(function (e) { status(e.message || 'Could not save that', true); });
+  }
+  function savePerms(mode, users) {
+    post('chirp-perms', { group_id: Number(G.id), mode: mode, users: users }).then(function (j) { G.chirpRule = j.rule; if (mode === 'list' && !G.members) refreshMembers(); paint(); status('Saved who can Chirp.'); }).catch(function (e) { status(e.message || 'Could not save', true); });
+  }
+
+  /* 🔔 on every channel button — the shell rebuilds the list every few seconds, so this re-decorates on a timer */
+  function decorate() {
+    if (!G) return;
+    var byId = {}; (G.channels || []).forEach(function (c) { byId[String(c.id)] = c; });
+    var btns = document.querySelectorAll('button.sml-gshell__channel[data-smlgs-channel]');
+    Array.prototype.forEach.call(btns, function (b) {
+      var id = String(b.getAttribute('data-smlgs-channel') || '').replace(/\D/g, ''); var c = byId[id]; if (!c) return;
+      var bell = b.querySelector('.sml-gk-bell');
+      if (!bell) { bell = document.createElement('span'); bell.className = 'sml-gk-bell'; bell.setAttribute('role', 'button'); bell.setAttribute('data-gk-cid', id); b.appendChild(bell); }
+      var on = !!c.alerts; var want = on ? '🔔' : '🔕';
+      if (bell.textContent !== want) bell.textContent = want;
+      bell.classList.toggle('on', on);
+      bell.title = G.alertsAll ? 'All channels alert your Loop Kick' : (on ? 'Alerting your Loop Kick — tap to turn off' : 'Tap: alert your Loop Kick when this channel posts');
+    });
+  }
+  document.addEventListener('click', function (ev) {
+    var bell = ev.target.closest && ev.target.closest('.sml-gk-bell'); if (!bell || !G) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var id = Number(bell.getAttribute('data-gk-cid')); var c = null; (G.channels || []).forEach(function (x) { if (x.id === id) c = x; });
+    if (!c) return;
+    if (G.alertsAll) { status('All channels are on for this group — switch "All alerts" off to pick channels.'); return; }
+    toggle(id, 'alerts', !c.own);
+  }, true);
+
+  /* hold-to-talk */
+  function recStartNow() {
+    if (rec || !G || !G.canChirp) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') { status('This browser cannot record audio.', true); return; }
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
+      var mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].filter(function (m) { return MediaRecorder.isTypeSupported(m); })[0] || '';
+      var r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunks = [];
+      r.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+      r.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); recDone(r.mimeType || mime || 'audio/webm'); };
+      r.start(250); rec = r; recStart = Date.now(); busy = 'rec'; paint();
+      recTimer = setInterval(function () { var sec = Math.floor((Date.now() - recStart) / 1000); status('● ' + sec + 's — release to send'); if (sec >= 30) recStop(); }, 250);
+    }).catch(function () { status('Microphone blocked — allow the mic to Chirp.', true); });
+  }
+  function recStop() { var r = rec; if (!r) return; rec = null; if (recTimer) { clearInterval(recTimer); recTimer = null; } try { if (r.state !== 'inactive') r.stop(); } catch (e) {} }
+  function recDone(mime) {
+    var sec = Math.max(1, Math.round((Date.now() - recStart) / 1000));
+    var blob = new Blob(chunks, { type: mime.split(';')[0] }); chunks = [];
+    if (blob.size < 400) { busy = ''; paint(); status('Hold the button while you talk.', true); return; }
+    busy = 'send'; paint(); status('Sending your chirp…');
+    var ext = /mp4/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : 'webm';
+    var fd = new FormData(); fd.append('file', new File([blob], 'chirp-' + Date.now() + '.' + ext, { type: blob.type })); fd.append('purpose', 'voice');
+    fetch('/wp-json/sml-loop/v1/upload', { method: 'POST', credentials: 'same-origin', headers: hdr(false), body: fd }).then(parse)
+      .then(function (up) { return post('chirp', { group_id: Number(G.id), channel_id: Number(cid() || 0), attachment_id: up.id, duration: sec }); })
+      .then(function (j) { busy = ''; paint(); if (j.chirp) last = Math.max(last, Number(j.chirp.id) || 0); status('🔊 Chirped the group · ' + sec + 's · everyone on this page hears it now' + (j.listeners ? ', ' + j.listeners + ' listening elsewhere' : '') + '.'); })
+      .catch(function (e) { busy = ''; paint(); status(e.message || 'That chirp did not send', true); });
+  }
+
+  /* listening on the page: every member on the page hears a chirp within ~4s */
+  function poll() {
+    var g = gid(); if (!g || !member || !loaded) return;
+    get('chirps?group_id=' + encodeURIComponent(g) + '&since=' + last).then(function (j) {
+      var l = Number(j.last) || 0;
+      if (!last) { last = l; return; }
+      last = Math.max(last, l);
+      if (j.chirps && j.chirps.length) { queue = queue.concat(j.chirps); playNext(); }
+    }).catch(function () {});
+  }
+  function toast(c, needTap) {
+    var t = document.getElementById('sml-gk-toast');
+    if (!c) { if (t) t.remove(); return; }
+    if (!t) { t = document.createElement('div'); t.id = 'sml-gk-toast'; document.body.appendChild(t); t.addEventListener('click', function () { if (audio) audio.play().then(function () { t.classList.remove('tap'); t.querySelector('span').textContent = ''; }).catch(function () {}); }); }
+    t.className = needTap ? 'tap' : '';
+    t.innerHTML = (c.by && c.by.avatar ? '<img src="' + esc(c.by.avatar) + '" alt="" referrerpolicy="no-referrer">' : '') + '<div><b>🔊 ' + esc(c.by ? c.by.name : 'A member') + '</b> chirped the group' + (c.duration ? ' · ' + c.duration + 's' : '') + '<span style="display:block;font-weight:500;color:#9fb0bf">' + (needTap ? 'Tap to hear it' : '') + '</span></div>';
+  }
+  function playNext() {
+    if (playing || !queue.length) return;
+    var c = queue.shift(); playing = c;
+    var el = new Audio(c.url); el.preload = 'auto'; audio = el;
+    var done = function () { audio = null; playing = null; toast(null); playNext(); };
+    el.onended = done; el.onerror = done;
+    toast(c, false);
+    el.play().catch(function () { toast(c, true); });
+  }
+
+  /* ?channel=<id> deep link from a LOOP-KICK alert: open that channel once the shell is up */
+  (function deepLink() {
+    var m = /[?&]channel=(\d+)/.exec(location.search); if (!m) return;
+    var tries = 0; var t = setInterval(function () {
+      tries++; var b = document.querySelector('button.sml-gshell__channel[data-smlgs-channel="' + m[1] + '"]');
+      if (b) { clearInterval(t); if (!b.classList.contains('is-active')) b.click(); }
+      else if (tries > 25) clearInterval(t);
+    }, 400);
+  })();
+
+  load().then(function () { setInterval(function () { if (G) paint(); }, 2500); setInterval(poll, 4000); });
+  document.addEventListener('sml:group-context-change', function () { setTimeout(paint, 50); });
+})();
