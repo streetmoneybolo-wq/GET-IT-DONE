@@ -1236,12 +1236,30 @@
       else if (sub === 'ring') { var a1 = ring(14, -0.28, 1), b1 = ring(14, 0.28, 1); for (i = 0; i < 14; i++) E.push([a1 + i, b1 + i]); }
       else if (sub === 'coin') { var c1 = ring(16, 0, 1, -0.22), c2 = ring(16, 0, 1, 0.22); for (i = 0; i < 16; i += 2) E.push([c1 + i, c2 + i]); }
       else if (sub === 'star') { for (n = 0; n < 2; n++) { var st = V.length; for (i = 0; i < 10; i++) { var aa = -Math.PI / 2 + i * Math.PI / 5, rr2 = i % 2 ? 0.45 : 1; V.push([Math.cos(aa) * rr2, Math.sin(aa) * rr2, n ? 0.25 : -0.25]); E.push([st + i, st + (i + 1) % 10]); } } for (i = 0; i < 10; i++) E.push([i, 10 + i]); }
+      else if (sub === 'tetra') { V = [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]]; E = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]; }
+      else if (sub === 'icosa') { var g = 1.618, sc = 0.62; [[-1, g, 0], [1, g, 0], [-1, -g, 0], [1, -g, 0], [0, -1, g], [0, 1, g], [0, -1, -g], [0, 1, -g], [g, 0, -1], [g, 0, 1], [-g, 0, -1], [-g, 0, 1]].forEach(function (v) { V.push([v[0] * sc, v[1] * sc, v[2] * sc]); }); E = [[0, 1], [0, 5], [0, 7], [0, 10], [0, 11], [1, 5], [1, 7], [1, 8], [1, 9], [2, 3], [2, 4], [2, 6], [2, 10], [2, 11], [3, 4], [3, 6], [3, 8], [3, 9], [4, 5], [4, 9], [4, 11], [5, 9], [5, 11], [6, 7], [6, 8], [6, 10], [7, 8], [7, 10], [8, 9], [10, 11]]; }
+      else if (sub === 'dodeca') { var ph = 1.618, ip = 1 / 1.618, k = 0.58; var pts = [];[-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { [-1, 1].forEach(function (c) { pts.push([a, b, c]); }); }); }); [-1, 1].forEach(function (a) { [-1, 1].forEach(function (b) { pts.push([0, a * ip, b * ph]); pts.push([a * ip, b * ph, 0]); pts.push([a * ph, 0, b * ip]); }); }); pts.forEach(function (v) { V.push([v[0] * k, v[1] * k, v[2] * k]); }); for (i = 0; i < V.length; i++) { for (var j2 = i + 1; j2 < V.length; j2++) { var dx = V[i][0] - V[j2][0], dy = V[i][1] - V[j2][1], dz = V[i][2] - V[j2][2]; if (Math.abs(Math.sqrt(dx * dx + dy * dy + dz * dz) - 2 * ip * k) < 0.02) E.push([i, j2]); } } }
+      else if (sub === 'cylinder') { var c3 = ring(14, -0.9, 1), c4 = ring(14, 0.9, 1); for (i = 0; i < 14; i += 2) E.push([c3 + i, c4 + i]); }
+      else if (sub === 'cone') { V.push([0, -1.2, 0]); var cb = ring(14, 0.9, 1); for (i = 0; i < 14; i += 2) E.push([0, cb + i]); }
+      else if (sub === 'torus') { var rings = []; for (n = 0; n < 10; n++) { var ang = n / 10 * 6.283, st2 = V.length; for (i = 0; i < 8; i++) { var t2 = i / 8 * 6.283, rr3 = 0.75 + 0.3 * Math.cos(t2); V.push([Math.cos(ang) * rr3, 0.3 * Math.sin(t2), Math.sin(ang) * rr3]); E.push([st2 + i, st2 + (i + 1) % 8]); } rings.push(st2); } for (n = 0; n < 10; n++) { for (i = 0; i < 8; i += 2) E.push([rings[n] + i, rings[(n + 1) % 10] + i]); } }
+      else if (sub === 'sphere') { for (n = 1; n < 5; n++) { var yy = Math.cos(n / 5 * Math.PI), rr4 = Math.sin(n / 5 * Math.PI); ring(12, yy, rr4); } for (i = 0; i < 12; i += 2) { for (n = 0; n < 3; n++) E.push([n * 12 + i, (n + 1) * 12 + i]); } V.push([0, 1, 0]); V.push([0, -1, 0]); for (i = 0; i < 12; i += 2) { E.push([V.length - 2, i]); E.push([V.length - 1, 36 + i]); } }
+      else if (sub === 'helix') { for (i = 0; i < 24; i++) { var hh = i / 24 * 6.283 * 2; V.push([Math.cos(hh) * 0.8, -1.2 + i / 23 * 2.4, Math.sin(hh) * 0.8]); if (i) E.push([i - 1, i]); } }
+      else if (sub === 'dna') { for (i = 0; i < 20; i++) { var h2 = i / 20 * 6.283 * 2, y2 = -1.2 + i / 19 * 2.4; V.push([Math.cos(h2) * 0.8, y2, Math.sin(h2) * 0.8]); V.push([-Math.cos(h2) * 0.8, y2, -Math.sin(h2) * 0.8]); if (i) { E.push([2 * i - 2, 2 * i]); E.push([2 * i - 1, 2 * i + 1]); } if (i % 2 === 0) E.push([2 * i, 2 * i + 1]); } }
+      else if (sub === 'gem') { V.push([0, -1.3, 0]); var gr1 = ring(8, -0.3, 1), gr2 = ring(8, 0.2, 0.7); V.push([0, 1.1, 0]); for (i = 0; i < 8; i++) { E.push([0, gr1 + i]); E.push([gr1 + i, gr2 + i]); E.push([V.length - 1, gr2 + i]); } }
+      else if (sub === 'hexprism') { var hp1 = ring(6, -0.9, 1), hp2 = ring(6, 0.9, 1); for (i = 0; i < 6; i++) E.push([hp1 + i, hp2 + i]); }
+      else if (sub === 'tower') { var hts = [0.5, 1.2, 0.8, 1.6, 1.0]; for (n = 0; n < 5; n++) { var bx = -1.2 + n * 0.6, bh = hts[n], st3 = V.length; V.push([bx, 1, -0.2]); V.push([bx + 0.4, 1, -0.2]); V.push([bx + 0.4, 1, 0.2]); V.push([bx, 1, 0.2]); V.push([bx, 1 - bh, -0.2]); V.push([bx + 0.4, 1 - bh, -0.2]); V.push([bx + 0.4, 1 - bh, 0.2]); V.push([bx, 1 - bh, 0.2]); [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]].forEach(function (e) { E.push([st3 + e[0], st3 + e[1]]); }); } }
+      else if (sub === 'coinstack') { for (n = 0; n < 5; n++) { var cs1 = ring(12, 0.9 - n * 0.45, 1, undefined); if (n) { for (i = 0; i < 12; i += 3) E.push([cs1 - 12 + i, cs1 + i]); } } }
+      else if (sub === 'cross') { var cx1 = [[-0.3, -1, -0.3], [0.3, -1, -0.3], [0.3, -1, 0.3], [-0.3, -1, 0.3], [-0.3, 1, -0.3], [0.3, 1, -0.3], [0.3, 1, 0.3], [-0.3, 1, 0.3], [-1, -0.3, -0.3], [1, -0.3, -0.3], [1, -0.3, 0.3], [-1, -0.3, 0.3], [-1, 0.3, -0.3], [1, 0.3, -0.3], [1, 0.3, 0.3], [-1, 0.3, 0.3]]; V = cx1; E = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7], [8, 9], [9, 10], [10, 11], [11, 8], [12, 13], [13, 14], [14, 15], [15, 12], [8, 12], [9, 13], [10, 14], [11, 15]]; }
+      else if (sub === 'arrow') { V = [[0, -1.3, 0], [-1, -0.2, 0], [-0.4, -0.2, 0], [-0.4, 1.2, 0], [0.4, 1.2, 0], [0.4, -0.2, 0], [1, -0.2, 0], [0, -1.3, 0.35], [-1, -0.2, 0.35], [-0.4, -0.2, 0.35], [-0.4, 1.2, 0.35], [0.4, 1.2, 0.35], [0.4, -0.2, 0.35], [1, -0.2, 0.35]]; E = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 0], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 7], [0, 7], [1, 8], [3, 10], [4, 11], [6, 13]]; }
+      else if (sub === 'steps') { for (n = 0; n < 4; n++) { var sz = 1.1 - n * 0.25, yb = 1 - n * 0.5, st4 = V.length; V.push([-sz, yb, -sz]); V.push([sz, yb, -sz]); V.push([sz, yb, sz]); V.push([-sz, yb, sz]); [[0, 1], [1, 2], [2, 3], [3, 0]].forEach(function (e) { E.push([st4 + e[0], st4 + e[1]]); }); if (n) { for (i = 0; i < 4; i++) E.push([st4 - 4 + i, st4 + i]); } } }
+      else if (sub === 'rocket') { var rk = ring(8, 0.6, 0.45); V.push([0, -1.4, 0]); for (i = 0; i < 8; i += 2) E.push([V.length - 1, rk + i]); var rk2 = ring(8, -0.5, 0.45); for (i = 0; i < 8; i++) E.push([rk + i, rk2 + i]); V.push([-0.9, 1.2, 0]); V.push([0.9, 1.2, 0]); V.push([0, 1.2, -0.9]); V.push([0, 1.2, 0.9]); E.push([rk + 4, V.length - 4]); E.push([rk + 0, V.length - 3]); E.push([rk + 6, V.length - 2]); E.push([rk + 2, V.length - 1]); }
+      else if (sub === 'grid') { for (n = 0; n < 6; n++) { for (i = 0; i < 6; i++) { V.push([-1.2 + i * 0.48, 0, -1.2 + n * 0.48]); if (i) E.push([V.length - 2, V.length - 1]); if (n) E.push([V.length - 7, V.length - 1]); } } }
       else { V = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]; E = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]]; }
       return MESH[sub] = { V: V, E: E };
     }
     function draw3d(x, sub, s, rot) {
       var m = mesh(sub), t = performance.now() / 900 + rot, cy = Math.cos(t), sy = Math.sin(t), tilt = 0.55 + curBass * 0.35, cx = Math.cos(tilt), sx = Math.sin(tilt), P = [], i;
-      for (i = 0; i < m.V.length; i++) { var v = m.V[i], x1 = v[0] * cy - v[2] * sy, z1 = v[0] * sy + v[2] * cy, y1 = v[1] * cx - z1 * sx, z2 = v[1] * sx + z1 * cx, f = 1 / (1.9 + z2 * 0.45) * 1.9; P.push([x1 * f * s * 0.7, y1 * f * s * 0.7, z2]); }
+      for (i = 0; i < m.V.length; i++) { var v = m.V[i]; if (sub === 'grid') v = [v[0], Math.sin(v[0] * 3 + t * 2) * Math.cos(v[2] * 3 + t) * (0.2 + curBass * 0.5), v[2]]; var x1 = v[0] * cy - v[2] * sy, z1 = v[0] * sy + v[2] * cy, y1 = v[1] * cx - z1 * sx, z2 = v[1] * sx + z1 * cx, f = 1 / (1.9 + z2 * 0.45) * 1.9; P.push([x1 * f * s * 0.7, y1 * f * s * 0.7, z2]); }
       x.beginPath(); for (i = 0; i < m.E.length; i++) { var e = m.E[i]; x.moveTo(P[e[0]][0], P[e[0]][1]); x.lineTo(P[e[1]][0], P[e[1]][1]); } x.stroke();
       x.globalAlpha *= 0.35; x.beginPath(); for (i = 0; i < P.length; i++) { x.moveTo(P[i][0] + 1.2, P[i][1]); x.arc(P[i][0], P[i][1], 1.2, 0, 6.283); } x.fill(); x.globalAlpha /= 0.35;
     }
@@ -1252,32 +1270,75 @@
       if (sub === 'candles') { n = 5; for (i = 0; i < n; i++) { var o = val(i, 1.7), c = val(i + 0.5, 1.7), hi = Math.max(o, c) + 0.12, lo = Math.min(o, c) - 0.12, cx = -w / 2 + (i + 0.5) / n * w, bw = w / n * 0.55; x.fillStyle = c >= o ? prev : 'rgba(255,92,122,.95)'; x.strokeStyle = x.fillStyle; x.beginPath(); x.moveTo(cx, h / 2 - hi * h); x.lineTo(cx, h / 2 - lo * h); x.stroke(); x.fillRect(cx - bw / 2, h / 2 - Math.max(o, c) * h, bw, Math.max(0.06, Math.abs(c - o)) * h); } x.fillStyle = x.strokeStyle = prev; return; }
       if (sub === 'bars') { n = 6; for (i = 0; i < n; i++) { v = val(i, 1.3); var bx = -w / 2 + i / n * w, bw2 = w / n * 0.7; x.fillRect(bx, h / 2 - v * h, bw2, v * h); } return; }
       if (sub === 'donut') { var prog = 0.15 + 0.7 * val(0, 0.4); x.globalAlpha *= 0.3; x.beginPath(); x.arc(0, 0, s, 0, 6.283); x.stroke(); x.globalAlpha /= 0.3; x.lineWidth = 3; x.beginPath(); x.arc(0, 0, s, -Math.PI / 2, -Math.PI / 2 + prog * 6.283); x.stroke(); x.lineWidth = 1.4; return; }
+      if (sub === 'heatmap') { n = 5; var cell = w / n, ch = h / 4; for (i = 0; i < n; i++) { for (var r2 = 0; r2 < 4; r2++) { v = val(i * 4 + r2, 0.7); x.globalAlpha *= 0.25 + v * 0.7; x.fillRect(-w / 2 + i * cell + 0.5, -h / 2 + r2 * ch + 0.5, cell - 1, ch - 1); x.globalAlpha /= 0.25 + v * 0.7; } } return; }
+      if (sub === 'scatter') { n = 14; for (i = 0; i < n; i++) { var sx2 = -w / 2 + val(i, 1.9) * w, sy2 = h / 2 - val(i + 7, 1.3) * h; x.beginPath(); x.arc(sx2, sy2, 1.2 + val(i, 0.5) * 1.6, 0, 6.283); x.fill(); } return; }
+      if (sub === 'histogram') { n = 9; for (i = 0; i < n; i++) { v = Math.exp(-Math.pow((i - 4) / 2.2, 2)) * (0.6 + 0.4 * val(i, 1.1)); var hx = -w / 2 + i / n * w; x.fillRect(hx, h / 2 - v * h, w / n - 1, v * h); } return; }
+      if (sub === 'depth') { n = 10; x.globalAlpha *= 0.5; x.beginPath(); x.moveTo(0, h / 2); for (i = 0; i <= n; i++) { v = 0.2 + i / n * 0.8 * (0.7 + 0.3 * val(i, 0.9)); x.lineTo(-i / n * w / 2, h / 2 - v * h); } x.lineTo(-w / 2, h / 2); x.closePath(); x.fill(); x.fillStyle = 'rgba(255,92,122,.95)'; x.beginPath(); x.moveTo(0, h / 2); for (i = 0; i <= n; i++) { v = 0.2 + i / n * 0.8 * (0.7 + 0.3 * val(i + 3, 0.9)); x.lineTo(i / n * w / 2, h / 2 - v * h); } x.lineTo(w / 2, h / 2); x.closePath(); x.fill(); x.globalAlpha /= 0.5; x.fillStyle = prev; return; }
+      if (sub === 'bollinger') { n = 12; for (var b3 = -1; b3 <= 1; b3++) { x.globalAlpha *= b3 ? 0.4 : 1; x.beginPath(); for (i = 0; i < n; i++) { v = 0.5 + 0.25 * Math.sin(i * 0.8 + t) + b3 * (0.18 + 0.1 * val(i, 0.6)); var bpx = -w / 2 + i / (n - 1) * w, bpy = h / 2 - v * h; i ? x.lineTo(bpx, bpy) : x.moveTo(bpx, bpy); } x.stroke(); x.globalAlpha /= b3 ? 0.4 : 1; } return; }
+      if (sub === 'volume') { n = 7; for (i = 0; i < n; i++) { v = 0.25 + 0.75 * val(i, 1.4); var vy = -h / 2 + i / n * h; x.globalAlpha *= 0.55; x.fillRect(-w / 2, vy, v * w, h / n - 1); x.globalAlpha /= 0.55; } x.beginPath(); x.moveTo(-w / 2 + w * 0.55, -h / 2); x.lineTo(-w / 2 + w * 0.55, h / 2); x.stroke(); return; }
+      if (sub === 'tape') { x.font = '700 ' + Math.max(6, Math.round(s * 0.7)) + 'px "IBM Plex Mono", monospace'; x.textAlign = 'left'; x.textBaseline = 'middle'; var tp = ['SPY', 'NVDA', 'TSLA', 'AAPL', 'BTC', 'AMZN'], off = (t * 30 + rot * 100) % (w * 2); for (i = 0; i < tp.length; i++) { var tx = -w + ((i * w * 0.7 - off) % (w * 2) + w * 2) % (w * 2); var up2 = val(i, 0.3) > 0.5; x.fillStyle = up2 ? prev : 'rgba(255,92,122,.95)'; x.fillText(tp[i] + (up2 ? ' ▲' : ' ▼'), tx, 0); } x.fillStyle = prev; return; }
+      if (sub === 'gauge') { var gp = 0.1 + 0.8 * val(0, 0.5); x.lineWidth = 3; x.globalAlpha *= 0.3; x.beginPath(); x.arc(0, s * 0.3, s, Math.PI, 2 * Math.PI); x.stroke(); x.globalAlpha /= 0.3; x.beginPath(); x.arc(0, s * 0.3, s, Math.PI, Math.PI + gp * Math.PI); x.stroke(); x.lineWidth = 1.4; var na = Math.PI + gp * Math.PI; x.beginPath(); x.moveTo(0, s * 0.3); x.lineTo(Math.cos(na) * s * 0.85, s * 0.3 + Math.sin(na) * s * 0.85); x.stroke(); return; }
+      if (sub === 'ribbon') { n = 14; for (var rb = 0; rb < 3; rb++) { x.globalAlpha *= 0.7 - rb * 0.15; x.beginPath(); for (i = 0; i < n; i++) { v = 0.5 + 0.35 * Math.sin(i * 0.7 + t * 1.5 + rb * 0.9) * amp; var rpx = -w / 2 + i / (n - 1) * w, rpy = h / 2 - v * h; i ? x.lineTo(rpx, rpy) : x.moveTo(rpx, rpy); } x.stroke(); x.globalAlpha /= 0.7 - rb * 0.15; } return; }
+      if (sub === 'pie') { var segs = [0.35, 0.25, 0.2, 0.2], a0 = -Math.PI / 2 + t * 0.4; for (i = 0; i < segs.length; i++) { var a1 = a0 + segs[i] * 6.283 * (0.9 + 0.1 * val(i, 0.4)); x.globalAlpha *= 0.35 + i * 0.2; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, s, a0, a1); x.closePath(); x.fill(); x.globalAlpha /= 0.35 + i * 0.2; a0 = a1; } return; }
+      if (sub === 'waterfall') { n = 7; var run = 0.2; for (i = 0; i < n; i++) { var dlt = (val(i, 1.6) - 0.5) * 0.5, top = Math.max(run, run + dlt), bot = Math.min(run, run + dlt); x.fillStyle = dlt >= 0 ? prev : 'rgba(255,92,122,.95)'; x.fillRect(-w / 2 + i / n * w, h / 2 - top * h, w / n - 1, Math.max(0.03, top - bot) * h); run = Math.max(0.05, Math.min(0.95, run + dlt)); } x.fillStyle = prev; return; }
+      if (sub === 'mountain') { n = 16; for (var lay = 0; lay < 3; lay++) { x.globalAlpha *= 0.6 - lay * 0.15; x.beginPath(); x.moveTo(-w / 2, h / 2); for (i = 0; i < n; i++) { v = 0.3 + 0.5 * Math.abs(Math.sin(i * 0.9 + lay * 1.3 + t * 0.3)) * (0.7 + 0.3 * val(i, 0.4)) * (1 - lay * 0.2); x.lineTo(-w / 2 + i / (n - 1) * w, h / 2 - v * h); } x.lineTo(w / 2, h / 2); x.closePath(); x.fill(); x.globalAlpha /= 0.6 - lay * 0.15; } return; }
+      if (sub === 'treemap') { var cells = [[0, 0, 0.55, 0.6], [0.55, 0, 0.45, 0.35], [0.55, 0.35, 0.45, 0.25], [0, 0.6, 0.3, 0.4], [0.3, 0.6, 0.7, 0.4]]; for (i = 0; i < cells.length; i++) { var c5 = cells[i]; v = val(i, 0.6); x.fillStyle = v > 0.5 ? prev : 'rgba(255,92,122,.95)'; x.globalAlpha *= 0.3 + Math.abs(v - 0.5) * 1.2; x.fillRect(-w / 2 + c5[0] * w + 0.5, -h / 2 + c5[1] * h + 0.5, c5[2] * w - 1, c5[3] * h - 1); x.globalAlpha /= 0.3 + Math.abs(v - 0.5) * 1.2; } x.fillStyle = prev; return; }
+      if (sub === 'dual') { n = 12; for (var ln = 0; ln < 2; ln++) { x.strokeStyle = ln ? 'rgba(61,139,253,.95)' : prev; x.beginPath(); for (i = 0; i < n; i++) { v = val(i + ln * 5, 0.8 + ln * 0.3); var dpx = -w / 2 + i / (n - 1) * w, dpy = h / 2 - v * h; i ? x.lineTo(dpx, dpy) : x.moveTo(dpx, dpy); } x.stroke(); } x.strokeStyle = prev; return; }
       if (sub === 'radar') { n = 6; x.globalAlpha *= 0.35; x.beginPath(); for (i = 0; i < n; i++) { var a = -Math.PI / 2 + i / n * 6.283; x.moveTo(0, 0); x.lineTo(Math.cos(a) * s, Math.sin(a) * s); } x.stroke(); x.globalAlpha /= 0.35; x.beginPath(); for (i = 0; i < n; i++) { var a3 = -Math.PI / 2 + i / n * 6.283, rr = (0.3 + 0.7 * val(i, 1.1)) * s; i ? x.lineTo(Math.cos(a3) * rr, Math.sin(a3) * rr) : x.moveTo(Math.cos(a3) * rr, Math.sin(a3) * rr); } x.closePath(); x.stroke(); x.globalAlpha *= 0.25; x.fill(); x.globalAlpha /= 0.25; return; }
     }
     function resetP(p, f, W, H, anywhere) {
-      var sz = f.size || [2, 6], spd = f.speed || [0.5, 2];
-      p.s = sz[0] + Math.random() * (sz[1] - sz[0]); p.v = spd[0] + Math.random() * (spd[1] - spd[0]); p.c = f.colors[Math.floor(Math.random() * f.colors.length)] || '#38F58A'; p.a = 0.5 + Math.random() * 0.45;
-      p.vx = (Math.random() - 0.5) * p.v; p.vy = (Math.random() - 0.5) * p.v; p.x = Math.random() * W;
-      p.y = anywhere ? Math.random() * H : (f.dir === 'up' ? H + 24 : -24);
-      if (f.dir === 'diag' && !anywhere) p.x = Math.random() * W - W * 0.35;
+      var sz = f.size || [2, 6], spd = f.speed || [0.5, 2], d = f.dir || 'drift';
+      p.s = sz[0] + Math.random() * (sz[1] - sz[0]); p.v = spd[0] + Math.random() * (spd[1] - spd[0]); p.c = f.colors[Math.floor(Math.random() * f.colors.length)] || '#38F58A'; p.a = 0.5 + Math.random() * 0.45; p.life = 1;
+      p.vx = (Math.random() - 0.5) * p.v; p.vy = (Math.random() - 0.5) * p.v; p.x = Math.random() * W; p.y = anywhere ? Math.random() * H : (d === 'up' ? H + 24 : -24);
+      if (d === 'diag' && !anywhere) p.x = Math.random() * W - W * 0.35;
+      if (d === 'left') { p.x = anywhere ? Math.random() * W : W + 30; p.y = Math.random() * H; }
+      if (d === 'right') { p.x = anywhere ? Math.random() * W : -30; p.y = Math.random() * H; }
+      if (d === 'orbit' || d === 'spiral' || d === 'vortex') { p.ang = Math.random() * 6.283; p.rad = d === 'spiral' ? Math.random() * 40 : (d === 'vortex' ? Math.max(W, H) * (0.3 + Math.random() * 0.4) : Math.min(W, H) * (0.12 + Math.random() * 0.4)); p.cx = W / 2; p.cy = H / 2; }
+      if (d === 'wave') { p.base = Math.random() * H; p.x = anywhere ? Math.random() * W : -30; }
+      if (d === 'bounce') { p.base = Math.random() * H; p.x = Math.random() * W; }
+      if (d === 'burst') { p.x = anywhere ? Math.random() * W : (W * 0.2 + Math.random() * W * 0.6); p.y = anywhere ? Math.random() * H : (H * 0.15 + Math.random() * H * 0.5); var ba = Math.random() * 6.283; p.vx = Math.cos(ba) * p.v; p.vy = Math.sin(ba) * p.v; p.life = 0.5 + Math.random() * 0.5; }
+      if (d === 'matrix') { p.col = Math.floor(Math.random() * Math.max(1, Math.floor(W / 18))); p.x = p.col * 18 + 9; p.y = anywhere ? Math.random() * H : -20; }
+      if (d === 'warp') { var wa = Math.random() * 6.283, wr = anywhere ? Math.random() * Math.max(W, H) * 0.5 : 2 + Math.random() * 20; p.ang = wa; p.rad = wr; p.cx = W / 2; p.cy = H / 2; }
+      if (d === 'fountain') { p.x = W / 2 + (Math.random() - 0.5) * W * 0.1; p.y = anywhere ? Math.random() * H : H + 10; p.vx = (Math.random() - 0.5) * p.v * 0.9; p.vy = -p.v * (1.4 + Math.random() * 0.8); }
+      if (d === 'helix') { p.ph = Math.random() * 6.283; p.strand = Math.random() < 0.5 ? 0 : 1; p.x = anywhere ? Math.random() * W : -20; }
     }
+    var PBUDGET = (window.matchMedia && window.matchMedia('(max-width: 640px)').matches) ? 380 : 900;
     function runPresets(x, W, H, bass, mid) {
       var active = {}, i, j, k;
       for (i = 0; i < fxList.length; i++) {
         var f = CAT.fx[fxList[i]]; if (!f) continue; active[f.name] = 1;
         var pool = presetPools[f.name] || (presetPools[f.name] = []);
-        while (pool.length < (f.count || 30)) { var np = { ph: Math.random() * 6.28, rot: Math.random() * 6.28 }; resetP(np, f, W, H, true); pool.push(np); }
-        x.lineWidth = 1.4;
+        /* performance budget: many presets at once share one particle pool size */
+        var want = f.count || 30, activeN = 0; for (var q0 = 0; q0 < fxList.length; q0++) if (CAT.fx[fxList[q0]]) activeN++;
+        var totalWant = 0; for (var q1 = 0; q1 < fxList.length; q1++) { var ff = CAT.fx[fxList[q1]]; if (ff) totalWant += (ff.count || 30); }
+        if (totalWant > PBUDGET) want = Math.max(6, Math.floor(want * PBUDGET / totalWant));
+        while (pool.length < want) { var np = { ph: Math.random() * 6.28, rot: Math.random() * 6.28 }; resetP(np, f, W, H, true); pool.push(np); }
+        if (pool.length > want) pool.length = want;
+        x.lineWidth = 1.4; var dir = f.dir || 'drift', tnow = performance.now() / 1000;
         for (j = 0; j < pool.length; j++) {
           var p = pool[j], sp = p.v * (1 + bass * (f.beat || 1) * 0.9 + mid * 0.6);
-          if (f.dir === 'down') p.y += sp; else if (f.dir === 'up') p.y -= sp; else if (f.dir === 'diag') { p.x += sp * 1.2; p.y += sp; } else { p.x += p.vx * (1 + mid); p.y += p.vy * (1 + mid); }
-          p.ph += 0.03; if (f.sway) p.x += Math.sin(p.ph) * f.sway * 0.7; if (f.spin) p.rot += 0.02 + bass * 0.12;
-          if (p.y > H + 30) { if (f.dir === 'down' || f.dir === 'diag') resetP(p, f, W, H, false); else p.y = -30; }
-          if (p.y < -30) { if (f.dir === 'up') resetP(p, f, W, H, false); else p.y = H + 30; }
-          if (p.x > W + 40) { if (f.dir === 'diag') resetP(p, f, W, H, false); else p.x = -30; } if (p.x < -40) p.x = W + 30;
-          var a = p.a * (f.twinkle ? (0.35 + 0.65 * Math.abs(Math.sin(p.ph * 2.2))) : 1);
+          if (dir === 'down') p.y += sp; else if (dir === 'up') p.y -= sp; else if (dir === 'diag') { p.x += sp * 1.2; p.y += sp; }
+          else if (dir === 'left') p.x -= sp; else if (dir === 'right') p.x += sp;
+          else if (dir === 'orbit') { p.ang += sp * 0.004; p.x = p.cx + Math.cos(p.ang) * p.rad; p.y = p.cy + Math.sin(p.ang) * p.rad * 0.6; }
+          else if (dir === 'spiral') { p.ang += sp * 0.02; p.rad += sp * 0.6; p.x = p.cx + Math.cos(p.ang) * p.rad; p.y = p.cy + Math.sin(p.ang) * p.rad * 0.65; if (p.rad > Math.max(W, H) * 0.75) resetP(p, f, W, H, false); }
+          else if (dir === 'vortex') { p.ang += sp * 0.02 + 2 / Math.max(20, p.rad); p.rad -= sp * 0.8; p.x = p.cx + Math.cos(p.ang) * p.rad; p.y = p.cy + Math.sin(p.ang) * p.rad * 0.65; if (p.rad < 6) resetP(p, f, W, H, false); }
+          else if (dir === 'wave') { p.x += sp; p.y = p.base + Math.sin(p.x / 60 + tnow * 2) * (18 + (f.sway || 1) * 14) * (1 + bass); if (p.x > W + 30) resetP(p, f, W, H, false); }
+          else if (dir === 'bounce') { p.y = p.base + Math.abs(Math.sin(tnow * 2.2 + p.ph)) * -(40 + bass * 60) * (f.beat || 1); p.x += p.vx * 0.3; }
+          else if (dir === 'burst') { p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.vx *= 0.985; p.vy *= 0.985; p.life -= 0.012; if (p.life <= 0) resetP(p, f, W, H, false); }
+          else if (dir === 'matrix') { p.y += sp; p.x = p.col * 18 + 9; }
+          else if (dir === 'warp') { p.rad += sp * (0.6 + p.rad / 120); p.x = p.cx + Math.cos(p.ang) * p.rad; p.y = p.cy + Math.sin(p.ang) * p.rad; if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) resetP(p, f, W, H, false); }
+          else if (dir === 'fountain') { p.x += p.vx; p.y += p.vy; p.vy += 0.08; if (p.y > H + 20) resetP(p, f, W, H, false); }
+          else if (dir === 'helix') { p.x += sp; p.y = H * 0.5 + Math.sin(p.x / 40 + tnow * 2 + p.strand * Math.PI) * (40 + bass * 30); if (p.x > W + 20) resetP(p, f, W, H, false); }
+          else { p.x += p.vx * (1 + mid); p.y += p.vy * (1 + mid); }
+          p.ph += 0.03; if (f.sway && dir !== 'wave' && dir !== 'orbit') p.x += Math.sin(p.ph) * f.sway * 0.7; if (f.spin) p.rot += 0.02 + bass * 0.12;
+          if (dir === 'down' || dir === 'up' || dir === 'diag' || dir === 'drift' || dir === 'matrix' || dir === 'left' || dir === 'right') {
+            if (p.y > H + 30) { if (dir === 'down' || dir === 'diag' || dir === 'matrix') resetP(p, f, W, H, false); else p.y = -30; }
+            if (p.y < -30) { if (dir === 'up') resetP(p, f, W, H, false); else p.y = H + 30; }
+            if (p.x > W + 40) { if (dir === 'diag' || dir === 'right') resetP(p, f, W, H, false); else p.x = -30; } if (p.x < -40) { if (dir === 'left') resetP(p, f, W, H, false); else p.x = W + 30; }
+          }
+          var a = p.a * (f.twinkle ? (0.35 + 0.65 * Math.abs(Math.sin(p.ph * 2.2))) : 1) * (dir === 'burst' ? p.life : 1);
           x.globalAlpha = Math.min(1, a + bass * 0.2); x.fillStyle = x.strokeStyle = p.c;
-          x.save(); x.translate(p.x, p.y); if (f.spin) x.rotate(p.rot);
+          x.save(); x.translate(p.x, p.y); if (f.spin) x.rotate(p.rot); if (f.glow) { x.shadowBlur = 10 + bass * 12; x.shadowColor = p.c; }
           if (f.trail) { x.globalAlpha *= 0.5; x.beginPath(); x.moveTo(0, 0); x.lineTo(f.dir === 'diag' ? -p.s * 3 : 0, f.dir === 'up' ? p.s * 3 : -p.s * 3); x.stroke(); x.globalAlpha = Math.min(1, a + bass * 0.2); }
           if (f.glyph) { x.font = '700 ' + Math.max(6, Math.round(p.s)) + 'px "IBM Plex Sans", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(f.glyph, 0, 0); }
           else drawShape(x, f.shape, Math.max(1, p.s / 2.2), p.rot);
@@ -1285,7 +1346,7 @@
         }
       }
       for (k in presetPools) if (!active[k]) delete presetPools[k];
-      x.globalAlpha = 1;
+      x.globalAlpha = 1; x.shadowBlur = 0;
     }
 
     var orbAngle = 0, angV = 0;
