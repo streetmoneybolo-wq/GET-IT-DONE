@@ -1243,3 +1243,19 @@
   document.addEventListener('pointerdown', relay, true);
   document.addEventListener('touchstart', relay, { capture: true, passive: true });
 })();
+
+/* ===== LOOP-KICK button is a toggle everywhere (owner call 2026-09-10) =====
+   The global header's button already toggled, but the homepage (its own header) and pages that use the bridge's inline
+   onclick only ever OPENED. One capture-phase handler: if the popup is open when the button is clicked, close it and stop
+   every other handler from reopening it. */
+(function () {
+  'use strict';
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('#sml-hf-loop-kick, .sml-gh-kick') : null; if (!b) return;
+    var p = document.getElementById('sml-loop-popup'); if (!p || p.hidden) return;
+    ev.preventDefault(); ev.stopImmediatePropagation();
+    p.hidden = true; document.body.classList.remove('sml-loop-open'); b.setAttribute('aria-expanded', 'false');
+    var f = document.getElementById('sml-loop-popup-frame');
+    try { if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'sml-loop-kick:close', version: 1 }, '*'); } catch (e) {}
+  }, true);
+})();
