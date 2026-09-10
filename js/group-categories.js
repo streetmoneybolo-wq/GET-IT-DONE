@@ -2541,7 +2541,9 @@
     + '#sml-gk-fab .sml-gk-btn{height:40px;padding:0 14px;font-size:12px;display:flex;align-items:center;justify-content:center}'
     + '#sml-gk-fab .sml-gk-btn.mic{flex:1}'
     + '#sml-gk-fab .sml-gk-x{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:#131c26;color:#8b98a5;font:700 14px/1 Inter,sans-serif;cursor:pointer}'
-    + 'html.sml-mobile #sml-gk-toast{left:12px;right:12px;bottom:74px;max-width:none}';
+    + 'html.sml-mobile #sml-gk-toast{left:12px;right:12px;bottom:74px;max-width:none}'
+    + '#sml-gk-me{margin-left:auto;flex:none;height:30px;padding:0 10px;font-size:10.5px}#sml-gk-me.on{background:#00ff88;border-color:#00ff88;color:#06120c}'
+    + '.sml-gshell__me{display:flex;align-items:center;gap:10px}';
   document.head.appendChild(style);
 
   function status(text, err) { var s = document.getElementById('sml-gk-status'); if (!s) return; s.textContent = text || ''; s.className = err ? 'err' : ''; if (text && !err) { clearTimeout(status._t); status._t = setTimeout(function () { if (s.textContent === text) s.textContent = ''; }, 6000); } }
@@ -2565,10 +2567,29 @@
 
   /* owner call 2026-09-10 (later): no alerts/chirp bar or floating pill on the group page — the mic lives on the Analyst
      Dashboard, alert picks on the channel bells here and in the LOOP-KICK Groups tab. Members still HEAR chirps on the page. */
+  /* Owner call 2026-09-10 (latest): no bells on the channels. ONE switch next to the member's own name in the sidebar —
+     "🔊 Chirp" — and while it is on, every chirp from the analysts / owner plays for that member the moment it lands,
+     on this page (and in LOOP-KICK anywhere else). Alert picks per channel live in the LOOP-KICK Groups tab. */
   function paint() {
-    decorate();
+    ensureMe();
+    Array.prototype.forEach.call(document.querySelectorAll('.sml-gk-bell'), function (b) { b.remove(); });
     var stale = document.getElementById('sml-gk-bar'); if (stale) stale.remove();
     var fab = document.getElementById('sml-gk-fab'); if (fab) fab.remove();
+  }
+  function ensureMe() {
+    if (!G) return;
+    var me = document.querySelector('.sml-gshell__me'); if (!me) return;
+    var b = document.getElementById('sml-gk-me');
+    if (!b) {
+      b = document.createElement('button'); b.type = 'button'; b.id = 'sml-gk-me'; b.className = 'sml-gk-btn';
+      me.appendChild(b);
+      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); if (b.disabled) return; b.disabled = true; toggle(0, 'chirp', !G.chirp); });
+    }
+    var html = (G.chirp ? '🔊 Chirp on' : '🔇 Chirp off');
+    b.disabled = false;
+    b.classList.toggle('on', !!G.chirp);
+    b.title = G.chirp ? 'You hear every chirp from this group the moment it is sent — here and in LOOP-KICK. Tap to turn off.' : 'Turn on to hear the analysts and owner chirp this group in real time.';
+    if (b.textContent !== html) b.textContent = html;
   }
 
   function ensureFab() {
@@ -2635,7 +2656,7 @@
   function toggle(channelId, field, on) {
     var body = { group_id: Number(G.id), channel_id: Number(channelId) }; body[field] = on;
     post('sub', body).then(function (j) { var members = G.members; G = j.group; G.members = members; paint();
-      if (field === 'chirp') status(on ? '🔊 You will hear this group\'s chirps anywhere on the site (Loop Kick open or not on this page).' : 'Chirp off for this group.');
+      if (field === 'chirp') { status(on ? '🔊 You will hear this group\'s chirps anywhere on the site (Loop Kick open or not on this page).' : 'Chirp off for this group.'); toast(on ? { by: { name: 'Chirp is on' }, duration: 0, note: 'You will hear the analysts and owner the moment they chirp — here and in LOOP-KICK.' } : null, false); if (on) setTimeout(function () { if (!playing) toast(null); }, 5000); }
       else if (!channelId) status(on ? '🔔 Every channel now alerts your Loop Kick in real time.' : 'Group alerts off.');
       else status(on ? '🔔 This channel now alerts your Loop Kick.' : 'Channel alerts off.');
     }).catch(function (e) { status(e.message || 'Could not save that', true); });
@@ -2698,7 +2719,7 @@
 
   /* listening on the page: every member on the page hears a chirp within ~4s */
   function poll() {
-    var g = gid(); if (!g || !member || !loaded) return;
+    var g = gid(); if (!g || !member || !loaded || !G || !G.chirp) return;
     get('chirps?group_id=' + encodeURIComponent(g) + '&since=' + last).then(function (j) {
       var l = Number(j.last) || 0;
       last = Math.max(last, l);   /* with no cursor the server only sends the last 45 s, so the first chirp ever still plays */
@@ -2710,6 +2731,7 @@
     if (!c) { if (t) t.remove(); return; }
     if (!t) { t = document.createElement('div'); t.id = 'sml-gk-toast'; document.body.appendChild(t); t.addEventListener('click', function () { if (audio) audio.play().then(function () { t.classList.remove('tap'); t.querySelector('span').textContent = ''; }).catch(function () {}); }); }
     t.className = needTap ? 'tap' : '';
+    if (c.note) { t.innerHTML = '<div><b>' + esc(c.by.name) + '</b><span style="display:block;font-weight:500;color:#9fb0bf">' + esc(c.note) + '</span></div>'; return; }
     t.innerHTML = (c.by && c.by.avatar ? '<img src="' + esc(c.by.avatar) + '" alt="" referrerpolicy="no-referrer">' : '') + '<div><b>🔊 ' + esc(c.by ? c.by.name : 'A member') + '</b> chirped the group' + (c.duration ? ' · ' + c.duration + 's' : '') + '<span style="display:block;font-weight:500;color:#9fb0bf">' + (needTap ? 'Tap to hear it' : '') + '</span></div>';
   }
   function playNext() {
