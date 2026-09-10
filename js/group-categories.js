@@ -2550,7 +2550,7 @@
     + '#sml-gk-toast{position:fixed;right:16px;bottom:16px;z-index:2147483600;display:flex;align-items:center;gap:9px;max-width:320px;padding:10px 12px;border-radius:13px;background:#0b1f18;color:#e8edf2;box-shadow:0 0 0 1px rgba(0,255,136,.35),0 18px 40px -12px rgba(0,0,0,.9);font:600 12px/1.3 Inter,Archivo,sans-serif;cursor:default}'
     + '#sml-gk-toast.tap{cursor:pointer}'
     + '#sml-gk-toast img{width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none}'
-    + '#sml-gk-toast b{color:#00ff88}'
+    + '#sml-gk-toast b{color:#00ff88}#sml-gk-toast.live{box-shadow:0 0 0 1px rgba(255,59,92,.6),0 18px 40px -12px rgba(0,0,0,.9);animation:smlGkTalkToast 1s ease-in-out infinite}#sml-gk-toast.live b{color:#ff8fa3}@keyframes smlGkTalkToast{0%,100%{box-shadow:0 0 0 1px rgba(255,59,92,.6)}50%{box-shadow:0 0 0 5px rgba(255,59,92,.15)}}'
     /* phones (2026-09-10): the bar scrolls away with the page, so a floating pill keeps the mic / listen switch within thumb reach */
     + '.sml-gk-btn{-webkit-touch-callout:none}'
     + '#sml-gk-fab{position:fixed;left:12px;right:12px;bottom:14px;z-index:2147483500;display:flex;gap:8px;align-items:center;padding:8px;border-radius:999px;background:rgba(8,13,23,.96);box-shadow:0 0 0 1px rgba(255,255,255,.08),0 16px 36px -12px rgba(0,0,0,.9)}'
@@ -2639,11 +2639,17 @@
     if (G.chirp && L.hasSession()) { L.listen(Number(G.id), { me: ME, wants: wants, onchange: function (st) { liveState = st; paintLive(); } }).catch(function () {}); }
     else if (!G.chirp && liveState && liveState.joined) { L.stop(); liveState = null; paintLive(); }
   }
+  var talkingShown = '';
   function paintLive() {
     var b = document.getElementById('sml-gk-me'); if (!b || !G) return;
     var st = liveState; var live = !!(st && st.joined && st.speakers > 0);
-    var talking = !!(st && (st.members || []).some(function (m) { return m.talking && m.key !== st.self; }));
+    var talkers = st ? (st.members || []).filter(function (m) { return m.talking && m.key !== st.self; }) : [];
+    var talking = talkers.length > 0;
     b.classList.toggle('live', live); b.classList.toggle('talking', talking);
+    /* a fixed "LIVE · <name> is talking" banner (bottom of the screen) — visible on phones even when the header has scrolled away */
+    var who = talkers.map(function (m) { return m.name; }).join(', ');
+    if (talking && talkingShown !== who && !playing) { talkingShown = who; toast({ by: { name: '🔴 LIVE · ' + who }, note: 'is talking to the group right now', duration: 0 }, false); var t = document.getElementById('sml-gk-toast'); if (t) t.classList.add('live'); }
+    if (!talking && talkingShown) { talkingShown = ''; if (!playing) toast(null); }
     if (st && st.needTap) { toast({ by: { name: 'Live chirp' }, note: 'Tap to hear the analyst live', duration: 0 }, true); var t = document.getElementById('sml-gk-toast'); if (t) t.onclick = function () { window.SMLChirpLive.tapToHear(); t.remove(); }; }
   }
   function ensureMe() {
