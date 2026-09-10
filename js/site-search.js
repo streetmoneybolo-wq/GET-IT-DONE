@@ -1199,14 +1199,19 @@
       place(inner, ev.clientX - drag.dx, ev.clientY - drag.dy, false);
     });
     function end(ev) {
-      if (!drag || (ev && ev.pointerId !== drag.id)) return;
+      if (!drag) return;
+      if (ev && !ev.force && ev.pointerId !== undefined && ev.pointerId !== drag.id) return;
       var r = inner.getBoundingClientRect();
       if (drag.moved) place(inner, r.left, r.top, true);
       drag = null;
       grip.classList.remove('dragging'); popup.classList.remove('sml-lk-dragging');
     }
-    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end); grip.addEventListener('lostpointercapture', function () { if (drag) end({ pointerId: drag.id }); });
-    window.addEventListener('pointerup', function (ev) { if (drag && ev.pointerId === drag.id) end(ev); }, true);
+    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end); grip.addEventListener('lostpointercapture', function () { end({ force: true }); });
+    /* whatever happens to the gesture (finger lifted elsewhere, tab hidden, focus lost) the drag lets go */
+    window.addEventListener('pointerup', function () { end({ force: true }); }, true);
+    window.addEventListener('pointercancel', function () { end({ force: true }); }, true);
+    window.addEventListener('blur', function () { end({ force: true }); });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) end({ force: true }); });
     /* touch fallback for webviews without pointer events */
     if (!window.PointerEvent) {
       grip.addEventListener('touchstart', function (ev) { var t = ev.touches[0]; if (!t) return; ev.preventDefault(); var r = inner.getBoundingClientRect(); drag = { id: t.identifier, dx: t.clientX - r.left, dy: t.clientY - r.top, moved: false }; grip.classList.add('dragging'); popup.classList.add('sml-lk-dragging'); }, { passive: false });
