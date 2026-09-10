@@ -2716,7 +2716,9 @@
     function (u) { return 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(u); },
     function (u, t) { return 'https://bsky.app/intent/compose?text=' + encodeURIComponent(t + ' ' + u); },
     function (u, t) { return 'https://www.threads.net/intent/post?text=' + encodeURIComponent(t + ' ' + u); },
-    null, /* Stocktwits — copy */
+    /* Stocktwits has no web compose intent (stocktwits.com/share is a member profile, the widgets endpoint is gone):
+       the tracked link + title are copied and the composer page opens so the paste is one tap away (owner call 2026-09-09) */
+    { paste: true, url: function () { return 'https://stocktwits.com/'; } },
     function (u) { return 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(u); },
     null, /* Moomoo — copy */
     null  /* Instagram — copy */
@@ -2820,7 +2822,13 @@
          full per-round campaign reports consolidate on Google's side */
       res.j.url += '&utm_source=boost&utm_medium=' + UTM_MEDIUM[i] + '&utm_campaign=boost-' + encodeURIComponent((BOOST.d && BOOST.d.roundId) || 'round');
       var intent = INTENTS[i];
-      if (intent) {
+      if (intent && intent.paste) {
+        var pasteText = res.j.text + ' ' + res.j.url;
+        var copied = false;
+        try { if (navigator.clipboard) { navigator.clipboard.writeText(pasteText); copied = true; } } catch (e) {}
+        window.open(intent.url(), '_blank', 'noopener');
+        flashGate(copied ? 'Your stream title + tracked link are copied. Paste them into the ' + PLATS[i][0] + ' post box that just opened.' : 'Paste your stream link into the ' + PLATS[i][0] + ' post box that just opened.');
+      } else if (intent) {
         window.open(intent(res.j.url, res.j.text), '_blank', 'noopener');
       } else if (navigator.clipboard) {
         navigator.clipboard.writeText(res.j.text + ' ' + res.j.url);
