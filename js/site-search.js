@@ -1229,3 +1229,17 @@
   var tries = 0; var t = setInterval(function () { setup(); if (document.querySelector('#sml-loop-popup-inner .sml-lk-grip') || ++tries > 60) clearInterval(t); }, 1000);
   if (window.MutationObserver) { new MutationObserver(function () { if (document.getElementById('sml-loop-popup-inner') && !document.querySelector('#sml-loop-popup-inner .sml-lk-grip')) setup(); }).observe(document.body, { childList: true }); }
 })();
+
+/* ===== LOOP-KICK: a tap anywhere on the page reaches the phone (2026-09-10) =====
+   Phones refuse audio no touch started. The phone lives in a cross-origin iframe, so a tap on the page around it
+   never counts for it — relay every pointerdown while the popup is open; the phone starts waiting audio on it. */
+(function () {
+  'use strict';
+  function relay() {
+    if (!document.body.classList.contains('sml-loop-open')) return;
+    var f = document.getElementById('sml-loop-popup-frame'); if (!f || !f.contentWindow) return;
+    try { f.contentWindow.postMessage({ type: 'sml-loop-kick:tap', version: 1 }, '*'); } catch (e) {}
+  }
+  document.addEventListener('pointerdown', relay, true);
+  document.addEventListener('touchstart', relay, { capture: true, passive: true });
+})();
