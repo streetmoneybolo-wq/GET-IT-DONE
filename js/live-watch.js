@@ -3144,7 +3144,13 @@
   /* the original lobby refresh timer still calls the old loadLobby (it captured the function reference), so the
      decorations live in renderLobbyReal itself — every render, whichever caller, gets the CPU buttons + wide list */
   var gpRenderLobbyOrig = renderLobbyReal;
-  renderLobbyReal = function (j) { gpRenderLobbyOrig(j); gpDecorateTiles(); gpRenderWide(GP.wide || []); };
+  renderLobbyReal = function (j) {
+    /* the server sends scores as an object keyed by game; the original renderer expects an array and threw silently
+       (the lobby never painted for anyone with a game record) — normalise before painting */
+    if (j && j.scores && !Array.isArray(j.scores)) { j.scores = Object.keys(j.scores).map(function (k) { var v = j.scores[k] || {}; if (typeof v === 'object' && !v.game) v.game = k; return v; }); }
+    try { gpRenderLobbyOrig(j); } catch (e) { gErr('Lobby paint failed: ' + e.message); return; }
+    gpDecorateTiles(); gpRenderWide(GP.wide || []);
+  };
   loadLobby = function () {
     if (SIM || document.hidden || S.tab !== 4 || G.mode !== 'lobby') return;
     Promise.all([api('/sml-games/v1/lobby?context=video&context_id=' + encodeURIComponent(gpCtx())), api('/sml-games-plus/v1/wide?context_id=' + encodeURIComponent(gpCtx()))]).then(function (rs) {
