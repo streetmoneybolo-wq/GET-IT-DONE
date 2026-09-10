@@ -2498,6 +2498,18 @@
   }
 
   var G = null;          /* my membership entry for this group (null = not a member / not loaded) */
+  var MOBILE = document.documentElement.classList.contains('sml-mobile') || (window.matchMedia && matchMedia('(pointer:coarse)').matches);
+  /* Phones refuse audio that was not started by a touch. One shared element is "blessed" by the first touch on the page
+     (a silent clip) and reused for every chirp afterwards. */
+  var SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+  var player = null, unlocked = false;
+  function getPlayer() { if (!player) { player = new Audio(); player.preload = 'auto'; player.setAttribute('playsinline', ''); } return player; }
+  function unlock() {
+    if (unlocked) return; unlocked = true;
+    try { var a = getPlayer(); a.src = SILENT; a.play().catch(function () { unlocked = false; }); } catch (e) { unlocked = false; }
+  }
+  document.addEventListener('touchstart', unlock, { passive: true, capture: true });
+  document.addEventListener('pointerdown', unlock, { passive: true, capture: true });
   var loaded = false, member = true;
   var last = 0, queue = [], audio = null, playing = null;
   var rec = null, chunks = [], recStart = 0, recTimer = null, busy = '';
@@ -2522,7 +2534,14 @@
     + '#sml-gk-toast{position:fixed;right:16px;bottom:16px;z-index:2147483600;display:flex;align-items:center;gap:9px;max-width:320px;padding:10px 12px;border-radius:13px;background:#0b1f18;color:#e8edf2;box-shadow:0 0 0 1px rgba(0,255,136,.35),0 18px 40px -12px rgba(0,0,0,.9);font:600 12px/1.3 Inter,Archivo,sans-serif;cursor:default}'
     + '#sml-gk-toast.tap{cursor:pointer}'
     + '#sml-gk-toast img{width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none}'
-    + '#sml-gk-toast b{color:#00ff88}';
+    + '#sml-gk-toast b{color:#00ff88}'
+    /* phones (2026-09-10): the bar scrolls away with the page, so a floating pill keeps the mic / listen switch within thumb reach */
+    + '.sml-gk-btn{-webkit-touch-callout:none}'
+    + '#sml-gk-fab{position:fixed;left:12px;right:12px;bottom:14px;z-index:2147483500;display:flex;gap:8px;align-items:center;padding:8px;border-radius:999px;background:rgba(8,13,23,.96);box-shadow:0 0 0 1px rgba(255,255,255,.08),0 16px 36px -12px rgba(0,0,0,.9)}'
+    + '#sml-gk-fab .sml-gk-btn{height:40px;padding:0 14px;font-size:12px;display:flex;align-items:center;justify-content:center}'
+    + '#sml-gk-fab .sml-gk-btn.mic{flex:1}'
+    + '#sml-gk-fab .sml-gk-x{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:#131c26;color:#8b98a5;font:700 14px/1 Inter,sans-serif;cursor:pointer}'
+    + 'html.sml-mobile #sml-gk-toast{left:12px;right:12px;bottom:74px;max-width:none}';
   document.head.appendChild(style);
 
   function status(text, err) { var s = document.getElementById('sml-gk-status'); if (!s) return; s.textContent = text || ''; s.className = err ? 'err' : ''; if (text && !err) { clearTimeout(status._t); status._t = setTimeout(function () { if (s.textContent === text) s.textContent = ''; }, 6000); } }
@@ -2548,7 +2567,27 @@
     ensureBar(); decorate();
   }
 
+  function ensureFab() {
+    if (!MOBILE || !G) return;
+    var fab = document.getElementById('sml-gk-fab');
+    if (sessionStorage.getItem('sml_gk_fab_off') === '1') { if (fab) fab.remove(); return; }
+    if (!fab) {
+      fab = document.createElement('div'); fab.id = 'sml-gk-fab';
+      document.body.appendChild(fab);
+      fab.addEventListener('click', function (ev) { if (ev.target.closest && ev.target.closest('.sml-gk-x')) { try { sessionStorage.setItem('sml_gk_fab_off', '1'); } catch (e) {} fab.remove(); return; } onBarClick(ev); });
+      fab.addEventListener('pointerdown', function (ev) { var b = ev.target.closest && ev.target.closest('[data-gk="rec"]'); if (!b || b.disabled) return; ev.preventDefault(); try { b.setPointerCapture(ev.pointerId); } catch (e) {} recStartNow(); });
+      fab.addEventListener('pointerup', function (ev) { if (ev.target.closest && ev.target.closest('[data-gk="rec"]')) { ev.preventDefault(); recStop(); } });
+      fab.addEventListener('pointercancel', function () { recStop(); });
+      fab.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    }
+    var html = (G.canChirp ? '<button type="button" class="sml-gk-btn ' + (busy === 'rec' ? 'rec' : 'mic') + '" data-gk="rec"' + (busy === 'send' ? ' disabled' : '') + '>' + (busy === 'rec' ? '● Recording… release to send' : busy === 'send' ? 'Sending…' : '🎙 Hold to Chirp the group') + '</button>' : '<span class="sml-gk-btn" style="flex:1;cursor:default">Loop Kick · alerts &amp; chirp</span>')
+      + '<button type="button" class="sml-gk-btn' + (G.chirp ? ' on' : '') + '" data-gk="chirp" title="Hear this group\'s chirps anywhere">🔊</button>'
+      + '<button type="button" class="sml-gk-btn' + (G.alertsAll ? ' on' : '') + '" data-gk="all" title="Every channel alerts your Loop Kick">🔔</button>'
+      + '<button type="button" class="sml-gk-x" aria-label="Hide">×</button>';
+    if (fab.getAttribute('data-html') !== html) { fab.innerHTML = html; fab.setAttribute('data-html', html); }
+  }
   function ensureBar() {
+    ensureFab();
     var head = document.querySelector('.sml-gshell__side-head'); if (!head || !G) return;
     var bar = document.getElementById('sml-gk-bar');
     if (!bar) {
@@ -2558,6 +2597,7 @@
       bar.addEventListener('pointerdown', function (ev) { var b = ev.target.closest && ev.target.closest('[data-gk="rec"]'); if (!b || b.disabled) return; ev.preventDefault(); try { b.setPointerCapture(ev.pointerId); } catch (e) {} recStartNow(); });
       bar.addEventListener('pointerup', function (ev) { if (ev.target.closest && ev.target.closest('[data-gk="rec"]')) { ev.preventDefault(); recStop(); } });
       bar.addEventListener('pointercancel', function () { recStop(); });
+      bar.addEventListener('contextmenu', function (ev) { if (ev.target.closest && ev.target.closest('[data-gk="rec"]')) ev.preventDefault(); });
     }
     var html = '<span class="sml-gk-t">Loop Kick · alerts &amp; chirp</span>'
       + '<button type="button" class="sml-gk-btn' + (G.alertsAll ? ' on' : '') + '" data-gk="all" title="Every channel in this group alerts your LOOP-KICK">' + (G.alertsAll ? '🔔 All alerts on' : '🔔 All alerts') + '</button>'
@@ -2671,9 +2711,10 @@
   function playNext() {
     if (playing || !queue.length) return;
     var c = queue.shift(); playing = c;
-    var el = new Audio(c.url); el.preload = 'auto'; audio = el;
-    var done = function () { audio = null; playing = null; toast(null); playNext(); };
+    var el = getPlayer(); audio = el;
+    var done = function () { el.onended = null; el.onerror = null; audio = null; playing = null; toast(null); playNext(); };
     el.onended = done; el.onerror = done;
+    el.src = c.url;
     toast(c, false);
     el.play().catch(function () { toast(c, true); });
   }
