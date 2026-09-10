@@ -2651,7 +2651,8 @@
     var who = talkers.map(function (m) { return m.name; }).join(', ');
     if (talking && talkingShown !== who && !playing) { talkingShown = who; toast({ by: { name: '🔴 LIVE · ' + who }, note: 'is talking to the group right now', duration: 0 }, false); var t = document.getElementById('sml-gk-toast'); if (t) t.classList.add('live'); }
     if (!talking && talkingShown) { talkingShown = ''; if (!playing) toast(null); }
-    if (st && st.needTap) { toast({ by: { name: 'Live chirp' }, note: 'Tap to hear the analyst live', duration: 0 }, true); var t = document.getElementById('sml-gk-toast'); if (t) t.onclick = function () { window.SMLChirpLive.tapToHear(); t.remove(); }; }
+    if (st && st.needTap) { toast({ by: { name: '🔊 Live chirp' }, note: 'Tap anywhere to hear the analyst live', duration: 0 }, true); var t = document.getElementById('sml-gk-toast'); if (t) { t.classList.add('live'); t.onclick = function () { window.SMLChirpLive.tapToHear(); t.remove(); }; } }
+    else if (st && !st.needTap) { var t2 = document.getElementById('sml-gk-toast'); if (t2 && /Tap anywhere to hear/.test(t2.textContent)) t2.remove(); }
   }
   function ensureMe() {
     if (!G) return;

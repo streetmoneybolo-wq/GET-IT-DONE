@@ -65,7 +65,14 @@
     if (!a) { a = document.createElement('audio'); a.autoplay = true; a.setAttribute('playsinline', ''); a.style.display = 'none'; document.body.appendChild(a); S.audios[id] = a; }
     a.srcObject = stream;
     a.muted = !wantsSpeaker(id);
-    a.play().then(function () { S.needTap = S.needTap.filter(function (x) { return x !== id; }); emit(); }).catch(function () { if (S.needTap.indexOf(id) < 0) S.needTap.push(id); emit(); });
+    a.play().then(function () { S.needTap = S.needTap.filter(function (x) { return x !== id; }); emit(); }).catch(function () { if (S.needTap.indexOf(id) < 0) S.needTap.push(id); emit(); armTapAnywhere(); });
+  }
+  /* phones refuse audio that no touch started: the very next tap ANYWHERE on the page starts every waiting stream */
+  var tapArmed = false;
+  function armTapAnywhere() {
+    if (tapArmed) return; tapArmed = true;
+    var h = function () { tapArmed = false; document.removeEventListener('pointerdown', h, true); document.removeEventListener('touchstart', h, true); api.tapToHear(); };
+    document.addEventListener('pointerdown', h, true); document.addEventListener('touchstart', h, true);
   }
   function wantsSpeaker(id) {
     if (!S.wants) return true;
