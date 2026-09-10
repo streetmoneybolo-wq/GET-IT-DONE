@@ -156,10 +156,15 @@ test('Upgrade.Chat yes button offers migration and group creation with Discord n
   assert.match(result.response.data.content, /same verified next billing date/);
   assert.match(result.response.data.content, /Making Easy Money/);
   const buttons = result.response.data.components[0].components;
+  assert.equal(buttons.length, 2);
   assert.equal(buttons[0].style, 5);
-  assert.match(buttons[0].url, /connect-dashboard/);
+  assert.equal(buttons[0].label, 'Migrate');
+  assert.match(buttons[0].url, /connect-migrate/);
+  assert.match(buttons[0].url, /default_name=Making\+Easy\+Money/);
+  assert.equal(buttons[1].style, 5);
+  assert.equal(buttons[1].label, 'Dashboard');
+  assert.match(buttons[1].url, /connect-dashboard/);
   assert.match(buttons[1].url, /default_name=Making\+Easy\+Money/);
-  assert.match(buttons[2].url, /connect-migrate/);
   assert.equal(audits.at(-1).fields.detail.outcome, 'upgrade_chat_yes');
 });
 

@@ -257,6 +257,13 @@ function createConnectCommands(deps = {}) {
     });
   }
 
+  function ownerActionButtons({ guildId, guildName } = {}) {
+    return [
+      { type: 2, style: 5, label: 'Migrate', url: migrateUrl({ guildId, guildName }) },
+      { type: 2, style: 5, label: 'Dashboard', url: ownerDashboardUrl({ guildId, guildName }) }
+    ];
+  }
+
   function setupIntro({ guildId, guildName } = {}) {
     const server = guildName ? `Server detected: ${guildName}.` : `Server detected by ID: ${guildId || 'unknown'}.`;
     return {
@@ -296,17 +303,13 @@ function createConnectCommands(deps = {}) {
       ].join('\n'),
       components: [{
         type: 1,
-        components: [
-          migrated
-            ? { type: 2, style: 5, label: 'Map products / roles / plans', url: ownerDashboardUrl({ guildId, guildName }) }
-            : { type: 2, style: 5, label: 'Yes — create SML group', url: groupCreateUrl({ guildId, guildName }) },
-          migrated
-            ? { type: 2, style: 5, label: 'Create SML group', url: groupCreateUrl({ guildId, guildName }) }
-            : { type: 2, style: 2, label: 'No — bot only for now', custom_id: 'sml_connect:group:no' },
-          migrated
-            ? { type: 2, style: 5, label: 'Member migration page', url: migrateUrl({ guildId, guildName }) }
-            : { type: 2, style: 2, label: 'Run setup later', custom_id: 'sml_connect:group:no' }
-        ]
+        components: migrated
+          ? ownerActionButtons({ guildId, guildName })
+          : [
+              { type: 2, style: 5, label: 'Yes — create SML group', url: groupCreateUrl({ guildId, guildName }) },
+              { type: 2, style: 2, label: 'No — bot only for now', custom_id: 'sml_connect:group:no' },
+              { type: 2, style: 2, label: 'Run setup later', custom_id: 'sml_connect:group:no' }
+            ]
       }]
     };
   }
