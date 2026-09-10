@@ -2510,7 +2510,23 @@
   }
   document.addEventListener('touchstart', unlock, { passive: true, capture: true });
   document.addEventListener('pointerdown', unlock, { passive: true, capture: true });
-  var loaded = false, member = true;
+  var loaded = false, member = true, ME = 0, sigFails = 0;
+  /* client-side copy of the member's picks (the signal file is shared, so the filter runs here) */
+  function wants(c) { var ch = (G && G.chirpChannels) || [], vo = (G && G.chirpVoices) || []; if (ch.length && Number(c.channelId) && ch.indexOf(Number(c.channelId)) < 0) return false; if (vo.length && vo.indexOf(Number(c.by && c.by.id)) < 0) return false; return true; }
+  function pollSignal() {
+    if (!G || !G.chirp || !G.signal) return;
+    fetch(G.signal + '?v=' + Date.now(), { cache: 'no-store', credentials: 'omit' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j) { if (++sigFails > 3) poll(); return; }
+      sigFails = 0;
+      var l = Number(j.last) || 0;
+      if (!last) { last = l; return; }   /* first sight only sets the cursor: nothing old replays */
+      if (l > last) {
+        var items = (j.recent || []).filter(function (c) { return Number(c.id) > last && Number(c.by && c.by.id) !== ME && wants(c); }).sort(function (a, b) { return a.id - b.id; });
+        last = l;
+        if (items.length) { queue = queue.concat(items); playNext(); }
+      }
+    }).catch(function () { if (++sigFails > 3) poll(); });
+  }
   var last = 0, queue = [], audio = null, playing = null;
   var rec = null, chunks = [], recStart = 0, recTimer = null, busy = '';
 
@@ -2559,7 +2575,7 @@
     if (!g) { if (loadTries++ < 20) setTimeout(load, 1500); return Promise.resolve(); }
     return get('me').then(function (j) {
       loaded = true;
-      G = null;
+      G = null; ME = Number(j.me) || ME;
       (j.groups || []).forEach(function (x) { if (String(x.id) === String(g)) G = x; });
       member = !!G;
       if (!last) last = Number(j.lastChirp) || 0;
@@ -2732,9 +2748,9 @@
   function recStartNow() {
     if (rec || !G || !G.canChirp) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') { status('This browser cannot record audio.', true); return; }
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, channelCount: 1 } }).then(function (stream) {
       var mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].filter(function (m) { return MediaRecorder.isTypeSupported(m); })[0] || '';
-      var r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      var r = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 });
       chunks = [];
       r.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
       r.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); recDone(r.mimeType || mime || 'audio/webm'); };
@@ -2750,8 +2766,8 @@
     busy = 'send'; paint(); status('Sending your chirp…');
     var ext = /mp4/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : 'webm';
     var fd = new FormData(); fd.append('file', new File([blob], 'chirp-' + Date.now() + '.' + ext, { type: blob.type })); fd.append('purpose', 'voice');
-    fetch('/wp-json/sml-loop/v1/upload', { method: 'POST', credentials: 'same-origin', headers: hdr(false), body: fd }).then(parse)
-      .then(function (up) { return post('chirp', { group_id: Number(G.id), channel_id: Number(cid() || 0), attachment_id: up.id, duration: sec }); })
+    fd.append('group_id', String(G.id)); fd.append('channel_id', String(cid() || 0)); fd.append('duration', String(sec));
+    fetch(API + 'chirp-upload', { method: 'POST', credentials: 'same-origin', headers: hdr(false), body: fd }).then(parse)
       .then(function (j) { busy = ''; paint(); if (j.chirp) last = Math.max(last, Number(j.chirp.id) || 0); status('🔊 Chirped the group · ' + sec + 's · everyone on this page hears it now' + (j.listeners ? ', ' + j.listeners + ' listening elsewhere' : '') + '.'); })
       .catch(function (e) { busy = ''; paint(); status(e.message || 'That chirp did not send', true); });
   }
@@ -2779,7 +2795,7 @@
     var el = getPlayer(); audio = el;
     var done = function () { el.onended = null; el.onerror = null; audio = null; playing = null; toast(null); playNext(); };
     el.onended = done; el.onerror = done;
-    el.src = c.url;
+    el.src = c.url; el.load();
     toast(c, false);
     el.play().catch(function () { toast(c, true); });
   }
@@ -2797,6 +2813,6 @@
     }, 500);
   })();
 
-  load().then(function () { setInterval(function () { if (G) paint(); }, 2500); setInterval(poll, 4000); });
+  load().then(function () { setInterval(function () { if (G) paint(); }, 2500); (function tick() { pollSignal(); setTimeout(tick, G && G.chirp ? 1000 : 4000); })(); });
   document.addEventListener('sml:group-context-change', function () { setTimeout(paint, 50); });
 })();
