@@ -406,7 +406,7 @@
           '<a class="hf-logo" href="/" aria-label="StockMarketLoop" style="display:flex;align-items:center;flex:none;text-decoration:none"><img src="'+BRAND_IMG+'" alt="StockMarketLoop" style="height:46px;width:auto;display:block"></a>' +
           '<div class="hf-search" style="flex:1;max-width:620px;display:flex;align-items:center;gap:8px;background:linear-gradient(180deg,#080E17,#121B27);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:8px 16px;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><span style="color:#6B7C90;font-size:13px">⌕</span><input placeholder="Search a ticker, e.g. NVDA" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#E6EDF5;font-size:13px"></div>' +
           '<div class="hf-nav" style="display:flex;gap:18px;font-size:13.5px;font-weight:500;color:#93A4B8">' +
-            '<a href="/" style="color:#38F58A;text-decoration:none">Feed</a><a href="/markets/" style="color:#93A4B8;text-decoration:none">Markets</a><a href="/live/" style="color:#93A4B8;text-decoration:none">Live</a><a href="/n/" style="color:#93A4B8;text-decoration:none">Letters</a><a href="/q/" style="color:#93A4B8;text-decoration:none">Q&amp;A</a>' +
+            '<a href="/q/" data-sml-qa-nav="1" style="color:#93A4B8;text-decoration:none">Q&amp;A</a><a href="/market-monitor/" style="color:#93A4B8;text-decoration:none">Monitor</a>' +
           '</div>' +
           '<button type="button" id="sml-hf-loop-kick" aria-label="Open LOOP-KICK" style="padding:9px 20px;border-radius:999px;font-size:13px;white-space:nowrap;'+GBTN+'">LOOP-KICK</button>' +
           '<div id="sml-hf-me-top" role="button" aria-label="Account menu" style="cursor:pointer;flex:none">'+avatarHTML(36)+'</div>' +
@@ -452,11 +452,8 @@
       bnav.id = 'sml-hf-bnav';
       bnav.setAttribute('aria-label', 'Primary');
       bnav.innerHTML =
-        '<a href="/" class="on"><span class="i">◉</span>Feed</a>' +
-        '<a href="/markets/"><span class="i">▤</span>Markets</a>' +
-        '<a href="/live/"><span class="i">◈</span>Live</a>' +
-        '<a href="/n/"><span class="i">✉</span>Letters</a>' +
         '<a href="/q/"><span class="i">?</span>Q&amp;A</a>' +
+        '<a href="/market-monitor/"><span class="i">◈</span>Monitor</a>' +
         '<button type="button" id="sml-hf-bnav-bucks"><span class="i">◎</span>Bucks</button>';
       shell.insertAdjacentElement('afterend', bnav);
       bnav.addEventListener('click', function (ev) {
