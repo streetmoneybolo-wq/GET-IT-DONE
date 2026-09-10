@@ -2558,7 +2558,7 @@
     + '#sml-gk-fab .sml-gk-btn.mic{flex:1}'
     + '#sml-gk-fab .sml-gk-x{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:#131c26;color:#8b98a5;font:700 14px/1 Inter,sans-serif;cursor:pointer}'
     + 'html.sml-mobile #sml-gk-toast{left:12px;right:12px;bottom:74px;max-width:none}'
-    + '#sml-gk-me{margin-left:auto;flex:none;height:30px;padding:0 10px;font-size:10.5px}#sml-gk-me.on{background:#00ff88;border-color:#00ff88;color:#06120c}'
+    + '#sml-gk-me{margin-left:auto;flex:none;height:30px;padding:0 10px;font-size:10.5px}#sml-gk-me.on{background:#00ff88;border-color:#00ff88;color:#06120c}#sml-gk-me.talking{animation:smlGkTalk .9s ease-in-out infinite}@keyframes smlGkTalk{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,.6)}50%{box-shadow:0 0 0 7px rgba(0,255,136,0)}}'
     + '.sml-gshell__me{display:flex;align-items:center;gap:10px}'
     + '#sml-gk-panel{position:fixed;z-index:2147483550;width:300px;max-width:calc(100vw - 16px);max-height:70vh;overflow:auto;padding:12px;border-radius:14px;background:#0b131f;box-shadow:0 0 0 1px rgba(255,255,255,.1),0 24px 50px -16px rgba(0,0,0,.95);font:500 12px/1.4 Inter,Archivo,sans-serif;color:#cfe0f2}'
     + 'html.sml-mobile #sml-gk-panel{left:8px;right:8px;bottom:8px;width:auto}'
@@ -2631,8 +2631,22 @@
     document.addEventListener('click', function close(ev) { if (!p.isConnected) { document.removeEventListener('click', close, true); return; } if (!p.contains(ev.target) && !(ev.target.closest && ev.target.closest('#sml-gk-me'))) { p.remove(); document.removeEventListener('click', close, true); } }, true);
   }
   function repaintPanel() { var p = document.getElementById('sml-gk-panel'); if (p) p.innerHTML = panelHtml(); }
+  var liveState = null;
+  function liveSync() {
+    var L = window.SMLChirpLive; if (!L || !G) return;
+    if (G.chirp && L.hasSession()) { L.listen(Number(G.id), { me: ME, wants: wants, onchange: function (st) { liveState = st; paintLive(); } }).catch(function () {}); }
+    else if (!G.chirp && liveState && liveState.joined) { L.stop(); liveState = null; paintLive(); }
+  }
+  function paintLive() {
+    var b = document.getElementById('sml-gk-me'); if (!b || !G) return;
+    var st = liveState; var live = !!(st && st.joined && st.speakers > 0);
+    var talking = !!(st && (st.members || []).some(function (m) { return m.talking && m.key !== st.self; }));
+    b.classList.toggle('live', live); b.classList.toggle('talking', talking);
+    if (st && st.needTap) { toast({ by: { name: 'Live chirp' }, note: 'Tap to hear the analyst live', duration: 0 }, true); var t = document.getElementById('sml-gk-toast'); if (t) t.onclick = function () { window.SMLChirpLive.tapToHear(); t.remove(); }; }
+  }
   function ensureMe() {
     if (!G) return;
+    liveSync();
     var me = document.querySelector('.sml-gshell__me'); if (!me) return;
     var b = document.getElementById('sml-gk-me');
     if (!b) {
@@ -2640,7 +2654,8 @@
       me.appendChild(b);
       b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); var p = document.getElementById('sml-gk-panel'); if (p) { p.remove(); return; } openPanel(); });
     }
-    var html = (G.chirp ? '🔊 Chirp on' : '🔇 Chirp off');
+    var st = liveState; var live = !!(st && st.joined && st.speakers > 0);
+    var html = (G.chirp ? (live ? '🔊 Chirp on · LIVE' : '🔊 Chirp on') : '🔇 Chirp off');
     b.disabled = false;
     b.classList.toggle('on', !!G.chirp);
     b.title = G.chirp ? 'You hear every chirp from this group the moment it is sent — here and in LOOP-KICK. Tap to turn off.' : 'Turn on to hear the analysts and owner chirp this group in real time.';
