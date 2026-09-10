@@ -329,10 +329,10 @@
   function gate(msg) { var g = el('#vw-cmgate'); g.style.display = ''; g.innerHTML = msg; setTimeout(function () { paintGate(); }, 4000); }
 
   /* ---------- comments (sml-reactions/v1/comments) ---------- */
-  var CM = { items: [], count: 0, sort: 'top', open: {}, page: 1, loggedIn: !!ME };
+  var CM = { items: [], count: 0, sort: 'top', open: {}, page: 1, loggedIn: !!ME, creatorId: 0, focus: (function () { var m = /[?&]c=(\d+)/.exec(location.search); return m ? m[1] : ''; })(), focused: false };
   function cmMap(c) {
     var name = c.author || c.name || c.user || c.display_name || (c.user_name) || 'member';
-    return { id: c.id, name: String(name), av: c.avatar || c.avatar_url || '', text: c.text || c.body || c.content || c.comment || '', at: c.at || c.time || c.created || c.date || '', likes: +(c.likes || c.like_count || 0), liked: !!(c.liked || c.mine), parent: c.parent || c.parent_id || 0, replies: (c.replies || []).map(cmMap) };
+    return { id: c.id, name: String(name), av: c.avatar || c.avatar_url || '', text: c.text || c.body || c.content || c.comment || '', at: c.at || c.time || c.created || c.date || '', likes: +(c.likes || c.like_count || 0), liked: !!c.liked, mine: !!c.mine, parent: c.parent || c.parent_id || 0, pinned: !!c.pinned, hl: !!c.highlighted, creator: !!c.creator, uid: +(c.user_id || 0), replies: (c.replies || []).map(cmMap) };
   }
   function paintGate() {
     var g = el('#vw-cmgate'), comp = el('#vw-cmcomp');
@@ -343,11 +343,15 @@
     var avS = c.av && /^https:/.test(c.av) ? ' style="background-image:url(' + esc(c.av) + ')"' : '';
     var ini = avS ? '' : esc(c.name.slice(0, 2).toUpperCase());
     var open = !!CM.open[c.id];
-    return '<div class="' + (isReply ? 'cmr' : 'slw-cmt') + '" data-cid="' + esc(c.id) + '"><div class="av"' + avS + '>' + ini + '</div><div class="bd">' +
-      '<div class="hd"><b>' + esc(c.name) + '</b><span>' + esc(relTime(c.at)) + '</span></div>' +
+    var owner = !!(ME && CM.creatorId && +ME.id === +CM.creatorId);
+    var tools = (owner ? '<button class="tl" data-flag="' + (c.pinned ? 'unpin' : 'pin') + '" data-fid="' + esc(c.id) + '">' + (c.pinned ? 'Unpin' : '📌 Pin') + '</button><button class="tl" data-flag="' + (c.hl ? 'unhighlight' : 'highlight') + '" data-fid="' + esc(c.id) + '">' + (c.hl ? 'Unhighlight' : '✨ Highlight') + '</button>' : '') +
+      (owner || c.mine ? '<button class="tl dl" data-flag="delete" data-fid="' + esc(c.id) + '">Delete</button>' : '');
+    return '<div class="' + (isReply ? 'cmr' : 'slw-cmt') + (c.pinned ? ' is-pinned' : '') + (c.hl ? ' is-hl' : '') + (CM.focus === String(c.id) ? ' is-focus' : '') + '" data-cid="' + esc(c.id) + '"><div class="av"' + avS + '>' + ini + '</div><div class="bd">' +
+      (c.pinned ? '<div class="pin-tag">📌 Pinned by the creator</div>' : '') +
+      '<div class="hd"><b>' + esc(c.name) + '</b>' + (c.creator ? '<i class="cr-tag">CREATOR</i>' : '') + (c.hl ? '<i class="hl-tag">✨ Highlighted</i>' : '') + '<span>' + esc(relTime(c.at)) + '</span></div>' +
       '<span class="tx">' + esc(c.text) + '</span>' +
-      (isReply ? '' : '<div class="acts"><button class="lk' + (c.liked ? ' on' : '') + '" data-lk="' + esc(c.id) + '">👍 ' + (c.likes || '') + '</button>' +
-        '<button class="rp" data-rp="' + esc(c.id) + '">Reply</button>' +
+      (isReply ? (tools ? '<div class="acts">' + tools + '</div>' : '') : '<div class="acts"><button class="lk' + (c.liked ? ' on' : '') + '" data-lk="' + esc(c.id) + '">👍 ' + (c.likes || '') + '</button>' +
+        '<button class="rp" data-rp="' + esc(c.id) + '">Reply</button>' + tools +
         (c.replies.length ? '<button class="tg" data-tg="' + esc(c.id) + '">' + (open ? 'Hide replies' : c.replies.length + (c.replies.length > 1 ? ' replies' : ' reply')) + '</button>' : '') + '</div>' +
         (open || CM.open['r' + c.id] ? '<div class="thread">' + c.replies.map(function (r) { return cmHTML(r, true); }).join('') +
           (CM.open['r' + c.id] ? '<div class="rcomp"><input type="text" data-rin="' + esc(c.id) + '" maxlength="1000" placeholder="Reply to ' + esc(c.name) + '"><button class="slw-cm-post ready" data-rsend="' + esc(c.id) + '">Reply</button></div>' : '') + '</div>' : '')) +
@@ -357,12 +361,15 @@
     var list = CM.items.slice();
     if (CM.sort === 'top') list.sort(function (a, b) { return (b.likes + b.replies.length * 2) - (a.likes + a.replies.length * 2); });
     else list.sort(function (a, b) { return Date.parse(String(b.at).replace(' ', 'T')) - Date.parse(String(a.at).replace(' ', 'T')); });
+    list.sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); }); /* the creator's pinned comment always leads */
     el('#vw-cmcount').textContent = CM.count.toLocaleString() + (CM.count === 1 ? ' comment' : ' comments');
     el('#vw-cmlist').innerHTML = list.length ? list.map(function (c) { return cmHTML(c, false); }).join('') : '<div class="slw-cm-empty">No comments yet. Start the conversation — the creator reads these.</div>';
     Array.prototype.forEach.call(root.querySelectorAll('.slw-cm-sort'), function (b) { b.classList.toggle('on', b.getAttribute('data-sort') === CM.sort); });
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-tg]'), function (b) { b.onclick = function () { var id = b.getAttribute('data-tg'); CM.open[id] = !CM.open[id]; renderCM(); }; });
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-rp]'), function (b) { b.onclick = function () { if (!CM.loggedIn) { gate('Sign in to reply.'); return; } var id = b.getAttribute('data-rp'); CM.open['r' + id] = !CM.open['r' + id]; CM.open[id] = true; renderCM(); var inp = el('[data-rin="' + id + '"]'); if (inp) inp.focus(); }; });
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-lk]'), function (b) { b.onclick = function () { likeComment(b.getAttribute('data-lk')); }; });
+    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-flag]'), function (b) { b.onclick = function () { flagComment(b.getAttribute('data-fid'), b.getAttribute('data-flag')); }; });
+    if (CM.focus && !CM.focused) { var f = el('#vw-cmlist [data-cid="' + CM.focus + '"]'); if (f) { CM.focused = true; setTimeout(function () { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 300); } }
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-rsend]'), function (b) {
       b.onclick = function () { var id = b.getAttribute('data-rsend'); var inp = el('[data-rin="' + id + '"]'); if (inp && inp.value.trim()) postComment(inp.value.trim(), id); };
       var inp = el('[data-rin="' + b.getAttribute('data-rsend') + '"]'); if (inp) inp.onkeydown = function (e) { if (e.key === 'Enter' && inp.value.trim()) postComment(inp.value.trim(), b.getAttribute('data-rsend')); };
@@ -371,6 +378,9 @@
   function loadComments() {
     api('/sml-reactions/v1/comments?content_type=long_video&content_id=' + encodeURIComponent(likeCID()) + '&per_page=50').then(function (res) {
       var j = res.j || {}; var items = (j.items || j.comments || []).map(cmMap);
+      if (j.creator_id) CM.creatorId = j.creator_id;
+      /* a comment opened from a link stays visible: expand the thread it lives in */
+      if (CM.focus) items.forEach(function (c) { if (String(c.id) === CM.focus && c.parent) CM.open[c.parent] = true; });
       /* thread flat lists by parent */
       var byId = {}, roots = [];
       items.forEach(function (c) { byId[c.id] = c; });
@@ -391,6 +401,13 @@
       });
     };
     attempt(body, function () { var b2 = Object.assign({}, body); delete b2.text; b2.body = text; attempt(b2, function () { var b3 = Object.assign({}, body); delete b3.text; b3.comment = text; attempt(b3, null); }); });
+  }
+  /* creator tools (pin / highlight / delete) — mu-plugin sml-creator-comments, also reachable from Creator Studio → Comments */
+  function flagComment(id, action) {
+    if (action === 'delete' && !window.confirm('Delete this comment?')) return;
+    api('/sml-creator-comments/v1/watch-action', { method: 'POST', body: JSON.stringify({ id: id, action: action }) }).then(function (res) {
+      if (res.ok) loadComments(); else gate((res.j && res.j.message) || 'That did not work.');
+    });
   }
   function likeComment(id) {
     api('/sml-reactions/v1/react', { method: 'POST', body: JSON.stringify({ content_type: 'comment', content_id: id, reaction: 'like' }) }).then(function (res) {
