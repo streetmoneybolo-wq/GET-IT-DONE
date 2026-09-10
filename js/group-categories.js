@@ -2543,7 +2543,12 @@
     + '#sml-gk-fab .sml-gk-x{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:#131c26;color:#8b98a5;font:700 14px/1 Inter,sans-serif;cursor:pointer}'
     + 'html.sml-mobile #sml-gk-toast{left:12px;right:12px;bottom:74px;max-width:none}'
     + '#sml-gk-me{margin-left:auto;flex:none;height:30px;padding:0 10px;font-size:10.5px}#sml-gk-me.on{background:#00ff88;border-color:#00ff88;color:#06120c}'
-    + '.sml-gshell__me{display:flex;align-items:center;gap:10px}';
+    + '.sml-gshell__me{display:flex;align-items:center;gap:10px}'
+    + '#sml-gk-panel{position:fixed;z-index:2147483550;width:300px;max-width:calc(100vw - 16px);max-height:70vh;overflow:auto;padding:12px;border-radius:14px;background:#0b131f;box-shadow:0 0 0 1px rgba(255,255,255,.1),0 24px 50px -16px rgba(0,0,0,.95);font:500 12px/1.4 Inter,Archivo,sans-serif;color:#cfe0f2}'
+    + 'html.sml-mobile #sml-gk-panel{left:8px;right:8px;bottom:8px;width:auto}'
+    + '#sml-gk-panel .sml-gk-ph{display:flex;align-items:center;gap:8px;margin-bottom:6px}#sml-gk-panel .sml-gk-ph b{font-size:13px;color:#fff;flex:1}#sml-gk-panel .sml-gk-x{width:28px;height:28px;border-radius:50%;border:0;background:#131c26;color:#8b98a5;font:700 14px/1 Inter,sans-serif;cursor:pointer}'
+    + '#sml-gk-panel p{margin:0 0 8px;color:#8b98a5}#sml-gk-panel .sml-gk-pl{font:700 9.5px/1.2 Archivo,Inter,sans-serif;letter-spacing:.8px;text-transform:uppercase;color:#7e8a96;margin:10px 0 6px}'
+    + '.sml-gk-chips{display:flex;flex-wrap:wrap;gap:6px}.sml-gk-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:#0e1721;color:#b9c6d2;font:600 11px/1 Inter,sans-serif;cursor:pointer;max-width:100%}.sml-gk-chip img{width:18px;height:18px;border-radius:50%;object-fit:cover}.sml-gk-chip.on{background:#00ff88;border-color:#00ff88;color:#06120c}';
   document.head.appendChild(style);
 
   function status(text, err) { var s = document.getElementById('sml-gk-status'); if (!s) return; s.textContent = text || ''; s.className = err ? 'err' : ''; if (text && !err) { clearTimeout(status._t); status._t = setTimeout(function () { if (s.textContent === text) s.textContent = ''; }, 6000); } }
@@ -2576,6 +2581,40 @@
     var stale = document.getElementById('sml-gk-bar'); if (stale) stale.remove();
     var fab = document.getElementById('sml-gk-fab'); if (fab) fab.remove();
   }
+  /* the picker behind the switch: on/off, which channels, which voices (owner / admins / analysts / listed members) */
+  function chipRow(kind, items, picked, allLabel) {
+    var h = '<div class="sml-gk-chips" data-kind="' + kind + '"><button type="button" class="sml-gk-chip' + (!picked.length ? ' on' : '') + '" data-id="0">' + allLabel + '</button>';
+    items.forEach(function (it) { var on = picked.indexOf(Number(it.id)) >= 0; h += '<button type="button" class="sml-gk-chip' + (on ? ' on' : '') + '" data-id="' + Number(it.id) + '" title="' + esc(it.title || '') + '">' + (it.avatar ? '<img src="' + esc(it.avatar) + '" alt="" referrerpolicy="no-referrer">' : '') + esc(it.label) + '</button>'; });
+    return h + '</div>';
+  }
+  function panelHtml() {
+    var chans = (G.channels || []).map(function (c) { return { id: c.id, label: (c.type === 'alerts' ? '🚨 ' : '# ') + c.name }; });
+    var voices = (G.voices || []).map(function (v) { return { id: v.id, label: v.name, avatar: v.avatar, title: v.role }; });
+    return '<div class="sml-gk-ph"><b>🔊 Chirp</b><button type="button" class="sml-gk-btn' + (G.chirp ? ' on' : '') + '" data-gk-toggle>' + (G.chirp ? 'On' : 'Off') + '</button><button type="button" class="sml-gk-x" data-gk-close aria-label="Close">×</button></div>'
+      + '<p>' + (G.chirp ? 'You hear the analysts and owner the moment they chirp — on this page and in LOOP-KICK.' : 'Turn on to hear the analysts and owner chirp this group in real time.') + '</p>'
+      + '<div class="sml-gk-pl">Channels you want to hear</div>' + chipRow('channels', chans, G.chirpChannels || [], 'All channels')
+      + '<div class="sml-gk-pl">Voices you want to hear</div>' + chipRow('voices', voices, G.chirpVoices || [], 'Everyone with the mic');
+  }
+  function openPanel() {
+    var me = document.querySelector('.sml-gshell__me'); if (!me || !G) return;
+    var p = document.createElement('div'); p.id = 'sml-gk-panel'; p.innerHTML = panelHtml();
+    document.body.appendChild(p);
+    var r = me.getBoundingClientRect();
+    if (!MOBILE) { p.style.left = Math.max(8, Math.round(r.left)) + 'px'; p.style.bottom = Math.max(8, Math.round(innerHeight - r.top + 8)) + 'px'; }
+    p.addEventListener('click', function (ev) {
+      var t = ev.target.closest && ev.target.closest('[data-gk-toggle],[data-gk-close],.sml-gk-chip'); if (!t) return;
+      ev.preventDefault(); ev.stopPropagation();
+      if (t.hasAttribute('data-gk-close')) { p.remove(); return; }
+      if (t.hasAttribute('data-gk-toggle')) { toggle(0, 'chirp', !G.chirp); return; }
+      var kind = t.parentElement.getAttribute('data-kind'); var id = Number(t.getAttribute('data-id'));
+      var cur = (kind === 'channels' ? G.chirpChannels : G.chirpVoices) || [];
+      var next = id === 0 ? [] : (cur.indexOf(id) >= 0 ? cur.filter(function (x) { return x !== id; }) : cur.concat([id]));
+      var body = { group_id: Number(G.id), channel_id: 0 }; body[kind === 'channels' ? 'chirp_channels' : 'chirp_voices'] = next;
+      post('sub', body).then(function (j) { var members = G.members; G = j.group; G.members = members; repaintPanel(); paint(); }).catch(function (e) { status(e.message || 'Could not save', true); });
+    });
+    document.addEventListener('click', function close(ev) { if (!p.isConnected) { document.removeEventListener('click', close, true); return; } if (!p.contains(ev.target) && !(ev.target.closest && ev.target.closest('#sml-gk-me'))) { p.remove(); document.removeEventListener('click', close, true); } }, true);
+  }
+  function repaintPanel() { var p = document.getElementById('sml-gk-panel'); if (p) p.innerHTML = panelHtml(); }
   function ensureMe() {
     if (!G) return;
     var me = document.querySelector('.sml-gshell__me'); if (!me) return;
@@ -2583,7 +2622,7 @@
     if (!b) {
       b = document.createElement('button'); b.type = 'button'; b.id = 'sml-gk-me'; b.className = 'sml-gk-btn';
       me.appendChild(b);
-      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); if (b.disabled) return; b.disabled = true; toggle(0, 'chirp', !G.chirp); });
+      b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); var p = document.getElementById('sml-gk-panel'); if (p) { p.remove(); return; } openPanel(); });
     }
     var html = (G.chirp ? '🔊 Chirp on' : '🔇 Chirp off');
     b.disabled = false;
@@ -2655,7 +2694,7 @@
   function refreshMembers() { get('me?members=1').then(function (j) { (j.groups || []).forEach(function (x) { if (G && x.id === G.id) { G.members = x.members || []; } }); paint(); }).catch(function () {}); }
   function toggle(channelId, field, on) {
     var body = { group_id: Number(G.id), channel_id: Number(channelId) }; body[field] = on;
-    post('sub', body).then(function (j) { var members = G.members; G = j.group; G.members = members; paint();
+    post('sub', body).then(function (j) { var members = G.members; G = j.group; G.members = members; paint(); repaintPanel();
       if (field === 'chirp') { status(on ? '🔊 You will hear this group\'s chirps anywhere on the site (Loop Kick open or not on this page).' : 'Chirp off for this group.'); toast(on ? { by: { name: 'Chirp is on' }, duration: 0, note: 'You will hear the analysts and owner the moment they chirp — here and in LOOP-KICK.' } : null, false); if (on) setTimeout(function () { if (!playing) toast(null); }, 5000); }
       else if (!channelId) status(on ? '🔔 Every channel now alerts your Loop Kick in real time.' : 'Group alerts off.');
       else status(on ? '🔔 This channel now alerts your Loop Kick.' : 'Channel alerts off.');
