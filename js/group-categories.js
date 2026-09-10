@@ -2682,11 +2682,14 @@
   /* ?channel=<id> deep link from a LOOP-KICK alert: open that channel once the shell is up */
   (function deepLink() {
     var m = /[?&]channel=(\d+)/.exec(location.search); if (!m) return;
-    var tries = 0; var t = setInterval(function () {
-      tries++; var b = document.querySelector('button.sml-gshell__channel[data-smlgs-channel="' + m[1] + '"]');
-      if (b) { clearInterval(t); if (!b.classList.contains('is-active')) b.click(); }
-      else if (tries > 25) clearInterval(t);
-    }, 400);
+    var tries = 0, clicks = 0; var t = setInterval(function () {
+      tries++; var c = ctx();
+      if (c.mode === 'channel' && String(c.channelId) === m[1]) { clearInterval(t); return; }
+      var b = document.querySelector('button.sml-gshell__channel[data-smlgs-channel="' + m[1] + '"]');
+      /* the shell binds its click handling after it announces the first context — click only once it has, and re-try until the context agrees */
+      if (b && c.mode && clicks < 4 && tries % 3 === 0) { clicks++; b.click(); }
+      if (tries > 60) clearInterval(t);
+    }, 500);
   })();
 
   load().then(function () { setInterval(function () { if (G) paint(); }, 2500); setInterval(poll, 4000); });
