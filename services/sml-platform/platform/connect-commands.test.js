@@ -144,12 +144,30 @@ test('connect-setup is available before SML account linking and asks Upgrade.Cha
   assert.equal(audits.at(-1).fields.detail.outcome, 'setup_started');
 });
 
-test('Upgrade.Chat yes button offers migration and group creation with Discord name', async () => {
+test('Upgrade.Chat yes button asks for migration before showing dashboard', async () => {
   const { deps, audits } = fakes();
   const result = await createConnectCommands(deps).handleComponent(interaction('', [], {
     type: 3,
     guild: { name: 'Making Easy Money' },
     data: { custom_id: 'sml_connect:uc:yes' }
+  }));
+  assert.equal(result.response.data.flags, 64);
+  assert.match(result.response.data.content, /Click Migrate/i);
+  assert.doesNotMatch(result.response.data.content, /owner dashboard/i);
+  assert.match(result.response.data.content, /Making Easy Money/);
+  const buttons = result.response.data.components[0].components;
+  assert.equal(buttons[0].label, 'Migrate');
+  assert.equal(buttons[0].custom_id, 'sml_connect:migrate:start');
+  assert.equal(buttons[1].label, 'Not now');
+  assert.equal(audits.at(-1).fields.detail.outcome, 'upgrade_chat_yes');
+});
+
+test('migration start button then shows migrate and dashboard links with Discord name', async () => {
+  const { deps, audits } = fakes();
+  const result = await createConnectCommands(deps).handleComponent(interaction('', [], {
+    type: 3,
+    guild: { name: 'Making Easy Money' },
+    data: { custom_id: 'sml_connect:migrate:start' }
   }));
   assert.equal(result.response.data.flags, 64);
   assert.match(result.response.data.content, /map Upgrade.Chat products, Discord roles, and StockMarketLoop subscription plans/);
@@ -165,7 +183,7 @@ test('Upgrade.Chat yes button offers migration and group creation with Discord n
   assert.equal(buttons[1].label, 'Dashboard');
   assert.match(buttons[1].url, /connect-dashboard/);
   assert.match(buttons[1].url, /default_name=Making\+Easy\+Money/);
-  assert.equal(audits.at(-1).fields.detail.outcome, 'upgrade_chat_yes');
+  assert.equal(audits.at(-1).fields.detail.outcome, 'migration_started');
 });
 
 test('Upgrade.Chat no button skips migration but still offers StockMarketLoop group creation', async () => {

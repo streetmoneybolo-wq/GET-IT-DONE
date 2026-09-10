@@ -264,6 +264,25 @@ function createConnectCommands(deps = {}) {
     ];
   }
 
+  function migrationChoice({ guildId, guildName } = {}) {
+    const server = guildName ? `Server detected: ${guildName}.` : `Server detected by ID: ${guildId || 'unknown'}.`;
+    return {
+      content: [
+        'Upgrade.Chat detected as the current path.',
+        server,
+        '',
+        'Click Migrate when you are ready to start moving subscriptions into StockMarketLoop Connect.'
+      ].join('\n'),
+      components: [{
+        type: 1,
+        components: [
+          { type: 2, style: 3, label: 'Migrate', custom_id: 'sml_connect:migrate:start' },
+          { type: 2, style: 2, label: 'Not now', custom_id: 'sml_connect:group:no' }
+        ]
+      }]
+    };
+  }
+
   function setupIntro({ guildId, guildName } = {}) {
     const server = guildName ? `Server detected: ${guildName}.` : `Server detected by ID: ${guildId || 'unknown'}.`;
     return {
@@ -642,6 +661,10 @@ function createConnectCommands(deps = {}) {
     const guildName = await resolveGuildName(interaction, guildId);
     if (customId === 'sml_connect:uc:yes') {
       await audit(Object.assign({ outcome: 'upgrade_chat_yes' }, auditBase));
+      return { response: { type: 4, data: Object.assign(migrationChoice({ guildId, guildName }), { flags: EPHEMERAL }) } };
+    }
+    if (customId === 'sml_connect:migrate:start') {
+      await audit(Object.assign({ outcome: 'migration_started' }, auditBase));
       return { response: { type: 4, data: Object.assign(createGroupQuestion({ guildId, guildName, migrated: true }), { flags: EPHEMERAL }) } };
     }
     if (customId === 'sml_connect:uc:no') {
