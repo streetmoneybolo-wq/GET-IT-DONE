@@ -5,7 +5,7 @@
 :root{--cc-bg:#0d1117;--cc-panel:#151b23;--cc-panel2:#1b232e;--cc-line:#252f3b;--cc-line2:#33404f;--cc-text:#e7ecf2;--cc-text2:#c6cfda;--cc-muted:#8b98a9;--cc-ph:#5c6878;
   --cc-acc:oklch(0.72 0.17 165);--cc-acc-hi:oklch(0.82 0.15 165);--cc-acc-dim:oklch(0.45 0.12 165);--cc-acc-deep:oklch(0.35 0.08 165);--cc-red:oklch(0.7 0.16 25);--cc-on:#08130f}
 /* full page takeover (same pattern as the Loop Channel page) */
-body.smlcc-on > :not(#sml-cc-root):not(#wpadminbar){display:none !important}
+body.smlcc-on > :not(#sml-cc-root):not(#wpadminbar):not(#sml-global-header):not(#sml-lb-panel):not(#sml-lb-news):not(.sml-lb-floating):not(.sml-nk-panel):not(#sml-ss-global-host):not(#sml-ss-panel):not(#sml-tkpop):not([class*="sml-loop"]):not([id*="loop-kick"]):not([class*="loop-kick"]){display:none !important}
 html.smlcc-on,body.smlcc-on{background:var(--cc-bg) !important;margin:0;color:var(--cc-text)}
 #sml-cc-root{font:14px/1.5 Manrope,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--cc-text);-webkit-font-smoothing:antialiased;min-height:100vh}
 #sml-cc-root *,#sml-cc-root *::before,#sml-cc-root *::after{box-sizing:border-box}

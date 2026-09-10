@@ -145,6 +145,11 @@
   }
 
   document.documentElement.classList.add('smlca-on'); document.body.classList.add('smlca-on');
+  /* the site header stays visible above the app (owner call 2026-09-10); the sticky sidebar sits below it */
+  (function syncHeaderHeight(){
+    var apply = function(){ var gh = document.getElementById('sml-global-header'); document.documentElement.style.setProperty('--sml-gh-h', ((gh && gh.offsetHeight) || 0) + 'px'); };
+    apply(); window.addEventListener('resize', apply); var n = 0; var t = setInterval(function(){ apply(); if (++n > 20) clearInterval(t); }, 500);
+  })();
   if (!document.getElementById('sml-ca-font')) { var f = document.createElement('link'); f.id = 'sml-ca-font'; f.rel = 'stylesheet'; f.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap'; document.head.appendChild(f); }
   root.innerHTML = '<div class="ca-wrap">' + header(null) + '<div class="ca-loading">Loading your analytics…</div></div>';
 
@@ -152,10 +157,10 @@
     var u = rt && rt.user || {}; var ov = rt && rt.overview || {};
     var initial = ((u.display_name || '?').trim().charAt(0) || '?').toUpperCase();
     var lb = S.lb || {};
-    return '<header class="ca-header"><div class="ca-brand"><img src="' + LOGO + '" alt="Stock Market Loop"><span class="ca-crumb">/ Creator Studio / Analytics</span></div><div class="ca-sp"></div>' +
+    return '<header class="ca-header"><div class="ca-brand"><a href="/" title="Stock Market Loop — Home"><img src="' + LOGO + '" alt="Stock Market Loop"></a><span class="ca-crumb">/ Creator Studio / Analytics</span></div><div class="ca-sp"></div>' +
       (rt ? '<div class="ca-creator"><div class="ca-avatar">' + (u.avatar_url ? '<img src="' + esc(u.avatar_url) + '" alt="">' : esc(initial)) + '</div><div><b>' + esc(u.display_name || '') + '</b><span>' + (S.gate && S.gate.channelHandle ? '@' + esc(S.gate.channelHandle) : (S.gate && S.gate.letterHandle ? '@' + esc(S.gate.letterHandle) : 'creator')) + '</span></div>' +
         '<div class="ca-lb"><b>' + fmt(ov.loop_bucks != null ? ov.loop_bucks : (lb.balance || 0)) + '</b><span>Loop Bucks' + (lb.rank ? ' · #' + esc(lb.rank) : '') + '</span></div></div>' : '') +
-      '<span class="ca-pill">Last 28 days</span><a class="ca-pill" href="/creator-studio/">Creator Studio ↗</a></header>';
+      '<span class="ca-pill">Last 28 days</span><a class="ca-pill" href="/">⌂ Home</a><a class="ca-pill ca-pill-primary" href="/creator-studio/">← Back to Creator Studio</a></header>';
   }
 
   function pulseSection(id, title, note, html) {
@@ -170,9 +175,11 @@
       ['engagement', 'Engagement'], ['monetization', 'Monetization'], ['retention', 'Retention'],
       ['demographics', 'Demographics'], ['tech', 'Tech']
     ];
-    return '<div class="ca-app"><aside class="ca-side"><a class="ca-side-logo" href="/"><span class="ca-pulse-mark">▲</span><span>Pulse <small>/ ' + esc(propertyName) + '</small></span></a>' +
+    return '<div class="ca-app"><aside class="ca-side"><a class="ca-side-logo" href="/" title="Stock Market Loop — Home"><img class="ca-side-brand" src="' + LOGO + '" alt="Stock Market Loop"></a>' +
+      '<div class="ca-side-actions"><a class="ca-side-btn ca-side-back" href="/creator-studio/"><span class="i">←</span><span class="t">Back to Creator Studio</span></a><a class="ca-side-btn ca-side-home" href="/"><span class="i">⌂</span><span class="t">Home</span></a></div>' +
+      '<div class="ca-side-prop"><span class="ca-pulse-mark">▲</span><span>Pulse <small>/ ' + esc(propertyName) + '</small></span></div>' +
       '<nav class="ca-nav">' + nav.map(function (x, i) { return '<a class="' + (i === 0 ? 'on' : '') + '" href="#ca-' + x[0] + '" data-ca-nav="' + x[0] + '"><span></span>' + x[1] + '</a>'; }).join('') + '</nav>' +
-      '<div class="ca-side-foot"><small>Property: ' + esc(propertyName) + '</small><small>GA4 data stream · creator scoped</small><a href="/creator-studio/">← Creator Studio</a></div></aside>' +
+      '<div class="ca-side-foot"><small>Property: ' + esc(propertyName) + '</small><small>GA4 data stream · creator scoped</small><a class="ca-side-btn ca-side-back" href="/creator-studio/"><span class="i">←</span><span class="t">Back to Creator Studio</span></a></div></aside>' +
       '<div class="ca-work"><header class="ca-top"><div><span>Reports · All data</span><b>Analytics overview</b></div><div class="ca-sp"></div><span class="ca-live"><span class="b"></span>LIVE</span><button class="ca-pill" type="button" id="ca-range">Last 28 days⌄</button><button class="ca-pill" type="button" id="ca-compare">Compare</button><button class="ca-pill" type="button" id="ca-share">Share ↗</button></header>' +
       '<main class="ca-main">' + content + '<div class="ca-foot">Counts are aggregated. Individual visitors, IP addresses, and exact locations are never shown.</div></main></div></div>';
   }

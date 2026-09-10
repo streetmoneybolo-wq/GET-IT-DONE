@@ -15,7 +15,7 @@
 /* page takeover while preview is on: live-watch.js re-parents #sml-lw-root to be a
    direct child of <body>, then this rule hides everything else (theme page, footer,
    floating launchers) — the admin bar stays. Applies to late-appended nodes too. */
-body.slw-on > :not(#sml-lw-root):not(#sml-vw-root):not(#wpadminbar):not(.vcd){display:none !important}
+body.slw-on > :not(#sml-lw-root):not(#sml-vw-root):not(#wpadminbar):not(.vcd):not(#sml-global-header):not(#sml-lb-panel):not(#sml-lb-news):not(.sml-lb-floating):not(.sml-nk-panel):not(#sml-ss-global-host):not(#sml-ss-panel):not(#sml-tkpop):not([class*="sml-loop"]):not([id*="loop-kick"]):not([class*="loop-kick"]){display:none !important}
 #sml-vw-root{font-family:Archivo,system-ui,sans-serif;color:#e6edf3;background:#04060a;min-height:100vh;padding:0 0 72px;overflow:hidden;position:relative;z-index:1}
 #sml-vw-root *{box-sizing:border-box}
 #sml-vw-root a{color:#00ff88;text-decoration:none}
