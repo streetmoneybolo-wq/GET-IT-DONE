@@ -746,4 +746,148 @@
     q('#ca-back').addEventListener('click', renderMain);
     window.scrollTo(0, 0);
   }
+
+  /* ===================== Site-wide analytics for admins (owner call 2026-09-10) =====================
+     SML NEWS / the site owner see the whole platform: GA4 site totals + realtime (every event incl. clicks), every
+     creator-page heartbeat on one globe, creators live now, and a Users monitor with per-user drill-down and
+     spam/scam risk flags. Backed by mu-plugin sml-site-analytics (admin-only REST). The creator's own view stays
+     one click away ("My own analytics"). */
+  var ADM = { on: false, scope: 'site', ov: null, rt: null, users: null, q: '', sort: 'risk', user: null, timer: 0, nav: 'site' };
+  var renderMainOrig = renderMain;
+  function admApi(path) { return api('/sml-site-analytics/v1' + path); }
+  function admChip(label, val, sub) { return '<div class="ca-card"><h3>' + esc(label) + '</h3><div class="ca-big">' + val + '</div>' + (sub ? '<div class="ca-sub">' + sub + '</div>' : '') + '</div>'; }
+  function admList(rows, keyName, valName, valFmt, max) {
+    rows = Array.isArray(rows) ? rows.slice(0, max || 8) : [];
+    if (!rows.length) return '<div class="ca-sub">No data yet.</div>';
+    var top = Math.max.apply(Math, [1].concat(rows.map(function (r) { return n(r[valName]); })));
+    return '<div class="ca-bars">' + rows.map(function (r) { var v = n(r[valName]); return '<div class="ca-bar-row"><span class="ca-bar-k">' + esc(r[keyName] || '(not set)') + '</span><span class="ca-bar"><i style="width:' + Math.round(v / top * 100) + '%"></i></span><span class="ca-bar-v">' + (valFmt ? valFmt(v) : fmt(v)) + '</span></div>'; }).join('') + '</div>';
+  }
+  function admMinutes(mins) {
+    var vals = []; for (var i = 29; i >= 0; i--) { var row = (mins || []).filter(function (m) { return n(m.minutesAgo) === i; })[0]; vals.push(row ? n(row.users) : 0); }
+    var max = Math.max.apply(Math, [1].concat(vals));
+    return '<div class="ca-minute-chart"><div class="ca-minute-bars">' + vals.map(function (v) { return '<i style="height:' + (v ? Math.max(8, Math.round(v / max * 100)) : 3) + '%" title="' + fmt(v) + ' active"></i>'; }).join('') + '</div><div class="ca-minute-axis"><span>30 min ago</span><span>Now</span></div></div>';
+  }
+  function admMergeCountries(a, b) {
+    var m = {}; (a || []).forEach(function (r) { var c = String(r.countryCode || '').toUpperCase(); if (c) m[c] = (m[c] || 0) + n(r.viewers || r.users); });
+    (b || []).forEach(function (r) { var c = String(r.countryCode || '').toUpperCase(); if (c) m[c] = Math.max(m[c] || 0, n(r.viewers || r.users)); });
+    return Object.keys(m).map(function (c) { return { countryCode: c, viewers: m[c] }; }).sort(function (x, y) { return y.viewers - x.viewers; });
+  }
+  function admShell(content, title, sub) {
+    var html = pulseShell(S.rt || {}, content);
+    root.innerHTML = '<div class="ca-wrap">' + html + '</div>';
+    var prop = q('.ca-side-prop span:last-child'); if (prop) prop.innerHTML = 'Pulse <small>/ SITE-WIDE · admin</small>';
+    var nav = q('.ca-nav');
+    if (nav) {
+      nav.innerHTML = [['site', '🌐 Site-wide'], ['realtime', '⚡ Realtime · all'], ['users', '👥 Users · monitor'], ['me', '👤 My own analytics']].map(function (x) { return '<a class="' + (ADM.nav === x[0] ? 'on' : '') + '" href="#adm-' + x[0] + '" data-adm-nav="' + x[0] + '"><span></span>' + x[1] + '</a>'; }).join('');
+      Array.prototype.forEach.call(nav.querySelectorAll('[data-adm-nav]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); admGo(a.getAttribute('data-adm-nav')); }); });
+    }
+    var top = q('.ca-top > div'); if (top) top.innerHTML = '<span>' + esc(sub || 'Admin · entire platform') + '</span><b>' + esc(title || 'Site-wide analytics') + '</b>';
+    var scope = document.createElement('div'); scope.className = 'ca-adm-scope';
+    scope.innerHTML = '<span class="ca-adm-lbl">Viewing</span><b>' + (ADM.user ? esc('@' + (ADM.user.user.handle || ADM.user.user.name)) : 'Entire site') + '</b>' + (ADM.user ? '<button class="ca-pill" type="button" data-adm-nav="site">← Site-wide</button>' : '') + '<input class="ca-adm-search" placeholder="Find a user: name, handle, email, id" data-adm-q value="' + esc(ADM.q) + '"><button class="ca-pill" type="button" data-adm-nav="me">My own analytics ↗</button>';
+    var main = q('.ca-main'); if (main) main.insertAdjacentElement('afterbegin', scope);
+    Array.prototype.forEach.call(scope.querySelectorAll('[data-adm-nav]'), function (b) { b.addEventListener('click', function () { admGo(b.getAttribute('data-adm-nav')); }); });
+    var inp = scope.querySelector('[data-adm-q]'); if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { ADM.q = inp.value.trim(); ADM.users = null; admGo('users'); } });
+    window.scrollTo(0, 0);
+  }
+  function admGo(view) {
+    if (view === 'me') { ADM.scope = 'me'; ADM.user = null; clearInterval(ADM.timer); ADM.timer = 0; renderMainOrig(); return; }
+    ADM.scope = 'site'; ADM.nav = view; ADM.user = null;
+    if (view === 'users') { renderAdminUsers(); return; }
+    if (view === 'realtime') { renderAdminRealtime(); return; }
+    renderAdmin();
+  }
+  function renderAdmin() {
+    S.view = 'main'; ADM.nav = 'site';
+    if (!ADM.ov) { admShell('<div class="ca-onboard"><div class="ca-big">Loading the whole platform…</div><div class="ca-sub">GA4 site totals, live presence and site activity.</div></div>'); admApi('/overview?range=28').then(function (r) { ADM.ov = r.ok ? r.j : { error: (r.j && r.j.message) || 'unavailable' }; renderAdmin(); }); return; }
+    var o = ADM.ov, t = o.totals || {}, g = (o.ga4 && o.ga4.available !== false) ? o.ga4 : null, gt = g && g.totals || {}, pr = o.presence || {};
+    var live = admMergeCountries(pr.countries, ADM.rt && ADM.rt.ga4 && ADM.rt.ga4.countries);
+    var html = '<div class="ca-grid ca-kpi-grid">' +
+      admChip('Active right now', fmt(pr.count) + '<span class="ca-fresh"> heartbeats</span>', fmt(pr.visitors24h) + ' distinct visitors on creator pages in 24 h') +
+      admChip('Users (GA4)', g ? fmt(gt.users) : '–', g ? fmt(gt.new_users) + ' new · ' + fmt(gt.sessions) + ' sessions · 28 days' : 'GA4 not connected') +
+      admChip('Page views (GA4)', g ? fmt(gt.views) : '–', g ? fmt(gt.events) + ' events · avg session ' + Math.round(n(gt.avg_session_seconds) / 60) + 'm' : '') +
+      admChip('Members', fmt(t.users_total), fmt(t.users_new_28d) + ' joined in 28 days · ' + fmt(t.users_new_7d) + ' this week') +
+      admChip('Engagement (28d)', fmt(n(t.group_posts_28d) + n(t.feed_comments_28d) + n(t.live_chat_28d)), fmt(t.group_posts_28d) + ' group posts · ' + fmt(t.feed_comments_28d) + ' comments · ' + fmt(t.live_chat_28d) + ' chat') +
+      admChip('Super Chats (28d)', fmt(t.superchats_28d), fmt(t.superchat_lb_28d) + ' LB gifted · ' + fmt(t.loop_bucks_issued_28d) + ' LB issued') +
+      admChip('Content', fmt(n(t.videos_total) + n(t.letters_published)), fmt(t.videos_total) + ' videos · ' + fmt(t.letters_published) + ' letters · ' + fmt(t.groups_total) + ' groups') +
+      '</div>' +
+      '<div class="ca-grid ca-aud-grid"><div class="ca-card ca-map-card"><h3>Active users across the globe<span class="ca-fresh">live · every creator page</span></h3>' + liveLocationMap(live) + '</div>' +
+      '<div class="ca-card"><h3>Creators with viewers now<span class="ca-fresh">' + fmt((pr.byCreator || []).length) + ' live</span></h3>' + ((pr.byCreator || []).length ? '<table><tbody>' + pr.byCreator.map(function (c) { return '<tr><td><a href="#" data-adm-user="' + c.id + '">' + esc(c.name) + '</a> <span class="ca-sub">@' + esc(c.handle) + '</span></td><td style="text-align:right"><b>' + fmt(c.viewers) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<div class="ca-sub">No creator page has a viewer in the last ' + fmt(pr.window || 90) + ' seconds.</div>') + '</div></div>' +
+      (g ? '<div class="ca-grid ca-aud-grid">' +
+        '<div class="ca-card"><h3>Users by source<span class="ca-fresh">28 days</span></h3>' + admList(g.sources, 'source', 'users') + '</div>' +
+        '<div class="ca-card"><h3>Users by country<span class="ca-fresh">28 days</span></h3>' + admList(g.countries, 'country', 'users') + '</div>' +
+        '<div class="ca-card"><h3>Content kinds<span class="ca-fresh">28 days</span></h3>' + admList(g.kinds, 'kind', 'users') + '</div>' +
+        '<div class="ca-card"><h3>Devices<span class="ca-fresh">28 days</span></h3>' + admList(g.devices, 'device', 'users') + '</div>' +
+        '<div class="ca-card"><h3>Top pages<span class="ca-fresh">28 days · views</span></h3>' + admList(g.pages.map(function (p2) { return { k: (p2.title || p2.path || '').replace(/ - Stock Market Loop$/, ''), v: p2.views }; }), 'k', 'v', null, 10) + '</div>' +
+        '<div class="ca-card"><h3>Top events<span class="ca-fresh">28 days</span></h3>' + admList(g.events, 'name', 'count', null, 12) + '</div>' +
+        '</div>' : '<div class="ca-card"><h3>GA4</h3><div class="ca-sub">' + esc((o.ga4 && o.ga4.message) || 'GA4 is not connected for site-wide reporting.') + '</div></div>') +
+      '<div class="ca-foot">Site-wide totals come from the GA4 property the creator views use (no creator filter), the creator-page presence table, and the site’s own tables. Individual visitors are never shown; country-level only.</div>';
+    admShell(html, 'Site-wide analytics', 'Admin · entire platform · 28 days');
+    initLiveLocationMap(live, g ? g.cities : [], 10);
+    Array.prototype.forEach.call(root.querySelectorAll('[data-adm-user]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); admOpenUser(+a.getAttribute('data-adm-user')); }); });
+    clearInterval(ADM.timer); ADM.timer = setInterval(function () { if (ADM.scope === 'site' && ADM.nav === 'site') admApi('/overview?range=28').then(function (r) { if (r.ok) { ADM.ov = r.j; renderAdmin(); } }); }, 60000);
+  }
+  function renderAdminRealtime() {
+    S.view = 'main'; ADM.nav = 'realtime';
+    if (!ADM.rt) { admShell('<div class="ca-onboard"><div class="ca-big">Loading realtime…</div></div>', 'Realtime · everyone', 'Admin · last 30 minutes'); admApi('/realtime').then(function (r) { ADM.rt = r.ok ? r.j : { ga4: { available: false } }; renderAdminRealtime(); }); return; }
+    var r = ADM.rt, g = r.ga4 || {}, pr = r.presence || {}; var live = admMergeCountries(pr.countries, g.countries);
+    var html = '<div class="ca-grid ca-kpi-grid">' +
+      admChip('Active users (GA4)', g.available === false ? '–' : fmt(g.activeUsers), 'last 30 minutes · every page') +
+      admChip('Clicks (30 min)', g.available === false ? '–' : fmt(g.clicks30m), 'click / select_content / outbound events') +
+      admChip('Events (30 min)', fmt((g.events || []).reduce(function (a, e) { return a + n(e.count); }, 0)), 'all GA4 events right now') +
+      admChip('On creator pages', fmt(pr.count), 'heartbeats in the last ' + fmt(pr.window || 90) + ' s') +
+      '</div>' +
+      '<div class="ca-grid ca-aud-grid"><div class="ca-card"><h3>Active users by minute<span class="ca-fresh">GA4 realtime</span></h3>' + admMinutes(g.minutes) + '</div>' +
+      '<div class="ca-card"><h3>Every event right now<span class="ca-fresh">30 min</span></h3>' + admList(g.events, 'name', 'count', null, 14) + '</div></div>' +
+      '<div class="ca-grid ca-aud-grid"><div class="ca-card ca-map-card"><h3>Where everyone is<span class="ca-fresh">GA4 realtime + creator-page heartbeats</span></h3>' + liveLocationMap(live) + '</div>' +
+      '<div class="ca-card"><h3>Pages being viewed now</h3>' + admList((g.pages || []).map(function (p2) { return { k: (p2.page || '').replace(/ - Stock Market Loop$/, ''), v: p2.views }; }), 'k', 'v', null, 12) + '<h3 style="margin-top:14px">Countries now</h3>' + admList(live, 'countryCode', 'viewers', null, 10) + '</div></div>' +
+      '<div class="ca-foot">GA4 realtime refreshes every 20 seconds; the creator-page heartbeat window is ' + fmt(pr.window || 90) + ' seconds.</div>';
+    admShell(html, 'Realtime · everyone', 'Admin · last 30 minutes');
+    initLiveLocationMap(live, g.cities || [], 1);
+    clearInterval(ADM.timer); ADM.timer = setInterval(function () { if (ADM.nav === 'realtime') admApi('/realtime').then(function (x) { if (x.ok) { ADM.rt = x.j; renderAdminRealtime(); } }); }, 20000);
+  }
+  function admFlag(f) { return '<span class="ca-adm-flag">' + esc(f) + '</span>'; }
+  function renderAdminUsers() {
+    S.view = 'main'; ADM.nav = 'users';
+    if (!ADM.users) { admShell('<div class="ca-onboard"><div class="ca-big">Scanning users…</div><div class="ca-sub">Recent accounts and everyone active in the last 30 days, scored for spam and scam patterns.</div></div>', 'Users · monitor', 'Admin · risk first'); admApi('/users?q=' + encodeURIComponent(ADM.q) + '&sort=' + ADM.sort).then(function (r) { ADM.users = r.ok ? r.j : { users: [] }; renderAdminUsers(); }); return; }
+    var u = ADM.users, rows = u.users || [];
+    var html = '<div class="ca-card"><h3>Users<span class="ca-fresh">' + fmt(u.scanned) + ' scanned of ' + fmt(u.total_users) + '</span></h3>' +
+      '<div class="ca-row" style="margin-bottom:10px">' + [['risk', 'Highest risk'], ['active', 'Most active'], ['newest', 'Newest']].map(function (s2) { return '<button class="ca-pill' + (ADM.sort === s2[0] ? ' ca-pill-primary' : '') + '" type="button" data-adm-sort="' + s2[0] + '">' + s2[1] + '</button>'; }).join('') + (ADM.q ? '<span class="ca-sub">search: “' + esc(ADM.q) + '”</span>' : '') + '</div>' +
+      (rows.length ? '<div class="ca-adm-table"><table><thead><tr><th>User</th><th>Risk</th><th>Flags</th><th>Posts</th><th>Links</th><th>Comments</th><th>Chat</th><th>Shares</th><th>Referrals</th><th>Age</th></tr></thead><tbody>' + rows.map(function (r) { var st = r.stats || {}; return '<tr><td><a href="#" data-adm-user="' + r.id + '"><img src="' + esc(r.avatar) + '" alt="" class="ca-adm-av">' + esc(r.name) + '</a><div class="ca-sub">@' + esc(r.handle) + ' · #' + r.id + '</div></td><td><b class="ca-adm-risk r' + (st.risk >= 50 ? '3' : st.risk >= 25 ? '2' : st.risk > 0 ? '1' : '0') + '">' + n(st.risk) + '</b></td><td>' + ((st.flags || []).length ? st.flags.map(admFlag).join('') : '<span class="ca-sub">clean</span>') + '</td><td>' + fmt(st.posts) + '</td><td>' + fmt(st.links) + '</td><td>' + fmt(st.feed_comments) + '</td><td>' + fmt(st.live_chat) + '</td><td>' + fmt(st.shares) + '</td><td>' + fmt(st.referrals) + '</td><td>' + fmt(st.account_days) + 'd</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="ca-sub">No users match.</div>') +
+      '<div class="ca-foot">Risk = transparent rules on the last 30 days: link-heavy or repetitive group posting, share-link farming, referral bursts from new accounts, brand-new accounts dropping links, refunded Super Chats, chat flooding. Click a user for their full analytics.</div></div>';
+    admShell(html, 'Users · monitor', 'Admin · spam & scam watch');
+    Array.prototype.forEach.call(root.querySelectorAll('[data-adm-sort]'), function (b) { b.addEventListener('click', function () { ADM.sort = b.getAttribute('data-adm-sort'); ADM.users = null; renderAdminUsers(); }); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-adm-user]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); admOpenUser(+a.getAttribute('data-adm-user')); }); });
+    clearInterval(ADM.timer); ADM.timer = 0;
+  }
+  function admOpenUser(id) {
+    admShell('<div class="ca-onboard"><div class="ca-big">Loading user #' + id + '…</div><div class="ca-sub">Their GA4 audience, live presence and activity.</div></div>', 'User analytics', 'Admin · per-user view');
+    admApi('/user/' + id).then(function (r) { if (!r.ok || !r.j || !r.j.ok) { admShell('<div class="ca-onboard"><div class="ca-big">User not found</div></div>'); return; } ADM.user = r.j; renderAdminUser(); });
+  }
+  function renderAdminUser() {
+    var d = ADM.user, u = d.user, st = d.stats || {}, ga = d.ga4 && d.ga4.available !== false ? d.ga4 : null, pr = d.presence || {};
+    var html = '<div class="ca-card"><div class="ca-row" style="align-items:center;gap:14px"><img src="' + esc(u.avatar) + '" alt="" style="width:56px;height:56px;border-radius:50%"><div><div class="ca-big" style="font-size:22px">' + esc(u.name) + '</div><div class="ca-sub">@' + esc(u.handle) + ' · #' + u.id + ' · joined ' + esc(String(u.registered).slice(0, 10)) + ' · ' + esc((u.roles || []).join(', ')) + ' · ' + fmt(st.balance) + ' LB</div></div><div class="ca-sp"></div><a class="ca-pill" target="_blank" rel="noopener" href="' + esc(u.url) + '">Profile ↗</a><a class="ca-pill" target="_blank" rel="noopener" href="' + esc(u.channel_url) + '">Channel ↗</a></div>' +
+      '<div style="margin-top:12px"><b class="ca-adm-risk r' + (st.risk >= 50 ? '3' : st.risk >= 25 ? '2' : st.risk > 0 ? '1' : '0') + '">Risk ' + n(st.risk) + '</b> ' + ((st.flags || []).length ? st.flags.map(admFlag).join('') : '<span class="ca-sub">No spam or scam patterns in the last 30 days.</span>') + '</div></div>' +
+      '<div class="ca-grid ca-kpi-grid">' + admChip('Group posts', fmt(st.posts), fmt(st.links) + ' with links · ' + Math.round(n(st.dup_ratio) * 100) + '% duplicates') + admChip('Comments', fmt(st.feed_comments), 'feed / Q&A / channel, 30 days') + admChip('Live chat', fmt(st.live_chat), '30 days') + admChip('Share rewards', fmt(st.shares), 'share-link earns, 30 days') + admChip('Referrals', fmt(st.referrals), 'sign-ups they referred, 30 days') + admChip('Super Chats', fmt(st.superchats_given) + ' / ' + fmt(st.superchats_received), 'given / received · ' + fmt(st.refunds) + ' refunded') + admChip('Content', fmt(n(st.videos) + n(st.letters)), fmt(st.videos) + ' videos · ' + fmt(st.letters) + ' letters · ' + fmt(st.groups_joined) + ' groups') + '</div>' +
+      '<div class="ca-grid ca-aud-grid"><div class="ca-card ca-map-card"><h3>Their creator pages · viewers now<span class="ca-fresh">' + fmt(pr.count) + ' live</span></h3>' + liveLocationMap(pr.countries || []) + '</div>' +
+      '<div class="ca-card"><h3>Recent posts &amp; comments<span class="ca-fresh">newest first</span></h3>' + ((d.recent || []).length ? d.recent.map(function (m) { return '<div class="ca-adm-msg' + (m.has_link ? ' link' : '') + '">' + esc(m.text) + '<div class="ca-sub">' + esc(m.where) + ' · ' + esc(String(m.at).slice(0, 16)) + (m.has_link ? ' · contains a link' : '') + '</div></div>'; }).join('') : '<div class="ca-sub">Nothing posted yet.</div>') + '</div></div>' +
+      (ga ? '<div class="ca-grid ca-aud-grid"><div class="ca-card"><h3>Their audience by country<span class="ca-fresh">GA4 · 28 days</span></h3>' + admList(ga.countries, 'country', 'users') + '</div><div class="ca-card"><h3>Their traffic sources</h3>' + admList(ga.sources, 'source', 'users') + '</div><div class="ca-card"><h3>Their content kinds</h3>' + admList(ga.kinds, 'kind', 'users') + '</div><div class="ca-card"><h3>Their top pages</h3>' + admList((ga.items || []).map(function (i) { return { k: (i.title || i.path || i.url || '').replace(/ - Stock Market Loop$/, ''), v: i.views }; }), 'k', 'v', null, 10) + '</div></div>' : '<div class="ca-card"><h3>GA4 audience</h3><div class="ca-sub">' + esc((d.ga4 && d.ga4.message) || 'No GA4 audience for this user yet (creator attribution starts with their first creator page view).') + '</div></div>');
+    admShell(html, u.name, 'Admin · per-user analytics');
+    initLiveLocationMap(pr.countries || [], [], 1);
+    clearInterval(ADM.timer); ADM.timer = 0;
+  }
+  (function admBoot() {
+    var tries = 0;
+    var t = setInterval(function () {
+      tries++;
+      if (!S.gate && tries < 40) return;
+      clearInterval(t);
+      admApi('/me').then(function (r) {
+        if (!(r.ok && r.j && r.j.admin)) return;
+        ADM.on = true;
+        var css = document.createElement('style'); css.textContent = '.ca-adm-scope{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:14px;border:1px solid var(--ca-line);border-radius:12px;background:var(--ca-panel)}.ca-adm-lbl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--ca-muted)}.ca-adm-scope b{font-size:14px}.ca-adm-search{flex:1;min-width:220px;border:1px solid var(--ca-line);border-radius:8px;background:transparent;color:var(--ca-text);padding:8px 10px;font:inherit}.ca-bars{display:grid;gap:6px}.ca-bar-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}.ca-bar-k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}.ca-bar i{display:block;height:100%;background:var(--ca-acc)}.ca-bar-v{font-weight:700;font-size:12px}.ca-adm-table{overflow:auto}.ca-adm-table table{width:100%;border-collapse:collapse;font-size:12px}.ca-adm-table th{text-align:left;color:var(--ca-muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:6px}.ca-adm-table td{padding:8px 6px;border-top:1px solid var(--ca-line);vertical-align:top}.ca-adm-av{width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px}.ca-adm-risk{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}.ca-adm-risk.r0{background:rgba(255,255,255,.06)}.ca-adm-risk.r1{background:rgba(224,163,54,.18);color:#ffd166}.ca-adm-risk.r2{background:rgba(255,122,69,.2);color:#ffb08a}.ca-adm-risk.r3{background:rgba(255,91,110,.22);color:#ff8f9c}.ca-adm-flag{display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(255,91,110,.12);color:#ff8f9c;border:1px solid rgba(255,91,110,.3)}.ca-adm-msg{padding:8px 10px;border-top:1px solid var(--ca-line);font-size:12.5px;line-height:1.45}.ca-adm-msg.link{border-left:3px solid #ff8f9c}.ca-pill-primary{background:#2b6cff!important;border-color:#2b6cff!important;color:#fff!important}'; document.head.appendChild(css);
+        renderMain = function () { if (ADM.on && ADM.scope === 'site') { if (ADM.user) renderAdminUser(); else if (ADM.nav === 'users') renderAdminUsers(); else if (ADM.nav === 'realtime') renderAdminRealtime(); else renderAdmin(); } else renderMainOrig(); };
+        renderAdmin();
+      }).catch(function () {});
+    }, 250);
+  })();
 })();
