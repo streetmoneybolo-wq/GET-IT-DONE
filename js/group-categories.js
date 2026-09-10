@@ -2527,8 +2527,10 @@
 
   function status(text, err) { var s = document.getElementById('sml-gk-status'); if (!s) return; s.textContent = text || ''; s.className = err ? 'err' : ''; if (text && !err) { clearTimeout(status._t); status._t = setTimeout(function () { if (s.textContent === text) s.textContent = ''; }, 6000); } }
 
+  var loadTries = 0;
   function load() {
-    var g = gid(); if (!g) return Promise.resolve();
+    var g = gid();
+    if (!g) { if (loadTries++ < 20) setTimeout(load, 1500); return Promise.resolve(); }
     return get('me').then(function (j) {
       loaded = true;
       G = null;
@@ -2536,7 +2538,10 @@
       member = !!G;
       if (!last) last = Number(j.lastChirp) || 0;
       paint();
-    }).catch(function () { loaded = true; member = false; });
+    }).catch(function () {
+      /* the group page fires a burst of requests at boot and the edge answers 429 to some of them — try again, later */
+      if (loadTries++ < 8) setTimeout(load, 2000 * loadTries); else { loaded = true; member = false; }
+    });
   }
 
   function paint() {
