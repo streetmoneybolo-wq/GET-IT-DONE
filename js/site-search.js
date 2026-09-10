@@ -1142,7 +1142,10 @@
     + '.sml-lk-grip:hover{opacity:1;transform:scale(1.06)}.sml-lk-grip.dragging{cursor:grabbing;opacity:1;background:#00ff88;color:#06120c;border-color:#00ff88}'
     + '.sml-lk-grip span{position:absolute;right:46px;top:50%;transform:translateY(-50%);white-space:nowrap;font:600 11px/1 Inter,sans-serif;color:#cfe0f2;background:rgba(8,13,23,.92);border-radius:999px;padding:6px 9px;opacity:0;pointer-events:none;transition:opacity .15s}'
     + '.sml-lk-grip:hover span{opacity:1}'
-    + '#sml-loop-popup.sml-lk-dragging #sml-loop-popup-frame{pointer-events:none}';
+    + '#sml-loop-popup.sml-lk-dragging #sml-loop-popup-frame{pointer-events:none}'
+    /* phones: a bigger, high-contrast grip that a thumb can find */
+    + 'html.sml-mobile .sml-lk-grip{width:50px;height:50px;top:10px;right:10px;opacity:1;background:#00ff88;color:#06120c;border-color:#00ff88;font-size:22px;box-shadow:0 0 0 3px rgba(6,18,12,.9),0 10px 24px -8px rgba(0,0,0,.9)}'
+    + 'html.sml-mobile .sml-lk-grip span{display:none}';
   document.head.appendChild(css);
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
@@ -1203,6 +1206,12 @@
       grip.classList.remove('dragging'); popup.classList.remove('sml-lk-dragging');
     }
     grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+    /* touch fallback for webviews without pointer events */
+    if (!window.PointerEvent) {
+      grip.addEventListener('touchstart', function (ev) { var t = ev.touches[0]; if (!t) return; ev.preventDefault(); var r = inner.getBoundingClientRect(); drag = { id: t.identifier, dx: t.clientX - r.left, dy: t.clientY - r.top, moved: false }; grip.classList.add('dragging'); popup.classList.add('sml-lk-dragging'); }, { passive: false });
+      grip.addEventListener('touchmove', function (ev) { var t = ev.touches[0]; if (!drag || !t) return; ev.preventDefault(); drag.moved = true; place(inner, t.clientX - drag.dx, t.clientY - drag.dy, false); }, { passive: false });
+      grip.addEventListener('touchend', function () { end({ pointerId: drag && drag.id }); });
+    }
     grip.addEventListener('dblclick', function (ev) { ev.preventDefault(); ev.stopPropagation(); reset(inner); });
     /* double-TAP on touch (no dblclick on some phones) */
     var lastTap = 0;
