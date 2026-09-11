@@ -334,7 +334,7 @@
       '.sip-card{padding:14px 14px;}.sip-grid{gap:10px;}' +
       '.sip-galphotos{grid-template-columns:1fr;gap:10px;}.sip-galvids{grid-template-columns:1fr;gap:10px;}' +
       '.sip-worldtitle{font-size:22px;}' +
-      '.sip-editbadge{position:fixed;left:50%;transform:translateX(-50%);margin:0;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px);width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - var(--sip-shell-top,0px) - 112px);overflow:auto;white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
+      '.sip-editbadge{position:fixed;left:50%;transform:translateX(-50%);margin:0;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px + var(--sip-badge-lift,0px));width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - var(--sip-shell-top,0px) - 112px);overflow:auto;white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
       '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
       '.sip-play{width:40px;height:40px;font-size:12px;}' +
       '.sip-track{min-width:0;max-width:none;flex:1 1 0;}.sip-track-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
@@ -765,9 +765,29 @@
     });
 
     // edit mode
+    /* Site-wide floating widgets (e.g. the "#sml-ps" profile-song-gift pill) share the
+       bottom-left corner with the mobile edit badge; measure whatever is actually
+       there instead of guessing a fixed offset, since the widget is conditional. */
+    function syncEditBadgeLift() {
+      var lift = 0;
+      var ps = document.getElementById('sml-ps');
+      if (ps) {
+        var cs = getComputedStyle(ps);
+        if (cs.display !== 'none' && cs.visibility !== 'hidden') {
+          var r = ps.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) lift = Math.max(lift, window.innerHeight - r.top + 10);
+        }
+      }
+      document.documentElement.style.setProperty('--sip-badge-lift', Math.max(0, Math.round(lift)) + 'px');
+    }
+    if (!window.__smlBadgeLiftResize) {
+      window.__smlBadgeLiftResize = true;
+      window.addEventListener('resize', syncEditBadgeLift, { passive: true });
+    }
     function applyEditUI() {
       if (!cfg.isOwner) editMode = false;
       editBadge.hidden = !editMode;
+      if (editMode) syncEditBadgeLift();
       $$('[data-editonly]').forEach(function (el) { el.hidden = !editMode; });
       $$('.sip-sec').forEach(function (s) { s.classList.toggle('edit', editMode); s.setAttribute('draggable', editMode ? 'true' : 'false'); });
       var et = $('.sip-edit-toggle'); if (et) et.textContent = editMode ? 'Done' : 'Arrange';
