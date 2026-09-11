@@ -485,7 +485,7 @@
     var bgVid = cfg.backgroundVideoUrl ? '<video class="sip-mediavid" src="' + esc(cfg.backgroundVideoUrl) + '" autoplay muted loop playsinline' + (cfg.backgroundUrl ? ' poster="' + esc(cfg.backgroundUrl) + '"' : '') + '></video>' : '';
     // "Edit profile" opens the SITE's real editor (avatar/banner/bio/music) — the
     // user's native abilities. "Arrange" is the immersive-only layout edit mode.
-    var editBtn = '', arrangeBtn = '', visitorBtn = '', ownerMenuHtml = '';
+    var editBtn = '', arrangeBtn = '', ownerMenuHtml = '';
     if (cfg.isOwner) {
       /* Edit live / Full settings used to sit on the banner next to the name — too much
          chrome over the photo. Moved into a small kebab menu next to the CONTACT tab. */
@@ -495,7 +495,6 @@
         '<button class="sip-studio-open" type="button" role="menuitem">Full settings</button>' +
         '</div></div>';
       arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
-      visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
     } else if (cfg.followUid) {
       /* visitor: Follow — proxies the page's real follow button when the unified
          layout renders one; otherwise talks to the same sml-members/v1/follow
@@ -511,7 +510,7 @@
       '<div class="sip-avatar"><div class="sip-avatar-ring"></div><div class="sip-avatar-img"' + av.st + '>' + av.inner + '</div></div>' +
       '<div style="flex:1;min-width:200px;"><h1 class="sip-name">' + esc(cfg.name) + '</h1><div class="sip-handle">' + esc(cfg.handle) + '</div>' +
       '<div class="sip-roles">' + cfg.roles.map(function (r) { return '<span class="sip-role">' + esc(r) + '</span>'; }).join('') + '</div></div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + editBtn + arrangeBtn + visitorBtn + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + editBtn + arrangeBtn + '</div>' +
       '</div></div>' +
       '<div class="sip-sections" style="display:flex;flex-direction:column;">' +
       '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
