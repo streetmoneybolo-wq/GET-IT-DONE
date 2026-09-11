@@ -1812,10 +1812,8 @@
        picture — shrink it to the pill and hang it fully below the edge so the placement drag owns the whole banner */
     '.sml-gshell.sml-banner-edit .sml-gshell__main-head > button.sml-cbanner-resize{left:50%!important;right:auto!important;width:132px!important;transform:translateX(-50%)!important;bottom:-24px!important;height:24px!important}' +
     'html.sml-mobile .sml-gshell.sml-banner-edit .sml-gshell__main-head > button.sml-cbanner-resize{bottom:-34px!important;height:34px!important;width:160px!important}' +
-    /* desktop managers can grab the bottom edge straight away: the handle appears while the pointer is over the banner */
-    /* owner call 2026-09-09: managers always see the grab strip on the banner's bottom edge (the plugin only creates it for
-       managers); hover-only left it invisible at mousedown, so drags never started */
-    '.sml-gshell .sml-gshell__main-head > button.sml-cbanner-resize{display:flex!important}.sml-gshell .sml-gshell__main-head.sml-cbanner-is-hidden > button.sml-cbanner-resize{display:none!important}' +
+    /* owner call 2026-09-11: the grab strip must only show while actively resizing (.sml-banner-edit), not all the time --
+       reverses the 2026-09-09 "always visible for managers" change (line above kept ONLY the default hide + edit-mode show). */
     '.sml-banner-edit-done{position:absolute;top:8px;left:8px;z-index:62;border:1px solid rgba(0,255,102,.55);background:#00ff66;color:#031008;border-radius:8px;padding:6px 10px;font:800 11px/1 Inter,system-ui,sans-serif;cursor:pointer}' +
     '.sml-pgo-list{display:flex;flex-direction:column;gap:6px}' +
     '.sml-pgo-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);text-decoration:none;color:inherit}' +
