@@ -541,6 +541,22 @@
     var input = bar.querySelector('input'), drop = bar.querySelector('.drop');
     var t = null, ab = null;
     input.addEventListener('focus', function () { if (window.SMLSymbolIndex) window.SMLSymbolIndex.load(); }, { passive: true });
+    /* Owner call 2026-09-11: clicking this box to search a new ticker after one is already loaded
+       (it shows "$TSLA" etc.) silently appended instead of replacing -- a real click positions the
+       caret on mouseup, which fires after focus, so a naive focus-time select() loses that race.
+       Select on mouseup instead (skip when the up position differs from the down position by more
+       than a few px, which means the user was drag-selecting part of the text on purpose). */
+    (function () {
+      var downX = null, downY = null;
+      input.addEventListener('mousedown', function (e) { downX = e.clientX; downY = e.clientY; });
+      input.addEventListener('mouseup', function (e) {
+        var dragged = downX !== null && (Math.abs(e.clientX - downX) > 3 || Math.abs(e.clientY - downY) > 3);
+        downX = null; downY = null;
+        if (dragged) return;
+        e.preventDefault();
+        input.select();
+      });
+    })();
     function closeDrop() { drop.hidden = true; drop.innerHTML = ''; }
     function apply(sym) {
       sym = String(sym || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
