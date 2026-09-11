@@ -548,7 +548,8 @@
         .catch(function () { return false; });
       return revisionRefresh;
     }
-    function loadChannels() {
+    function loadChannels(attempt) {
+      attempt = attempt || 0;
       function fromSidebar() {
         var box = channelsBox();
         chans = (box ? channelButtons(box) : []).map(function (b) {
@@ -558,11 +559,22 @@
         origSeq = chans.map(function (c) { return c.id; }).join(',');
       }
       if (!gid) { fromSidebar(); drawAssign(); return; }
+      // A transient edge/rate-limit hiccup (the documented "burst window" in
+      // the first ~20s after a page load — very plausible right here, since
+      // reopening this panel right after a channel-delete-triggered reload
+      // lands squarely inside it) must not permanently strand the panel in
+      // read-only mode: retry with backoff before falling back to the
+      // sidebar-derived read-only snapshot (which silently disables rename/
+      // reorder/delete and used to only surface as a Save-time error after
+      // the user had already made — and lost — real edits).
       fetch('/wp-json/sml/v1/group/channels?group_id=' + gid, { credentials: 'same-origin', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (j) {
           var list = j && (Array.isArray(j.channels) ? j.channels : (Array.isArray(j) ? j : null));
-          if (!list) { fromSidebar(); }
+          if (!list) {
+            if (attempt < 2) { setTimeout(function () { loadChannels(attempt + 1); }, attempt === 0 ? 600 : 1400); return; }
+            fromSidebar();
+          }
           else {
             chans = list.map(function (c) { return { id: parseInt(c.id, 10), name: String(c.name || ''), type: String(c.type || 'text'), ro: false }; });
             // The layout endpoint is canonical. Never trust transport/SQL
@@ -583,7 +595,10 @@
           }
           drawAssign();
         })
-        .catch(function () { fromSidebar(); drawAssign(); });
+        .catch(function () {
+          if (attempt < 2) { setTimeout(function () { loadChannels(attempt + 1); }, attempt === 0 ? 600 : 1400); return; }
+          fromSidebar(); drawAssign();
+        });
     }
 
     PANEL = el('div', 'position:fixed;inset:0;z-index:2147480000;display:flex;align-items:center;justify-content:center;background:rgba(3,8,6,0.72);', document.body);
@@ -658,6 +673,22 @@
     function drawAssign() {
       chBox.innerHTML = '';
       if (chans === null) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'Loading channels…'); return; }
+      // fromSidebar()'s fallback marks EVERY channel ro:true — surface that
+      // degraded state right here, the moment it happens, instead of letting
+      // the user rename/reorder/assign for a while and only discover at
+      // Save that none of it could be persisted (the original bug: Save's
+      // own guard below fired with no earlier warning).
+      if (chans.length && chans.every(function (c) { return c.ro; })) {
+        var warn = el('div', 'display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;background:#1a1310;border:1px solid #3a2e1e;border-radius:8px;color:#ffce7a;font-size:12px;padding:8px 10px;margin-bottom:8px;', chBox);
+        el('span', 'flex:1 1 180px;', warn, 'Channel data couldn’t load (likely a brief connection hiccup) — renaming, reordering and deleting are unavailable until this loads.');
+        var retry = el('button', 'flex:0 0 auto;background:#101c16;border:1px solid #3a2e1e;border-radius:7px;color:#ffce7a;padding:5px 10px;cursor:pointer;font:600 12px inherit;', warn, 'Retry');
+        retry.type = 'button';
+        retry.addEventListener('click', function () {
+          retry.disabled = true; retry.textContent = 'Retrying…';
+          chans = null; drawAssign();
+          loadChannels();
+        });
+      }
       if (!chans.length) { el('div', 'color:#8fa89b;font-size:12px;', chBox, 'No channels yet — add one below.'); return; }
       chans.forEach(function (c, idx) {
         var row = el('div', 'display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;', chBox);
@@ -839,7 +870,9 @@
       var seq = (chans || []).map(function (c) { return c.id; }).join(',');
       var orderChanged = !anyRo && chans !== null && seq !== origSeq;
       if (chans === null || anyRo) {
-        note.textContent = 'Channel list unavailable — reload before changing the layout.';
+        note.textContent = chans === null
+          ? 'Channel list is still loading — try Save again in a moment.'
+          : 'Channel list couldn’t load — use the Retry button above the channel list, then Save again.';
         return;
       }
       note.textContent = 'Saving…';
