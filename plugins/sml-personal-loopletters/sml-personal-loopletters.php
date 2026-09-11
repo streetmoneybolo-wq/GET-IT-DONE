@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Personal Loop Letters
  * Description: Isolated two-a-day writing ledger for Vaughn McNair's Making Easy Money publication.
- * Version: 0.1.2
+ * Version: 0.1.3
  */
 namespace SML\PersonalLetters2026;
 if (!defined('ABSPATH')) { exit; }
@@ -214,6 +214,7 @@ final class Brain {
                 $row=self::row($id);
                 if(!$row||(int)$row['author_id']!==self::OWNER||$row['status']!=='draft') throw new \RuntimeException('Draft ownership/status changed; no overwrite.');
                 $image=self::cover($p,$id);
+                array_unshift($blocks,array('id'=>'plcover','type'=>'image','url'=>$image,'alt'=>'$'.$p['symbol'].' observed historical closes — Making Easy Money','caption'=>'Historical closes over the dates printed on the chart; not a forecast or live quote.'));
                 self::call('POST','/sml-letters/v1/letters/'.$id,array('title'=>$article['title'],'subtitle'=>$article['subtitle'],'tldr'=>$article['excerpt'],'cover_url'=>$image,'tags'=>array($p['symbol']),'visibility'=>'public','blocks'=>$blocks));
                 $saved=self::row($id);
                 if(($saved['title']??'')!==$article['title']||($saved['cover_url']??'')!==$image||(int)($saved['word_count']??0)<250) throw new \RuntimeException('Draft readback failed.');

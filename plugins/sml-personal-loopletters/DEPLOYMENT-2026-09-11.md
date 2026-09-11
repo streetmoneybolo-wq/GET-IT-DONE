@@ -12,6 +12,7 @@ WordPress plugin installed and active; personal automation enabled. Existing Ren
 - One real, authorized attempt consumed today's first slot and published letter **63**, author **258456581** at **2026-09-11 10:44:45 UTC**.
 - Article: https://stockmarketloop.com/n/vaughn-mcnair/oracle-orcl-drops-5-4-on-2026-09-10-intraday-range-hits-152-52-159-24/
 - Cover PNG returned 200.
+- Version 0.1.3 inserts the cover as an image block too, because the existing public renderer does not display cover_url by itself. Letter 63 received that image block and two precision edits (5.4% instead of near-6%; no inferred seller distribution). Original row backed up in non-autoload option sml_pl26_letter63_before_visual_polish. No republish/email hook fired. This also demonstrates why model verification must not be described as infallible.
 - Public metadata initially exposed an existing duplicate generic Rank Math canonical/social image. Version 0.1.2 suppresses generic emitters only for this writer's published letters. Clean public URL verified one canonical after the 60-second cache expired. Cache-busted page also has one title, one OG image, one OG title and one Twitter card.
 - Today's remaining automatic slot opens at 16:00 America/Chicago; no replacement 08:00 attempt after the run-now test consumed slot 1.
 

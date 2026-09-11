@@ -1,4 +1,4 @@
-# Personal Loop Letters 0.1.2
+# Personal Loop Letters 0.1.3
 
 Isolated pilot for owner **258456581 / vaughn-mcnair / Making Easy Money**.
 Service identity is pinned to **258456587**, using its existing Render-to-WordPress credential. It cannot choose a different author through these endpoints.
