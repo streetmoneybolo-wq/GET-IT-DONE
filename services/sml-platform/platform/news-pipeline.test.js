@@ -43,6 +43,17 @@ test('persists each stage and publishes a source-hash-suffixed slug', async () =
   assert.equal(calls.some(([name]) => name === 'fail'), false);
 });
 
+test('validated source assigns Spotlight byline, including retries with older generated payload', async () => {
+  let published;
+  const { pipeline } = harness({
+    fetchSource: async () => ({ sourceUrl: 'https://stockmarketloop.com/source', editorialDesk: 'retail-trader-spotlight' }),
+    publisher: { publish: async input => { published = input; return { post: { id: 1, link: 'link' } }; } }
+  });
+  await pipeline.processJob({ id: 10, source_url: 'source', source_url_hash: 'c'.repeat(64),
+    generated_payload: { slug: 'alert', body_html: '<p>Alert</p>', editorial_desk: 'wrong' } });
+  assert.equal(published.article.editorial_desk, 'retail-trader-spotlight');
+});
+
 test('fails closed and records a safe permanent failure', async () => {
   const error = Object.assign(new Error('source is not HTML Bearer secret-value'), { code: 'source_not_html' });
   const { calls, pipeline } = harness({ fetchSource: async () => { throw error; } });

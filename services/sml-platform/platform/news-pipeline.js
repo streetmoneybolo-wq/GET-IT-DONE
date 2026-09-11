@@ -26,6 +26,8 @@ function createNewsPipeline({ database, fetchSource, generateArticle, publisher,
       const source = await fetchSource(job.source_url);
       await database.saveNewsSource(job.id, source);
       const article = job.generated_payload || await generateArticle(source);
+      // Byline is determined by the validated source, never by model output.
+      article.editorial_desk = source.editorialDesk || 'sml-news';
       if (!job.generated_payload) {
         const suffix = job.source_url_hash.slice(0, 8);
         const base = article.slug.slice(0, Math.max(1, 60 - suffix.length - 1)).replace(/-+$/, '');

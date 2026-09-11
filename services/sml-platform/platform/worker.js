@@ -38,6 +38,7 @@ function createDiscordAccessHandler(token, fetchImpl = fetch) {
 const { createArticleGenerator } = require('./article-generator');
 const { createNewsPipeline } = require('./news-pipeline');
 const { createNewsFlow, GAP_MS } = require('./news-flow');
+const { createSpotlightIntake } = require('./spotlight-intake');
 const { createPersonalFlow, createClient: createPersonalClient, createAI: createPersonalAI } = require('./personal-letters');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
@@ -146,8 +147,13 @@ async function main() {
     log('warn', 'news_pipeline_disabled', { missing });
   }
 
+  const spotlightIntake = pipeline ? createSpotlightIntake({ config, database, logger: log }) : null;
   const newsFlow = pipeline ? createNewsFlow({
-    runOnce: () => pipeline.runOnce(),
+    runOnce: async () => {
+      try { await spotlightIntake.run(); }
+      catch { log('warn', 'spotlight_intake_failed', {}); }
+      return pipeline.runOnce();
+    },
     onResult: processed => { if (processed) log('info', 'news_flow_job_finished', { minGapMs: GAP_MS }); },
     onError: () => log('error', 'news_flow_poll_failed', { retryAfterMs: GAP_MS })
   }) : null;

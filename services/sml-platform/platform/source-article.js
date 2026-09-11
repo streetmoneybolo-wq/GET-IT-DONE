@@ -1,6 +1,7 @@
 'use strict';
 
 const { fetchPublicBuffer } = require('./safe-fetch');
+const { isSpotlightSource } = require('./spotlight-intake');
 
 function decodeEntities(value) {
   return String(value || '')
@@ -45,6 +46,18 @@ function visibleText(html) {
 
 async function fetchSourceArticle(sourceUrl, fetcher = fetchPublicBuffer) {
   const response = await fetcher(sourceUrl, { maxBytes: 2 * 1024 * 1024, timeoutMs: 15_000 });
+  if (response.contentType === 'application/json' && isSpotlightSource(sourceUrl) &&
+      response.finalUrl === sourceUrl) {
+    const data = JSON.parse(response.body.toString('utf8'));
+    if (data.schema !== 'sml.retail_trader_alert.v1' ||
+        !sourceUrl.endsWith(`/${data.event_uuid}`) || typeof data.text !== 'string' || data.text.length < 10) {
+      throw Object.assign(new Error('Invalid Spotlight source'), { code: 'source_content_too_thin' });
+    }
+    return { sourceUrl, title: String(data.title || '').slice(0, 300),
+      description: String(data.description || '').slice(0, 1000), imageUrl: null,
+      editorialDesk: 'retail-trader-spotlight',
+      text: `Trader: ${data.trader_display_name}\nTicker: ${data.ticker}\nAlert timestamp: ${data.alerted_at}\nAlert: ${data.text}\nReporting context: ${JSON.stringify(data.reporting_context || null)}` };
+  }
   if (!/^(text\/html|application\/xhtml\+xml)$/.test(response.contentType)) {
     const error = new Error('source is not an HTML article');
     error.code = 'source_not_html';

@@ -23,7 +23,11 @@ function createWordPressPublisher(config, options = {}) {
   let verifiedIdentity = null;
 
   async function request(path, init = {}) {
-    const response = await fetchImpl(`${siteUrl}/wp-json/wp/v2${path}`, {
+    return requestUrl(`${siteUrl}/wp-json/wp/v2${path}`, init);
+  }
+
+  async function requestUrl(url, init = {}) {
+    const response = await fetchImpl(url, {
       ...init,
       headers: { accept: 'application/json', authorization: auth, ...(init.headers || {}) },
       signal: init.signal || AbortSignal.timeout(30_000)
@@ -98,15 +102,33 @@ function createWordPressPublisher(config, options = {}) {
     const identity = await verifyIdentity();
     const existing = await findExisting(article.slug);
     if (existing) return { duplicate: true, post: existing };
+    const desk = article.editorial_desk || 'sml-news';
+    if (!['sml-news', 'retail-trader-spotlight'].includes(desk)) {
+      throw Object.assign(new Error('Unsupported editorial desk'), { code: 'wordpress_author_mismatch' });
+    }
     const meta = {
       _sml_pipeline_version: 'render-v1',
       _sml_source_url_hash: sourceUrlHash,
       _sml_source_url: sourceUrl,
       _sml_subtitle: article.subtitle,
+      _sml_editorial_desk: desk,
       rank_math_title: article.title,
       rank_math_description: article.meta_description,
       rank_math_focus_keyword: article.focus_keyword
     };
+    if (desk === 'retail-trader-spotlight') {
+      const authors = await requestUrl(`${siteUrl}/wp-json/sml-newsroom/v1/authors`);
+      if (!Number.isInteger(Number(authors.authors?.[desk])) || Number(authors.authors[desk]) < 1) {
+        throw Object.assign(new Error('Spotlight author not configured'), { code: 'wordpress_author_not_configured' });
+      }
+      const post = await requestUrl(`${siteUrl}/wp-json/sml-newsroom/v1/publish`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ editorial_desk: desk, content_kind: 'article',
+          title: article.title, excerpt: article.excerpt, slug: article.slug, content: article.body_html,
+          featured_media: mediaId || 0, meta }), signal: AbortSignal.timeout(45_000)
+      });
+      return { duplicate: false, post };
+    }
     const post = await request('/posts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
