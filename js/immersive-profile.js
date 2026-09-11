@@ -197,6 +197,12 @@
     '.sip-wtab{border:1px solid rgba(255,255,255,.14);background:rgba(11,19,31,.6);color:#93A4B8;border-radius:999px;padding:6px 13px;font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.4px;font-weight:600;cursor:pointer;}' +
     '.sip-wtab.on{background:#38F58A;color:#03120A;border-color:#38F58A;}' +
     '.sip-wtab-hint{font-size:11px;color:#6B7C90;margin-left:auto;}' +
+    '.sip-kebab-wrap{position:relative;}' +
+    '.sip-kebab{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:rgba(11,19,31,.6);color:#c3ccd4;font-size:15px;line-height:1;cursor:pointer;}' +
+    '.sip-kebab[aria-expanded="true"]{background:#38F58A;color:#03120A;border-color:#38F58A;}' +
+    '.sip-kebab-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:9;display:flex;flex-direction:column;min-width:150px;background:rgba(11,19,31,.95);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.5);}' +
+    '.sip-kebab-menu button{background:transparent;border:none;color:#dbe8f5;font:600 12px "IBM Plex Sans",system-ui,sans-serif;text-align:left;padding:9px 10px;border-radius:8px;cursor:pointer;}' +
+    '.sip-kebab-menu button:hover{background:rgba(56,245,138,.14);color:#38F58A;}' +
     '.sip-screens{position:relative;perspective:1400px;transition:height .5s ease;}' +
     '.sip-screen{position:absolute;top:0;left:0;right:0;transition:transform .65s cubic-bezier(.22,.85,.3,1),opacity .65s;backface-visibility:hidden;}' +
     '.sip-worldtitle{font-family:var(--sip-fh,Archivo),Archivo,sans-serif;font-weight:900;font-size:clamp(24px,4vw,34px);letter-spacing:-0.5px;}' +
@@ -479,10 +485,15 @@
     var bgVid = cfg.backgroundVideoUrl ? '<video class="sip-mediavid" src="' + esc(cfg.backgroundVideoUrl) + '" autoplay muted loop playsinline' + (cfg.backgroundUrl ? ' poster="' + esc(cfg.backgroundUrl) + '"' : '') + '></video>' : '';
     // "Edit profile" opens the SITE's real editor (avatar/banner/bio/music) — the
     // user's native abilities. "Arrange" is the immersive-only layout edit mode.
-    var editBtn = '', arrangeBtn = '', visitorBtn = '';
+    var editBtn = '', arrangeBtn = '', visitorBtn = '', ownerMenuHtml = '';
     if (cfg.isOwner) {
-      /* ONE Edit profile: opens the Profile Studio (every customization option, live) */
-      editBtn = '<button class="sip-btn sip-live-open" type="button">Edit live</button><button class="sip-btn sip-studio-open" type="button">Full settings</button>';
+      /* Edit live / Full settings used to sit on the banner next to the name — too much
+         chrome over the photo. Moved into a small kebab menu next to the CONTACT tab. */
+      ownerMenuHtml = '<div class="sip-kebab-wrap"><button class="sip-kebab" type="button" aria-haspopup="true" aria-expanded="false" title="Profile settings">⋮</button>' +
+        '<div class="sip-kebab-menu" hidden role="menu">' +
+        '<button class="sip-live-open" type="button" role="menuitem">Edit live</button>' +
+        '<button class="sip-studio-open" type="button" role="menuitem">Full settings</button>' +
+        '</div></div>';
       arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
       visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
     } else if (cfg.followUid) {
@@ -551,7 +562,7 @@
       '<div class="sip-content">' +
       '<div class="sip-topbar"><span class="sip-logo-dot"></span><span class="sip-logo">STOCKMARKETLOOP</span>' +
       '<nav class="sip-nav"><a href="/watch/">Watch</a><a href="/live/">Live</a><a href="/markets/">Markets</a><a href="/n/">Newsletters</a></nav></div>' +
-      '<div class="sip-worldtabs">' + worldTabsHtml + '<span class="sip-wtab-hint">swipe or use ‹ › to travel</span></div>' +
+      '<div class="sip-worldtabs">' + worldTabsHtml + ownerMenuHtml + '<span class="sip-wtab-hint">swipe or use ‹ › to travel</span></div>' +
       '<div class="sip-screens">' + world0 + world1 + world2 + world3 + world4 + '</div>' +
       '</div>' +
       // Dock
@@ -809,6 +820,19 @@
       if (bridge) bridge.click();
       else if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open();
     });
+    // Edit live / Full settings kebab menu, next to the CONTACT tab
+    var kebabBtn = $('.sip-kebab'), kebabMenu = $('.sip-kebab-menu');
+    function closeKebab() { if (!kebabBtn) return; kebabBtn.setAttribute('aria-expanded', 'false'); kebabMenu.hidden = true; }
+    if (kebabBtn && kebabMenu) {
+      kebabBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = kebabBtn.getAttribute('aria-expanded') === 'true';
+        if (open) { closeKebab(); } else { kebabBtn.setAttribute('aria-expanded', 'true'); kebabMenu.hidden = false; }
+      });
+      kebabMenu.addEventListener('click', function (e) { if (e.target.closest('button')) closeKebab(); });
+      document.addEventListener('click', function (e) { if (!e.target.closest('.sip-kebab-wrap')) closeKebab(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeKebab(); });
+    }
     if (cfg.isOwner) mountStudio(mount, cfg);
     /* visitor follow button → clicks the real one underneath and mirrors its state */
     var followBtn = $('.sip-follow');
@@ -1885,9 +1909,21 @@
     mount.style.top = top + 'px';
     mount.style.setProperty('--sip-shell-top', top + 'px');
   }
+  /* The site-wide "#sml-ps" song-gift pill duplicates the overlay's own dock
+     "Songs for you" button — redundant chrome stacked on the same corner.
+     Hidden (not removed) so the underlying plugin keeps working normally
+     everywhere that isn't behind this takeover. Retried a few times since its
+     own script may inject it slightly after this one boots. */
+  function hideSongGiftPill() {
+    var ps = document.getElementById('sml-ps');
+    if (ps) ps.style.setProperty('display', 'none', 'important');
+  }
   function enableOverlay(mount) {
     mount.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;z-index:2147483000;overflow:auto;-webkit-overflow-scrolling:touch;background:#070d14;';
     syncOverlayTop(mount);
+    hideSongGiftPill();
+    setTimeout(hideSongGiftPill, 500);
+    setTimeout(hideSongGiftPill, 1500);
     if (!mount.__smlShellSync) {
       mount.__smlShellSync = function () { syncOverlayTop(mount); };
       window.addEventListener('resize', mount.__smlShellSync, { passive: true });
