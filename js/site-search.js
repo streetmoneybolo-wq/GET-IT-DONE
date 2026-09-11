@@ -207,7 +207,6 @@
 
   function mountGlobalHeader() {
     if (isHomeFeed() || el('#sml-global-header')) return;
-    var isGuest = !document.body.classList.contains('logged-in');
     var me = viewerIdentity();
     var header = document.createElement('header');
     header.id = 'sml-global-header';
@@ -219,9 +218,7 @@
         [['/q/','Q&amp;A','data-sml-qa-nav="1" '],['/market-monitor/','Monitor','']].map(function (item) { return '<a ' + item[2] + 'href="' + item[0] + '"' + (currentPath(item[0]) ? ' aria-current="page"' : '') + '>' + item[1] + '</a>'; }).join('') +
       '</nav>' +
       '<button type="button" id="sml-hf-loop-kick" class="sml-gh-kick" aria-label="Open LOOP-KICK" aria-expanded="false">LOOP-KICK</button>' +
-      (isGuest
-        ? '<a class="sml-gh-signin" href="/login/">Sign In</a><a class="sml-gh-signup" href="/register/">Sign Up</a>'
-        : '<button type="button" class="sml-gh-account" aria-label="Open account menu for ' + attr(me.name) + '">' + (me.avatar ? '<img src="' + attr(me.avatar) + '" alt="' + attr(me.name) + '">' : '<span>' + esc(me.initials) + '</span>') + '</button>') +
+      '<button type="button" class="sml-gh-account" aria-label="Open account menu for ' + attr(me.name) + '">' + (me.avatar ? '<img src="' + attr(me.avatar) + '" alt="' + attr(me.name) + '">' : '<span>' + esc(me.initials) + '</span>') + '</button>' +
     '</div>' +
     '<div class="sml-gh-tape" aria-label="Live market quotes"><div class="sml-gh-tape-row">' + tickerCells() + tickerCells() + '</div></div>';
     document.body.insertBefore(header, document.body.firstChild);
@@ -257,7 +254,7 @@
          THIS click (its target is the header avatar, outside the chip) and would close
          the menu we just opened; opening on the next tick lets that handler pass first */
       if (nativeButton && typeof nativeButton.click === 'function') window.setTimeout(function () { nativeButton.click(); }, 0);
-      else location.href = '/login/';
+      else location.href = '/members/';
     });
   }
 
@@ -806,7 +803,6 @@
         'html.sml-mobile #sml-global-header #sml-lb-btn{order:2;padding:4px 7px;min-height:32px;font-size:10px;gap:5px}html.sml-mobile #sml-global-header #sml-lb-btn img,html.sml-mobile #sml-global-header #sml-lb-btn svg{width:18px;height:18px}' +
         'html.sml-mobile #sml-global-header #sml-hf-loop-kick{order:3;padding:6px 8px;font-size:10.5px;letter-spacing:0;min-height:32px}' +
         'html.sml-mobile #sml-global-header .sml-gh-account{order:4;width:32px;height:32px}' +
-        'html.sml-mobile #sml-global-header .sml-gh-signin,html.sml-mobile #sml-global-header .sml-gh-signup{order:4;padding:0 12px;min-height:32px;font-size:12px}' +
         'html.sml-mobile #sml-global-header .sml-gh-search{order:5;flex:1 1 100%;width:100%;margin:0;min-height:38px}' +
         'html.sml-mobile #sml-global-header .sml-gh-nav{order:6;flex:1 1 100%;width:100%;margin:0;display:flex;flex-wrap:nowrap;gap:14px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 4px;white-space:nowrap}' +
         'html.sml-mobile #sml-global-header .sml-gh-nav::-webkit-scrollbar{display:none}html.sml-mobile #sml-global-header .sml-gh-nav a{flex:none;padding:6px 2px;font-size:13px}' +
