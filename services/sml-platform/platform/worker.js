@@ -38,6 +38,7 @@ function createDiscordAccessHandler(token, fetchImpl = fetch) {
 const { createArticleGenerator } = require('./article-generator');
 const { createNewsPipeline } = require('./news-pipeline');
 const { createNewsFlow, GAP_MS } = require('./news-flow');
+const { createPersonalFlow, createClient: createPersonalClient, createAI: createPersonalAI } = require('./personal-letters');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
 const { createUpgradeChatClient } = require('./upgrade-chat');
@@ -151,6 +152,14 @@ async function main() {
     onError: () => log('error', 'news_flow_poll_failed', { retryAfterMs: GAP_MS })
   }) : null;
 
+  // Independent owner-pinned ledger. WordPress defaults to paused; no sitewide author changes.
+  const personalFlow = !missing.length ? createPersonalFlow({
+    request: createPersonalClient(config),
+    ai: createPersonalAI({ apiKey: config.openaiApiKey, model: config.openaiModel }),
+    onResult: result => { if (result.status !== 'idle') log('info', 'personal_letters_result', { status: result.status, letterId: result.letter_id }); },
+    onError: () => log('warn', 'personal_letters_poll_failed', { retryAfterMs: 300000 })
+  }) : null;
+
   async function tick() {
     if (stopping) return;
     try {
@@ -221,6 +230,7 @@ async function main() {
     clearInterval(alertTimer);
     log('info', 'worker_shutdown_started', { signal });
     if (newsFlow) await newsFlow.stop();
+    if (personalFlow) await personalFlow.stop();
     await database.close();
     log('info', 'worker_shutdown_complete', { signal });
     process.exit(0);
@@ -236,6 +246,7 @@ async function main() {
     newsFlow.start();
     log('info', 'news_flow_started', { mode: 'continuous_single_job', minGapMs: GAP_MS, batchSize: 1 });
   }
+  if (personalFlow) personalFlow.start();
 }
 
 if (require.main === module) {
