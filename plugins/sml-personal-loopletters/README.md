@@ -1,4 +1,4 @@
-# Personal Loop Letters 0.1.1
+# Personal Loop Letters 0.1.2
 
 Isolated pilot for owner **258456581 / vaughn-mcnair / Making Easy Money**.
 Service identity is pinned to **258456587**, using its existing Render-to-WordPress credential. It cannot choose a different author through these endpoints.
@@ -13,6 +13,7 @@ Service identity is pinned to **258456587**, using its existing Render-to-WordPr
 - Snapshot dates separate from fetch dates. Unknown values stay unknown.
 - Fresh evidence, input bounds, original structured writing, distinct evidence-verifier call.
 - Existing Letters create/save/publish and SEO APIs, owner checks and readback checks.
+- On this writer's published letters only, suppress Rank Math's competing generic `/n/` canonical/social metadata. The existing Letters SEO renderer remains the sole owner. Uses documented Rank Math filters: https://rankmath.com/docs/filters-and-hooks/frontend/open-graph/ and https://rankmath.com/docs/filters-and-hooks/frontend/meta-data/.
 - Branded PNG featuring actual observed closes, publication metadata and AI-assistance disclosure.
 - Draft ID persisted before publish; uncertain publish results never automatically retried.
 - Tools → Personal Loop Letters; administrator toolbar → Personal Letters AI.

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Personal Loop Letters
  * Description: Isolated two-a-day writing ledger for Vaughn McNair's Making Easy Money publication.
- * Version: 0.1.1
+ * Version: 0.1.2
  */
 namespace SML\PersonalLetters2026;
 if (!defined('ABSPATH')) { exit; }
@@ -242,6 +242,30 @@ final class Brain {
     public static function toolbar($bar) {
         if(self::operator()) $bar->add_node(array('id'=>'sml-personal-letters','title'=>'Personal Letters AI','href'=>admin_url('tools.php?page=sml-personal-letters')));
     }
+    public static function seo_owner() {
+        // The existing custom-table Letters SEO renderer owns generated-letter metadata.
+        // Suppress only Rank Math's generic /n/ page metadata for our published letter IDs.
+        if(!class_exists('SML_Letters_SEO') || !function_exists('sml_letters_table')) return;
+        $path=(string)wp_parse_url($_SERVER['REQUEST_URI']??'',PHP_URL_PATH);
+        if(!preg_match('#^/n/vaughn-mcnair/([a-z0-9-]+)/?$#',$path,$m)) return;
+        global $wpdb;
+        $posts=sml_letters_table('posts'); $jobs=self::table();
+        $found=$wpdb->get_var($wpdb->prepare("SELECT p.id FROM $posts p INNER JOIN $jobs j ON j.letter_id=p.id WHERE p.author_id=%d AND p.slug=%s AND p.status='published' LIMIT 1",self::OWNER,$m[1]));
+        if(!$found) return;
+        add_filter('rank_math/frontend/canonical','__return_false',999);
+        add_filter('rank_math/frontend/description','__return_empty_string',999);
+        add_filter('rank_math/json_ld','__return_empty_array',999);
+        add_action('rank_math/head',static function(){
+            global $wp_filter;
+            // Paper can memoize the generic canonical before wp; remove its emitter as well.
+            foreach(($wp_filter['rank_math/head']->callbacks??array()) as $priority=>$callbacks) foreach($callbacks as $entry) {
+                $fn=$entry['function'];
+                if(is_array($fn)&&is_object($fn[0])&&$fn[0] instanceof \RankMath\Frontend\Head&&in_array($fn[1],array('canonical','metadesc'),true)) remove_action('rank_math/head',$fn,$priority);
+            }
+            remove_all_actions('rank_math/opengraph/facebook');
+            remove_all_actions('rank_math/opengraph/twitter');
+        },0);
+    }
     public static function page() {
         if(!self::operator()) wp_die('Not authorized.');
         if(isset($_POST['pl_action'])) {
@@ -263,3 +287,4 @@ register_activation_hook(__FILE__,array(Brain::class,'install'));
 add_action('rest_api_init',array(Brain::class,'routes'));
 add_action('admin_menu',array(Brain::class,'menu'));
 add_action('admin_bar_menu',array(Brain::class,'toolbar'),90);
+add_action('wp',array(Brain::class,'seo_owner'),99);
