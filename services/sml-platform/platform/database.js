@@ -2,6 +2,7 @@
 
 const { Pool } = require('pg');
 const { createStripeEventStore } = require('./stripe-event-store');
+const { canClaimNewsJob } = require('./news-flow');
 
 function sslConfig(connectionString, mode) {
   if (mode === 'off') return false;
@@ -70,13 +71,10 @@ function createDatabase({ databaseUrl, databaseSsl }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      /* A crashed worker's lock becomes retryable after 15 minutes. */
-      await client.query(
-        `UPDATE news_article_jobs
-            SET status='retry', worker_id=NULL, locked_at=NULL, next_attempt_at=now(),
-                last_error_code='stale_worker_lock', updated_at=now()
-          WHERE status='processing' AND locked_at < now() - interval '15 minutes'`
-      );
+      if (!await canClaimNewsJob(client)) {
+        await client.query('COMMIT');
+        return null;
+      }
       const selected = await client.query(
         `SELECT * FROM news_article_jobs
           WHERE status IN ('queued','retry') AND next_attempt_at <= now()

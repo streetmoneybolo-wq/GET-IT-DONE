@@ -37,6 +37,7 @@ function createDiscordAccessHandler(token, fetchImpl = fetch) {
 }
 const { createArticleGenerator } = require('./article-generator');
 const { createNewsPipeline } = require('./news-pipeline');
+const { createNewsFlow, GAP_MS } = require('./news-flow');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
 const { createUpgradeChatClient } = require('./upgrade-chat');
@@ -144,6 +145,12 @@ async function main() {
     log('warn', 'news_pipeline_disabled', { missing });
   }
 
+  const newsFlow = pipeline ? createNewsFlow({
+    runOnce: () => pipeline.runOnce(),
+    onResult: processed => { if (processed) log('info', 'news_flow_job_finished', { minGapMs: GAP_MS }); },
+    onError: () => log('error', 'news_flow_poll_failed', { retryAfterMs: GAP_MS })
+  }) : null;
+
   async function tick() {
     if (stopping) return;
     try {
@@ -157,15 +164,6 @@ async function main() {
         if (outcome === 'empty') break;
         if (outcome === 'processed') billingProcessed++;
         else billingFailed++;
-      }
-      let newsJobsProcessed = 0;
-      if (pipeline) {
-        /* Drain a small bounded batch each minute. A flood cannot starve the
-           process or create an unbounded OpenAI bill in one tick. */
-        for (let i = 0; i < 3; i += 1) {
-          if (!await pipeline.runOnce()) break;
-          newsJobsProcessed += 1;
-        }
       }
       let alertsProcessed = 0;
       for (let i = 0; i < 50; i += 1) {
@@ -189,7 +187,7 @@ async function main() {
         promoted,
         billingProcessed,
         billingFailed,
-        newsJobsProcessed,
+        newsMode: newsFlow ? 'continuous_single_job' : 'disabled',
         alertsProcessed,
         aiTasksProcessed,
         ...(disputeSweeps ? { disputeSweeps } : {})
@@ -222,6 +220,7 @@ async function main() {
     clearInterval(timer);
     clearInterval(alertTimer);
     log('info', 'worker_shutdown_started', { signal });
+    if (newsFlow) await newsFlow.stop();
     await database.close();
     log('info', 'worker_shutdown_complete', { signal });
     process.exit(0);
@@ -233,6 +232,10 @@ async function main() {
   const alertTimer = setInterval(() => { void pollAlerts(); }, config.alertPollIntervalMs);
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
   process.once('SIGINT', () => { void shutdown('SIGINT'); });
+  if (newsFlow) {
+    newsFlow.start();
+    log('info', 'news_flow_started', { mode: 'continuous_single_job', minGapMs: GAP_MS, batchSize: 1 });
+  }
 }
 
 if (require.main === module) {
