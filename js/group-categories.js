@@ -1217,6 +1217,9 @@
       + '.sml-ghx-tp-prev{display:block;max-width:100%;max-height:120px;margin:2px auto 12px;border-radius:8px;background:rgba(255,255,255,.03);}'
       + '.sml-ghx-tp label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8aa89b;margin:12px 0 5px;}'
       + '.sml-ghx-tp input[type=file],.sml-ghx-tp input[type=url]{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #263039;border-radius:8px;background:#060d14;color:#e8f1ec;font:inherit;font-size:13px;}'
+      + '.sml-ghx-tp input[type=range]{width:100%;box-sizing:border-box;accent-color:#00ff66;}'
+      + '.sml-ghx-tp label output{color:#e8f1ec;text-transform:none;letter-spacing:normal;}'
+      + 'video.sml-ghx-tp-prev{width:100%;max-width:100%;}'
       + '.sml-ghx-tp-or{text-align:center;font-size:11px;color:#5f7268;margin:10px 0;}'
       + '.sml-ghx-tp-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}'
       + '.sml-ghx-tp-actions button{flex:1 1 40%;border:0;border-radius:9px;padding:10px;font:inherit;font-weight:700;font-size:13px;cursor:pointer;}'
@@ -1342,7 +1345,8 @@
     // rebuild items to reflect which controls currently exist
     var wantBg = !!bgBtn;
     var wantTitle = titleCanManage();
-    var sig = (editBtn ? 'e' : '') + (wantBg ? 'b' : '') + (wantTitle ? 't' : '');
+    var wantPortalBg = portalBgCanManage();
+    var sig = (editBtn ? 'e' : '') + (wantBg ? 'b' : '') + (wantTitle ? 't' : '') + (wantPortalBg ? 'p' : '');
     if (menu.getAttribute('data-sig') !== sig) {
       menu.setAttribute('data-sig', sig);
       menu.innerHTML = '';
@@ -1362,6 +1366,15 @@
           openTitlePanel();
         });
         menu.appendChild(tt);
+      }
+      if (wantPortalBg) {
+        var pb = document.createElement('button'); pb.type = 'button'; pb.textContent = 'Portal background';
+        pb.addEventListener('click', function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          var m = document.getElementById('sml-ghx-menu'); if (m) { m.classList.remove('open'); }
+          openPortalBgPanel();
+        });
+        menu.appendChild(pb);
       }
     }
   }
@@ -1481,6 +1494,88 @@
           .catch(function (e) { busy(false); say(e.message || 'Remove failed.', true); });
       });
     }
+  }
+
+  /* ---- Portal (site-wide) chat background editor, folded into the same 3-dots
+     menu as Edit Group / Channel Background / Channel title. The Portal chat
+     background is ONE shared image/video across every group (not per-group),
+     so editing it from any group's menu edits the same thing everywhere. The
+     backend route (sml-portal-bg/v1/background, manage_options-gated) has
+     existed since 2026-09-05 with no UI ever wired to it — this only adds the
+     missing trigger; permission truth stays entirely server-side via can_edit. */
+  var PORTAL_BG = { loaded: false, loading: false, canEdit: false, data: null };
+  function pbgNonce(){ return window.SML_GCAT_NONCE || (window.SMLGroupShell && window.SMLGroupShell.nonce) || (window.wpApiSettings && window.wpApiSettings.nonce) || ''; }
+  function pbgLoad(force){
+    if (PORTAL_BG.loading || (PORTAL_BG.loaded && !force)) { return; }
+    PORTAL_BG.loading = true;
+    var headers = {}; var n = pbgNonce(); if (n) { headers['X-WP-Nonce'] = n; }
+    fetch('/wp-json/sml-portal-bg/v1/background', { credentials: 'same-origin', headers: headers, cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { PORTAL_BG.data = j || {}; PORTAL_BG.canEdit = !!(j && j.can_edit); PORTAL_BG.loaded = true; })
+      .catch(function () {})
+      .then(function () { PORTAL_BG.loading = false; });
+  }
+  function portalBgCanManage(){ pbgLoad(false); return !!PORTAL_BG.canEdit; }
+  function pbgIsVideo(url){ return /\.webm(?:\?|$)|\.mp4(?:\?|$)|\.m4v(?:\?|$)/i.test(String(url || '')); }
+
+  function openPortalBgPanel(){
+    pbgLoad(true); // refresh so the modal reflects the true current state, not a stale cache
+    var existing = document.querySelector('.sml-ghx-tp'); if (existing) { existing.remove(); }
+    var cur = PORTAL_BG.data || {};
+    var curUrl = cur.url || '';
+    var curOpacity = (cur.opacity == null) ? 35 : cur.opacity;
+
+    var wrap = document.createElement('div'); wrap.className = 'sml-ghx-tp';
+    var card = document.createElement('section'); card.className = 'sml-ghx-tp-card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
+    card.innerHTML =
+      '<button type="button" class="sml-ghx-tp-close" aria-label="Close">Close</button>'
+      + '<h3>Portal background</h3>'
+      + '<p class="sml-ghx-tp-note">The site-wide default background every group’s Portal chat opens on — shared across all groups, not just this one. Admin only.</p>'
+      + (curUrl ? (pbgIsVideo(curUrl)
+          ? '<video class="sml-ghx-tp-prev" src="' + curUrl.replace(/"/g, '&quot;') + '" autoplay muted loop playsinline></video>'
+          : '<img class="sml-ghx-tp-prev" src="' + curUrl.replace(/"/g, '&quot;') + '" alt="Current portal background">')
+        : '')
+      + '<label>Upload image or video (JPG / PNG / WEBP / GIF / MP4 / WEBM · max 50MB)</label>'
+      + '<input type="file" class="sml-ghx-tp-file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm">'
+      + '<label>Opacity <output class="sml-ghx-tp-op-out">' + curOpacity + '%</output></label>'
+      + '<input type="range" class="sml-ghx-tp-opacity" min="0" max="100" value="' + curOpacity + '">'
+      + '<div class="sml-ghx-tp-actions">'
+      +   '<button type="button" class="sml-ghx-tp-save">Save background</button>'
+      +   '<button type="button" class="sml-ghx-tp-cancel">Cancel</button>'
+      + '</div>'
+      + '<div class="sml-ghx-tp-status" role="status"></div>';
+    wrap.appendChild(card); document.body.appendChild(wrap);
+
+    var fileEl = card.querySelector('.sml-ghx-tp-file');
+    var opacityEl = card.querySelector('.sml-ghx-tp-opacity');
+    var opacityOut = card.querySelector('.sml-ghx-tp-op-out');
+    var statusEl = card.querySelector('.sml-ghx-tp-status');
+    function close(){ wrap.remove(); }
+    function busy(b){ card.querySelectorAll('button,input').forEach(function (n) { n.disabled = b; }); }
+    function say(msg, err){ statusEl.textContent = msg || ''; statusEl.className = 'sml-ghx-tp-status' + (err ? ' err' : ''); }
+
+    opacityEl.addEventListener('input', function () { opacityOut.textContent = opacityEl.value + '%'; });
+    wrap.addEventListener('click', function (ev) { if (ev.target === wrap) { close(); } });
+    card.querySelector('.sml-ghx-tp-close').addEventListener('click', close);
+    card.querySelector('.sml-ghx-tp-cancel').addEventListener('click', close);
+
+    card.querySelector('.sml-ghx-tp-save').addEventListener('click', function () {
+      var file = fileEl.files && fileEl.files[0];
+      if (file && file.size > 50 * 1024 * 1024) { say('File must be 50MB or smaller.', true); return; }
+      var fd = new FormData();
+      if (file) { fd.append('file', file); }
+      fd.append('opacity', opacityEl.value);
+      busy(true); say('Saving…');
+      fetch('/wp-json/sml-portal-bg/v1/background', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': pbgNonce() }, body: fd })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok) { throw new Error((res.j && res.j.message) || 'Save failed.'); }
+          PORTAL_BG.data = res.j; PORTAL_BG.loaded = true;
+          say('Saved.');
+          setTimeout(close, 500);
+        })
+        .catch(function (e) { busy(false); say(e.message || 'Save failed.', true); });
+    });
   }
 
   function tick(){ ensureStyles(); ensureTimer(); ensureTitle(); ensureMenu(); }
