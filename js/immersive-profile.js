@@ -161,6 +161,7 @@
       .then(function () { persistBusy = false; if (persistAgain) { persistAgain = false; persistImmersive(); } });
   }
   var persistArmed = false;
+  window.addEventListener('sml-live-preview-start', function () { clearTimeout(persistT); persistAgain = false; });
   function schedulePersist() {
     if (!persistArmed) return;                                   /* boot-time chip sync from the bridge is not a user change */
     var lpe = document.querySelector('.sml-lpe'); if (lpe && !lpe.hidden) return;   /* Live preview drawer open: it owns save/cancel */
@@ -481,7 +482,7 @@
     var editBtn = '', arrangeBtn = '', visitorBtn = '';
     if (cfg.isOwner) {
       /* ONE Edit profile: opens the Profile Studio (every customization option, live) */
-      editBtn = '<button class="sip-btn sip-studio-open" type="button">Edit profile</button>';
+      editBtn = '<button class="sip-btn sip-live-open" type="button">Edit live</button><button class="sip-btn sip-studio-open" type="button">Full settings</button>';
       arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
       visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
     } else if (cfg.followUid) {
@@ -782,6 +783,12 @@
     if (editDone) editDone.addEventListener('click', function () { editMode = false; enlarged = null; applyEditUI(); });
     var studioOpen = $('.sip-studio-open');
     if (studioOpen) studioOpen.addEventListener('click', function () { if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open(); });
+    var liveOpen = $('.sip-live-open');
+    if (liveOpen) liveOpen.addEventListener('click', function () {
+      var bridge = document.querySelector('.sml-live-profile-edit');
+      if (bridge) bridge.click();
+      else if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open();
+    });
     if (cfg.isOwner) mountStudio(mount, cfg);
     /* visitor follow button → clicks the real one underneath and mirrors its state */
     var followBtn = $('.sip-follow');
