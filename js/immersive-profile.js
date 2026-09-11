@@ -161,6 +161,7 @@
       .then(function () { persistBusy = false; if (persistAgain) { persistAgain = false; persistImmersive(); } });
   }
   var persistArmed = false;
+  window.addEventListener('sml-live-preview-start', function () { clearTimeout(persistT); persistAgain = false; });
   function schedulePersist() {
     if (!persistArmed) return;                                   /* boot-time chip sync from the bridge is not a user change */
     var lpe = document.querySelector('.sml-lpe'); if (lpe && !lpe.hidden) return;   /* Live preview drawer open: it owns save/cancel */
@@ -184,7 +185,7 @@
     '.sip-bg-scrim{position:absolute;inset:0;background:rgba(7,13,20,.55);pointer-events:none;}' +
     '.sip-fx{position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none;}' +
     '.sip-worldnav{position:fixed;top:50%;transform:translateY(-50%);z-index:6;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(11,19,31,.72);color:#38F58A;font-size:18px;cursor:pointer;backdrop-filter:blur(8px);}' +
-    '.sip-exit{position:fixed;top:10px;right:12px;z-index:7;border:1px solid rgba(255,255,255,.2);background:rgba(11,19,31,.82);color:#c3ccd4;border-radius:999px;padding:7px 13px;font:600 11px/1 "IBM Plex Mono",monospace;letter-spacing:.5px;cursor:pointer;backdrop-filter:blur(8px);}' +
+    '.sip-exit{position:fixed;top:calc(var(--sip-shell-top,0px) + 10px);right:12px;z-index:7;border:1px solid rgba(255,255,255,.2);background:rgba(11,19,31,.82);color:#c3ccd4;border-radius:999px;padding:7px 13px;font:600 11px/1 "IBM Plex Mono",monospace;letter-spacing:.5px;cursor:pointer;backdrop-filter:blur(8px);}' +
     '.sip-exit:hover{border-color:#38F58A;color:#38F58A;}' +
     '.sip-reenter{position:fixed;right:14px;bottom:14px;z-index:2147483000;background:#38F58A;color:#03120A;border:none;border-radius:999px;padding:10px 16px;font:700 12.5px/1 "IBM Plex Sans",system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.4);}' +
     '.sip-content{position:relative;z-index:2;max-width:1060px;margin:0 auto;padding:clamp(14px,3vw,26px) clamp(12px,3vw,26px) 170px;}' +
@@ -283,7 +284,8 @@
     '.sip-social-handle{font-size:10.5px;color:#38F58A;font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
     '.sip-social-desc{font-size:11px;color:#6B7C90;line-height:1.45;}' +
     '.sip-editdone{margin-left:8px;padding:5px 12px;border-radius:999px;border:none;background:#38F58A;color:#03120A;font:700 11px "IBM Plex Sans",system-ui,sans-serif;cursor:pointer;letter-spacing:0;}' +
-    '.sip-editbadge{position:fixed;top:calc(var(--sip-top-offset,0px) + 12px);left:50%;transform:translateX(-50%);z-index:2147483001;background:rgba(11,19,31,.9);border:1px solid rgba(56,245,138,.5);color:#38F58A;border-radius:999px;padding:7px 16px;font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;font-size:11px;letter-spacing:1px;backdrop-filter:blur(10px);white-space:nowrap;}' +
+    /* Sticky inside the offset scrollport: reserve space and stay below the site header. */
+    '.sip-editbadge{position:sticky;top:12px;margin:12px auto;width:fit-content;max-width:calc(100% - 380px);z-index:8;background:rgba(11,19,31,.9);border:1px solid rgba(56,245,138,.5);color:#38F58A;border-radius:18px;padding:7px 16px;font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;font-size:11px;line-height:1.5;letter-spacing:1px;backdrop-filter:blur(10px);white-space:normal;text-align:center;}' +
     '.sip-dock{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:min(1024px,calc(100vw - 18px));z-index:5;background:rgba(11,19,31,.84);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 calc(var(--kick,0)*44px) rgba(56,245,138,calc(var(--kick,0)*0.3));}' +
     '.sip-play{width:46px;height:46px;border-radius:50%;border:none;background:#38F58A;color:#03120A;font-size:14px;font-weight:700;cursor:pointer;flex:none;box-shadow:0 0 calc(8px + var(--kick,0)*32px) rgba(56,245,138,.55);}' +
     '.sip-track{min-width:150px;max-width:210px;}' +
@@ -332,7 +334,7 @@
       '.sip-card{padding:14px 14px;}.sip-grid{gap:10px;}' +
       '.sip-galphotos{grid-template-columns:1fr;gap:10px;}.sip-galvids{grid-template-columns:1fr;gap:10px;}' +
       '.sip-worldtitle{font-size:22px;}' +
-      '.sip-editbadge{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px);max-width:calc(100vw - 20px);white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
+      '.sip-editbadge{position:fixed;left:50%;transform:translateX(-50%);margin:0;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px);width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - var(--sip-shell-top,0px) - 112px);overflow:auto;white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
       '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
       '.sip-play{width:40px;height:40px;font-size:12px;}' +
       '.sip-track{min-width:0;max-width:none;flex:1 1 0;}.sip-track-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
@@ -480,7 +482,7 @@
     var editBtn = '', arrangeBtn = '', visitorBtn = '';
     if (cfg.isOwner) {
       /* ONE Edit profile: opens the Profile Studio (every customization option, live) */
-      editBtn = '<button class="sip-btn sip-studio-open" type="button">Edit profile</button>';
+      editBtn = '<button class="sip-btn sip-live-open" type="button">Edit live</button><button class="sip-btn sip-studio-open" type="button">Full settings</button>';
       arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
       visitorBtn = '<a class="sip-btn ghost" href="' + esc(cfg.visitorUrl || '#') + '">View as visitor</a>';
     } else if (cfg.followUid) {
@@ -781,6 +783,12 @@
     if (editDone) editDone.addEventListener('click', function () { editMode = false; enlarged = null; applyEditUI(); });
     var studioOpen = $('.sip-studio-open');
     if (studioOpen) studioOpen.addEventListener('click', function () { if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open(); });
+    var liveOpen = $('.sip-live-open');
+    if (liveOpen) liveOpen.addEventListener('click', function () {
+      var bridge = document.querySelector('.sml-live-profile-edit');
+      if (bridge) bridge.click();
+      else if (window.SML_PROFILE_STUDIO) window.SML_PROFILE_STUDIO.open();
+    });
     if (cfg.isOwner) mountStudio(mount, cfg);
     /* visitor follow button → clicks the real one underneath and mirrors its state */
     var followBtn = $('.sip-follow');
@@ -1853,9 +1861,9 @@
       var rect = el.getBoundingClientRect();
       if (rect.height > 0 && rect.bottom > top) top = rect.bottom;
     });
-    top = Math.max(0, Math.round(top));
+    top = Math.max(0, Math.ceil(top));
     mount.style.top = top + 'px';
-    mount.style.setProperty('--sip-top-offset', top + 'px');
+    mount.style.setProperty('--sip-shell-top', top + 'px');
   }
   function enableOverlay(mount) {
     mount.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;z-index:2147483000;overflow:auto;-webkit-overflow-scrolling:touch;background:#070d14;';
