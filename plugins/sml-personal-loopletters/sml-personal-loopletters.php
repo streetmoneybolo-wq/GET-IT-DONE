@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Personal Loop Letters
  * Description: Isolated two-a-day writing ledger for Vaughn McNair's Making Easy Money publication.
- * Version: 0.1.0
+ * Version: 0.1.1
  */
 namespace SML\PersonalLetters2026;
 if (!defined('ABSPATH')) { exit; }
@@ -64,6 +64,7 @@ final class Brain {
     public static function status() {
         global $wpdb;
         return array('enabled'=>(bool)get_option(self::ENABLED,false),'owner_id'=>self::OWNER,'publication'=>'Making Easy Money',
+            'worker_last_seen'=>get_option('sml_pl26_last_poll','Not yet seen'),
             'daily_attempt_limit'=>2,'timezone'=>'America/Chicago','windows'=>array('08:00–15:59','16:00–23:59'),
             'jobs'=>$wpdb->get_results('SELECT id,local_day,slot,status,letter_id,result,created_at FROM '.self::table().' ORDER BY id DESC LIMIT 20',ARRAY_A));
     }
@@ -71,6 +72,11 @@ final class Brain {
         global $wpdb;
         if (!get_option(self::ENABLED,false)) return false;
         $now=self::now(); $hour=(int)$now->format('G');
+        if (get_option('sml_pl26_run_now',false)===$now->format('Y-m-d')) {
+            $day=$now->format('Y-m-d');
+            for($slot=1;$slot<=2;$slot++) if(!$wpdb->get_var($wpdb->prepare('SELECT id FROM '.self::table().' WHERE local_day=%s AND slot=%d',$day,$slot))) return array('day'=>$day,'slot'=>$slot);
+            return false;
+        }
         if ($hour<8) return false;
         $slot=$hour<16?1:2; $day=$now->format('Y-m-d');
         if ($wpdb->get_var($wpdb->prepare('SELECT id FROM '.self::table().' WHERE local_day=%s AND slot=%d',$day,$slot))) return false;
@@ -87,6 +93,7 @@ final class Brain {
         return !empty($d['available']) && abs(time()-$asof)<600 ? $d : array();
     }
     public static function context() {
+        update_option('sml_pl26_last_poll',gmdate('c'),false);
         if (!self::due()) return array('due'=>false);
         try { self::require_owner(); } catch (\Throwable $e) { return new \WP_Error('owner_unavailable',$e->getMessage(),array('status'=>409)); }
         $cached=get_transient('sml_pl26_packet');
@@ -130,6 +137,7 @@ final class Brain {
             $key=bin2hex(random_bytes(24)); $now=gmdate('Y-m-d H:i:s');
             $ok=$wpdb->insert(self::table(),array('local_day'=>$due['day'],'slot'=>$due['slot'],'job_key'=>$key,'topic_key'=>$p['topic_key'],'status'=>'claimed','evidence'=>wp_json_encode($p),'created_at'=>$now,'updated_at'=>$now));
             if(!$ok) throw new \RuntimeException('Slot already reserved or database unavailable.');
+            delete_option('sml_pl26_run_now');
             return array('job_key'=>$key,'packet'=>$p,'owner_id'=>self::OWNER);
         });
     }
@@ -171,7 +179,8 @@ final class Brain {
             elseif($job['local_day']!==self::now()->format('Y-m-d') || strtotime($p['expires_at'])<time()) $reason='Evidence or daily slot expired.';
             elseif(!is_array($article)||!is_array($check)||($check['pass']??false)!==true||!empty($check['issues'])) $reason='Generation or evidence verification failed.';
             if($reason) {
-                $wpdb->update($table,array('status'=>'held','result'=>wp_json_encode(array('reason'=>$reason)),'updated_at'=>gmdate('Y-m-d H:i:s')),array('id'=>$job['id']));
+                $issues=array_slice(array_map('sanitize_text_field',(array)($check['issues']??array())),0,20);
+                $wpdb->update($table,array('status'=>'held','result'=>wp_json_encode(array('reason'=>$reason,'issues'=>$issues)),'updated_at'=>gmdate('Y-m-d H:i:s')),array('id'=>$job['id']));
                 return array('status'=>'held','reason'=>$reason);
             }
             self::require_owner();
@@ -237,12 +246,14 @@ final class Brain {
         if(!self::operator()) wp_die('Not authorized.');
         if(isset($_POST['pl_action'])) {
             check_admin_referer('sml_pl26_toggle');
-            update_option(self::ENABLED, $_POST['pl_action']==='enable',false);
+            if($_POST['pl_action']==='run_now') update_option('sml_pl26_run_now',self::now()->format('Y-m-d'),false);
+            else { update_option(self::ENABLED, $_POST['pl_action']==='enable',false); delete_option('sml_pl26_run_now'); }
         }
         $state=self::status();
         echo '<div class="wrap"><h1>Making Easy Money — Personal Loop Letters</h1><p>Vaughn McNair only. Other authors are unaffected. Maximum two generation attempts per day; failed attempts count. Windows: 8am and 4pm America/Chicago. No catch-up batches.</p>';
-        echo '<p>Status: <strong>'.($state['enabled']?'Enabled':'Paused').'</strong></p><form method="post">';wp_nonce_field('sml_pl26_toggle');
+        echo '<p>Status: <strong>'.($state['enabled']?'Enabled':'Paused').'</strong> · Worker last seen: '.esc_html($state['worker_last_seen']).'</p><form method="post">';wp_nonce_field('sml_pl26_toggle');
         echo '<button class="button button-primary" name="pl_action" value="'.($state['enabled']?'pause':'enable').'">'.($state['enabled']?'Pause personal writer':'Enable personal writer').'</button></form>';
+        if($state['enabled']) { echo '<form method="post">';wp_nonce_field('sml_pl26_toggle');echo '<p><button class="button" name="pl_action" value="run_now">Use next daily slot now</button> Counts toward the same two-attempt limit. No additional attempt or retry.</p></form>'; }
         echo '<p><a href="'.esc_url(home_url('/creator-studio/loop-letters/write/')).'">Open your writer</a> · <a href="'.esc_url(home_url('/n/vaughn-mcnair/')).'">View publication</a></p><p>Connected: timestamped market snapshots and historical closes. Google/Bing Trends, SEC/company source enrichment, earnings and options adapters are not enabled in this version. No data or rankings are fabricated.</p><table class="widefat"><tr><th>Day / slot</th><th>Status</th><th>Letter ID</th><th>Result</th></tr>';
         foreach($state['jobs'] as $j) echo '<tr><td>'.esc_html($j['local_day'].' / '.$j['slot']).'</td><td>'.esc_html($j['status']).'</td><td>'.esc_html($j['letter_id']).'</td><td>'.esc_html($j['result']??'').'</td></tr>';
         echo '</table></div>';

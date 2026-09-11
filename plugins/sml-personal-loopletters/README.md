@@ -1,4 +1,4 @@
-# Personal Loop Letters 0.1.0
+# Personal Loop Letters 0.1.1
 
 Isolated pilot for owner **258456581 / vaughn-mcnair / Making Easy Money**.
 Service identity is pinned to **258456587**, using its existing Render-to-WordPress credential. It cannot choose a different author through these endpoints.
@@ -8,6 +8,7 @@ Service identity is pinned to **258456587**, using its existing Render-to-WordPr
 - Independent ledger, two attempt slots per America/Chicago calendar day.
 - One attempt in 08:00–15:59; one in 16:00–23:59. No catch-up and no AI retries.
 - Five-minute worker polling, gated by WordPress pause control.
+- Owner-only "Use next daily slot now" consumes an existing daily slot; it never adds attempts. Requests expire at local midnight.
 - Existing authenticated market bridge: provider-ranked candidates, snapshot and historical closes.
 - Snapshot dates separate from fetch dates. Unknown values stay unknown.
 - Fresh evidence, input bounds, original structured writing, distinct evidence-verifier call.

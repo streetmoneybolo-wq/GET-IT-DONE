@@ -115,9 +115,10 @@ async function runOnce({ request, ai }) {
     article = await ai.generate(packetValid(job.packet));
     verification = await ai.verify(job.packet, article);
     packetValid(job.packet);
-  } catch (_) {
+  } catch (error) {
     // The reserved attempt is consumed, even on network errors. Never retry the model.
-    return request('complete', { job_key: job.job_key, verification: { pass: false, issues: ['Generation or validation failed. No retry.'] } });
+    const code = /^[a-z0-9_]{1,60}$/.test(error.message || '') ? error.message : 'generation_or_validation_failed';
+    return request('complete', { job_key: job.job_key, verification: { pass: false, issues: [`${code}. No retry.`] } });
   }
   return request('complete', { job_key: job.job_key, article, verification });
 }
