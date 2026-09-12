@@ -170,7 +170,7 @@
   function lsJSON(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
 
   var CSS = '' +
-    '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:#E6EDF5;font-family:var(--sip-fb,"IBM Plex Sans"),"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
+    '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--lane-kick:0;--lane-sub:0;--lane-snare:0;--lane-hat:0;--lane-accent:0;--lane-swell:0;--sip-l:0;--sip-a:1;--sip-badge-lift:0px;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:#E6EDF5;font-family:var(--sip-fb,"IBM Plex Sans"),"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
     '.sip-root *{box-sizing:border-box;}' +
     '.sip-root [hidden]{display:none !important;}' +
     '.sip-root .sip-sec[data-empty="1"]{display:none !important;}' +
@@ -722,6 +722,11 @@
     }, false);
     function nowTime() { return playing ? lastTime + (performance.now() - lastStamp) / 1000 : lastTime; }
     function easeBeat(p) { return p < 0.12 ? (p / 0.12) : Math.pow(1 - (p - 0.12) / 0.88, 2.2); }
+    /* Same attack/decay envelope as easeBeat, generalized: env(p, attack, curve).
+       easeBeat(p) === env(p, 0.12, 2.2) — kept separate since easeBeat also
+       drives the 26 EQ bars elsewhere and must stay byte-identical. */
+    function env(p, atk, curve) { return p < atk ? (p / atk) : Math.pow(1 - (p - atk) / (1 - atk), curve); }
+    function frac(v) { return ((v % 1) + 1) % 1; }
     function mult() { return MULTS[level] || 0; }
 
     function startPlayback(unmute) {
@@ -1431,6 +1436,24 @@
       root.style.setProperty('--high', clampV(high * m * sMul).toFixed(3));
       rootEl.style.setProperty('--sml-pulse', kv.toFixed(3));
       rootEl.style.setProperty('--sml-pulse-energy', (m * (active ? 1 : 0)).toFixed(3));
+
+      /* Rhythm lanes: YouTube exposes no audio spectrum (see the top-of-file
+         note), so these are not real frequency bands — six synthetic feels
+         derived from the same estimated BPM with different attack/subdivision
+         math, so different elements can visibly move differently on the same
+         song. Same active/m/sMul gate as everything above: PROFILE PULSE
+         "Off" and BEAT SENS still master every lane. */
+      var laneSub    = active ? env(frac(beats / 2), 0.08, 1.0) : 0;
+      var laneSnare  = active ? env(frac((beats + 1) / 2), 0.04, 3.0) : 0;
+      var laneHat    = active ? 0.55 * env(frac(beats * 2), 0.03, 4.5) : 0;
+      var laneAccent = active ? env(frac(beats / 4), 0.02, 6.0) : 0;
+      var laneSwell  = active ? (0.5 + 0.5 * Math.sin(beats * Math.PI / 4)) : 0;
+      root.style.setProperty('--lane-kick', kv.toFixed(3));
+      root.style.setProperty('--lane-sub', clampV(laneSub * m * sMul).toFixed(3));
+      root.style.setProperty('--lane-snare', clampV(laneSnare * m * sMul).toFixed(3));
+      root.style.setProperty('--lane-hat', clampV(laneHat * m * sMul).toFixed(3));
+      root.style.setProperty('--lane-accent', clampV(laneAccent * m * sMul).toFixed(3));
+      root.style.setProperty('--lane-swell', clampV(laneSwell * m * sMul).toFixed(3));
 
       var bars = eq.children;
       for (var i = 0; i < bars.length; i++) { var v = active ? easeBeat(((beats + (i * 0.37)) % 1 + 1) % 1) * m : 0.02; bars[i].style.height = (3 + v * 32) + 'px'; bars[i].style.opacity = (0.35 + v * 0.6).toFixed(2); }
