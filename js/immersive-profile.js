@@ -577,16 +577,6 @@
        syncs each row's real value after mount, the same way it already does
        for e.g. the orbital size inputs. */
     var REACT_GROUPS = ['Identity', 'Stats', 'Orbitals', 'Content', 'Chrome'];
-    function reactLaneOpts() {
-      return Object.keys(LANES).map(function (l) {
-        return '<option value="' + l + '">' + (l === 'off' ? 'Off' : l.charAt(0).toUpperCase() + l.slice(1)) + '</option>';
-      }).join('');
-    }
-    function reactMvOpts() {
-      return '<option value="none">None</option>' + Object.keys(MOVEMENTS).map(function (mv) {
-        return '<option value="' + mv + '">' + mv.replace(/-/g, ' ') + (MOVEMENTS[mv] ? ' (filter)' : '') + '</option>';
-      }).join('');
-    }
     var reactGroupChips = REACT_GROUPS.map(function (g, gi) {
       return '<button type="button" class="sip-chip sip-react-group-btn' + (gi === 0 ? ' on' : '') + '" data-react-group="' + g + '">' + g + '</button>';
     }).join('');
@@ -764,6 +754,30 @@
     card_socials: { sel: '.sip-card[data-card="socials"]', label: 'Socials card', group: 'Content', legacy: 'cards' },
     disclaimer: { sel: '.sip-disc', label: 'Disclaimer', group: 'Content', legacy: 'cards' }
   };
+  /* Repeating groups whose member count varies per profile (0-6 orbital
+     photos, however many gallery items/posts/socials/friends an owner has),
+     so each is addressed as "<setKey>:<index>" instead of a fixed ELEMENTS
+     key — resolved at apply-time against however many actually exist right
+     now, not baked into the initial markup. */
+  var SETS = {
+    orbital_photo: { sel: '.sip-orb-photo', label: 'Orbital photo', group: 'Orbitals', legacy: 'orbital_photos' },
+    orbital_video: { sel: '.sip-orb-video', label: 'Orbital video', group: 'Orbitals', legacy: 'orbital_videos' },
+    gallery_photo: { sel: '.sip-galphoto', label: 'Gallery photo', group: 'Content', legacy: 'cards' },
+    gallery_video: { sel: '.sip-galvid', label: 'Gallery video', group: 'Content', legacy: 'cards' },
+    post: { sel: '.sip-post', label: 'Post', group: 'Content', legacy: 'cards' },
+    social: { sel: '.sip-social', label: 'Social link', group: 'Content', legacy: 'cards' },
+    friend: { sel: '.sip-friend-av', label: 'Friend avatar', group: 'Content', legacy: 'cards' }
+  };
+  function reactLaneOpts() {
+    return Object.keys(LANES).map(function (l) {
+      return '<option value="' + l + '">' + (l === 'off' ? 'Off' : l.charAt(0).toUpperCase() + l.slice(1)) + '</option>';
+    }).join('');
+  }
+  function reactMvOpts() {
+    return '<option value="none">None</option>' + Object.keys(MOVEMENTS).map(function (mv) {
+      return '<option value="' + mv + '">' + mv.replace(/-/g, ' ') + (MOVEMENTS[mv] ? ' (filter)' : '') + '</option>';
+    }).join('');
+  }
 
   function applyMovement(el, movementId, laneId, amp) {
     if (!el) return;
@@ -781,11 +795,16 @@
   /* Drop anything that isn't a real element/movement/lane id, and clamp
      amplitude — this config round-trips through a server blob and a
      localStorage key a user could hand-edit. */
+  function isValidReactId(id) {
+    if (ELEMENTS[id]) return true;
+    var parts = id.split(':');
+    return parts.length === 2 && !!SETS[parts[0]] && /^\d+$/.test(parts[1]);
+  }
   function normalizeElReact(raw) {
     var out = {};
     if (!raw || typeof raw !== 'object') return out;
     Object.keys(raw).forEach(function (id) {
-      if (!ELEMENTS[id]) return;
+      if (!isValidReactId(id)) return;
       var row = raw[id]; if (!row || typeof row !== 'object') return;
       var lane = LANES.hasOwnProperty(row.lane) ? row.lane : 'off';
       var mv = MOVEMENTS.hasOwnProperty(row.mv) ? row.mv : 'none';
@@ -935,6 +954,16 @@
         var cfgRow = elReact[id];
         if (!cfgRow || !legacyOk(id)) { applyMovement(el, null); return; }
         applyMovement(el, cfgRow.mv, cfgRow.lane, cfgRow.amp);
+      });
+      Object.keys(SETS).forEach(function (setKey) {
+        var set = SETS[setKey];
+        var nodes = root.querySelectorAll(set.sel);
+        var ok = !set.legacy || reacts(set.legacy);
+        nodes.forEach(function (el, idx) {
+          var cfgRow = elReact[setKey + ':' + idx];
+          if (!cfgRow || !ok) { applyMovement(el, null); return; }
+          applyMovement(el, cfgRow.mv, cfgRow.lane, cfgRow.amp);
+        });
       });
     }
     /* One-shot impulses: a real action briefly overrides an element's --sip-l
@@ -1142,7 +1171,37 @@
           lsSet('sml-immersive-accent', accentColor);
         });
       }
-      function openReactModal() { syncReactRows(); reactModal.hidden = false; }
+      /* Per-item rows for repeating groups (orbital photos/videos, gallery
+         items, posts, socials, friends) — rebuilt fresh every open, since the
+         count varies per profile and can change without a full reload
+         (uploads, follows). Removed-then-rebuilt rather than diffed: at most
+         a few dozen simple rows, and it keeps this in step with whatever the
+         DOM actually has right now. */
+      function buildSetRows() {
+        Object.keys(SETS).forEach(function (setKey) {
+          var set = SETS[setKey];
+          var section = reactModal.querySelector('.sip-react-group-section[data-react-group="' + set.group + '"]');
+          if (!section) return;
+          Array.prototype.slice.call(section.querySelectorAll('[data-react-set="' + setKey + '"]')).forEach(function (r) { r.remove(); });
+          var nodes = root.querySelectorAll(set.sel);
+          nodes.forEach(function (el, idx) {
+            var id = setKey + ':' + idx;
+            var cur = elReact[id] || { lane: 'off', mv: 'none', amp: 1 };
+            var row = document.createElement('div');
+            row.className = 'sip-react-row';
+            row.setAttribute('data-react-set', setKey);
+            row.innerHTML = '<span class="sip-react-row-label">' + esc(set.label) + ' ' + (idx + 1) + '</span>' +
+              '<select class="sip-react-lane" data-react-id="' + id + '">' + reactLaneOpts() + '</select>' +
+              '<select class="sip-react-mv" data-react-id="' + id + '">' + reactMvOpts() + '</select>' +
+              '<input type="range" class="sip-react-amp" data-react-id="' + id + '" min="0" max="2" step="0.1">';
+            row.querySelector('.sip-react-lane').value = cur.lane;
+            row.querySelector('.sip-react-mv').value = cur.mv;
+            row.querySelector('.sip-react-amp').value = cur.amp;
+            section.appendChild(row);
+          });
+        });
+      }
+      function openReactModal() { buildSetRows(); syncReactRows(); reactModal.hidden = false; }
       function closeReactModal() { reactModal.hidden = true; }
       reactOpen.addEventListener('click', openReactModal);
       reactModal.querySelector('.sip-react-close').addEventListener('click', closeReactModal);
