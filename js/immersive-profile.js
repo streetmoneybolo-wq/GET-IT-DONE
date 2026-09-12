@@ -253,6 +253,20 @@
     '.sip-kebab-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:9;display:flex;flex-direction:column;min-width:150px;background:rgba(11,19,31,.95);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.5);}' +
     '.sip-kebab-menu button{background:transparent;border:none;color:#dbe8f5;font:600 12px "IBM Plex Sans",system-ui,sans-serif;text-align:left;padding:9px 10px;border-radius:8px;cursor:pointer;}' +
     '.sip-kebab-menu button:hover{background:rgba(56,245,138,.14);color:#38F58A;}' +
+    '.sip-react-modal{position:fixed;inset:0;z-index:2147483200;display:flex;align-items:center;justify-content:center;padding:20px;}' +
+    '.sip-react-backdrop{position:absolute;inset:0;background:rgba(3,7,11,.7);backdrop-filter:blur(4px);}' +
+    '.sip-react-card{position:relative;width:min(560px,100%);max-height:min(74vh,560px);display:flex;flex-direction:column;background:rgba(11,19,31,.97);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.55);}' +
+    '.sip-react-head{display:flex;align-items:center;justify-content:space-between;}' +
+    '.sip-react-head strong{font-family:var(--sip-fh,Archivo),Archivo,sans-serif;font-size:17px;}' +
+    '.sip-react-close{background:transparent;border:none;color:#c3ccd4;font-size:16px;cursor:pointer;padding:4px 8px;}' +
+    '.sip-react-sub{font-size:11.5px;color:#6B7C90;margin:4px 0 10px;}' +
+    '.sip-react-groupbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}' +
+    '.sip-react-group-btn{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#93A4B8;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;letter-spacing:.4px;cursor:pointer;}' +
+    '.sip-react-group-btn.on{background:#38F58A;color:#03120A;border-color:#38F58A;}' +
+    '.sip-react-body{overflow:auto;flex:1;}' +
+    '.sip-react-row{display:grid;grid-template-columns:minmax(0,1fr) 88px 1fr 60px;gap:8px;align-items:center;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,.06);}' +
+    '.sip-react-row-label{font-size:12.5px;color:#dbe8f5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+    '.sip-react-row select,.sip-react-row input[type="range"]{width:100%;background:rgba(255,255,255,.06);color:#dbe8f5;border:1px solid rgba(255,255,255,.14);border-radius:6px;font-size:11px;padding:5px;accent-color:#38F58A;}' +
     '.sip-screens{position:relative;perspective:1400px;transition:height .5s ease;}' +
     '.sip-screen{position:absolute;top:0;left:0;right:0;transition:transform .65s cubic-bezier(.22,.85,.3,1),opacity .65s;backface-visibility:hidden;}' +
     '.sip-worldtitle{font-family:var(--sip-fh,Archivo),Archivo,sans-serif;font-weight:900;font-size:clamp(24px,4vw,34px);letter-spacing:-0.5px;}' +
@@ -391,6 +405,7 @@
       '.sip-galphotos{grid-template-columns:1fr;gap:10px;}.sip-galvids{grid-template-columns:1fr;gap:10px;}' +
       '.sip-worldtitle{font-size:22px;}' +
       '.sip-editbadge{position:fixed;left:50%;transform:translateX(-50%);margin:0;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px + var(--sip-badge-lift,0px));width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - var(--sip-shell-top,0px) - 112px);overflow:auto;white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
+      '.sip-react-row{grid-template-columns:1fr;gap:4px;}' +
       '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
       '.sip-play{width:40px;height:40px;font-size:12px;}' +
       '.sip-track{min-width:0;max-width:none;flex:1 1 0;}.sip-track-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
@@ -536,7 +551,47 @@
     var bgVid = cfg.backgroundVideoUrl ? '<video class="sip-mediavid" src="' + esc(cfg.backgroundVideoUrl) + '" autoplay muted loop playsinline' + (cfg.backgroundUrl ? ' poster="' + esc(cfg.backgroundUrl) + '"' : '') + '></video>' : '';
     // "Edit profile" opens the SITE's real editor (avatar/banner/bio/music) — the
     // user's native abilities. "Arrange" is the immersive-only layout edit mode.
+    /* Reactions panel markup is built static (defaults only) here in markup(cfg);
+       init(mount) — the only place elReact (the saved config) actually exists —
+       syncs each row's real value after mount, the same way it already does
+       for e.g. the orbital size inputs. */
+    var REACT_GROUPS = ['Identity', 'Stats', 'Orbitals', 'Content', 'Chrome'];
+    function reactLaneOpts() {
+      return Object.keys(LANES).map(function (l) {
+        return '<option value="' + l + '">' + (l === 'off' ? 'Off' : l.charAt(0).toUpperCase() + l.slice(1)) + '</option>';
+      }).join('');
+    }
+    function reactMvOpts() {
+      return '<option value="none">None</option>' + Object.keys(MOVEMENTS).map(function (mv) {
+        return '<option value="' + mv + '">' + mv.replace(/-/g, ' ') + (MOVEMENTS[mv] ? ' (filter)' : '') + '</option>';
+      }).join('');
+    }
+    var reactGroupChips = REACT_GROUPS.map(function (g, gi) {
+      return '<button type="button" class="sip-chip sip-react-group-btn' + (gi === 0 ? ' on' : '') + '" data-react-group="' + g + '">' + g + '</button>';
+    }).join('');
+    var reactBodyHtml = REACT_GROUPS.map(function (g, gi) {
+      var rows = Object.keys(ELEMENTS).filter(function (id) { return ELEMENTS[id].group === g; }).map(function (id) {
+        return '<div class="sip-react-row">' +
+          '<span class="sip-react-row-label">' + esc(ELEMENTS[id].label) + '</span>' +
+          '<select class="sip-react-lane" data-react-id="' + id + '">' + reactLaneOpts() + '</select>' +
+          '<select class="sip-react-mv" data-react-id="' + id + '">' + reactMvOpts() + '</select>' +
+          '<input type="range" class="sip-react-amp" data-react-id="' + id + '" min="0" max="2" step="0.1" value="1">' +
+          '</div>';
+      }).join('');
+      return '<div class="sip-react-group-section" data-react-group="' + g + '"' + (gi > 0 ? ' hidden' : '') + '>' + rows + '</div>';
+    }).join('');
+    var reactModalHtml = cfg.isOwner ?
+      '<div class="sip-react-modal" hidden>' +
+      '<div class="sip-react-backdrop"></div>' +
+      '<div class="sip-react-card">' +
+      '<div class="sip-react-head"><strong>Reactions</strong><button type="button" class="sip-react-close" aria-label="Close">✕</button></div>' +
+      '<div class="sip-react-sub">PROFILE PULSE and BEAT SENS above still scale everything here.</div>' +
+      '<div class="sip-react-groupbar">' + reactGroupChips + '</div>' +
+      '<div class="sip-react-body">' + reactBodyHtml + '</div>' +
+      '</div></div>' : '';
+
     var editBtn = '', arrangeBtn = '', ownerMenuHtml = '';
+    var shareBtn = '<button class="sip-btn ghost sip-share" type="button">Share</button>';
     if (cfg.isOwner) {
       /* Edit live / Full settings used to sit on the banner next to the name — too much
          chrome over the photo. Moved into a small kebab menu next to the CONTACT tab. */
@@ -544,6 +599,7 @@
         '<div class="sip-kebab-menu" hidden role="menu">' +
         '<button class="sip-live-open" type="button" role="menuitem">Edit live</button>' +
         '<button class="sip-studio-open" type="button" role="menuitem">Full settings</button>' +
+        '<button class="sip-react-open" type="button" role="menuitem">Reactions</button>' +
         '</div></div>';
       arrangeBtn = '<button class="sip-btn ghost sip-edit-toggle" type="button">Arrange</button>';
     } else if (cfg.followUid) {
@@ -561,7 +617,7 @@
       '<div class="sip-avatar"><div class="sip-avatar-ring"></div><div class="sip-avatar-img"' + av.st + '>' + av.inner + '</div></div>' +
       '<div style="flex:1;min-width:200px;"><h1 class="sip-name">' + esc(cfg.name) + '</h1><div class="sip-handle">' + esc(cfg.handle) + '</div>' +
       '<div class="sip-roles">' + cfg.roles.map(function (r) { return '<span class="sip-role">' + esc(r) + '</span>'; }).join('') + '</div></div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + editBtn + arrangeBtn + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + editBtn + arrangeBtn + shareBtn + '</div>' +
       '</div></div>' +
       '<div class="sip-sections" style="display:flex;flex-direction:column;">' +
       '<div class="sip-sec" data-sec="stats"' + (statHtml ? '' : ' data-empty="1"') + '><div class="sip-stats">' + statHtml + '</div></div>' +
@@ -609,6 +665,7 @@
       '<button class="sip-worldnav sip-next" style="right:10px;" title="Next world">›</button>' +
       '<button class="sip-exit" title="Exit to your normal profile (Customize, Settings, everything)">✕ Classic profile</button>' +
       '<div class="sip-editbadge" hidden>ARRANGE MODE — drag sections to reorder · ⤢ − ＋ resize · double-click a slot to add media &nbsp;<button type="button" class="sip-editdone">Done ✓</button></div>' +
+      reactModalHtml +
       '<div class="sip-content">' +
       '<div class="sip-topbar"><span class="sip-logo-dot"></span><span class="sip-logo">STOCKMARKETLOOP</span>' +
       '<nav class="sip-nav"><a href="/watch/">Watch</a><a href="/live/">Live</a><a href="/markets/">Markets</a><a href="/n/">Newsletters</a></nav></div>' +
@@ -719,6 +776,20 @@
     return out;
   }
 
+  /* Cross-module interactions: a real user action momentarily "impulses" a
+     handful of other elements, independent of whatever lane/movement they're
+     otherwise configured with. A small, deliberate set of pairings wired to
+     real actions in this file — not an all-to-all system, which isn't
+     well-defined without specific choices. More pairings are just more rows
+     here. */
+  var IMPULSES = {
+    share: [{ el: 'name', mv: 'text-glow', amp: 2.0, ms: 800 }, { el: 'logo_dot', mv: 'glow', amp: 2.0, ms: 800 }],
+    follow: [{ el: 'avatar_ring', mv: 'halo', amp: 1.8, ms: 900 }, { el: 'stat_followers', mv: 'pop', amp: 1.8, ms: 700 }],
+    enter: [{ el: 'banner', mv: 'banner-drift', amp: 1.5, ms: 1200 }, { el: 'avatar_ring', mv: 'halo', amp: 1.4, ms: 1200 }],
+    play: [{ el: 'dock', mv: 'glow', amp: 1.6, ms: 600 }, { el: 'play_btn', mv: 'pop', amp: 1.4, ms: 600 }],
+    world: [{ el: 'world_title', mv: 'settle', amp: 1.2, ms: 500 }]
+  };
+
   // ---------------------------------------------------------------- init
   /* Profile fonts (Typography panel, same 1,959-font library as groups): the engine emits
      --sml-pfe-font-heading/body/accent on main.sml-profile; the overlay mirrors them. */
@@ -825,6 +896,31 @@
         applyMovement(el, cfgRow.mv, cfgRow.lane, cfgRow.amp);
       });
     }
+    /* One-shot impulses: a real action briefly overrides an element's --sip-l
+       via inline style (which beats the sip-ln-* class rule), decaying back
+       to whatever it was. Independent of the lane/movement classes, so it
+       works whether or not that element has its own per-element config. */
+    var impulses = [];
+    /* If the element has no persistent movement (from the Reactions panel),
+       borrow its class for the duration of the impulse and drop it again on
+       restore. If it DOES have one, just push --sip-l — the class it already
+       carries reads that same var, so the impulse reads as a one-off boost
+       of whatever it's already doing. */
+    function fireImpulse(action) {
+      (IMPULSES[action] || []).forEach(function (spec) {
+        var meta = ELEMENTS[spec.el]; if (!meta) return;
+        var el = root && root.querySelector(meta.sel); if (!el) return;
+        var temp = !el.__sipMv;
+        if (temp) { el.classList.add('sip-mv-' + spec.mv); el.style.setProperty('--sip-a', '1'); }
+        impulses.push({ el: el, mv: spec.mv, temp: temp, amp: spec.amp, ms: spec.ms, t0: performance.now() });
+      });
+      if (impulses.length > 8) impulses.splice(0, impulses.length - 8);
+    }
+    function emitAction(action, extra) {
+      if (GEN !== INIT_GEN || !root) return;
+      try { root.dispatchEvent(new CustomEvent('sml-immersive-action', { bubbles: true, detail: Object.assign({ action: action }, extra || {}) })); } catch (e) {}
+      fireImpulse(action);
+    }
     window.addEventListener('sml-immersive-components', function (event) {
       if (GEN !== INIT_GEN) return;
       if (event && Array.isArray(event.detail)) { reactiveComponents = event.detail.slice(); applyComponentState(); }
@@ -882,6 +978,7 @@
       markPlaying(true);
       soundEnabled = !!unmute;
       overlay.style.display = 'none';
+      emitAction('play');
       playBtn.textContent = unmute ? '❚❚' : '🔇';
       playBtn.title = unmute ? 'Pause profile music' : 'Music is autoplaying muted — click for sound';
     }
@@ -908,7 +1005,7 @@
     $('.sip-fx-btn').addEventListener('click', function () { var p = $('.sip-fx-panel'); p.hidden = !p.hidden; syncChips(); });
 
     // world nav
-    function goScreen(i) { screen = (i + 5) % 5; syncChips(); }
+    function goScreen(i) { var next = (i + 5) % 5; if (next !== screen) { screen = next; emitAction('world'); } syncChips(); }
     $('.sip-prev').addEventListener('click', function () { goScreen(screen - 1); });
     $('.sip-next').addEventListener('click', function () { goScreen(screen + 1); });
     $$('[data-world]').forEach(function (b) { b.addEventListener('click', function () { goScreen(+b.dataset.world); }); });
@@ -982,6 +1079,48 @@
       document.addEventListener('click', function (e) { if (!e.target.closest('.sip-kebab-wrap')) closeKebab(); });
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeKebab(); });
     }
+    // Reactions panel: per-element lane/movement/amplitude
+    var reactOpen = $('.sip-react-open'), reactModal = $('.sip-react-modal');
+    if (reactOpen && reactModal) {
+      function syncReactRows() {
+        reactModal.querySelectorAll('.sip-react-row').forEach(function (row) {
+          var id = row.querySelector('[data-react-id]').getAttribute('data-react-id');
+          var cur = elReact[id] || { lane: 'off', mv: 'none', amp: 1 };
+          row.querySelector('.sip-react-lane').value = cur.lane;
+          row.querySelector('.sip-react-mv').value = cur.mv;
+          row.querySelector('.sip-react-amp').value = cur.amp;
+        });
+      }
+      function openReactModal() { syncReactRows(); reactModal.hidden = false; }
+      function closeReactModal() { reactModal.hidden = true; }
+      reactOpen.addEventListener('click', openReactModal);
+      reactModal.querySelector('.sip-react-close').addEventListener('click', closeReactModal);
+      reactModal.querySelector('.sip-react-backdrop').addEventListener('click', closeReactModal);
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !reactModal.hidden) closeReactModal(); });
+      reactModal.querySelectorAll('.sip-react-group-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var g = btn.getAttribute('data-react-group');
+          reactModal.querySelectorAll('.sip-react-group-btn').forEach(function (b) { b.classList.toggle('on', b === btn); });
+          reactModal.querySelectorAll('.sip-react-group-section').forEach(function (s) { s.hidden = s.getAttribute('data-react-group') !== g; });
+        });
+      });
+      function saveReactRow(id) {
+        var row = reactModal.querySelector('.sip-react-row [data-react-id="' + id + '"]').closest('.sip-react-row');
+        var lane = row.querySelector('.sip-react-lane').value;
+        var mv = row.querySelector('.sip-react-mv').value;
+        var amp = parseFloat(row.querySelector('.sip-react-amp').value) || 1;
+        if (lane === 'off' || mv === 'none') { delete elReact[id]; } else { elReact[id] = { lane: lane, mv: mv, amp: amp }; }
+        applyElementReactions();
+        lsSet('sml-immersive-element-reactions', JSON.stringify(elReact));
+      }
+      reactModal.addEventListener('change', function (e) {
+        var id = e.target.getAttribute('data-react-id');
+        if (id) saveReactRow(id);
+      });
+      reactModal.addEventListener('input', function (e) {
+        if (e.target.classList.contains('sip-react-amp')) saveReactRow(e.target.getAttribute('data-react-id'));
+      });
+    }
     if (cfg.isOwner) mountStudio(mount, cfg);
     /* visitor follow button → clicks the real one underneath and mirrors its state */
     var followBtn = $('.sip-follow');
@@ -1012,9 +1151,20 @@
             if (stat && cnt != null) { var v = stat.querySelector('.sip-stat-v'); if (v) v.textContent = String(cnt); }
           }, function () { setFollowUI(on, false); toast('Could not update follow.', true); });
       };
-      followBtn.addEventListener('click', function () { var rb = realFollow(); if (rb) { rb.click(); setTimeout(syncFollow, 300); setTimeout(syncFollow, 1500); } else directFollow(); });
+      followBtn.addEventListener('click', function () { emitAction('follow'); var rb = realFollow(); if (rb) { rb.click(); setTimeout(syncFollow, 300); setTimeout(syncFollow, 1500); } else directFollow(); });
       var rbEl = realFollow();
       if (rbEl) { if (window.MutationObserver) new MutationObserver(syncFollow).observe(rbEl, { attributes: true, childList: true, subtree: true }); syncFollow(); }
+    }
+    var shareBtnEl = $('.sip-share');
+    if (shareBtnEl) {
+      shareBtnEl.addEventListener('click', function () {
+        emitAction('share');
+        var url = location.href;
+        if (navigator.share) { navigator.share({ title: document.title, url: url }).catch(function () {}); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(function () { toast('Profile link copied'); }, function () { toast('Could not copy the link', true); });
+        }
+      });
     }
 
     // Section placement: desktop HTML drag plus Pointer Events for mouse, pen
@@ -1285,7 +1435,7 @@
       else { startPlayback(true); }
     });
     wfWrap.addEventListener('click', function (e) { if (!duration) return; var r = wfWrap.getBoundingClientRect(); cmd('seekTo', [duration * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), true]); });
-    overlay.addEventListener('click', function () { startPlayback(true); });
+    overlay.addEventListener('click', function () { emitAction('enter'); startPlayback(true); });
     /* Browsers permit reliable autoplay only while muted. Honour the saved
        setting immediately, then let the persistent Play pill enable sound with
        one gesture instead of covering the profile with a click gate. */
@@ -1563,6 +1713,18 @@
 
     var orbAngle = 0, angV = 0;
     function tick() {
+      // Impulse decay — independent of playback state, since a Share/Follow
+      // click should react even when no music is playing.
+      for (var ii = impulses.length - 1; ii >= 0; ii--) {
+        var im = impulses[ii];
+        var p = (performance.now() - im.t0) / im.ms;
+        if (p >= 1 || !im.el) {
+          if (im.el) { im.el.style.removeProperty('--sip-l'); if (im.temp) { im.el.classList.remove('sip-mv-' + im.mv); im.el.style.removeProperty('--sip-a'); } }
+          impulses.splice(ii, 1);
+          continue;
+        }
+        im.el.style.setProperty('--sip-l', (Math.pow(1 - p, 2.2) * im.amp).toFixed(3));
+      }
       var m = mult();
       var beats = nowTime() * (BPM / 60);
       var active = playing && m > 0 && !document.hidden;
