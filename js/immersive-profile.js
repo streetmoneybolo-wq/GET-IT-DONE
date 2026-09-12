@@ -975,6 +975,32 @@
     }
     function resolveCardBg() { return moduleBgColor ? ('rgba(' + hexToRgb(moduleBgColor) + ',.72)') : TEX[texture]; }
     function applyCardBg() { if (root) root.style.setProperty('--card-bg', resolveCardBg()); }
+    /* Runtime recolor for external editors (the Live Profile Studio drawer):
+       same three values the Reactions panel edits. An empty string means
+       "default" for each. `store` mirrors to localStorage WITHOUT the persist
+       hook — the caller owns saving. */
+    window.SMLImmersiveColors = {
+      get: function () { return { accent: accentColor, text: textColor, cardBg: moduleBgColor }; },
+      apply: function (o, opts) {
+        o = o || {}; opts = opts || {};
+        var hex = /^#[0-9a-fA-F]{6}$/;
+        if (o.accent !== undefined) { accentColor = hex.test(o.accent) ? o.accent : '#38F58A'; applyAccent(); }
+        if (o.text !== undefined) { textColor = hex.test(o.text) ? o.text : '#E6EDF5'; applyTextColor(); }
+        if (o.cardBg !== undefined) { moduleBgColor = hex.test(o.cardBg) ? o.cardBg : ''; applyCardBg(); }
+        if (opts.store) {
+          try {
+            if (o.accent !== undefined) localStorage.setItem('sml-immersive-accent', accentColor);
+            if (o.text !== undefined) localStorage.setItem('sml-immersive-text-color', textColor);
+            if (o.cardBg !== undefined) { if (moduleBgColor) localStorage.setItem('sml-immersive-card-bg-color', moduleBgColor); else localStorage.removeItem('sml-immersive-card-bg-color'); }
+          } catch (e) {}
+        }
+        var m = root && root.querySelector('.sip-react-modal');
+        if (m) {
+          var a = m.querySelector('.sip-react-color'), t = m.querySelector('.sip-react-textcolor'), c = m.querySelector('.sip-react-cardbg');
+          if (a) a.value = accentColor; if (t) t.value = textColor; if (c) c.value = moduleBgColor || '#111823';
+        }
+      }
+    };
     function applyElementReactions() {
       if (!root) return;
       Object.keys(ELEMENTS).forEach(function (id) {
