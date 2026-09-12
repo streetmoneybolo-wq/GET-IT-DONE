@@ -622,7 +622,10 @@
       pulseSection('retention', 'Retention', 'Verified audience retention only · no fabricated curves', retention) +
       pulseSection('demographics', 'Demographics', 'Aggregated GA4 location · never individual visitors', demographics) +
       pulseSection('tech', 'Tech', 'Creator-attributed device and platform mix', tech);
+    var keepY = window.scrollY;
+    emitRender('before', { navigate: false });
     root.innerHTML = pulseShell(rt, dashboard);
+    emitRender('after', { navigate: false, scrollY: keepY });
     initLiveLocationMap(liveCountries, cities, (ga && ga.privacyThreshold) || 10);
 
     root.querySelectorAll('tr[data-content]').forEach(function (tr) { tr.addEventListener('click', function () { renderContent(rows[Number(tr.getAttribute('data-content'))]); }); });
@@ -772,8 +775,19 @@
     (b || []).forEach(function (r) { var c = String(r.countryCode || '').toUpperCase(); if (c) m[c] = Math.max(m[c] || 0, n(r.viewers || r.users)); });
     return Object.keys(m).map(function (c) { return { countryCode: c, viewers: m[c] }; }).sort(function (x, y) { return y.viewers - x.viewers; });
   }
+  /* Re-render lifecycle. Timer refreshes (site overview every 60s, realtime
+     every 20s, presence every 20s) rebuild root.innerHTML; companions that
+     mount into the dashboard (the Link Tracker tab) listen for these to
+     re-attach their nodes synchronously, and a refresh must never move the
+     reader — only explicit navigation (admGo / drill-downs) scrolls to top. */
+  function emitRender(phase, detail) {
+    try { root.dispatchEvent(new CustomEvent('sml-ca-' + phase + '-render', { detail: detail || {} })); } catch (e) {}
+  }
   function admShell(content, title, sub) {
     var html = pulseShell(S.rt || {}, content);
+    var navigate = !!ADM.jump, keepY = navigate ? 0 : window.scrollY;
+    ADM.jump = false;
+    emitRender('before', { navigate: navigate });
     root.innerHTML = '<div class="ca-wrap">' + html + '</div>';
     var prop = q('.ca-side-prop span:last-child'); if (prop) prop.innerHTML = 'Pulse <small>/ SITE-WIDE · admin</small>';
     var nav = q('.ca-nav');
@@ -787,9 +801,11 @@
     var main = q('.ca-main'); if (main) main.insertAdjacentElement('afterbegin', scope);
     Array.prototype.forEach.call(scope.querySelectorAll('[data-adm-nav]'), function (b) { b.addEventListener('click', function () { admGo(b.getAttribute('data-adm-nav')); }); });
     var inp = scope.querySelector('[data-adm-q]'); if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { ADM.q = inp.value.trim(); ADM.users = null; admGo('users'); } });
-    window.scrollTo(0, 0);
+    emitRender('after', { navigate: navigate, scrollY: keepY });
+    window.scrollTo(0, keepY);
   }
   function admGo(view) {
+    ADM.jump = true;
     if (view === 'me') { ADM.scope = 'me'; ADM.user = null; clearInterval(ADM.timer); ADM.timer = 0; renderMainOrig(); return; }
     ADM.scope = 'site'; ADM.nav = view; ADM.user = null;
     if (view === 'users') { renderAdminUsers(); return; }
@@ -860,6 +876,7 @@
     clearInterval(ADM.timer); ADM.timer = 0;
   }
   function admOpenUser(id) {
+    ADM.jump = true;
     admShell('<div class="ca-onboard"><div class="ca-big">Loading user #' + id + '…</div><div class="ca-sub">Their GA4 audience, live presence and activity.</div></div>', 'User analytics', 'Admin · per-user view');
     admApi('/user/' + id).then(function (r) { if (!r.ok || !r.j || !r.j.ok) { admShell('<div class="ca-onboard"><div class="ca-big">User not found</div></div>'); return; } ADM.user = r.j; renderAdminUser(); });
   }
