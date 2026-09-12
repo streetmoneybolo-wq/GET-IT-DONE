@@ -124,7 +124,7 @@
      shapes, pulse, beat sensitivity, contact opt-in, reactive parts) must write
      them back — otherwise the change lives only in this browser and visitors
      never see it. Debounced; merges over the current server object. */
-  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1, 'sml-immersive-element-reactions': 1, 'sml-immersive-accent': 1 };
+  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1, 'sml-immersive-element-reactions': 1, 'sml-immersive-accent': 1, 'sml-immersive-text-color': 1 };
   var persistT = null, persistBusy = false, persistAgain = false;
   function immersiveFromLocal(baseObj) {
     var im = {}; for (var k in (baseObj || {})) im[k] = baseObj[k];
@@ -144,6 +144,7 @@
     if ((v = j('sml-immersive-components')) !== undefined) im.components = v;
     if ((v = j('sml-immersive-element-reactions')) !== undefined) im.element_reactions = v;
     if ((v = g('sml-immersive-accent')) != null && /^#[0-9a-fA-F]{6}$/.test(v)) im.accent_color = v;
+    if ((v = g('sml-immersive-text-color')) != null && /^#[0-9a-fA-F]{6}$/.test(v)) im.text_color = v;
     return im;
   }
   function persistImmersive() {
@@ -172,7 +173,7 @@
   function lsJSON(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
 
   var CSS = '' +
-    '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--lane-kick:0;--lane-sub:0;--lane-snare:0;--lane-hat:0;--lane-accent:0;--lane-swell:0;--sip-l:0;--sip-a:1;--sip-badge-lift:0px;--sip-accent:#38F58A;--sip-accent-rgb:56,245,138;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:#E6EDF5;font-family:var(--sip-fb,"IBM Plex Sans"),"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
+    '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--lane-kick:0;--lane-sub:0;--lane-snare:0;--lane-hat:0;--lane-accent:0;--lane-swell:0;--sip-l:0;--sip-a:1;--sip-badge-lift:0px;--sip-accent:#38F58A;--sip-accent-rgb:56,245,138;--sip-text:#E6EDF5;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:var(--sip-text,#E6EDF5);font-family:var(--sip-fb,"IBM Plex Sans"),"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
     /* ---- Reaction engine: lane classes + movement library ------------------
        An element opts in by getting two classes (sip-ln-<lane>, sip-mv-<move>)
        and one inline var (--sip-a, amplitude) via applyMovement(). Everything
@@ -329,7 +330,7 @@
     '.sip-card{background:var(--card-bg);border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:18px 20px;backdrop-filter:blur(10px);}' +
     '.sip-card-h{font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.8px;color:var(--sip-accent,#38F58A);margin-bottom:10px;}' +
     '.sip-row{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:12.5px;}' +
-    '.sip-row .k{color:#6B7C90;}.sip-row .v{color:#E6EDF5;font-weight:600;text-align:right;}' +
+    '.sip-row .k{color:#6B7C90;}.sip-row .v{color:var(--sip-text,#E6EDF5);font-weight:600;text-align:right;}' +
     '.sip-friend{display:flex;align-items:center;gap:12px;margin-top:10px;}' +
     '.sip-friend-av{--sip-rhythm:var(--bass,0);width:44px;height:44px;border-radius:50%;background:linear-gradient(140deg,var(--sip-accent,#38F58A),#01A77D);color:#03120A;display:flex;align-items:center;justify-content:center;font-family:var(--sip-fh,Archivo),Archivo,sans-serif;font-weight:800;font-size:15px;flex:none;background-size:cover;background-position:center;box-shadow:0 0 0 calc(1px + var(--sip-rhythm,0)*5px) rgba(var(--sip-accent-rgb,56,245,138),.4);}' +
     '.sip-friendlist .sip-friend-av:nth-child(3n+2):not([data-sip-mv]){--sip-rhythm:var(--lane-snare,0);}' +
@@ -359,13 +360,13 @@
     '.sip-post-badge{font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;font-size:9px;letter-spacing:1.4px;border-radius:999px;padding:3px 9px;}' +
     '.sip-post-time{font-size:11px;color:#6B7C90;font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;}' +
     '.sip-post-ctx{font-size:11.5px;color:#6B7C90;margin-bottom:4px;}' +
-    '.sip-post-text{font-size:13.5px;line-height:1.6;color:#E6EDF5;word-break:break-word;}' +
+    '.sip-post-text{font-size:13.5px;line-height:1.6;color:var(--sip-text,#E6EDF5);word-break:break-word;}' +
     '.sip-post-text a.sip-tk{color:#35FF8D;font-weight:700;text-decoration:none;}' +
     '.sip-post-text a.sip-mn{color:#5DB9FF;font-weight:700;text-decoration:none;white-space:nowrap;}.sip-post-text a.sip-mn:hover{text-decoration:underline;}' +
     '.sip-post-text img.sip-mn-av,.sip-post-text .sip-mn-ph{display:inline-block;width:17px;height:17px;border-radius:50%;object-fit:cover;vertical-align:-3px;margin:0 4px 0 0;box-shadow:0 0 0 1.5px rgba(93,185,255,.75);background:linear-gradient(160deg,#24323F,#0E1620);}' +
     '.sip-post-link{font-size:11.5px;line-height:1.4;color:#6B7C90;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.sip-post-link a{color:#6B7C90;text-decoration:none;}.sip-post-link a:hover{color:#93A4B8;text-decoration:underline;}' +
     '.sip-socials{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;}' +
-    '.sip-social{--sip-rhythm:var(--kick,0);display:flex;gap:12px;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(11,19,31,.6);border-radius:14px;padding:12px 14px;color:#E6EDF5;transform:translateY(calc(var(--sip-rhythm,0)*-4px));}' +
+    '.sip-social{--sip-rhythm:var(--kick,0);display:flex;gap:12px;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(11,19,31,.6);border-radius:14px;padding:12px 14px;color:var(--sip-text,#E6EDF5);transform:translateY(calc(var(--sip-rhythm,0)*-4px));}' +
     '.sip-socials .sip-social:nth-child(2n):not([data-sip-mv]){--sip-rhythm:var(--lane-hat,0);}' +
     '.sip-social:hover{border-color:rgba(var(--sip-accent-rgb,56,245,138),.6);background:rgba(var(--sip-accent-rgb,56,245,138),.06);}' +
     '.sip-social-tile{--sip-rhythm:var(--kick,0);width:44px;height:44px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:var(--sip-fh,Archivo),Archivo,sans-serif;font-weight:900;font-size:16px;letter-spacing:-0.5px;box-shadow:0 0 calc(var(--sip-rhythm,0)*14px) rgba(var(--sip-accent-rgb,56,245,138),.4);}' +
@@ -451,7 +452,7 @@
     '.sip-gallery-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}'
     /* owner call 2026-09-09: Delete stays out of sight until the owner taps Manage (then Done) */
     + '.sip-root.sip-manage .sip-gallery-delete{display:inline-block;}'
-    + '.sip-gallery-manage{padding:7px 12px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(255,255,255,.06);color:#E6EDF5;font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}'
+    + '.sip-gallery-manage{padding:7px 12px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(255,255,255,.06);color:var(--sip-text,#E6EDF5);font:700 11px/1 "IBM Plex Sans",sans-serif;cursor:pointer;}'
     + '.sip-root.sip-manage .sip-gallery-manage{border-color:rgba(255,92,119,.65);background:rgba(40,5,12,.6);color:#ff8299;}'
     /* owner call 2026-09-09: select several uploads and delete them at once */
     + '.sip-gallery-pick{display:none;position:absolute;left:8px;top:8px;z-index:4;width:28px;height:28px;border-radius:8px;background:rgba(2,7,11,.72);border:1px solid rgba(255,255,255,.35);align-items:center;justify-content:center;cursor:pointer;}'
@@ -598,6 +599,7 @@
       '<div class="sip-react-head"><strong>Reactions</strong><button type="button" class="sip-react-close" aria-label="Close">✕</button></div>' +
       '<div class="sip-react-sub">PROFILE PULSE and BEAT SENS above still scale everything here.</div>' +
       '<div class="sip-react-color-row"><label>Accent / impulse color</label><input type="color" class="sip-react-color" value="#38F58A"></div>' +
+      '<div class="sip-react-color-row"><label>Font / text color</label><input type="color" class="sip-react-textcolor" value="#E6EDF5"></div>' +
       '<div class="sip-react-groupbar">' + reactGroupChips + '</div>' +
       '<div class="sip-react-body">' + reactBodyHtml + '</div>' +
       '</div></div>' : '';
@@ -885,6 +887,7 @@
     var fxList = pickJSON(IM && IM.effects, 'sml-screen-fx-list'); if (!Array.isArray(fxList)) fxList = cfg.fx.slice();
     var texture = pickStr(IM && IM.texture, 'sml-card-texture', cfg.texture); if (!TEX[texture]) texture = 'Glass';
     var accentColor = pickStr(IM && IM.accent_color, 'sml-immersive-accent', ''); if (!/^#[0-9a-fA-F]{6}$/.test(accentColor)) accentColor = '#38F58A';
+    var textColor = pickStr(IM && IM.text_color, 'sml-immersive-text-color', ''); if (!/^#[0-9a-fA-F]{6}$/.test(textColor)) textColor = '#E6EDF5';
     var sectionOrder = pickJSON(IM && IM.section_order, 'sml-section-order');
     if (!Array.isArray(sectionOrder) || sectionOrder.length !== 4) sectionOrder = ['stats', 'tickers', 'orbitals', 'about'];
     var itemScales = pickJSON(IM && IM.item_scales, 'sml-orbital-item-scales');
@@ -913,6 +916,7 @@
         localStorage.setItem('sml-immersive-components', JSON.stringify(reactiveComponents));
         localStorage.setItem('sml-immersive-element-reactions', JSON.stringify(elReact));
         localStorage.setItem('sml-immersive-accent', accentColor);
+        localStorage.setItem('sml-immersive-text-color', textColor);
       } catch (e) {}
     }
     function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
@@ -946,6 +950,10 @@
       root.style.setProperty('--sip-accent', accentColor);
       root.style.setProperty('--sip-accent-rgb', hexToRgb(accentColor));
       ACCENT = accentColor;
+    }
+    function applyTextColor() {
+      if (!root) return;
+      root.style.setProperty('--sip-text', textColor);
     }
     function applyElementReactions() {
       if (!root) return;
@@ -1162,6 +1170,8 @@
         });
         var colorInput = reactModal.querySelector('.sip-react-color');
         if (colorInput) colorInput.value = accentColor;
+        var textColorInput = reactModal.querySelector('.sip-react-textcolor');
+        if (textColorInput) textColorInput.value = textColor;
       }
       var reactColor = reactModal.querySelector('.sip-react-color');
       if (reactColor) {
@@ -1169,6 +1179,14 @@
           accentColor = reactColor.value;
           applyAccent();
           lsSet('sml-immersive-accent', accentColor);
+        });
+      }
+      var reactTextColor = reactModal.querySelector('.sip-react-textcolor');
+      if (reactTextColor) {
+        reactTextColor.addEventListener('input', function () {
+          textColor = reactTextColor.value;
+          applyTextColor();
+          lsSet('sml-immersive-text-color', textColor);
         });
       }
       /* Per-item rows for repeating groups (orbital photos/videos, gallery
@@ -1537,6 +1555,7 @@
 
     root.style.setProperty('--card-bg', TEX[texture]);
     applyAccent();
+    applyTextColor();
     applyComponentState();
     rootEl.setAttribute('data-sml-pulse', level.toLowerCase());
     syncChips();
