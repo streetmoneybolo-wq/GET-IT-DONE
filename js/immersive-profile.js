@@ -174,6 +174,12 @@
   function lsJSON(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
 
   var CSS = '' +
+    /* The overlay mount (z 2147483000) paints over the WP admin bar (z 99999),
+       so a signed-in admin sees the bar's 32/46px bump as a band of profile
+       background above the site header. The site's other takeover pages hide
+       the bar and its bump; the profile does too — syncOverlayTop() then
+       measures the header at 0 and everything else follows. */
+    '#wpadminbar{display:none!important}html{margin-top:0!important}' +
     '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--lane-kick:0;--lane-sub:0;--lane-snare:0;--lane-hat:0;--lane-accent:0;--lane-swell:0;--sip-l:0;--sip-a:1;--sip-badge-lift:0px;--sip-accent:#38F58A;--sip-accent-rgb:56,245,138;--sip-text:#E6EDF5;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:var(--sip-text,#E6EDF5);font-family:var(--sip-fb,"IBM Plex Sans"),"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
     /* ---- Reaction engine: lane classes + movement library ------------------
        An element opts in by getting two classes (sip-ln-<lane>, sip-mv-<move>)
