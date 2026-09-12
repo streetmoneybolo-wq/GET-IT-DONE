@@ -124,7 +124,7 @@
      shapes, pulse, beat sensitivity, contact opt-in, reactive parts) must write
      them back — otherwise the change lives only in this browser and visitors
      never see it. Debounced; merges over the current server object. */
-  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1 };
+  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1, 'sml-immersive-element-reactions': 1 };
   var persistT = null, persistBusy = false, persistAgain = false;
   function immersiveFromLocal(baseObj) {
     var im = {}; for (var k in (baseObj || {})) im[k] = baseObj[k];
@@ -142,6 +142,7 @@
     if ((v = g('sml-contact-optin')) != null) im.contact_opt_in = v !== '0';
     if ((v = g('sml-beat-sens')) != null && !isNaN(parseFloat(v))) im.beat_sensitivity = parseFloat(v);
     if ((v = j('sml-immersive-components')) !== undefined) im.components = v;
+    if ((v = j('sml-immersive-element-reactions')) !== undefined) im.element_reactions = v;
     return im;
   }
   function persistImmersive() {
@@ -171,6 +172,55 @@
 
   var CSS = '' +
     '.sip-root{--kick:0;--bkick:0;--bass:0;--mid:0;--high:0;--lane-kick:0;--lane-sub:0;--lane-snare:0;--lane-hat:0;--lane-accent:0;--lane-swell:0;--sip-l:0;--sip-a:1;--sip-badge-lift:0px;--card-bg:rgba(17,24,35,.72);min-height:100vh;background:radial-gradient(1100px 560px at 72% -8%,rgba(1,167,125,.16) 0%,rgba(7,13,20,0) 62%),#070d14;color:#E6EDF5;font-family:var(--sip-fb,"IBM Plex Sans"),"IBM Plex Sans",sans-serif;overflow-x:hidden;position:relative;box-sizing:border-box;}' +
+    /* ---- Reaction engine: lane classes + movement library ------------------
+       An element opts in by getting two classes (sip-ln-<lane>, sip-mv-<move>)
+       and one inline var (--sip-a, amplitude) via applyMovement(). Everything
+       here is a static rule driven by --sip-l/--sip-a — no @keyframes, no
+       per-frame JS per element, so it composes cleanly with elements whose
+       transform/filter is already owned by other code (orbital rings, the
+       carousel, the dock) and stays inert wherever the Live Studio's
+       "component off" sheet zeroes --kick/--bass/--mid/--high (those are a
+       DIFFERENT variable family from --lane-*, so the neutraliser below is
+       what actually turns a configured element off). */
+    '.sip-root .sip-ln-kick{--sip-l:var(--lane-kick,0);}' +
+    '.sip-root .sip-ln-sub{--sip-l:var(--lane-sub,0);}' +
+    '.sip-root .sip-ln-snare{--sip-l:var(--lane-snare,0);}' +
+    '.sip-root .sip-ln-hat{--sip-l:var(--lane-hat,0);}' +
+    '.sip-root .sip-ln-accent{--sip-l:var(--lane-accent,0);}' +
+    '.sip-root .sip-ln-swell{--sip-l:var(--lane-swell,0);}' +
+    '.sip-root [data-sip-mv]{--kick:0;--bass:0;--mid:0;--high:0;--bkick:0;}' +
+    '.sip-root .sip-mv-lift{translate:0 calc(var(--sip-l,0) * var(--sip-a,1) * -8px);}' +
+    '.sip-root .sip-mv-drop{translate:0 calc(var(--sip-l,0) * var(--sip-a,1) * 8px);}' +
+    '.sip-root .sip-mv-pop{scale:calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.12);}' +
+    '.sip-root .sip-mv-squash{scale:calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.18) calc(1 - var(--sip-l,0) * var(--sip-a,1) * 0.1);}' +
+    '.sip-root .sip-mv-stretch-x{scale:calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.16) 1;}' +
+    '.sip-root .sip-mv-sway{translate:calc(var(--sip-l,0) * var(--sip-a,1) * 10px) 0;}' +
+    '.sip-root .sip-mv-tilt{rotate:calc(var(--sip-l,0) * var(--sip-a,1) * 6deg);}' +
+    '.sip-root .sip-mv-wobble{rotate:calc((var(--sip-l,0) - 0.5) * var(--sip-a,1) * 10deg);}' +
+    '.sip-root .sip-mv-lean{transform-origin:bottom left;rotate:calc(var(--sip-l,0) * var(--sip-a,1) * 5deg);}' +
+    '.sip-root .sip-mv-nod{rotate:calc(var(--sip-l,0) * var(--sip-a,1) * 4deg);translate:0 calc(var(--sip-l,0) * var(--sip-a,1) * 3px);}' +
+    '.sip-root .sip-mv-roll{rotate:calc(var(--sip-l,0) * var(--sip-a,1) * 360deg);}' +
+    '.sip-root .sip-mv-float{translate:0 calc(var(--sip-l,0) * var(--sip-a,1) * -14px);scale:calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.04);}' +
+    '.sip-root .sip-mv-jitter{translate:calc((var(--sip-l,0) - 0.5) * var(--sip-a,1) * 3px) calc((var(--sip-l,0) - 0.5) * var(--sip-a,1) * -3px);}' +
+    '.sip-root .sip-mv-breathe{scale:calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.06);opacity:calc(0.85 + var(--sip-l,0) * 0.15);}' +
+    '.sip-root .sip-mv-banner-drift{scale:calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.04);rotate:calc(var(--sip-l,0) * var(--sip-a,1) * 0.6deg);}' +
+    '.sip-root .sip-mv-halo{box-shadow:0 0 0 calc(2px + var(--sip-l,0) * var(--sip-a,1) * 9px) rgba(56,245,138,calc(0.45 + var(--sip-l,0) * var(--sip-a,1) * 0.4)),0 0 calc(16px + var(--sip-l,0) * var(--sip-a,1) * 40px) rgba(56,245,138,calc(0.25 + var(--sip-l,0) * var(--sip-a,1) * 0.4));}' +
+    '.sip-root .sip-mv-glow{box-shadow:0 0 calc(8px + var(--sip-l,0) * var(--sip-a,1) * 24px) rgba(56,245,138,calc(0.35 + var(--sip-l,0) * var(--sip-a,1) * 0.4));}' +
+    '.sip-root .sip-mv-inner-glow{box-shadow:inset 0 0 calc(6px + var(--sip-l,0) * var(--sip-a,1) * 18px) rgba(56,245,138,calc(0.3 + var(--sip-l,0) * var(--sip-a,1) * 0.4));}' +
+    '.sip-root .sip-mv-text-glow{text-shadow:0 0 calc(var(--sip-l,0) * var(--sip-a,1) * 28px) rgba(56,245,138,.65);}' +
+    '.sip-root .sip-mv-letter-spread{letter-spacing:calc(var(--sip-l,0) * var(--sip-a,1) * 3px);}' +
+    '.sip-root .sip-mv-flicker{opacity:calc(1 - var(--sip-l,0) * var(--sip-a,1) * 0.4);}' +
+    '.sip-root .sip-mv-hover-lift{translate:0 calc(var(--sip-l,0) * var(--sip-a,1) * -6px);box-shadow:0 calc(4px + var(--sip-l,0) * var(--sip-a,1) * 14px) calc(10px + var(--sip-l,0) * var(--sip-a,1) * 20px) rgba(0,0,0,calc(0.2 + var(--sip-l,0) * 0.2));}' +
+    '.sip-root .sip-mv-pulse-outline{outline:calc(1px + var(--sip-l,0) * var(--sip-a,1) * 3px) solid rgba(56,245,138,calc(0.4 + var(--sip-l,0) * 0.5));outline-offset:calc(var(--sip-l,0) * var(--sip-a,1) * 4px);}' +
+    '.sip-root .sip-mv-rim-tint{background-color:rgba(56,245,138,calc(var(--sip-l,0) * var(--sip-a,1) * 0.14));}' +
+    '.sip-root .sip-mv-settle{translate:0 calc((1 - var(--sip-l,0)) * var(--sip-a,1) * -6px);}' +
+    /* Filter-based — dead on any element the Live Studio's component sheet
+       marks "off" (that sheet also sets filter:none!important). The Reactions
+       panel greys these out for banner/avatar/cards/orbitals for that reason. */
+    '.sip-root .sip-mv-brighten{filter:brightness(calc(1 + var(--sip-l,0) * var(--sip-a,1) * 0.5));}' +
+    '.sip-root .sip-mv-saturate{filter:saturate(calc(1 + var(--sip-l,0) * var(--sip-a,1) * 1.2));}' +
+    '.sip-root .sip-mv-hue-shift{filter:hue-rotate(calc(var(--sip-l,0) * var(--sip-a,1) * 60deg));}' +
+    '@media (prefers-reduced-motion:reduce){.sip-root [data-sip-mv]{translate:none !important;rotate:none !important;scale:none !important;}}' +
     '.sip-root *{box-sizing:border-box;}' +
     '.sip-root [hidden]{display:none !important;}' +
     '.sip-root .sip-sec[data-empty="1"]{display:none !important;}' +
@@ -393,7 +443,8 @@
       return { st: st, inner: inner };
     }
     var statHtml = cfg.stats.map(function (s) {
-      return '<div class="sip-stat"><div class="sip-stat-l">' + esc(s.label) + '</div><div class="sip-stat-v">' + esc(s.value != null ? s.value : s.v) + '</div></div>';
+      var slug = String(s.label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      return '<div class="sip-stat" data-stat="' + esc(slug) + '"><div class="sip-stat-l">' + esc(s.label) + '</div><div class="sip-stat-v">' + esc(s.value != null ? s.value : s.v) + '</div></div>';
     }).join('');
     var tickHtml = cfg.tickers.map(function (t) {
       var col = (t.dir === 'down' || /^-/.test(t.chg)) ? '#ff5c7a' : '#38F58A';
@@ -522,9 +573,9 @@
       '<div class="sip-stage sip-vstage"><div class="sip-ring sip-vring">' + orbVids + '</div></div></div>' +
       '</div></div>' +
       '<div class="sip-sec" data-sec="about"><div class="sip-grid">' +
-      '<div class="sip-card"><div class="sip-card-h">ABOUT</div>' + aboutHtml + '</div>' +
+      '<div class="sip-card" data-card="about"><div class="sip-card-h">ABOUT</div>' + aboutHtml + '</div>' +
       '<div style="display:flex;flex-direction:column;gap:14px;">' +
-      '<div class="sip-card"><div class="sip-card-h">FRIENDS</div>' + friendHtml + '</div>' +
+      '<div class="sip-card" data-card="friends"><div class="sip-card-h">FRIENDS</div>' + friendHtml + '</div>' +
       '<div class="sip-disc"><div class="sip-disc-h">DISCLAIMER</div><div class="sip-disc-t">' + esc(cfg.disclaimer) + '</div></div>' +
       '</div></div></div>' +
       '</div></div>';
@@ -541,10 +592,10 @@
       (c.phone ? '<div class="sip-row"><span class="k">Phone</span><span class="v">' + esc(c.phone) + '</span></div>' : '');
     var world4 = '<div class="sip-screen"><div class="sip-worldtitle">Contact &amp; Socials</div><div class="sip-worldsub">SWIPE RIGHT TO GO BACK ←</div>' +
       '<div class="sip-grid" style="align-items:start;">' +
-      '<div class="sip-card"><div class="sip-card-h">CONTACT INFO</div><div class="sip-contact-in">' + (contactRows || '<div style="font-size:12.5px;color:#6B7C90;line-height:1.6;">No contact info shared.</div>') + '</div>' +
+      '<div class="sip-card" data-card="contact"><div class="sip-card-h">CONTACT INFO</div><div class="sip-contact-in">' + (contactRows || '<div style="font-size:12.5px;color:#6B7C90;line-height:1.6;">No contact info shared.</div>') + '</div>' +
       '<div class="sip-contact-out" style="display:none;font-size:12.5px;color:#6B7C90;line-height:1.6;">The profile owner hasn’t shared contact info.</div>' +
       '<button class="sip-optin sip-btn" type="button" data-editonly hidden style="margin-top:12px;background:rgba(56,245,138,.12);color:#38F58A;border:1px solid rgba(56,245,138,.5);"></button></div>' +
-      '<div class="sip-card"><div class="sip-card-h">SOCIALS</div><div class="sip-socials">' + (socialHtml || '<div class="sip-emptynote">No socials linked yet.</div>') + '</div></div>' +
+      '<div class="sip-card" data-card="socials"><div class="sip-card-h">SOCIALS</div><div class="sip-socials">' + (socialHtml || '<div class="sip-emptynote">No socials linked yet.</div>') + '</div></div>' +
       '</div></div>';
 
     var ytIframe = (!cfg.useExistingPlayer && ytId(cfg.music.url)) ?
@@ -590,6 +641,82 @@
       '<div class="sip-overlay"><div class="sip-overlay-btn">▶</div><div class="sip-overlay-t">Click to view &amp; hear</div>' +
       '<div class="sip-overlay-s">Enter this profile and start its music experience.</div></div>' +
       '</div>';
+  }
+
+  // ---------------------------------------------------------------- reactions
+  /* Rhythm lanes an element can be assigned to (see the --lane-* vars in
+     tick()). "off" means the element ignores the beat entirely. */
+  var LANES = { off: 1, kick: 1, sub: 1, snare: 1, hat: 1, accent: 1, swell: 1 };
+  /* Movement library: id -> whether it's filter-based (dead on any element
+     the Live Studio's component sheet marks off — see the CSS comment above
+     the .sip-mv-* rules). Kept as a plain whitelist so normalizeElReact can
+     reject anything that isn't a real, styled movement. */
+  var MOVEMENTS = {
+    lift: 0, drop: 0, pop: 0, squash: 0, 'stretch-x': 0, sway: 0, tilt: 0, wobble: 0,
+    lean: 0, nod: 0, roll: 0, float: 0, jitter: 0, breathe: 0, 'banner-drift': 0,
+    halo: 0, glow: 0, 'inner-glow': 0, 'text-glow': 0, 'letter-spread': 0, flicker: 0,
+    'hover-lift': 0, 'pulse-outline': 0, 'rim-tint': 0, settle: 0,
+    brighten: 1, saturate: 1, 'hue-shift': 1
+  };
+  /* Every element this version of the Reactions panel can address, grouped
+     for the two-level UI, with the reactiveComponents group (if any) that
+     must also be "on" for this element to react — see legacyOk below. */
+  var ELEMENTS = {
+    banner: { sel: '.sip-banner', label: 'Banner', group: 'Identity', legacy: 'banner' },
+    avatar_img: { sel: '.sip-avatar-img', label: 'Avatar image', group: 'Identity', legacy: 'avatar' },
+    avatar_ring: { sel: '.sip-avatar-ring', label: 'Avatar ring', group: 'Identity', legacy: 'avatar' },
+    name: { sel: '.sip-name', label: 'Name', group: 'Identity', registry: 'name' },
+    handle: { sel: '.sip-handle', label: 'Handle', group: 'Identity' },
+    logo_dot: { sel: '.sip-logo-dot', label: 'Logo dot', group: 'Chrome' },
+    dock: { sel: '.sip-dock', label: 'Dock', group: 'Chrome' },
+    play_btn: { sel: '.sip-play', label: 'Play button', group: 'Chrome' },
+    world_title: { sel: '.sip-worldtitle', label: 'World title', group: 'Chrome' },
+    stat_followers: { sel: '.sip-stat[data-stat="followers"]', label: 'Followers tile', group: 'Stats', legacy: 'cards' },
+    stat_following: { sel: '.sip-stat[data-stat="following"]', label: 'Following tile', group: 'Stats', legacy: 'cards' },
+    stat_charts: { sel: '.sip-stat[data-stat="charts"]', label: 'Charts tile', group: 'Stats', legacy: 'cards' },
+    stat_posts: { sel: '.sip-stat[data-stat="posts"]', label: 'Posts tile', group: 'Stats', legacy: 'cards' },
+    stat_views: { sel: '.sip-stat[data-stat="profile-views"]', label: 'Profile views tile', group: 'Stats', legacy: 'cards' },
+    stat_likes: { sel: '.sip-stat[data-stat="likes"]', label: 'Likes tile', group: 'Stats', legacy: 'cards' },
+    stat_friends: { sel: '.sip-stat[data-stat="friends"]', label: 'Friends tile', group: 'Stats', legacy: 'cards' },
+    orbital_photo_ring: { sel: '.sip-pring', label: 'Orbital photo ring', group: 'Orbitals', legacy: 'orbital_photos' },
+    orbital_video_ring: { sel: '.sip-vring', label: 'Orbital video ring', group: 'Orbitals', legacy: 'orbital_videos' },
+    card_about: { sel: '.sip-card[data-card="about"]', label: 'About card', group: 'Content', legacy: 'cards' },
+    card_friends: { sel: '.sip-card[data-card="friends"]', label: 'Friends card', group: 'Content', legacy: 'cards' },
+    card_contact: { sel: '.sip-card[data-card="contact"]', label: 'Contact card', group: 'Content', legacy: 'cards' },
+    card_socials: { sel: '.sip-card[data-card="socials"]', label: 'Socials card', group: 'Content', legacy: 'cards' },
+    disclaimer: { sel: '.sip-disc', label: 'Disclaimer', group: 'Content', legacy: 'cards' }
+  };
+
+  function applyMovement(el, movementId, laneId, amp) {
+    if (!el) return;
+    var prev = el.__sipMv;
+    if (prev) { el.classList.remove('sip-mv-' + prev.mv, 'sip-ln-' + prev.ln); }
+    if (!movementId || movementId === 'none' || !MOVEMENTS.hasOwnProperty(movementId) ||
+        !laneId || laneId === 'off' || !LANES.hasOwnProperty(laneId)) {
+      el.removeAttribute('data-sip-mv'); el.style.removeProperty('--sip-a'); el.__sipMv = null; return;
+    }
+    el.__sipMv = { mv: movementId, ln: laneId };
+    el.classList.add('sip-mv-' + movementId, 'sip-ln-' + laneId);
+    el.setAttribute('data-sip-mv', movementId);
+    el.style.setProperty('--sip-a', String(Math.max(0, Math.min(2, +amp || 1))));
+  }
+  /* Drop anything that isn't a real element/movement/lane id, and clamp
+     amplitude — this config round-trips through a server blob and a
+     localStorage key a user could hand-edit. */
+  function normalizeElReact(raw) {
+    var out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    Object.keys(raw).forEach(function (id) {
+      if (!ELEMENTS[id]) return;
+      var row = raw[id]; if (!row || typeof row !== 'object') return;
+      var lane = LANES.hasOwnProperty(row.lane) ? row.lane : 'off';
+      var mv = MOVEMENTS.hasOwnProperty(row.mv) ? row.mv : 'none';
+      var amp = Math.max(0, Math.min(2, parseFloat(row.amp)));
+      if (isNaN(amp)) amp = 1;
+      if (lane === 'off' || mv === 'none') return; // absent = legacy behavior
+      out[id] = { lane: lane, mv: mv, amp: amp };
+    });
+    return out;
   }
 
   // ---------------------------------------------------------------- init
@@ -660,6 +787,7 @@
     var reactiveComponents = pickJSON(IM && IM.components, 'sml-immersive-components');
     var allReactiveComponents = ['background', 'banner', 'avatar', 'cards', 'orbital_photos', 'orbital_videos'];
     if (!Array.isArray(reactiveComponents)) reactiveComponents = allReactiveComponents.slice();
+    var elReact = normalizeElReact(pickJSON(IM && IM.element_reactions, 'sml-immersive-element-reactions'));
     if (srvMode) {
       /* keep the per-browser keys in step with what is painted, so the bridge, the
          dock chips and the owner's persistence all start from the same values */
@@ -671,6 +799,7 @@
         if (videoSize != null) localStorage.setItem('sml-orbital-video-size', String(videoSize)); else localStorage.removeItem('sml-orbital-video-size');
         localStorage.setItem('sml-contact-optin', contactOptIn ? '1' : '0'); localStorage.setItem('sml-beat-sens', String(beatSens));
         localStorage.setItem('sml-immersive-components', JSON.stringify(reactiveComponents));
+        localStorage.setItem('sml-immersive-element-reactions', JSON.stringify(elReact));
       } catch (e) {}
     }
     function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
@@ -678,6 +807,22 @@
       if (!root) return;
       allReactiveComponents.forEach(function (key) {
         root.setAttribute('data-sml-imm-' + key.replace(/_/g, '-'), reactiveComponents.indexOf(key) >= 0 ? '1' : '0');
+      });
+      applyElementReactions();
+    }
+    /* Subordinates the new per-element config to the existing 6-group
+       checkboxes: --lane-* isn't covered by the Live Studio's own kill-switch
+       CSS (#sml-immersive-component-css only zeroes --kick/--bass/--mid/--high),
+       so unchecking e.g. "banner" there would otherwise leave a configured
+       banner still moving. */
+    function legacyOk(id) { var g = ELEMENTS[id] && ELEMENTS[id].legacy; return !g || reacts(g); }
+    function applyElementReactions() {
+      if (!root) return;
+      Object.keys(ELEMENTS).forEach(function (id) {
+        var el = root.querySelector(ELEMENTS[id].sel);
+        var cfgRow = elReact[id];
+        if (!cfgRow || !legacyOk(id)) { applyMovement(el, null); return; }
+        applyMovement(el, cfgRow.mv, cfgRow.lane, cfgRow.amp);
       });
     }
     window.addEventListener('sml-immersive-components', function (event) {
