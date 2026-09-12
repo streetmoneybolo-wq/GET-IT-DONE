@@ -124,7 +124,7 @@
      shapes, pulse, beat sensitivity, contact opt-in, reactive parts) must write
      them back — otherwise the change lives only in this browser and visitors
      never see it. Debounced; merges over the current server object. */
-  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1, 'sml-immersive-element-reactions': 1, 'sml-immersive-accent': 1, 'sml-immersive-text-color': 1 };
+  var IMMERSIVE_KEYS = { 'sml_profile_pulse_level': 1, 'sml-pulse-shapes': 1, 'sml-screen-fx-list': 1, 'sml-card-texture': 1, 'sml-section-order': 1, 'sml-orbital-item-scales': 1, 'sml-orbital-photo-size': 1, 'sml-orbital-video-size': 1, 'sml-contact-optin': 1, 'sml-beat-sens': 1, 'sml-immersive-components': 1, 'sml-immersive-element-reactions': 1, 'sml-immersive-accent': 1, 'sml-immersive-text-color': 1, 'sml-immersive-card-bg-color': 1 };
   var persistT = null, persistBusy = false, persistAgain = false;
   function immersiveFromLocal(baseObj) {
     var im = {}; for (var k in (baseObj || {})) im[k] = baseObj[k];
@@ -145,6 +145,7 @@
     if ((v = j('sml-immersive-element-reactions')) !== undefined) im.element_reactions = v;
     if ((v = g('sml-immersive-accent')) != null && /^#[0-9a-fA-F]{6}$/.test(v)) im.accent_color = v;
     if ((v = g('sml-immersive-text-color')) != null && /^#[0-9a-fA-F]{6}$/.test(v)) im.text_color = v;
+    if ((v = g('sml-immersive-card-bg-color')) != null && /^#[0-9a-fA-F]{6}$/.test(v)) im.card_bg_color = v;
     return im;
   }
   function persistImmersive() {
@@ -600,6 +601,7 @@
       '<div class="sip-react-sub">PROFILE PULSE and BEAT SENS above still scale everything here.</div>' +
       '<div class="sip-react-color-row"><label>Accent / impulse color</label><input type="color" class="sip-react-color" value="#38F58A"></div>' +
       '<div class="sip-react-color-row"><label>Font / text color</label><input type="color" class="sip-react-textcolor" value="#E6EDF5"></div>' +
+      '<div class="sip-react-color-row"><label>Module background color</label><input type="color" class="sip-react-cardbg" value="#111823"></div>' +
       '<div class="sip-react-groupbar">' + reactGroupChips + '</div>' +
       '<div class="sip-react-body">' + reactBodyHtml + '</div>' +
       '</div></div>' : '';
@@ -888,6 +890,11 @@
     var texture = pickStr(IM && IM.texture, 'sml-card-texture', cfg.texture); if (!TEX[texture]) texture = 'Glass';
     var accentColor = pickStr(IM && IM.accent_color, 'sml-immersive-accent', ''); if (!/^#[0-9a-fA-F]{6}$/.test(accentColor)) accentColor = '#38F58A';
     var textColor = pickStr(IM && IM.text_color, 'sml-immersive-text-color', ''); if (!/^#[0-9a-fA-F]{6}$/.test(textColor)) textColor = '#E6EDF5';
+    /* Empty = keep using the existing texture presets untouched (Glass/Carbon/
+       Brushed/Holo, still set below). Only a real saved hex overrides them
+       with a flat custom colour — nothing changes for a profile that never
+       opens this picker. */
+    var moduleBgColor = pickStr(IM && IM.card_bg_color, 'sml-immersive-card-bg-color', ''); if (!/^#[0-9a-fA-F]{6}$/.test(moduleBgColor)) moduleBgColor = '';
     var sectionOrder = pickJSON(IM && IM.section_order, 'sml-section-order');
     if (!Array.isArray(sectionOrder) || sectionOrder.length !== 4) sectionOrder = ['stats', 'tickers', 'orbitals', 'about'];
     var itemScales = pickJSON(IM && IM.item_scales, 'sml-orbital-item-scales');
@@ -917,6 +924,7 @@
         localStorage.setItem('sml-immersive-element-reactions', JSON.stringify(elReact));
         localStorage.setItem('sml-immersive-accent', accentColor);
         localStorage.setItem('sml-immersive-text-color', textColor);
+        if (moduleBgColor) localStorage.setItem('sml-immersive-card-bg-color', moduleBgColor); else localStorage.removeItem('sml-immersive-card-bg-color');
       } catch (e) {}
     }
     function reacts(key) { return reactiveComponents.indexOf(key) >= 0; }
@@ -955,6 +963,8 @@
       if (!root) return;
       root.style.setProperty('--sip-text', textColor);
     }
+    function resolveCardBg() { return moduleBgColor ? ('rgba(' + hexToRgb(moduleBgColor) + ',.72)') : TEX[texture]; }
+    function applyCardBg() { if (root) root.style.setProperty('--card-bg', resolveCardBg()); }
     function applyElementReactions() {
       if (!root) return;
       Object.keys(ELEMENTS).forEach(function (id) {
@@ -1075,7 +1085,7 @@
     $$('[data-level]').forEach(function (b) { b.addEventListener('click', function () { level = b.dataset.level; lsSet('sml_profile_pulse_level', level.toLowerCase()); rootEl.setAttribute('data-sml-pulse', level.toLowerCase()); syncChips(); }); });
     $$('[data-shape]').forEach(function (b) { b.addEventListener('click', function () { var k = b.dataset.shape, i = shapes.indexOf(k); if (i >= 0) shapes.splice(i, 1); else shapes.push(k); lsSet('sml-pulse-shapes', JSON.stringify(shapes)); syncChips(); }); });
     $$('[data-fx]').forEach(function (b) { b.addEventListener('click', function () { var k = b.dataset.fx, i = fxList.indexOf(k); if (i >= 0) fxList.splice(i, 1); else fxList.push(k); lsSet('sml-screen-fx-list', JSON.stringify(fxList)); syncChips(); }); });
-    $$('[data-tex]').forEach(function (b) { b.addEventListener('click', function () { texture = b.dataset.tex; lsSet('sml-card-texture', texture); root.style.setProperty('--card-bg', TEX[texture]); syncChips(); }); });
+    $$('[data-tex]').forEach(function (b) { b.addEventListener('click', function () { texture = b.dataset.tex; lsSet('sml-card-texture', texture); applyCardBg(); syncChips(); }); });
     $('.sip-all').addEventListener('click', function () { shapes = SHAPES.map(function (d) { return d[0]; }); lsSet('sml-pulse-shapes', JSON.stringify(shapes)); syncChips(); });
     $('.sip-none').addEventListener('click', function () { shapes = []; lsSet('sml-pulse-shapes', JSON.stringify(shapes)); syncChips(); });
     $('.sip-fx-none').addEventListener('click', function () { fxList = []; lsSet('sml-screen-fx-list', JSON.stringify(fxList)); syncChips(); });
@@ -1172,6 +1182,8 @@
         if (colorInput) colorInput.value = accentColor;
         var textColorInput = reactModal.querySelector('.sip-react-textcolor');
         if (textColorInput) textColorInput.value = textColor;
+        var cardBgInput = reactModal.querySelector('.sip-react-cardbg');
+        if (cardBgInput) cardBgInput.value = moduleBgColor || '#111823';
       }
       var reactColor = reactModal.querySelector('.sip-react-color');
       if (reactColor) {
@@ -1187,6 +1199,14 @@
           textColor = reactTextColor.value;
           applyTextColor();
           lsSet('sml-immersive-text-color', textColor);
+        });
+      }
+      var reactCardBg = reactModal.querySelector('.sip-react-cardbg');
+      if (reactCardBg) {
+        reactCardBg.addEventListener('input', function () {
+          moduleBgColor = reactCardBg.value;
+          applyCardBg();
+          lsSet('sml-immersive-card-bg-color', moduleBgColor);
         });
       }
       /* Per-item rows for repeating groups (orbital photos/videos, gallery
@@ -1553,7 +1573,7 @@
        one gesture instead of covering the profile with a click gate. */
     if (cfg.autoplay && frame && cfg.isOwner) setTimeout(function () { startPlayback(false); }, 700);
 
-    root.style.setProperty('--card-bg', TEX[texture]);
+    applyCardBg();
     applyAccent();
     applyTextColor();
     applyComponentState();
