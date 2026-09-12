@@ -126,3 +126,24 @@ html.sml-mobile .sml-gshell .sml-gshell__main-head.sml-cbanner-is-hidden > butto
 html.sml-mobile .sml-gshell .sml-cbanner-resize > span { top: 10px !important; width: 44px !important; height: 4px !important; }
 html.sml-mobile .sml-gshell .sml-cbanner-resize output { font-size: 12px !important; }
 html.sml-mobile body.sml-cbanner-resizing { overflow: hidden; touch-action: none; overscroll-behavior: none; }
+
+/* ---- channel background on phones (owner report 2026-09-12) ----
+   The shell positions its Channel Background modal absolute inside .sml-gshell__conversation and
+   centres it there. On phones this page-scroll layout makes the conversation as tall as the whole
+   message list (13k px measured), so the form was centred ~6,500px below the fold and the Save
+   button was unreachable — "the channel background doesn't save". Anchor it to the viewport. */
+html.sml-mobile .sml-gshell__channel-watermark-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483100 !important;
+  overflow: auto;
+  padding: 14px !important;
+}
+html.sml-mobile .sml-gshell__channel-watermark-modal form {
+  max-height: calc(100dvh - 28px);
+  overflow: auto;
+  width: 100% !important;
+}
+/* The background layer is kept viewport-sized by js/group-categories.js (SMLMobileBgViewport) so
+   background-size:cover and the drag/zoom editor see a phone-sized box, not the whole list. */
+html.sml-mobile .sml-gshell__watermark { bottom: auto !important; }

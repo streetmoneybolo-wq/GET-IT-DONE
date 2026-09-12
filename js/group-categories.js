@@ -2971,3 +2971,37 @@
   setTimeout(function () { load().then(function () { setInterval(function () { if (G) paint(); }, 2500); (function tick() { pollSignal(); setTimeout(tick, G && G.chirp ? 1000 : 4000); })(); }); }, 4000);
   document.addEventListener('sml:group-context-change', function () { setTimeout(paint, 50); });
 })();
+
+/* ---- Phone: keep the channel/group background viewport-sized (owner report 2026-09-12) ----
+   css/group-mobile.css deliberately lets the page scroll on phones, so .sml-gshell__conversation
+   grows to the whole message list (13k px measured). The shell's background layer is absolute
+   inset:0 inside it, so on a phone the image was stretched to the list height: background-size:cover
+   blew it up (the fit editor computed a 6079% zoom from that box) and the saved background looked
+   like a smear or nothing at all. The layer stays absolute — still clipped by the conversation and
+   still behind the messages — but is re-aimed at the visible part of the conversation on every
+   scroll/resize, so it behaves like desktop's fixed-height chat pane. */
+(function () {
+  'use strict';
+  if (!document.documentElement.classList.contains('sml-mobile')) return;
+  var raf = 0;
+  function place() {
+    raf = 0;
+    var conv = document.querySelector('.sml-gshell__conversation');
+    var layer = conv && conv.querySelector('[data-smlgs-watermark]');
+    if (!conv || !layer) return;
+    var r = conv.getBoundingClientRect();
+    var vh = window.innerHeight;
+    var top = Math.max(0, -r.top);
+    var h = Math.max(0, Math.min(vh, r.height - top));
+    var t = Math.round(top) + 'px', hh = Math.round(h) + 'px';
+    if (layer.style.top !== t) layer.style.top = t;
+    if (layer.style.height !== hh) layer.style.height = hh;
+    if (layer.style.bottom !== 'auto') layer.style.bottom = 'auto';
+  }
+  function tick() { if (!raf) raf = requestAnimationFrame(place); }
+  window.addEventListener('scroll', tick, { passive: true });
+  window.addEventListener('resize', tick);
+  new MutationObserver(tick).observe(document.documentElement, { childList: true, subtree: true });
+  window.SMLMobileBgViewport = { place: place };
+  tick();
+})();
