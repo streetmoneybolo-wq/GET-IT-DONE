@@ -3005,3 +3005,60 @@
   window.SMLMobileBgViewport = { place: place };
   tick();
 })();
+
+/* ---- SMLMobileGroupIcon (owner call 2026-09-12) ----
+   The group icon lives in the left server rail, which the shell hides on phones —
+   so an icon saved from a phone was never visible on the phone group page. Put it
+   beside the group name in the sidebar head on phones (html.sml-mobile). The
+   source is whatever the shell already rendered (rail item img, legacy hero icon,
+   share-menu card icon); hidden when the group has no icon. A MutationObserver
+   keeps it in sync after Edit Group → Save (the shell rewrites those images). */
+(function SMLMobileGroupIcon() {
+  'use strict';
+  if (!document.documentElement.classList.contains('sml-mobile')) { return; }
+  var CSS = ''
+    + 'html.sml-mobile .sml-gshell__side-title{display:flex !important;align-items:center;gap:10px;min-width:0;}'
+    + 'html.sml-mobile .sml-ghx-icon{flex:0 0 auto;width:40px;height:40px;border-radius:12px;object-fit:cover;'
+    +   'border:1px solid rgba(255,255,255,.16);background:#0d171e;box-shadow:0 2px 10px rgba(0,0,0,.45);}'
+    + 'html.sml-mobile .sml-ghx-icon[hidden]{display:none !important;}';
+  function ensureStyle() {
+    if (document.getElementById('sml-ghx-icon-css')) { return; }
+    var s = document.createElement('style'); s.id = 'sml-ghx-icon-css'; s.textContent = CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+  function iconSrc() {
+    var sels = ['.sml-gshell__rail-item.is-active img', '#sml-group-root .sml-group-icon',
+                '.sml-gshell__group-card-icon', '.sml-gshell__rail-item[aria-current] img'];
+    for (var i = 0; i < sels.length; i++) {
+      var img = document.querySelector(sels[i]);
+      var src = img && (img.currentSrc || img.src);
+      if (src && !/^data:/.test(src)) { return src; }
+    }
+    return '';
+  }
+  function sync() {
+    var title = document.querySelector('.sml-gshell__side-head .sml-gshell__side-title');
+    if (!title) { return; }
+    ensureStyle();
+    var img = title.querySelector('.sml-ghx-icon');
+    if (!img) {
+      img = document.createElement('img');
+      img.className = 'sml-ghx-icon'; img.alt = ''; img.setAttribute('aria-hidden', 'true');
+      img.decoding = 'async'; img.loading = 'eager';
+      title.insertBefore(img, title.firstChild);
+    }
+    var src = iconSrc();
+    if (!src) { img.hidden = true; img.removeAttribute('src'); return; }
+    if (img.getAttribute('src') !== src) { img.src = src; }
+    img.hidden = false;
+  }
+  var pending = 0;
+  function schedule() { if (pending) { return; } pending = setTimeout(function () { pending = 0; sync(); }, 80); }
+  function boot() {
+    sync();
+    try {
+      new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    } catch (e) { setInterval(sync, 1500); }
+  }
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); } else { boot(); }
+})();
