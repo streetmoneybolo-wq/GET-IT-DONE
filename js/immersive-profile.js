@@ -243,11 +243,20 @@
     '.sip-logo-dot{width:11px;height:11px;border-radius:50%;background:var(--sip-accent,#38F58A);box-shadow:0 0 calc(10px + var(--kick,0)*24px) rgba(var(--sip-accent-rgb,56,245,138),.85);display:inline-block;}' +
     '.sip-logo{font-family:var(--sip-fh,Archivo),Archivo,sans-serif;font-weight:800;letter-spacing:2px;font-size:13px;}' +
     '.sip-nav{display:flex;gap:18px;font-size:13px;color:#7e8a96;margin-left:auto;}.sip-nav a{color:#7e8a96;}' +
-    '.sip-worldtabs{display:flex;align-items:center;gap:6px;margin:0 0 12px;flex-wrap:wrap;}' +
+    /* .sip-worldtabs-row wraps the (possibly scrollable) tab strip and the owner
+       kebab menu as separate flex siblings. The kebab's dropdown must NOT live
+       inside .sip-worldtabs itself: that element gets overflow-x:auto on mobile
+       (below) to let the tab strip scroll horizontally, and CSS forces
+       overflow-y to auto right along with it (a visible+non-visible axis pair
+       always upgrades the visible one) — which would silently clip the dropdown
+       to the tab strip's ~46px height. Keeping the kebab outside sidesteps that
+       entirely rather than fighting it. */
+    '.sip-worldtabs-row{display:flex;align-items:center;gap:6px;margin:0 0 12px;}' +
+    '.sip-worldtabs{display:flex;align-items:center;gap:6px;flex:1;min-width:0;flex-wrap:wrap;}' +
     '.sip-wtab{border:1px solid rgba(255,255,255,.14);background:rgba(11,19,31,.6);color:#93A4B8;border-radius:999px;padding:6px 13px;font-family:var(--sip-fa,"IBM Plex Mono"),"IBM Plex Mono",monospace;font-size:10px;letter-spacing:1.4px;font-weight:600;cursor:pointer;}' +
     '.sip-wtab.on{background:var(--sip-accent,#38F58A);color:#03120A;border-color:var(--sip-accent,#38F58A);}' +
     '.sip-wtab-hint{font-size:11px;color:#6B7C90;margin-left:auto;}' +
-    '.sip-kebab-wrap{position:relative;}' +
+    '.sip-kebab-wrap{position:relative;flex:none;}' +
     '.sip-kebab{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:rgba(11,19,31,.6);color:#c3ccd4;font-size:15px;line-height:1;cursor:pointer;}' +
     '.sip-kebab[aria-expanded="true"]{background:var(--sip-accent,#38F58A);color:#03120A;border-color:var(--sip-accent,#38F58A);}' +
     '.sip-kebab-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:9;display:flex;flex-direction:column;min-width:150px;background:rgba(11,19,31,.95);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.5);}' +
@@ -413,7 +422,8 @@
     '@media (max-width:640px){' +
       '.sip-content{padding:10px 10px 150px;}' +
       '.sip-topbar{gap:10px;padding:2px 84px 10px 4px;}.sip-nav{margin-left:0;width:100%;gap:14px;font-size:12px;flex-wrap:wrap;}' +   /* right gutter = the site's floating Loop Bucks pill */
-      '.sip-worldtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;margin-bottom:10px;}.sip-worldtabs::-webkit-scrollbar{display:none;}' +
+      '.sip-worldtabs-row{margin-bottom:10px;}' +
+      '.sip-worldtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px;}.sip-worldtabs::-webkit-scrollbar{display:none;}' +
       '.sip-wtab{flex:none;padding:7px 12px;}.sip-wtab-hint{display:none;}' +
       '.sip-worldnav{display:none !important;}' +
       '.sip-banner{height:150px;}' +
@@ -684,7 +694,7 @@
       '<div class="sip-content">' +
       '<div class="sip-topbar"><span class="sip-logo-dot"></span><span class="sip-logo">STOCKMARKETLOOP</span>' +
       '<nav class="sip-nav"><a href="/watch/">Watch</a><a href="/live/">Live</a><a href="/markets/">Markets</a><a href="/n/">Newsletters</a></nav></div>' +
-      '<div class="sip-worldtabs">' + worldTabsHtml + ownerMenuHtml + '<span class="sip-wtab-hint">swipe or use ‹ › to travel</span></div>' +
+      '<div class="sip-worldtabs-row"><div class="sip-worldtabs">' + worldTabsHtml + '<span class="sip-wtab-hint">swipe or use ‹ › to travel</span></div>' + ownerMenuHtml + '</div>' +
       '<div class="sip-screens">' + world0 + world1 + world2 + world3 + world4 + '</div>' +
       '</div>' +
       // Dock
