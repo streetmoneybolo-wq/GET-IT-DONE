@@ -2914,7 +2914,13 @@
           '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">winner</span>' +
           '<button class="slw-rematch" id="slw-bopen" style="flex:1;min-width:110px">⚡ Open a round</button></div>';
     }
+    /* the 10s poll repaints the pane; carry the host's typed round settings (and focus) across the repaint
+       instead of resetting them to the defaults mid-typing (found on the phone 2026-09-13) */
+    var keep = {}, focusId = document.activeElement && /^slw-b(min|per|win)$/.test(document.activeElement.id) ? document.activeElement.id : '';
+    ['slw-bmin', 'slw-bper', 'slw-bwin'].forEach(function (id) { var f = el('#' + id); if (f && f.value !== '') keep[id] = f.value; });
     pane.innerHTML = head + over + body + adminCtl;
+    Object.keys(keep).forEach(function (id) { var f = el('#' + id); if (f) f.value = keep[id]; });
+    if (focusId && el('#' + focusId)) { try { el('#' + focusId).focus(); } catch (e) {} }
     Array.prototype.forEach.call(pane.querySelectorAll('[data-bplat]'), function (b) {
       b.onclick = function () { shareBoost(+b.getAttribute('data-bplat')); };
     });
