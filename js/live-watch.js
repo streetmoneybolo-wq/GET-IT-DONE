@@ -1977,7 +1977,7 @@
     renderQA([]);
     loadWallet();
     pollChat();
-    setInterval(pollChat, 2500);
+    setInterval(pollChat, 3000);
     setInterval(pollQA, 15000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { chatCursor = ''; pollChat(); loadWallet(); if (typeof pollTape === 'function') { pollTape(); pollQuote(); } } });
     Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
@@ -2265,8 +2265,10 @@
     el('#slw-vreq').onclick = buyAndRequest;
     el('#slw-vleave').onclick = function () { cancelVoice(); };
     loadElig();
-    setInterval(loadElig, 6000);
-    setInterval(pollVoiceQueue, 6000);
+    /* 2026-09-13: the page idled at ~3 requests/s and WordPress.com's edge answered with 429 then a 403
+       bot challenge, which also blocked the games desk. Eligibility rarely changes; the queue can wait 12s. */
+    setInterval(loadElig, 30000);
+    setInterval(pollVoiceQueue, 12000);
     pollVoiceQueue();
   }
 
@@ -2657,7 +2659,7 @@
     pollHistory();
     pollCompany();
     setInterval(pollTape, 15000);
-    setInterval(pollQuote, 8000);
+    setInterval(pollQuote, 15000);
     setInterval(pollHistory, 60000);
   }
   function loadRec() {
@@ -3022,6 +3024,9 @@
   function gpHost(id) { var wrap = el('#slw-gmatch').querySelector('.slw-ttt-wrap'); var b = el(id); if (!b) { b = document.createElement('div'); b.id = id.slice(1); wrap.appendChild(b); } b.style.display = ''; return b; }
   function gpChrome(t, title, youMark, oppMark) {
     resetMatchChrome(); gShow('match');
+    /* the creator's floating Voice Queue dock sat over the board's status line and the Rematch/Back
+       buttons on desktop (verified 2026-09-13); fold it to its header while a match is on screen */
+    try { var vcd = document.querySelector('.vcd'); if (vcd && !vcd.classList.contains('vc-collapsed')) { vcd.classList.add('vc-collapsed'); } } catch (e) {}
     var gm = el('#slw-gmatch'); var tt = gm.querySelector('.slw-gmatch-h .l b'); if (tt) tt.textContent = title;
     el('#slw-tclk').style.display = 'none'; var ttt = el('#slw-ttt'); if (ttt) ttt.style.display = 'none';
     var ym = el('#slw-chipyou').querySelector('.m'); if (ym) ym.textContent = youMark; var om = el('#slw-chipopp').querySelector('.m'); if (om) om.textContent = oppMark;
