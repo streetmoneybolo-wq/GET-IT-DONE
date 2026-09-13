@@ -2311,6 +2311,12 @@
     api('/sml-games/v1/lobby').then(function (res) { if (res.j && res.j.catalogue) renderLobbyReal(res.j); }).catch(function () {});
   }
   function gShow(view) {
+    /* fold the creator's floating Voice Queue dock the first time a table's match view paints —
+       every board (incl. the original chess painter) passes through here; the creator may re-open it */
+    if (view === 'match' && G.tableId && G.dockFoldedFor !== G.tableId) {
+      G.dockFoldedFor = G.tableId;
+      try { var vcd = document.querySelector('.vcd'); if (vcd && !vcd.classList.contains('vc-collapsed')) { vcd.classList.add('vc-collapsed'); } } catch (e) {}
+    }
     el('#slw-glob').style.display = view === 'lobby' ? '' : 'none';
     el('#slw-gwait').classList.toggle('show', view === 'wait');
     el('#slw-gmatch').classList.toggle('show', view === 'match');
@@ -3024,9 +3030,6 @@
   function gpHost(id) { var wrap = el('#slw-gmatch').querySelector('.slw-ttt-wrap'); var b = el(id); if (!b) { b = document.createElement('div'); b.id = id.slice(1); wrap.appendChild(b); } b.style.display = ''; return b; }
   function gpChrome(t, title, youMark, oppMark) {
     resetMatchChrome(); gShow('match');
-    /* the creator's floating Voice Queue dock sat over the board's status line and the Rematch/Back
-       buttons on desktop (verified 2026-09-13); fold it to its header while a match is on screen */
-    try { var vcd = document.querySelector('.vcd'); if (vcd && !vcd.classList.contains('vc-collapsed')) { vcd.classList.add('vc-collapsed'); } } catch (e) {}
     var gm = el('#slw-gmatch'); var tt = gm.querySelector('.slw-gmatch-h .l b'); if (tt) tt.textContent = title;
     el('#slw-tclk').style.display = 'none'; var ttt = el('#slw-ttt'); if (ttt) ttt.style.display = 'none';
     var ym = el('#slw-chipyou').querySelector('.m'); if (ym) ym.textContent = youMark; var om = el('#slw-chipopp').querySelector('.m'); if (om) om.textContent = oppMark;
