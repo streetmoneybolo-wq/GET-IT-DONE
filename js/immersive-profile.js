@@ -445,6 +445,8 @@
       '.sip-worldtitle{font-size:22px;}' +
       '.sip-editbadge{position:fixed;left:50%;transform:translateX(-50%);margin:0;top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 94px + var(--sip-badge-lift,0px));width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - var(--sip-shell-top,0px) - 112px);overflow:auto;white-space:normal;text-align:center;font-size:10px;line-height:1.5;}' +
       '.sip-react-row{grid-template-columns:1fr;gap:4px;}' +
+      /* phones: the 560px cap left the scrolling rows list only ~175px tall under the colour rows + group chips; use the viewport */
+      '.sip-react-modal{padding:12px;}.sip-react-card{max-height:calc(100dvh - 24px);}' +
       '.sip-dock{left:8px;right:8px;width:auto;transform:none;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);padding:10px 12px;gap:8px 10px;border-radius:14px;}' +
       '.sip-play{width:40px;height:40px;font-size:12px;}' +
       '.sip-track{min-width:0;max-width:none;flex:1 1 0;}.sip-track-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
