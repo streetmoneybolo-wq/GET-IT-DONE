@@ -2065,6 +2065,13 @@
         '<button class="slw-tom-cancel" id="slw-tcancel">Cancel</button>' +
         '<button class="slw-tom-go" id="slw-tgo">TOSS! 🍅 · ' + TOM.price.toLocaleString() + ' LB</button></div></div></div>';
       el('#slw-tnote').oninput = function () { el('#slw-tcnt').textContent = el('#slw-tnote').value.length + '/60'; };
+      /* phones: the compose is a bottom sheet (css); lift it above the creator's Voice Queue dock and the
+         admin tools bar, which are pinned to the same bottom edge (the TOSS button sat under the dock header) */
+      if (document.documentElement.classList.contains('sml-mobile')) {
+        var sheet = el('#slw-tom-pop').firstElementChild, lift = 8;
+        ['.vcd', '.slw-banner'].forEach(function (sel) { var w = document.querySelector(sel); if (!w) return; var wr = w.getBoundingClientRect(); if (wr.height > 0 && wr.top > innerHeight * 0.5) lift = Math.max(lift, Math.round(innerHeight - wr.top) + 8); });
+        if (sheet) sheet.style.bottom = lift + 'px';
+      }
       el('#slw-tcancel').onclick = function () { S.tomStage = 'idle'; el('#slw-tom-pop').innerHTML = ''; };
       el('#slw-tgo').onclick = function () {
         var note = el('#slw-tnote').value.slice(0, 60);
