@@ -1916,6 +1916,12 @@
   function loadWallet() {
     api('/sml-lb/v1/gates').then(function (res) {
       var g = res.j || {};
+      /* a throttled/challenged reply (429/403 from the edge) is not "signed out": keep the last known
+         gate and try again shortly, instead of showing "Sign in to join live chat" to a member */
+      if (!res.ok || typeof g.loggedIn === 'undefined') {
+        if (!loadWallet.retry) { loadWallet.retry = setTimeout(function () { loadWallet.retry = null; loadWallet(); }, 15000); }
+        return;
+      }
       gateState = { loggedIn: !!g.loggedIn, chat: g.gates && g.gates.live_comment, games: g.gates && g.gates.games };
       paintComposer();
       if (S.thread) renderThread();
@@ -3190,7 +3196,9 @@
       S.tomWarm--;
       var wc = el('#slw-twc');
       if (wc) wc.textContent = 'warm-up 0:' + String(S.tomWarm).padStart(2, '0');
-      if (S.tomWarm === 0) { paintTomBtn(); var pop = el('#slw-tom-pop'); if (S.tomStage === 'compose') { pop.innerHTML = ''; S.tomStage = 'idle'; } }
+      /* the warm-up belongs to the SIM compose only; in real mode this wiped a compose the viewer was
+         typing in exactly 60s after page load (found on the phone 2026-09-13) */
+      if (S.tomWarm === 0) { paintTomBtn(); if (SIM) { var pop = el('#slw-tom-pop'); if (S.tomStage === 'compose') { pop.innerHTML = ''; S.tomStage = 'idle'; } } }
     }
     /* share morph every ~60s for 3s */
     if (S.shareAnim > 0) { S.shareAnim--; if (S.shareAnim === 0) paintShare(); }

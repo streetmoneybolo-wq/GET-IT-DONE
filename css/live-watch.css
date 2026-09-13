@@ -1007,3 +1007,7 @@ html.sml-mobile .slw-c4{max-width:100%;gap:4px;padding:8px}html.sml-mobile .slw-
 .slw-cmt .acts .tl.dl:hover,.cmr .acts .tl.dl:hover{color:#ff5c7a;border-color:#ff5c7a}
 .cmr .acts{display:flex;gap:8px;margin-top:4px}
 .slw-cmt.is-focus,.cmr.is-focus{animation:slwFocusFlash 2.4s ease-out 1}
+
+/* phones: the tomato compose opened upward from the controls row and its top third sat under the sticky
+   site header; anchor it to the bottom of the viewport as a sheet (2026-09-13) */
+html.sml-mobile .slw-tom-pop{position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);width:auto;z-index:2147483100}
