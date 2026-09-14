@@ -2942,13 +2942,11 @@
          full per-round campaign reports consolidate on Google's side */
       res.j.url += '&utm_source=boost&utm_medium=' + UTM_MEDIUM[i] + '&utm_campaign=boost-' + encodeURIComponent((BOOST.d && BOOST.d.roundId) || 'round');
       var intent = INTENTS[i];
-      if (intent && intent.paste) {
-        var pasteText = res.j.text + ' ' + res.j.url;
-        var copied = false;
-        try { if (navigator.clipboard) { navigator.clipboard.writeText(pasteText); copied = true; } } catch (e) {}
-        window.open(intent.url(), '_blank', 'noopener');
-        flashGate(copied ? 'Your stream title + tracked link are copied. Paste them into the ' + PLATS[i][0] + ' post box that just opened.' : 'Paste your stream link into the ' + PLATS[i][0] + ' post box that just opened.');
-      } else if (intent) {
+      if (PASTE_PLATS[i]) {
+        /* no web share composer on this platform: a loud helper composes the post WITH tickers, copies it and
+           opens the platform from a fresh tap (owner call 2026-09-14) */
+        boostPasteHelper(i, res.j.text, res.j.url);
+      } else if (intent && !intent.paste) {
         window.open(intent(res.j.url, res.j.text), '_blank', 'noopener');
       } else if (navigator.clipboard) {
         navigator.clipboard.writeText(res.j.text + ' ' + res.j.url);
@@ -2957,8 +2955,61 @@
       loadBoost();
     }).catch(function () {});
   }
+  /* ---- paste helper for platforms without a share composer (Stocktwits · moomoo · Instagram) ---- */
+  var PASTE_PLATS = {
+    5: { name: 'Stocktwits', tickers: 4, btn: 'Open Stocktwits ↗', open: function () { return 'https://stocktwits.com/'; },
+         why: 'Tag 4 tickers. Stocktwits shows your post in every ticker stream you tag — four cashtags, four crowds, more clicks on your link.' },
+    7: { name: 'moomoo', keep: true, tickers: 1, btn: 'Connect to moomoo ↗', open: function (sym) { return 'https://www.moomoo.com/stock/' + encodeURIComponent(sym) + '-US/comments'; },
+         why: 'This opens the $SYM comment section on moomoo — post it there with the ticker so the people already watching $SYM see your link.' },
+    8: { name: 'Instagram', tickers: 1, btn: 'Open Instagram ↗', open: function () { return 'https://www.instagram.com/'; },
+         why: 'Keep the ticker in the caption as a cashtag and a hashtag — Instagram search runs on tags, so $SYM #SYM pulls that crowd to your link.' }
+  };
+  var HOT_SYMS = [];
+  function loadHotSyms() {
+    if (HOT_SYMS.length) return;
+    fetch('/wp-json/sml-hot-roller/v1/feed', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+      HOT_SYMS = ((j && j.items) || []).filter(function (x) { return x && x.type === 'ticker' && x.symbol; }).map(function (x) { return String(x.symbol).toUpperCase(); });
+    }).catch(function () {});
+  }
+  function boostTickers(n) {
+    var base = String(typeof qSym !== 'undefined' && qSym ? qSym : 'SPY').toUpperCase();
+    var out = [base];
+    HOT_SYMS.concat(['SPY', 'QQQ', 'NVDA', 'TSLA']).forEach(function (s) { if (out.length < n && out.indexOf(s) < 0) out.push(s); });
+    return out.slice(0, n);
+  }
+  function boostPasteHelper(i, title, url) {
+    var P = PASTE_PLATS[i]; var syms = boostTickers(P.tickers); var sym = syms[0];
+    var tags = syms.map(function (s) { return '$' + s; }).join(' ');
+    if (i === 8) tags += ' #' + sym + ' #stocks #stockmarket';
+    var post = title + ' ' + url + ' ' + tags;
+    var keep = P.keep ? ' data-sml-brand-keep="1"' : '';
+    var why = P.why.replace(/\$SYM/g, '$' + sym).replace(/#SYM/g, '#' + sym);
+    el('#slw-modal-mount').innerHTML = '<div class="slw-modal slw-paste" id="slw-modal"><div class="slw-modal-c">' +
+      '<div class="slw-modal-h"><b' + keep + '>📋 Paste this on ' + P.name + '</b><button class="slw-x" id="slw-mx">Close ✕</button></div>' +
+      '<div class="slw-paste-status warn" id="slw-pstat"' + keep + '>Copying your post…</div>' +
+      '<textarea class="slw-paste-text" id="slw-ptext" rows="4" spellcheck="false"></textarea>' +
+      '<div class="slw-tagrow" id="slw-ptags">' + syms.map(function (s) { return '<span class="slw-tag">$' + s + '</span>'; }).join('') + '</div>' +
+      '<span class="slw-modal-t"' + keep + '>' + why + '</span>' +
+      '<div class="slw-paste-btns"><button class="slw-x" id="slw-pcopy">Copy post</button><button class="slw-rematch" id="slw-popen"' + keep + '>' + P.btn + '</button></div>' +
+      '<span class="fn">Loop Bucks land when someone opens your link — the tracking is in the link, so it pays from any platform.</span>' +
+      '</div></div>';
+    el('#slw-ptext').value = post;
+    function setStat(ok, msg) { var st = el('#slw-pstat'); st.textContent = msg; st.classList.toggle('warn', !ok); }
+    function copyPost() {
+      var txt = el('#slw-ptext').value;
+      var done = function () { setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); };
+      var fail = function () { try { var ta = el('#slw-ptext'); ta.focus(); ta.select(); if (document.execCommand('copy')) { done(); return; } } catch (e) {} setStat(false, 'Tap “Copy post”, then paste it into your ' + P.name + ' post'); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, fail); } else { fail(); } } catch (e) { fail(); }
+    }
+    copyPost();
+    el('#slw-pcopy').onclick = copyPost;
+    el('#slw-popen').onclick = function () { copyPost(); window.open(P.open(sym), '_blank', 'noopener'); };
+    el('#slw-mx').onclick = closeModal;
+    el('#slw-modal').onclick = function (e) { if (e.target === el('#slw-modal')) closeModal(); };
+  }
   function initBoostReal() {
     loadBoost();
+    loadHotSyms();
     setInterval(loadBoost, 10000);
     Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
       b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 3) loadBoost(); });

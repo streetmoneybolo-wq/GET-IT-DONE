@@ -1011,3 +1011,15 @@ html.sml-mobile .slw-c4{max-width:100%;gap:4px;padding:8px}html.sml-mobile .slw-
 /* phones: the tomato compose opened upward from the controls row and its top third sat under the sticky
    site header; anchor it to the bottom of the viewport as a sheet (2026-09-13) */
 html.sml-mobile .slw-tom-pop{position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom,0px) + 8px);width:auto;z-index:2147483100}
+
+/* ---- Boost paste helper (Stocktwits · moomoo · Instagram have no share composer) 2026-09-14 ---- */
+.slw-modal.slw-paste{z-index:2147483200;padding:24px}
+.slw-modal.slw-paste .slw-modal-c{width:540px;gap:12px}
+.slw-paste-status{font:800 13px/1.4 Archivo,sans-serif;color:#04120a;background:#38f58a;border-radius:10px;padding:13px 14px;letter-spacing:.01em}
+.slw-paste-status.warn{background:#ffb454}
+.slw-paste-text{width:100%;box-sizing:border-box;min-height:104px;border:1px solid #1c2833;border-radius:10px;background:#0b1119;color:#e6edf3;padding:12px;font:500 13px/1.5 Archivo,sans-serif;resize:vertical}
+.slw-paste-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}
+.slw-paste-btns .slw-rematch{flex:1;min-width:170px;font-size:12px}
+.slw-paste-btns .slw-x{padding:12px 14px;font-size:11px}
+html.sml-mobile .slw-modal.slw-paste{padding:10px;align-items:flex-end}
+html.sml-mobile .slw-modal.slw-paste .slw-modal-c{width:100%;max-width:100%;padding:16px;max-height:calc(100dvh - 20px);overflow:auto}
