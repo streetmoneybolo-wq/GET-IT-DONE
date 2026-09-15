@@ -2287,6 +2287,10 @@
     /* 2026-09-13: the page idled at ~3 requests/s and WordPress.com's edge answered with 429 then a 403
        bot challenge, which also blocked the games desk. Eligibility rarely changes; the queue can wait 12s. */
     setInterval(loadElig, 30000);
+  }
+  /* the now-playing strip is for every viewer, native voice widget or not (it used to live inside the
+     non-native branch above, so the real page never polled it) */
+  if (!SIM) {
     setInterval(pollVoiceQueue, 8000);
     pollVoiceQueue();
   }
