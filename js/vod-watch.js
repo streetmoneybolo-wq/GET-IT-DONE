@@ -92,6 +92,7 @@
             '<button class="slw-btn-term" id="vw-term" style="display:none">Open terminal →</button>' +
             '<button class="slw-like" id="vw-like"><span class="g">👍</span> <span id="vw-likes">—</span></button>' +
             '<button class="slw-share" id="vw-share">⤴ Share</button>' +
+            '<button class="slw-gear" id="vw-voice" title="Voice cues — say “like button” or “share this video” and the button lights up" aria-pressed="false" style="display:none">🎤</button>' +
             '<button class="slw-gear" id="vw-mini" title="Keep watching in Loop-Kick (mini player)">⧉</button>' +
             '<button class="slw-gear" id="vw-fs" title="Fullscreen">⛶</button>' +
           '</div></div>' +
@@ -436,6 +437,66 @@
     else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { done(); gate('Video link copied — paste it anywhere.'); });
   };
   function gate(msg) { var g = el('#vw-cmgate'); g.style.display = ''; g.innerHTML = msg; setTimeout(function () { paintGate(); }, 4000); }
+
+  /* ---------- voice cues: say "like button" / "share this video" and the button lights up ---------- */
+  /* Uses the browser SpeechRecognition (mic) — so it fires for whoever is speaking on this device
+     (the creator narrating their own stream, or a viewer). Purely a visual nudge; it never clicks
+     the button for you. Feature-detected; the toggle stays hidden where the API is unavailable. */
+  (function () {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var btn = el('#vw-voice'); if (!btn) return;
+    if (!SR) return; /* unsupported (e.g. Firefox) — leave the toggle hidden */
+    btn.style.display = '';
+    var rec = null, want = false, cool = {}, fails = 0, startedAt = 0, idleTimer = null;
+    var IDLE_MS = 600000; /* auto-off after 10 min of total silence so the mic never stays hot on an idle tab */
+    function cue(sel, kind) {
+      var e = el(sel); if (!e) return;
+      var now = Date.now(); if (cool[kind] && now - cool[kind] < 3500) return; cool[kind] = now;
+      e.classList.remove('vw-cue'); void e.offsetWidth; e.classList.add('vw-cue');
+      setTimeout(function () { e.classList.remove('vw-cue'); }, 1700);
+    }
+    /* Match only genuine calls-to-action. "share"/"like" are ordinary finance words, so require an
+       object (video/link/…) or an unambiguous control phrase — never the bare noun. */
+    function heard(text) {
+      var t = ' ' + String(text).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+      if (/ share (this |the |my |our |a )?(video|clip|link|stream|episode|vid)\b/.test(t) || / share button /.test(t) || / (send|post|drop) (this |the |a )?(video|clip|link)\b/.test(t)) cue('#vw-share', 'share');
+      if (/ like button /.test(t) || / like and subscribe /.test(t) || / like (this |the |my |our )(video|clip|vid|stream)\b/.test(t) || / (hit|smash|tap|drop|leave|smack|mash) (the|that|a) like\b/.test(t)) cue('#vw-like', 'like');
+    }
+    function paint(on) {
+      btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.title = on ? 'Listening — say “like button” or “share this video”' : 'Voice cues — say “like button” or “share this video” and the button lights up';
+    }
+    function armIdle() { if (idleTimer) { clearTimeout(idleTimer); } idleTimer = setTimeout(stop, IDLE_MS); }
+    function stop() {
+      want = false; paint(false);
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      if (rec) { try { rec.onend = null; rec.stop(); } catch (e) {} }
+    }
+    /* single restart path with backoff + a consecutive-failure cap, so a permanently-failing
+       recognizer (offline, no mic, blocked speech backend, iOS non-gesture restart) gives up
+       instead of spinning a tight onend->start() loop. */
+    function scheduleRestart() {
+      if (!want) return;
+      var ran = startedAt ? Date.now() - startedAt : 0;
+      if (ran < 1200) { fails++; } else { fails = 0; }
+      if (fails >= 4) { gate('Voice cues stopped — speech recognition isn’t available right now.'); stop(); return; }
+      setTimeout(begin, fails ? Math.min(4000, 500 * fails) : 0);
+    }
+    function begin() {
+      if (!want) return;
+      try { rec = new SR(); } catch (e) { startedAt = 0; scheduleRestart(); return; }
+      rec.continuous = true; rec.interimResults = false; rec.lang = 'en-US'; /* final results only — no interim re-fire */
+      startedAt = Date.now();
+      rec.onresult = function (ev) { fails = 0; armIdle(); for (var i = ev.resultIndex; i < ev.results.length; i++) { heard(ev.results[i][0].transcript); } };
+      rec.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { gate('Allow microphone access to use voice cues.'); stop(); } };
+      rec.onend = scheduleRestart; /* Chrome auto-stops on silence — resume (guarded above) */
+      try { rec.start(); } catch (e) { scheduleRestart(); }
+    }
+    btn.onclick = function () {
+      if (!want) { want = true; fails = 0; paint(true); armIdle(); begin(); }
+      else { stop(); }
+    };
+  })();
 
   /* ---------- comments (sml-reactions/v1/comments) ---------- */
   var CM = { items: [], count: 0, sort: 'top', open: {}, page: 1, loggedIn: !!ME, creatorId: 0, focus: (function () { var m = /[?&]c=(\d+)/.exec(location.search); return m ? m[1] : ''; })(), focused: false };
