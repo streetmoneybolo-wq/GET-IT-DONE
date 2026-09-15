@@ -359,6 +359,11 @@
         // width !important beats the feed-wide ".oh-post img{width:100%}" (same
         // specificity, later in cascade) that would otherwise stretch the group icon.
         '.sml-hf-grouppost-tag img{width:16px!important;min-width:16px;max-width:16px;height:16px!important;border-radius:5px;object-fit:cover;flex:none;}' +
+        // Friend surfacing (signed-in #2): a green "Friend" badge + top-border accent
+        // on cards authored by a mutual friend.
+        '.sml-hf-friend-badge{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px 2px 7px;border-radius:999px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#38F58A;background:linear-gradient(180deg,rgba(56,245,138,.18),rgba(56,245,138,.05));border:1px solid rgba(56,245,138,.42);vertical-align:middle;white-space:nowrap;}' +
+        '.sml-hf-friend-badge::before{content:"\\2726";font-size:9px;}' +
+        '.sml-hf-friend{border-top-color:rgba(56,245,138,.45)!important;}' +
         '#sml-hf-shell .tape-row:hover{animation-play-state:paused;}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
       document.head.appendChild(st);
@@ -1131,6 +1136,52 @@
       Promise.all(tasks).then(done,done);
     }
 
+    // ---- friends (mutual follows) surfaced in the feed (signed-in #2): a "Friend"
+    // badge on their cards. Priority is already server-side — the aggregator ranks
+    // friends highest (score), so their recent posts lead via the seed; the badge
+    // makes that relationship visible. (No client reordering: it was redundant with
+    // the server ranking and risked feed-ordering glitches.)
+    var friendSet=null;
+    function loadFriendSet(){
+      var me=(window.SML_ME&&window.SML_ME.id)||0; if(!me) return;
+      api('/wp-json/sml-friends/v1/friends/'+me).then(function(res){
+        var d=res&&res.j?res.j:res; var arr=(d&&d.friends)||(Array.isArray(d)?d:[])||[];
+        if(!arr.length) return;
+        // Key ONLY by user id — handle/name collide via nicename (e.g. the handle
+        // 'grandmasterobi' resolves to a different user than the "SML News" friend),
+        // which would false-badge an unrelated person's cards. Never nicename.
+        friendSet={byId:{}};
+        arr.forEach(function(f){ if(f&&f.id) friendSet.byId[String(f.id)]=1; });
+        markFriendCards();
+      }).catch(function(){});
+    }
+    function isFriendCard(card){
+      if(!friendSet) return false;
+      var me=String((window.SML_ME&&window.SML_ME.id)||'');
+      // Resolve the author's REAL user id from any id attribute the card carries:
+      // JS cards set data-sml-authorid; server cards emit data-hfe-recipient-id on
+      // the article and data-sml-user-id on the author link. Match by id only.
+      var aEl=card.querySelector('.oh-post-author');
+      var aid=String(card.getAttribute('data-sml-authorid')||card.getAttribute('data-hfe-recipient-id')||(aEl&&aEl.getAttribute('data-sml-user-id'))||'');
+      if(!aid||aid===me) return false;              // need a real id; never badge the viewer's own cards
+      if(!friendSet.byId[aid]) return false;
+      // Don't badge news/system accounts even if they appear as a mutual follow.
+      var lan=((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim().toLowerCase();
+      if(/^(stock\s*market\s*loop(?:\s*signal\s*news)?|sml(?:\s*news)?)$/.test(lan)) return false;
+      return true;
+    }
+    function markFriendCards(){
+      if(!friendSet) return;
+      host.querySelectorAll('.oh-post').forEach(function(card){
+        if(card.getAttribute('data-sml-friend-marked')) return;
+        var nameEl=card.querySelector('.oh-post-author-name'); if(!nameEl) return; // author not rendered yet
+        card.setAttribute('data-sml-friend-marked','1');
+        if(!isFriendCard(card)) return;
+        card.classList.add('sml-hf-friend');
+        if(!card.querySelector('.sml-hf-friend-badge')){ var b=document.createElement('span'); b.className='sml-hf-friend-badge'; b.textContent='Friend'; nameEl.parentNode.insertBefore(b, nameEl.nextSibling); }
+      });
+    }
+
     // One visibility engine. The default public feed is NOT collapsed per author:
     // it shows every latest post/article/letter newest-to-oldest (only literal
     // duplicates — same item/url — and stale auto-news are dropped). Following
@@ -1170,6 +1221,7 @@
       } else if (es){ es.style.display='none'; }
       positionRecommendationRails();
       ensurePinnedTop();
+      markFriendCards();
     }
 
     // Facebook-style comment attribution: "Alice commented on Bob's post".
@@ -1937,6 +1989,7 @@
     }
     fetchBreaking();
     fetchGroupHot();
+    loadFriendSet();
     fetchPersonalizedSeed().then(function(){ hydrateRecRails(); });
     backfillFeed();
     hydrateMediaRails();
