@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: SML Go Live — Multi-screen setup
-Description: Re-adds the easy multi-screen (up to 3 screens) live-stream setup to /go-live/. Prints the creator's REST nonce + handle and loads js/go-live-screens.js from the shared CDN, which renders a screen-count picker (POST sml-live/v1/slots), the per-screen keys, a simple one-stream-per-screen guide, and live per-screen status. Non-invasive; reversible by deactivation.
-Version: 1.0.0
+Description: Adds the easy multi-screen (up to 3 screens) live-stream setup to /go-live/ (screen-count picker → POST sml-live/v1/slots, per-screen keys, one-stream-per-screen guide, live status via js/go-live-screens.js) and keeps the legacy browser-cam "Stream Health" panel hidden there. Non-invasive; reversible by deactivation.
+Version: 1.1.0
 Author: StockMarketLoop
 */
 
@@ -56,5 +56,27 @@ function sml_glms_inject( $html ) {
 	$mount = '<div id="sml-gl-multiscreen" style="max-width:760px;margin:22px auto 44px;padding:0 16px;box-sizing:border-box"></div>';
 	$js = '<script id="sml-gl-screens-js" src="' . esc_url( $src ) . '" defer></scr' . 'ipt>';
 
-	return str_replace( '</body>', $mount . $cfg . $js . '</body>', $html );
+	// Keep the legacy browser-cam "Stream Health" panel hidden on /go-live/ (it only
+	// watched the browser camera and showed "Encoder: Waiting" forever). This matches
+	// the behavior of the now-deactivated snippet 7047; the shared #sml-glh-off-js
+	// marker means the two never double-inject if 7047 is ever reactivated.
+	$glh = '';
+	if ( strpos( $html, 'sml-glh-off-js' ) === false ) {
+		$glh = '<script id="sml-glh-off-js">(function(){var done=false;'
+			. 'var pre=document.createElement("style");'
+			. 'pre.textContent="#gl-middle>section.cs-card:nth-of-type(2){display:none!important}";'
+			. '(document.head||document.documentElement).appendChild(pre);'
+			. 'function mark(){var mid=document.getElementById("gl-middle");if(!mid)return;'
+			. 'var k=mid.children;for(var i=0;i<k.length;i++){var c=k[i];if(c.tagName!=="SECTION")continue;'
+			. 'var h=c.querySelector("h1,h2,h3,h4");'
+			. 'if(h&&/^\s*Stream Health\s*$/i.test(h.textContent||"")){'
+			. 'c.style.setProperty("display","none","important");'
+			. 'if(!done){done=true;if(pre.parentNode)pre.parentNode.removeChild(pre);}}}}'
+			. 'mark();'
+			. 'try{new MutationObserver(mark).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}'
+			. 'var n=0,t=setInterval(function(){mark();if(++n>60)clearInterval(t);},250);'
+			. '})();</scr' . 'ipt>';
+	}
+
+	return str_replace( '</body>', $glh . $mount . $cfg . $js . '</body>', $html );
 }
