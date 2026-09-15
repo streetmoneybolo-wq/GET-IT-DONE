@@ -1033,3 +1033,23 @@ html.sml-mobile .slw-frame:not(.multi) .slw-titleblk .who .nm,html.sml-mobile .s
 html.sml-mobile .slw-frame:not(.multi):has(.slw-frame-ph:not(.hide)){padding-bottom:80%}
 html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph{justify-content:flex-end;padding-bottom:98px;gap:8px}
 html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph .t2{max-width:86%}
+
+/* ---- control row (2026-09-14): on a 1280-wide desktop the frame is ~740px but the row needed ~850px, so
+   Share / ⧉ / ⚙ were clipped outside the frame. The player is an inline-size container; under 880px the
+   row tightens (smaller gaps and pads, shorter volume bar, smaller clock, "Terminal →" label). ---- */
+.slw-player{container-type:inline-size}
+@container (max-width: 880px){
+  .slw-ctl-row{gap:10px}
+  .slw-ctl-l{gap:8px}
+  .slw-ctl-r{gap:6px}
+  .slw-vol{padding:0 9px}
+  .slw-vol .bar{width:36px}
+  .slw-loopchip{padding:0 9px}
+  .slw-clock{font-size:12px}
+  .slw-btn-term{font-size:0;padding:9px}
+  .slw-btn-term > *{display:none}
+  .slw-btn-term::before{content:"Terminal →";font-size:10px}
+  .slw-like,.slw-share,.slw-tom-btn{padding:8px 9px}
+  .slw-tom-count{padding:3px 5px}
+  .slw-gear{padding:8px}
+}
