@@ -443,6 +443,67 @@
       var target = posts[Math.min(index, posts.length - 1)];
       target.parentNode.insertBefore(rail, target.nextSibling);
     }
+    // ---- trader recommendation rails (signed-in): traders you may know /
+    // recommended to follow / near you. Real sources: the aggregator creators[]
+    // (follower-ranked) and GET /sml/v1/recommendations/friends (mutual/near;
+    // cold-starts empty -> "you may know" falls back to feed authors you don't
+    // follow). Uses the trader-card CSS (.sml-hf-rec-avatar/name/reason).
+    var recRailData = { know: [], recommend: [], near: [] };
+    function recCard(t){
+      t = t || {};
+      var name = t.name || 'Trader';
+      var url = t.url || (t.handle ? ('/' + t.handle + '/') : '/creators/');
+      var av = t.avatar || t.img || '';
+      var avatar = av ? '<img class="sml-hf-rec-avatar" src="' + esc(av) + '" alt="' + esc(name) + '" loading="lazy">' : '<span class="sml-hf-rec-avatar">' + esc(initialsOf(name) || 'T') + '</span>';
+      return '<a class="sml-hf-rec-card" href="' + esc(url) + '">' + avatar + '<span class="sml-hf-rec-name">' + esc(name) + '</span><span class="sml-hf-rec-reason">' + esc(t.reason || 'trader') + '</span></a>';
+    }
+    function buildRecRail(kind, title, sub, kicker, list){
+      list = Array.isArray(list) ? list.filter(Boolean) : [];
+      if (!list.length) return null;
+      list = list.slice(0, 24);
+      var rail = document.createElement('section'); rail.className = 'sml-hf-recrail'; rail.setAttribute('data-rec-kind', kind); rail.__idx = 0; rail.__size = list.length;
+      rail.innerHTML = '<div class="sml-hf-rec-head"><div><div class="sml-hf-rec-kicker">' + esc(kicker) + '</div><div class="sml-hf-rec-title">' + esc(title) + '</div><div class="sml-hf-rec-sub">' + esc(sub) + '</div></div><button class="sml-hf-rec-next" type="button" aria-label="Next ' + esc(title) + '">›</button></div><div class="sml-hf-rec-window"><div class="sml-hf-rec-track">' + list.map(recCard).join('') + '</div></div>';
+      return rail;
+    }
+    function recFromCreators(){
+      var me = (window.SML_ME && String(window.SML_ME.id)) || '';
+      var cr = (personalizedData && personalizedData.creators) || [];
+      return cr.filter(function(c){ return c && !c.following && String(c.id) !== me; }).map(function(c){
+        return { name: c.name, handle: c.handle, url: c.url || (c.handle ? ('/' + c.handle + '/') : ''), avatar: c.avatar, reason: (c.followers != null ? (c.followers + ' follower' + (c.followers === 1 ? '' : 's')) : 'active creator') };
+      });
+    }
+    function knowFromFeed(){
+      var me = (window.SML_ME && String(window.SML_ME.id)) || '';
+      var fol = {}; ((personalizedData && personalizedData.following) || []).forEach(function(id){ fol[String(id)] = 1; });
+      var crIds = {}; ((personalizedData && personalizedData.creators) || []).forEach(function(c){ if (c) crIds[String(c.id)] = 1; });
+      var by = {}, out = [];
+      ((personalizedData && personalizedData.feed) || []).forEach(function(it){
+        var a = it && it.author; if (!a || !a.id) return; var id = String(a.id);
+        if (id === me || fol[id] || crIds[id] || by[id]) return;
+        if (/^(stock\s*market\s*loop|sml(\s*news)?)$/i.test(a.name || '')) return;
+        by[id] = 1; out.push({ name: a.name, handle: a.handle, url: a.url || (a.handle ? ('/' + a.handle + '/') : ''), avatar: a.avatar, reason: 'appears in your feed' });
+      });
+      return out.slice(0, 20);
+    }
+    function hydrateRecRails(){
+      recRailData.recommend = recFromCreators();
+      positionRecommendationRails();
+      api('/wp-json/sml/v1/recommendations/friends').then(function(res){
+        var d = res && res.j ? res.j : res;
+        var arr = (d && (d.items || d.recommendations || d.friends || d)) || [];
+        if (!Array.isArray(arr)) arr = [];
+        var mapT = function(x){
+          var raw = x.reason_tags || x.reasons || x.reason || '';
+          var tags = (Array.isArray(raw) ? raw.join(' ') : String(raw)).toLowerCase();
+          return { name: x.name || x.display_name, handle: x.handle || x.slug, url: x.url || x.profile_url || (x.handle ? ('/' + x.handle + '/') : ''), avatar: x.avatar || x.avatar_url || x.img, reason: (typeof x.reason === 'string' ? x.reason : ''), _tags: tags };
+        };
+        var all = arr.map(mapT);
+        recRailData.know = all.filter(function(t){ return /mutual|friend|know|connect/.test(t._tags); }).map(function(t){ t.reason = t.reason || 'connected to people you follow'; return t; });
+        recRailData.near = all.filter(function(t){ return /near|city|local|area/.test(t._tags); }).map(function(t){ t.reason = t.reason || 'in your area'; return t; });
+        if (!recRailData.know.length) recRailData.know = knowFromFeed();
+        positionRecommendationRails();
+      }).catch(function(){ if (!recRailData.know.length){ recRailData.know = knowFromFeed(); positionRecommendationRails(); } });
+    }
     function positionRecommendationRails(){
       host.querySelectorAll('.sml-hf-recrail').forEach(function(r){ r.remove(); });
       if (curTab === 'live') return;
@@ -450,7 +511,10 @@
       if (posts.length < 3) return;
       placeRailAfter(posts, Math.min(2, posts.length - 1), buildMediaRail('uploads','Video Uploads','Recommended creator uploads, cycling endlessly just like a social feed rail.','recommended videos', mediaRailData.uploads, 'UPLOAD'));
       if (posts.length >= 6) placeRailAfter(posts, Math.min(5, posts.length - 1), buildMediaRail('live','Live Videos','Live streams and active watch pages from StockMarketLoop creators.','live now', mediaRailData.live, 'LIVE'));
+      if (posts.length >= 8) placeRailAfter(posts, Math.min(7, posts.length - 1), buildRecRail('know','Traders you may know','People connected to who you follow and interact with.','you may know', recRailData.know));
       if (posts.length >= 11) placeRailAfter(posts, Math.min(10, posts.length - 1), buildMediaRail('shorts','Shorts & Profile Uploads','Short/non-index uploads from profile pages and feed uploads. Uploads still require a title.','quick clips', mediaRailData.shorts, 'SHORT'));
+      if (posts.length >= 14) placeRailAfter(posts, Math.min(13, posts.length - 1), buildRecRail('recommend','Recommended traders to follow','Active StockMarketLoop creators worth following.','recommended', recRailData.recommend));
+      if (posts.length >= 18) placeRailAfter(posts, Math.min(17, posts.length - 1), buildRecRail('near','Traders near you','Traders in your area — add your city in your profile to see more.','near you', recRailData.near));
     }
     function recycleFeedIfNeeded(){
       if (curTab === 'live') return;
@@ -1718,7 +1782,7 @@
         }).catch(function(){});
       });
     }
-    fetchPersonalizedSeed();
+    fetchPersonalizedSeed().then(function(){ hydrateRecRails(); });
     backfillFeed();
     hydrateMediaRails();
     function pollFeed(){
