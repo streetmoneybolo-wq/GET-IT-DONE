@@ -101,6 +101,11 @@
         '.sml-hf-rec-avatar{width:58px;height:58px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;flex:none;background:linear-gradient(160deg,#26343F,#0D141D);color:#38F58A;font-family:"Space Grotesk",sans-serif;font-weight:900;font-size:17px;box-shadow:0 0 0 2px #0B131F,0 0 0 4px rgba(56,245,138,.70),0 10px 22px -12px rgba(56,245,138,.8);}' +
         '.sml-hf-rec-name{max-width:100%;margin-top:9px;font-size:12.2px;font-weight:800;color:#E6EDF5;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:28px;}' +
         '.sml-hf-rec-reason{max-width:100%;margin-top:5px;font-family:"IBM Plex Mono",monospace;font-size:8.5px;letter-spacing:.03em;color:#7E93A6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.sml-hf-recrail[data-rec-kind^="media-"] .sml-hf-rec-card{width:178px;min-width:178px;text-align:left;align-items:stretch;padding:10px;}' +
+        '.sml-hf-media-thumb{height:96px;border-radius:14px;background:linear-gradient(160deg,#122033,#07111C);border:1px solid rgba(56,245,138,.18);background-size:cover;background-position:center;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#38F58A;font-weight:900;}' +
+        '.sml-hf-media-badge{position:absolute;left:8px;top:8px;padding:3px 8px;border-radius:999px;background:rgba(2,8,13,.82);border:1px solid rgba(56,245,138,.35);font-family:"IBM Plex Mono",monospace;font-size:8px;color:#38F58A;font-weight:800;letter-spacing:.08em;}' +
+        '.sml-hf-media-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:9px;min-height:34px;color:#E6EDF5;font-size:12.5px;font-weight:800;line-height:1.32;}' +
+        '.sml-hf-media-meta{margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#7E93A6;font-size:10px;}' +
         '@media(max-width:560px){.sml-hf-rec-title{font-size:18px}.sml-hf-rec-card{width:104px;min-width:104px}.sml-hf-rec-avatar{width:52px;height:52px}.sml-hf-rec-next{width:44px;height:44px}}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
         '@keyframes smlHfNew{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}' +
@@ -229,6 +234,25 @@
       rail.innerHTML = '<div class="sml-hf-rec-head"><div><div class="sml-hf-rec-kicker">'+esc(kicker)+'</div><div class="sml-hf-rec-title">'+esc(title)+'</div><div class="sml-hf-rec-sub">'+esc(sub)+'</div></div><button class="sml-hf-rec-next" type="button" aria-label="Next traders">›</button></div><div class="sml-hf-rec-window"><div class="sml-hf-rec-track">'+list.map(recCard).join('')+'</div></div>';
       return rail;
     }
+    var mediaRailData = { uploads: [], live: [], shorts: [] };
+    function mediaCard(x, badge){
+      var url = x.url || x.watch_url || (x.id ? ('/watch/' + encodeURIComponent(x.id) + '/') : '/watch/');
+      var img = x.img || x.thumbnail || x.image || '';
+      var title = x.title || x.name || 'Video upload';
+      var meta = [x.creator || x.handle || '', x.views_label || (x.views != null ? Number(x.views).toLocaleString() + ' views' : ''), x.ago || x.status || ''].filter(Boolean).join(' · ');
+      var bg = img ? ' style="background-image:url('+esc(img)+')"' : '';
+      return '<a class="sml-hf-rec-card" href="'+esc(url)+'"><div class="sml-hf-media-thumb"'+bg+'>'+(img?'':'▶')+'<span class="sml-hf-media-badge">'+esc(badge)+'</span></div><span class="sml-hf-media-title">'+esc(title)+'</span><span class="sml-hf-media-meta">'+esc(meta)+'</span></a>';
+    }
+    function buildMediaRail(kind, title, sub, kicker, list, badge){
+      list = Array.isArray(list) ? list.filter(Boolean) : [];
+      if (!list.length) return null;
+      var endless = list.slice();
+      while (endless.length && endless.length < 30) endless = endless.concat(list);
+      endless = endless.slice(0, 40);
+      var rail = document.createElement('section'); rail.className='sml-hf-recrail'; rail.setAttribute('data-rec-kind', 'media-'+kind); rail.__idx = 0; rail.__size = endless.length;
+      rail.innerHTML = '<div class="sml-hf-rec-head"><div><div class="sml-hf-rec-kicker">'+esc(kicker)+'</div><div class="sml-hf-rec-title">'+esc(title)+'</div><div class="sml-hf-rec-sub">'+esc(sub)+'</div></div><button class="sml-hf-rec-next" type="button" aria-label="Next '+esc(title)+'">›</button></div><div class="sml-hf-rec-window"><div class="sml-hf-rec-track">'+endless.map(function(x){ return mediaCard(x, badge); }).join('')+'</div></div>';
+      return rail;
+    }
     function placeRailAfter(posts, index, rail){
       if(!rail || !posts.length) return;
       var target = posts[Math.min(index, posts.length - 1)];
@@ -239,9 +263,9 @@
       if (curTab === 'live') return;
       var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none'; });
       if (posts.length < 3) return;
-      placeRailAfter(posts, posts.length < 18 ? Math.min(6, posts.length - 1) : Math.min(17, posts.length - 1), buildRecRail('know','Traders You May Know','People ranked by shared market circles, repeated interests, profile closeness, and engagement signals.','social graph'));
-      if (posts.length > 25) placeRailAfter(posts, Math.min(42, posts.length - 1), buildRecRail('follow','Recommended Traders to Follow','Only 25 traders selected for likely engagement, watchlist overlap, and similar market behavior.','ai picks'));
-      if (posts.length > 35) placeRailAfter(posts, Math.min(52, posts.length - 1), buildRecRail('near','Traders Near You','Location uses listed city/state when available and IP-derived analytics location when the site exposes it.','local market'));
+      placeRailAfter(posts, Math.min(2, posts.length - 1), buildMediaRail('uploads','Video Uploads','Recommended creator uploads, cycling endlessly just like a social feed rail.','recommended videos', mediaRailData.uploads, 'UPLOAD'));
+      if (posts.length >= 6) placeRailAfter(posts, Math.min(5, posts.length - 1), buildMediaRail('live','Live Videos','Live streams and active watch pages from StockMarketLoop creators.','live now', mediaRailData.live, 'LIVE'));
+      if (posts.length >= 11) placeRailAfter(posts, Math.min(10, posts.length - 1), buildMediaRail('shorts','Shorts & Profile Uploads','Short/non-index uploads from profile pages and feed uploads. Uploads still require a title.','quick clips', mediaRailData.shorts, 'SHORT'));
     }
     function recycleFeedIfNeeded(){
       if (curTab === 'live') return;
@@ -249,6 +273,7 @@
       if (posts.length < 3 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 72) return;
       var shellEl = document.getElementById('sml-hf-shell'); if(!shellEl) return;
       if (shellEl.scrollTop + shellEl.clientHeight < shellEl.scrollHeight - 1200) return;
+      if (typeof loadMoreFeed === 'function' && loadMoreFeed()) return;
       var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
       posts.slice(0, Math.min(12, posts.length)).forEach(function(p){
         var c = p.cloneNode(true); c.setAttribute('data-sml-loop-clone','1'); c.style.animation='smlHfNew .45s ease'; c.querySelectorAll('.sml-rh-panel,.sml-rh-btn,.sml-hf-recrail').forEach(function(x){ x.remove(); }); main.appendChild(c); armRh(c, 250);
@@ -550,7 +575,7 @@
     var RNONCE='';
     try { var scs=document.querySelectorAll('script:not([src])'); for (var si=0; si<scs.length; si++){ var sm=(scs[si].textContent||'').match(/["'](?:nonce|restNonce|rest_nonce|_wpnonce|wpNonce)["']\s*[:=]\s*["']([A-Za-z0-9]{8,12})["']/); if (sm){ RNONCE=sm[1]; break; } } } catch(e){}
     function api(u){ var h={}; if (RNONCE) h['X-WP-Nonce']=RNONCE; return fetch(u,{credentials:'same-origin',headers:h}).then(function(r){ if(!r.ok) throw r.status; return r.json(); }); }
-    function restPostCard(p){
+    function restPostCard(p, label){
       var emb=p&&p._embedded||{}, au=(emb.author&&emb.author[0])||{}, fm=(emb['wp:featuredmedia']&&emb['wp:featuredmedia'][0])||{};
       var title=textOnly(p&&p.title&&p.title.rendered)||'Untitled';
       var body=textOnly(p&&p.excerpt&&p.excerpt.rendered).slice(0,700);
@@ -561,7 +586,27 @@
       art.className='oh-card oh-post sml-sth-post';
       art.setAttribute('data-hfe-item', id); art.setAttribute('data-hfe-url', url); art.setAttribute('data-sml-news-item','1'); art.setAttribute('data-sml-published', date);
       art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av||'/wp-content/uploads/2026/08/Untitled-design-90.png')+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
-        '<div class="oh-meta">'+esc(name+(date?' · '+date:''))+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
+        '<div class="oh-meta">'+esc((label||name)+(date?' · '+date:''))+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
+        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
+        '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
+      return art;
+    }
+    function letterCard(row){
+      row = row || {};
+      var title = textOnly(row.title || row.headline || row.name || 'Loop Letter');
+      var body = textOnly(row.excerpt || row.summary || row.body || row.content || '').slice(0,700);
+      var url = row.url || row.link || row.permalink || (row.slug ? ('/n/' + row.slug + '/') : '/n/');
+      var date = row.date || row.published_at || row.created_at || row.updated_at || '';
+      var author = row.author || {};
+      var name = row.author_name || author.name || row.creator || 'Loop Letters';
+      var aurl = row.author_url || author.url || row.profile_url || '/n/';
+      var av = row.author_avatar || author.avatar || row.avatar || '/wp-content/uploads/2026/08/Untitled-design-90.png';
+      var img = row.image || row.thumbnail || row.featured_image || '';
+      var art=document.createElement('article');
+      art.className='oh-card oh-post sml-sth-post sml-loop-letter-feed-post';
+      art.setAttribute('data-hfe-item','letter-'+(row.id||row.slug||url)); art.setAttribute('data-hfe-url',url); art.setAttribute('data-sml-published',date);
+      art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av)+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
+        '<div class="oh-meta">Loop Letter'+(date?' · '+esc(date):'')+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
         (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
         '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
       return art;
@@ -583,21 +628,20 @@
       Promise.all(tasks).then(done,done);
     }
 
-    // One visibility engine: dedupe (one card per user per content type; news
-    // exempt) + the active tab's filter. Live tab swaps the feed for the grid.
+    // One visibility engine. The default public feed is NOT deduped: it shows
+    // every latest post/article/letter in newest-to-oldest order. Following only
+    // filters to people the viewer follows. Live tab swaps the feed for the grid.
     function dedupeFeed(){
       var live = curTab==='live';
       var lg=document.getElementById('sml-hf-livegrid'); if (lg) lg.style.display=live?'grid':'none';
       host.style.display=live?'none':'';
       if (live) return;
-      var seen={}, any=false;
+      var any=false;
       host.querySelectorAll('.oh-post').forEach(function(card){
         var an=((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
         var lan=an.toLowerCase();
         var isNewsA=/^(stock\s*market\s*loop|sml(\s*news)?)$/.test(lan);
-        var isLoopClone=card.getAttribute('data-sml-loop-clone')==='1';
         var show=true;
-        if (!isNewsA && lan && !isLoopClone){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
         if (show && curTab==='following'){
           if (isNewsA) show=false;
           else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan])); }
@@ -662,28 +706,76 @@
     var feedSeen = {};
     function cardKeyOf(card){ var a = card.querySelector('h2 a'); if (a && a.getAttribute('href')) return a.getAttribute('href'); return 'x:' + ((card.innerText||'').replace(/\s+/g,' ').slice(0,140)); }
     host.querySelectorAll('.oh-post').forEach(function(c){ feedSeen[cardKeyOf(c)] = 1; });
+    var feedPage = 1, feedLoading = false, feedExhausted = false, lettersLoaded = false;
+    function normalizeLetters(d){
+      d = d && d.j ? d.j : d;
+      var rows = (d && (d.items || d.feed || d.letters || d.posts || d.results)) || d || [];
+      if (!Array.isArray(rows)) rows = [];
+      return rows;
+    }
+    function appendFeedNodes(nodes){
+      if (!nodes.length) return 0;
+      nodes.sort(function(a,b){ return (Date.parse(b.getAttribute('data-sml-published')||'')||0) - (Date.parse(a.getAttribute('data-sml-published')||'')||0); });
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host, added=0;
+      nodes.forEach(function(node){
+        var key = cardKeyOf(node);
+        if (!key || feedSeen[key]) return;
+        feedSeen[key] = 1;
+        node.style.animation='smlHfNew .45s ease';
+        main.appendChild(node);
+        armRh(node, 250);
+        added++;
+      });
+      if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
+      return added;
+    }
+    function loadMoreFeed(){
+      if (feedLoading || feedExhausted) return false;
+      feedLoading = true;
+      var page = feedPage++;
+      var jobs = [
+        api('/wp-json/wp/v2/posts?per_page=30&page='+page+'&_embed=1&_fields=id,link,date,title,excerpt,author,jetpack_featured_media_url,_embedded').catch(function(){ return []; })
+      ];
+      if (!lettersLoaded) {
+        lettersLoaded = true;
+        jobs.push(api('/wp-json/sml-letters/v1/feed?limit=30&per_page=30').then(normalizeLetters).catch(function(){ return []; }));
+      }
+      Promise.all(jobs).then(function(results){
+        var posts = Array.isArray(results[0]) ? results[0] : [];
+        var letters = Array.isArray(results[1]) ? results[1] : [];
+        var nodes = [];
+        posts.forEach(function(p){ nodes.push(restPostCard(p)); });
+        letters.forEach(function(l){ nodes.push(letterCard(l)); });
+        var added = appendFeedNodes(nodes);
+        if (!posts.length && !letters.length) feedExhausted = true;
+        feedLoading = false;
+        if (host.querySelectorAll('.oh-post:not([data-sml-loop-clone])').length < 18 && added) loadMoreFeed();
+      }).catch(function(){ feedLoading=false; });
+      return true;
+    }
     function backfillFeed(){
       var current=host.querySelectorAll('.oh-post:not([data-sml-loop-clone])').length;
-      if (current >= 18) return;
-      api('/wp-json/wp/v2/posts?per_page=30&_embed=1&_fields=id,link,date,title,excerpt,author,jetpack_featured_media_url,_embedded').then(function(rows){
-        if (!Array.isArray(rows) || !rows.length) return;
-        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host, added=0;
-        rows.forEach(function(p){
-          if (added >= 24) return;
-          var tmp = document.createElement('a'); tmp.href = (p&&p.link)||'#';
-          var key = tmp.href || ((p&&p.link)||'');
-          if (!key || feedSeen[key]) return;
-          var node = restPostCard(p);
-          feedSeen[cardKeyOf(node)] = 1;
-          node.style.animation='smlHfNew .45s ease';
-          main.appendChild(node);
-          armRh(node, 250);
-          added++;
-        });
-        if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
+      if (current >= 30) return;
+      loadMoreFeed();
+    }
+    function hydrateMediaRails(){
+      api('/wp-json/sml-video-upload-studio/v1/rail').then(function(res){
+        var j = res && res.j ? res.j : res;
+        var items = [].concat((j&&j.up_next)||[], (j&&j.related)||[], (j&&j.items)||[], (j&&j.videos)||[]);
+        var seen = {};
+        mediaRailData.uploads = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        mediaRailData.shorts = items.filter(function(x){ var t=((x&&x.type)||x.kind||x.format||x.visibility||'').toString().toLowerCase(); return x && (x.short || x.is_short || x.noindex || /short|clip|profile|noindex/.test(t)); }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        positionRecommendationRails();
+      }).catch(function(){});
+      api('/wp-json/sml-live/v1/slots').then(function(d){
+        var arr=d&&d.j?d.j:d; arr=arr&&((arr.slots)||arr.streams||arr.items||arr)||[];
+        if (!Array.isArray(arr)) arr=Object.keys(arr||{}).map(function(k){ return arr[k]; }).filter(function(x){ return x&&typeof x==='object'; });
+        mediaRailData.live = arr.filter(function(s){ return s&&(s.live||s.is_live||s.active||s.status==='live'); }).map(function(s){ return { title:s.title||s.stream_title||'Live on StockMarketLoop', name:s.name||s.display_name||s.handle||'', url:s.watch_url||s.url||(s.handle?('/watch/'+s.handle+'/'):'/live/'), img:s.thumbnail||s.image||'', creator:s.name||s.display_name||s.handle||'', status:'live now' }; });
+        positionRecommendationRails();
       }).catch(function(){});
     }
     backfillFeed();
+    hydrateMediaRails();
     function pollFeed(){
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
         if (html.indexOf('sml-optimized-home') < 0) return;
