@@ -352,6 +352,7 @@ if (!function_exists('sml_video_upload_studio_publish_video')) {
         $ticker = strtoupper(preg_replace('/[^A-Z]/', '', (string) $request->get_param('ticker')));
         $visibility = sanitize_key((string) $request->get_param('visibility'));
         $visibility = in_array($visibility, array('public', 'unlisted', 'private', 'scheduled', 'members', 'premium'), true) ? $visibility : 'public';
+        $short = filter_var($request->get_param('short'), FILTER_VALIDATE_BOOLEAN);
         $video_url = esc_url_raw((string) $request->get_param('video_url'));
         $video_name = sanitize_text_field((string) $request->get_param('video_name'));
         $video_mime = sanitize_mime_type((string) $request->get_param('video_mime'));
@@ -444,6 +445,8 @@ if (!function_exists('sml_video_upload_studio_publish_video')) {
             'description' => $description,
             'ticker' => $ticker,
             'visibility' => $visibility,
+            'short' => $short,
+            'is_short' => $short,
             'video_url' => $video_url,
             'video_name' => $video_name ?: $title,
             'video_mime' => $video_mime ?: 'video/mp4',
@@ -649,6 +652,7 @@ if (!function_exists('sml_video_upload_studio_footer_boot')) {
       hashtags: '#StockMarketLoop',
       audience: 'Not made for kids',
       visibility: 'public',
+      short: false,
       embeddingAllowed: true,
       commentsAllowed: true,
       publishDate: schedule.date,
@@ -899,6 +903,7 @@ if (!function_exists('sml_video_upload_studio_footer_boot')) {
           + '  <div class="sml-upload-toggle-grid">'
           + '    <div class="sml-upload-toggle"><label><input type="checkbox" data-check="embeddingAllowed"' + (draft.embeddingAllowed ? ' checked' : '') + '> Allow embedding</label><p>Helps creators and sites reuse the watch page player cleanly.</p></div>'
           + '    <div class="sml-upload-toggle"><label><input type="checkbox" data-check="commentsAllowed"' + (draft.commentsAllowed ? ' checked' : '') + '> Allow comments</label><p>Comments help engagement and recommendation quality.</p></div>'
+          + '    <div class="sml-upload-toggle"><label><input type="checkbox" data-check="short"' + (draft.short ? ' checked' : '') + '> Short video</label><p>Adds this upload to the homepage Shorts &amp; Profile Uploads rail. Best for clips under a minute.</p></div>'
           + '  </div>'
           + '  <button type="button" class="sml-upload-review-publish" data-publish>Publish video</button>'
           + '</div>';
@@ -1087,6 +1092,7 @@ if (!function_exists('sml_video_upload_studio_footer_boot')) {
         description: draft.description || '',
         ticker: String(draft.ticker || '').replace(/^\$/, ''),
         visibility: draft.visibility || 'public',
+        short: !!draft.short,
         video_url: uploaded.videoUpload.url,
         video_name: uploaded.videoUpload.name || draft.filePreviewName || '',
         video_mime: uploaded.videoUpload.mime || '',

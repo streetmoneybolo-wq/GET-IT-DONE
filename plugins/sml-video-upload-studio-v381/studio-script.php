@@ -52,6 +52,7 @@ if (!function_exists('sml_cs_script')) {
       tickers: [],
       alertImages: [],
       visibility: 'public',
+      short: false,
       surfaces: { ticker: true, groups: true, watchlists: true, profile: true, movers: false, letters: false },
       sectors: [], watchInterest: [],
       schedule: 'now', scheduleDate: '', scheduleTime: '10:00',
@@ -627,6 +628,11 @@ if (!function_exists('sml_cs_script')) {
           + (option[3] ? '<span class="cs-badge">' + esc(option[3]) + '</span>' : '') + '</span></button>';
       }).join('') + '</div>';
 
+    html += '<div class="cs-label" style="margin-top:26px">Video format</div>'
+      + '<div class="cs-hint" style="margin-bottom:12px">Mark this as a Short to feature it in the homepage Shorts &amp; Profile Uploads rail. Best for clips under a minute.</div>'
+      + '<div class="cs-radio-grid"><button class="cs-radio' + (draft.short ? ' cs-on' : '') + '" data-short-toggle><i></i>'
+      + '<span><b>Short</b><span>' + (draft.short ? 'Marked as a Short - shows in the Shorts rail.' : 'Tap to mark this upload as a Short.') + '</span></span></button></div>';
+
     html += '<div class="cs-head-row" style="margin-top:26px;margin-bottom:6px"><div><div class="cs-label" style="margin:0">2. Target Surfaces</div>'
       + '<div class="cs-hint">Choose where your video will be distributed.</div></div>'
       + '<button class="cs-rail-link" data-select-all>Select All</button></div>'
@@ -932,6 +938,7 @@ if (!function_exists('sml_cs_script')) {
       ticker: primaryTicker(),
       tickers: draft.tickers,
       visibility: visibility,
+      short: !!draft.short,
       video_url: draft.uploaded.url,
       video_name: draft.uploaded.name,
       video_mime: draft.uploaded.mime,
@@ -1137,6 +1144,8 @@ if (!function_exists('sml_cs_script')) {
 
     var vis = target.closest('[data-visibility]');
     if (vis) { draft.visibility = vis.getAttribute('data-visibility'); save(); render(); return; }
+
+    if (target.closest('[data-short-toggle]')) { draft.short = !draft.short; save(); render(); return; }
 
     var sched = target.closest('[data-schedule]');
     if (sched) { draft.schedule = sched.getAttribute('data-schedule'); save(); render(); return; }
