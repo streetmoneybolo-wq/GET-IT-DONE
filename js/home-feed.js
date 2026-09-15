@@ -356,7 +356,9 @@
         // groups get a locked amber pill (content is server-gated to paying members).
         '.sml-hf-grouppost-tag{display:inline-flex;align-items:center;gap:7px;max-width:100%;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:11px;letter-spacing:.05em;color:#8CC9FF;text-decoration:none;background:linear-gradient(180deg,rgba(61,139,253,.16),rgba(61,139,253,.05));border:1px solid rgba(61,139,253,.34);border-radius:999px;padding:4px 11px;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
         '.sml-hf-grouppost-tag.paid{color:#FFD98A;background:linear-gradient(180deg,rgba(255,184,32,.15),rgba(255,184,32,.04));border-color:rgba(255,184,32,.36);}' +
-        '.sml-hf-grouppost-tag img{width:16px;height:16px;border-radius:5px;object-fit:cover;flex:none;}' +
+        // width !important beats the feed-wide ".oh-post img{width:100%}" (same
+        // specificity, later in cascade) that would otherwise stretch the group icon.
+        '.sml-hf-grouppost-tag img{width:16px!important;min-width:16px;max-width:16px;height:16px!important;border-radius:5px;object-fit:cover;flex:none;}' +
         '#sml-hf-shell .tape-row:hover{animation-play-state:paused;}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
       document.head.appendChild(st);
