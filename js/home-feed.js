@@ -364,6 +364,12 @@
         '.sml-hf-friend-badge{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px 2px 7px;border-radius:999px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#38F58A;background:linear-gradient(180deg,rgba(56,245,138,.18),rgba(56,245,138,.05));border:1px solid rgba(56,245,138,.42);vertical-align:middle;white-space:nowrap;}' +
         '.sml-hf-friend-badge::before{content:"\\2726";font-size:9px;}' +
         '.sml-hf-friend{border-top-color:rgba(56,245,138,.45)!important;}' +
+        // Watchlist live-room cards (signed-in #6): a violet "LIVE ROOM" pulse for an
+        // active voice/video room about one of the viewer's watchlist tickers.
+        '.sml-hf-room{border-color:rgba(139,92,246,.5)!important;border-top-color:rgba(180,150,255,.6)!important;box-shadow:inset 0 1px 0 rgba(200,180,255,.2),0 0 0 1px rgba(139,92,246,.2),0 20px 42px -20px rgba(0,0,0,.9),0 0 46px -24px rgba(139,92,246,.55)!important;}' +
+        '.sml-hf-room-tag{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:\'Space Grotesk\',sans-serif;font-weight:800;font-size:11px;letter-spacing:.09em;color:#C4B5FD;background:linear-gradient(180deg,rgba(139,92,246,.2),rgba(139,92,246,.06));border:1px solid rgba(139,92,246,.42);border-radius:999px;padding:4px 12px;margin:0 0 10px;text-transform:uppercase;}' +
+        '.sml-hf-room-tag::before{content:"";width:8px;height:8px;border-radius:50%;background:#A855F7;box-shadow:0 0 8px 1px rgba(168,85,247,.85);animation:smlHfGlow 1.4s ease-in-out infinite;flex:none;}' +
+        '.sml-hf-room-join{color:#C4B5FD!important;font-weight:700;}' +
         '#sml-hf-shell .tape-row:hover{animation-play-state:paused;}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
       document.head.appendChild(st);
@@ -540,7 +546,7 @@
     }
     function recycleFeedIfNeeded(){
       if (curTab === 'live') return;
-      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone') && !(c.closest && c.closest('#sml-hf-pinned')); });
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone') && !(c.closest && c.closest('#sml-hf-pinned')) && !c.classList.contains('sml-hf-room'); });
       if (posts.length < 3 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 72) return;
       var shellEl = document.getElementById('sml-hf-shell'); if(!shellEl) return;
       if (shellEl.scrollTop + shellEl.clientHeight < shellEl.scrollHeight - 1200) return;
@@ -1911,6 +1917,64 @@
         if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
       }).catch(function(){});
     }
+    // ---- watchlist live rooms (signed-in #6): active voice/video rooms about a
+    // ticker on the viewer's watchlist, from the server-gated enumerator (paid-group
+    // rooms only reach paying members; 2+ participants; live heartbeat). Rooms are
+    // ephemeral, so this re-fetches on the feed poll and reconciles (clears + redraws
+    // the room cards) so ended rooms disappear and new ones appear.
+    function roomCard(item){
+      item = item || {};
+      var g = item.group || {}, hostU = item.host || {};
+      var syms = (item.symbols || []).filter(Boolean);
+      var kind = String(item.kind || '').toLowerCase();
+      var kindLabel = kind === 'voice' ? 'Live Voice Room' : (kind === 'screen' ? 'Live Screen Share' : 'Live Room');
+      var n = parseInt(item.participant_count, 10) || 0;
+      var gurl = g.url || '/groups/';
+      var hname = hostU.name || hostU.display_name || 'Host';
+      var hurl = hostU.url || hostU.profile_url || gurl;
+      var hav = hostU.avatar || hostU.avatar_url || '/wp-content/uploads/2026/08/Untitled-design-90.png';
+      var title = textOnly(item.title || '') || (kindLabel + (syms.length ? (' · $' + syms[0]) : ''));
+      var symChips = syms.slice(0, 3).map(function(s){ return '$' + s; }).join(' ');
+      var tag = '<div class="sml-hf-room-tag">' + esc(kindLabel) + (symChips ? (' · ' + esc(symChips)) : '') + '</div>';
+      var art = document.createElement('article');
+      art.className = 'oh-card oh-post sml-sth-post sml-hf-room';
+      art.setAttribute('data-hfe-item', 'room-' + (item.room_id || gurl));
+      art.setAttribute('data-hfe-url', gurl);
+      if (hostU.id) art.setAttribute('data-sml-authorid', String(hostU.id));
+      art.innerHTML = tag +
+        '<a class="oh-post-author" href="' + esc(hurl) + '"><img class="oh-post-avatar" src="' + esc(hav) + '" alt="' + esc(hname) + '"><span class="oh-post-author-name">' + esc(hname) + '</span></a>' +
+        '<div class="oh-meta">' + esc(hname + ' · ' + (g.name || 'Group') + ' · ' + n + ' in room') + '</div>' +
+        '<h2><a href="' + esc(gurl) + '">' + esc(title) + '</a></h2>' +
+        '<div class="sml-sth-actions"><span>👥 ' + n + ' in room</span> <a class="sml-hf-room-join" href="' + esc(gurl) + '">Join room →</a></div>';
+      return art;
+    }
+    function renderRooms(list){
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+      // Reconcile: drop the current room cards (freeing their dedup keys) then redraw.
+      host.querySelectorAll('.sml-hf-room').forEach(function(c){
+        var it = c.getAttribute('data-hfe-item'); if (it) delete seenItemIds[it];
+        var k = cardKeyOf(c); if (k) delete feedSeen[k];
+        c.remove();
+      });
+      if (!list || !list.length) return;
+      var anchor = (pinnedHost && pinnedHost.parentNode === main) ? pinnedHost.nextSibling : main.firstChild;
+      var added = 0;
+      list.forEach(function(item){
+        var id = 'room-' + (item.room_id || ''); if (!item.room_id || seenItemIds[id]) return;
+        seenItemIds[id] = 1;
+        var node = roomCard(item); var k = cardKeyOf(node); if (k) feedSeen[k] = 1;
+        node.style.animation = 'smlHfNew .4s ease';
+        main.insertBefore(node, anchor); armRh(node, 250); added++;
+      });
+      if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
+    }
+    function fetchWatchlistRooms(){
+      var syms = watchSyms().slice(0, 20).join(','); if (!syms) return Promise.resolve();
+      return api('/wp-json/sml-voice-rooms/v1/watchlist-rooms?symbols=' + encodeURIComponent(syms)).then(function(res){
+        var j = res && res.j ? res.j : res;
+        renderRooms((j && j.rooms) || []);
+      }).catch(function(){});
+    }
     function appendFeedNodes(nodes){
       if (!nodes.length) return 0;
       nodes.sort(function(a,b){ return (Date.parse(b.getAttribute('data-sml-published')||'')||0) - (Date.parse(a.getAttribute('data-sml-published')||'')||0); });
@@ -1989,6 +2053,7 @@
     }
     fetchBreaking();
     fetchGroupHot();
+    fetchWatchlistRooms();
     loadFriendSet();
     fetchPersonalizedSeed().then(function(){ hydrateRecRails(); });
     backfillFeed();
@@ -2017,6 +2082,9 @@
       }).catch(function(){});
     }
     setInterval(pollFeed, 45000);
+    // Live rooms are ephemeral — refresh them on their own cadence so ended rooms
+    // drop and new ones appear (renderRooms reconciles).
+    setInterval(fetchWatchlistRooms, 45000);
 
     // Real group logos from the public /groups/ directory: fill logos for the
     // user's harvested groups (matched by slug); if none were harvested, show
