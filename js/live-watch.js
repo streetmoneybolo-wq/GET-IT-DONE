@@ -88,13 +88,7 @@
 
   root.innerHTML =
     '<div class="slw-amb"><div class="slw-amb-g"></div><div class="slw-amb-r"></div></div>' +
-    '<div class="slw-nav"><div class="slw-nav-l">' +
-      '<a class="slw-logo" href="/" title="StockMarketLoop — home">' + logo + '<span class="slw-logo-div"></span><span class="slw-logo-live"><span class="slw-dot"></span><span>WATCH</span></span></a>' +
-      '<div class="slw-nav-links"><a href="/stock-chart/?symbol=SPY">Terminal</a><a class="on" href="#">Watch</a><a href="/groups/">Rooms</a><a href="#">Alerts</a></div>' +
-    '</div><div class="slw-nav-r">' +
-      '<div class="slw-search"><span class="q">SEARCH TICKER</span><span class="k">/</span></div>' +
-      '<div class="slw-onair" style="display:none"><span class="d"></span><span>ON AIR</span></div>' +  /* real status: shown only while the stream is live (setBroadcastState) */
-    '</div></div>' +
+    /* the page's own nav bar (logo · WATCH, Terminal/Watch/Rooms/Alerts, ticker search, ON AIR) was deleted for everyone on 2026-09-14 — the site header above already carries navigation and search */
     /* the page's own quote tape was removed 2026-09-14: the site-wide header tape already rolls above it (owner: "remove the second ticker") */
     '<div class="slw-content"><div class="slw-stage">' +
 

@@ -65,10 +65,7 @@
   root.classList.add('slw-vod');
   root.innerHTML =
     '<div class="slw-amb"><div class="slw-amb-g"></div><div class="slw-amb-r"></div></div>' +
-    '<div class="slw-nav"><div class="slw-nav-l">' +
-      '<a class="slw-logo" href="/" title="StockMarketLoop — home">' + logo + '<span class="slw-logo-div"></span><span class="slw-logo-live"><span class="slw-dot"></span><span>STUDIO</span></span></a>' +
-      '<div class="slw-nav-links"><a href="/stock-chart/?symbol=SPY">Terminal</a><a class="on" href="/watch/">Watch</a><a href="/live/">Live</a><a href="/groups/">Rooms</a></div>' +
-    '</div><div class="slw-nav-r"><div class="slw-search"><span class="q">SEARCH TICKER</span><span class="k">/</span></div></div></div>' +
+    /* the page's own nav bar (logo · STUDIO, Terminal/Watch/Live/Rooms, ticker search) was deleted for everyone on 2026-09-14 — the site header already carries navigation and search */
     '<div class="slw-content"><div class="slw-stage">' +
     '<div class="slw-main">' +
       '<div class="slw-player"><div class="slw-frame clear">' +
