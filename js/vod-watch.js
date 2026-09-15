@@ -164,7 +164,7 @@
     var whenTxt = isNaN(when.getTime()) ? VID.premiereAt : when.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     var card = document.createElement('div');
     card.className = 'slw-premiere';
-    card.innerHTML = '<div class="slw-premiere-in"><span class="slw-premiere-tag">PREMIERE</span><b>Premieres ' + esc(whenTxt) + '</b><span>Come back then — the video unlocks for everyone at that time.</span></div>';
+    card.innerHTML = '<div class="slw-premiere-in"><span class="slw-premiere-tag">PREMIERE · ' + esc(whenTxt) + '</span><b>' + esc(VID.title || 'Premiere') + '</b><span>The video unlocks for everyone at that time — come back then.</span></div>';
     if (VID.poster) card.style.backgroundImage = 'url(' + VID.poster + ')';
     media.appendChild(card);
     root.classList.add('slw-premiere-on');
