@@ -453,11 +453,11 @@
     var ini = avS ? '' : esc(c.name.slice(0, 2).toUpperCase());
     var open = !!CM.open[c.id];
     var owner = !!(ME && CM.creatorId && +ME.id === +CM.creatorId);
-    var tools = (owner ? '<button class="tl" data-flag="' + (c.pinned ? 'unpin' : 'pin') + '" data-fid="' + esc(c.id) + '">' + (c.pinned ? 'Unpin' : '📌 Pin') + '</button><button class="tl" data-flag="' + (c.hl ? 'unhighlight' : 'highlight') + '" data-fid="' + esc(c.id) + '">' + (c.hl ? 'Unhighlight' : '✨ Highlight') + '</button>' : '') +
+    var tools = (owner ? '<button class="tl" data-flag="' + (c.pinned ? 'unpin' : 'pin') + '" data-fid="' + esc(c.id) + '">' + (c.pinned ? 'Unpin' : '📌 Pin') + '</button><button class="tl' + (c.hl ? ' on' : '') + '" data-flag="' + (c.hl ? 'unhighlight' : 'highlight') + '" data-fid="' + esc(c.id) + '">' + (c.hl ? '❤ Loved' : '♡ Love') + '</button>' : '') +
       (owner || c.mine ? '<button class="tl dl" data-flag="delete" data-fid="' + esc(c.id) + '">Delete</button>' : '');
     return '<div class="' + (isReply ? 'cmr' : 'slw-cmt') + (c.pinned ? ' is-pinned' : '') + (c.hl ? ' is-hl' : '') + (CM.focus === String(c.id) ? ' is-focus' : '') + '" data-cid="' + esc(c.id) + '"><div class="av"' + avS + '>' + ini + '</div><div class="bd">' +
       (c.pinned ? '<div class="pin-tag">📌 Pinned by the creator</div>' : '') +
-      '<div class="hd"><b>' + esc(c.name) + '</b>' + (c.creator ? '<i class="cr-tag">CREATOR</i>' : '') + (c.hl ? '<i class="hl-tag">✨ Highlighted</i>' : '') + '<span>' + esc(relTime(c.at)) + '</span></div>' +
+      '<div class="hd"><b>' + esc(c.name) + '</b>' + (c.creator ? '<i class="cr-tag">CREATOR</i>' : '') + (c.hl ? '<i class="hl-tag">❤ Loved by creator</i>' : '') + '<span>' + esc(relTime(c.at)) + '</span></div>' +
       '<span class="tx">' + esc(c.text) + '</span>' +
       (isReply ? (tools ? '<div class="acts">' + tools + '</div>' : '') : '<div class="acts"><button class="lk' + (c.liked ? ' on' : '') + '" data-lk="' + esc(c.id) + '">👍 ' + (c.likes || '') + '</button>' +
         '<button class="rp" data-rp="' + esc(c.id) + '">Reply</button>' + tools +
@@ -530,6 +530,20 @@
   Array.prototype.forEach.call(root.querySelectorAll('.slw-cm-sort'), function (b) { b.onclick = function () { CM.sort = b.getAttribute('data-sort'); renderCM(); }; });
   if (ME && ME.avatar && /^https:/.test(ME.avatar)) { el('#vw-cmav').style.backgroundImage = 'url(' + ME.avatar + ')'; el('#vw-cmav').textContent = ''; }
   paintGate();
+
+  /* ---------- live updates: new comments & replies appear without a reload ---------- */
+  /* Never refresh while the viewer is mid-compose — it would clobber an in-progress
+     comment/reply. cmBusy() is true when a comment input is focused or holds text. */
+  function cmBusy() {
+    var a = document.activeElement;
+    if (a && (a.id === 'vw-cmin' || (a.hasAttribute && a.hasAttribute('data-rin')) || (a.hasAttribute && a.hasAttribute('data-ein')))) return true;
+    var ci = el('#vw-cmin'); if (ci && ci.value.trim()) return true;
+    var busy = false, list = el('#vw-cmlist');
+    if (list) Array.prototype.forEach.call(list.querySelectorAll('[data-rin],[data-ein]'), function (i) { if (i.value.trim()) busy = true; });
+    return busy;
+  }
+  setInterval(function () { if (!document.hidden && !cmBusy()) loadComments(); }, 20000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && !cmBusy()) loadComments(); });
 
   /* ---------- rail: recommended next from the upload-studio rail ---------- */
   function loadRail() {

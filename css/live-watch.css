@@ -999,10 +999,15 @@ html.sml-mobile .slw-c4{max-width:100%;gap:4px;padding:8px}html.sml-mobile .slw-
 .slw-cmt.is-pinned{background:linear-gradient(180deg,rgba(0,255,136,.06),transparent)}
 .slw-cmt .pin-tag{font:700 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:.6px;color:#00ff88;text-transform:uppercase;margin-bottom:2px}
 .slw-cmt .hd i.cr-tag,.cmr .hd i.cr-tag{font:800 8.5px/1 Archivo,sans-serif;letter-spacing:.8px;color:#04060a;background:#00ff88;border-radius:4px;padding:3px 5px;font-style:normal}
-.slw-cmt .hd i.hl-tag,.cmr .hd i.hl-tag{font:800 8.5px/1 Archivo,sans-serif;letter-spacing:.4px;color:#fff;background:linear-gradient(90deg,#ff9f1c,#ff3b8d,#7b5cff);border-radius:4px;padding:3px 6px;font-style:normal;animation:slwWinPulse 1.6s ease-in-out infinite}
-.slw-cmt .acts .tl,.cmr .acts .tl{font:600 10px/1 Archivo,sans-serif;color:#8fa3b5;background:#0d141c;border:1px solid #1c2833;border-radius:20px;padding:6px 9px;cursor:pointer}
+.slw-cmt .hd i.hl-tag,.cmr .hd i.hl-tag{font:800 8.5px/1 Archivo,sans-serif;letter-spacing:.4px;color:#fff;background:linear-gradient(90deg,#ff3b8d,#ff5c7a);border-radius:4px;padding:3px 6px;font-style:normal;animation:slwWinPulse 1.6s ease-in-out infinite}
+.slw-cmt .acts .tl,.cmr .acts .tl{font:600 10px/1 Archivo,sans-serif;color:#8fa3b5;background:#0d141c;border:1px solid #1c2833;border-radius:20px;padding:6px 9px;cursor:pointer;transition:color .15s ease,border-color .15s ease,transform .12s ease}
 .slw-cmt .acts .tl:hover,.cmr .acts .tl:hover{color:#00ff88;border-color:#00ff88}
+.slw-cmt .acts .tl.on,.cmr .acts .tl.on{color:#ff5c7a;border-color:#ff3b8d;background:rgba(255,59,141,.08)}
 .slw-cmt .acts .tl.dl:hover,.cmr .acts .tl.dl:hover{color:#ff5c7a;border-color:#ff5c7a}
+.slw-cmt .lk{transition:color .15s ease,transform .12s ease}
+.slw-cmt .lk:hover{color:#c7d6e3}
+.slw-cmt .lk.on{animation:slwLkPop .28s ease}
+@keyframes slwLkPop{0%{transform:scale(1)}45%{transform:scale(1.28)}100%{transform:scale(1)}}
 .cmr .acts{display:flex;gap:8px;margin-top:4px}
 .slw-cmt.is-focus,.cmr.is-focus{animation:slwFocusFlash 2.4s ease-out 1}
 
