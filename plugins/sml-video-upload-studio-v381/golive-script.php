@@ -1860,6 +1860,7 @@ if (!function_exists('sml_gl_script')) {
         title: draft.title,
         description: draft.description,
         ticker: draft.ticker,
+        tickers: [draft.ticker].concat(draft.related || []).filter(Boolean),
         visibility: draft.audience
       }
     }).then(function (payload) {
