@@ -486,6 +486,10 @@
       return out.slice(0, 20);
     }
     function hydrateRecRails(){
+      // The rec rails need the aggregator's creators[]/following[]. If the seed
+      // fetch didn't populate it (throttle/order), fetch it here before building.
+      var ready = personalizedData ? Promise.resolve() : api('/wp-json/sml-social-home/v1/feed').then(function(res){ var j = res && res.j ? res.j : res; if (j && (j.creators || j.following)) personalizedData = j; }).catch(function(){});
+      Promise.resolve(ready).then(function(){
       recRailData.recommend = recFromCreators();
       positionRecommendationRails();
       api('/wp-json/sml/v1/recommendations/friends').then(function(res){
@@ -503,6 +507,7 @@
         if (!recRailData.know.length) recRailData.know = knowFromFeed();
         positionRecommendationRails();
       }).catch(function(){ if (!recRailData.know.length){ recRailData.know = knowFromFeed(); positionRecommendationRails(); } });
+      });
     }
     function positionRecommendationRails(){
       host.querySelectorAll('.sml-hf-recrail').forEach(function(r){ r.remove(); });
@@ -1682,8 +1687,11 @@
       // guard is needed (that guard also raced window.SML_ME on some loads).
       return api('/wp-json/sml-social-home/v1/feed').then(function(res){
         var j = res && res.j ? res.j : res;
-        if (!j || !j.feed) return;
+        // Capture the aggregator payload even when feed[] is empty — creators[]/
+        // following[] power the rec rails + Following filter regardless.
+        if (!j || (!j.feed && !j.creators && !j.following)) return;
         personalizedData = j;
+        if (!j.feed || !j.feed.length) return;
         // Fill in personalized items the server DOM missed — but only RECENT ones
         // (the aggregator scores in old high-engagement posts; never resurrect stale
         // content at the top of the feed). Most recent personalized content is
