@@ -472,19 +472,6 @@
         return { name: c.name, handle: c.handle, url: c.url || (c.handle ? ('/' + c.handle + '/') : ''), avatar: c.avatar, reason: (c.followers != null ? (c.followers + ' follower' + (c.followers === 1 ? '' : 's')) : 'active creator') };
       });
     }
-    function knowFromFeed(){
-      var me = (window.SML_ME && String(window.SML_ME.id)) || '';
-      var fol = {}; ((personalizedData && personalizedData.following) || []).forEach(function(id){ fol[String(id)] = 1; });
-      var crIds = {}; ((personalizedData && personalizedData.creators) || []).forEach(function(c){ if (c) crIds[String(c.id)] = 1; });
-      var by = {}, out = [];
-      ((personalizedData && personalizedData.feed) || []).forEach(function(it){
-        var a = it && it.author; if (!a || !a.id) return; var id = String(a.id);
-        if (id === me || fol[id] || crIds[id] || by[id]) return;
-        if (/^(stock\s*market\s*loop|sml(\s*news)?)$/i.test(a.name || '')) return;
-        by[id] = 1; out.push({ name: a.name, handle: a.handle, url: a.url || (a.handle ? ('/' + a.handle + '/') : ''), avatar: a.avatar, reason: 'appears in your feed' });
-      });
-      return out.slice(0, 20);
-    }
     function hydrateRecRails(){
       // The rec rails need the aggregator's creators[]/following[]. If the seed
       // fetch didn't populate it (throttle/order), fetch it here before building.
@@ -502,11 +489,15 @@
           return { name: x.name || x.display_name, handle: x.handle || x.slug, url: x.url || x.profile_url || (x.handle ? ('/' + x.handle + '/') : ''), avatar: x.avatar || x.avatar_url || x.img, reason: (typeof x.reason === 'string' ? x.reason : ''), _tags: tags };
         };
         var all = arr.map(mapT);
-        recRailData.know = all.filter(function(t){ return /mutual|friend|know|connect/.test(t._tags); }).map(function(t){ t.reason = t.reason || 'connected to people you follow'; return t; });
-        recRailData.near = all.filter(function(t){ return /near|city|local|area/.test(t._tags); }).map(function(t){ t.reason = t.reason || 'in your area'; return t; });
-        if (!recRailData.know.length) recRailData.know = knowFromFeed();
+        // Only real people from the recommender (name + a profile handle) — never
+        // the auto-news/signal accounts that appear as feed authors. Cold-starts
+        // empty, so the rail fails closed (like Live/Shorts) until real mutual /
+        // location recommendations exist, rather than showing bots.
+        var realTrader = function(t){ return t && t.name && t.handle && !/^(stock\s*market\s*loop|sml(\s*news)?|options\s*flow|earnings\s*desk|gamma|semiconductors|retail\s*trader\s*spotlight)/i.test(t.name); };
+        recRailData.know = all.filter(function(t){ return realTrader(t) && /mutual|friend|know|connect/.test(t._tags); }).map(function(t){ t.reason = t.reason || 'connected to people you follow'; return t; });
+        recRailData.near = all.filter(function(t){ return realTrader(t) && /near|city|local|area/.test(t._tags); }).map(function(t){ t.reason = t.reason || 'in your area'; return t; });
         positionRecommendationRails();
-      }).catch(function(){ if (!recRailData.know.length){ recRailData.know = knowFromFeed(); positionRecommendationRails(); } });
+      }).catch(function(){});
       });
     }
     function positionRecommendationRails(){
