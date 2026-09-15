@@ -1009,6 +1009,28 @@ html.sml-mobile .slw-c4{max-width:100%;gap:4px;padding:8px}html.sml-mobile .slw-
 .slw-cmt .lk.on{animation:slwLkPop .28s ease}
 @keyframes slwLkPop{0%{transform:scale(1)}45%{transform:scale(1.28)}100%{transform:scale(1)}}
 .cmr .acts{display:flex;gap:8px;margin-top:4px}
+.slw-cmt .acts,.cmr .acts{flex-wrap:wrap;row-gap:6px}
+/* ---- emoji reactions (Phase 2) ---- */
+.rxwrap{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.slw-cmt .rxt,.cmr .rxt{font-size:14px;line-height:1;padding:2px 5px;border-radius:9px;transition:background .15s ease,transform .12s ease}
+.slw-cmt .rxt:hover,.cmr .rxt:hover{background:#0d141c}
+.slw-cmt .rxt.on,.cmr .rxt.on{background:rgba(0,255,136,.1)}
+.rxpick{display:inline-flex;align-items:center;gap:2px;background:#0d141c;border:1px solid #1c2833;border-radius:20px;padding:3px 5px;animation:slwRxIn .16s ease}
+@keyframes slwRxIn{from{opacity:0;transform:translateY(3px) scale(.96)}to{opacity:1;transform:none}}
+.rxpick .rxo{font-size:16px;line-height:1;background:none;border:none;cursor:pointer;padding:3px 4px;border-radius:7px;transition:transform .12s ease,background .12s ease}
+.rxpick .rxo:hover{transform:scale(1.25)}
+.rxpick .rxo.on{background:rgba(0,255,136,.14)}
+.slw-cmt .rxc,.cmr .rxc{display:inline-flex;align-items:center;gap:3px;font:600 10px/1 Archivo,sans-serif;color:#8fa3b5;background:#0d141c;border:1px solid #1c2833;border-radius:20px;padding:4px 8px;cursor:pointer;transition:color .15s ease,border-color .15s ease}
+.slw-cmt .rxc:hover,.cmr .rxc:hover{border-color:#2a3a49;color:#c7d6e3}
+.slw-cmt .rxc.on,.cmr .rxc.on{color:#00ff88;border-color:#134a33;background:rgba(0,255,136,.08)}
+/* ---- inline edit (Phase 2) ---- */
+.cmedit{display:flex;flex-direction:column;gap:7px;margin:2px 0}
+.cmedit .cmein{width:100%;box-sizing:border-box;resize:vertical;min-height:38px;background:#0d141c;border:1px solid #1c2833;border-radius:8px;color:#e6edf3;font:400 12px/1.5 Archivo,sans-serif;padding:8px 10px;outline:none;transition:border-color .15s ease}
+.cmedit .cmein:focus{border-color:#00ff88}
+.cmedit-a{display:flex;align-items:center;gap:10px}
+.cmedit-x{font:600 10px/1 Archivo,sans-serif;color:#5d7085;background:none;border:none;cursor:pointer;padding:0}
+.cmedit-x:hover{color:#e6edf3}
+.slw-cmt .hd i.ed-tag,.cmr .hd i.ed-tag,.slw-cmt i.ed-tag,.cmr i.ed-tag{font:400 9px/1 'IBM Plex Mono',monospace;color:#4c5d6d;font-style:normal;margin-left:6px}
 .slw-cmt.is-focus,.cmr.is-focus{animation:slwFocusFlash 2.4s ease-out 1}
 
 /* phones: the tomato compose opened upward from the controls row and its top third sat under the sticky

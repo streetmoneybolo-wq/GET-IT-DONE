@@ -441,7 +441,20 @@
   var CM = { items: [], count: 0, sort: 'top', open: {}, page: 1, loggedIn: !!ME, creatorId: 0, focus: (function () { var m = /[?&]c=(\d+)/.exec(location.search); return m ? m[1] : ''; })(), focused: false };
   function cmMap(c) {
     var name = c.author || c.name || c.user || c.display_name || (c.user_name) || 'member';
-    return { id: c.id, name: String(name), av: c.avatar || c.avatar_url || '', text: c.text || c.body || c.content || c.comment || '', at: c.at || c.time || c.created || c.date || '', likes: +(c.likes || c.like_count || 0), liked: !!c.liked, mine: !!c.mine, parent: c.parent || c.parent_id || 0, pinned: !!c.pinned, hl: !!c.highlighted, creator: !!c.creator, uid: +(c.user_id || 0), replies: (c.replies || []).map(cmMap) };
+    return { id: c.id, name: String(name), av: c.avatar || c.avatar_url || '', text: c.text || c.body || c.content || c.comment || '', at: c.at || c.time || c.created || c.date || '', likes: +(c.likes || c.like_count || 0), liked: !!c.liked, reactions: (c.reactions && typeof c.reactions === 'object') ? c.reactions : {}, myReaction: c.my_reaction || '', edited: !!c.edited, mine: !!c.mine, parent: c.parent || c.parent_id || 0, pinned: !!c.pinned, hl: !!c.highlighted, creator: !!c.creator, uid: +(c.user_id || 0), replies: (c.replies || []).map(cmMap) };
+  }
+  /* emoji reactions — order + glyphs must match sml_cc_reactions() in the mu-plugin */
+  var RX = [['like', '👍'], ['love', '❤️'], ['fire', '🔥'], ['laugh', '😂'], ['insight', '💡']];
+  function rxEmoji(k) { for (var i = 0; i < RX.length; i++) { if (RX[i][0] === k) return RX[i][1]; } return '👍'; }
+  function rxTotal(c) { var n = 0, r = c.reactions || {}; for (var i = 0; i < RX.length; i++) { n += +r[RX[i][0]] || 0; } return n; }
+  function rxBar(c) {
+    var open = !!CM.open['x' + c.id];
+    var mine = c.myReaction || '';
+    var trig = '<button class="lk rxt' + (mine ? ' on' : '') + '" data-rx-open="' + esc(c.id) + '" aria-haspopup="true" aria-expanded="' + (open ? 'true' : 'false') + '" title="React">' + (mine ? rxEmoji(mine) : '👍') + '</button>';
+    var pick = open ? '<span class="rxpick">' + RX.map(function (p) { return '<button class="rxo' + (mine === p[0] ? ' on' : '') + '" data-rx="' + esc(c.id) + '" data-rxk="' + p[0] + '" title="' + p[0] + '">' + p[1] + '</button>'; }).join('') + '</span>' : '';
+    var r = c.reactions || {}, sum = '';
+    for (var i = 0; i < RX.length; i++) { var n = +r[RX[i][0]] || 0; if (n > 0) { sum += '<button class="rxc' + (mine === RX[i][0] ? ' on' : '') + '" data-rx="' + esc(c.id) + '" data-rxk="' + RX[i][0] + '">' + RX[i][1] + ' ' + n + '</button>'; } }
+    return '<span class="rxwrap">' + trig + pick + sum + '</span>';
   }
   function paintGate() {
     var g = el('#vw-cmgate'), comp = el('#vw-cmcomp');
@@ -452,18 +465,23 @@
     var avS = c.av && /^https:/.test(c.av) ? ' style="background-image:url(' + esc(c.av) + ')"' : '';
     var ini = avS ? '' : esc(c.name.slice(0, 2).toUpperCase());
     var open = !!CM.open[c.id];
+    var editing = !!CM.open['e' + c.id];
     var owner = !!(ME && CM.creatorId && +ME.id === +CM.creatorId);
     var tools = (owner ? '<button class="tl" data-flag="' + (c.pinned ? 'unpin' : 'pin') + '" data-fid="' + esc(c.id) + '">' + (c.pinned ? 'Unpin' : '📌 Pin') + '</button><button class="tl' + (c.hl ? ' on' : '') + '" data-flag="' + (c.hl ? 'unhighlight' : 'highlight') + '" data-fid="' + esc(c.id) + '">' + (c.hl ? '❤ Loved' : '♡ Love') + '</button>' : '') +
+      (c.mine ? '<button class="tl" data-eopen="' + esc(c.id) + '">Edit</button>' : '') +
       (owner || c.mine ? '<button class="tl dl" data-flag="delete" data-fid="' + esc(c.id) + '">Delete</button>' : '');
+    var textBlock = editing
+      ? '<div class="cmedit"><textarea class="cmein" data-ein="' + esc(c.id) + '" maxlength="2000" rows="2">' + esc(c.text) + '</textarea><div class="cmedit-a"><button class="slw-cm-post ready" data-esave="' + esc(c.id) + '">Save</button><button class="cmedit-x" data-ecancel="' + esc(c.id) + '">Cancel</button></div></div>'
+      : '<span class="tx">' + esc(c.text) + '</span>' + (c.edited ? '<i class="ed-tag">(edited)</i>' : '');
+    var acts = '<div class="acts">' + rxBar(c) +
+      (isReply ? '' : '<button class="rp" data-rp="' + esc(c.id) + '">Reply</button>') + tools +
+      (!isReply && c.replies.length ? '<button class="tg" data-tg="' + esc(c.id) + '">' + (open ? 'Hide replies' : c.replies.length + (c.replies.length > 1 ? ' replies' : ' reply')) + '</button>' : '') + '</div>';
     return '<div class="' + (isReply ? 'cmr' : 'slw-cmt') + (c.pinned ? ' is-pinned' : '') + (c.hl ? ' is-hl' : '') + (CM.focus === String(c.id) ? ' is-focus' : '') + '" data-cid="' + esc(c.id) + '"><div class="av"' + avS + '>' + ini + '</div><div class="bd">' +
       (c.pinned ? '<div class="pin-tag">📌 Pinned by the creator</div>' : '') +
       '<div class="hd"><b>' + esc(c.name) + '</b>' + (c.creator ? '<i class="cr-tag">CREATOR</i>' : '') + (c.hl ? '<i class="hl-tag">❤ Loved by creator</i>' : '') + '<span>' + esc(relTime(c.at)) + '</span></div>' +
-      '<span class="tx">' + esc(c.text) + '</span>' +
-      (isReply ? (tools ? '<div class="acts">' + tools + '</div>' : '') : '<div class="acts"><button class="lk' + (c.liked ? ' on' : '') + '" data-lk="' + esc(c.id) + '">👍 ' + (c.likes || '') + '</button>' +
-        '<button class="rp" data-rp="' + esc(c.id) + '">Reply</button>' + tools +
-        (c.replies.length ? '<button class="tg" data-tg="' + esc(c.id) + '">' + (open ? 'Hide replies' : c.replies.length + (c.replies.length > 1 ? ' replies' : ' reply')) + '</button>' : '') + '</div>' +
-        (open || CM.open['r' + c.id] ? '<div class="thread">' + c.replies.map(function (r) { return cmHTML(r, true); }).join('') +
-          (CM.open['r' + c.id] ? '<div class="rcomp"><input type="text" data-rin="' + esc(c.id) + '" maxlength="1000" placeholder="Reply to ' + esc(c.name) + '"><button class="slw-cm-post ready" data-rsend="' + esc(c.id) + '">Reply</button></div>' : '') + '</div>' : '')) +
+      textBlock + acts +
+      (!isReply && (open || CM.open['r' + c.id]) ? '<div class="thread">' + c.replies.map(function (r) { return cmHTML(r, true); }).join('') +
+        (CM.open['r' + c.id] ? '<div class="rcomp"><input type="text" data-rin="' + esc(c.id) + '" maxlength="1000" placeholder="Reply to ' + esc(c.name) + '"><button class="slw-cm-post ready" data-rsend="' + esc(c.id) + '">Reply</button></div>' : '') + '</div>' : '') +
       '</div></div>';
   }
   function renderCM() {
@@ -472,16 +490,46 @@
     else list.sort(function (a, b) { return Date.parse(String(b.at).replace(' ', 'T')) - Date.parse(String(a.at).replace(' ', 'T')); });
     list.sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); }); /* the creator's pinned comment always leads */
     el('#vw-cmcount').textContent = CM.count.toLocaleString() + (CM.count === 1 ? ' comment' : ' comments');
+    /* preserve any in-progress edit/reply text (and caret/focus) across the wholesale re-render */
+    var draft = cmSnapshot();
     el('#vw-cmlist').innerHTML = list.length ? list.map(function (c) { return cmHTML(c, false); }).join('') : '<div class="slw-cm-empty">No comments yet. Start the conversation — the creator reads these.</div>';
     Array.prototype.forEach.call(root.querySelectorAll('.slw-cm-sort'), function (b) { b.classList.toggle('on', b.getAttribute('data-sort') === CM.sort); });
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-tg]'), function (b) { b.onclick = function () { var id = b.getAttribute('data-tg'); CM.open[id] = !CM.open[id]; renderCM(); }; });
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-rp]'), function (b) { b.onclick = function () { if (!CM.loggedIn) { gate('Sign in to reply.'); return; } var id = b.getAttribute('data-rp'); CM.open['r' + id] = !CM.open['r' + id]; CM.open[id] = true; renderCM(); var inp = el('[data-rin="' + id + '"]'); if (inp) inp.focus(); }; });
-    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-lk]'), function (b) { b.onclick = function () { likeComment(b.getAttribute('data-lk')); }; });
+    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-rx-open]'), function (b) { b.onclick = function () { if (!CM.loggedIn) { gate('Sign in to react.'); return; } var id = b.getAttribute('data-rx-open'); CM.open['x' + id] = !CM.open['x' + id]; renderCM(); }; });
+    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-rx]'), function (b) { b.onclick = function () { reactComment(b.getAttribute('data-rx'), b.getAttribute('data-rxk')); }; });
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-flag]'), function (b) { b.onclick = function () { flagComment(b.getAttribute('data-fid'), b.getAttribute('data-flag')); }; });
+    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-eopen]'), function (b) { b.onclick = function () { if (!CM.loggedIn) { gate('Sign in first.'); return; } var id = b.getAttribute('data-eopen'); CM.open['e' + id] = true; renderCM(); var t = el('[data-ein="' + id + '"]'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }; });
+    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-ecancel]'), function (b) { b.onclick = function () { CM.open['e' + b.getAttribute('data-ecancel')] = false; renderCM(); }; });
+    Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-esave]'), function (b) {
+      b.onclick = function () { var id = b.getAttribute('data-esave'); var t = el('[data-ein="' + id + '"]'); if (t && t.value.trim()) editComment(id, t.value.trim()); };
+      var t = el('[data-ein="' + b.getAttribute('data-esave') + '"]'); if (t) t.onkeydown = function (e) { if (e.key === 'Escape') { CM.open['e' + b.getAttribute('data-esave')] = false; renderCM(); } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && t.value.trim()) editComment(b.getAttribute('data-esave'), t.value.trim()); };
+    });
     if (CM.focus && !CM.focused) { var f = el('#vw-cmlist [data-cid="' + CM.focus + '"]'); if (f) { CM.focused = true; setTimeout(function () { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 300); } }
     Array.prototype.forEach.call(el('#vw-cmlist').querySelectorAll('[data-rsend]'), function (b) {
       b.onclick = function () { var id = b.getAttribute('data-rsend'); var inp = el('[data-rin="' + id + '"]'); if (inp && inp.value.trim()) postComment(inp.value.trim(), id); };
       var inp = el('[data-rin="' + b.getAttribute('data-rsend') + '"]'); if (inp) inp.onkeydown = function (e) { if (e.key === 'Enter' && inp.value.trim()) postComment(inp.value.trim(), b.getAttribute('data-rsend')); };
+    });
+    cmRestore(draft);
+  }
+  /* snapshot/restore the live text + caret of any open edit/reply input so a re-render never eats it */
+  function cmSnapshot() {
+    var snap = [], list = el('#vw-cmlist'); if (!list) return snap;
+    Array.prototype.forEach.call(list.querySelectorAll('[data-ein],[data-rin]'), function (i) {
+      var key = i.hasAttribute('data-ein') ? 'e:' + i.getAttribute('data-ein') : 'r:' + i.getAttribute('data-rin');
+      var s = 0, e = 0; try { s = i.selectionStart; e = i.selectionEnd; } catch (x) {}
+      snap.push({ key: key, val: i.value, s: s, e: e, foc: document.activeElement === i });
+    });
+    return snap;
+  }
+  function cmRestore(snap) {
+    if (!snap || !snap.length) return;
+    var list = el('#vw-cmlist'); if (!list) return;
+    snap.forEach(function (o) {
+      var i = list.querySelector((o.key.charAt(0) === 'e' ? '[data-ein="' : '[data-rin="') + o.key.slice(2) + '"]');
+      if (!i) return;
+      i.value = o.val;
+      if (o.foc) { try { i.focus(); i.setSelectionRange(o.s, o.e); } catch (x) {} }
     });
   }
   function loadComments() {
@@ -518,9 +566,18 @@
       if (res.ok) loadComments(); else gate((res.j && res.j.message) || 'That did not work.');
     });
   }
-  function likeComment(id) {
-    api('/sml-reactions/v1/react', { method: 'POST', body: JSON.stringify({ content_type: 'comment', content_id: id, reaction: 'like' }) }).then(function (res) {
-      if (res.ok) loadComments(); else if (res.status === 401) gate('Sign in to like comments.');
+  /* emoji reactions — one per member per comment; same emoji again removes it, a different one switches */
+  function reactComment(id, key) {
+    if (!CM.loggedIn) { gate('Sign in to react.'); return; }
+    CM.open['x' + id] = false;
+    api('/sml-reactions/v1/react', { method: 'POST', body: JSON.stringify({ content_type: 'comment', content_id: id, reaction: key || 'like' }) }).then(function (res) {
+      if (res.ok) loadComments(); else if (res.status === 401) gate('Sign in to react to comments.'); else { renderCM(); }
+    });
+  }
+  /* edit-your-own — mu-plugin sml-creator-comments watch-action, author only */
+  function editComment(id, text) {
+    api('/sml-creator-comments/v1/watch-action', { method: 'POST', body: JSON.stringify({ id: id, action: 'edit', text: text }) }).then(function (res) {
+      if (res.ok) { CM.open['e' + id] = false; loadComments(); } else if (res.status === 401) gate('Sign in first.'); else gate((res.j && res.j.message) || 'Edit did not save.');
     });
   }
   function paintPost() { var b = el('#vw-cmpost'); var has = !!el('#vw-cmin').value.trim(); b.classList.toggle('ready', has); }
@@ -533,13 +590,16 @@
 
   /* ---------- live updates: new comments & replies appear without a reload ---------- */
   /* Never refresh while the viewer is mid-compose — it would clobber an in-progress
-     comment/reply. cmBusy() is true when a comment input is focused or holds text. */
+     comment/reply. cmBusy() is true when a compose input is FOCUSED, or when a reply input
+     holds text. An open edit box is prefilled (never empty), so it counts only while focused —
+     otherwise it would block the poll forever; cmSnapshot/cmRestore keep its text safe if a
+     refresh does land while it sits open and unfocused. */
   function cmBusy() {
     var a = document.activeElement;
-    if (a && (a.id === 'vw-cmin' || (a.hasAttribute && a.hasAttribute('data-rin')) || (a.hasAttribute && a.hasAttribute('data-ein')))) return true;
+    if (a && (a.id === 'vw-cmin' || (a.hasAttribute && (a.hasAttribute('data-rin') || a.hasAttribute('data-ein'))))) return true;
     var ci = el('#vw-cmin'); if (ci && ci.value.trim()) return true;
     var busy = false, list = el('#vw-cmlist');
-    if (list) Array.prototype.forEach.call(list.querySelectorAll('[data-rin],[data-ein]'), function (i) { if (i.value.trim()) busy = true; });
+    if (list) Array.prototype.forEach.call(list.querySelectorAll('[data-rin]'), function (i) { if (i.value.trim()) busy = true; });
     return busy;
   }
   setInterval(function () { if (!document.hidden && !cmBusy()) loadComments(); }, 20000);
