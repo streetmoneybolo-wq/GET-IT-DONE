@@ -1060,3 +1060,12 @@ html.sml-mobile .slw-frame:not(.multi){margin-bottom:var(--slw-ctl-h,132px)}
 html.sml-mobile .slw-frame:not(.multi) .slw-ctl{top:100%;bottom:auto;padding:10px 12px 12px;background:#070b10;border-top:1px solid #101822}
 html.sml-mobile .slw-frame:not(.multi) .slw-ctl-row,html.sml-mobile .slw-frame:not(.multi) .slw-ctl-l,html.sml-mobile .slw-frame:not(.multi) .slw-ctl-r{flex-wrap:wrap;gap:8px}
 html.sml-mobile .slw-frame:not(.multi) .slw-ctl-row{justify-content:flex-start}
+
+/* ---- VOD premiere card (scheduled upload before its time) 2026-09-15 ---- */
+.slw-premiere{position:absolute;inset:0;background:#000 center/cover no-repeat;display:flex;align-items:flex-end;z-index:6}
+.slw-premiere-in{width:100%;padding:18px 20px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.86));color:#fff;display:flex;flex-direction:column;gap:6px}
+.slw-premiere-tag{font:800 11px/1 Archivo,sans-serif;letter-spacing:.18em;color:#00ff88}
+.slw-premiere-in b{font:700 20px/1.2 Archivo,sans-serif}
+.slw-premiere-in span:last-child{font:500 13px/1.4 Archivo,sans-serif;color:#cfd8e3}
+.slw-premiere-on .slw-ctl-l button,.slw-premiere-on .slw-prog{opacity:.35;pointer-events:none}
+html.sml-mobile .slw-premiere-in b{font-size:17px}

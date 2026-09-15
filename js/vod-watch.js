@@ -24,7 +24,7 @@
     desc: meta('og:description') || meta('description'),
     url: meta('og:url') || location.href.split('?')[0],
     id: (location.pathname.match(/\/watch\/([A-Za-z0-9_-]+)\/?/) || [])[1] || '',
-    date: '', creator: '', handle: '', duration: 0
+    date: '', creator: '', handle: '', duration: 0, premiereAt: ''
   };
   try {
     var lds = document.querySelectorAll('script[type="application/ld+json"]');
@@ -35,6 +35,8 @@
         if (arr[k] && arr[k]['@type'] === 'VideoObject') {
           VID.date = arr[k].uploadDate || VID.date;
           if (arr[k].author) VID.creator = arr[k].author.name || VID.creator;
+          /* scheduled upload: the server marks it with publication.BroadcastEvent.startDate and withholds the file */
+          if (arr[k].publication) { var pub = Array.isArray(arr[k].publication) ? arr[k].publication[0] : arr[k].publication; if (pub && pub.startDate) VID.premiereAt = pub.startDate; }
           if (arr[k].duration) { var dm = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(arr[k].duration); if (dm) VID.duration = (+dm[1] || 0) * 3600 + (+dm[2] || 0) * 60 + (+dm[3] || 0); }
         }
       }
@@ -155,6 +157,18 @@
   if (VID.poster) v.poster = VID.poster;
   if (VID.src) v.src = VID.src;
   media.appendChild(v);
+  /* premiere (no file yet): a poster card with the unlock time replaces the player (2026-09-15) */
+  var PREMIERE = !VID.src && VID.premiereAt && (new Date(VID.premiereAt)).getTime() > Date.now();
+  if (PREMIERE) {
+    var when = new Date(VID.premiereAt);
+    var whenTxt = isNaN(when.getTime()) ? VID.premiereAt : when.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    var card = document.createElement('div');
+    card.className = 'slw-premiere';
+    card.innerHTML = '<div class="slw-premiere-in"><span class="slw-premiere-tag">PREMIERE</span><b>Premieres ' + esc(whenTxt) + '</b><span>Come back then — the video unlocks for everyone at that time.</span></div>';
+    if (VID.poster) card.style.backgroundImage = 'url(' + VID.poster + ')';
+    media.appendChild(card);
+    root.classList.add('slw-premiere-on');
+  }
   var playing = false, muted = false;
   function paintPlay() { var b = el('#vw-play'); b.textContent = playing ? '❚❚' : '▶'; b.classList.toggle('play', !playing); }
   el('#vw-play').onclick = function () { if (v.paused) v.play().catch(function () {}); else v.pause(); };
