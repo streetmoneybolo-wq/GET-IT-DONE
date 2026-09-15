@@ -538,6 +538,166 @@ function createConnectCommands(deps = {}) {
     return { type: 4, data: Object.assign({}, extra, { content, flags: EPHEMERAL }) };
   }
 
+  const DSP_RECRUIT_SUBREDDITS = [
+    'sidehustle', 'thesidehustle', 'SideJobs', 'hiring', 'forhire', 'freelance_forhire',
+    'HiringPH', 'JobsPhilippines', 'BusinessPH', 'JapanJobs', 'RemoteJobseekers',
+    'YoungJobs', 'WFHJobs', 'IndiaJobsOpenings', 'Germany_Jobs', 'onlinejobsforall',
+    'freelancing', 'hiringpakistan', 'RecruitingHiringPH', 'ForHireFreelance',
+    'hiringPhilippinesPH', 'LookingforJob'
+  ];
+
+  const DSP_RECRUIT_TITLES = [
+    "WE'RE HIRING — Social Media Promo Ambassadors",
+    'Hiring Social Media Promo Workers — PayPal Payouts',
+    'We’re Hiring: Social Media Promotion & Engagement Specialists'
+  ];
+
+  function dspRecruitBody(index) {
+    const variants = [
+      `🚨🔥 **WE’RE HIRING — SOCIAL MEDIA PROMO WORKERS** 🔥🚨
+
+## 💰 **Earn Up To $75 DAILY Just By Boosting Content Online**
+
+### 📲 Work From ANY Device • 💵 **PayPal Payouts Only** • ⚡ Start TODAY
+
+If you’re already on social media… **STOP scrolling and start getting PAID for it.**
+
+We’re building a **high-energy promo team** across:
+
+**Facebook • Threads • Bluesky • Reddit • Twitter/X • LinkedIn • & MORE**
+
+This is NOT just “posting links.” This is **full promo engagement** — boosting creators, pushing content, and driving visibility across multiple platforms.
+
+## 💥 **WHAT YOU DO:**
+
+✔️ Share approved promo posts
+✔️ Like + comment + repost
+✔️ Boost engagement
+✔️ Help creators grow
+✔️ Complete simple daily promo tasks
+
+## 💰 **PAY STRUCTURE**
+
+**Up to $75/day**
+**$150–$250/week** for consistent contributors
+
+**PayPal payouts only** — crypto payouts coming soon.
+
+## 🔥 **UNLIMITED PASSIVE INCOME**
+
+Earn **$5 every time someone you recruit hits $50** — and it repeats every time they hit $50 again.
+
+## 🚀 **READY TO RUN IT UP?**
+
+Join the server & start earning TODAY: https://discord.gg/cxMvYdm4a2`,
+      `🚨 **WE’RE HIRING — SOCIAL MEDIA PROMO AMBASSADORS**
+
+## 💰 **Earn Up To $75 DAILY Promoting Content Across Major Platforms**
+
+### 📲 Work From Any Device • 🔗 Simple Promo Tasks • 💵 **PAYPAL PAYOUTS ONLY**
+
+If you’re active on social media, you can earn by helping boost visibility for creators, brands, and communities across:
+
+**Facebook • Threads • Bluesky • Reddit • Twitter/X • LinkedIn • Stocktwits • & MORE**
+
+This is **full promo work**, not just dropping links.
+
+## **YOU’LL GET PAID TO:**
+
+✔️ Share approved promo posts
+✔️ Boost engagement with likes, comments, and reposts
+✔️ Help creators grow visibility
+✔️ Participate in daily promo tasks
+
+## 💰 **PAY STRUCTURE**
+
+**Part-Time:** Up to **$75/day**
+**Consistent Workers:** **$150–$250/week**
+
+**Payouts:** PayPal only
+Crypto payout options are coming soon.
+
+## ⭐ **BONUS**
+
+The more platforms you choose to work on, the more opportunities you can qualify for.
+
+## 🔥 **PASSIVE INCOME OPTION**
+
+Earn **$5 every time someone you recruit reaches $50 earned** — and it repeats every time they hit $50 again.
+
+## 🚀 **READY TO JOIN THE TEAM?**
+
+Apply here: https://discord.gg/cxMvYdm4a2`,
+      `📣 **WE’RE HIRING: SOCIAL MEDIA PROMOTION & ENGAGEMENT SPECIALISTS**
+
+Our team is expanding, and we’re looking for motivated people who can support visibility and engagement across major social platforms.
+
+## 💰 **Earn Up To $75/Day With Approved Promo Tasks**
+
+Work from your phone or computer across:
+
+**Facebook • Threads • Bluesky • Reddit • Twitter/X • LinkedIn • Stocktwits • and more**
+
+## **ROLE OVERVIEW**
+
+Tasks may include:
+
+- Sharing approved promotional content
+- Liking, commenting, and reposting
+- Supporting visibility campaigns
+- Completing daily engagement tasks
+- Working across multiple platforms for more opportunities
+
+## **COMPENSATION**
+
+- Up to **$75/day** based on approved activity
+- **$150–$250/week** for consistent contributors
+- PayPal payouts only
+- Crypto options coming soon
+
+## **REFERRAL BONUS**
+
+Earn **$5 every time someone you recruit reaches $50 in approved earnings**.
+
+## **APPLY**
+
+Join the onboarding server here: https://discord.gg/cxMvYdm4a2`
+    ];
+    return variants[index % variants.length];
+  }
+
+  function dspRecruitResponse(discordUserId) {
+    const seed = Number(BigInt(discordUserId || '1') % BigInt(997)) + Math.floor(Date.now() / 60000);
+    const index = Math.abs(seed) % DSP_RECRUIT_SUBREDDITS.length;
+    const subreddit = DSP_RECRUIT_SUBREDDITS[index];
+    const title = DSP_RECRUIT_TITLES[index % DSP_RECRUIT_TITLES.length];
+    const body = dspRecruitBody(index);
+    const placeholder = 'PASTE THE BODY/DESCRIPTION YOU COPIED FROM DISCORD HERE BEFORE POSTING.';
+    const redditUrl = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/submit?selftext=true&title=${encodeURIComponent(title)}&text=${encodeURIComponent(placeholder)}`;
+    const rulesUrl = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/about/rules/`;
+    const content = [
+      `# 🎯 Random recruitment post generated for r/${subreddit}`,
+      '## COPY THIS BODY FIRST',
+      `**Title already loaded in Reddit:** ${title}`,
+      '',
+      '```text',
+      body,
+      '```',
+      '',
+      'After copying the body above, click **Open Reddit Composer**. Reddit opens with the subreddit and title already filled. Paste the copied body over the placeholder text, review the subreddit rules, then post.'
+    ].join('\n');
+    return {
+      content: content.length <= 2000 ? content : content.slice(0, 1990),
+      components: [{
+        type: 1,
+        components: [
+          { type: 2, style: 5, label: `Open r/${subreddit} Composer`.slice(0, 80), url: redditUrl },
+          { type: 2, style: 5, label: `Review r/${subreddit} Rules`.slice(0, 80), url: rulesUrl }
+        ]
+      }]
+    };
+  }
+
   function renderError(error) {
     if (error instanceof TypeError && SAFE_ERROR_RE.test(String(error.message))) {
       return `The command could not be processed: ${error.message}.`;
@@ -673,6 +833,10 @@ function createConnectCommands(deps = {}) {
 
     if (!discordUserId || !guildId) {
       return { response: ephemeralMessage('Run this setup inside the Discord server you want to connect.') };
+    }
+    if (customId === 'dsp-recruit-random') {
+      await audit(Object.assign({ outcome: 'daily_social_recruitment_generated' }, auditBase));
+      return { response: { type: 4, data: Object.assign(dspRecruitResponse(discordUserId), { flags: EPHEMERAL }) } };
     }
     if (!customId.startsWith('sml_connect:')) {
       await audit(Object.assign({ outcome: 'unknown_component' }, auditBase));
