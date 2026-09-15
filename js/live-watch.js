@@ -2984,7 +2984,13 @@
     var post = title + ' ' + url + ' ' + tags;
     var keep = P.keep ? ' data-sml-brand-keep="1"' : '';
     var why = P.why.replace(/\$SYM/g, '$' + sym).replace(/#SYM/g, '#' + sym);
-    el('#slw-modal-mount').innerHTML = '<div class="slw-modal slw-paste" id="slw-modal"><div class="slw-modal-c">' +
+    /* mounted on BODY, not inside #sml-lw-root: the root is a z-index:1 stacking context, so anything inside it
+       sits under the body-level Voice Queue dock (.vcd z 9999) and admin bar on phones */
+    var pm = document.getElementById('slw-paste-mount');
+    if (!pm) { pm = document.createElement('div'); pm.id = 'slw-paste-mount'; document.body.appendChild(pm); }
+    var pq = function (q) { return pm.querySelector(q); };
+    var closePaste = function () { pm.innerHTML = ''; };
+    pm.innerHTML = '<div class="slw-modal slw-paste" id="slw-paste-modal"><div class="slw-modal-c">' +
       '<div class="slw-modal-h"><b' + keep + '>📋 Paste this on ' + P.name + '</b><button class="slw-x" id="slw-mx">Close ✕</button></div>' +
       '<div class="slw-paste-status warn" id="slw-pstat"' + keep + '>Copying your post…</div>' +
       '<textarea class="slw-paste-text" id="slw-ptext" rows="4" spellcheck="false"></textarea>' +
@@ -2993,21 +2999,21 @@
       '<div class="slw-paste-btns"><button class="slw-x" id="slw-pcopy">Copy post</button><button class="slw-rematch" id="slw-popen"' + keep + '>' + P.btn + '</button></div>' +
       '<span class="fn">Loop Bucks land when someone opens your link — the tracking is in the link, so it pays from any platform.</span>' +
       '</div></div>';
-    el('#slw-ptext').value = post;
-    function setStat(ok, msg) { var st = el('#slw-pstat'); st.textContent = msg; st.classList.toggle('warn', !ok); }
+    pq('#slw-ptext').value = post;
+    function setStat(ok, msg) { var st = pq('#slw-pstat'); st.textContent = msg; st.classList.toggle('warn', !ok); }
     function copyPost() {
-      var txt = el('#slw-ptext').value, settled = false;
+      var txt = pq('#slw-ptext').value, settled = false;
       /* the clipboard promise can hang when the tab is not focused: never leave the status on "Copying…" */
       var timer = setTimeout(function () { fail(); }, 1500);
       var done = function () { if (settled) return; settled = true; clearTimeout(timer); setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); };
-      var fail = function () { if (settled) return; settled = true; clearTimeout(timer); try { var ta = el('#slw-ptext'); ta.focus(); ta.select(); if (document.execCommand('copy')) { setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); return; } } catch (e) {} setStat(false, 'Tap “Copy post”, then paste it into your ' + P.name + ' post'); };
+      var fail = function () { if (settled) return; settled = true; clearTimeout(timer); try { var ta = pq('#slw-ptext'); ta.focus(); ta.select(); if (document.execCommand('copy')) { setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); return; } } catch (e) {} setStat(false, 'Tap “Copy post”, then paste it into your ' + P.name + ' post'); };
       try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, fail); } else { fail(); } } catch (e) { fail(); }
     }
     copyPost();
-    el('#slw-pcopy').onclick = copyPost;
-    el('#slw-popen').onclick = function () { copyPost(); window.open(P.open(sym), '_blank', 'noopener'); };
-    el('#slw-mx').onclick = closeModal;
-    el('#slw-modal').onclick = function (e) { if (e.target === el('#slw-modal')) closeModal(); };
+    pq('#slw-pcopy').onclick = copyPost;
+    pq('#slw-popen').onclick = function () { copyPost(); window.open(P.open(sym), '_blank', 'noopener'); };
+    pq('#slw-mx').onclick = closePaste;
+    pq('#slw-paste-modal').onclick = function (e) { if (e.target === pq('#slw-paste-modal')) closePaste(); };
   }
   function initBoostReal() {
     loadBoost();
