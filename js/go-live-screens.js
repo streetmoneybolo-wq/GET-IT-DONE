@@ -53,21 +53,32 @@
     for (var i = 0; i < rows.length; i++) { var sp = rows[i].querySelector('span'); if (sp && sp.textContent.trim().toLowerCase() === 'encoder') return rows[i]; }
     return null;
   }
+  function visible(el) {
+    if (!el || !el.isConnected) return false;
+    if (el.offsetParent === null && el !== document.body) return false; // display:none somewhere up the tree
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+  function firstVisible(sel) {
+    var els = document.querySelectorAll(sel);
+    for (var i = 0; i < els.length; i++) { if (visible(els[i])) return els[i]; }
+    return null;
+  }
   function ensureCard() {
     if (card && card.isConnected) return card;
     card = document.createElement('div');
     card.id = 'sml-gl-screens';
     card.style.cssText = 'min-width:0;margin:0 0 14px;border-radius:14px;border:1px solid #1c2833;background:linear-gradient(180deg,#0d151f,#0a0f16);padding:14px 15px;display:flex;flex-direction:column;gap:11px;font-family:inherit;color:#e6edf5';
+    // 1) The plugin's stable body-level container (preferred — never hidden or wiped).
     var host = document.getElementById('sml-gl-multiscreen');
     if (host) { host.innerHTML = ''; host.appendChild(card); return card; }
+    // 2) The encoder card, if the encoder script is present AND visible.
     var enc = document.getElementById('sml-gl-encoder');
-    if (enc && enc.isConnected) { card.style.gridColumn = '1/-1'; enc.insertAdjacentElement('afterend', card); return card; }
-    var row = findEncoderRow();
-    if (row) { card.style.gridColumn = '1/-1'; row.parentElement.insertAdjacentElement('beforebegin', card); return card; }
-    // Sit at the top of the Go Live wizard so it is prominent and never lost.
-    var cs = document.querySelector('.cs-card');
+    if (visible(enc)) { card.style.gridColumn = '1/-1'; enc.insertAdjacentElement('afterend', card); return card; }
+    // 3) The top of the first VISIBLE Creator Studio card (skip the hidden Stream Health panel).
+    var cs = firstVisible('.cs-card');
     if (cs && cs.parentElement) { cs.parentElement.insertBefore(card, cs); return card; }
-    var main = document.querySelector('#cs-content, main, .cs-shell');
+    var main = firstVisible('#cs-content') || firstVisible('main') || firstVisible('.cs-main') || document.body;
     if (main) { main.insertBefore(card, main.firstChild); return card; }
     return null;
   }

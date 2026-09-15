@@ -50,7 +50,11 @@ function sml_glms_inject( $html ) {
 		. 'window.SML_GL_HANDLE=' . wp_json_encode( $handle ) . ';'
 		. 'window.SML_GL_INGEST=' . wp_json_encode( 'rtmp://live.stockmarketloop.com/live' ) . ';'
 		. '</script>';
+	// Stable, visible, body-level mount point. The Go Live wizard is a client-rendered
+	// SPA whose panels re-render (and its Stream Health panel is hidden), so a body-level
+	// container is the reliable place for the card — it is never wiped or hidden.
+	$mount = '<div id="sml-gl-multiscreen" style="max-width:760px;margin:22px auto 44px;padding:0 16px;box-sizing:border-box"></div>';
 	$js = '<script id="sml-gl-screens-js" src="' . esc_url( $src ) . '" defer></scr' . 'ipt>';
 
-	return str_replace( '</body>', $cfg . $js . '</body>', $html );
+	return str_replace( '</body>', $mount . $cfg . $js . '</body>', $html );
 }
