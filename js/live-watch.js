@@ -1848,7 +1848,7 @@
     }
     pop.innerHTML = head('<span class="gp-bal">' + bal.toLocaleString() + ' LB</span>') + tabs + body +
       '<input class="gp-msg" id="slw-giftmsg" maxlength="' + (st.message_limit || 200) + '" placeholder="' + (GIFT.mode === 'voice' ? 'What do you want to talk about? (optional)' : 'Your message to the creator (optional, ' + (st.message_limit || 200) + ' characters)') + '" value="' + esc((el('#slw-cin') && el('#slw-cin').value) || '') + '">' +
-      '<div class="gp-row"><button type="button" class="gp-send" data-gift-send' + (!cost || short > 0 || GIFT.busy ? ' disabled' : '') + '>' + (GIFT.busy ? 'Sending…' : (cost ? (GIFT.mode === 'voice' ? '🎤 Buy pass & request the mic · ' : 'Send gift · ') + Number(cost).toLocaleString() + ' LB' : 'Pick an amount')) + '</button>' +
+      '<div class="gp-row"><button type="button" class="gp-send" data-gift-send' + (!cost || short > 0 || GIFT.busy ? ' disabled' : '') + '>' + (GIFT.busy ? 'Sending…' : (cost ? (GIFT.mode === 'voice' ? '🎤 Buy pass & record your message · ' : 'Send gift · ') + Number(cost).toLocaleString() + ' LB' : 'Pick an amount')) + '</button>' +
       (short > 0 ? '<a class="gp-top" href="' + esc(o.store_url || '/wallet/') + '">' + short.toLocaleString() + ' LB short · top up</a>' : '') + '</div>' +
       (GIFT.note ? '<div class="gp-note' + (GIFT.note.indexOf('!') === 0 ? ' bad' : '') + '">' + esc(GIFT.note.replace(/^!/, '')) + '</div>' : '') +
       '<div class="gp-fine">' + (GIFT.mode === 'voice' ? 'After you pay, you record a short voice message in the Speak tab. The creator listens to it privately first and only an approved message plays on the stream. Declined messages are refunded.' : 'Your gift and message show in the chat and on the creator\'s stream.') + '</div>';
