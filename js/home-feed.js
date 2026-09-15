@@ -1030,15 +1030,23 @@
     var fSet=null, fLoading=false;
     function loadFollowSet(cb){
       if (fSet){ cb(); return; } if (fLoading) return; fLoading=true;
-      fSet={};
+      fSet={}; fSet.byId={};
       var me=(window.SML_ME&&window.SML_ME.id)||0;
       var done=function(){ fLoading=false; cb(); };
       if (!me){ done(); return; }
-      var add=function(f){ var h=String(f.handle||f.slug||'').toLowerCase(); if(h) fSet[h]=1; if(f.name) fSet['n:'+String(f.name).toLowerCase()]=1; };
-      var tasks=[ api('/wp-json/sml-friends/v1/friends/'+me).then(function(d){ (d.friends||[]).forEach(add); }).catch(function(){}) ];
-      ['/wp-json/sml-members/v1/follow?user_id='+me,'/wp-json/sml-members/v1/follow?scope=following'].forEach(function(u){
-        tasks.push(api(u).then(function(d){ (d.following||d.follows||d.users||d.items||[]).forEach(add); }).catch(function(){}));
-      });
+      var add=function(f){ if(!f) return; var h=String(f.handle||f.slug||'').toLowerCase(); if(h) fSet[h]=1; if(f.name) fSet['n:'+String(f.name).toLowerCase()]=1; if(f.id) fSet.byId[String(f.id)]=1; };
+      // The two /sml-members/v1/follow GETs are POST-only (404), so the follow set
+      // is built from the personalized aggregator (following[] ids + creators[]
+      // following flag + feed[] authors) plus mutual friends.
+      var seed = personalizedData ? Promise.resolve(personalizedData) : api('/wp-json/sml-social-home/v1/feed').then(function(res){ return res&&res.j?res.j:res; }).catch(function(){ return null; });
+      var tasks=[
+        api('/wp-json/sml-friends/v1/friends/'+me).then(function(d){ (d.friends||[]).forEach(add); }).catch(function(){}),
+        Promise.resolve(seed).then(function(j){ if(!j) return;
+          var fol={}; (j.following||[]).forEach(function(id){ if(id){ fol[String(id)]=1; fSet.byId[String(id)]=1; } });
+          (j.creators||[]).forEach(function(c){ if(c&&c.following) add(c); });
+          (j.feed||[]).forEach(function(it){ var a=it&&it.author; if(a&&fol[String(a.id)]) add(a); });
+        }).catch(function(){})
+      ];
       Promise.all(tasks).then(done,done);
     }
 
@@ -1067,7 +1075,7 @@
         }
         if (show && curTab==='following'){
           if (isNewsA) show=false;
-          else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan])); }
+          else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; var aid=card.getAttribute('data-sml-authorid')||''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan]||(aid&&fSet.byId&&fSet.byId[aid]))); }
         }
         card.style.display=show?'':'none'; if (show) any=true;
       });
@@ -1524,9 +1532,9 @@
     })();
 
     // ---- live feed: poll for new posts and slide them in (no reload) ----
-    var feedSeen = {};
+    var feedSeen = {}, seenItemIds = {};
     function cardKeyOf(card){ var a = card.querySelector('h2 a'); if (a && a.getAttribute('href')) return a.getAttribute('href'); return 'x:' + ((card.innerText||'').replace(/\s+/g,' ').slice(0,140)); }
-    host.querySelectorAll('.oh-post').forEach(function(c){ feedSeen[cardKeyOf(c)] = 1; });
+    host.querySelectorAll('.oh-post').forEach(function(c){ feedSeen[cardKeyOf(c)] = 1; var it=c.getAttribute('data-hfe-item'); if(it) seenItemIds[it]=1; });
     // ---- endless default feed: page in latest posts/articles + Loop Letters ----
     var feedPage = 1, feedLoading = false, feedExhausted = false, lettersLoaded = false;
     function normalizeLetters(d){
@@ -1571,14 +1579,68 @@
         '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
       return art;
     }
+    // ---- personalized seed (signed-in): /sml-social-home/v1/feed aggregates the
+    // viewer's follows/friends/watchlist/news into one scored feed[]. We render it
+    // as native .oh-post cards and TOP-insert so personalized/relevant content leads.
+    // The response also carries following[]/creators[]/groups[] reused by the
+    // Following filter (loadFollowSet) and later phases (rec rails, groups).
+    var personalizedData = null;
+    function personalizedCard(item){
+      item = item || {};
+      var au = item.author || {};
+      var name = au.name || 'StockMarketLoop';
+      var handle = au.handle || '';
+      var aurl = au.url || (handle ? ('/' + handle + '/') : '/creators/');
+      var av = au.avatar || '/wp-content/uploads/2026/08/Untitled-design-90.png';
+      var url = item.url || '#';
+      var date = item.date || '';
+      var body = textOnly(item.body || '').slice(0, 700);
+      var title = textOnly(item.title || '');
+      var tks = (item.tickers || []).filter(Boolean);
+      var head = title || ((tks.length ? tks.map(function(t){ return '$' + t; }).join(' ') + ' — ' : '') + name) || 'Post';
+      var img = item.image || (Array.isArray(item.media) && item.media[0] && (item.media[0].url || item.media[0].src || (typeof item.media[0] === 'string' ? item.media[0] : ''))) || '';
+      var m = item.metrics || {};
+      var art = document.createElement('article');
+      art.className = 'oh-card oh-post sml-sth-post';
+      art.setAttribute('data-hfe-item', item.id || ('sh-' + url));
+      art.setAttribute('data-hfe-url', url);
+      art.setAttribute('data-sml-published', date);
+      if (au.id) art.setAttribute('data-sml-authorid', String(au.id));
+      art.innerHTML = '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av) + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
+        '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(url) + '">' + esc(head) + '</a></h2>' +
+        (body ? '<p>' + esc(body) + '</p>' : '') +
+        (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
+        '<div class="sml-sth-actions"><span>Likes ' + (parseInt(m.likes, 10) || 0) + '</span> <span>Comments ' + (parseInt(m.comments, 10) || 0) + '</span> <span>Shares ' + (parseInt(m.shares, 10) || 0) + '</span> <a href="' + esc(url) + '">Open</a></div>';
+      return art;
+    }
+    function fetchPersonalizedSeed(){
+      return api('/wp-json/sml-social-home/v1/feed').then(function(res){
+        var j = res && res.j ? res.j : res;
+        if (!j || !j.feed) return;
+        personalizedData = j;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+        var anchor = main.firstChild, nodes = [];
+        (j.feed || []).forEach(function(item){
+          if (!item) return;
+          var id = item.id || ('sh-' + (item.url || ''));
+          if (!id || seenItemIds[id]) return;
+          seenItemIds[id] = 1;
+          var node = personalizedCard(item);
+          var key = cardKeyOf(node); if (key) feedSeen[key] = 1;
+          nodes.push(node);
+        });
+        nodes.forEach(function(node){ node.style.animation = 'smlHfNew .45s ease'; main.insertBefore(node, anchor); armRh(node, 250); });
+        if (nodes.length){ fbComments(); dedupeFeed(); applyQuotes(); }
+      }).catch(function(){});
+    }
     function appendFeedNodes(nodes){
       if (!nodes.length) return 0;
       nodes.sort(function(a,b){ return (Date.parse(b.getAttribute('data-sml-published')||'')||0) - (Date.parse(a.getAttribute('data-sml-published')||'')||0); });
       var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host, added=0;
       nodes.forEach(function(node){
-        var key = cardKeyOf(node);
-        if (!key || feedSeen[key]) return;
-        feedSeen[key] = 1;
+        var key = cardKeyOf(node), it = node.getAttribute('data-hfe-item');
+        if (!key || feedSeen[key] || (it && seenItemIds[it])) return;
+        feedSeen[key] = 1; if (it) seenItemIds[it] = 1;
         node.style.animation='smlHfNew .45s ease';
         main.appendChild(node);
         armRh(node, 250);
@@ -1647,6 +1709,7 @@
         }).catch(function(){});
       });
     }
+    if (window.SML_ME && window.SML_ME.id) fetchPersonalizedSeed();
     backfillFeed();
     hydrateMediaRails();
     function pollFeed(){
