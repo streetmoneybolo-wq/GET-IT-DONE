@@ -2996,9 +2996,11 @@
     el('#slw-ptext').value = post;
     function setStat(ok, msg) { var st = el('#slw-pstat'); st.textContent = msg; st.classList.toggle('warn', !ok); }
     function copyPost() {
-      var txt = el('#slw-ptext').value;
-      var done = function () { setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); };
-      var fail = function () { try { var ta = el('#slw-ptext'); ta.focus(); ta.select(); if (document.execCommand('copy')) { done(); return; } } catch (e) {} setStat(false, 'Tap “Copy post”, then paste it into your ' + P.name + ' post'); };
+      var txt = el('#slw-ptext').value, settled = false;
+      /* the clipboard promise can hang when the tab is not focused: never leave the status on "Copying…" */
+      var timer = setTimeout(function () { fail(); }, 1500);
+      var done = function () { if (settled) return; settled = true; clearTimeout(timer); setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); };
+      var fail = function () { if (settled) return; settled = true; clearTimeout(timer); try { var ta = el('#slw-ptext'); ta.focus(); ta.select(); if (document.execCommand('copy')) { setStat(true, '✓ Copied — now paste it into your ' + P.name + ' post'); return; } } catch (e) {} setStat(false, 'Tap “Copy post”, then paste it into your ' + P.name + ' post'); };
       try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, fail); } else { fail(); } } catch (e) { fail(); }
     }
     copyPost();
