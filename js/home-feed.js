@@ -1941,7 +1941,10 @@
       var symChips = syms.slice(0, 3).map(function(s){ return '$' + s; }).join(' ');
       var tag = '<div class="sml-hf-room-tag">' + esc(kindLabel) + (symChips ? (' · ' + esc(symChips)) : '') + '</div>';
       var art = document.createElement('article');
-      art.className = 'oh-card oh-post sml-sth-post sml-hf-room';
+      // No 'sml-sth-post': that class is the engagement layer's hook (it would
+      // replace the room's Join action with Like/Comment/Share). A live room is a
+      // join target, not a likeable post — keep the .oh-post chrome, opt out of FE.
+      art.className = 'oh-card oh-post sml-hf-room';
       art.setAttribute('data-hfe-item', 'room-' + (item.room_id || gurl));
       art.setAttribute('data-hfe-url', gurl);
       if (hostU.id) art.setAttribute('data-sml-authorid', String(hostU.id));
