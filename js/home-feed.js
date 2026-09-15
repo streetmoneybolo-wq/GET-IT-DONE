@@ -24,6 +24,7 @@
   function fmtChg(v){return v==null?'—':(v>=0?'+':'')+Number(v).toFixed(2);}
   function fmtVol(v){if(v==null)return'—';v=Number(v);return v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(v);}
   function qColor(v){return v==null?'#6B7C90':(v>=0?'#38F58A':'#F2495C');}
+  function textOnly(html){ var d=document.createElement('div'); d.innerHTML=String(html||''); return (d.textContent||'').replace(/\s+/g,' ').trim(); }
   function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var d=Q[el.getAttribute('data-q')]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); }
   function pollQuotes(){ var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
 
@@ -237,19 +238,20 @@
       host.querySelectorAll('.sml-hf-recrail').forEach(function(r){ r.remove(); });
       if (curTab === 'live') return;
       var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none'; });
-      if (posts.length < 8) return;
-      placeRailAfter(posts, Math.min(17, posts.length - 1), buildRecRail('know','Traders You May Know','People ranked by shared market circles, repeated interests, profile closeness, and engagement signals.','social graph'));
+      if (posts.length < 3) return;
+      placeRailAfter(posts, posts.length < 18 ? Math.min(6, posts.length - 1) : Math.min(17, posts.length - 1), buildRecRail('know','Traders You May Know','People ranked by shared market circles, repeated interests, profile closeness, and engagement signals.','social graph'));
       if (posts.length > 25) placeRailAfter(posts, Math.min(42, posts.length - 1), buildRecRail('follow','Recommended Traders to Follow','Only 25 traders selected for likely engagement, watchlist overlap, and similar market behavior.','ai picks'));
       if (posts.length > 35) placeRailAfter(posts, Math.min(52, posts.length - 1), buildRecRail('near','Traders Near You','Location uses listed city/state when available and IP-derived analytics location when the site exposes it.','local market'));
     }
     function recycleFeedIfNeeded(){
       if (curTab === 'live') return;
       var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone'); });
-      if (posts.length < 10 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 36) return;
+      if (posts.length < 3 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 72) return;
       var shellEl = document.getElementById('sml-hf-shell'); if(!shellEl) return;
       if (shellEl.scrollTop + shellEl.clientHeight < shellEl.scrollHeight - 1200) return;
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
       posts.slice(0, Math.min(12, posts.length)).forEach(function(p){
-        var c = p.cloneNode(true); c.setAttribute('data-sml-loop-clone','1'); c.style.animation='smlHfNew .45s ease'; c.querySelectorAll('.sml-rh-panel,.sml-rh-btn').forEach(function(x){ x.remove(); }); host.appendChild(c); armRh(c, 250);
+        var c = p.cloneNode(true); c.setAttribute('data-sml-loop-clone','1'); c.style.animation='smlHfNew .45s ease'; c.querySelectorAll('.sml-rh-panel,.sml-rh-btn,.sml-hf-recrail').forEach(function(x){ x.remove(); }); main.appendChild(c); armRh(c, 250);
       });
       fbComments(); dedupeFeed(); applyQuotes();
     }
@@ -548,6 +550,22 @@
     var RNONCE='';
     try { var scs=document.querySelectorAll('script:not([src])'); for (var si=0; si<scs.length; si++){ var sm=(scs[si].textContent||'').match(/["'](?:nonce|restNonce|rest_nonce|_wpnonce|wpNonce)["']\s*[:=]\s*["']([A-Za-z0-9]{8,12})["']/); if (sm){ RNONCE=sm[1]; break; } } } catch(e){}
     function api(u){ var h={}; if (RNONCE) h['X-WP-Nonce']=RNONCE; return fetch(u,{credentials:'same-origin',headers:h}).then(function(r){ if(!r.ok) throw r.status; return r.json(); }); }
+    function restPostCard(p){
+      var emb=p&&p._embedded||{}, au=(emb.author&&emb.author[0])||{}, fm=(emb['wp:featuredmedia']&&emb['wp:featuredmedia'][0])||{};
+      var title=textOnly(p&&p.title&&p.title.rendered)||'Untitled';
+      var body=textOnly(p&&p.excerpt&&p.excerpt.rendered).slice(0,700);
+      var url=(p&&p.link)||'#', date=(p&&p.date)||'', id='wp-'+(p&&p.id||url);
+      var name=au.name||'StockMarketLoop', aurl=au.link||'/creators/', avatars=au.avatar_urls||{}, av=avatars['96']||avatars['48']||avatars['24']||'';
+      var img=p.jetpack_featured_media_url||fm.source_url||'';
+      var art=document.createElement('article');
+      art.className='oh-card oh-post sml-sth-post';
+      art.setAttribute('data-hfe-item', id); art.setAttribute('data-hfe-url', url); art.setAttribute('data-sml-news-item','1'); art.setAttribute('data-sml-published', date);
+      art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av||'/wp-content/uploads/2026/08/Untitled-design-90.png')+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
+        '<div class="oh-meta">'+esc(name+(date?' · '+date:''))+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
+        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
+        '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
+      return art;
+    }
 
     // Following = the viewer's friends + anyone they follow (site's own APIs).
     var fSet=null, fLoading=false;
@@ -644,6 +662,28 @@
     var feedSeen = {};
     function cardKeyOf(card){ var a = card.querySelector('h2 a'); if (a && a.getAttribute('href')) return a.getAttribute('href'); return 'x:' + ((card.innerText||'').replace(/\s+/g,' ').slice(0,140)); }
     host.querySelectorAll('.oh-post').forEach(function(c){ feedSeen[cardKeyOf(c)] = 1; });
+    function backfillFeed(){
+      var current=host.querySelectorAll('.oh-post:not([data-sml-loop-clone])').length;
+      if (current >= 18) return;
+      api('/wp-json/wp/v2/posts?per_page=30&_embed=1&_fields=id,link,date,title,excerpt,author,jetpack_featured_media_url,_embedded').then(function(rows){
+        if (!Array.isArray(rows) || !rows.length) return;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host, added=0;
+        rows.forEach(function(p){
+          if (added >= 24) return;
+          var tmp = document.createElement('a'); tmp.href = (p&&p.link)||'#';
+          var key = tmp.href || ((p&&p.link)||'');
+          if (!key || feedSeen[key]) return;
+          var node = restPostCard(p);
+          feedSeen[cardKeyOf(node)] = 1;
+          node.style.animation='smlHfNew .45s ease';
+          main.appendChild(node);
+          armRh(node, 250);
+          added++;
+        });
+        if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
+      }).catch(function(){});
+    }
+    backfillFeed();
     function pollFeed(){
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
         if (html.indexOf('sml-optimized-home') < 0) return;
