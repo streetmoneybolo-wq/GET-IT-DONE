@@ -558,7 +558,7 @@
     function armRh(card, delay){ setTimeout(function(){ rhResolve(card, function(items){ if (items.length) attachRh(card); }); }, delay); }
     (function(){ var i = 0; host.querySelectorAll('.oh-post').forEach(function(card){ armRh(card, 350 * i++); }); })();
 
-    // ---- feed hygiene: one card per user per content type ----
+    // ---- feed helpers: classify card activity without limiting the default feed ----
     // A user may appear again only with a DIFFERENT kind of activity (photo /
     // video / comment / liked post / text post). The site's own news account is
     // exempt so the news flow never collapses.
