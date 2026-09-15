@@ -1837,21 +1837,22 @@
     var cur = tiers.filter(function (t) { return t.slug === GIFT.tier; })[0];
     var cost = GIFT.mode === 'voice' ? (cur ? cur.loop_bucks : 0) : GIFT.amount;
     var short = Math.max(0, cost - bal);
-    var tabs = '<div class="gp-tabs"><button type="button" class="gp-tab' + (GIFT.mode === 'message' ? ' on' : '') + '" data-gift-mode="message">💬 Message gift</button><button type="button" class="gp-tab' + (GIFT.mode === 'voice' ? ' on' : '') + '" data-gift-mode="voice">🎤 Speak to the creator</button></div>';
+    var tabs = '<div class="gp-tabs"><button type="button" class="gp-tab' + (GIFT.mode === 'message' ? ' on' : '') + '" data-gift-mode="message">💬 Message Superchat</button><button type="button" class="gp-tab' + (GIFT.mode === 'voice' ? ' on' : '') + '" data-gift-mode="voice">🎤 Voice Super Chat</button></div>';
     var body;
     if (GIFT.mode === 'message') {
       body = '<div class="gp-lbl">AMOUNT · this creator takes ' + Number(st.min).toLocaleString() + '–' + Number(st.max).toLocaleString() + ' LB</div>' +
         '<div class="gp-amts">' + quick.map(function (v) { return '<button type="button" class="gp-amt' + (v === GIFT.amount ? ' on' : '') + '" data-gift-amt="' + v + '">' + Number(v).toLocaleString() + '</button>'; }).join('') +
         '<input class="gp-custom" id="slw-giftamt" type="number" min="' + st.min + '" max="' + st.max + '" step="1" value="' + GIFT.amount + '" aria-label="Custom amount"></div>';
     } else {
-      body = '<div class="gp-lbl">VOICE PASS · record a message the host reviews before it plays on the stream</div><div class="gp-tiers">' + (tiers.length ? tiers.map(function (t) { return '<button type="button" class="gp-tier' + (t.slug === GIFT.tier ? ' on' : '') + (t.locked ? ' locked' : '') + '" data-gift-tier="' + esc(t.slug) + '"' + (t.locked ? ' disabled' : '') + '><b>' + Number(t.loop_bucks).toLocaleString() + ' LB</b><span>' + esc(t.label) + (t.seconds ? ' · ' + t.seconds + 's on the mic' : '') + (t.locked ? ' · members' : '') + '</span></button>'; }).join('') : '<div class="gp-note">No voice passes are set up for this stream.</div>') + '</div>';
+      var voiceOff = GIFT.opts && GIFT.opts.voice_enabled === false;
+      body = '<div class="gp-lbl">HOW LONG · pick a length, send, then record in the Speak tab</div><div class="gp-tiers">' + (voiceOff ? '<div class="gp-note">This creator has Voice Super Chat turned off.</div>' : (tiers.length ? tiers.map(function (t) { var lv = t.level || null; return '<button type="button" class="gp-tier' + (t.slug === GIFT.tier ? ' on' : '') + (t.locked ? ' locked' : '') + '" data-gift-tier="' + esc(t.slug) + '"' + (t.locked ? ' disabled' : '') + '><b>' + (t.seconds || '') + ' seconds</b><span>' + Number(t.loop_bucks).toLocaleString() + ' LB' + (lv ? ' · <i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(lv.color) + ';vertical-align:middle"></i> ' + esc(lv.label) : '') + '</span></button>'; }).join('') : '<div class="gp-note">No voice lengths are set up for this stream.</div>')) + '</div>';
     }
     pop.innerHTML = head('<span class="gp-bal">' + bal.toLocaleString() + ' LB</span>') + tabs + body +
       '<input class="gp-msg" id="slw-giftmsg" maxlength="' + (st.message_limit || 200) + '" placeholder="' + (GIFT.mode === 'voice' ? 'What do you want to talk about? (optional)' : 'Your message to the creator (optional, ' + (st.message_limit || 200) + ' characters)') + '" value="' + esc((el('#slw-cin') && el('#slw-cin').value) || '') + '">' +
-      '<div class="gp-row"><button type="button" class="gp-send" data-gift-send' + (!cost || short > 0 || GIFT.busy ? ' disabled' : '') + '>' + (GIFT.busy ? 'Sending…' : (cost ? (GIFT.mode === 'voice' ? '🎤 Buy pass & record your message · ' : 'Send gift · ') + Number(cost).toLocaleString() + ' LB' : 'Pick an amount')) + '</button>' +
+      '<div class="gp-row"><button type="button" class="gp-send" data-gift-send' + (!cost || short > 0 || GIFT.busy ? ' disabled' : '') + '>' + (GIFT.busy ? 'Sending…' : (cost ? (GIFT.mode === 'voice' ? '🎤 Send Voice Super Chat · ' : 'Send Super Chat · ') + Number(cost).toLocaleString() + ' LB' : 'Pick an amount')) + '</button>' +
       (short > 0 ? '<a class="gp-top" href="' + esc(o.store_url || '/wallet/') + '">' + short.toLocaleString() + ' LB short · top up</a>' : '') + '</div>' +
       (GIFT.note ? '<div class="gp-note' + (GIFT.note.indexOf('!') === 0 ? ' bad' : '') + '">' + esc(GIFT.note.replace(/^!/, '')) + '</div>' : '') +
-      '<div class="gp-fine">' + (GIFT.mode === 'voice' ? 'After you pay, you record a short voice message in the Speak tab. The creator listens to it privately first and only an approved message plays on the stream. Declined messages are refunded.' : 'Your gift and message show in the chat and on the creator\'s stream.') + '</div>';
+      '<div class="gp-fine">' + (GIFT.mode === 'voice' ? 'Pick a length and send. Then tap Record in the Speak tab — when you stop, your message goes to the creator, who listens privately first. If approved it plays on the stream with your Loop Bucks shown to everyone. Declined messages are refunded.' : 'Your gift and message show in the chat and on the creator\'s stream.') + '</div>';
   }
   function giftLoad() {
     api('/sml-superchat/v1/options?room_id=' + encodeURIComponent(CHAT_ROOM)).then(function (res) { GIFT.opts = res.j || { logged_in: false, tiers: [] }; giftRender(); }).catch(function () { GIFT.opts = { logged_in: false, tiers: [] }; giftRender(); });
@@ -1879,7 +1880,7 @@
         /* recorded voice Super Chat (owner design 2026-09-15): nothing is live. The pass is bought; the Speak tab's
            native widget records the message, the host listens privately, then plays it on the stream or declines. */
         VC.tierSlug = GIFT.tier;
-        GIFT.note = 'Pass bought — record your message in the Speak tab. The host listens first, then plays it on the stream.';
+        GIFT.note = 'Sent! Now tap 🎙 Record in the Speak tab. When you stop, your message goes straight to the host.';
         giftRender();
         try { document.dispatchEvent(new CustomEvent('sml-voice-refresh')); } catch (e) {}
         var speakTab = root.querySelector('.slw-tab[data-tab="1"]'); if (speakTab) speakTab.click();
@@ -2258,20 +2259,24 @@
     VC.micRaf = 0;
     if (VC.micStream) { VC.micStream.getTracks().forEach(function (t) { t.stop(); }); VC.micStream = null; }
   }
-  /* queue-driven "requested to speak" strip — visible to every viewer, per the design */
+  /* "now playing" strip — every viewer sees whose Voice Super Chat is on the stream, the amount and its level
+     (owner design 2026-09-15: the Loop Bucks sent show on screen for the entire stream) */
   function pollVoiceQueue() {
     if (SIM || document.hidden) return;
-    api('/sml-voice/v1/queue?room_id=' + CHAT_ROOM).then(function (res) {
-      var q2 = (res.j && res.j.queue) || [];
-      var w = el('#slw-wait');
-      if (q2.length && S.camScene === 'idle') {
-        var first = q2[0] || {};
-        var who = first.handle || first.user || first.name || 'a viewer';
-        w.querySelector('.tx').innerHTML = '<b>@' + esc(String(who).replace(/^@/, '')) + '</b> requested to speak · waiting for the host — the stream keeps rolling';
-        w.querySelector('.av').textContent = String(who).replace(/^@/, '').slice(0, 2).toUpperCase();
+    api('/sml-voice/v1/now-playing?room_id=' + CHAT_ROOM).then(function (res) {
+      var p = res.j && res.j.playing;
+      var w = el('#slw-wait'); if (!w) return;
+      if (p && p.until && p.until * 1000 > Date.now() - 2000) {
+        var who = String(p.who || p.name || 'a viewer');
+        var lv = p.level || {};
+        w.querySelector('.tx').innerHTML = '<b>🔊 VOICE SUPER CHAT</b> · <b>' + esc(who) + '</b> · ' + Number(p.loop_bucks || 0).toLocaleString() + ' LB' + (lv.label ? ' · <span style="font-weight:800">' + esc(String(lv.label).toUpperCase()) + '</span>' : '') + (p.message ? ' — “' + esc(p.message) + '”' : '');
+        w.querySelector('.av').textContent = who.replace(/^@/, '').slice(0, 2).toUpperCase();
+        if (lv.color) { w.style.borderColor = lv.color; w.style.boxShadow = '0 0 0 1px ' + lv.color + ' inset, 0 10px 30px -10px ' + lv.color; w.querySelector('.av').style.background = lv.color; }
         w.classList.add('show');
-      } else if (S.camScene === 'idle') {
+        if (!pollVoiceQueue.fast) { pollVoiceQueue.fast = setInterval(function () { var stillOn = p.until * 1000 > Date.now(); if (!stillOn) { clearInterval(pollVoiceQueue.fast); pollVoiceQueue.fast = null; w.classList.remove('show'); } }, 1000); }
+      } else {
         w.classList.remove('show');
+        w.style.borderColor = ''; w.style.boxShadow = ''; w.querySelector('.av').style.background = '';
       }
     }).catch(function () {});
   }
