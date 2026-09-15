@@ -85,6 +85,22 @@
         '.sml-rh-info{position:relative;z-index:2;padding:0 20px 16px;display:flex;flex-direction:column;gap:7px;}' +
         '.sml-rh-nav{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#93A4B8;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}' +
         '.sml-rh-nav:hover{color:#38F58A;border-color:rgba(56,245,138,.5);}' +
+        '.sml-hf-recrail{position:relative;overflow:hidden;margin:18px 0;border-radius:22px;background:radial-gradient(420px 180px at 12% 0%,rgba(56,245,138,.18),transparent 58%),linear-gradient(168deg,#1B2532 0%,#121A26 46%,#090F17 100%);border:1px solid rgba(56,245,138,.2);border-top-color:rgba(140,255,200,.42);box-shadow:inset 0 1px 0 rgba(190,255,222,.18),0 24px 50px -24px rgba(0,0,0,.9),0 0 54px -28px rgba(56,245,138,.55);}' +
+        '.sml-hf-recrail:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(56,245,138,.08),transparent 22%,transparent 78%,rgba(56,245,138,.06));}' +
+        '.sml-hf-rec-head{position:relative;display:flex;align-items:flex-end;gap:12px;padding:18px 18px 8px;}' +
+        '.sml-hf-rec-kicker{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.16em;color:#38F58A;text-transform:uppercase;margin-bottom:4px;}' +
+        '.sml-hf-rec-title{font-family:"Space Grotesk",sans-serif;font-size:21px;font-weight:800;letter-spacing:-.35px;color:#E6EDF5;line-height:1.05;}' +
+        '.sml-hf-rec-sub{font-size:12px;color:#93A4B8;line-height:1.4;margin-top:5px;}' +
+        '.sml-hf-rec-next{margin-left:auto;width:50px;height:50px;border-radius:50%;border:1px solid rgba(56,245,138,.45);background:linear-gradient(180deg,#243245,#101925);color:#38F58A;font-size:22px;font-weight:900;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 0 24px -9px rgba(56,245,138,.8);flex:none;}' +
+        '.sml-hf-rec-next:hover{transform:scale(1.05);border-color:rgba(56,245,138,.8);}' +
+        '.sml-hf-rec-window{position:relative;overflow:hidden;padding:8px 12px 18px;}' +
+        '.sml-hf-rec-track{display:flex;gap:12px;transition:transform .38s cubic-bezier(.2,.8,.25,1);will-change:transform;}' +
+        '.sml-hf-rec-card{width:118px;min-width:118px;display:flex;flex-direction:column;align-items:center;text-align:center;text-decoration:none;color:inherit;border-radius:18px;padding:12px 8px 11px;background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.018));border:1px solid rgba(255,255,255,.085);box-shadow:inset 0 1px 0 rgba(255,255,255,.10);}' +
+        '.sml-hf-rec-card:hover{border-color:rgba(56,245,138,.55);background:linear-gradient(180deg,rgba(56,245,138,.11),rgba(255,255,255,.025));transform:translateY(-2px);}' +
+        '.sml-hf-rec-avatar{width:58px;height:58px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;flex:none;background:linear-gradient(160deg,#26343F,#0D141D);color:#38F58A;font-family:"Space Grotesk",sans-serif;font-weight:900;font-size:17px;box-shadow:0 0 0 2px #0B131F,0 0 0 4px rgba(56,245,138,.70),0 10px 22px -12px rgba(56,245,138,.8);}' +
+        '.sml-hf-rec-name{max-width:100%;margin-top:9px;font-size:12.2px;font-weight:800;color:#E6EDF5;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:28px;}' +
+        '.sml-hf-rec-reason{max-width:100%;margin-top:5px;font-family:"IBM Plex Mono",monospace;font-size:8.5px;letter-spacing:.03em;color:#7E93A6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '@media(max-width:560px){.sml-hf-rec-title{font-size:18px}.sml-hf-rec-card{width:104px;min-width:104px}.sml-hf-rec-avatar{width:52px;height:52px}.sml-hf-rec-next{width:44px;height:44px}}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
         '@keyframes smlHfNew{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}' +
         '@keyframes smlHfGlow{0%,100%{opacity:.5}50%{opacity:1}}' +
@@ -143,6 +159,100 @@
     var GCOLORS=['#22E07A','#3d8bfd','#ffb020','#b98cff','#ff6b81','#4dd0e1'];
     function groupRow(g,i){ var icon=g.img?'<img src="'+esc(g.img)+'" alt="" loading="lazy" style="width:28px;height:28px;border-radius:9px;flex:none;object-fit:cover;background:#0A1017">':'<span style="width:28px;height:28px;border-radius:9px;flex:none;background:'+GCOLORS[i%GCOLORS.length]+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#03120A">'+esc(g.name.slice(0,2))+'</span>'; return '<a href="'+esc(g.href||'/groups/')+'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:11px;background:linear-gradient(180deg,#141D29,#0A1017);border:1px solid rgba(0,0,0,.5);border-top-color:rgba(255,255,255,.1);cursor:pointer;text-decoration:none;color:#E6EDF5"><span style="display:contents">'+icon+'</span><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(g.name)+'</span><span style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#38F58A;flex:none">open</span></a>'; }
     function groupRows(){ var list=myGroups.length?myGroups:[{name:'Small Caps',href:'/groups/',img:''},{name:'Options Flow',href:'/groups/',img:''},{name:'Swing Desk',href:'/groups/',img:''},{name:'Chart Room',href:'/groups/',img:''}]; return list.slice(0,6).map(groupRow).join(''); }
+    function normLoc(v){ return String(v||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
+    function recSignalsForCard(card){
+      var txt = card ? (card.innerText||'') : '';
+      var sy = {}; (txt.match(/\$[A-Z]{1,5}\b/g)||[]).forEach(function(s){ sy[s.replace('$','').toUpperCase()] = 1; });
+      var words = {}; txt.toLowerCase().replace(/[^a-z0-9$ ]/g,' ').split(/\s+/).forEach(function(w){ if(w.length>3 && !/^(this|that|with|from|will|have|been|after|about|says|over|into|their|would|could|these|those|when|what|where|more|than|stock|market|news)$/i.test(w)) words[w]=(words[w]||0)+1; });
+      return { symbols: sy, words: words };
+    }
+    function collectTraderCandidates(){
+      var by = {}, cards = Array.prototype.slice.call(host.querySelectorAll('.oh-post'));
+      cards.forEach(function(card, idx){
+        var a = card.querySelector('.oh-post-author'), nm = ((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
+        if(!a || !nm || /^(stock\s*market\s*loop|sml(\s*news)?)$/i.test(nm)) return;
+        var hf = a.getAttribute('href') || '', im = a.querySelector('img.oh-post-avatar') || a.querySelector('img'), src = im ? (im.getAttribute('data-src') || im.getAttribute('src') || '') : '';
+        var slugM = hf.match(/\/([a-z0-9_\-]+)\/?$/i), slug = slugM ? slugM[1].toLowerCase() : nm.toLowerCase();
+        var key = slug || nm.toLowerCase(), sig = recSignalsForCard(card);
+        if(!by[key]) by[key] = { name:nm, img:src, href:hf || '/creators/', slug:slug, count:0, first:idx, symbols:{}, words:{}, location:'', score:0, reason:'' };
+        by[key].count += 1; by[key].first = Math.min(by[key].first, idx);
+        Object.keys(sig.symbols).forEach(function(s){ by[key].symbols[s] = (by[key].symbols[s]||0)+1; });
+        Object.keys(sig.words).forEach(function(w){ by[key].words[w] = (by[key].words[w]||0)+sig.words[w]; });
+      });
+      authors.forEach(function(a, idx){
+        if(!a || !a.name || /^(stock\s*market\s*loop|sml(\s*news)?)$/i.test(a.name)) return;
+        var key = (a.slug || a.name).toLowerCase();
+        if(!by[key]) by[key] = { name:a.name, img:a.img, href:a.href || '/creators/', slug:a.slug||'', count:1, first:idx+20, symbols:{}, words:{}, location:a.location||'', score:0, reason:'' };
+      });
+      try {
+        var extra = window.SML_TRADER_RECS || window.SML_RECOMMENDED_TRADERS || [];
+        if (Array.isArray(extra)) extra.forEach(function(a, idx){
+          var nm = String(a.name || a.display_name || a.user_nicename || '').trim(); if(!nm) return;
+          var slug = String(a.slug || a.handle || '').toLowerCase(), key = slug || nm.toLowerCase();
+          if(!by[key]) by[key] = { name:nm, img:a.avatar || a.img || '', href:a.url || a.href || (slug?('/'+slug+'/'):'/creators/'), slug:slug, count:0, first:idx+40, symbols:{}, words:{}, location:a.city || a.location || a.state || '', score:0, reason:'' };
+          by[key].location = by[key].location || a.city || a.location || a.state || '';
+          by[key].ai = Number(a.score || a.aiScore || 0) || 0;
+        });
+      } catch(e){}
+      return Object.keys(by).map(function(k){ return by[k]; });
+    }
+    function scoreTraders(kind){
+      var watch = {}; watchSyms().forEach(function(s){ watch[String(s).toUpperCase()] = 1; });
+      var meLoc = normLoc((window.SML_ME && (SML_ME.ipCity || SML_ME.ipRegion || SML_ME.city || SML_ME.state || SML_ME.location)) || '');
+      var meWords = {}; host.querySelectorAll('.oh-post').forEach(function(card){ var s=recSignalsForCard(card); Object.keys(s.words).slice(0,8).forEach(function(w){ meWords[w]=(meWords[w]||0)+s.words[w]; }); });
+      var list = collectTraderCandidates().map(function(t){
+        var symHits = Object.keys(t.symbols).filter(function(s){ return watch[s]; }).length;
+        var topicHits = Object.keys(t.words).filter(function(w){ return meWords[w]; }).slice(0,6).length;
+        var locHit = meLoc && normLoc(t.location) && (meLoc.indexOf(normLoc(t.location))>=0 || normLoc(t.location).indexOf(meLoc)>=0);
+        var base = 18 + Math.min(24, t.count * 5) + Math.max(0, 18 - t.first) + Math.min(18, symHits * 7) + Math.min(16, topicHits * 3) + Math.min(10, t.ai || 0);
+        if (kind === 'know') base += Math.max(0, 18 - t.first) + Math.min(14, t.count * 4);
+        if (kind === 'follow') base += Math.min(22, symHits * 9 + topicHits * 4);
+        if (kind === 'near') base = locHit ? (88 + Math.min(10, t.count)) : (28 + Math.min(15, t.count * 3) + (meLoc ? 0 : 8));
+        t.score = Math.max(0, Math.min(100, Math.round(base)));
+        t.reason = kind === 'near' ? (locHit ? 'near your market area' : 'active local-style trader') : (symHits ? 'watchlist overlap' : (topicHits ? 'similar market interests' : 'active trader'));
+        return t;
+      }).sort(function(a,b){ return b.score - a.score || a.first - b.first || a.name.localeCompare(b.name); });
+      if (kind === 'follow') return list.slice(0,25);
+      if (kind === 'near') return list.slice(0,25);
+      var endless = list.slice();
+      while (endless.length && endless.length < 40) endless = endless.concat(list);
+      return endless.slice(0, Math.max(25, Math.min(60, endless.length || 0)));
+    }
+    function recCard(t){
+      var av = t.img ? '<img class="sml-hf-rec-avatar" src="'+esc(t.img)+'" alt="'+esc(t.name)+'" loading="lazy">' : '<span class="sml-hf-rec-avatar">'+esc(initialsOf(t.name)||'T')+'</span>';
+      return '<a class="sml-hf-rec-card" href="'+esc(t.href||'/creators/')+'">'+av+'<span class="sml-hf-rec-name">'+esc(t.name)+'</span><span class="sml-hf-rec-reason">'+esc(t.reason||'trader signal')+'</span></a>';
+    }
+    function buildRecRail(kind, title, sub, kicker){
+      var list = scoreTraders(kind); if (!list.length) return null;
+      var rail = document.createElement('section'); rail.className='sml-hf-recrail'; rail.setAttribute('data-rec-kind', kind); rail.__idx = 0; rail.__size = list.length;
+      rail.innerHTML = '<div class="sml-hf-rec-head"><div><div class="sml-hf-rec-kicker">'+esc(kicker)+'</div><div class="sml-hf-rec-title">'+esc(title)+'</div><div class="sml-hf-rec-sub">'+esc(sub)+'</div></div><button class="sml-hf-rec-next" type="button" aria-label="Next traders">›</button></div><div class="sml-hf-rec-window"><div class="sml-hf-rec-track">'+list.map(recCard).join('')+'</div></div>';
+      return rail;
+    }
+    function placeRailAfter(posts, index, rail){
+      if(!rail || !posts.length) return;
+      var target = posts[Math.min(index, posts.length - 1)];
+      target.parentNode.insertBefore(rail, target.nextSibling);
+    }
+    function positionRecommendationRails(){
+      host.querySelectorAll('.sml-hf-recrail').forEach(function(r){ r.remove(); });
+      if (curTab === 'live') return;
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none'; });
+      if (posts.length < 8) return;
+      placeRailAfter(posts, Math.min(17, posts.length - 1), buildRecRail('know','Traders You May Know','People ranked by shared market circles, repeated interests, profile closeness, and engagement signals.','social graph'));
+      if (posts.length > 25) placeRailAfter(posts, Math.min(42, posts.length - 1), buildRecRail('follow','Recommended Traders to Follow','Only 25 traders selected for likely engagement, watchlist overlap, and similar market behavior.','ai picks'));
+      if (posts.length > 35) placeRailAfter(posts, Math.min(52, posts.length - 1), buildRecRail('near','Traders Near You','Location uses listed city/state when available and IP-derived analytics location when the site exposes it.','local market'));
+    }
+    function recycleFeedIfNeeded(){
+      if (curTab === 'live') return;
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone'); });
+      if (posts.length < 10 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 36) return;
+      var shellEl = document.getElementById('sml-hf-shell'); if(!shellEl) return;
+      if (shellEl.scrollTop + shellEl.clientHeight < shellEl.scrollHeight - 1200) return;
+      posts.slice(0, Math.min(12, posts.length)).forEach(function(p){
+        var c = p.cloneNode(true); c.setAttribute('data-sml-loop-clone','1'); c.style.animation='smlHfNew .45s ease'; c.querySelectorAll('.sml-rh-panel,.sml-rh-btn').forEach(function(x){ x.remove(); }); host.appendChild(c); armRh(c, 250);
+      });
+      fbComments(); dedupeFeed(); applyQuotes();
+    }
 
     // ---- build shell ----
     var shell = document.createElement('div'); shell.id='sml-hf-shell';
@@ -245,6 +355,17 @@
     // Watchlist edit controls (event delegation — rows re-render).
     shell.addEventListener('click', function(ev){
       var b = ev.target && ev.target.closest ? ev.target.closest('button') : null; if (!b) return;
+      if (b.classList.contains('sml-hf-rec-next')) {
+        var rail = b.closest('.sml-hf-recrail'), tr = rail && rail.querySelector('.sml-hf-rec-track');
+        if (rail && tr) {
+          var card = rail.querySelector('.sml-hf-rec-card'), step = card ? (card.getBoundingClientRect().width + 12) : 130;
+          var per = Math.max(1, Math.floor((rail.querySelector('.sml-hf-rec-window').clientWidth || 360) / step));
+          var maxIdx = Math.max(0, (rail.__size || 1) - per);
+          rail.__idx = ((rail.__idx || 0) + per) > maxIdx ? 0 : ((rail.__idx || 0) + per);
+          tr.style.transform = 'translateX(-' + ((rail.__idx || 0) * step) + 'px)';
+        }
+        return;
+      }
       var tb = b.getAttribute('data-tab');
       if (tb){ curTab = tb; styleTabs(); if (tb === 'following') loadFollowSet(dedupeFeed); else if (tb === 'live') buildLiveGrid(); dedupeFeed(); return; }
       if (b.id === 'sml-hf-watch-edit') { wEdit = !wEdit; renderWatch(); var i=document.getElementById('sml-hf-watch-inp'); if (wEdit && i) i.focus(); return; }
@@ -260,6 +381,7 @@
       if (row) location.href = '/stock-chart/?symbol=' + encodeURIComponent(row.getAttribute('data-wgo'));
     });
     shell.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' && ev.target && ev.target.id === 'sml-hf-watch-inp') { ev.preventDefault(); addTicker(); } });
+    shell.addEventListener('scroll', recycleFeedIfNeeded, { passive: true });
 
     // ---- account menu: the site's existing avatar menu, opened from our avatars ----
     // Links are harvested from the original feed header (hidden under the skin), so
@@ -455,8 +577,9 @@
         var an=((card.querySelector('.oh-post-author-name')||{}).textContent||'').trim();
         var lan=an.toLowerCase();
         var isNewsA=/^(stock\s*market\s*loop|sml(\s*news)?)$/.test(lan);
+        var isLoopClone=card.getAttribute('data-sml-loop-clone')==='1';
         var show=true;
-        if (!isNewsA && lan){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
+        if (!isNewsA && lan && !isLoopClone){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
         if (show && curTab==='following'){
           if (isNewsA) show=false;
           else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan])); }
@@ -468,6 +591,7 @@
         if (!es){ es=document.createElement('div'); es.id='sml-hf-emptyfollow'; es.style.cssText='padding:44px 20px;text-align:center;color:#93A4B8;font-size:14px;line-height:1.6'; es.innerHTML='No posts from your people yet.<br>Follow traders and add friends to build this feed.'; host.appendChild(es); }
         es.style.display='block';
       } else if (es){ es.style.display='none'; }
+      positionRecommendationRails();
     }
 
     // Facebook-style comment attribution: "Alice commented on Bob's post".
