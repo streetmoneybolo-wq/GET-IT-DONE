@@ -1620,9 +1620,14 @@
       api('/wp-json/sml-video-upload-studio/v1/rail').then(function(res){
         var j = res && res.j ? res.j : res;
         var items = [].concat((j&&j.up_next)||[], (j&&j.related)||[], (j&&j.items)||[], (j&&j.videos)||[]);
-        var seen = {};
-        mediaRailData.uploads = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
-        mediaRailData.shorts = items.filter(function(x){ var t=((x&&x.type)||x.kind||x.format||x.visibility||'').toString().toLowerCase(); return x && (x.short || x.is_short || x.noindex || /short|clip|profile|noindex/.test(t)); }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        var seen = {}, seenS = {};
+        // A rail item is a "short/profile" upload when the server tags it short/
+        // is_short/noindex, or its type/kind/format/visibility says so. Uploads
+        // still require a title, so shorts do too. Shorts are EXCLUDED from the
+        // Uploads rail (below) so they never double-show.
+        var isShort = function(x){ var t=((x&&x.type)||x.kind||x.format||x.visibility||'').toString().toLowerCase(); return !!(x && x.title && (x.short || x.is_short || x.noindex || /short|clip|profile|noindex/.test(t))); };
+        mediaRailData.uploads = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; if(isShort(x)) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        mediaRailData.shorts = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seenS[id]) return false; if(!isShort(x)) return false; seenS[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
         positionRecommendationRails();
       }).catch(function(){});
       api('/wp-json/sml-live/v1/slots').then(function(d){
