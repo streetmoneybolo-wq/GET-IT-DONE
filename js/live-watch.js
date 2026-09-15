@@ -89,11 +89,11 @@
   root.innerHTML =
     '<div class="slw-amb"><div class="slw-amb-g"></div><div class="slw-amb-r"></div></div>' +
     '<div class="slw-nav"><div class="slw-nav-l">' +
-      '<a class="slw-logo" href="/" title="StockMarketLoop — home">' + logo + '<span class="slw-logo-div"></span><span class="slw-logo-live"><span class="slw-dot"></span><span>STUDIO</span></span></a>' +
+      '<a class="slw-logo" href="/" title="StockMarketLoop — home">' + logo + '<span class="slw-logo-div"></span><span class="slw-logo-live"><span class="slw-dot"></span><span>WATCH</span></span></a>' +
       '<div class="slw-nav-links"><a href="/stock-chart/?symbol=SPY">Terminal</a><a class="on" href="#">Watch</a><a href="/groups/">Rooms</a><a href="#">Alerts</a></div>' +
     '</div><div class="slw-nav-r">' +
       '<div class="slw-search"><span class="q">SEARCH TICKER</span><span class="k">/</span></div>' +
-      '<div class="slw-onair"><span class="d"></span><span>ON AIR</span></div>' +
+      '<div class="slw-onair" style="display:none"><span class="d"></span><span>ON AIR</span></div>' +  /* real status: shown only while the stream is live (setBroadcastState) */
     '</div></div>' +
     /* the page's own quote tape was removed 2026-09-14: the site-wide header tape already rolls above it (owner: "remove the second ticker") */
     '<div class="slw-content"><div class="slw-stage">' +
@@ -1299,6 +1299,10 @@
     if (chip) chip.textContent = state === 'scheduled' ? 'SCHEDULED' : (state === 'offline' ? 'OFF AIR' : 'LIVE LOOP');
     var clock = root.querySelector('.slw-clock');
     if (clock) clock.lastChild.textContent = state === 'scheduled' ? ' / STARTING SOON' : (state === 'offline' ? ' / OFFLINE' : ' / LIVE');
+    /* the nav ON AIR chip used to be a permanent red decoration (creator-studio styling shown to every viewer);
+       it is a real indicator now — visible only while the broadcast is live (owner call 2026-09-14) */
+    var onair = root.querySelector('.slw-onair');
+    if (onair) onair.style.display = (state === 'scheduled' || state === 'offline') ? 'none' : '';
   }
   function paintPlayBtn() {
     var b = el('#slw-play');
