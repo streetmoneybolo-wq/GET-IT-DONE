@@ -188,10 +188,17 @@
     premTimer = setInterval(function () {
       var left = PREM.start - Date.now();
       var cd = el('#vw-prem-cd'); if (cd) cd.textContent = fmtCountdown(left);
-      if (left <= 0) { clearInterval(premTimer); location.reload(); }   /* the server now serves the file */
+      if (left <= 0) { clearInterval(premTimer); location.replace(location.pathname + '?live=' + Date.now()); }   /* fresh copy: the server now serves the file */
     }, 1000);
   }
   var LIVE_SYNC = PHASE === 'live';
+  /* stale page guard: a cached "upcoming" copy served after the start has no file — fetch a fresh one once */
+  if (LIVE_SYNC && !VID.src) {
+    var stale = 'slw-prem-refetch-' + VID.id;
+    var tries = +(sessionStorage.getItem(stale) || 0);
+    if (tries < 3) { sessionStorage.setItem(stale, String(tries + 1)); setTimeout(function () { location.replace(location.pathname + '?live=' + Date.now()); }, 1500); }
+    LIVE_SYNC = false;
+  }
   function liveEdge() { return Math.max(0, (Date.now() - PREM.start) / 1000); }
   function syncToEdge() { if (!LIVE_SYNC) return; var edge = liveEdge(); if (isFinite(v.duration) && v.duration > 0 && edge >= v.duration) { endLivePremiere(); return; } if (Math.abs(v.currentTime - edge) > 3) { try { v.currentTime = edge; } catch (e) {} } }
   function endLivePremiere() { LIVE_SYNC = false; root.classList.remove('slw-premiere-live'); paintPremiereChip(''); var j = el('#vw-prem-join'); if (j) j.remove(); }
