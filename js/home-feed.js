@@ -1931,7 +1931,11 @@
       var n = parseInt(item.participant_count, 10) || 0;
       var gurl = g.url || '/groups/';
       var hname = hostU.name || hostU.display_name || 'Host';
-      var hurl = hostU.url || hostU.profile_url || gurl;
+      // The live-room engine's user payload can carry a display-name-as-handle
+      // profile_url (e.g. /Vaughn%20McNair) that 404s — only trust a url whose
+      // handle is a real slug; otherwise link the host to the group (Join target).
+      var hhandle = String(hostU.handle || '');
+      var hurl = hostU.url || (/^[a-z0-9_.\-]+$/i.test(hhandle) ? ('/' + hhandle + '/') : '') || gurl;
       var hav = hostU.avatar || hostU.avatar_url || '/wp-content/uploads/2026/08/Untitled-design-90.png';
       var title = textOnly(item.title || '') || (kindLabel + (syms.length ? (' · $' + syms[0]) : ''));
       var symChips = syms.slice(0, 3).map(function(s){ return '$' + s; }).join(' ');
