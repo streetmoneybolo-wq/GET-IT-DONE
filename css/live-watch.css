@@ -1021,3 +1021,15 @@ html.sml-mobile .slw-tom-pop{position:fixed;left:8px;right:8px;bottom:calc(env(s
 .slw-paste-btns .slw-x{padding:12px 14px;font-size:11px}
 html.sml-mobile .slw-modal.slw-paste{padding:10px;align-items:flex-end}
 html.sml-mobile .slw-modal.slw-paste .slw-modal-c{width:100%;max-width:100%;padding:16px;max-height:calc(100dvh - 20px);overflow:auto}
+
+/* ---- phone hero (2026-09-14): the 16:9 frame is only ~194px wide-open on a phone, so the title block (bottom-anchored),
+   the OFF AIR chips and the NOT LIVE placeholder all landed on the same rows. Chips stay top-left, the title is
+   anchored under them and clamped to two lines, the placeholder text sits above the control bar, and while the
+   placeholder is showing (not live) the frame grows to 4:5 so the three have room. Live video keeps 16:9. ---- */
+html.sml-mobile .slw-frame:not(.multi) .slw-topchips{top:12px;left:12px;gap:8px}
+html.sml-mobile .slw-frame:not(.multi) .slw-titleblk{top:50px;bottom:auto;left:12px;right:12px;max-width:none;gap:6px}
+html.sml-mobile .slw-frame:not(.multi) .slw-titleblk h1{font-size:19px;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+html.sml-mobile .slw-frame:not(.multi) .slw-titleblk .who .nm,html.sml-mobile .slw-frame:not(.multi) .slw-titleblk .who .el{font-size:11px}
+html.sml-mobile .slw-frame:not(.multi):has(.slw-frame-ph:not(.hide)){padding-bottom:80%}
+html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph{justify-content:flex-end;padding-bottom:98px;gap:8px}
+html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph .t2{max-width:86%}
