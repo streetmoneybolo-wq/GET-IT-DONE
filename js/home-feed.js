@@ -1614,16 +1614,25 @@
       return art;
     }
     function fetchPersonalizedSeed(){
+      // Auth-only: the aggregator 401s for signed-out, so no explicit sign-in
+      // guard is needed (that guard also raced window.SML_ME on some loads).
       return api('/wp-json/sml-social-home/v1/feed').then(function(res){
         var j = res && res.j ? res.j : res;
         if (!j || !j.feed) return;
         personalizedData = j;
+        // Fill in personalized items the server DOM missed — but only RECENT ones
+        // (the aggregator scores in old high-engagement posts; never resurrect stale
+        // content at the top of the feed). Most recent personalized content is
+        // already server-rendered, so this is a gap-filler, not a replacement.
+        var freshCut = Date.now() - 21 * 24 * 3600 * 1000;
         var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
         var anchor = main.firstChild, nodes = [];
         (j.feed || []).forEach(function(item){
           if (!item) return;
           var id = item.id || ('sh-' + (item.url || ''));
           if (!id || seenItemIds[id]) return;
+          var ts = Date.parse(item.date || '');
+          if (ts && ts < freshCut) { seenItemIds[id] = 1; return; } // recent-only
           seenItemIds[id] = 1;
           var node = personalizedCard(item);
           var key = cardKeyOf(node); if (key) feedSeen[key] = 1;
@@ -1709,7 +1718,7 @@
         }).catch(function(){});
       });
     }
-    if (window.SML_ME && window.SML_ME.id) fetchPersonalizedSeed();
+    fetchPersonalizedSeed();
     backfillFeed();
     hydrateMediaRails();
     function pollFeed(){
