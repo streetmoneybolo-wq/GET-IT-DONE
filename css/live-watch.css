@@ -92,8 +92,6 @@ body.slw-on{background:#04060a !important}
 .slw-onair span{font:800 10px/1 Archivo,sans-serif;letter-spacing:.16em;color:#ff859f}
 
 /* ---- ticker tape ---- */
-.slw-tape{position:relative;display:flex;overflow:hidden;border-bottom:1px solid #101822;background:#060a0f;padding:10px 0}
-.slw-tape-track{display:flex;flex:none;gap:34px;padding-right:34px;animation:slwMarquee 46s linear infinite}
 .slw-tq{display:flex;align-items:baseline;gap:9px;flex:none;cursor:default}
 .slw-tq .s{font:700 11px/1 'IBM Plex Mono',monospace;color:#8fa3b5;border-bottom:1px dotted #2d3a47}
 .slw-tq .p{font:500 11px/1 'IBM Plex Mono',monospace;color:#e6edf3}

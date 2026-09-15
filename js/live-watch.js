@@ -95,7 +95,7 @@
       '<div class="slw-search"><span class="q">SEARCH TICKER</span><span class="k">/</span></div>' +
       '<div class="slw-onair"><span class="d"></span><span>ON AIR</span></div>' +
     '</div></div>' +
-    '<div class="slw-tape"><div class="slw-tape-track">' + tapeCells() + tapeCells() + '</div></div>' +
+    /* the page's own quote tape was removed 2026-09-14: the site-wide header tape already rolls above it (owner: "remove the second ticker") */
     '<div class="slw-content"><div class="slw-stage">' +
 
     /* ===== main column ===== */
