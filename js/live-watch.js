@@ -2671,6 +2671,14 @@
     root.querySelector('.slw-about-id .fo').textContent = '';
     /* boost: live arena on the sml-lw boost routes */
     initBoostReal();
+    /* phones: the control bar sits under the video (css top:100%); the frame reserves its real height */
+    (function () {
+      if (!document.documentElement.classList.contains('sml-mobile') || !window.ResizeObserver) return;
+      var ctl = root.querySelector('.slw-ctl'), frame = root.querySelector('.slw-frame');
+      if (!ctl || !frame) return;
+      var fit = function () { frame.style.setProperty('--slw-ctl-h', ctl.offsetHeight + 'px'); };
+      new ResizeObserver(fit).observe(ctl); fit();
+    })();
     /* recommended: real uploads or nothing */
     loadRec();
     pollTape();

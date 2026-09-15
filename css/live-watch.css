@@ -1025,13 +1025,12 @@ html.sml-mobile .slw-modal.slw-paste .slw-modal-c{width:100%;max-width:100%;padd
 /* ---- phone hero (2026-09-14): the 16:9 frame is only ~194px wide-open on a phone, so the title block (bottom-anchored),
    the OFF AIR chips and the NOT LIVE placeholder all landed on the same rows. Chips stay top-left, the title is
    anchored under them and clamped to two lines, the placeholder text sits above the control bar, and while the
-   placeholder is showing (not live) the frame grows to 4:5 so the three have room. Live video keeps 16:9. ---- */
+   control bar moves BELOW the frame (see the phone control-row block), so the frame stays 16:9. ---- */
 html.sml-mobile .slw-frame:not(.multi) .slw-topchips{top:12px;left:12px;gap:8px}
 html.sml-mobile .slw-frame:not(.multi) .slw-titleblk{top:50px;bottom:auto;left:12px;right:12px;max-width:none;gap:6px}
 html.sml-mobile .slw-frame:not(.multi) .slw-titleblk h1{font-size:19px;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 html.sml-mobile .slw-frame:not(.multi) .slw-titleblk .who .nm,html.sml-mobile .slw-frame:not(.multi) .slw-titleblk .who .el{font-size:11px}
-html.sml-mobile .slw-frame:not(.multi):has(.slw-frame-ph:not(.hide)){padding-bottom:80%}
-html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph{justify-content:flex-end;padding-bottom:98px;gap:8px}
+html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph{justify-content:flex-end;padding-bottom:16px;gap:8px}
 html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph .t2{max-width:86%}
 
 /* ---- control row (2026-09-14): on a 1280-wide desktop the frame is ~740px but the row needed ~850px, so
@@ -1053,3 +1052,11 @@ html.sml-mobile .slw-frame:not(.multi) .slw-frame-ph .t2{max-width:86%}
   .slw-tom-count{padding:3px 5px}
   .slw-gear{padding:8px}
 }
+
+/* ---- phone control row (2026-09-14): the row needs ~680px and a phone frame is ~305px wide, so Like / Tomato /
+   Share / ⧉ / ⚙ were cut off. On phones the bar sits under the video instead of over it (top:100%), wraps, and
+   the frame reserves its height through --slw-ctl-h (set by a ResizeObserver in live-watch.js, 132px fallback). ---- */
+html.sml-mobile .slw-frame:not(.multi){margin-bottom:var(--slw-ctl-h,132px)}
+html.sml-mobile .slw-frame:not(.multi) .slw-ctl{top:100%;bottom:auto;padding:10px 12px 12px;background:#070b10;border-top:1px solid #101822}
+html.sml-mobile .slw-frame:not(.multi) .slw-ctl-row,html.sml-mobile .slw-frame:not(.multi) .slw-ctl-l,html.sml-mobile .slw-frame:not(.multi) .slw-ctl-r{flex-wrap:wrap;gap:8px}
+html.sml-mobile .slw-frame:not(.multi) .slw-ctl-row{justify-content:flex-start}
