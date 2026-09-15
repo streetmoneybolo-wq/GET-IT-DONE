@@ -345,6 +345,13 @@
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
         '@keyframes smlHfNew{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}' +
         '@keyframes smlHfGlow{0%,100%{opacity:.5}50%{opacity:1}}' +
+        // Breaking-news pin (signed-in #7): the freshest market-moving alert/news
+        // post, pinned above the feed with a red pulsing "BREAKING" treatment.
+        '#sml-hf-pinned{display:block;}' +
+        '#sml-hf-pinned:empty{display:none;}' +
+        '.sml-hf-breaking{border-color:rgba(242,73,92,.5)!important;border-top-color:rgba(255,140,150,.6)!important;box-shadow:inset 0 1px 0 rgba(255,190,195,.2),0 0 0 1px rgba(242,73,92,.25),0 20px 42px -20px rgba(0,0,0,.9),0 0 46px -24px rgba(242,73,92,.6)!important;}' +
+        '.sml-hf-breaking-tag{display:inline-flex;align-items:center;gap:7px;font-family:\'Space Grotesk\',sans-serif;font-weight:800;font-size:11px;letter-spacing:.14em;color:#FF6B7C;background:linear-gradient(180deg,rgba(242,73,92,.18),rgba(242,73,92,.05));border:1px solid rgba(242,73,92,.4);border-radius:999px;padding:4px 12px 4px 10px;margin:0 0 10px;text-transform:uppercase;}' +
+        '.sml-hf-breaking-tag::before{content:"";width:8px;height:8px;border-radius:50%;background:#FF3B4E;box-shadow:0 0 8px 1px rgba(255,59,78,.85);animation:smlHfGlow 1.4s ease-in-out infinite;flex:none;}' +
         '#sml-hf-shell .tape-row:hover{animation-play-state:paused;}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
       document.head.appendChild(st);
@@ -503,7 +510,9 @@
     function positionRecommendationRails(){
       host.querySelectorAll('.sml-hf-recrail').forEach(function(r){ r.remove(); });
       if (curTab === 'live') return;
-      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none'; });
+      // Exclude pinned breaking cards: rails belong among the main feed, never
+      // inside the #sml-hf-pinned wrapper at the top.
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !(c.closest && c.closest('#sml-hf-pinned')); });
       if (posts.length < 3) return;
       placeRailAfter(posts, Math.min(2, posts.length - 1), buildMediaRail('uploads','Video Uploads','Recommended creator uploads, cycling endlessly just like a social feed rail.','recommended videos', mediaRailData.uploads, 'UPLOAD'));
       if (posts.length >= 6) placeRailAfter(posts, Math.min(5, posts.length - 1), buildMediaRail('live','Live Videos','Live streams and active watch pages from StockMarketLoop creators.','live now', mediaRailData.live, 'LIVE'));
@@ -514,7 +523,7 @@
     }
     function recycleFeedIfNeeded(){
       if (curTab === 'live') return;
-      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone'); });
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone') && !(c.closest && c.closest('#sml-hf-pinned')); });
       if (posts.length < 3 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 72) return;
       var shellEl = document.getElementById('sml-hf-shell'); if(!shellEl) return;
       if (shellEl.scrollTop + shellEl.clientHeight < shellEl.scrollHeight - 1200) return;
@@ -1127,6 +1136,9 @@
         var show=true;
         var contentKey=String(card.getAttribute('data-hfe-item')||card.getAttribute('data-hfe-url')||'').toLowerCase();
         if(contentKey){if(seenContent[contentKey])show=false;else seenContent[contentKey]=1;}
+        // Hide any non-pinned copy of a pinned breaking post (belt-and-suspenders
+        // beyond the wp-<id> contentKey above, in case a source keys it differently).
+        if(show&&pinnedUrls&&!(card.closest&&card.closest('#sml-hf-pinned'))){ var _pu=pinUrlKey(card.getAttribute('data-hfe-url')||cardKeyOf(card)); if(_pu&&pinnedUrls[_pu]) show=false; }
         if(show&&card.getAttribute('data-sml-news-item')==='1'){
           var published=Date.parse(card.getAttribute('data-sml-published')||'');
           if(!published||published<newsCutoff) show=false;
@@ -1145,6 +1157,7 @@
         es.style.display='block';
       } else if (es){ es.style.display='none'; }
       positionRecommendationRails();
+      ensurePinnedTop();
     }
 
     // Facebook-style comment attribution: "Alice commented on Bob's post".
@@ -1705,6 +1718,73 @@
         if (nodes.length){ fbComments(); dedupeFeed(); applyQuotes(); }
       }).catch(function(){});
     }
+    // ---- breaking news (signed-in #7): pin the freshest market-moving alert/news
+    // post above the feed. Sources the "Breaking News" category (7211706) first so
+    // real editorial breaking takes priority, then the live "Stock Market News"
+    // category (7212102) where the continuous alert posts flow. Gated to genuinely
+    // recent items (<8h) so it FAILS CLOSED overnight/weekends instead of pinning
+    // stale news, and deduped via the shared seenItemIds/data-hfe-item so the same
+    // post is never also shown lower in the feed.
+    var pinnedHost = null, pinnedUrls = {}, BREAKING_MAX_AGE = 8 * 3600 * 1000;
+    // Canonical post-path key (host/query/hash/trailing-slash stripped) so a pinned
+    // post matches across every card source regardless of absolute-vs-relative url.
+    function pinUrlKey(u){ return String(u == null ? '' : u).replace(/^https?:\/\/[^\/]+/i, '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase(); }
+    function ensurePinnedTop(){
+      if (!pinnedHost) return;
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+      if (pinnedHost.parentNode !== main || main.firstChild !== pinnedHost){ try { main.insertBefore(pinnedHost, main.firstChild); } catch(e){} }
+    }
+    function breakingCard(p){
+      var emb = p && p._embedded || {}, au = (emb.author && emb.author[0]) || {}, fm = (emb['wp:featuredmedia'] && emb['wp:featuredmedia'][0]) || {};
+      var title = textOnly(p && p.title && p.title.rendered) || 'Market alert';
+      var body = textOnly(p && p.excerpt && p.excerpt.rendered).slice(0, 600);
+      var url = (p && p.link) || '#', date = (p && p.date) || '', id = 'wp-' + (p && p.id || url);
+      var name = au.name || 'StockMarketLoop', aurl = au.link || '/creators/', avatars = au.avatar_urls || {}, av = avatars['96'] || avatars['48'] || avatars['24'] || '';
+      var img = (p && p.jetpack_featured_media_url) || fm.source_url || '';
+      var art = document.createElement('article');
+      art.className = 'oh-card oh-post sml-sth-post sml-hf-breaking';
+      art.setAttribute('data-hfe-item', id); art.setAttribute('data-hfe-url', url); art.setAttribute('data-sml-published', date); art.setAttribute('data-sml-news-item', '1');
+      art.innerHTML = '<div class="sml-hf-breaking-tag">Breaking</div>' +
+        '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av || '/wp-content/uploads/2026/08/Untitled-design-90.png') + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
+        '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(url) + '">' + esc(title) + '</a></h2><p>' + esc(body) + '</p>' +
+        (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
+        '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="' + esc(url) + '">Open</a></div>';
+      return art;
+    }
+    function fetchBreaking(){
+      return api('/wp-json/wp/v2/posts?categories=7211706,7212102&per_page=5&_embed=1&_fields=id,link,date,date_gmt,title,excerpt,author,jetpack_featured_media_url,_embedded').then(function(res){
+        var arr = Array.isArray(res) ? res : (res && Array.isArray(res.j) ? res.j : []);
+        if (!arr.length) return;
+        var cut = Date.now() - BREAKING_MAX_AGE, picks = [], pinnedSeen = {};
+        arr.forEach(function(p){
+          if (picks.length >= 2 || !p) return;
+          // Do NOT gate on the pre-seeded seenItemIds: the freshest breaking posts
+          // are almost always ALREADY server-rendered in the feed (their wp-<id> is
+          // in seenItemIds), so reading it here would suppress exactly the posts we
+          // mean to pin. Pin regardless; the lower copy is hidden by dedupeFeed (the
+          // pin is main.firstChild, so it wins the DOM-order contentKey + url dedup).
+          var id = 'wp-' + (p.id || ''); if (!p.id || pinnedSeen[id]) return;
+          // date_gmt has no zone suffix; parse as UTC. No local-date fallback: if
+          // date_gmt is missing we FAIL CLOSED rather than risk a TZ-skewed gate.
+          var ts = Date.parse((p.date_gmt || '') + 'Z');
+          if (!ts || ts < cut) return;
+          pinnedSeen[id] = 1; picks.push(p);
+        });
+        if (!picks.length) return;
+        if (!pinnedHost){ pinnedHost = document.createElement('section'); pinnedHost.id = 'sml-hf-pinned'; }
+        ensurePinnedTop();
+        picks.forEach(function(p){
+          // Register the id so seed/backfill/poll never ADD a second copy lower down,
+          // and the url so dedupeFeed hides any copy already present (server-rendered).
+          var id = 'wp-' + p.id; seenItemIds[id] = 1;
+          var uk = pinUrlKey(p.link); if (uk) pinnedUrls[uk] = 1;
+          var node = breakingCard(p); var key = cardKeyOf(node); if (key) feedSeen[key] = 1;
+          node.style.animation = 'smlHfNew .5s ease';
+          pinnedHost.appendChild(node); armRh(node, 250);
+        });
+        fbComments(); dedupeFeed(); applyQuotes();
+      }).catch(function(){});
+    }
     function appendFeedNodes(nodes){
       if (!nodes.length) return 0;
       nodes.sort(function(a,b){ return (Date.parse(b.getAttribute('data-sml-published')||'')||0) - (Date.parse(a.getAttribute('data-sml-published')||'')||0); });
@@ -1781,6 +1861,7 @@
         }).catch(function(){});
       });
     }
+    fetchBreaking();
     fetchPersonalizedSeed().then(function(){ hydrateRecRails(); });
     backfillFeed();
     hydrateMediaRails();
@@ -1789,7 +1870,12 @@
         if (html.indexOf('sml-optimized-home') < 0) return;
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var fresh = [], batchSeen = {};
-        doc.querySelectorAll('#sml-optimized-home .oh-post').forEach(function(c){ var k=cardKeyOf(c); if (!feedSeen[k]&&!batchSeen[k]){batchSeen[k]=1;fresh.push(c);} });
+        // Skip on BOTH the href key (feedSeen) and the wp-<id> key (seenItemIds):
+        // pollFeed is the one insert path that lands at main.firstChild (above the
+        // breaking pin), so re-importing a post already pinned/shown under a
+        // differently-spelled href would let dedupeFeed hide the pin. seenItemIds is
+        // the namespace-convergent guard the other paths use; honor it here too.
+        doc.querySelectorAll('#sml-optimized-home .oh-post').forEach(function(c){ var k=cardKeyOf(c), it=c.getAttribute('data-hfe-item'); if (!feedSeen[k]&&!batchSeen[k]&&!(it&&seenItemIds[it])&&!(it&&batchSeen['i:'+it])){ batchSeen[k]=1; if(it)batchSeen['i:'+it]=1; fresh.push(c); } });
         if (!fresh.length) return;
         var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
         for (var i = fresh.length - 1; i >= 0; i--) {
@@ -1797,6 +1883,7 @@
           node.style.animation = 'smlHfNew .6s ease';
           main.insertBefore(node, main.firstChild);
           feedSeen[cardKeyOf(node)] = 1;
+          var _it = node.getAttribute('data-hfe-item'); if (_it) seenItemIds[_it] = 1;
         }
         fbComments(); enhanceSignalCards(host); dedupeFeed(); applyQuotes(); try{richenChartCards();}catch(e){}
       }).catch(function(){});
