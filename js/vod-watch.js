@@ -144,6 +144,14 @@
   var media = el('#slw-media');
   var v = document.createElement('video');
   v.playsInline = true; v.preload = 'metadata';
+  /* phones: the control bar sits under the video (css top:100%); the frame reserves its real height */
+  (function () {
+    if (!document.documentElement.classList.contains('sml-mobile') || !window.ResizeObserver) return;
+    var ctl = root.querySelector('.slw-ctl'), frame = root.querySelector('.slw-frame');
+    if (!ctl || !frame) return;
+    var fit = function () { frame.style.setProperty('--slw-ctl-h', ctl.offsetHeight + 'px'); };
+    new ResizeObserver(fit).observe(ctl); fit();
+  })();
   if (VID.poster) v.poster = VID.poster;
   if (VID.src) v.src = VID.src;
   media.appendChild(v);
