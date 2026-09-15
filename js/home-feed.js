@@ -352,6 +352,11 @@
         '.sml-hf-breaking{border-color:rgba(242,73,92,.5)!important;border-top-color:rgba(255,140,150,.6)!important;box-shadow:inset 0 1px 0 rgba(255,190,195,.2),0 0 0 1px rgba(242,73,92,.25),0 20px 42px -20px rgba(0,0,0,.9),0 0 46px -24px rgba(242,73,92,.6)!important;}' +
         '.sml-hf-breaking-tag{display:inline-flex;align-items:center;gap:7px;font-family:\'Space Grotesk\',sans-serif;font-weight:800;font-size:11px;letter-spacing:.14em;color:#FF6B7C;background:linear-gradient(180deg,rgba(242,73,92,.18),rgba(242,73,92,.05));border:1px solid rgba(242,73,92,.4);border-radius:999px;padding:4px 12px 4px 10px;margin:0 0 10px;text-transform:uppercase;}' +
         '.sml-hf-breaking-tag::before{content:"";width:8px;height:8px;border-radius:50%;background:#FF3B4E;box-shadow:0 0 8px 1px rgba(255,59,78,.85);animation:smlHfGlow 1.4s ease-in-out infinite;flex:none;}' +
+        // Hot-group-post cards (signed-in #4): a group pill above the post; PAID
+        // groups get a locked amber pill (content is server-gated to paying members).
+        '.sml-hf-grouppost-tag{display:inline-flex;align-items:center;gap:7px;max-width:100%;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:11px;letter-spacing:.05em;color:#8CC9FF;text-decoration:none;background:linear-gradient(180deg,rgba(61,139,253,.16),rgba(61,139,253,.05));border:1px solid rgba(61,139,253,.34);border-radius:999px;padding:4px 11px;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+        '.sml-hf-grouppost-tag.paid{color:#FFD98A;background:linear-gradient(180deg,rgba(255,184,32,.15),rgba(255,184,32,.04));border-color:rgba(255,184,32,.36);}' +
+        '.sml-hf-grouppost-tag img{width:16px;height:16px;border-radius:5px;object-fit:cover;flex:none;}' +
         '#sml-hf-shell .tape-row:hover{animation-play-state:paused;}' +
         '@media(prefers-reduced-motion:reduce){#sml-hf-shell .tape-row{animation:none}}';
       document.head.appendChild(st);
@@ -424,7 +429,12 @@
     var GCOLORS=['#22E07A','#3d8bfd','#ffb020','#b98cff','#ff6b81','#4dd0e1'];
     function groupRow(g,i){ var icon=g.img?'<img src="'+esc(g.img)+'" alt="" loading="lazy" style="width:28px;height:28px;border-radius:9px;flex:none;object-fit:cover;background:#0A1017">':'<span style="width:28px;height:28px;border-radius:9px;flex:none;background:'+GCOLORS[i%GCOLORS.length]+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#03120A">'+esc(g.name.slice(0,2))+'</span>'; return '<a href="'+esc(g.href||'/groups/')+'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:11px;background:linear-gradient(180deg,#141D29,#0A1017);border:1px solid rgba(0,0,0,.5);border-top-color:rgba(255,255,255,.1);cursor:pointer;text-decoration:none;color:#E6EDF5"><span style="display:contents">'+icon+'</span><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(g.name)+'</span><span style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#38F58A;flex:none">open</span></a>'; }
     function groupRows(){ var list=myGroups.length?myGroups:[{name:'Small Caps',href:'/groups/',img:''},{name:'Options Flow',href:'/groups/',img:''},{name:'Swing Desk',href:'/groups/',img:''},{name:'Chart Room',href:'/groups/',img:''}]; return list.slice(0,6).map(groupRow).join(''); }
-    function textOnly(html){ var d=document.createElement('div'); d.innerHTML=String(html||''); return (d.textContent||'').replace(/\s+/g,' ').trim(); }
+    // Parse with a <template> (inert document, no browsing context) NOT a live div:
+    // assigning untrusted HTML to a live element's innerHTML fires img/svg onerror/
+    // onload handlers even when the node is never inserted. Template content never
+    // loads resources or runs handlers, so this is a safe HTML->text sink for every
+    // caller (feed excerpts, letters, personalized + group posts).
+    function textOnly(html){ var t=document.createElement('template'); t.innerHTML=String(html==null?'':html); return (t.content.textContent||'').replace(/\s+/g,' ').trim(); }
     // ---- endless-feed media rails (uploads / live / shorts) ----
     var mediaRailData = { uploads: [], live: [], shorts: [] };
     function mediaCard(x, badge){
@@ -1785,6 +1795,68 @@
         fbComments(); dedupeFeed(); applyQuotes();
       }).catch(function(){});
     }
+    // ---- hot posts from your groups (signed-in #4): recent posts from the groups
+    // the viewer belongs to. The endpoint gates PAID groups server-side (only a
+    // paying/staff role sees them; free-tier members get nothing) — the client
+    // never decides access, it only renders whatever the gated endpoint returns.
+    function groupHotCard(item){
+      item = item || {};
+      var g = item.group || {}, au = item.author || {};
+      var gname = g.name || 'Group';
+      var gurl = g.url || item.url || '/groups/';
+      var gicon = g.icon_url || '';
+      var paid = !!item.paid;
+      var name = au.name || 'Member';
+      var aurl = au.url || gurl;
+      var av = au.avatar || '/wp-content/uploads/2026/08/Untitled-design-90.png';
+      var body = textOnly(item.body || '').slice(0, 600);
+      var date = item.date || '';
+      // Unique per-post URL so cardKeyOf (h2 href) doesn't collapse several posts
+      // from the same group into one.
+      var purl = gurl + (String(gurl).indexOf('#') < 0 ? ('#gp' + (item.post_id || '')) : '');
+      // The post body IS the headline (group posts are short alerts with no title),
+      // capped; NO separate <p> so the text never duplicates itself in the card.
+      var head = textOnly(item.title || '') || body || ('New post in ' + gname);
+      if (head.length > 200) head = head.slice(0, 199) + '…';
+      var img = item.chart_url || '';
+      var tag = '<a class="sml-hf-grouppost-tag' + (paid ? ' paid' : '') + '" href="' + esc(gurl) + '">' +
+        (gicon ? '<img src="' + esc(gicon) + '" alt="">' : '') + (paid ? '🔒 ' : '') + esc(gname) + (paid ? ' · Premium' : '') + '</a>';
+      var art = document.createElement('article');
+      art.className = 'oh-card oh-post sml-sth-post sml-hf-grouppost';
+      art.setAttribute('data-hfe-item', item.id || ('grouppost-' + (item.post_id || purl)));
+      art.setAttribute('data-hfe-url', purl);
+      art.setAttribute('data-sml-published', date);
+      if (au.id) art.setAttribute('data-sml-authorid', String(au.id));
+      art.innerHTML = tag +
+        '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av) + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
+        '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(purl) + '">' + esc(head) + '</a></h2>' +
+        (img ? '<a href="' + esc(gurl) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
+        '<div class="sml-sth-actions"><a href="' + esc(gurl) + '">Open group</a></div>';
+      return art;
+    }
+    function fetchGroupHot(){
+      return api('/wp-json/sml-group-landing/v1/my-groups/hot').then(function(res){
+        var j = res && res.j ? res.j : res;
+        var arr = (j && j.hot) || [];
+        if (!arr.length) return;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+        // Cluster them just below the breaking pin (or at top if the pin isn't up
+        // yet — ensurePinnedTop later restores the pin above them). Inserting each
+        // before a FIXED anchor preserves the server's recency order.
+        var anchor = (pinnedHost && pinnedHost.parentNode === main) ? pinnedHost.nextSibling : main.firstChild;
+        var added = 0;
+        arr.forEach(function(item){
+          var id = item.id || ('grouppost-' + (item.post_id || ''));
+          if (!id || seenItemIds[id]) return;
+          seenItemIds[id] = 1;
+          var node = groupHotCard(item);
+          var key = cardKeyOf(node); if (key) { if (feedSeen[key]) return; feedSeen[key] = 1; }
+          node.style.animation = 'smlHfNew .45s ease';
+          main.insertBefore(node, anchor); armRh(node, 250); added++;
+        });
+        if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
+      }).catch(function(){});
+    }
     function appendFeedNodes(nodes){
       if (!nodes.length) return 0;
       nodes.sort(function(a,b){ return (Date.parse(b.getAttribute('data-sml-published')||'')||0) - (Date.parse(a.getAttribute('data-sml-published')||'')||0); });
@@ -1862,6 +1934,7 @@
       });
     }
     fetchBreaking();
+    fetchGroupHot();
     fetchPersonalizedSeed().then(function(){ hydrateRecRails(); });
     backfillFeed();
     hydrateMediaRails();
