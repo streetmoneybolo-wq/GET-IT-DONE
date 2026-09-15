@@ -1879,7 +1879,7 @@
         GIFT.note = 'Pass bought — requesting the mic…'; giftRender();
         VC.tierSlug = GIFT.tier;
         vForm({ room_id: CHAT_ROOM, token: j.token, pass: j.token }, '/sml-voice/v1/request').then(function (r2) {
-          if (r2.ok) { GIFT.note = 'You are in the Voice Queue — keep this tab open, your mic is live for the creator.'; try { startMic(); } catch (e) {} loadElig(); var speakTab = root.querySelector('.slw-tab[data-tab="1"]'); if (speakTab) speakTab.click(); }
+          if (r2.ok) { VC.queueId = (r2.j && r2.j.queue_id) || VC.queueId; GIFT.note = 'You are in the Voice Queue — keep this tab open, your mic is live for the creator.'; try { startMic(); } catch (e) {} loadElig(); var speakTab = root.querySelector('.slw-tab[data-tab="1"]'); if (speakTab) speakTab.click(); }
           else { GIFT.note = '!' + ((r2.j && r2.j.message) || 'Your pass is saved — open the Speak tab to request the mic.'); }
           giftRender(); setTimeout(function () { giftToggle(false); }, 2200);
         }).catch(function () { GIFT.note = '!Your pass is saved — open the Speak tab to request the mic.'; giftRender(); });
@@ -2207,7 +2207,7 @@
     var tok = (VC.elig.tokens || []).filter(function (x) { return (x.tier || x.slug) === VC.tierSlug && !x.used; })[0];
     var reqWith = function (token) {
       vForm({ room_id: CHAT_ROOM, token: token || '', pass: token || '' }, '/sml-voice/v1/request').then(function (res) {
-        if (res.ok) finish();
+        if (res.ok) { VC.queueId = (res.j && res.j.queue_id) || VC.queueId; finish(); }
         else finish((res.j && res.j.message) || 'The request did not go through.');
       }).catch(function () { finish('The request did not go through — check your connection.'); });
     };
@@ -2228,7 +2228,9 @@
     if (VC.micStream || !navigator.mediaDevices) return;
     navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function (stream) {
       VC.micStream = stream;
-      vForm({ room_id: CHAT_ROOM, ready: 1 }, '/sml-voice/v1/mic-ready');
+      /* the server keys mic-ready by queue row; without queue_id the host never saw "mic ready" (fixed 2026-09-15) */
+      var qid = VC.queueId || (VC.elig && VC.elig.queue_id) || 0;
+      if (qid) vForm({ room_id: CHAT_ROOM, queue_id: qid, ready: 1 }, '/sml-voice/v1/mic-ready');
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
       var src = ctx.createMediaStreamSource(stream);
       var an = ctx.createAnalyser();
