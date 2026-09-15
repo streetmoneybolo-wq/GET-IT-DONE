@@ -438,64 +438,115 @@
   };
   function gate(msg) { var g = el('#vw-cmgate'); g.style.display = ''; g.innerHTML = msg; setTimeout(function () { paintGate(); }, 4000); }
 
-  /* ---------- voice cues: say "like button" / "share this video" and the button lights up ---------- */
-  /* Uses the browser SpeechRecognition (mic) — so it fires for whoever is speaking on this device
-     (the creator narrating their own stream, or a viewer). Purely a visual nudge; it never clicks
-     the button for you. Feature-detected; the toggle stays hidden where the API is unavailable. */
+  /* ---------- voice cues: the creator says "like button"/"share this video" → every viewer's button lights up ---------- */
+  /* Two halves. RECEIVE: every watch page polls /sml-cues/v1/latest and animates on a fresh broadcast cue —
+     works with no mic and in any browser. BROADCAST: only the video's creator (or an admin) gets the 🎤 toggle;
+     their browser runs SpeechRecognition on their own mic and POSTs /sml-cues/v1/emit when it hears a call-to-action.
+     A visual nudge only — it never clicks like/share. */
   (function () {
+    if (!VID.id) return; /* no video id → nothing to key cues on */
+    var btn = el('#vw-voice');
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    var btn = el('#vw-voice'); if (!btn) return;
-    if (!SR) return; /* unsupported (e.g. Firefox) — leave the toggle hidden */
-    btn.style.display = '';
-    var rec = null, want = false, cool = {}, fails = 0, startedAt = 0, idleTimer = null;
-    var IDLE_MS = 600000; /* auto-off after 10 min of total silence so the mic never stays hot on an idle tab */
+    var cool = {}, lastId = { like: 0, share: 0 };
     function cue(sel, kind) {
-      var e = el(sel); if (!e) return;
-      var now = Date.now(); if (cool[kind] && now - cool[kind] < 3500) return; cool[kind] = now;
+      var e = el(sel); if (!e) return false;
+      var now = Date.now(); if (cool[kind] && now - cool[kind] < 3500) return false; cool[kind] = now;
       e.classList.remove('vw-cue'); void e.offsetWidth; e.classList.add('vw-cue');
       setTimeout(function () { e.classList.remove('vw-cue'); }, 1700);
+      return true;
     }
-    /* Match only genuine calls-to-action. "share"/"like" are ordinary finance words, so require an
-       object (video/link/…) or an unambiguous control phrase — never the bare noun. */
-    function heard(text) {
-      var t = ' ' + String(text).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
-      if (/ share (this |the |my |our |a )?(video|clip|link|stream|episode|vid)\b/.test(t) || / share button /.test(t) || / (send|post|drop) (this |the |a )?(video|clip|link)\b/.test(t)) cue('#vw-share', 'share');
-      if (/ like button /.test(t) || / like and subscribe /.test(t) || / like (this |the |my |our )(video|clip|vid|stream)\b/.test(t) || / (hit|smash|tap|drop|leave|smack|mash) (the|that|a) like\b/.test(t)) cue('#vw-like', 'like');
+    /* animate (cooldown-gated); when broadcast===true and it actually fired, tell the server so viewers get it too */
+    function fire(kind, broadcast) {
+      var did = cue(kind === 'share' ? '#vw-share' : '#vw-like', kind);
+      if (did && broadcast) {
+        api('/sml-cues/v1/emit', { method: 'POST', body: JSON.stringify({ video: VID.id, cue: kind }) }).then(function (res) {
+          if (res && res.j && res.j.id) { lastId[kind] = res.j.id; } /* seed dedup so our own poll won't re-animate this */
+        });
+      }
+      return did;
     }
-    function paint(on) {
-      btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      btn.title = on ? 'Listening — say “like button” or “share this video”' : 'Voice cues — say “like button” or “share this video” and the button lights up';
+
+    /* ---- RECEIVE (everyone): poll for the creator's broadcast cues and animate ---- */
+    /* The server hands back poll_ms: slow (~15s) when nobody is broadcasting, fast (~2.5s) once a
+       creator goes live, so a plain VOD costs one cheap edge-cacheable request every ~15s per viewer. */
+    var pollTimer = null, polling = false, idleMs = 15000, freshMs = 5000;
+    function schedule(ms) { if (pollTimer) { clearTimeout(pollTimer); } pollTimer = setTimeout(poll, ms); }
+    function poll() {
+      if (document.hidden) { schedule(20000); return; } /* near-zero cost while backgrounded */
+      if (polling) { schedule(1000); return; } /* never stack concurrent fetches */
+      polling = true;
+      api('/sml-cues/v1/latest?video=' + encodeURIComponent(VID.id)).then(function (res) {
+        polling = false;
+        var j = res.j || {};
+        ['share', 'like'].forEach(function (k) {
+          var c = j[k];
+          if (c && c.id && c.id !== lastId[k] && (c.age_ms == null || c.age_ms < freshMs)) { lastId[k] = c.id; fire(k, false); }
+        });
+        schedule(j.poll_ms || idleMs);
+      }).catch(function () { polling = false; schedule(idleMs); });
     }
-    function armIdle() { if (idleTimer) { clearTimeout(idleTimer); } idleTimer = setTimeout(stop, IDLE_MS); }
-    function stop() {
-      want = false; paint(false);
-      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-      if (rec) { try { rec.onend = null; rec.stop(); } catch (e) {} }
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) { schedule(200); } });
+    schedule(600);
+
+    /* ---- BROADCAST (creator/admin only): recognition → /emit ---- */
+    api('/sml-cues/v1/config?video=' + encodeURIComponent(VID.id)).then(function (res) {
+      var j = res.j || {};
+      if (j.fresh_ms) { freshMs = j.fresh_ms; }
+      if (j.poll_ms) { idleMs = j.poll_ms; }
+      if (j.can_emit && SR && btn) { setupBroadcast(j.hb_ms || 10000); }
+    });
+
+    function setupBroadcast(hbMs) {
+      btn.style.display = '';
+      var rec = null, want = false, fails = 0, startedAt = 0, idleTimer = null, hbTimer = null;
+      var IDLE_MS = 600000; /* auto-off after 10 min of total silence so the mic never stays hot on an idle tab */
+      /* heartbeat keeps the "broadcaster live" marker warm so viewers stay on the fast poll cadence
+         even while the creator is on-mic but silent between cues */
+      function beat() { api('/sml-cues/v1/heartbeat', { method: 'POST', body: JSON.stringify({ video: VID.id }) }); }
+      function startHb() { beat(); if (!hbTimer) { hbTimer = setInterval(beat, hbMs || 10000); } }
+      function stopHb() { if (hbTimer) { clearInterval(hbTimer); hbTimer = null; } }
+      /* Match only genuine calls-to-action. "share"/"like" are ordinary finance words, so require an
+         object (video/link/…) or an unambiguous control phrase — never the bare noun. */
+      function heard(text) {
+        var t = ' ' + String(text).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+        if (/ share (this |the |my |our |a )?(video|clip|link|stream|episode|vid)\b/.test(t) || / share button /.test(t) || / (send|post|drop) (this |the |a )?(video|clip|link)\b/.test(t)) fire('share', true);
+        if (/ like button /.test(t) || / like and subscribe /.test(t) || / like (this |the |my |our )(video|clip|vid|stream)\b/.test(t) || / (hit|smash|tap|drop|leave|smack|mash) (the|that|a) like\b/.test(t)) fire('like', true);
+      }
+      function paint(on) {
+        btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.title = on ? 'Broadcasting — say “like button” or “share this video”' : 'Voice cues — say “like button”/“share this video” and every viewer’s button lights up';
+      }
+      function armIdle() { if (idleTimer) { clearTimeout(idleTimer); } idleTimer = setTimeout(stop, IDLE_MS); }
+      function stop() {
+        want = false; paint(false); stopHb();
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+        if (rec) { try { rec.onend = null; rec.stop(); } catch (e) {} }
+      }
+      /* single restart path with backoff + a consecutive-failure cap, so a permanently-failing
+         recognizer (offline, no mic, blocked speech backend, iOS non-gesture restart) gives up
+         instead of spinning a tight onend->start() loop. */
+      function scheduleRestart() {
+        if (!want) return;
+        var ran = startedAt ? Date.now() - startedAt : 0;
+        if (ran < 1200) { fails++; } else { fails = 0; }
+        if (fails >= 4) { gate('Voice cues stopped — speech recognition isn’t available right now.'); stop(); return; }
+        setTimeout(begin, fails ? Math.min(4000, 500 * fails) : 0);
+      }
+      function begin() {
+        if (!want) return;
+        try { rec = new SR(); } catch (e) { startedAt = 0; scheduleRestart(); return; }
+        rec.continuous = true; rec.interimResults = false; rec.lang = 'en-US'; /* final results only — no interim re-fire */
+        startedAt = Date.now();
+        rec.onresult = function (ev) { fails = 0; armIdle(); for (var i = ev.resultIndex; i < ev.results.length; i++) { heard(ev.results[i][0].transcript); } };
+        rec.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { gate('Allow microphone access to broadcast voice cues.'); stop(); } };
+        rec.onend = scheduleRestart; /* Chrome auto-stops on silence — resume (guarded above) */
+        try { rec.start(); } catch (e) { scheduleRestart(); }
+      }
+      btn.onclick = function () {
+        if (!want) { want = true; fails = 0; paint(true); armIdle(); startHb(); begin(); }
+        else { stop(); }
+      };
     }
-    /* single restart path with backoff + a consecutive-failure cap, so a permanently-failing
-       recognizer (offline, no mic, blocked speech backend, iOS non-gesture restart) gives up
-       instead of spinning a tight onend->start() loop. */
-    function scheduleRestart() {
-      if (!want) return;
-      var ran = startedAt ? Date.now() - startedAt : 0;
-      if (ran < 1200) { fails++; } else { fails = 0; }
-      if (fails >= 4) { gate('Voice cues stopped — speech recognition isn’t available right now.'); stop(); return; }
-      setTimeout(begin, fails ? Math.min(4000, 500 * fails) : 0);
-    }
-    function begin() {
-      if (!want) return;
-      try { rec = new SR(); } catch (e) { startedAt = 0; scheduleRestart(); return; }
-      rec.continuous = true; rec.interimResults = false; rec.lang = 'en-US'; /* final results only — no interim re-fire */
-      startedAt = Date.now();
-      rec.onresult = function (ev) { fails = 0; armIdle(); for (var i = ev.resultIndex; i < ev.results.length; i++) { heard(ev.results[i][0].transcript); } };
-      rec.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { gate('Allow microphone access to use voice cues.'); stop(); } };
-      rec.onend = scheduleRestart; /* Chrome auto-stops on silence — resume (guarded above) */
-      try { rec.start(); } catch (e) { scheduleRestart(); }
-    }
-    btn.onclick = function () {
-      if (!want) { want = true; fails = 0; paint(true); armIdle(); begin(); }
-      else { stop(); }
-    };
   })();
 
   /* ---------- comments (sml-reactions/v1/comments) ---------- */
