@@ -321,6 +321,27 @@
         '.sml-owner-delete:hover,.sml-owner-delete:focus-visible{color:#fff;border-color:#ff5268;background:#a51630;outline:none;}' +
         '.sml-owner-delete[disabled]{opacity:.55;cursor:wait;}' +
         '.sml-owner-delete-err{position:absolute;z-index:7;right:16px;top:52px;max-width:260px;background:rgba(43,8,15,.97);border:1px solid rgba(255,82,104,.55);border-radius:10px;color:#ffb3c0;padding:8px 11px;font:600 11px/1.45 Inter,system-ui,sans-serif;box-shadow:0 7px 18px rgba(0,0,0,.4);}' +
+        '.sml-hf-recrail{position:relative;overflow:hidden;margin:18px 0;border-radius:22px;background:radial-gradient(420px 180px at 12% 0%,rgba(56,245,138,.18),transparent 58%),linear-gradient(168deg,#1B2532 0%,#121A26 46%,#090F17 100%);border:1px solid rgba(56,245,138,.2);border-top-color:rgba(140,255,200,.42);box-shadow:inset 0 1px 0 rgba(190,255,222,.18),0 24px 50px -24px rgba(0,0,0,.9),0 0 54px -28px rgba(56,245,138,.55);}' +
+        '.sml-hf-recrail:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(56,245,138,.08),transparent 22%,transparent 78%,rgba(56,245,138,.06));}' +
+        '.sml-hf-rec-head{position:relative;display:flex;align-items:flex-end;gap:12px;padding:18px 18px 8px;}' +
+        '.sml-hf-rec-kicker{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.16em;color:#38F58A;text-transform:uppercase;margin-bottom:4px;}' +
+        '.sml-hf-rec-title{font-family:"Space Grotesk",sans-serif;font-size:21px;font-weight:800;letter-spacing:-.35px;color:#E6EDF5;line-height:1.05;}' +
+        '.sml-hf-rec-sub{font-size:12px;color:#93A4B8;line-height:1.4;margin-top:5px;}' +
+        '.sml-hf-rec-next{margin-left:auto;width:50px;height:50px;border-radius:50%;border:1px solid rgba(56,245,138,.45);background:linear-gradient(180deg,#243245,#101925);color:#38F58A;font-size:22px;font-weight:900;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 0 24px -9px rgba(56,245,138,.8);flex:none;}' +
+        '.sml-hf-rec-next:hover{transform:scale(1.05);border-color:rgba(56,245,138,.8);}' +
+        '.sml-hf-rec-window{position:relative;overflow:hidden;padding:8px 12px 18px;}' +
+        '.sml-hf-rec-track{display:flex;gap:12px;transition:transform .38s cubic-bezier(.2,.8,.25,1);will-change:transform;}' +
+        '.sml-hf-rec-card{width:118px;min-width:118px;display:flex;flex-direction:column;align-items:center;text-align:center;text-decoration:none;color:inherit;border-radius:18px;padding:12px 8px 11px;background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.018));border:1px solid rgba(255,255,255,.085);box-shadow:inset 0 1px 0 rgba(255,255,255,.10);}' +
+        '.sml-hf-rec-card:hover{border-color:rgba(56,245,138,.55);background:linear-gradient(180deg,rgba(56,245,138,.11),rgba(255,255,255,.025));transform:translateY(-2px);}' +
+        '.sml-hf-rec-avatar{width:58px;height:58px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;flex:none;background:linear-gradient(160deg,#26343F,#0D141D);color:#38F58A;font-family:"Space Grotesk",sans-serif;font-weight:900;font-size:17px;box-shadow:0 0 0 2px #0B131F,0 0 0 4px rgba(56,245,138,.70),0 10px 22px -12px rgba(56,245,138,.8);}' +
+        '.sml-hf-rec-name{max-width:100%;margin-top:9px;font-size:12.2px;font-weight:800;color:#E6EDF5;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:28px;}' +
+        '.sml-hf-rec-reason{max-width:100%;margin-top:5px;font-family:"IBM Plex Mono",monospace;font-size:8.5px;letter-spacing:.03em;color:#7E93A6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.sml-hf-recrail[data-rec-kind^="media-"] .sml-hf-rec-card{width:178px;min-width:178px;text-align:left;align-items:stretch;padding:10px;}' +
+        '.sml-hf-media-thumb{height:96px;border-radius:14px;background:linear-gradient(160deg,#122033,#07111C);border:1px solid rgba(56,245,138,.18);background-size:cover;background-position:center;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#38F58A;font-weight:900;}' +
+        '.sml-hf-media-badge{position:absolute;left:8px;top:8px;padding:3px 8px;border-radius:999px;background:rgba(2,8,13,.82);border:1px solid rgba(56,245,138,.35);font-family:"IBM Plex Mono",monospace;font-size:8px;color:#38F58A;font-weight:800;letter-spacing:.08em;}' +
+        '.sml-hf-media-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:9px;min-height:34px;color:#E6EDF5;font-size:12.5px;font-weight:800;line-height:1.32;}' +
+        '.sml-hf-media-meta{margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#7E93A6;font-size:10px;}' +
+        '@media(max-width:560px){.sml-hf-rec-title{font-size:18px}.sml-hf-rec-card{width:104px;min-width:104px}.sml-hf-rec-avatar{width:52px;height:52px}.sml-hf-rec-next{width:44px;height:44px}}' +
         '@keyframes smlHfTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
         '@keyframes smlHfNew{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}' +
         '@keyframes smlHfGlow{0%,100%{opacity:.5}50%{opacity:1}}' +
@@ -396,6 +417,54 @@
     var GCOLORS=['#22E07A','#3d8bfd','#ffb020','#b98cff','#ff6b81','#4dd0e1'];
     function groupRow(g,i){ var icon=g.img?'<img src="'+esc(g.img)+'" alt="" loading="lazy" style="width:28px;height:28px;border-radius:9px;flex:none;object-fit:cover;background:#0A1017">':'<span style="width:28px;height:28px;border-radius:9px;flex:none;background:'+GCOLORS[i%GCOLORS.length]+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:#03120A">'+esc(g.name.slice(0,2))+'</span>'; return '<a href="'+esc(g.href||'/groups/')+'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:11px;background:linear-gradient(180deg,#141D29,#0A1017);border:1px solid rgba(0,0,0,.5);border-top-color:rgba(255,255,255,.1);cursor:pointer;text-decoration:none;color:#E6EDF5"><span style="display:contents">'+icon+'</span><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(g.name)+'</span><span style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;color:#38F58A;flex:none">open</span></a>'; }
     function groupRows(){ var list=myGroups.length?myGroups:[{name:'Small Caps',href:'/groups/',img:''},{name:'Options Flow',href:'/groups/',img:''},{name:'Swing Desk',href:'/groups/',img:''},{name:'Chart Room',href:'/groups/',img:''}]; return list.slice(0,6).map(groupRow).join(''); }
+    function textOnly(html){ var d=document.createElement('div'); d.innerHTML=String(html||''); return (d.textContent||'').replace(/\s+/g,' ').trim(); }
+    // ---- endless-feed media rails (uploads / live / shorts) ----
+    var mediaRailData = { uploads: [], live: [], shorts: [] };
+    function mediaCard(x, badge){
+      var url = x.url || x.watch_url || (x.id ? ('/watch/' + encodeURIComponent(x.id) + '/') : '/watch/');
+      var img = x.img || x.thumbnail || x.image || '';
+      var title = x.title || x.name || 'Video upload';
+      var meta = [x.creator || x.handle || '', x.views_label || (x.views != null ? Number(x.views).toLocaleString() + ' views' : ''), x.ago || x.status || ''].filter(Boolean).join(' · ');
+      var bg = img ? ' style="background-image:url('+esc(img)+')"' : '';
+      return '<a class="sml-hf-rec-card" href="'+esc(url)+'"><div class="sml-hf-media-thumb"'+bg+'>'+(img?'':'▶')+'<span class="sml-hf-media-badge">'+esc(badge)+'</span></div><span class="sml-hf-media-title">'+esc(title)+'</span><span class="sml-hf-media-meta">'+esc(meta)+'</span></a>';
+    }
+    function buildMediaRail(kind, title, sub, kicker, list, badge){
+      list = Array.isArray(list) ? list.filter(Boolean) : [];
+      if (!list.length) return null;
+      var endless = list.slice();
+      while (endless.length && endless.length < 30) endless = endless.concat(list);
+      endless = endless.slice(0, 40);
+      var rail = document.createElement('section'); rail.className='sml-hf-recrail'; rail.setAttribute('data-rec-kind', 'media-'+kind); rail.__idx = 0; rail.__size = endless.length;
+      rail.innerHTML = '<div class="sml-hf-rec-head"><div><div class="sml-hf-rec-kicker">'+esc(kicker)+'</div><div class="sml-hf-rec-title">'+esc(title)+'</div><div class="sml-hf-rec-sub">'+esc(sub)+'</div></div><button class="sml-hf-rec-next" type="button" aria-label="Next '+esc(title)+'">›</button></div><div class="sml-hf-rec-window"><div class="sml-hf-rec-track">'+endless.map(function(x){ return mediaCard(x, badge); }).join('')+'</div></div>';
+      return rail;
+    }
+    function placeRailAfter(posts, index, rail){
+      if(!rail || !posts.length) return;
+      var target = posts[Math.min(index, posts.length - 1)];
+      target.parentNode.insertBefore(rail, target.nextSibling);
+    }
+    function positionRecommendationRails(){
+      host.querySelectorAll('.sml-hf-recrail').forEach(function(r){ r.remove(); });
+      if (curTab === 'live') return;
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none'; });
+      if (posts.length < 3) return;
+      placeRailAfter(posts, Math.min(2, posts.length - 1), buildMediaRail('uploads','Video Uploads','Recommended creator uploads, cycling endlessly just like a social feed rail.','recommended videos', mediaRailData.uploads, 'UPLOAD'));
+      if (posts.length >= 6) placeRailAfter(posts, Math.min(5, posts.length - 1), buildMediaRail('live','Live Videos','Live streams and active watch pages from StockMarketLoop creators.','live now', mediaRailData.live, 'LIVE'));
+      if (posts.length >= 11) placeRailAfter(posts, Math.min(10, posts.length - 1), buildMediaRail('shorts','Shorts & Profile Uploads','Short/non-index uploads from profile pages and feed uploads. Uploads still require a title.','quick clips', mediaRailData.shorts, 'SHORT'));
+    }
+    function recycleFeedIfNeeded(){
+      if (curTab === 'live') return;
+      var posts = Array.prototype.slice.call(host.querySelectorAll('.oh-post')).filter(function(c){ return c.style.display !== 'none' && !c.getAttribute('data-sml-loop-clone'); });
+      if (posts.length < 3 || host.querySelectorAll('.oh-post[data-sml-loop-clone]').length > 72) return;
+      var shellEl = document.getElementById('sml-hf-shell'); if(!shellEl) return;
+      if (shellEl.scrollTop + shellEl.clientHeight < shellEl.scrollHeight - 1200) return;
+      if (typeof loadMoreFeed === 'function' && loadMoreFeed()) return;
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+      posts.slice(0, Math.min(12, posts.length)).forEach(function(p){
+        var c = p.cloneNode(true); c.setAttribute('data-sml-loop-clone','1'); c.style.animation='smlHfNew .45s ease'; c.querySelectorAll('.sml-rh-panel,.sml-rh-btn,.sml-hf-recrail').forEach(function(x){ x.remove(); }); main.appendChild(c); armRh(c, 250);
+      });
+      fbComments(); dedupeFeed(); applyQuotes();
+    }
 
     // ---- build shell ----
     var shell = document.createElement('div'); shell.id='sml-hf-shell';
@@ -556,6 +625,17 @@
     // Watchlist edit controls (event delegation — rows re-render).
     shell.addEventListener('click', function(ev){
       var b = ev.target && ev.target.closest ? ev.target.closest('button') : null; if (!b) return;
+      if (b.classList.contains('sml-hf-rec-next')) {
+        var rail = b.closest('.sml-hf-recrail'), tr = rail && rail.querySelector('.sml-hf-rec-track');
+        if (rail && tr) {
+          var card = rail.querySelector('.sml-hf-rec-card'), step = card ? (card.getBoundingClientRect().width + 12) : 130;
+          var per = Math.max(1, Math.floor((rail.querySelector('.sml-hf-rec-window').clientWidth || 360) / step));
+          var maxIdx = Math.max(0, (rail.__size || 1) - per);
+          rail.__idx = ((rail.__idx || 0) + per) > maxIdx ? 0 : ((rail.__idx || 0) + per);
+          tr.style.transform = 'translateX(-' + ((rail.__idx || 0) * step) + 'px)';
+        }
+        return;
+      }
       var tb = b.getAttribute('data-tab');
       if (tb){ curTab = tb; styleTabs(); if (tb === 'following') loadFollowSet(dedupeFeed); else if (tb === 'live') buildLiveGrid(); dedupeFeed(); return; }
       if (b.id === 'sml-hf-watch-edit') { wEdit = !wEdit; renderWatch(); var i=document.getElementById('sml-hf-watch-inp'); if (wEdit && i) i.focus(); return; }
@@ -571,6 +651,7 @@
       if (row) location.href = '/stock-chart/?symbol=' + encodeURIComponent(row.getAttribute('data-wgo'));
     });
     shell.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' && ev.target && ev.target.id === 'sml-hf-watch-inp') { ev.preventDefault(); addTicker(); } });
+    shell.addEventListener('scroll', recycleFeedIfNeeded, { passive: true });
 
     // ---- account menu: the site's existing avatar menu, opened from our avatars ----
     // Links are harvested from the original feed header (hidden under the skin), so
@@ -961,8 +1042,10 @@
       Promise.all(tasks).then(done,done);
     }
 
-    // One visibility engine: dedupe (one card per user per content type; news
-    // exempt) + the active tab's filter. Live tab swaps the feed for the grid.
+    // One visibility engine. The default public feed is NOT collapsed per author:
+    // it shows every latest post/article/letter newest-to-oldest (only literal
+    // duplicates — same item/url — and stale auto-news are dropped). Following
+    // filters to people the viewer follows. Live tab swaps the feed for the grid.
     function dedupeFeed(){
       var live = curTab==='live';
       var lg=document.getElementById('sml-hf-livegrid'); if (lg) lg.style.display=live?'grid':'none';
@@ -982,7 +1065,6 @@
           var articleUrl=String(card.getAttribute('data-hfe-url')||'').split(/[?#]/)[0].replace(/\/$/,'').toLowerCase();
           if(show&&articleUrl){if(seenArticleUrls[articleUrl])show=false;else seenArticleUrls[articleUrl]=1;}
         }
-        if (show&&!isNewsA && lan){ var key=lan+'|'+cardType(card); if (seen[key]) show=false; else seen[key]=1; }
         if (show && curTab==='following'){
           if (isNewsA) show=false;
           else { var aEl=card.querySelector('.oh-post-author'); var hf=aEl?(aEl.getAttribute('href')||''):''; var m=hf.match(/\/([a-z0-9_\-]+)\/?$/i); var slug=m?m[1].toLowerCase():''; show=!!(fSet&&(fSet[slug]||fSet['n:'+lan])); }
@@ -994,6 +1076,7 @@
         if (!es){ es=document.createElement('div'); es.id='sml-hf-emptyfollow'; es.style.cssText='padding:44px 20px;text-align:center;color:#93A4B8;font-size:14px;line-height:1.6'; es.innerHTML='No posts from your people yet.<br>Follow traders and add friends to build this feed.'; host.appendChild(es); }
         es.style.display='block';
       } else if (es){ es.style.display='none'; }
+      positionRecommendationRails();
     }
 
     // Facebook-style comment attribution: "Alice commented on Bob's post".
@@ -1444,6 +1527,123 @@
     var feedSeen = {};
     function cardKeyOf(card){ var a = card.querySelector('h2 a'); if (a && a.getAttribute('href')) return a.getAttribute('href'); return 'x:' + ((card.innerText||'').replace(/\s+/g,' ').slice(0,140)); }
     host.querySelectorAll('.oh-post').forEach(function(c){ feedSeen[cardKeyOf(c)] = 1; });
+    // ---- endless default feed: page in latest posts/articles + Loop Letters ----
+    var feedPage = 1, feedLoading = false, feedExhausted = false, lettersLoaded = false;
+    function normalizeLetters(d){
+      d = d && d.j ? d.j : d;
+      var rows = (d && (d.items || d.feed || d.letters || d.posts || d.results)) || d || [];
+      if (!Array.isArray(rows)) rows = [];
+      return rows;
+    }
+    function restPostCard(p){
+      var emb=p&&p._embedded||{}, au=(emb.author&&emb.author[0])||{}, fm=(emb['wp:featuredmedia']&&emb['wp:featuredmedia'][0])||{};
+      var title=textOnly(p&&p.title&&p.title.rendered)||'Untitled';
+      var body=textOnly(p&&p.excerpt&&p.excerpt.rendered).slice(0,700);
+      var url=(p&&p.link)||'#', date=(p&&p.date)||'', id='wp-'+(p&&p.id||url);
+      var name=au.name||'StockMarketLoop', aurl=au.link||'/creators/', avatars=au.avatar_urls||{}, av=avatars['96']||avatars['48']||avatars['24']||'';
+      var img=p.jetpack_featured_media_url||fm.source_url||'';
+      var art=document.createElement('article');
+      art.className='oh-card oh-post sml-sth-post';
+      art.setAttribute('data-hfe-item', id); art.setAttribute('data-hfe-url', url); art.setAttribute('data-sml-published', date);
+      art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av||'/wp-content/uploads/2026/08/Untitled-design-90.png')+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
+        '<div class="oh-meta">'+esc(name+(date?' · '+date:''))+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
+        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
+        '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
+      return art;
+    }
+    function letterCard(row){
+      row = row || {};
+      var title = textOnly(row.title || row.headline || row.name || 'Loop Letter');
+      var body = textOnly(row.excerpt || row.summary || row.body || row.content || '').slice(0,700);
+      var url = row.url || row.link || row.permalink || (row.slug ? ('/n/' + row.slug + '/') : '/n/');
+      var date = row.date || row.published_at || row.created_at || row.updated_at || '';
+      var author = row.author || {};
+      var name = row.author_name || author.name || row.creator || 'Loop Letters';
+      var aurl = row.author_url || author.url || row.profile_url || '/n/';
+      var av = row.author_avatar || author.avatar || row.avatar || '/wp-content/uploads/2026/08/Untitled-design-90.png';
+      var img = row.image || row.thumbnail || row.featured_image || '';
+      var art=document.createElement('article');
+      art.className='oh-card oh-post sml-sth-post sml-loop-letter-feed-post';
+      art.setAttribute('data-hfe-item','letter-'+(row.id||row.slug||url)); art.setAttribute('data-hfe-url',url); art.setAttribute('data-sml-published',date);
+      art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av)+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
+        '<div class="oh-meta">Loop Letter'+(date?' · '+esc(date):'')+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
+        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
+        '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
+      return art;
+    }
+    function appendFeedNodes(nodes){
+      if (!nodes.length) return 0;
+      nodes.sort(function(a,b){ return (Date.parse(b.getAttribute('data-sml-published')||'')||0) - (Date.parse(a.getAttribute('data-sml-published')||'')||0); });
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host, added=0;
+      nodes.forEach(function(node){
+        var key = cardKeyOf(node);
+        if (!key || feedSeen[key]) return;
+        feedSeen[key] = 1;
+        node.style.animation='smlHfNew .45s ease';
+        main.appendChild(node);
+        armRh(node, 250);
+        added++;
+      });
+      if (added){ fbComments(); dedupeFeed(); applyQuotes(); }
+      return added;
+    }
+    function loadMoreFeed(){
+      if (feedLoading || feedExhausted) return false;
+      feedLoading = true;
+      var page = feedPage++;
+      var jobs = [
+        api('/wp-json/wp/v2/posts?per_page=30&page='+page+'&_embed=1&_fields=id,link,date,title,excerpt,author,jetpack_featured_media_url,_embedded').catch(function(){ return []; })
+      ];
+      if (!lettersLoaded) {
+        lettersLoaded = true;
+        jobs.push(api('/wp-json/sml-letters/v1/feed?limit=30&per_page=30').then(normalizeLetters).catch(function(){ return []; }));
+      }
+      Promise.all(jobs).then(function(results){
+        var posts = Array.isArray(results[0]) ? results[0] : [];
+        var letters = Array.isArray(results[1]) ? results[1] : [];
+        var nodes = [];
+        posts.forEach(function(p){ nodes.push(restPostCard(p)); });
+        letters.forEach(function(l){ nodes.push(letterCard(l)); });
+        var added = appendFeedNodes(nodes);
+        if (!posts.length && !letters.length) feedExhausted = true;
+        feedLoading = false;
+        if (host.querySelectorAll('.oh-post:not([data-sml-loop-clone])').length < 18 && added) loadMoreFeed();
+      }).catch(function(){ feedLoading=false; });
+      return true;
+    }
+    function backfillFeed(){
+      var current=host.querySelectorAll('.oh-post:not([data-sml-loop-clone])').length;
+      if (current >= 30) return;
+      loadMoreFeed();
+    }
+    function hydrateMediaRails(){
+      api('/wp-json/sml-video-upload-studio/v1/rail').then(function(res){
+        var j = res && res.j ? res.j : res;
+        var items = [].concat((j&&j.up_next)||[], (j&&j.related)||[], (j&&j.items)||[], (j&&j.videos)||[]);
+        var seen = {};
+        mediaRailData.uploads = items.filter(function(x){ var id=x && (x.id||x.watch_url||x.url||x.title); if(!id||seen[id]) return false; seen[id]=1; return true; }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        mediaRailData.shorts = items.filter(function(x){ var t=((x&&x.type)||x.kind||x.format||x.visibility||'').toString().toLowerCase(); return x && (x.short || x.is_short || x.noindex || /short|clip|profile|noindex/.test(t)); }).slice(0,30).map(function(x){ return { id:x.id, url:x.watch_url||x.url||(x.id?('/watch/'+x.id+'/'):'/watch/'), img:x.thumbnail||x.image, title:x.title, creator:x.creator, handle:x.handle, views:x.views, views_label:x.views_label, ago:x.ago, duration:x.duration }; });
+        positionRecommendationRails();
+      }).catch(function(){});
+      api('/wp-json/sml-live/v1/slots').then(function(d){
+        var arr=d&&d.j?d.j:d; arr=arr&&((arr.slots)||arr.streams||arr.items||arr)||[];
+        if (!Array.isArray(arr)) arr=Object.keys(arr||{}).map(function(k){ return arr[k]; }).filter(function(x){ return x&&typeof x==='object'; });
+        mediaRailData.live = arr.filter(function(s){ return s&&(s.live||s.is_live||s.active||s.status==='live'); }).map(function(s){ return { title:s.title||s.stream_title||s.broadcast_title||'Live on StockMarketLoop', name:s.name||s.display_name||s.handle||'', url:s.watch_url||s.url||(s.handle?('/live/?room='+encodeURIComponent(s.handle)):'/live/'), img:s.thumbnail_url||s.thumbnail||s.poster_url||s.poster||s.image||'', creator:s.name||s.display_name||s.handle||'', status:'live now' }; });
+        positionRecommendationRails();
+      }).catch(function(){
+        // slots is auth-gated (401 for signed-out) — mirror the Live tab's public
+        // fallback: scrape the /live/ page for currently-listed watch links so the
+        // rail still populates for the default/public feed.
+        fetch('/live/',{credentials:'same-origin'}).then(function(r){ return r.text(); }).then(function(html){
+          var doc=new DOMParser().parseFromString(html,'text/html'); var items=[], seenL={};
+          doc.querySelectorAll('a[href*="/watch"]').forEach(function(a){ var hf=a.getAttribute('href')||''; if (!hf||seenL[hf]) return; seenL[hf]=1; var im=a.querySelector('img'); var t=(a.textContent||'').replace(/\s+/g,' ').trim().slice(0,60); if(!t) return; items.push({ title:t, url:hf, img:im?(im.getAttribute('src')||''):'', creator:'', status:'live now' }); });
+          mediaRailData.live = items.slice(0,12);
+          positionRecommendationRails();
+        }).catch(function(){});
+      });
+    }
+    backfillFeed();
+    hydrateMediaRails();
     function pollFeed(){
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
         if (html.indexOf('sml-optimized-home') < 0) return;
