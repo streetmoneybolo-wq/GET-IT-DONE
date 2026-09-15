@@ -2287,7 +2287,7 @@
     /* 2026-09-13: the page idled at ~3 requests/s and WordPress.com's edge answered with 429 then a 403
        bot challenge, which also blocked the games desk. Eligibility rarely changes; the queue can wait 12s. */
     setInterval(loadElig, 30000);
-    setInterval(pollVoiceQueue, 12000);
+    setInterval(pollVoiceQueue, 8000);
     pollVoiceQueue();
   }
 
