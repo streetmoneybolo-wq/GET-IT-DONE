@@ -1073,3 +1073,38 @@ html.sml-mobile .slw-frame:not(.multi) .slw-ctl-row{justify-content:flex-start}
 html.sml-mobile .slw-premiere-in{padding:40px 12px 12px;gap:4px}
 html.sml-mobile .slw-premiere-in b{font-size:16px}
 html.sml-mobile .slw-premiere-in span:last-child{font-size:12px}
+
+/* ---- premiere mode: countdown, live badge, join button, chat panel (2026-09-15) ---- */
+.slw-premiere-cd{display:flex;align-items:baseline;gap:10px;margin:4px 0}
+.slw-premiere-cd .lbl{font:800 10px/1 Archivo,sans-serif;letter-spacing:.18em;color:#8fa3b5}
+.slw-premiere-cd .cd{font:800 26px/1 'IBM Plex Mono',monospace;color:#00ff88;letter-spacing:.02em}
+.slw-upchip.prem-live{background:#ff2e66;color:#fff}
+.slw-upchip.prem-live span{color:#fff}
+.slw-upchip.prem-up{background:#0f2a1e;border:1px solid #1e8a5a}
+.slw-prem-join{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:7;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 22px;border:1px solid #00ff88;border-radius:14px;background:rgba(4,8,12,.82);color:#e6edf3;cursor:pointer;box-shadow:0 20px 60px -20px rgba(0,255,136,.5)}
+.slw-prem-join b{font:800 16px/1 Archivo,sans-serif;color:#00ff88}
+.slw-prem-join span{font:500 11px/1.3 Archivo,sans-serif;color:#8fa3b5}
+.slw-premiere-live .slw-prog{cursor:default}
+.vw-chat{border:1px solid #16202b;border-radius:16px;background:#080c12;display:flex;flex-direction:column;max-height:420px;overflow:hidden}
+.vw-chat-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #131c26}
+.vw-chat-h .dot{width:8px;height:8px;border-radius:50%;background:#ff2e66}
+.vw-chat-h b{font:800 12px/1 Archivo,sans-serif;color:#e6edf3;letter-spacing:.04em}
+.vw-chat-h .st{margin-left:auto;font:600 10px/1 Archivo,sans-serif;color:#8fa3b5;letter-spacing:.08em;text-transform:uppercase}
+.vw-chat-list{flex:1;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-height:160px}
+.vw-chat-empty{font:400 11px/1.4 Archivo,sans-serif;color:#5d7085;text-align:center;padding:22px 0}
+.vw-chat-msg{display:flex;gap:8px;align-items:flex-start}
+.vw-chat-msg .av{width:26px;height:26px;flex:none;border-radius:50%;background:#101821;display:flex;align-items:center;justify-content:center;font:700 9px/1 Archivo,sans-serif;color:#8fa3b5;overflow:hidden}
+.vw-chat-msg .av img{width:100%;height:100%;object-fit:cover}
+.vw-chat-msg .bd{min-width:0;flex:1}
+.vw-chat-msg .bd b{font:700 11px/1 Archivo,sans-serif;color:#00ff88}
+.vw-chat-msg .bd .t{font:500 9px/1 Archivo,sans-serif;color:#5d7085;margin-left:6px}
+.vw-chat-msg .bd p{margin:3px 0 0;font:400 12px/1.4 Archivo,sans-serif;color:#c7d6e3;word-break:break-word}
+.vw-chat-msg.sc .bd p{color:#ffd76a}
+.vw-chat-comp{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #131c26}
+.vw-chat-comp input{flex:1;min-width:0;height:36px;border-radius:9px;border:1px solid #1c2833;background:#0b1119;color:#e6edf3;padding:0 12px;font:500 12px/1 Archivo,sans-serif}
+.vw-chat-comp button{height:36px;padding:0 14px;border:none;border-radius:9px;background:#00ff88;color:#04060a;font:800 11px/1 Archivo,sans-serif;cursor:pointer}
+.vw-chat-note{padding:0 12px 10px;font:500 11px/1.3 Archivo,sans-serif;color:#ffb454}
+.vw-chat-gate{padding:12px 14px;border-top:1px solid #131c26;font:500 12px/1.4 Archivo,sans-serif;color:#8fa3b5}
+.vw-chat-gate a{color:#00ff88;font-weight:700}
+html.sml-mobile .vw-chat{max-height:340px}
+html.sml-mobile .slw-premiere-cd .cd{font-size:22px}

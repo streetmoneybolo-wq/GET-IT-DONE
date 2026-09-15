@@ -26,6 +26,9 @@
     id: (location.pathname.match(/\/watch\/([A-Za-z0-9_-]+)\/?/) || [])[1] || '',
     date: '', creator: '', handle: '', duration: 0, premiereAt: ''
   };
+  /* premiere (scheduled upload): the server prints these while the premiere is upcoming or running */
+  var PREM = { start: Date.parse(meta('sml:premiere-start') || '') || 0, dur: (+meta('sml:premiere-duration') || 0), chat: meta('sml:premiere-chat') || '' };
+  function premPhase() { if (!PREM.start) return ''; var now = Date.now(); if (now < PREM.start) return 'upcoming'; if (now < PREM.start + PREM.dur * 1000) return 'live'; return ''; }
   try {
     var lds = document.querySelectorAll('script[type="application/ld+json"]');
     for (var i = 0; i < lds.length; i++) {
@@ -133,6 +136,7 @@
 
     /* rail */
     '<div class="slw-rail">' +
+      '<div id="vw-chat" class="vw-chat" style="display:none"></div>' +
       '<div id="vw-camrail"></div>' +
       '<div class="slw-rec"><div class="slw-rec-h"><div class="l"><b>Recommended next</b><span>Live channels and uploads, picked from what you watch</span></div>' +
         '<div class="r"><a href="/watch/">Browse all →</a><span id="vw-recmeta"></span></div></div><div id="vw-rec"></div></div>' +
@@ -157,18 +161,52 @@
   if (VID.poster) v.poster = VID.poster;
   if (VID.src) v.src = VID.src;
   media.appendChild(v);
-  /* premiere (no file yet): a poster card with the unlock time replaces the player (2026-09-15) */
-  var PREMIERE = !VID.src && VID.premiereAt && (new Date(VID.premiereAt)).getTime() > Date.now();
-  if (PREMIERE) {
-    var when = new Date(VID.premiereAt);
-    var whenTxt = isNaN(when.getTime()) ? VID.premiereAt : when.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    var card = document.createElement('div');
-    card.className = 'slw-premiere';
-    card.innerHTML = '<div class="slw-premiere-in"><span class="slw-premiere-tag">PREMIERE · ' + esc(whenTxt) + '</span><b>' + esc(VID.title || 'Premiere') + '</b><span>The video unlocks for everyone at that time — come back then.</span></div>';
-    if (VID.poster) card.style.backgroundImage = 'url(' + VID.poster + ')';
-    media.appendChild(card);
-    root.classList.add('slw-premiere-on');
+  /* ---------- premiere mode (owner design 2026-09-15): a scheduled upload acts like a live watch page ----------
+     upcoming: countdown card over the poster + live chat; at zero the page reloads and the server serves the file.
+     live: everyone plays in sync from the start time (seek-ahead disabled, drift corrected), LIVE badge, live chat.
+     after start+duration: a normal video (seeking back on, chat stays as the premiere's chat). */
+  var PHASE = premPhase();
+  function fmtCountdown(ms) { var t = Math.max(0, Math.floor(ms / 1000)); var d = Math.floor(t / 86400), h = Math.floor((t % 86400) / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60; var p = function (x) { return String(x).padStart(2, '0'); }; return (d ? d + 'd ' : '') + p(h) + ':' + p(m) + ':' + p(sec); }
+  var premCard = null, premTimer = null;
+  function paintPremiereChip(phase) {
+    var chip = el('.slw-upchip'); if (!chip) return;
+    chip.classList.toggle('prem-live', phase === 'live'); chip.classList.toggle('prem-up', phase === 'upcoming');
+    chip.innerHTML = phase === 'live' ? '<span>● PREMIERE · LIVE</span>' : (phase === 'upcoming' ? '<span>◷ PREMIERE</span>' : '<span>▶ UPLOAD</span>');
+    if (el('#vw-ep')) el('#vw-ep').textContent = phase === 'live' ? 'PREMIERING NOW' : (phase === 'upcoming' ? 'PREMIERE' : (VID.date ? 'UPLOADED ' + upDate(VID.date) : 'UPLOAD'));
   }
+  if (PHASE === 'upcoming') {
+    var when = new Date(PREM.start);
+    var whenTxt = when.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    premCard = document.createElement('div');
+    premCard.className = 'slw-premiere';
+    premCard.innerHTML = '<div class="slw-premiere-in"><span class="slw-premiere-tag">PREMIERE · ' + esc(whenTxt) + '</span><b>' + esc(VID.title || 'Premiere') + '</b>' +
+      '<div class="slw-premiere-cd"><span class="lbl">STARTS IN</span><span class="cd" id="vw-prem-cd">' + fmtCountdown(PREM.start - Date.now()) + '</span></div>' +
+      '<span>It plays for everyone at the same time — live chat is open now.</span></div>';
+    if (VID.poster) premCard.style.backgroundImage = 'url(' + VID.poster + ')';
+    media.appendChild(premCard);
+    root.classList.add('slw-premiere-on');
+    premTimer = setInterval(function () {
+      var left = PREM.start - Date.now();
+      var cd = el('#vw-prem-cd'); if (cd) cd.textContent = fmtCountdown(left);
+      if (left <= 0) { clearInterval(premTimer); location.reload(); }   /* the server now serves the file */
+    }, 1000);
+  }
+  var LIVE_SYNC = PHASE === 'live';
+  function liveEdge() { return Math.max(0, (Date.now() - PREM.start) / 1000); }
+  function syncToEdge() { if (!LIVE_SYNC) return; var edge = liveEdge(); if (isFinite(v.duration) && v.duration > 0 && edge >= v.duration) { endLivePremiere(); return; } if (Math.abs(v.currentTime - edge) > 3) { try { v.currentTime = edge; } catch (e) {} } }
+  function endLivePremiere() { LIVE_SYNC = false; root.classList.remove('slw-premiere-live'); paintPremiereChip(''); var j = el('#vw-prem-join'); if (j) j.remove(); }
+  if (LIVE_SYNC) {
+    root.classList.add('slw-premiere-live');
+    var join = document.createElement('button');
+    join.id = 'vw-prem-join'; join.className = 'slw-prem-join';
+    join.innerHTML = '<b>▶ Join the premiere</b><span>playing live for everyone · started ' + hms(liveEdge()) + ' ago</span>';
+    media.appendChild(join);
+    join.onclick = function (e) { e.stopPropagation(); syncToEdge(); v.play().catch(function () {}); join.remove(); };
+    v.addEventListener('loadedmetadata', syncToEdge);
+    v.addEventListener('play', syncToEdge);
+    setInterval(function () { if (LIVE_SYNC && !v.paused) syncToEdge(); if (LIVE_SYNC && Date.now() >= PREM.start + PREM.dur * 1000) endLivePremiere(); }, 10000);
+  }
+  paintPremiereChip(PHASE);
   var playing = false, muted = false;
   function paintPlay() { var b = el('#vw-play'); b.textContent = playing ? '❚❚' : '▶'; b.classList.toggle('play', !playing); }
   el('#vw-play').onclick = function () { if (v.paused) v.play().catch(function () {}); else v.pause(); };
@@ -185,7 +223,9 @@
   });
   el('#vw-prog').addEventListener('click', function (e) {
     var r = e.currentTarget.getBoundingClientRect(); var d = v.duration || VID.duration; if (!d) return;
-    v.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * d;
+    var target = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * d;
+    if (LIVE_SYNC) target = Math.min(target, liveEdge());   /* a premiere cannot be watched ahead of everyone else */
+    v.currentTime = target;
   });
   el('#vw-vol').onclick = function () {
     muted = !muted; v.muted = muted;
@@ -202,7 +242,7 @@
   };
   el('#vw-fs').onclick = function () { var p = el('.slw-player'); if (document.fullscreenElement) document.exitFullscreen(); else if (p.requestFullscreen) p.requestFullscreen(); };
   paintPlay();
-  if (VID.date) el('#vw-ep').textContent = 'UPLOADED ' + upDate(VID.date);
+  if (VID.date && !PHASE) el('#vw-ep').textContent = 'UPLOADED ' + upDate(VID.date);
 
   /* about flip + modal */
   var aboutDeg = 0;
@@ -215,6 +255,49 @@
     el('#vw-modal-bg').onclick = function (e) { if (e.target.id === 'vw-modal-bg') el('#vw-modal').innerHTML = ''; };
   }
   el('#vw-more').onclick = openModal; el('#vw-more2').onclick = openModal;
+
+  /* ---------- premiere live chat: the shared live-chat store, room "premiere-{video id}" ---------- */
+  (function () {
+    if (!PREM.chat) return;
+    var box = el('#vw-chat'); if (!box) return;
+    var room = PREM.chat, busy = false;
+    function stText() { var ph = premPhase(); return ph === 'live' ? 'live now' : (ph === 'upcoming' ? 'open before the start' : 'premiere chat'); }
+    box.style.display = '';
+    box.innerHTML = '<div class="vw-chat-h"><span class="dot"></span><b>Premiere chat</b><span class="st" id="vw-chat-st">' + stText() + '</span></div>' +
+      '<div class="vw-chat-list" id="vw-chat-list"><div class="vw-chat-empty">Be the first to say something.</div></div>' +
+      (ME ? '<div class="vw-chat-comp"><input type="text" id="vw-chat-in" maxlength="500" placeholder="Say something to the room" autocomplete="off"><button id="vw-chat-send" type="button">Send</button></div><div class="vw-chat-note" id="vw-chat-note" style="display:none"></div>'
+          : '<div class="vw-chat-gate"><a href="/sign-up-sign-in/?redirect_to=' + encodeURIComponent(location.href) + '">Sign in</a> to join the premiere chat.</div>');
+    function paint(list) {
+      var wrap = el('#vw-chat-list'); if (!wrap || !list.length) return;
+      var atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 30;
+      wrap.innerHTML = list.map(function (m) {
+        var name = String(m.display_name || m.name || 'Member');
+        return '<div class="vw-chat-msg' + (m.message_type === 'superchat' ? ' sc' : '') + '"><span class="av">' + (m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : esc(name.slice(0, 2).toUpperCase())) + '</span><div class="bd"><b>' + esc(name) + '</b><span class="t">' + esc(relTime(m.created_at)) + '</span><p>' + esc(m.body || m.message || '') + '</p></div></div>';
+      }).join('');
+      if (atBottom) wrap.scrollTop = wrap.scrollHeight;
+    }
+    function poll() {
+      if (document.hidden) return;
+      api('/sml-live-chat/v1/room/' + encodeURIComponent(room) + '/messages?limit=60').then(function (res) {
+        var list = (res.j && (res.j.messages || res.j.items)) || [];
+        if (list.length) paint(list);
+        var st = el('#vw-chat-st'); if (st) st.textContent = stText();
+      }).catch(function () {});
+    }
+    function send() {
+      var input = el('#vw-chat-in'); if (!input || busy) return; var text = input.value.trim(); if (!text) return;
+      busy = true; el('#vw-chat-send').textContent = '…';
+      api('/sml-live-chat/v1/room/' + encodeURIComponent(room) + '/messages', { method: 'POST', body: JSON.stringify({ message: text }) }).then(function (res) {
+        busy = false; el('#vw-chat-send').textContent = 'Send';
+        var note = el('#vw-chat-note');
+        if (res.ok) { input.value = ''; poll(); if (note) note.style.display = 'none'; }
+        else if (note) { note.textContent = (res.j && res.j.message) || 'Could not send that.'; note.style.display = ''; }
+      }).catch(function () { busy = false; el('#vw-chat-send').textContent = 'Send'; });
+    }
+    if (ME) { el('#vw-chat-send').onclick = send; el('#vw-chat-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); }); }
+    poll();
+    setInterval(poll, premPhase() ? 4000 : 12000);
+  })();
 
   /* ---------- orbit ("From the host") — real photos via WP media library, tagged sml-orbit-{creator handle} ---------- */
   var S = { oIdx: 0, oAngle: 0, oPlaying: true, oHover: false, oLightbox: false };
