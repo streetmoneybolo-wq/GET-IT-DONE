@@ -100,18 +100,123 @@
     a.appendChild(document.createTextNode((prefix || 'for ') + group.name));
     return a;
   }
+  function questionHeading() { return document.querySelector('.sml-qa-question h1, article h1, h1'); }
+  function answerMeta(cid) { return document.querySelector('#answer-' + cid + ' .sml-qa-answer-meta'); }
+
+  function setChip(host, group, prefix, cls, after) {
+    if (!host) return;
+    var old = (after ? host.parentNode : host).querySelector('.' + cls);
+    if (old) old.remove();
+    if (!group) return;
+    var c = chip(group, prefix); c.classList.add(cls);
+    if (after) host.insertAdjacentElement('afterend', c); else host.appendChild(c);
+  }
+
   function paintChips() {
     if (!C.questionId) return;
     get('qa-credits?question_id=' + C.questionId).then(function (d) {
-      if (d.question) {
-        var h = document.querySelector('.sml-qa-question h1, article h1, h1');
-        if (h && !h.parentNode.querySelector('.sml-gs-chip-q')) { var c = chip(d.question, 'Asked for '); c.classList.add('sml-gs-chip-q'); h.insertAdjacentElement('afterend', c); }
-      }
-      Object.keys(d.answers || {}).forEach(function (cid) {
-        var meta = document.querySelector('#answer-' + cid + ' .sml-qa-answer-meta');
-        if (meta && !meta.querySelector('.sml-gs-chip')) meta.appendChild(chip(d.answers[cid], 'Answered for '));
-      });
+      setChip(questionHeading(), d.question, 'Asked for ', 'sml-gs-chip-q', true);
+      Object.keys(d.answers || {}).forEach(function (cid) { setChip(answerMeta(cid), d.answers[cid], 'Answered for ', 'sml-gs-chip-a', false); });
+      var mine = d.mine || {};
+      if (mine.question) manage('question', C.questionId, mine.question);
+      Object.keys(mine.answers || {}).forEach(function (cid) { manage('answer', cid, mine.answers[cid]); });
     }).catch(function () {});
+  }
+
+  /* ------------------------------------- change the credit on your own posts */
+  var openMenu = null;
+  function closeMenu() { if (openMenu) { openMenu.menu.remove(); openMenu.btn.setAttribute('aria-expanded', 'false'); openMenu = null; } }
+  document.addEventListener('click', function (e) { if (openMenu && !openMenu.menu.contains(e.target) && e.target !== openMenu.btn) closeMenu(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openMenu) { var b = openMenu.btn; closeMenu(); b.focus(); } });
+
+  function manage(type, id, state) {
+    var noun = type === 'question' ? 'question' : 'answer';
+    var host = type === 'question' ? questionHeading() : answerMeta(id);
+    if (!host) return;
+    var box = (type === 'question' ? host.parentNode : host).querySelector('.sml-gs-manage[data-id="' + id + '"]');
+    if (box) box.remove();
+    box = el('span', 'sml-gs-manage'); box.setAttribute('data-id', id);
+
+    var label = state.credit === 'group' && state.group ? 'Credit: ' + state.group.name : 'Credit: you';
+    if (state.locked) {
+      var lk = el('span', 'sml-gs-credit-btn is-locked', '🔒 ' + label);
+      lk.title = 'This ' + noun + ' already earned its reward, so the credit can’t change.';
+      box.appendChild(lk);
+    } else {
+      var btn = el('button', 'sml-gs-credit-btn', label + ' ▾');
+      btn.type = 'button';
+      btn.setAttribute('aria-haspopup', 'true');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.title = 'Choose who gets credit for this ' + noun;
+      btn.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (openMenu && openMenu.btn === btn) { closeMenu(); return; }
+        closeMenu();
+        var menu = menuFor(type, id, state, btn);
+        box.appendChild(menu);
+        btn.setAttribute('aria-expanded', 'true');
+        openMenu = { menu: menu, btn: btn };
+        var first = menu.querySelector('button:not([disabled])'); if (first) first.focus();
+      });
+      box.appendChild(btn);
+    }
+    if (type === 'question') { box.classList.add('is-q'); var qc = host.parentNode.querySelector('.sml-gs-chip-q'); (qc || host).insertAdjacentElement('afterend', box); } else host.appendChild(box);
+  }
+
+  function menuFor(type, id, state, btn) {
+    var menu = el('div', 'sml-gs-menu');
+    menu.setAttribute('role', 'menu');
+    var current = state.credit === 'group' && state.group ? 'group:' + state.group.id : 'self';
+    var status = el('p', 'sml-gs-menu-msg');
+    status.setAttribute('role', 'status');
+
+    function item(value, title, sub, disabled) {
+      var b = el('button', 'sml-gs-menu-item' + (value === current ? ' is-current' : ''));
+      b.type = 'button'; b.setAttribute('role', 'menuitemradio');
+      b.setAttribute('aria-checked', value === current ? 'true' : 'false');
+      b.disabled = !!disabled;
+      b.appendChild(el('span', 'sml-gs-menu-t', title));
+      if (sub) b.appendChild(el('span', 'sml-gs-menu-s', sub));
+      b.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (value === current) { closeMenu(); btn.focus(); return; }
+        [].forEach.call(menu.querySelectorAll('button'), function (x) { x.disabled = true; });
+        status.textContent = 'Saving…';
+        fetch(C.rest + 'qa-credit', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': C.nonce },
+          body: JSON.stringify({ object_type: type, object_id: Number(id), credit: value })
+        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }).then(function (res) {
+          if (!res.ok) {
+            status.textContent = (res.j && res.j.message) || 'Couldn’t change the credit. Try again.';
+            status.classList.add('is-error');
+            [].forEach.call(menu.querySelectorAll('button'), function (x) { x.disabled = x.hasAttribute('data-off'); });
+            return;
+          }
+          closeMenu();
+          var group = res.j.credit === 'group' ? res.j.group : null;
+          if (type === 'question') setChip(questionHeading(), group, 'Asked for ', 'sml-gs-chip-q', true);
+          else setChip(answerMeta(id), group, 'Answered for ', 'sml-gs-chip-a', false);
+          manage(type, id, res.j);
+          var nb = (type === 'question' ? questionHeading().parentNode : answerMeta(id)).querySelector('.sml-gs-manage[data-id="' + id + '"] .sml-gs-credit-btn');
+          if (nb) { nb.focus(); nb.classList.add('is-saved'); setTimeout(function () { nb.classList.remove('is-saved'); }, 1600); }
+        }).catch(function () {
+          status.textContent = 'Network error. Try again.'; status.classList.add('is-error');
+          [].forEach.call(menu.querySelectorAll('button'), function (x) { x.disabled = x.hasAttribute('data-off'); });
+        });
+      });
+      if (disabled) b.setAttribute('data-off', '');
+      menu.appendChild(b);
+    }
+
+    item('self', 'Keep the credit', 'You earn the Loop Bucks');
+    (state.groups || []).forEach(function (g) {
+      item('group:' + g.id, 'Give ' + g.name + ' the credit', g.eligible ? 'Your group earns Q&A score' : 'You joined less than 24 h before posting', !g.eligible);
+    });
+    menu.appendChild(el('p', 'sml-gs-menu-note', 'You can change this until the reward is paid.'));
+    menu.appendChild(status);
+    menu.addEventListener('click', function (e) { e.stopPropagation(); });
+    return menu;
   }
 
   function start() {

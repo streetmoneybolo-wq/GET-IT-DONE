@@ -13,6 +13,43 @@ function sml_gs_group_card( $gid ) {
 	return array( 'id' => (int) $g->id, 'name' => (string) $g->name, 'slug' => (string) $g->slug, 'url' => home_url( '/groups/' . rawurlencode( $g->slug ) . '/' ), 'icon' => esc_url_raw( (string) $g->icon_url ) );
 }
 
+/** When a question/answer was posted (credit timing is measured from this). */
+function sml_gs_object_posted_ts( $type, $oid ) {
+	$row = sml_gs_credit_row( $type, $oid );
+	if ( $row ) return (int) strtotime( $row['posted_at'] . ' UTC' );
+	if ( 'question' === $type ) { $q = get_post( $oid ); return $q ? (int) strtotime( $q->post_date_gmt . ' UTC' ) : 0; }
+	$c = get_comment( $oid );
+	return $c ? (int) strtotime( $c->comment_date_gmt . ' UTC' ) : 0;
+}
+
+/** Credit is locked once anything was paid, scored or is being settled for it. */
+function sml_gs_credit_locked( $type, $oid ) {
+	global $wpdb;
+	$kinds = 'question' === $type ? "'question_good'" : "'answer_accepted','answer_voted'";
+	return (bool) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM " . sml_gs_t( 'qa_rewards' ) . " WHERE object_id = %d AND kind IN ($kinds) AND status <> 'pending'", (int) $oid ) );
+}
+
+/** The author's view of one of their own objects: current credit, lock, and the groups it can go to. */
+function sml_gs_credit_state( $type, $oid, $uid ) {
+	$s      = sml_gs_settings();
+	$posted = sml_gs_object_posted_ts( $type, $oid );
+	$cred   = sml_gs_resolved_credit( $type, $oid, $uid );
+	$groups = array();
+	foreach ( sml_gs_memberships( $uid ) as $gid => $joined ) {
+		$card = sml_gs_group_card( $gid );
+		if ( ! $card ) continue;
+		/* same rule the payout uses: a member for 24 h before this was posted */
+		$ok = sml_gs_resolve_credit( array( 'kind' => 'group', 'group_id' => $gid, 'posted_ts' => $posted ), array( $gid => $joined ), $s );
+		$groups[] = array( 'id' => $gid, 'name' => $card['name'], 'eligible' => 'group' === $ok['kind'] );
+	}
+	return array(
+		'credit' => $cred['kind'],
+		'group'  => $cred['group_id'] ? sml_gs_group_card( $cred['group_id'] ) : null,
+		'locked' => sml_gs_credit_locked( $type, $oid ),
+		'groups' => $groups,
+	);
+}
+
 add_action( 'rest_api_init', function () {
 	$ns = 'sml-group-score/v1';
 
@@ -81,16 +118,21 @@ add_action( 'rest_api_init', function () {
 			$qid = absint( $r->get_param( 'question_id' ) );
 			$q   = $qid ? get_post( $qid ) : null;
 			if ( ! $q || 'sml_question' !== $q->post_type || 'publish' !== $q->post_status ) return new WP_Error( 'sml_gs_q', 'Question not found.', array( 'status' => 404 ) );
-			$out  = array( 'question' => null, 'answers' => array() );
+			$uid  = get_current_user_id();
+			$out  = array( 'question' => null, 'answers' => array(), 'mine' => array( 'question' => null, 'answers' => array() ) );
 			$cred = sml_gs_resolved_credit( 'question', $qid, (int) $q->post_author );
 			if ( 'group' === $cred['kind'] ) $out['question'] = sml_gs_group_card( $cred['group_id'] );
+			if ( $uid && (int) $q->post_author === $uid ) $out['mine']['question'] = sml_gs_credit_state( 'question', $qid, $uid );
 			$ids = array_map( 'intval', get_comments( array( 'post_id' => $qid, 'type' => SML_QA_ANSWER_TYPE, 'status' => 'approve', 'fields' => 'ids', 'number' => 200 ) ) );
 			foreach ( $ids as $cid ) {
 				$c = get_comment( $cid );
 				$cred = sml_gs_resolved_credit( 'answer', $cid, (int) $c->user_id );
 				if ( 'group' === $cred['kind'] ) $out['answers'][ (string) $cid ] = sml_gs_group_card( $cred['group_id'] );
+				if ( $uid && (int) $c->user_id === $uid ) $out['mine']['answers'][ (string) $cid ] = sml_gs_credit_state( 'answer', $cid, $uid );
 			}
-			return rest_ensure_response( $out );
+			$res = rest_ensure_response( $out );
+			if ( $uid ) $res->header( 'Cache-Control', 'no-store, private' );
+			return $res;
 		},
 	) );
 
@@ -105,19 +147,30 @@ add_action( 'rest_api_init', function () {
 			if ( 'question' === $type ) { $q = get_post( $oid ); $owner = ( $q && 'sml_question' === $q->post_type ) ? (int) $q->post_author : 0; }
 			else { $c = get_comment( $oid ); $owner = ( $c && SML_QA_ANSWER_TYPE === $c->comment_type ) ? (int) $c->user_id : 0; }
 			if ( ! $owner || $owner !== $uid ) return new WP_Error( 'sml_gs_owner', 'You can only change the credit on your own questions and answers.', array( 'status' => 403 ) );
-			$kinds = 'question' === $type ? array( 'question_good' ) : array( 'answer_accepted', 'answer_voted' );
-			$in = "'" . implode( "','", $kinds ) . "'";
-			if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM " . sml_gs_t( 'qa_rewards' ) . " WHERE object_id = %d AND kind IN ($in) AND status <> 'pending'", $oid ) ) ) {
+			if ( sml_gs_credit_locked( $type, $oid ) ) {
 				return new WP_Error( 'sml_gs_locked', 'This already earned its reward, so the credit is locked.', array( 'status' => 409 ) );
 			}
-			$credit = sml_gs_parse_credit( $r->get_param( 'credit' ), $uid );
-			$row    = sml_gs_credit_row( $type, $oid );
-			if ( $row ) {
+			$raw    = (string) $r->get_param( 'credit' );
+			$credit = sml_gs_parse_credit( $raw, $uid );
+			if ( 'self' !== $raw && 'group' !== $credit['kind'] ) {
+				return new WP_Error( 'sml_gs_group', 'You are not a member of that group.', array( 'status' => 422 ) );
+			}
+			$posted = sml_gs_object_posted_ts( $type, $oid );
+			if ( 'group' === $credit['kind'] ) {
+				/* never save a choice the payout would quietly ignore */
+				$joined = sml_gs_memberships( $uid );
+				$ok = sml_gs_resolve_credit( array( 'kind' => 'group', 'group_id' => $credit['group_id'], 'posted_ts' => $posted ), $joined, sml_gs_settings() );
+				if ( 'group' !== $ok['kind'] ) {
+					return new WP_Error( 'sml_gs_too_new', 'You joined that group less than 24 hours before posting this, so it can’t take the credit.', array( 'status' => 422 ) );
+				}
+			}
+			if ( sml_gs_credit_row( $type, $oid ) ) {
 				$wpdb->update( sml_gs_t( 'qa_credit' ), array( 'kind' => $credit['kind'], 'group_id' => $credit['group_id'] ), array( 'object_type' => $type, 'object_id' => $oid ) );
 			} else {
-				sml_gs_save_credit( $type, $oid, $uid, $credit );
+				/* keep the original posting time, so changing the credit later can't dodge the 24 h rule */
+				$wpdb->insert( sml_gs_t( 'qa_credit' ), array( 'object_type' => $type, 'object_id' => $oid, 'user_id' => $uid, 'kind' => $credit['kind'], 'group_id' => $credit['group_id'], 'posted_at' => gmdate( 'Y-m-d H:i:s', $posted ?: sml_gs_now() ) ) );
 			}
-			return rest_ensure_response( array( 'ok' => true, 'credit' => $credit['kind'], 'group' => $credit['group_id'] ? sml_gs_group_card( $credit['group_id'] ) : null ) );
+			return rest_ensure_response( array_merge( array( 'ok' => true ), sml_gs_credit_state( $type, $oid, $uid ) ) );
 		},
 	) );
 } );

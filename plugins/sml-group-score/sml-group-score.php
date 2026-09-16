@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Group Score & Q&A Rewards
  * Description: Lifetime Group Score (verified price-target hits, Q&A credited to the group, outside shares that real people open, daily active members, members, badge holders, Loop Channel creators, Loop Letter writers) and Loop Bucks for good answers and questions — with the member choosing to keep the Loop Bucks or give their group the credit.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: StockMarketLoop
  *
  * OWNER RULES (2026-09-16): Q&A should matter to every creator, group owner and member who
@@ -34,7 +34,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_GS_VERSION = '1.1.1';
+const SML_GS_VERSION = '1.2.0';
 const SML_GS_DB      = 1;
 
 require_once __DIR__ . '/includes/rules.php';
