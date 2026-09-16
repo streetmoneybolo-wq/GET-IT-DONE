@@ -141,7 +141,10 @@ if ( ! function_exists( 'sml_idv_secret' ) ) {
 		$uid = get_current_user_id();
 		$sid = (string) get_user_meta( $uid, 'sml_idv_session', true );
 		if ( '' === $sid ) { return rest_ensure_response( sml_idv_status_payload( $uid ) ); }
-		$res = sml_idv_api( 'GET', 'identity/verification_sessions/' . rawurlencode( $sid ), array() );
+		// verified_outputs is an EXPANDABLE field: Stripe omits it unless requested.
+		// Without this expand the name is always empty and every verification would
+		// fail the name check.
+		$res = sml_idv_api( 'GET', 'identity/verification_sessions/' . rawurlencode( $sid ), array( 'expand[]' => 'verified_outputs' ) );
 		if ( is_wp_error( $res ) ) {
 			$d = $res->get_error_data();
 			return new WP_REST_Response( array( 'code' => $res->get_error_code(), 'message' => $res->get_error_message() ), isset( $d['status'] ) ? (int) $d['status'] : 400 );
