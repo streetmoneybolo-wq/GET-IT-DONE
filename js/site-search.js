@@ -162,11 +162,11 @@
     var key = "breaking-" + String(item.id || item.url || Date.now());
     var entry = { type: "news", key: key, label: "BREAKING" + (ticker ? " $" + ticker : ""), title: String(item.title || "Breaking market post"), url: String(item.url || "#"), sentiment: String(item.sentiment || "good"), breaking: true, until: Date.now() + 150000 };
     breakingEntries(); breaking.live = [entry].concat(breaking.live.filter(function (b) { return b.key !== key; })).slice(0, 3);
-    roller.items = breaking.live.concat((roller.items || []).filter(function (it) { return !it.breaking; })).slice(0, 29);
+    roller.items = arrangeItems(breaking.live.concat((roller.items || []).filter(function (it) { return !it.breaking; })).slice(0, 29));
     roller.sig = rollerSig(); renderRoller();
     setTimeout(function () {
       breakingEntries();
-      roller.items = breaking.live.concat((roller.items || []).filter(function (it) { return !it.breaking; })).slice(0, 29);
+      roller.items = arrangeItems(breaking.live.concat((roller.items || []).filter(function (it) { return !it.breaking; })).slice(0, 29));
       roller.sig = rollerSig(); renderRoller();
     }, 150500);
     if (breaking.queue.length) setTimeout(runBreaking, 250);
@@ -383,6 +383,41 @@
       return Number(it.ts || 0) > cutoff;
     });
   }
+  /* Owner rule 2026-09-15: on the rolling tape, NEVER stack news back-to-back, and
+     never let the same story roll by more than the marquee's own two passes.
+     arrangeItems() (1) drops any duplicate story by its URL — so breaking + feed
+     copies of one headline collapse to a single cell, and the -50% clone gives at
+     most two passes, never a third — and (2) spreads the news cells evenly BETWEEN
+     the stock cells (never adjacent, and never at either seam so the doubled loop
+     joins stock→stock). Priority order (breaking first) is preserved. */
+  function rollerStoryUrl(u) { try { var x = new URL(u, location.origin); return (x.pathname || '').replace(/\/+$/, '').toLowerCase(); } catch (e) { return String(u || '').toLowerCase(); } }
+  var ROLLER_MAX_NEWS = 6;
+  function arrangeItems(items) {
+    items = items || [];
+    var news = [], stocks = [], seenN = {}, seenS = {};
+    items.forEach(function (it) {
+      if (!it) return;
+      if (it.type === 'news') {
+        var u = rollerStoryUrl(it.url); if (!u || seenN[u]) return; seenN[u] = 1; news.push(it);
+      } else {
+        var s = String(it.symbol || '').toUpperCase() || String(it.key || ''); if (!s || seenS[s]) return; seenS[s] = 1; stocks.push(it);
+      }
+    });
+    if (!news.length) return stocks;
+    if (!stocks.length) return news;                 /* degenerate: nothing to interleave with */
+    /* at least two stocks between neighbouring news, and never news at either end */
+    var maxNews = Math.min(ROLLER_MAX_NEWS, Math.floor(stocks.length / 2));
+    if (maxNews < 1) return stocks.concat(news.slice(0, 1));
+    if (news.length > maxNews) news = news.slice(0, maxNews);
+    var out = stocks.slice();
+    var step = out.length / (news.length + 1);       /* interior positions only */
+    for (var j = news.length - 1; j >= 0; j--) {      /* insert back-to-front so earlier indices stay valid */
+      var p = Math.round(step * (j + 1));
+      if (p < 1) p = 1; if (p > out.length) p = out.length;
+      out.splice(p, 0, news[j]);
+    }
+    return out;
+  }
   function loadRoller() {
     if (document.hidden && roller.items) return;
     /* no cache-buster: the feed is edge-cached for a minute (45ms) instead of a 1.4s WordPress boot on every poll */
@@ -394,7 +429,7 @@
         json.items.forEach(function (it) { if (!it) return; var k = it.key || (it.type === 'ticker' ? 'ticker-' + it.symbol : 'news-' + it.url); if (!k || seen[k]) return; seen[k] = 1; items.push(it); });
         items = freshNews(items);
         if (!items.length) return;
-        roller.items = breakingEntries().concat(items.slice(0, 26));
+        roller.items = arrangeItems(breakingEntries().concat(items.slice(0, 26)));
         roller.sig = rollerSig();
         renderRoller();
         try { localStorage.setItem(ROLLER_SNAP, JSON.stringify({ at: Date.now(), items: items.slice(0, 26) })); } catch (e) {}
@@ -406,7 +441,7 @@
     try {
       var snap = JSON.parse(localStorage.getItem(ROLLER_SNAP) || 'null');
       if (!snap || !Array.isArray(snap.items) || !snap.items.length || Date.now() - snap.at > 6 * 3600000) return;
-      roller.items = freshNews(snap.items).slice(0, 26);
+      roller.items = arrangeItems(freshNews(snap.items).slice(0, 26));
       if (!roller.items.length) return;
       roller.sig = roller.items.map(function (it) { return it.key || it.symbol || it.url; }).join('|');
       renderRoller();
