@@ -25,6 +25,8 @@ function register_rest_route( ...$a ) {}
 function apply_filters( $hook, $value ) { return 'sml_fs_now' === $hook ? $GLOBALS['t_now'] : $value; }
 function get_current_user_id() { return $GLOBALS['t_user']; }
 function is_user_logged_in() { return $GLOBALS['t_user'] > 0; }
+$GLOBALS['t_admin'] = false;
+function current_user_can( $cap ) { return 'manage_options' === $cap && $GLOBALS['t_admin']; }
 function get_user_meta( $uid, $key, $single = false ) { return $GLOBALS['t_meta'][ $uid ][ $key ] ?? ''; }
 function update_user_meta( $uid, $key, $value ) { $GLOBALS['t_meta'][ $uid ][ $key ] = $value; return true; }
 function delete_user_meta( $uid, $key ) { $had = isset( $GLOBALS['t_meta'][ $uid ][ $key ] ); unset( $GLOBALS['t_meta'][ $uid ][ $key ] ); return $had; }
@@ -40,7 +42,8 @@ $GLOBALS['t_posts'] = array(
 	201 => (object) array( 'ID' => 201, 'post_status' => 'publish', 'post_password' => 'pw', 'post_title' => 'Password protected' ),
 );
 function get_userdata( $id ) { return isset( $GLOBALS['t_users'][ $id ] ) ? (object) array( 'ID' => $id, 'display_name' => $GLOBALS['t_users'][ $id ], 'user_login' => 'u' . $id, 'user_nicename' => 'nice' . $id ) : false; }
-function get_avatar_url( $id, $a = array() ) { return "https://avatar.test/$id.png"; }
+function get_avatar_url( $id, $a = array() ) { return 7 === $id ? "http://avatar.test/$id.png" : "https://avatar.test/$id.png"; }
+function set_url_scheme( $url, $scheme = null ) { return preg_replace( '#^\w+://#', $scheme . '://', $url ); }
 function home_url( $path = '' ) { return 'https://stockmarketloop.com' . $path; }
 function get_post( $id ) { return $GLOBALS['t_posts'][ $id ] ?? null; }
 function get_the_title( $post ) { return $post->post_title; }
@@ -318,6 +321,7 @@ $GLOBALS['t_now'] -= 31 * DAY_IN_SECONDS;
 
 $r = sml_fs_rest_onboarding_get( new WP_REST_Request() );
 ok( count( $r->data['questions'] ) === 10, 'GET returns the questions' );
+ok( false === $r->data['slot'], 'with the slot off, the client is told not to ask for one' );
 
 /* empty affinity must serialise as {} not [] */
 $GLOBALS['t_meta'] = array();
@@ -340,6 +344,46 @@ ok( sml_fs_watchlist( 3 ) === array( 'VIXY' ), 'the oldest key is the last resor
 ok( sml_fs_watchlist( 4 ) === array(), 'no watchlist anywhere is an empty list' );
 $writes = array_filter( $GLOBALS['wpdb']->queries, function ( $q ) { return stripos( $q, 'usermeta' ) !== false; } );
 ok( ! $writes, 'reading a watchlist never writes' );
+
+/* ============================== corporate slot: parity with corporate-feed.js */
+
+$sf  = json_decode( file_get_contents( __DIR__ . '/slot-fixtures.json' ), true );
+$now = sml_cs_parse_ms( $sf['nowIso'] );
+ok( $now === 1789560000000, 'fixture clock parses to the same epoch ms as Node' );
+
+$php_policy = sml_cs_policy();
+foreach ( $sf['policy'] as $k => $v ) ok( isset( $php_policy[ $k ] ) && $php_policy[ $k ] == $v, "policy.$k matches Node" );
+ok( SML_CS_SLOT_INDEX === $sf['slotIndex'], 'slot index matches Node' );
+
+foreach ( $sf['relevanceCases'] as $c ) {
+	$r = sml_cs_relevance( $c['item'], $c['user'], $now );
+	$same = abs( $r - $c['relevance'] ) < 1e-12;
+	ok( $same, "relevance matches Node: {$c['name']}" . ( $same ? '' : " (php $r, node {$c['relevance']})" ) );
+}
+
+foreach ( $sf['rejectionCases'] as $c ) {
+	$policy = array_merge( sml_cs_policy(), $c['policy'] ?? array() );
+	$r = sml_cs_slot_rejection( $c['item'], $c['user'], $c['context'], $now, $policy );
+	ok( $r === $c['rejection'], "rejection matches Node: {$c['name']}" . ( $r === $c['rejection'] ? '' : ' (php ' . var_export( $r, true ) . ', node ' . var_export( $c['rejection'], true ) . ')' ) );
+}
+
+foreach ( $sf['selectionCases'] as $c ) {
+	$pick = sml_cs_select( $c['items'], $c['user'], $c['context'], $now );
+	$id   = $pick ? $pick['id'] : null;
+	ok( $id === $c['picked'], "selection matches Node: {$c['name']}" . ( $id === $c['picked'] ? '' : " (php $id, node {$c['picked']})" ) );
+}
+
+$held = array();
+for ( $id = 1; $id <= 2000; $id++ ) if ( sml_cs_is_held_out( $id ) ) $held[] = $id;
+ok( $held === $sf['holdout']['idsHeldOutFrom1To2000'], 'the holdout assigns exactly the same 2000 users as Node (' . count( $held ) . ' held out)' );
+foreach ( $sf['holdout']['special'] as $c ) {
+	ok( sml_cs_is_held_out( $c['id'] ) === $c['heldOut'], 'holdout matches Node for ' . json_encode( $c['id'] ) );
+}
+
+/* ================================================= corporate slot: mode + candidates */
+
+ok( 'off' === sml_cs_mode(), 'the slot is off unless the option says otherwise' );
+ok( sml_cs_tickers_from_text( '$SPY Options Gamma Clusters Near $760.00 and $BRK.B, not $spy' ) === array( 'SPY', 'BRK.B' ), 'tickers come from $SYMBOLS in titles, never prices' );
 
 echo "\n$passed passed, $failed failed\n";
 exit( $failed ? 1 : 0 );

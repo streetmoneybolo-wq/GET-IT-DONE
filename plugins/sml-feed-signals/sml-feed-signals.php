@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Feed Signals
  * Description: Per-member feed signals — hides ("not interested"), impression counts, the onboarding questionnaire, and a server-side watchlist reader. The data the corporate feed slot's eligibility rules need.
- * Version: 1.0.2
+ * Version: 1.1.2
  *
  * WHAT THIS IS FOR
  * The corporate feed slot (platform/corporate-feed.js) decides eligibility from
@@ -25,8 +25,8 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-const SML_FS_VERSION = '1.0.2';
-const SML_FS_SCHEMA  = 1;
+const SML_FS_VERSION = '1.1.2';
+const SML_FS_SCHEMA  = 2;
 const SML_FS_NS      = 'sml-feed/v1';
 
 /** Impressions are kept this long; the slot rules look back at most 7 days. */
@@ -78,6 +78,15 @@ function sml_fs_install() {
   updated_at datetime NOT NULL,
   PRIMARY KEY  (day,user_id,author_id,surface),
   KEY author_day (author_id,day)
+) $charset;" );
+
+	/* Schema 2: daily counts of corporate-slot decisions by outcome (served,
+	 * no_candidates, holdout) — the evidence for tuning toward the 80% target. */
+	dbDelta( "CREATE TABLE {$wpdb->prefix}sml_feed_slot_daily (
+  day date NOT NULL,
+  outcome varchar(32) NOT NULL,
+  n int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (day,outcome)
 ) $charset;" );
 
 	/* autoloaded: sml_fs_maybe_install reads it on every request */
@@ -287,7 +296,9 @@ function sml_fs_member_card( $user_id ) {
 		'id'     => (int) $user_id,
 		'name'   => $u->display_name ?: $u->user_login,
 		'handle' => sml_fs_member_handle( (int) $user_id ),
-		'avatar' => get_avatar_url( (int) $user_id, array( 'size' => 56 ) ),
+		/* https always: some provisioned author avatars come back as http://, which
+		 * the slot card refuses to load and a browser would flag as mixed content. */
+		'avatar' => set_url_scheme( (string) get_avatar_url( (int) $user_id, array( 'size' => 56 ) ), 'https' ),
 		'url'    => sml_fs_member_url( (int) $user_id ),
 	);
 }
@@ -617,6 +628,11 @@ function sml_fs_onboarding_state( $user_id ) {
 function sml_fs_rest_onboarding_get( WP_REST_Request $request ) {
 	$state = sml_fs_onboarding_state( get_current_user_id() );
 	$state['questions'] = sml_fs_questions();
+	/* Piggybacks on a request the homepage already makes: the client only asks
+	 * /slot when this is true, so a switched-off slot costs members zero extra
+	 * requests on a host that throttles on request volume. */
+	$mode = function_exists( 'sml_cs_mode' ) ? sml_cs_mode() : 'off';
+	$state['slot'] = 'on' === $mode || ( 'admins' === $mode && current_user_can( 'manage_options' ) );
 	/* objects, not [] — an empty affinity map must stay a JSON object */
 	if ( $state['profile'] && ! $state['profile']['categoryAffinity'] ) $state['profile']['categoryAffinity'] = new stdClass();
 	return rest_ensure_response( $state );
@@ -816,6 +832,9 @@ function sml_fs_register_routes() {
 	) );
 	register_rest_route( SML_FS_NS, '/onboarding/snooze', array( 'methods' => 'POST', 'callback' => 'sml_fs_rest_onboarding_snooze', 'permission_callback' => $auth ) );
 }
+
+/* The corporate slot: a port of corporate-feed.js decided from these signals. */
+require_once __DIR__ . '/corporate-slot.php';
 
 register_activation_hook( __FILE__, 'sml_fs_install' );
 add_action( 'plugins_loaded', 'sml_fs_maybe_install' );

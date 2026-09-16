@@ -9,6 +9,9 @@
  *    half visible for one second. Batched; flushed every 10s and on page hide.
  *  - A dismissible "Personalize your feed" prompt that opens the 10-question
  *    onboarding questionnaire.
+ *  - The corporate slot: one server decision per page view (GET /slot, decided
+ *    from these same signals), rendered as a clearly labelled "Promoted" card
+ *    at feed position 4. No decision means no card — never a filler.
  *
  * Loaded by home-feed.js from the same commit-pinned CDN path. Signed-in only.
  * Every failure is silent and leaves the feed exactly as it was. All member
@@ -101,6 +104,17 @@
       '.sml-fs-q.missing legend::after{content:" — required";font-weight:500;}' +
       '.sml-fs-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;}' +
       '.sml-fs-status{color:#93A4B8;font-size:13px;min-height:1.2em;}' +
+      '[data-sml-fs-dup]{display:none!important;}' +
+      '.sml-fs-slot .sml-fs-slot-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;}' +
+      '.sml-fs-slot .sml-fs-slot-av{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:0 0 auto;}' +
+      '.sml-fs-slot .sml-fs-slot-name{color:#E6EDF5;font:700 14px Inter,system-ui,sans-serif;text-decoration:none;}' +
+      '.sml-fs-slot .sml-fs-slot-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;background:#1D4ED8;color:#fff;font:700 11px/1.5 Inter,system-ui,sans-serif;letter-spacing:.02em;}' +
+      '.sml-fs-slot .sml-fs-slot-disclosure{margin-left:auto;color:#93A4B8;font:600 11px Inter,system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;}' +
+      '.sml-fs-slot h2{margin:0 0 6px;font:700 17px/1.3 Archivo,Inter,system-ui,sans-serif;text-wrap:balance;}' +
+      '.sml-fs-slot h2 a{color:#fff;text-decoration:none;}' +
+      '.sml-fs-slot h2 a:hover,.sml-fs-slot h2 a:focus-visible{text-decoration:underline;}' +
+      '.sml-fs-slot p{margin:0 0 10px;color:#B7C3CF;font:14px/1.5 Inter,system-ui,sans-serif;}' +
+      '.sml-fs-slot .sml-fs-slot-img{display:block;width:100%;max-height:320px;object-fit:cover;border-radius:12px;margin:4px 0 10px;}' +
       '@media (prefers-reduced-motion: no-preference){.sml-fs-prompt,.sml-fs-note{animation:smlFsIn .25s ease-out;}}' +
       '@keyframes smlFsIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}';
     var s = el('style');
@@ -598,8 +612,88 @@
 
   function startOnboarding() {
     api('GET', '/onboarding').then(function (state) {
+      if (state && state.slot === true) startSlot();   /* only when the slot is switched on for this member */
       if (state && state.shouldPrompt && Array.isArray(state.questions) && state.questions.length) insertPrompt(state);
     }).catch(function () { /* no prompt is always a safe outcome */ });
+  }
+
+  /* --------------------------------------------------------- corporate slot */
+
+  var slotCard = null;
+
+  function sameSite(u) {
+    try { var x = new URL(String(u || ''), location.origin); return x.origin === location.origin ? x.href : ''; } catch (e) { return ''; }
+  }
+  function httpsUrl(u) {
+    try { var x = new URL(String(u || '')); return x.protocol === 'https:' ? x.href : ''; } catch (e) { return ''; }
+  }
+
+  /* A paid placement must say so. "Corporate" is the verified-account badge;
+     "Promoted" is the disclosure — they are deliberately two labels. */
+  function buildSlotCard(slot) {
+    var card = el('article', 'oh-card oh-post sml-fs-slot');
+    card.setAttribute('data-hfe-item', slot.ref);
+    card.setAttribute('data-sml-slot', '1');
+    card.setAttribute('aria-label', 'Promoted post');
+    if (slot.author && slot.author.id) card.setAttribute('data-sml-authorid', String(slot.author.id));
+    var url = sameSite(slot.url);
+    if (url) card.setAttribute('data-hfe-url', url);
+
+    var head = el('div', 'sml-fs-slot-head');
+    var av = slot.author && httpsUrl(slot.author.avatar);
+    if (av) { var img = el('img', 'sml-fs-slot-av'); img.src = av; img.alt = ''; img.loading = 'lazy'; head.appendChild(img); }
+    var authorUrl = slot.author && sameSite(slot.author.url);
+    var name = el(authorUrl ? 'a' : 'span', 'sml-fs-slot-name', (slot.author && slot.author.name) || 'Corporate account');
+    if (authorUrl) name.href = authorUrl;
+    head.appendChild(name);
+    head.appendChild(el('span', 'sml-fs-slot-badge', 'Corporate'));
+    head.appendChild(el('span', 'sml-fs-slot-disclosure', 'Promoted'));
+    card.appendChild(head);
+
+    var h = el('h2');
+    if (url) { var a = el('a', '', slot.title || ''); a.href = url; h.appendChild(a); } else h.textContent = slot.title || '';
+    card.appendChild(h);
+    if (slot.excerpt) card.appendChild(el('p', '', slot.excerpt));
+    var pic = httpsUrl(slot.image);
+    if (pic) { var im = el('img', 'sml-fs-slot-img'); im.src = pic; im.alt = ''; im.loading = 'lazy'; card.appendChild(im); }
+    return card;
+  }
+
+  /* Position 4 among the posts the member can actually see, below any pinned
+     breaking news. Re-placed every sweep: home-feed inserts and re-orders posts
+     after load, exactly as it does for its own pin. The organic copy of the
+     same item is hidden so the member never sees it twice. */
+  function placeSlot() {
+    if (!slotCard) return;
+    var ref = refOf(slotCard);
+    cardsOnScreen().forEach(function (c) {
+      if (c !== slotCard && refOf(c) === ref) c.setAttribute('data-sml-fs-dup', '1');
+    });
+    var visible = cardsOnScreen().filter(function (c) {
+      return c !== slotCard && !c.hasAttribute('data-sml-fs-hidden') && !c.hasAttribute('data-sml-fs-dup')
+        && !c.hasAttribute('data-sml-pinned') && getComputedStyle(c).display !== 'none';
+    });
+    if (!visible.length) return;
+    var index = Math.min(SLOT_POSITION, visible.length);
+    var anchor = visible[index] || null;
+    if (anchor) {
+      if (slotCard.nextElementSibling !== anchor || slotCard.parentNode !== anchor.parentNode) anchor.parentNode.insertBefore(slotCard, anchor);
+    } else {
+      var last = visible[visible.length - 1];
+      if (last.nextElementSibling !== slotCard) last.parentNode.insertBefore(slotCard, last.nextSibling);
+    }
+  }
+  var SLOT_POSITION = 4;
+
+  function startSlot() {
+    api('GET', '/slot').then(function (j) {
+      if (!j || !j.slot || typeof j.slot.ref !== 'string' || !j.slot.ref) return;
+      if (typeof j.position === 'number' && j.position >= 0) SLOT_POSITION = j.position;
+      slotCard = buildSlotCard(j.slot);
+      placeSlot();
+      addMenus();
+      observeCards();
+    }).catch(function () { /* no slot is always a safe outcome */ });
   }
 
   /* ------------------------------------------------------------------- boot */
@@ -610,6 +704,7 @@
     addMenus();
     rehome();
     reapplyHidden();
+    placeSlot();
     observeCards();
     scheduleVisibilityCheck();
     var promptEl = document.getElementById('sml-fs-prompt');
