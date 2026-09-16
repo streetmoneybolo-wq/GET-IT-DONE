@@ -182,7 +182,9 @@ if ( ! function_exists( 'sml_idv_secret' ) ) {
 		$reqv  = (bool) get_option( 'sml_recs_require_verified', 0 );
 		echo '<div class="wrap"><h1>SML Identity (Stripe)</h1>';
 		echo '<p>Paste your own Stripe keys. Secret keys are stored write-only and never shown again or returned by the API. Test keys begin <code>sk_test_</code>/<code>pk_test_</code>; live keys <code>sk_live_</code>/<code>pk_live_</code>.</p>';
-		echo '<form method="post"><table class="form-table">';
+		echo '<form method="post">';
+		wp_nonce_field( 'sml_idv_save', 'sml_idv_nonce' ); // the handler above requires this
+		echo '<table class="form-table">';
 		echo '<tr><th scope="row">Active mode</th><td><label><input type="radio" name="sml_idv_active_mode" value="test" ' . checked( $mode, 'test', false ) . '> Test</label> &nbsp;&nbsp; <label><input type="radio" name="sml_idv_active_mode" value="live" ' . checked( $mode, 'live', false ) . '> Live</label></td></tr>';
 		echo '<tr><th scope="row">Test publishable key</th><td><input type="text" name="sml_idv_pk_test" style="width:440px" value="' . esc_attr( get_option( 'sml_idv_pk_test', '' ) ) . '" placeholder="pk_test_..." autocomplete="off"></td></tr>';
 		echo '<tr><th scope="row">Test secret key</th><td><input type="password" name="sml_idv_secret_test" style="width:440px" placeholder="' . ( $hasTS ? 'saved — leave blank to keep' : 'sk_test_...' ) . '" autocomplete="off"></td></tr>';
