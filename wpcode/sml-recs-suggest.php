@@ -111,6 +111,13 @@ if ( ! function_exists( 'sml_recs_mem' ) ) {
 		if ( $limit < 1 ) { $limit = 6; }
 		if ( $limit > 20 ) { $limit = 20; }
 
+		// Trust gates. The photo gate is ALWAYS on: only members who uploaded a real
+		// profile photo (usermeta sml_avatar_url, written by the site's avatar uploader)
+		// are surfaced. The ID-verification gate (Stripe Identity -> usermeta
+		// sml_id_verified) activates only when the option sml_recs_require_verified is
+		// set, so it can ship dark until Identity verification is live.
+		$require_verified = (bool) get_option( 'sml_recs_require_verified', 0 );
+
 		$neighbors = sml_recs_group_neighbors( $viewer, 80 );
 		unset( $neighbors[ $viewer ] );
 		if ( empty( $neighbors ) ) { return rest_ensure_response( $empty ); }
@@ -128,10 +135,17 @@ if ( ! function_exists( 'sml_recs_mem' ) ) {
 			$u = get_userdata( $uid );
 			if ( ! $u ) { continue; }
 
+			// Real-photo gate (interim trust): must have uploaded a real profile photo.
+			$photo = (string) get_user_meta( $uid, 'sml_avatar_url', true );
+			if ( '' === $photo ) { continue; }
+			// ID-verification gate (Stripe Identity) — only enforced when enabled.
+			if ( $require_verified && ! get_user_meta( $uid, 'sml_id_verified', true ) ) { continue; }
+
 			$follows_you = isset( $followers[ $uid ] );
 			$scored[] = array(
 				'uid'    => (int) $uid,
 				'u'      => $u,
+				'photo'  => $photo,
 				'mutual' => (int) $mutual,
 				'score'  => (int) $mutual * 10 + ( $follows_you ? 4 : 0 ),
 			);
@@ -145,7 +159,7 @@ if ( ! function_exists( 'sml_recs_mem' ) ) {
 			$items[] = array(
 				'user_id'     => $s['uid'],
 				'name'        => $s['u']->display_name,
-				'avatar'      => get_avatar_url( $s['uid'], array( 'size' => 64 ) ),
+				'avatar'      => $s['photo'],
 				'profile_url' => sml_recs_profile_url( $s['uid'] ),
 				'reason'      => sml_recs_reason( $s['mutual'] ),
 			);
