@@ -51,18 +51,6 @@ function requireCents(value, name, { allowNegative = false } = {}) {
 
 const DAY_MS = 24 * 3600 * 1000;
 
-/**
- * A BIGINT exactly as node-pg will hand it back: a string.
- *
- * evidence-store's verifyChain re-hashes `SELECT *`, and this app installs no
- * BIGINT type parser, so a bigint column reads back as "80000", not 80000. A
- * row hashed with the number can never verify. Every BIGINT field written to a
- * chained table therefore goes in as its string form — the charged amount and
- * the stored amount are identical, only the JSON spelling in the hash differs.
- */
-function big(value) {
-  return value == null ? null : String(value);
-}
 
 /**
  * Price one purchase against the cycle's caps.
@@ -261,13 +249,14 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
         fields: {
           /* EVERY column of corporate_ad_spend appears here, nulls included:
            * verifyChain hashes SELECT *, so an omitted column that reads back as
-           * null breaks the chain. BIGINTs go in as strings — see big(). */
-          corporate_id: big(corporateId),
-          billing_id: big(billingId),
+           * null breaks the chain. (BIGINT spelling is the evidence store's job:
+           * it normalizes every value to the shape node-pg reads back.) */
+          corporate_id: corporateId,
+          billing_id: billingId,
           campaign_ref: input.campaignRef == null ? null : String(input.campaignRef).slice(0, 191),
-          gross_cents: big(priced.grossCents),
-          discount_cents: big(priced.discountCents),
-          net_cents: big(priced.netCents),
+          gross_cents: priced.grossCents,
+          discount_cents: priced.discountCents,
+          net_cents: priced.netCents,
           stripe_charge_id: input.stripeChargeId == null ? null : String(input.stripeChargeId),
           /* The provenance block evidence-store requires on every chained row.
            * received_at is writer-supplied so it is inside the integrity hash. */
@@ -311,12 +300,12 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
         table: 'corporate_ad_spend',
         scopeKey: billingId,
         fields: {
-          corporate_id: big(corporateId),
-          billing_id: big(billingId),
+          corporate_id: corporateId,
+          billing_id: billingId,
           campaign_ref: null,
-          gross_cents: big(gross),
-          discount_cents: big(discount),
-          net_cents: big(gross - discount),
+          gross_cents: gross,
+          discount_cents: discount,
+          net_cents: gross - discount,
           /* NOT stripe_charge_id. That column is UNIQUE and already holds the
            * charge on the purchase row, so writing it again here would make
            * every refund of a real Stripe charge collide with the purchase it

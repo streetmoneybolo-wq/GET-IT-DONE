@@ -283,8 +283,8 @@ test('a correction appends a negative row, never an update', async () => {
     corporateId: 1, billingId: 7, grossCents: -100000, discountCents: -20000, reason: 'chargeback'
   });
   const row = h.appended[0].fields;
-  assert.equal(row.gross_cents, '-100000');
-  assert.equal(row.net_cents, '-80000', 'net = gross - discount still holds for corrections');
+  assert.equal(row.gross_cents, -100000);
+  assert.equal(row.net_cents, -80000, 'net = gross - discount still holds for corrections');
   assert.equal(row.provenance.reason, 'chargeback');
   assert.ok(!h.calls.some((c) => /UPDATE corporate_ad_spend|DELETE FROM corporate_ad_spend/.test(c.sql)),
     'the ledger is append-only');
@@ -311,12 +311,12 @@ test('the service refuses to start without a chaining store', () => {
 
 /* ------------------------------------------------ ledger rows vs the schema */
 
-/* The harness store above accepts anything, which is how three real bugs got
- * past this file: rows missing the provenance block evidence-store requires, a
- * column omitted from the hash, and BIGINTs hashed as numbers when node-pg
- * reads them back as strings. Every one of those makes a real append throw or
- * a real verifyChain fail. These tests read the column list from migration 017
- * itself, so a column added there without being written here fails loudly. */
+/* The harness store above accepts anything, which is how real bugs got past
+ * this file: rows missing the provenance block evidence-store requires, and a
+ * column omitted from the hash. Either makes a real append throw or a real
+ * verifyChain fail. These tests read the column list from migration 017
+ * itself, so a column added there without being written here fails loudly.
+ * (BIGINT spelling is normalized inside evidence-store and tested there.) */
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -361,17 +361,6 @@ test('both ledger writers supply every column of corporate_ad_spend', async () =
     for (const column of columns.keys()) {
       if (['id', 'integrity_hash', 'prev_hash'].includes(column)) continue;
       assert.ok(Object.prototype.hasOwnProperty.call(fields, column), `${kind} row omits ${column}`);
-    }
-  }
-});
-
-test('BIGINT columns are hashed as the strings node-pg returns', async () => {
-  const columns = spendColumns();
-  const rows = await writtenRows();
-  for (const [kind, fields] of Object.entries(rows)) {
-    for (const [column, type] of columns) {
-      if (type !== 'BIGINT' || column === 'id' || fields[column] == null) continue;
-      assert.equal(typeof fields[column], 'string', `${kind}.${column} is a ${typeof fields[column]}`);
     }
   }
 });

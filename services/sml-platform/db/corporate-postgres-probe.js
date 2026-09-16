@@ -6,9 +6,9 @@
  *   DATABASE_URL=postgres://... node db/corporate-postgres-probe.js
  *
  * Exists because the unit tests use fake pools and a fake evidence store, and
- * that let three bugs through that only a real database shows: a hash-chained
- * table missing the provenance block, BIGINTs hashed as numbers but read back
- * as strings, and an enum compared against an untyped text[] parameter.
+ * that let bugs through that only a real database shows: a hash-chained table
+ * missing the provenance block, BIGINTs hashed as numbers but read back as
+ * strings, and an enum compared against an untyped text[] parameter.
  * Every check prints PASS/FAIL; the exit code is the number of failures. */
 
 const { Pool } = require('pg');
@@ -130,8 +130,10 @@ async function main() {
   const client = await pool.connect();
   try {
     const chain = await store.verifyChain(client, 'corporate_ad_spend', cycle.billingId);
-    const chainOk = chain === true || (chain && (chain.ok === true || chain.valid === true));
-    check('the ad-spend hash chain verifies after concurrent appends', chainOk, JSON.stringify(chain));
+    /* ok with NO legacyRows: every row must hash in canonical form. A legacy
+     * row here would mean the store's normalization did not run. */
+    check('the ad-spend hash chain verifies after concurrent appends, no legacy rows',
+      chain.ok === true && !chain.legacyRows, JSON.stringify(chain));
   } finally { client.release(); }
 
   const summaryBefore = await billing.cycleSummary(cycle.billingId);
@@ -142,7 +144,8 @@ async function main() {
   const client2 = await pool.connect();
   try {
     const chain2 = await store.verifyChain(client2, 'corporate_ad_spend', cycle.billingId);
-    check('the chain still verifies after a correction', chain2 === true || (chain2 && (chain2.ok === true || chain2.valid === true)), JSON.stringify(chain2));
+    check('the chain still verifies after a correction, no legacy rows',
+      chain2.ok === true && !chain2.legacyRows, JSON.stringify(chain2));
   } finally { client2.release(); }
   const summaryAfter = await billing.cycleSummary(cycle.billingId);
   check('a correction restores cap headroom by its net', summaryAfter.remainingCents - summaryBefore.remainingCents === 80000,
