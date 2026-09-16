@@ -79,7 +79,11 @@ if ( ! function_exists( 'sml_idv_secret' ) ) {
 
 	/** Normalize a name for comparison: lowercase, letters+spaces only. */
 	function sml_idv_norm_name( $s ) {
-		$s = strtolower( trim( (string) $s ) );
+		$s = (string) $s;
+		// Transliterate accents first (José -> Jose, Renée -> Renee) so accented names
+		// don't get mangled by the ASCII strip below and wrongly rejected.
+		if ( function_exists( 'remove_accents' ) ) { $s = remove_accents( $s ); }
+		$s = strtolower( trim( $s ) );
 		$s = preg_replace( '/[^a-z ]/', ' ', $s );
 		return trim( preg_replace( '/\s+/', ' ', $s ) );
 	}
@@ -157,7 +161,12 @@ if ( ! function_exists( 'sml_idv_secret' ) ) {
 			} else {
 				update_user_meta( $uid, 'sml_idv_name_mismatch', 1 );
 			}
-			return rest_ensure_response( array( 'status' => $status, 'name_match' => $match ) + sml_idv_status_payload( $uid ) );
+			// Test mode only: surface Stripe's synthetic test-persona name so a tester can
+			// set a test account's display name to it and exercise the success path.
+			// Never returned in live mode (that would expose a real verified legal name).
+			$extra = array( 'status' => $status, 'name_match' => $match );
+			if ( 'test' === sml_idv_mode() ) { $extra['test_verified_name'] = $vname; }
+			return rest_ensure_response( $extra + sml_idv_status_payload( $uid ) );
 		}
 		if ( 'canceled' === $status ) { delete_user_meta( $uid, 'sml_idv_session' ); }
 		return rest_ensure_response( array( 'status' => $status ) + sml_idv_status_payload( $uid ) );
