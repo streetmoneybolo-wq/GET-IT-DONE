@@ -341,7 +341,8 @@
           '#sml-hf-shell.hfm .hf-composer a{padding:12px 20px !important;}' +
           '#sml-hf-shell.hfm #sml-hf-tabs{overflow-x:auto;scrollbar-width:none;}' +
           '#sml-hf-shell.hfm #sml-hf-tabs::-webkit-scrollbar{display:none;}' +
-          '#sml-hf-shell.hfm #sml-hf-tabs button{min-height:44px;}' +
+          '#sml-hf-tabs::-webkit-scrollbar{display:none;}' +
+          '#sml-hf-shell.hfm #sml-hf-tabs button{min-height:34px;}' +
           '#sml-hf-shell.hfm .sml-hfe-actions button,#sml-hf-shell.hfm .sml-sth-actions button{min-height:44px;min-width:44px;}' +
         '}' +
         '#sml-hf-bnav{display:none;}' +
@@ -421,6 +422,14 @@
         // width !important beats the feed-wide ".oh-post img{width:100%}" (same
         // specificity, later in cascade) that would otherwise stretch the group icon.
         '.sml-hf-grouppost-tag img{width:16px!important;min-width:16px;max-width:16px;height:16px!important;border-radius:5px;object-fit:cover;flex:none;}' +
+        // Group chat cards: why this thread is here, the latest reply, and a reply count.
+        '.sml-hf-chat-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;}' +
+        '.sml-hf-chat-top .sml-hf-grouppost-tag{margin:0;}' +
+        '.sml-hf-chat-why{display:inline-flex;align-items:center;gap:5px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#93A4B8;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 9px;white-space:nowrap;}' +
+        '.sml-hf-chat-why.hot{color:#FFB38A;border-color:rgba(255,140,80,.38);background:rgba(255,120,60,.08);}' +
+        '.sml-hf-chat-why.mine{color:#38F58A;border-color:rgba(56,245,138,.38);background:rgba(56,245,138,.07);}' +
+        '.sml-hf-chat-latest{display:flex;gap:6px;margin:8px 0 2px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.035);border-left:2px solid rgba(61,139,253,.45);font-size:12.5px;line-height:1.45;color:#B7C3CF;}' +
+        '.sml-hf-chat-latest b{color:#E6EDF5;font-weight:600;white-space:nowrap;}' +
         // Friend surfacing (signed-in #2): a green "Friend" badge + top-border accent
         // on cards authored by a mutual friend.
         '.sml-hf-friend-badge{display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px 2px 7px;border-radius:999px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#38F58A;background:linear-gradient(180deg,rgba(56,245,138,.18),rgba(56,245,138,.05));border:1px solid rgba(56,245,138,.42);vertical-align:middle;white-space:nowrap;}' +
@@ -605,7 +614,7 @@
     function saveSharedToMine(){ if(!wSharedSyms) return; var n=wlNonce(); if(!wl) wl=[]; wSharedSyms.slice().reverse().forEach(function(s){ if(wl.indexOf(s)<0){ wl.unshift(s); if(n) wlSync(s,'add'); } }); wl=wl.slice(0,WL_MAX); wShared=false; wSharedSyms=null; saveWl(); wl.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); try{ history.replaceState(null,'',location.pathname); }catch(e){} loadTargets(); renderWatch(); pollQuotes(); }
     function storyItems(){ return authors.slice(0,7).map(function(a){var ring='0 0 0 2px #0B131F,0 0 0 4px rgba(34,224,122,.7)'; var pres=a.slug?' data-pres="'+esc(a.slug)+'"':''; var av=a.img?'<img src="'+esc(a.img)+'" alt="'+esc(a.name)+'" loading="lazy"'+pres+' style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+ring+'">':'<div'+pres+' style="width:56px;height:56px;border-radius:50%;background:linear-gradient(160deg,#26343F,#0D141D);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#38F58A;box-shadow:inset 0 2px 0 rgba(255,255,255,.22),'+ring+'">'+esc(initialsOf(a.name))+'</div>'; var inner=av+'<span style="font-size:10px;color:#93A4B8;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.name)+'</span>'; var st='display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;flex:none;text-decoration:none;color:inherit'; return a.href?'<a href="'+esc(a.href)+'" style="'+st+'">'+inner+'</a>':'<div style="'+st+'">'+inner+'</div>';}).join(''); }
     var curTab='foryou';
-    function feedTabs(){ return [['foryou','For You'],['following','Following'],['live','Live']].map(function(t){var on=curTab===t[0];return '<button data-tab="'+t[0]+'" style="padding:8px 20px;border-radius:999px;border:1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)')+';background:'+(on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)')+';color:'+(on?'#38F58A':'#93A4B8')+';font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">'+t[1]+'</button>';}).join(''); }
+    function feedTabs(){ return [['foryou','For You'],['following','Following'],['live','Live']].map(function(t){var on=curTab===t[0];return '<button data-tab="'+t[0]+'" style="flex:none;padding:5px 13px;border-radius:999px;border:1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)')+';background:'+(on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)')+';color:'+(on?'#38F58A':'#93A4B8')+';font-size:12.5px;font-weight:600;line-height:1.2;cursor:pointer;white-space:nowrap">'+t[1]+'</button>';}).join(''); }
     function styleTabs(){ var w=document.getElementById('sml-hf-tabs'); if(!w) return; w.querySelectorAll('button[data-tab]').forEach(function(b){ var on=b.getAttribute('data-tab')===curTab; b.style.border='1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)'); b.style.background=on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)'; b.style.color=on?'#38F58A':'#93A4B8'; }); }
     function snapRows(){ return SNAP.map(function(s,i){return '<div style="padding:10px 13px 12px;border-top:1px solid rgba(56,245,138,.14);cursor:pointer"><div style="display:flex;align-items:center;gap:9px"><span style="width:26px;height:26px;flex:none;position:relative;display:block"><img src="'+LOGO_URL+esc(s)+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" style="width:26px;height:26px;border-radius:6px;object-fit:contain;background:rgba(255,255,255,.06);border:1px solid rgba(56,245,138,.3);display:block"><span style="display:none;position:absolute;inset:0;border-radius:6px;align-items:center;justify-content:center;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:10px;color:#38F58A;background:linear-gradient(180deg,rgba(56,245,138,.16),rgba(56,245,138,.03));border:1px solid rgba(56,245,138,.3)">'+esc(s==='BTC'?'\u20bf':s.slice(0,2))+'</span></span><span style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:20px;line-height:1;letter-spacing:-.6px;color:#CFDAE4">$'+esc(s)+'</span><span data-q="'+esc(s)+'" data-qf="last" style="margin-left:auto;font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#6B7C90">—</span></div><div style="display:flex;gap:6px;margin-top:3px;font-size:10.5px"><span data-q="'+esc(s)+'" data-qf="pct" style="color:#6B7C90;font-weight:600">—</span><span style="color:#6B7C90;margin-left:auto;flex:none">$'+esc(s)+'</span></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(56,245,138,.14)">'+[['CHANGE','chg'],['VOLUME','vol'],['PREV CLOSE','pc']].map(function(m){return '<div><div style="font-family:\'IBM Plex Mono\',monospace;font-size:7.5px;letter-spacing:.12em;color:#7E93A6">'+m[0]+'</div><div data-q="'+esc(s)+'" data-qf="'+m[1]+'" style="font-size:12px;font-weight:600;color:#6B7C90">—</div></div>';}).join('')+'</div></div>';}).join(''); }
     var GCOLORS=['#22E07A','#3d8bfd','#ffb020','#b98cff','#ff6b81','#4dd0e1'];
@@ -759,7 +768,7 @@
         '<div style="min-width:0">' +
           '<div class="hf-stories" style="display:flex;gap:14px;margin-bottom:18px;overflow-x:auto;padding:2px">'+storyItems()+'</div>' +
           '<div class="hf-composer" style="'+CARD+'border-radius:18px;padding:16px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:center">'+avatarHTML(40)+'<input placeholder="What\'s on the tape? Use $TICKER to tag…" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:999px;padding:11px 18px;color:#E6EDF5;font-size:13px;outline:none;box-shadow:inset 0 2px 5px rgba(0,0,0,.75)"><a id="sml-hf-post" href="/?compose=1" style="padding:10px 22px;border-radius:999px;text-decoration:none;font-size:13px;flex:none;'+GBTN+'">Post</a></div>' +
-          '<div id="sml-hf-tabs" style="display:flex;align-items:center;gap:8px;margin-bottom:18px">'+feedTabs()+'<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A;animation:smlHfGlow 2s ease-in-out infinite"></span>live</div></div>' +
+          '<div id="sml-hf-tabs" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0;overflow-x:auto;scrollbar-width:none;margin-bottom:14px">'+feedTabs()+'<div data-hf-livedot style="flex:none;margin-left:auto;padding-left:8px;display:flex;align-items:center;gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6B7C90"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A;animation:smlHfGlow 2s ease-in-out infinite"></span>live</div></div>' +
           // real feed slot
           '<div id="sml-hf-feedslot"></div>' +
         '</div>' +
@@ -1909,6 +1918,20 @@
       var st=document.createElement('style');
       st.textContent=
         '#sml-hf-gm-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-8px 0 18px;padding:0 4px}'+
+        /* Location / Mood live in the feed-tab row: one slim line, never a second stacked row */
+        '#sml-hf-tabs #sml-hf-gm-bar{flex:none;flex-wrap:nowrap;gap:6px;margin:0 0 0 4px;padding:0 0 0 10px;border-left:1px solid rgba(255,255,255,.09)}'+
+        '#sml-hf-tabs #sml-hf-gm-chips{flex-wrap:nowrap!important}'+
+        '#sml-hf-tabs .hf-gm-add{padding:5px 11px;font-size:12px;line-height:1.2;white-space:nowrap;flex:none}'+
+        '#sml-hf-tabs .hf-gm-add .e{font-size:12px}'+
+        '#sml-hf-tabs .hf-gm-sel{padding:4px 5px 4px 9px;font-size:11.5px;white-space:nowrap;flex:none}'+
+        /* phones: the whole row fits without scrolling — icon-only Location/Mood, no live dot, tighter tabs */
+        '#sml-hf-shell.hfm #sml-hf-tabs{gap:5px}'+
+        '#sml-hf-shell.hfm #sml-hf-tabs button[data-tab]{padding:5px 11px!important}'+
+        '#sml-hf-shell.hfm #sml-hf-tabs [data-hf-livedot]{display:none!important}'+
+        '#sml-hf-shell.hfm #sml-hf-tabs #sml-hf-gm-bar{gap:5px;margin-left:2px;padding-left:7px}'+
+        '#sml-hf-shell.hfm #sml-hf-tabs .hf-gm-add{font-size:0;gap:0;padding:5px 10px;min-width:34px;justify-content:center}'+
+        '#sml-hf-shell.hfm #sml-hf-tabs .hf-gm-add .e{font-size:15px}'+
+        '#sml-hf-shell.hfm #sml-hf-tabs .hf-gm-sel{max-width:130px;overflow:hidden;text-overflow:ellipsis}'+
         '.hf-gm-add{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,#1A2431,#111926);color:#9FB1C4;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}'+
         '.hf-gm-add:hover{color:#E6EDF5;border-color:rgba(56,245,138,.4)}'+
         '.hf-gm-add .e{font-size:13px;filter:saturate(1.2)}'+
@@ -1941,10 +1964,12 @@
       document.head.appendChild(st);
 
       var bar=document.createElement('div'); bar.id='sml-hf-gm-bar';
-      bar.innerHTML='<button type="button" class="hf-gm-add" id="sml-hf-gm-place"><span class="e">📍</span>Location</button>'+
-        '<button type="button" class="hf-gm-add" id="sml-hf-gm-mood"><span class="e">😤</span>Mood</button>'+
+      bar.innerHTML='<button type="button" class="hf-gm-add" id="sml-hf-gm-place" aria-label="Add location" title="Location"><span class="e" aria-hidden="true">📍</span>Location</button>'+
+        '<button type="button" class="hf-gm-add" id="sml-hf-gm-mood" aria-label="Add mood" title="Mood"><span class="e" aria-hidden="true">😤</span>Mood</button>'+
         '<span id="sml-hf-gm-chips" style="display:inline-flex;gap:8px;flex-wrap:wrap"></span>';
-      comp.insertAdjacentElement('afterend', bar);
+      var tabsRow=document.getElementById('sml-hf-tabs');
+      if(tabsRow){ tabsRow.insertBefore(bar, tabsRow.querySelector('[data-hf-livedot]')); }
+      else { comp.insertAdjacentElement('afterend', bar); }
       var chipsBox=bar.querySelector('#sml-hf-gm-chips');
 
       window.smlGmRenderChips=function(){
@@ -2323,43 +2348,49 @@
         fbComments(); dedupeFeed(); applyQuotes();
       }).catch(function(){});
     }
-    // ---- hot posts from your groups (signed-in #4): recent posts from the groups
-    // the viewer belongs to. The endpoint gates PAID groups server-side (only a
-    // paying/staff role sees them; free-tier members get nothing) — the client
-    // never decides access, it only renders whatever the gated endpoint returns.
+    // ---- group chats (owner rule 2026-09-16): NEVER group alerts — not even premium
+    // alerts for paying members. Only chat threads the viewer is part of, or hot threads
+    // in groups they belong to. The server decides all of it (sml-mygroups-hot 2.x:
+    // text channels only, alert-tagged messages dropped, paid groups gated); the client
+    // only renders what it returns and refuses anything that is not a chat item.
     function groupHotCard(item){
       item = item || {};
-      var g = item.group || {}, au = item.author || {};
+      if (item.kind !== 'chat') return null;
+      var g = item.group || {}, ch = item.channel || {}, au = item.author || {};
       var gname = g.name || 'Group';
-      var gurl = g.url || item.url || '/groups/';
+      var gurl = g.url || '/groups/';
+      var churl = ch.url || item.url || gurl;
       var gicon = g.icon_url || '';
       var paid = !!item.paid;
       var name = au.name || 'Member';
       var aurl = au.url || gurl;
       var av = au.avatar || '/wp-content/uploads/2026/08/Untitled-design-90.png';
-      var body = textOnly(item.body || '').slice(0, 600);
       var date = item.date || '';
-      // Unique per-post URL so cardKeyOf (h2 href) doesn't collapse several posts
-      // from the same group into one.
-      var purl = gurl + (String(gurl).indexOf('#') < 0 ? ('#gp' + (item.post_id || '')) : '');
-      // The post body IS the headline (group posts are short alerts with no title),
-      // capped; NO separate <p> so the text never duplicates itself in the card.
-      var head = textOnly(item.title || '') || body || ('New post in ' + gname);
-      if (head.length > 200) head = head.slice(0, 199) + '…';
-      var img = item.chart_url || '';
+      var head = textOnly(item.body || '') || ('New conversation in ' + gname);
+      if (head.length > 220) head = head.slice(0, 219) + '…';
+      var purl = churl + (String(churl).indexOf('#') < 0 ? ('#thread-' + (item.thread_id || '')) : '');
       var tag = '<a class="sml-hf-grouppost-tag' + (paid ? ' paid' : '') + '" href="' + esc(gurl) + '">' +
-        (gicon ? '<img src="' + esc(gicon) + '" alt="">' : '') + (paid ? '🔒 ' : '') + esc(gname) + (paid ? ' · Premium' : '') + '</a>';
+        (gicon ? '<img src="' + esc(gicon) + '" alt="">' : '') + (paid ? '🔒 ' : '💬 ') + esc(gname) + (ch.name ? ' · #' + esc(ch.name) : '') + '</a>';
+      var why = item.reason === 'your_thread'
+        ? '<span class="sml-hf-chat-why mine">You\'re in this thread</span>'
+        : '<span class="sml-hf-chat-why hot">🔥 Hot in your group</span>';
+      var latest = item.latest && item.latest.body
+        ? '<div class="sml-hf-chat-latest"><b>' + esc((item.latest.author && item.latest.author.name) || 'Member') + ':</b><span>' + esc(textOnly(item.latest.body)) + '</span></div>'
+        : '';
+      var n = parseInt(item.replies, 10) || 0;
+      var count = n === 1 ? '1 reply' : (n + ' replies');
       var art = document.createElement('article');
-      art.className = 'oh-card oh-post sml-sth-post sml-hf-grouppost';
-      art.setAttribute('data-hfe-item', item.id || ('grouppost-' + (item.post_id || purl)));
+      art.className = 'oh-card oh-post sml-sth-post sml-hf-grouppost sml-hf-groupchat';
+      art.setAttribute('data-hfe-item', item.id || ('groupchat-' + (item.thread_id || purl)));
       art.setAttribute('data-hfe-url', purl);
       art.setAttribute('data-sml-published', date);
       if (au.id) art.setAttribute('data-sml-authorid', String(au.id));
-      art.innerHTML = tag +
+      art.innerHTML = '<div class="sml-hf-chat-top">' + tag + why + '</div>' +
         '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av) + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
         '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(purl) + '">' + esc(head) + '</a></h2>' +
-        (img ? '<a href="' + esc(gurl) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
-        '<div class="sml-sth-actions"><a href="' + esc(gurl) + '">Open group</a></div>';
+        latest +
+        (item.media_url ? '<a href="' + esc(churl) + '"><img loading="lazy" src="' + esc(item.media_url) + '" alt=""></a>' : '') +
+        '<div class="sml-sth-actions"><a href="' + esc(churl) + '">' + esc(count) + ' · Open chat</a></div>';
       return art;
     }
     function fetchGroupHot(){
@@ -2378,6 +2409,7 @@
           if (!id || seenItemIds[id]) return;
           seenItemIds[id] = 1;
           var node = groupHotCard(item);
+          if (!node) return;
           var key = cardKeyOf(node); if (key) { if (feedSeen[key]) return; feedSeen[key] = 1; }
           node.style.animation = 'smlHfNew .45s ease';
           main.insertBefore(node, anchor); armRh(node, 250); added++;
