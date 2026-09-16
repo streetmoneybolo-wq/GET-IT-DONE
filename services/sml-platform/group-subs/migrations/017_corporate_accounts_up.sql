@@ -154,8 +154,17 @@ CREATE TABLE corporate_ad_spend (
   net_cents        BIGINT NOT NULL,   -- actually charged
 
   stripe_charge_id TEXT UNIQUE,
+
+  -- The provenance block every chained table carries (see 012). evidence-store
+  -- refuses an append without `source` and `received_at`, and received_at has
+  -- NO DEFAULT on purpose: it is writer-supplied so it is covered by the
+  -- integrity hash. A database default would be written after hashing, and the
+  -- row could never verify.
+  source           TEXT NOT NULL CHECK (source IN ('stripe','paypal','upgrade_chat','wordpress','discord','sml_platform')),
+  source_event_id  TEXT,
+  provider_account TEXT,
   occurred_at      TIMESTAMPTZ NOT NULL,
-  received_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  received_at      TIMESTAMPTZ NOT NULL,
   provenance       JSONB NOT NULL DEFAULT '{}'::jsonb,
 
   integrity_hash   TEXT NOT NULL,

@@ -52,6 +52,19 @@ function requireCents(value, name, { allowNegative = false } = {}) {
 const DAY_MS = 24 * 3600 * 1000;
 
 /**
+ * A BIGINT exactly as node-pg will hand it back: a string.
+ *
+ * evidence-store's verifyChain re-hashes `SELECT *`, and this app installs no
+ * BIGINT type parser, so a bigint column reads back as "80000", not 80000. A
+ * row hashed with the number can never verify. Every BIGINT field written to a
+ * chained table therefore goes in as its string form — the charged amount and
+ * the stored amount are identical, only the JSON spelling in the hash differs.
+ */
+function big(value) {
+  return value == null ? null : String(value);
+}
+
+/**
  * Price one purchase against the cycle's caps.
  *
  * Pure, so every rounding corner is testable without a database. All inputs are
@@ -240,20 +253,30 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
 
       const totals = await cycleTotals(client, billingId);
       const priced = priceAdPurchase({ grossCents, ...totals, billing });
+      const at = new Date(now()).toISOString();
 
       const appended = await store.appendChained(client, {
         table: 'corporate_ad_spend',
         scopeKey: billingId,
         fields: {
-          corporate_id: corporateId,
-          billing_id: billingId,
+          /* EVERY column of corporate_ad_spend appears here, nulls included:
+           * verifyChain hashes SELECT *, so an omitted column that reads back as
+           * null breaks the chain. BIGINTs go in as strings — see big(). */
+          corporate_id: big(corporateId),
+          billing_id: big(billingId),
           campaign_ref: input.campaignRef == null ? null : String(input.campaignRef).slice(0, 191),
-          gross_cents: priced.grossCents,
-          discount_cents: priced.discountCents,
-          net_cents: priced.netCents,
+          gross_cents: big(priced.grossCents),
+          discount_cents: big(priced.discountCents),
+          net_cents: big(priced.netCents),
           stripe_charge_id: input.stripeChargeId == null ? null : String(input.stripeChargeId),
-          occurred_at: new Date(now()).toISOString(),
-          provenance: { source: 'corporate_ad_purchase' }
+          /* The provenance block evidence-store requires on every chained row.
+           * received_at is writer-supplied so it is inside the integrity hash. */
+          source: 'sml_platform',
+          source_event_id: input.stripeChargeId == null ? null : String(input.stripeChargeId),
+          provider_account: null,
+          occurred_at: at,
+          received_at: at,
+          provenance: { kind: 'corporate_ad_purchase' }
         }
       });
 
@@ -282,19 +305,34 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
     const reason = String(input.reason || '').trim();
     if (!reason) throw invalid('a correction must state a reason');
 
+    const at = new Date(now()).toISOString();
     return withTransaction(async (client) => {
       const appended = await store.appendChained(client, {
         table: 'corporate_ad_spend',
         scopeKey: billingId,
         fields: {
-          corporate_id: corporateId,
-          billing_id: billingId,
-          gross_cents: gross,
-          discount_cents: discount,
-          net_cents: gross - discount,
-          stripe_charge_id: input.stripeChargeId == null ? null : String(input.stripeChargeId),
-          occurred_at: new Date(now()).toISOString(),
-          provenance: { source: 'corporate_ad_correction', reason }
+          corporate_id: big(corporateId),
+          billing_id: big(billingId),
+          campaign_ref: null,
+          gross_cents: big(gross),
+          discount_cents: big(discount),
+          net_cents: big(gross - discount),
+          /* NOT stripe_charge_id. That column is UNIQUE and already holds the
+           * charge on the purchase row, so writing it again here would make
+           * every refund of a real Stripe charge collide with the purchase it
+           * refunds. The refund's own id is the event; the charge it reverses
+           * is recorded in provenance. */
+          stripe_charge_id: null,
+          source: 'sml_platform',
+          source_event_id: input.stripeRefundId == null ? null : String(input.stripeRefundId),
+          provider_account: null,
+          occurred_at: at,
+          received_at: at,
+          provenance: {
+            kind: 'corporate_ad_correction',
+            reason,
+            reverses_charge: input.stripeChargeId == null ? null : String(input.stripeChargeId)
+          }
         }
       });
       logger('warn', 'corporate_ad_corrected', { corporateId, billingId, gross, reason });

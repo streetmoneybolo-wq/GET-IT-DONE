@@ -283,8 +283,8 @@ test('a correction appends a negative row, never an update', async () => {
     corporateId: 1, billingId: 7, grossCents: -100000, discountCents: -20000, reason: 'chargeback'
   });
   const row = h.appended[0].fields;
-  assert.equal(row.gross_cents, -100000);
-  assert.equal(row.net_cents, -80000, 'net = gross - discount still holds for corrections');
+  assert.equal(row.gross_cents, '-100000');
+  assert.equal(row.net_cents, '-80000', 'net = gross - discount still holds for corrections');
   assert.equal(row.provenance.reason, 'chargeback');
   assert.ok(!h.calls.some((c) => /UPDATE corporate_ad_spend|DELETE FROM corporate_ad_spend/.test(c.sql)),
     'the ledger is append-only');
@@ -307,4 +307,88 @@ test('the summary derives every balance and caches nothing', async () => {
 test('the service refuses to start without a chaining store', () => {
   assert.throws(() => B.createCorporateBillingService({ pool: {} }), /appendChained/);
   assert.throws(() => B.createCorporateBillingService({ store: { appendChained() {} } }), /database pool/);
+});
+
+/* ------------------------------------------------ ledger rows vs the schema */
+
+/* The harness store above accepts anything, which is how three real bugs got
+ * past this file: rows missing the provenance block evidence-store requires, a
+ * column omitted from the hash, and BIGINTs hashed as numbers when node-pg
+ * reads them back as strings. Every one of those makes a real append throw or
+ * a real verifyChain fail. These tests read the column list from migration 017
+ * itself, so a column added there without being written here fails loudly. */
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+function spendColumns() {
+  const sql = fs.readFileSync(
+    path.join(__dirname, '..', 'group-subs', 'migrations', '017_corporate_accounts_up.sql'), 'utf8');
+  const body = sql.slice(sql.indexOf('CREATE TABLE corporate_ad_spend ('));
+  /* CRLF-tolerant: a Windows checkout rewrites line endings. */
+  const block = body.slice(0, body.search(/\r?\n\);/));
+  const columns = new Map();
+  for (const line of block.split(/\r?\n/).slice(1)) {
+    const m = /^\s{2}([a-z_]+)\s+([A-Z]+)/.exec(line);
+    if (m && m[1] !== 'CONSTRAINT') columns.set(m[1], m[2]);
+  }
+  return columns;
+}
+
+async function writtenRows() {
+  const purchase = harness([
+    ['FROM corporate_billing WHERE id', [CYCLE]],
+    ['SUM(net_cents)', [{ net: '0', discount: '0' }]]
+  ]);
+  await B.createCorporateBillingService({ pool: purchase.pool, store: purchase.store, now })
+    .purchaseAd({ corporateId: 1, billingId: 7, grossCents: 100000, stripeChargeId: 'ch_1' });
+
+  const correction = harness();
+  await B.createCorporateBillingService({ pool: correction.pool, store: correction.store, now })
+    .recordCorrection({ corporateId: 1, billingId: 7, grossCents: -100000, discountCents: -20000,
+      reason: 'refund', stripeChargeId: 'ch_1', stripeRefundId: 're_1' });
+
+  return { purchase: purchase.appended[0].fields, correction: correction.appended[0].fields };
+}
+
+test('both ledger writers supply every column of corporate_ad_spend', async () => {
+  /* verifyChain hashes SELECT *, so a column the writer omits reads back as
+   * null and the chain never verifies. */
+  const columns = spendColumns();
+  assert.ok(columns.size >= 14, `parsed ${columns.size} columns — the migration parser is broken`);
+  const rows = await writtenRows();
+  for (const [kind, fields] of Object.entries(rows)) {
+    for (const column of columns.keys()) {
+      if (['id', 'integrity_hash', 'prev_hash'].includes(column)) continue;
+      assert.ok(Object.prototype.hasOwnProperty.call(fields, column), `${kind} row omits ${column}`);
+    }
+  }
+});
+
+test('BIGINT columns are hashed as the strings node-pg returns', async () => {
+  const columns = spendColumns();
+  const rows = await writtenRows();
+  for (const [kind, fields] of Object.entries(rows)) {
+    for (const [column, type] of columns) {
+      if (type !== 'BIGINT' || column === 'id' || fields[column] == null) continue;
+      assert.equal(typeof fields[column], 'string', `${kind}.${column} is a ${typeof fields[column]}`);
+    }
+  }
+});
+
+test('both ledger writers carry the provenance evidence-store requires', async () => {
+  const rows = await writtenRows();
+  for (const [kind, fields] of Object.entries(rows)) {
+    for (const required of ['source', 'occurred_at', 'received_at']) {
+      assert.ok(fields[required] != null, `${kind} row is missing ${required}`);
+    }
+  }
+});
+
+test('a refund never reuses the UNIQUE charge id of the purchase it refunds', async () => {
+  const { purchase, correction } = await writtenRows();
+  assert.equal(purchase.stripe_charge_id, 'ch_1');
+  assert.equal(correction.stripe_charge_id, null, 'would collide with the purchase row');
+  assert.equal(correction.provenance.reverses_charge, 'ch_1', 'the link is kept in provenance');
+  assert.equal(correction.source_event_id, 're_1');
 });
