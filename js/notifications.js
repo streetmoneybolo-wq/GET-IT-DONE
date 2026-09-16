@@ -23,6 +23,75 @@
   var API = '/wp-json/sml-mhub/v1/notifications';
   var POLL_MS = 40000;
 
+  /* ---------------------------------------------------------------------------
+   * LOOP BUCKS receipt chime — STRICT: this sound plays ONLY when the member
+   * RECEIVES Loop Bucks and that receipt lands in their LOOP-KICK. Nothing else
+   * on the whole site plays it. Owner rule 2026-09-15.
+   *
+   * A Loop Bucks notification has type 'loop_bucks' and id 'loopbucks_<sha1>';
+   * the message starts with "Received " for a credit and "Spent " for a debit
+   * (sml-messenger-hub). We fire only on a NEW "Received" item — never "Spent",
+   * never any other type. First poll of a page load only baselines the ids that
+   * already exist (silent), so navigating around never re-blasts old receipts.
+   * ------------------------------------------------------------------------- */
+  var LB_SOUND_URL = CFG.loopBucksSound || '';
+  var LB_SEEN_KEY = 'sml_lb_sfx_played_v1_' + (ME || 0);
+  var lbAudio = null, lbUnlocked = false, lbPrimed = false;
+
+  function lbIsReceipt(n) {
+    return n && n.type === 'loop_bucks' && /^\s*Received\b/i.test(String(n.message || ''));
+  }
+  function lbLoadSeen() {
+    try { var a = JSON.parse(localStorage.getItem(LB_SEEN_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  }
+  function lbSaveSeen(arr) {
+    try { localStorage.setItem(LB_SEEN_KEY, JSON.stringify(arr.slice(-200))); } catch (e) {}
+  }
+  function lbAudioEl() {
+    if (lbAudio || !LB_SOUND_URL) return lbAudio;
+    lbAudio = new Audio(LB_SOUND_URL);
+    lbAudio.preload = 'auto';
+    lbAudio.crossOrigin = 'anonymous';
+    return lbAudio;
+  }
+  /* browsers gate audio behind a user gesture; the member is clicking around the
+     site (that is exactly when receipts land), so unlock on the first gesture. */
+  function lbUnlock() {
+    if (lbUnlocked) return;
+    var el = lbAudioEl(); if (!el) return;
+    lbUnlocked = true;
+    var wasMuted = el.muted; el.muted = true;
+    var p = el.play();
+    if (p && p.then) { p.then(function () { el.pause(); el.currentTime = 0; el.muted = wasMuted; }).catch(function () { el.muted = wasMuted; }); }
+    else { try { el.pause(); el.currentTime = 0; } catch (e) {} el.muted = wasMuted; }
+  }
+  ['pointerdown', 'keydown', 'touchstart'].forEach(function (evt) {
+    window.addEventListener(evt, lbUnlock, { once: false, passive: true });
+  });
+  function lbPlay() {
+    var el = lbAudioEl(); if (!el) return;
+    try { el.muted = false; el.currentTime = 0; var p = el.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+  }
+  function lbChime(items) {
+    if (!LB_SOUND_URL || !Array.isArray(items)) return;
+    var ids = [];
+    for (var i = 0; i < items.length; i++) { if (lbIsReceipt(items[i]) && items[i].id) ids.push(String(items[i].id)); }
+    var seen = lbLoadSeen();
+    if (!lbPrimed) {
+      /* first poll this page load: remember what's already there, do NOT sound */
+      lbPrimed = true;
+      var merged = seen.slice();
+      ids.forEach(function (id) { if (merged.indexOf(id) === -1) merged.push(id); });
+      lbSaveSeen(merged);
+      return;
+    }
+    var fresh = ids.filter(function (id) { return seen.indexOf(id) === -1; });
+    if (!fresh.length) return;
+    fresh.forEach(function (id) { seen.push(id); });
+    lbSaveSeen(seen);
+    lbPlay(); /* one chime even if several receipts arrived in the same gap */
+  }
+
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function ago(iso) { var t = Date.parse(iso || ''); if (isNaN(t)) return ''; var d = Math.max(0, (Date.now() - t) / 1000); if (d < 60) return 'now'; if (d < 3600) return Math.floor(d / 60) + 'm'; if (d < 86400) return Math.floor(d / 3600) + 'h'; return Math.floor(d / 86400) + 'd'; }
   function api(url, opts) {
@@ -162,6 +231,7 @@
     api(API + '?_=' + Date.now()).then(function (j) {
       S.items = Array.isArray(j.items) ? j.items : (Array.isArray(j.notifications) ? j.notifications : []);
       var c = j.counts || {}; S.unread = j.unread_count != null ? (Number(j.unread_count) || 0) : (Number((c.general || {}).unread || 0) + Number((c.priority || {}).unread || 0));
+      lbChime(S.items); /* STRICT: Loop Bucks receipt sound only */
       decorate(); if (S.panel && S.panel.classList.contains('on')) render();
     }).catch(function () {});
   }
