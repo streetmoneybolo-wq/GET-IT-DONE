@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Feed Signals
  * Description: Per-member feed signals — hides ("not interested"), impression counts, the onboarding questionnaire, and a server-side watchlist reader. The data the corporate feed slot's eligibility rules need.
- * Version: 1.0.1
+ * Version: 1.0.2
  *
  * WHAT THIS IS FOR
  * The corporate feed slot (platform/corporate-feed.js) decides eligibility from
@@ -25,7 +25,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-const SML_FS_VERSION = '1.0.1';
+const SML_FS_VERSION = '1.0.2';
 const SML_FS_SCHEMA  = 1;
 const SML_FS_NS      = 'sml-feed/v1';
 
@@ -261,6 +261,102 @@ function sml_fs_rest_visible( WP_REST_Request $request ) {
 	if ( ! is_array( $refs ) ) return sml_fs_error( 'sml_fs_refs', 'refs must be a list.', 400 );
 	$refs = array_slice( array_map( 'strval', array_filter( $refs, 'is_scalar' ) ), 0, 120 );
 	return rest_ensure_response( array( 'hidden' => sml_fs_hidden_refs( get_current_user_id(), $refs ) ) );
+}
+
+/* ============================================== the member's own hide list */
+
+function sml_fs_member_handle( $user_id ) {
+	/* Same resolution as sml-settings: the public handle first, never trusting
+	 * nicename alone (nicenames collide on this site). */
+	$h = function_exists( 'sml_ppe_public_handle' ) ? (string) sml_ppe_public_handle( $user_id ) : '';
+	if ( '' === $h ) { $u = get_userdata( $user_id ); $h = $u ? $u->user_nicename : ''; }
+	return ltrim( $h, '@' );
+}
+
+function sml_fs_member_url( $user_id ) {
+	if ( function_exists( 'sml_fp_my_profile_url' ) ) return (string) sml_fp_my_profile_url( $user_id );
+	if ( function_exists( 'sml_profile_url_for' ) ) return (string) sml_profile_url_for( (int) $user_id );
+	$h = sml_fs_member_handle( $user_id );
+	return $h ? home_url( '/' . $h . '/' ) : '';
+}
+
+function sml_fs_member_card( $user_id ) {
+	$u = get_userdata( (int) $user_id );
+	if ( ! $u ) return null;
+	return array(
+		'id'     => (int) $user_id,
+		'name'   => $u->display_name ?: $u->user_login,
+		'handle' => sml_fs_member_handle( (int) $user_id ),
+		'avatar' => get_avatar_url( (int) $user_id, array( 'size' => 56 ) ),
+		'url'    => sml_fs_member_url( (int) $user_id ),
+	);
+}
+
+/**
+ * What a hidden post is shown as in the member's settings.
+ *
+ * Only PUBLIC content gets a title: a published, non-password article, or a
+ * published public letter. Charts, ticker comments and group posts are shown
+ * as "Post by <author>" — a group post may be paid content, and a member who
+ * has since left the group must not get its text back from their settings.
+ */
+function sml_fs_describe_item( $ref ) {
+	global $wpdb;
+	$parsed = sml_fs_parse_item_ref( $ref );
+	if ( ! $parsed ) return array( 'title' => null, 'url' => null );
+	if ( 'wp' === $parsed['kind'] ) {
+		$post = get_post( (int) $parsed['id'] );
+		if ( $post && 'publish' === $post->post_status && '' === (string) $post->post_password ) {
+			return array( 'title' => wp_strip_all_tags( get_the_title( $post ) ), 'url' => get_permalink( $post ) );
+		}
+		return array( 'title' => null, 'url' => null, 'gone' => true );
+	}
+	if ( 'letter' === $parsed['kind'] && sml_fs_table_exists( $wpdb->prefix . 'sml_letter_posts' ) ) {
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT title, status, visibility FROM {$wpdb->prefix}sml_letter_posts WHERE id = %d", (int) $parsed['id'] ) );
+		if ( $row && 'published' === $row->status && ( '' === (string) $row->visibility || 'public' === $row->visibility ) ) {
+			return array( 'title' => wp_strip_all_tags( (string) $row->title ), 'url' => null );
+		}
+	}
+	return array( 'title' => null, 'url' => null );
+}
+
+/** GET /hides — the member's own hidden accounts and posts, newest first. */
+function sml_fs_rest_hides_list( WP_REST_Request $request ) {
+	global $wpdb;
+	$user_id = get_current_user_id();
+	$rows = $wpdb->get_results( $wpdb->prepare(
+		'SELECT target, scope, item_ref, author_id, created_at FROM ' . sml_fs_hides_table() . ' WHERE user_id = %d ORDER BY created_at DESC, id DESC LIMIT 400',
+		$user_id
+	) );
+
+	$accounts = array();
+	$posts    = array();
+	$cards    = array();
+	foreach ( (array) $rows as $row ) {
+		$author = (int) $row->author_id;
+		if ( $author && ! array_key_exists( $author, $cards ) ) $cards[ $author ] = sml_fs_member_card( $author );
+		$when = gmdate( 'c', strtotime( $row->created_at . ' UTC' ) );
+
+		if ( 'author' === $row->scope ) {
+			/* an account that no longer exists has nothing left to unhide */
+			if ( ! $cards[ $author ] ) continue;
+			$accounts[] = array_merge( $cards[ $author ], array( 'target' => $row->target, 'hiddenAt' => $when ) );
+			continue;
+		}
+		$d = sml_fs_describe_item( (string) $row->item_ref );
+		$posts[] = array(
+			'target'   => $row->target,
+			'title'    => $d['title'],
+			'url'      => $d['url'],
+			'gone'     => ! empty( $d['gone'] ),
+			'author'   => $author && $cards[ $author ] ? array( 'name' => $cards[ $author ]['name'], 'url' => $cards[ $author ]['url'] ) : null,
+			'hiddenAt' => $when,
+		);
+	}
+	return rest_ensure_response( array(
+		'accounts' => array_slice( $accounts, 0, 200 ),
+		'posts'    => array_slice( $posts, 0, 200 ),
+	) );
 }
 
 /* ============================================================= impressions */
@@ -711,6 +807,7 @@ function sml_fs_register_routes() {
 		array( 'methods' => 'DELETE', 'callback' => 'sml_fs_rest_unhide', 'permission_callback' => $auth ),
 	) );
 	register_rest_route( SML_FS_NS, '/visible', array( 'methods' => 'POST', 'callback' => 'sml_fs_rest_visible', 'permission_callback' => $auth ) );
+	register_rest_route( SML_FS_NS, '/hides', array( 'methods' => 'GET', 'callback' => 'sml_fs_rest_hides_list', 'permission_callback' => $auth ) );
 	register_rest_route( SML_FS_NS, '/impressions', array( 'methods' => 'POST', 'callback' => 'sml_fs_rest_impressions', 'permission_callback' => $auth ) );
 	register_rest_route( SML_FS_NS, '/onboarding', array(
 		array( 'methods' => 'GET', 'callback' => 'sml_fs_rest_onboarding_get', 'permission_callback' => $auth ),

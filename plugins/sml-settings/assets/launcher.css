@@ -1,0 +1,195 @@
+/**
+ * Persistent account button.
+ *
+ * Sits directly above the existing Messages launcher rather than staking out
+ * its own corner. The site had two competing floating widgets earlier today and
+ * one of them got deleted for being clutter — a third island would be the same
+ * mistake. One cluster, bottom right.
+ */
+
+/* The site does not set border-box globally. Without this the menu items,
+   which are width:100% plus 12px of horizontal padding, overflow their
+   container by 24px and push right-aligned content (the live dot) outside
+   the rounded corner. */
+.sml-acct,
+.sml-acct *,
+.sml-acct *::before,
+.sml-acct *::after {
+	box-sizing: border-box;
+}
+
+.sml-acct {
+	position: fixed;
+	right: 20px;
+	bottom: 68px;              /* clears the Messages launcher below it */
+	z-index: 9991;             /* launcher is 9990; the menu must open over it */
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.sml-acct__btn {
+	width: 44px;
+	height: 44px;
+	border-radius: 50%;
+	border: 2px solid #244235;
+	background: #0b1210;
+	padding: 0;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+	transition: border-color .15s, transform .15s;
+}
+
+.sml-acct__btn:hover,
+.sml-acct__btn[aria-expanded="true"] {
+	border-color: #00e78d;
+	transform: translateY(-1px);
+}
+
+.sml-acct__btn:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px rgba(0, 231, 141, .35);
+}
+
+.sml-acct__avatar {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+/* --- menu --------------------------------------------------------------- */
+
+.sml-acct__menu {
+	position: absolute;
+	right: 0;
+	bottom: 54px;
+	min-width: 216px;
+	background: #0b1210;
+	border: 1px solid #1c2f26;
+	border-radius: 12px;
+	padding: 6px;
+	box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+	display: none;
+	/* Seven items plus separators can outgrow a short viewport. Scroll the
+	   menu rather than letting it run off the top of the screen. */
+	max-height: calc(100vh - 130px);
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
+.sml-acct__menu.is-open {
+	display: block;
+	animation: sml-acct-in .13s ease-out;
+}
+
+@keyframes sml-acct-in {
+	from { opacity: 0; transform: translateY(6px); }
+	to   { opacity: 1; transform: translateY(0); }
+}
+
+.sml-acct__head {
+	padding: 10px 12px 12px;
+	border-bottom: 1px solid #16261f;
+	margin-bottom: 6px;
+}
+
+.sml-acct__name {
+	display: block;
+	font-size: 14px;
+	font-weight: 800;
+	color: #e8f4ee;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sml-acct__handle {
+	display: block;
+	font-size: 12px;
+	color: #7f9a8e;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sml-acct__item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 9px 12px;
+	border-radius: 8px;
+	color: #dcefe5;
+	font-size: 14px;
+	font-weight: 600;
+	text-decoration: none;
+	background: none;
+	border: none;
+	cursor: pointer;
+	text-align: left;
+	font-family: inherit;
+}
+
+.sml-acct__item:hover,
+.sml-acct__item:focus-visible {
+	background: #102019;
+	color: #00e78d;
+	outline: none;
+}
+
+.sml-acct__item--danger { color: #ff9d9d; }
+.sml-acct__item--danger:hover { background: #2a1113; color: #ff6b6b; }
+
+.sml-acct__icon {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	opacity: .85;
+}
+
+.sml-acct__label { flex: 1 1 auto; }
+
+/* Live indicator on "Go live". Red rather than the site green: this is the
+   one item that starts a broadcast, and it should not look like navigation. */
+.sml-acct__dot {
+	flex: 0 0 7px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: #ff4d4d;
+	animation: sml-acct-pulse 2s ease-out infinite;
+}
+
+@keyframes sml-acct-pulse {
+	0%   { box-shadow: 0 0 0 0 rgba(255, 77, 77, .5); }
+	70%  { box-shadow: 0 0 0 6px rgba(255, 77, 77, 0); }
+	100% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); }
+}
+
+.sml-acct__sep {
+	height: 1px;
+	background: #16261f;
+	margin: 6px 4px;
+}
+
+/* --- mobile ------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+	.sml-acct {
+		right: 14px;
+		bottom: 62px;
+	}
+	.sml-acct__btn {
+		width: 40px;
+		height: 40px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sml-acct__menu.is-open { animation: none; }
+	.sml-acct__btn { transition: none; }
+	.sml-acct__dot { animation: none; }
+}

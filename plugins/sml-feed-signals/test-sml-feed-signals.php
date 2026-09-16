@@ -33,6 +33,19 @@ function set_transient( $k, $v, $ttl = 0 ) { $GLOBALS['t_transients'][ $k ] = $v
 function get_option( $k, $d = false ) { return $d; }
 function update_option( ...$a ) { return true; }
 function rest_ensure_response( $d ) { return new T_Response( $d ); }
+$GLOBALS['t_users'] = array( 7 => 'Options Flow', 9 => 'Vaughn', 11 => 'Group Owner' );
+$GLOBALS['t_posts'] = array(
+	100 => (object) array( 'ID' => 100, 'post_status' => 'publish', 'post_password' => '', 'post_title' => 'TLT <b>Floor</b> Trade' ),
+	200 => (object) array( 'ID' => 200, 'post_status' => 'private', 'post_password' => '', 'post_title' => 'Members-only secret' ),
+	201 => (object) array( 'ID' => 201, 'post_status' => 'publish', 'post_password' => 'pw', 'post_title' => 'Password protected' ),
+);
+function get_userdata( $id ) { return isset( $GLOBALS['t_users'][ $id ] ) ? (object) array( 'ID' => $id, 'display_name' => $GLOBALS['t_users'][ $id ], 'user_login' => 'u' . $id, 'user_nicename' => 'nice' . $id ) : false; }
+function get_avatar_url( $id, $a = array() ) { return "https://avatar.test/$id.png"; }
+function home_url( $path = '' ) { return 'https://stockmarketloop.com' . $path; }
+function get_post( $id ) { return $GLOBALS['t_posts'][ $id ] ?? null; }
+function get_the_title( $post ) { return $post->post_title; }
+function get_permalink( $post ) { return 'https://stockmarketloop.com/p/' . $post->ID . '/'; }
+function wp_strip_all_tags( $s ) { return trim( strip_tags( $s ) ); }
 
 class T_Response { public $data; public function __construct( $d ) { $this->data = $d; } }
 class WP_Error {
@@ -71,8 +84,16 @@ class T_WPDB {
 		if ( preg_match( "/SHOW TABLES LIKE '([^']+)'/", $sql, $m ) ) return isset( $this->model[ $m[1] ] ) ? $m[1] : null;
 		return 0;
 	}
+	public $hide_rows = array();
+	public $letters = array( 66 => array( 'title' => 'Public <i>letter</i>', 'status' => 'published', 'visibility' => 'public' ), 67 => array( 'title' => 'Paid letter', 'status' => 'published', 'visibility' => 'paid' ) );
+	public function get_row( $sql ) {
+		$this->queries[] = $sql;
+		if ( preg_match( '/FROM wp_sml_letter_posts WHERE id = (\d+)/', $sql, $m ) && isset( $this->letters[ (int) $m[1] ] ) ) return (object) $this->letters[ (int) $m[1] ];
+		return null;
+	}
 	public function get_results( $sql, $mode = null ) {
 		$this->queries[] = $sql;
+		if ( strpos( $sql, 'SELECT target, scope, item_ref, author_id, created_at FROM wp_sml_feed_hides' ) !== false ) return $this->hide_rows;
 		if ( preg_match( '/FROM (\w+) WHERE \w+ IN \(([^)]*)\)/', $sql, $m ) && isset( $this->model[ $m[1] ] ) ) {
 			$out = array();
 			foreach ( array_map( 'intval', explode( ',', $m[2] ) ) as $id ) {
@@ -214,6 +235,35 @@ $GLOBALS['wpdb']->hides = array();
 $GLOBALS['wpdb']->queries = array();
 ok( array() === sml_fs_hidden_refs( 42, array( 'wp-100' ) ), 'nothing hidden returns nothing' );
 ok( count( $GLOBALS['wpdb']->queries ) === 1, 'and skips author resolution entirely' );
+
+/* ======================================================== the hide list */
+
+$GLOBALS['wpdb']->hide_rows = array(
+	(object) array( 'target' => 'author:7',        'scope' => 'author', 'item_ref' => 'wp-100',       'author_id' => 7,  'created_at' => '2026-09-16 09:00:00' ),
+	(object) array( 'target' => 'author:999',      'scope' => 'author', 'item_ref' => 'wp-1',         'author_id' => 999,'created_at' => '2026-09-16 08:59:00' ),
+	(object) array( 'target' => 'item:wp-100',     'scope' => 'item',   'item_ref' => 'wp-100',       'author_id' => 7,  'created_at' => '2026-09-16 08:00:00' ),
+	(object) array( 'target' => 'item:wp-200',     'scope' => 'item',   'item_ref' => 'wp-200',       'author_id' => 7,  'created_at' => '2026-09-16 07:00:00' ),
+	(object) array( 'target' => 'item:wp-201',     'scope' => 'item',   'item_ref' => 'wp-201',       'author_id' => 7,  'created_at' => '2026-09-16 06:00:00' ),
+	(object) array( 'target' => 'item:grouppost-34','scope' => 'item',  'item_ref' => 'grouppost-34', 'author_id' => 11, 'created_at' => '2026-09-16 05:00:00' ),
+	(object) array( 'target' => 'item:letter-66',  'scope' => 'item',   'item_ref' => 'letter-66',    'author_id' => 9,  'created_at' => '2026-09-16 04:00:00' ),
+	(object) array( 'target' => 'item:letter-67',  'scope' => 'item',   'item_ref' => 'letter-67',    'author_id' => 9,  'created_at' => '2026-09-16 03:00:00' ),
+);
+$list = sml_fs_rest_hides_list( new WP_REST_Request() )->data;
+ok( 1 === count( $list['accounts'] ), 'a hidden account whose user no longer exists is left out' );
+ok( $list['accounts'][0]['name'] === 'Options Flow' && $list['accounts'][0]['target'] === 'author:7' && $list['accounts'][0]['avatar'] === 'https://avatar.test/7.png', 'hidden accounts carry name, avatar and the undo target' );
+ok( $list['accounts'][0]['hiddenAt'] === '2026-09-16T09:00:00+00:00', 'times are UTC ISO-8601' );
+$byTarget = array(); foreach ( $list['posts'] as $post ) $byTarget[ $post['target'] ] = $post;
+ok( 6 === count( $list['posts'] ), 'every item hide is listed' );
+ok( $byTarget['item:wp-100']['title'] === 'TLT Floor Trade' && $byTarget['item:wp-100']['url'] === 'https://stockmarketloop.com/p/100/', 'a public article shows its (tag-stripped) title and link' );
+ok( null === $byTarget['item:wp-200']['title'] && true === $byTarget['item:wp-200']['gone'], 'a private article shows no title' );
+ok( null === $byTarget['item:wp-201']['title'], 'a password-protected article shows no title' );
+ok( null === $byTarget['item:grouppost-34']['title'] && $byTarget['item:grouppost-34']['author']['name'] === 'Group Owner', 'a group post shows only its author, never its text' );
+ok( $byTarget['item:letter-66']['title'] === 'Public letter', 'a published public letter shows its title' );
+ok( null === $byTarget['item:letter-67']['title'], 'a paid letter shows no title' );
+$json = json_encode( $list );
+ok( strpos( $json, 'Members-only secret' ) === false && strpos( $json, 'Paid letter' ) === false && strpos( $json, 'Password protected' ) === false, 'no private, paid or protected text appears anywhere in the response' );
+$GLOBALS['wpdb']->hide_rows = array();
+ok( array( 'accounts' => array(), 'posts' => array() ) === sml_fs_rest_hides_list( new WP_REST_Request() )->data, 'nothing hidden is two empty lists' );
 
 /* ============================================================== impressions */
 
