@@ -1,0 +1,1624 @@
+{
+  "generatedFrom": "services/sml-platform/platform/corporate-onboarding.js (deploy/node-platform)",
+  "questions": [
+    {
+      "id": "instrument",
+      "required": true,
+      "type": "single",
+      "drives": "categoryAffinity, group recs",
+      "prompt": "What do you mostly trade?",
+      "options": [
+        "stocks",
+        "options",
+        "crypto",
+        "futures",
+        "learning"
+      ]
+    },
+    {
+      "id": "holdPeriod",
+      "required": true,
+      "type": "single",
+      "drives": "creator style match",
+      "prompt": "How long is a typical position held?",
+      "options": [
+        "minutes",
+        "days",
+        "weeks",
+        "months_plus"
+      ]
+    },
+    {
+      "id": "riskAppetite",
+      "required": true,
+      "type": "single",
+      "drives": "creator and group match",
+      "prompt": "How would you describe your risk appetite?",
+      "options": [
+        "protect_capital",
+        "balanced",
+        "aggressive",
+        "swing_for_the_fences"
+      ]
+    },
+    {
+      "id": "experience",
+      "required": true,
+      "type": "single",
+      "drives": "beginner-content weighting",
+      "prompt": "Roughly how long have you been trading?",
+      "options": [
+        "just_starting",
+        "under_a_year",
+        "one_to_five",
+        "over_five"
+      ]
+    },
+    {
+      "id": "watchlist",
+      "required": false,
+      "type": "tickers",
+      "max": 5,
+      "drives": "watchlist seed — the strongest feed signal there is",
+      "prompt": "Pick up to 5 tickers you follow"
+    },
+    {
+      "id": "sectors",
+      "required": false,
+      "type": "multi",
+      "drives": "corporate category match",
+      "prompt": "Which sectors interest you?",
+      "options": [
+        "technology",
+        "energy",
+        "healthcare",
+        "financials",
+        "consumer",
+        "industrials",
+        "crypto",
+        "macro"
+      ]
+    },
+    {
+      "id": "learningStyle",
+      "required": true,
+      "type": "single",
+      "drives": "rail ordering, letters vs video",
+      "prompt": "How do you prefer to learn?",
+      "options": [
+        "live_video",
+        "short_clips",
+        "written_letters",
+        "chat"
+      ]
+    },
+    {
+      "id": "participation",
+      "required": true,
+      "type": "single",
+      "drives": "voice-room rail on/off",
+      "prompt": "Do you want live voice rooms and group chat, or mostly read quietly?",
+      "options": [
+        "voice_and_chat",
+        "read_quietly"
+      ]
+    },
+    {
+      "id": "intent",
+      "required": true,
+      "type": "single",
+      "drives": "creator vs peer weighting",
+      "prompt": "Are you here to follow pros, share your own trades, or both?",
+      "options": [
+        "follow_pros",
+        "share_my_trades",
+        "both"
+      ]
+    },
+    {
+      "id": "newsAppetite",
+      "required": true,
+      "type": "single",
+      "drives": "corporate slot cap — self-selected",
+      "prompt": "How much market news do you want?",
+      "options": [
+        "headlines_only",
+        "a_few_a_day",
+        "everything"
+      ]
+    }
+  ],
+  "slotCapByAppetite": {
+    "headlines_only": 1,
+    "a_few_a_day": 2,
+    "everything": 3
+  },
+  "maxWatchlist": 5,
+  "fixtures": [
+    {
+      "name": "complete, options trader who reads letters",
+      "input": {
+        "instrument": "options",
+        "holdPeriod": "days",
+        "riskAppetite": "balanced",
+        "experience": "one_to_five",
+        "watchlist": [
+          "aapl",
+          "$TSLA",
+          "aapl",
+          "BRK.B",
+          "bad ticker!",
+          "MSFT",
+          "NVDA",
+          "AMD"
+        ],
+        "sectors": [
+          "technology",
+          "macro",
+          "tulips",
+          "technology"
+        ],
+        "learningStyle": "written_letters",
+        "participation": "read_quietly",
+        "intent": "follow_pros",
+        "newsAppetite": "a_few_a_day"
+      },
+      "answers": {
+        "instrument": "options",
+        "holdPeriod": "days",
+        "riskAppetite": "balanced",
+        "experience": "one_to_five",
+        "watchlist": [
+          "AAPL",
+          "TSLA",
+          "BRK.B",
+          "MSFT",
+          "NVDA"
+        ],
+        "sectors": [
+          "technology",
+          "macro"
+        ],
+        "learningStyle": "written_letters",
+        "participation": "read_quietly",
+        "intent": "follow_pros",
+        "newsAppetite": "a_few_a_day"
+      },
+      "missing": [],
+      "rejected": [],
+      "complete": true,
+      "profile": {
+        "watchlist": [
+          "AAPL",
+          "TSLA",
+          "BRK.B",
+          "MSFT",
+          "NVDA"
+        ],
+        "categoryAffinity": {
+          "finance": 0.5,
+          "data": 0.5,
+          "research": 0.8,
+          "news": 0.9
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": true,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": "days",
+        "riskAppetite": "balanced",
+        "intent": "follow_pros"
+      }
+    },
+    {
+      "name": "beginner who wants everything",
+      "input": {
+        "instrument": "learning",
+        "holdPeriod": "months_plus",
+        "riskAppetite": "protect_capital",
+        "experience": "just_starting",
+        "sectors": [
+          "technology",
+          "macro",
+          "financials",
+          "healthcare",
+          "crypto"
+        ],
+        "learningStyle": "live_video",
+        "participation": "voice_and_chat",
+        "intent": "both",
+        "newsAppetite": "everything"
+      },
+      "answers": {
+        "instrument": "learning",
+        "holdPeriod": "months_plus",
+        "riskAppetite": "protect_capital",
+        "experience": "just_starting",
+        "sectors": [
+          "technology",
+          "macro",
+          "financials",
+          "healthcare",
+          "crypto"
+        ],
+        "learningStyle": "live_video",
+        "participation": "voice_and_chat",
+        "intent": "both",
+        "newsAppetite": "everything"
+      },
+      "missing": [],
+      "rejected": [],
+      "complete": true,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "research": 0.9,
+          "media": 0.7,
+          "news": 0.9,
+          "data": 0.4,
+          "finance": 0.3,
+          "brokerage": 0.2
+        },
+        "corporateSlotCap": 3,
+        "prefersVideo": true,
+        "prefersLetters": false,
+        "wantsVoiceRooms": true,
+        "isBeginner": true,
+        "holdPeriod": "months_plus",
+        "riskAppetite": "protect_capital",
+        "intent": "both"
+      }
+    },
+    {
+      "name": "partial with invented values",
+      "input": {
+        "instrument": "forex",
+        "newsAppetite": "headlines_only",
+        "favouriteColour": "blue",
+        "learningStyle": "short_clips"
+      },
+      "answers": {
+        "newsAppetite": "headlines_only",
+        "learningStyle": "short_clips"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "participation",
+        "intent"
+      ],
+      "rejected": [
+        {
+          "id": "instrument",
+          "reason": "unknown_option"
+        },
+        {
+          "id": "favouriteColour",
+          "reason": "unknown_question"
+        }
+      ],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "media": 0.3,
+          "news": 0.2
+        },
+        "corporateSlotCap": 1,
+        "prefersVideo": true,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "empty",
+      "input": {},
+      "answers": {},
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "instrument=stocks",
+      "input": {
+        "instrument": "stocks"
+      },
+      "answers": {
+        "instrument": "stocks"
+      },
+      "missing": [
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "finance": 0.4,
+          "brokerage": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "instrument=options",
+      "input": {
+        "instrument": "options"
+      },
+      "answers": {
+        "instrument": "options"
+      },
+      "missing": [
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "finance": 0.5,
+          "data": 0.3
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "instrument=crypto",
+      "input": {
+        "instrument": "crypto"
+      },
+      "answers": {
+        "instrument": "crypto"
+      },
+      "missing": [
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "finance": 0.3,
+          "data": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "instrument=futures",
+      "input": {
+        "instrument": "futures"
+      },
+      "answers": {
+        "instrument": "futures"
+      },
+      "missing": [
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "finance": 0.4,
+          "data": 0.3
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "instrument=learning",
+      "input": {
+        "instrument": "learning"
+      },
+      "answers": {
+        "instrument": "learning"
+      },
+      "missing": [
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "research": 0.3,
+          "media": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": true,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "holdPeriod=minutes",
+      "input": {
+        "holdPeriod": "minutes"
+      },
+      "answers": {
+        "holdPeriod": "minutes"
+      },
+      "missing": [
+        "instrument",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": "minutes",
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "holdPeriod=days",
+      "input": {
+        "holdPeriod": "days"
+      },
+      "answers": {
+        "holdPeriod": "days"
+      },
+      "missing": [
+        "instrument",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": "days",
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "holdPeriod=weeks",
+      "input": {
+        "holdPeriod": "weeks"
+      },
+      "answers": {
+        "holdPeriod": "weeks"
+      },
+      "missing": [
+        "instrument",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": "weeks",
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "holdPeriod=months_plus",
+      "input": {
+        "holdPeriod": "months_plus"
+      },
+      "answers": {
+        "holdPeriod": "months_plus"
+      },
+      "missing": [
+        "instrument",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": "months_plus",
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "riskAppetite=protect_capital",
+      "input": {
+        "riskAppetite": "protect_capital"
+      },
+      "answers": {
+        "riskAppetite": "protect_capital"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": "protect_capital",
+        "intent": null
+      }
+    },
+    {
+      "name": "riskAppetite=balanced",
+      "input": {
+        "riskAppetite": "balanced"
+      },
+      "answers": {
+        "riskAppetite": "balanced"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": "balanced",
+        "intent": null
+      }
+    },
+    {
+      "name": "riskAppetite=aggressive",
+      "input": {
+        "riskAppetite": "aggressive"
+      },
+      "answers": {
+        "riskAppetite": "aggressive"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": "aggressive",
+        "intent": null
+      }
+    },
+    {
+      "name": "riskAppetite=swing_for_the_fences",
+      "input": {
+        "riskAppetite": "swing_for_the_fences"
+      },
+      "answers": {
+        "riskAppetite": "swing_for_the_fences"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": "swing_for_the_fences",
+        "intent": null
+      }
+    },
+    {
+      "name": "experience=just_starting",
+      "input": {
+        "experience": "just_starting"
+      },
+      "answers": {
+        "experience": "just_starting"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": true,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "experience=under_a_year",
+      "input": {
+        "experience": "under_a_year"
+      },
+      "answers": {
+        "experience": "under_a_year"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "experience=one_to_five",
+      "input": {
+        "experience": "one_to_five"
+      },
+      "answers": {
+        "experience": "one_to_five"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "experience=over_five",
+      "input": {
+        "experience": "over_five"
+      },
+      "answers": {
+        "experience": "over_five"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=technology",
+      "input": {
+        "sectors": [
+          "technology"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "technology"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "data": 0.2,
+          "research": 0.1
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=energy",
+      "input": {
+        "sectors": [
+          "energy"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "energy"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "research": 0.1
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=healthcare",
+      "input": {
+        "sectors": [
+          "healthcare"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "healthcare"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "research": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=financials",
+      "input": {
+        "sectors": [
+          "financials"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "financials"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "finance": 0.3,
+          "brokerage": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=consumer",
+      "input": {
+        "sectors": [
+          "consumer"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "consumer"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "media": 0.1
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=industrials",
+      "input": {
+        "sectors": [
+          "industrials"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "industrials"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "research": 0.1
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=crypto",
+      "input": {
+        "sectors": [
+          "crypto"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "crypto"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "data": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "sectors=macro",
+      "input": {
+        "sectors": [
+          "macro"
+        ]
+      },
+      "answers": {
+        "sectors": [
+          "macro"
+        ]
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "news": 0.3,
+          "research": 0.3
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "learningStyle=live_video",
+      "input": {
+        "learningStyle": "live_video"
+      },
+      "answers": {
+        "learningStyle": "live_video"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "media": 0.3
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": true,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "learningStyle=short_clips",
+      "input": {
+        "learningStyle": "short_clips"
+      },
+      "answers": {
+        "learningStyle": "short_clips"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "media": 0.3
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": true,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "learningStyle=written_letters",
+      "input": {
+        "learningStyle": "written_letters"
+      },
+      "answers": {
+        "learningStyle": "written_letters"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "research": 0.4,
+          "news": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": true,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "learningStyle=chat",
+      "input": {
+        "learningStyle": "chat"
+      },
+      "answers": {
+        "learningStyle": "chat"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "participation",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "media": 0.2
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "participation=voice_and_chat",
+      "input": {
+        "participation": "voice_and_chat"
+      },
+      "answers": {
+        "participation": "voice_and_chat"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": true,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "participation=read_quietly",
+      "input": {
+        "participation": "read_quietly"
+      },
+      "answers": {
+        "participation": "read_quietly"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "intent",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "intent=follow_pros",
+      "input": {
+        "intent": "follow_pros"
+      },
+      "answers": {
+        "intent": "follow_pros"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": "follow_pros"
+      }
+    },
+    {
+      "name": "intent=share_my_trades",
+      "input": {
+        "intent": "share_my_trades"
+      },
+      "answers": {
+        "intent": "share_my_trades"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": "share_my_trades"
+      }
+    },
+    {
+      "name": "intent=both",
+      "input": {
+        "intent": "both"
+      },
+      "answers": {
+        "intent": "both"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "newsAppetite"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {},
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": "both"
+      }
+    },
+    {
+      "name": "newsAppetite=headlines_only",
+      "input": {
+        "newsAppetite": "headlines_only"
+      },
+      "answers": {
+        "newsAppetite": "headlines_only"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "news": 0.2
+        },
+        "corporateSlotCap": 1,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "newsAppetite=a_few_a_day",
+      "input": {
+        "newsAppetite": "a_few_a_day"
+      },
+      "answers": {
+        "newsAppetite": "a_few_a_day"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "news": 0.4
+        },
+        "corporateSlotCap": 2,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    },
+    {
+      "name": "newsAppetite=everything",
+      "input": {
+        "newsAppetite": "everything"
+      },
+      "answers": {
+        "newsAppetite": "everything"
+      },
+      "missing": [
+        "instrument",
+        "holdPeriod",
+        "riskAppetite",
+        "experience",
+        "learningStyle",
+        "participation",
+        "intent"
+      ],
+      "rejected": [],
+      "complete": false,
+      "profile": {
+        "watchlist": [],
+        "categoryAffinity": {
+          "news": 0.6,
+          "media": 0.2
+        },
+        "corporateSlotCap": 3,
+        "prefersVideo": false,
+        "prefersLetters": false,
+        "wantsVoiceRooms": false,
+        "isBeginner": false,
+        "holdPeriod": null,
+        "riskAppetite": null,
+        "intent": null
+      }
+    }
+  ]
+}
