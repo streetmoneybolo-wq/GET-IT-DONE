@@ -1527,7 +1527,7 @@
         });
       });
     }
-    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); try{richenChartCards();}catch(e){} try{optimizeCardImages();}catch(e){} }
+    function feedSweep(){ kebabize(); pruneStale(); stripReact(); localizeMeta(); try{richenChartCards();}catch(e){} try{optimizeCardImages();}catch(e){} try{tagChartCards();}catch(e){} }
     feedSweep(); setInterval(feedSweep, 3000); /* also covers cards slid in by pollFeed */
 
     // ---- $ticker / @member typeahead: typing $PL in any feed text field
@@ -1648,6 +1648,8 @@
       document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 2800);
     }
     var composerInput=shell.querySelector('.hf-composer input'), composerBtn=document.getElementById('sml-hf-post'), composerBusy=false;
+    // §1 location + §2 mood: composer selection state (sent with the post; rendered as chips)
+    var smlGm={place:null,mood:null,moods:null};
     function composerPost(){
       if(composerBusy||!composerInput) return;
       var text=String(composerInput.value||'').trim();
@@ -1655,12 +1657,16 @@
       if(text.length>1600){ composerToast('Keep posts under 1,600 characters.', false); return; }
       var nonce=hfbNonce();
       if(!nonce){ composerToast('Refresh the page to post.', false); return; }
+      var payload={text:text};
+      if(smlGm.place){ payload.place=smlGm.place; }
+      if(smlGm.mood&&smlGm.mood.mood_slug){ payload.mood=smlGm.mood.mood_slug; }
       composerBusy=true; if(composerBtn){ composerBtn.textContent='Posting…'; composerBtn.style.opacity='.6'; }
-      fetch('/wp-json/sml-social-home/v1/post',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify({text:text})})
+      fetch('/wp-json/sml-social-home/v1/post',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify(payload)})
         .then(function(r){ return r.json().catch(function(){return {};}).then(function(j){ if(!r.ok) throw new Error(j.message||('The post did not go through (HTTP '+r.status+').')); return j; }); })
         .then(function(){
           composerInput.value='';
           try{composerInput.dispatchEvent(new Event('input'));}catch(e){} /* overlay repaint */
+          smlGm.place=null; smlGm.mood=null; try{smlGmRenderChips();}catch(e){}
           composerToast('Posted to the tape.', true);
           setTimeout(function(){ try{pollFeed();}catch(e){} }, 1500);
           setTimeout(function(){ try{pollFeed();}catch(e){} }, 6000);
@@ -1674,6 +1680,223 @@
       if(TA.panel&&TA.panel.classList.contains('on')) return; /* typeahead owns Enter while open */
       ev.preventDefault(); composerPost();
     }); }
+
+    // ============================================================
+    // §1 Location + §2 Mood — composer pickers + read-only chips.
+    // The 📍/😤 pills sit under the composer; a picked place/mood becomes a
+    // removable chip and rides along in the POST body. On feed cards the same
+    // chip shape renders read-only (linking to the /at and /mood index pages).
+    // ============================================================
+    function smlGmEmoji(m){ return (m&&(m.mood_avatar||m.emoji))||'•'; }
+    // Strict allow-list for the --mc CSS custom property (server-seeded, but harden the style-attr sink anyway).
+    function smlGmColor(c){ c=String(c||''); return (/^#[0-9a-fA-F]{3,8}$/.test(c)||/^[a-zA-Z]{3,20}$/.test(c))?c:'#38F58A'; }
+    // Shared chip HTML. linked=true → anchors to the index pages (feed cards); false → inert (composer preview).
+    function smlGmPlaceChip(place, linked){
+      if(!place) return '';
+      var label=place.label||[place.city,place.state].filter(Boolean).join(', ')||place.city||'Location';
+      var inner='<span class="hf-gm-ic">📍</span>'+esc(label);
+      if(linked&&place.url) return '<a class="hf-gm-chip hf-gm-place" href="'+esc(place.url)+'">'+inner+'</a>';
+      return '<span class="hf-gm-chip hf-gm-place">'+inner+'</span>';
+    }
+    function smlGmMoodChip(mood, linked){
+      if(!mood) return '';
+      var inner='<span class="hf-gm-ic">'+esc(smlGmEmoji(mood))+'</span>'+esc(mood.mood_name||mood.mood_slug||'Mood');
+      var st=' style="--mc:'+smlGmColor(mood.mood_color)+'"';
+      if(linked&&mood.url) return '<a class="hf-gm-chip hf-gm-mood"'+st+' href="'+esc(mood.url)+'">'+inner+'</a>';
+      return '<span class="hf-gm-chip hf-gm-mood"'+st+'>'+inner+'</span>';
+    }
+    // Read-only chip row for a feed card, from its item.tags (or a {place,mood} map). Returns '' when empty.
+    function smlGmCardChips(tags){
+      if(!tags) return '';
+      var p=tags.place?smlGmPlaceChip(tags.place,true):'', m=tags.mood?smlGmMoodChip(tags.mood,true):'';
+      if(!p&&!m) return '';
+      return '<div class="hf-gm-cardchips">'+p+m+'</div>';
+    }
+    (function mountGeoMood(){
+      var comp=shell.querySelector('.hf-composer');
+      if(!comp||!composerInput||document.getElementById('sml-hf-gm-bar')) return;
+      var st=document.createElement('style');
+      st.textContent=
+        '#sml-hf-gm-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-8px 0 18px;padding:0 4px}'+
+        '.hf-gm-add{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,#1A2431,#111926);color:#9FB1C4;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}'+
+        '.hf-gm-add:hover{color:#E6EDF5;border-color:rgba(56,245,138,.4)}'+
+        '.hf-gm-add .e{font-size:13px;filter:saturate(1.2)}'+
+        '.hf-gm-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700;text-decoration:none;line-height:1;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}'+
+        '.hf-gm-chip .hf-gm-ic{font-size:12.5px}'+
+        '.hf-gm-place{background:rgba(56,140,245,.14);border:1px solid rgba(56,140,245,.42);color:#8EC2FF}'+
+        'a.hf-gm-place:hover{background:rgba(56,140,245,.24)}'+
+        '.hf-gm-mood{background:color-mix(in srgb,var(--mc,#38F58A) 16%,transparent);border:1px solid color-mix(in srgb,var(--mc,#38F58A) 55%,transparent);color:var(--mc,#38F58A)}'+
+        'a.hf-gm-mood:hover{background:color-mix(in srgb,var(--mc,#38F58A) 26%,transparent)}'+
+        '.hf-gm-sel{display:inline-flex;align-items:center;gap:5px;padding:5px 6px 5px 10px;border-radius:999px;font-size:12px;font-weight:700;line-height:1}'+
+        '.hf-gm-sel .x{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.35);color:inherit;cursor:pointer;font-size:11px;opacity:.75}'+
+        '.hf-gm-sel .x:hover{opacity:1;background:rgba(0,0,0,.55)}'+
+        '.hf-gm-cardchips{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 2px}'+
+        '.hf-gm-pop{position:fixed;z-index:2147483060;width:288px;max-width:calc(100vw - 24px);background:linear-gradient(180deg,#0E151F,#0A0F17);border:1px solid rgba(255,255,255,.13);border-radius:14px;box-shadow:0 24px 48px -18px rgba(0,0,0,.9),0 0 0 1px rgba(0,0,0,.5);padding:12px;animation:smlGmPop .14s ease}'+
+        '@keyframes smlGmPop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}'+
+        '.hf-gm-pop-h{font:700 11px/1 \'IBM Plex Mono\',monospace;letter-spacing:.12em;color:#6B7C90;text-transform:uppercase;margin-bottom:9px}'+
+        '.hf-gm-pop-inp{width:100%;box-sizing:border-box;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:9px;padding:9px 12px;color:#E6EDF5;font-size:13px;outline:none}'+
+        '.hf-gm-pop-inp:focus{border-color:rgba(56,245,138,.45)}'+
+        '.hf-gm-pop-list{margin-top:8px;max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:2px}'+
+        '.hf-gm-row{display:flex;flex-direction:column;gap:1px;text-align:left;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:#E6EDF5;cursor:pointer;font-size:13px}'+
+        '.hf-gm-row:hover,.hf-gm-row.on{background:rgba(56,245,138,.12)}'+
+        '.hf-gm-row .r2{font-size:10.5px;color:#6B7C90}'+
+        '.hf-gm-pop-hint{margin-top:9px;font-size:11px;color:#6B7C90;line-height:1.45}'+
+        '.hf-gm-mood-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:260px;overflow:auto;margin-top:4px}'+
+        '.hf-gm-mood-b{display:flex;align-items:center;gap:7px;padding:8px 9px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:linear-gradient(180deg,#141C27,#0E141D);color:#E6EDF5;cursor:pointer;font-size:12px;font-weight:600;text-align:left}'+
+        '.hf-gm-mood-b:hover{border-color:color-mix(in srgb,var(--mc,#38F58A) 60%,transparent);background:color-mix(in srgb,var(--mc,#38F58A) 14%,#0E141D)}'+
+        '.hf-gm-mood-b .e{font-size:15px;flex:none}'+
+        '.hf-gm-cat{grid-column:1/-1;font:700 9.5px/1 \'IBM Plex Mono\',monospace;letter-spacing:.14em;color:#5C6B7E;text-transform:uppercase;margin:6px 2px 1px}'+
+        '.hf-gm-pop.hfm .hf-gm-pop-inp,.hf-gm-pop.hfm .hf-gm-row{font-size:16px}'; /* 16px stops iOS focus-zoom; scoped to the body-level popover, not the shell */
+      document.head.appendChild(st);
+
+      var bar=document.createElement('div'); bar.id='sml-hf-gm-bar';
+      bar.innerHTML='<button type="button" class="hf-gm-add" id="sml-hf-gm-place"><span class="e">📍</span>Location</button>'+
+        '<button type="button" class="hf-gm-add" id="sml-hf-gm-mood"><span class="e">😤</span>Mood</button>'+
+        '<span id="sml-hf-gm-chips" style="display:inline-flex;gap:8px;flex-wrap:wrap"></span>';
+      comp.insertAdjacentElement('afterend', bar);
+      var chipsBox=bar.querySelector('#sml-hf-gm-chips');
+
+      window.smlGmRenderChips=function(){
+        if(!chipsBox) return; var h='';
+        if(smlGm.place){ var pl=smlGm.place.label||[smlGm.place.city,smlGm.place.state].filter(Boolean).join(', ')||smlGm.place.city||'Location'; h+='<span class="hf-gm-sel hf-gm-place"><span class="hf-gm-ic">📍</span>'+esc(pl)+'<span class="x" data-gm-x="place" role="button" aria-label="Remove location">✕</span></span>'; }
+        if(smlGm.mood){ var col=smlGmColor(smlGm.mood.mood_color); h+='<span class="hf-gm-sel hf-gm-mood" style="--mc:'+col+'"><span class="hf-gm-ic">'+esc(smlGmEmoji(smlGm.mood))+'</span>'+esc(smlGm.mood.mood_name||'')+'<span class="x" data-gm-x="mood" role="button" aria-label="Remove mood">✕</span></span>'; }
+        chipsBox.innerHTML=h;
+      };
+      chipsBox.addEventListener('click', function(ev){ var x=ev.target.closest('[data-gm-x]'); if(!x) return; var k=x.getAttribute('data-gm-x'); if(k==='place') smlGm.place=null; if(k==='mood') smlGm.mood=null; window.smlGmRenderChips(); });
+
+      // ---- shared popover shell ----
+      var pop=null;
+      function closePop(){ if(pop){ pop.remove(); pop=null; document.removeEventListener('click',onDoc,true); document.removeEventListener('keydown',onKey,true); } }
+      function onDoc(ev){ if(pop&&!pop.contains(ev.target)&&!ev.target.closest('.hf-gm-add')) closePop(); }
+      function onKey(ev){ if(ev.key==='Escape') closePop(); }
+      function openPop(anchor, build){
+        closePop(); pop=document.createElement('div'); pop.className='hf-gm-pop'+(shell.classList.contains('hfm')?' hfm':''); build(pop);
+        document.body.appendChild(pop);
+        var r=anchor.getBoundingClientRect(), pw=pop.offsetWidth, ph=pop.offsetHeight;
+        var left=Math.max(12, Math.min(r.left, window.innerWidth-pw-12));
+        var top=r.bottom+8; if(top+ph>window.innerHeight-12&&r.top-ph-8>12) top=r.top-ph-8;
+        pop.style.left=left+'px'; pop.style.top=top+'px';
+        setTimeout(function(){ document.addEventListener('click',onDoc,true); document.addEventListener('keydown',onKey,true); },0);
+      }
+
+      // ---- place picker ----
+      function parseFreePlace(s){
+        var parts=String(s||'').split(',').map(function(p){return p.trim();}).filter(Boolean);
+        if(!parts.length) return null;
+        var out={city:parts[0], label:parts.join(', ')};
+        if(parts[1]&&/^[A-Za-z]{2}$/.test(parts[1])) out.state=parts[1].toUpperCase();
+        else if(parts[1]) out.state=parts[1];
+        if(parts[2]&&/^[A-Za-z]{2}$/.test(parts[2])) out.country=parts[2].toUpperCase();
+        return out;
+      }
+      function pickPlace(p){ smlGm.place=p; window.smlGmRenderChips(); closePop(); }
+      document.getElementById('sml-hf-gm-place').addEventListener('click', function(){
+        openPop(this, function(box){
+          box.innerHTML='<div class="hf-gm-pop-h">Add a location</div>'+
+            '<input class="hf-gm-pop-inp" placeholder="City or place, e.g. Miami" autocomplete="off">'+
+            '<div class="hf-gm-pop-list"></div>'+
+            '<div class="hf-gm-pop-hint">Type a city (or “City, ST”). Pick a suggestion, or press Enter to use what you typed.</div>';
+          var inp=box.querySelector('.hf-gm-pop-inp'), list=box.querySelector('.hf-gm-pop-list'), timer=null, seq=0;
+          setTimeout(function(){ inp.focus(); },30);
+          function render(results){
+            if(!results||!results.length){ list.innerHTML=''; return; }
+            list.innerHTML=results.slice(0,8).map(function(r,i){
+              var sub=[r.state,r.country].filter(Boolean).join(', ')+(r.reason?(' · '+r.reason):'');
+              return '<button type="button" class="hf-gm-row" data-i="'+i+'"><span>'+esc(r.label||r.city||'')+'</span>'+(sub?'<span class="r2">'+esc(sub)+'</span>':'')+'</button>';
+            }).join('');
+            list.querySelectorAll('.hf-gm-row').forEach(function(b){ b.addEventListener('click', function(){
+              var r=results[+b.getAttribute('data-i')]||{}, pk;
+              if(r.source==='google'&&!r.city){
+                // Google predictions carry no components — lift city/state from label ("Miami") + sub ("FL, USA")
+                pk=parseFreePlace([r.label,r.sub].filter(Boolean).join(', '))||{city:r.label};
+                pk.google_place_id=r.google_place_id; pk.label=r.label||pk.city;
+              } else {
+                pk={city:r.city,state:r.state,country:r.country,google_place_id:r.google_place_id,label:r.label||r.city};
+              }
+              pickPlace(pk);
+            }); });
+          }
+          inp.addEventListener('input', function(){
+            var q=inp.value.trim(); if(timer) clearTimeout(timer);
+            if(q.length<2){ list.innerHTML=''; return; }
+            timer=setTimeout(function(){
+              var my=++seq, nonce=hfbNonce();
+              fetch('/wp-json/sml-place/v1/suggest?q='+encodeURIComponent(q),{credentials:'same-origin',headers:nonce?{'X-WP-Nonce':nonce}:{}})
+                .then(function(r){ return r.ok?r.json():{results:[]}; }).then(function(j){ if(my!==seq) return; render((j&&j.results)||[]); })
+                .catch(function(){});
+            }, 230);
+          });
+          inp.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); var first=list.querySelector('.hf-gm-row'); if(first){ first.click(); return; } var p=parseFreePlace(inp.value); if(p) pickPlace(p); } });
+        });
+      });
+
+      // ---- mood picker ----
+      function renderMoodGrid(box, moods){
+        var grid=box.querySelector('.hf-gm-mood-grid'); if(!grid) return;
+        var cats={standard:'Market',finance:'Finance',edge:'Attitude'}, order=['standard','finance','edge'], byCat={};
+        moods.forEach(function(m){ (byCat[m.mood_category]=byCat[m.mood_category]||[]).push(m); });
+        var html='';
+        order.forEach(function(c){ if(!byCat[c]) return; html+='<div class="hf-gm-cat">'+esc(cats[c]||c)+'</div>';
+          byCat[c].forEach(function(m){ html+='<button type="button" class="hf-gm-mood-b" style="--mc:'+smlGmColor(m.mood_color)+'" data-slug="'+esc(m.mood_slug)+'"><span class="e">'+esc(smlGmEmoji(m))+'</span>'+esc(m.mood_name||m.mood_slug)+'</button>'; });
+        });
+        // any categories not in the known order
+        Object.keys(byCat).forEach(function(c){ if(order.indexOf(c)>=0) return; html+='<div class="hf-gm-cat">'+esc(c)+'</div>'; byCat[c].forEach(function(m){ html+='<button type="button" class="hf-gm-mood-b" style="--mc:'+smlGmColor(m.mood_color)+'" data-slug="'+esc(m.mood_slug)+'"><span class="e">'+esc(smlGmEmoji(m))+'</span>'+esc(m.mood_name||m.mood_slug)+'</button>'; }); });
+        grid.innerHTML=html;
+        grid.querySelectorAll('.hf-gm-mood-b').forEach(function(b){ b.addEventListener('click', function(){
+          var slug=b.getAttribute('data-slug'), m=(smlGm.moods||[]).filter(function(x){return x.mood_slug===slug;})[0];
+          if(m){ smlGm.mood=m; window.smlGmRenderChips(); closePop(); }
+        }); });
+      }
+      document.getElementById('sml-hf-gm-mood').addEventListener('click', function(){
+        openPop(this, function(box){
+          box.innerHTML='<div class="hf-gm-pop-h">Pick a mood</div><div class="hf-gm-mood-grid"><div class="hf-gm-cat">Loading…</div></div>';
+          if(smlGm.moods){ renderMoodGrid(box, smlGm.moods); return; }
+          fetch('/wp-json/sml-mood/v1/list',{credentials:'same-origin'}).then(function(r){ return r.ok?r.json():{moods:[]}; })
+            .then(function(j){ smlGm.moods=(j&&j.moods)||[]; if(pop) renderMoodGrid(pop, smlGm.moods); }).catch(function(){ if(pop){ var g=pop.querySelector('.hf-gm-mood-grid'); if(g) g.innerHTML='<div class="hf-gm-cat">Could not load moods.</div>'; } });
+        });
+      });
+    })();
+
+    // ---- read-only tag chips on server-rendered chart cards (batched, one round-trip) ----
+    var smlGmTagCache=smlGmTagCache||{}; // contentId -> {place,mood} | 0 (known-none)
+    var smlGmTagBusy=false, smlGmTagBackoff=0, smlGmTagFailN=0; // one batch in flight at a time; back off after failures
+    function smlGmContentId(item){ var m=String(item||'').match(/^chart-\d+-(.+)$/); return m?m[1]:''; }
+    function tagChartCards(){
+      if(!smlGmTagCache) smlGmTagCache={}; // guard the pre-declaration first sweep (hoisting)
+      var cards=host.querySelectorAll('article.oh-post[data-hfe-item^="chart-"]:not([data-sml-gm])');
+      if(!cards.length) return;
+      var need=[], seen={};
+      cards.forEach(function(card){
+        var cid=smlGmContentId(card.getAttribute('data-hfe-item'));
+        if(!cid) { card.setAttribute('data-sml-gm','1'); return; }
+        if(smlGmTagCache.hasOwnProperty(cid)){ applyCardTags(card, cid); return; } // cache hits still paint during an in-flight batch
+        if(!seen[cid]){ seen[cid]=1; need.push(cid); }
+      });
+      if(!need.length) return;
+      if(smlGmTagBusy||Date.now()<smlGmTagBackoff) return; // don't stack requests / hammer through a failure window
+      need=need.slice(0,60); smlGmTagBusy=true;
+      fetch('/wp-json/sml-tags/v1/for-many',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({object_type:'stream',ids:need})})
+        .then(function(r){ if(!r.ok) return {tags:{}}; return r.json(); })
+        .then(function(j){
+          smlGmTagFailN=0; smlGmTagBackoff=0;
+          var tags=(j&&j.tags)||{};
+          need.forEach(function(cid){ smlGmTagCache[cid]=tags[cid]||0; });
+          host.querySelectorAll('article.oh-post[data-hfe-item^="chart-"]:not([data-sml-gm])').forEach(function(card){
+            var cid=smlGmContentId(card.getAttribute('data-hfe-item')); if(cid&&smlGmTagCache.hasOwnProperty(cid)) applyCardTags(card, cid);
+          });
+        })
+        .catch(function(){ smlGmTagFailN++; smlGmTagBackoff=Date.now()+Math.min(60000, 3000*Math.pow(2, smlGmTagFailN)); }) // fetch reject / non-JSON edge page
+        .then(function(){ smlGmTagBusy=false; });
+    }
+    function applyCardTags(card, cid){
+      card.setAttribute('data-sml-gm','1');
+      var t=smlGmTagCache[cid]; if(!t||(!t.place&&!t.mood)) return;
+      if(card.querySelector(':scope > .hf-gm-cardchips')) return;
+      var html=smlGmCardChips(t); if(!html) return;
+      var frag=document.createElement('div'); frag.innerHTML=html; var row=frag.firstChild;
+      var anchor=card.querySelector(':scope > .sml-sth-actions')||card.querySelector(':scope > .hf-post-link')||null;
+      if(anchor) card.insertBefore(row, anchor); else card.appendChild(row);
+    }
 
     // ---- in-field rich tokens: $TICKERS glow green and @mentions glow blue
     // LIVE inside the composer. A pointer-events:none overlay mirrors the
@@ -1801,10 +2024,12 @@
       art.setAttribute('data-hfe-url', url);
       art.setAttribute('data-sml-published', date);
       if (au.id) art.setAttribute('data-sml-authorid', String(au.id));
+      art.setAttribute('data-sml-gm', '1'); // JSON item carries authoritative tags; skip the batch re-fetch
       art.innerHTML = '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av) + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
         '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(url) + '">' + esc(head) + '</a></h2>' +
         (body ? '<p>' + esc(body) + '</p>' : '') +
         (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
+        (item.tags ? smlGmCardChips(item.tags) : '') +
         '<div class="sml-sth-actions"><span>Likes ' + (parseInt(m.likes, 10) || 0) + '</span> <span>Comments ' + (parseInt(m.comments, 10) || 0) + '</span> <span>Shares ' + (parseInt(m.shares, 10) || 0) + '</span> <a href="' + esc(url) + '">Open</a></div>';
       return art;
     }
