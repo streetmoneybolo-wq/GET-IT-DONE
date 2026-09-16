@@ -375,10 +375,16 @@ test('verifyChain reproduces hashes for rows read back with Date and JSONB value
 
 test('the chained-table registry matches the design scopes', () => {
   assert.deepEqual(Object.keys(CHAINED_TABLES).sort(), [
-    'billing_events', 'dispute_audit_log', 'dispute_evidence_items', 'service_usage_events'
+    'billing_events', 'corporate_ad_spend', 'dispute_audit_log',
+    'dispute_evidence_items', 'service_usage_events'
   ]);
   assert.equal(CHAINED_TABLES.billing_events.scopeColumn, 'provider');
   assert.equal(CHAINED_TABLES.dispute_audit_log.coalesceScope, true);
+  /* Per billing CYCLE, not per account: appendChained's advisory lock on the
+     scope is also what serialises the annual-cap check, and a cycle is the unit
+     the cap applies to. */
+  assert.equal(CHAINED_TABLES.corporate_ad_spend.scopeColumn, 'billing_id');
+  assert.notEqual(CHAINED_TABLES.corporate_ad_spend.coalesceScope, true);
 });
 
 test('createEvidenceStore rejects unusable key lists', () => {

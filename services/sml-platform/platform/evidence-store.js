@@ -33,7 +33,14 @@ const CHAINED_TABLES = {
   billing_events: { scopeColumn: 'provider' },
   service_usage_events: { scopeColumn: 'identity_id' },
   dispute_evidence_items: { scopeColumn: 'case_id' },
-  dispute_audit_log: { scopeColumn: 'case_id', coalesceScope: true }
+  dispute_audit_log: { scopeColumn: 'case_id', coalesceScope: true },
+  /* Scoped per billing cycle, not per account. appendChained takes a
+     pg_advisory_xact_lock on the scope before reading the chain head, so that
+     one lock also serialises the annual-cap and discount-cap checks: two
+     concurrent ad purchases cannot both read remaining cap before either
+     writes. Scoping on corporate_id instead would still chain correctly but
+     would serialise across cycles for no benefit. */
+  corporate_ad_spend: { scopeColumn: 'billing_id' }
 };
 
 /* ---------------------------------------------------------------------------
