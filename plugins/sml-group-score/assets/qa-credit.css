@@ -1,0 +1,16 @@
+/* Q&A credit picker + group chips. Uses the Q&A skin's tokens when present. */
+.sml-gs-credit{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px;}
+.sml-gs-opt{position:relative;display:flex;flex-direction:column;gap:3px;padding:10px 12px 10px 34px;border:1px solid var(--qa-border,rgba(255,255,255,.12));border-radius:12px;background:var(--qa-card,rgba(255,255,255,.02));cursor:pointer;min-width:0;}
+.sml-gs-opt input[type=radio]{position:absolute;left:12px;top:12px;margin:0;accent-color:var(--qa-accent,#38F58A);}
+.sml-gs-opt:has(input:checked){border-color:var(--qa-accent,#38F58A);background:color-mix(in srgb,var(--qa-accent,#38F58A) 8%,transparent);}
+.sml-gs-opt:focus-within{outline:2px solid var(--qa-accent,#38F58A);outline-offset:2px;}
+.sml-gs-opt.is-off{opacity:.6;cursor:not-allowed;}
+.sml-gs-opt-t{font-weight:700;font-size:13.5px;color:var(--qa-ink,#E6EDF5);}
+.sml-gs-opt-s{font-size:12px;color:var(--qa-muted,#93A4B8);line-height:1.35;}
+.sml-gs-group{margin-top:4px;max-width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--qa-border,rgba(255,255,255,.14));background:var(--qa-card-2,#0B1017);color:var(--qa-ink,#E6EDF5);font:inherit;font-size:13px;}
+.sml-gs-how{grid-column:1/-1;margin:0;font-size:12px;color:var(--qa-muted,#93A4B8);}
+.sml-gs-chip{display:inline-flex;align-items:center;gap:5px;margin-left:8px;padding:2px 9px;border-radius:999px;border:1px solid rgba(61,139,253,.38);background:rgba(61,139,253,.10);color:#8CC9FF;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;vertical-align:middle;}
+.sml-gs-chip:hover{background:rgba(61,139,253,.2);}
+.sml-gs-chip-q{margin:6px 0 10px;}
+.sml-gs-chip-i{font-size:11px;}
+@media (max-width:600px){.sml-gs-credit{grid-template-columns:1fr;}}
