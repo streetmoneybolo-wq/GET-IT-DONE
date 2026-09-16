@@ -2065,6 +2065,71 @@
     fetchPersonalizedSeed().then(function(){ hydrateRecRails(); });
     backfillFeed();
     hydrateMediaRails();
+    // ---- LIVE news stream (owner rule 2026-09-15): newly published posts appear
+    // within seconds, not only on the slow 45s full-page poll. A light wp/v2 delta
+    // query (?after=newest) prepends just the fresh cards, so the feed streams live.
+    var liveNewestISO = '';
+    host.querySelectorAll('.oh-post[data-sml-published]').forEach(function(c){ var d=c.getAttribute('data-sml-published')||''; var t=Date.parse(d); if (t && (!liveNewestISO || t>Date.parse(liveNewestISO))) liveNewestISO=d; });
+    function pollNewPosts(){
+      if (document.hidden) return;
+      var after = liveNewestISO || new Date(Date.now()-1800000).toISOString();
+      api('/wp-json/wp/v2/posts?after='+encodeURIComponent(after)+'&orderby=date&order=desc&per_page=12&_embed=1&_fields=id,link,date,title,excerpt,author,jetpack_featured_media_url,_embedded').then(function(res){
+        var arr = res && res.j ? res.j : res; if (!Array.isArray(arr) || !arr.length) return;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+        var anchor = (pinnedHost && pinnedHost.parentNode===main) ? pinnedHost.nextSibling : main.firstChild;
+        var newestT = Date.parse(liveNewestISO)||0, added=0;
+        // oldest-first insert so the newest ends up on top, just under the breaking pin
+        arr.slice().sort(function(a,b){ return (Date.parse(a.date||'')||0)-(Date.parse(b.date||'')||0); }).forEach(function(p){
+          var id='wp-'+(p&&p.id); if (!p || seenItemIds[id]) return;
+          var node=restPostCard(p); var key=cardKeyOf(node); if (key && feedSeen[key]) return;
+          if (key) feedSeen[key]=1; seenItemIds[id]=1;
+          node.style.animation='smlHfNew .5s ease'; main.insertBefore(node, anchor); armRh(node,250); added++;
+          var t=Date.parse(p.date||''); if (t>newestT){ newestT=t; liveNewestISO=p.date; }
+        });
+        if (added){ fbComments(); dedupeFeed(); applyQuotes(); try{enhanceSignalCards(host);}catch(e){} try{richenChartCards();}catch(e){} }
+      }).catch(function(){});
+    }
+    // ---- watchlist HOT ticker-terminal comments (owner rule 2026-09-15): a comment
+    // from the terminal of a ticker on your watchlist rides your feed WHEN it is hot —
+    // the server scores it >= 6/10 from likes + upvotes + replies (sml-watch/v1).
+    function ttcCard(c){
+      c=c||{}; var sym=String(c.symbol||'').toUpperCase();
+      var name=c.author||'Trader';
+      var aurl=(c.handle&&/^[a-z0-9_.\-]+$/i.test(c.handle))?('/'+c.handle+'/'):(c.url||('/stock-chart/?symbol='+encodeURIComponent(sym)));
+      var av=c.avatar||'/wp-content/uploads/2026/08/Untitled-design-90.png';
+      var url=c.url||('/stock-chart/?symbol='+encodeURIComponent(sym)+'#comments');
+      var body=textOnly(c.body||'').slice(0,500);
+      var score=parseInt(c.score,10)||0;
+      var art=document.createElement('article');
+      art.className='oh-card oh-post sml-hf-ttc';  /* not sml-sth-post: a discussion pointer, not a likeable feed post */
+      art.setAttribute('data-hfe-item', c.id||('ttc-'+sym));
+      art.setAttribute('data-hfe-url', url);
+      if (c.authorId) art.setAttribute('data-sml-authorid', String(c.authorId));
+      art.setAttribute('data-sml-published', c.date||'');
+      var tag='<div style="font:800 10.5px/1 Inter,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#ff8a3d;padding:12px 16px 0">🔥 Hot on your watchlist · $'+esc(sym)+' terminal · '+score+'/10</div>';
+      art.innerHTML= tag +
+        '<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av)+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
+        '<div class="oh-meta">'+esc(name)+' · on the $'+esc(sym)+' Ticker Terminal'+(c.date?' · '+esc(String(c.date).slice(0,10)):'')+'</div>'+
+        '<h2><a href="'+esc(url)+'">'+esc(body)+'</a></h2>'+
+        '<div class="sml-sth-actions"><span>🔥 '+(parseInt(c.likes,10)||0)+' reactions</span> <span>💬 '+(parseInt(c.replies,10)||0)+' replies</span> <a href="'+esc(url)+'">Open $'+esc(sym)+' terminal →</a></div>';
+      return art;
+    }
+    function fetchWatchHotComments(){
+      var syms = watchSyms().slice(0,20).join(','); if (!syms) return;
+      api('/wp-json/sml-watch/v1/hot-comments?symbols='+encodeURIComponent(syms)).then(function(res){
+        var j = res && res.j ? res.j : res; var arr=(j&&j.items)||[]; if (!arr.length) return;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+        var anchor = (pinnedHost && pinnedHost.parentNode===main) ? pinnedHost.nextSibling : main.firstChild;
+        var added=0;
+        arr.forEach(function(c){
+          var id=c.id||('ttc-'+c.symbol); if (!id || seenItemIds[id]) return; seenItemIds[id]=1;
+          var node=ttcCard(c); var key=cardKeyOf(node); if (key){ if (feedSeen[key]) return; feedSeen[key]=1; }
+          node.style.animation='smlHfNew .45s ease'; main.insertBefore(node, anchor); armRh(node,250); added++;
+        });
+        if (added){ dedupeFeed(); applyQuotes(); }
+      }).catch(function(){});
+    }
+    fetchWatchHotComments();
     function pollFeed(){
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
         if (html.indexOf('sml-optimized-home') < 0) return;
@@ -2088,7 +2153,11 @@
         fbComments(); enhanceSignalCards(host); dedupeFeed(); applyQuotes(); try{richenChartCards();}catch(e){}
       }).catch(function(){});
     }
-    setInterval(pollFeed, 45000);
+    setInterval(pollFeed, 60000);
+    // LIVE news: light delta poll so newly published posts stream in within seconds.
+    setInterval(pollNewPosts, 18000);
+    // Watchlist hot ticker-terminal comments: re-check on a calm cadence.
+    setInterval(fetchWatchHotComments, 60000);
     // Live rooms are ephemeral — refresh them on their own cadence so ended rooms
     // drop and new ones appear (renderRooms reconciles).
     setInterval(fetchWatchlistRooms, 45000);
