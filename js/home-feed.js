@@ -160,7 +160,21 @@
   function fmtVol(v){if(v==null)return'—';v=Number(v);return v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(v);}
   function qColor(v){return v==null?'#6B7C90':(v>=0?'#38F58A':'#F2495C');}
   /* watchlist tick-flash + price-target distance state (owner call 2026-09-16) */
-  var Qprev = {}, WL_TARGETS = {};
+  var Qprev = {}, WL_TARGETS = {}, WL_HIT_INFLIGHT = {}, WL_HIT_COOL = {}, WL_RERENDER = null;
+  function smlWlNonce(){ try{ return (window.SMLHomeOwnerControls&&SMLHomeOwnerControls.nonce)||(window.SMLHomeFeedEngagement&&SMLHomeFeedEngagement.nonce)||(window.wpApiSettings&&window.wpApiSettings.nonce)||''; }catch(e){ return ''; } }
+  /* INSTANT price-target alert: the moment the 5s quote poll shows a target crossed,
+     tell the server (which re-verifies the live price and fires the LOOP-KICK alert).
+     The 5-min cron is only the offline safety net. Owner call 2026-09-16. */
+  function smlWlInstantCheck(){
+    var now=Date.now(), hits=[];
+    for(var sym in WL_TARGETS){ var tg=WL_TARGETS[sym]; if(!tg||tg.hit||WL_HIT_INFLIGHT[sym]||(WL_HIT_COOL[sym]&&now<WL_HIT_COOL[sym])) continue; var d=Q[sym]; if(!d||d.last==null) continue; var last=Number(d.last), price=Number(tg.price); if(!(last>0)||!(price>0)) continue; if(tg.side==='short'?(last<=price):(last>=price)) hits.push(sym); }
+    if(!hits.length) return;
+    var n=smlWlNonce(); if(!n) return;
+    hits.forEach(function(s){ WL_HIT_INFLIGHT[s]=1; });
+    fetch('/wp-json/sml-watch/v1/check',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbols:hits})})
+      .then(function(r){return r.json();}).then(function(j){ var fired=(j&&j.fired)||[]; hits.forEach(function(s){ delete WL_HIT_INFLIGHT[s]; if(fired.indexOf(s)<0) WL_HIT_COOL[s]=Date.now()+30000; }); if(j&&j.targets){ WL_TARGETS=j.targets; if(WL_RERENDER) WL_RERENDER(); } })
+      .catch(function(){ hits.forEach(function(s){ delete WL_HIT_INFLIGHT[s]; }); });
+  }
   function smlWlFlash(row, up){ if(!row) return; row.classList.remove('wl-up','wl-down'); void row.offsetWidth; row.classList.add(up?'wl-up':'wl-down'); setTimeout(function(){ row.classList.remove('wl-up','wl-down'); }, 700); }
   function smlWlPaintDist(){
     document.querySelectorAll('#sml-hf-shell [data-wl-dist]').forEach(function(el){
@@ -174,7 +188,7 @@
       el.style.color=short?'#F2C14E':'#7FB8FF';
     });
   }
-  function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var sym=el.getAttribute('data-q'), d=Q[sym]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4'; if(v!=null){ var row=el.closest&&el.closest('.sml-hf-wl-row'); if(row){ var p=Qprev[sym]; if(p!=null && Number(v)!==Number(p)) smlWlFlash(row, Number(v)>Number(p)); } }} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); for(var s in Q){ if(Q[s] && Q[s].last!=null) Qprev[s]=Q[s].last; } smlWlPaintDist(); ingestSignalQuoteEvents(); }
+  function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var sym=el.getAttribute('data-q'), d=Q[sym]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4'; if(v!=null){ var row=el.closest&&el.closest('.sml-hf-wl-row'); if(row){ var p=Qprev[sym]; if(p!=null && Number(v)!==Number(p)) smlWlFlash(row, Number(v)>Number(p)); } }} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); for(var s in Q){ if(Q[s] && Q[s].last!=null) Qprev[s]=Q[s].last; } smlWlPaintDist(); smlWlInstantCheck(); ingestSignalQuoteEvents(); }
   function pollQuotes(){ if(document.hidden) return; var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
 
   function boot() {
@@ -853,6 +867,7 @@
     // Start live-quote polling (fills tape / watchlist / snapshot; "—" while offline).
     pollQuotes(); if (qTimer) clearInterval(qTimer); qTimer = setInterval(pollQuotes, 5000);
     document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollQuotes(); });
+    WL_RERENDER = renderWatch; // let the top-level instant-check re-render on a fired alert
     renderWatch();          // paint the new watchlist module (header/rows/footer)
     loadAccountWatchlist(); // pull the user's saved watchlist from their account
     loadTargets();          // pull the user's price-target alerts
