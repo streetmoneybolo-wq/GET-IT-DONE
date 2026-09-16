@@ -321,6 +321,25 @@ $GLOBALS['t_now'] -= 31 * DAY_IN_SECONDS;
 
 $r = sml_fs_rest_onboarding_get( new WP_REST_Request() );
 ok( count( $r->data['questions'] ) === 10, 'GET returns the questions' );
+
+/* the welcome step that follows sign-up */
+$GLOBALS['t_meta'] = array();
+ok( false === sml_fs_onboarding_state( 42 )['welcome'], 'an existing member is not welcomed' );
+sml_fs_mark_new_member( 42 );
+ok( true === sml_fs_onboarding_state( 42 )['welcome'], 'a newly created account is welcomed' );
+sml_fs_rest_onboarding_snooze( new WP_REST_Request( array( 'days' => 7 ) ) );
+ok( false === sml_fs_onboarding_state( 42 )['welcome'], 'skipping the welcome step clears it for good' );
+ok( false === sml_fs_onboarding_state( 42 )['shouldPrompt'], 'and the normal prompt waits out the snooze' );
+$GLOBALS['t_meta'] = array();
+sml_fs_mark_new_member( 42 );
+sml_fs_rest_onboarding_save( new WP_REST_Request( array( 'answers' => $fx['fixtures'][0]['input'] ) ) );
+ok( false === sml_fs_onboarding_state( 42 )['welcome'] && ! isset( $GLOBALS['t_meta'][42][ SML_FS_WELCOME_META ] ), 'saving the questionnaire clears the welcome flag' );
+$GLOBALS['t_meta'] = array( 42 => array( SML_FS_WELCOME_META => $GLOBALS['t_now'] - 31 * DAY_IN_SECONDS ) );
+ok( false === sml_fs_onboarding_state( 42 )['welcome'], 'a signup older than 30 days is not greeted as new' );
+sml_fs_mark_new_member( 0 );
+ok( ! isset( $GLOBALS['t_meta'][0] ), 'no flag is written for an invalid user id' );
+$GLOBALS['t_meta'] = array();
+$GLOBALS['t_transients'] = array();
 ok( false === $r->data['slot'], 'with the slot off, the client is told not to ask for one' );
 
 /* empty affinity must serialise as {} not [] */

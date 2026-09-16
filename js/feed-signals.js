@@ -91,6 +91,7 @@
       '.sml-fs-dialog header h2{margin:0;font:700 17px Archivo,Inter,system-ui,sans-serif;}' +
       '.sml-fs-dialog .close{border:0;background:transparent;color:#93A4B8;font:700 20px/1 Inter,system-ui,sans-serif;cursor:pointer;padding:4px 8px;border-radius:8px;}' +
       '.sml-fs-dialog form{padding:6px 20px 20px;}' +
+      '.sml-fs-intro{margin:14px 20px 0;color:#B7C3CF;font:14px/1.5 Inter,system-ui,sans-serif;max-width:60ch;}' +
       '.sml-fs-q{margin:16px 0 0;padding:0;border:0;}' +
       '.sml-fs-q legend{margin:0 0 8px;font:600 14px Inter,system-ui,sans-serif;color:#fff;}' +
       '.sml-fs-q .opt{display:inline-flex;margin:0 8px 8px 0;}' +
@@ -469,7 +470,12 @@
     if (!card.parentNode || precedes) first.parentNode.insertBefore(card, first);
   }
 
-  function openQuestionnaire(state, promptCard) {
+  /* opts.welcome: shown automatically to a brand-new member right after sign-up.
+     Any way of leaving it (Skip, ×, Escape, outside click) counts as skipping,
+     so it is never auto-opened again; the normal prompt returns in 7 days. */
+  function openQuestionnaire(state, promptCard, opts) {
+    var welcome = !!(opts && opts.welcome);
+    var saved = false;
     var previousFocus = document.activeElement;
     var overlay = el('div', 'sml-fs-overlay');
     var dialog = el('div', 'sml-fs-dialog');
@@ -478,13 +484,17 @@
     dialog.setAttribute('aria-labelledby', 'sml-fs-dialog-title');
 
     var head = el('header');
-    var title = el('h2', '', 'Personalize your feed');
+    var title = el('h2', '', welcome ? 'Welcome to Stock Market Loop' : 'Personalize your feed');
     title.id = 'sml-fs-dialog-title';
     var close = el('button', 'close', '×');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close');
     head.appendChild(title); head.appendChild(close);
     dialog.appendChild(head);
+    if (welcome) {
+      var intro = el('p', 'sml-fs-intro', 'Your account is ready. Answer 10 quick questions about how you trade and we\u2019ll tune your feed to it. About a minute \u2014 or skip and do it later.');
+      dialog.appendChild(intro);
+    }
 
     var form = el('form');
     form.noValidate = true;
@@ -528,12 +538,25 @@
     status.setAttribute('aria-live', 'polite');
     var submit = el('button', 'sml-fs-btn primary', 'Save my preferences');
     submit.type = 'submit';
-    foot.appendChild(status); foot.appendChild(submit);
+    foot.appendChild(status);
+    if (welcome) {
+      var skip = el('button', 'sml-fs-btn', 'Skip for now');
+      skip.type = 'button';
+      skip.addEventListener('click', function () { dismiss(); });
+      var actions = el('div', 'sml-fs-row');
+      actions.appendChild(skip); actions.appendChild(submit);
+      foot.appendChild(actions);
+    } else {
+      foot.appendChild(submit);
+    }
     form.appendChild(foot);
     dialog.appendChild(form);
     overlay.appendChild(dialog);
 
     function dismiss() {
+      /* keepalive: this host can take 15s+ to answer, and a new member who skips
+         and immediately opens a post must not cancel it — or they'd be welcomed again */
+      if (welcome && !saved) api('POST', '/onboarding/snooze', { days: 7 }, { keepalive: true }).catch(function () {});
       overlay.remove();
       document.removeEventListener('keydown', onKey, true);
       if (previousFocus && previousFocus.focus) previousFocus.focus({ preventScroll: true });
@@ -581,6 +604,7 @@
       submit.disabled = true;
       status.textContent = 'Saving…';
       api('POST', '/onboarding', { answers: answers }).then(function () {
+        saved = true;
         promptState = null;
         status.textContent = 'Saved.';
         dismiss();
@@ -613,7 +637,9 @@
   function startOnboarding() {
     api('GET', '/onboarding').then(function (state) {
       if (state && state.slot === true) startSlot();   /* only when the slot is switched on for this member */
-      if (state && state.shouldPrompt && Array.isArray(state.questions) && state.questions.length) insertPrompt(state);
+      if (!state || !Array.isArray(state.questions) || !state.questions.length) return;
+      if (state.welcome === true) { openQuestionnaire(state, null, { welcome: true }); return; }
+      if (state.shouldPrompt) insertPrompt(state);
     }).catch(function () { /* no prompt is always a safe outcome */ });
   }
 

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Feed Signals
  * Description: Per-member feed signals — hides ("not interested"), impression counts, the onboarding questionnaire, and a server-side watchlist reader. The data the corporate feed slot's eligibility rules need.
- * Version: 1.1.2
+ * Version: 1.2.0
  *
  * WHAT THIS IS FOR
  * The corporate feed slot (platform/corporate-feed.js) decides eligibility from
@@ -25,7 +25,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-const SML_FS_VERSION = '1.1.2';
+const SML_FS_VERSION = '1.2.0';
 const SML_FS_SCHEMA  = 2;
 const SML_FS_NS      = 'sml-feed/v1';
 
@@ -611,17 +611,41 @@ function sml_fs_build_profile( array $answers ) {
 
 const SML_FS_ONBOARDING_META = 'sml_feed_onboarding';
 const SML_FS_SNOOZE_META     = 'sml_feed_onboarding_snooze_until';
+/** Set when an account is created; the questionnaire opens as a welcome step once. */
+const SML_FS_WELCOME_META    = 'sml_feed_onboarding_welcome';
+const SML_FS_WELCOME_WINDOW  = 30 * 86400;
+
+/**
+ * Part of the sign-up flow WITHOUT touching the sign-up card.
+ *
+ * The /register/ card and its JavaScript are hardened and owner-approved; they
+ * stay exactly as they are. sml-members creates the account with
+ * wp_create_user() (so user_register fires), verification signs the member in,
+ * and the card then sends them to the homepage — where feed-signals.js opens
+ * the questionnaire as a welcome step because of this flag. It works the same
+ * for any other way an account gets created. Shown once: saving or skipping
+ * clears it, and it lapses after 30 days so an old unverified signup is not
+ * greeted as new months later.
+ */
+function sml_fs_mark_new_member( $user_id ) {
+	$user_id = (int) $user_id;
+	if ( $user_id > 0 ) update_user_meta( $user_id, SML_FS_WELCOME_META, sml_fs_now() );
+}
 
 function sml_fs_onboarding_state( $user_id ) {
 	$stored = get_user_meta( $user_id, SML_FS_ONBOARDING_META, true );
 	$snooze = (int) get_user_meta( $user_id, SML_FS_SNOOZE_META, true );
 	$done   = is_array( $stored ) && ! empty( $stored['completed_at'] );
+	$joined = (int) get_user_meta( $user_id, SML_FS_WELCOME_META, true );
+	$welcome = ! $done && $joined > 0 && $joined > sml_fs_now() - SML_FS_WELCOME_WINDOW;
 	return array(
 		'completed'     => $done,
 		'answers'       => $done ? $stored['answers'] : null,
 		'profile'       => $done ? $stored['profile'] : null,
 		'snoozedUntil'  => $snooze > sml_fs_now() ? gmdate( 'c', $snooze ) : null,
 		'shouldPrompt'  => ! $done && $snooze <= sml_fs_now(),
+		/* a brand-new member: open the questionnaire as a welcome step, not a card */
+		'welcome'       => $welcome,
 	);
 }
 
@@ -653,6 +677,7 @@ function sml_fs_rest_onboarding_save( WP_REST_Request $request ) {
 		'completed_at' => gmdate( 'c', sml_fs_now() ),
 	) );
 	delete_user_meta( $user_id, SML_FS_SNOOZE_META );
+	delete_user_meta( $user_id, SML_FS_WELCOME_META );
 	if ( ! $profile['categoryAffinity'] ) $profile['categoryAffinity'] = new stdClass();
 	return rest_ensure_response( array( 'saved' => true, 'profile' => $profile, 'ignored' => $result['rejected'] ) );
 }
@@ -661,6 +686,8 @@ function sml_fs_rest_onboarding_snooze( WP_REST_Request $request ) {
 	$days  = max( 1, min( 30, (int) ( $request->get_param( 'days' ) ?: 7 ) ) );
 	$until = sml_fs_now() + $days * DAY_IN_SECONDS;
 	update_user_meta( get_current_user_id(), SML_FS_SNOOZE_META, $until );
+	/* skipping the welcome step is still an answer: never auto-open it again */
+	delete_user_meta( get_current_user_id(), SML_FS_WELCOME_META );
 	return rest_ensure_response( array( 'snoozedUntil' => gmdate( 'c', $until ) ) );
 }
 
@@ -807,6 +834,7 @@ function sml_fs_privacy_eraser( $email, $page = 1 ) {
 	$removed += (int) $wpdb->delete( sml_fs_impressions_table(), array( 'user_id' => $user->ID ), array( '%d' ) );
 	$removed += delete_user_meta( $user->ID, SML_FS_ONBOARDING_META ) ? 1 : 0;
 	delete_user_meta( $user->ID, SML_FS_SNOOZE_META );
+	delete_user_meta( $user->ID, SML_FS_WELCOME_META );
 	return array( 'items_removed' => $removed > 0, 'items_retained' => false, 'messages' => array(), 'done' => true );
 }
 
@@ -838,6 +866,7 @@ require_once __DIR__ . '/corporate-slot.php';
 
 register_activation_hook( __FILE__, 'sml_fs_install' );
 add_action( 'plugins_loaded', 'sml_fs_maybe_install' );
+add_action( 'user_register', 'sml_fs_mark_new_member', 20 );
 add_action( 'rest_api_init', 'sml_fs_register_routes' );
 add_action( 'sml_fs_retention_event', 'sml_fs_retention' );
 add_action( 'init', function () {
