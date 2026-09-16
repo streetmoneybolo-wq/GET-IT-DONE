@@ -424,7 +424,15 @@
     var WKEY='sml_hf_watchlist', wl=null, wEdit=false;
     try { var wraw=localStorage.getItem(WKEY); if(wraw){ wl=JSON.parse(wraw); if(!Object.prototype.toString.call(wl).match(/Array/)) wl=null; } } catch(e){}
     function watchSyms(){ return (wl&&wl.length?wl:syms.slice(0,6)); }
-    function saveWl(){ try{ localStorage.setItem(WKEY,JSON.stringify(wl||[])); }catch(e){} }
+    function saveWl(){ try{ localStorage.setItem(WKEY,JSON.stringify(wl||[])); }catch(e){}
+      /* Owner call 2026-09-15: keep the one-shot /sml-home/v2/bootstrap snapshot that
+         the fetch shim serves for GET /sml-members/v1/watchlist in sync, so a read of
+         the watchlist in THIS page load reflects the add/remove immediately (component
+         shape is {watchlist:[…]}, matching loadAccountWatchlist). Then let the feed
+         refresh its watchlist-driven cards at once instead of on the next 60s tick. */
+      try { if (HFB && HFB.map && typeof HFB.map === 'object') HFB.map.watchlist = { watchlist: (wl||[]).slice() }; } catch(e){}
+      try { document.dispatchEvent(new CustomEvent('sml:watchlist-changed', { detail: { list: (wl||[]).slice() } })); } catch(e){}
+    }
     // Account sync: persist the watchlist to the logged-in user's SML account
     // (falls back to localStorage-only when logged out / no nonce).
     var WL_API='/wp-json/sml-members/v1/watchlist';
@@ -2130,6 +2138,25 @@
       }).catch(function(){});
     }
     fetchWatchHotComments();
+    // React to a watchlist add/remove at once (saveWl fires this): pull the new
+    // symbol's hot ticker-terminal comments and its live rooms without waiting for
+    // the 60s tick. When a symbol is removed, drop its already-shown hot-comment card.
+    var __wlChangeT = 0;
+    document.addEventListener('sml:watchlist-changed', function (ev) {
+      var live = (ev && ev.detail && Array.isArray(ev.detail.list)) ? ev.detail.list.map(function (s) { return String(s).toUpperCase(); }) : null;
+      if (live) {
+        host.querySelectorAll('.sml-hf-ttc').forEach(function (c) {
+          var sym = (String(c.getAttribute('data-hfe-item') || '').split('-')[1] || '').toUpperCase();
+          if (sym && live.indexOf(sym) === -1) {
+            var it = c.getAttribute('data-hfe-item'); if (it) delete seenItemIds[it];
+            var k = cardKeyOf(c); if (k) delete feedSeen[k];
+            c.remove();
+          }
+        });
+      }
+      clearTimeout(__wlChangeT);
+      __wlChangeT = setTimeout(function () { try { fetchWatchHotComments(); } catch (e) {} try { fetchWatchlistRooms(); } catch (e) {} }, 400);
+    });
     function pollFeed(){
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
         if (html.indexOf('sml-optimized-home') < 0) return;
