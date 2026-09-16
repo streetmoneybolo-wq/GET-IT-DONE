@@ -159,7 +159,22 @@
   function fmtChg(v){return v==null?'—':(v>=0?'+':'')+Number(v).toFixed(2);}
   function fmtVol(v){if(v==null)return'—';v=Number(v);return v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':String(v);}
   function qColor(v){return v==null?'#6B7C90':(v>=0?'#38F58A':'#F2495C');}
-  function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var d=Q[el.getAttribute('data-q')]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); ingestSignalQuoteEvents(); }
+  /* watchlist tick-flash + price-target distance state (owner call 2026-09-16) */
+  var Qprev = {}, WL_TARGETS = {};
+  function smlWlFlash(row, up){ if(!row) return; row.classList.remove('wl-up','wl-down'); void row.offsetWidth; row.classList.add(up?'wl-up':'wl-down'); setTimeout(function(){ row.classList.remove('wl-up','wl-down'); }, 700); }
+  function smlWlPaintDist(){
+    document.querySelectorAll('#sml-hf-shell [data-wl-dist]').forEach(function(el){
+      var sym=el.getAttribute('data-wl-dist'), tg=WL_TARGETS[sym], d=Q[sym];
+      if(!tg || !d || d.last==null){ el.textContent=''; return; }
+      var last=Number(d.last), price=Number(tg.price); if(!(last>0)||!(price>0)){ el.textContent=''; return; }
+      var short=tg.side==='short', hit=short?(last<=price):(last>=price);
+      if(hit){ el.textContent='🎯 target hit'; el.style.color='#38F58A'; return; }
+      var need=short?(1-price/last)*100:(price/last-1)*100;
+      el.textContent=(short?'▼ ':'▲ ')+need.toFixed(1)+'% → $'+(price>=1000?price.toLocaleString(undefined,{maximumFractionDigits:2}):price.toFixed(2));
+      el.style.color=short?'#F2C14E':'#7FB8FF';
+    });
+  }
+  function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var sym=el.getAttribute('data-q'), d=Q[sym]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4'; if(v!=null){ var row=el.closest&&el.closest('.sml-hf-wl-row'); if(row){ var p=Qprev[sym]; if(p!=null && Number(v)!==Number(p)) smlWlFlash(row, Number(v)>Number(p)); } }} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); for(var s in Q){ if(Q[s] && Q[s].last!=null) Qprev[s]=Q[s].last; } smlWlPaintDist(); ingestSignalQuoteEvents(); }
   function pollQuotes(){ if(document.hidden) return; var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
 
   function boot() {
@@ -441,8 +456,12 @@
     function navItems(){ return NAV.map(function(n){return '<a href="'+n[2]+'" style="display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:11px;cursor:pointer;font-size:13.5px;font-weight:500;color:#93A4B8;text-decoration:none;background:transparent" onmouseover="this.style.background=\'linear-gradient(180deg,#1B2634,#121A26)\';this.style.color=\'#E6EDF5\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'#93A4B8\'"><span style="font-size:15px;width:18px;text-align:center">'+n[0]+'</span>'+n[1]+'</a>';}).join(''); }
     // Watchlist: user-editable, saved per-browser; defaults to symbols from the feed.
     var WKEY='sml_hf_watchlist', wl=null, wEdit=false;
+    var WL_MAX=15, WL_PAGE=6, wPage=0, wMenu=false, wShare=false, wTgtOpen='', wShared=false, wSharedSyms=null;
     try { var wraw=localStorage.getItem(WKEY); if(wraw){ wl=JSON.parse(wraw); if(!Object.prototype.toString.call(wl).match(/Array/)) wl=null; } } catch(e){}
-    function watchSyms(){ return (wl&&wl.length?wl:syms.slice(0,6)); }
+    /* Shared watchlist view: a link like /?watchlist=SPY,QQQ,NVDA opens the rail in
+       read-only "shared" mode showing those tickers (owner call 2026-09-16). */
+    try { var wlm=/[?&]watchlist=([^&#]+)/.exec(location.search); if(wlm){ var raw=decodeURIComponent(wlm[1]).toUpperCase().split(/[,\s]+/).map(function(s){return s.replace(/[^A-Z0-9.\-]/g,'');}).filter(Boolean).slice(0,WL_MAX); if(raw.length){ wShared=true; wSharedSyms=raw; } } } catch(e){}
+    function watchSyms(){ if(wShared&&wSharedSyms) return wSharedSyms.slice(0,WL_MAX); return (wl&&wl.length?wl:syms.slice(0,6)).slice(0,WL_MAX); }
     function saveWl(){ try{ localStorage.setItem(WKEY,JSON.stringify(wl||[])); }catch(e){}
       /* Owner call 2026-09-15: keep the one-shot /sml-home/v2/bootstrap snapshot that
          the fetch shim serves for GET /sml-members/v1/watchlist in sync, so a read of
@@ -457,10 +476,104 @@
     var WL_API='/wp-json/sml-members/v1/watchlist';
     function wlNonce(){ try{ return (window.SML_ME && window.SMLHomeFeedEngagement && SMLHomeFeedEngagement.nonce) || ''; }catch(e){ return ''; } }
     function wlSync(symbol, action){ var n=wlNonce(); if(!n) return; fetch(WL_API,{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:symbol,action:action})}).catch(function(){}); }
-    function loadAccountWatchlist(){ var n=wlNonce(); if(!n) return; fetch(WL_API,{credentials:'same-origin',headers:{'X-WP-Nonce':n}}).then(function(r){return r.json();}).then(function(d){ if(d&&d.watchlist&&d.watchlist.length){ wl=d.watchlist.slice(0,12).map(function(s){return String(s).toUpperCase();}); saveWl(); wl.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); renderWatch(); pollQuotes(); } }).catch(function(){}); }
-    function watchRows(){ return watchSyms().map(function(s){return '<div data-wgo="'+esc(s)+'" data-tkpop="'+esc(s)+'" style="display:flex;align-items:center;gap:8px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;cursor:pointer"><span style="color:#38F58A;font-weight:600;width:56px">$'+esc(s)+'</span><span data-q="'+esc(s)+'" data-qf="last" style="color:#6B7C90;margin-left:auto">—</span><span data-q="'+esc(s)+'" data-qf="pct" style="color:#6B7C90;width:66px;text-align:right">—</span>'+(wEdit?'<button data-wdel="'+esc(s)+'" title="Remove" style="flex:none;width:20px;height:20px;border-radius:6px;border:1px solid rgba(242,73,92,.45);background:rgba(242,73,92,.12);color:#F2495C;font-size:11px;line-height:1;cursor:pointer;padding:0">✕</button>':'')+'</div>';}).join(''); }
-    function renderWatch(){ var el=document.getElementById('sml-hf-watch-list'); if(el){ el.innerHTML=watchRows(); applyQuotes(); } var ab=document.getElementById('sml-hf-watch-add'); if(ab) ab.style.display=wEdit?'flex':'none'; var eb=document.getElementById('sml-hf-watch-edit'); if(eb){ eb.textContent=wEdit?'done':'edit'; eb.style.color=wEdit?'#38F58A':'#6B7C90'; eb.style.borderColor=wEdit?'rgba(56,245,138,.5)':'rgba(255,255,255,.12)'; } }
-    function addTicker(){ var inp=document.getElementById('sml-hf-watch-inp'); if(!inp) return; var v=String(inp.value||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); inp.value=''; if(!v||v.length>6) return; var cur=watchSyms().slice(); if(cur.indexOf(v)<0){ cur.unshift(v); wlSync(v,'add'); } wl=cur.slice(0,12); saveWl(); if(SYMS.indexOf(v)<0) SYMS.push(v); renderWatch(); pollQuotes(); inp.focus(); }
+    function loadAccountWatchlist(){ if(wShared) return; var n=wlNonce(); if(!n) return; fetch(WL_API,{credentials:'same-origin',headers:{'X-WP-Nonce':n}}).then(function(r){return r.json();}).then(function(d){ if(d&&d.watchlist&&d.watchlist.length){ wl=d.watchlist.slice(0,WL_MAX).map(function(s){return String(s).toUpperCase();}); saveWl(); wl.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); renderWatch(); pollQuotes(); } }).catch(function(){}); }
+    function ensureWlCss(){
+      if(document.getElementById('sml-hf-wl-css')) return;
+      var st=document.createElement('style'); st.id='sml-hf-wl-css';
+      st.textContent=''
+        +'.sml-hf-wl-row{display:flex;align-items:center;gap:8px;font-family:"IBM Plex Mono",monospace;font-size:12px;cursor:pointer;border-radius:8px;padding:4px 6px;margin:0 -6px;transition:background .18s}'
+        +'.sml-hf-wl-row:hover{background:rgba(255,255,255,.03)}'
+        +'@keyframes smlWlUp{0%{background:rgba(56,245,138,.30)}100%{background:transparent}}'
+        +'@keyframes smlWlDown{0%{background:rgba(242,73,92,.30)}100%{background:transparent}}'
+        +'.sml-hf-wl-row.wl-up{animation:smlWlUp .7s ease-out}.sml-hf-wl-row.wl-down{animation:smlWlDown .7s ease-out}'
+        +'.wl-dist{font-size:10px;font-weight:600;white-space:nowrap;flex:none}'
+        +'.wl-ic{flex:none;width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,#1C2734,#111926);color:#8fa3b5;font-size:11px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center}'
+        +'.wl-ic:hover{color:#E6EDF5;border-color:#2a3d4b}.wl-ic.on{color:#38F58A;border-color:rgba(56,245,138,.5)}'
+        +'.wl-teditor{margin:2px -6px 6px;padding:9px 8px;border-radius:9px;background:linear-gradient(180deg,#0B131E,#0d141c);border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:7px}'
+        +'.wl-teditor input{background:#070C14;border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:6px 9px;color:#E6EDF5;font:600 12px/1 "IBM Plex Mono",monospace;outline:none;width:100%;box-sizing:border-box}'
+        +'.wl-seg{display:flex;gap:4px}.wl-seg button{flex:1;padding:6px 4px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:#111926;color:#8fa3b5;font:600 10.5px/1 Inter,system-ui;cursor:pointer}'
+        +'.wl-seg button.on[data-wl-side="long"]{color:#38F58A;border-color:rgba(56,245,138,.5);background:rgba(56,245,138,.08)}'
+        +'.wl-seg button.on[data-wl-side="short"]{color:#F2495C;border-color:rgba(242,73,92,.5);background:rgba(242,73,92,.08)}'
+        +'.sml-hf-wl-menu{position:absolute;right:0;top:26px;z-index:30;min-width:132px;background:linear-gradient(168deg,#1B2532,#0B111A);border:1px solid rgba(255,255,255,.12);border-radius:11px;box-shadow:0 18px 40px rgba(0,0,0,.6);overflow:hidden}'
+        +'.sml-hf-wl-menu button{display:flex;width:100%;gap:9px;align-items:center;padding:10px 13px;background:none;border:0;color:#E6EDF5;font:600 12.5px/1 Inter,system-ui;cursor:pointer;text-align:left}.sml-hf-wl-menu button:hover{background:rgba(255,255,255,.06)}'
+        +'.wl-share{margin-top:11px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:9px}'
+        +'.wl-share .row{display:flex;gap:7px;flex-wrap:wrap}'
+        +'.wl-share a,.wl-share button{text-decoration:none;flex:none;width:32px;height:32px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:#111926;color:#CFDAE4;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer}'
+        +'.wl-share a:hover,.wl-share button:hover{border-color:#2a3d4b}'
+        +'.wl-next{margin-top:11px;display:flex;align-items:center;justify-content:space-between;font:600 10px/1 "IBM Plex Mono",monospace;color:#6B7C90}'
+        +'.wl-next button{padding:5px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg,#1C2734,#111926);color:#CFDAE4;font:700 10.5px/1 Inter,system-ui;cursor:pointer}.wl-next button:hover{border-color:#2a3d4b}';
+      document.head.appendChild(st);
+    }
+    function wlPages(){ return Math.max(1, Math.ceil(watchSyms().length/WL_PAGE)); }
+    function wlPageSyms(){ var a=watchSyms(); if(a.length<=WL_PAGE) return a; if(wPage>=wlPages()) wPage=0; var st=wPage*WL_PAGE; return a.slice(st, st+WL_PAGE); }
+    function rowHtml(s){
+      var tg=WL_TARGETS[s], hasT=!!tg;
+      var tgtBtn = wShared?'' : '<button class="wl-ic'+((hasT||wTgtOpen===s)?' on':'')+'" data-wl-tbtn="'+esc(s)+'" title="Price target alert">◎</button>';
+      var delBtn = (wEdit&&!wShared)?'<button class="wl-ic" data-wdel="'+esc(s)+'" title="Remove" style="color:#F2495C;border-color:rgba(242,73,92,.4)">✕</button>':'';
+      var badge = hasT?'<span class="wl-dist" data-wl-dist="'+esc(s)+'"></span>':'';
+      var row='<div class="sml-hf-wl-row" data-wgo="'+esc(s)+'" data-wl-row="'+esc(s)+'" data-tkpop="'+esc(s)+'">'
+        +'<span style="color:#38F58A;font-weight:600;width:52px;flex:none">$'+esc(s)+'</span>'
+        +'<span data-q="'+esc(s)+'" data-qf="last" style="color:#6B7C90;margin-left:auto">—</span>'
+        +'<span data-q="'+esc(s)+'" data-qf="pct" style="color:#6B7C90;width:60px;text-align:right;flex:none">—</span>'
+        + badge + tgtBtn + delBtn
+        +'</div>';
+      if(wTgtOpen===s && !wShared){
+        var cur=(Q[s]&&Q[s].last!=null)?Number(Q[s].last):0;
+        var side=hasT?tg.side:'long', pv=hasT?tg.price:'';
+        var ph=cur>0?(side==='short'?(cur*0.9).toFixed(2):(cur*1.1).toFixed(2)):'25.00';
+        row+='<div class="wl-teditor" data-wl-teditor="'+esc(s)+'">'
+          +'<div style="font:600 10px/1.3 Inter,system-ui;color:#8fa3b5">Alert me when $'+esc(s)+' reaches'+(cur>0?(' (now $'+cur.toFixed(2)+')'):'')+'</div>'
+          +'<div class="wl-seg"><button data-wl-side="long" data-for="'+esc(s)+'" class="'+(side==='long'?'on':'')+'">▲ Long / upside</button><button data-wl-side="short" data-for="'+esc(s)+'" class="'+(side==='short'?'on':'')+'">▼ Short / downside</button></div>'
+          +'<input type="number" step="0.01" inputmode="decimal" data-wl-tprice="'+esc(s)+'" placeholder="Target price, e.g. '+ph+'" value="'+esc(pv)+'">'
+          +'<div style="display:flex;gap:6px"><button data-wl-tset="'+esc(s)+'" style="flex:1;padding:7px;border-radius:7px;border:0;font:700 11.5px/1 Inter,system-ui;color:#04060a;background:linear-gradient(180deg,#6BFFB0,#17BC64);cursor:pointer">'+(hasT?'Update alert':'Set alert')+'</button>'+(hasT?'<button data-wl-tclear="'+esc(s)+'" style="flex:none;padding:7px 10px;border-radius:7px;border:1px solid rgba(242,73,92,.4);background:rgba(242,73,92,.1);color:#F2495C;font:700 11.5px/1 Inter,system-ui;cursor:pointer">Clear</button>':'')+'</div>'
+          +'</div>';
+      }
+      return row;
+    }
+    function watchRows(){ return wlPageSyms().map(rowHtml).join(''); }
+    function wlShareUrl(){ return location.origin+'/?watchlist='+encodeURIComponent(watchSyms().join(',')); }
+    function wlShareText(){ return 'My StockMarketLoop watchlist: '+watchSyms().map(function(s){return '$'+s;}).join(' '); }
+    function wlShareHtml(){
+      if(!wShare||wShared) return '';
+      var u=encodeURIComponent(wlShareUrl()), t=encodeURIComponent(wlShareText());
+      var plats=[['X','https://twitter.com/intent/tweet?text='+t+'&url='+u,'𝕏'],['Facebook','https://www.facebook.com/sharer/sharer.php?u='+u,'f'],['Reddit','https://www.reddit.com/submit?url='+u+'&title='+t,'r'],['WhatsApp','https://api.whatsapp.com/send?text='+t+'%20'+u,'✆'],['Telegram','https://t.me/share/url?url='+u+'&text='+t,'✈']];
+      return '<div class="wl-share"><div style="font:600 9.5px/1 \'IBM Plex Mono\',monospace;letter-spacing:.1em;color:#6B7C90">SHARE WATCHLIST</div>'
+        +'<div class="row">'+plats.map(function(p){return '<a href="'+esc(p[1])+'" target="_blank" rel="noopener" title="Share on '+esc(p[0])+'">'+p[2]+'</a>';}).join('')+'<button data-wl-share-copy="1" title="Copy link">🔗</button></div>'
+        +'<div style="font:500 10px/1.4 Inter,system-ui;color:#6B7C90">Anyone with the link sees a live, read-only copy of these '+watchSyms().length+' tickers.</div></div>';
+    }
+    function renderWatch(){
+      ensureWlCss();
+      var el=document.getElementById('sml-hf-watch-list'); if(el){ el.innerHTML=watchRows(); }
+      var ab=document.getElementById('sml-hf-watch-add'); if(ab) ab.style.display=(wEdit&&!wShared)?'flex':'none';
+      var head=document.getElementById('sml-hf-wl-head');
+      if(head){
+        head.innerHTML='<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.12em;color:#6B7C90">'+(wShared?'SHARED WATCHLIST':'MY WATCHLIST')+'</span>'
+          + (wShared
+              ? '<button id="sml-hf-wl-savesh" style="margin-left:auto;padding:3px 12px;border-radius:999px;border:1px solid rgba(56,245,138,.4);background:rgba(56,245,138,.08);color:#38F58A;font:700 9.5px/1 Inter,system-ui;cursor:pointer">＋ Save to mine</button>'
+              : '<button id="sml-hf-wl-kebab" aria-label="Watchlist options" style="margin-left:auto;width:26px;height:22px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,#1C2734,#111926);color:#8fa3b5;font-size:14px;line-height:1;cursor:pointer">⋯</button>')
+          + (wMenu&&!wShared?'<div class="sml-hf-wl-menu"><button data-wl-act="edit">✎ '+(wEdit?'Done editing':'Edit')+'</button><button data-wl-act="share">↗ Share</button></div>':'');
+      }
+      var foot=document.getElementById('sml-hf-wl-foot');
+      if(foot){
+        var pages=wlPages(), pager='';
+        if(pages>1){ pager='<div class="wl-next"><span>'+(wPage+1)+' / '+pages+' · '+watchSyms().length+' tickers</span><button id="sml-hf-wl-next">Next ›</button></div>'; }
+        foot.innerHTML=pager+wlShareHtml();
+      }
+      applyQuotes();
+    }
+    function loadTargets(){ if(wShared) return; var n=wlNonce(); if(!n) return; fetch('/wp-json/sml-watch/v1/targets',{credentials:'same-origin',headers:{'X-WP-Nonce':n}}).then(function(r){return r.json();}).then(function(d){ if(d&&d.targets){ WL_TARGETS=d.targets; renderWatch(); } }).catch(function(){}); }
+    function setTargetFor(s){
+      var side=(WL_TARGETS[s]&&WL_TARGETS[s].side)||'long';
+      var ss=document.querySelector('.wl-seg button.on[data-for="'+s+'"]'); if(ss) side=ss.getAttribute('data-wl-side');
+      var inp=document.querySelector('[data-wl-tprice="'+s+'"]'); if(!inp) return; var price=parseFloat(inp.value); if(!(price>0)){ inp.focus(); return; }
+      var base=(Q[s]&&Q[s].last!=null)?Number(Q[s].last):0;
+      WL_TARGETS[s]={price:price,side:side,base:base,hit:false}; wTgtOpen=''; renderWatch();
+      var n=wlNonce(); if(!n) return;
+      fetch('/wp-json/sml-watch/v1/targets',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:s,price:price,side:side,base:base})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.targets){ WL_TARGETS=d.targets; renderWatch(); } }).catch(function(){});
+    }
+    function clearTargetFor(s){ delete WL_TARGETS[s]; wTgtOpen=''; renderWatch(); var n=wlNonce(); if(!n) return; fetch('/wp-json/sml-watch/v1/targets',{method:'DELETE',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:s})}).catch(function(){}); }
+    function addTicker(){ var inp=document.getElementById('sml-hf-watch-inp'); if(!inp) return; var v=String(inp.value||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); inp.value=''; if(!v||v.length>6) return; var cur=watchSyms().slice(); if(cur.indexOf(v)<0){ cur.unshift(v); wlSync(v,'add'); } wl=cur.slice(0,WL_MAX); saveWl(); if(SYMS.indexOf(v)<0) SYMS.push(v); renderWatch(); pollQuotes(); inp.focus(); }
+    function saveSharedToMine(){ if(!wSharedSyms) return; var n=wlNonce(); if(!wl) wl=[]; wSharedSyms.slice().reverse().forEach(function(s){ if(wl.indexOf(s)<0){ wl.unshift(s); if(n) wlSync(s,'add'); } }); wl=wl.slice(0,WL_MAX); wShared=false; wSharedSyms=null; saveWl(); wl.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); try{ history.replaceState(null,'',location.pathname); }catch(e){} loadTargets(); renderWatch(); pollQuotes(); }
     function storyItems(){ return authors.slice(0,7).map(function(a){var ring='0 0 0 2px #0B131F,0 0 0 4px rgba(34,224,122,.7)'; var pres=a.slug?' data-pres="'+esc(a.slug)+'"':''; var av=a.img?'<img src="'+esc(a.img)+'" alt="'+esc(a.name)+'" loading="lazy"'+pres+' style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+ring+'">':'<div'+pres+' style="width:56px;height:56px;border-radius:50%;background:linear-gradient(160deg,#26343F,#0D141D);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#38F58A;box-shadow:inset 0 2px 0 rgba(255,255,255,.22),'+ring+'">'+esc(initialsOf(a.name))+'</div>'; var inner=av+'<span style="font-size:10px;color:#93A4B8;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.name)+'</span>'; var st='display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;flex:none;text-decoration:none;color:inherit'; return a.href?'<a href="'+esc(a.href)+'" style="'+st+'">'+inner+'</a>':'<div style="'+st+'">'+inner+'</div>';}).join(''); }
     var curTab='foryou';
     function feedTabs(){ return [['foryou','For You'],['following','Following'],['live','Live']].map(function(t){var on=curTab===t[0];return '<button data-tab="'+t[0]+'" style="padding:8px 20px;border-radius:999px;border:1px solid '+(on?'rgba(56,245,138,.5)':'rgba(255,255,255,.1)')+';background:'+(on?'linear-gradient(180deg,rgba(56,245,138,.2),rgba(1,167,125,.06))':'linear-gradient(180deg,#1C2734,#111926)')+';color:'+(on?'#38F58A':'#93A4B8')+';font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">'+t[1]+'</button>';}).join(''); }
@@ -607,9 +720,9 @@
         '<div id="sml-hf-left" style="position:sticky;top:118px;display:flex;flex-direction:column;gap:16px">' +
           '<div style="'+CARD+'padding:18px"><div style="display:flex;align-items:center;gap:12px"><div id="sml-hf-me-card" role="button" aria-label="Account menu" style="cursor:pointer;flex:none">'+avatarHTML(46,'#22E07A',4)+'</div><div><div style="font-weight:700;font-size:14.5px">'+esc(meName)+'</div><div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#38F58A"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A"></span>Signed in</div></div></div></div>' +
           '<div style="display:flex;flex-direction:column;gap:2px">'+navItems()+'</div>' +
-          '<div style="'+CARD+'padding:16px"><div style="display:flex;align-items:center;margin-bottom:12px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.12em;color:#6B7C90">MY WATCHLIST</span><button id="sml-hf-watch-edit" style="margin-left:auto;padding:3px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,#1C2734,#111926);color:#6B7C90;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;cursor:pointer">edit</button></div>' +
+          '<div style="'+CARD+'padding:16px"><div id="sml-hf-wl-head" style="position:relative;display:flex;align-items:center;margin-bottom:12px"></div>' +
           '<div id="sml-hf-watch-add" style="display:none;gap:6px;margin-bottom:12px"><input id="sml-hf-watch-inp" placeholder="Add ticker, e.g. NVDA" maxlength="6" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:9px;padding:7px 11px;color:#E6EDF5;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;outline:none;text-transform:uppercase"><button id="sml-hf-watch-addbtn" style="flex:none;padding:0 14px;border-radius:9px;font-size:11.5px;'+GBTN+'">Add</button></div>' +
-          '<div id="sml-hf-watch-list" style="display:flex;flex-direction:column;gap:10px">'+watchRows()+'</div></div>' +
+          '<div id="sml-hf-watch-list" style="display:flex;flex-direction:column;gap:8px"></div><div id="sml-hf-wl-foot"></div></div>' +
         '</div>' +
         // center
         '<div style="min-width:0">' +
@@ -740,7 +853,9 @@
     // Start live-quote polling (fills tape / watchlist / snapshot; "—" while offline).
     pollQuotes(); if (qTimer) clearInterval(qTimer); qTimer = setInterval(pollQuotes, 5000);
     document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollQuotes(); });
+    renderWatch();          // paint the new watchlist module (header/rows/footer)
     loadAccountWatchlist(); // pull the user's saved watchlist from their account
+    loadTargets();          // pull the user's price-target alerts
 
     // Watchlist edit controls (event delegation — rows re-render).
     shell.addEventListener('click', function(ev){
@@ -758,18 +873,31 @@
       }
       var tb = b.getAttribute('data-tab');
       if (tb){ curTab = tb; styleTabs(); if (tb === 'following') loadFollowSet(dedupeFeed); else if (tb === 'live') buildLiveGrid(); dedupeFeed(); return; }
-      if (b.id === 'sml-hf-watch-edit') { wEdit = !wEdit; renderWatch(); var i=document.getElementById('sml-hf-watch-inp'); if (wEdit && i) i.focus(); return; }
       if (b.id === 'sml-hf-watch-addbtn') { addTicker(); return; }
+      if (b.id === 'sml-hf-wl-kebab') { wMenu = !wMenu; renderWatch(); return; }
+      if (b.id === 'sml-hf-wl-next') { wPage = (wPage + 1) % wlPages(); renderWatch(); return; }
+      if (b.id === 'sml-hf-wl-savesh') { saveSharedToMine(); return; }
+      var act = b.getAttribute('data-wl-act');
+      if (act === 'edit') { wEdit = !wEdit; wMenu = false; wShare = false; renderWatch(); var i=document.getElementById('sml-hf-watch-inp'); if (wEdit && i) i.focus(); return; }
+      if (act === 'share') { wShare = !wShare; wMenu = false; renderWatch(); return; }
+      var tb = b.getAttribute('data-wl-tbtn');
+      if (tb) { wTgtOpen = (wTgtOpen === tb) ? '' : tb; renderWatch(); return; }
+      var sd = b.getAttribute('data-wl-side');
+      if (sd) { var f=b.getAttribute('data-for'); document.querySelectorAll('.wl-seg button[data-for="'+f+'"]').forEach(function(x){ x.classList.toggle('on', x===b); }); return; }
+      var tset = b.getAttribute('data-wl-tset'); if (tset) { setTargetFor(tset); return; }
+      var tclr = b.getAttribute('data-wl-tclear'); if (tclr) { clearTargetFor(tclr); return; }
+      if (b.getAttribute('data-wl-share-copy')) { var url=wlShareUrl(); try{ navigator.clipboard.writeText(url); b.textContent='✓'; setTimeout(function(){ b.textContent='🔗'; },1200); }catch(e){ window.prompt('Copy your watchlist link:', url); } return; }
       var del = b.getAttribute('data-wdel');
-      if (del) { wl = watchSyms().filter(function(x){ return x !== del; }); saveWl(); wlSync(del, 'remove'); renderWatch(); }
+      if (del) { wl = (wl||watchSyms()).filter(function(x){ return x !== del; }); saveWl(); wlSync(del, 'remove'); clearTargetFor(del); renderWatch(); return; }
     });
-    // Watchlist row click -> that stock's Ticker Terminal (unless editing / removing)
+    // Watchlist row click -> that stock's Ticker Terminal (unless a control was clicked)
     shell.addEventListener('click', function(ev){
-      if (wEdit) return;
-      if (ev.target.closest && ev.target.closest('button')) return;
+      if (ev.target.closest && (ev.target.closest('button') || ev.target.closest('.wl-teditor') || ev.target.closest('.sml-hf-wl-menu') || ev.target.closest('.wl-share') || ev.target.closest('input'))) return;
       var row = ev.target.closest ? ev.target.closest('[data-wgo]') : null;
       if (row) location.href = '/stock-chart/?symbol=' + encodeURIComponent(row.getAttribute('data-wgo'));
     });
+    // close the kebab menu when clicking outside it
+    document.addEventListener('click', function(ev){ if (wMenu && !(ev.target.closest && (ev.target.closest('#sml-hf-wl-kebab') || ev.target.closest('.sml-hf-wl-menu')))) { wMenu = false; renderWatch(); } });
     shell.addEventListener('keydown', function(ev){ if (ev.key === 'Enter' && ev.target && ev.target.id === 'sml-hf-watch-inp') { ev.preventDefault(); addTicker(); } });
     shell.addEventListener('scroll', recycleFeedIfNeeded, { passive: true });
 
