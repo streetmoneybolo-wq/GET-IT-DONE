@@ -165,7 +165,7 @@ function createCorporatePromoService({ pool, now = Date.now, logger = () => {} }
         const inserted = await client.query(
           `INSERT INTO corporate_promotions
              (corporate_id, spend_id, item_ref, starts_at, ends_at, status)
-           VALUES ($1, $2, $3, $4, $5, $6)
+           VALUES ($1, $2, $3, $4, $5, $6::corporate_promotion_status)
            RETURNING *`,
           [corporateId, spendId, itemRef, window.startsAt, window.endsAt,
             Date.parse(window.startsAt) <= now() ? 'running' : 'scheduled']
@@ -212,6 +212,11 @@ function createCorporatePromoService({ pool, now = Date.now, logger = () => {} }
   /**
    * The set of item refs that are boosted right now.
    *
+   * The ::corporate_promotion_status[] cast is required, not decorative: node-pg
+   * binds a JS array as text[], and Postgres has no text = enum operator, so
+   * without it this query fails outright the first time it runs against a real
+   * database.
+   *
    * Returns a Set for the feed's hot path. Status is checked in SQL AND the
    * window is re-checked in JS via isLive, so a row left stale by a failed
    * sweep still stops delivering on time — the clock is the authority, not the
@@ -223,7 +228,7 @@ function createCorporatePromoService({ pool, now = Date.now, logger = () => {} }
       `SELECT p.id, p.corporate_id, p.spend_id, p.item_ref, p.starts_at, p.ends_at, p.status
          FROM corporate_promotions p
          JOIN corporate_accounts a ON a.id = p.corporate_id
-        WHERE p.status = ANY($1)
+        WHERE p.status = ANY($1::corporate_promotion_status[])
           AND a.status = 'active'
           AND ($2::bigint IS NULL OR p.corporate_id = $2)`,
       [LIVE_STATUSES, corporateId]

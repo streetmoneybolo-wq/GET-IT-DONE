@@ -263,6 +263,15 @@ test('live promotions are filtered by the clock as well as by status', async () 
   assert.deepEqual([...live.corporateIds], [7]);
 });
 
+test('the status array is cast to the enum type', async () => {
+  /* node-pg binds a JS array as text[] and Postgres has no text = enum
+   * operator. Without the cast this query fails the first time it meets a real
+   * database — which no fake-client test can discover. */
+  const h = harness([['FROM corporate_promotions p', []]]);
+  await P.createCorporatePromoService({ pool: h.pool, now }).livePromotions();
+  assert.match(h.calls[0].sql, /ANY\(\$1::corporate_promotion_status\[\]\)/);
+});
+
 test('the live query joins on an active account', async () => {
   const h = harness([['FROM corporate_promotions p', []]]);
   await P.createCorporatePromoService({ pool: h.pool, now }).livePromotions();
