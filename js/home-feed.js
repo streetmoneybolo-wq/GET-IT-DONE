@@ -748,9 +748,10 @@
         '</div>' +
         // right rail
         '<div id="sml-hf-right" style="position:sticky;top:118px;display:flex;flex-direction:column;gap:16px">' +
+          // Traders you may connect with — top of the right rail; hidden until it has recs.
+          '<div id="sml-hf-trec" style="display:none"></div>' +
           '<div style="position:relative;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#04090A,#020506);border:1.5px solid rgba(56,245,138,.5);box-shadow:inset 0 0 26px rgba(56,245,138,.1),0 0 18px -6px rgba(56,245,138,.35)"><div style="position:absolute;inset:0;pointer-events:none;opacity:.18;background:repeating-linear-gradient(90deg,rgba(56,245,138,.5) 0 1px,transparent 1px 18px),repeating-linear-gradient(0deg,rgba(56,245,138,.35) 0 1px,transparent 1px 18px);-webkit-mask-image:linear-gradient(90deg,transparent 45%,#000 100%);mask-image:linear-gradient(90deg,transparent 45%,#000 100%)"></div><div style="position:relative;padding:12px 13px 4px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;letter-spacing:.2em;color:#38F58A;text-shadow:0 0 10px rgba(56,245,138,.6)">MARKET SNAPSHOT · SYMBOLS</div>'+snapRows()+'</div>' +
           '<div style="'+CARD+'padding:16px"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.12em;color:#6B7C90;margin-bottom:12px">MY GROUPS</div><div id="sml-hf-groups-list" style="display:flex;flex-direction:column;gap:8px">'+groupRows()+'</div></div>' +
-          '<div id="sml-hf-trec"></div>' +
           '<div style="background:linear-gradient(155deg,#123B27 0%,#132132 48%,#0B111A 100%);border:1px solid rgba(56,245,138,.22);border-top-color:rgba(140,255,200,.4);border-radius:18px;padding:18px;box-shadow:inset 0 1px 0 rgba(190,255,222,.26),0 20px 36px -16px rgba(0,0,0,.85),0 0 46px -20px rgba(56,245,138,.35)"><div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;margin-bottom:6px">Become a creator</div><div style="font-size:12.5px;color:#93A4B8;line-height:1.55;margin-bottom:14px">Go live, upload videos, or start your own Letter.</div><div style="display:flex;flex-direction:column;gap:8px"><a href="/go-live/" style="padding:9px 0;border-radius:999px;text-align:center;text-decoration:none;font-size:12.5px;'+GBTN+'">Go Live</a><a href="/upload-video/" style="padding:9px 0;border-radius:999px;text-align:center;text-decoration:none;font-size:12.5px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#1D2836,#111926);color:#E6EDF5">Upload Video</a><a href="/creator-studio/loop-letters/write/" style="padding:9px 0;border-radius:999px;text-align:center;text-decoration:none;font-size:12.5px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#1D2836,#111926);color:#E6EDF5">Start a Letter</a></div></div>' +
         '</div>' +
       '</div>';
@@ -1164,9 +1165,10 @@
       var mount=document.getElementById('sml-hf-trec'); if(!mount) return;
       api('/wp-json/sml-recs/v1/suggest?surface=connect&limit=6').then(function(d){
         var items=((d&&d.items&&d.items.length)?d.items:[]).map(trecCard).filter(Boolean);
-        if(!items.length){ mount.innerHTML=''; return; }
+        if(!items.length){ mount.innerHTML=''; mount.style.display='none'; return; }
         mount.innerHTML='<div style="'+CARD+'padding:16px"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.12em;color:#6B7C90;margin-bottom:12px">TRADERS YOU MAY CONNECT WITH</div><div style="display:flex;flex-direction:column;gap:12px">'+items.join('')+'</div></div>';
-      }).catch(function(){ mount.innerHTML=''; });
+        mount.style.display='';
+      }).catch(function(){ mount.innerHTML=''; mount.style.display='none'; });
     }
     document.addEventListener('click', function(e){
       var b=(e.target&&e.target.closest)?e.target.closest('[data-trec-follow]'):null; if(!b) return;
