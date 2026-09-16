@@ -375,6 +375,14 @@
       row.addEventListener('pointerleave', function () { row.classList.remove('is-hover'); });
     }
   }
+  var NEWS_MAX_AGE_MS = 75 * 60 * 1000;
+  function freshNews(items) {
+    var cutoff = (Date.now() - NEWS_MAX_AGE_MS) / 1000;
+    return (items || []).filter(function (it) {
+      if (!it || it.type !== 'news' || it.breaking) return true;
+      return Number(it.ts || 0) > cutoff;
+    });
+  }
   function loadRoller() {
     if (document.hidden && roller.items) return;
     /* no cache-buster: the feed is edge-cached for a minute (45ms) instead of a 1.4s WordPress boot on every poll */
@@ -384,6 +392,7 @@
         if (!json || !json.ok || !Array.isArray(json.items)) return;
         var seen = {}, items = [];
         json.items.forEach(function (it) { if (!it) return; var k = it.key || (it.type === 'ticker' ? 'ticker-' + it.symbol : 'news-' + it.url); if (!k || seen[k]) return; seen[k] = 1; items.push(it); });
+        items = freshNews(items);
         if (!items.length) return;
         roller.items = breakingEntries().concat(items.slice(0, 26));
         roller.sig = rollerSig();
@@ -397,7 +406,8 @@
     try {
       var snap = JSON.parse(localStorage.getItem(ROLLER_SNAP) || 'null');
       if (!snap || !Array.isArray(snap.items) || !snap.items.length || Date.now() - snap.at > 6 * 3600000) return;
-      roller.items = snap.items.slice(0, 26);
+      roller.items = freshNews(snap.items).slice(0, 26);
+      if (!roller.items.length) return;
       roller.sig = roller.items.map(function (it) { return it.key || it.symbol || it.url; }).join('|');
       renderRoller();
     } catch (e) {}
