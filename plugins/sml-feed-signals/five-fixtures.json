@@ -1,0 +1,791 @@
+{
+  "generatedFrom": "services/sml-platform/platform/corporate-onboarding.js (deploy/node-platform)",
+  "size": 5,
+  "cases": [
+    {
+      "name": "source order",
+      "input": {
+        "friends": [
+          {
+            "wpUserId": 1
+          }
+        ],
+        "traderSuggest": [
+          {
+            "wpUserId": 2
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1,
+            "source": "friends"
+          },
+          {
+            "wpUserId": 2,
+            "source": "trader_suggest"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    },
+    {
+      "name": "cold start backfills from creators",
+      "input": {
+        "friends": [],
+        "traderSuggest": [],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    },
+    {
+      "name": "automated accounts dropped everywhere",
+      "input": {
+        "friends": [
+          {
+            "wpUserId": 1,
+            "isAutomated": true
+          }
+        ],
+        "traderSuggest": [
+          {
+            "wpUserId": 2,
+            "isAutomated": 1
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 3,
+            "isAutomated": "yes"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    },
+    {
+      "name": "falsy isAutomated values are people",
+      "input": {
+        "friends": [
+          {
+            "wpUserId": 1,
+            "isAutomated": false
+          },
+          {
+            "wpUserId": 2,
+            "isAutomated": 0
+          },
+          {
+            "wpUserId": 3,
+            "isAutomated": ""
+          },
+          {
+            "wpUserId": 4,
+            "isAutomated": null
+          },
+          {
+            "wpUserId": 5,
+            "isAutomated": "0"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1,
+            "isAutomated": false,
+            "source": "friends"
+          },
+          {
+            "wpUserId": 2,
+            "isAutomated": 0,
+            "source": "friends"
+          },
+          {
+            "wpUserId": 3,
+            "isAutomated": "",
+            "source": "friends"
+          },
+          {
+            "wpUserId": 4,
+            "isAutomated": null,
+            "source": "friends"
+          }
+        ],
+        "short": true
+      }
+    },
+    {
+      "name": "exclude removes pool cards",
+      "input": {
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          }
+        ],
+        "exclude": [
+          1000,
+          1001,
+          1002
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    },
+    {
+      "name": "exclude accepts strings and junk",
+      "input": {
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          }
+        ],
+        "exclude": [
+          "1000",
+          null,
+          0,
+          "abc",
+          1001.5,
+          1002
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    },
+    {
+      "name": "nothing to show",
+      "input": {},
+      "result": {
+        "cards": [],
+        "short": true
+      }
+    },
+    {
+      "name": "duplicates across sources keep the first source",
+      "input": {
+        "friends": [
+          {
+            "wpUserId": 7
+          }
+        ],
+        "traderSuggest": [
+          {
+            "wpUserId": 7
+          },
+          {
+            "wpUserId": 8
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 8
+          },
+          {
+            "wpUserId": 9
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 7,
+            "source": "friends"
+          },
+          {
+            "wpUserId": 8,
+            "source": "trader_suggest"
+          },
+          {
+            "wpUserId": 9,
+            "source": "creator_backfill"
+          }
+        ],
+        "short": true
+      }
+    },
+    {
+      "name": "junk ids skipped",
+      "input": {
+        "friends": [
+          null,
+          {
+            "wpUserId": 0
+          },
+          {
+            "wpUserId": "abc"
+          },
+          {
+            "wpUserId": -3
+          },
+          {
+            "wpUserId": 2.5
+          },
+          {
+            "wpUserId": "12"
+          },
+          {
+            "wpUserId": 9007199254740992
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 12,
+            "source": "friends"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": true
+      }
+    },
+    {
+      "name": "automated card does not consume its id",
+      "input": {
+        "friends": [
+          {
+            "wpUserId": 50,
+            "isAutomated": true
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 50
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 50,
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": true
+      }
+    },
+    {
+      "name": "non-array sources ignored",
+      "input": {
+        "friends": "x",
+        "traderSuggest": {
+          "wpUserId": 3
+        },
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          }
+        ],
+        "exclude": "nope"
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    },
+    {
+      "name": "extra fields preserved",
+      "input": {
+        "traderSuggest": [
+          {
+            "wpUserId": 77,
+            "name": "Joe",
+            "reason": "You're in a group together"
+          }
+        ]
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 77,
+            "name": "Joe",
+            "reason": "You're in a group together",
+            "source": "trader_suggest"
+          }
+        ],
+        "short": true
+      }
+    },
+    {
+      "name": "custom size",
+      "input": {
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          }
+        ]
+      },
+      "opts": {
+        "size": 3
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator_backfill"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator_backfill"
+          }
+        ],
+        "short": false
+      }
+    }
+  ]
+}

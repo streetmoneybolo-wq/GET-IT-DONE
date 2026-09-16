@@ -10,6 +10,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'DAY_IN_SECONDS', 86400 );
 define( 'HOUR_IN_SECONDS', 3600 );
+define( 'MINUTE_IN_SECONDS', 60 );
 define( 'OBJECT_K', 'OBJECT_K' );
 
 $GLOBALS['t_meta']       = array();
@@ -63,6 +64,7 @@ class T_Response {
 	public function __construct( $d, $status = 200 ) { $this->data = $d; $this->status = $status; }
 	public function header( $k, $v ) { $this->headers[ $k ] = $v; }
 	public function get_status() { return $this->status; }
+	public function get_data() { return $this->data; }
 	public function is_error() { return $this->status >= 400; }
 }
 class WP_Error {
@@ -466,6 +468,43 @@ $GLOBALS['t_meta'] = array( 9 => array( 'sml_author_persona' => 'desk' ), 42 => 
 $in = sml_ob_pool_inputs( 42 );
 ok( array( array( 'wpUserId' => 7 ) ) === $in['news'], 'SML News leads the news cards' );
 ok( ! $in['creators'], 'no activity means no creators: nobody empty is recommended' );
+$GLOBALS['t_meta'] = array(); $GLOBALS['t_transients'] = array(); $GLOBALS['t_follows'] = array();
+
+/* =================================== personalized five: parity with corporate-onboarding.js */
+
+$fv = json_decode( file_get_contents( __DIR__ . '/five-fixtures.json' ), true );
+foreach ( $fv['cases'] as $c ) {
+	$r = sml_ob_personalized_five( (array) $c['input'], (array) ( $c['opts'] ?? array() ) );
+	$same = json_encode( $r ) === json_encode( $c['result'] );
+	ok( $same, "personalized five matches Node: {$c['name']}" . ( $same ? '' : "\n   php  " . json_encode( $r ) . "\n   node " . json_encode( $c['result'] ) ) );
+}
+
+/* =================================== personalized five: routes */
+
+$GLOBALS['t_meta'] = array(); $GLOBALS['t_transients'] = array(); $GLOBALS['t_follows'] = array();
+$r = sml_ob_rest_five_follow( new WP_REST_Request( array( 'userId' => 1010 ) ) );
+ok( $r instanceof WP_Error && 'sml_ob_expired' === $r->code, 'following from the five without loading it is refused' );
+set_transient( 'sml_ob_five_42', array( 1010, 1011 ) );
+$r = sml_ob_rest_five_follow( new WP_REST_Request( array( 'userId' => 258456581 ) ) );
+ok( $r instanceof WP_Error && 'sml_ob_not_offered' === $r->code && ! $GLOBALS['t_follows'], 'an account that was not in the five is never followed' );
+$r = sml_ob_rest_five_follow( new WP_REST_Request( array( 'userId' => '1011' ) ) );
+ok( $r instanceof T_Response && 1011 === $r->data['userId'] && array( '/sml-members/v1/follow', 1011, 'follow' ) === $GLOBALS['t_follows'][0], 'a suggested account is followed through the site follow route' );
+set_transient( 'sml_ob_five_42', array( 1013 ) );
+$r = sml_ob_rest_five_follow( new WP_REST_Request( array( 'userId' => 1013 ) ) );
+ok( $r instanceof WP_Error && 'sml_ob_follow_failed' === $r->code, 'a failed follow is reported, not claimed' );
+
+$GLOBALS['t_meta'] = array(
+	42 => array( 'sml_following' => array( 11 ), 'sml_followers' => array( 9, 11, 7 ), SML_OB_FOLLOW_META => array( 'offered' => array( 500, 501 ) ) ),
+	7  => array( 'sml_author_persona' => 'desk' ),
+);
+set_transient( 'sml_ob_pool_42', array( 502 ) );
+$in = sml_ob_five_inputs( 42 );
+ok( array( 7, 11, 9 ) === array_column( $in['friends'], 'wpUserId' ), 'friends are the newest followers first' );
+ok( true === $in['friends'][0]['isAutomated'] && false === $in['friends'][2]['isAutomated'], 'a news desk that follows you is marked automated' );
+ok( array( 42, 11, 500, 501, 502 ) === $in['exclude'], 'self, already followed, and every pool card are excluded' );
+$five = sml_ob_personalized_five( $in );
+ok( array( 9 ) === array_column( $five['cards'], 'wpUserId' ), 'so the five offers the follower not yet followed back, never the bot or someone already followed' );
+ok( in_array( '/sml-recs/v1/suggest', array_column( $GLOBALS['t_follows'], 0 ), true ), 'the trader recommender is consulted' );
 $GLOBALS['t_meta'] = array(); $GLOBALS['t_transients'] = array(); $GLOBALS['t_follows'] = array();
 
 echo "\n$passed passed, $failed failed\n";

@@ -107,8 +107,17 @@
       '.sml-fs-card .ck{position:absolute;top:8px;right:10px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font:700 11px/1 Inter,system-ui,sans-serif;' +
         'border:1px solid rgba(255,255,255,.22);color:transparent;}' +
       '.sml-fs-card[aria-pressed="true"] .ck{background:#38F58A;border-color:#38F58A;color:#04130A;}' +
+      '.sml-fs-people{list-style:none;margin:0;padding:12px 20px 4px;display:flex;flex-direction:column;gap:8px;}' +
+      '.sml-fs-person{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);}' +
+      '.sml-fs-person .av{flex:none;width:44px;height:44px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#16202B;color:#93A4B8;font-weight:700;}' +
+      '.sml-fs-person .av img{width:100%;height:100%;object-fit:cover;display:block;}' +
+      '.sml-fs-person .tx{flex:1;display:flex;flex-direction:column;min-width:0;}' +
+      '.sml-fs-person .nm{font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+      '.sml-fs-person .lb{font-size:12px;color:#93A4B8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+      '.sml-fs-person .sml-fs-btn{flex:none;min-width:92px;}' +
+      '.sml-fs-btn.done{background:transparent;border-color:rgba(56,245,138,.5);color:#38F58A;cursor:default;opacity:1;}' +
       '.sml-fs-dialog > .sml-fs-foot{position:sticky;bottom:0;margin:0;padding:14px 20px 18px;background:#0B1017;border-top:1px solid rgba(255,255,255,.08);}' +
-      '@media (max-width:480px){.sml-fs-follow{grid-template-columns:1fr 1fr;}.sml-fs-card{flex-direction:column;text-align:center;padding:12px 8px;}.sml-fs-card .tx{align-items:center;max-width:100%;}.sml-fs-dialog > .sml-fs-foot{flex-wrap:wrap;gap:8px;}.sml-fs-dialog > .sml-fs-foot .sml-fs-status{flex-basis:100%;}.sml-fs-dialog > .sml-fs-foot .sml-fs-row{flex:1;flex-wrap:nowrap;}.sml-fs-dialog > .sml-fs-foot .sml-fs-btn{flex:1;}}' +
+      '@media (max-width:480px){.sml-fs-follow{grid-template-columns:1fr 1fr;}.sml-fs-card{flex-direction:column;text-align:center;padding:12px 8px;}.sml-fs-card .tx{align-items:center;max-width:100%;}.sml-fs-dialog > .sml-fs-foot{flex-wrap:wrap;gap:8px;}.sml-fs-dialog > .sml-fs-foot .sml-fs-status{flex-basis:100%;}.sml-fs-dialog > .sml-fs-foot .sml-fs-status:empty{display:none;}.sml-fs-dialog > .sml-fs-foot .sml-fs-row{flex:1;flex-wrap:nowrap;}.sml-fs-dialog > .sml-fs-foot .sml-fs-btn{flex:1;}}' +
       '.sml-fs-intro{margin:14px 20px 0;color:#B7C3CF;font:14px/1.5 Inter,system-ui,sans-serif;max-width:60ch;}' +
       '.sml-fs-q{margin:16px 0 0;padding:0;border:0;}' +
       '.sml-fs-q legend{margin:0 0 8px;font:600 14px Inter,system-ui,sans-serif;color:#fff;}' +
@@ -488,6 +497,108 @@
     if (!card.parentNode || precedes) first.parentNode.insertBefore(card, first);
   }
 
+  /* ------------------------------------------------- the personalized five */
+
+  /* Step 3: people you may know. Loaded while step 2 is still on screen (this
+     host takes seconds to answer), shown only if there is someone to suggest.
+     No minimum — each card has its own Follow button, and Done closes it. */
+  function loadFive() {
+    return api('GET', '/onboarding/five').then(function (d) {
+      return (d && Array.isArray(d.cards)) ? d.cards : [];
+    }).catch(function () { return []; });
+  }
+
+  function openFiveStep(cards) {
+    if (!cards || !cards.length) return;
+    var previousFocus = document.activeElement;
+    var overlay = el('div', 'sml-fs-overlay');
+    var dialog = el('div', 'sml-fs-dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'sml-fs-five-title');
+
+    var head = el('header');
+    var title = el('h2', '', 'People you may know');
+    title.id = 'sml-fs-five-title';
+    var close = el('button', 'close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    head.appendChild(title); head.appendChild(close);
+    dialog.appendChild(head);
+    dialog.appendChild(el('p', 'sml-fs-intro', 'A few more people on Stock Market Loop you might want to follow. Each card says why.'));
+
+    var list = el('ul', 'sml-fs-people');
+    cards.forEach(function (c) {
+      var li = el('li', 'sml-fs-person');
+      var av = el('span', 'av');
+      if (/^https:\/\//.test(c.avatar || '')) {
+        var img = el('img');
+        img.src = c.avatar; img.alt = ''; img.width = 44; img.height = 44;
+        av.appendChild(img);
+      } else {
+        av.textContent = String(c.name || '?').charAt(0).toUpperCase();
+      }
+      li.appendChild(av);
+      var tx = el('span', 'tx');
+      tx.appendChild(el('span', 'nm', c.name || ''));
+      tx.appendChild(el('span', 'lb', c.label || ''));
+      li.appendChild(tx);
+      var btn = el('button', 'sml-fs-btn primary', 'Follow');
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Follow ' + (c.name || ''));
+      btn.addEventListener('click', function () {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Following…';
+        api('POST', '/onboarding/five/follow', { userId: c.id }).then(function () {
+          btn.textContent = 'Following';
+          btn.className = 'sml-fs-btn done';
+          btn.setAttribute('aria-label', 'Following ' + (c.name || ''));
+        }).catch(function (e) {
+          btn.disabled = false;
+          btn.textContent = 'Follow';
+          status.textContent = e && e.status === 429 ? 'Too many attempts. Please try again in a little while.' : 'Couldn’t follow ' + (c.name || 'that account') + ' right now.';
+        });
+      });
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+    dialog.appendChild(list);
+
+    var foot = el('div', 'sml-fs-foot');
+    var status = el('span', 'sml-fs-status');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    var done = el('button', 'sml-fs-btn', 'Done');
+    done.type = 'button';
+    foot.appendChild(status); foot.appendChild(done);
+    dialog.appendChild(foot);
+    overlay.appendChild(dialog);
+
+    function dismiss() {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+      if (previousFocus && previousFocus.focus) previousFocus.focus({ preventScroll: true });
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return; }
+      if (ev.key !== 'Tab') return;
+      var f = Array.prototype.filter.call(dialog.querySelectorAll('button'), function (b) { return !b.disabled; });
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    }
+    done.addEventListener('click', dismiss);
+    close.addEventListener('click', dismiss);
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) dismiss(); });
+    document.addEventListener('keydown', onKey, true);
+
+    (document.getElementById('sml-hf-shell') || document.body).appendChild(overlay);
+    var firstBtn = list.querySelector('button');
+    (firstBtn || done).focus({ preventScroll: true });
+  }
+
   /* ------------------------------------------------------- follow step */
 
   /* Step 2 of the welcome: follow at least 5 of up to 15 suggested accounts.
@@ -596,7 +707,7 @@
       api('GET', '/onboarding/follow-pool').then(function (pool) {
         busy = false;
         var cards = (pool && Array.isArray(pool.cards)) ? pool.cards : [];
-        if (!cards.length) { dismiss(); return; }
+        if (!cards.length) { loadFive().then(function (five) { dismiss(); openFiveStep(five); }); return; }
         required = Math.max(1, Number(pool.required) || 1);
         intro.textContent = 'Follow at least ' + required + ' to fill your feed from day one. You can unfollow anyone later from their profile.';
         cards.forEach(function (c) { grid.appendChild(card(c)); });
@@ -619,7 +730,8 @@
       api('POST', '/onboarding/follow', { userIds: ids }).then(function (r) {
         var n = (r && r.count) || 0;
         status.textContent = n === 1 ? 'Following 1 account.' : 'Following ' + n + ' accounts.';
-        setTimeout(dismiss, 900);
+        var shown = new Promise(function (res) { setTimeout(res, 900); });
+        Promise.all([loadFive(), shown]).then(function (both) { dismiss(); openFiveStep(both[0]); });
       }).catch(function (e) {
         busy = false;
         if (e && e.status === 409) { status.textContent = 'Suggestions expired — refreshing…'; load(); return; }

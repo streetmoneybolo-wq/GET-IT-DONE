@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Feed Signals
  * Description: Per-member feed signals — hides ("not interested"), impression counts, the onboarding questionnaire, and a server-side watchlist reader. The data the corporate feed slot's eligibility rules need.
- * Version: 1.3.0
+ * Version: 1.4.0
  *
  * WHAT THIS IS FOR
  * The corporate feed slot (platform/corporate-feed.js) decides eligibility from
@@ -25,7 +25,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-const SML_FS_VERSION = '1.3.0';
+const SML_FS_VERSION = '1.4.0';
 const SML_FS_SCHEMA  = 2;
 const SML_FS_NS      = 'sml-feed/v1';
 

@@ -1,6 +1,8 @@
 <?php
 /**
- * Onboarding step 2 — follow 5 of 15 recommended accounts.
+ * Onboarding step 2 — follow 5 of 15 recommended accounts, then the personalized five
+ * (people you may know: followers not yet followed back, the trader recommender,
+ * creators as backfill).
  *
  * buildCardPool() and validateSelection() are a PORT of
  * services/sml-platform/platform/corporate-onboarding.js. follow-fixtures.json is
@@ -253,12 +255,132 @@ function sml_ob_rest_follow( WP_REST_Request $request ) {
 		$res = rest_do_request( $follow );
 		if ( ! $res->is_error() && 200 === $res->get_status() ) $followed[] = $target;
 	}
-	update_user_meta( $user_id, SML_OB_FOLLOW_META, array( 'completed_at' => gmdate( 'c' ), 'followed' => $followed ) );
+	update_user_meta( $user_id, SML_OB_FOLLOW_META, array( 'completed_at' => gmdate( 'c' ), 'followed' => $followed, 'offered' => array_map( 'intval', $offered ) ) );
 	delete_transient( 'sml_ob_pool_' . $user_id );
 	return rest_ensure_response( array( 'followed' => $followed, 'count' => count( $followed ) ) );
+}
+
+/* ================================================= the personalized five */
+
+/** JavaScript truthiness for a JSON-decoded value. */
+function sml_ob_js_truthy( $value ) {
+	if ( is_string( $value ) ) return '' !== $value;          /* "0" is truthy in JS */
+	if ( is_float( $value ) ) return 0.0 !== $value && ! is_nan( $value );
+	if ( is_array( $value ) ) return true;                    /* [] and {} are truthy */
+	return (bool) $value;
+}
+
+/**
+ * personalizedFive() — exact port. Friends, then trader suggestions, then
+ * creators as backfill; automated accounts are never offered as people, and
+ * anything in `exclude` (the pool, accounts already followed) is not repeated.
+ */
+function sml_ob_personalized_five( array $input, array $opts = array() ) {
+	$size = $opts['size'] ?? SML_OB_REQUIRED;
+	$used = array();
+	foreach ( is_array( $input['exclude'] ?? null ) && array_is_list( $input['exclude'] ) ? $input['exclude'] : array() as $raw ) {
+		$n = sml_ob_js_number( $raw );
+		if ( ! is_nan( $n ) && 0.0 !== $n ) $used[ (string) $n ] = true;   /* .map(Number).filter(Boolean) */
+	}
+	$out = array();
+	$consider = function ( $list, $source ) use ( &$used, &$out, $size ) {
+		foreach ( is_array( $list ) && array_is_list( $list ) ? $list : array() as $card ) {
+			if ( count( $out ) >= $size ) return;
+			$id = sml_ob_card_key( $card );
+			if ( null === $id || isset( $used[ (string) (float) $id ] ) ) continue;
+			if ( sml_ob_js_truthy( $card['isAutomated'] ?? null ) ) continue;
+			$used[ (string) (float) $id ] = true;
+			$card['wpUserId'] = $id;
+			$card['source']   = $source;
+			$out[] = $card;
+		}
+	};
+	$consider( $input['friends'] ?? null, 'friends' );
+	$consider( $input['traderSuggest'] ?? null, 'trader_suggest' );
+	$consider( $input['creators'] ?? null, 'creator_backfill' );
+	return array( 'cards' => $out, 'short' => count( $out ) < $size );
+}
+
+/**
+ * The live inputs.
+ *   friends        people who already follow this member and are not followed
+ *                  back — following them makes them friends (friends = mutual follow)
+ *   traderSuggest  /sml-recs/v1/suggest, the transparent recommender; it fails
+ *                  closed (photo gate, opt-out, no shared groups) and returns []
+ *   creators       the same ranked creator list the pool uses
+ * Excluded: self, everyone already followed, and every card the pool offered.
+ */
+function sml_ob_five_inputs( $user_id ) {
+	$user_id   = (int) $user_id;
+	$following = sml_ob_id_list( get_user_meta( $user_id, 'sml_following', true ) );
+	$done      = get_user_meta( $user_id, SML_OB_FOLLOW_META, true );
+	$offered   = is_array( $done ) ? sml_ob_id_list( $done['offered'] ?? array() ) : array();
+	$pending   = get_transient( 'sml_ob_pool_' . $user_id );
+	$exclude   = array_values( array_unique( array_merge( array( $user_id ), $following, $offered, is_array( $pending ) ? sml_ob_id_list( $pending ) : array() ) ) );
+	$automated = function ( $id ) { return sml_ob_is_persona( $id ); };
+
+	$friends = array();
+	foreach ( array_reverse( sml_ob_id_list( get_user_meta( $user_id, 'sml_followers', true ) ) ) as $id ) {
+		$friends[] = array( 'wpUserId' => $id, 'isAutomated' => $automated( $id ) );
+	}
+
+	$trader = array();
+	$req = new WP_REST_Request( 'GET', '/sml-recs/v1/suggest' );
+	$req->set_param( 'surface', 'connect' );
+	$req->set_param( 'limit', 10 );
+	$res = rest_do_request( $req );
+	if ( ! $res->is_error() && 200 === $res->get_status() ) {
+		$data = $res->get_data();
+		foreach ( is_array( $data['items'] ?? null ) ? $data['items'] : array() as $item ) {
+			$id = (int) ( $item['user_id'] ?? 0 );
+			if ( $id > 0 ) $trader[] = array( 'wpUserId' => $id, 'reason' => (string) ( $item['reason'] ?? '' ), 'isAutomated' => $automated( $id ) );
+		}
+	}
+
+	$creators = array();
+	foreach ( sml_ob_pool_inputs( $user_id )['creators'] as $c ) $creators[] = array( 'wpUserId' => $c['wpUserId'], 'isAutomated' => false );
+
+	return (array) apply_filters( 'sml_ob_five_inputs', array( 'friends' => $friends, 'traderSuggest' => $trader, 'creators' => $creators, 'exclude' => $exclude ), $user_id );
+}
+
+function sml_ob_rest_five( WP_REST_Request $request ) {
+	$user_id = get_current_user_id();
+	$five    = sml_ob_personalized_five( sml_ob_five_inputs( $user_id ) );
+	$cards   = array();
+	foreach ( $five['cards'] as $c ) {
+		$card = sml_ob_describe( array( 'wpUserId' => $c['wpUserId'], 'source' => 'creator' ) );
+		if ( ! $card ) continue;
+		$card['source'] = $c['source'];
+		if ( 'friends' === $c['source'] ) $card['label'] = 'Follows you';
+		elseif ( 'trader_suggest' === $c['source'] && '' !== trim( $c['reason'] ?? '' ) ) $card['label'] = wp_strip_all_tags( $c['reason'] );
+		$cards[] = $card;
+	}
+	set_transient( 'sml_ob_five_' . $user_id, array_column( $cards, 'id' ), 30 * MINUTE_IN_SECONDS );
+	$res = rest_ensure_response( array( 'cards' => $cards ) );
+	$res->header( 'Cache-Control', 'no-store, private' );
+	return $res;
+}
+
+/** Follow one card from the five. Only a card this member was shown. */
+function sml_ob_rest_five_follow( WP_REST_Request $request ) {
+	$user_id = get_current_user_id();
+	$target  = (int) $request->get_param( 'userId' );
+	$offered = get_transient( 'sml_ob_five_' . $user_id );
+	if ( ! is_array( $offered ) ) return sml_fs_error( 'sml_ob_expired', 'Those suggestions expired. Please reload them.', 409 );
+	if ( $target <= 0 || ! in_array( $target, array_map( 'intval', $offered ), true ) ) return sml_fs_error( 'sml_ob_not_offered', 'That account was not suggested to you.', 422 );
+	if ( ! sml_fs_rate_ok( $user_id, 'ob5', 20, HOUR_IN_SECONDS ) ) return sml_fs_error( 'sml_fs_rate', 'Too many attempts — try again later.', 429 );
+
+	$follow = new WP_REST_Request( 'POST', '/sml-members/v1/follow' );
+	$follow->set_param( 'user_id', $target );
+	$follow->set_param( 'action', 'follow' );
+	$res = rest_do_request( $follow );
+	if ( $res->is_error() || 200 !== $res->get_status() ) return sml_fs_error( 'sml_ob_follow_failed', 'Couldn’t follow right now. Please try again.', 502 );
+	return rest_ensure_response( array( 'following' => true, 'userId' => $target ) );
 }
 
 add_action( 'rest_api_init', function () {
 	register_rest_route( SML_FS_NS, '/onboarding/follow-pool', array( 'methods' => 'GET', 'callback' => 'sml_ob_rest_pool', 'permission_callback' => 'sml_fs_logged_in' ) );
 	register_rest_route( SML_FS_NS, '/onboarding/follow', array( 'methods' => 'POST', 'callback' => 'sml_ob_rest_follow', 'permission_callback' => 'sml_fs_logged_in' ) );
+	register_rest_route( SML_FS_NS, '/onboarding/five', array( 'methods' => 'GET', 'callback' => 'sml_ob_rest_five', 'permission_callback' => 'sml_fs_logged_in' ) );
+	register_rest_route( SML_FS_NS, '/onboarding/five/follow', array( 'methods' => 'POST', 'callback' => 'sml_ob_rest_five_follow', 'permission_callback' => 'sml_fs_logged_in' ) );
 } );
