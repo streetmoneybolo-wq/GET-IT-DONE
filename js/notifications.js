@@ -24,72 +24,102 @@
   var POLL_MS = 40000;
 
   /* ---------------------------------------------------------------------------
-   * LOOP BUCKS receipt chime — STRICT: this sound plays ONLY when the member
-   * RECEIVES Loop Bucks and that receipt lands in their LOOP-KICK. Nothing else
-   * on the whole site plays it. Owner rule 2026-09-15.
+   * LOOP-KICK notification SOUNDS — two STRICT, non-overlapping chimes. Owner
+   * rules 2026-09-15.
    *
-   * A Loop Bucks notification has type 'loop_bucks' and id 'loopbucks_<sha1>';
-   * the message starts with "Received " for a credit and "Spent " for a debit
-   * (sml-messenger-hub). We fire only on a NEW "Received" item — never "Spent",
-   * never any other type. First poll of a page load only baselines the ids that
-   * already exist (silent), so navigating around never re-blasts old receipts.
+   *   A) Loop Bucks receipt  → CFG.loopBucksSound   (loop-bucks-kick.wav)
+   *      Plays ONLY on a NEW hub item of type 'loop_bucks' whose message starts
+   *      with "Received " (a credit). Never on "Spent " and never any other type.
+   *
+   *   B) Alerts OR Messages  → CFG.alertsSound       (loop-kick-sound.wav)
+   *      Plays on a NEW alert (any non-loop_bucks hub item) OR a rise in unread
+   *      messages (thread unread count, /sml-loop/v1/threads).
+   *
+   * The two never collide: 'loop_bucks' items belong to A only (a "Spent" debit
+   * is silent — it is neither a receipt nor an alert/message); everything else
+   * belongs to B only. Each sound baselines what already exists on the FIRST poll
+   * of a page load (silent), so navigating around never re-blasts old items, and
+   * fires at most once per poll gap. Audio is unlocked on the first user gesture
+   * (the member is clicking around — exactly when notifications land).
    * ------------------------------------------------------------------------- */
-  var LB_SOUND_URL = CFG.loopBucksSound || '';
+  var SFX = { lbUrl: CFG.loopBucksSound || '', amUrl: CFG.alertsSound || '', lbEl: null, amEl: null, unlocked: false, last: { lb: 0, am: 0 } };
   var LB_SEEN_KEY = 'sml_lb_sfx_played_v1_' + (ME || 0);
-  var lbAudio = null, lbUnlocked = false, lbPrimed = false;
+  var AL_SEEN_KEY = 'sml_alert_sfx_seen_v1_' + (ME || 0);
+  var MSG_BASE_KEY = 'sml_msg_unread_base_v1_' + (ME || 0);
+  var lbPrimed = false, alPrimed = false, msgPrimed = false;
 
-  function lbIsReceipt(n) {
-    return n && n.type === 'loop_bucks' && /^\s*Received\b/i.test(String(n.message || ''));
+  function seenLoad(k) { try { var a = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function seenSave(k, a) { try { localStorage.setItem(k, JSON.stringify(a.slice(-300))); } catch (e) {} }
+  function numLoad(k) { try { var n = parseInt(localStorage.getItem(k), 10); return isNaN(n) ? null : n; } catch (e) { return null; } }
+  function numSave(k, n) { try { localStorage.setItem(k, String(n)); } catch (e) {} }
+
+  function mkAudio(url) { if (!url) return null; var a = new Audio(url); a.preload = 'auto'; a.crossOrigin = 'anonymous'; return a; }
+  function sfxEl(which) {
+    if (which === 'lb') { if (!SFX.lbEl) SFX.lbEl = mkAudio(SFX.lbUrl); return SFX.lbEl; }
+    if (!SFX.amEl) SFX.amEl = mkAudio(SFX.amUrl); return SFX.amEl;
   }
-  function lbLoadSeen() {
-    try { var a = JSON.parse(localStorage.getItem(LB_SEEN_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  function unlockAll() {
+    if (SFX.unlocked) return; SFX.unlocked = true;
+    [sfxEl('lb'), sfxEl('am')].forEach(function (el) {
+      if (!el) return; var m = el.muted; el.muted = true; var p = el.play();
+      if (p && p.then) { p.then(function () { el.pause(); el.currentTime = 0; el.muted = m; }).catch(function () { el.muted = m; }); }
+      else { try { el.pause(); el.currentTime = 0; } catch (e) {} el.muted = m; }
+    });
   }
-  function lbSaveSeen(arr) {
-    try { localStorage.setItem(LB_SEEN_KEY, JSON.stringify(arr.slice(-200))); } catch (e) {}
-  }
-  function lbAudioEl() {
-    if (lbAudio || !LB_SOUND_URL) return lbAudio;
-    lbAudio = new Audio(LB_SOUND_URL);
-    lbAudio.preload = 'auto';
-    lbAudio.crossOrigin = 'anonymous';
-    return lbAudio;
-  }
-  /* browsers gate audio behind a user gesture; the member is clicking around the
-     site (that is exactly when receipts land), so unlock on the first gesture. */
-  function lbUnlock() {
-    if (lbUnlocked) return;
-    var el = lbAudioEl(); if (!el) return;
-    lbUnlocked = true;
-    var wasMuted = el.muted; el.muted = true;
-    var p = el.play();
-    if (p && p.then) { p.then(function () { el.pause(); el.currentTime = 0; el.muted = wasMuted; }).catch(function () { el.muted = wasMuted; }); }
-    else { try { el.pause(); el.currentTime = 0; } catch (e) {} el.muted = wasMuted; }
-  }
-  ['pointerdown', 'keydown', 'touchstart'].forEach(function (evt) {
-    window.addEventListener(evt, lbUnlock, { once: false, passive: true });
-  });
-  function lbPlay() {
-    var el = lbAudioEl(); if (!el) return;
+  ['pointerdown', 'keydown', 'touchstart'].forEach(function (evt) { window.addEventListener(evt, unlockAll, { passive: true }); });
+  function sfxPlay(which) {
+    var el = sfxEl(which); if (!el) return;
+    var now = Date.now(); if (now - (SFX.last[which] || 0) < 1400) return; /* never overlap the same sound */
+    SFX.last[which] = now;
     try { el.muted = false; el.currentTime = 0; var p = el.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
   }
-  function lbChime(items) {
-    if (!LB_SOUND_URL || !Array.isArray(items)) return;
-    var ids = [];
-    for (var i = 0; i < items.length; i++) { if (lbIsReceipt(items[i]) && items[i].id) ids.push(String(items[i].id)); }
-    var seen = lbLoadSeen();
-    if (!lbPrimed) {
-      /* first poll this page load: remember what's already there, do NOT sound */
-      lbPrimed = true;
-      var merged = seen.slice();
-      ids.forEach(function (id) { if (merged.indexOf(id) === -1) merged.push(id); });
-      lbSaveSeen(merged);
-      return;
-    }
+
+  function isLoopBucks(n) { return n && n.type === 'loop_bucks'; }
+  function lbIsReceipt(n) { return isLoopBucks(n) && /^\s*Received\b/i.test(String(n.message || '')); }
+
+  /* A) Loop Bucks receipt sound */
+  function chimeLoopBucks(items) {
+    if (!SFX.lbUrl || !Array.isArray(items)) return;
+    var ids = items.filter(lbIsReceipt).filter(function (n) { return n.id; }).map(function (n) { return String(n.id); });
+    var seen = seenLoad(LB_SEEN_KEY);
+    if (!lbPrimed) { lbPrimed = true; var m = seen.slice(); ids.forEach(function (id) { if (m.indexOf(id) === -1) m.push(id); }); seenSave(LB_SEEN_KEY, m); return; }
     var fresh = ids.filter(function (id) { return seen.indexOf(id) === -1; });
     if (!fresh.length) return;
-    fresh.forEach(function (id) { seen.push(id); });
-    lbSaveSeen(seen);
-    lbPlay(); /* one chime even if several receipts arrived in the same gap */
+    fresh.forEach(function (id) { seen.push(id); }); seenSave(LB_SEEN_KEY, seen);
+    sfxPlay('lb');
+  }
+
+  /* B1) new ALERT = any new non-loop_bucks hub item -> returns true if a new one landed */
+  function detectNewAlerts(items) {
+    if (!Array.isArray(items)) return false;
+    var ids = items.filter(function (n) { return n && n.id && !isLoopBucks(n); }).map(function (n) { return String(n.id); });
+    var seen = seenLoad(AL_SEEN_KEY);
+    if (!alPrimed) { alPrimed = true; var m = seen.slice(); ids.forEach(function (id) { if (m.indexOf(id) === -1) m.push(id); }); seenSave(AL_SEEN_KEY, m); return false; }
+    var fresh = ids.filter(function (id) { return seen.indexOf(id) === -1; });
+    if (!fresh.length) return false;
+    fresh.forEach(function (id) { seen.push(id); }); seenSave(AL_SEEN_KEY, seen);
+    return true;
+  }
+  /* B2) new MESSAGE = a rise in unread thread count -> returns true on an increase */
+  function detectNewMessages(total) {
+    total = Math.max(0, Number(total) || 0);
+    var base = numLoad(MSG_BASE_KEY);
+    if (!msgPrimed || base === null) { msgPrimed = true; numSave(MSG_BASE_KEY, total); return false; }
+    if (total > base) { numSave(MSG_BASE_KEY, total); return true; }
+    if (total !== base) { numSave(MSG_BASE_KEY, total); } /* read/decrease — track down, no sound */
+    return false;
+  }
+  function chimeAlertsMessages() { if (SFX.amUrl) sfxPlay('am'); }
+
+  /* Messages live in a separate store (threads), so poll it too — but only when a
+     sound is configured and the tab is visible (no background chime). */
+  function pollMessages() {
+    if (!SFX.amUrl || document.hidden) return;
+    api('/wp-json/sml-loop/v1/threads?_=' + Date.now()).then(function (j) {
+      var c = (j && j.counts) || {}; var total = 0;
+      Object.keys(c).forEach(function (k) { if (k === 'muted' || k === 'archived') return; total += Number((c[k] || {}).unread || 0); });
+      if (detectNewMessages(total)) chimeAlertsMessages();
+    }).catch(function () {});
   }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -231,9 +261,11 @@
     api(API + '?_=' + Date.now()).then(function (j) {
       S.items = Array.isArray(j.items) ? j.items : (Array.isArray(j.notifications) ? j.notifications : []);
       var c = j.counts || {}; S.unread = j.unread_count != null ? (Number(j.unread_count) || 0) : (Number((c.general || {}).unread || 0) + Number((c.priority || {}).unread || 0));
-      lbChime(S.items); /* STRICT: Loop Bucks receipt sound only */
+      chimeLoopBucks(S.items);                       /* A: Loop Bucks receipt sound (strict) */
+      if (detectNewAlerts(S.items)) chimeAlertsMessages(); /* B: alerts sound */
       decorate(); if (S.panel && S.panel.classList.contains('on')) render();
     }).catch(function () {});
+    pollMessages();                                  /* B: messages sound (separate store) */
   }
 
   /* ---- attach to the header button (rendered by site-search.js / home-feed.js) ---- */
