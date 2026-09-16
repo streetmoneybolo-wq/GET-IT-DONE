@@ -186,6 +186,17 @@ foreach ( array( 'author:x', 'item:nope', 'everything', "author:7' OR 1=1" ) as 
 	ok( sml_fs_rest_unhide( new WP_REST_Request( array( 'target' => $target ) ) ) instanceof WP_Error, "undo refuses $target" );
 }
 
+/* one round trip: hide/undo can return the refreshed hidden set */
+$GLOBALS['wpdb']->hides = array( 'author:7' );
+$r = sml_fs_rest_hide( new WP_REST_Request( array( 'scope' => 'author', 'item_ref' => 'wp-100', 'refs' => array( 'wp-100', 'stream-48' ) ) ) );
+ok( $r instanceof T_Response && $r->data['hiddenRefs'] === array( 'wp-100' ), 'hide returns the refreshed hidden set when refs are sent' );
+$r = sml_fs_rest_hide( new WP_REST_Request( array( 'scope' => 'item', 'item_ref' => 'wp-100' ) ) );
+ok( ! isset( $r->data['hiddenRefs'] ), 'and omits it when they are not' );
+$GLOBALS['wpdb']->hides = array();
+$r = sml_fs_rest_unhide( new WP_REST_Request( array( 'target' => 'author:7', 'refs' => array( 'wp-100' ) ) ) );
+ok( $r->data['hiddenRefs'] === array(), 'undo returns the refreshed hidden set too' );
+$GLOBALS['t_transients'] = array();
+
 /* the rate limit */
 $GLOBALS['t_transients'] = array();
 for ( $i = 0; $i < 60; $i++ ) sml_fs_rest_hide( new WP_REST_Request( array( 'scope' => 'item', 'item_ref' => 'wp-100' ) ) );

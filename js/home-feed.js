@@ -13,6 +13,24 @@
   // Keep the legacy WPCode injector harmless when both delivery paths succeed.
   if (window.__smlHomeFeedControllerLoaded) return;
   window.__smlHomeFeedControllerLoaded = true;
+  /* Captured now: document.currentScript is null once boot() runs later. */
+  var SELF_SRC = (document.currentScript && document.currentScript.src) || '';
+
+  /* Feed signals (hide / not interested, impressions, onboarding prompt) live
+     in js/feed-signals.js, loaded from the SAME commit-pinned CDN path as this
+     controller so both files always come from one commit. Signed-in only; the
+     file is inert on its own without a REST nonce. Kill switch: ?smlfs=0. */
+  function loadFeedSignals() {
+    try {
+      if (!(window.SML_ME && window.SML_ME.id) || /[?&]smlfs=0(&|$)/.test(location.search)) return;
+      if (document.getElementById('sml-fs-js') || !/\/js\/home-feed\.js(\?|$)/.test(SELF_SRC)) return;
+      var s = document.createElement('script');
+      s.id = 'sml-fs-js';
+      s.async = true;
+      s.src = SELF_SRC.replace(/home-feed\.js(\?.*)?$/, 'feed-signals.js');
+      document.head.appendChild(s);
+    } catch (e) { /* the feed never depends on this */ }
+  }
   var GREEN = '#38F58A';
   // Shadow-banned groups: never build them into the My Groups module.
   var SML_BANNED_SLUGS = ['the-options-plug','spy-spy-highflyers'];
@@ -147,6 +165,7 @@
   function boot() {
     var host = document.getElementById('sml-optimized-home');
     if (!host || document.getElementById('sml-hf-shell')) return;
+    loadFeedSignals();
     var sourceData = {};
     try {
       var sourceNode = document.getElementById('sml-oh-data');

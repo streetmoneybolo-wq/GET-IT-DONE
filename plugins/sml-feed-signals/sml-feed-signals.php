@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Feed Signals
  * Description: Per-member feed signals — hides ("not interested"), impression counts, the onboarding questionnaire, and a server-side watchlist reader. The data the corporate feed slot's eligibility rules need.
- * Version: 1.0.0
+ * Version: 1.0.1
  *
  * WHAT THIS IS FOR
  * The corporate feed slot (platform/corporate-feed.js) decides eligibility from
@@ -25,7 +25,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-const SML_FS_VERSION = '1.0.0';
+const SML_FS_VERSION = '1.0.1';
 const SML_FS_SCHEMA  = 1;
 const SML_FS_NS      = 'sml-feed/v1';
 
@@ -178,6 +178,18 @@ function sml_fs_error( $code, $message, $status ) {
 
 const SML_FS_HIDE_REASONS = array( 'not_interested', 'hide_author' );
 
+/**
+ * Optional `refs` on hide/undo: the refs currently on screen. The response then
+ * carries the up-to-date hidden set, so the feed updates in ONE round trip
+ * instead of a hide followed by a separate /visible call (each request costs
+ * ~2s of WordPress bootstrap on this host).
+ */
+function sml_fs_refs_param( WP_REST_Request $request ) {
+	$refs = $request->get_param( 'refs' );
+	if ( ! is_array( $refs ) ) return null;
+	return array_slice( array_map( 'strval', array_filter( $refs, 'is_scalar' ) ), 0, 120 );
+}
+
 function sml_fs_rest_hide( WP_REST_Request $request ) {
 	global $wpdb;
 	$user_id = get_current_user_id();
@@ -200,7 +212,10 @@ function sml_fs_rest_hide( WP_REST_Request $request ) {
 		'INSERT IGNORE INTO ' . sml_fs_hides_table() . ' (user_id, target, scope, item_ref, author_id, reason, created_at) VALUES (%d, %s, %s, %s, %d, %s, %s)',
 		$user_id, $target, $scope, $parsed['ref'], (int) $author, $reason, gmdate( 'Y-m-d H:i:s', sml_fs_now() )
 	) );
-	return rest_ensure_response( array( 'hidden' => true, 'target' => $target, 'scope' => $scope ) );
+	$out  = array( 'hidden' => true, 'target' => $target, 'scope' => $scope );
+	$refs = sml_fs_refs_param( $request );
+	if ( null !== $refs ) $out['hiddenRefs'] = sml_fs_hidden_refs( $user_id, $refs );
+	return rest_ensure_response( $out );
 }
 
 function sml_fs_rest_unhide( WP_REST_Request $request ) {
@@ -210,7 +225,10 @@ function sml_fs_rest_unhide( WP_REST_Request $request ) {
 	$ok_author = (bool) preg_match( '/^author:\d{1,19}$/', $target );
 	if ( ! $ok_item && ! $ok_author ) return sml_fs_error( 'sml_fs_target', 'Unknown hide target.', 400 );
 	$deleted = $wpdb->delete( sml_fs_hides_table(), array( 'user_id' => get_current_user_id(), 'target' => $target ), array( '%d', '%s' ) );
-	return rest_ensure_response( array( 'restored' => (bool) $deleted, 'target' => $target ) );
+	$out  = array( 'restored' => (bool) $deleted, 'target' => $target );
+	$refs = sml_fs_refs_param( $request );
+	if ( null !== $refs ) $out['hiddenRefs'] = sml_fs_hidden_refs( get_current_user_id(), $refs );
+	return rest_ensure_response( $out );
 }
 
 /**
@@ -576,6 +594,10 @@ function sml_fs_watchlist( $user_id, $max = 12 ) {
  *
  * Shapes match platform/corporate-feed.js: watchlist + onboardingProfile feed
  * relevance(); hiddenSources and slotsShownToday feed slotRejection().
+ *
+ * hiddenSources counts EVERY hide of that author in the last 7 days, item-level
+ * "not interested" included — deliberately. A member who dismissed one of an
+ * advertiser's posts should not be handed a paid slot from them the same week.
  */
 function sml_fs_user_signals( $user_id, $now = null ) {
 	global $wpdb;
