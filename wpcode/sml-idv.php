@@ -21,9 +21,34 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 if ( ! function_exists( 'sml_idv_secret' ) ) {
 
-	function sml_idv_mode() { return 'live' === get_option( 'sml_idv_mode', 'test' ) ? 'live' : 'test'; }
-	function sml_idv_secret() { return (string) get_option( 'sml_idv_secret_' . sml_idv_mode(), '' ); }
-	function sml_idv_publishable() { return (string) get_option( 'sml_idv_pk_' . sml_idv_mode(), '' ); }
+	/**
+	 * Option read that survives this site's stale-`notoptions` object cache: if the
+	 * cache says "missing" but the row exists, read the DB and self-heal the cache.
+	 * (Same pattern as the site's sml-option-notoptions-guard for other options.)
+	 */
+	function sml_idv_opt( $name, $default ) {
+		$v = get_option( $name, null );
+		if ( null !== $v && '' !== $v ) { return $v; }
+		global $wpdb;
+		$row = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1", $name ) );
+		if ( is_string( $row ) && '' !== $row ) {
+			wp_cache_delete( 'notoptions', 'options' );
+			wp_cache_set( $name, $row, 'options' );
+			return maybe_unserialize( $row );
+		}
+		return $default;
+	}
+
+	/** Option write that also evicts the stale cache entries so fresh requests see it. */
+	function sml_idv_set_opt( $name, $value ) {
+		update_option( $name, $value, false );
+		wp_cache_delete( 'notoptions', 'options' );
+		wp_cache_delete( $name, 'options' );
+	}
+
+	function sml_idv_mode() { return 'live' === sml_idv_opt( 'sml_idv_mode', 'test' ) ? 'live' : 'test'; }
+	function sml_idv_secret() { return (string) sml_idv_opt( 'sml_idv_secret_' . sml_idv_mode(), '' ); }
+	function sml_idv_publishable() { return (string) sml_idv_opt( 'sml_idv_pk_' . sml_idv_mode(), '' ); }
 
 	/** Call the Stripe REST API with the configured secret key (no SDK). */
 	function sml_idv_api( $method, $path, $params ) {
@@ -141,12 +166,12 @@ if ( ! function_exists( 'sml_idv_secret' ) ) {
 	function sml_idv_save_config( WP_REST_Request $request ) {
 		if ( ! current_user_can( 'manage_options' ) ) { return new WP_REST_Response( array( 'message' => 'forbidden' ), 403 ); }
 		$am = 'live' === $request->get_param( 'active_mode' ) ? 'live' : 'test';
-		update_option( 'sml_idv_mode', $am );
+		sml_idv_set_opt( 'sml_idv_mode', $am );
 		foreach ( array( 'test', 'live' ) as $m ) {
 			$sk = trim( (string) $request->get_param( 'secret_' . $m ) );
 			$pk = trim( (string) $request->get_param( 'pk_' . $m ) );
-			if ( '' !== $sk ) { update_option( 'sml_idv_secret_' . $m, $sk, false ); }
-			if ( '' !== $pk ) { update_option( 'sml_idv_pk_' . $m, $pk, false ); }
+			if ( '' !== $sk ) { sml_idv_set_opt( 'sml_idv_secret_' . $m, $sk ); }
+			if ( '' !== $pk ) { sml_idv_set_opt( 'sml_idv_pk_' . $m, $pk ); }
 		}
 		return rest_ensure_response( array( 'ok' => true, 'configured' => '' !== sml_idv_secret(), 'mode' => sml_idv_mode() ) );
 	}
@@ -168,27 +193,27 @@ if ( ! function_exists( 'sml_idv_secret' ) ) {
 		if ( ! current_user_can( 'manage_options' ) ) { return; }
 		if ( isset( $_POST['sml_idv_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sml_idv_nonce'] ) ), 'sml_idv_save' ) ) {
 			$am = ( isset( $_POST['sml_idv_active_mode'] ) && 'live' === $_POST['sml_idv_active_mode'] ) ? 'live' : 'test';
-			update_option( 'sml_idv_mode', $am );
+			sml_idv_set_opt( 'sml_idv_mode', $am );
 			foreach ( array( 'test', 'live' ) as $m ) {
-				if ( ! empty( $_POST[ 'sml_idv_secret_' . $m ] ) ) { update_option( 'sml_idv_secret_' . $m, trim( sanitize_text_field( wp_unslash( $_POST[ 'sml_idv_secret_' . $m ] ) ) ), false ); }
-				if ( ! empty( $_POST[ 'sml_idv_pk_' . $m ] ) ) { update_option( 'sml_idv_pk_' . $m, trim( sanitize_text_field( wp_unslash( $_POST[ 'sml_idv_pk_' . $m ] ) ) ), false ); }
+				if ( ! empty( $_POST[ 'sml_idv_secret_' . $m ] ) ) { sml_idv_set_opt( 'sml_idv_secret_' . $m, trim( sanitize_text_field( wp_unslash( $_POST[ 'sml_idv_secret_' . $m ] ) ) ) ); }
+				if ( ! empty( $_POST[ 'sml_idv_pk_' . $m ] ) ) { sml_idv_set_opt( 'sml_idv_pk_' . $m, trim( sanitize_text_field( wp_unslash( $_POST[ 'sml_idv_pk_' . $m ] ) ) ) ); }
 			}
-			if ( isset( $_POST['sml_idv_require'] ) ) { update_option( 'sml_recs_require_verified', 1 ); } else { update_option( 'sml_recs_require_verified', 0 ); }
+			sml_idv_set_opt( 'sml_recs_require_verified', isset( $_POST['sml_idv_require'] ) ? 1 : 0 );
 			echo '<div class="notice notice-success is-dismissible"><p>Saved.</p></div>';
 		}
 		$mode = sml_idv_mode();
-		$hasTS = '' !== get_option( 'sml_idv_secret_test', '' );
-		$hasLS = '' !== get_option( 'sml_idv_secret_live', '' );
-		$reqv  = (bool) get_option( 'sml_recs_require_verified', 0 );
+		$hasTS = '' !== (string) sml_idv_opt( 'sml_idv_secret_test', '' );
+		$hasLS = '' !== (string) sml_idv_opt( 'sml_idv_secret_live', '' );
+		$reqv  = (bool) sml_idv_opt( 'sml_recs_require_verified', 0 );
 		echo '<div class="wrap"><h1>SML Identity (Stripe)</h1>';
 		echo '<p>Paste your own Stripe keys. Secret keys are stored write-only and never shown again or returned by the API. Test keys begin <code>sk_test_</code>/<code>pk_test_</code>; live keys <code>sk_live_</code>/<code>pk_live_</code>.</p>';
 		echo '<form method="post">';
 		wp_nonce_field( 'sml_idv_save', 'sml_idv_nonce' ); // the handler above requires this
 		echo '<table class="form-table">';
 		echo '<tr><th scope="row">Active mode</th><td><label><input type="radio" name="sml_idv_active_mode" value="test" ' . checked( $mode, 'test', false ) . '> Test</label> &nbsp;&nbsp; <label><input type="radio" name="sml_idv_active_mode" value="live" ' . checked( $mode, 'live', false ) . '> Live</label></td></tr>';
-		echo '<tr><th scope="row">Test publishable key</th><td><input type="text" name="sml_idv_pk_test" style="width:440px" value="' . esc_attr( get_option( 'sml_idv_pk_test', '' ) ) . '" placeholder="pk_test_..." autocomplete="off"></td></tr>';
+		echo '<tr><th scope="row">Test publishable key</th><td><input type="text" name="sml_idv_pk_test" style="width:440px" value="' . esc_attr( sml_idv_opt( 'sml_idv_pk_test', '' ) ) . '" placeholder="pk_test_..." autocomplete="off"></td></tr>';
 		echo '<tr><th scope="row">Test secret key</th><td><input type="password" name="sml_idv_secret_test" style="width:440px" placeholder="' . ( $hasTS ? 'saved — leave blank to keep' : 'sk_test_...' ) . '" autocomplete="off"></td></tr>';
-		echo '<tr><th scope="row">Live publishable key</th><td><input type="text" name="sml_idv_pk_live" style="width:440px" value="' . esc_attr( get_option( 'sml_idv_pk_live', '' ) ) . '" placeholder="pk_live_..." autocomplete="off"></td></tr>';
+		echo '<tr><th scope="row">Live publishable key</th><td><input type="text" name="sml_idv_pk_live" style="width:440px" value="' . esc_attr( sml_idv_opt( 'sml_idv_pk_live', '' ) ) . '" placeholder="pk_live_..." autocomplete="off"></td></tr>';
 		echo '<tr><th scope="row">Live secret key</th><td><input type="password" name="sml_idv_secret_live" style="width:440px" placeholder="' . ( $hasLS ? 'saved — leave blank to keep' : 'sk_live_...' ) . '" autocomplete="off"></td></tr>';
 		echo '<tr><th scope="row">Gate the rail</th><td><label><input type="checkbox" name="sml_idv_require" ' . checked( $reqv, true, false ) . '> Require ID verification to appear in "Traders you may connect with" (in addition to a real photo)</label></td></tr>';
 		echo '</table>';
