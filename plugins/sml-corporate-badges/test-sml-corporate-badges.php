@@ -33,6 +33,11 @@ function wp_add_inline_style( ...$a ) {}
 function get_the_author_meta( $f ) { return $GLOBALS['sml_test_author_id'] ?? 0; }
 function get_comment( $id ) { return $GLOBALS['sml_test_comments'][ $id ] ?? null; }
 function rest_ensure_response( $d ) { return new SML_Test_Response( $d ); }
+$GLOBALS['sml_test_ctx'] = array( 'admin' => false, 'feed' => false, 'ajax' => false, 'head' => false );
+function is_admin() { return $GLOBALS['sml_test_ctx']['admin']; }
+function is_feed() { return $GLOBALS['sml_test_ctx']['feed']; }
+function wp_doing_ajax() { return $GLOBALS['sml_test_ctx']['ajax']; }
+function doing_action( $h ) { return 'wp_head' === $h && $GLOBALS['sml_test_ctx']['head']; }
 
 class SML_Test_Response {
 	public $data; public $headers = array();
@@ -173,6 +178,19 @@ $GLOBALS['sml_test_author_id'] = 258457001;
 ok( false !== strpos( sml_cb_filter_author( 'Bloomberg' ), 'sml-cb-badge' ), 'the author byline gains a badge' );
 $GLOBALS['sml_test_author_id'] = 258456543;
 ok( 'Someone' === sml_cb_filter_author( 'Someone' ), 'a normal author byline is untouched' );
+
+/* badge markup must never reach feeds, admin, AJAX, or <head> (SEO titles, JSON-LD) */
+$GLOBALS['sml_test_author_id'] = 258457001;
+foreach ( array( 'feed', 'admin', 'ajax', 'head' ) as $ctx ) {
+	$GLOBALS['sml_test_ctx'][ $ctx ] = true;
+	ok( 'Bloomberg' === sml_cb_filter_author( 'Bloomberg' ), "no badge markup in the $ctx context" );
+	$GLOBALS['sml_test_ctx'][ $ctx ] = false;
+}
+ok( false !== strpos( sml_cb_filter_author( 'Bloomberg' ), 'sml-cb-badge' ), 'and the badge returns on a normal page render' );
+$GLOBALS['sml_test_ctx']['feed'] = true;
+$GLOBALS['sml_test_comments'][5] = (object) array( 'user_id' => 258457001 );
+ok( 'Bloomberg' === sml_cb_filter_comment_author( 'Bloomberg', 5 ), 'comment author lines are guarded the same way' );
+$GLOBALS['sml_test_ctx']['feed'] = false;
 
 /* ------------------------------------------------------------- public read */
 

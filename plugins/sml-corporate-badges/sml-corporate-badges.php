@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Corporate Badges
  * Description: Receives the corporate-account projection from the platform and renders the verified Corporate badge. Read-only mirror — this plugin never decides who is corporate.
- * Version: 1.0.0
+ * Version: 1.0.1
  *
  * WordPress does NOT decide entitlement. The platform proves domain ownership,
  * takes the money, and pushes a projection here; this plugin mirrors it. A bug
@@ -157,14 +157,36 @@ function sml_cb_badge_html( $user_id ) {
 
 /* --------------------------------------------------------- server surfaces */
 
+/**
+ * Only on rendered front-end HTML.
+ *
+ * `the_author` and `get_comment_author` are also read by RSS/Atom feeds, the
+ * REST API, admin list tables, AJAX handlers and SEO plugins building titles
+ * and JSON-LD. Badge markup in any of those is at best escaped junk
+ * ("Bloomberg <span class=...") and at worst a broken feed or a structured-data
+ * name Google rejects. The client-rendered feed gets badges from the public
+ * /badges map instead.
+ */
+function sml_cb_is_html_context() {
+	if ( is_admin() || is_feed() || wp_doing_ajax() ) return false;
+	if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) return false;
+	if ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) return false;
+	if ( defined( 'WP_CLI' ) && WP_CLI ) return false;
+	/* wp_head is where SEO plugins print titles and JSON-LD. */
+	if ( doing_action( 'wp_head' ) ) return false;
+	return true;
+}
+
 /** Post author byline. */
 function sml_cb_filter_author( $display_name ) {
+	if ( ! sml_cb_is_html_context() ) return $display_name;
 	$badge = sml_cb_badge_html( get_the_author_meta( 'ID' ) );
 	return $badge ? $display_name . ' ' . $badge : $display_name;
 }
 
 /** Comment author line. */
 function sml_cb_filter_comment_author( $author, $comment_id = 0 ) {
+	if ( ! sml_cb_is_html_context() ) return $author;
 	$comment = get_comment( $comment_id );
 	if ( ! $comment || ! $comment->user_id ) return $author;
 	$badge = sml_cb_badge_html( $comment->user_id );
@@ -198,7 +220,7 @@ function sml_cb_styles() {
 		. 'background:var(--sml-cb-color,#475569);color:#fff;font-size:.72em;font-weight:700;line-height:1.5;'
 		. 'letter-spacing:.02em;vertical-align:middle;white-space:nowrap}'
 		. '.sml-cb-badge__icon{width:1em;height:1em;flex:0 0 auto}';
-	wp_register_style( 'sml-corporate-badges', false, array(), '1.0.0' );
+	wp_register_style( 'sml-corporate-badges', false, array(), '1.0.1' );
 	wp_enqueue_style( 'sml-corporate-badges' );
 	wp_add_inline_style( 'sml-corporate-badges', $css );
 }
