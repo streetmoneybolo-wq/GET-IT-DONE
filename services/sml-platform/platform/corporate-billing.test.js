@@ -381,3 +381,41 @@ test('a refund never reuses the UNIQUE charge id of the purchase it refunds', as
   assert.equal(correction.provenance.reverses_charge, 'ch_1', 'the link is kept in provenance');
   assert.equal(correction.source_event_id, 're_1');
 });
+
+/* ------------------------------------------ recording a real (already paid) charge */
+
+test('a recorded payment must match the price recomputed under the lock', async () => {
+  const h = harness([...cycleRow(), ['SUM(net_cents)', [{ net: '0', discount: '0' }]]]);
+  const svc = B.createCorporateBillingService({ pool: h.pool, store: h.store, now });
+  const r = await svc.purchaseAd({ corporateId: 1, billingId: 7, grossCents: 100000, expectedNetCents: 80000 });
+  assert.equal(r.netCents, 80000);
+  assert.equal(h.appended.length, 1);
+});
+
+test('if the price moved between quote and payment, nothing is recorded', async () => {
+  /* Discount headroom already spent by another purchase: $1,000 now costs the
+   * full $1,000, but the advertiser paid the quoted $800. */
+  const h = harness([...cycleRow(), ['SUM(net_cents)', [{ net: '0', discount: '2000000' }]]]);
+  const svc = B.createCorporateBillingService({ pool: h.pool, store: h.store, now });
+  await assert.rejects(
+    () => svc.purchaseAd({ corporateId: 1, billingId: 7, grossCents: 100000, expectedNetCents: 80000 }),
+    (e) => e.code === 'price_changed' && e.netCents === 100000);
+  assert.equal(h.appended.length, 0, 'no ledger row for a mismatched payment');
+  assert.ok(h.calls.some((c) => c.sql === 'ROLLBACK'));
+});
+
+test('a quote prices without locking or writing anything', async () => {
+  const h = harness([...cycleRow(), ['SUM(net_cents)', [{ net: '0', discount: '0' }]]]);
+  const svc = B.createCorporateBillingService({ pool: h.pool, store: h.store, now });
+  const q = await svc.quoteAd({ corporateId: 1, billingId: 7, grossCents: 100000 });
+  assert.deepEqual(q, { grossCents: 100000, discountCents: 20000, netCents: 80000 });
+  assert.equal(h.appended.length, 0);
+  assert.ok(!h.calls.some((c) => /pg_advisory|BEGIN/.test(c.sql)));
+});
+
+test('a quote over the cap is refused the same way a purchase is', async () => {
+  const h = harness([...cycleRow(), ['SUM(net_cents)', [{ net: '10000000', discount: '0' }]]]);
+  const svc = B.createCorporateBillingService({ pool: h.pool, store: h.store, now });
+  await assert.rejects(() => svc.quoteAd({ corporateId: 1, billingId: 7, grossCents: 100 }),
+    (e) => e.code === 'cap_exceeded');
+});

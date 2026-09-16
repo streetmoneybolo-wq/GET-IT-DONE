@@ -222,6 +222,12 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
     const corporateId = requireId(input.corporateId, 'corporateId');
     const billingId = requireId(input.billingId, 'billingId');
     const grossCents = requireCents(input.grossCents, 'grossCents');
+    /* The amount Stripe actually collected, when recording a real payment. A
+     * quote and its charge are separated by time, and another purchase in
+     * between moves the discount headroom — so the price is recomputed under
+     * the lock and must match what was paid, or nothing is recorded. */
+    const expectedNetCents = input.expectedNetCents == null
+      ? null : requireCents(input.expectedNetCents, 'expectedNetCents', { allowNegative: true });
 
     return withTransaction(async (client) => {
       const cycle = await client.query(
@@ -241,6 +247,13 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
 
       const totals = await cycleTotals(client, billingId);
       const priced = priceAdPurchase({ grossCents, ...totals, billing });
+      if (expectedNetCents !== null && priced.netCents !== expectedNetCents) {
+        const error = new Error(`price changed: this purchase now costs ${priced.netCents} cents, `
+          + `but ${expectedNetCents} were collected`);
+        error.code = 'price_changed';
+        error.netCents = priced.netCents;
+        throw error;
+      }
       const at = new Date(now()).toISOString();
 
       const appended = await store.appendChained(client, {
@@ -274,6 +287,28 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
       });
       return { spendId: appended.id, ...priced };
     });
+  }
+
+  /**
+   * Price a purchase WITHOUT recording it — what to charge before charging.
+   *
+   * Read without the lock on purpose: a quote reserves nothing. purchaseAd
+   * re-prices under the lock and refuses if the number moved (expectedNetCents).
+   */
+  async function quoteAd(input = {}) {
+    const corporateId = requireId(input.corporateId, 'corporateId');
+    const billingId = requireId(input.billingId, 'billingId');
+    const grossCents = requireCents(input.grossCents, 'grossCents');
+    const cycle = await pool.query(
+      `SELECT id, annual_cap_cents, discount_bps, discount_cap_cents, cycle_end
+         FROM corporate_billing WHERE id = $1 AND corporate_id = $2`,
+      [billingId, corporateId]
+    );
+    const billing = cycle.rows[0];
+    if (!billing) throw invalid('unknown billing cycle for this account');
+    if (Date.parse(billing.cycle_end) <= now()) throw invalid('billing cycle has ended');
+    const totals = await cycleTotals(pool, billingId);
+    return priceAdPurchase({ grossCents, ...totals, billing });
   }
 
   /**
@@ -356,7 +391,7 @@ function createCorporateBillingService({ pool, store, now = Date.now, logger = (
     };
   }
 
-  return { openCycle, markOnboardingFeePaid, purchaseAd, recordCorrection, cycleSummary };
+  return { openCycle, markOnboardingFeePaid, quoteAd, purchaseAd, recordCorrection, cycleSummary };
 }
 
 module.exports = {

@@ -44,6 +44,7 @@ const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
 const { createUpgradeChatClient } = require('./upgrade-chat');
 const { createDisputeRuntime } = require('./dispute-runtime');
+const { createCorporateRuntime } = require('./corporate-runtime');
 const {
   createAiOrchestrator,
   createAiTaskStore,
@@ -80,6 +81,10 @@ async function main() {
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, wordpressNotify: wordpress, logger: log });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, upgradeChatReconcile: !!disputes.upgradeChatReconciler });
+  /* Corporate accounts: the worker's only job is keeping WordPress's badge
+     list in step with the database. Absent until SML_CORPORATE_ENABLED. */
+  const corporate = createCorporateRuntime({ config, pool: database.pool, stripe, logger: log });
+  log('info', 'corporate_runtime', { enabled: corporate.enabled, reason: corporate.reason });
   let aiOrchestrator = null;
   if (config.aiOrchestratorEnabled) {
     const clients = {};
@@ -194,9 +199,13 @@ async function main() {
         }
       }
       const disputeSweeps = disputes.enabled ? await disputes.runSweeps() : null;
+      /* Unchanged projections are skipped by digest, so this is one cheap
+         SELECT per tick when nothing moved. Never throws. */
+      const corporateProjection = corporate.enabled ? await corporate.publishProjection() : null;
       log('info', 'worker_ready_for_jobs', {
         jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline', 'alert_router',
           ...(disputes.enabled ? ['dispute_evidence_sweeps'] : []),
+          ...(corporate.enabled ? ['corporate_projection'] : []),
           ...(aiOrchestrator ? ['ai_orchestrator'] : [])],
         expired,
         promoted,
@@ -205,7 +214,8 @@ async function main() {
         newsMode: newsFlow ? 'continuous_single_job' : 'disabled',
         alertsProcessed,
         aiTasksProcessed,
-        ...(disputeSweeps ? { disputeSweeps } : {})
+        ...(disputeSweeps ? { disputeSweeps } : {}),
+        ...(corporateProjection && corporateProjection.published ? { corporateProjectionPublished: true } : {})
       });
     } catch (error) {
       log('error', 'worker_database_unavailable', { error });

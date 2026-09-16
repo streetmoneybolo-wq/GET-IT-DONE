@@ -74,6 +74,9 @@ function getConfig(env = process.env) {
     connectReviewUrlBase: String(env.SML_CONNECT_REVIEW_URL_BASE || 'https://stockmarketloop.com/connect-review/').trim(),
     upgradeChatWebhookPathToken: String(env.SML_UC_WEBHOOK_PATH_TOKEN || '').trim(),
     connectGuildIds: String(env.SML_CONNECT_GUILD_IDS || '').split(',').map((g) => g.trim()).filter(Boolean),
+    // --- corporate accounts (every route 503s and no projection is pushed until all set) ---
+    corporateEnabled: String(env.SML_CORPORATE_ENABLED || '').trim() === '1',
+    corporateVerificationSecret: String(env.SML_CORPORATE_VERIFICATION_SECRET || '').trim(),
     // --- bounded Claude <-> Codex orchestration (disabled until explicitly enabled) ---
     aiOrchestratorEnabled: String(env.SML_AI_ORCHESTRATOR_ENABLED || '').trim() === '1',
     anthropicApiKey: String(env.ANTHROPIC_API_KEY || '').trim(),

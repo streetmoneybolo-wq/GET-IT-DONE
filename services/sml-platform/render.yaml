@@ -41,6 +41,11 @@ services:
       - key: SML_ALERT_ROUTER_SECRET
         sync: false
       # --- dispute-evidence system (all disabled until set; values live only in Render) ---
+      # --- corporate accounts (disabled until all three are set; also needs SML_EVIDENCE_ENCRYPTION_KEY) ---
+      - key: SML_CORPORATE_ENABLED
+        sync: false
+      - key: SML_CORPORATE_VERIFICATION_SECRET
+        sync: false
       - key: SML_DISPUTE_EVIDENCE_ENABLED
         sync: false
       - key: SML_EVIDENCE_ENCRYPTION_KEY
@@ -111,6 +116,11 @@ services:
       - key: SML_WORDPRESS_AUTHOR_NAME
         value: SML NEWS
       # --- dispute-evidence system (worker: sweeps, alerts, disputed-access policy) ---
+      # --- corporate accounts (disabled until all three are set; also needs SML_EVIDENCE_ENCRYPTION_KEY) ---
+      - key: SML_CORPORATE_ENABLED
+        sync: false
+      - key: SML_CORPORATE_VERIFICATION_SECRET
+        sync: false
       - key: SML_DISPUTE_EVIDENCE_ENABLED
         sync: false
       - key: SML_EVIDENCE_ENCRYPTION_KEY

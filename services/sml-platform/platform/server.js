@@ -71,6 +71,63 @@ async function handleDisputeRequest(request, response, options, methodName) {
   }
 }
 
+/* Corporate-accounts admin actions behind POST /v1/corporate/{action}. Same
+   HMAC scheme as billing; 503 until the corporate runtime is enabled. Refusals
+   the operator must act on (cap reached, price moved, payment already used)
+   are 409 with their code, distinct from malfunctions (503). */
+async function handleCorporateRequest(request, response, options, action) {
+  if (!contentTypeIsJson(request)) return sendJson(response, 415, { ok: false, error: 'content_type_required' });
+  const body = await readRequestBody(request);
+  if (!body.ok) return sendJson(response, body.status, { ok: false, error: body.error });
+  const verified = verifySignature({
+    secret: options.billingApiSecret,
+    timestamp: request.headers['x-sml-timestamp'],
+    signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) return sendJson(response, verified.status, { ok: false, error: verified.error });
+  const runtime = options.corporate;
+  if (!runtime || !runtime.enabled || !runtime.actions) {
+    return sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
+  }
+  /* Own properties only: `actions` is a plain object, so a bare lookup would
+     resolve /v1/corporate/constructor or /toString to Object.prototype methods. */
+  const handler = Object.prototype.hasOwnProperty.call(runtime.actions, action) ? runtime.actions[action] : null;
+  if (typeof handler !== 'function') return sendJson(response, 404, { ok: false, error: 'not_found' });
+  let input;
+  try {
+    input = JSON.parse(body.rawBody);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid');
+  } catch (_) {
+    return sendJson(response, 400, { ok: false, error: 'invalid_json' });
+  }
+  try {
+    const result = await handler(input);
+    sendJson(response, 200, { ok: true, ...(result && typeof result === 'object' && !Array.isArray(result) ? result : { result }) });
+  } catch (error) {
+    const code = error && error.code;
+    if (code === 'stripe_unconfigured') {
+      return sendJson(response, 503, { ok: false, error: 'stripe_unconfigured' });
+    }
+    if (code && options.conflictCodes && options.conflictCodes.has(code)) {
+      options.logger('warn', 'corporate_request_refused', { action, code });
+      const extra = {};
+      for (const key of ['remainingCents', 'netCents', 'alreadyRefunded']) {
+        if (error[key] !== undefined) extra[key] = error[key];
+      }
+      return sendJson(response, 409, { ok: false, error: code, message: String(error.message).slice(0, 240), ...extra });
+    }
+    const invalid = error instanceof TypeError;
+    options.logger(invalid ? 'warn' : 'error', 'corporate_request_failed', { action, error });
+    sendJson(response, invalid ? 400 : 503, {
+      ok: false,
+      error: invalid ? 'invalid_request' : 'temporary_unavailable',
+      ...(invalid ? { message: String(error.message).slice(0, 240) } : {})
+    });
+  }
+}
+
 async function handleAlertRequest(request, response, options, action) {
   if (!contentTypeIsJson(request)) return sendJson(response, 415, { ok: false, error: 'content_type_required' });
   const body = await readRequestBody(request);
@@ -353,7 +410,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
-  disputeService = null, schemaVersion = null,
+  disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -383,6 +440,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const methodName = DISPUTE_ACTIONS[path.slice('/v1/billing/disputes/'.length)];
       if (!methodName) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
       await handleDisputeRequest(request, response, { billingApiSecret, disputeService, logger, now }, methodName);
+      return;
+    }
+    if (request.method === 'POST' && path.startsWith('/v1/corporate/')) {
+      const action = path.slice('/v1/corporate/'.length);
+      await handleCorporateRequest(request, response,
+        { billingApiSecret, corporate, conflictCodes: corporateConflictCodes, logger, now }, action);
       return;
     }
     const alertOptions = { alertRouterSecret, logger, now };
@@ -507,6 +570,9 @@ async function main() {
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!disputes.discordInteractions });
+  const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
+  const corporate = createCorporateRuntime({ config, pool: database.pool, stripe, logger: log });
+  log('info', 'corporate_runtime', { enabled: corporate.enabled, reason: corporate.reason });
   const schemaVersion = async () => {
     const found = await database.pool.query('SELECT MAX(version) AS version FROM schema_migrations', []);
     return found.rows[0] && found.rows[0].version != null ? String(found.rows[0].version) : null;
@@ -530,7 +596,9 @@ async function main() {
     enqueueNewsArticle: database.enqueueNewsArticle,
     newsIngestToken: config.newsIngestToken,
     alertRouter,
-    alertRouterSecret: config.alertRouterSecret
+    alertRouterSecret: config.alertRouterSecret,
+    corporate,
+    corporateConflictCodes: CONFLICT_CODES
   });
   let shuttingDown = false;
 
@@ -565,5 +633,6 @@ module.exports = {
   handleAlertRequest,
   handleDisputeRequest,
   handleConnectRequest,
+  handleCorporateRequest,
   DISPUTE_ACTIONS
 };
