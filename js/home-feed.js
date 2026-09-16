@@ -175,9 +175,9 @@
       .then(function(r){return r.json();}).then(function(j){ var fired=(j&&j.fired)||[]; hits.forEach(function(s){ delete WL_HIT_INFLIGHT[s]; if(fired.indexOf(s)<0) WL_HIT_COOL[s]=Date.now()+30000; }); if(j&&j.targets){ WL_TARGETS=j.targets; if(WL_RERENDER) WL_RERENDER(); } })
       .catch(function(){ hits.forEach(function(s){ delete WL_HIT_INFLIGHT[s]; }); });
   }
-  function smlWlFlash(row, up){ if(!row) return; row.classList.remove('wl-up','wl-down'); void row.offsetWidth; row.classList.add(up?'wl-up':'wl-down'); setTimeout(function(){ row.classList.remove('wl-up','wl-down'); }, 700); }
+  function smlWlFlash(row, up){ if(!row) return; row.classList.remove('wl-up','wl-down'); requestAnimationFrame(function(){ row.classList.add(up?'wl-up':'wl-down'); }); setTimeout(function(){ row.classList.remove('wl-up','wl-down'); }, 780); }
   function smlWlPaintDist(){
-    document.querySelectorAll('#sml-hf-shell [data-wl-dist]').forEach(function(el){
+    document.querySelectorAll('#sml-hf-wl-card [data-wl-dist]').forEach(function(el){
       var sym=el.getAttribute('data-wl-dist'), tg=WL_TARGETS[sym], d=Q[sym];
       if(!tg || !d || d.last==null){ el.textContent=''; return; }
       var last=Number(d.last), price=Number(tg.price); if(!(last>0)||!(price>0)){ el.textContent=''; return; }
@@ -188,7 +188,21 @@
       el.style.color=short?'#F2C14E':'#7FB8FF';
     });
   }
-  function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ var sym=el.getAttribute('data-q'), d=Q[sym]; if(!d)return; var f=el.getAttribute('data-qf'), v=d[f]; if(f==='last'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4'; if(v!=null){ var row=el.closest&&el.closest('.sml-hf-wl-row'); if(row){ var p=Qprev[sym]; if(p!=null && Number(v)!==Number(p)) smlWlFlash(row, Number(v)>Number(p)); } }} else if(f==='pct'){el.textContent=fmtPct(v);el.style.color=qColor(v);} else if(f==='chg'){el.textContent=fmtChg(v);el.style.color=qColor(v);} else if(f==='vol'){el.textContent=fmtVol(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='pc'){el.textContent=fmtP(v);el.style.color=v==null?'#6B7C90':'#CFDAE4';} else if(f==='t'){el.textContent=v?String(v).slice(-8):'—';} }); for(var s in Q){ if(Q[s] && Q[s].last!=null) Qprev[s]=Q[s].last; } smlWlPaintDist(); smlWlInstantCheck(); ingestSignalQuoteEvents(); }
+  /* paint one [data-q] cell; allowFlash flashes its watchlist row on a real tick */
+  function paintQuoteCell(el, allowFlash){
+    var sym=el.getAttribute('data-q'), d=Q[sym]; if(!d) return; var f=el.getAttribute('data-qf'), v=d[f];
+    if(f==='last'){ el.textContent=fmtP(v); el.style.color=v==null?'#6B7C90':'#CFDAE4';
+      if(allowFlash && v!=null){ var row=el.closest&&el.closest('.sml-hf-wl-row'); if(row){ var p=Qprev[sym]; if(p!=null && Number(v)!==Number(p)) smlWlFlash(row, Number(v)>Number(p)); } } }
+    else if(f==='pct'){ el.textContent=fmtPct(v); el.style.color=qColor(v); }
+    else if(f==='chg'){ el.textContent=fmtChg(v); el.style.color=qColor(v); }
+    else if(f==='vol'){ el.textContent=fmtVol(v); el.style.color=v==null?'#6B7C90':'#CFDAE4'; }
+    else if(f==='pc'){ el.textContent=fmtP(v); el.style.color=v==null?'#6B7C90':'#CFDAE4'; }
+    else if(f==='t'){ el.textContent=v?String(v).slice(-8):'—'; }
+  }
+  function applyQuotes(){ document.querySelectorAll('#sml-hf-shell [data-q]').forEach(function(el){ paintQuoteCell(el, true); }); for(var s in Q){ if(Q[s] && Q[s].last!=null) Qprev[s]=Q[s].last; } smlWlPaintDist(); smlWlInstantCheck(); ingestSignalQuoteEvents(); }
+  /* light repaint after a watchlist re-render: card only, no shell-wide requery, no
+     Qprev restamp, no instant-check (a UI re-render carries no new quote data) */
+  function paintWatch(){ var card=document.getElementById('sml-hf-wl-card'); if(card){ card.querySelectorAll('[data-q]').forEach(function(el){ paintQuoteCell(el, false); }); } smlWlPaintDist(); }
   function pollQuotes(){ if(document.hidden) return; var u=QUOTES_URL+(SYMS.length?('?symbols='+encodeURIComponent(SYMS.join(','))):''); fetch(u,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.quotes){Q=d.quotes;applyQuotes();} }).catch(function(){}); }
 
   function boot() {
@@ -474,7 +488,7 @@
     try { var wraw=localStorage.getItem(WKEY); if(wraw){ wl=JSON.parse(wraw); if(!Object.prototype.toString.call(wl).match(/Array/)) wl=null; } } catch(e){}
     /* Shared watchlist view: a link like /?watchlist=SPY,QQQ,NVDA opens the rail in
        read-only "shared" mode showing those tickers (owner call 2026-09-16). */
-    try { var wlm=/[?&]watchlist=([^&#]+)/.exec(location.search); if(wlm){ var raw=decodeURIComponent(wlm[1]).toUpperCase().split(/[,\s]+/).map(function(s){return s.replace(/[^A-Z0-9.\-]/g,'');}).filter(Boolean).slice(0,WL_MAX); if(raw.length){ wShared=true; wSharedSyms=raw; } } } catch(e){}
+    try { var wlm=/[?&]watchlist=([^&#]+)/.exec(location.search); if(wlm){ var raw=decodeURIComponent(wlm[1]).toUpperCase().split(/[,\s]+/).map(function(s){return s.replace(/[^A-Z0-9.\-]/g,'');}).filter(Boolean).slice(0,WL_MAX); if(raw.length){ wShared=true; wSharedSyms=raw; raw.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); } } } catch(e){} /* shared symbols must ride the quote poll too */
     function watchSyms(){ if(wShared&&wSharedSyms) return wSharedSyms.slice(0,WL_MAX); return (wl&&wl.length?wl:syms.slice(0,6)).slice(0,WL_MAX); }
     function saveWl(){ try{ localStorage.setItem(WKEY,JSON.stringify(wl||[])); }catch(e){}
       /* Owner call 2026-09-15: keep the one-shot /sml-home/v2/bootstrap snapshot that
@@ -573,19 +587,20 @@
         if(pages>1){ pager='<div class="wl-next"><span>'+(wPage+1)+' / '+pages+' · '+watchSyms().length+' tickers</span><button id="sml-hf-wl-next">Next ›</button></div>'; }
         foot.innerHTML=pager+wlShareHtml();
       }
-      applyQuotes();
+      paintWatch();
     }
-    function loadTargets(){ if(wShared) return; var n=wlNonce(); if(!n) return; fetch('/wp-json/sml-watch/v1/targets',{credentials:'same-origin',headers:{'X-WP-Nonce':n}}).then(function(r){return r.json();}).then(function(d){ if(d&&d.targets){ WL_TARGETS=d.targets; renderWatch(); } }).catch(function(){}); }
+    function loadTargets(){ if(wShared) return; var n=smlWlNonce(); if(!n) return; fetch('/wp-json/sml-watch/v1/targets',{credentials:'same-origin',headers:{'X-WP-Nonce':n}}).then(function(r){return r.json();}).then(function(d){ if(d&&d.targets){ WL_TARGETS=d.targets; renderWatch(); } }).catch(function(){}); }
     function setTargetFor(s){
       var side=(WL_TARGETS[s]&&WL_TARGETS[s].side)||'long';
       var ss=document.querySelector('.wl-seg button.on[data-for="'+s+'"]'); if(ss) side=ss.getAttribute('data-wl-side');
       var inp=document.querySelector('[data-wl-tprice="'+s+'"]'); if(!inp) return; var price=parseFloat(inp.value); if(!(price>0)){ inp.focus(); return; }
       var base=(Q[s]&&Q[s].last!=null)?Number(Q[s].last):0;
       WL_TARGETS[s]={price:price,side:side,base:base,hit:false}; wTgtOpen=''; renderWatch();
-      var n=wlNonce(); if(!n) return;
+      smlWlInstantCheck(); /* fire at once if the target is already crossed (renderWatch no longer scans) */
+      var n=smlWlNonce(); if(!n) return;
       fetch('/wp-json/sml-watch/v1/targets',{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:s,price:price,side:side,base:base})}).then(function(r){return r.json();}).then(function(d){ if(d&&d.targets){ WL_TARGETS=d.targets; renderWatch(); } }).catch(function(){});
     }
-    function clearTargetFor(s){ delete WL_TARGETS[s]; wTgtOpen=''; renderWatch(); var n=wlNonce(); if(!n) return; fetch('/wp-json/sml-watch/v1/targets',{method:'DELETE',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:s})}).catch(function(){}); }
+    function clearTargetFor(s){ delete WL_TARGETS[s]; delete WL_HIT_COOL[s]; delete WL_HIT_INFLIGHT[s]; wTgtOpen=''; renderWatch(); var n=smlWlNonce(); if(!n) return; fetch('/wp-json/sml-watch/v1/targets',{method:'DELETE',credentials:'same-origin',headers:{'X-WP-Nonce':n,'Content-Type':'application/json'},body:JSON.stringify({symbol:s})}).catch(function(){}); }
     function addTicker(){ var inp=document.getElementById('sml-hf-watch-inp'); if(!inp) return; var v=String(inp.value||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,''); inp.value=''; if(!v||v.length>6) return; var cur=watchSyms().slice(); if(cur.indexOf(v)<0){ cur.unshift(v); wlSync(v,'add'); } wl=cur.slice(0,WL_MAX); saveWl(); if(SYMS.indexOf(v)<0) SYMS.push(v); renderWatch(); pollQuotes(); inp.focus(); }
     function saveSharedToMine(){ if(!wSharedSyms) return; var n=wlNonce(); if(!wl) wl=[]; wSharedSyms.slice().reverse().forEach(function(s){ if(wl.indexOf(s)<0){ wl.unshift(s); if(n) wlSync(s,'add'); } }); wl=wl.slice(0,WL_MAX); wShared=false; wSharedSyms=null; saveWl(); wl.forEach(function(s){ if(SYMS.indexOf(s)<0) SYMS.push(s); }); try{ history.replaceState(null,'',location.pathname); }catch(e){} loadTargets(); renderWatch(); pollQuotes(); }
     function storyItems(){ return authors.slice(0,7).map(function(a){var ring='0 0 0 2px #0B131F,0 0 0 4px rgba(34,224,122,.7)'; var pres=a.slug?' data-pres="'+esc(a.slug)+'"':''; var av=a.img?'<img src="'+esc(a.img)+'" alt="'+esc(a.name)+'" loading="lazy"'+pres+' style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;box-shadow:'+ring+'">':'<div'+pres+' style="width:56px;height:56px;border-radius:50%;background:linear-gradient(160deg,#26343F,#0D141D);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#38F58A;box-shadow:inset 0 2px 0 rgba(255,255,255,.22),'+ring+'">'+esc(initialsOf(a.name))+'</div>'; var inner=av+'<span style="font-size:10px;color:#93A4B8;max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.name)+'</span>'; var st='display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;flex:none;text-decoration:none;color:inherit'; return a.href?'<a href="'+esc(a.href)+'" style="'+st+'">'+inner+'</a>':'<div style="'+st+'">'+inner+'</div>';}).join(''); }
