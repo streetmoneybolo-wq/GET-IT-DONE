@@ -91,6 +91,24 @@
       '.sml-fs-dialog header h2{margin:0;font:700 17px Archivo,Inter,system-ui,sans-serif;}' +
       '.sml-fs-dialog .close{border:0;background:transparent;color:#93A4B8;font:700 20px/1 Inter,system-ui,sans-serif;cursor:pointer;padding:4px 8px;border-radius:8px;}' +
       '.sml-fs-dialog form{padding:6px 20px 20px;}' +
+      '.sml-fs-follow{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;padding:14px 20px 4px;}' +
+      '.sml-fs-card{position:relative;display:flex;align-items:center;gap:10px;min-width:0;padding:10px 34px 10px 10px;border-radius:14px;text-align:left;cursor:pointer;' +
+        'border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:#E6EDF5;font:14px/1.3 Inter,system-ui,sans-serif;}' +
+      '.sml-fs-card:hover{border-color:rgba(255,255,255,.26);}' +
+      '.sml-fs-card:focus-visible{outline:2px solid #fff;outline-offset:2px;}' +
+      '.sml-fs-card[aria-pressed="true"]{border-color:#38F58A;background:rgba(56,245,138,.10);}' +
+      '.sml-fs-card .av{flex:none;width:44px;height:44px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#16202B;color:#93A4B8;font-weight:700;}' +
+      '.sml-fs-card .av img{width:100%;height:100%;object-fit:cover;display:block;}' +
+      '.sml-fs-card .tx{display:flex;flex-direction:column;min-width:0;}' +
+      '.sml-fs-card .nm{font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+      '.sml-fs-card .lb{font-size:12px;color:#93A4B8;}' +
+      '.sml-fs-card .lb.news{color:#7CC4FF;}' +
+      '.sml-fs-card .lb.corporate{color:#F5C451;}' +
+      '.sml-fs-card .ck{position:absolute;top:8px;right:10px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font:700 11px/1 Inter,system-ui,sans-serif;' +
+        'border:1px solid rgba(255,255,255,.22);color:transparent;}' +
+      '.sml-fs-card[aria-pressed="true"] .ck{background:#38F58A;border-color:#38F58A;color:#04130A;}' +
+      '.sml-fs-dialog > .sml-fs-foot{position:sticky;bottom:0;margin:0;padding:14px 20px 18px;background:#0B1017;border-top:1px solid rgba(255,255,255,.08);}' +
+      '@media (max-width:480px){.sml-fs-follow{grid-template-columns:1fr 1fr;}.sml-fs-card{flex-direction:column;text-align:center;padding:12px 8px;}.sml-fs-card .tx{align-items:center;max-width:100%;}.sml-fs-dialog > .sml-fs-foot{flex-wrap:wrap;gap:8px;}.sml-fs-dialog > .sml-fs-foot .sml-fs-status{flex-basis:100%;}.sml-fs-dialog > .sml-fs-foot .sml-fs-row{flex:1;flex-wrap:nowrap;}.sml-fs-dialog > .sml-fs-foot .sml-fs-btn{flex:1;}}' +
       '.sml-fs-intro{margin:14px 20px 0;color:#B7C3CF;font:14px/1.5 Inter,system-ui,sans-serif;max-width:60ch;}' +
       '.sml-fs-q{margin:16px 0 0;padding:0;border:0;}' +
       '.sml-fs-q legend{margin:0 0 8px;font:600 14px Inter,system-ui,sans-serif;color:#fff;}' +
@@ -470,6 +488,159 @@
     if (!card.parentNode || precedes) first.parentNode.insertBefore(card, first);
   }
 
+  /* ------------------------------------------------------- follow step */
+
+  /* Step 2 of the welcome: follow at least 5 of up to 15 suggested accounts.
+     The server builds the pool (corporate capped at 3, news, then creators) and
+     only follows accounts it actually offered; the required count comes from the
+     server too, so a short pool never asks for more cards than it shows. Leaving
+     this step any way just closes it — it is only ever shown right after the
+     questionnaire is saved, so it does not come back. */
+  function openFollowStep() {
+    var previousFocus = document.activeElement;
+    var overlay = el('div', 'sml-fs-overlay');
+    var dialog = el('div', 'sml-fs-dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'sml-fs-follow-title');
+
+    var head = el('header');
+    var title = el('h2', '', 'Follow a few accounts');
+    title.id = 'sml-fs-follow-title';
+    var close = el('button', 'close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    head.appendChild(title); head.appendChild(close);
+    dialog.appendChild(head);
+
+    var intro = el('p', 'sml-fs-intro', 'Finding accounts that match how you trade…');
+    dialog.appendChild(intro);
+    var grid = el('div', 'sml-fs-follow');
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-labelledby', 'sml-fs-follow-title');
+    dialog.appendChild(grid);
+
+    var foot = el('div', 'sml-fs-foot');
+    var status = el('span', 'sml-fs-status');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    var skip = el('button', 'sml-fs-btn', 'Skip for now');
+    skip.type = 'button';
+    var go = el('button', 'sml-fs-btn primary', 'Follow & continue');
+    go.type = 'button';
+    go.disabled = true;
+    var actions = el('div', 'sml-fs-row');
+    actions.appendChild(skip); actions.appendChild(go);
+    foot.appendChild(status); foot.appendChild(actions);
+    dialog.appendChild(foot);
+    overlay.appendChild(dialog);
+
+    var required = 0;
+    var chosen = {};
+    var busy = false;
+
+    function count() { return Object.keys(chosen).length; }
+    function refresh() {
+      var n = count();
+      go.disabled = busy || n < required;
+      if (!busy) status.textContent = n < required ? n + ' of ' + required + ' selected' : n + ' selected';
+    }
+    function dismiss() {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+      if (previousFocus && previousFocus.focus) previousFocus.focus({ preventScroll: true });
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return; }
+      if (ev.key !== 'Tab') return;
+      var f = Array.prototype.filter.call(dialog.querySelectorAll('button'), function (b) { return !b.disabled; });
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    }
+
+    function card(c) {
+      var b = el('button', 'sml-fs-card');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', 'false');
+      var av = el('span', 'av');
+      if (/^https:\/\//.test(c.avatar || '')) {
+        var img = el('img');
+        img.src = c.avatar; img.alt = ''; img.loading = 'lazy'; img.width = 44; img.height = 44;
+        av.appendChild(img);
+      } else {
+        av.textContent = String(c.name || '?').charAt(0).toUpperCase();
+      }
+      b.appendChild(av);
+      var text = el('span', 'tx');
+      text.appendChild(el('span', 'nm', c.name || ''));
+      text.appendChild(el('span', 'lb ' + (c.source || ''), c.label || ''));
+      b.appendChild(text);
+      b.appendChild(el('span', 'ck', '✓')).setAttribute('aria-hidden', 'true');
+      b.addEventListener('click', function () {
+        if (busy) return;
+        if (chosen[c.id]) delete chosen[c.id]; else chosen[c.id] = true;
+        b.setAttribute('aria-pressed', chosen[c.id] ? 'true' : 'false');
+        refresh();
+      });
+      return b;
+    }
+
+    function load() {
+      busy = true;
+      chosen = {};
+      grid.replaceChildren();
+      go.disabled = true;
+      status.textContent = '';
+      api('GET', '/onboarding/follow-pool').then(function (pool) {
+        busy = false;
+        var cards = (pool && Array.isArray(pool.cards)) ? pool.cards : [];
+        if (!cards.length) { dismiss(); return; }
+        required = Math.max(1, Number(pool.required) || 1);
+        intro.textContent = 'Follow at least ' + required + ' to fill your feed from day one. You can unfollow anyone later from their profile.';
+        cards.forEach(function (c) { grid.appendChild(card(c)); });
+        refresh();
+        var firstCard = grid.querySelector('button');
+        if (firstCard) firstCard.focus({ preventScroll: true });
+      }).catch(function () {
+        busy = false;
+        intro.textContent = 'Couldn’t load suggestions right now. You can find people to follow from the feed any time.';
+        skip.textContent = 'Close';
+      });
+    }
+
+    go.addEventListener('click', function () {
+      var ids = Object.keys(chosen).map(Number);
+      if (ids.length < required || busy) return;
+      busy = true;
+      go.disabled = true;
+      status.textContent = 'Following…';
+      api('POST', '/onboarding/follow', { userIds: ids }).then(function (r) {
+        var n = (r && r.count) || 0;
+        status.textContent = n === 1 ? 'Following 1 account.' : 'Following ' + n + ' accounts.';
+        setTimeout(dismiss, 900);
+      }).catch(function (e) {
+        busy = false;
+        if (e && e.status === 409) { status.textContent = 'Suggestions expired — refreshing…'; load(); return; }
+        refresh();
+        status.textContent = e && e.status === 429 ? 'Too many attempts. Please try again in a little while.'
+          : (e && e.status === 422 && e.message) ? e.message
+          : 'Couldn’t follow right now. Please try again.';
+      });
+    });
+    skip.addEventListener('click', dismiss);
+    close.addEventListener('click', dismiss);
+    overlay.addEventListener('click', function (ev) { if (ev.target === overlay) dismiss(); });
+    document.addEventListener('keydown', onKey, true);
+
+    (document.getElementById('sml-hf-shell') || document.body).appendChild(overlay);
+    close.focus({ preventScroll: true });
+    load();
+  }
+
+  /* ------------------------------------------------------- questionnaire */
+
   /* opts.welcome: shown automatically to a brand-new member right after sign-up.
      Any way of leaving it (Skip, ×, Escape, outside click) counts as skipping,
      so it is never auto-opened again; the normal prompt returns in 7 days. */
@@ -608,6 +779,8 @@
         promptState = null;
         status.textContent = 'Saved.';
         dismiss();
+        /* a new member goes straight on to step 2: following a few accounts */
+        if (welcome) openFollowStep();
         if (promptCard) {
           promptCard.replaceChildren(el('h3', '', 'Your feed is personalized'), el('p', '', 'Thanks — we’ll use your answers from now on.'));
           setTimeout(function () { promptCard.remove(); }, 4000);

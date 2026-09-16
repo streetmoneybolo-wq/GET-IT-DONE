@@ -1,0 +1,2043 @@
+{
+  "generatedFrom": "services/sml-platform/platform/corporate-onboarding.js (deploy/node-platform)",
+  "POOL_SIZE": 15,
+  "MAX_CORPORATE_CARDS": 3,
+  "REQUIRED_SELECTIONS": 5,
+  "poolCases": [
+    {
+      "name": "full composition",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 1,
+            "category": "news"
+          },
+          {
+            "wpUserId": 2,
+            "category": "finance"
+          }
+        ],
+        "news": [
+          {
+            "wpUserId": 10
+          },
+          {
+            "wpUserId": 11
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ],
+        "profile": {
+          "watchlist": [],
+          "categoryAffinity": {
+            "finance": 0.5,
+            "data": 0.3,
+            "research": 0.7,
+            "news": 0.9
+          },
+          "corporateSlotCap": 2,
+          "prefersVideo": false,
+          "prefersLetters": true,
+          "wantsVoiceRooms": false,
+          "isBeginner": false,
+          "holdPeriod": null,
+          "riskAppetite": null,
+          "intent": null
+        }
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 2,
+            "category": "finance",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 10,
+            "source": "news"
+          },
+          {
+            "wpUserId": 11,
+            "source": "news"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 2,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "corporate capped at 3",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 1,
+            "category": "news"
+          },
+          {
+            "wpUserId": 2,
+            "category": "news"
+          },
+          {
+            "wpUserId": 3,
+            "category": "news"
+          },
+          {
+            "wpUserId": 4,
+            "category": "news"
+          },
+          {
+            "wpUserId": 5,
+            "category": "news"
+          },
+          {
+            "wpUserId": 6,
+            "category": "news"
+          },
+          {
+            "wpUserId": 7,
+            "category": "news"
+          },
+          {
+            "wpUserId": 8,
+            "category": "news"
+          },
+          {
+            "wpUserId": 9,
+            "category": "news"
+          },
+          {
+            "wpUserId": 10,
+            "category": "news"
+          },
+          {
+            "wpUserId": 11,
+            "category": "news"
+          },
+          {
+            "wpUserId": 12,
+            "category": "news"
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 2,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 3,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 3,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "best category fit first",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 1,
+            "category": "news"
+          },
+          {
+            "wpUserId": 2,
+            "category": "research"
+          },
+          {
+            "wpUserId": 3,
+            "category": "other"
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ],
+        "profile": {
+          "categoryAffinity": {
+            "research": 0.9,
+            "news": 0.1
+          }
+        }
+      },
+      "opts": {
+        "maxCorporate": 1
+      },
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 2,
+            "category": "research",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 1,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "fit ties broken by id",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 9,
+            "category": "data"
+          },
+          {
+            "wpUserId": 4,
+            "category": "data"
+          },
+          {
+            "wpUserId": 7,
+            "category": "data"
+          },
+          {
+            "wpUserId": 5,
+            "category": "data"
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 4,
+            "category": "data",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 5,
+            "category": "data",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 7,
+            "category": "data",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 3,
+        "short": true,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "suspended corporate skipped",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 1,
+            "category": "news",
+            "active": false
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 0,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "creators backfill",
+      "input": {
+        "corporate": [],
+        "news": [],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 0,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "corporate shortfall never padded",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 1,
+            "category": "news"
+          },
+          {
+            "wpUserId": 2,
+            "category": "news"
+          },
+          {
+            "wpUserId": 3,
+            "category": "news"
+          },
+          {
+            "wpUserId": 4,
+            "category": "news"
+          },
+          {
+            "wpUserId": 5,
+            "category": "news"
+          },
+          {
+            "wpUserId": 6,
+            "category": "news"
+          },
+          {
+            "wpUserId": 7,
+            "category": "news"
+          },
+          {
+            "wpUserId": 8,
+            "category": "news"
+          },
+          {
+            "wpUserId": 9,
+            "category": "news"
+          },
+          {
+            "wpUserId": 10,
+            "category": "news"
+          },
+          {
+            "wpUserId": 11,
+            "category": "news"
+          },
+          {
+            "wpUserId": 12,
+            "category": "news"
+          }
+        ],
+        "news": [],
+        "creators": []
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 2,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 3,
+            "category": "news",
+            "source": "corporate"
+          }
+        ],
+        "corporateCount": 3,
+        "short": true,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "dedupe across sources",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 7,
+            "category": "news"
+          }
+        ],
+        "news": [
+          {
+            "wpUserId": 7
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 7
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 7,
+            "category": "news",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 1,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "bad ids dropped",
+      "input": {
+        "corporate": [
+          {
+            "handle": "bloomberg"
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 0
+          },
+          {
+            "wpUserId": "abc"
+          },
+          {
+            "wpUserId": null
+          },
+          {
+            "wpUserId": "42"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13"
+          },
+          {
+            "wpUserId": 1014,
+            "name": "Creator 14"
+          },
+          {
+            "wpUserId": 1015,
+            "name": "Creator 15"
+          },
+          {
+            "wpUserId": 1016,
+            "name": "Creator 16"
+          },
+          {
+            "wpUserId": 1017,
+            "name": "Creator 17"
+          },
+          {
+            "wpUserId": 1018,
+            "name": "Creator 18"
+          },
+          {
+            "wpUserId": 1019,
+            "name": "Creator 19"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 42,
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1002,
+            "name": "Creator 2",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1003,
+            "name": "Creator 3",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1004,
+            "name": "Creator 4",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1005,
+            "name": "Creator 5",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1006,
+            "name": "Creator 6",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1007,
+            "name": "Creator 7",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1008,
+            "name": "Creator 8",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1009,
+            "name": "Creator 9",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1010,
+            "name": "Creator 10",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1011,
+            "name": "Creator 11",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1012,
+            "name": "Creator 12",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1013,
+            "name": "Creator 13",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 0,
+        "short": false,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "short pool",
+      "input": {
+        "corporate": [
+          {
+            "wpUserId": 1,
+            "category": "finance"
+          }
+        ],
+        "news": [
+          {
+            "wpUserId": 10
+          }
+        ],
+        "creators": [
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1"
+          }
+        ]
+      },
+      "opts": {},
+      "result": {
+        "cards": [
+          {
+            "wpUserId": 1,
+            "category": "finance",
+            "source": "corporate"
+          },
+          {
+            "wpUserId": 10,
+            "source": "news"
+          },
+          {
+            "wpUserId": 1000,
+            "name": "Creator 0",
+            "source": "creator"
+          },
+          {
+            "wpUserId": 1001,
+            "name": "Creator 1",
+            "source": "creator"
+          }
+        ],
+        "corporateCount": 1,
+        "short": true,
+        "requiredSelections": 5
+      }
+    },
+    {
+      "name": "empty",
+      "input": {},
+      "opts": {},
+      "result": {
+        "cards": [],
+        "corporateCount": 0,
+        "short": true,
+        "requiredSelections": 5
+      }
+    }
+  ],
+  "selectionCases": [
+    {
+      "name": "five offered",
+      "selected": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004
+      ],
+      "pool": [
+        {
+          "wpUserId": 1000,
+          "name": "Creator 0"
+        },
+        {
+          "wpUserId": 1001,
+          "name": "Creator 1"
+        },
+        {
+          "wpUserId": 1002,
+          "name": "Creator 2"
+        },
+        {
+          "wpUserId": 1003,
+          "name": "Creator 3"
+        },
+        {
+          "wpUserId": 1004,
+          "name": "Creator 4"
+        },
+        {
+          "wpUserId": 1005,
+          "name": "Creator 5"
+        },
+        {
+          "wpUserId": 1006,
+          "name": "Creator 6"
+        },
+        {
+          "wpUserId": 1007,
+          "name": "Creator 7"
+        },
+        {
+          "wpUserId": 1008,
+          "name": "Creator 8"
+        },
+        {
+          "wpUserId": 1009,
+          "name": "Creator 9"
+        },
+        {
+          "wpUserId": 1010,
+          "name": "Creator 10"
+        },
+        {
+          "wpUserId": 1011,
+          "name": "Creator 11"
+        },
+        {
+          "wpUserId": 1012,
+          "name": "Creator 12"
+        },
+        {
+          "wpUserId": 1013,
+          "name": "Creator 13"
+        },
+        {
+          "wpUserId": 1014,
+          "name": "Creator 14"
+        }
+      ],
+      "result": {
+        "selected": [
+          1000,
+          1001,
+          1002,
+          1003,
+          1004
+        ],
+        "ok": true,
+        "required": 5
+      }
+    },
+    {
+      "name": "four",
+      "selected": [
+        1000,
+        1001,
+        1002,
+        1003
+      ],
+      "pool": [
+        {
+          "wpUserId": 1000,
+          "name": "Creator 0"
+        },
+        {
+          "wpUserId": 1001,
+          "name": "Creator 1"
+        },
+        {
+          "wpUserId": 1002,
+          "name": "Creator 2"
+        },
+        {
+          "wpUserId": 1003,
+          "name": "Creator 3"
+        },
+        {
+          "wpUserId": 1004,
+          "name": "Creator 4"
+        },
+        {
+          "wpUserId": 1005,
+          "name": "Creator 5"
+        },
+        {
+          "wpUserId": 1006,
+          "name": "Creator 6"
+        },
+        {
+          "wpUserId": 1007,
+          "name": "Creator 7"
+        },
+        {
+          "wpUserId": 1008,
+          "name": "Creator 8"
+        },
+        {
+          "wpUserId": 1009,
+          "name": "Creator 9"
+        },
+        {
+          "wpUserId": 1010,
+          "name": "Creator 10"
+        },
+        {
+          "wpUserId": 1011,
+          "name": "Creator 11"
+        },
+        {
+          "wpUserId": 1012,
+          "name": "Creator 12"
+        },
+        {
+          "wpUserId": 1013,
+          "name": "Creator 13"
+        },
+        {
+          "wpUserId": 1014,
+          "name": "Creator 14"
+        }
+      ],
+      "result": {
+        "selected": [
+          1000,
+          1001,
+          1002,
+          1003
+        ],
+        "ok": false,
+        "required": 5
+      }
+    },
+    {
+      "name": "outsider discarded",
+      "selected": [
+        1000,
+        1001,
+        1002,
+        1003,
+        1004,
+        258456543
+      ],
+      "pool": [
+        {
+          "wpUserId": 1000,
+          "name": "Creator 0"
+        },
+        {
+          "wpUserId": 1001,
+          "name": "Creator 1"
+        },
+        {
+          "wpUserId": 1002,
+          "name": "Creator 2"
+        },
+        {
+          "wpUserId": 1003,
+          "name": "Creator 3"
+        },
+        {
+          "wpUserId": 1004,
+          "name": "Creator 4"
+        },
+        {
+          "wpUserId": 1005,
+          "name": "Creator 5"
+        },
+        {
+          "wpUserId": 1006,
+          "name": "Creator 6"
+        },
+        {
+          "wpUserId": 1007,
+          "name": "Creator 7"
+        },
+        {
+          "wpUserId": 1008,
+          "name": "Creator 8"
+        },
+        {
+          "wpUserId": 1009,
+          "name": "Creator 9"
+        },
+        {
+          "wpUserId": 1010,
+          "name": "Creator 10"
+        },
+        {
+          "wpUserId": 1011,
+          "name": "Creator 11"
+        },
+        {
+          "wpUserId": 1012,
+          "name": "Creator 12"
+        },
+        {
+          "wpUserId": 1013,
+          "name": "Creator 13"
+        },
+        {
+          "wpUserId": 1014,
+          "name": "Creator 14"
+        }
+      ],
+      "result": {
+        "selected": [
+          1000,
+          1001,
+          1002,
+          1003,
+          1004
+        ],
+        "ok": true,
+        "required": 5
+      }
+    },
+    {
+      "name": "duplicates count once",
+      "selected": [
+        1000,
+        1000,
+        1000,
+        1000,
+        1000
+      ],
+      "pool": [
+        {
+          "wpUserId": 1000,
+          "name": "Creator 0"
+        },
+        {
+          "wpUserId": 1001,
+          "name": "Creator 1"
+        },
+        {
+          "wpUserId": 1002,
+          "name": "Creator 2"
+        },
+        {
+          "wpUserId": 1003,
+          "name": "Creator 3"
+        },
+        {
+          "wpUserId": 1004,
+          "name": "Creator 4"
+        },
+        {
+          "wpUserId": 1005,
+          "name": "Creator 5"
+        },
+        {
+          "wpUserId": 1006,
+          "name": "Creator 6"
+        },
+        {
+          "wpUserId": 1007,
+          "name": "Creator 7"
+        },
+        {
+          "wpUserId": 1008,
+          "name": "Creator 8"
+        },
+        {
+          "wpUserId": 1009,
+          "name": "Creator 9"
+        },
+        {
+          "wpUserId": 1010,
+          "name": "Creator 10"
+        },
+        {
+          "wpUserId": 1011,
+          "name": "Creator 11"
+        },
+        {
+          "wpUserId": 1012,
+          "name": "Creator 12"
+        },
+        {
+          "wpUserId": 1013,
+          "name": "Creator 13"
+        },
+        {
+          "wpUserId": 1014,
+          "name": "Creator 14"
+        }
+      ],
+      "result": {
+        "selected": [
+          1000
+        ],
+        "ok": false,
+        "required": 5
+      }
+    },
+    {
+      "name": "junk and numeric strings",
+      "selected": [
+        "1000",
+        null,
+        -1,
+        1.5,
+        {},
+        "1001",
+        true
+      ],
+      "pool": [
+        {
+          "wpUserId": 1000,
+          "name": "Creator 0"
+        },
+        {
+          "wpUserId": 1001,
+          "name": "Creator 1"
+        },
+        {
+          "wpUserId": 1002,
+          "name": "Creator 2"
+        },
+        {
+          "wpUserId": 1003,
+          "name": "Creator 3"
+        },
+        {
+          "wpUserId": 1004,
+          "name": "Creator 4"
+        },
+        {
+          "wpUserId": 1005,
+          "name": "Creator 5"
+        },
+        {
+          "wpUserId": 1006,
+          "name": "Creator 6"
+        },
+        {
+          "wpUserId": 1007,
+          "name": "Creator 7"
+        },
+        {
+          "wpUserId": 1008,
+          "name": "Creator 8"
+        },
+        {
+          "wpUserId": 1009,
+          "name": "Creator 9"
+        },
+        {
+          "wpUserId": 1010,
+          "name": "Creator 10"
+        },
+        {
+          "wpUserId": 1011,
+          "name": "Creator 11"
+        },
+        {
+          "wpUserId": 1012,
+          "name": "Creator 12"
+        },
+        {
+          "wpUserId": 1013,
+          "name": "Creator 13"
+        },
+        {
+          "wpUserId": 1014,
+          "name": "Creator 14"
+        }
+      ],
+      "result": {
+        "selected": [
+          1000,
+          1001
+        ],
+        "ok": false,
+        "required": 5
+      }
+    },
+    {
+      "name": "not a list",
+      "selected": "nope",
+      "pool": [
+        {
+          "wpUserId": 1000,
+          "name": "Creator 0"
+        },
+        {
+          "wpUserId": 1001,
+          "name": "Creator 1"
+        },
+        {
+          "wpUserId": 1002,
+          "name": "Creator 2"
+        },
+        {
+          "wpUserId": 1003,
+          "name": "Creator 3"
+        },
+        {
+          "wpUserId": 1004,
+          "name": "Creator 4"
+        },
+        {
+          "wpUserId": 1005,
+          "name": "Creator 5"
+        },
+        {
+          "wpUserId": 1006,
+          "name": "Creator 6"
+        },
+        {
+          "wpUserId": 1007,
+          "name": "Creator 7"
+        },
+        {
+          "wpUserId": 1008,
+          "name": "Creator 8"
+        },
+        {
+          "wpUserId": 1009,
+          "name": "Creator 9"
+        },
+        {
+          "wpUserId": 1010,
+          "name": "Creator 10"
+        },
+        {
+          "wpUserId": 1011,
+          "name": "Creator 11"
+        },
+        {
+          "wpUserId": 1012,
+          "name": "Creator 12"
+        },
+        {
+          "wpUserId": 1013,
+          "name": "Creator 13"
+        },
+        {
+          "wpUserId": 1014,
+          "name": "Creator 14"
+        }
+      ],
+      "result": {
+        "selected": [],
+        "ok": false,
+        "required": 5
+      }
+    }
+  ]
+}

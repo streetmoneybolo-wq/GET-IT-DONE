@@ -49,22 +49,42 @@ function get_post( $id ) { return $GLOBALS['t_posts'][ $id ] ?? null; }
 function get_the_title( $post ) { return $post->post_title; }
 function get_permalink( $post ) { return 'https://stockmarketloop.com/p/' . $post->ID . '/'; }
 function wp_strip_all_tags( $s ) { return trim( strip_tags( $s ) ); }
+function delete_transient( $k ) { unset( $GLOBALS['t_transients'][ $k ] ); return true; }
+function metadata_exists( $type, $uid, $key ) { return isset( $GLOBALS['t_meta'][ $uid ][ $key ] ); }
+function get_user_by( $field, $value ) { return 'login' === $field && 'stockmarketloop' === $value ? get_userdata( 7 ) : false; }
+$GLOBALS['t_follows'] = array();
+function rest_do_request( $req ) {
+	$GLOBALS['t_follows'][] = array( $req->route, $req->get_param( 'user_id' ), $req->get_param( 'action' ) );
+	return new T_Response( array( 'ok' => true ), 1013 === (int) $req->get_param( 'user_id' ) ? 404 : 200 );
+}
 
-class T_Response { public $data; public function __construct( $d ) { $this->data = $d; } }
+class T_Response {
+	public $data; public $status; public $headers = array();
+	public function __construct( $d, $status = 200 ) { $this->data = $d; $this->status = $status; }
+	public function header( $k, $v ) { $this->headers[ $k ] = $v; }
+	public function get_status() { return $this->status; }
+	public function is_error() { return $this->status >= 400; }
+}
 class WP_Error {
 	public $code; public $message; public $data;
 	public function __construct( $c, $m = '', $d = array() ) { $this->code = $c; $this->message = $m; $this->data = $d; }
 }
 class WP_REST_Request {
 	private $params;
-	public function __construct( $params = array() ) { $this->params = $params; }
+	public $route = '';
+	public function __construct( $params = array(), $route = null ) {
+		/* WP's signature is ( $method, $route ); the tests' own calls pass params */
+		if ( is_string( $params ) ) { $this->route = (string) $route; $params = array(); }
+		$this->params = $params;
+	}
+	public function set_param( $k, $v ) { $this->params[ $k ] = $v; }
 	public function get_param( $k ) { return $this->params[ $k ] ?? null; }
 }
 
 /** Fake $wpdb: records queries; answers resolver lookups from a small in-memory model. */
 class T_WPDB {
 	public $prefix = 'wp_';
-	public $posts = 'wp_posts'; public $comments = 'wp_comments'; public $users = 'wp_users';
+	public $usermeta = 'wp_usermeta'; public $posts = 'wp_posts'; public $comments = 'wp_comments'; public $users = 'wp_users';
 	public $queries = array();
 	public $model = array(
 		'wp_posts'           => array( 100 => 7, 101 => 42 ),     // post id => author
@@ -403,6 +423,50 @@ foreach ( $sf['holdout']['special'] as $c ) {
 
 ok( 'off' === sml_cs_mode(), 'the slot is off unless the option says otherwise' );
 ok( sml_cs_tickers_from_text( '$SPY Options Gamma Clusters Near $760.00 and $BRK.B, not $spy' ) === array( 'SPY', 'BRK.B' ), 'tickers come from $SYMBOLS in titles, never prices' );
+
+/* =================================== follow step: parity with corporate-onboarding.js */
+
+$ff = json_decode( file_get_contents( __DIR__ . '/follow-fixtures.json' ), true );
+ok( SML_OB_POOL_SIZE === $ff['POOL_SIZE'] && SML_OB_MAX_CORPORATE === $ff['MAX_CORPORATE_CARDS'] && SML_OB_REQUIRED === $ff['REQUIRED_SELECTIONS'], 'pool constants match Node' );
+foreach ( $ff['poolCases'] as $c ) {
+	$r = sml_ob_build_card_pool( (array) $c['input'], (array) ( $c['opts'] ?? array() ) );
+	$same = json_encode( $r ) === json_encode( $c['result'] );
+	ok( $same, "card pool matches Node: {$c['name']}" . ( $same ? '' : "\n   php  " . json_encode( $r ) . "\n   node " . json_encode( $c['result'] ) ) );
+}
+foreach ( $ff['selectionCases'] as $c ) {
+	$r = sml_ob_validate_selection( $c['selected'], (array) $c['pool'] );
+	$same = json_encode( $r ) === json_encode( $c['result'] );
+	ok( $same, "selection matches Node: {$c['name']}" . ( $same ? '' : ' php ' . json_encode( $r ) . ' node ' . json_encode( $c['result'] ) ) );
+}
+
+/* =================================== follow step: routes */
+
+$GLOBALS['t_meta'] = array(); $GLOBALS['t_transients'] = array(); $GLOBALS['t_follows'] = array();
+$r = sml_ob_rest_follow( new WP_REST_Request( array( 'userIds' => array( 1010, 1011 ) ) ) );
+ok( $r instanceof WP_Error && 'sml_ob_expired' === $r->code, 'following without a loaded pool is refused' );
+set_transient( 'sml_ob_pool_42', array( 1010, 1011, 1012, 1013, 1014, 1015, 1016 ) );
+$r = sml_ob_rest_follow( new WP_REST_Request( array( 'userIds' => array( 1010, 1011, 1012, 1013, 999 ) ) ) );
+ok( $r instanceof WP_Error && 'sml_ob_too_few' === $r->code && 5 === $r->data['required'], 'an id that was never offered does not count toward the five' );
+ok( ! $GLOBALS['t_follows'], 'nothing is followed when the selection is refused' );
+$r = sml_ob_rest_follow( new WP_REST_Request( array( 'userIds' => array( 1010, '1011', 1012, 1013, 1014, 1014, 999 ) ) ) );
+ok( $r instanceof T_Response && array( 1010, 1011, 1012, 1014 ) === $r->data['followed'], 'offered accounts are followed; a failed follow is not reported as followed' );
+ok( 5 === count( $GLOBALS['t_follows'] ) && array( '/sml-members/v1/follow', 1010, 'follow' ) === $GLOBALS['t_follows'][0], 'following goes through the site follow route, once per account' );
+ok( ! in_array( 999, array_column( $GLOBALS['t_follows'], 1 ), true ), 'an account that was not offered is never followed' );
+ok( isset( $GLOBALS['t_meta'][42][ SML_OB_FOLLOW_META ]['completed_at'] ) && false === get_transient( 'sml_ob_pool_42' ), 'completion is recorded and the offered pool is spent' );
+set_transient( 'sml_ob_pool_42', array( 1010, 1011, 1012 ) );
+$r = sml_ob_rest_follow( new WP_REST_Request( array( 'userIds' => array( 1010, 1011 ) ) ) );
+ok( $r instanceof WP_Error && 3 === $r->data['required'], 'a short pool asks for every card offered, not an impossible five' );
+$r = sml_ob_rest_follow( new WP_REST_Request( array( 'userIds' => array( 1010, 1011, 1012 ) ) ) );
+ok( $r instanceof T_Response && 3 === $r->data['count'], 'following all of a short pool completes the step' );
+set_transient( 'sml_ob_pool_42', array( 1 ) );
+$r = sml_ob_rest_follow( new WP_REST_Request( array( 'userIds' => 'not-a-list' ) ) );
+ok( $r instanceof WP_Error && 'sml_ob_too_few' === $r->code, 'a malformed selection is refused' );
+
+$GLOBALS['t_meta'] = array( 9 => array( 'sml_author_persona' => 'desk' ), 42 => array( 'sml_following' => array( 11 ) ) );
+$in = sml_ob_pool_inputs( 42 );
+ok( array( array( 'wpUserId' => 7 ) ) === $in['news'], 'SML News leads the news cards' );
+ok( ! $in['creators'], 'no activity means no creators: nobody empty is recommended' );
+$GLOBALS['t_meta'] = array(); $GLOBALS['t_transients'] = array(); $GLOBALS['t_follows'] = array();
 
 echo "\n$passed passed, $failed failed\n";
 exit( $failed ? 1 : 0 );
