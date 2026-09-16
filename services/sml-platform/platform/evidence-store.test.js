@@ -389,3 +389,142 @@ test('createEvidenceStore rejects unusable key lists', () => {
     /duplicate key version/
   );
 });
+
+/* ---------- BIGINT / timestamp read-back shapes ---------- */
+
+/* verifyChain hashes rows exactly as node-pg returns them: bigint as a string,
+ * integer as a number, timestamptz as a Date. Writers that hashed Number(id)
+ * or a provider timestamp without milliseconds produced rows that could never
+ * verify — confirmed on a real Postgres for the dispute_audit_log existing-case
+ * path. These tests pin the fix without needing a database. */
+
+const { normalizeForColumn } = require('./evidence-store.js');
+
+test('normalizeForColumn spells values the way node-pg reads them back', () => {
+  assert.equal(normalizeForColumn('bigint', 42), '42');
+  assert.equal(normalizeForColumn('bigint', '42'), '42', 'already a string: unchanged');
+  assert.equal(normalizeForColumn('bigint', 42n), '42');
+  assert.equal(normalizeForColumn('integer', '500'), 500);
+  assert.equal(normalizeForColumn('smallint', 1), 1, 'already a number: unchanged');
+  assert.equal(normalizeForColumn('timestamp with time zone', '2026-09-01T12:00:00Z'), '2026-09-01T12:00:00.000Z');
+  assert.equal(normalizeForColumn('timestamp with time zone', '2026-09-01T12:00:00.000Z'), '2026-09-01T12:00:00.000Z');
+  assert.equal(normalizeForColumn('text', 42), 42, 'other types untouched');
+  assert.equal(normalizeForColumn('bigint', null), null);
+});
+
+test('normalizeForColumn never rewrites a value it cannot represent exactly', () => {
+  assert.equal(normalizeForColumn('bigint', 2 ** 60), 2 ** 60, 'unsafe integer left alone');
+  assert.equal(normalizeForColumn('integer', 'abc'), 'abc');
+  assert.equal(normalizeForColumn('timestamp with time zone', 'not a date'), 'not a date');
+});
+
+function typedPool(types) {
+  return {
+    async query(sql) {
+      if (/information_schema\.columns/.test(sql)) {
+        return { rows: Object.entries(types).map(([column_name, data_type]) => ({ column_name, data_type })) };
+      }
+      throw new Error('unexpected pool query');
+    }
+  };
+}
+
+const AUDIT_TYPES = {
+  id: 'bigint', case_id: 'bigint', actor_kind: 'text', actor_ref: 'text', action: 'text',
+  detail: 'jsonb', source: 'text', source_event_id: 'text', provider_account: 'text',
+  occurred_at: 'timestamp with time zone', received_at: 'timestamp with time zone',
+  provenance: 'jsonb', integrity_hash: 'text', prev_hash: 'text'
+};
+
+test('a writer passing Number(id) for a bigint is hashed as the string pg returns', async () => {
+  const store = createEvidenceStore({ pool: typedPool(AUDIT_TYPES), keyList: [ACTIVE_KEY] });
+  const client = fakeClient();
+  const fields = { case_id: 7, actor_kind: 'system', actor_ref: null, action: 'x', detail: {},
+    ...prov({ occurred_at: '2026-09-01T12:00:00Z' }) };
+  const result = await store.appendChained(client, { table: 'dispute_audit_log', scopeKey: 7, fields });
+
+  const expected = sha256Hex(canonicalJson({ ...fields, case_id: '7',
+    occurred_at: '2026-09-01T12:00:00.000Z', prev_hash: null }));
+  assert.equal(result.integrityHash, expected);
+  const insert = client.calls.find((c) => /^INSERT INTO dispute_audit_log/.test(c.text));
+  assert.ok(insert.values.includes('7'), 'the normalized value is also what is inserted');
+});
+
+test('the write path issues the same client queries as before (types come from the pool)', async () => {
+  const store = createEvidenceStore({ pool: typedPool(AUDIT_TYPES), keyList: [ACTIVE_KEY] });
+  const client = fakeClient();
+  await store.appendChained(client, { table: 'dispute_audit_log', scopeKey: 7, fields: {
+    case_id: 7, actor_kind: 'system', actor_ref: null, action: 'x', detail: {}, ...prov() } });
+  assert.equal(client.calls.length, 3, 'lock, head, insert — nothing added inside the transaction');
+});
+
+test('the self-check reports a stored row that cannot reproduce its hash', async () => {
+  const logged = [];
+  const store = createEvidenceStore({ pool: null, keyList: [ACTIVE_KEY], logger: (l, e, d) => logged.push({ e, d }) });
+  const client = fakeClient([{
+    match: /^INSERT INTO/,
+    /* the database filled a DEFAULT the writer never supplied */
+    result: ({ values }) => ({ rows: [{ id: '9', provider: 'stripe', provider_event_id: 'evt', status: 'applied',
+      ...prov(), provenance: {}, extra_default: 'filled', prev_hash: null, integrity_hash: values[values.length - 1] }] })
+  }]);
+  const result = await store.appendRow(client, { table: 'billing_events',
+    fields: { provider: 'stripe', provider_event_id: 'evt', status: 'applied', ...prov() } });
+  assert.equal(result.selfVerified, false);
+  assert.deepEqual(result.differingColumns, ['extra_default']);
+  assert.equal(logged[0].e, 'evidence_row_unverifiable');
+  assert.equal(result.id, '9', 'the write still happened');
+});
+
+test('the self-check passes a row that round-trips', async () => {
+  const store = createEvidenceStore({ pool: null, keyList: [ACTIVE_KEY] });
+  const fields = { provider: 'stripe', provider_event_id: 'evt', status: 'applied', ...prov() };
+  const client = fakeClient([{
+    match: /^INSERT INTO/,
+    result: ({ values }) => ({ rows: [{ id: '9', ...fields,
+      occurred_at: new Date(fields.occurred_at), received_at: new Date(fields.received_at),
+      prev_hash: null, integrity_hash: values[values.length - 1] }] })
+  }]);
+  const result = await store.appendRow(client, { table: 'billing_events', fields });
+  assert.equal(result.selfVerified, true);
+});
+
+/* ---------- verifyChain: legacy rows ---------- */
+
+const FIELDS_META = [
+  { name: 'id', dataTypeID: 20 }, { name: 'case_id', dataTypeID: 20 },
+  { name: 'action', dataTypeID: 25 }, { name: 'occurred_at', dataTypeID: 1184 }
+];
+
+function legacyRow(id, prevHash, hashedAs, storedAs) {
+  const integrity = sha256Hex(canonicalJson({ ...hashedAs, prev_hash: prevHash }));
+  return { id, ...storedAs, prev_hash: prevHash, integrity_hash: integrity };
+}
+
+test('verifyChain accepts rows a legacy writer hashed with Number(id), and lists them', async () => {
+  const store = createEvidenceStore({ pool: null, keyList: [ACTIVE_KEY] });
+  const at = new Date('2026-09-01T12:00:00.000Z');
+  const r1 = legacyRow('1', null, { case_id: '7', action: 'created', occurred_at: at.toISOString() },
+    { case_id: '7', action: 'created', occurred_at: at });
+  const r2 = legacyRow('2', r1.integrity_hash, { case_id: 7, action: 'updated', occurred_at: '2026-09-01T12:00:00Z' },
+    { case_id: '7', action: 'updated', occurred_at: at });
+  const client = fakeClient([{ match: /^SELECT \* FROM dispute_evidence_items/, result: () => ({ rows: [r1, r2], fields: FIELDS_META }) }]);
+  assert.deepEqual(await store.verifyChain(client, 'dispute_evidence_items', 7), { ok: true, legacyRows: ['2'] });
+});
+
+test('verifyChain still rejects a legacy row whose VALUE changed', async () => {
+  const store = createEvidenceStore({ pool: null, keyList: [ACTIVE_KEY] });
+  const at = new Date('2026-09-01T12:00:00.000Z');
+  const tampered = legacyRow('1', null, { case_id: 7, action: 'updated', occurred_at: at.toISOString() },
+    { case_id: '8', action: 'updated', occurred_at: at });        // hashed for case 7, stored as case 8
+  const client = fakeClient([{ match: /^SELECT \* FROM dispute_evidence_items/, result: () => ({ rows: [tampered], fields: FIELDS_META }) }]);
+  assert.deepEqual(await store.verifyChain(client, 'dispute_evidence_items', 7), { ok: false, brokenAtId: '1' });
+});
+
+test('verifyChain rejects a legacy row whose non-numeric content changed', async () => {
+  const store = createEvidenceStore({ pool: null, keyList: [ACTIVE_KEY] });
+  const at = new Date('2026-09-01T12:00:00.000Z');
+  const tampered = legacyRow('1', null, { case_id: 7, action: 'updated', occurred_at: at.toISOString() },
+    { case_id: '7', action: 'forged', occurred_at: at });
+  const client = fakeClient([{ match: /^SELECT \* FROM dispute_evidence_items/, result: () => ({ rows: [tampered], fields: FIELDS_META }) }]);
+  assert.equal((await store.verifyChain(client, 'dispute_evidence_items', 7)).ok, false);
+});

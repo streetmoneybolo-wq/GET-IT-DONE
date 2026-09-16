@@ -36,6 +36,77 @@ const CHAINED_TABLES = {
   dispute_audit_log: { scopeColumn: 'case_id', coalesceScope: true }
 };
 
+/* ---------------------------------------------------------------------------
+ * Hash values the way the database will hand them back.
+ *
+ * verifyChain recomputes each hash from `SELECT *`, so a row verifies only if
+ * every value was hashed in the exact JS shape node-pg returns on read. This
+ * app installs no type parsers, so node-pg returns:
+ *   bigint       -> string   ("42")        integer/smallint -> number (42)
+ *   timestamptz  -> Date     (hashed as ISO-8601 with milliseconds)
+ * Writers routinely passed `Number(row.id)` for bigint columns, and a provider
+ * timestamp without milliseconds would do the same damage; each such row was
+ * stored with a hash that could never verify. Normalizing here fixes every
+ * writer at once, and changes nothing for a value already in its read-back
+ * shape — so no row that verifies today hashes differently tomorrow.
+ * ------------------------------------------------------------------------- */
+
+const PG_TYPE_OIDS = { 20: 'bigint', 21: 'smallint', 23: 'integer', 1184: 'timestamp with time zone' };
+
+function normalizeForColumn(dataType, value) {
+  if (value === null || value === undefined) return value;
+  switch (dataType) {
+    case 'bigint': {
+      if (typeof value === 'bigint') return value.toString();
+      if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
+      return value;
+    }
+    case 'integer':
+    case 'smallint': {
+      if (typeof value === 'string' && /^-?\d+$/.test(value)) {
+        const n = Number(value);
+        return Number.isSafeInteger(n) ? n : value;
+      }
+      return value;
+    }
+    case 'timestamp with time zone': {
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isFinite(date.getTime()) ? date.toISOString() : value;
+    }
+    default:
+      return value;
+  }
+}
+
+/* The alternative spellings a LEGACY writer may have hashed for one stored
+ * value. Each is the same value — a number instead of its bigint string, a
+ * string instead of an integer, a timestamp without its ".000" — so accepting
+ * them proves the same facts the canonical hash does. What a legacy spelling
+ * can never do is make a DIFFERENT value verify. */
+function legacySpellings(dataType, value) {
+  if (value === null || value === undefined) return [];
+  switch (dataType) {
+    case 'bigint': {
+      const n = Number(value);
+      return Number.isSafeInteger(n) ? [n] : [];
+    }
+    case 'integer':
+    case 'smallint':
+      return typeof value === 'number' ? [String(value)] : [];
+    case 'timestamp with time zone': {
+      const iso = value instanceof Date ? value.toISOString() : String(value);
+      return /\.000Z$/.test(iso) ? [iso.replace(/\.000Z$/, 'Z')] : [];
+    }
+    default:
+      return [];
+  }
+}
+
+/* Legacy spellings multiply per column; past this many candidate columns a row
+ * is reported broken rather than searched exhaustively. The widest hashed table
+ * has 7 such columns (128 hashes), so this is a guard, not a practical limit. */
+const MAX_LEGACY_COLUMNS = 10;
+
 function sha256Hex(text) {
   return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
@@ -178,9 +249,41 @@ function isJsonColumnValue(value) {
     !Buffer.isBuffer(value) && !(value instanceof Date);
 }
 
-function createEvidenceStore({ pool, keyList }) {
+function createEvidenceStore({ pool, keyList, logger = null }) {
   const keys = parseKeyList(keyList);
   const active = keys[0];
+
+  /* Column types per table, read once from information_schema through the
+   * store's own pool — never the caller's transaction client, so the write path
+   * issues exactly the queries it always has. A table whose types cannot be
+   * read (no pool, as in unit tests) is written without normalization, i.e.
+   * exactly as before this change. */
+  const columnTypeCache = new Map();
+  async function columnTypes(table) {
+    if (columnTypeCache.has(table)) return columnTypeCache.get(table);
+    if (!pool || typeof pool.query !== 'function') return null;
+    try {
+      const found = await pool.query(
+        `SELECT column_name, data_type FROM information_schema.columns
+          WHERE table_schema = current_schema() AND table_name = $1`,
+        [table]
+      );
+      const rows = (found && found.rows) || [];
+      if (!rows.length) return null;
+      const types = new Map(rows.map((r) => [r.column_name, r.data_type]));
+      columnTypeCache.set(table, types);
+      return types;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function warn(event, detail) {
+    try {
+      if (typeof logger === 'function') logger('error', event, detail);
+      else console.error(JSON.stringify({ level: 'error', event, ...detail }));
+    } catch (_) { /* logging never breaks a write */ }
+  }
 
   function encryptValue(plaintext) {
     if (typeof plaintext !== 'string' || !plaintext) {
@@ -226,7 +329,12 @@ function createEvidenceStore({ pool, keyList }) {
     return keys.map((key) => hmacHex(key, value));
   }
 
-  async function insertHashedRow(client, table, fields, prevHash) {
+  async function insertHashedRow(client, table, rawFields, prevHash) {
+    const types = await columnTypes(table);
+    const fields = {};
+    for (const key of Object.keys(rawFields)) {
+      fields[key] = types && types.has(key) ? normalizeForColumn(types.get(key), rawFields[key]) : rawFields[key];
+    }
     const columns = Object.keys(fields).filter((key) => fields[key] !== undefined);
     const hashed = {};
     for (const column of columns) hashed[column] = fields[column];
@@ -251,10 +359,30 @@ function createEvidenceStore({ pool, keyList }) {
     const result = await client.query(
       `INSERT INTO ${table} (${insertColumns.join(', ')})
        VALUES (${placeholders.join(', ')})
-       RETURNING id`,
+       RETURNING *`,
       params
     );
-    const id = result.rows && result.rows[0] ? result.rows[0].id : null;
+    const stored = result.rows && result.rows[0] ? result.rows[0] : null;
+    const id = stored ? stored.id : null;
+
+    /* Self-check: re-hash the row exactly as verifyChain will read it. A
+     * mismatch means the row can never verify — most often a column the writer
+     * omitted that the database filled from a DEFAULT. It is reported loudly
+     * rather than thrown: this runs inside live dispute and billing writes, and
+     * a failed append drops the event entirely. An unverifiable row is
+     * recoverable; a missing one is not. */
+    if (stored && Object.prototype.hasOwnProperty.call(stored, 'integrity_hash')) {
+      const { id: _id, integrity_hash: _hash, ...rest } = stored;
+      const reread = sha256Hex(canonicalJson({ ...rest, prev_hash: prevHash }));
+      if (reread !== integrityHash) {
+        const differing = Object.keys(rest).filter((column) => column !== 'prev_hash' &&
+          canonicalJson(rest[column] === undefined ? null : rest[column]) !==
+          canonicalJson(hashed[column] === undefined ? null : hashed[column]));
+        warn('evidence_row_unverifiable', { table, id, columns: differing });
+        return { id, integrityHash, selfVerified: false, differingColumns: differing };
+      }
+      return { id, integrityHash, selfVerified: true };
+    }
     return { id, integrityHash };
   }
 
@@ -307,16 +435,54 @@ function createEvidenceStore({ pool, keyList }) {
         ORDER BY id ASC`,
       [scopeKey]
     );
+    /* Column types come from the result itself, so verification needs no
+     * extra query. Only the four types a legacy writer could have mis-spelled. */
+    const typeOf = new Map();
+    for (const field of (result && result.fields) || []) {
+      if (PG_TYPE_OIDS[field.dataTypeID]) typeOf.set(field.name, PG_TYPE_OIDS[field.dataTypeID]);
+    }
+
     let previousHash = null;
+    const legacyRows = [];
     for (const row of result.rows || []) {
       const { id, integrity_hash: integrityHash, ...rest } = row;
       const rowPrev = rest.prev_hash === undefined ? null : rest.prev_hash;
       if (rowPrev !== previousHash) return { ok: false, brokenAtId: id };
       const expected = sha256Hex(canonicalJson({ ...rest, prev_hash: previousHash }));
-      if (expected !== integrityHash) return { ok: false, brokenAtId: id };
+      if (expected !== integrityHash) {
+        if (!matchesLegacySpelling(rest, previousHash, integrityHash, typeOf)) {
+          return { ok: false, brokenAtId: id };
+        }
+        legacyRows.push(id);
+      }
       previousHash = integrityHash;
     }
-    return { ok: true };
+    /* legacyRows: rows written before hashes were normalized. They prove the
+     * same facts, and are listed so an operator can see how many exist. */
+    return legacyRows.length ? { ok: true, legacyRows } : { ok: true };
+  }
+
+  /** Does some legacy spelling of this row's values reproduce its stored hash? */
+  function matchesLegacySpelling(rest, previousHash, integrityHash, typeOf) {
+    const options = [];
+    for (const [column, dataType] of typeOf) {
+      if (!Object.prototype.hasOwnProperty.call(rest, column)) continue;
+      const alternatives = legacySpellings(dataType, rest[column]);
+      if (alternatives.length) options.push({ column, values: [rest[column], ...alternatives] });
+    }
+    if (!options.length || options.length > MAX_LEGACY_COLUMNS) return false;
+
+    const combinations = options.reduce((n, o) => n * o.values.length, 1);
+    for (let index = 1; index < combinations; index += 1) {   // 0 is the canonical spelling, already tried
+      const candidate = { ...rest, prev_hash: previousHash };
+      let remainder = index;
+      for (const option of options) {
+        candidate[option.column] = option.values[remainder % option.values.length];
+        remainder = Math.floor(remainder / option.values.length);
+      }
+      if (sha256Hex(canonicalJson(candidate)) === integrityHash) return true;
+    }
+    return false;
   }
 
   return {
@@ -335,6 +501,7 @@ function createEvidenceStore({ pool, keyList }) {
 module.exports = {
   CHAINED_TABLES,
   canonicalJson,
+  normalizeForColumn,
   createEvidenceStore,
   validateNoForbiddenFields
 };

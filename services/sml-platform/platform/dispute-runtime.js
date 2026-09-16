@@ -110,7 +110,7 @@ function createDisputeRuntime({
     return disabledRuntime('missing_encryption_key');
   }
 
-  const store = createEvidenceStore({ pool, keyList: config.evidenceEncryptionKeys });
+  const store = createEvidenceStore({ pool, keyList: config.evidenceEncryptionKeys, logger });
   const graph = createIdentityGraph({ pool, store });
   const disputeCases = createDisputeCases({ pool, store, graph, limits: providerLimits, now });
   const ledger = createStripeLedger({ pool, store, graph, now, logger });
