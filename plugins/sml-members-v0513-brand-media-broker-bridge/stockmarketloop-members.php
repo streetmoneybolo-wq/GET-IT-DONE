@@ -2130,7 +2130,7 @@ function sml_members_moomoo_resolve_stock_id_from_search($symbol) {
         }
     }
 
-    set_transient($cache_key, '', MINUTE_IN_SECONDS);
+    set_transient($cache_key, '', HOUR_IN_SECONDS);
     return '';
 }
 
@@ -2273,10 +2273,10 @@ function sml_members_moomoo_extract_stock_id_from_text($body, $symbol) {
     $id_keys = '(?:"stock_id"|"stockId"|"security_id"|"securityId"|"sec_id"|"secId")';
 
     $patterns = array(
-        '/' . $code_keys . '\\s*:\\s*"' . $symbol_value . '"(?:(?!' . $code_keys . ').){0,5000}?' . $id_keys . '\\s*:\\s*"?([0-9]{4,20})"?/is',
-        '/' . $id_keys . '\\s*:\\s*"?([0-9]{4,20})"?(?:(?!' . $id_keys . ').){0,5000}?' . $code_keys . '\\s*:\\s*"' . $symbol_value . '"/is',
-        '/(?:stock_id|stock-id|stockid)\\s*=\\s*"([0-9]{4,20})"(?:(?!(?:stock_id|stock-id|stockid)).){0,1600}?(?:stockcode|stock-code|stocksymbol|symbol)\\s*=\\s*"(?:' . $quoted_symbol . '|(?:' . $quoted_symbol . '\\.US)|(?:' . $quoted_symbol . '-US))"/is',
-        '/(?:stockcode|stock-code|stocksymbol|symbol)\\s*=\\s*"(?:' . $quoted_symbol . '|(?:' . $quoted_symbol . '\\.US)|(?:' . $quoted_symbol . '-US))"(?:(?!(?:stockcode|stock-code|stocksymbol|symbol)).){0,1600}?(?:stock_id|stock-id|stockid)\\s*=\\s*"([0-9]{4,20})"/is',
+        '/' . $code_keys . '\\s*:\\s*"' . $symbol_value . '"[^{}]{0,3000}?' . $id_keys . '\\s*:\\s*"?([0-9]{4,20})"?/is',
+        '/' . $id_keys . '\\s*:\\s*"?([0-9]{4,20})"?[^{}]{0,3000}?' . $code_keys . '\\s*:\\s*"' . $symbol_value . '"/is',
+        '/(?:stock_id|stock-id|stockid)\\s*=\\s*"([0-9]{4,20})"[^<>]{0,1600}?(?:stockcode|stock-code|stocksymbol|symbol)\\s*=\\s*"(?:' . $quoted_symbol . '|(?:' . $quoted_symbol . '\\.US)|(?:' . $quoted_symbol . '-US))"/is',
+        '/(?:stockcode|stock-code|stocksymbol|symbol)\\s*=\\s*"(?:' . $quoted_symbol . '|(?:' . $quoted_symbol . '\\.US)|(?:' . $quoted_symbol . '-US))"[^<>]{0,1600}?(?:stock_id|stock-id|stockid)\\s*=\\s*"([0-9]{4,20})"/is',
         '/\\/stock\\/' . $quoted_symbol . '-US[^"\'<]{0,800}(?:stock_id|stockId)=([0-9]{4,20})/i',
         '/(?:stock_id|stockId)=([0-9]{4,20})[^"\'<]{0,800}\\/stock\\/' . $quoted_symbol . '-US/i',
     );

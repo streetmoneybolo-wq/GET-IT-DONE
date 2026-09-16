@@ -422,6 +422,18 @@
         // width !important beats the feed-wide ".oh-post img{width:100%}" (same
         // specificity, later in cascade) that would otherwise stretch the group icon.
         '.sml-hf-grouppost-tag img{width:16px!important;min-width:16px;max-width:16px;height:16px!important;border-radius:5px;object-fit:cover;flex:none;}' +
+        // moomoo community comment cards (watchlist stocks): the reply prompt sits top-right.
+        '.sml-hf-mmc{position:relative;}' +
+        '.sml-hf-mmc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:0 0 10px;}' +
+        '.sml-hf-mmc-tag{font:800 10.5px/1.3 Inter,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#FF9F43;padding-top:3px;}' +
+        '.sml-hf-mmc-reply{flex:none;max-width:52%;text-align:right;font:700 11px/1.25 Inter,system-ui,sans-serif;color:#FFB86B;text-decoration:none;border:1px solid rgba(255,159,67,.4);background:rgba(255,159,67,.08);border-radius:999px;padding:5px 10px;}' +
+        '.sml-hf-mmc-reply:hover{background:rgba(255,159,67,.16);color:#FFD2A1;}' +
+        '.sml-hf-mmc-author{display:flex;align-items:center;gap:10px;}' +
+        '.sml-hf-mmc-av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#1B2533;color:#FF9F43;font-weight:800;flex:none;}' +
+        '.sml-hf-mmc-text{margin:8px 0 4px;font-size:14.5px;line-height:1.5;color:#E6EDF5;white-space:pre-line;overflow-wrap:anywhere;}' +
+        '.sml-hf-mmc .sml-sth-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;}' +
+        '.sml-hf-mmc .sml-sth-actions a{color:#9EFFC6;font-weight:700;font-size:12.5px;text-decoration:none;}' +
+        '.sml-hf-mmc .sml-sth-actions a:hover{text-decoration:underline;}' +
         // Group chat cards: why this thread is here, the latest reply, and a reply count.
         '.sml-hf-chat-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;}' +
         '.sml-hf-chat-top .sml-hf-grouppost-tag{margin:0;}' +
@@ -1480,6 +1492,7 @@
       positionRecommendationRails();
       ensurePinnedTop();
       markFriendCards();
+      scheduleMix();
     }
 
     // Facebook-style comment attribution: "Alice commented on Bob's post".
@@ -2630,6 +2643,148 @@
       }).catch(function(){});
     }
     fetchWatchHotComments();
+
+    // ---- feed mix (owner rule 2026-09-16): news, member posts and everything else are
+    // shuffled WITHIN their time neighbourhood — never the same author back to back.
+    // Each card gets a stable random offset (per page load) scaled to its age: a post from
+    // minutes ago only moves among other very recent posts, a day-old post among its day.
+    // Cards the reader has already scrolled to are never moved.
+    var MIX_SEED = (Math.random() * 4294967295) >>> 0, mixTimer = 0, mixing = false;
+    function mixHash(str){ var h = (2166136261 ^ MIX_SEED) >>> 0; str = String(str); for (var i = 0; i < str.length; i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return (h % 100000) / 100000; }
+    function mixAuthor(c){
+      var n = ((c.querySelector('.oh-post-author-name') || {}).textContent || '').trim().toLowerCase();
+      if (n) return 'n:' + n;
+      var id = c.getAttribute('data-sml-authorid') || c.getAttribute('data-hfe-recipient-id') || '';
+      return id ? ('id:' + id) : '';
+    }
+    /* watchlist comment cards count as one "voice" so they never stack up back to back either */
+    function mixKind(c){ return (c.classList.contains('sml-hf-mmc') || c.classList.contains('sml-hf-ttc')) ? 'watch-comments' : ''; }
+    function mixClash(x, prev){ return !!prev && ((x.a && x.a === prev.a) || (x.kind && x.kind === prev.kind)); }
+    function scheduleMix(){ if (mixing) return; clearTimeout(mixTimer); mixTimer = setTimeout(mixFeed, 700); }
+    function mixFeed(){
+      if (curTab === 'live' || mixing) return;
+      var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+      var cards = Array.prototype.filter.call(main.children, function(c){ return c.classList && c.classList.contains('oh-post') && !c.getAttribute('data-sml-loop-clone'); });
+      if (cards.length < 3) return;
+      var shellEl = document.getElementById('sml-hf-shell');
+      var start = 0;
+      if (shellEl && shellEl.scrollTop > 40){
+        var limit = (window.innerHeight || 800) + 80;
+        for (var i = 0; i < cards.length; i++){ if (cards[i].style.display === 'none') continue; if (cards[i].getBoundingClientRect().top < limit) start = i + 1; else break; }
+      }
+      if (cards.length - start < 3) return;
+      var now = Date.now(), lastT = now;
+      var list = cards.slice(start).map(function(c, idx){
+        var t = Date.parse(c.getAttribute('data-sml-published') || '');
+        return { c: c, t: t, a: mixAuthor(c), kind: mixKind(c), hidden: c.style.display === 'none', k: c.getAttribute('data-hfe-item') || c.getAttribute('data-hfe-url') || ('i' + idx) };
+      });
+      list.forEach(function(x){ if (!x.t || isNaN(x.t)) x.t = lastT; else lastT = x.t; });   /* undated cards keep their neighbours' time */
+      list.forEach(function(x){
+        var age = Math.max(0, now - x.t);
+        var win = Math.min(12 * 3600000, Math.max(20 * 60000, age * 0.35));
+        x.s = x.t + (mixHash(x.k) - 0.5) * win;
+      });
+      list.sort(function(a, b){ return b.s - a.s; });
+      var prev = null;
+      for (var p = start - 1; p >= 0; p--){ if (cards[p].style.display !== 'none'){ prev = { a: mixAuthor(cards[p]), kind: mixKind(cards[p]) }; break; } }
+      for (var j = 0; j < list.length; j++){
+        if (list[j].hidden) continue;
+        if (mixClash(list[j], prev)){
+          /* the nearest card (in feed order, so nearest in time) that breaks the run; a
+             one-author backlog can need a longer reach, so look up to 25 cards ahead */
+          for (var m = j + 1; m < list.length && m <= j + 25; m++){
+            if (!list[m].hidden && !mixClash(list[m], prev)){ list.splice(j, 0, list.splice(m, 1)[0]); break; }
+          }
+        }
+        prev = list[j];
+      }
+      var changed = list.some(function(x, idx){ return x.c !== cards[start + idx]; });
+      if (!changed) return;
+      mixing = true;
+      var marker = document.createComment('sml-mix');
+      main.insertBefore(marker, cards[start]);
+      list.forEach(function(x){ main.insertBefore(x.c, marker); });
+      marker.remove();
+      try { positionRecommendationRails(); ensurePinnedTop(); } catch (e) {}
+      mixing = false;
+    }
+
+    // ---- moomoo community comments for the stocks on your watchlist (owner rule
+    // 2026-09-16): the same comments the Ticker Terminal shows, for anyone with a saved
+    // watchlist. Read-only here — the card says "Sign up or into moomoo to reply" and links
+    // to the comment on moomoo. The server reads the member's saved watchlist itself.
+    function mmcAgo(iso){
+      var t = Date.parse(iso || ''); if (!t) return '';
+      var s = Math.max(0, (Date.now() - t) / 1000);
+      if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago';
+    }
+    function mmcCard(c){
+      c = c || {};
+      var sym = String(c.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+      var name = String(c.name || 'moomoo user');
+      var safe = function(u){ return /^https:\/\/([a-z0-9-]+\.)*moomoo\.com\//i.test(String(u || '')) ? String(u) : ''; };
+      var reply = safe(c.reply_url) || safe(c.url) || ('https://www.moomoo.com/stock/' + encodeURIComponent(sym) + '-US/community');
+      var av = safe(c.avatar);
+      var art = document.createElement('article');
+      art.className = 'oh-card oh-post sml-hf-mmc';  /* not sml-sth-post: replies happen on moomoo */
+      art.setAttribute('data-sml-brand-keep', '');
+      art.setAttribute('data-hfe-item', c.id || ('mmc-' + sym + '-' + (c.date || '')));
+      art.setAttribute('data-hfe-url', reply);
+      art.setAttribute('data-sml-published', c.date || '');
+      var when = Date.parse(c.date || '');
+      if (when){  /* the feed's time badge prints this as-is, so give it the same friendly format as other cards */
+        art.setAttribute('data-sml-display-time', new Date(when).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }));
+        art.setAttribute('data-sml-display-time-iso', c.date);
+      }
+      art.setAttribute('data-sml-symbol', sym);
+      art.innerHTML =
+        '<div class="sml-hf-mmc-top"><span class="sml-hf-mmc-tag">💬 $' + esc(sym) + ' · moomoo community</span>' +
+        '<a class="sml-hf-mmc-reply" href="' + esc(reply) + '" target="_blank" rel="noopener nofollow">Sign up or into moomoo to reply</a></div>' +
+        '<div class="oh-post-author sml-hf-mmc-author">' + (av ? '<img class="oh-post-avatar" src="' + esc(av) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="sml-hf-mmc-av">' + esc(name.charAt(0).toUpperCase()) + '</span>') +
+        '<span class="oh-post-author-name">' + esc(name) + '</span></div>' +
+        '<div class="oh-meta">' + esc(name) + ' · on moomoo' + (c.date ? ' · ' + esc(mmcAgo(c.date)) : '') + '</div>' +
+        '<p class="sml-hf-mmc-text">' + esc(textOnly(c.text || '')) + '</p>' +
+        '<div class="sml-sth-actions"><a href="' + esc(reply) + '" target="_blank" rel="noopener nofollow">View on moomoo →</a> <a href="/stock-chart/?symbol=' + encodeURIComponent(sym) + '">$' + esc(sym) + ' terminal</a></div>';
+      return art;
+    }
+    function fetchWatchMoomooComments(){
+      if (document.hidden) return;
+      api('/wp-json/sml-watch/v1/moomoo-comments').then(function(res){
+        var j = res && res.j ? res.j : res;
+        var arr = (j && j.items) || [];
+        var syms = ((j && j.symbols) || []).map(function(x){ return String(x).toUpperCase(); });
+        host.querySelectorAll('.sml-hf-mmc').forEach(function(card){
+          if (syms.indexOf(card.getAttribute('data-sml-symbol') || '') === -1){
+            var it = card.getAttribute('data-hfe-item'); if (it) delete seenItemIds[it];
+            var k = cardKeyOf(card); if (k) delete feedSeen[k];
+            card.remove();
+          }
+        });
+        if (!arr.length) return;
+        var main = host.querySelector('.oh-grid main') || host.querySelector('main') || host;
+        var added = 0;
+        arr.forEach(function(c){
+          var id = c && c.id; if (!id || seenItemIds[id]) return;
+          var node = mmcCard(c); var key = cardKeyOf(node);
+          if (key){ if (feedSeen[key]) return; feedSeen[key] = 1; }
+          seenItemIds[id] = 1;
+          /* place it by time among the feed's cards, not stacked at the top */
+          var t = Date.parse(c.date || '') || 0, before = null;
+          Array.prototype.some.call(main.children, function(el){
+            if (!el.classList || !el.classList.contains('oh-post') || el.getAttribute('data-sml-loop-clone')) return false;
+            var et = Date.parse(el.getAttribute('data-sml-published') || '');
+            if (et && et < t){ before = el; return true; }
+            return false;
+          });
+          if (before) main.insertBefore(node, before); else main.appendChild(node);
+          node.style.animation = 'smlHfNew .45s ease'; added++;
+        });
+        if (added){ dedupeFeed(); applyQuotes(); }
+      }).catch(function(){});
+    }
+    fetchWatchMoomooComments();
+    setInterval(fetchWatchMoomooComments, 90000);
     // React to a watchlist add/remove at once (saveWl fires this): pull the new
     // symbol's hot ticker-terminal comments and its live rooms without waiting for
     // the 60s tick. When a symbol is removed, drop its already-shown hot-comment card.
@@ -2647,7 +2802,7 @@
         });
       }
       clearTimeout(__wlChangeT);
-      __wlChangeT = setTimeout(function () { try { fetchWatchHotComments(); } catch (e) {} try { fetchWatchlistRooms(); } catch (e) {} }, 400);
+      __wlChangeT = setTimeout(function () { try { fetchWatchHotComments(); } catch (e) {} try { fetchWatchlistRooms(); } catch (e) {} try { fetchWatchMoomooComments(); } catch (e) {} }, 400);
     });
     function pollFeed(){
       fetch('/', { credentials:'same-origin', cache:'no-store' }).then(function(r){ return r.text(); }).then(function(html){
