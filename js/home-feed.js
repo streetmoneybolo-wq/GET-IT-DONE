@@ -734,7 +734,7 @@
         '<div id="sml-hf-left" style="position:sticky;top:118px;display:flex;flex-direction:column;gap:16px">' +
           '<div style="'+CARD+'padding:18px"><div style="display:flex;align-items:center;gap:12px"><div id="sml-hf-me-card" role="button" aria-label="Account menu" style="cursor:pointer;flex:none">'+avatarHTML(46,'#22E07A',4)+'</div><div><div style="font-weight:700;font-size:14.5px">'+esc(meName)+'</div><div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#38F58A"><span style="width:6px;height:6px;border-radius:50%;background:#38F58A"></span>Signed in</div></div></div></div>' +
           '<div style="display:flex;flex-direction:column;gap:2px">'+navItems()+'</div>' +
-          '<div style="'+CARD+'padding:16px"><div id="sml-hf-wl-head" style="position:relative;display:flex;align-items:center;margin-bottom:12px"></div>' +
+          '<div id="sml-hf-wl-card" style="'+CARD+'padding:16px"><div id="sml-hf-wl-head" style="position:relative;display:flex;align-items:center;margin-bottom:12px"></div>' +
           '<div id="sml-hf-watch-add" style="display:none;gap:6px;margin-bottom:12px"><input id="sml-hf-watch-inp" placeholder="Add ticker, e.g. NVDA" maxlength="6" style="flex:1;min-width:0;background:linear-gradient(180deg,#070C14,#111926);border:1px solid rgba(0,0,0,.6);border-bottom-color:rgba(255,255,255,.08);border-radius:9px;padding:7px 11px;color:#E6EDF5;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;outline:none;text-transform:uppercase"><button id="sml-hf-watch-addbtn" style="flex:none;padding:0 14px;border-radius:9px;font-size:11.5px;'+GBTN+'">Add</button></div>' +
           '<div id="sml-hf-watch-list" style="display:flex;flex-direction:column;gap:8px"></div><div id="sml-hf-wl-foot"></div></div>' +
         '</div>' +
@@ -870,6 +870,18 @@
     document.addEventListener('visibilitychange', function(){ if(!document.hidden) pollQuotes(); });
     WL_RERENDER = renderWatch; // let the top-level instant-check re-render on a fired alert
     renderWatch();          // paint the new watchlist module (header/rows/footer)
+    /* Mobile/narrow (<=1080px) hides the left rail — relocate the watchlist card to the
+       top of the feed so mobile users still get it (owner call 2026-09-16). */
+    function placeWatchlistForViewport(){
+      var card=document.getElementById('sml-hf-wl-card'); if(!card) return;
+      var narrow = (window.innerWidth||1200) <= 1080 || document.documentElement.classList.contains('sml-mobile');
+      var comp=document.querySelector('#sml-hf-shell .hf-composer'), center=comp?comp.parentNode:null;
+      var left=document.getElementById('sml-hf-left');
+      if(narrow && center){ if(card.parentNode!==center){ card.style.marginBottom='18px'; if(comp.nextSibling) center.insertBefore(card, comp.nextSibling); else center.appendChild(card); } }
+      else if(!narrow && left && card.parentNode!==left){ card.style.marginBottom=''; left.appendChild(card); }
+    }
+    placeWatchlistForViewport();
+    var __wlPlaceT=0; window.addEventListener('resize', function(){ clearTimeout(__wlPlaceT); __wlPlaceT=setTimeout(placeWatchlistForViewport, 200); });
     loadAccountWatchlist(); // pull the user's saved watchlist from their account
     loadTargets();          // pull the user's price-target alerts
 
