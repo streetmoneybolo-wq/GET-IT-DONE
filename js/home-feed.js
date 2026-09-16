@@ -1000,7 +1000,7 @@
     }
     function buildTraderRecs(){
       var mount=document.getElementById('sml-hf-trec'); if(!mount) return;
-      api('/wp-json/sml-recs/v1/suggest?surface=ticker_match&limit=6').then(function(d){
+      api('/wp-json/sml-recs/v1/suggest?surface=connect&limit=6').then(function(d){
         var items=((d&&d.items&&d.items.length)?d.items:[]).map(trecCard).filter(Boolean);
         if(!items.length){ mount.innerHTML=''; return; }
         mount.innerHTML='<div style="'+CARD+'padding:16px"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.12em;color:#6B7C90;margin-bottom:12px">TRADERS YOU MAY CONNECT WITH</div><div style="display:flex;flex-direction:column;gap:12px">'+items.join('')+'</div></div>';
