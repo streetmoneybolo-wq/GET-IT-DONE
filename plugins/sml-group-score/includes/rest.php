@@ -32,14 +32,15 @@ add_action( 'rest_api_init', function () {
 		'callback' => function ( WP_REST_Request $r ) {
 			global $wpdb;
 			$limit = max( 1, min( 50, (int) ( $r->get_param( 'limit' ) ?: 20 ) ) );
-			$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT group_id, SUM(points) s FROM " . sml_gs_t( 'events' ) . " GROUP BY group_id ORDER BY s DESC LIMIT %d", $limit ) );
-			$out = array(); $pos = 0;
-			foreach ( (array) $rows as $row ) {
-				$card = sml_gs_group_card( (int) $row->group_id );
-				if ( ! $card ) continue;
-				if ( defined( 'SML_BANNED_GROUP_SLUGS' ) && in_array( strtolower( $card['slug'] ), array_map( 'trim', explode( ',', strtolower( (string) SML_BANNED_GROUP_SLUGS ) ) ), true ) ) continue;   /* shadow-banned groups (WPCode #6873) */
-				$out[] = array_merge( $card, array( 'rank' => ++$pos, 'lifetime' => (int) $row->s ) );
+			$all   = sml_gs_all_scores();
+			$out   = array();
+			foreach ( (array) $wpdb->get_results( "SELECT id, slug, type FROM {$wpdb->prefix}sml_groups", ARRAY_A ) as $g ) {
+				$gid = (int) $g['id'];
+				if ( ! sml_gs_listable( $g ) || empty( $all[ $gid ]['rank'] ) ) continue;
+				$out[] = array_merge( sml_gs_group_card( $gid ), array( 'rank' => $all[ $gid ]['rank'], 'lifetime' => $all[ $gid ]['lifetime'], 'last_30_days' => $all[ $gid ]['last_30_days'] ) );
 			}
+			usort( $out, function ( $a, $b ) { return $a['rank'] <=> $b['rank']; } );
+			$out = array_slice( $out, 0, $limit );
 			$res = rest_ensure_response( array( 'groups' => $out ) );
 			$res->header( 'Cache-Control', 'public, max-age=120' );
 			return $res;

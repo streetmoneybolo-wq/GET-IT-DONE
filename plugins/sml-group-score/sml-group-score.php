@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Group Score & Q&A Rewards
  * Description: Lifetime Group Score (verified price-target hits, Q&A credited to the group, outside shares that real people open, daily active members, members, badge holders, Loop Channel creators, Loop Letter writers) and Loop Bucks for good answers and questions — with the member choosing to keep the Loop Bucks or give their group the credit.
- * Version: 1.0.1
+ * Version: 1.1.1
  * Author: StockMarketLoop
  *
  * OWNER RULES (2026-09-16): Q&A should matter to every creator, group owner and member who
@@ -34,7 +34,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_GS_VERSION = '1.0.1';
+const SML_GS_VERSION = '1.1.1';
 const SML_GS_DB      = 1;
 
 require_once __DIR__ . '/includes/rules.php';
@@ -152,7 +152,7 @@ function sml_gs_record( $gid, $source, $ref, $points, $user_id = 0, $day = null,
 		"INSERT IGNORE INTO " . sml_gs_t( 'events' ) . " (group_id, source, ref, points, user_id, day, meta, created_at) VALUES (%d, %s, %s, %d, %d, %s, %s, %s)",
 		(int) $gid, $source, substr( $ref, 0, 140 ), (int) $points, (int) $user_id, $day ?: sml_gs_et_day(), wp_json_encode( $meta ), sml_gs_utc()
 	) );
-	if ( $n ) wp_cache_delete( 'score_' . (int) $gid, 'sml_gs' );
+	if ( $n ) { wp_cache_delete( 'score_' . (int) $gid, 'sml_gs' ); wp_cache_delete( 'all_scores', 'sml_gs' ); }
 	return (bool) $n;
 }
 
@@ -173,6 +173,7 @@ add_action( 'init', function () {
 require_once __DIR__ . '/includes/qa.php';
 require_once __DIR__ . '/includes/score.php';
 require_once __DIR__ . '/includes/rest.php';
+require_once __DIR__ . '/includes/surfaces.php';
 
 /* =================================================================== cron */
 
