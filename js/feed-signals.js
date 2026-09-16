@@ -157,6 +157,27 @@
     return refs.filter(function (r, i) { return refs.indexOf(r) === i; }).slice(0, 120);
   }
 
+  /* At most one background /visible request per VISIBILITY_GAP_MS. The feed
+     renders cards in waves (12, then 40, then more on scroll), and this
+     homepage already makes dozens of REST calls per load — five back-to-back
+     /visible calls tipped the host into 429 throttling on the first deploy.
+     Explicit actions (hide/undo) are unaffected: they carry refs themselves. */
+  var VISIBILITY_GAP_MS = 4000;
+  var lastVisibilityAt = 0, visibilityTimer = null, visibilityInFlight = false;
+  function scheduleVisibilityCheck() {
+    if (visibilityTimer) return;
+    var wait = visibilityInFlight ? VISIBILITY_GAP_MS : Math.max(0, lastVisibilityAt + VISIBILITY_GAP_MS - Date.now());
+    visibilityTimer = setTimeout(function () {
+      visibilityTimer = null;
+      if (visibilityInFlight) { scheduleVisibilityCheck(); return; }
+      var pending = cardsOnScreen().some(function (c) { var r = refOf(c); return r && !checkedRefs[r]; });
+      if (!pending) return;
+      visibilityInFlight = true;
+      lastVisibilityAt = Date.now();
+      checkVisibility(false).then(function () { visibilityInFlight = false; }, function () { visibilityInFlight = false; });
+    }, wait);
+  }
+
   function checkVisibility(all) {
     var refs = cardsOnScreen().map(refOf).filter(function (r) { return r && (all || !checkedRefs[r]); });
     refs = refs.filter(function (r, i) { return refs.indexOf(r) === i; });
@@ -590,7 +611,7 @@
     rehome();
     reapplyHidden();
     observeCards();
-    checkVisibility(false);
+    scheduleVisibilityCheck();
     var promptEl = document.getElementById('sml-fs-prompt');
     if (promptState && !promptEl) insertPrompt(promptState);
     else if (promptEl) placePromptTop(promptEl);
