@@ -23,13 +23,40 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 if ( ! function_exists( 'sml_meet_idset' ) ) {
 
-	/** usermeta id-array (or CSV) as an O(1) set { id => true }. */
-	function sml_meet_idset( $uid, $key ) {
-		$raw = get_user_meta( (int) $uid, $key, true );
+	/** A raw usermeta value (id-array or CSV) as an O(1) set { id => true }. */
+	function sml_meet_parse_ids( $raw ) {
 		if ( is_string( $raw ) && '' !== $raw ) { $raw = array_map( 'trim', explode( ',', $raw ) ); }
 		$out = array();
 		if ( is_array( $raw ) ) {
 			foreach ( $raw as $v ) { $v = absint( $v ); if ( $v > 0 ) { $out[ $v ] = true; } }
+		}
+		return $out;
+	}
+
+	/** usermeta id-array (or CSV) as an O(1) set { id => true }. */
+	function sml_meet_idset( $uid, $key ) {
+		return sml_meet_parse_ids( get_user_meta( (int) $uid, $key, true ) );
+	}
+
+	/**
+	 * Of the given candidate ids, which ones have blocked $viewer — in ONE query.
+	 * Avoids an O(N) get_user_meta() call per candidate on every directory load.
+	 * Returns { candidate_id => true } for candidates whose blocklist contains $viewer.
+	 */
+	function sml_meet_blockers_of( $cand_ids, $viewer ) {
+		global $wpdb;
+		$cand_ids = array_values( array_filter( array_map( 'absint', (array) $cand_ids ) ) );
+		if ( empty( $cand_ids ) ) { return array(); }
+		$viewer = (int) $viewer;
+		$in   = implode( ',', array_fill( 0, count( $cand_ids ), '%d' ) );
+		$sql  = "SELECT user_id, meta_value FROM {$wpdb->usermeta} WHERE meta_key='sml_meet_blocked' AND user_id IN ({$in})";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $cand_ids ) ); // fixed key; ids bound
+		$out  = array();
+		if ( is_array( $rows ) ) {
+			foreach ( $rows as $r ) {
+				$set = sml_meet_parse_ids( $r->meta_value );
+				if ( isset( $set[ $viewer ] ) ) { $out[ absint( $r->user_id ) ] = true; }
+			}
 		}
 		return $out;
 	}
@@ -133,7 +160,11 @@ if ( ! function_exists( 'sml_meet_idset' ) ) {
 		$city   = sml_meet_clean_city( $request->get_param( 'city' ) );
 
 		// Pool: opted-in + 18+ members, with their bio/city, in one pivot query.
-		$um = $wpdb->usermeta;
+		// Capped so the scan + affinity self-join stay bounded no matter how large the
+		// opted-in set grows (opt-in is off by default, so the cap only bites well
+		// beyond any realistic browse depth). $cap is an int we control, not input.
+		$cap = 500;
+		$um  = $wpdb->usermeta;
 		$sql = "SELECT p.user_id AS uid,
 				MAX(CASE WHEN x.meta_key='sml_meet_adult' THEN x.meta_value END) AS adult,
 				MAX(CASE WHEN x.meta_key='sml_meet_bio'   THEN x.meta_value END) AS bio,
@@ -142,19 +173,27 @@ if ( ! function_exists( 'sml_meet_idset' ) ) {
 			INNER JOIN {$um} x ON x.user_id = p.user_id
 			WHERE x.meta_key IN ('sml_meet_adult','sml_meet_bio','sml_meet_city')
 			GROUP BY p.user_id
-			HAVING adult = '1'";
-		$rows = (array) $wpdb->get_results( $sql ); // no user input; fixed keys
+			HAVING adult = '1'
+			ORDER BY p.user_id DESC
+			LIMIT " . (int) $cap;
+		$rows = (array) $wpdb->get_results( $sql ); // no user input; fixed keys + int cap
 
-		// Filter: self, blocked (both directions), city.
+		// Pass 1: drop self, viewer's own blocks, and city mismatches.
 		$my_blocked = sml_meet_idset( $viewer, 'sml_meet_blocked' );
-		$pool = array();
+		$prelim = array();
 		foreach ( $rows as $r ) {
 			$id = absint( $r->uid );
 			if ( $id <= 0 || $id === $viewer || isset( $my_blocked[ $id ] ) ) { continue; }
-			$their_blocked = sml_meet_idset( $id, 'sml_meet_blocked' );
-			if ( isset( $their_blocked[ $viewer ] ) ) { continue; } // they blocked me
 			if ( '' !== $city && strtolower( trim( (string) $r->city ) ) !== strtolower( $city ) ) { continue; }
-			$pool[ $id ] = array( 'bio' => (string) $r->bio, 'city' => (string) $r->city );
+			$prelim[ $id ] = array( 'bio' => (string) $r->bio, 'city' => (string) $r->city );
+		}
+
+		// Pass 2: drop candidates who blocked the viewer (one batched query, not O(N)).
+		$blockers = sml_meet_blockers_of( array_keys( $prelim ), $viewer );
+		$pool = array();
+		foreach ( $prelim as $id => $data ) {
+			if ( isset( $blockers[ $id ] ) ) { continue; }
+			$pool[ $id ] = $data;
 		}
 		$total = count( $pool );
 		if ( 0 === $total ) { return rest_ensure_response( array( 'items' => array(), 'total' => 0, 'has_more' => false ) ); }
@@ -190,7 +229,16 @@ if ( ! function_exists( 'sml_meet_idset' ) ) {
 			);
 		}
 
-		$resp = rest_ensure_response( array( 'items' => $items, 'total' => $total, 'has_more' => ( $offset + $limit ) < $total ) );
+		// Advance the cursor by the slice WIDTH (not the count of resolved items) so a
+		// skipped deleted/unresolvable user can't desync the client's offset and
+		// duplicate a card on the next page.
+		$next_offset = $offset + count( $page );
+		$resp = rest_ensure_response( array(
+			'items'       => $items,
+			'total'       => $total,
+			'has_more'    => $next_offset < $total,
+			'next_offset' => $next_offset,
+		) );
 		$resp->header( 'Cache-Control', 'private, no-store' );
 		return $resp;
 	}

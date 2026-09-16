@@ -118,7 +118,7 @@
     if (loading) { return; }
     loading = true; if (reset) { offset = 0; items = []; } render();
     return api("/sml-meet/v1/directory?limit=18&offset=" + offset + (cityFilter ? "&city=" + encodeURIComponent(cityFilter) : ""))
-      .then(function (d) { items = items.concat((d && d.items) || []); hasMore = !!(d && d.has_more); offset += ((d && d.items) || []).length; loading = false; render(); })
+      .then(function (d) { items = items.concat((d && d.items) || []); hasMore = !!(d && d.has_more); offset = (d && typeof d.next_offset === "number") ? d.next_offset : (offset + (((d && d.items) || []).length)); loading = false; render(); })
       .catch(function () { loading = false; render(); });
   }
 
@@ -147,8 +147,13 @@
     } else if (act === "block") {
       var buid = parseInt(b.getAttribute("data-uid"), 10) || 0; if (!buid) { return; }
       if (!window.confirm("Block this member? They won’t see you here and you won’t see them.")) { return; }
-      postJSON("/sml-meet/v1/block", { user_id: buid, action: "block" }).catch(function () {});
-      items = items.filter(function (x) { return x.user_id !== buid; }); render();
+      b.disabled = true;
+      // Only remove the card once the block is actually persisted server-side —
+      // otherwise a failed POST (stale nonce, offline, 5xx) would hide the member
+      // while they can still see the viewer, silently breaking the symmetric block.
+      postJSON("/sml-meet/v1/block", { user_id: buid, action: "block" })
+        .then(function () { items = items.filter(function (x) { return x.user_id !== buid; }); render(); })
+        .catch(function () { b.disabled = false; window.alert("Couldn’t block — please try again."); });
     } else if (act === "more") {
       loadDir(false);
     } else if (act === "filter") {
