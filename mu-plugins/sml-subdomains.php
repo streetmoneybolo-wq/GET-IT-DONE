@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Subdomains
  * Description: Paid vanity subdomains. A creator picks name.stockmarketloop.com for their Loop Channel, their Loop Letters homepage, their profile and each group they own; each costs $9.99 once (Stripe Checkout) and is permanent. Visiting the subdomain opens that page. Cloudflare sends every *.stockmarketloop.com request to /sub/{name}/ on this site, which resolves it. 2026-09-19.
- * Version: 1.0.2
+ * Version: 1.1.0
  * Author: StockMarketLoop
  *
  * OWNER RULES (2026-09-19): one subdomain per page, picked once, permanent; paid per subdomain
@@ -22,7 +22,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_SUB_VERSION  = '1.0.2';
+const SML_SUB_VERSION  = '1.1.0';
 const SML_SUB_DB       = 1;
 const SML_SUB_PRICE    = 999;        /* cents, USD */
 const SML_SUB_HOLD_MIN = 31;         /* Stripe Checkout sessions last at least 30 minutes */
@@ -431,7 +431,13 @@ add_action( 'rest_api_init', function () {
 add_action( 'template_redirect', function () {
 	$path = trim( (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH ), '/' );
 	if ( 0 !== strpos( $path, 'creator-studio' ) || ! is_user_logged_in() ) { return; }
-	ob_start( function ( $html ) use ( $path ) {
+	$banner = 'creator-studio' === $path ? sml_sub_banner_html( get_current_user_id() ) : '';
+	ob_start( function ( $html ) use ( $path, $banner ) {
+		if ( is_string( $html ) && '' !== $banner && false === strpos( $html, 'id="sml-sub-promo"' ) ) {
+			$top = strpos( $html, 'class="cs-top"' );
+			$end = false === $top ? false : strpos( $html, '</header>', $top );
+			if ( false !== $end ) { $html = substr_replace( $html, $banner, $end + 9, 0 ); }
+		}
 		if ( ! is_string( $html ) || false === strpos( $html, 'class="cs-nav"' ) || false !== strpos( $html, 'data-sml-sub-nav' ) ) { return $html; }
 		$on   = 'creator-studio/subdomains' === $path ? ' class="cs-on"' : '';
 		$icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path d="M3.6 12h16.8M12 3.4c2.4 2.5 3.6 5.4 3.6 8.6s-1.2 6.1-3.6 8.6c-2.4-2.5-3.6-5.4-3.6-8.6S9.6 5.9 12 3.4z"/></svg>';
@@ -547,3 +553,151 @@ add_action( 'template_redirect', function () {
 	if ( 'creator-studio/subdomains' !== $path ) { return; }
 	sml_sub_render_page();
 }, 0 );
+
+/* ------------------------------------------------------------------ showing it off */
+
+/** Which subdomain-able page is this request? array( surface, object_id ) or null. */
+function sml_sub_current_page() {
+	global $wpdb;
+	static $memo = false;
+	if ( false !== $memo ) { return $memo; }
+	$memo = null;
+	$path = trim( (string) wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH ), '/' );
+	if ( preg_match( '#^channel/([^/]+)$#', $path, $m ) ) {
+		$uid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = 'sml_channel_handle' AND meta_value = %s LIMIT 1", rawurldecode( $m[1] ) ) );
+		if ( $uid ) { $memo = array( 'channel', $uid ); }
+	} elseif ( preg_match( '#^n/([^/]+)$#', $path, $m ) ) {
+		$uid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = 'smll_handle' AND meta_value = %s LIMIT 1", rawurldecode( $m[1] ) ) );
+		if ( $uid ) { $memo = array( 'letters', $uid ); }
+	} elseif ( preg_match( '#^groups/([^/]+)$#', $path, $m ) ) {
+		$gid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}sml_groups WHERE slug = %s", rawurldecode( $m[1] ) ) );
+		if ( $gid ) { $memo = array( 'group', $gid ); }
+	} elseif ( preg_match( '#^([A-Za-z0-9_.-]{2,60})$#', $path, $m ) ) {
+		$uid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = 'sml_public_handle' AND meta_value = %s LIMIT 1", $m[1] ) );
+		if ( $uid ) { $memo = array( 'profile', $uid ); }
+	}
+	return $memo;
+}
+
+/** The active subdomain host for a page, or ''. */
+function sml_sub_host_for( $surface, $object_id ) {
+	global $wpdb;
+	$name = (string) $wpdb->get_var( $wpdb->prepare( 'SELECT name FROM ' . sml_sub_t() . " WHERE surface = %s AND object_id = %d AND status = 'active' LIMIT 1", $surface, (int) $object_id ) );
+	return '' !== $name ? $name . '.' . SML_SUB_BASE : '';
+}
+
+/** Pages this user could still give a subdomain (set up, no active subdomain). */
+function sml_sub_open_pages( $user_id ) {
+	$open = array();
+	foreach ( sml_sub_pages_for( $user_id ) as $p ) {
+		if ( empty( $p['unavailable'] ) && ( empty( $p['subdomain'] ) || 'active' !== $p['subdomain']['status'] ) ) { $open[] = $p['label']; }
+	}
+	return $open;
+}
+
+function sml_sub_banner_html( $user_id ) {
+	$open = sml_sub_open_pages( $user_id );
+	if ( ! $open ) { return ''; }
+	$list = count( $open ) > 2 ? $open[0] . ', ' . $open[1] . ' and ' . ( count( $open ) - 2 ) . ' more' : implode( ' and ', $open );
+	return '<div class="sml-sub-promo" id="sml-sub-promo" role="region" aria-label="Subdomains"><style>'
+		. '.sml-sub-promo{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 26px 0;padding:14px 16px;border-radius:14px;border:1px solid #1f5a3c;background:linear-gradient(90deg,rgba(56,245,138,.12),rgba(11,19,31,.92));color:#dbe6f2;font-size:13.5px;line-height:1.45}'
+		. '.sml-sub-promo b.h{display:block;font-size:15.5px;color:#fff}.sml-sub-promo code{font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace;color:#38f58a;background:none}'
+		. '.sml-sub-promo .txt{flex:1 1 320px;min-width:0}.sml-sub-promo a.go{display:inline-flex;align-items:center;height:38px;padding:0 16px;border-radius:10px;background:#38f58a;color:#06120c;font-weight:800;text-decoration:none;white-space:nowrap}'
+		. '.sml-sub-promo button{width:32px;height:32px;border-radius:8px;border:1px solid #223146;background:transparent;color:#a9b8c8;font-size:18px;cursor:pointer}.sml-sub-promo a.go:focus-visible,.sml-sub-promo button:focus-visible{outline:2px solid #38f58a;outline-offset:2px}'
+		. '@media(max-width:720px){.sml-sub-promo{margin:12px 16px 0}}</style>'
+		. '<div class="txt"><b class="h">🔗 New: your own address on StockMarketLoop</b>Give your ' . esc_html( $list ) . ' a short link like <code>yourname.' . esc_html( SML_SUB_BASE ) . '</code>, easy to say on stream or put in your bio. $' . number_format( SML_SUB_PRICE / 100, 2 ) . ' once, yours for good.</div>'
+		. '<a class="go" href="' . esc_url( home_url( '/creator-studio/subdomains/' ) ) . '">Claim yours</a>'
+		. '<button type="button" aria-label="Hide this" onclick="try{localStorage.setItem(\'smlSubPromoHidden\',\'1\')}catch(e){}document.getElementById(\'sml-sub-promo\').remove()">×</button>'
+		. '<script>try{if(localStorage.getItem("smlSubPromoHidden")==="1"){var p=document.getElementById("sml-sub-promo");p&&p.remove();}}catch(e){}</script></div>';
+}
+
+/* One LOOP-KICK notification per creator (channel, publication or group owner), sent once. */
+function sml_sub_announce( $dry = true ) {
+	global $wpdb;
+	$ids = array_merge(
+		$wpdb->get_col( "SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key IN ('sml_channel_handle', 'smll_handle') AND meta_value <> ''" ),
+		$wpdb->get_col( "SELECT DISTINCT owner_id FROM {$wpdb->prefix}sml_groups" )
+	);
+	$personas = array_flip( array_map( 'intval', $wpdb->get_col( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = 'sml_author_persona'" ) ) );
+	$sent = array();
+	foreach ( array_unique( array_map( 'intval', $ids ) ) as $uid ) {
+		if ( $uid <= 0 || isset( $personas[ $uid ] ) || ! get_userdata( $uid ) || get_user_meta( $uid, '_sml_sub_announced', true ) ) { continue; }
+		$open = sml_sub_open_pages( $uid );
+		if ( ! $open ) { continue; }
+		$sent[] = $uid;
+		if ( $dry || ! function_exists( 'sml_members_add_notification' ) ) { continue; }
+		sml_members_add_notification( $uid, 'subdomain', 'New: give your ' . str_replace( array( 'Profile page', 'Group · ' ), array( 'profile page', 'group ' ), $open[0] ) . ' its own short address like yourname.' . SML_SUB_BASE . ' ($' . number_format( SML_SUB_PRICE / 100, 2 ) . ' once, yours for good).', home_url( '/creator-studio/subdomains/' ), 0 );
+		update_user_meta( $uid, '_sml_sub_announced', gmdate( 'c' ) );
+	}
+	return $sent;
+}
+
+/* The pill on the page itself (channel name, profile name, group name, Loop Letters top + footer),
+   and the page's own Share / Copy buttons hand out the short link. Only pages with an active
+   subdomain get anything. Output buffer from init: several of these pages are custom renders that
+   skip the usual theme hooks. */
+function sml_sub_chip_js() {
+	return <<<'JS'
+(function(){
+  'use strict';
+  var C=window.smlSubChip;if(!C||!C.host)return;
+  var SHORT='https://'+C.host+'/';
+  function norm(u){try{var x=new URL(u,location.href);return (x.origin+x.pathname).replace(/\/+$/,'').toLowerCase();}catch(e){return '';}}
+  var PAGE=norm(C.page);
+  function isPage(u){return typeof u==='string'&&u&&norm(u)===PAGE;}
+
+  /* ---- the pill ---- */
+  var css='.sml-subchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;margin:8px 0 0;padding:4px 5px 4px 11px;border-radius:999px;border:1px solid rgba(56,245,138,.45);background:rgba(8,17,27,.72);color:#e6edf5;font:600 12.5px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;vertical-align:middle;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}'
+    +'.sml-subchip a{color:#38f58a;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sml-subchip a:hover{text-decoration:underline}'
+    +'.sml-subchip button{flex:none;height:24px;padding:0 10px;border-radius:999px;border:0;background:#38f58a;color:#06120c;font:800 11.5px system-ui,-apple-system,Segoe UI,sans-serif;cursor:pointer}'
+    +'.sml-subchip a:focus-visible,.sml-subchip button:focus-visible{outline:2px solid #38f58a;outline-offset:2px}.sml-subchip-row{display:block}';
+  var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);
+  function pill(where){var s=document.createElement('span');s.className='sml-subchip';s.setAttribute('data-sml-subchip',where);
+    s.innerHTML='<span aria-hidden="true">🔗</span><a href="'+SHORT+'" title="Short link to this page">'+C.host+'</a><button type="button">Copy</button>';
+    s.querySelector('button').addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var b=this;
+      (navigator.clipboard&&navigator.clipboard.writeText?realWrite(SHORT):Promise.reject()).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy';},1600);}).catch(function(){window.prompt('Copy this link:',SHORT);});});
+    return s;}
+  function wrap(el){var d=document.createElement('div');d.className='sml-subchip-row';d.appendChild(el);return d;}
+
+  /* ---- where it goes, per page ---- */
+  var PLACES={
+    channel:[function(){var n=document.querySelector('.lch-idname');if(n&&!n.querySelector('[data-sml-subchip]'))n.appendChild(wrap(pill('channel')));}],
+    profile:[function(){var h=document.querySelector('h1.sip-name');if(h){var host=h.parentNode;if(!host.querySelector('[data-sml-subchip]')){var hd=host.querySelector('.sip-handle');(hd||h).insertAdjacentElement('afterend',wrap(pill('profile')));}}},
+             function(){var h=document.querySelector('.sml-profile-card h1');if(h&&!h.parentNode.querySelector('[data-sml-subchip]'))h.insertAdjacentElement('afterend',wrap(pill('profile-card')));}],
+    group:[function(){var h=document.querySelector('.sml-group-head h1');if(h&&!h.parentNode.querySelector('[data-sml-subchip]'))h.insertAdjacentElement('afterend',wrap(pill('group')));}],
+    letters:[
+             function(){var f=document.querySelector('.lh-foot__in');if(f&&!f.querySelector('[data-sml-subchip]')){f.appendChild(document.createTextNode(' '));f.appendChild(pill('letters-foot'));}},
+             function(){var top=document.querySelector('.lh');if(top&&!document.querySelector('[data-sml-subchip="letters-top"]')){var d=wrap(pill('letters-top'));d.style.cssText='padding:10px 16px 0;text-align:center';top.insertAdjacentElement('afterbegin',d);}}]
+  };
+  var fns=PLACES[C.surface]||[];
+  function place(){for(var i=0;i<fns.length;i++){try{fns[i]();}catch(e){}}swapShareLinks();}
+
+  /* ---- the page's own Share / Copy hand out the short link ---- */
+  var realWrite=navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText.bind(navigator.clipboard):null;
+  if(realWrite){try{navigator.clipboard.writeText=function(t){return realWrite(isPage(t)?SHORT:t);};}catch(e){}}
+  if(navigator.share){var realShare=navigator.share.bind(navigator);try{navigator.share=function(d){if(d&&isPage(d.url)){d=Object.assign({},d,{url:SHORT});}return realShare(d);};}catch(e){}}
+  var ENC=[encodeURIComponent(C.page),encodeURIComponent(C.page.replace(/\/$/,''))];
+  function swapShareLinks(){Array.prototype.forEach.call(document.querySelectorAll('a[href*="twitter.com/intent"],a[href*="x.com/intent"],a[href*="facebook.com/sharer"],a[href*="reddit.com/submit"],a[href*="linkedin.com/sharing"],a[href*="t.me/share"],a[href*="wa.me"],a[href*="api.whatsapp.com"]'),function(a){
+    var h=a.getAttribute('href')||'';for(var i=0;i<ENC.length;i++){if(ENC[i]&&h.indexOf(ENC[i])>=0){a.setAttribute('href',h.split(ENC[i]).join(encodeURIComponent(SHORT)));break;}}});}
+
+  place();
+  if('MutationObserver' in window){var t=0;new MutationObserver(function(){if(t)return;t=setTimeout(function(){t=0;place();},120);}).observe(document.documentElement,{childList:true,subtree:true});}
+  /* JS-built pages (channel, profile overlay, group) render late and can re-render; the observer re-attaches */
+  setTimeout(function(){place();},1500);
+})();
+JS;
+}
+add_action( 'init', function () {
+	if ( is_admin() || wp_doing_ajax() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) || 'GET' !== ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) ) { return; }
+	$page = sml_sub_current_page();
+	if ( ! $page ) { return; }
+	$host = sml_sub_host_for( $page[0], $page[1] );
+	if ( '' === $host ) { return; }
+	$cfg = array( 'host' => $host, 'surface' => $page[0], 'page' => sml_sub_target( $page[0], $page[1] ) );
+	ob_start( function ( $html ) use ( $cfg ) {
+		if ( ! is_string( $html ) || false !== strpos( $html, 'window.smlSubChip' ) ) { return $html; }
+		$pos = strripos( $html, '</body>' );
+		if ( false === $pos ) { return $html; }
+		return substr_replace( $html, '<script>window.smlSubChip=' . wp_json_encode( $cfg ) . ';</script><script>' . sml_sub_chip_js() . '</script>', $pos, 0 );
+	} );
+}, 1 );
