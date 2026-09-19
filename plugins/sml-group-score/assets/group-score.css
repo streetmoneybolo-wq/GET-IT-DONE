@@ -1,0 +1,17 @@
+/* matches the shell's gold member count, in green so the two read as a pair */
+.sml-gshell__side-head .sml-gs-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #38F58A;
+  white-space: nowrap;
+  font-size: calc(11px * var(--smlgs-font-scale, 1));
+  font-weight: 900;
+  letter-spacing: .08em;
+  line-height: 1;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.sml-gshell__side-head .sml-gs-score b { color: inherit; font-weight: 950; }
+.sml-gshell__side-head .sml-gs-score:hover { text-decoration: underline; }
+.sml-gshell__side-head .sml-gs-score:focus-visible { outline: 2px solid #38F58A; outline-offset: 2px; }
