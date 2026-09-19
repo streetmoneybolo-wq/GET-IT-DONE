@@ -31,6 +31,106 @@ const DISPUTE_ACTIONS = Object.freeze({
   health: 'webhookHealth'
 });
 
+/*
+ * Public, read-only adapter for the Reddit HUB.  Devvit cannot fetch the
+ * StockMarketLoop personal domain directly, so the HUB calls this Render
+ * service instead.  Nothing here accepts user input, exposes credentials, or
+ * shares billing/dispute data.  A small process cache protects WordPress from
+ * refresh bursts when a Reddit post is opened by multiple readers.
+ */
+const REDDIT_HUB_ORIGIN = 'https://stockmarketloop.com';
+const REDDIT_HUB_CACHE_MS = 15_000;
+let redditHubCache = { expiresAt: 0, payload: null };
+
+function asHubObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function asHubArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asHubText(value) {
+  return typeof value === 'string' ? value : '';
+}
+
+function asHubNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+async function fetchRedditHubJson(path) {
+  const response = await fetch(`${REDDIT_HUB_ORIGIN}${path}`, {
+    headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Reddit-HUB/1.0' },
+    signal: AbortSignal.timeout(12_000)
+  });
+  if (!response.ok) throw new Error(`upstream_${response.status}`);
+  return response.json();
+}
+
+function sanitizeHubQuotes(value) {
+  return asHubArray(asHubObject(value).rows).slice(0, 12).map((item) => {
+    const row = asHubObject(item);
+    return {
+      symbol: asHubText(row.symbol || row.sym).toUpperCase().slice(0, 10),
+      price: asHubNumber(row.price || row.last),
+      change: asHubNumber(row.change || row.chg),
+      changePct: asHubNumber(row.change_pct || row.chgPct),
+      volume: asHubNumber(row.volume || row.v),
+      bid: asHubNumber(row.bid) || undefined,
+      ask: asHubNumber(row.ask) || undefined
+    };
+  }).filter((row) => /^[A-Z0-9.-]{1,10}$/.test(row.symbol));
+}
+
+function sanitizeHubScanner(value) {
+  return asHubArray(asHubObject(value).rows).slice(0, 20).map((item) => {
+    const row = asHubObject(item);
+    return {
+      symbol: asHubText(row.symbol || row.sym).toUpperCase().slice(0, 10),
+      price: asHubNumber(row.price || row.last),
+      changePct: asHubNumber(row.change_pct || row.chgPct),
+      volume: asHubNumber(row.volume || row.v),
+      postMarketPct: asHubNumber(row.postPct),
+      quality: asHubText(row.quality).slice(0, 80)
+    };
+  }).filter((row) => /^[A-Z0-9.-]{1,10}$/.test(row.symbol));
+}
+
+function sanitizeHubNews(value) {
+  return asHubArray(asHubObject(value).articles).slice(0, 24).map((item, index) => {
+    const row = asHubObject(item);
+    const author = asHubObject(row.author);
+    return {
+      id: asHubNumber(row.id) || index + 1,
+      title: asHubText(row.title).slice(0, 240),
+      excerpt: asHubText(row.excerpt).replace(/<[^>]*>/g, '').slice(0, 500),
+      url: asHubText(row.url || row.link),
+      image: asHubText(row.image || row.featured_image),
+      author: asHubText(row.author_name || author.name || 'StockMarketLoop').slice(0, 120),
+      publishedAt: asHubText(row.date || row.published_at)
+    };
+  }).filter((row) => row.title && row.url.startsWith('https://stockmarketloop.com/'));
+}
+
+async function getRedditHubBootstrap() {
+  if (redditHubCache.payload && Date.now() < redditHubCache.expiresAt) return redditHubCache.payload;
+  const symbols = 'SPY,QQQ,IWM,AAPL,NVDA,TSLA';
+  const [quotes, movers, news] = await Promise.allSettled([
+    fetchRedditHubJson(`/wp-json/sml-scanner/v1/quotes?symbols=${symbols}`),
+    fetchRedditHubJson('/wp-json/sml-scanner/v1/live'),
+    fetchRedditHubJson('/wp-json/sml-members/v1/news-feed')
+  ]);
+  const payload = {
+    asOf: new Date().toISOString(),
+    quotes: quotes.status === 'fulfilled' ? sanitizeHubQuotes(quotes.value) : [],
+    movers: movers.status === 'fulfilled' ? sanitizeHubScanner(movers.value) : [],
+    news: news.status === 'fulfilled' ? sanitizeHubNews(news.value) : [],
+    sources: { authors: 19, brand: 'StockMarketLoop' }
+  };
+  redditHubCache = { expiresAt: Date.now() + REDDIT_HUB_CACHE_MS, payload };
+  return payload;
+}
+
 async function handleDisputeRequest(request, response, options, methodName) {
   if (!contentTypeIsJson(request)) return sendJson(response, 415, { ok: false, error: 'content_type_required' });
   const body = await readRequestBody(request);
@@ -385,6 +485,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     if (request.method === 'POST' && path === '/v1/news/articles') {
       await handleNewsWebhook(request, response, { enqueueNewsArticle, newsIngestToken, logger });
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/v1/reddit-hub/bootstrap') {
+      try {
+        sendJson(response, 200, await getRedditHubBootstrap());
+      } catch (error) {
+        logger('warn', 'reddit_hub_bootstrap_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+      }
       return;
     }
 
