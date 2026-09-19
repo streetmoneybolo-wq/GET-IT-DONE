@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.1
+ * Version: 1.0.2
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -14,12 +14,17 @@
  * the resolver's own cache lookup instead: #6873 reads get_transient('sml_cdn_ref')
  * first, so short-circuiting that transient pins every loader and leaves #6873 intact.
  * To unpin, delete this file (the resolver goes back to "latest commit of main").
+ *
+ * 1.0.2 (2026-09-19): advance pin e276b60b -> ce7b627. live-watch.js DESK FOCUS
+ * carousel now shows only the creator's chosen ticker(s) (from /sml-live/v1/feeds),
+ * never a generic SPY/QQQ/NVDA/VIX/TSLA list. Only js/live-watch.js differs between
+ * the two commits; the other files in that range are server-deployed PHP, not CDN.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'e276b60b678256985c878994bb6485f6160161d4' );
+	define( 'SML_CDN_ASSET_REVISION', 'ce7b6273f5e0961d66b79bb0c1821976e1c27a82' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
