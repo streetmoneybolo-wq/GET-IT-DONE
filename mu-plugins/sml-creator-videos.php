@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Videos tab (mu)
  * Description: /creator-studio/videos/ — every Loop Channel video the creator owns with its metadata (title, SEO title, description, ticker, tags, hashtags, visibility, duration, thumbnail, published/updated), real performance (views, 7-day views, impressions, click-through, comments, likes) and an SEO audit per video (title/description/keyword/tags/thumbnail/indexability/video sitemap/VideoObject schema on the watch page) with a score, fixes, inline metadata editing, Google/Bing index checks and a "Request indexing" ping (IndexNow + the sitemap pinger). Owner call 2026-09-10.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: StockMarketLoop
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -172,9 +172,101 @@ add_action( 'rest_api_init', function () {
 } );
 
 /* ------------------------------------------------------ Go live: past + upcoming streams */
-/** Site-local MySQL time (the live-room and chat tables) → Unix time. */
-function sml_cv_local_ts( $mysql ): int { if ( ! $mysql || '0000-00-00 00:00:00' === $mysql ) { return 0; } $g = get_gmt_from_date( (string) $mysql ); return $g ? (int) strtotime( $g . ' UTC' ) : 0; }
+/** UTC MySQL time → Unix time. The live-room table is written with current_time('mysql', true), i.e. UTC. */
+function sml_cv_utc_ts( $mysql ): int { if ( ! $mysql || '0000-00-00 00:00:00' === $mysql ) { return 0; } $t = strtotime( (string) $mysql . ' UTC' ); return $t ? (int) $t : 0; }
 function sml_cv_iso_ts( $iso ): int { $t = $iso ? strtotime( (string) $iso ) : false; return $t ? (int) $t : 0; }
+
+/* ---------- replays: link an uploaded video to a past live stream ---------- */
+function sml_cv_words( string $s ): array {
+	$s = strtolower( preg_replace( '/[^a-z0-9$ ]+/i', ' ', $s ) );
+	$stop = array_flip( array( 'the', 'and', 'for', 'with', 'live', 'stream', 'stock', 'stocks', 'market', 'today', 'you', 'your', 'how', 'what', 'this' ) );
+	return array_values( array_unique( array_filter( preg_split( '/\s+/', $s ), function ( $w ) use ( $stop ) { return strlen( $w ) >= 3 && ! isset( $stop[ $w ] ); } ) ) );
+}
+function sml_cv_similar( string $a, string $b ): float {
+	$x = sml_cv_words( $a ); $y = sml_cv_words( $b );
+	if ( ! $x || ! $y ) { return 0.0; }
+	return count( array_intersect( $x, $y ) ) / count( array_unique( array_merge( $x, $y ) ) );
+}
+/** The creator's videos, newest first (any visibility: a replay can be unlisted). */
+function sml_cv_creator_videos( int $uid ): array {
+	$out = array();
+	foreach ( sml_cv_library() as $slug => $v ) {
+		if ( ! is_array( $v ) || (int) ( $v['author_id'] ?? 0 ) !== $uid ) { continue; }
+		$out[] = array( 'id' => (string) $slug, 'title' => sml_cv_clean( $v['title'] ?? '', 160 ) ?: 'Untitled video', 'created_at' => (string) ( $v['created_at'] ?? '' ), 'url' => sml_cv_watch_url( (string) $slug, $v ), 'thumbnail' => esc_url_raw( (string) ( $v['thumbnail_url'] ?? '' ) ), 'visibility' => (string) ( $v['visibility'] ?? '' ), 'duration' => (int) ( $v['duration'] ?? 0 ) );
+	}
+	usort( $out, function ( $a, $b ) { return strcmp( $b['created_at'], $a['created_at'] ); } );
+	return $out;
+}
+/** Videos that are probably this stream's replay: uploaded from 1 h before the start to 7 days after, ranked by title. */
+function sml_cv_replay_candidates( array $stream, array $videos ): array {
+	$start = sml_cv_iso_ts( $stream['started_at'] ?: $stream['scheduled_at'] );
+	if ( ! $start ) { return array(); }
+	$out = array();
+	foreach ( $videos as $v ) {
+		$t = sml_cv_iso_ts( $v['created_at'] );
+		if ( ! $t || $t < $start - HOUR_IN_SECONDS || $t > $start + 7 * DAY_IN_SECONDS ) { continue; }
+		$score = sml_cv_similar( (string) $stream['title'], $v['title'] ) + max( 0, 0.2 - ( $t - $start ) / ( 7 * DAY_IN_SECONDS ) * 0.2 );
+		$out[] = array( 'id' => $v['id'], 'title' => $v['title'], 'score' => round( $score, 2 ) );
+	}
+	usort( $out, function ( $a, $b ) { return $b['score'] <=> $a['score']; } );
+	return array_slice( $out, 0, 3 );
+}
+/** Attach (or with '' detach) a video as a stream's replay. Streams keep it in their own record, studio-only rooms in user meta. */
+function sml_cv_set_replay( int $uid, string $stream_id, string $video_id ) {
+	$lib = sml_cv_library();
+	$vid = null;
+	if ( '' !== $video_id ) {
+		if ( empty( $lib[ $video_id ] ) || (int) ( $lib[ $video_id ]['author_id'] ?? 0 ) !== $uid ) { return new WP_Error( 'sml_cv_replay_video', 'That video is not on your channel.', array( 'status' => 404 ) ); }
+		$vid = $lib[ $video_id ];
+	}
+	if ( 0 === strpos( $stream_id, 'room-' ) ) {
+		$map = get_user_meta( $uid, '_sml_cv_room_replays', true ); $map = is_array( $map ) ? $map : array();
+		if ( $vid ) { $map[ $stream_id ] = $video_id; } else { unset( $map[ $stream_id ] ); }
+		update_user_meta( $uid, '_sml_cv_room_replays', $map );
+		return true;
+	}
+	$rows = (array) get_user_meta( $uid, '_sml_scheduled_live_library', true );
+	$row  = $rows[ $stream_id ] ?? null;
+	if ( ! is_array( $row ) ) { return new WP_Error( 'sml_cv_replay_stream', 'That live stream is not yours.', array( 'status' => 404 ) ); }
+	if ( in_array( (string) ( $row['status'] ?? '' ), array( 'scheduled', 'live', 'cancelled' ), true ) && empty( $row['ended_at'] ) ) { return new WP_Error( 'sml_cv_replay_state', 'A replay can be added once the stream has ended.', array( 'status' => 409 ) ); }
+	$row['recording_url']    = $vid ? sml_cv_watch_url( $video_id, $vid ) : '';
+	$row['recording_status'] = $vid ? 'ready' : 'not_started';
+	$row['replay_video_id']  = $vid ? $video_id : '';
+	$row['updated_at']       = gmdate( 'c' );
+	if ( function_exists( 'sml_scheduled_live_store' ) ) { sml_scheduled_live_store( $uid, $row, false ); } else { $rows[ $stream_id ] = $row; update_user_meta( $uid, '_sml_scheduled_live_library', $rows ); }
+	$cur = get_user_meta( $uid, '_sml_scheduled_live', true );
+	if ( is_array( $cur ) && (string) ( $cur['id'] ?? '' ) === $stream_id ) { update_user_meta( $uid, '_sml_scheduled_live', $row ); }
+	if ( class_exists( 'SML_Google_Sitemaps' ) && method_exists( 'SML_Google_Sitemaps', 'invalidate' ) ) { SML_Google_Sitemaps::invalidate(); }
+	return true;
+}
+/* A video uploaded soon after a stream, with a matching title, becomes its replay automatically.
+   Conservative on purpose: only a single clear match (title similarity ≥ 0.5, uploaded within 72 h
+   of the start) is linked; everything else is offered as a suggestion on the Go live tab. */
+function sml_cv_auto_link_replays( int $uid ): array {
+	$linked = array();
+	$videos = sml_cv_creator_videos( $uid );
+	$taken  = array();
+	foreach ( (array) get_user_meta( $uid, '_sml_scheduled_live_library', true ) as $r ) { if ( is_array( $r ) && ! empty( $r['replay_video_id'] ) ) { $taken[ $r['replay_video_id'] ] = true; } }
+	foreach ( (array) get_user_meta( $uid, '_sml_scheduled_live_library', true ) as $id => $r ) {
+		if ( ! is_array( $r ) || 'ended' !== (string) ( $r['status'] ?? '' ) || ! empty( $r['recording_url'] ) ) { continue; }
+		$start = sml_cv_iso_ts( ( $r['started_at'] ?? '' ) ?: ( $r['scheduled_at'] ?? '' ) );
+		if ( ! $start ) { continue; }
+		$hits = array();
+		foreach ( $videos as $v ) {
+			$t = sml_cv_iso_ts( $v['created_at'] );
+			if ( isset( $taken[ $v['id'] ] ) || ! $t || $t < $start || $t > $start + 72 * HOUR_IN_SECONDS ) { continue; }
+			if ( sml_cv_similar( (string) ( $r['title'] ?? '' ), $v['title'] ) >= 0.5 ) { $hits[] = $v['id']; }
+		}
+		if ( 1 === count( $hits ) && true === sml_cv_set_replay( $uid, (string) $id, $hits[0] ) ) { $taken[ $hits[0] ] = true; $linked[] = array( 'stream' => (string) $id, 'video' => $hits[0] ); }
+	}
+	return $linked;
+}
+add_action( 'update_option_sml_video_upload_studio_library', function ( $old, $new ) {
+	if ( ! is_array( $new ) ) { return; }
+	$authors = array();
+	foreach ( $new as $slug => $v ) { if ( is_array( $v ) && ! isset( $old[ $slug ] ) && ! empty( $v['author_id'] ) ) { $authors[ (int) $v['author_id'] ] = true; } }
+	foreach ( array_keys( $authors ) as $uid ) { sml_cv_auto_link_replays( $uid ); }
+}, 20, 2 );
 
 /**
  * Every live stream the creator scheduled or ran, from the real stores:
@@ -198,9 +290,9 @@ function sml_cv_live( int $uid ): array {
 	$rt = $wpdb->prefix . 'sml_group_live_rooms';
 	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $rt ) ) ) {
 		foreach ( (array) $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$rt} WHERE host_id = %d ORDER BY id DESC LIMIT 100", $uid ), ARRAY_A ) as $r ) {
-			$start = sml_cv_local_ts( $r['started_at'] );
-			$end   = sml_cv_local_ts( $r['ended_at'] );
-			$beat  = sml_cv_local_ts( $r['heartbeat_at'] );
+			$start = sml_cv_utc_ts( $r['started_at'] );
+			$end   = sml_cv_utc_ts( $r['ended_at'] );
+			$beat  = sml_cv_utc_ts( $r['heartbeat_at'] );
 			$on    = 'active' === $r['status'] && $beat > $now - 120;
 			$gid   = (int) $r['group_id'];
 			$grow  = $gid ? $wpdb->get_row( $wpdb->prepare( "SELECT name, slug FROM {$wpdb->prefix}sml_groups WHERE id = %d", $gid ), ARRAY_A ) : null;
@@ -220,6 +312,15 @@ function sml_cv_live( int $uid ): array {
 	};
 	$where = function ( array $room ): string { return $room['group_id'] ? ( $room['group'] ?: 'Group #' . $room['group_id'] ) : 'Your channel'; };
 
+	$videos   = sml_cv_creator_videos( $uid );
+	$by_id    = array(); foreach ( $videos as $v ) { $by_id[ $v['id'] ] = $v; }
+	$room_map = get_user_meta( $uid, '_sml_cv_room_replays', true ); $room_map = is_array( $room_map ) ? $room_map : array();
+	/* the linked replay video (by id, else by its watch URL) */
+	$replay_of = function ( string $vid, string $url ) use ( $by_id ) {
+		if ( '' !== $vid && isset( $by_id[ $vid ] ) ) { return array( 'id' => $vid, 'title' => $by_id[ $vid ]['title'], 'url' => $by_id[ $vid ]['url'] ); }
+		foreach ( $by_id as $v ) { if ( '' !== $url && untrailingslashit( $v['url'] ) === untrailingslashit( $url ) ) { return array( 'id' => $v['id'], 'title' => $v['title'], 'url' => $v['url'] ); } }
+		return '' !== $url ? array( 'id' => '', 'title' => '', 'url' => $url ) : null;
+	};
 	$upcoming = array(); $past = array(); $live_now = array(); $cancelled = 0;
 	foreach ( $raw as $key => $s ) {
 		if ( ! is_array( $s ) ) { continue; }
@@ -245,6 +346,8 @@ function sml_cv_live( int $uid ): array {
 			'watch_url'   => is_array( $pay ) && ! empty( $pay['watch_url'] ) ? (string) $pay['watch_url'] : '',
 			'recording'   => esc_url_raw( (string) ( $s['recording_url'] ?? '' ) ),
 			'chat'        => $chat( $id ),
+			'viewers'     => function_exists( 'sml_lv_stream_stats' ) ? sml_lv_stream_stats( $uid, $id ) : null,
+			'replay'      => $replay_of( (string) ( $s['replay_video_id'] ?? '' ), (string) ( $s['recording_url'] ?? '' ) ),
 			'where'       => 'Your channel',
 			'state'       => '',
 		);
@@ -280,21 +383,25 @@ function sml_cv_live( int $uid ): array {
 			'scheduled_at' => '', 'started_at' => $room['start'] ? gmdate( 'c', $room['start'] ) : '', 'ended_at' => $room['end'] ? gmdate( 'c', $room['end'] ) : '',
 			'duration' => ( $room['start'] && $room['end'] > $room['start'] ) ? $room['end'] - $room['start'] : 0,
 			'watch_url' => $room['group_url'], 'recording' => '', 'chat' => array( 'messages' => 0, 'chatters' => 0 ),
-			'where' => $where( $room ), 'state' => $room['on_air'] ? 'live' : 'ended',
+			'where' => $where( $room ), 'state' => $room['on_air'] ? 'live' : 'ended', 'viewers' => null,
+			'replay' => $replay_of( (string) ( $room_map[ 'room-' . $room['id'] ] ?? '' ), '' ),
 		);
 		if ( $room['on_air'] ) { $live_now[] = $item; } else { $past[] = $item; }
 	}
+	foreach ( $past as $i => $p ) { $past[ $i ]['candidates'] = empty( $p['replay'] ) && 'missed' !== $p['state'] ? sml_cv_replay_candidates( $p, $videos ) : array(); }
 	usort( $upcoming, function ( $a, $b ) { return strcmp( $a['scheduled_at'], $b['scheduled_at'] ); } );
 	$when = function ( $x ) { return $x['started_at'] ?: $x['scheduled_at']; };
 	usort( $past, function ( $a, $b ) use ( $when ) { return strcmp( $when( $b ), $when( $a ) ); } );
 	$minutes = 0; $messages = 0;
-	foreach ( $past as $p ) { $minutes += (int) floor( $p['duration'] / 60 ); $messages += $p['chat']['messages']; }
+	$peak = 0;
+	foreach ( $past as $p ) { $minutes += (int) floor( $p['duration'] / 60 ); $messages += $p['chat']['messages']; $peak = max( $peak, (int) ( $p['viewers']['peak'] ?? 0 ) ); }
 	return array(
 		'live_now'  => $live_now,
 		'upcoming'  => $upcoming,
 		'past'      => $past,
 		'cancelled' => $cancelled,
-		'summary'   => array( 'upcoming' => count( $upcoming ), 'past' => count( $past ), 'minutes' => $minutes, 'chat' => $messages, 'next' => $upcoming ? $upcoming[0]['scheduled_at'] : '' ),
+		'videos'    => array_map( function ( $v ) { return array( 'id' => $v['id'], 'title' => $v['title'], 'created_at' => $v['created_at'] ); }, array_slice( $videos, 0, 200 ) ),
+		'summary'   => array( 'upcoming' => count( $upcoming ), 'past' => count( $past ), 'minutes' => $minutes, 'chat' => $messages, 'peak' => $peak, 'next' => $upcoming ? $upcoming[0]['scheduled_at'] : '' ),
 		'links'     => array( 'go_live' => home_url( '/go-live/' ), 'upload' => home_url( '/upload-video/' ) ),
 	);
 }
@@ -305,6 +412,16 @@ add_action( 'rest_api_init', function () {
 		$res = rest_ensure_response( sml_cv_live( $creator ) );
 		$res->header( 'Cache-Control', 'no-store' );
 		return $res;
+	} ) );
+	register_rest_route( SML_CV_NS, '/live/replay', array( 'methods' => 'POST', 'permission_callback' => 'is_user_logged_in', 'callback' => function ( WP_REST_Request $r ) {
+		$in     = (array) $r->get_json_params() ?: (array) $r->get_body_params();
+		$stream = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) ( $in['stream_id'] ?? '' ) );
+		$video  = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) ( $in['video_id'] ?? '' ) );
+		if ( '' === $stream ) { return new WP_Error( 'sml_cv_replay_stream', 'Pick a live stream.', array( 'status' => 400 ) ); }
+		$uid = get_current_user_id();
+		$ok  = sml_cv_set_replay( $uid, $stream, $video );
+		if ( is_wp_error( $ok ) ) { return $ok; }
+		return array( 'ok' => true, 'live' => sml_cv_live( $uid ) );
 	} ) );
 } );
 
@@ -321,7 +438,7 @@ function sml_cv_styles(): string {
 		. '.cs-v-btn{height:34px;border-radius:9px;border:1px solid #223146;background:#0e1826;color:#dbe6f2;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px}.cs-v-btn:hover{border-color:#38f58a}.cs-v-btn.primary{background:#38f58a;border-color:#38f58a;color:#06120c}.cs-v-btn[disabled]{opacity:.5;cursor:default}'
 		. '.cs-v-detail{grid-column:1/-1;border-top:1px solid #182130;padding-top:14px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.cs-v-checks{display:flex;flex-direction:column;gap:6px}.cs-v-check{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:start;font-size:12.5px;padding:7px 9px;border-radius:9px;background:#08111b}.cs-v-check i{font-style:normal;font-weight:800}.cs-v-check.pass i{color:#38f58a}.cs-v-check.warn i{color:#ffb020}.cs-v-check.fail i{color:#ff5c7a}.cs-v-check small{display:block;color:#8798ac;margin-top:2px;line-height:1.4}.cs-v-check em{font-style:normal;color:#8798ac;font-size:11px;white-space:nowrap}'
 		. '.cs-v-form{display:flex;flex-direction:column;gap:8px}.cs-v-form label{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8798ac}.cs-v-form input,.cs-v-form textarea,.cs-v-form select{width:100%;border-radius:9px;border:1px solid #223146;background:#0b131f;color:#e6edf5;padding:9px 11px;font:inherit;font-size:13px;box-sizing:border-box}.cs-v-form textarea{min-height:110px;resize:vertical}.cs-v-form .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.cs-v-form .cnt{font-size:11px;color:#708399;text-align:right;margin-top:-4px}.cs-v-form .cnt.bad{color:#ff9aa8}.cs-v-form .cnt.ok{color:#8fd6b0}.cs-v-note{font-size:12px;color:#8fd6b0;min-height:16px}.cs-v-note.err{color:#ff9aa8}'
-		. '.cs-cv-tab.is-live{border-color:#4a1f28}.cs-cv-tab.is-live.on{background:#ff4d6a;border-color:#ff4d6a;color:#fff}.cs-lv-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,rgba(255,77,106,.12),rgba(11,19,31,.9));border:1px solid #3a1d27;border-radius:14px;padding:14px 16px;margin-bottom:14px}.cs-lv-bar b{display:block;font-size:17px}.cs-lv-bar span{font-size:13px;color:#a9b8c8}.cs-lv-go{display:flex;gap:8px;flex-wrap:wrap}.cs-lv-go .cs-v-btn{padding:0 16px;height:40px}.cs-lv-go .cs-v-btn.primary{background:#ff4d6a;border-color:#ff4d6a;color:#fff}.cs-lv-sec{margin:0 0 18px}.cs-lv-sec h2{margin:0 0 10px;font-size:15px;letter-spacing:.2px}.cs-lv-sec h2 b{margin-left:6px;color:#8798ac;font-weight:700}.cs-lv-card{display:grid;grid-template-columns:180px minmax(0,1fr) 190px;gap:14px;align-items:center;background:#0b131f;border:1px solid #182130;border-radius:14px;padding:12px;margin-bottom:10px}.cs-lv-card.st-live{border-color:#ff4d6a}.cs-lv-card.st-miss{opacity:.78}.cs-lv-ph{position:absolute;inset:0;display:grid;place-items:center;font-size:30px;color:#3a4b60}.cs-lv-body h3{margin:6px 0 4px;font-size:15.5px;line-height:1.3}.cs-lv-pill{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:999px;background:#14202f;color:#cfe0f2}.cs-lv-pill.sch{background:#10263b;color:#8cc9ff}.cs-lv-pill.due{background:#3a2a08;color:#ffcf5c}.cs-lv-pill.live{background:#ff4d6a;color:#fff}.cs-lv-pill.end{background:#16222f;color:#b9c8d8}.cs-lv-pill.warn{background:#2c2410;color:#ffcf5c}.cs-lv-pill.miss{background:#2a1418;color:#ff9aa9}.cs-lv-count{color:#8cc9ff;font-weight:700}.cs-lv-vis{text-transform:capitalize}.cs-lv-note{margin:6px 0 0;font-size:12.5px;color:#a9b8c8}.cs-lv-acts{display:flex;flex-direction:column;gap:7px}.cs-lv-foot{font-size:12px;color:#708399;margin:4px 0 0}.cs-lv-muted{color:#708399}@media(max-width:980px){.cs-lv-card{grid-template-columns:150px minmax(0,1fr)}.cs-lv-acts{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.cs-lv-acts .cs-v-btn{padding:0 12px}}@media(max-width:620px){.cs-lv-card{grid-template-columns:minmax(0,1fr)}}'
+		. '.cs-cv-tab.is-live{border-color:#4a1f28}.cs-cv-tab.is-live.on{background:#ff4d6a;border-color:#ff4d6a;color:#fff}.cs-lv-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,rgba(255,77,106,.12),rgba(11,19,31,.9));border:1px solid #3a1d27;border-radius:14px;padding:14px 16px;margin-bottom:14px}.cs-lv-bar b{display:block;font-size:17px}.cs-lv-bar span{font-size:13px;color:#a9b8c8}.cs-lv-go{display:flex;gap:8px;flex-wrap:wrap}.cs-lv-go .cs-v-btn{padding:0 16px;height:40px}.cs-lv-go .cs-v-btn.primary{background:#ff4d6a;border-color:#ff4d6a;color:#fff}.cs-lv-sec{margin:0 0 18px}.cs-lv-sec h2{margin:0 0 10px;font-size:15px;letter-spacing:.2px}.cs-lv-sec h2 b{margin-left:6px;color:#8798ac;font-weight:700}.cs-lv-card{display:grid;grid-template-columns:180px minmax(0,1fr) 190px;gap:14px;align-items:center;background:#0b131f;border:1px solid #182130;border-radius:14px;padding:12px;margin-bottom:10px}.cs-lv-card.st-live{border-color:#ff4d6a}.cs-lv-card.st-miss{opacity:.78}.cs-lv-ph{position:absolute;inset:0;display:grid;place-items:center;font-size:30px;color:#3a4b60}.cs-lv-body h3{margin:6px 0 4px;font-size:15.5px;line-height:1.3}.cs-lv-pill{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:999px;background:#14202f;color:#cfe0f2}.cs-lv-pill.sch{background:#10263b;color:#8cc9ff}.cs-lv-pill.due{background:#3a2a08;color:#ffcf5c}.cs-lv-pill.live{background:#ff4d6a;color:#fff}.cs-lv-pill.end{background:#16222f;color:#b9c8d8}.cs-lv-pill.warn{background:#2c2410;color:#ffcf5c}.cs-lv-pill.miss{background:#2a1418;color:#ff9aa9}.cs-lv-extra{grid-column:1/-1;display:flex;flex-direction:column;gap:8px}.cs-lv-suggest{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;background:#0d1d17;border:1px solid #1d4a33;border-radius:10px;padding:8px 10px}.cs-lv-suggest b{color:#e6edf5}.cs-lv-suggest .cs-v-btn{padding:0 12px;height:30px}.cs-lv-pick{background:#08111b;border:1px solid #1d2c3e;border-radius:10px;padding:10px}.cs-lv-pick label{display:block;font-size:12px;font-weight:700;color:#a9b8c8;margin-bottom:6px}.cs-lv-pickrow{display:flex;gap:8px;flex-wrap:wrap}.cs-lv-pickrow select{flex:1 1 260px;min-width:0;height:34px;border-radius:9px;border:1px solid #223146;background:#0b131f;color:#e6edf5;padding:0 10px;font:inherit;font-size:13px}.cs-lv-pickrow .cs-v-btn{padding:0 14px}.cs-lv-pill.rep{margin-left:6px;background:#12301f;color:#a6ffd2}.cs-lv-eyes b{color:#e6edf5}.cs-lv-note a{color:#8cc9ff}.cs-lv-count{color:#8cc9ff;font-weight:700}.cs-lv-vis{text-transform:capitalize}.cs-lv-note{margin:6px 0 0;font-size:12.5px;color:#a9b8c8}.cs-lv-acts{display:flex;flex-direction:column;gap:7px}.cs-lv-foot{font-size:12px;color:#708399;margin:4px 0 0}.cs-lv-muted{color:#708399}@media(max-width:980px){.cs-lv-card{grid-template-columns:150px minmax(0,1fr)}.cs-lv-acts{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.cs-lv-acts .cs-v-btn{padding:0 12px}}@media(max-width:620px){.cs-lv-card{grid-template-columns:minmax(0,1fr)}}'
 		. '.cs-cv-empty{padding:34px 12px;text-align:center;color:#708399;font-size:13.5px;border:1px dashed #26384c;border-radius:12px}'
 		. '@media(max-width:980px){.cs-v{grid-template-columns:160px minmax(0,1fr)}.cs-v-seo{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.cs-v-seo .cs-v-score{flex:1 1 200px}.cs-v-detail{grid-template-columns:minmax(0,1fr)}}@media(max-width:720px){.cs-cv{padding:16px}.cs-v{grid-template-columns:minmax(0,1fr)}.cs-v-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}';
 }
@@ -397,16 +514,39 @@ function sml_cv_script(): string {
     if(s.chat&&s.chat.messages)meta.push('<span><b>'+n(s.chat.messages)+'</b> chat message'+(s.chat.messages===1?'':'s')+' · '+n(s.chat.chatters)+' chatter'+(s.chat.chatters===1?'':'s')+'</span>');
     if(s.state==='upcoming'||s.state==='due'){if(s.watch_url){acts.push('<a class="cs-v-btn primary" href="'+esc(s.watch_url)+'" target="_blank" rel="noopener">Open watch page ↗</a>');acts.push('<button type="button" class="cs-v-btn" data-copy="'+esc(s.watch_url)+'">Copy link</button>');}acts.push('<a class="cs-v-btn" href="'+esc(live.links.go_live)+'">'+(s.state==='due'?'● Go live now':'Manage in Go Live')+'</a>');}
     else if(s.state==='live'){if(s.watch_url)acts.push('<a class="cs-v-btn primary" href="'+esc(s.watch_url)+'" target="_blank" rel="noopener">Open watch page ↗</a>');acts.push('<a class="cs-v-btn" href="'+esc(live.links.go_live)+'">Open Go Live studio</a>');}
-    else{if(s.recording)acts.push('<a class="cs-v-btn primary" href="'+esc(s.recording)+'" target="_blank" rel="noopener">▶ Watch replay</a>');else if(s.watch_url&&s.state!=='missed')acts.push('<a class="cs-v-btn" href="'+esc(s.watch_url)+'" target="_blank" rel="noopener">'+(s.visibility==='group'?'Group page ↗':'Stream page ↗')+'</a>');if(!s.recording&&s.state!=='missed')acts.push('<a class="cs-v-btn" href="'+esc(live.links.upload)+'">⬆ Upload the replay</a>');}
-    return '<article class="cs-lv-card st-'+st[1]+'"><div class="cs-v-thumb">'+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" loading="lazy">':'<span class="cs-lv-ph">◉</span>')+'</div>'
-      +'<div class="cs-lv-body"><span class="cs-lv-pill '+st[1]+'">'+esc(st[0])+'</span><h3>'+esc(s.title)+'</h3><div class="cs-v-meta">'+meta.join('')+'</div>'+(note?'<p class="cs-lv-note">'+esc(note)+'</p>':'')+'</div>'
-      +'<div class="cs-lv-acts">'+acts.join('')+'<div class="cs-v-note" data-copied></div></div></article>';}
+    var vw=s.viewers;
+    if(vw&&vw.tracked){if(s.state==='live')meta.push('<span class="cs-lv-eyes"><b>'+n(vw.now)+'</b> watching now · peak '+n(vw.peak)+'</span>');else meta.push('<span class="cs-lv-eyes">Peak <b>'+n(vw.peak)+'</b> viewer'+(vw.peak===1?'':'s')+' · '+n(vw.unique)+' unique</span>');}
+    else if(s.state!=='missed'&&s.state!=='upcoming'&&s.state!=='due'&&s.id.indexOf('room-')!==0)meta.push('<span class="cs-lv-muted">Viewers not tracked for this stream</span>');
+    var extra='';
+    if(s.state!=='upcoming'&&s.state!=='due'&&s.state!=='live'&&s.state!=='missed'){
+      if(s.replay)acts.push('<a class="cs-v-btn primary" href="'+esc(s.replay.url)+'" target="_blank" rel="noopener">▶ Watch replay</a><button type="button" class="cs-v-btn" data-pick="'+esc(s.id)+'">Change replay</button>');
+      else{
+        if(s.watch_url)acts.push('<a class="cs-v-btn" href="'+esc(s.watch_url)+'" target="_blank" rel="noopener">'+(s.visibility==='group'?'Group page ↗':'Stream page ↗')+'</a>');
+        if((live.videos||[]).length)acts.push('<button type="button" class="cs-v-btn" data-pick="'+esc(s.id)+'">🔗 Pick the replay</button>');
+        acts.push('<a class="cs-v-btn" href="'+esc(live.links.upload)+'">⬆ Upload the replay</a>');
+        var c=(s.candidates||[])[0];
+        if(c&&c.score>=0.35)extra='<div class="cs-lv-suggest">Is this the replay? <b>'+esc(c.title)+'</b><button type="button" class="cs-v-btn primary" data-link="'+esc(s.id)+'" data-video="'+esc(c.id)+'">Link it</button></div>';
+      }
+      if(pickOpen===s.id)extra+=pickerHtml(s);
+    }
+    return '<article class="cs-lv-card st-'+st[1]+'" data-stream="'+esc(s.id)+'"><div class="cs-v-thumb">'+(s.thumbnail?'<img src="'+esc(s.thumbnail)+'" alt="" loading="lazy">':'<span class="cs-lv-ph">◉</span>')+'</div>'
+      +'<div class="cs-lv-body"><span class="cs-lv-pill '+st[1]+'">'+esc(st[0])+'</span>'+(s.replay?'<span class="cs-lv-pill rep">▶ Replay linked</span>':'')+'<h3>'+esc(s.title)+'</h3><div class="cs-v-meta">'+meta.join('')+'</div>'+(note?'<p class="cs-lv-note">'+esc(note)+'</p>':'')+(s.replay&&s.replay.title?'<p class="cs-lv-note">Replay: <a href="'+esc(s.replay.url)+'" target="_blank" rel="noopener">'+esc(s.replay.title)+'</a></p>':'')+'</div>'
+      +'<div class="cs-lv-acts">'+acts.join('')+'<div class="cs-v-note" data-copied></div></div>'+(extra?'<div class="cs-lv-extra">'+extra+'</div>':'')+'</article>';}
+  var pickOpen='';
+  function pickerHtml(s){var cur=s.replay&&s.replay.id||'',cands={};(s.candidates||[]).forEach(function(c){cands[c.id]=1;});
+    var opts=(live.videos||[]).map(function(v){return '<option value="'+esc(v.id)+'"'+(v.id===cur?' selected':'')+'>'+(cands[v.id]?'★ ':'')+esc(v.title)+' · '+esc(when(v.created_at))+'</option>';}).join('');
+    return '<form class="cs-lv-pick" data-pickform="'+esc(s.id)+'"><label for="pk-'+esc(s.id)+'">Which of your videos is the replay of this stream?</label><div class="cs-lv-pickrow"><select id="pk-'+esc(s.id)+'" name="video">'+(cur?'':'<option value="">Choose a video…</option>')+opts+'</select><button type="submit" class="cs-v-btn primary">Save</button>'+(cur?'<button type="button" class="cs-v-btn" data-unlink="'+esc(s.id)+'">Remove replay</button>':'')+'<button type="button" class="cs-v-btn" data-pickclose>Cancel</button></div><div class="cs-v-note" data-picknote></div></form>';}
+  function saveReplay(stream,video,noteEl){if(noteEl){noteEl.textContent='Saving…';noteEl.className='cs-v-note';}
+    return fetch(cfg.live+'/replay',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-WP-Nonce':cfg.nonce||''},body:JSON.stringify({stream_id:stream,video_id:video})})
+      .then(function(r){return r.json().then(function(j){if(!r.ok||j.code)throw new Error(j.message||'Could not save the replay.');return j;});})
+      .then(function(j){live=j.live;pickOpen='';paintTabs();paint();var card=list.querySelector('[data-stream="'+CSS.escape(stream)+'"] [data-copied]');if(card)card.textContent=video?'Replay linked.':'Replay removed.';})
+      .catch(function(e){if(noteEl){noteEl.textContent=e.message;noteEl.className='cs-v-note err';}else alert(e.message);});}
   function liveSection(title,items,empty){return '<section class="cs-lv-sec"><h2>'+esc(title)+' <b>'+items.length+'</b></h2>'+(items.length?items.map(liveCard).join(''):'<div class="cs-cv-empty">'+empty+'</div>')+'</section>';}
   function paintLive(){
     if(!live){list.innerHTML='<div class="cs-cv-empty">'+(liveErr?esc(liveErr):'Loading your live streams…')+'</div>';return;}
     var s=live.summary||{};
     var h='<div class="cs-lv-bar"><div><b>Go live</b><span>Start a stream now or schedule one. A scheduled stream gets its own watch page and countdown right away.</span></div><div class="cs-lv-go"><a class="cs-v-btn primary" href="'+esc(live.links.go_live)+'">● Go live now</a><a class="cs-v-btn" href="'+esc(live.links.go_live)+'">📅 Schedule a stream</a></div></div>'
-      +'<div class="cs-cv-sum"><div><b>'+n(s.upcoming)+'</b><span>upcoming'+(s.next?' · next '+esc(until(s.next)):'')+'</span></div><div><b>'+n(s.past)+'</b><span>past streams</span></div><div><b>'+(!s.minutes?'—':s.minutes>=60?Math.floor(s.minutes/60)+'h '+(s.minutes%60)+'m':n(s.minutes)+'m')+'</b><span>streamed (recorded lengths)</span></div><div><b>'+n(s.chat)+'</b><span>live chat messages</span></div></div>';
+      +'<div class="cs-cv-sum"><div><b>'+n(s.upcoming)+'</b><span>upcoming'+(s.next?' · next '+esc(until(s.next)):'')+'</span></div><div><b>'+n(s.past)+'</b><span>past streams</span></div><div><b>'+(!s.minutes?'—':s.minutes>=60?Math.floor(s.minutes/60)+'h '+(s.minutes%60)+'m':n(s.minutes)+'m')+'</b><span>streamed (recorded lengths)</span></div><div><b>'+n(s.chat)+'</b><span>live chat messages</span></div><div><b>'+(s.peak?n(s.peak):'—')+'</b><span>best peak viewers</span></div></div>';
     if(live.live_now.length)h+=liveSection('Live now',live.live_now,'');
     h+=liveSection('Upcoming',live.upcoming,'No streams scheduled. Schedule one in Go Live and it shows here with a countdown.');
     h+=liveSection('Past streams',live.past,'No past live streams yet. When you go live, each stream shows up here.');
@@ -417,6 +557,12 @@ function sml_cv_script(): string {
   function showLive(where){tab='live';paintTabs();paint();try{history.replaceState(null,'','#live')}catch(x){}
     var el=where==='past'?list.querySelector('.cs-lv-sec:last-of-type'):null;(el||tabsEl).scrollIntoView({behavior:'smooth',block:'start'});}
   setInterval(function(){if(tab!=='live')return;Array.prototype.forEach.call(list.querySelectorAll('[data-until]'),function(e){e.textContent=until(e.getAttribute('data-until'));});},30000);
+  list.addEventListener('click',function(e){
+    var p=e.target.closest('[data-pick]');if(p){pickOpen=pickOpen===p.getAttribute('data-pick')?'':p.getAttribute('data-pick');paint();var sel=list.querySelector('[data-pickform] select');if(sel)sel.focus();return;}
+    if(e.target.closest('[data-pickclose]')){pickOpen='';paint();return;}
+    var l=e.target.closest('[data-link]');if(l){l.disabled=true;saveReplay(l.getAttribute('data-link'),l.getAttribute('data-video'),null);return;}
+    var u=e.target.closest('[data-unlink]');if(u){saveReplay(u.getAttribute('data-unlink'),'',u.closest('form').querySelector('[data-picknote]'));}});
+  list.addEventListener('submit',function(e){var f=e.target.closest('[data-pickform]');if(!f)return;e.preventDefault();var v=f.querySelector('select').value;var note=f.querySelector('[data-picknote]');if(!v){note.textContent='Choose a video first.';note.className='cs-v-note err';return;}saveReplay(f.getAttribute('data-pickform'),v,note);});
   list.addEventListener('click',function(e){var c=e.target.closest('[data-copy]');if(!c)return;var url=c.getAttribute('data-copy'),out=c.parentNode.querySelector('[data-copied]');
     (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(function(){if(out)out.textContent='Link copied.';}).catch(function(){if(out)out.textContent=url;});});
   root.addEventListener('click',function(e){var b=e.target.closest('[data-cv-live]');if(!b)return;e.preventDefault();showLive(b.getAttribute('data-cv-live'));});
