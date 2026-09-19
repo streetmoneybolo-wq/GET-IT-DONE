@@ -1,0 +1,433 @@
+
+/**
+ * SML Live Watch — API routes (Phase 4 economy). SECOND snippet, alongside the preview loader.
+ *
+ * Registers /wp-json/sml-lw/v1/:
+ *   GET  /tomato/state?handle=   — current viewer's tomato allowance + price
+ *   POST /tomato {handle,note}   — toss: allowance check, Loop Bucks debit, 50/50 ledger,
+ *                                  best-effort broadcast into the sml-live-chat room
+ *   POST /presence {handle}      — viewer heartbeat (logged-in), 90s window
+ *   GET  /presence?handle=       — live viewer count for the watch page
+ *   GET  /diag                   — ADMIN ONLY: wallet introspection (functions/classes/tables)
+ *                                  so the debit hook can be bound exactly
+ *
+ * The debit tries known wallet function shapes and VERIFIES the balance moved via
+ * /sml-lb/v1/me before and after; if no hook matches it returns 501 wallet_pending
+ * (nothing is charged, nothing is broadcast) — run /diag and we bind the real function.
+ * ROLLBACK: deactivate this snippet; it writes only its own options/user-meta.
+ *
+ * WPCode PHP snippet: Auto Insert / Run Everywhere / Active.
+ */
+if ( ! function_exists( 'sml_lw_api_boot' ) ) {
+
+	function sml_lw_api_handle( $raw ) {
+		$h = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $raw );
+		return $h !== '' ? $h : 'grandmasterobi';
+	}
+
+	function sml_lw_tomato_price( $handle ) {
+		$p = (int) get_option( 'sml_lw_tomato_price_' . $handle, 0 );
+		return $p > 0 ? $p : 150; // design default; creator setting lands in P7
+	}
+
+	/**
+	 * Call a wallet function by NAME with arguments filled from its REAL signature
+	 * (reflection on parameter names) — no guessed positional calls, no fatals.
+	 * Fill map keys: user, amount, reason.
+	 */
+	function sml_lw_wallet_call( $fn, $fill ) {
+		$rf   = new ReflectionFunction( $fn );
+		$args = array();
+		foreach ( $rf->getParameters() as $p ) {
+			$n = strtolower( $p->getName() );
+			if ( false !== strpos( $n, 'user' ) || 'uid' === $n || 'id' === $n || 'who' === $n ) { $args[] = $fill['user']; }
+			elseif ( false !== strpos( $n, 'amount' ) || 'lb' === $n || false !== strpos( $n, 'bucks' ) || 'n' === $n || 'qty' === $n || 'delta' === $n ) { $args[] = $fill['amount']; }
+			elseif ( false !== strpos( $n, 'reason' ) || 'why' === $n || false !== strpos( $n, 'label' ) || false !== strpos( $n, 'note' ) || false !== strpos( $n, 'memo' ) || false !== strpos( $n, 'context' ) ) { $args[] = $fill['reason']; }
+			elseif ( $p->isDefaultValueAvailable() ) { $args[] = $p->getDefaultValue(); }
+			else { $args[] = null; }
+		}
+		return call_user_func_array( $fn, $args );
+	}
+
+	/* 2026-09-13 money fix: sml_lb_pay()/sml_lb_take() need a NON-EMPTY idempotency ref (unique index
+	   `idem` on the ledger). The reflection helper passed null, sml_lb_move() answered
+	   WP_Error('lb_no_ref') without throwing, so every boost share reward, boost winner bonus and
+	   streamer tomato half was recorded as paid while no Loop Bucks moved, and the tomato debit failed
+	   its balance-delta check ("the wallet did not accept the debit"). Move money through
+	   sml_lb_move() directly, with our own ledger reasons and unique refs. */
+	add_filter( 'sml_lb_reasons', function ( $r ) {
+		$r['tomato']        = array( 'flow' => 'absorb', 'label' => 'Tomato toss' );
+		$r['tomato_income'] = array( 'flow' => 'issue',  'label' => 'Tomato income' );
+		$r['boost_reward']  = array( 'flow' => 'issue',  'label' => 'Boost reward' );
+		return $r;
+	} );
+	function sml_lw_lb_move( $user_id, $delta, $reason, $ref, $meta = array() ) {
+		if ( ! function_exists( 'sml_lb_move' ) ) { return new WP_Error( 'sml_lw_no_vault', 'Loop Bucks vault unavailable.', array( 'status' => 501 ) ); }
+		try { $m = sml_lb_move( (int) $user_id, (int) $delta, $reason, substr( (string) $ref, 0, 96 ), (array) $meta ); }
+		catch ( \Throwable $e ) { return new WP_Error( 'sml_lw_move_threw', $e->getMessage(), array( 'status' => 502 ) ); }
+		if ( is_wp_error( $m ) ) { return $m; }
+		return ( is_array( $m ) && ! empty( $m['ok'] ) ) ? $m : new WP_Error( 'sml_lw_move_failed', 'The wallet refused the movement.', array( 'status' => 502 ) );
+	}
+	function sml_lw_lb_ref( $kind, $user_id ) {
+		return 'lw-' . $kind . ':' . (int) $user_id . ':' . str_replace( '.', '', (string) microtime( true ) ) . ':' . wp_rand( 100, 999 );
+	}
+
+	function sml_lw_lb_balance( $user_id = 0 ) {
+		if ( function_exists( 'sml_lb_balance' ) ) {
+			try {
+				$b = sml_lw_wallet_call( 'sml_lb_balance', array( 'user' => $user_id ?: get_current_user_id(), 'amount' => 0, 'reason' => '' ) );
+				if ( is_numeric( $b ) ) { return (int) $b; }
+			} catch ( \Throwable $e ) {} // fall through to REST
+		}
+		$req = new WP_REST_Request( 'GET', '/sml-lb/v1/me' );
+		$res = rest_do_request( $req );
+		$d   = $res instanceof WP_REST_Response ? $res->get_data() : null;
+		return ( is_array( $d ) && isset( $d['balance'] ) ) ? (int) $d['balance'] : null;
+	}
+
+	/** Debit the tosser through the real wallet (idempotent ref, real error on insufficient funds). */
+	function sml_lw_try_debit( $user_id, $amount, $note, $ref = '' ) {
+		if ( ! function_exists( 'sml_lb_move' ) ) { return null; }
+		$m = sml_lw_lb_move( $user_id, -1 * (int) $amount, 'tomato', $ref ?: sml_lw_lb_ref( $note, $user_id ), array( 'note' => $note ) );
+		if ( is_wp_error( $m ) ) { return $m; }
+		return 'sml_lb_move';
+	}
+
+	/** Streamer's half of the toss, best-effort (vault keeps the platform half). */
+	function sml_lw_pay_streamer( $handle, $amount, $reason, $ref = '' ) {
+		if ( ! function_exists( 'sml_lb_move' ) || $amount < 1 ) { return false; }
+		/* the handle is a public handle (usermeta sml_public_handle), NOT the user slug — the slug
+		   'grandmasterobi' belongs to a different account (nicename collision), which received the
+		   streamer's tomato half until 2026-09-13 */
+		$sid = function_exists( 'sml_ppe_user_id_by_handle' ) ? (int) sml_ppe_user_id_by_handle( $handle ) : 0;
+		if ( ! $sid ) { $streamer = get_user_by( 'slug', $handle ); $sid = $streamer ? (int) $streamer->ID : 0; }
+		if ( ! $sid ) { return false; }
+		$m = sml_lw_lb_move( $sid, (int) $amount, 'tomato_income', $ref ?: sml_lw_lb_ref( $reason . '-half', $streamer->ID ), array( 'handle' => $handle ) );
+		return ! is_wp_error( $m );
+	}
+
+	function sml_lw_tomato_counts( $user_id, $handle ) {
+		$day  = get_user_meta( $user_id, 'sml_lw_tom_day', true );
+		$week = get_user_meta( $user_id, 'sml_lw_tom_week', true );
+		if ( ! is_array( $week ) ) { $week = array(); }
+		$week = array_values( array_filter( $week, function ( $t ) { return $t > time() - 7 * DAY_IN_SECONDS; } ) );
+		$today = gmdate( 'Ymd' );
+		$dn = ( is_array( $day ) && isset( $day['d'], $day['h'], $day['n'] ) && $day['d'] === $today && $day['h'] === $handle ) ? (int) $day['n'] : 0;
+		return array( 'day' => $dn, 'week' => count( $week ), 'week_list' => $week );
+	}
+
+	add_action( 'rest_api_init', 'sml_lw_api_boot' );
+	function sml_lw_api_boot() {
+
+		register_rest_route( 'sml-lw/v1', '/tomato/state', array(
+			'methods'             => 'GET',
+			'permission_callback' => '__return_true',
+			'callback'            => function ( $req ) {
+				$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				$out    = array(
+					'price'     => sml_lw_tomato_price( $handle ),
+					'loggedIn'  => is_user_logged_in(),
+					'leftStream' => 0,
+					'leftWeek'  => 0,
+					'open'      => false,
+				);
+				if ( is_user_logged_in() ) {
+					$c = sml_lw_tomato_counts( get_current_user_id(), $handle );
+					$out['leftStream'] = max( 0, 3 - $c['day'] );
+					$out['leftWeek']   = max( 0, 9 - $c['week'] );
+					$out['open']       = $out['leftStream'] > 0 && $out['leftWeek'] > 0;
+					$out['balance']    = sml_lw_lb_balance();
+				}
+				return $out;
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/tomato', array(
+			'methods'             => 'POST',
+			'permission_callback' => function () { return is_user_logged_in(); },
+			'callback'            => function ( $req ) {
+				$user_id = get_current_user_id();
+				$handle  = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				$note    = wp_strip_all_tags( (string) $req->get_param( 'note' ) );
+				if ( function_exists( 'mb_substr' ) ) { $note = mb_substr( $note, 0, 60 ); } else { $note = substr( $note, 0, 60 ); }
+				$price   = sml_lw_tomato_price( $handle );
+
+				$c = sml_lw_tomato_counts( $user_id, $handle );
+				if ( $c['day'] >= 3 ) { return new WP_Error( 'sml_lw_tom_stream', 'None left — 3 of 3 tossed this stream.', array( 'status' => 429 ) ); }
+				if ( $c['week'] >= 9 ) { return new WP_Error( 'sml_lw_tom_week', 'Weekly limit reached — 9 tomatoes a week, they don\'t stack.', array( 'status' => 429 ) ); }
+
+				$before = sml_lw_lb_balance( $user_id );
+				if ( null === $before ) { return new WP_Error( 'sml_lw_wallet_read', 'Could not read your Loop Bucks balance.', array( 'status' => 502 ) ); }
+				if ( $before < $price ) {
+					return new WP_Error( 'sml_lw_tom_balance', sprintf( 'Not enough Loop Bucks — a tomato is %d LB, you have %d.', $price, $before ), array( 'status' => 402 ) );
+				}
+
+				$tossRef = sml_lw_lb_ref( 'tomato', $user_id );
+				$via = sml_lw_try_debit( $user_id, $price, 'tomato', $tossRef );
+				if ( is_wp_error( $via ) ) { return $via; }
+				if ( null === $via ) {
+					return new WP_Error( 'sml_lw_wallet_pending', 'Tomato wallet hookup pending — nothing was charged.', array( 'status' => 501 ) );
+				}
+				$after = sml_lw_lb_balance( $user_id );
+				if ( null === $after || $after >= $before ) {
+					return new WP_Error( 'sml_lw_debit_unverified', 'The wallet did not accept the debit — nothing was charged or broadcast.', array( 'status' => 502 ) );
+				}
+				$paid = sml_lw_pay_streamer( $handle, (int) floor( $price / 2 ), 'tomato', $tossRef . ':half' );
+
+				// allowances
+				update_user_meta( $user_id, 'sml_lw_tom_day', array( 'd' => gmdate( 'Ymd' ), 'h' => $handle, 'n' => $c['day'] + 1 ) );
+				$week = $c['week_list']; $week[] = time();
+				update_user_meta( $user_id, 'sml_lw_tom_week', $week );
+
+				// 50/50 ledger (creator payout side settles with the cashout work)
+				$ledger   = get_option( 'sml_lw_tomato_ledger', array() );
+				if ( ! is_array( $ledger ) ) { $ledger = array(); }
+				$ledger[] = array( 't' => time(), 'u' => $user_id, 'h' => $handle, 'lb' => $price, 'streamer' => (int) floor( $price / 2 ), 'streamer_paid' => $paid, 'platform' => (int) ceil( $price / 2 ), 'note' => $note, 'via' => $via );
+				update_option( 'sml_lw_tomato_ledger', array_slice( $ledger, -500 ), false );
+
+				// best-effort broadcast into the live chat room (rides the room every viewer polls)
+				$u    = wp_get_current_user();
+				$who  = $u && $u->user_nicename ? $u->user_nicename : 'someone';
+				/* public handle, not the login nicename ('ben' showed instead of 'grandmasterobi') */
+				if ( function_exists( 'sml_ppe_public_handle' ) ) { $ph = (string) sml_ppe_public_handle( $user_id ); if ( '' !== $ph ) { $who = $ph; } }
+				$creq = new WP_REST_Request( 'POST', '/sml-live-chat/v1/room/' . $handle . '/messages' );
+				/* the chat route's can_write() verifies X-WP-Nonce ('wp_rest') even on internal dispatch — without it
+				   every toss broadcast was refused with sml_invalid_nonce and silently dropped (fixed 2026-09-13) */
+				$creq->set_header( 'X-WP-Nonce', wp_create_nonce( 'wp_rest' ) );
+				$creq->set_body_params( array( 'message' => '🍅 @' . $who . ' tossed a tomato' . ( $note !== '' ? ' — “' . $note . '”' : ' — no note, just tomatoes' ) ) );
+				rest_do_request( $creq );
+
+				$cNew = sml_lw_tomato_counts( $user_id, $handle );
+				return array( 'ok' => true, 'balance' => $after, 'leftStream' => max( 0, 3 - $cNew['day'] ), 'leftWeek' => max( 0, 9 - $cNew['week'] ), 'via' => $via );
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/presence', array(
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => function () { return is_user_logged_in(); },
+				'callback'            => function ( $req ) {
+					$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+					$key    = 'sml_lw_pres_' . $handle;
+					$now    = time();
+					$p      = get_option( $key, array() );
+					if ( ! is_array( $p ) ) { $p = array(); }
+					$p[ get_current_user_id() ] = $now;
+					foreach ( $p as $uid => $ts ) { if ( $ts < $now - 90 ) { unset( $p[ $uid ] ); } }
+					update_option( $key, array_slice( $p, -2000, null, true ), false );
+					return array( 'ok' => true, 'count' => count( $p ) );
+				},
+			),
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => '__return_true',
+				'callback'            => function ( $req ) {
+					$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+					$p      = get_option( 'sml_lw_pres_' . $handle, array() );
+					if ( ! is_array( $p ) ) { $p = array(); }
+					$now = time();
+					$n   = 0;
+					foreach ( $p as $ts ) { if ( $ts >= $now - 90 ) { $n++; } }
+					return array( 'count' => $n );
+				},
+			),
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/orbit', array(
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => '__return_true',
+				'callback'            => function ( $req ) {
+					$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+					$items  = get_option( 'sml_lw_orbit_' . $handle, array() );
+					return array( 'items' => is_array( $items ) ? $items : array() );
+				},
+			),
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => function () { return is_user_logged_in(); },
+				'callback'            => function ( $req ) {
+					$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+					$u      = wp_get_current_user();
+					if ( ! current_user_can( 'manage_options' ) && ( ! $u || $u->user_nicename !== $handle ) ) {
+						return new WP_Error( 'sml_lw_orbit_owner', 'Only the streamer (or an admin) can set the orbit.', array( 'status' => 403 ) );
+					}
+					$raw = json_decode( (string) $req->get_param( 'items' ), true );
+					if ( ! is_array( $raw ) ) { return new WP_Error( 'sml_lw_orbit_items', 'Send items as a JSON array.', array( 'status' => 400 ) ); }
+					$items = array();
+					foreach ( array_slice( $raw, 0, 10 ) as $it ) {
+						if ( ! is_array( $it ) ) { continue; }
+						$img = esc_url_raw( (string) ( $it['img'] ?? '' ) );
+						if ( '' === $img || 0 !== strpos( $img, 'https://' ) ) { continue; }
+						$items[] = array(
+							'img'   => $img,
+							'title' => sanitize_text_field( substr( (string) ( $it['title'] ?? '' ), 0, 80 ) ),
+							'sub'   => sanitize_text_field( substr( (string) ( $it['sub'] ?? '' ), 0, 120 ) ),
+							'link'  => esc_url_raw( (string) ( $it['link'] ?? '' ) ),
+						);
+					}
+					update_option( 'sml_lw_orbit_' . $handle, $items, false );
+					return array( 'ok' => true, 'items' => $items );
+				},
+			),
+		) );
+
+		/* ---------- Boost Arena: rounds, tracked share links, click-verified payouts ---------- */
+
+		register_rest_route( 'sml-lw/v1', '/boost', array(
+			'methods'             => 'GET',
+			'permission_callback' => '__return_true',
+			'callback'            => function ( $req ) {
+				$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				$r      = get_option( 'sml_lw_boost_' . $handle, null );
+				$out    = array( 'open' => false );
+				if ( is_array( $r ) && ! empty( $r['id'] ) ) {
+					$out['open']        = time() < (int) $r['ends'];
+					$out['endsAt']      = (int) $r['ends'];
+					$out['perShare']    = (int) $r['per'];
+					$out['winnerBonus'] = (int) $r['winner'];
+					$out['roundId']     = (string) $r['id'];
+					$b = get_option( 'sml_lw_boostb_' . $handle . '_' . $r['id'], array() );
+					if ( ! is_array( $b ) ) { $b = array(); }
+					$board = array();
+					foreach ( $b as $uid => $e ) {
+						$board[] = array( 'name' => $e['name'], 'shares' => count( $e['shares'] ), 'clicks' => (int) $e['clicks'], 'lb' => (int) $e['lb'], 'uid' => (int) $uid );
+					}
+					usort( $board, function ( $a, $b2 ) { return ( $b2['clicks'] * 8 + $b2['shares'] * 120 ) - ( $a['clicks'] * 8 + $a['shares'] * 120 ); } );
+					$out['board'] = array_slice( $board, 0, 10 );
+					if ( isset( $r['winner_name'] ) ) { $out['winnerName'] = $r['winner_name']; }
+					if ( is_user_logged_in() ) {
+						$me = isset( $b[ get_current_user_id() ] ) ? $b[ get_current_user_id() ] : null;
+						$out['me'] = $me ? array( 'shares' => array_keys( $me['shares'] ), 'clicks' => (int) $me['clicks'], 'lb' => (int) $me['lb'] ) : array( 'shares' => array(), 'clicks' => 0, 'lb' => 0 );
+					}
+				}
+				return $out;
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/boost/open', array(
+			'methods'             => 'POST',
+			'permission_callback' => function () { return is_user_logged_in(); },
+			'callback'            => function ( $req ) {
+				$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				$u      = wp_get_current_user();
+				if ( ! current_user_can( 'manage_options' ) && ( ! $u || $u->user_nicename !== $handle ) ) {
+					return new WP_Error( 'sml_lw_boost_owner', 'Only the streamer (or an admin) can run Boost rounds.', array( 'status' => 403 ) );
+				}
+				$mins   = max( 1, min( 120, (int) $req->get_param( 'minutes' ) ?: 10 ) );
+				$per    = max( 0, min( 5000, (int) $req->get_param( 'per_share' ) ?: 250 ) );
+				$winner = max( 0, min( 100000, (int) $req->get_param( 'winner' ) ?: 5000 ) );
+				$round  = array( 'id' => (string) time(), 'ends' => time() + $mins * 60, 'per' => $per, 'winner' => $winner );
+				update_option( 'sml_lw_boost_' . $handle, $round, false );
+				update_option( 'sml_lw_boostb_' . $handle . '_' . $round['id'], array(), false );
+				return array( 'ok' => true, 'roundId' => $round['id'], 'endsAt' => $round['ends'] );
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/boost/close', array(
+			'methods'             => 'POST',
+			'permission_callback' => function () { return is_user_logged_in(); },
+			'callback'            => function ( $req ) {
+				$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				$u      = wp_get_current_user();
+				if ( ! current_user_can( 'manage_options' ) && ( ! $u || $u->user_nicename !== $handle ) ) {
+					return new WP_Error( 'sml_lw_boost_owner', 'Only the streamer (or an admin) can run Boost rounds.', array( 'status' => 403 ) );
+				}
+				$r = get_option( 'sml_lw_boost_' . $handle, null );
+				if ( ! is_array( $r ) || empty( $r['id'] ) ) { return new WP_Error( 'sml_lw_boost_none', 'No round to close.', array( 'status' => 404 ) ); }
+				$b = get_option( 'sml_lw_boostb_' . $handle . '_' . $r['id'], array() );
+				$best = null; $bestScore = -1;
+				foreach ( (array) $b as $uid => $e ) {
+					$score = (int) $e['clicks'] * 8 + count( $e['shares'] ) * 120;
+					if ( $score > $bestScore ) { $bestScore = $score; $best = (int) $uid; }
+				}
+				$r['ends'] = time();
+				if ( $best && $bestScore > 0 && (int) $r['winner'] > 0 && ! isset( $r['winner_paid'] ) ) {
+					$mw = sml_lw_lb_move( $best, (int) $r['winner'], 'boost_reward', 'lw-boost-win:' . $handle . ':' . $r['id'] . ':' . $best, array( 'handle' => $handle, 'round' => $r['id'] ) );
+					if ( ! is_wp_error( $mw ) ) {
+						$r['winner_paid'] = 1;
+						$r['winner_name'] = isset( $b[ $best ]['name'] ) ? $b[ $best ]['name'] : '';
+					}
+				}
+				update_option( 'sml_lw_boost_' . $handle, $r, false );
+				return array( 'ok' => true, 'winner' => isset( $r['winner_name'] ) ? $r['winner_name'] : '' );
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/boost/share', array(
+			'methods'             => 'POST',
+			'permission_callback' => function () { return is_user_logged_in(); },
+			'callback'            => function ( $req ) {
+				$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				$p      = max( 0, min( 8, (int) $req->get_param( 'platform' ) ) );
+				$r      = get_option( 'sml_lw_boost_' . $handle, null );
+				if ( ! is_array( $r ) || time() >= (int) $r['ends'] ) { return new WP_Error( 'sml_lw_boost_closed', 'No Boost round is open right now.', array( 'status' => 409 ) ); }
+				$uid = get_current_user_id();
+				$key = 'sml_lw_boostb_' . $handle . '_' . $r['id'];
+				$b   = get_option( $key, array() );
+				if ( ! is_array( $b ) ) { $b = array(); }
+				if ( ! isset( $b[ $uid ] ) ) {
+					$wu = wp_get_current_user();
+					$b[ $uid ] = array( 'name' => $wu->display_name ? $wu->display_name : $wu->user_nicename, 'shares' => array(), 'pend' => array(), 'clicks' => 0, 'lb' => 0 );
+				}
+				if ( ! isset( $b[ $uid ]['shares'][ $p ] ) ) {
+					$b[ $uid ]['shares'][ $p ] = time();
+					$b[ $uid ]['pend'][ $p ]   = 1; // pays out on the first verified click
+					update_option( $key, $b, false );
+				}
+				$code = $uid . '-' . $p . '-' . $r['id'] . '-' . substr( wp_hash( 'smlboost' . $uid . $p . $r['id'] . $handle ), 0, 10 );
+				return array(
+					'ok'   => true,
+					'url'  => home_url( '/live/?room=' . rawurlencode( $handle ) . '&b=' . rawurlencode( $code ) ), // ?room=, not ?s=: WPCode #7044 302s ?s= and drops ?b=, so the click was never credited
+					'text' => '🔴 LIVE on Stock Market Loop — in the room with @' . $handle . '. Pull up:',
+				);
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/boost/click', array(
+			'methods'             => 'POST',
+			'permission_callback' => '__return_true',
+			'callback'            => function ( $req ) {
+				$code  = (string) $req->get_param( 'code' );
+				$parts = explode( '-', $code );
+				if ( 4 !== count( $parts ) ) { return array( 'ok' => false ); }
+				list( $uid, $p, $rid, $sig ) = $parts;
+				$uid = (int) $uid; $p = (int) $p;
+				/* the handle rides in ?room= (links shared before 2026-09-19 carry ?s=, which mu-plugin 000-sml-clean-urls reads as room); codes are HMAC-bound to uid+platform+round+handle */
+				$handle = sml_lw_api_handle( $req->get_param( 'handle' ) );
+				if ( ! hash_equals( substr( wp_hash( 'smlboost' . $uid . $p . $rid . $handle ), 0, 10 ), $sig ) ) { return array( 'ok' => false ); }
+				$r = get_option( 'sml_lw_boost_' . $handle, null );
+				if ( ! is_array( $r ) || $r['id'] !== $rid ) { return array( 'ok' => false ); }
+				$ip   = isset( $_SERVER['REMOTE_ADDR'] ) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+				$dkey = 'sml_lw_bc_' . md5( $code . '|' . $ip );
+				if ( get_transient( $dkey ) ) { return array( 'ok' => true, 'dedup' => true ); }
+				set_transient( $dkey, 1, 6 * HOUR_IN_SECONDS );
+				$key = 'sml_lw_boostb_' . $handle . '_' . $rid;
+				$b   = get_option( $key, array() );
+				if ( ! is_array( $b ) || ! isset( $b[ $uid ] ) || ! isset( $b[ $uid ]['shares'][ $p ] ) ) { return array( 'ok' => false ); }
+				if ( $b[ $uid ]['clicks'] < 2000 ) { $b[ $uid ]['clicks']++; }
+				/* first verified click on this platform's link pays the share reward */
+				if ( ! empty( $b[ $uid ]['pend'][ $p ] ) && time() < (int) $r['ends'] + 3600 ) {
+					$mp = sml_lw_lb_move( $uid, (int) $r['per'], 'boost_reward', 'lw-boost-share:' . $handle . ':' . $rid . ':' . $uid . ':' . $p, array( 'handle' => $handle, 'round' => $rid, 'platform' => $p ) );
+					$paid = ! is_wp_error( $mp );
+					if ( $paid ) { $b[ $uid ]['pend'][ $p ] = 0; $b[ $uid ]['lb'] += (int) $r['per']; }
+				}
+				update_option( $key, $b, false );
+				return array( 'ok' => true );
+			},
+		) );
+
+		register_rest_route( 'sml-lw/v1', '/diag', array(
+			'methods'             => 'GET',
+			'permission_callback' => function () { return current_user_can( 'manage_options' ); },
+			'callback'            => function () {
+				global $wpdb;
+				$fns = array_values( array_filter( get_defined_functions()['user'], function ( $f ) { return preg_match( '/lb|bucks|wallet/i', $f ) && strpos( $f, 'sml_lw_' ) !== 0; } ) );
+				$cls = array_values( array_filter( get_declared_classes(), function ( $c ) { return preg_match( '/lb|bucks|wallet/i', $c ); } ) );
+				$tbl = $wpdb->get_col( "SHOW TABLES LIKE '%lb%'" );
+				$tb2 = $wpdb->get_col( "SHOW TABLES LIKE '%sml%'" );
+				return array( 'functions' => array_slice( $fns, 0, 80 ), 'classes' => array_slice( $cls, 0, 40 ), 'tables_lb' => $tbl, 'tables_sml' => array_slice( $tb2, 0, 60 ) );
+			},
+		) );
+	}
+}
