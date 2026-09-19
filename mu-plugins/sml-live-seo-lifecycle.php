@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Live SEO Lifecycle
  * Description: Drives the scheduled-live record (WPCode 7347, user meta _sml_scheduled_live) through scheduled → live → ended from the real broadcast signals, so the video SEO plugin (sml-google-sitemaps: self-canonical live page, BroadcastEvent isLiveBroadcast, video sitemap entry, Indexing API ping, canonical hand-off to the recording) actually sees a stream go live and end. Before this nothing ever changed a record's status; a record more than a day past its scheduled time was treated as stale and the live page fell back to the generic /live/ SEO even while the creator was on air. 2026-09-15.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: StockMarketLoop
  */
 
@@ -119,7 +119,7 @@ add_filter('rest_request_after_callbacks', function ($response, $handler, $reque
     return $response;
 }, 5, 3);
 
-/* ---- safety net: close streams whose end signal never arrived ----
+/* ---- safety net: close streams whose end signal never arrived (live-room times are UTC: current_time('mysql', true)) ----
    A stream stays live only while something proves it: an active studio room with a fresh
    heartbeat, or the creator's encoder key reporting is_live. With neither for 6 hours, it is
    closed. ended_at is the last real evidence (the matching room's last heartbeat), otherwise the
@@ -129,7 +129,7 @@ function sml_lsl_on_air($user_id) {
     $rooms = $wpdb->prefix . 'sml_group_live_rooms';
     if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $rooms))) {
         $beat = $wpdb->get_var($wpdb->prepare("SELECT MAX(heartbeat_at) FROM {$rooms} WHERE host_id=%d AND status='active'", $user_id));
-        if ($beat && strtotime(get_gmt_from_date($beat) . ' UTC') > time() - 10 * MINUTE_IN_SECONDS) { return true; }
+        if ($beat && strtotime($beat . ' UTC') > time() - 10 * MINUTE_IN_SECONDS) { return true; }
     }
     if (function_exists('sml_rtmp_table')) {
         $keys = sml_rtmp_table();
@@ -145,8 +145,8 @@ function sml_lsl_last_evidence($user_id, array $row) {
     $rooms = $wpdb->prefix . 'sml_group_live_rooms';
     if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $rooms))) {
         foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT started_at, heartbeat_at FROM {$rooms} WHERE host_id=%d ORDER BY id DESC LIMIT 50", $user_id), ARRAY_A) as $r) {
-            $rs = strtotime(get_gmt_from_date($r['started_at']) . ' UTC');
-            $hb = strtotime(get_gmt_from_date($r['heartbeat_at']) . ' UTC');
+            $rs = strtotime($r['started_at'] . ' UTC');
+            $hb = strtotime($r['heartbeat_at'] . ' UTC');
             if ($rs && abs($rs - $start) <= 15 * MINUTE_IN_SECONDS && $hb > $start) { return gmdate('c', $hb); }
         }
     }
