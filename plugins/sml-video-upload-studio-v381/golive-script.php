@@ -856,7 +856,7 @@ if (!function_exists('sml_gl_script')) {
     draft.groupId = Number.isFinite(Number(draft.groupId)) ? Number(draft.groupId) : 0;
     draft.framerate = Number.isFinite(Number(draft.framerate)) ? Number(draft.framerate) : fallback.framerate;
     draft.related = Array.isArray(draft.related)
-      ? draft.related.map(function (ticker) { return String(ticker || '').toUpperCase().replace(/[^A-Z]/g, ''); }).filter(Boolean).slice(0, 12)
+      ? draft.related.map(function (ticker) { return String(ticker || '').toUpperCase().replace(/[^A-Z]/g, ''); }).filter(Boolean).slice(0, 4)
       : [];
     draft.orbitCards = Array.isArray(draft.orbitCards)
       ? draft.orbitCards.filter(function (card) { return card && typeof card === 'object'; }).slice(0, 3)
@@ -1406,7 +1406,7 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-resolved" data-ticker-name><span>' + esc(draft.tickerName || (draft.ticker ? 'Looking up...' : 'Enter a ticker symbol')) + '</span>'
       + (draft.tickerName ? '<span class="gl-verified" style="margin-left:auto">' + icon('check', 14) + 'Verified</span>' : '') + '</div>'
       + '<button class="cs-edit" style="height:44px" data-action="refresh-ticker">Refresh</button></div>'
-      + '<div class="cs-field" style="margin-top:16px"><label>Related Tickers (optional)</label>'
+      + '<div class="cs-field" style="margin-top:16px"><label>Related Tickers (optional, up to 4)</label>'
       + '<div class="cs-tags" data-tags="related">'
       + draft.related.map(function (t, i) { return '<span class="cs-tag">' + esc(t) + '<button data-remove-related="' + i + '">&times;</button></span>'; }).join('')
       + '<input data-tag-input="related" placeholder="AMD" style="text-transform:uppercase"></div></div></section>';
@@ -1835,6 +1835,7 @@ if (!function_exists('sml_gl_script')) {
         title: draft.title,
         description: draft.description,
         ticker: draft.ticker,
+        tickers: [draft.ticker].concat(draft.related || []).filter(Boolean),
         visibility: draft.audience,
         thumbnail_url: draft.thumbUrl
       }
@@ -2281,7 +2282,7 @@ if (!function_exists('sml_gl_script')) {
     if (event.key !== 'Enter' && event.key !== ',') { return; }
     event.preventDefault();
     var value = event.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-    if (value && draft.related.indexOf(value) === -1) { draft.related.push(value); }
+    if (value && draft.related.length < 4 && draft.related.indexOf(value) === -1) { draft.related.push(value); }
     event.target.value = '';
     save(); render();
   });
