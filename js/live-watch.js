@@ -942,19 +942,41 @@
   };
 
   /* qcard sparkline (deterministic series like the design) */
-  var Q5 = ['SPY', 'QQQ', 'NVDA', 'VIX', 'TSLA'];
+  /* DESK FOCUS carousel = the creator's chosen ticker(s) ONLY (populated from the live feed by
+     setDeskTickers) — never a generic/global list. SIM (the standalone showcase) keeps the demo set. */
+  var Q5 = SIM ? ['SPY', 'QQQ', 'NVDA', 'VIX', 'TSLA'] : [];
   var QI = { SPY: ['SPDR S&P 500 ETF Trust', 772.18, 0.42, '68.4M'], QQQ: ['Invesco QQQ Trust', 486.31, 0.61, '41.2M'], NVDA: ['NVIDIA Corporation', 128.44, -1.12, '108.7M'], VIX: ['CBOE Volatility Index', 14.82, -3.11, '—'], TSLA: ['Tesla, Inc.', 243.77, 2.04, '92.6M'] };
-  var qSym = 'SPY', qHeard = 0;
+  var qSym = SIM ? 'SPY' : '', qHeard = 0;
   var QDOM = { SPY: 'ssga.com', QQQ: 'invesco.com', NVDA: 'nvidia.com', VIX: 'cboe.com', TSLA: 'tesla.com' };
   el('#slw-qdots').innerHTML = Q5.map(function (s2, i) { return '<button data-q="' + s2 + '"' + (i === 0 ? ' class="on"' : '') + ' title="$' + s2 + '"></button>'; }).join('');
   Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
     b.onclick = function () { qSym = b.getAttribute('data-q'); qHeard = S.tick; paintQ(); pollQuote(); pollHistory(); pollCompany(); };
   });
+  /* Populate the desk carousel with ONLY the creator's chosen tickers (primary + related, from the live
+     feed). Cleaned to A-Z, deduped, capped at 5, primary first. Empty list => no dots (never generic). */
+  function setDeskTickers(list) {
+    var next = [];
+    for (var i = 0; i < (list || []).length && next.length < 5; i++) {
+      var s = String(list[i] || '').toUpperCase().replace(/[^A-Z]/g, '');
+      if (s && next.indexOf(s) < 0) next.push(s);
+    }
+    Q5 = next;
+    var host = el('#slw-qdots');
+    if (host) {
+      host.innerHTML = Q5.map(function (s2, i) { return '<button data-q="' + s2 + '"' + (i === 0 ? ' class="on"' : '') + ' title="$' + s2 + '"></button>'; }).join('');
+      Array.prototype.forEach.call(root.querySelectorAll('#slw-qdots button'), function (b) {
+        b.onclick = function () { qSym = b.getAttribute('data-q'); qHeard = S.tick; paintQ(); pollQuote(); pollHistory(); pollCompany(); };
+      });
+    }
+    if (!Q5.length) return;
+    qSym = Q5[0];
+    paintQ(); pollQuote(); pollHistory(); pollCompany();
+  }
   function series(sym) {
     var seed = 0, i;
     for (i = 0; i < sym.length; i++) seed = (seed * 31 + sym.charCodeAt(i)) % 997;
     var rnd = function () { seed = (seed * 137 + 71) % 997; return seed / 997 - 0.5; };
-    var up = QI[sym][2] >= 0, pts = [], v = 34;
+    var q = QI[sym] || [sym, 0, 0, '—'], up = q[2] >= 0, pts = [], v = 34;
     for (i = 0; i < 40; i++) { v += rnd() * 8 + (up ? -0.28 : 0.28); v = Math.max(6, Math.min(58, v)); pts.push(v); }
     return pts;
   }
@@ -2698,6 +2720,11 @@
     setInterval(pollTape, 15000);
     setInterval(pollQuote, 15000);
     setInterval(pollHistory, 60000);
+    /* desk carousel: the creator's chosen ticker(s) from the live feed — never a generic list */
+    api('/sml-live/v1/feeds/' + HANDLE).then(function (res) {
+      var j = res.j || {};
+      setDeskTickers((j.tickers && j.tickers.length) ? j.tickers : (j.ticker ? [j.ticker] : []));
+    }).catch(function () {});
   }
   function loadRec() {
     var mount = el('#slw-rec-rows');
