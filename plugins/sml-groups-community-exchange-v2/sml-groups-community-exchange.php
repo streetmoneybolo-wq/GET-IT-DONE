@@ -229,7 +229,8 @@ function sml_gex_render_directory() {
     $current_user = wp_get_current_user();
     $rest_nonce = wp_create_nonce('wp_rest');
     $login_url = wp_login_url(home_url('/groups/'));
-    $profile_url = home_url('/my-profile/');
+    $profile_handle = $is_logged_in ? (string) get_user_meta($current_user->ID, 'sml_public_handle', true) : '';
+    $profile_url = $profile_handle ? home_url('/' . rawurlencode($profile_handle) . '/') : home_url('/my-profile/');
     $create_url = $is_logged_in ? '#create-group' : $login_url;
     $directory_url = home_url('/groups/');
     $share_image = add_query_arg('v', SML_GEX_VERSION, home_url('/wp-content/uploads/2026/07/stockmarketloop-groups-card.jpg'));
@@ -944,9 +945,17 @@ function sml_gex_render_directory() {
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
         }
+        /* Keep this standalone app aligned with the homepage chrome. */
+        .sml-gex-app { display:block; padding-top:104px; }
+        .sml-gex-sidebar { display:none; }
+        .sml-acct { display:none !important; }
+        .sml-gex-main { padding:24px clamp(18px, 3vw, 42px) 64px; }
+        .sml-sitewide-home-header{position:fixed;top:0;left:0;right:0;z-index:100;color:#e6edf5;font-family:Inter,system-ui,sans-serif}.sml-shh-head{background:linear-gradient(180deg,rgba(20,30,44,.97),rgba(9,15,24,.96));border-bottom:1px solid rgba(0,0,0,.7)}.sml-shh-row{max-width:1360px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:0 24px;height:60px}.sml-shh-logo{display:flex;align-items:center;flex:none}.sml-shh-logo img{height:46px;width:auto}.sml-shh-search{flex:1;max-width:620px;display:flex;gap:8px;padding:8px 16px;background:#080e17;border:1px solid #000;border-radius:999px}.sml-shh-search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#e6edf5}.sml-shh-nav{display:flex;gap:18px}.sml-shh-nav a{color:#93a4b8;text-decoration:none}.sml-shh-kick{padding:9px 20px;border:0;border-radius:999px;font-weight:800;color:#04140b;background:#43ed9c;text-decoration:none;font-size:13px}.sml-shh-account{display:flex;align-items:center;gap:8px;color:#e6edf5;text-decoration:none;font-size:12px;font-weight:700}.sml-shh-account img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #43ed9c}.sml-shh-tape{background:#060a11;overflow:hidden}.sml-shh-tape-inner{display:flex;gap:28px;padding:7px 24px;white-space:nowrap;font:600 11px/1.2 monospace;color:#93a4b8}.sml-shh-tape b{color:#00a9e8}@media(max-width:767px){.sml-gex-app{padding-top:104px}.sml-shh-row{padding:0 10px;gap:8px}.sml-shh-logo img{height:30px}.sml-shh-nav{display:none}.sml-shh-account span{display:none}.sml-shh-search{padding:8px 11px}.sml-shh-kick{padding:10px 11px;font-size:10px}}
     </style>
 </head>
 <body>
+<?php $sml_gex_header_avatar = $is_logged_in ? (string) get_user_meta( $current_user->ID, 'sml_avatar_url', true ) : ''; ?>
+<header class="sml-sitewide-home-header" aria-label="StockMarketLoop navigation"><div class="sml-shh-head"><div class="sml-shh-row"><a class="sml-shh-logo" href="<?php echo esc_url(home_url('/')); ?>" aria-label="StockMarketLoop"><img src="https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@main/img/loop-logo.png" alt="StockMarketLoop"></a><form class="sml-shh-search" action="<?php echo esc_url(home_url('/stock-chart/')); ?>" method="get"><span aria-hidden="true">⌕</span><input name="symbol" aria-label="Search a ticker" placeholder="Search a ticker, e.g. NVDA"><button type="submit" hidden>Search</button></form><nav class="sml-shh-nav" aria-label="Primary"><a href="<?php echo esc_url(home_url('/q/')); ?>">Q&amp;A</a><a href="<?php echo esc_url(home_url('/market-monitor/')); ?>">Monitor</a></nav><a class="sml-shh-kick" href="<?php echo esc_url(home_url('/loop-kick/')); ?>">LOOP-KICK</a><a class="sml-shh-account" href="<?php echo esc_url($is_logged_in ? $profile_url : $login_url); ?>"><?php if ($is_logged_in) : ?><img src="<?php echo esc_url($sml_gex_header_avatar ?: get_avatar_url($current_user->ID, array('size' => 72))); ?>" alt=""><?php endif; ?><span><?php echo esc_html($is_logged_in ? $current_user->display_name : 'Sign in'); ?></span></a></div></div><div class="sml-shh-tape"><div class="sml-shh-tape-inner"><span><b>$SPY</b> Market data loading</span><span><b>$QQQ</b> Market data loading</span><span><b>$NVDA</b> Market data loading</span></div></div></header>
 <a class="sml-gex-skip" href="#sml-gex-content">Skip to groups</a>
 <div class="sml-gex-app">
     <aside class="sml-gex-sidebar" aria-label="Groups navigation">
