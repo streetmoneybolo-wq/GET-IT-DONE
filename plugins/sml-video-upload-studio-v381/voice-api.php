@@ -221,20 +221,32 @@ if (!function_exists('sml_voice_room_host')) {
                (found 2026-09-19). The owner is whoever holds that stream in their scheduled-live records. A stream never
                changes owner, so the answer is cached; this function runs on every eligibility / now-playing poll. */
             if (preg_match('/^stream-([a-z0-9]{8,32})$/', $room_id, $sm)) {
-                $ck = 'sml_stream_owner_' . $sm[1];
+                $ck = 'sml_stream_owner2_' . $sm[1]; // "2": the first version of this lookup cached loose matches for a day
                 $owner = wp_cache_get($ck, 'sml');
                 if (false === $owner) {
                     $lib_key = function_exists('sml_scheduled_live_library_key') ? sml_scheduled_live_library_key() : '_sml_scheduled_live_library';
                     $cur_key = function_exists('sml_scheduled_live_meta_key') ? sml_scheduled_live_meta_key() : '_sml_scheduled_live';
-                    $owner = (int) $wpdb->get_var($wpdb->prepare(
-                        "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s) AND meta_value LIKE %s LIMIT 1",
+                    $owner = 0;
+                    /* The LIKE only NARROWS the search; the hit is then confirmed against the unserialized records. A bare
+                       LIKE '%"word"%' also matches any quoted word inside a schedule, so 'stream-scheduled' and
+                       'stream-cancelled' resolved to a real creator and a payment into such a room was credited to them. */
+                    $cands = $wpdb->get_col($wpdb->prepare(
+                        "SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s) AND meta_value LIKE %s LIMIT 5",
                         $lib_key, $cur_key, '%' . $wpdb->esc_like('"' . $sm[1] . '"') . '%'
                     ));
+                    foreach ((array) $cands as $cand) {
+                        $cand = (int) $cand;
+                        $lib = get_user_meta($cand, $lib_key, true);
+                        $cur = get_user_meta($cand, $cur_key, true);
+                        $in_lib = is_array($lib) && isset($lib[$sm[1]]) && is_array($lib[$sm[1]]);
+                        $is_cur = is_array($cur) && isset($cur['id']) && strtolower((string) preg_replace('/[^a-zA-Z0-9]/', '', (string) $cur['id'])) === $sm[1];
+                        if ($in_lib || $is_cur) { $owner = $cand; break; }
+                    }
                     wp_cache_set($ck, $owner, 'sml', $owner ? DAY_IN_SECONDS : 60);
                 }
                 return (int) $owner;
             }
-            if (preg_match('/^creator-(\d+)$/', $room_id, $cm)) { return (int) $cm[1]; }
+            if (preg_match('/^creator-(\d+)$/', $room_id, $cm)) { return get_userdata((int) $cm[1]) ? (int) $cm[1] : 0; } // 'creator-999999999' used to come back as a creator
             if (function_exists('sml_ppe_user_id_by_handle')) {
                 $uid = (int) sml_ppe_user_id_by_handle($room_id);
                 if ($uid > 0) { return $uid; }
@@ -631,6 +643,11 @@ if (!function_exists('sml_voice_rest_superchat')) {
             return new WP_Error('sml_voice_disabled', 'Voice call-ins are turned off for this stream.', array('status' => 423));
         }
         $room_host_id = (int) sml_voice_room_host($room_id);
+        /* Never take Loop Bucks for a room nobody owns. With host 0 the wallet was debited, the row was written with
+           streamer_id 0 (so no creator ever saw it) and nothing refunded it (2026-09-19). */
+        if ($room_host_id <= 0 || !get_userdata($room_host_id)) {
+            return new WP_Error('sml_voice_no_host', 'This room has no creator to receive a Super Chat.', array('status' => 409));
+        }
         if (!empty($settings['members_only'])
             && (!function_exists('sml_gl_user_has_content_access') || !sml_gl_user_has_content_access($user_id, $room_host_id))) {
             return new WP_Error('sml_voice_members_only', 'This live room is available to this creator\'s Content Members.', array('status' => 403));
@@ -1646,6 +1663,10 @@ if (!function_exists('sml_voice_rest_chat_post')) {
             $tier_slug = sanitize_key($tier['slug']);
             $amount_cents = max(0, (int) $tier['min_amount_cents']);
             $loop_bucks = max((int) $tier['min_loop_bucks'], $amount_cents);
+            $chat_host_id = (int) sml_voice_room_host($room_id);
+            if ($chat_host_id <= 0 || !get_userdata($chat_host_id)) { // same rule as the pass route: no creator, no charge
+                return new WP_Error('sml_voice_no_host', 'This room has no creator to receive a Super Chat.', array('status' => 409));
+            }
             if (!user_can($user_id, 'manage_options')) {
                 $balance = sml_voice_wallet_debit($user_id, $loop_bucks, 'live_chat:' . $room_id . ':' . $tier_slug);
                 if (is_wp_error($balance)) {

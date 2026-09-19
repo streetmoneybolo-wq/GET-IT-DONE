@@ -1898,7 +1898,13 @@
   function giftSend() {
     if (GIFT.busy) return;
     var msg = (el('#slw-giftmsg') && el('#slw-giftmsg').value.trim()) || '';
-    var body = { room_id: CHAT_ROOM, mode: GIFT.mode, message: msg };
+    /* A VOICE pass has to be bought in the room where it gets USED: the native Speak widget (its data-room is the
+       creator's handle room) and the host's Voice Queue dock both work there. CHAT_ROOM is 'stream-{id}' on any URL
+       that names a stream — which is every clean URL — so a pass bought there was invisible to the Speak tab and the
+       host, then expired after 6h with no refund. Text gifts stay per-stream: they only post into that chat. */
+    var nativeVoiceEl = document.getElementById('sml-lw-native-voice');
+    var voiceRoom = (nativeVoiceEl && nativeVoiceEl.getAttribute('data-room')) || CHAT_ROOM;
+    var body = { room_id: GIFT.mode === 'voice' ? voiceRoom : CHAT_ROOM, mode: GIFT.mode, message: msg };
     if (GIFT.mode === 'voice') { if (!GIFT.tier) return; body.tier = GIFT.tier; } else { if (!GIFT.amount) return; body.amount = GIFT.amount; }
     GIFT.busy = true; GIFT.note = ''; giftRender();
     api('/sml-superchat/v1/gift', { method: 'POST', body: JSON.stringify(body) }).then(function (res) {
