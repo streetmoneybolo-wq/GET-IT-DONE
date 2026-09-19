@@ -1005,11 +1005,10 @@ if (!function_exists('sml_gl_script')) {
         seen[g.id] = 1;
         return true;
       });
-      if (!draft.groupId && groups.length) {
-        draft.groupId = groups[0].id;
-        draft.groupName = groups[0].name;
-        draft.groupNameFor = Number(groups[0].id);
-      }
+      /* A host group is optional (owner call 2026-09-19), so 0 now MEANS "no group" and must never be
+         overwritten. This used to auto-pick groups[0] — and since the list is mine + trending, a creator with
+         no groups of their own was silently put into a trending group they had not joined, and Go Live then
+         failed with "You must be a member of this group". */
       render();
     }).catch(function () { /* groups optional until Go Live */ });
   }
@@ -1678,14 +1677,19 @@ if (!function_exists('sml_gl_script')) {
 
   function stepAudience() {
     var html = '<section class="cs-card"><h3 style="margin-bottom:6px">Where does this stream go?</h3>'
-      + '<p class="cs-sub">Live streams run inside a group live room, so pick the group that hosts it.</p>'
-      + '<div class="cs-field"><label>Host group</label><select class="cs-select" data-field="groupId">'
-      + (groups.length
-        ? '<option value="0">Select a group</option>' + groups.map(function (g) {
-            return '<option value="' + esc(g.id) + '"' + (Number(draft.groupId) === Number(g.id) ? ' selected' : '') + '>' + esc(g.name) + '</option>';
-          }).join('')
-        : '<option value="0">No groups found</option>') + '</select>'
-      + '<div class="cs-hint">You must be a member of the group to broadcast into it. '
+      + '<p class="cs-sub">Your stream always goes to your public Watch Page. You can also host it inside one of your groups — that part is optional.</p>'
+      + '<div class="cs-field"><label>Host group <span style="font-weight:400;opacity:.7">(optional)</span></label><select class="cs-select" data-field="groupId">'
+      + '<option value="0"' + (Number(draft.groupId) ? '' : ' selected') + '>No group — my Watch Page only</option>'
+      + groups.map(function (g) {
+          return '<option value="' + esc(g.id) + '"' + (Number(draft.groupId) === Number(g.id) ? ' selected' : '') + '>' + esc(g.name) + '</option>';
+        }).join('')
+      /* a saved group that is not in the loaded list still has to show as the selection, or the menu would
+         read "No group" while Go Live quietly sent the old id */
+      + (Number(draft.groupId) && !groups.some(function (g) { return Number(g.id) === Number(draft.groupId); })
+        ? '<option value="' + esc(draft.groupId) + '" selected>' + esc(groupName()) + '</option>' : '')
+      + '</select>'
+      + '<div class="cs-hint">Pick a group to open a live room there and notify its members — you must be a member of it. '
+      + 'Leave it on “No group” to go live on your channel only. '
       + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Browse groups</a></div></div></section>';
 
     html += '<section class="cs-card"><h3 style="margin-bottom:6px">Engagement</h3><p class="cs-sub">Toggle what viewers can do during the stream.</p>'
@@ -1721,7 +1725,7 @@ if (!function_exists('sml_gl_script')) {
       + '<dt>Category</dt><dd>' + esc(draft.category) + '</dd>'
       + '<dt>Content type</dt><dd>' + esc(draft.contentType) + '</dd>'
       + '<dt>Audience</dt><dd>' + esc((AUDIENCES.filter(function (a) { return a.key === draft.audience; })[0] || {}).label || '') + '</dd>'
-      + '<dt>Host group</dt><dd>' + esc(groupName() || 'Not selected') + '</dd>'
+      + '<dt>Host group</dt><dd>' + esc(groupName() || 'None — Watch Page only') + '</dd>'
       + '<dt>Scene</dt><dd>' + esc(draft.scene === 'screen' ? 'Screen share' : 'Camera only') + '</dd>'
       + '<dt>Watch Page</dt><dd>' + (watchChatHandle() ? '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">' + esc(watchPageUrl()) + '</a>' : 'Set a public profile handle first') + '</dd>'
       + '</dl></section>';
@@ -1757,8 +1761,12 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-stat"><small>' + icon('users', 14) + 'Viewers</small><b data-live="viewers">' + compact(liveStats.viewers) + '</b></div>'
       + '<div class="gl-stat"><small>' + icon('signal', 14) + 'Health</small><b>' + healthScore() + '%</b></div>'
       + '</div>'
-      + '<div class="cs-hint" style="margin-top:14px">Your live room is open in <b>' + esc(groupName()) + '</b>. '
-      + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div></section>' + creatorChatMarkup();
+      + (Number(draft.groupId)
+        ? '<div class="cs-hint" style="margin-top:14px">Your live room is open in <b>' + esc(groupName()) + '</b>. '
+          + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div>'
+        : '<div class="cs-hint" style="margin-top:14px">You are live on your Watch Page — no host group. '
+          + '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">Open your Watch Page</a> to see what viewers see.</div>')
+      + '</section>' + creatorChatMarkup();
   }
 
   function groupName() {
@@ -1777,7 +1785,8 @@ if (!function_exists('sml_gl_script')) {
     var scheduled = draft.schedule === 'later';
     var rows = [
       { label: 'Stream title added', ok: !!draft.title.trim() },
-      { label: 'Host group selected', ok: !!Number(draft.groupId), note: groupName() || '' },
+      /* informational only: a host group is optional, so this row can never block Go Live or Schedule */
+      { label: Number(draft.groupId) ? 'Host group selected' : 'No host group — Watch Page only', ok: true, note: groupName() || '' },
       { label: 'Public Watch Page handle available', ok: !!watchChatHandle(), note: watchChatHandle() ? '@' + watchChatHandle() : 'Set this in your profile first' }
     ];
     if (scheduled) {
