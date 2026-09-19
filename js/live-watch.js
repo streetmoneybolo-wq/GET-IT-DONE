@@ -1124,8 +1124,16 @@
      the canonical URL vulnerable to other site code normalizing it away.  New
      links use `room`; keep the `s` fallback only for a legacy page that has
      already loaded before the server-side normalizer can redirect it. */
-  var HANDLE = (qs('room') || qs('s') || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
-  var STREAM_ID = (qs('stream') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
+  /* Clean URLs (/live/{handle}/{slug}-{streamid}/) carry no query string, so the server prints the resolved
+     room as window.SML_LW_ROOM (mu-plugin 000-sml-clean-urls). It MUST win over location.search: without it a
+     pretty URL would boot as the default room and send chat and paid Super Chats there. */
+  var LW_ROOM = (window.SML_LW_ROOM && typeof window.SML_LW_ROOM === 'object') ? window.SML_LW_ROOM : {};
+  /* ...and the clean path is parsed here too, so the room is right even if that tag is missing (a page cached
+     before a deploy, an output buffer that dropped it). Same shape the server recognises; dots are stripped from
+     the handle below exactly as the server's sanitize_key() does. */
+  var LW_PATH = /^\/live\/([A-Za-z0-9._-]{1,60})\/(?:[A-Za-z0-9-]*-)?([A-Fa-f0-9]{16})\/?$/.exec(location.pathname) || [];
+  var HANDLE = String(LW_ROOM.handle || qs('room') || qs('s') || LW_PATH[1] || 'grandmasterobi').replace(/[^A-Za-z0-9_-]/g, '');
+  var STREAM_ID = String(LW_ROOM.stream || qs('stream') || LW_PATH[2] || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
   /* A creator can schedule many broadcasts. Chat, replies, moderation, Speak,
      and chat-generated arena notices belong to the immutable stream—not to a
      creator-wide room that leaks conversation into every later broadcast. */
@@ -1134,6 +1142,8 @@
      browser URL. This preserves the creator when WordPress, a cache buster, or
      another script normalizes /live/?room=... back to /live/. */
   function canonicalWatchUrl() {
+    /* the server-resolved URL is the clean one once clean URLs are on; same origin only */
+    try { if (LW_ROOM.url && new URL(LW_ROOM.url, location.origin).origin === location.origin) return new URL(LW_ROOM.url, location.origin).href; } catch (e) {}
     var watch = new URL('/live/', location.origin);
     watch.searchParams.set('room', HANDLE);
     if (STREAM_ID) watch.searchParams.set('stream', STREAM_ID);
@@ -2985,7 +2995,16 @@
       if (!res.ok || !res.j || !res.j.url) { flashGate((res.j && res.j.message) || 'Could not open the share.'); return; }
       /* GA4 (Site Kit) reads these on arrival — Realtime report shows the traffic live,
          full per-round campaign reports consolidate on Google's side */
-      res.j.url += '&utm_source=boost&utm_medium=' + UTM_MEDIUM[i] + '&utm_campaign=boost-' + encodeURIComponent((BOOST.d && BOOST.d.roundId) || 'round');
+      /* built with URL(): the old `+= '&utm_…'` assumed the link already had a '?', which a clean URL does not */
+      try {
+        var boostUrl = new URL(res.j.url, location.origin);
+        boostUrl.searchParams.set('utm_source', 'boost');
+        boostUrl.searchParams.set('utm_medium', UTM_MEDIUM[i]);
+        boostUrl.searchParams.set('utm_campaign', 'boost-' + ((BOOST.d && BOOST.d.roundId) || 'round'));
+        res.j.url = boostUrl.href;
+      } catch (e) {
+        res.j.url += (res.j.url.indexOf('?') === -1 ? '?' : '&') + 'utm_source=boost&utm_medium=' + UTM_MEDIUM[i] + '&utm_campaign=boost-' + encodeURIComponent((BOOST.d && BOOST.d.roundId) || 'round');
+      }
       var intent = INTENTS[i];
       if (PASTE_PLATS[i]) {
         /* no web share composer on this platform: a loud helper composes the post WITH tickers, copies it and

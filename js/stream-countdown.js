@@ -27,12 +27,21 @@
     if (/^\/live\/?$/.test(location.pathname)) {
       try { var r = new URLSearchParams(location.search).get('room'); if (r && /^[A-Za-z0-9_-]{1,40}$/.test(r)) return r; } catch (e) {}
     }
-    return (typeof window.SML_CD_HANDLE === 'string' && window.SML_CD_HANDLE) || null;
+    if (typeof window.SML_CD_HANDLE === 'string' && window.SML_CD_HANDLE) return window.SML_CD_HANDLE;
+    /* clean live URL, parsed here too so the countdown does not depend on the server-printed config */
+    var p = CLEAN_LIVE.exec(location.pathname);
+    return p ? p[1].replace(/[^A-Za-z0-9_-]/g, '') : null;
   }
 
+  var CLEAN_LIVE = /^\/live\/([A-Za-z0-9._-]{1,60})\/(?:[A-Za-z0-9-]*-)?([A-Fa-f0-9]{16})\/?$/;
   var HANDLE = handleFromUrl();
+  /* clean live URLs (/live/{handle}/{slug}-{streamid}/) have no query string: the server prints the stream as
+     window.SML_CD_STREAM (and the handle as SML_CD_HANDLE, picked up above) */
   var STREAM_ID = '';
-  try { STREAM_ID = (new URLSearchParams(location.search).get('stream') || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32); } catch (e) {}
+  try {
+    STREAM_ID = String((typeof window.SML_CD_STREAM === 'string' && window.SML_CD_STREAM) || new URLSearchParams(location.search).get('stream') || (CLEAN_LIVE.exec(location.pathname) || [])[2] || '')
+      .replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
+  } catch (e) {}
   if (!HANDLE) return;
 
   function schedFor(handle, streamId) {

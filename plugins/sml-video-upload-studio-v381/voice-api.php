@@ -215,6 +215,25 @@ if (!function_exists('sml_voice_room_host')) {
             /* Creator rooms on /live/ are keyed by the creator's public handle (or creator-{uid}); without this the
                host was 0, so creator pricing/levels were never read and a non-admin creator could not moderate
                their own queue (2026-09-15). */
+            /* Per-stream rooms. The Live Watch page sends 'stream-{id}' as the room for chat, Super Chat, voice passes and
+               gifts on every URL that names a stream — and this returned 0 for it: the viewer was debited, the row was
+               written with streamer_id 0 (so the creator was never credited) and the creator's own pricing was ignored
+               (found 2026-09-19). The owner is whoever holds that stream in their scheduled-live records. A stream never
+               changes owner, so the answer is cached; this function runs on every eligibility / now-playing poll. */
+            if (preg_match('/^stream-([a-z0-9]{8,32})$/', $room_id, $sm)) {
+                $ck = 'sml_stream_owner_' . $sm[1];
+                $owner = wp_cache_get($ck, 'sml');
+                if (false === $owner) {
+                    $lib_key = function_exists('sml_scheduled_live_library_key') ? sml_scheduled_live_library_key() : '_sml_scheduled_live_library';
+                    $cur_key = function_exists('sml_scheduled_live_meta_key') ? sml_scheduled_live_meta_key() : '_sml_scheduled_live';
+                    $owner = (int) $wpdb->get_var($wpdb->prepare(
+                        "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s) AND meta_value LIKE %s LIMIT 1",
+                        $lib_key, $cur_key, '%' . $wpdb->esc_like('"' . $sm[1] . '"') . '%'
+                    ));
+                    wp_cache_set($ck, $owner, 'sml', $owner ? DAY_IN_SECONDS : 60);
+                }
+                return (int) $owner;
+            }
             if (preg_match('/^creator-(\d+)$/', $room_id, $cm)) { return (int) $cm[1]; }
             if (function_exists('sml_ppe_user_id_by_handle')) {
                 $uid = (int) sml_ppe_user_id_by_handle($room_id);

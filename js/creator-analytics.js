@@ -46,7 +46,9 @@
   function within(iso, days) { var t = Date.parse(iso); return t && (Date.now() - t) < days * 86400e3; }
   function empty(title, body) { return '<div class="ca-empty"><b>' + esc(title) + '</b><small>' + esc(body) + '</small></div>'; }
   function cleanUrl(url) {
-    try { var u = new URL(String(url || ''), location.origin); return u.origin.toLowerCase() + u.pathname.replace(/\/+$/, '/') ; }
+    /* a video is the same video at /watch/{id}/ and at /watch/{id}/{title-slug}/ — join on the id, or GA4 rows
+       from before and after the clean-URL switch split one video in two and lose its title */
+    try { var u = new URL(String(url || ''), location.origin); return u.origin.toLowerCase() + u.pathname.replace(/^(\/watch\/[A-Za-z0-9_-]{8,32})\/[^\/]+\/?$/, '$1/').replace(/\/+$/, '/') ; }
     catch (e) { return String(url || '').split(/[?#]/)[0].replace(/\/+$/, '/'); }
   }
   function itemSeries(item) {
@@ -59,15 +61,27 @@
     var byUrl = {};
     (engineRows || []).forEach(function (c) { if (c && c.url) byUrl[cleanUrl(c.url)] = c; });
     (S.uploads || []).forEach(function (u) { if (u && u.watch_url && !byUrl[cleanUrl(u.watch_url)]) byUrl[cleanUrl(u.watch_url)] = { title: u.title, url: u.watch_url, thumbnail: u.thumbnail, type: 'video' }; });
-    return tracked.map(function (g) {
-      var old = byUrl[cleanUrl(g.url)] || {};
+    /* GA4 reports by page path, so one video arrives as several rows: /watch/{id}/ from before the clean-URL switch,
+       /watch/{id}/{slug}/ after it, and one more per title edit. Merge them into ONE row (itemSeries already matches
+       all of them, so an unmerged row would show a series bigger than its own total). Users/sessions are summed —
+       a slight overcount for someone who hit both forms, which beats listing the same video twice. */
+    var merged = {}, order = [];
+    tracked.forEach(function (g) {
+      var k = g.kind + '|' + cleanUrl(g.url), m = merged[k];
+      if (!m) { m = merged[k] = Object.assign({}, g, { views: 0, users: 0, sessions: 0 }); order.push(k); }
+      m.views += n(g.views); m.users += n(g.users); m.sessions += n(g.sessions);
+      if (!m.title && g.title) m.title = g.title;
+      if (!m.contentId && g.contentId) m.contentId = g.contentId;
+    });
+    return order.map(function (k) {
+      var g = merged[k], old = byUrl[cleanUrl(g.url)] || {};
       return Object.assign({}, old, {
         title: old.title || g.title || (g.kind.charAt(0).toUpperCase() + g.kind.slice(1)),
         type: g.kind,
-        url: g.url,
-        views: n(g.views),
-        users: n(g.users),
-        sessions: n(g.sessions),
+        url: (g.kind === 'video' && old.url) ? old.url : g.url, // the library's current URL, not whichever old path GA4 listed first
+        views: g.views,
+        users: g.users,
+        sessions: g.sessions,
         contentId: g.contentId || '',
         analyticsSource: 'ga4'
       });
