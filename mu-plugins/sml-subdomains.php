@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Subdomains
  * Description: Paid vanity subdomains. A creator picks name.stockmarketloop.com for their Loop Channel, their Loop Letters homepage, their profile and each group they own; each costs $9.99 once (Stripe Checkout) and is permanent. Visiting the subdomain opens that page. Cloudflare sends every *.stockmarketloop.com request to /sub/{name}/ on this site, which resolves it. 2026-09-19.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: StockMarketLoop
  *
  * OWNER RULES (2026-09-19): one subdomain per page, picked once, permanent; paid per subdomain
@@ -22,7 +22,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_SUB_VERSION  = '1.0.1';
+const SML_SUB_VERSION  = '1.0.2';
 const SML_SUB_DB       = 1;
 const SML_SUB_PRICE    = 999;        /* cents, USD */
 const SML_SUB_HOLD_MIN = 31;         /* Stripe Checkout sessions last at least 30 minutes */
@@ -279,6 +279,7 @@ function sml_sub_start_checkout( $user_id, $surface, $object_id, $raw_name ) {
 		'success_url'          => $back . '?paid={CHECKOUT_SESSION_ID}',
 		'cancel_url'           => $back . '?cancelled=' . rawurlencode( $name ),
 		'expires_at'           => time() + ( SML_SUB_HOLD_MIN - 1 ) * MINUTE_IN_SECONDS,
+		'custom_text'          => array( 'submit' => array( 'message' => 'Permanent and non-refundable: ' . $name . '.' . SML_SUB_BASE . ' stays locked to your ' . sml_sub_surfaces()[ $surface ] . '. See Section 17 of our Terms: ' . home_url( '/terms/' ) ) ),
 	), 'sml-sub-' . $id . '-' . md5( $until ) );
 	if ( is_wp_error( $sess ) ) {
 		$wpdb->delete( $t, array( 'id' => $id, 'status' => 'hold', 'session_id' => '' ) );
@@ -481,7 +482,7 @@ function sml_sub_script() {
     return '<article class="cs-sd-card">'+head+'</div><div class="cs-sd-acts"><b style="font-size:15px">'+price()+'</b><span class="cs-sd-note">one-time</span></div>'
       +'<form class="cs-sd-form" data-form="'+esc(k)+'"><label class="cs-sd-kind" for="sd-'+esc(k)+'">Choose your subdomain</label><div class="cs-sd-field"><input id="sd-'+esc(k)+'" name="name" value="'+esc(v)+'" maxlength="30" autocomplete="off" spellcheck="false" placeholder="yourname" aria-describedby="sda-'+esc(k)+'"><span>.'+esc(cfg.base)+'</span></div>'
       +'<div class="cs-sd-avail" id="sda-'+esc(k)+'" data-avail="'+esc(k)+'" aria-live="polite"></div>'
-      +'<label class="cs-sd-confirm"><input type="checkbox" name="permanent"><span>I understand this subdomain is <b>permanent</b>: it can’t be changed or moved to another page after I pay.</span></label>'
+      +'<label class="cs-sd-confirm"><input type="checkbox" name="permanent"><span>I understand this subdomain is <b>permanent and non-refundable</b>: it can’t be changed or moved to another page after I pay (<a href="/terms/#paid-subdomains" target="_blank" rel="noopener" style="color:#8cc9ff">Terms, Section 17</a>).</span></label>'
       +'<div><button type="submit" class="cs-sd-btn primary" disabled>Claim for '+price()+'</button> <span class="cs-sd-note" data-msg="'+esc(k)+'"></span></div></form></article>';}
   function paint(){if(!data){list.innerHTML='<div class="cs-sd-empty">Loading your pages…</div>';return;}
     if(!data.payments)show('warn','Payments are being set up — subdomains can’t be claimed right now.');
@@ -535,7 +536,7 @@ function sml_sub_render_page() {
 	if ( function_exists( 'sml_cs_render_sidebar' ) ) { sml_cs_render_sidebar( 'subdomains', false ); }
 	echo '<div class="cs-main"><header class="cs-top"><div class="cs-crumb">Creator Studio<span>/</span><b>Subdomains</b></div><div class="cs-autosave">Your own address on StockMarketLoop</div><a class="cs-top-btn" href="#" data-sd-refresh>Refresh</a></header>';
 	echo '<section class="cs-sd" id="cs-subdomains" aria-label="Subdomains"><h1>Subdomains</h1><p class="cs-sd-sub">Give your pages a short address like <b>yourname.' . esc_html( SML_SUB_BASE ) . '</b>. Anyone who visits it goes straight to that page, so it’s easy to say on stream, print on a card or put in your bio.</p>';
-	echo '<div class="cs-sd-rules"><div><b>$' . number_format( SML_SUB_PRICE / 100, 2 ) . ' each, once</b>Paid by card through Stripe. No renewals.</div><div><b>One per page</b>Your Loop Channel, Loop Letters homepage, profile and each group you own can each have one.</div><div><b>Permanent</b>Once paid, the name is locked to that page for good. Choose carefully.</div></div>';
+	echo '<div class="cs-sd-rules"><div><b>$' . number_format( SML_SUB_PRICE / 100, 2 ) . ' each, once</b>Paid by card through Stripe. No renewals.</div><div><b>One per page</b>Your Loop Channel, Loop Letters homepage, profile and each group you own can each have one.</div><div><b>Permanent, non-refundable</b>Once paid, the name is locked to that page for good. Choose carefully. <a href="' . esc_url( home_url( '/terms/#paid-subdomains' ) ) . '" style="color:#8cc9ff">Terms, Section 17</a></div></div>';
 	echo '<div class="cs-sd-banner" data-sd-banner hidden></div><div class="cs-sd-list" data-sd-list></div></section></div></div>';
 	echo '<script>window.smlSubConfig=' . wp_json_encode( array( 'rest' => esc_url_raw( rest_url( 'sml-sub/v1/' ) ), 'nonce' => wp_create_nonce( 'wp_rest' ), 'price' => SML_SUB_PRICE, 'base' => SML_SUB_BASE ) ) . ';</script><script>' . sml_sub_script() . '</script></body></html>';
 	exit;
