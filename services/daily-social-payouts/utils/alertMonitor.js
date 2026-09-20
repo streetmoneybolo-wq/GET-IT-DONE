@@ -2,7 +2,7 @@ import { mutateJson, paths, readJson, readSettings } from './storage.js';
 import { parseAlertMessage } from './alertParser.js';
 import { createAlertVisual } from './alertVisual.js';
 
-function monitoredChannelRefs(settings) {
+export function monitoredChannelRefs(settings) {
   const monitor = settings.alertMonitor || {};
   const refs = [];
   for (const ref of monitor.sources || []) {
