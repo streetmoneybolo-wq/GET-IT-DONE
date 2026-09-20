@@ -64,7 +64,9 @@
       var list = (r.ok && r.j && (r.j.watchlist || r.j.items || r.j.symbols)) || [];
       S.tickers = list.map(function (x) { return String(typeof x === 'string' ? x : (x.symbol || x.ticker || x.sym || '')).toUpperCase().replace(/^\$/, ''); }).filter(Boolean).slice(0, 8);
       renderTickers();
-      S.tickers.slice(0, 8).forEach(function (sym) { tickerCard(sym).then(function () { renderTickers(); }); });
+      if (S.tickers.length) {
+        Promise.all(S.tickers.map(function (sym) { return tickerCard(sym); })).then(function () { renderTickers(); });
+      }
     });
   }
   function renderTickers() {
