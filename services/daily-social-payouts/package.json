@@ -1,0 +1,23 @@
+{
+  "name": "daily-social-payouts",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Neutral-brand social posting tasks, engagement proof, payout records, XP, and leaderboards for Discord.",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "start:daily-social": "node index.js",
+    "start:spotlight": "node spotlight.js",
+    "check": "node --check index.js && node --check spotlight.js && node --check scripts/provision-daily-social-payouts-server.mjs && node tests/smoke.mjs",
+    "provision:daily-social": "node scripts/provision-daily-social-payouts-server.mjs"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7",
+    "sharp": "^0.35.4"
+  }
+}

@@ -1,0 +1,338 @@
+{
+  "boostNotificationsEnabled": true,
+  "allowRolePing": false,
+  "engagementEveryonePing": true,
+  "xMentionAllowlist": [],
+  "alertMonitor": {
+    "enabled": true,
+    "sources": [
+      { "guildId": "938894329076940820", "channelId": "938944129348558848", "authorIds": ["1087769175453339648"] }
+    ],
+    "guildId": "1547568823920623658",
+    "channelIds": [
+      "1547569293510705242",
+      "1547569298497867786"
+    ],
+    "marketTimezone": "America/New_York",
+    "trackingTradingDays": 5,
+    "milestoneGainPercents": [25, 50, 100, 250, 500, 1000],
+    "extendedSession": {
+      "start": "04:00",
+      "end": "20:15",
+      "timezone": "America/New_York"
+    },
+    "endOfDayRecap": {
+      "enabled": true,
+      "time": "19:10",
+      "timezone": "America/Chicago",
+      "dayOfFirstMilestoneArticleOnly": true
+    }
+  },
+  "articleAutomation": {
+    "enabled": true,
+    "pipelineVersion": "two-stage-v1",
+    "jobsPerCycle": 2,
+    "draftOnly": true,
+    "reviewChannelId": "",
+    "maxRetries": 3,
+    "pollIntervalSeconds": 120,
+    "alertVisuals": {
+      "enabled": true,
+      "required": true,
+      "directory": "C:\\Users\\Memob\\Documents\\Codex\\2026-08-04\\cla\\work\\sml-discord-share-bot\\data\\alert-visuals"
+    },
+    "featuredImages": {
+      "enabled": true,
+      "directory": "C:\\Users\\Memob\\OneDrive\\Desktop\\New folder\\SML\\Article Feature Images",
+      "avoidRecent": 3
+    }
+  },
+  "universalArticleProtocol": {
+    "enabled": true,
+    "version": "universal-alert-v1",
+    "draftOnly": true,
+    "reviewRequired": true,
+    "gainThresholds": [25, 50, 100, 250, 500, 1000],
+    "neverAutoPublish": true
+  },
+  "workReport": {
+    "enabled": true,
+    "channelId": "1537959378970484838",
+    "channels": [
+      {
+        "guildId": "1417576889878446256",
+        "channelId": "1537959378970484838",
+        "label": "StockMarketLoop Social Payouts"
+      },
+      {
+        "guildId": "1547568823920623658",
+        "channelId": "1547569282794258515",
+        "label": "Making Easy Money Clone"
+      }
+    ],
+    "privateByDefault": true
+  },
+  "proofReview": {
+    "channelId": "1537959378970484838",
+    "allowScreenshotFallback": true,
+    "requireManualReview": true
+  },
+  "memberSecurity": {
+    "enabled": false,
+    "exactUserBlockEnabled": true,
+    "blockInviteLinks": true,
+    "protectedGuildId": "1547568823920623658",
+    "blockedUserIds": [
+      {
+        "id": "1447679496978432092",
+        "label": "Owner-reported instant DM/friend-request account (memscor.ekeeper.)"
+      },
+      {
+        "id": "1475895601907503297",
+        "label": "Owner-reported instant DM/friend-request account (memscorekeepars)"
+      },
+      {
+        "id": "1237682233867894875",
+        "label": "Owner-reported instant DM/friend-request account (m_emscorekeeper.)"
+      }
+    ],
+    "newAccountReviewDays": 14,
+    "joinBurst": {
+      "enabled": true,
+      "windowSeconds": 30,
+      "threshold": 5
+    },
+    "discordSafetyAutoBan": {
+      "enabled": true,
+      "signals": [
+        "unusual_dm_activity",
+        "timed_out",
+        "unusual_account_activity",
+        "automod_quarantined_username",
+        "automod_quarantined_guild_tag",
+        "quarantined"
+      ]
+    },
+    "premiumVerification": {
+      "evidenceDirectory": "C:\\Users\\Memob\\Documents\\Codex\\2026-08-04\\cla\\work\\sml-discord-share-bot\\data\\premium-verification-evidence",
+      "logChannels": [
+        {
+          "guildId": "1547568823920623658",
+          "channelId": "1547569457126445086",
+          "label": "Making Easy Money Clone"
+        }
+      ]
+    },
+    "blockedGuilds": [
+      {
+        "id": "542224582317441034",
+        "label": "XTrades"
+      },
+      {
+        "id": "",
+        "label": "House of Traders"
+      }
+    ],
+    "newMemberWarning": {
+      "enabled": true,
+      "imagePath": "C:\\Users\\Memob\\Downloads\\HOUSE OF TRADERS.gif",
+      "message": "# IMPORTANT MEMBERSHIP NOTICE\nWelcome to Making Easy Money. Starting when the new-member security policy is activated, newly joining members may not simultaneously participate in XTrades or House of Traders. Members who were already here before activation are permanently grandfathered. Direct invite links to blocked servers are not permitted, including newly generated invite codes. By remaining in this server, you agree to follow this membership and invite-link policy. If you believe the policy has been applied incorrectly, contact a Making Easy Money administrator for review. The attached graphic is a warning supplied by the server owner and is not an independently verified finding by Discord or the bot."
+    },
+    "exemptUserIds": [],
+    "exemptRoleIds": []
+  },
+  "notificationChannelId": "",
+  "subscribers": [],
+  "cooldowns": {
+    "share": 30,
+    "news": 30,
+    "notification": 10
+  },
+  "linkWorkflow": {
+    "enabled": true,
+    "sourceChannelId": "1537742786093125662",
+    "shareChannelId": "1537696428279730218",
+    "engagementChannelId": "1537696796741079070",
+    "returnLinksChannelId": "1537696796741079070",
+    "duplicateWindowHours": 24
+  },
+  "socialApplications": {
+    "enabled": true,
+    "welcomeChannelId": "1512986220236640349",
+    "channelId": "1549559193558847589",
+    "helpChannelId": "1417580397662965950",
+    "paypalInfoChannelId": "1549271606268788797",
+    "paypalAdminLogChannelId": "1549271607812554782",
+    "acceptedRoleId": "1539375322711986306",
+    "payoutReadyRoleId": "1549273572114038824",
+    "autoArchiveMinutes": 1440,
+    "autoReviewMinutes": 10,
+    "requiredPlatforms": [
+      "reddit",
+      "bluesky",
+      "threads",
+      "facebook",
+      "x",
+      "linkedin",
+      "stocktwits"
+    ],
+    "eligibilityRequirements": {
+      "reddit": {
+        "minAccountAgeDays": 90,
+        "minKarma": 1000
+      },
+      "facebook": {
+        "connectedOnly": true
+      },
+      "bluesky": {
+        "minAccountAgeDays": 30,
+        "minPosts": 10
+      }
+    },
+    "guildId": "1417576889878446256",
+    "sendJoinWelcome": false,
+    "ambassadorAdChannelId": "1512986220236640349",
+    "generatorGuideChannelId": "1549562923729420298"
+  },
+  "workerChannels": {
+    "categoryId": "1418877659051720776",
+    "getStartedChannelId": "1549562923729420298",
+    "getPaidChannelId": "1538357257908125716",
+    "linksToPostChannelId": "1537696428279730218",
+    "commentLikeShareChannelId": "1537696796741079070",
+    "postYourLinkChannelId": "1537696796741079070",
+    "activityReportChannelId": "1537959378970484838"
+  },
+  "recruitmentPosts": {
+    "enabled": true,
+    "channelId": "1418915180062052477",
+    "approvedSubreddits": [
+      "sidehustle",
+      "thesidehustle",
+      "SideJobs",
+      "hiring",
+      "forhire",
+      "freelance_forhire",
+      "HiringPH",
+      "JobsPhilippines",
+      "BusinessPH",
+      "JapanJobs",
+      "RemoteJobseekers",
+      "YoungJobs",
+      "WFHJobs",
+      "IndiaJobsOpenings",
+      "Germany_Jobs",
+      "onlinejobsforall",
+      "freelancing",
+      "hiringpakistan",
+      "RecruitingHiringPH",
+      "ForHireFreelance",
+      "hiringPhilippinesPH",
+      "LookingforJob"
+    ]
+  },
+  "telegramForward": {
+    "enabled": true,
+    "channelIds": [
+      "1547569293510705242",
+      "1547569298497867786"
+    ],
+    "allowBotChannelIds": [
+      "1547569293510705242",
+      "1547569298497867786"
+    ]
+  },
+  "discordAlertMirror": {
+    "enabled": true,
+    "channels": [
+      {
+        "label": "GrandMaster Swings",
+        "sourceGuildId": "938894329076940820",
+        "sourceChannelId": "938944129348558848",
+        "targetGuildId": "1547568823920623658",
+        "targetChannelId": "1547569293510705242"
+      },
+      {
+        "label": "GrandMaster LongTerm",
+        "sourceGuildId": "938894329076940820",
+        "sourceChannelId": "1509325055849529455",
+        "targetGuildId": "1547568823920623658",
+        "targetChannelId": "1547569298497867786"
+      },
+      {
+        "label": "GrandMaster Swings",
+        "sourceGuildId": "1547568823920623658",
+        "sourceChannelId": "1547569293510705242",
+        "targetGuildId": "938894329076940820",
+        "targetChannelId": "938944129348558848",
+        "footer": "The official Making Easy Money server has moved. Join the new Discord here: https://discord.gg/hWzWUpFEsA"
+      },
+      {
+        "label": "GrandMaster LongTerm",
+        "sourceGuildId": "1547568823920623658",
+        "sourceChannelId": "1547569298497867786",
+        "targetGuildId": "938894329076940820",
+        "targetChannelId": "1509325055849529455",
+        "footer": "The official Making Easy Money server has moved. Join the new Discord here: https://discord.gg/hWzWUpFEsA"
+      }
+    ]
+  },
+  "telegramNewsForward": {
+    "enabled": true,
+    "chatId": "-1003687018847",
+    "messageThreadId": 1653,
+    "pollIntervalSeconds": 120,
+    "authors": [
+      "SML News"
+    ],
+    "maxAgeHours": 72,
+    "site": "https://stockmarketloop.com"
+  },
+  "membershipLifecycle": {
+    "enabled": true,
+    "guildId": "1547568823920623658",
+    "channels": {
+      "newMembers": "1547579703450275914",
+      "newSignups": "1547579715202715748",
+      "canceledRoleRemoved": "1547579716498890844"
+    },
+    "membershipRoles": [
+      {
+        "id": "1547569243825115227",
+        "label": "Premium Member"
+      },
+      {
+        "id": "1547569244714041345",
+        "label": "Elite Member"
+      },
+      {
+        "id": "1547569240788172840",
+        "label": "Free Trial"
+      }
+    ]
+  },
+  "linkWorkflows": [
+    {
+      "id": "making-easy-money-ambassador",
+      "label": "Making Easy Money Ambassador",
+      "enabled": true,
+      "guildId": "1547568823920623658",
+      "sourceChannelId": "1547569446871236608",
+      "shareChannelId": "1547569444614705204",
+      "engagementChannelId": "1547569445499703316",
+      "returnLinksChannelId": "1547569449228312657",
+      "duplicateWindowHours": 24
+    },
+    {
+      "id": "making-easy-money-original-ambassador",
+      "label": "Making Easy Money Original Ambassador",
+      "enabled": true,
+      "guildId": "938894329076940820",
+      "sourceChannelId": "1513375871379968111",
+      "shareChannelId": "1513375426096009428",
+      "engagementChannelId": "1513375620443406526",
+      "returnLinksChannelId": "1513375620443406526",
+      "duplicateWindowHours": 24
+    }
+  ]
+}

@@ -210,3 +210,74 @@ services:
         sync: false
       - key: UPGRADE_CHAT_CLIENT_SECRET
         sync: false
+
+  # Neutral-brand social task and payout bot. Its public name and copy must not
+  # use StockMarketLoop or Making Easy Money branding.
+  - type: worker
+    name: daily-social-payouts
+    runtime: node
+    rootDir: services/daily-social-payouts
+    region: ohio
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run start:daily-social
+    autoDeployTrigger: commit
+    disk:
+      name: daily-social-payouts-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BOT_RUNTIME_MODE
+        value: daily-social
+      - key: DATA_DIR
+        value: /var/data
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: BASE_SHARE_LINK
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+
+  # Read-only alert watcher and article pipeline; isolated from the social bot.
+  - type: worker
+    name: retail-trader-spotlight-monitor
+    runtime: node
+    rootDir: services/daily-social-payouts
+    region: ohio
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run start:spotlight
+    autoDeployTrigger: commit
+    disk:
+      name: retail-trader-spotlight-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: SPOTLIGHT_DISCORD_TOKEN
+        sync: false
+      - key: MASSIVE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_ARTICLE_MODEL
+        value: gpt-5-mini
+      - key: WP_BASE_URL
+        value: https://stockmarketloop.com
+      - key: WP_USERNAME
+        sync: false
+      - key: WP_APP_PASSWORD
+        sync: false
+      - key: ARTICLE_POLL_SECONDS
+        value: "120"
