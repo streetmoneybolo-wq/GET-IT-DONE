@@ -95,6 +95,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /simulation-progress/);
     assert.match(html, /academy-activity\/progress/);
     assert.match(html, /Cash-secured put/);
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+    assert.doesNotThrow(() => new Function(scripts.at(-1)[1]));
   });
 });
 
