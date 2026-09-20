@@ -81,7 +81,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
     assert.match(html, /location\.assign/);
-    assert.doesNotMatch(html, /<iframe/);
+    assert.match(html, /academy-dashboard-frame/);
+    assert.match(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1/);
+    assert.match(response.headers.get('content-security-policy'), /frame-src https:\/\/stockmarketloop\.com/);
   });
 });
 
