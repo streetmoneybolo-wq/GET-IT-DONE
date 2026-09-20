@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Subscribe Button
  * Description: One real Subscribe button on every Loop Channel, live stream and uploaded video. First click subscribes (the button then offers "Get Notifications"); a second click turns notifications on and the button goes gold; hovering a gold button flashes "Unsubscribe" in red. The choice is stored per viewer per creator. Subscribing uses the site's real follow store (sml_following / sml_followers — the same one Creator Studio counts), and bell subscribers get a LOOP-KICK when that creator goes live or publishes a video. 2026-09-19.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: StockMarketLoop
  *
  * OWNER SPEC (2026-09-19): Subscribe -> Get Notifications -> SUBSCRIBED (gold, animated);
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_CSUB_VERSION = '1.1.0';
+const SML_CSUB_VERSION = '1.2.0';
 
 /* ------------------------------------------------------------ state */
 
@@ -263,18 +263,15 @@ function sml_csub_js() {
   /* where the button goes on each page */
   function place(){
     if(C.where==='live'){
-      var row=document.querySelector('.slw-ctl-r');
-      if(row&&!row.querySelector('[data-sml-csub]')){
-        var term=row.querySelector('.slw-btn-term');if(term)term.remove();   /* owner: replace the terminal button */
-        row.insertBefore(btn('live-bar'),row.firstChild);
-      }
+      var row=document.querySelector('.slw-ctl-r');                          /* owner 2026-09-19: no Subscribe in the player bar, only in the description */
+      if(row){var term=row.querySelector('.slw-btn-term');if(term)term.remove();var bar=row.querySelector('[data-sml-csub]');if(bar)bar.remove();}
       var old=document.querySelector('#slw-sub');                            /* the placeholder next to the creator name */
       if(old&&!old.dataset.smlCsubDone){old.dataset.smlCsubDone='1';old.style.display='none';
         if(old.parentNode&&!old.parentNode.querySelector('[data-sml-csub="live-who"]'))old.parentNode.insertBefore(btn('live-who'),old);}
       countLine();
     } else if(C.where==='watch'){
-      var like=document.querySelector('#vw-like');
-      if(like&&like.parentNode&&!like.parentNode.querySelector('[data-sml-csub]'))like.parentNode.insertBefore(btn('watch'),like);
+      var prof=document.querySelector('#vw-profile');                        /* creator block under the video, not the player bar */
+      if(prof&&prof.parentNode&&!prof.parentNode.querySelector('[data-sml-csub]'))prof.parentNode.insertBefore(btn('watch'),prof);
       countLine();
     } else if(C.where==='channel'){
       var stat=document.querySelector('#ch-subscribers,#ch-followers');
