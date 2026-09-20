@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createAcademyCommands } = require('./commands');
+const { SEED_LESSONS } = require('./curriculum');
 
 const GUILD = '938894329076940820';
 const MONARCH = '1260433215189946420';
@@ -47,4 +48,16 @@ test('Academy controls remain private to the configured Monarch preview role', a
   assert.match(denied.response.data.content, /not available/);
   const allowed = await academy.handle(interaction('academy'));
   assert.match(allowed.response.data.content, /Launch the Academy activity/);
+});
+
+test('Academy publishes a complete 26-lesson college-level curriculum', () => {
+  assert.equal(SEED_LESSONS.length, 26);
+  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, 26);
+  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+  for (const entry of SEED_LESSONS) {
+    assert.equal(entry.steps.length, 3);
+    assert.match(entry.steps[2], /lab:/i);
+    assert.equal(Object.keys(entry.question.options).length, 4);
+    assert.ok(entry.question.options[entry.question.correct]);
+  }
 });
