@@ -2402,7 +2402,7 @@
         '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av) + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
         '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(purl) + '">' + esc(head) + '</a></h2>' +
         latest +
-        (item.media_url ? '<a href="' + esc(churl) + '"><img loading="lazy" src="' + esc(item.media_url) + '" alt=""></a>' : '') +
+        (item.media_url ? '<a href="' + esc(churl) + '"><img loading="lazy" src="' + esc(item.media_url) + '" alt="' + esc(head) + '"></a>' : '') +
         '<div class="sml-sth-actions"><a href="' + esc(churl) + '">' + esc(count) + ' · Open chat</a></div>';
       return art;
     }
