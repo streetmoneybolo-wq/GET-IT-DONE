@@ -54,6 +54,18 @@ test('all other routes are a no-store 404', async () => {
   });
 });
 
+test('Academy Activity serves the read-only live chart host for Discord', async () => {
+  await withServer({}, async (base) => {
+    const response = await fetch(`${base}/academy-activity/`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /^text\/html/);
+    assert.match(response.headers.get('content-security-policy'), /frame-ancestors https:\/\/discord\.com/);
+    const html = await response.text();
+    assert.match(html, /Making Easy Money Academy/);
+    assert.match(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1&amp;activity=1/);
+  });
+});
+
 function signedHeaders(secret, body, timestamp = '1700000000') {
   return {
     'content-type': 'application/json',

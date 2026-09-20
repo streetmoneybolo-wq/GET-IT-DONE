@@ -264,6 +264,31 @@ function sendJson(response, status, body) {
   response.end(payload);
 }
 
+/*
+ * The Discord Activity is deliberately a thin, non-authenticated host. Discord
+ * itself controls who may launch the Activity; the embedded dashboard remains
+ * read-only through its academy=1 mode. No Discord token, user identity, or
+ * market credential is exposed to this page.
+ */
+function academyActivityHtml() {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Making Easy Money Academy — Live Chart Lab</title>
+<style>html,body{width:100%;height:100%;margin:0;background:#070b10;color:#eef4f7;font-family:system-ui,sans-serif}main{height:100%;display:grid;grid-template-rows:auto 1fr}.bar{display:flex;align-items:center;gap:.65rem;padding:.55rem .8rem;background:#0d1720;border-bottom:1px solid #1f3942;font-size:.84rem}.dot{width:.5rem;height:.5rem;border-radius:999px;background:#00d084;box-shadow:0 0 12px #00d084}.frame{width:100%;height:100%;border:0;background:#070b10}</style>
+</head><body><main><div class="bar"><i class="dot"></i><strong>Making Easy Money Academy</strong><span>Live Chart Lab · Educational use only</span></div><iframe class="frame" title="Live Chart Lab" src="https://stockmarketloop.com/analyst-dashboard/?academy=1&amp;activity=1" allow="fullscreen" referrerpolicy="strict-origin"></iframe></main></body></html>`;
+}
+
+function sendHtml(response, status, body) {
+  response.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store',
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-src https://stockmarketloop.com; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'x-content-type-options': 'nosniff'
+  });
+  response.end(body);
+}
+
 function contentTypeIsJson(request) {
   return /^application\/json(?:\s*;|$)/i.test(String(request.headers['content-type'] || ''));
 }
@@ -644,6 +669,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path === '/academy-activity/') {
+      sendHtml(response, 200, academyActivityHtml());
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -741,6 +771,8 @@ if (require.main === module) {
 module.exports = {
   createServer,
   sendJson,
+  sendHtml,
+  academyActivityHtml,
   handleBillingRequest,
   handleAlertRequest,
   handleDisputeRequest,
