@@ -736,7 +736,24 @@
     } else if (P.mode === 'yt' && P.ytId) {
       item = { kind: 'live', id: 'yt-' + P.ytId, title: title, ytId: P.ytId, url: location.href, creator: HANDLE, handle: HANDLE, time: 0 };
     }
-    if (!item) return;
+    if (!item) {
+      /* Nothing is playing yet (scheduled/starting soon, offline, multi-screen): there is nothing to hand over, but the
+         button must not go dead. Open the Loop-Kick phone and say why the stream is not in it (owner report 2026-09-19). */
+      var mb = document.getElementById('slw-mini');
+      if (mb) {
+        var tip = document.createElement('span');
+        tip.textContent = 'Nothing is playing yet — opening Loop-Kick';
+        tip.style.cssText = 'position:fixed;visibility:hidden;white-space:nowrap;background:#0b1118;color:#e8f1f8;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:6px 10px;font:600 12px/1.2 system-ui,sans-serif;z-index:2147483000;pointer-events:none';
+        root.appendChild(tip);   /* body.slw-on hides every other body child */
+        var br = mb.getBoundingClientRect(), tw = tip.offsetWidth;
+        tip.style.left = Math.max(8, Math.min(window.innerWidth - tw - 8, br.right - tw)) + 'px';
+        tip.style.top = Math.max(8, br.top - tip.offsetHeight - 8) + 'px'; tip.style.visibility = 'visible';
+        setTimeout(function () { if (tip.parentNode) tip.parentNode.removeChild(tip); }, 2600);
+      }
+      if (window.SMLLoopKick && window.SMLLoopKick.open) window.SMLLoopKick.open();
+      else { var kb = document.getElementById('sml-hf-loop-kick'); if (kb) kb.click(); }
+      return;
+    }
     try { if (P.video) P.video.pause(); if (P.yt && P.yt.pauseVideo) P.yt.pauseVideo(); } catch (e) { /* nothing to pause */ }
     if (window.SMLLoopKick && window.SMLLoopKick.watch) window.SMLLoopKick.watch(item);
     else { var b = document.getElementById('sml-hf-loop-kick'); if (b) b.click(); }
