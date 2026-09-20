@@ -2202,7 +2202,7 @@
       art.setAttribute('data-hfe-item', id); art.setAttribute('data-hfe-url', url); art.setAttribute('data-sml-published', date);
       art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av||'/wp-content/uploads/2026/08/Untitled-design-90.png')+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
         '<div class="oh-meta">'+esc(name+(date?' · '+date:''))+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
-        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
+        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt="'+esc(title)+'"></a>':'')+
         '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
       return art;
     }
@@ -2222,7 +2222,7 @@
       art.setAttribute('data-hfe-item','letter-'+(row.id||row.slug||url)); art.setAttribute('data-hfe-url',url); art.setAttribute('data-sml-published',date);
       art.innerHTML='<a class="oh-post-author" href="'+esc(aurl)+'"><img class="oh-post-avatar" src="'+esc(av)+'" alt="'+esc(name)+'"><span class="oh-post-author-name">'+esc(name)+'</span></a>'+
         '<div class="oh-meta">Loop Letter'+(date?' · '+esc(date):'')+'</div><h2><a href="'+esc(url)+'">'+esc(title)+'</a></h2><p>'+esc(body)+'</p>'+
-        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt=""></a>':'')+
+        (img?'<a href="'+esc(url)+'"><img loading="lazy" src="'+esc(img)+'" alt="'+esc(title)+'"></a>':'')+
         '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="'+esc(url)+'">Open</a></div>';
       return art;
     }
@@ -2257,7 +2257,7 @@
       art.innerHTML = '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av) + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
         '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(url) + '">' + esc(head) + '</a></h2>' +
         (body ? '<p>' + esc(body) + '</p>' : '') +
-        (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
+        (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt="' + esc(head) + '"></a>' : '') +
         (item.tags ? smlGmCardChips(item.tags) : '') +
         '<div class="sml-sth-actions"><span>Likes ' + (parseInt(m.likes, 10) || 0) + '</span> <span>Comments ' + (parseInt(m.comments, 10) || 0) + '</span> <span>Shares ' + (parseInt(m.shares, 10) || 0) + '</span> <a href="' + esc(url) + '">Open</a></div>';
       return art;
@@ -2323,7 +2323,7 @@
       art.innerHTML = '<div class="sml-hf-breaking-tag">Breaking</div>' +
         '<a class="oh-post-author" href="' + esc(aurl) + '"><img class="oh-post-avatar" src="' + esc(av || '/wp-content/uploads/2026/08/Untitled-design-90.png') + '" alt="' + esc(name) + '"><span class="oh-post-author-name">' + esc(name) + '</span></a>' +
         '<div class="oh-meta">' + esc(name + (date ? ' · ' + date : '')) + '</div><h2><a href="' + esc(url) + '">' + esc(title) + '</a></h2><p>' + esc(body) + '</p>' +
-        (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt=""></a>' : '') +
+        (img ? '<a href="' + esc(url) + '"><img loading="lazy" src="' + esc(img) + '" alt="' + esc(title) + '"></a>' : '') +
         '<div class="sml-sth-actions"><span>Likes 0</span> <span>Comments 0</span> <span>Shares 0</span> <a href="' + esc(url) + '">Open</a></div>';
       return art;
     }
