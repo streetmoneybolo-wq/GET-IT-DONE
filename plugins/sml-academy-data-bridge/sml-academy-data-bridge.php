@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Academy Data Bridge
  * Description: Private, signed Academy access to existing Options and Earnings REST data. It never exposes those feeds to site visitors.
- * Version: 0.1.1
+ * Version: 0.1.2
  * Requires PHP: 7.4
  */
 
@@ -83,8 +83,10 @@ if ( ! function_exists( 'sml_academy_bridge_settings_page' ) ) {
 				}
 			}
 		}
-		$users = array_filter( get_users( array( 'orderby' => 'display_name', 'fields' => array( 'ID', 'display_name', 'user_login' ) ) ), static function( $user ) {
-			return ! user_can( $user, 'manage_options' );
+		// get_users() returns stdClass rows when requesting a limited fields list.
+		// Resolve each row to a WP_User before checking capabilities.
+		$users = array_filter( get_users( array( 'orderby' => 'display_name' ) ), static function( $user ) {
+			return $user instanceof WP_User && ! user_can( $user, 'manage_options' );
 		} );
 		$current = sml_academy_bridge_service_user_id();
 		?>
