@@ -4,6 +4,11 @@ const { SEED_LESSONS } = require('./curriculum');
 const EPHEMERAL = 64;
 const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'discipline', 'replay', 'leaderboard']);
 
+// Phase 1 is an owner-only preview. Keeping this permission on the command
+// definitions (rather than setting it once in Discord) means a later command
+// registration cannot accidentally expose the unfinished Academy.
+const PRIVATE_PREVIEW_PERMISSIONS = '8'; // Discord ADMINISTRATOR bit
+const privatePreview = (command) => ({ ...command, default_member_permissions: PRIVATE_PREVIEW_PERMISSIONS });
 const COMMAND_DEFINITIONS = [
   { type: 1, name: 'academy', description: 'Open Making Easy Money Academy', contexts: [0] },
   { type: 1, name: 'enroll', description: 'Enroll in Making Easy Money Academy', contexts: [0] },
@@ -20,7 +25,7 @@ const COMMAND_DEFINITIONS = [
   { type: 1, name: 'discipline', description: 'Open today’s Academy discipline lesson', contexts: [0] },
   { type: 1, name: 'replay', description: 'Open an educational market replay', contexts: [0], options: [{ type: 3, name: 'scenario', description: 'Scenario name', required: true, max_length: 80 }] },
   { type: 1, name: 'leaderboard', description: 'View Academy learning milestones', contexts: [0] }
-];
+].map(privatePreview);
 
 function text(value, max = 120) { return String(value || '').replace(/[\r\n`]/g, ' ').trim().slice(0, max); }
 function response(content, embeds = [], components = []) { return { type: 4, data: { content, embeds, components, flags: EPHEMERAL } }; }
