@@ -8,7 +8,13 @@ const { createAcademyCommands } = require('./commands');
 
 function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
   if (!config?.academyEnabled || !config?.academyGuildId || !config?.connectBotEnabled) return null;
-  const academy = createAcademyCommands({ pool, guildId: config.academyGuildId, enabled: true, now });
+  const academy = createAcademyCommands({
+    pool,
+    guildId: config.academyGuildId,
+    monarchRoleId: config.academyMonarchRoleId,
+    enabled: true,
+    now
+  });
   return createDiscordInteractions({
     config: { discordConnectPublicKey: config.discordConnectPublicKey, discordConnectAppId: config.discordConnectAppId },
     pool,

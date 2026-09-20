@@ -33,15 +33,22 @@ function options(interaction) { return Array.isArray(interaction?.data?.options)
 function option(interaction, name, fallback = null) { const found = options(interaction).find((entry) => entry?.name === name); return found == null ? fallback : found.value; }
 function userId(interaction) { return String(interaction?.member?.user?.id || interaction?.user?.id || ''); }
 function button(label, id, style = 2) { return { type: 2, style, label, custom_id: id }; }
+function linkButton(label, url) { return { type: 2, style: 5, label, url }; }
 function lessonFor(moduleId, lessonId) { return SEED_LESSONS.find((lesson) => lesson.moduleId === moduleId && lesson.lessonId === lessonId) || null; }
 
-function createAcademyCommands({ pool, guildId, enabled = false, now = Date.now } = {}) {
+function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now } = {}) {
   function canHandle(interaction) {
     const name = String(interaction?.data?.name || '').toLowerCase();
     const customId = String(interaction?.data?.custom_id || '');
     return (interaction?.type === 2 && ACADEMY_COMMANDS.has(name)) || (interaction?.type === 3 && customId.startsWith('academy:'));
   }
-  function allowed(interaction) { return enabled && String(interaction?.guild_id || '') === String(guildId || ''); }
+  function allowed(interaction) {
+    if (!enabled || String(interaction?.guild_id || '') !== String(guildId || '')) return false;
+    const roleIds = Array.isArray(interaction?.member?.roles) ? interaction.member.roles.map(String) : [];
+    const permissions = BigInt(String(interaction?.member?.permissions || '0'));
+    const administrator = (permissions & 8n) === 8n;
+    return administrator || (!!monarchRoleId && roleIds.includes(String(monarchRoleId)));
+  }
   async function student(interaction) {
     const id = userId(interaction); if (!/^\d{15,24}$/.test(id)) throw new TypeError('invalid Discord user');
     const result = await pool.query(`INSERT INTO academy_students (guild_id, discord_id) VALUES ($1,$2)
@@ -68,7 +75,7 @@ function createAcademyCommands({ pool, guildId, enabled = false, now = Date.now 
       return { response: response(`${correct ? 'Correct.' : 'Not quite.'} ${lesson.question.explanation}`, [lessonEmbed(lesson, `**Answer:** ${lesson.question.correct}. ${lesson.question.options[lesson.question.correct]}`)]) };
     }
     const name = String(interaction.data.name || '').toLowerCase();
-    if (name === 'academy') return { response: response('Welcome to Making Easy Money Academy. Start with /enroll, then use /lesson module:1 lesson:1. Lessons are original educational material.', [], [{ type: 1, components: [button('Enroll', 'academy:start:1:1', 1)] }]) };
+    if (name === 'academy') return { response: response('Welcome to Making Easy Money Academy. Start with /enroll, then use /lesson module:1 lesson:1. Lessons are original educational material.', [], [{ type: 1, components: [button('Enroll', 'academy:start:1:1', 1), linkButton('Open Live Chart Lab', 'https://stockmarketloop.com/academy-chart-lab/')] }]) };
     if (name === 'enroll') { const row = await student(interaction); return { response: response(`You are enrolled. Your Academy profile started ${new Date(row.enrolled_at || now()).toISOString().slice(0, 10)}. Use /lesson module:1 lesson:1 to begin.`) }; }
     if (name === 'lesson') { const moduleId = Number(option(interaction, 'module', 1)); const lessonId = Number(option(interaction, 'lesson', 1)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response('That lesson is not seeded in Phase 1 yet. Try module 1 lesson 1, module 2 lesson 1, module 3 lesson 1, or module 7 lesson 1.') }; await student(interaction); return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1)] }]) }; }
     if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); return { response: response(`Private progress: ${counts.rows[0]?.completed || 0} completed lessons · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak.`) }; }

@@ -133,7 +133,7 @@ function createDisputeRuntime({
   const roleTools = createConnectRoleTools({ pool, now });
   const connectService = createConnectDisputeService({ disputeService, reviewUrlBase: config.connectReviewUrlBase });
   const academy = config.academyEnabled && config.academyGuildId
-    ? createAcademyCommands({ pool, guildId: config.academyGuildId, enabled: true, now })
+    ? createAcademyCommands({ pool, guildId: config.academyGuildId, monarchRoleId: config.academyMonarchRoleId, enabled: true, now })
     : null;
   const discordInteractions = config.connectBotEnabled
     ? createDiscordInteractions({

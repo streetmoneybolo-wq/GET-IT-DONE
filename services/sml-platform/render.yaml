@@ -79,6 +79,8 @@ services:
         sync: false
       - key: SML_ACADEMY_MANAGER_ROLE_ID
         sync: false
+      - key: SML_ACADEMY_MONARCH_ROLE_ID
+        sync: false
 
   - type: worker
     name: sml-platform-worker
