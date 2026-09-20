@@ -67,6 +67,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /Start Class/);
     assert.match(html, /How price discovery works/);
     assert.match(html, /speechSynthesis/);
+    assert.match(html, /ANALYST DASHBOARD/);
+    assert.match(html, /data-tf="1D"/);
+    assert.match(html, /TOP OF BOOK/);
     assert.match(html, /let bars=\[/);
     assert.match(html, /location\.assign/);
     assert.doesNotMatch(html, /<iframe/);
