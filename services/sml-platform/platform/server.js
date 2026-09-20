@@ -45,6 +45,8 @@ let redditHubCache = { expiresAt: 0, payload: null };
 const academyMarketCache = new Map();
 const academyMarketInflight = new Map();
 let academyScannerCache = { freshUntil: 0, staleUntil: 0, payload: null, inflight: null };
+const academyDepthCache = new Map();
+const academyDepthInflight = new Map();
 
 function asHubObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -336,6 +338,39 @@ async function getAcademyScanner() {
   return academyScannerCache.inflight;
 }
 
+async function getAcademyDepth(symbol) {
+  const safeSymbol = String(symbol || '').toUpperCase();
+  if (!/^[A-Z0-9.:-]{1,10}$/.test(safeSymbol)) throw new TypeError('invalid_symbol');
+  const cached = academyDepthCache.get(safeSymbol);
+  if (cached && cached.freshUntil > Date.now()) return cached.payload;
+  if (academyDepthInflight.has(safeSymbol)) return academyDepthInflight.get(safeSymbol);
+  const request = (async () => {
+    try {
+      const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(safeSymbol)}&depth=10&ticks=0`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
+        signal: AbortSignal.timeout(7_000)
+      });
+      if (!upstream.ok) throw new Error(`academy_depth_${upstream.status}`);
+      const source = await upstream.json();
+      const clean = (rows) => Array.isArray(rows) ? rows.slice(0, 10).map((row, index) => ({
+        level: Number(row?.level) || index + 1,
+        price: Number(row?.price), size: Number(row?.size)
+      })).filter((row) => Number.isFinite(row.price) && Number.isFinite(row.size) && row.size >= 0) : [];
+      const payload = { symbol: safeSymbol, bids: clean(source?.book?.bids), asks: clean(source?.book?.asks), asOf: Number(source?.asof) || Date.now() };
+      if (!payload.bids.length && !payload.asks.length) throw new Error('academy_depth_empty');
+      academyDepthCache.set(safeSymbol, { freshUntil: Date.now() + 15_000, staleUntil: Date.now() + 120_000, payload });
+      return payload;
+    } catch (error) {
+      if (cached && cached.staleUntil > Date.now()) return { ...cached.payload, stale: true };
+      throw error;
+    } finally {
+      academyDepthInflight.delete(safeSymbol);
+    }
+  })();
+  academyDepthInflight.set(safeSymbol, request);
+  return request;
+}
+
 /*
  * The Discord Activity is deliberately a thin, non-authenticated host. Discord
  * itself controls who may launch the Activity; the embedded dashboard remains
@@ -346,6 +381,7 @@ function academyActivityHtml(initialMarket = {}) {
   const initialBars = JSON.stringify(Array.isArray(initialMarket.bars) ? initialMarket.bars.slice(-250) : []);
   const initialSymbol = JSON.stringify(String(initialMarket.symbol || 'SPY'));
   const initialScanner = JSON.stringify(Array.isArray(initialMarket.scanner?.rows) ? initialMarket.scanner.rows.slice(0, 12) : []);
+  const initialDepth = JSON.stringify(initialMarket.depth && typeof initialMarket.depth === 'object' ? initialMarket.depth : { bids: [], asks: [] });
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Making Easy Money Academy — Live Chart Lab</title>
@@ -364,7 +400,9 @@ function academyActivityHtml(initialMarket = {}) {
 (()=>{const symbol=document.getElementById('symbol'),load=document.getElementById('load'),timeframe=()=>new URLSearchParams(location.search).get('tf')||'5m',go=()=>{const clean=String(symbol.value||'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,10)||'SPY';location.assign(location.pathname+'?symbol='+encodeURIComponent(clean)+'&tf='+encodeURIComponent(timeframe()))};load.onclick=go;symbol.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();event.stopImmediatePropagation();go()}},true)})();
 </script><script>
 (()=>{const side=document.querySelector('.side'),rows=${initialScanner};if(!side)return;const panel=document.createElement('section');panel.className='academy-scanner';const heading=document.createElement('h3');heading.textContent='LIVE MARKET SCANNER';panel.appendChild(heading);if(!rows.length){const empty=document.createElement('div');empty.className='academy-scan-empty';empty.textContent='Scanner data is temporarily unavailable.';panel.appendChild(empty)}else{rows.forEach(row=>{const item=document.createElement('div'),symbol=document.createElement('span'),move=document.createElement('span'),detail=document.createElement('small'),pct=Number(row.changePct)||0;item.className='academy-scan-row';symbol.textContent='$'+String(row.symbol||'').slice(0,10);move.className=pct>=0?'academy-positive':'academy-negative';move.textContent=(pct>=0?'▲ +':'▼ ')+pct.toFixed(2)+'%';detail.textContent='Last $'+Number(row.price||0).toFixed(2)+' · Vol '+Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.volume)||0);item.append(symbol,move,detail);panel.appendChild(item)})}side.insertBefore(panel,side.querySelector('.meta'))})();
-</script></body></html>`;
+</script><script>
+(()=>{const side=document.querySelector('.side'),depth=${initialDepth};if(!side)return;const style=document.createElement('style');style.textContent='.academy-depth{margin-top:14px;border-top:1px solid #1b3540;padding-top:12px}.academy-depth h3{font-size:.68rem;margin:0 0 7px;color:#86a2b0}.academy-depth-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.academy-depth-col b{display:block;font:800 .58rem ui-monospace;margin-bottom:4px}.academy-depth-bid{color:#52e6ad}.academy-depth-ask{color:#ff778b}.academy-depth-row{display:flex;justify-content:space-between;gap:4px;padding:3px 0;border-bottom:1px solid rgba(42,66,78,.45);font:.58rem ui-monospace}.academy-depth-row span:last-child{color:#9db2bd}.academy-depth-empty{font-size:.7rem;color:#8094a2;padding:5px 0}';document.head.appendChild(style);const panel=document.createElement('section');panel.className='academy-depth';const title=document.createElement('h3');title.textContent='LEVEL 2 DEPTH · LIVE';panel.appendChild(title);const bids=Array.isArray(depth.bids)?depth.bids:[],asks=Array.isArray(depth.asks)?depth.asks:[];if(!bids.length&&!asks.length){const empty=document.createElement('div');empty.className='academy-depth-empty';empty.textContent='Level 2 is temporarily unavailable.';panel.appendChild(empty)}else{const grid=document.createElement('div');grid.className='academy-depth-grid';[['BID',bids,'academy-depth-bid'],['ASK',asks,'academy-depth-ask']].forEach(([name,rows,color])=>{const col=document.createElement('div');col.className='academy-depth-col';const head=document.createElement('b');head.className=color;head.textContent=name;col.appendChild(head);rows.slice(0,5).forEach(row=>{const item=document.createElement('div'),p=document.createElement('span'),s=document.createElement('span');item.className='academy-depth-row';p.textContent=Number(row.price).toFixed(2);s.textContent=Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.size));item.append(p,s);col.appendChild(item)});grid.appendChild(col)});panel.appendChild(grid)}side.insertBefore(panel,side.querySelector('.meta'))})();
+</script></body></html>`.replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'});document.getElementById('status').textContent=response.ok?'LIVE':'RETRY'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};setInterval(keepWarm,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})");
 }
 
 function sendHtml(response, status, body) {
@@ -762,11 +800,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = params.get('symbol') || 'SPY';
       const timeframe = params.get('tf') || '5m';
-      const [market, scanner] = await Promise.allSettled([getAcademyCandles(symbol, timeframe), getAcademyScanner()]);
+      const [market, scanner, depth] = await Promise.allSettled([getAcademyCandles(symbol, timeframe), getAcademyScanner(), getAcademyDepth(symbol)]);
       if (market.status !== 'fulfilled') logger('warn', 'academy_activity_initial_market_failed', { error: market.reason });
       if (scanner.status !== 'fulfilled') logger('warn', 'academy_activity_scanner_failed', { error: scanner.reason });
+      if (depth.status !== 'fulfilled') logger('warn', 'academy_activity_depth_failed', { error: depth.reason });
       const activity = market.status === 'fulfilled' ? market.value : { symbol, tf: timeframe, bars: [] };
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
+      activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
       sendHtml(response, 200, academyActivityHtml(activity));
       return;
     }

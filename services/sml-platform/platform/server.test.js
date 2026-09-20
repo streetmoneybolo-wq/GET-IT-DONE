@@ -72,6 +72,10 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /TOP OF BOOK/);
     assert.match(html, /LIVE MARKET SCANNER/);
     assert.match(html, /academy-scan-row/);
+    assert.match(html, /LEVEL 2 DEPTH/);
+    assert.match(html, /academy-depth-row/);
+    assert.match(html, /keepWarm/);
+    assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
     assert.match(html, /location\.assign/);
     assert.doesNotMatch(html, /<iframe/);
