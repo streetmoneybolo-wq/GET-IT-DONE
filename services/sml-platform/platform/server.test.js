@@ -88,6 +88,22 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
   });
 });
 
+test('Academy private data is role-session gated before the WordPress bridge is called', async () => {
+  let calls = 0;
+  await withServer({
+    academyOAuth: { verifySession: (authorization) => authorization === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' } },
+    academyDataBridge: { get: async (kind, symbol) => { calls += 1; return { ok: true, status: 200, data: { kind, symbol } }; } }
+  }, async (base) => {
+    const denied = await fetch(`${base}/academy-activity/data/options?symbol=SPY`);
+    assert.equal(denied.status, 401);
+    assert.equal(calls, 0);
+    const allowed = await fetch(`${base}/academy-activity/data/earnings?symbol=NVDA`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), { ok: true, data: { kind: 'earnings', symbol: 'NVDA' } });
+    assert.equal(calls, 1);
+  });
+});
+
 function signedHeaders(secret, body, timestamp = '1700000000') {
   return {
     'content-type': 'application/json',
