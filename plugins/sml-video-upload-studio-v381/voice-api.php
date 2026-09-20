@@ -446,14 +446,21 @@ if (!function_exists('sml_voice_refund')) {
             return false;
         }
 
+        /* The status flip IS the lock. This used to read the status, credit the wallet and only then write
+           'refunded', so two triggers in the same instant (a double-clicked Deny, two moderators, Deny racing the
+           session-end auto refund) both saw 'paid' and both paid out. Now only the request whose UPDATE actually
+           changes the row may credit (2026-09-19). */
+        $claimed = $wpdb->query($wpdb->prepare(
+            "UPDATE $charges SET status = 'refunded', refunded_at = %s WHERE id = %d AND status = 'paid'",
+            gmdate('Y-m-d H:i:s'), (int) $charge['id']
+        ));
+        if (1 !== (int) $claimed) {
+            return false;
+        }
+
         if ($charge['rail'] === 'loop_bucks' && (int) $charge['loop_bucks'] > 0) {
             sml_voice_wallet_credit((int) $charge['user_id'], (int) $charge['loop_bucks'], 'voice_refund:' . $token_id);
         }
-
-        $wpdb->update($charges, array(
-            'status' => 'refunded',
-            'refunded_at' => gmdate('Y-m-d H:i:s'),
-        ), array('id' => $charge['id']));
 
         sml_voice_log($token['room_id'], null, 0, 'refund', array(
             'reason' => $reason,
@@ -501,6 +508,19 @@ if (!function_exists('sml_voice_sweep')) {
               WHERE status = 'waiting'
                 AND requested_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 2 HOUR)"
         );
+        /* "Refund when the caller never actually got to speak" (see sml_voice_end_session) was never applied here: a
+           pass that ran out unused - the host never decided, the stream ended, the buyer was on cooldown - was
+           marked expired and the Loop Bucks were simply gone. A token only becomes 'consumed' when the host approves,
+           so anything still unused/queued at expiry was never heard. sml_voice_refund() is atomic and only pays a
+           charge that is still 'paid', so this cannot double-refund (2026-09-19). */
+        $stale = $wpdb->get_col(
+            "SELECT id FROM " . sml_voice_table('tokens') . "
+              WHERE status IN ('unused','queued') AND consumed_at IS NULL AND expires_at < UTC_TIMESTAMP()
+              LIMIT 50"
+        );
+        foreach ((array) $stale as $stale_token_id) {
+            sml_voice_refund((int) $stale_token_id, 'expired');
+        }
         $wpdb->query(
             "UPDATE " . sml_voice_table('tokens') . "
                 SET status = 'expired'
@@ -647,6 +667,11 @@ if (!function_exists('sml_voice_rest_superchat')) {
            streamer_id 0 (so no creator ever saw it) and nothing refunded it (2026-09-19). */
         if ($room_host_id <= 0 || !get_userdata($room_host_id)) {
             return new WP_Error('sml_voice_no_host', 'This room has no creator to receive a Super Chat.', array('status' => 409));
+        }
+        /* The cooldown was only enforced when QUEUEING a pass, so a viewer on cooldown could still be charged for one
+           they could not use until it expired. */
+        if ($cooldown_until = sml_voice_cooldown_until($user_id, $room_id)) {
+            return new WP_Error('sml_voice_cooldown', 'You can send another voice Super Chat here once your cooldown ends.', array('status' => 429, 'cooldown_until' => $cooldown_until));
         }
         if (!empty($settings['members_only'])
             && (!function_exists('sml_gl_user_has_content_access') || !sml_gl_user_has_content_access($user_id, $room_host_id))) {
@@ -1210,11 +1235,15 @@ if (!function_exists('sml_voice_rest_deny')) {
             return new WP_Error('sml_voice_forbidden', 'Only the host can deny.', array('status' => 403));
         }
 
-        $wpdb->update(sml_voice_table('queue'), array(
-            'status' => 'denied',
-            'decided_at' => gmdate('Y-m-d H:i:s'),
-            'decided_by' => get_current_user_id(),
-        ), array('id' => $queue_id));
+        /* Only a request that is still WAITING can be denied. Without this an already approved-and-played message
+           could be denied afterwards and refunded - the viewer got the airtime and the money (2026-09-19). */
+        $denied = $wpdb->query($wpdb->prepare(
+            "UPDATE " . sml_voice_table('queue') . " SET status = 'denied', decided_at = %s, decided_by = %d WHERE id = %d AND status = 'waiting'",
+            gmdate('Y-m-d H:i:s'), get_current_user_id(), $queue_id
+        ));
+        if (1 !== (int) $denied) {
+            return new WP_Error('sml_voice_decided', 'That request was already handled.', array('status' => 409));
+        }
 
         // Denied always refunds - they never got to speak.
         sml_voice_refund((int) $row['token_id'], 'denied');
