@@ -14,6 +14,7 @@ const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
 const connectMigration = require('./connect-migration');
 const { createAcademyAccess } = require('./academy-access');
+const { createAcademyOAuth } = require('./academy-oauth');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -403,7 +404,7 @@ function academyActivityHtml(initialMarket = {}) {
 (()=>{const side=document.querySelector('.side'),rows=${initialScanner};if(!side)return;const panel=document.createElement('section');panel.className='academy-scanner';const heading=document.createElement('h3');heading.textContent='LIVE MARKET SCANNER';panel.appendChild(heading);if(!rows.length){const empty=document.createElement('div');empty.className='academy-scan-empty';empty.textContent='Scanner data is temporarily unavailable.';panel.appendChild(empty)}else{rows.forEach(row=>{const item=document.createElement('div'),symbol=document.createElement('span'),move=document.createElement('span'),detail=document.createElement('small'),pct=Number(row.changePct)||0;item.className='academy-scan-row';symbol.textContent='$'+String(row.symbol||'').slice(0,10);move.className=pct>=0?'academy-positive':'academy-negative';move.textContent=(pct>=0?'▲ +':'▼ ')+pct.toFixed(2)+'%';detail.textContent='Last $'+Number(row.price||0).toFixed(2)+' · Vol '+Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.volume)||0);item.append(symbol,move,detail);panel.appendChild(item)})}side.insertBefore(panel,side.querySelector('.meta'))})();
 </script><script>
 (()=>{const side=document.querySelector('.side'),depth=${initialDepth};if(!side)return;const style=document.createElement('style');style.textContent='.academy-depth{margin-top:14px;border-top:1px solid #1b3540;padding-top:12px}.academy-depth h3{font-size:.68rem;margin:0 0 7px;color:#86a2b0}.academy-depth-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.academy-depth-col b{display:block;font:800 .58rem ui-monospace;margin-bottom:4px}.academy-depth-bid{color:#52e6ad}.academy-depth-ask{color:#ff778b}.academy-depth-row{display:flex;justify-content:space-between;gap:4px;padding:3px 0;border-bottom:1px solid rgba(42,66,78,.45);font:.58rem ui-monospace}.academy-depth-row span:last-child{color:#9db2bd}.academy-depth-empty{font-size:.7rem;color:#8094a2;padding:5px 0}';document.head.appendChild(style);const panel=document.createElement('section');panel.className='academy-depth';const title=document.createElement('h3');title.textContent='LEVEL 2 DEPTH · LIVE';panel.appendChild(title);const bids=Array.isArray(depth.bids)?depth.bids:[],asks=Array.isArray(depth.asks)?depth.asks:[];if(!bids.length&&!asks.length){const empty=document.createElement('div');empty.className='academy-depth-empty';empty.textContent='Level 2 is temporarily unavailable.';panel.appendChild(empty)}else{const grid=document.createElement('div');grid.className='academy-depth-grid';[['BID',bids,'academy-depth-bid'],['ASK',asks,'academy-depth-ask']].forEach(([name,rows,color])=>{const col=document.createElement('div');col.className='academy-depth-col';const head=document.createElement('b');head.className=color;head.textContent=name;col.appendChild(head);rows.slice(0,5).forEach(row=>{const item=document.createElement('div'),p=document.createElement('span'),s=document.createElement('span');item.className='academy-depth-row';p.textContent=Number(row.price).toFixed(2);s.textContent=Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.size));item.append(p,s);col.appendChild(item)});grid.appendChild(col)});panel.appendChild(grid)}side.insertBefore(panel,side.querySelector('.meta'))})();
-</script></body></html>`.replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'});document.getElementById('status').textContent=response.ok?'LIVE':'RETRY'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};setInterval(keepWarm,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})");
+</script></body></html>`.replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'});document.getElementById('status').textContent=response.ok?'LIVE':'RETRY'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};setInterval(keepWarm,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})").replace('</body></html>', `<script>(()=>{const bar=document.querySelector('.bar'),state=document.querySelector('.market-state');if(!bar||!state)return;const unlock=document.createElement('button');unlock.type='button';unlock.id='academy-unlock';unlock.className='lesson-toggle';unlock.textContent='Unlock Academy Tools';bar.insertBefore(unlock,document.getElementById('status'));let session='';const show=(text,good)=>{state.textContent=text;state.style.color=good?'#52e6ad':'#ffbf5d'};const validate=async()=>{const response=await fetch('/academy-activity/session',{headers:{authorization:'Bearer '+session},cache:'no-store'});if(!response.ok)throw new Error('not_authorized');show('OPTIONS + EARNINGS UNLOCKED',true);unlock.textContent='Academy Tools Unlocked';unlock.disabled=true};window.addEventListener('message',async event=>{if(event.origin!==location.origin||!event.data||event.data.type!=='sml-academy-authorized')return;if(event.data.error){show('ACADEMY ROLE REQUIRED',false);return}session=String(event.data.sessionToken||'');try{await validate()}catch(_){show('AUTHORIZATION EXPIRED',false)}});unlock.onclick=()=>{show('CHECKING DISCORD ROLE…',false);const popup=window.open('/academy-activity/authorize','sml-academy-oauth','popup=yes,width=520,height=640');if(!popup){show('ALLOW POPUPS TO UNLOCK',false)}}})()</script></body></html>`);
 }
 
 function sendHtml(response, status, body) {
@@ -415,6 +416,16 @@ function sendHtml(response, status, body) {
     'x-content-type-options': 'nosniff'
   });
   response.end(body);
+}
+
+function sendRedirect(response, location) {
+  response.writeHead(302, { location, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+  response.end();
+}
+
+function academyAuthorizationCompleteHtml({ ok, sessionToken = '', error = '' }) {
+  const payload = JSON.stringify(ok ? { type: 'sml-academy-authorized', sessionToken } : { type: 'sml-academy-authorized', error: String(error || 'authorization_failed') });
+  return `<!doctype html><meta charset="utf-8"><title>Academy authorization</title><body><p>${ok ? 'Academy access confirmed. You may close this window.' : 'Academy access was not granted. You may close this window.'}</p><script>if(window.opener){window.opener.postMessage(${payload},location.origin);window.close()}</script></body>`;
 }
 
 function contentTypeIsJson(request) {
@@ -664,7 +675,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null,
+  academyAccess = null, academyOAuth = null,
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -838,6 +849,34 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path === '/academy-activity/authorize') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const result = academyOAuth.start();
+      if (!result.ok) { sendJson(response, result.status || 503, { ok: false, error: result.code }); return; }
+      sendRedirect(response, result.url);
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/v1/link/discord/callback') {
+      if (!academyOAuth) { sendHtml(response, 503, academyAuthorizationCompleteHtml({ ok: false, error: 'integration_unconfigured' })); return; }
+      try {
+        const params = new URL(request.url || '/', 'http://localhost').searchParams;
+        const result = await academyOAuth.complete({ code: params.get('code'), state: params.get('state') });
+        sendHtml(response, result.ok ? 200 : (result.status || 403), academyAuthorizationCompleteHtml({ ok: result.ok, sessionToken: result.sessionToken, error: result.code }));
+      } catch (error) {
+        logger('error', 'academy_oauth_callback_failed', { error });
+        sendHtml(response, 503, academyAuthorizationCompleteHtml({ ok: false, error: 'temporary_unavailable' }));
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/session') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const result = academyOAuth.verifySession(request.headers.authorization);
+      sendJson(response, result.ok ? 200 : (result.status || 401), result.ok ? { ok: true } : { ok: false, error: result.code });
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -875,6 +914,8 @@ async function main() {
   const { createAcademyInteractions } = require('./academy/runtime');
   const academyInteractions = disputes.discordInteractions || createAcademyInteractions({ config, pool: database.pool });
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
+  const academyOAuth = createAcademyOAuth({ clientId: config.discordClientId, clientSecret: config.discordClientSecret,
+    redirectUri: config.discordRedirectUri, academyAccess });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!academyInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -905,8 +946,8 @@ async function main() {
     alertRouter,
     alertRouterSecret: config.alertRouterSecret,
     corporate,
-    corporateConflictCodes: CONFLICT_CODES
-    , academyAccess
+    corporateConflictCodes: CONFLICT_CODES,
+    academyAccess, academyOAuth
   });
   let shuttingDown = false;
 

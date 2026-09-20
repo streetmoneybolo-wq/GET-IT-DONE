@@ -74,6 +74,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /academy-scan-row/);
     assert.match(html, /LEVEL 2 DEPTH/);
     assert.match(html, /academy-depth-row/);
+    assert.match(html, /Unlock Academy Tools/);
+    assert.match(html, /academy-activity\/authorize/);
+    assert.match(html, /sml-academy-authorized/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
