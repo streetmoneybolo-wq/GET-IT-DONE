@@ -42,6 +42,7 @@ const DISPUTE_ACTIONS = Object.freeze({
 const REDDIT_HUB_ORIGIN = 'https://stockmarketloop.com';
 const REDDIT_HUB_CACHE_MS = 15_000;
 let redditHubCache = { expiresAt: 0, payload: null };
+const academyMarketCache = new Map();
 
 function asHubObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -264,6 +265,30 @@ function sendJson(response, status, body) {
   response.end(payload);
 }
 
+/* The Activity runs on Discord's proxied origin, not Render's origin. Fetching
+   the public SML feed in the browser would therefore fail the browser's CORS
+   check. This narrow same-origin relay exposes only validated 5-minute candle
+   data, has no credentials, and absorbs repeat opens with a short cache. */
+async function getAcademyCandles(symbol) {
+  const safeSymbol = String(symbol || '').toUpperCase();
+  if (!/^[A-Z0-9.:-]{1,10}$/.test(safeSymbol)) throw new TypeError('invalid_symbol');
+  const cached = academyMarketCache.get(safeSymbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.payload;
+  const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=5m`, {
+    headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
+    signal: AbortSignal.timeout(12_000)
+  });
+  if (!upstream.ok) throw new Error(`academy_market_${upstream.status}`);
+  const source = await upstream.json();
+  const bars = Array.isArray(source?.bars) ? source.bars.slice(-2000).map((bar) => ({
+    t: Number(bar?.t), o: Number(bar?.o), h: Number(bar?.h), l: Number(bar?.l), c: Number(bar?.c), v: Number(bar?.v)
+  })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
+  if (!bars.length) throw new Error('academy_market_empty');
+  const payload = { symbol: safeSymbol, tf: '5m', bars, asOf: Number(source?.asOf) || Date.now() };
+  academyMarketCache.set(safeSymbol, { expiresAt: Date.now() + 15_000, payload });
+  return payload;
+}
+
 /*
  * The Discord Activity is deliberately a thin, non-authenticated host. Discord
  * itself controls who may launch the Activity; the embedded dashboard remains
@@ -278,7 +303,7 @@ function academyActivityHtml() {
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;background:#070b10;color:#eef4f7;font-family:system-ui,-apple-system,Segoe UI,sans-serif}main{height:100%;display:grid;grid-template-rows:auto 1fr}.bar{display:flex;align-items:center;gap:.65rem;padding:.55rem .8rem;background:#0d1720;border-bottom:1px solid #1f3942;font-size:.84rem}.dot{width:.5rem;height:.5rem;border-radius:999px;background:#00d084;box-shadow:0 0 12px #00d084}.status{margin-left:auto;color:#7f98a6;font:700 .7rem ui-monospace,monospace}.shell{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 220px}.chart{position:relative;min-height:0;padding:14px}.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px}.toolbar input{width:94px;background:#0d1720;border:1px solid #285061;border-radius:6px;color:#fff;padding:7px 9px;font-weight:800;text-transform:uppercase}.toolbar button{border:0;border-radius:6px;background:#00c47d;color:#042217;font-weight:800;padding:7px 11px;cursor:pointer}.toolbar small{color:#8295a3}canvas{display:block;width:100%;height:calc(100% - 45px);min-height:260px;border:1px solid #1b3540;border-radius:8px;background:linear-gradient(180deg,#0b141c,#070b10)}.side{border-left:1px solid #1b3540;background:#0a1118;padding:15px}.side h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;color:#86a2b0;margin:0 0 12px}.quote{font:800 1.45rem ui-monospace,monospace}.change{font:700 .8rem ui-monospace,monospace;margin-top:3px}.meta{margin-top:18px;padding-top:14px;border-top:1px solid #1b3540;color:#8094a2;font-size:.75rem;line-height:1.55}@media(max-width:620px){.shell{grid-template-columns:1fr}.side{display:none}.chart{padding:9px}.bar span{display:none}}
 </style>
 </head><body><main><div class="bar"><i class="dot"></i><strong>Making Easy Money Academy</strong><span>Live Chart Lab · Educational use only</span><b class="status" id="status">CONNECTING</b></div><div class="shell"><section class="chart"><div class="toolbar"><input id="symbol" value="SPY" maxlength="10" aria-label="Ticker symbol"><button id="load">Load</button><small>Live 5-minute candles · Read-only</small></div><canvas id="chart" aria-label="Live interactive candlestick chart"></canvas></section><aside class="side"><h2 id="label">$SPY</h2><div class="quote" id="price">—</div><div class="change" id="change">Loading live market data</div><div class="meta">Drag across the chart to inspect a candle. Scroll to zoom. Data is for education only and is not a trading recommendation.</div></aside></div></main><script>
-(()=>{const origin='https://stockmarketloop.com',canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),sym=document.getElementById('symbol'),status=document.getElementById('status'),label=document.getElementById('label'),price=document.getElementById('price'),change=document.getElementById('change');let bars=[],offset=0,scale=1,drag=null;const esc=s=>String(s||'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,10)||'SPY';function resize(){const r=canvas.getBoundingClientRect(),d=devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0);draw()}function draw(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);if(!bars.length){ctx.fillStyle='#7f98a6';ctx.font='13px system-ui';ctx.fillText('Loading live candles…',20,32);return}const pad={l:12,r:64,t:18,b:24},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,n=Math.max(12,Math.min(bars.length,Math.floor(105/scale))),end=Math.max(n,Math.min(bars.length,bars.length-offset)),view=bars.slice(end-n,end);let lo=Math.min(...view.map(b=>+b.l)),hi=Math.max(...view.map(b=>+b.h));if(hi===lo){hi+=1;lo-=1}const y=v=>pad.t+(hi-v)/(hi-lo)*ph;ctx.strokeStyle='rgba(116,153,170,.14)';ctx.lineWidth=1;for(let i=0;i<5;i++){const yy=pad.t+ph*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(pad.l+pw,yy);ctx.stroke();ctx.fillStyle='#718694';ctx.font='10px ui-monospace';ctx.fillText((hi-(hi-lo)*i/4).toFixed(2),pad.l+pw+7,yy+3)}const step=pw/view.length;view.forEach((b,i)=>{const x=pad.l+(i+.5)*step,up=+b.c>=+b.o,color=up?'#00d084':'#ff5470';ctx.strokeStyle=color;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(x,y(+b.h));ctx.lineTo(x,y(+b.l));ctx.stroke();const top=y(Math.max(+b.o,+b.c)),bottom=y(Math.min(+b.o,+b.c));ctx.fillRect(x-step*.31,top,Math.max(1,step*.62),Math.max(1,bottom-top))});ctx.fillStyle='#90a5b3';ctx.font='10px ui-monospace';ctx.fillText('LIVE · 5M',pad.l,h-8)}async function load(){const s=esc(sym.value);sym.value=s;status.textContent='LOADING';try{const r=await fetch(origin+'/wp-json/sml/v1/history?symbol='+encodeURIComponent(s)+'&tf=5m',{cache:'no-store'});if(!r.ok)throw Error('market data unavailable');const j=await r.json();bars=Array.isArray(j.bars)?j.bars:[];if(!bars.length)throw Error('no candles returned');offset=0;const last=bars[bars.length-1],prev=bars[bars.length-2]||last,delta=+last.c-+prev.c,pct=prev.c?(delta/+prev.c)*100:0;label.textContent='$'+s;price.textContent='$'+Number(last.c).toFixed(2);change.textContent=(delta>=0?'▲ +':'▼ ')+delta.toFixed(2)+' ('+pct.toFixed(2)+'%)';change.style.color=delta>=0?'#00d084':'#ff5470';status.textContent='LIVE';draw()}catch(e){status.textContent='RETRY';change.textContent='Live data is temporarily unavailable';change.style.color='#ffb454';bars=[];draw()}}document.getElementById('load').onclick=load;sym.addEventListener('keydown',e=>{if(e.key==='Enter')load()});canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.7,Math.min(4,scale*(e.deltaY>0?.86:1.16)));draw()},{passive:false});canvas.addEventListener('pointerdown',e=>{drag=e.clientX;canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',e=>{if(drag===null)return;offset=Math.max(0,Math.min(Math.max(0,bars.length-12),offset+Math.round((e.clientX-drag)/8)));drag=e.clientX;draw()});canvas.addEventListener('pointerup',()=>drag=null);new ResizeObserver(resize).observe(canvas);load();setInterval(load,30000)})();
+(()=>{const canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),sym=document.getElementById('symbol'),status=document.getElementById('status'),label=document.getElementById('label'),price=document.getElementById('price'),change=document.getElementById('change');let bars=[],offset=0,scale=1,drag=null;const esc=s=>String(s||'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,10)||'SPY';function resize(){const r=canvas.getBoundingClientRect(),d=devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0);draw()}function draw(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);if(!bars.length){ctx.fillStyle='#7f98a6';ctx.font='13px system-ui';ctx.fillText('Loading live candles…',20,32);return}const pad={l:12,r:64,t:18,b:24},pw=w-pad.l-pad.r,ph=h-pad.t-pad.b,n=Math.max(12,Math.min(bars.length,Math.floor(105/scale))),end=Math.max(n,Math.min(bars.length,bars.length-offset)),view=bars.slice(end-n,end);let lo=Math.min(...view.map(b=>+b.l)),hi=Math.max(...view.map(b=>+b.h));if(hi===lo){hi+=1;lo-=1}const y=v=>pad.t+(hi-v)/(hi-lo)*ph;ctx.strokeStyle='rgba(116,153,170,.14)';ctx.lineWidth=1;for(let i=0;i<5;i++){const yy=pad.t+ph*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(pad.l+pw,yy);ctx.stroke();ctx.fillStyle='#718694';ctx.font='10px ui-monospace';ctx.fillText((hi-(hi-lo)*i/4).toFixed(2),pad.l+pw+7,yy+3)}const step=pw/view.length;view.forEach((b,i)=>{const x=pad.l+(i+.5)*step,up=+b.c>=+b.o,color=up?'#00d084':'#ff5470';ctx.strokeStyle=color;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(x,y(+b.h));ctx.lineTo(x,y(+b.l));ctx.stroke();const top=y(Math.max(+b.o,+b.c)),bottom=y(Math.min(+b.o,+b.c));ctx.fillRect(x-step*.31,top,Math.max(1,step*.62),Math.max(1,bottom-top))});ctx.fillStyle='#90a5b3';ctx.font='10px ui-monospace';ctx.fillText('LIVE · 5M',pad.l,h-8)}async function load(){const s=esc(sym.value);sym.value=s;status.textContent='LOADING';try{const r=await fetch('/academy-activity/market?symbol='+encodeURIComponent(s),{cache:'no-store'});if(!r.ok)throw Error('market data unavailable');const j=await r.json();bars=Array.isArray(j.bars)?j.bars:[];if(!bars.length)throw Error('no candles returned');offset=0;const last=bars[bars.length-1],prev=bars[bars.length-2]||last,delta=+last.c-+prev.c,pct=prev.c?(delta/+prev.c)*100:0;label.textContent='$'+s;price.textContent='$'+Number(last.c).toFixed(2);change.textContent=(delta>=0?'▲ +':'▼ ')+delta.toFixed(2)+' ('+pct.toFixed(2)+'%)';change.style.color=delta>=0?'#00d084':'#ff5470';status.textContent='LIVE';draw()}catch(e){status.textContent='RETRY';change.textContent='Live data is temporarily unavailable';change.style.color='#ffb454';bars=[];draw()}}document.getElementById('load').onclick=load;sym.addEventListener('keydown',e=>{if(e.key==='Enter')load()});canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.7,Math.min(4,scale*(e.deltaY>0?.86:1.16)));draw()},{passive:false});canvas.addEventListener('pointerdown',e=>{drag=e.clientX;canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',e=>{if(drag===null)return;offset=Math.max(0,Math.min(Math.max(0,bars.length-12),offset+Math.round((e.clientX-drag)/8)));drag=e.clientX;draw()});canvas.addEventListener('pointerup',()=>drag=null);new ResizeObserver(resize).observe(canvas);load();setInterval(load,30000)})();
 </script></body></html>`;
 }
 
@@ -287,7 +312,7 @@ function sendHtml(response, status, body) {
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(body),
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://stockmarketloop.com; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
   response.end(body);
@@ -675,6 +700,17 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     if (request.method === 'GET' && path === '/academy-activity/') {
       sendHtml(response, 200, academyActivityHtml());
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/market') {
+      const symbol = new URL(request.url || '/', 'http://localhost').searchParams.get('symbol');
+      try {
+        sendJson(response, 200, await getAcademyCandles(symbol));
+      } catch (error) {
+        logger(error instanceof TypeError ? 'warn' : 'error', 'academy_market_request_failed', { error });
+        sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
+      }
       return;
     }
 
