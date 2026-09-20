@@ -1,0 +1,92 @@
+function sml_trending_symbols() {
+    $cached = get_transient('sml_meta_trending');
+    if ($cached !== false) { return $cached; }
+    $syms = array();
+    $r = wp_remote_get(home_url('/wp-json/sml-members/v1/trending-tickers'), array('timeout' => 4));
+    if (!is_wp_error($r) && wp_remote_retrieve_response_code($r) === 200) {
+        $j = json_decode(wp_remote_retrieve_body($r), true);
+        $list = is_array($j) ? (isset($j['tickers']) ? $j['tickers'] : (isset($j['data']) ? $j['data'] : $j)) : array();
+        if (is_array($list)) {
+            foreach ($list as $item) {
+                $s = '';
+                if (is_string($item)) { $s = $item; }
+                elseif (is_array($item)) { $s = isset($item['symbol']) ? $item['symbol'] : (isset($item['ticker']) ? $item['ticker'] : ''); }
+                $s = strtoupper(preg_replace('/[^A-Za-z0-9.\-]/', '', (string) $s));
+                if ($s !== '' && strlen($s) <= 6) { $syms[] = '$' . $s; }
+                if (count($syms) >= 3) { break; }
+            }
+        }
+    }
+    if (!$syms) { $syms = array('$SPY', '$NVDA', '$TSLA'); }
+    set_transient('sml_meta_trending', $syms, 6 * HOUR_IN_SECONDS);
+    return $syms;
+}
+
+add_action('init', function () {
+    if (is_admin() || wp_doing_ajax() || (defined('REST_REQUEST') && REST_REQUEST)) { return; }
+    $path = rtrim(strtok(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '', '?'), '/');
+    if (!in_array($path, array('', '/', '/groups', '/stock-chart'), true)) { return; }
+
+    ob_start(function ($html) use ($path) {
+        if (stripos($html, '</head>') === false) { return $html; }
+        $t = sml_trending_symbols();
+        $trio = implode(', ', $t);
+        if ($path === '' || $path === '/') {
+            $desc = 'The social floor for traders. Live quotes, ticker rooms, creator groups and market chat. Trending now: ' . $trio . '.';
+        } elseif ($path === '/groups') {
+            $desc = 'Join free ticker rooms and paid creator trading groups on Stock Market Loop. Hot tickers today: ' . $trio . '.';
+        } else {
+            $sym = isset($_GET['symbol']) ? strtoupper(preg_replace('/[^A-Za-z0-9.\-]/', '', wp_unslash($_GET['symbol']))) : '';
+            $desc = $sym !== ''
+                ? ('$' . $sym . ' live chart, real-time quotes, breaking news and trader chat. Also trending: ' . $trio . '.')
+                : ('Live stock charts, quotes and news with a real-time trader stream. Trending: ' . $trio . '.');
+        }
+        $desc = esc_attr($desc);
+        $html = preg_replace('#<meta\s+name="description"\s+content="[^"]*"\s*/?>#i', '<meta name="description" content="' . $desc . '">', $html);
+        $html = preg_replace('#<meta\s+property="og:description"\s+content="[^"]*"\s*/?>#i', '<meta property="og:description" content="' . $desc . '">', $html);
+        $html = preg_replace('#<meta\s+name="twitter:description"\s+content="[^"]*"\s*/?>#i', '<meta name="twitter:description" content="' . $desc . '">', $html);
+        /* The three replacements above only rewrite tags that already exist. Rank Math does
+           not run on the guest homepage, so og:/twitter: tags are absent there and those two
+           calls are no-ops. Emit a full set when the page carries none; pages that already
+           have OG (the ticker terminal) are skipped by the guard. Spliced rather than
+           preg_replace'd because $desc contains $TICKER text and $1-$99 would be read as
+           backreferences in a replacement string. */
+        if ( stripos( $html, 'property="og:' ) === false ) {
+            $pos = stripos( $html, '</head>' );
+            if ( $pos !== false ) {
+                $title = preg_match( '#<title>([^<]*)</title>#i', $html, $tm ) ? trim( $tm[1] ) : get_bloginfo( 'name' );
+                $canon = preg_match( '#<link\s+rel="canonical"\s+href="([^"]+)"#i', $html, $cm ) ? $cm[1] : home_url( '/' );
+                $img   = 'https://stockmarketloop.com/wp-content/uploads/2026/06/stock-market-loop-brand-board.png';
+
+                $og  = '<meta property="og:type" content="website">';
+                $og .= '<meta property="og:site_name" content="StockMarketLoop">';
+                $og .= '<meta property="og:title" content="' . esc_attr( $title ) . '">';
+                $og .= '<meta property="og:description" content="' . $desc . '">';
+                $og .= '<meta property="og:url" content="' . esc_url( $canon ) . '">';
+                $og .= '<meta property="og:image" content="' . esc_url( $img ) . '">';
+                $og .= '<meta property="og:image:width" content="1536">';
+                $og .= '<meta property="og:image:height" content="1024">';
+                $og .= '<meta name="twitter:card" content="summary_large_image">';
+                $og .= '<meta name="twitter:title" content="' . esc_attr( $title ) . '">';
+                $og .= '<meta name="twitter:description" content="' . $desc . '">';
+                $og .= '<meta name="twitter:image" content="' . esc_url( $img ) . '">';
+
+                $html = substr( $html, 0, $pos ) . $og . substr( $html, $pos );
+            }
+        }
+        return $html;
+    });
+}, 2);
+
+add_action('template_redirect', function () {
+    if (!is_singular('post')) { return; }
+    ob_start(function ($html) {
+        if (preg_match('#<title>([^<]*)</title>#i', $html, $m) && stripos($m[1], 'Stock Market Loop') === false && stripos($m[1], 'Stockmarketloop') === false) {
+            /* A callback, NOT a replacement string: in a preg replacement "$46" / "$104" are back-references, so every
+               dollar amount in an article title lost its digits ("Nvidia Has Returned $46 Billion" -> "Returned  Billion").
+               $mm[1] is already HTML-escaped page text, so it is NOT escaped a second time (that turned & into &amp;amp;). */
+            $html = preg_replace_callback('#<title>([^<]*)</title>#i', function ($mm) { return '<title>' . trim($mm[1]) . ' - Stock Market Loop</title>'; }, $html, 1);
+        }
+        return $html;
+    });
+}, 1);
