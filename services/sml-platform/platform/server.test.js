@@ -60,9 +60,12 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/html/);
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors https:\/\/discord\.com/);
+    assert.match(response.headers.get('content-security-policy'), /connect-src https:\/\/stockmarketloop\.com/);
     const html = await response.text();
     assert.match(html, /Making Easy Money Academy/);
-    assert.match(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1&amp;activity=1/);
+    assert.match(html, /Live interactive candlestick chart/);
+    assert.match(html, /\/wp-json\/sml\/v1\/history/);
+    assert.doesNotMatch(html, /<iframe/);
   });
 });
 
