@@ -408,14 +408,19 @@ function academyActivityHtml(initialMarket = {}) {
 }
 
 function sendHtml(response, status, body) {
+  /* Academy Activity replaces the legacy canvas with the real dashboard.
+     Avoid attaching its obsolete ResizeObserver during that handoff. */
+  const safeBody = typeof body === 'string'
+    ? body.replace('new ResizeObserver(resize).observe(canvas);', '')
+    : body;
   response.writeHead(status, {
     'content-type': 'text/html; charset=utf-8',
-    'content-length': Buffer.byteLength(body),
+    'content-length': Buffer.byteLength(safeBody),
     'cache-control': 'no-store',
     'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-src https://stockmarketloop.com; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
-  response.end(body);
+  response.end(safeBody);
 }
 
 function sendRedirect(response, location) {
