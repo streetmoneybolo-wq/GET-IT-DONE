@@ -57,7 +57,9 @@
             '<div class="lch-idname"><span class="nm" id="ch-name">' + esc(HANDLE || '—') + '</span><span class="hd" id="ch-handle">@' + esc(HANDLE) + '</span><span class="tg" id="ch-tagline" style="display:none"></span></div>' +
             '<div class="lch-idbtns"><button class="lch-sub" id="ch-sub">Subscribe</button><button class="lch-bell" id="ch-bell" title="Notify me">🔔</button></div>' +
             '<div class="lch-stats">' +
-              '<div class="lch-stat"><b id="ch-followers" style="color:var(--accent)">—</b><span>FOLLOWERS</span></div>' +
+              /* Loop Channels are publication surfaces. Profile pages own
+                 follower/friend terminology; channels always say subscriber. */
+              '<div class="lch-stat"><b id="ch-subscribers" style="color:var(--accent)">—</b><span>SUBSCRIBERS</span></div>' +
               '<div class="lch-stat"><b id="ch-videos">—</b><span>VIDEOS</span></div>' +
               '<div class="lch-stat"><b id="ch-views" style="color:#00ccff">—</b><span>LOOP VIEWS</span></div>' +
             '</div>' +
@@ -116,13 +118,12 @@
         el('#ch-av').textContent = ''; el('#ch-av').classList.remove('empty');
       }
     }).catch(function () {});
-    /* follow relationship + count: sml-members/v1/follow — shape unverified without
-       a live session, so this is best-effort and stays honestly blank on failure
-       rather than guessing a number. Revisit once admin browser access confirms it. */
+    /* The legacy member endpoint calls this relationship `followers`. Normalize
+       that transport detail here so it never leaks into the channel UI. */
     api('/sml-members/v1/follow?handle=' + encodeURIComponent(profileHandle)).then(function (res) {
       var j = res.j || {};
-      var count = j.followers != null ? j.followers : (j.count != null ? j.count : null);
-      if (count != null) el('#ch-followers').textContent = fmt(count);
+      var count = j.subscribers != null ? j.subscribers : (j.followers != null ? j.followers : (j.count != null ? j.count : null));
+      if (count != null) el('#ch-subscribers').textContent = fmt(count);
       var following = !!(j.following || j.is_following || j.followed);
       paintSub(following);
     }).catch(function () {});
