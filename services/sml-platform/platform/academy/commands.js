@@ -35,6 +35,11 @@ function userId(interaction) { return String(interaction?.member?.user?.id || in
 function button(label, id, style = 2) { return { type: 2, style, label, custom_id: id }; }
 function linkButton(label, url) { return { type: 2, style: 5, label, url }; }
 function lessonFor(moduleId, lessonId) { return SEED_LESSONS.find((lesson) => lesson.moduleId === moduleId && lesson.lessonId === lessonId) || null; }
+function nextLessonFor(lesson) {
+  const ordered = SEED_LESSONS.slice().sort((left, right) => left.moduleId - right.moduleId || left.lessonId - right.lessonId);
+  const index = ordered.findIndex((entry) => entry.moduleId === lesson.moduleId && entry.lessonId === lesson.lessonId);
+  return index >= 0 ? ordered[index + 1] || null : null;
+}
 
 function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now } = {}) {
   function canHandle(interaction) {
@@ -55,6 +60,36 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       ON CONFLICT (guild_id, discord_id) DO UPDATE SET discord_id=EXCLUDED.discord_id RETURNING *`, [guildId, id]);
     return result.rows[0];
   }
+  async function startLesson(row, lesson) {
+    await pool.query(`INSERT INTO academy_progress (student_id, module_id, lesson_id)
+      VALUES ($1,$2,$3) ON CONFLICT (student_id, module_id, lesson_id) DO NOTHING`, [row.id, lesson.moduleId, lesson.lessonId]);
+  }
+  async function completeLesson(row, lesson) {
+    /* The WHERE clause makes duplicate button presses harmless: only the
+     * first correct answer can mark a lesson complete and award XP. */
+    const completion = await pool.query(`INSERT INTO academy_progress (student_id, module_id, lesson_id, completed_at, score)
+      VALUES ($1,$2,$3,now(),100)
+      ON CONFLICT (student_id, module_id, lesson_id) DO UPDATE
+      SET completed_at=now(), score=100
+      WHERE academy_progress.completed_at IS NULL
+      RETURNING id`, [row.id, lesson.moduleId, lesson.lessonId]);
+    if (!completion.rowCount) return { newlyCompleted: false, xp: row.xp || 0, firstBadge: false };
+
+    const next = nextLessonFor(lesson);
+    const updated = await pool.query(`UPDATE academy_students
+      SET xp=xp+100,
+          current_module=$2,
+          current_lesson=$3,
+          streak_days=CASE
+            WHEN streak_last=CURRENT_DATE THEN streak_days
+            WHEN streak_last=CURRENT_DATE - 1 THEN streak_days+1
+            ELSE 1 END,
+          streak_last=CURRENT_DATE
+      WHERE id=$1 RETURNING xp`, [row.id, next?.moduleId || lesson.moduleId, next?.lessonId || lesson.lessonId]);
+    const badge = await pool.query(`INSERT INTO academy_badges (student_id, badge_key)
+      VALUES ($1,'first_lesson') ON CONFLICT (student_id, badge_key) DO NOTHING RETURNING badge_key`, [row.id]);
+    return { newlyCompleted: true, xp: updated.rows[0]?.xp || 0, firstBadge: badge.rowCount > 0 };
+  }
   function lessonEmbed(lesson, segment = null) {
     return { color: lesson.color, author: { name: 'Making Easy Money Academy' }, title: `Module ${lesson.moduleId} · Lesson ${lesson.lessonId}: ${lesson.title}`,
       description: segment || lesson.description, fields: [{ name: 'Duration', value: lesson.duration, inline: true }, { name: 'Level', value: lesson.level, inline: true }],
@@ -67,18 +102,31 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       if ((parts.length !== 4 && parts.length !== 5) || !['start','continue','answer'].includes(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3]) || (parts[1] === 'answer' && !/^[A-D]$/.test(parts[4] || ''))) return { response: response('This Academy control is no longer valid.') };
       const lesson = lessonFor(Number(parts[2]), Number(parts[3]));
       if (!lesson) return { response: response('This lesson is not available yet.') };
-      await student(interaction);
-      if (parts[1] === 'start') return { response: response('', [lessonEmbed(lesson, lesson.steps[0])], [{ type: 1, components: [button('Continue', `academy:continue:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+      const row = await student(interaction);
+      if (parts[1] === 'start') {
+        await startLesson(row, lesson);
+        return { response: response('', [lessonEmbed(lesson, lesson.steps[0])], [{ type: 1, components: [button('Continue', `academy:continue:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+      }
       if (parts[1] === 'continue') return { response: response('', [lessonEmbed(lesson, `${lesson.steps.slice(1).join('\n\n')}\n\n**Practice:** ${lesson.question.prompt}`)], [{ type: 1, components: Object.entries(lesson.question.options).map(([key, label]) => button(`${key}. ${label}`.slice(0, 80), `academy:answer:${lesson.moduleId}:${lesson.lessonId}:${key}`, 2)) }]) };
       const chosen = parts[4];
       const correct = chosen === lesson.question.correct;
-      return { response: response(`${correct ? 'Correct.' : 'Not quite.'} ${lesson.question.explanation}`, [lessonEmbed(lesson, `**Answer:** ${lesson.question.correct}. ${lesson.question.options[lesson.question.correct]}`)]) };
+      if (!correct) return { response: response(`Not quite. ${lesson.question.explanation}`, [lessonEmbed(lesson, `**Answer:** ${lesson.question.correct}. ${lesson.question.options[lesson.question.correct]}`)], [{ type: 1, components: [button('Practice Again', `academy:continue:${lesson.moduleId}:${lesson.lessonId}`, 2)] }]) };
+      const completion = await completeLesson(row, lesson);
+      const next = nextLessonFor(lesson);
+      const completionNote = completion.newlyCompleted
+        ? `Lesson completed · +100 XP${completion.firstBadge ? ' · Badge earned: First Lesson' : ''}.`
+        : 'You already completed this lesson. Review is always available.';
+      const controls = [];
+      if (next) controls.push(button(`Next: M${next.moduleId} L${next.lessonId}`, `academy:start:${next.moduleId}:${next.lessonId}`, 1));
+      controls.push(button('Review Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 2));
+      return { response: response(`Correct. ${lesson.question.explanation}\n\n${completionNote}`, [lessonEmbed(lesson, `**Answer:** ${lesson.question.correct}. ${lesson.question.options[lesson.question.correct]}\n\n**Live practice:** launch the Academy activity in Discord and use the chart controls to inspect candles.`)], controls.length ? [{ type: 1, components: controls }] : []) };
     }
     const name = String(interaction.data.name || '').toLowerCase();
-    if (name === 'academy') return { response: response('Welcome to Making Easy Money Academy. Start with /enroll, then use /lesson module:1 lesson:1. Lessons are original educational material.', [], [{ type: 1, components: [button('Enroll', 'academy:start:1:1', 1), linkButton('Open Live Chart Lab', 'https://stockmarketloop.com/academy-chart-lab/')] }]) };
+    if (name === 'academy') return { response: response('Welcome to Making Easy Money Academy. Start with /enroll, then use /lesson module:1 lesson:1. Lessons are original educational material. Launch the Academy activity from Discord for the interactive live chart lab.', [], [{ type: 1, components: [button('Enroll', 'academy:start:1:1', 1), linkButton('Chart Lab Info', 'https://sml-platform-api.onrender.com/academy-activity/')] }]) };
     if (name === 'enroll') { const row = await student(interaction); return { response: response(`You are enrolled. Your Academy profile started ${new Date(row.enrolled_at || now()).toISOString().slice(0, 10)}. Use /lesson module:1 lesson:1 to begin.`) }; }
     if (name === 'lesson') { const moduleId = Number(option(interaction, 'module', 1)); const lessonId = Number(option(interaction, 'lesson', 1)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response('That lesson is not seeded in Phase 1 yet. Try module 1 lesson 1, module 2 lesson 1, module 3 lesson 1, or module 7 lesson 1.') }; await student(interaction); return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1)] }]) }; }
     if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); return { response: response(`Private progress: ${counts.rows[0]?.completed || 0} completed lessons · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak.`) }; }
+    if (name === 'badges') { const row = await student(interaction); const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]); const earned = badges.rows.map((entry) => entry.badge_key === 'first_lesson' ? 'First Lesson' : text(entry.badge_key, 40)); return { response: response(earned.length ? `Your badges: ${earned.join(' · ')}` : 'No badges yet. Complete your first lesson to earn First Lesson.') }; }
     if (name === 'glossary') return { response: response(`Glossary lookup for “${text(option(interaction, 'term'))}” is being added with the approved Module 1–3 content pack.`) };
     return { response: response(`${name} is registered for the Academy roadmap and will unlock after its manager-approved content is published.`) };
   }
