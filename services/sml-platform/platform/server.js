@@ -678,7 +678,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   alertRouter = null, alertRouterSecret = '',
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
   newsIngestToken = '',
-  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
+  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null,
   logger = log, now = Date.now }) {
@@ -704,6 +704,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const body = await readRequestBody(request, discordInteractionsModule.MAX_BODY_BYTES);
       if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
       await discordInteractions.handleRequest(request, response, body.rawBody);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/discord/disputes/interactions') {
+      if (!disputeDiscordInteractions) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const body = await readRequestBody(request, discordInteractionsModule.MAX_BODY_BYTES);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      await disputeDiscordInteractions.handleRequest(request, response, body.rawBody);
       return;
     }
     if (request.method === 'POST' && path.startsWith('/v1/billing/disputes/')) {
@@ -955,6 +962,7 @@ async function main() {
     paypalWebhook: disputes.paypalWebhook,
     upgradeChatWebhook: disputes.upgradeChatWebhook,
     discordInteractions: connectInteractions,
+    disputeDiscordInteractions: disputes.disputeDiscordInteractions,
     disputeService: disputes.disputeService,
     schemaVersion,
     stripeWebhookSecret: config.stripeWebhookSecret,

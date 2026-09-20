@@ -84,9 +84,11 @@ function createDiscordInteractions(deps = {}) {
   const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now || Date.now;
 
-  const publicKeyObject = buildPublicKey(config.discordConnectPublicKey);
-  const appId = SNOWFLAKE_RE.test(String(config.discordConnectAppId || ''))
-    ? String(config.discordConnectAppId) : null;
+  const publicKeyValue = deps.publicKey == null ? config.discordConnectPublicKey : deps.publicKey;
+  const appIdValue = deps.appId == null ? config.discordConnectAppId : deps.appId;
+  const publicKeyObject = buildPublicKey(publicKeyValue);
+  const appId = SNOWFLAKE_RE.test(String(appIdValue || ''))
+    ? String(appIdValue) : null;
   const botToken = typeof config.discordConnectBotToken === 'string' ? config.discordConnectBotToken.trim() : '';
 
   async function fetchGuild(guildId) {
@@ -99,7 +101,6 @@ function createDiscordInteractions(deps = {}) {
     const json = typeof result.json === 'function' ? await result.json() : null;
     return json && typeof json === 'object' ? { name: typeof json.name === 'string' ? json.name : '' } : null;
   }
-
   /* Command handlers live in ./connect-commands (same package); every
    * cross-package collaborator is still injected, never required. */
   const commands = deps.commands || connectCommands.createConnectCommands({

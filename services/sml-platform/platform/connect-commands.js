@@ -872,9 +872,31 @@ Join the onboarding server here: https://discord.gg/cxMvYdm4a2`
   return { handleCommand, handleComponent };
 }
 
+function scopeCommands(commands, allowedNames) {
+  const allowed = new Set(allowedNames || []);
+  return {
+    async handleCommand(interaction) {
+      const name = interaction && interaction.data && interaction.data.name;
+      if (!allowed.has(name)) {
+        return { response: { type: 4, data: { content: MSG_UNKNOWN, flags: EPHEMERAL } } };
+      }
+      return commands.handleCommand(interaction);
+    }
+  };
+}
+
+const CONNECT_COMMAND_NAMES = Object.freeze(['role-status', 'role-reconcile']);
+const DISPUTE_COMMAND_NAMES = Object.freeze([
+  'payments', 'subscriptions', 'customer-history', 'disputes', 'dispute-view',
+  'dispute-build', 'dispute-missing', 'dispute-open-dashboard'
+]);
+
 module.exports = {
   COMMAND_DEFINITIONS,
   EPHEMERAL,
   RATE_LIMIT_PER_MINUTE,
-  createConnectCommands
+  CONNECT_COMMAND_NAMES,
+  DISPUTE_COMMAND_NAMES,
+  createConnectCommands,
+  scopeCommands
 };

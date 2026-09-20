@@ -66,6 +66,14 @@ services:
         sync: false
       - key: SML_DISCORD_CONNECT_APP_ID
         sync: false
+      - key: SML_DISPUTE_BOT_ENABLED
+        sync: false
+      - key: SML_DISPUTE_BOT_PUBLIC_KEY
+        sync: false
+      - key: SML_DISPUTE_BOT_APP_ID
+        sync: false
+      - key: SML_DISPUTE_BOT_TOKEN
+        sync: false
       - key: SML_CONNECT_REVIEW_URL_SECRET
         sync: false
       - key: SML_UC_WEBHOOK_PATH_TOKEN

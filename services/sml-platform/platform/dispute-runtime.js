@@ -29,6 +29,7 @@ const { createPayPalWebhookHandler } = require('./paypal-webhook');
 const { createUpgradeChatWebhookHandler } = require('./upgrade-chat-webhook');
 const { createUpgradeChatReconciler } = require('./upgrade-chat-reconcile');
 const { createDiscordInteractions } = require('./discord-interactions');
+const { createConnectCommands, scopeCommands, CONNECT_COMMAND_NAMES, DISPUTE_COMMAND_NAMES } = require('./connect-commands');
 const { createAcademyCommands } = require('./academy/commands');
 const {
   createConnectAuthorizer, createConnectDisputeService, createConnectRoleTools, createConnectRoleHandlers
@@ -82,6 +83,7 @@ function disabledRuntime(reason) {
     upgradeChatWebhook: null,
     disputeService: null,
     discordInteractions: null,
+    disputeDiscordInteractions: null,
     notifier: null,
     usageConsumer: null,
     upgradeChatReconciler: null,
@@ -135,6 +137,10 @@ function createDisputeRuntime({
   const academy = config.academyEnabled && config.academyGuildId
     ? createAcademyCommands({ pool, guildId: config.academyGuildId, monarchRoleId: config.academyMonarchRoleId, enabled: true, now })
     : null;
+  const commandBase = createConnectCommands({
+    pool, graph, store, authorize, disputeService: connectService,
+    reconciler: roleTools, now, reviewUrlBase: config.connectReviewUrlBase
+  });
   const discordInteractions = config.connectBotEnabled
     ? createDiscordInteractions({
         config: {
@@ -145,8 +151,17 @@ function createDisputeRuntime({
           siteBase: 'https://stockmarketloop.com'
         },
         pool, graph, store, authorize,
-        disputeService: connectService,
-        reconciler: roleTools, academy,
+        commands: scopeCommands(commandBase, CONNECT_COMMAND_NAMES), academy,
+        fetchImpl, now
+      })
+    : null;
+  const disputeDiscordInteractions = config.disputeBotEnabled
+    ? createDiscordInteractions({
+        publicKey: config.discordDisputePublicKey,
+        appId: config.discordDisputeAppId,
+        config: { reviewUrlBase: config.connectReviewUrlBase },
+        pool, graph, store, authorize,
+        commands: scopeCommands(commandBase, DISPUTE_COMMAND_NAMES),
         fetchImpl, now
       })
     : null;
@@ -348,6 +363,7 @@ function createDisputeRuntime({
     upgradeChatWebhook,
     disputeService,
     discordInteractions,
+    disputeDiscordInteractions,
     notifier,
     usageConsumer,
     upgradeChatReconciler,
