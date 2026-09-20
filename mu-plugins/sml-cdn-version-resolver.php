@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.2
+ * Version: 1.0.3
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -19,12 +19,15 @@
  * carousel now shows only the creator's chosen ticker(s) (from /sml-live/v1/feeds),
  * never a generic SPY/QQQ/NVDA/VIX/TSLA list. Only js/live-watch.js differs between
  * the two commits; the other files in that range are server-deployed PHP, not CDN.
+ * 1.0.3 (2026-09-19): advance pin 433c01a -> f9731e7. CDN-served files that differ: js/live-watch.js (Loop-Kick mini button
+ * hands a scheduled stream's thumbnail + start time to the phone's countdown), js/loop-channel.js (subscriber wording,
+ * #ch-subscribers) and js/home-feed.js (alt text on feed card images). Everything else in the range is server-deployed PHP.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '433c01a1de3dcc864cf99b95276047200f1ad73c' );
+	define( 'SML_CDN_ASSET_REVISION', 'f9731e7816b1216a33793da4041c30adab18b155' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
