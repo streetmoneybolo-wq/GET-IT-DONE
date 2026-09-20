@@ -114,6 +114,7 @@ function createDiscordInteractions(deps = {}) {
     , siteBase: config.siteBase
     , guildResolver: fetchGuild
   });
+  const academy = deps.academy || null;
 
   /* 429-aware follow-up sender. The webhook URL embeds the interaction token,
    * so neither the URL nor any error detail is ever logged. */
@@ -203,8 +204,10 @@ function createDiscordInteractions(deps = {}) {
 
     let result;
     try {
-      result = interaction.type === 3 && typeof commands.handleComponent === 'function'
-        ? await commands.handleComponent(interaction)
+      result = academy && typeof academy.canHandle === 'function' && academy.canHandle(interaction)
+        ? await academy.handle(interaction)
+        : interaction.type === 3 && typeof commands.handleComponent === 'function'
+          ? await commands.handleComponent(interaction)
         : await commands.handleCommand(interaction);
     } catch (_) {
       respond(response, 200, {

@@ -70,6 +70,15 @@ services:
         sync: false
       - key: SML_UC_WEBHOOK_PATH_TOKEN
         sync: false
+      # --- Making Easy Money Academy (off until explicitly enabled in Render) ---
+      - key: SML_ACADEMY_ENABLED
+        sync: false
+      - key: SML_ACADEMY_GUILD_ID
+        sync: false
+      - key: SML_ACADEMY_CATEGORY_ID
+        sync: false
+      - key: SML_ACADEMY_MANAGER_ROLE_ID
+        sync: false
 
   - type: worker
     name: sml-platform-worker

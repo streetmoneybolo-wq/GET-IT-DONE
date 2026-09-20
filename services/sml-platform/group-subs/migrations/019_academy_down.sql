@@ -1,0 +1,11 @@
+BEGIN;
+DROP TABLE IF EXISTS academy_audit_log;
+DROP TABLE IF EXISTS academy_challenge_submissions;
+DROP TABLE IF EXISTS academy_challenges;
+DROP TABLE IF EXISTS academy_flashcard_reviews;
+DROP TABLE IF EXISTS academy_badges;
+DROP TABLE IF EXISTS academy_quizzes;
+DROP TABLE IF EXISTS academy_progress;
+DROP TABLE IF EXISTS academy_content;
+DROP TABLE IF EXISTS academy_students;
+COMMIT;

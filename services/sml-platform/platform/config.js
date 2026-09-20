@@ -88,7 +88,11 @@ function getConfig(env = process.env) {
     aiOpenAIInputUsdPerMillion: decimal(env.SML_AI_OPENAI_INPUT_USD_PER_MILLION, 0),
     aiOpenAIOutputUsdPerMillion: decimal(env.SML_AI_OPENAI_OUTPUT_USD_PER_MILLION, 0),
     aiAnthropicInputUsdPerMillion: decimal(env.SML_AI_ANTHROPIC_INPUT_USD_PER_MILLION, 0),
-    aiAnthropicOutputUsdPerMillion: decimal(env.SML_AI_ANTHROPIC_OUTPUT_USD_PER_MILLION, 0)
+    aiAnthropicOutputUsdPerMillion: decimal(env.SML_AI_ANTHROPIC_OUTPUT_USD_PER_MILLION, 0),
+    academyEnabled: String(env.SML_ACADEMY_ENABLED || '').trim() === '1',
+    academyGuildId: String(env.SML_ACADEMY_GUILD_ID || '').trim(),
+    academyCategoryId: String(env.SML_ACADEMY_CATEGORY_ID || '').trim(),
+    academyManagerRoleId: String(env.SML_ACADEMY_MANAGER_ROLE_ID || '').trim()
   });
 }
 

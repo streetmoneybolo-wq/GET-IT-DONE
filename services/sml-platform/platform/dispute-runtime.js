@@ -29,6 +29,7 @@ const { createPayPalWebhookHandler } = require('./paypal-webhook');
 const { createUpgradeChatWebhookHandler } = require('./upgrade-chat-webhook');
 const { createUpgradeChatReconciler } = require('./upgrade-chat-reconcile');
 const { createDiscordInteractions } = require('./discord-interactions');
+const { createAcademyCommands } = require('./academy/commands');
 const {
   createConnectAuthorizer, createConnectDisputeService, createConnectRoleTools, createConnectRoleHandlers
 } = require('./connect-adapter');
@@ -131,6 +132,9 @@ function createDisputeRuntime({
   const authorize = createConnectAuthorizer({ pool, store });
   const roleTools = createConnectRoleTools({ pool, now });
   const connectService = createConnectDisputeService({ disputeService, reviewUrlBase: config.connectReviewUrlBase });
+  const academy = config.academyEnabled && config.academyGuildId
+    ? createAcademyCommands({ pool, guildId: config.academyGuildId, enabled: true, now })
+    : null;
   const discordInteractions = config.connectBotEnabled
     ? createDiscordInteractions({
         config: {
@@ -142,7 +146,7 @@ function createDisputeRuntime({
         },
         pool, graph, store, authorize,
         disputeService: connectService,
-        reconciler: roleTools,
+        reconciler: roleTools, academy,
         fetchImpl, now
       })
     : null;
