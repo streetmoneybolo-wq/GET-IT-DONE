@@ -43,6 +43,7 @@ const REDDIT_HUB_ORIGIN = 'https://stockmarketloop.com';
 const REDDIT_HUB_CACHE_MS = 15_000;
 let redditHubCache = { expiresAt: 0, payload: null };
 const academyMarketCache = new Map();
+const academyMarketInflight = new Map();
 
 function asHubObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -276,22 +277,36 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
   if (!/^(1m|3m|5m|10m|15m|30m|1h|2h|4h|1D|1W)$/.test(safeTimeframe)) throw new TypeError('invalid_timeframe');
   const cacheKey = `${safeSymbol}:${safeTimeframe}`;
   const cached = academyMarketCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.payload;
-  const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=${encodeURIComponent(safeTimeframe)}`, {
-    headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
-    signal: AbortSignal.timeout(12_000)
-  });
-  if (!upstream.ok) throw new Error(`academy_market_${upstream.status}`);
-  const source = await upstream.json();
-  /* The Activity draws at most 250 candles. Retaining a modest scrolling
-   * window avoids parsing and serialising an unnecessarily large response. */
-  const bars = Array.isArray(source?.bars) ? source.bars.slice(-600).map((bar) => ({
-    t: Number(bar?.t), o: Number(bar?.o), h: Number(bar?.h), l: Number(bar?.l), c: Number(bar?.c), v: Number(bar?.v)
-  })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
-  if (!bars.length) throw new Error('academy_market_empty');
-  const payload = { symbol: safeSymbol, tf: safeTimeframe, bars, asOf: Number(source?.asOf) || Date.now() };
-  academyMarketCache.set(cacheKey, { expiresAt: Date.now() + 28_000, payload });
-  return payload;
+  if (cached && cached.freshUntil > Date.now()) return cached.payload;
+  if (academyMarketInflight.has(cacheKey)) return academyMarketInflight.get(cacheKey);
+  const request = (async () => {
+    try {
+      const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=${encodeURIComponent(safeTimeframe)}`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
+        signal: AbortSignal.timeout(7_000)
+      });
+      if (!upstream.ok) throw new Error(`academy_market_${upstream.status}`);
+      const source = await upstream.json();
+      /* The Activity draws at most 250 candles. Retaining a modest scrolling
+       * window avoids parsing and serialising an unnecessarily large response. */
+      const bars = Array.isArray(source?.bars) ? source.bars.slice(-600).map((bar) => ({
+        t: Number(bar?.t), o: Number(bar?.o), h: Number(bar?.h), l: Number(bar?.l), c: Number(bar?.c), v: Number(bar?.v)
+      })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
+      if (!bars.length) throw new Error('academy_market_empty');
+      const payload = { symbol: safeSymbol, tf: safeTimeframe, bars, asOf: Number(source?.asOf) || Date.now() };
+      academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 28_000, staleUntil: Date.now() + 300_000, payload });
+      return payload;
+    } catch (error) {
+      /* A brief upstream slowdown should not blank or freeze an active lesson.
+       * Stale prices are better than no chart, and expire after five minutes. */
+      if (cached && cached.staleUntil > Date.now()) return { ...cached.payload, stale: true };
+      throw error;
+    } finally {
+      academyMarketInflight.delete(cacheKey);
+    }
+  })();
+  academyMarketInflight.set(cacheKey, request);
+  return request;
 }
 
 /*
