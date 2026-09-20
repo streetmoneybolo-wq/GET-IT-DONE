@@ -59,5 +59,11 @@ test('Academy publishes a complete 26-lesson college-level curriculum', () => {
     assert.match(entry.steps[2], /lab:/i);
     assert.equal(Object.keys(entry.question.options).length, 4);
     assert.ok(entry.question.options[entry.question.correct]);
+    assert.ok(entry.simulation);
+    assert.ok(entry.simulation.rounds.length >= 3);
   }
+  assert.ok(SEED_LESSONS.find((entry) => entry.moduleId === 3 && entry.lessonId === 1).simulation.rounds.length > 50);
+  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1).steps.join(' '), /cash-secured puts/i);
+  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 10 && entry.lessonId === 1).title, /Read the Tape/i);
+  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 11 && entry.lessonId === 2).title, /Grandmaster-Obi/i);
 });

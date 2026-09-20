@@ -1,11 +1,15 @@
 'use strict';
 
+const { simulationFor } = require('./simulations');
+
 /* Original StockMarketLoop Academy material. It never ingests the legacy
  * Investing Essentials category and is educational, not financial advice. */
 const LEVEL_COLOR = { Foundation: 0x00E676, Intermediate: 0xFFB400, Advanced: 0xFF3D3D };
 function L(moduleId, lessonId, title, description, level, steps, prompt, options, correct, explanation, duration = '20 min') {
-  return { moduleId, lessonId, title, description, duration, level, color: LEVEL_COLOR[level], steps,
+  const lesson = { moduleId, lessonId, title, description, duration, level, color: LEVEL_COLOR[level], steps,
     question: { prompt, options, correct, explanation } };
+  lesson.simulation = simulationFor(lesson);
+  return lesson;
 }
 
 const SEED_LESSONS = [
@@ -31,15 +35,15 @@ const SEED_LESSONS = [
     'Quant lab: calculate three bar returns, their mean, and sample deviation; show how one outlier changes both.'
   ], 'A price rises 10% and then falls 10%. What is the total return?', { A: '0%', B: '-1%', C: '+1%', D: '-10%' }, 'B', '1.10 multiplied by 0.90 equals 0.99, a 1% loss.'),
 
-  L(3, 1, 'Trend, Support, Resistance, and Regime', 'Treat technical levels as probabilistic zones conditioned on regime.', 'Foundation', [
-    'Trend is persistent direction, not a straight line. Support and resistance are zones of prior order-flow change, not guaranteed barriers.',
-    'Breakouts require context: range duration, participation, volatility, liquidity, and follow-through. False breaks are normal.',
-    'Chart lab: mark a zone with three prior interactions, define invalidation, and compare trending with range-bound behavior.'
+  L(3, 1, 'Chart Patterns, Candlesticks, and Market Structure', 'Recognize every submitted pattern while treating each as a conditional hypothesis.', 'Foundation', [
+    'The lab covers continuation, reversal, bullish, bearish, and indecision formations plus structure, Fibonacci, VWAP, squeeze, halt, climax, and parabolic conditions.',
+    'A named shape is never a signal by itself. Location, prior trend, volume, float, liquidity, timeframe, confirmation, and invalidation determine whether it is useful.',
+    'Chart lab: classify the complete pattern library, explain what would confirm each setup, and identify the evidence that would invalidate it.'
   ], 'What is disciplined when price revisits support?', { A: 'Assume a bounce', B: 'Wait for evidence and define invalidation', C: 'Assume a break', D: 'Remove risk controls' }, 'B', 'Historical reactions focus attention but do not guarantee the next outcome.'),
-  L(3, 2, 'Volume, Momentum, and Indicator Construction', 'Understand indicator formulas, information loss, and parameter sensitivity.', 'Intermediate', [
-    'Moving averages smooth weighted observations. RSI transforms average gains and losses. Indicators reorganize inputs; they do not create information.',
-    'Volume needs normalization for time of day, float, and usual activity. Raw comparisons across securities can mislead.',
-    'Chart lab: add two indicators, state each formula in plain language, and name a regime in which each will lag.'
+  L(3, 2, 'Pattern Confirmation, Volume, and False Breaks', 'Separate visual recognition from evidence-based execution.', 'Intermediate', [
+    'Candles and chart patterns compress auction history. Confirmation asks whether volume, price acceptance, relative strength, and liquidity agree with the visual hypothesis.',
+    'Volume needs normalization for time of day, float, and usual activity. Indicators reorganize inputs; they do not create information or guarantee direction.',
+    'Chart lab: compare a confirmed breakout, a failed breakout, and an ambiguous setup; define the trigger and invalidation before revealing the next bars.'
   ], 'Why do two RSI lookbacks disagree?', { A: 'RSI is random', B: 'Lookback changes the sample and sensitivity', C: 'Price has two closes', D: 'Volume replaces price' }, 'B', 'Shorter samples react faster and usually contain more noise.'),
 
   L(4, 1, 'Financial Statements and Accounting Linkages', 'Connect the income statement, balance sheet, and cash-flow statement.', 'Intermediate', [
@@ -75,10 +79,10 @@ const SEED_LESSONS = [
     'Macro lab: build a growth-inflation regime matrix and define evidence that would trigger a transition.'
   ], 'What weakens a fixed historical correlation assumption?', { A: 'Correlation has no units', B: 'Relationships change across regimes', C: 'Prices never co-move', D: 'Only bonds correlate' }, 'B', 'Correlation is sample-dependent and can shift sharply under new policy or volatility.'),
 
-  L(7, 1, 'Position Sizing, Expectancy, and Risk of Ruin', 'Connect loss limits and payoff distributions to long-run survival.', 'Intermediate', [
-    'Size follows a loss budget and invalidation point: maximum dollar risk divided by planned risk per share, before gaps and slippage.',
-    'Expectancy equals win probability times average win minus loss probability times average loss; positive expectancy still has drawdowns.',
-    'Risk lab: simulate 100 trades and compare fixed-dollar, fixed-fractional, and oversized exposure paths.'
+  L(7, 1, 'Box the Trade: Plan, Size, and Invalidation', 'Turn an idea into a bounded decision before money and emotion are involved.', 'Intermediate', [
+    'A complete trade box contains thesis, catalyst, trigger, entry zone, invalidation, targets, time stop, size, maximum dollar loss, and execution/liquidity risks.',
+    'Size follows the loss budget divided by planned risk per share, then is reduced for spread, slippage, gaps, halts, and correlated exposure.',
+    'Risk lab: build and stress-test a complete trade box, then compare fixed-dollar, fixed-fractional, and oversized exposure paths.'
   ], 'A system wins 40% at 2R and loses 60% at 1R. Expectancy is?', { A: '-0.2R', B: '0R', C: '+0.2R', D: '+1.4R' }, 'C', '0.40×2 minus 0.60×1 equals +0.20R before costs.'),
   L(7, 2, 'Portfolio Risk, Diversification, and Drawdown', 'Measure covariance, concentration, beta, tracking error, and stress loss.', 'Advanced', [
     'Portfolio variance depends on weights, individual variance, and covariance. Ten tickers with one factor can be one concentrated bet.',
@@ -97,10 +101,10 @@ const SEED_LESSONS = [
     'Statistics lab: separate train, validation, and untouched test periods and report confidence, turnover, and drawdown.'
   ], 'What does walk-forward testing approximate?', { A: 'Using future data', B: 'Sequential fitting and out-of-sample evaluation', C: 'Removing losses', D: 'Guaranteed significance' }, 'B', 'It preserves time order and tests on observations not used in the immediately preceding fit.'),
 
-  L(9, 1, 'Options Payoffs and No-Arbitrage Foundations', 'Analyze calls, puts, parity, moneyness, and expiration payoffs.', 'Advanced', [
-    'Calls grant a right to buy and puts a right to sell at the strike; buyers pay premium and sellers accept contingent obligations.',
-    'Intrinsic and time value differ. Put-call parity links European options, stock, strike, rates, and dividends under no-arbitrage.',
-    'Options lab: draw payoffs for a long call, long put, covered call, and vertical spread with break-even and maximum loss.'
+  L(9, 1, 'Options Strategies: Protection, Direction, and Premium', 'Compare major options structures, including put-based premium strategies, by payoff and risk.', 'Advanced', [
+    'The builder covers long calls and puts, covered calls, cash-secured puts, protective puts, collars, debit and credit verticals, iron condors, straddles, strangles, calendars, diagonals, butterflies, and ratio spreads.',
+    'Selling puts or other premium can produce cash credits, but it is not passive or guaranteed income: assignment, gap, volatility, liquidity, and tail losses remain.',
+    'Options lab: choose a structure for a thesis, draw its payoff, and identify break-even, maximum loss, assignment risk, volatility exposure, and exit rules.'
   ], 'A $50-strike call expires with stock at $57. Intrinsic value?', { A: '$0', B: '$5', C: '$7', D: '$57' }, 'C', 'Call intrinsic value is max(stock minus strike, zero).'),
   L(9, 2, 'Greeks, Implied Volatility, and Volatility Surfaces', 'Explain nonlinear option sensitivities and volatility pricing.', 'Advanced', [
     'Delta measures underlying sensitivity, gamma delta curvature, theta time decay, vega implied-volatility sensitivity, and rho rate sensitivity.',
@@ -108,26 +112,26 @@ const SEED_LESSONS = [
     'Options lab: compare strikes and expirations and explain skew using event risk, crash demand, supply, and leverage.'
   ], 'Why can a short-dated at-the-money option have high gamma?', { A: 'Delta changes rapidly with small moves', B: 'It has no theta', C: 'Its strike changes', D: 'It owns shares' }, 'A', 'Near strike and expiration, small moves materially change exercise probability and delta.'),
 
-  L(10, 1, 'Short Selling, Borrow, and Squeeze Mechanics', 'Study borrow constraints and feedback loops without assuming a squeeze.', 'Advanced', [
-    'Short sellers borrow, sell, and later repurchase shares; risks include unbounded price loss, fees, recalls, dividends, and forced liquidation.',
-    'Price increases can pressure risk limits, covering adds demand, options hedging can amplify flow, and thin liquidity magnifies orders.',
-    'Microstructure lab: separate short interest, days-to-cover, borrow cost, float, options, and volume; no one metric proves a squeeze.'
-  ], 'Why can rising price accelerate a squeeze?', { A: 'Losses can force covering into limited liquidity', B: 'Shorts become dividends', C: 'Asks are canceled', D: 'Float becomes infinite' }, 'A', 'Risk limits can turn covering into new demand, creating feedback.'),
-  L(10, 2, 'Capital Structure, Dilution, and Financing Risk', 'Map senior claims and quantify changes to per-share economics.', 'Advanced', [
-    'Enterprise value spans equity, debt, cash, preferred claims, and obligations; common equity is residual.',
-    'ATM programs, warrants, convertibles, options, and acquisitions can increase diluted shares even if financing creates value.',
-    'Filings lab: reconcile basic and diluted shares, authorized shares, warrants, convertibles, and financing documents.'
-  ], 'New shares are issued while total equity value is unchanged. Per-share value?', { A: 'Rises', B: 'Falls', C: 'Becomes debt', D: 'Cannot change' }, 'B', 'The same aggregate value is divided among more shares.'),
+  L(10, 1, 'Day Trading: Read the Tape and the Auction', 'Interpret time-and-sales, spread, pace, size, and replenishment without pretending the tape predicts the future.', 'Advanced', [
+    'Read executed prints relative to bid and ask, pace, spread, price progress, and replenishment. Absorption, exhaustion, failed breaks, sweeps, and hidden liquidity are inferences—not certainties.',
+    'Displayed orders can cancel or be spoofed; odd lots, dark pools, aggregation, and latency hide intent. Never place deceptive orders, and never trade from one tape clue alone.',
+    'Tape lab: replay executed trades around a level, classify aggression versus response, and decide enter, wait, reduce, or exit under a predeclared risk box.'
+  ], 'Fast green prints appear but price cannot advance. What is the disciplined reading?', { A: 'Guaranteed rally', B: 'Possible offer absorption or buyer exhaustion', C: 'Proof of no sellers', D: 'Ignore resistance' }, 'B', 'Aggressive buying without price progress can reveal supply; confirmation is still required.'),
+  L(10, 2, 'Spotting Rally Conditions Before Confirmation', 'Build a probabilistic rally checklist from confluence and market response.', 'Advanced', [
+    'Stronger conditions combine a meaningful level, catalyst/context, elevated relative volume, offers lifting, bids replenishing, a controlled spread, and acceptance above the trigger.',
+    'The response matters: buying that produces no progress can signal absorption; a breakout that immediately trades back inside can be a liquidity sweep or failed break.',
+    'Replay lab: pause before each bar and choose a hypothesis, trigger, invalidation, size, and no-trade condition; then grade process rather than outcome.'
+  ], 'Which best supports a rally hypothesis?', { A: 'One flashing bid', B: 'Executed buying plus price acceptance and supportive liquidity', C: 'A rumor alone', D: 'One green print' }, 'B', 'Confluence and follow-through improve evidence, but no checklist guarantees a rally.'),
 
   L(11, 1, 'Filings, Catalysts, and Evidence Hierarchy', 'Build research from primary documents and timestamped evidence.', 'Intermediate', [
     'Primary evidence includes filings, audited statements, court records, exchange notices, and company releases.',
     'A catalyst must connect an event to cash flow, risk, positioning, or constraints and may already be priced.',
     'Research lab: table each claim, source, publication time, uncertainty, and thesis variable affected.'
   ], 'Strongest source for registered offering terms?', { A: 'Anonymous repost', B: 'Filed prospectus', C: 'Price chart', D: 'Uncited thread' }, 'B', 'The filed prospectus is the primary legal disclosure.'),
-  L(11, 2, 'Thesis Construction, Scenarios, and Falsification', 'Write a testable causal argument with explicit failure conditions.', 'Advanced', [
-    'A thesis defines variant perception, mechanism, milestones, valuation, horizon, and risk. A story without falsification is not analysis.',
-    'Bear, base, and bull cases require internally consistent operations and valuation, not just different price targets.',
-    'Research lab: write the strongest rebuttal and observable disconfirming evidence before reviewing price action.'
+  L(11, 2, 'Grandmaster-Obi Alert Analysis and Falsification', 'Audit timestamped alerts with executable data, full-path risk, and no hindsight.', 'Advanced', [
+    'Freeze the information available at the alert: timestamp, stated entry and target, spread, liquidity, float, catalyst, market regime, and feasible size. An alert is not proof that every follower received the same fill.',
+    'Measure maximum favorable and adverse excursion, time to each, slippage, halt exposure, target/invalidation rules, and open or closed status. Report every qualifying alert, not only winners.',
+    'Research lab: reconstruct a Grandmaster-Obi alert from timestamped evidence, write the strongest rebuttal, and grade decision quality separately from the later peak.'
   ], 'What makes a thesis falsifiable?', { A: 'It explains everything', B: 'It states evidence that would show it wrong', C: 'It sounds confident', D: 'It has a target' }, 'B', 'Falsification specifies conditions requiring rejection or revision.'),
 
   L(12, 1, 'Behavioral Bias and Decision Architecture', 'Design processes that reduce confirmation, anchoring, loss, and recency bias.', 'Intermediate', [

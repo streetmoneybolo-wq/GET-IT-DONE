@@ -16,6 +16,8 @@ const connectMigration = require('./connect-migration');
 const { createAcademyAccess } = require('./academy-access');
 const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
+const { academyCurriculumScript } = require('./academy-activity-curriculum');
+const { createAcademyProgress } = require('./academy-progress');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -428,7 +430,7 @@ function sendHtml(response, status, body) {
     ? body.replace('new ResizeObserver(resize).observe(canvas);', '')
     : body;
   const safeBody = typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
-    ? injectAcademyCurriculum(strippedBody)
+    ? strippedBody.replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}</body></html>`)
     : strippedBody;
   response.writeHead(status, {
     'content-type': 'text/html; charset=utf-8',
@@ -697,7 +699,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null,
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -906,6 +908,31 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if ((request.method === 'GET' || request.method === 'POST') && path === '/academy-activity/progress') {
+      if (!academyOAuth || !academyProgress || !academyProgress.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      try {
+        if (request.method === 'GET') {
+          sendJson(response, 200, { ok: true, progress: await academyProgress.read(session.userId) });
+          return;
+        }
+        if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+        const body = await readRequestBody(request, 4096);
+        if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+        let input;
+        try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+        const lessonExists = SEED_LESSONS.some((lesson) => lesson.moduleId === Number(input.moduleId) && lesson.lessonId === Number(input.lessonId));
+        if (!lessonExists) { sendJson(response, 400, { ok: false, error: 'invalid_lesson' }); return; }
+        sendJson(response, 200, { ok: true, progress: await academyProgress.save(session.userId, input) });
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        logger(invalid ? 'warn' : 'error', 'academy_progress_request_failed', { error });
+        sendJson(response, invalid ? 400 : 503, { ok: false, error: invalid ? 'invalid_progress' : 'temporary_unavailable' });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && /^\/academy-activity\/data\/(options|earnings)$/.test(path)) {
       if (!academyOAuth || !academyDataBridge) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -962,6 +989,7 @@ async function main() {
     redirectUri: config.discordRedirectUri, academyAccess });
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
+  const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -994,7 +1022,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge
+    academyAccess, academyOAuth, academyDataBridge, academyProgress
   });
   let shuttingDown = false;
 

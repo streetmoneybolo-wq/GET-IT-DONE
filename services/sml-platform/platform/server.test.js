@@ -67,8 +67,11 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /toggle\.textContent='Lessons \('/);
     assert.match(html, /Choose an Academy lesson/);
       assert.match(html, /Market Structure and Price Discovery/);
+      assert.match(html, /Chart Patterns, Candlesticks, and Market Structure/);
       assert.match(html, /Backtesting, Inference, and Research Bias/);
       assert.match(html, /Greeks, Implied Volatility, and Volatility Surfaces/);
+      assert.match(html, /Day Trading: Read the Tape and the Auction/);
+      assert.match(html, /Grandmaster-Obi Alert Analysis and Falsification/);
       assert.match(html, /Capstone: Investment Committee Defense/);
     assert.match(html, /speechSynthesis/);
     assert.match(html, /ANALYST DASHBOARD/);
@@ -89,6 +92,27 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1/);
     assert.match(response.headers.get('content-security-policy'), /frame-src https:\/\/stockmarketloop\.com/);
     assert.doesNotMatch(html, /new ResizeObserver\(resize\)\.observe\(canvas\)/);
+    assert.match(html, /simulation-progress/);
+    assert.match(html, /academy-activity\/progress/);
+    assert.match(html, /Cash-secured put/);
+  });
+});
+
+test('Academy Activity stores simulation progress only for an authenticated Discord user', async () => {
+  const calls = [];
+  const academyProgress = {
+    configured: true,
+    read: async (userId) => { calls.push(['read', userId]); return [{ moduleId: 10, lessonId: 1, score: 80, completed: true }]; },
+    save: async (userId, input) => { calls.push(['save', userId, input]); return { ...input, completed: input.score >= 70 }; }
+  };
+  const academyOAuth = { verifySession: (authorization) => authorization === 'Bearer academy-session' ? { ok: true, userId: '123456789012345678' } : { ok: false, status: 401, code: 'authorization_required' } };
+  await withServer({ academyOAuth, academyProgress }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/progress`)).status, 401);
+    const read = await fetch(`${base}/academy-activity/progress`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(read.status, 200);
+    const save = await fetch(`${base}/academy-activity/progress`, { method: 'POST', headers: { authorization: 'Bearer academy-session', 'content-type': 'application/json' }, body: JSON.stringify({ moduleId: 10, lessonId: 1, score: 80 }) });
+    assert.equal(save.status, 200);
+    assert.deepEqual(calls.map((entry) => entry.slice(0, 2)), [['read', '123456789012345678'], ['save', '123456789012345678']]);
   });
 });
 
