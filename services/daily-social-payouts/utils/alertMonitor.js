@@ -135,7 +135,13 @@ export async function backfillAlertHistory(client, perChannelLimit = 100) {
         hydratedIds.add(message.id);
       }
     }
-    const rows = await channel.messages.fetch({ limit: Math.max(1, Math.min(100, Number(perChannelLimit) || 100)) });
+    const rows = await channel.messages.fetch({
+      limit: Math.max(1, Math.min(100, Number(perChannelLimit) || 100)),
+    }).catch((error) => {
+      console.warn(`Skipping alert history backfill for channel ${channelId}: ${error?.message || error}`);
+      return null;
+    });
+    if (!rows) continue;
     const ordered = [...rows.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
     for (const message of ordered) {
       if (message.author?.bot && message.author?.id === client.user?.id) continue;
