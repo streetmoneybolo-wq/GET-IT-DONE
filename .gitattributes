@@ -1,1 +1,5 @@
 mu-plugins/000-sml-clean-urls.php text eol=lf
+# deployed byte-for-byte (server md5 is the deploy guard) - never let git rewrite line endings
+plugins/sml-optimized-home-v2/sml-optimized-home.php -text
+plugins/sml-profile-engine/includes/modules/modules-core.php -text
+plugins/sml-members-v0513-brand-media-broker-bridge/stockmarketloop-members.php -text

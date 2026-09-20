@@ -33,7 +33,8 @@ add_filter('registration_errors', 'sml_members_registration_errors', 10, 3);
 add_filter('authenticate', 'sml_members_block_unverified_login', 30, 3);
 add_filter('show_admin_bar', 'sml_members_admin_bar_for_members');
 add_action('wp_footer', 'sml_members_trending_ticker_tape', 5);
-add_action('wp_footer', 'sml_members_notification_bell');
+// LOOP-KICK is the supported messaging surface. Do not inject the retired
+// fixed-position legacy Inbox widget into public or member pages.
 add_action('wp_footer', 'sml_members_global_profile_widget');
 add_action('wp_footer', 'sml_members_activity_heartbeat');
 add_action('wp_footer', 'sml_members_loop_bucks_modal');
