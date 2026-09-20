@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Subscribe Button
  * Description: One real Subscribe button on every Loop Channel, live stream and uploaded video. First click subscribes (the button then offers "Get Notifications"); a second click turns notifications on and the button goes gold; hovering a gold button flashes "Unsubscribe" in red. The choice is stored per viewer per creator. Subscribing uses the site's real follow store (sml_following / sml_followers — the same one Creator Studio counts), and bell subscribers get a LOOP-KICK when that creator goes live or publishes a video. 2026-09-19.
- * Version: 1.0.0
+ * Version: 1.2.0
  * Author: StockMarketLoop
  *
  * OWNER SPEC (2026-09-19): Subscribe -> Get Notifications -> SUBSCRIBED (gold, animated);
@@ -12,7 +12,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_CSUB_VERSION = '1.0.0';
+const SML_CSUB_VERSION = '1.2.0';
 
 /* ------------------------------------------------------------ state */
 
@@ -178,7 +178,21 @@ function sml_csub_js() {
   'use strict';
   var C=window.smlCsub;if(!C||!C.creator)return;
   var LABEL=['Subscribe','Get Notifications','SUBSCRIBED'];
-  var level=Number(C.level)||0,busy=false,mounts=[];
+  var level=Number(C.level)||0,busy=false,mounts=[],count=Number(C.followers)||0,counts=[];
+
+  /* ---- subscriber count: shown under the creator's name (live + video pages) and in the channel's stat ---- */
+  function fmtN(n){n=Number(n)||0;if(n>=1e6)return (n/1e6).toFixed(n>=1e7?0:1).replace(/\.0$/,'')+'M';if(n>=1e4)return Math.round(n/1e3)+'K';if(n>=1e3)return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K';return String(n);}
+  function countText(){return count===1?'1 subscriber':fmtN(count)+' subscribers';}
+  function paintCount(pulse){
+    counts=counts.filter(function(el){return document.documentElement.contains(el);});   /* the page may have re-rendered */
+    counts.forEach(function(el){
+      var next=el.dataset.kind==='stat'?fmtN(count):countText();
+      if(el.textContent===next)return;
+      el.textContent=next;
+      if(pulse&&!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches)){el.classList.remove('sml-csub-bump');void el.offsetWidth;el.classList.add('sml-csub-bump');}
+    });
+  }
+  function addCount(el,kind){if(counts.indexOf(el)<0){el.dataset.kind=kind;counts.push(el);}paintCount(false);}
 
   function btn(where){
     var b=document.createElement('button');
@@ -205,12 +219,14 @@ function sml_csub_js() {
     e.preventDefault();e.stopPropagation();
     if(!C.loggedIn){location.href=C.loginUrl;return;}
     if(busy)return;
-    var next=level===0?1:(level===1?2:0),was=level;
-    level=next;busy=true;paint();                       /* optimistic: the click always feels instant */
+    var next=level===0?1:(level===1?2:0),was=level,wasCount=count;
+    level=next;busy=true;
+    if(was===0&&next>=1)count+=1;else if(next===0&&was>=1)count=Math.max(0,count-1);
+    paint();paintCount(true);                           /* optimistic: the click always feels instant */
     fetch(C.rest+'set',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-WP-Nonce':C.nonce},body:JSON.stringify({creator:C.creator,level:next})})
       .then(function(r){return r.json().then(function(j){if(!r.ok||j.code)throw new Error(j.message||'Could not save that.');return j;});})
-      .then(function(j){level=Number(j.level)||0;busy=false;paint();})
-      .catch(function(){level=was;busy=false;paint();flash('Could not save that — try again.');});
+      .then(function(j){level=Number(j.level)||0;busy=false;if(typeof j.followers==='number')count=j.followers;paint();paintCount(false);})
+      .catch(function(){level=was;count=wasCount;busy=false;paint();paintCount(false);flash('Could not save that — try again.');});
   }
   function flash(msg){
     var t=document.createElement('div');t.className='sml-csub-toast';t.textContent=msg;document.body.appendChild(t);
@@ -230,25 +246,36 @@ function sml_csub_js() {
     +'.sml-csub.is-on.is-hover .sml-csub-t::after{content:"Unsubscribe";font-size:13px}'
     +'.sml-csub.is-on.is-hover .sml-csub-ico{display:none}'
     +'.sml-csub-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2147483646;padding:10px 16px;border-radius:10px;background:#1b0f14;border:1px solid #ff4d6a;color:#ffc2cc;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif}'
-    +'@media (prefers-reduced-motion:reduce){.sml-csub.is-on,.sml-csub.is-on.is-hover{animation:none}.sml-csub.is-on.is-hover{background:#2a0d12}}'
+    +'.sml-csub-count{display:block;margin-top:2px;font-size:12px;font-weight:600;color:#8fa3b5;font-variant-numeric:tabular-nums}'
+    +'.sml-csub-bump{animation:smlCsubBump .55s ease-out}'
+    +'@keyframes smlCsubBump{0%{transform:scale(1);color:#ffd76a}40%{transform:scale(1.14);color:#ffd76a}100%{transform:scale(1)}}'
+    +'@media (prefers-reduced-motion:reduce){.sml-csub.is-on,.sml-csub.is-on.is-hover{animation:none}.sml-csub.is-on.is-hover{background:#2a0d12}.sml-csub-bump{animation:none}}'
     +'@media(max-width:640px){.sml-csub{height:34px;padding:0 13px;font-size:12px}}';
   var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);
+
+  /* "N subscribers" under the creator's name — its own line, beside the page's own meta text so the
+     page can rewrite that text without wiping this */
+  function countLine(){
+    var id=document.querySelector('.slw-about-h .slw-about-id');
+    if(id&&!id.querySelector('.sml-csub-count')){var s=document.createElement('span');s.className='fo sml-csub-count';s.setAttribute('aria-live','polite');id.appendChild(s);addCount(s,'text');}
+  }
 
   /* where the button goes on each page */
   function place(){
     if(C.where==='live'){
-      var row=document.querySelector('.slw-ctl-r');
-      if(row&&!row.querySelector('[data-sml-csub]')){
-        var term=row.querySelector('.slw-btn-term');if(term)term.remove();   /* owner: replace the terminal button */
-        row.insertBefore(btn('live-bar'),row.firstChild);
-      }
+      var row=document.querySelector('.slw-ctl-r');                          /* owner 2026-09-19: no Subscribe in the player bar, only in the description */
+      if(row){var term=row.querySelector('.slw-btn-term');if(term)term.remove();var bar=row.querySelector('[data-sml-csub]');if(bar)bar.remove();}
       var old=document.querySelector('#slw-sub');                            /* the placeholder next to the creator name */
       if(old&&!old.dataset.smlCsubDone){old.dataset.smlCsubDone='1';old.style.display='none';
         if(old.parentNode&&!old.parentNode.querySelector('[data-sml-csub="live-who"]'))old.parentNode.insertBefore(btn('live-who'),old);}
+      countLine();
     } else if(C.where==='watch'){
-      var like=document.querySelector('#vw-like');
-      if(like&&like.parentNode&&!like.parentNode.querySelector('[data-sml-csub]'))like.parentNode.insertBefore(btn('watch'),like);
+      var prof=document.querySelector('#vw-profile');                        /* creator block under the video, not the player bar */
+      if(prof&&prof.parentNode&&!prof.parentNode.querySelector('[data-sml-csub]'))prof.parentNode.insertBefore(btn('watch'),prof);
+      countLine();
     } else if(C.where==='channel'){
+      var stat=document.querySelector('#ch-subscribers,#ch-followers');
+      if(stat)addCount(stat,'stat');
       var sub=document.querySelector('#ch-sub');
       if(sub&&!sub.dataset.smlCsubDone){sub.dataset.smlCsubDone='1';sub.style.display='none';
         var bell=document.querySelector('#ch-bell');if(bell)bell.style.display='none';   /* this button owns notifications now */
@@ -257,12 +284,19 @@ function sml_csub_js() {
   }
   place();
   if('MutationObserver' in window){var t=0;new MutationObserver(function(){if(t)return;t=setTimeout(function(){t=0;place();},150);}).observe(document.documentElement,{childList:true,subtree:true});}
-  /* another tab may have changed it */
-  document.addEventListener('visibilitychange',function(){
-    if(document.hidden||!C.loggedIn||busy)return;
+  /* the page HTML can be cached for signed-out visitors, so read the current count and state once on load,
+     and again when the tab comes back (another tab may have changed it) */
+  function refresh(){
+    if(busy)return;
     fetch(C.rest+'state?creator='+C.creator,{credentials:'same-origin',cache:'no-store',headers:{'X-WP-Nonce':C.nonce}})
-      .then(function(r){return r.json();}).then(function(j){if(typeof j.level==='number'&&j.level!==level&&!busy){level=j.level;paint();}}).catch(function(){});
-  });
+      .then(function(r){return r.json();}).then(function(j){
+        if(busy)return;
+        if(typeof j.followers==='number'&&j.followers!==count){count=j.followers;paintCount(false);}
+        if(C.loggedIn&&typeof j.level==='number'&&j.level!==level){level=j.level;paint();}
+      }).catch(function(){});
+  }
+  refresh();
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh();});
 })();
 JS;
 }
@@ -281,6 +315,7 @@ add_action( 'init', function () {
 		'name'     => $c['name'],
 		'where'    => $c['where'],
 		'level'    => sml_csub_level( $viewer, $c['id'] ),
+		'followers' => sml_csub_followers( $c['id'] ),
 		'loggedIn' => (bool) $viewer,
 		'rest'     => esc_url_raw( rest_url( 'sml-csub/v1/' ) ),
 		'nonce'    => wp_create_nonce( 'wp_rest' ),
