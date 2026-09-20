@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Creator Subdomains
  * Description: Paid vanity subdomains. A creator picks name.stockmarketloop.com for their Loop Channel, their Loop Letters homepage, their profile and each group they own; each costs $9.99 once (Stripe Checkout) and is permanent. Visiting the subdomain opens that page. Cloudflare sends every *.stockmarketloop.com request to /sub/{name}/ on this site, which resolves it. 2026-09-19.
- * Version: 1.1.0
+ * Version: 1.2.2
  * Author: StockMarketLoop
  *
  * OWNER RULES (2026-09-19): one subdomain per page, picked once, permanent; paid per subdomain
@@ -22,7 +22,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-const SML_SUB_VERSION  = '1.1.0';
+const SML_SUB_VERSION  = '1.2.2';
 const SML_SUB_DB       = 1;
 const SML_SUB_PRICE    = 999;        /* cents, USD */
 const SML_SUB_HOLD_MIN = 31;         /* Stripe Checkout sessions last at least 30 minutes */
@@ -701,3 +701,104 @@ add_action( 'init', function () {
 		return substr_replace( $html, '<script>window.smlSubChip=' . wp_json_encode( $cfg ) . ';</script><script>' . sml_sub_chip_js() . '</script>', $pos, 0 );
 	} );
 }, 1 );
+
+/* ------------------------------------------------------------------ Stripe webhook */
+/**
+ * Instant activation. Stripe calls POST /wp-json/sml-sub/v1/stripe-webhook the moment a Checkout
+ * Session completes or expires, so a buyer who closes the tab is still activated at once (the
+ * return page and the 10-minute cron remain as backups).
+ *
+ * The webhook is only a TRIGGER. Its signature is verified, then sml_sub_settle_session() re-reads
+ * the session from Stripe (paid, $9.99 USD, our hold id) — nothing in the pushed payload is trusted
+ * for money or activation. This Stripe account also carries WooCommerce and the platform API's
+ * events, so every event that is not one of our subdomain checkouts is acknowledged and ignored.
+ *
+ * The signing secret lives in option sml_sub_webhook_secret (never printed). With no secret
+ * configured the route refuses everything (fail closed).
+ */
+const SML_SUB_WH_TOLERANCE = 300;   /* seconds a signature stays valid (replay window) */
+
+/**
+ * The signing secret, read straight from the database. get_option() goes through the persistent
+ * object cache, and a web worker that had already cached "this option does not exist" kept
+ * answering 503 after the secret was created from the command line. A direct read is always fresh
+ * (and one indexed lookup per webhook is nothing).
+ */
+function sml_sub_wh_secret() {
+	global $wpdb;
+	$secret = (string) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1", 'sml_sub_webhook_secret' ) );
+	/* tests inject a throwaway secret here so they never have to touch the real setting */
+	return (string) apply_filters( 'sml_sub_webhook_secret', $secret );
+}
+
+/** Stripe's scheme: header "t=UNIX,v1=HMAC[,v1=...]"; HMAC-SHA256 over "t.rawBody" keyed with the secret. */
+function sml_sub_wh_verify( $raw, $header, $secret, $now = null ) {
+	$now = null === $now ? time() : (int) $now;
+	if ( '' === (string) $secret || '' === (string) $header ) { return false; }
+	$t = 0; $sigs = array();
+	foreach ( explode( ',', (string) $header ) as $part ) {
+		$kv = explode( '=', trim( $part ), 2 );
+		if ( 2 !== count( $kv ) ) { continue; }
+		if ( 't' === $kv[0] ) { $t = (int) $kv[1]; } elseif ( 'v1' === $kv[0] ) { $sigs[] = $kv[1]; }
+	}
+	if ( $t <= 0 || ! $sigs || abs( $now - $t ) > SML_SUB_WH_TOLERANCE ) { return false; }
+	$expected = hash_hmac( 'sha256', $t . '.' . $raw, (string) $secret );
+	foreach ( $sigs as $s ) { if ( hash_equals( $expected, $s ) ) { return true; } }
+	return false;
+}
+
+function sml_sub_wh_log( $type, $session, $result ) {
+	$log = get_option( 'sml_sub_webhook_log', array() );
+	$log = is_array( $log ) ? $log : array();
+	array_unshift( $log, array( 'at' => gmdate( 'c' ), 'type' => (string) $type, 'session' => substr( (string) $session, 0, 24 ), 'result' => (string) $result ) );
+	update_option( 'sml_sub_webhook_log', array_slice( $log, 0, 20 ), false );
+}
+
+/** Handle one verified event. Returns array( http_status, result ). */
+function sml_sub_wh_handle( array $event ) {
+	global $wpdb;
+	$type = (string) ( $event['type'] ?? '' );
+	if ( ! in_array( $type, array( 'checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.expired' ), true ) ) {
+		return array( 200, 'ignored:type' );
+	}
+	$obj = (array) ( $event['data']['object'] ?? array() );
+	$sid = (string) ( $obj['id'] ?? '' );
+	if ( '' === $sid || 0 !== strpos( $sid, 'cs_' ) ) { return array( 200, 'ignored:no-session' ); }
+	/* ours = carries our hold id, or is a session we opened */
+	$ours = ! empty( $obj['metadata']['sml_sub_id'] )
+		|| (bool) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . sml_sub_t() . ' WHERE session_id = %s', $sid ) );
+	if ( ! $ours ) { return array( 200, 'ignored:not-ours' ); }
+
+	$state = sml_sub_settle_session( $sid );
+	if ( is_wp_error( $state ) ) {
+		$code = $state->get_error_code();
+		/* network / provider trouble: ask Stripe to retry. Anything else is permanent: record it, stop retries. */
+		if ( in_array( $code, array( 'sml_sub_stripe_net', 'sml_sub_stripe_bad', 'sml_sub_stripe_off' ), true ) ) { return array( 503, 'retry:' . $code ); }
+		return array( 200, 'error:' . $code );
+	}
+	return array( 200, (string) $state );
+}
+
+add_action( 'rest_api_init', function () {
+	register_rest_route( 'sml-sub/v1', '/stripe-webhook', array(
+		'methods'             => 'POST',
+		'permission_callback' => '__return_true',   /* authenticated by Stripe's signature below, not by a login */
+		'callback'            => function ( WP_REST_Request $r ) {
+			$secret = sml_sub_wh_secret();
+			if ( '' === $secret ) { return new WP_Error( 'sml_sub_wh_off', 'Webhook not configured.', array( 'status' => 503 ) ); }
+			$raw = (string) $r->get_body();
+			if ( ! sml_sub_wh_verify( $raw, (string) $r->get_header( 'stripe-signature' ), $secret ) ) {
+				return new WP_Error( 'sml_sub_wh_sig', 'Invalid signature.', array( 'status' => 400 ) );
+			}
+			$event = json_decode( $raw, true );
+			if ( ! is_array( $event ) ) { return new WP_Error( 'sml_sub_wh_json', 'Bad payload.', array( 'status' => 400 ) ); }
+			list( $status, $result ) = sml_sub_wh_handle( $event );
+			$obj = (array) ( $event['data']['object'] ?? array() );
+			if ( 0 !== strpos( $result, 'ignored:' ) ) { sml_sub_wh_log( $event['type'] ?? '', $obj['id'] ?? '', $result ); }
+			if ( $status >= 500 ) { return new WP_Error( 'sml_sub_wh_retry', $result, array( 'status' => $status ) ); }
+			$res = rest_ensure_response( array( 'received' => true, 'result' => $result ) );
+			$res->header( 'Cache-Control', 'no-store' );
+			return $res;
+		},
+	) );
+} );
