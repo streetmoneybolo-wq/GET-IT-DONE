@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Academy Data Bridge
  * Description: Private, signed Academy access to existing Options and Earnings REST data. It never exposes those feeds to site visitors.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires PHP: 7.4
  */
 
@@ -17,15 +17,91 @@ defined( 'ABSPATH' ) || exit;
 
 if ( ! function_exists( 'sml_academy_bridge_secret' ) ) {
 	function sml_academy_bridge_secret() {
-		return defined( 'SML_ACADEMY_BRIDGE_SECRET' ) ? trim( (string) SML_ACADEMY_BRIDGE_SECRET ) : '';
+		if ( defined( 'SML_ACADEMY_BRIDGE_SECRET' ) ) {
+			return trim( (string) SML_ACADEMY_BRIDGE_SECRET );
+		}
+		$stored = (string) get_option( 'sml_academy_bridge_secret', '' );
+		if ( '' === $stored || ! function_exists( 'openssl_decrypt' ) ) {
+			return '';
+		}
+		$raw    = base64_decode( $stored, true );
+		$method = 'aes-256-cbc';
+		$iv_len = openssl_cipher_iv_length( $method );
+		if ( false === $raw || strlen( $raw ) <= $iv_len ) {
+			return '';
+		}
+		return (string) openssl_decrypt( substr( $raw, $iv_len ), $method, hash( 'sha256', wp_salt( 'auth' ), true ), OPENSSL_RAW_DATA, substr( $raw, 0, $iv_len ) );
 	}
 }
 
 if ( ! function_exists( 'sml_academy_bridge_service_user_id' ) ) {
 	function sml_academy_bridge_service_user_id() {
-		return defined( 'SML_ACADEMY_SERVICE_USER_ID' ) ? absint( SML_ACADEMY_SERVICE_USER_ID ) : 0;
+		return defined( 'SML_ACADEMY_SERVICE_USER_ID' ) ? absint( SML_ACADEMY_SERVICE_USER_ID ) : absint( get_option( 'sml_academy_bridge_service_user_id', 0 ) );
 	}
 }
+
+if ( ! function_exists( 'sml_academy_bridge_encrypt_secret' ) ) {
+	function sml_academy_bridge_encrypt_secret( $secret ) {
+		if ( ! function_exists( 'openssl_encrypt' ) ) {
+			return new WP_Error( 'sml_academy_bridge_crypto', 'OpenSSL is not available on this server.' );
+		}
+		$method = 'aes-256-cbc';
+		$iv     = random_bytes( openssl_cipher_iv_length( $method ) );
+		$value  = openssl_encrypt( $secret, $method, hash( 'sha256', wp_salt( 'auth' ), true ), OPENSSL_RAW_DATA, $iv );
+		return false === $value ? new WP_Error( 'sml_academy_bridge_crypto', 'The secret could not be protected.' ) : base64_encode( $iv . $value );
+	}
+}
+
+if ( ! function_exists( 'sml_academy_bridge_settings_page' ) ) {
+	function sml_academy_bridge_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		if ( isset( $_POST['sml_academy_bridge_save'] ) ) {
+			check_admin_referer( 'sml_academy_bridge_settings' );
+			$service_user = absint( $_POST['sml_academy_bridge_service_user_id'] ?? 0 );
+			$user         = $service_user ? get_user_by( 'id', $service_user ) : false;
+			if ( ! $user || user_can( $user, 'manage_options' ) ) {
+				add_settings_error( 'sml_academy_bridge', 'service_user', 'Choose a non-administrator service user.', 'error' );
+			} else {
+				update_option( 'sml_academy_bridge_service_user_id', $service_user, false );
+				$secret = trim( (string) wp_unslash( $_POST['sml_academy_bridge_new_secret'] ?? '' ) );
+				if ( '' !== $secret ) {
+					if ( strlen( $secret ) < 32 ) {
+						add_settings_error( 'sml_academy_bridge', 'secret', 'The secret must be at least 32 characters.', 'error' );
+					} else {
+						$encrypted = sml_academy_bridge_encrypt_secret( $secret );
+						if ( is_wp_error( $encrypted ) ) {
+							add_settings_error( 'sml_academy_bridge', 'secret', $encrypted->get_error_message(), 'error' );
+						} else {
+							update_option( 'sml_academy_bridge_secret', $encrypted, false );
+						}
+					}
+				}
+				if ( ! get_settings_errors( 'sml_academy_bridge' ) ) {
+					add_settings_error( 'sml_academy_bridge', 'saved', 'Academy bridge settings saved.', 'updated' );
+				}
+			}
+		}
+		$users = array_filter( get_users( array( 'orderby' => 'display_name', 'fields' => array( 'ID', 'display_name', 'user_login' ) ) ), static function( $user ) {
+			return ! user_can( $user, 'manage_options' );
+		} );
+		$current = sml_academy_bridge_service_user_id();
+		?>
+		<div class="wrap"><h1>Academy Data Bridge</h1><?php settings_errors( 'sml_academy_bridge' ); ?>
+		<p>This bridge is private. Render can request data only after Discord Academy-role authorization. The secret is encrypted at rest and is never displayed after saving.</p>
+		<form method="post"><?php wp_nonce_field( 'sml_academy_bridge_settings' ); ?>
+		<table class="form-table" role="presentation"><tbody>
+		<tr><th scope="row"><label for="sml-academy-service-user">Service user</label></th><td><select id="sml-academy-service-user" name="sml_academy_bridge_service_user_id" required><option value="">Select a non-administrator user</option><?php foreach ( $users as $user ) : ?><option value="<?php echo esc_attr( $user->ID ); ?>" <?php selected( $current, $user->ID ); ?>><?php echo esc_html( $user->display_name . ' (' . $user->user_login . ')' ); ?></option><?php endforeach; ?></select><p class="description">Use a dedicated, least-privilege account that can read the existing market endpoints.</p></td></tr>
+		<tr><th scope="row"><label for="sml-academy-secret">Shared secret</label></th><td><input id="sml-academy-secret" name="sml_academy_bridge_new_secret" type="password" class="regular-text" autocomplete="new-password" /><p class="description">Paste the same 32+ character secret saved in Render. Leave blank to keep the current secret.</p></td></tr>
+		</tbody></table><p class="submit"><button type="submit" name="sml_academy_bridge_save" class="button button-primary">Save Academy Bridge</button></p></form></div>
+		<?php
+	}
+}
+
+add_action( 'admin_menu', static function() {
+	add_options_page( 'Academy Data Bridge', 'Academy Data Bridge', 'manage_options', 'sml-academy-data-bridge', 'sml_academy_bridge_settings_page' );
+} );
 
 if ( ! function_exists( 'sml_academy_bridge_authorize' ) ) {
 	function sml_academy_bridge_authorize( WP_REST_Request $request ) {

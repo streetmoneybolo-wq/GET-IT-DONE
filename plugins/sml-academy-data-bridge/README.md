@@ -5,9 +5,11 @@ and Earnings data. It has no public endpoint: every request requires a
 short-lived HMAC signature produced by Render after Discord Academy-role
 authorization.
 
-Before activation, put these constants in `wp-config.php` or the host secret
-manager. Never paste either into a post, WPCode, browser console, git commit,
-or Discord message.
+Preferred setup is `wp-config.php` or a host secret manager. The plugin also
+provides **Settings → Academy Data Bridge** for managed hosting that does not
+allow `wp-config.php` edits; it encrypts the secret at rest with WordPress's
+server-side auth salt and never displays it after saving. Never paste it into a
+post, WPCode, browser console, git commit, or Discord message.
 
 ```php
 define( 'SML_ACADEMY_BRIDGE_SECRET', 'the-same-32-plus-character-secret-as-Render' );
