@@ -4,10 +4,10 @@
 /* Registers only guild-scoped Academy commands. This is intentionally an
  * explicit release step; command registration never runs at server boot. */
 const { COMMAND_DEFINITIONS } = require('../platform/academy/commands');
-const token = String(process.env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim();
-const applicationId = String(process.env.SML_DISCORD_CONNECT_APP_ID || '').trim();
+const token = String(process.env.SML_ACADEMY_BOT_TOKEN || '').trim();
+const applicationId = String(process.env.SML_ACADEMY_APP_ID || '').trim();
 const guildId = String(process.env.SML_ACADEMY_GUILD_ID || '').trim();
-if (!token || !applicationId || !guildId) throw new Error('SML_DISCORD_CONNECT_BOT_TOKEN, SML_DISCORD_CONNECT_APP_ID, and SML_ACADEMY_GUILD_ID are required');
+if (!token || !applicationId || !guildId) throw new Error('SML_ACADEMY_BOT_TOKEN, SML_ACADEMY_APP_ID, and SML_ACADEMY_GUILD_ID are required');
 if (!process.argv.includes('--apply')) {
   console.log(JSON.stringify({ dryRun: true, guildId, commandCount: COMMAND_DEFINITIONS.length, commands: COMMAND_DEFINITIONS.map((x) => x.name) }, null, 2));
   process.exit(0);

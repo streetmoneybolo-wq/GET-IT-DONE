@@ -7,7 +7,8 @@ const { createDiscordInteractions } = require('../discord-interactions');
 const { createAcademyCommands } = require('./commands');
 
 function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
-  if (!config?.academyEnabled || !config?.academyGuildId || !config?.connectBotEnabled) return null;
+  if (!config?.academyEnabled || !config?.academyGuildId ||
+      !config?.academyPublicKey || !config?.academyAppId) return null;
   const academy = createAcademyCommands({
     pool,
     guildId: config.academyGuildId,
@@ -16,7 +17,7 @@ function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
     now
   });
   return createDiscordInteractions({
-    config: { discordConnectPublicKey: config.discordConnectPublicKey, discordConnectAppId: config.discordConnectAppId },
+    config: { discordConnectPublicKey: config.academyPublicKey, discordConnectAppId: config.academyAppId },
     pool,
     academy,
     commands: { handleCommand: async () => ({ response: { type: 4, data: { content: 'This command is not available.', flags: 64 } } }) },

@@ -3,7 +3,7 @@
 
 /* Permission-safe Academy channel setup. It is a dry run by default. `--apply`
  * is deliberately required because it creates a role and changes category ACLs. */
-const token = String(process.env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim();
+const token = String(process.env.SML_ACADEMY_BOT_TOKEN || '').trim();
 const guildId = String(process.env.SML_ACADEMY_GUILD_ID || '').trim();
 const categoryId = String(process.env.SML_ACADEMY_CATEGORY_ID || '').trim();
 const managerRoleId = String(process.env.SML_ACADEMY_MANAGER_ROLE_ID || '').trim();

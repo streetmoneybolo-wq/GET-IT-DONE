@@ -932,15 +932,14 @@ async function main() {
   const alertRouter = createAlertRouter(database.pool);
   const { createDisputeRuntime } = require('./dispute-runtime');
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
-  const { createAcademyInteractions } = require('./academy/runtime');
-  const academyInteractions = disputes.discordInteractions || createAcademyInteractions({ config, pool: database.pool });
+  const connectInteractions = disputes.discordInteractions;
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
   const academyOAuth = createAcademyOAuth({ clientId: config.discordClientId, clientSecret: config.discordClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
-    paypal: !!disputes.paypalClient, connectBot: !!academyInteractions });
+    paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
   const corporate = createCorporateRuntime({ config, pool: database.pool, stripe, logger: log });
   log('info', 'corporate_runtime', { enabled: corporate.enabled, reason: corporate.reason });
@@ -955,7 +954,7 @@ async function main() {
     acceptStripeEvent: disputes.wrapStripeAccept(database.acceptStripeEvent),
     paypalWebhook: disputes.paypalWebhook,
     upgradeChatWebhook: disputes.upgradeChatWebhook,
-    discordInteractions: academyInteractions,
+    discordInteractions: connectInteractions,
     disputeService: disputes.disputeService,
     schemaVersion,
     stripeWebhookSecret: config.stripeWebhookSecret,

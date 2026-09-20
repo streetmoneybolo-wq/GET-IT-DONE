@@ -70,8 +70,35 @@ services:
         sync: false
       - key: SML_UC_WEBHOOK_PATH_TOKEN
         sync: false
-      # --- Making Easy Money Academy (off until explicitly enabled in Render) ---
+
+  # Separate Discord application and process. It shares only the platform
+  # database with Connect; it has its own token, signing key and deploy cycle.
+  - type: web
+    name: making-easy-money-academy
+    runtime: node
+    rootDir: services/sml-platform
+    region: ohio
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run academy
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sml-platform-db
+          property: connectionString
       - key: SML_ACADEMY_ENABLED
+        value: "1"
+      - key: SML_ACADEMY_PUBLIC_KEY
+        sync: false
+      - key: SML_ACADEMY_APP_ID
+        sync: false
+      - key: SML_ACADEMY_BOT_TOKEN
         sync: false
       - key: SML_ACADEMY_GUILD_ID
         sync: false
