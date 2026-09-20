@@ -64,7 +64,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     const html = await response.text();
     assert.match(html, /Making Easy Money Academy/);
     assert.match(html, /Live interactive candlestick chart/);
-    assert.match(html, /\/academy-activity\/market\?symbol=/);
+    assert.match(html, /let bars=\[/);
+    assert.match(html, /location\.assign/);
     assert.doesNotMatch(html, /<iframe/);
   });
 });
