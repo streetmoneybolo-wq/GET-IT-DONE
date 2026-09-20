@@ -64,8 +64,12 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     const html = await response.text();
     assert.match(html, /Making Easy Money Academy/);
     assert.match(html, /Live interactive candlestick chart/);
-    assert.match(html, /Start Class/);
-    assert.match(html, /How price discovery works/);
+    assert.match(html, /toggle\.textContent='Lessons \('/);
+    assert.match(html, /Choose an Academy lesson/);
+    assert.match(html, /What a Market Does/);
+    assert.match(html, /Reading Candlestick Bodies/);
+    assert.match(html, /Support and Resistance as Zones/);
+    assert.match(html, /Risk, Reward, and Position Size/);
     assert.match(html, /speechSynthesis/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
