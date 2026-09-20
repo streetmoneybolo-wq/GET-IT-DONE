@@ -13,6 +13,7 @@ const newsWebhook = require('./news-webhook');
 const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
 const connectMigration = require('./connect-migration');
+const { createAcademyAccess } = require('./academy-access');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -663,6 +664,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
+  academyAccess = null,
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -824,6 +826,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path === '/academy-activity/access') {
+      if (!academyAccess) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      try {
+        const result = await academyAccess.verify(request.headers.authorization);
+        sendJson(response, result.status || 200, result.ok ? { ok: true } : { ok: false, error: result.code });
+      } catch (error) {
+        logger('error', 'academy_access_check_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+      }
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -860,6 +874,7 @@ async function main() {
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
   const { createAcademyInteractions } = require('./academy/runtime');
   const academyInteractions = disputes.discordInteractions || createAcademyInteractions({ config, pool: database.pool });
+  const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!academyInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -891,6 +906,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES
+    , academyAccess
   });
   let shuttingDown = false;
 

@@ -95,7 +95,10 @@ function getConfig(env = process.env) {
     academyManagerRoleId: String(env.SML_ACADEMY_MANAGER_ROLE_ID || '').trim(),
     // Making Easy Money's existing Monarch role. Render may override this for
     // a future Academy installation without changing the codebase.
-    academyMonarchRoleId: String(env.SML_ACADEMY_MONARCH_ROLE_ID || '1260433215189946420').trim()
+    academyMonarchRoleId: String(env.SML_ACADEMY_MONARCH_ROLE_ID || '1260433215189946420').trim(),
+    discordClientId: String(env.DISCORD_CLIENT_ID || '').trim(),
+    discordClientSecret: String(env.DISCORD_CLIENT_SECRET || '').trim(),
+    discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim()
   });
 }
 
