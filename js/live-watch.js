@@ -735,9 +735,12 @@
       item = { kind: isStream ? 'live' : 'vod', id: (isStream ? 'live-' : 'replay-') + HANDLE, title: title, src: P.hlsUrl, url: location.href, creator: HANDLE, handle: HANDLE, time: (!isStream && P.video) ? (P.video.currentTime || 0) : 0 };
     } else if (P.mode === 'yt' && P.ytId) {
       item = { kind: 'live', id: 'yt-' + P.ytId, title: title, ytId: P.ytId, url: location.href, creator: HANDLE, handle: HANDLE, time: 0 };
+    } else if (scheduledLive && scheduledLive.scheduled_at && Date.parse(scheduledLive.scheduled_at)) {
+      /* Scheduled / starting soon: hand the Loop-Kick deck the thumbnail and start time so it shows the countdown */
+      item = { kind: 'live', id: 'sched-' + (scheduledLive.id || HANDLE), title: title, poster: /^https:\/\//i.test(String(scheduledLive.thumbnail_url || '')) ? String(scheduledLive.thumbnail_url) : '', url: location.href, creator: HANDLE, handle: HANDLE, status: 'scheduled', startsAt: scheduledLive.scheduled_at, time: 0 };
     }
     if (!item) {
-      /* Nothing is playing yet (scheduled/starting soon, offline, multi-screen): there is nothing to hand over, but the
+      /* Nothing is playing yet (offline, multi-screen): there is nothing to hand over, but the
          button must not go dead. Open the Loop-Kick phone and say why the stream is not in it (owner report 2026-09-19). */
       var mb = document.getElementById('slw-mini');
       if (mb) {
