@@ -680,7 +680,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null,
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -882,6 +882,22 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && /^\/academy-activity\/data\/(options|earnings)$/.test(path)) {
+      if (!academyOAuth || !academyDataBridge) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const kind = path.endsWith('/options') ? 'options' : 'earnings';
+      const symbol = new URL(request.url || '/', 'http://localhost').searchParams.get('symbol');
+      try {
+        const result = await academyDataBridge.get(kind, symbol);
+        sendJson(response, result.status || (result.ok ? 200 : 503), result.ok ? { ok: true, data: result.data } : { ok: false, error: result.code });
+      } catch (error) {
+        logger(error instanceof TypeError ? 'warn' : 'error', 'academy_data_request_failed', { kind, error });
+        sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'academy_data_unavailable' });
+      }
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -921,6 +937,8 @@ async function main() {
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
   const academyOAuth = createAcademyOAuth({ clientId: config.discordClientId, clientSecret: config.discordClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
+  const { createAcademyDataBridge } = require('./academy-data-bridge');
+  const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!academyInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -952,7 +970,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth
+    academyAccess, academyOAuth, academyDataBridge
   });
   let shuttingDown = false;
 
