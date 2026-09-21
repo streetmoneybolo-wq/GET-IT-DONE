@@ -96,6 +96,7 @@ function getConfig(env = process.env) {
     academyEnabled: String(env.SML_ACADEMY_ENABLED || '').trim() === '1',
     academyPublicKey: String(env.SML_ACADEMY_PUBLIC_KEY || '').trim(),
     academyAppId: String(env.SML_ACADEMY_APP_ID || '').trim(),
+    academyClientSecret: String(env.SML_ACADEMY_CLIENT_SECRET || '').trim(),
     academyBotToken: String(env.SML_ACADEMY_BOT_TOKEN || '').trim(),
     academyGuildId: String(env.SML_ACADEMY_GUILD_ID || '').trim(),
     academyCategoryId: String(env.SML_ACADEMY_CATEGORY_ID || '').trim(),

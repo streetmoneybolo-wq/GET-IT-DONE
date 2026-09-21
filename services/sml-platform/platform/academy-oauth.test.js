@@ -16,3 +16,21 @@ test('Academy OAuth exchanges a code then issues only an opaque short-lived sess
   time += 16 * 60_000; assert.equal(oauth.verifySession(`Bearer ${result.sessionToken}`).code, 'authorization_required');
 });
 test('Academy OAuth fails closed when not configured', () => { const oauth = createAcademyOAuth(); assert.equal(oauth.start().status, 503); assert.equal(oauth.verifySession('Bearer anything').status, 401); });
+
+test('Academy OAuth exchanges a Discord Activity code without a popup redirect', async () => {
+  const requests = [];
+  const oauth = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async (value) => { assert.equal(value, 'Bearer activity-token'); return { ok: true, userId: '77' }; } },
+    randomBytes: () => Buffer.alloc(32, 9),
+    fetchImpl: async (url, options) => { requests.push({ url, options }); return response(200, { access_token: 'activity-token' }); }
+  });
+  assert.equal(oauth.activityConfigured, true);
+  const result = await oauth.completeActivity({ code: 'embedded-code' });
+  assert.equal(result.ok, true);
+  assert.equal(result.accessToken, 'activity-token');
+  assert.equal(oauth.verifySession(`Bearer ${result.sessionToken}`).userId, '77');
+  assert.equal(requests[0].url, 'https://discord.com/api/v10/oauth2/token');
+  assert.match(requests[0].options.body, /code=embedded-code/);
+  assert.doesNotMatch(requests[0].options.body, /redirect_uri/);
+});

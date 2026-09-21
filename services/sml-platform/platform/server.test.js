@@ -55,7 +55,7 @@ test('all other routes are a no-store 404', async () => {
 });
 
 test('Academy Activity serves the read-only live chart host for Discord', async () => {
-  await withServer({}, async (base) => {
+  await withServer({ academyAppId: '1551336038713139370' }, async (base) => {
     const response = await fetch(`${base}/academy-activity/`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/html/);
@@ -82,8 +82,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /LEVEL 2 DEPTH/);
     assert.match(html, /academy-depth-row/);
     assert.match(html, /Unlock Academy Tools/);
-    assert.match(html, /academy-activity\/authorize/);
-    assert.match(html, /sml-academy-authorized/);
+    assert.match(html, /DiscordSDK/);
+    assert.match(html, /academy-activity\/token/);
+    assert.match(html, /1551336038713139370/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
@@ -98,6 +99,30 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     assert.doesNotThrow(() => new Function(scripts.at(-1)[1]));
   });
+});
+
+test('Academy Activity serves the official embedded SDK and exchanges Activity authorization codes', async () => {
+  const calls = [];
+  const academyOAuth = {
+    completeActivity: async ({ code }) => {
+      calls.push(code);
+      return code === 'discord-code'
+        ? { ok: true, accessToken: 'discord-access', sessionToken: 'academy-session' }
+        : { ok: false, status: 401, code: 'authorization_failed' };
+    }
+  };
+  await withServer({ academyOAuth }, async (base) => {
+    const sdk = await fetch(`${base}/academy-activity/sdk/index.mjs`);
+    assert.equal(sdk.status, 200);
+    assert.match(sdk.headers.get('content-type'), /^text\/javascript/);
+    assert.match(await sdk.text(), /DiscordSDK/);
+    const token = await fetch(`${base}/academy-activity/token`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: 'discord-code' })
+    });
+    assert.equal(token.status, 200);
+    assert.deepEqual(await token.json(), { ok: true, access_token: 'discord-access', sessionToken: 'academy-session' });
+  });
+  assert.deepEqual(calls, ['discord-code']);
 });
 
 test('Academy Activity stores simulation progress only for an authenticated Discord user', async () => {

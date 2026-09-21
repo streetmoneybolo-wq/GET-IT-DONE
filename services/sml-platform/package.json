@@ -25,6 +25,7 @@
     "academy:setup": "node scripts/setup-academy-channels.js"
   },
   "dependencies": {
+    "@discord/embedded-app-sdk": "^2.4.0",
     "pg": "^8.13.1",
     "sanitize-html": "^2.17.7",
     "stripe": "^17.7.0"

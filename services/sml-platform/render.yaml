@@ -72,6 +72,16 @@ services:
         sync: false
       - key: SML_DISPUTE_BOT_APP_ID
         sync: false
+      - key: SML_ACADEMY_APP_ID
+        value: "1551336038713139370"
+      - key: SML_ACADEMY_CLIENT_SECRET
+        sync: false
+      - key: SML_ACADEMY_GUILD_ID
+        sync: false
+      - key: SML_ACADEMY_MANAGER_ROLE_ID
+        sync: false
+      - key: SML_ACADEMY_MONARCH_ROLE_ID
+        value: "1260433215189946420"
       - key: SML_DISPUTE_BOT_TOKEN
         sync: false
       - key: SML_CONNECT_REVIEW_URL_SECRET
@@ -105,6 +115,8 @@ services:
       - key: SML_ACADEMY_PUBLIC_KEY
         sync: false
       - key: SML_ACADEMY_APP_ID
+        value: "1551336038713139370"
+      - key: SML_ACADEMY_CLIENT_SECRET
         sync: false
       - key: SML_ACADEMY_BOT_TOKEN
         sync: false
