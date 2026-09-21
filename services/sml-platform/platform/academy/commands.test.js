@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createAcademyCommands } = require('./commands');
+const { ACADEMY_HUBS, createAcademyCommands } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
 
 const GUILD = '938894329076940820';
@@ -47,9 +47,28 @@ test('Academy controls remain private to the configured Monarch preview role', a
   const denied = await academy.handle({ type: 2, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { name: 'academy' } });
   assert.match(denied.response.data.content, /not available/);
   const allowed = await academy.handle(interaction('academy'));
-  assert.match(allowed.response.data.content, /Launch the Academy activity/);
+  assert.match(allowed.response.data.content, /dedicated Academy channels/);
   assert.match(allowed.response.data.content, /101 interactive/);
   assert.match(allowed.response.data.content, /28 modules/);
+});
+
+test('all dedicated channel launchers work for members and remain ephemeral', async () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true, now: () => Date.UTC(2026, 8, 21) });
+  assert.equal(ACADEMY_HUBS.length, 12);
+  assert.equal(new Set(ACADEMY_HUBS.map((hub) => hub.command)).size, 12);
+  for (const hub of ACADEMY_HUBS) {
+    const input = { type: 3, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { custom_id: `academy:hub:${hub.command}` } };
+    const result = await academy.handle(input);
+    assert.equal(result.response.data.flags, 64, `${hub.command} response must be private`);
+    assert.notEqual(result.response.data.content, 'This Academy control is no longer valid.');
+    assert.notEqual(result.response.data.content, 'The Academy is not available in this server yet.');
+  }
+});
+
+test('member cannot use restricted slash command just because channel launchers are enabled', async () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const denied = await academy.handle({ type: 2, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { name: 'progress' } });
+  assert.match(denied.response.data.content, /not available/);
 });
 
 test('Academy publishes a complete 101-lesson college-level curriculum', () => {

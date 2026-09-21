@@ -3,6 +3,26 @@
 const { SEED_LESSONS } = require('./curriculum');
 const EPHEMERAL = 64;
 const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'discipline', 'replay', 'leaderboard']);
+const ACADEMY_HUBS = Object.freeze([
+  { command: 'academy', channel: '🎓｜academy-home', title: '🎓 Academy Command Center', button: 'Open My Academy', color: 0x18d36e, topic: 'Your private Making Easy Money Academy dashboard: 101 college-level lessons across 28 modules, tools, milestones, and the live-chart lab. Click the launcher; only you can see your response.' },
+  { command: 'enroll', channel: '🚀｜enroll-now', title: '🚀 Start Your Academy Journey', button: 'Enroll Me', color: 0x00c2ff, topic: 'Create your private Academy student profile and begin Module 1. Enrollment details are visible only to you.' },
+  { command: 'lesson', channel: '📚｜academy-lessons-live-chart', title: '📚 Lesson Launchpad + Live Chart', button: 'Open My Next Lesson', color: 0x5865f2, topic: 'Work through 101 interactive lessons across 28 modules, simulations, quizzes, and the live-chart lab. Your lesson view and results stay private.' },
+  { command: 'progress', channel: '📈｜my-progress', title: '📈 My Private Progress', button: 'Show My Progress', color: 0x2ecc71, topic: 'See your completed lessons, completion percentage, XP, learning streak, and next lesson. Only you can see your progress card.' },
+  { command: 'badges', channel: '🏅｜my-badges', title: '🏅 My Badge Vault', button: 'Show My Badges', color: 0xf1c40f, topic: 'Open your private badge vault and see the learning milestones you have earned.' },
+  { command: 'glossary', channel: '📖｜trading-glossary', title: '📖 Trading Glossary', button: 'Open Today\'s Term', color: 0x9b59b6, topic: 'Learn market structure, charting, risk, options, valuation, and execution vocabulary with clear educational definitions.' },
+  { command: 'flashcard', channel: '🧠｜flashcard-lab', title: '🧠 Flashcard Lab', button: 'Draw My Flashcard', color: 0xe67e22, topic: 'Test recall with a private Academy flashcard, reveal the explanation, and jump into the full lesson.' },
+  { command: 'quiz', channel: '📝｜quiz-arena', title: '📝 Private Quiz Arena', button: 'Start My Quiz', color: 0xe74c3c, topic: 'Run a private knowledge check drawn from your Academy curriculum. Your questions and answers are visible only to you.' },
+  { command: 'challenge', channel: '📊｜daily-chart-challenge', title: '📊 Daily Chart Challenge', button: 'Open Today\'s Challenge', color: 0x1abc9c, topic: 'Practice context, triggers, invalidation, position risk, and no-trade decisions with a fresh private chart challenge.' },
+  { command: 'discipline', channel: '🎧｜daily-discipline-audio', title: '🎧 Daily Discipline Desk', button: 'Open Today\'s Discipline', color: 0x3498db, topic: 'Build patience, risk control, trading psychology, journaling, and pre-trade discipline through a private daily coaching prompt.' },
+  { command: 'replay', channel: '⏪｜market-replay-lab', title: '⏪ Market Replay Lab', button: 'Launch My Replay', color: 0x34495e, topic: 'Pause the market, declare a hypothesis and risk plan, then compare your reasoning with an educational replay lesson.' },
+  { command: 'leaderboard', channel: '🏆｜learning-leaderboard', title: '🏆 Learning Leaderboard', button: 'View Milestones', color: 0xf39c12, topic: 'View anonymized Academy learning milestones based on completed education, XP, and study streaks—not trading profits.' }
+]);
+const HUB_OPTIONS = Object.freeze({
+  glossary: [{ name: 'term', value: 'vwap' }],
+  flashcard: [{ name: 'topic', value: 'risk' }],
+  quiz: [{ name: 'module', value: 1 }],
+  replay: [{ name: 'scenario', value: 'tape' }]
+});
 
 // Phase 1 is an owner-only preview. Keeping this permission on the command
 // definitions (rather than setting it once in Discord) means a later command
@@ -89,6 +109,10 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
   }
   function allowed(interaction) {
     if (!enabled || String(interaction?.guild_id || '') !== String(guildId || '')) return false;
+    // Component interactions can only be produced from an Academy message the
+    // member is permitted to see. This opens the private launchers and their
+    // follow-up controls to students without exposing the slash-command suite.
+    if (interaction?.__academyHub || (interaction?.type === 3 && String(interaction?.data?.custom_id || '').startsWith('academy:'))) return true;
     const roleIds = Array.isArray(interaction?.member?.roles) ? interaction.member.roles.map(String) : [];
     const permissions = BigInt(String(interaction?.member?.permissions || '0'));
     const administrator = (permissions & 8n) === 8n;
@@ -139,6 +163,16 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     if (!allowed(interaction)) return { response: response('The Academy is not available in this server yet.') };
     if (interaction.type === 3) {
       const parts = String(interaction.data.custom_id || '').split(':');
+      if (parts.length === 3 && parts[1] === 'hub' && ACADEMY_COMMANDS.has(parts[2])) {
+        return handle({
+          ...interaction,
+          type: 2,
+          data: { name: parts[2], options: HUB_OPTIONS[parts[2]] || [] },
+          // Preserve the privacy-safe component authorization when dispatching
+          // into the shared slash-command implementation.
+          __academyHub: true
+        });
+      }
       if ((parts.length !== 4 && parts.length !== 5) || !['start','continue','answer','flash'].includes(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3]) || (parts[1] === 'answer' && !/^[A-D]$/.test(parts[4] || ''))) return { response: response('This Academy control is no longer valid.') };
       const lesson = lessonFor(Number(parts[2]), Number(parts[3]));
       if (!lesson) return { response: response('This lesson is not available yet.') };
@@ -165,9 +199,9 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       return { response: response(`Correct. ${lesson.question.explanation}\n\n${completionNote}`, [lessonEmbed(lesson, `**Answer:** ${lesson.question.correct}. ${lesson.question.options[lesson.question.correct]}\n\n**Live practice:** launch the Academy activity in Discord and use the chart controls to inspect candles.`)], controls.length ? [{ type: 1, components: controls }] : []) };
     }
     const name = String(interaction.data.name || '').toLowerCase();
-    if (name === 'academy') return { response: response(`Welcome to Making Easy Money Academy: ${SEED_LESSONS.length} interactive, college-level market lessons across ${new Set(SEED_LESSONS.map((entry) => entry.moduleId)).size} modules. Start with /enroll, then use /lesson module:1 lesson:1. Launch the Academy activity inside Discord for the live chart lab.`, [], [{ type: 1, components: [button('Enroll', 'academy:start:1:1', 1), linkButton('Chart Lab Info', 'https://sml-platform-api.onrender.com/academy-activity/')] }]) };
-    if (name === 'enroll') { const row = await student(interaction); return { response: response(`You are enrolled. Your Academy profile started ${new Date(row.enrolled_at || now()).toISOString().slice(0, 10)}. Use /lesson module:1 lesson:1 to begin.`) }; }
-    if (name === 'lesson') { const moduleId = Number(option(interaction, 'module', 1)); const lessonId = Number(option(interaction, 'lesson', 1)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response(`That lesson does not exist. The Academy currently contains ${SEED_LESSONS.length} lessons across modules 1–${Math.max(...SEED_LESSONS.map((entry) => entry.moduleId))}.`) }; await student(interaction); return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1)] }]) }; }
+    if (name === 'academy') return { response: response(`Welcome to Making Easy Money Academy: ${SEED_LESSONS.length} interactive, college-level market lessons across ${new Set(SEED_LESSONS.map((entry) => entry.moduleId)).size} modules—plus quizzes, flashcards, challenges, private progress, badges, discipline lessons, replays, a glossary, and an anonymized learning leaderboard. Use the dedicated Academy channels; every launcher opens a view only you can see.`, [], [{ type: 1, components: [button('Begin Lesson 1', 'academy:start:1:1', 1), linkButton('Live Chart Lab', 'https://sml-platform-api.onrender.com/academy-activity/')] }]) };
+    if (name === 'enroll') { const row = await student(interaction); return { response: response(`You are enrolled. Your private Academy profile started ${new Date(row.enrolled_at || now()).toISOString().slice(0, 10)}. Open the Lesson Launchpad to begin—no slash command required.`) }; }
+    if (name === 'lesson') { const row = await student(interaction); const moduleId = Number(option(interaction, 'module', row.current_module || 1)); const lessonId = Number(option(interaction, 'lesson', row.current_lesson || 1)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response(`That lesson does not exist. The Academy currently contains ${SEED_LESSONS.length} lessons across modules 1–${Math.max(...SEED_LESSONS.map((entry) => entry.moduleId))}.`) }; return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1)] }]) }; }
     if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); const completed = counts.rows[0]?.completed || 0; const percent = Math.round((completed / SEED_LESSONS.length) * 100); return { response: response(`Private progress: ${completed}/${SEED_LESSONS.length} lessons (${percent}%) · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak · Next: Module ${row.current_module || 1}, Lesson ${row.current_lesson || 1}.`) }; }
     if (name === 'badges') { const row = await student(interaction); const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]); const earned = badges.rows.map((entry) => entry.badge_key === 'first_lesson' ? 'First Lesson' : text(entry.badge_key, 40)); return { response: response(earned.length ? `Your badges: ${earned.join(' · ')}` : 'No badges yet. Complete your first lesson to earn First Lesson.') }; }
     if (name === 'glossary') {
@@ -224,4 +258,4 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
   return Object.freeze({ canHandle, handle, definitions: COMMAND_DEFINITIONS });
 }
 
-module.exports = { ACADEMY_COMMANDS, COMMAND_DEFINITIONS, createAcademyCommands };
+module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, createAcademyCommands };

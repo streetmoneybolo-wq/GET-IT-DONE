@@ -22,7 +22,8 @@
     "ai:enqueue": "node scripts/ai-orchestrator.js enqueue",
     "ai:status": "node scripts/ai-orchestrator.js status",
     "academy:register": "node scripts/register-academy-commands.js",
-    "academy:setup": "node scripts/setup-academy-channels.js"
+    "academy:setup": "node scripts/setup-academy-channels.js",
+    "academy:hubs": "node scripts/publish-academy-hubs.js"
   },
   "dependencies": {
     "@discord/embedded-app-sdk": "^2.4.0",
