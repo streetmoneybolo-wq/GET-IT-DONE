@@ -13,14 +13,14 @@ const COMMAND_DEFINITIONS = [
   { type: 1, name: 'academy', description: 'Open Making Easy Money Academy', contexts: [0] },
   { type: 1, name: 'enroll', description: 'Enroll in Making Easy Money Academy', contexts: [0] },
   { type: 1, name: 'lesson', description: 'Open an Academy lesson', contexts: [0], options: [
-    { type: 4, name: 'module', description: 'Module number', required: false, min_value: 1, max_value: 13 },
+    { type: 4, name: 'module', description: 'Module number', required: false, min_value: 1, max_value: 28 },
     { type: 4, name: 'lesson', description: 'Lesson number', required: false, min_value: 1, max_value: 99 }
   ] },
   { type: 1, name: 'progress', description: 'View your private Academy progress', contexts: [0] },
   { type: 1, name: 'badges', description: 'View your private Academy badges', contexts: [0] },
   { type: 1, name: 'glossary', description: 'Look up an Academy term', contexts: [0], options: [{ type: 3, name: 'term', description: 'Term to define', required: true, max_length: 80 }] },
   { type: 1, name: 'flashcard', description: 'Review an Academy flashcard', contexts: [0], options: [{ type: 3, name: 'topic', description: 'Topic to review', required: true, max_length: 80 }] },
-  { type: 1, name: 'quiz', description: 'Start an Academy quiz', contexts: [0], options: [{ type: 4, name: 'module', description: 'Module number', required: true, min_value: 1, max_value: 13 }] },
+  { type: 1, name: 'quiz', description: 'Start an Academy quiz', contexts: [0], options: [{ type: 4, name: 'module', description: 'Module number', required: true, min_value: 1, max_value: 28 }] },
   { type: 1, name: 'challenge', description: 'Open today’s Academy chart challenge', contexts: [0] },
   { type: 1, name: 'discipline', description: 'Open today’s Academy discipline lesson', contexts: [0] },
   { type: 1, name: 'replay', description: 'Open an educational market replay', contexts: [0], options: [{ type: 3, name: 'scenario', description: 'Scenario name', required: true, max_length: 80 }] },
@@ -35,6 +35,46 @@ function userId(interaction) { return String(interaction?.member?.user?.id || in
 function button(label, id, style = 2) { return { type: 2, style, label, custom_id: id }; }
 function linkButton(label, url) { return { type: 2, style: 5, label, url }; }
 function lessonFor(moduleId, lessonId) { return SEED_LESSONS.find((lesson) => lesson.moduleId === moduleId && lesson.lessonId === lessonId) || null; }
+function normalized(value) { return text(value, 160).toLowerCase().replace(/[^a-z0-9$%+.-]+/g, ' ').trim(); }
+function lessonsForModule(moduleId) { return SEED_LESSONS.filter((lesson) => lesson.moduleId === Number(moduleId)); }
+function lessonSearch(value, lessons = SEED_LESSONS) {
+  const query = normalized(value);
+  if (!query) return null;
+  const terms = query.split(/\s+/).filter(Boolean);
+  return lessons.map((lesson) => {
+    const haystack = normalized([lesson.title, lesson.description, ...lesson.steps].join(' '));
+    const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+    return { lesson, score, titleMatch: normalized(lesson.title).includes(query) };
+  }).sort((left, right) => Number(right.titleMatch) - Number(left.titleMatch) || right.score - left.score || left.lesson.moduleId - right.lesson.moduleId)[0]?.lesson || null;
+}
+function dailyLesson(scope, now = Date.now) {
+  const day = Math.floor(Number(now()) / 86_400_000);
+  const candidates = scope.length ? scope : SEED_LESSONS;
+  return candidates[((day % candidates.length) + candidates.length) % candidates.length];
+}
+
+const GLOSSARY = Object.freeze({
+  ask: 'The lowest displayed price at which a seller is currently offering shares.',
+  bid: 'The highest displayed price at which a buyer is currently offering to buy shares.',
+  spread: 'The difference between the best displayed bid and ask; one component of trading cost and liquidity.',
+  vwap: 'Volume-weighted average price: cumulative traded value divided by cumulative volume for the measured session or window.',
+  liquidity: 'The ability to trade size promptly with limited price impact and reasonable execution cost.',
+  slippage: 'The difference between the expected decision price and the actual execution price.',
+  catalyst: 'A new event or information item that can change cash-flow expectations, risk, positioning, or constraints.',
+  volatility: 'The dispersion of returns; it measures variability, not direction and not loss by itself.',
+  delta: 'An option estimate of price sensitivity to a small underlying move, holding other modeled inputs constant.',
+  gamma: 'The rate at which an option delta changes as the underlying price changes.',
+  theta: 'An option estimate of time-value sensitivity as expiration approaches, holding other modeled inputs constant.',
+  vega: 'An option estimate of price sensitivity to a change in implied volatility.',
+  float: 'Shares generally available for public trading after accounting for restricted or closely held stock.',
+  'short squeeze': 'Forced or risk-driven short covering that can amplify an advance when liquidity and positioning are constrained.',
+  support: 'A price area where demand previously absorbed supply; it is a hypothesis to test, not a guaranteed floor.',
+  resistance: 'A price area where supply previously absorbed demand; it is a hypothesis to test, not a guaranteed ceiling.',
+  invalidation: 'Predeclared evidence or price behavior that proves a trade thesis no longer deserves capital.',
+  expectancy: 'Average outcome per trade: win probability times average win minus loss probability times average loss, before or after stated costs.',
+  drawdown: 'The decline from an equity or portfolio peak to a later trough.',
+  absorption: 'Aggressive orders transact repeatedly without proportional price progress, suggesting resting or replenishing liquidity.'
+});
 function nextLessonFor(lesson) {
   const ordered = SEED_LESSONS.slice().sort((left, right) => left.moduleId - right.moduleId || left.lessonId - right.lessonId);
   const index = ordered.findIndex((entry) => entry.moduleId === lesson.moduleId && entry.lessonId === lesson.lessonId);
@@ -99,10 +139,13 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     if (!allowed(interaction)) return { response: response('The Academy is not available in this server yet.') };
     if (interaction.type === 3) {
       const parts = String(interaction.data.custom_id || '').split(':');
-      if ((parts.length !== 4 && parts.length !== 5) || !['start','continue','answer'].includes(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3]) || (parts[1] === 'answer' && !/^[A-D]$/.test(parts[4] || ''))) return { response: response('This Academy control is no longer valid.') };
+      if ((parts.length !== 4 && parts.length !== 5) || !['start','continue','answer','flash'].includes(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3]) || (parts[1] === 'answer' && !/^[A-D]$/.test(parts[4] || ''))) return { response: response('This Academy control is no longer valid.') };
       const lesson = lessonFor(Number(parts[2]), Number(parts[3]));
       if (!lesson) return { response: response('This lesson is not available yet.') };
       const row = await student(interaction);
+      if (parts[1] === 'flash') {
+        return { response: response('', [lessonEmbed(lesson, `**Answer**\n${lesson.description}\n\n**Key principle**\n${lesson.steps[0]}\n\n**Apply it**\n${lesson.steps[2]}`)], [{ type: 1, components: [button('Start Full Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+      }
       if (parts[1] === 'start') {
         await startLesson(row, lesson);
         return { response: response('', [lessonEmbed(lesson, lesson.steps[0])], [{ type: 1, components: [button('Continue', `academy:continue:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
@@ -125,10 +168,58 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     if (name === 'academy') return { response: response(`Welcome to Making Easy Money Academy: ${SEED_LESSONS.length} interactive, college-level market lessons across ${new Set(SEED_LESSONS.map((entry) => entry.moduleId)).size} modules. Start with /enroll, then use /lesson module:1 lesson:1. Launch the Academy activity inside Discord for the live chart lab.`, [], [{ type: 1, components: [button('Enroll', 'academy:start:1:1', 1), linkButton('Chart Lab Info', 'https://sml-platform-api.onrender.com/academy-activity/')] }]) };
     if (name === 'enroll') { const row = await student(interaction); return { response: response(`You are enrolled. Your Academy profile started ${new Date(row.enrolled_at || now()).toISOString().slice(0, 10)}. Use /lesson module:1 lesson:1 to begin.`) }; }
     if (name === 'lesson') { const moduleId = Number(option(interaction, 'module', 1)); const lessonId = Number(option(interaction, 'lesson', 1)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response(`That lesson does not exist. The Academy currently contains ${SEED_LESSONS.length} lessons across modules 1–${Math.max(...SEED_LESSONS.map((entry) => entry.moduleId))}.`) }; await student(interaction); return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1)] }]) }; }
-    if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); return { response: response(`Private progress: ${counts.rows[0]?.completed || 0} completed lessons · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak.`) }; }
+    if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); const completed = counts.rows[0]?.completed || 0; const percent = Math.round((completed / SEED_LESSONS.length) * 100); return { response: response(`Private progress: ${completed}/${SEED_LESSONS.length} lessons (${percent}%) · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak · Next: Module ${row.current_module || 1}, Lesson ${row.current_lesson || 1}.`) }; }
     if (name === 'badges') { const row = await student(interaction); const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]); const earned = badges.rows.map((entry) => entry.badge_key === 'first_lesson' ? 'First Lesson' : text(entry.badge_key, 40)); return { response: response(earned.length ? `Your badges: ${earned.join(' · ')}` : 'No badges yet. Complete your first lesson to earn First Lesson.') }; }
-    if (name === 'glossary') return { response: response(`Glossary lookup for “${text(option(interaction, 'term'))}” is being added with the approved Module 1–3 content pack.`) };
-    return { response: response(`${name} is registered for the Academy roadmap and will unlock after its manager-approved content is published.`) };
+    if (name === 'glossary') {
+      const term = normalized(option(interaction, 'term'));
+      const exact = GLOSSARY[term];
+      const key = exact ? term : Object.keys(GLOSSARY).find((entry) => entry.includes(term) || term.includes(entry));
+      if (key) return { response: response(`**${key.replace(/\b\w/g, (letter) => letter.toUpperCase())}** — ${GLOSSARY[key]}\n\nEducational definition; verify how a broker, exchange, or filing uses the term in context.`) };
+      const match = lessonSearch(term);
+      return { response: response(match ? `No exact glossary card yet. Best curriculum match: **Module ${match.moduleId}, Lesson ${match.lessonId} — ${match.title}**\n${match.description}` : `No Academy match was found for “${text(term)}”. Try a specific market, chart, risk, options, or execution term.`) };
+    }
+    if (name === 'flashcard') {
+      const topic = option(interaction, 'topic');
+      const lesson = lessonSearch(topic);
+      if (!lesson) return { response: response(`No flashcard matched “${text(topic)}”. Try a lesson title or a specific topic such as VWAP, options, tape reading, risk, or valuation.`) };
+      return { response: response(`**Flashcard · ${lesson.title}**\n\nBefore revealing the answer, explain this in your own words:\n${lesson.question.prompt}`, [], [{ type: 1, components: [button('Reveal Answer', `academy:flash:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+    }
+    if (name === 'quiz') {
+      const moduleId = Number(option(interaction, 'module'));
+      const candidates = lessonsForModule(moduleId);
+      if (!candidates.length) return { response: response(`Module ${moduleId} does not exist. Choose a module from 1 to 28.`) };
+      const seed = [...userId(interaction)].reduce((total, digit) => total + Number(digit || 0), Math.floor(Number(now()) / 86_400_000));
+      const lesson = candidates[seed % candidates.length];
+      await student(interaction);
+      return { response: response(`**Module ${moduleId} Knowledge Check**\n${lesson.question.prompt}`, [lessonEmbed(lesson, 'Choose the strongest evidence-based answer. Your result is private.')], [{ type: 1, components: Object.entries(lesson.question.options).map(([key, label]) => button(`${key}. ${label}`.slice(0, 80), `academy:answer:${lesson.moduleId}:${lesson.lessonId}:${key}`, 2)) }]) };
+    }
+    if (name === 'challenge') {
+      const lesson = dailyLesson(SEED_LESSONS.filter((entry) => /chart|tape|replay|technical|momentum|pattern|risk/i.test(`${entry.title} ${entry.description}`)), now);
+      await student(interaction);
+      return { response: response(`**Today’s Chart Challenge**\n${lesson.steps[2]}\n\nWrite your context, trigger, invalidation, maximum risk, and no-trade condition before revealing later bars. Grade the process—not the outcome.`, [lessonEmbed(lesson)], [{ type: 1, components: [button('Study the Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+    }
+    if (name === 'discipline') {
+      const lesson = dailyLesson(SEED_LESSONS.filter((entry) => /discipline|psychology|bias|process|journal|risk|decision/i.test(`${entry.title} ${entry.description}`)), now);
+      await student(interaction);
+      return { response: response(`**Daily Discipline**\n${lesson.steps[0]}\n\nBefore your next decision, write what would invalidate the idea and the maximum loss you accept. If either is missing, the disciplined action is to wait.`, [lessonEmbed(lesson)], [{ type: 1, components: [button('Open Today’s Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+    }
+    if (name === 'replay') {
+      const scenario = option(interaction, 'scenario');
+      const lesson = lessonSearch(scenario, SEED_LESSONS.filter((entry) => /replay|tape|auction|break|squeeze|halt|earnings|options|momentum/i.test(`${entry.title} ${entry.description} ${entry.steps.join(' ')}`)));
+      if (!lesson) return { response: response(`No replay matched “${text(scenario)}”. Try tape, breakout, squeeze, halt, earnings, options, or momentum.`) };
+      const rounds = lesson.simulation?.rounds || [];
+      const preview = rounds.slice(0, 3).map((round, index) => `**Pause ${index + 1}:** ${round.prompt}\n${round.display}`).join('\n\n');
+      return { response: response(`**Educational Replay · ${lesson.title}**\nPause before each decision, declare your hypothesis and risk, then compare with the explanation.`, [lessonEmbed(lesson, preview || lesson.steps.join('\n\n'))], [{ type: 1, components: [button('Open Full Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+    }
+    if (name === 'leaderboard') {
+      const leaders = await pool.query(`SELECT discord_id, xp, streak_days
+        FROM academy_students WHERE guild_id=$1 AND xp > 0
+        ORDER BY xp DESC, streak_days DESC, enrolled_at ASC LIMIT 10`, [guildId]);
+      if (!leaders.rows.length) return { response: response('The learning leaderboard is empty. Complete a lesson correctly to record the first milestone.') };
+      const lines = leaders.rows.map((entry, index) => `${index + 1}. Trader ••••${String(entry.discord_id || '').slice(-4)} — ${Number(entry.xp || 0)} XP · ${Number(entry.streak_days || 0)}-day streak`);
+      return { response: response(`**Academy Learning Milestones**\n${lines.join('\n')}\n\nRanks reward completed learning—not trading profits or financial results.`) };
+    }
+    return { response: response('This Academy command is unavailable.') };
   }
   return Object.freeze({ canHandle, handle, definitions: COMMAND_DEFINITIONS });
 }

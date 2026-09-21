@@ -72,3 +72,46 @@ test('Academy publishes a complete 101-lesson college-level curriculum', () => {
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 22 && entry.lessonId === 2).title, /Duration/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 28 && entry.lessonId === 5).title, /Capstone/i);
 });
+
+test('all 28 modules can be selected from lesson and quiz commands', () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  for (const commandName of ['lesson', 'quiz']) {
+    const definition = academy.definitions.find((entry) => entry.name === commandName);
+    const moduleOption = definition.options.find((entry) => entry.name === 'module');
+    assert.equal(moduleOption.max_value, 28);
+  }
+});
+
+test('every registered Academy command returns working content instead of a roadmap placeholder', async () => {
+  const db = pool();
+  const academy = createAcademyCommands({ pool: db, guildId: GUILD, monarchRoleId: MONARCH, enabled: true, now: () => Date.UTC(2026, 8, 20) });
+  const cases = [
+    interaction('glossary', { options: [{ name: 'term', value: 'VWAP' }] }),
+    interaction('flashcard', { options: [{ name: 'topic', value: 'tape reading' }] }),
+    interaction('quiz', { options: [{ name: 'module', value: 28 }] }),
+    interaction('challenge'),
+    interaction('discipline'),
+    interaction('replay', { options: [{ name: 'scenario', value: 'breakout' }] })
+  ];
+  for (const input of cases) {
+    const result = await academy.handle(input);
+    assert.ok(result.response.data.content.length > 20);
+    assert.doesNotMatch(result.response.data.content, /roadmap|being added|unlock after/i);
+  }
+});
+
+test('flashcards reveal a real lesson and the leaderboard protects Discord identities', async () => {
+  const db = pool();
+  const academy = createAcademyCommands({ pool: db, guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const flash = await academy.handle(component('academy:flash:10:1'));
+  assert.match(flash.response.data.embeds[0].description, /Key principle/);
+
+  db.query = async (sql) => {
+    if (sql.includes('FROM academy_students')) return { rows: [{ discord_id: USER, xp: 800, streak_days: 4 }], rowCount: 1 };
+    return { rows: [], rowCount: 0 };
+  };
+  const leaders = await academy.handle(interaction('leaderboard'));
+  assert.match(leaders.response.data.content, /800 XP/);
+  assert.match(leaders.response.data.content, new RegExp(USER.slice(-4)));
+  assert.doesNotMatch(leaders.response.data.content, new RegExp(USER));
+});
