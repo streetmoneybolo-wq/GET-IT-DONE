@@ -4,6 +4,7 @@
 const API = 'https://discord.com/api/v10';
 const CHANNEL_ID = '938971234346106910';
 const CONNECT_APP_ID = '1537698927401377894';
+let lastCleanupResult = null;
 async function discord(token, path, options = {}) {
   const response = await fetch(`${API}${path}`, {
     ...options,
@@ -31,9 +32,16 @@ async function cleanupConnectActivityMessages({
       await discord(token, `/channels/${CHANNEL_ID}/messages/${message.id}`, { method: 'DELETE' });
     }
   }
-  return { channelId: CHANNEL_ID, applicationId: CONNECT_APP_ID,
+  const result = { channelId: CHANNEL_ID, applicationId: CONNECT_APP_ID,
     matched: matches.length, deleted: apply ? matches.length : 0,
     messageIds: matches.map((message) => message.id) };
+  lastCleanupResult = result;
+  return result;
+}
+
+function getLastCleanupResult() {
+  if (!lastCleanupResult) return null;
+  return { matched: lastCleanupResult.matched, deleted: lastCleanupResult.deleted };
 }
 
 if (require.main === module) {
@@ -42,4 +50,4 @@ if (require.main === module) {
     .catch((error) => { console.error(error.message); process.exit(1); });
 }
 
-module.exports = { cleanupConnectActivityMessages, applicationId };
+module.exports = { cleanupConnectActivityMessages, applicationId, getLastCleanupResult };

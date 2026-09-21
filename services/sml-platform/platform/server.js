@@ -20,7 +20,7 @@ const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { createAcademyProgress } = require('./academy-progress');
-const { cleanupConnectActivityMessages } = require('../scripts/cleanup-connect-activity-messages');
+const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
@@ -1029,6 +1029,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       sendJson(response, 200, {
         ok: true, service: 'sml-platform-api', database: 'connected',
         ...(process.env.RENDER_GIT_COMMIT ? { release: process.env.RENDER_GIT_COMMIT } : {}),
+        ...(getLastCleanupResult() ? { connectActivityCleanup: getLastCleanupResult() } : {}),
         ...(schema !== undefined ? { schema } : {})
       });
     } catch (error) {
