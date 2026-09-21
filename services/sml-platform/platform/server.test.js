@@ -86,6 +86,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.doesNotMatch(html, /DiscordSDK/);
     assert.match(html, /LIVE INTERACTIVE ACADEMY/);
     assert.match(html, /academy-tools-open/);
+    assert.match(html, /body\.academy-tools-open \.lesson\{z-index:2147483600\}/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
