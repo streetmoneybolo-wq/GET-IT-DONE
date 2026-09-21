@@ -89,13 +89,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /Live interactive candlestick chart/);
     assert.match(html, /toggle\.textContent='Lessons \('/);
     assert.match(html, /Choose an Academy lesson/);
-      assert.match(html, /Market Structure and Price Discovery/);
-      assert.match(html, /Chart Patterns, Candlesticks, and Market Structure/);
-      assert.match(html, /Backtesting, Inference, and Research Bias/);
-      assert.match(html, /Greeks, Implied Volatility, and Volatility Surfaces/);
-      assert.match(html, /Day Trading: Read the Tape and the Auction/);
-      assert.match(html, /Grandmaster-Obi Alert Analysis and Falsification/);
-      assert.match(html, /Capstone: Investment Committee Defense/);
+    assert.match(html, /academy-activity\/curriculum/);
     assert.match(html, /speechSynthesis/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
@@ -131,7 +125,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
-    assert.match(html, /location\.assign/);
+    assert.doesNotMatch(html, /location\.assign/);
+    assert.match(html, /history\.replaceState/);
     assert.doesNotMatch(html, /academy-dashboard-frame/);
     assert.doesNotMatch(html, /<iframe/i);
     assert.doesNotMatch(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1/);
@@ -143,10 +138,25 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /setTimeout\(resize,1000\)/);
     assert.match(html, /simulation-progress/);
     assert.match(html, /academy-activity\/progress/);
-    assert.match(html, /Cash-secured put/);
     assert.match(html, /\['Options',\[9,23\]\]/);
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     assert.doesNotThrow(() => new Function(scripts.at(-1)[1]));
+  });
+});
+
+test('Academy curriculum loads separately and is cacheable after first paint', async () => {
+  await withServer({}, async (base) => {
+    const response = await fetch(`${base}/academy-activity/curriculum`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('cache-control'), /max-age=3600/);
+    assert.equal(response.headers.get('content-encoding'), 'gzip');
+    const payload = await response.json();
+    assert.equal(payload.lessons.length, 101);
+    const text = JSON.stringify(payload);
+    assert.match(text, /Market Structure and Price Discovery/);
+    assert.match(text, /Cash-secured put/);
+    assert.match(text, /Grandmaster-Obi Alert Analysis and Falsification/);
+    assert.match(text, /Capstone: Investment Committee Defense/);
   });
 });
 
