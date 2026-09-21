@@ -22,12 +22,14 @@
  * 1.0.3 (2026-09-19): advance pin 433c01a -> f9731e7. CDN-served files that differ: js/live-watch.js (Loop-Kick mini button
  * hands a scheduled stream's thumbnail + start time to the phone's countdown), js/loop-channel.js (subscriber wording,
  * #ch-subscribers) and js/home-feed.js (alt text on feed card images). Everything else in the range is server-deployed PHP.
+ * 1.0.4 (2026-09-21): advance pin f9731e7 -> 26c74cc. Rich alert box card (terminal-alerts.js), Q&A accordion
+ * (terminal-qa.js + terminal-short.js chain-load), group kebab menu position:fixed fix (group-categories.js).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'f9731e7816b1216a33793da4041c30adab18b155' );
+	define( 'SML_CDN_ASSET_REVISION', '26c74cc91b96452cfcb68fdb681d036b71032693' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
