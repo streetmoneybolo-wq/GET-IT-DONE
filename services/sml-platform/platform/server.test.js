@@ -95,6 +95,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.doesNotMatch(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1/);
     assert.doesNotMatch(html, /new ResizeObserver\(resize\)\.observe\(canvas\)/);
     assert.match(html, /const chartObserver=new ResizeObserver\(resize\)/);
+    assert.match(html, /ctx\.setTransform\(\{a:d,b:0,c:0,d:d,e:0,f:0\}\)/);
+    assert.doesNotMatch(html, /ctx\.setTransform\(d,0,0,d,0\)/);
     assert.match(html, /requestAnimationFrame\(resize\)/);
     assert.match(html, /setTimeout\(resize,1000\)/);
     assert.match(html, /simulation-progress/);
