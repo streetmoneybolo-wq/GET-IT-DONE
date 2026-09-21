@@ -1,6 +1,8 @@
 'use strict';
 
 const http = require('node:http');
+const fs = require('node:fs');
+const pathModule = require('node:path');
 const { getConfig } = require('./config');
 const { createDatabase } = require('./database');
 const { log } = require('./logger');
@@ -18,6 +20,7 @@ const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { createAcademyProgress } = require('./academy-progress');
+const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -382,11 +385,12 @@ async function getAcademyDepth(symbol) {
  * read-only through its academy=1 mode. No Discord token, user identity, or
  * market credential is exposed to this page.
  */
-function academyActivityHtml(initialMarket = {}) {
+function academyActivityHtml(initialMarket = {}, options = {}) {
   const initialBars = JSON.stringify(Array.isArray(initialMarket.bars) ? initialMarket.bars.slice(-250) : []);
   const initialSymbol = JSON.stringify(String(initialMarket.symbol || 'SPY'));
   const initialScanner = JSON.stringify(Array.isArray(initialMarket.scanner?.rows) ? initialMarket.scanner.rows.slice(0, 12) : []);
   const initialDepth = JSON.stringify(initialMarket.depth && typeof initialMarket.depth === 'object' ? initialMarket.depth : { bids: [], asks: [] });
+  const academyAppId = JSON.stringify(String(options.appId || ''));
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Making Easy Money Academy — Live Chart Lab</title>
@@ -408,7 +412,7 @@ function academyActivityHtml(initialMarket = {}) {
 (()=>{const side=document.querySelector('.side'),rows=${initialScanner};if(!side)return;const panel=document.createElement('section');panel.className='academy-scanner';const heading=document.createElement('h3');heading.textContent='LIVE MARKET SCANNER';panel.appendChild(heading);if(!rows.length){const empty=document.createElement('div');empty.className='academy-scan-empty';empty.textContent='Scanner data is temporarily unavailable.';panel.appendChild(empty)}else{rows.forEach(row=>{const item=document.createElement('div'),symbol=document.createElement('span'),move=document.createElement('span'),detail=document.createElement('small'),pct=Number(row.changePct)||0;item.className='academy-scan-row';symbol.textContent='$'+String(row.symbol||'').slice(0,10);move.className=pct>=0?'academy-positive':'academy-negative';move.textContent=(pct>=0?'▲ +':'▼ ')+pct.toFixed(2)+'%';detail.textContent='Last $'+Number(row.price||0).toFixed(2)+' · Vol '+Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.volume)||0);item.append(symbol,move,detail);panel.appendChild(item)})}side.insertBefore(panel,side.querySelector('.meta'))})();
 </script><script>
 (()=>{const side=document.querySelector('.side'),depth=${initialDepth};if(!side)return;const style=document.createElement('style');style.textContent='.academy-depth{margin-top:14px;border-top:1px solid #1b3540;padding-top:12px}.academy-depth h3{font-size:.68rem;margin:0 0 7px;color:#86a2b0}.academy-depth-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.academy-depth-col b{display:block;font:800 .58rem ui-monospace;margin-bottom:4px}.academy-depth-bid{color:#52e6ad}.academy-depth-ask{color:#ff778b}.academy-depth-row{display:flex;justify-content:space-between;gap:4px;padding:3px 0;border-bottom:1px solid rgba(42,66,78,.45);font:.58rem ui-monospace}.academy-depth-row span:last-child{color:#9db2bd}.academy-depth-empty{font-size:.7rem;color:#8094a2;padding:5px 0}';document.head.appendChild(style);const panel=document.createElement('section');panel.className='academy-depth';const title=document.createElement('h3');title.textContent='LEVEL 2 DEPTH · LIVE';panel.appendChild(title);const bids=Array.isArray(depth.bids)?depth.bids:[],asks=Array.isArray(depth.asks)?depth.asks:[];if(!bids.length&&!asks.length){const empty=document.createElement('div');empty.className='academy-depth-empty';empty.textContent='Level 2 is temporarily unavailable.';panel.appendChild(empty)}else{const grid=document.createElement('div');grid.className='academy-depth-grid';[['BID',bids,'academy-depth-bid'],['ASK',asks,'academy-depth-ask']].forEach(([name,rows,color])=>{const col=document.createElement('div');col.className='academy-depth-col';const head=document.createElement('b');head.className=color;head.textContent=name;col.appendChild(head);rows.slice(0,5).forEach(row=>{const item=document.createElement('div'),p=document.createElement('span'),s=document.createElement('span');item.className='academy-depth-row';p.textContent=Number(row.price).toFixed(2);s.textContent=Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.size));item.append(p,s);col.appendChild(item)});grid.appendChild(col)});panel.appendChild(grid)}side.insertBefore(panel,side.querySelector('.meta'))})();
-</script></body></html>`.replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'});document.getElementById('status').textContent=response.ok?'LIVE':'RETRY'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};setInterval(keepWarm,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})").replace('</body></html>', `<script>(()=>{const bar=document.querySelector('.bar'),state=document.querySelector('.market-state');if(!bar||!state)return;const unlock=document.createElement('button');unlock.type='button';unlock.id='academy-unlock';unlock.className='lesson-toggle';unlock.textContent='Unlock Academy Tools';bar.insertBefore(unlock,document.getElementById('status'));let session='';const show=(text,good)=>{state.textContent=text;state.style.color=good?'#52e6ad':'#ffbf5d'};const validate=async()=>{const response=await fetch('/academy-activity/session',{headers:{authorization:'Bearer '+session},cache:'no-store'});if(!response.ok)throw new Error('not_authorized');show('OPTIONS + EARNINGS UNLOCKED',true);unlock.textContent='Academy Tools Unlocked';unlock.disabled=true};window.addEventListener('message',async event=>{if(event.origin!==location.origin||!event.data||event.data.type!=='sml-academy-authorized')return;if(event.data.error){show('ACADEMY ROLE REQUIRED',false);return}session=String(event.data.sessionToken||'');try{await validate()}catch(_){show('AUTHORIZATION EXPIRED',false)}});unlock.onclick=()=>{show('CHECKING DISCORD ROLE…',false);const popup=window.open('/academy-activity/authorize','sml-academy-oauth','popup=yes,width=520,height=640');if(!popup){show('ALLOW POPUPS TO UNLOCK',false)}}})()</script></body></html>`).replace('</body></html>', `<script>(()=>{const shell=document.querySelector('.shell');if(!shell)return;const query=new URLSearchParams(location.search),symbol=(query.get('symbol')||'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,10)||'SPY';const frame=document.createElement('iframe');frame.className='academy-dashboard-frame';frame.title='StockMarketLoop Academy Chart Lab';frame.src='https://stockmarketloop.com/analyst-dashboard/?academy=1&symbol='+encodeURIComponent(symbol);frame.allow='fullscreen';frame.referrerPolicy='origin';shell.replaceChildren(frame);const style=document.createElement('style');style.textContent='.shell{display:block!important;min-height:0!important;padding:0!important}.academy-dashboard-frame{display:block;width:100%;height:100%;min-height:720px;border:0;background:#06090d}.chart,.side{display:none!important}@media(max-width:720px){.academy-dashboard-frame{min-height:640px}}';document.head.appendChild(style)})()</script></body></html>`);
+</script></body></html>`.replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'});document.getElementById('status').textContent=response.ok?'LIVE':'RETRY'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};setInterval(keepWarm,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})").replace('</body></html>', `<script type="module">import { DiscordSDK } from '/academy-activity/sdk/index.mjs';const bar=document.querySelector('.bar'),state=document.querySelector('.market-state'),appId=${academyAppId};if(bar&&state){const unlock=document.createElement('button');unlock.type='button';unlock.id='academy-unlock';unlock.className='lesson-toggle';unlock.textContent='Unlock Academy Tools';bar.insertBefore(unlock,document.getElementById('status'));let session='';const show=(text,good)=>{state.textContent=text;state.style.color=good?'#52e6ad':'#ffbf5d'};const validate=async()=>{const response=await fetch('/academy-activity/session',{headers:{authorization:'Bearer '+session},cache:'no-store'});if(!response.ok)throw new Error('not_authorized');show('OPTIONS + EARNINGS UNLOCKED',true);unlock.textContent='Academy Tools Unlocked';unlock.disabled=true};unlock.onclick=async()=>{unlock.disabled=true;show('CONNECTING TO DISCORD…',false);try{if(!appId)throw new Error('configuration_missing');const discordSdk=new DiscordSDK(appId);await discordSdk.ready();const {code}=await discordSdk.commands.authorize({client_id:appId,response_type:'code',state:'',prompt:'none',scope:['identify','guilds.members.read']});if(!code)throw new Error('authorization_denied');const response=await fetch('/academy-activity/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code})});const result=await response.json();if(!response.ok)throw new Error(result.error||'authorization_failed');const auth=await discordSdk.commands.authenticate({access_token:result.access_token});if(!auth)throw new Error('authentication_failed');session=String(result.sessionToken||'');await validate()}catch(error){const code=String(error&&error.message||'');show(code==='academy_role_required'?'ACADEMY ROLE REQUIRED':code==='integration_unconfigured'?'ACADEMY AUTH NEEDS CONFIGURATION':'DISCORD AUTHORIZATION FAILED',false);unlock.disabled=false}}}</script></body></html>`).replace('</body></html>', `<script>(()=>{const shell=document.querySelector('.shell');if(!shell)return;const query=new URLSearchParams(location.search),symbol=(query.get('symbol')||'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,10)||'SPY';const frame=document.createElement('iframe');frame.className='academy-dashboard-frame';frame.title='StockMarketLoop Academy Chart Lab';frame.src='https://stockmarketloop.com/analyst-dashboard/?academy=1&symbol='+encodeURIComponent(symbol);frame.allow='fullscreen';frame.referrerPolicy='origin';shell.replaceChildren(frame);const style=document.createElement('style');style.textContent='.shell{display:block!important;min-height:0!important;padding:0!important}.academy-dashboard-frame{display:block;width:100%;height:100%;min-height:720px;border:0;background:#06090d}.chart,.side{display:none!important}@media(max-width:720px){.academy-dashboard-frame{min-height:640px}}';document.head.appendChild(style)})()</script></body></html>`);
 }
 
 function injectAcademyCurriculum(body) {
@@ -436,10 +440,35 @@ function sendHtml(response, status, body) {
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(safeBody),
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; frame-src https://stockmarketloop.com; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://stockmarketloop.com; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
   response.end(safeBody);
+}
+
+function sendAcademySdkModule(response, requestPath) {
+  const relative = requestPath.slice('/academy-activity/sdk/'.length);
+  if (!/^[A-Za-z0-9_./-]+\.mjs$/.test(relative) || relative.includes('..')) {
+    sendJson(response, 404, { ok: false, error: 'not_found' });
+    return;
+  }
+  const absolute = pathModule.resolve(ACADEMY_SDK_ROOT, relative);
+  if (!absolute.startsWith(`${pathModule.resolve(ACADEMY_SDK_ROOT)}${pathModule.sep}`) && absolute !== pathModule.resolve(ACADEMY_SDK_ROOT, 'index.mjs')) {
+    sendJson(response, 404, { ok: false, error: 'not_found' });
+    return;
+  }
+  try {
+    const payload = fs.readFileSync(absolute);
+    response.writeHead(200, {
+      'content-type': 'text/javascript; charset=utf-8',
+      'content-length': payload.length,
+      'cache-control': 'public, max-age=86400, immutable',
+      'x-content-type-options': 'nosniff'
+    });
+    response.end(payload);
+  } catch (_) {
+    sendJson(response, 404, { ok: false, error: 'not_found' });
+  }
 }
 
 function sendRedirect(response, location) {
@@ -699,7 +728,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyAppId = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -840,6 +869,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path.startsWith('/academy-activity/sdk/')) {
+      sendAcademySdkModule(response, path);
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/') {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = params.get('symbol') || 'SPY';
@@ -851,7 +885,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const activity = market.status === 'fulfilled' ? market.value : { symbol, tf: timeframe, bars: [] };
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
       activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
-      sendHtml(response, 200, academyActivityHtml(activity));
+      sendHtml(response, 200, academyActivityHtml(activity, { appId: academyAppId }));
       return;
     }
 
@@ -905,6 +939,25 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const result = academyOAuth.verifySession(request.headers.authorization);
       sendJson(response, result.ok ? 200 : (result.status || 401), result.ok ? { ok: true } : { ok: false, error: result.code });
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/academy-activity/token') {
+      if (!academyOAuth || typeof academyOAuth.completeActivity !== 'function') { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 4096);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input;
+      try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      try {
+        const result = await academyOAuth.completeActivity({ code: input.code });
+        sendJson(response, result.ok ? 200 : (result.status || 401), result.ok
+          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken }
+          : { ok: false, error: result.code });
+      } catch (error) {
+        logger('error', 'academy_activity_oauth_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+      }
       return;
     }
 
@@ -985,7 +1038,7 @@ async function main() {
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
   const connectInteractions = disputes.discordInteractions;
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
-  const academyOAuth = createAcademyOAuth({ clientId: config.discordClientId, clientSecret: config.discordClientSecret,
+  const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
@@ -1022,7 +1075,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyAppId: config.academyAppId
   });
   let shuttingDown = false;
 
