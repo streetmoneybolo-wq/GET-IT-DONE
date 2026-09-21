@@ -29,6 +29,14 @@ const HUB_OPTIONS = Object.freeze({
 // registration cannot accidentally expose the unfinished Academy.
 const PRIVATE_PREVIEW_PERMISSIONS = '8'; // Discord ADMINISTRATOR bit
 const privatePreview = (command) => ({ ...command, default_member_permissions: PRIVATE_PREVIEW_PERMISSIONS });
+const ENTRY_POINT_COMMAND = Object.freeze({
+  name: 'launch',
+  description: 'Open the interactive Making Easy Money Academy workspace',
+  type: 4,
+  handler: 2,
+  integration_types: [0],
+  contexts: [0]
+});
 const COMMAND_DEFINITIONS = [
   { type: 1, name: 'academy', description: 'Open Making Easy Money Academy', contexts: [0] },
   { type: 1, name: 'enroll', description: 'Enroll in Making Easy Money Academy', contexts: [0] },
@@ -258,4 +266,4 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
   return Object.freeze({ canHandle, handle, definitions: COMMAND_DEFINITIONS });
 }
 
-module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, createAcademyCommands };
+module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, ENTRY_POINT_COMMAND, createAcademyCommands };

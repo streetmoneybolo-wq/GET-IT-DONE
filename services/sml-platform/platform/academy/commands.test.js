@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ACADEMY_HUBS, createAcademyCommands } = require('./commands');
+const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, createAcademyCommands } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
 
 const GUILD = '938894329076940820';
@@ -63,6 +63,17 @@ test('all dedicated channel launchers work for members and remain ephemeral', as
     assert.notEqual(result.response.data.content, 'This Academy control is no longer valid.');
     assert.notEqual(result.response.data.content, 'The Academy is not available in this server yet.');
   }
+});
+
+test('Academy exposes a Discord-managed Activity entry point', () => {
+  assert.deepEqual(ENTRY_POINT_COMMAND, {
+    name: 'launch',
+    description: 'Open the interactive Making Easy Money Academy workspace',
+    type: 4,
+    handler: 2,
+    integration_types: [0],
+    contexts: [0]
+  });
 });
 
 test('member cannot use restricted slash command just because channel launchers are enabled', async () => {
