@@ -61,6 +61,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(response.headers.get('content-type'), /^text\/html/);
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors https:\/\/discord\.com/);
     assert.match(response.headers.get('content-security-policy'), /connect-src 'self'/);
+    assert.match(response.headers.get('content-security-policy'), /frame-src 'none'/);
     const html = await response.text();
     assert.match(html, /Making Easy Money Academy/);
     assert.match(html, /Live interactive candlestick chart/);
@@ -89,9 +90,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
     assert.match(html, /location\.assign/);
-    assert.match(html, /academy-dashboard-frame/);
-    assert.match(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1/);
-    assert.match(response.headers.get('content-security-policy'), /frame-src https:\/\/stockmarketloop\.com/);
+    assert.doesNotMatch(html, /academy-dashboard-frame/);
+    assert.doesNotMatch(html, /<iframe/i);
+    assert.doesNotMatch(html, /https:\/\/stockmarketloop\.com\/analyst-dashboard\/\?academy=1/);
     assert.doesNotMatch(html, /new ResizeObserver\(resize\)\.observe\(canvas\)/);
     assert.match(html, /simulation-progress/);
     assert.match(html, /academy-activity\/progress/);
