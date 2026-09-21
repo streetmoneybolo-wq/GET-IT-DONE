@@ -139,6 +139,8 @@
    commit-pinned CDN base, no WPCode change needed. */
 (function () {
   var me = document.currentScript || Array.prototype.filter.call(document.scripts, function (s) { return /terminal-short\.js/.test(s.src); })[0];
-  if (!me || !me.src || document.querySelector('script[src*="terminal-media.js"]')) return;
-  var s = document.createElement('script'); s.src = me.src.replace(/terminal-short\.js.*$/, 'terminal-media.js'); s.async = true; document.head.appendChild(s);
+  if (!me || !me.src) return;
+  var base = me.src.replace(/terminal-short\.js.*$/, '');
+  if (!document.querySelector('script[src*="terminal-media.js"]')) { var s = document.createElement('script'); s.src = base + 'terminal-media.js'; s.async = true; document.head.appendChild(s); }
+  if (!document.querySelector('script[src*="terminal-qa.js"]')) { var q = document.createElement('script'); q.src = base + 'terminal-qa.js'; q.async = true; document.head.appendChild(q); }
 })();
