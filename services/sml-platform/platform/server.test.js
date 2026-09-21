@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createServer } = require('./server');
+const { createServer, calculateThreeMinuteChange } = require('./server');
 const { hmac } = require('./wordpress-gateway');
 
 async function withServer(options, run) {
@@ -21,6 +21,28 @@ async function withServer(options, run) {
     await new Promise((resolve) => server.close(resolve));
   }
 }
+
+test('S.I.R.E calculates the signed three-minute price change without exposing a rank', () => {
+  const now = 1_700_000_180_000;
+  const gain = calculateThreeMinuteChange(102.34, [{ t: now - 180_000, price: 100 }], now);
+  const loss = calculateThreeMinuteChange(98.88, [{ t: now - 180_000, price: 100 }], now);
+  assert.ok(Math.abs(gain.percent - 2.34) < 1e-10);
+  assert.equal(gain.windowSeconds, 180);
+  assert.ok(Math.abs(loss.percent + 1.12) < 1e-10);
+  assert.equal(loss.windowSeconds, 180);
+  const interpolated = calculateThreeMinuteChange(103, [
+    { t: now - 190_000, price: 100 },
+    { t: now - 170_000, price: 102 }
+  ], now);
+  assert.ok(Math.abs(interpolated.percent - ((103 - 101) / 101 * 100)) < 1e-10);
+  assert.equal(interpolated.windowSeconds, 180);
+  assert.deepEqual(calculateThreeMinuteChange(100, [{ t: now - 179_999, price: 99 }], now), {
+    percent: null,
+    windowSeconds: null
+  });
+  const serverSource = require('node:fs').readFileSync(require.resolve('./server'), 'utf8');
+  assert.match(serverSource, /history\.slice\(-180\)/);
+});
 
 test('health returns 200 only when the database check passes', async () => {
   await withServer({ checkDatabase: async () => true }, async (base) => {
@@ -85,7 +107,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /PREMARKET/);
     assert.match(html, /AFTER HOURS/);
     assert.match(html, /Pro Screener/);
-    assert.match(html, /S\.I\.R\.E/);
+    assert.match(html, /S\.I\.R\.E 3m %/);
+    assert.match(html, /changeRate3min/);
+    assert.doesNotMatch(html, /\['rank','#'\]/);
     assert.match(html, /Volume Ratio/);
     assert.match(html, /Dividend Yield/);
     assert.match(html, /Institutional Holdings/);

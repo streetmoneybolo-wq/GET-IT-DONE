@@ -54,6 +54,7 @@ let redditHubCache = { expiresAt: 0, payload: null };
 const academyMarketCache = new Map();
 const academyMarketInflight = new Map();
 let academyScannerCache = { freshUntil: 0, staleUntil: 0, payload: null, inflight: null };
+const academySirePriceHistory = new Map();
 const academyDepthCache = new Map();
 const academyDepthInflight = new Map();
 
@@ -119,6 +120,25 @@ function sanitizeHubScanner(value) {
       quality: asHubText(row.quality).slice(0, 80)
     };
   }).filter((row) => /^[A-Z0-9.-]{1,10}$/.test(row.symbol));
+}
+
+function calculateThreeMinuteChange(currentPrice, history, sampledAt) {
+  const current = Number(currentPrice);
+  const target = Number(sampledAt) - 180_000;
+  if (!Number.isFinite(current) || current <= 0 || !Array.isArray(history)) return { percent: null, windowSeconds: null };
+  const valid = history.filter((sample) => Number.isFinite(Number(sample?.t)) && Number(sample?.price) > 0);
+  const before = valid.filter((sample) => Number(sample.t) <= target).at(-1);
+  const after = valid.find((sample) => Number(sample.t) >= target);
+  if (!before) return { percent: null, windowSeconds: null };
+  let baselinePrice = Number(before.price);
+  if (after && Number(after.t) > Number(before.t)) {
+    const weight = (target - Number(before.t)) / (Number(after.t) - Number(before.t));
+    baselinePrice += (Number(after.price) - baselinePrice) * weight;
+  }
+  return {
+    percent: ((current - baselinePrice) / baselinePrice) * 100,
+    windowSeconds: after ? 180 : Math.round((Number(sampledAt) - Number(before.t)) / 1000)
+  };
 }
 
 function sanitizeHubNews(value) {
@@ -342,10 +362,21 @@ async function getAcademyScanner() {
         signal: AbortSignal.timeout(7_000)
       });
       if (!upstream.ok) throw new Error(`academy_scanner_${upstream.status}`);
-      const rows = sanitizeHubScanner(await upstream.json());
+      const sampledAt = Date.now();
+      const rows = sanitizeHubScanner(await upstream.json()).map((row) => {
+        const history = (academySirePriceHistory.get(row.symbol) || [])
+          .filter((sample) => sample.t >= sampledAt - 600_000);
+        if (Number.isFinite(row.price) && row.price > 0) history.push({ t: sampledAt, price: row.price });
+        academySirePriceHistory.set(row.symbol, history.slice(-180));
+        const sire = calculateThreeMinuteChange(row.price, history, sampledAt);
+        return { ...row, changeRate3min: sire.percent, sireWindowSeconds: sire.windowSeconds };
+      });
+      for (const [symbol, history] of academySirePriceHistory) {
+        if (!history.length || history.at(-1).t < sampledAt - 600_000) academySirePriceHistory.delete(symbol);
+      }
       if (!rows.length) throw new Error('academy_scanner_empty');
       const payload = { rows, asOf: Date.now() };
-      academyScannerCache = { freshUntil: Date.now() + 28_000, staleUntil: Date.now() + 300_000, payload, inflight: null };
+      academyScannerCache = { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 300_000, payload, inflight: null };
       return payload;
     } catch (error) {
       if (academyScannerCache.payload && academyScannerCache.staleUntil > Date.now()) return { ...academyScannerCache.payload, stale: true };
@@ -432,8 +463,14 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
     .replace("canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.7,Math.min(4,scale*(e.deltaY>0?.86:1.16)));draw()},{passive:false})", "canvas.addEventListener('wheel',()=>{},{passive:true})")
     .replace("new ResizeObserver(resize).observe(canvas);setQuote();draw()", "const chartObserver=new ResizeObserver(resize);chartObserver.observe(canvas);window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)resize()});requestAnimationFrame(resize);setTimeout(resize,250);setTimeout(resize,1000);setQuote();draw()")
     .replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'});document.getElementById('status').textContent=response.ok?'LIVE':'RETRY'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};setInterval(keepWarm,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})")
+    .replace("page=1,sortKey='changePct'", "page=1,sortKey='changeRate3min'")
+    .replace("if(k==='sire')return r.sire", "if(k==='sire')return r.changeRate3min")
+    .replace("rows.map((r,i)=>({...r,sire:i+1}))", "rows.map(r=>({...r}))")
+    .replaceAll("['rank','#'],", '')
+    .replaceAll("['sire','S.I.R.E']", "['sire','S.I.R.E 3m %']")
+    .replace("['changePct','preMarketPct','postMarketPct'].includes(k)", "['changePct','preMarketPct','postMarketPct','sire'].includes(k)")
     .replace("['macd','MACD']]", "['macd','MACD'],['high52','52wk High'],['low52','52wk Low'],['chg5mPct','% Chg 5M'],['chg5dPct','% Chg 5D'],['chg10dPct','% Chg 10D'],['chg20dPct','% Chg 20D'],['chg60dPct','% Chg 60D'],['chg120dPct','% Chg 120D'],['chg250dPct','% Chg 250D'],['ytdPct','YTD Chg'],['handTurnover','Hand Turnover'],['amplitude','Amplitude'],['peLyr','PE LYR'],['divYield','Dividend Yield'],['roe','ROE'],['roa','ROA'],['netMargin','Net Margin'],['grossMargin','Gross Margin'],['revenueGrowth','Revenue Growth'],['epsGrowth','EPS Growth'],['assetTurnover','Asset Turnover'],['inventoryTurnover','Inventory Turnover'],['currentRatio','Current Ratio'],['quickRatio','Quick Ratio'],['ma20','MA20'],['ma50','MA50'],['institutionalHoldings','Institutional Holdings'],['insiderHoldings','Insider Holdings'],['profitRatio','Profit Ratio'],['overlapDegree','Degree of Overlap']]")
-    .replace("panel.querySelector('#academy-scan-refresh').onclick=()=>location.reload();render()", "const refreshScanner=async()=>{const badge=panel.querySelector('.academy-scan-live');badge.textContent='Refreshing';try{const response=await fetch('/academy-activity/scanner',{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');rows=payload.rows;render();badge.textContent='Live stream'}catch(_){badge.textContent='Reconnecting'}};panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;setInterval(()=>{if(!document.hidden)refreshScanner()},30000);render()")
+    .replace("panel.querySelector('#academy-scan-refresh').onclick=()=>location.reload();render()", "const refreshScanner=async()=>{const badge=panel.querySelector('.academy-scan-live');badge.textContent='Refreshing';try{const response=await fetch('/academy-activity/scanner',{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');rows=payload.rows;render();badge.textContent='Live stream'}catch(_){badge.textContent='Reconnecting'}};panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;setInterval(()=>{if(!document.hidden)refreshScanner()},4000);render()")
     .replace('</body></html>', `<script>(()=>{const unlock=document.getElementById('academy-unlock'),state=document.querySelector('.market-state');if(!unlock||!state)return;let open=false;const render=()=>{document.body.classList.toggle('academy-tools-open',open);unlock.textContent=open?'Close Academy Tools':'Unlock Academy Tools';unlock.setAttribute('aria-pressed',String(open));state.textContent=open?'LIVE INTERACTIVE ACADEMY':'READ-ONLY TRAINING';state.style.color=open?'#52e6ad':'#ffbf5d'};unlock.onclick=()=>{open=!open;render()};render()})()</script></body></html>`);
 }
 
@@ -1158,5 +1195,6 @@ module.exports = {
   handleDisputeRequest,
   handleConnectRequest,
   handleCorporateRequest,
-  DISPUTE_ACTIONS
+  DISPUTE_ACTIONS,
+  calculateThreeMinuteChange
 };
