@@ -4,12 +4,12 @@ const { ACADEMY_HUBS } = require('../platform/academy/commands');
 
 const API = 'https://discord.com/api/v10';
 const apply = process.argv.includes('--apply');
-const token = String(process.env.DISCORD_ACADEMY_BOT_TOKEN || '').trim();
-const guildId = String(process.env.SML_DISCORD_GUILD_ID || '').trim();
+const token = String(process.env.SML_ACADEMY_BOT_TOKEN || process.env.DISCORD_ACADEMY_BOT_TOKEN || '').trim();
+const guildId = String(process.env.SML_ACADEMY_GUILD_ID || process.env.SML_DISCORD_GUILD_ID || '').trim();
 const categoryId = String(process.env.SML_ACADEMY_CATEGORY_ID || '').trim();
 
 if (!token || !/^\d{15,24}$/.test(guildId) || !/^\d{15,24}$/.test(categoryId)) {
-  throw new Error('DISCORD_ACADEMY_BOT_TOKEN, SML_DISCORD_GUILD_ID, and SML_ACADEMY_CATEGORY_ID are required');
+  throw new Error('SML_ACADEMY_BOT_TOKEN, SML_ACADEMY_GUILD_ID, and SML_ACADEMY_CATEGORY_ID are required');
 }
 
 async function discord(path, { method = 'GET', body } = {}) {
