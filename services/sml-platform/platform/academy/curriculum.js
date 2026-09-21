@@ -1,6 +1,7 @@
 'use strict';
 
 const { simulationFor } = require('./simulations');
+const { EXPANSION_LESSONS } = require('./expansion');
 
 /* Original StockMarketLoop Academy material. It never ingests the legacy
  * Investing Essentials category and is educational, not financial advice. */
@@ -12,7 +13,7 @@ function L(moduleId, lessonId, title, description, level, steps, prompt, options
   return lesson;
 }
 
-const SEED_LESSONS = [
+const CORE_LESSONS = [
   L(1, 1, 'Market Structure and Price Discovery', 'Model the continuous auction that produces observable prices.', 'Foundation', [
     'Limit orders supply displayed liquidity; marketable orders consume it. The last price records a completed agreement, not a forecast.',
     'The national best bid and offer aggregates displayed venues, but hidden orders, odd lots, latency, and routing leave the visible book incomplete.',
@@ -156,5 +157,7 @@ const SEED_LESSONS = [
     'Capstone lab: defend the work before a mock risk committee, answer adversarial questions, revise weak claims, and grade process.'
   ], 'Which satisfies the capstone standard?', { A: 'Unsourced target', B: 'Sourced scenario thesis with risks and falsification', C: 'Viral screenshot', D: 'Guaranteed return' }, 'B', 'College-level analysis is sourced, conditional, numerate, transparent, and open to disconfirmation.', '30 min')
 ];
+
+const SEED_LESSONS = [...CORE_LESSONS, ...EXPANSION_LESSONS];
 
 module.exports = { SEED_LESSONS };

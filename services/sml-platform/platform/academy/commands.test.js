@@ -50,10 +50,10 @@ test('Academy controls remain private to the configured Monarch preview role', a
   assert.match(allowed.response.data.content, /Launch the Academy activity/);
 });
 
-test('Academy publishes a complete 26-lesson college-level curriculum', () => {
-  assert.equal(SEED_LESSONS.length, 26);
-  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, 26);
-  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+test('Academy publishes a complete 101-lesson college-level curriculum', () => {
+  assert.equal(SEED_LESSONS.length, 101);
+  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, 101);
+  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], Array.from({ length: 28 }, (_, index) => index + 1));
   for (const entry of SEED_LESSONS) {
     assert.equal(entry.steps.length, 3);
     assert.match(entry.steps[2], /lab:/i);
@@ -66,4 +66,7 @@ test('Academy publishes a complete 26-lesson college-level curriculum', () => {
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1).steps.join(' '), /cash-secured puts/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 10 && entry.lessonId === 1).title, /Read the Tape/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 11 && entry.lessonId === 2).title, /Grandmaster-Obi/i);
+  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 17 && entry.lessonId === 4).title, /Regression/i);
+  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 22 && entry.lessonId === 2).title, /Duration/i);
+  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 28 && entry.lessonId === 5).title, /Capstone/i);
 });
