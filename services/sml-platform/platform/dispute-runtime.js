@@ -30,7 +30,6 @@ const { createUpgradeChatWebhookHandler } = require('./upgrade-chat-webhook');
 const { createUpgradeChatReconciler } = require('./upgrade-chat-reconcile');
 const { createDiscordInteractions } = require('./discord-interactions');
 const { createConnectCommands, scopeCommands, CONNECT_COMMAND_NAMES, DISPUTE_COMMAND_NAMES } = require('./connect-commands');
-const { createAcademyCommands } = require('./academy/commands');
 const {
   createConnectAuthorizer, createConnectDisputeService, createConnectRoleTools, createConnectRoleHandlers
 } = require('./connect-adapter');
@@ -134,9 +133,6 @@ function createDisputeRuntime({
   const authorize = createConnectAuthorizer({ pool, store });
   const roleTools = createConnectRoleTools({ pool, now });
   const connectService = createConnectDisputeService({ disputeService, reviewUrlBase: config.connectReviewUrlBase });
-  const academy = config.academyEnabled && config.academyGuildId
-    ? createAcademyCommands({ pool, guildId: config.academyGuildId, monarchRoleId: config.academyMonarchRoleId, enabled: true, now })
-    : null;
   const commandBase = createConnectCommands({
     pool, graph, store, authorize, disputeService: connectService,
     reconciler: roleTools, now, reviewUrlBase: config.connectReviewUrlBase
@@ -151,7 +147,9 @@ function createDisputeRuntime({
           siteBase: 'https://stockmarketloop.com'
         },
         pool, graph, store, authorize,
-        commands: scopeCommands(commandBase, CONNECT_COMMAND_NAMES), academy,
+        // Strict identity boundary: Connect never mounts Academy handlers.
+        // Academy commands are served only by the dedicated Academy process.
+        commands: scopeCommands(commandBase, CONNECT_COMMAND_NAMES),
         fetchImpl, now
       })
     : null;

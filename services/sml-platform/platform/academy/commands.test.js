@@ -48,6 +48,8 @@ test('Academy controls remain private to the configured Monarch preview role', a
   assert.match(denied.response.data.content, /not available/);
   const allowed = await academy.handle(interaction('academy'));
   assert.match(allowed.response.data.content, /Launch the Academy activity/);
+  assert.match(allowed.response.data.content, /101 interactive/);
+  assert.match(allowed.response.data.content, /28 modules/);
 });
 
 test('Academy publishes a complete 101-lesson college-level curriculum', () => {

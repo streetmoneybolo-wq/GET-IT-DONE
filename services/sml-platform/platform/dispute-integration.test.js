@@ -196,6 +196,13 @@ test('with the flag and key set, collection surfaces exist while PayPal and the 
   assert.ok(withBot.upgradeChatReconciler);
 });
 
+test('Connect runtime never mounts Academy commands', () => {
+  const source = require('node:fs').readFileSync(require.resolve('./dispute-runtime'), 'utf8');
+  assert.doesNotMatch(source, /createAcademyCommands/);
+  assert.doesNotMatch(source, /commands:\s*scopeCommands\([^\n]+\),\s*academy/);
+  assert.match(source, /Connect never mounts Academy handlers/);
+});
+
 test('runtime sweeps are isolated: one failing sweep is logged and the others still run', async () => {
   const config = getConfig({ ...BASE_ENV, SML_DISPUTE_EVIDENCE_ENABLED: '1', SML_EVIDENCE_ENCRYPTION_KEY: 'k'.repeat(32) });
   const logs = [];
