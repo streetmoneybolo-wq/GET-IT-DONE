@@ -1,456 +1,516 @@
 /**
- * SML Group Onboarding — guided setup overlay for new group members.
- * Injected on /groups/{slug}/ pages. Fetches onboarding config from
- * sml-onboard/v1/flow; shows multi-step overlay if not completed.
- * Also provides owner config panel via sml-onboard/v1/config.
+ * SML Group Onboarding v2 — Premium groups: the onboarding sits over Premium channels.
+ *
+ * Viewers who cannot enter a Premium group's content browse the channels its owner opened to everyone (info / promo) and
+ * see the onboarding — welcome, what's inside, membership cards, unlock — over every Premium channel. Owners and admins
+ * edit it from the group's ⋮ menu ("Onboarding"). Server: mu-plugin sml-group-onboarding.php 2.0.0 (sml-onboard/v1),
+ * which prints this viewer's state inline as window.SML_ONBOARD_ACCESS.
  */
 (function () {
   'use strict';
-  if (document.getElementById('sml-onboard-root')) return;
+  if (window.__smlOnboardV2) return;
+  window.__smlOnboardV2 = true;
 
   var NONCE = window.SML_ONBOARD_NONCE || '';
-  var API   = '/wp-json/sml-onboard/v1';
+  var API = '/wp-json/sml-onboard/v1';
+  var state = { access: null, mode: '', channelId: 0, landed: false, activeAt: 0 };
 
   function slug() {
     var m = location.pathname.match(/^\/groups\/([^/]+)/);
-    return m ? m[1] : '';
-  }
-
-  function api(path, opts) {
-    opts = opts || {};
-    var headers = { 'Content-Type': 'application/json' };
-    if (NONCE) headers['X-WP-Nonce'] = NONCE;
-    return fetch(API + path, Object.assign({ headers: headers, credentials: 'same-origin' }, opts))
-      .then(function (r) { return r.json(); });
+    return m ? decodeURIComponent(m[1]) : '';
   }
 
   function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
 
-  // ---- Member Onboarding Flow ----
+  var nativeFetch = window.fetch;
 
-  var state = { step: 1, selected: [], rulesAccepted: false };
-
-  function renderOverlay(data) {
-    var overlay = document.createElement('div');
-    overlay.id = 'sml-onboard-root';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(4,6,8,0.92);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px);';
-
-    var modal = document.createElement('div');
-    modal.id = 'sml-onboard-modal';
-    modal.style.cssText = 'background:#040608;border:1px solid #16202b;border-radius:16px;max-width:420px;width:100%;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;';
-
-    state.selected = data.featured_channels.map(function (c) { return c.id; });
-
-    function renderStep() {
-      var html = '';
-
-      // header (always visible)
-      html += '<div style="padding:28px 24px 20px;background:linear-gradient(180deg,#0a1a2e 0%,#060e18 60%,#040608 100%);display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;">';
-      html += '<div style="width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#003d66,#005a99);border:2px solid rgba(0,204,255,0.25);display:flex;align-items:center;justify-content:center;">';
-      html += '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="11" r="3.5" stroke="#00ccff" stroke-width="1.5"/><circle cx="18" cy="11" r="3.5" stroke="#00ccff" stroke-width="1.5"/><path d="M5 23C5 19.6863 7.68629 17 11 17H17C20.3137 17 23 19.6863 23 23V25H5V23Z" stroke="#00ccff" stroke-width="1.5"/></svg>';
-      html += '</div>';
-      html += '<div style="display:flex;flex-direction:column;gap:5px;">';
-      html += '<div style="font:800 20px/1.2 Archivo,sans-serif;color:#e6edf3;">Welcome to<br><span style="color:#00ccff;">' + esc(data.group_name) + '</span></div>';
-      if (data.welcome_message) {
-        html += '<div style="font:400 11.5px/1.5 Archivo,sans-serif;color:#8fa3b5;max-width:300px;">' + esc(data.welcome_message) + '</div>';
-      } else if (data.owner_name) {
-        html += '<div style="font:400 11.5px/1.5 Archivo,sans-serif;color:#8fa3b5;max-width:300px;">Here\'s what ' + esc(data.owner_name) + ' set up for new members.</div>';
-      }
-      html += '</div></div>';
-
-      // progress bar
-      var totalSteps = data.rules.length > 0 ? 3 : 2;
-      html += '<div style="padding:4px 20px 0;display:flex;align-items:center;gap:8px;">';
-      for (var si = 1; si <= totalSteps; si++) {
-        var barColor = si <= state.step ? '#00ccff' : '#16202b';
-        html += '<div style="flex:1;height:3px;border-radius:2px;background:' + barColor + ';"></div>';
-      }
-      html += '</div>';
-
-      var stepLabels = ['Choose channels'];
-      if (data.rules.length > 0) stepLabels.push('Group rules');
-      stepLabels.push('Notifications');
-      html += '<div style="padding:6px 20px 14px;font:500 10px/1 \'IBM Plex Mono\',monospace;color:#5d7085;">Step ' + state.step + ' of ' + totalSteps + ' &middot; ' + stepLabels[state.step - 1] + '</div>';
-
-      // step content
-      if (state.step === 1) {
-        html += renderChannelStep(data);
-      } else if (state.step === 2 && data.rules.length > 0) {
-        html += renderRulesStep(data);
-      } else {
-        html += renderNotifStep(data);
-      }
-
-      // footer buttons
-      html += '<div style="padding:6px 20px 24px;display:flex;gap:10px;">';
-      html += '<button id="sml-ob-skip" style="flex:1;padding:13px;border:1px solid #1d2b39;border-radius:10px;background:transparent;font:600 13px/1 Archivo,sans-serif;color:#8fa3b5;cursor:pointer;text-align:center;">Skip</button>';
-      var nextText;
-      if (state.step === 1) {
-        nextText = 'Follow ' + state.selected.length + ' & Continue';
-      } else if ((state.step === 2 && data.rules.length > 0) || state.step < totalSteps) {
-        nextText = 'Continue';
-      } else {
-        nextText = 'Done';
-      }
-      html += '<button id="sml-ob-next" style="flex:2;padding:13px;border:none;border-radius:10px;background:#00ccff;font:600 13px/1 Archivo,sans-serif;color:#080c12;cursor:pointer;text-align:center;">' + nextText + '</button>';
-      html += '</div>';
-
-      modal.innerHTML = html;
-      bindStepEvents(data, totalSteps);
-    }
-
-    function bindStepEvents(data, totalSteps) {
-      // channel toggles
-      modal.querySelectorAll('.sml-ob-ch').forEach(function (el) {
-        el.addEventListener('click', function () {
-          var cid = parseInt(el.getAttribute('data-cid'));
-          var idx = state.selected.indexOf(cid);
-          if (idx > -1) { state.selected.splice(idx, 1); } else { state.selected.push(cid); }
-          renderStep();
-        });
-      });
-
-      // rules accept
-      var rulesCheck = modal.querySelector('#sml-ob-rules-accept');
-      if (rulesCheck) {
-        rulesCheck.addEventListener('change', function () {
-          state.rulesAccepted = rulesCheck.checked;
-        });
-      }
-
-      // skip
-      modal.querySelector('#sml-ob-skip').addEventListener('click', function () {
-        complete();
-      });
-
-      // next
-      modal.querySelector('#sml-ob-next').addEventListener('click', function () {
-        if (state.step < totalSteps) {
-          state.step++;
-          renderStep();
-        } else {
-          complete();
+  function req(url, opts) {
+    opts = opts || {};
+    var headers = { 'Content-Type': 'application/json' };
+    if (NONCE) headers['X-WP-Nonce'] = NONCE;
+    return nativeFetch.call(window, url, Object.assign({ credentials: 'same-origin', cache: 'no-store', headers: headers }, opts)).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok) {
+          var e = new Error((d && (d.message || d.error)) || 'Something went wrong. Please try again.');
+          e.code = d && d.code;
+          e.status = r.status;
+          throw e;
         }
+        return d;
       });
-    }
+    });
+  }
 
-    function complete() {
-      api('/complete?slug=' + encodeURIComponent(slug()), { method: 'POST', body: '{}' })
-        .then(function () { overlay.remove(); })
-        .catch(function () { overlay.remove(); });
-    }
+  function api(path, opts) { return req(API + path, opts); }
 
-    overlay.appendChild(modal);
+  function fmt(n) { return Number(n || 0).toLocaleString(); }
+
+  /* ------------------------------------------------------------------ styles */
+
+  var LOCK_SVG = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2.4"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>');
+
+  function injectStyle() {
+    if (document.getElementById('sml-ob-style')) return;
+    var css = [
+      '#sml-ob-gate [hidden],#sml-ob-config [hidden],.sml-ob-joinbar [hidden]{display:none!important}',
+      'html.sml-ob-preview .sml-gshell__composer,html.sml-ob-preview .sml-gshell__typing,html.sml-ob-preview .sml-gshell__message-actions,html.sml-ob-preview .sml-gshell__thread-composer,html.sml-ob-preview .sml-gshell__attach-wrap{display:none!important}',
+      'html.sml-ob-preview .sml-gshell__channel.is-locked::after{content:"";display:inline-block;width:11px;height:11px;margin-left:6px;vertical-align:-1px;background:currentColor;opacity:.65;-webkit-mask:url("' + LOCK_SVG + '") center/contain no-repeat;mask:url("' + LOCK_SVG + '") center/contain no-repeat}',
+      '#sml-ob-gate{position:absolute;left:0;right:0;bottom:0;z-index:40;overflow-y:auto;display:flex;justify-content:center;align-items:flex-start;padding:32px 16px 40px;background:radial-gradient(120% 80% at 50% 0%,rgba(0,204,255,.08),rgba(5,8,13,.96) 60%);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}',
+      '#sml-ob-gate .sml-ob-card{width:100%;max-width:560px;border:1px solid #1b2a38;border-radius:16px;background:#080c12;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:26px 24px;display:flex;flex-direction:column;gap:16px;color:#dbe6f0;font:400 13px/1.55 Archivo,system-ui,sans-serif}',
+      '#sml-ob-gate .sml-ob-eyebrow{display:inline-flex;align-items:center;gap:6px;font:700 10.5px/1 Archivo,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#00ccff}',
+      '#sml-ob-gate h2{margin:0;font:800 22px/1.2 Archivo,sans-serif;color:#f2f7fb;text-wrap:balance;overflow-wrap:anywhere}',
+      '#sml-ob-gate .sml-ob-sub{margin:-8px 0 0;color:#8fa3b5;font-size:12.5px}',
+      '#sml-ob-gate .sml-ob-welcome{margin:0;padding:12px 14px;border-left:2px solid #00ccff;background:#0b1219;border-radius:0 10px 10px 0;color:#dbe6f0;white-space:pre-line}',
+      '#sml-ob-gate h3{margin:0 0 8px;font:700 11px/1 Archivo,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#6f8599}',
+      '#sml-ob-gate .sml-ob-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}',
+      '#sml-ob-gate .sml-ob-chips li,#sml-ob-gate .sml-ob-open button{padding:6px 10px;border:1px solid #1d2b39;border-radius:999px;background:#0b1219;color:#c7d5e2;font:600 12px/1 Archivo,sans-serif}',
+      '#sml-ob-gate .sml-ob-open button{cursor:pointer;border-color:rgba(34,197,94,.35);color:#86efac}',
+      '#sml-ob-gate .sml-ob-open button:hover,#sml-ob-gate .sml-ob-open button:focus-visible{background:rgba(34,197,94,.12);outline:none}',
+      '#sml-ob-gate .sml-ob-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}',
+      '#sml-ob-gate .sml-ob-plan{border:1px solid #1d2b39;border-radius:12px;padding:14px;background:#0a1016;display:flex;flex-direction:column;gap:6px}',
+      '#sml-ob-gate .sml-ob-plan b{font:700 14px/1.2 Archivo,sans-serif;color:#f2f7fb}',
+      '#sml-ob-gate .sml-ob-plan .p{font:700 18px/1.2 "IBM Plex Mono",ui-monospace,monospace;color:var(--c,#00ccff)}',
+      '#sml-ob-gate .sml-ob-plan .p small{font:400 11px/1 Archivo,sans-serif;color:#6f8599;margin-left:4px}',
+      '#sml-ob-gate .sml-ob-plan p{margin:0;color:#8fa3b5;font-size:12px}',
+      '#sml-ob-gate .sml-ob-plan .sml-ob-cta{margin-top:auto}',
+      '#sml-ob-gate .sml-ob-price{margin:-6px 0 0;text-align:center;color:#8fa3b5;font-size:12px}',
+      '#sml-ob-gate .sml-ob-cta,.sml-ob-joinbar .sml-ob-cta{display:inline-flex;justify-content:center;align-items:center;gap:8px;min-height:40px;padding:0 18px;border:0;border-radius:10px;background:#00ccff;color:#04121c;font:700 13px/1 Archivo,sans-serif;text-decoration:none;cursor:pointer}',
+      '#sml-ob-gate .sml-ob-cta:hover,.sml-ob-joinbar .sml-ob-cta:hover{filter:brightness(1.08)}',
+      '#sml-ob-gate .sml-ob-cta:focus-visible,.sml-ob-joinbar .sml-ob-cta:focus-visible,#sml-ob-gate .sml-ob-open button:focus-visible{outline:2px solid #e6f9ff;outline-offset:2px}',
+      '#sml-ob-gate .sml-ob-cta[disabled],.sml-ob-joinbar .sml-ob-cta[disabled]{opacity:.6;cursor:progress}',
+      '#sml-ob-gate .sml-ob-main-cta{width:100%}',
+      '.sml-ob-status{min-height:1em;margin:0;color:#fca5a5;font-size:12px}',
+      '#sml-ob-gate details{border-top:1px solid #16202b;padding-top:12px}',
+      '#sml-ob-gate summary{cursor:pointer;color:#8fa3b5;font-weight:600}',
+      '#sml-ob-gate ol{margin:10px 0 0;padding-left:20px;color:#c7d5e2}',
+      '.sml-ob-joinbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:8px 16px 14px;padding:12px 14px;border:1px solid #1d2b39;border-radius:12px;background:#0a1016;color:#aebfcd;font:500 12.5px/1.4 Archivo,sans-serif}',
+      '.sml-ob-joinbar .sml-ob-status{flex-basis:100%}',
+      '#sml-ob-config{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.72)}',
+      '#sml-ob-config .sml-ob-panel{width:100%;max-width:620px;max-height:88vh;overflow-y:auto;border:1px solid #1b2a38;border-radius:16px;background:#080c12;color:#dbe6f0;padding:22px;font:400 13px/1.5 Archivo,system-ui,sans-serif;display:flex;flex-direction:column;gap:16px}',
+      '#sml-ob-config h2{margin:0;font:800 18px/1.2 Archivo,sans-serif;color:#f2f7fb}',
+      '#sml-ob-config h3{margin:0 0 6px;font:700 12px/1.2 Archivo,sans-serif;color:#8fa3b5}',
+      '#sml-ob-config p.note{margin:0;color:#8fa3b5}',
+      '#sml-ob-config label.row{display:flex;align-items:center;gap:10px;font-weight:600}',
+      '#sml-ob-config textarea,#sml-ob-config input[type=text]{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #1d2b39;border-radius:8px;background:#04070b;color:#e6edf3;font:400 13px/1.45 Archivo,sans-serif}',
+      '#sml-ob-config textarea:focus,#sml-ob-config input:focus{outline:2px solid #00ccff55;border-color:#00ccff}',
+      '#sml-ob-config .chan{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid #16202b;border-radius:10px;background:#0a1016}',
+      '#sml-ob-config .chan + .chan{margin-top:6px}',
+      '#sml-ob-config .chan .fixed{font-size:11.5px;color:#6f8599}',
+      '#sml-ob-config .seg{display:inline-flex;border:1px solid #1d2b39;border-radius:8px;overflow:hidden}',
+      '#sml-ob-config .seg button{padding:6px 10px;border:0;background:transparent;color:#8fa3b5;font:600 11.5px/1 Archivo,sans-serif;cursor:pointer}',
+      '#sml-ob-config .seg button[aria-pressed=true]{background:#00ccff;color:#04121c}',
+      '#sml-ob-config .seg button.open[aria-pressed=true]{background:#22c55e;color:#04120a}',
+      '#sml-ob-config .seg button:focus-visible,#sml-ob-config .ghost:focus-visible,#sml-ob-config .primary:focus-visible{outline:2px solid #e6f9ff;outline-offset:2px}',
+      '#sml-ob-config .feat{font-size:11.5px;color:#8fa3b5;display:inline-flex;gap:5px;align-items:center}',
+      '#sml-ob-config .rule{display:flex;gap:8px}#sml-ob-config .rule + .rule{margin-top:6px}',
+      '#sml-ob-config .ghost{display:inline-flex;align-items:center;padding:8px 12px;border:1px solid #1d2b39;border-radius:8px;background:transparent;color:#8fa3b5;font:600 12px/1 Archivo,sans-serif;cursor:pointer;text-decoration:none}',
+      '#sml-ob-config .primary{padding:11px 18px;border:0;border-radius:10px;background:#00ccff;color:#04121c;font:700 13px/1 Archivo,sans-serif;cursor:pointer}',
+      '#sml-ob-config .actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;align-items:center}',
+      '#sml-ob-config .status{margin-right:auto;color:#8fa3b5;font-size:12px}',
+      '#sml-ob-config .status.err{color:#fca5a5}',
+      '@media (max-width:600px){#sml-ob-gate{padding:18px 10px 28px}#sml-ob-gate .sml-ob-card{padding:20px 16px}#sml-ob-config .chan{grid-template-columns:1fr}}',
+      '@media (prefers-reduced-motion:reduce){#sml-ob-gate{backdrop-filter:none;-webkit-backdrop-filter:none}}'
+    ].join('');
+    var st = document.createElement('style');
+    st.id = 'sml-ob-style';
+    st.textContent = css;
+    document.head.appendChild(st);
+  }
+
+  var LOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2"/></svg>';
+
+  /* ------------------------------------------------------------------ shell helpers */
+
+  function shellActive() { return !!document.querySelector('#sml-group-shell[data-smlgs-stage="active"]'); }
+  function mainEl() { return shellActive() ? document.querySelector('#sml-group-shell .sml-gshell__main') : null; }
+  function channelButtons() { return Array.prototype.slice.call(document.querySelectorAll('#sml-group-shell .sml-gshell__channels [data-smlgs-channel]')); }
+  function channelButton(id) { return document.querySelector('#sml-group-shell .sml-gshell__channels [data-smlgs-channel="' + Number(id) + '"]'); }
+  function channelName(id) {
+    var b = channelButton(id);
+    return b ? b.textContent.replace(/\s+/g, ' ').replace(/^#\s*/, '').trim() : '';
+  }
+
+  function previewing() { return !!(state.access && state.access.preview); }
+  function isOpen(id) { return (state.access && state.access.open_channels || []).indexOf(Number(id)) !== -1; }
+
+  /* ------------------------------------------------------------------ preview: the shell's member-only polls are answered locally */
+
+  function installFetchGuard() {
+    if (window.__smlObFetchGuard || typeof nativeFetch !== 'function') return;
+    window.__smlObFetchGuard = true;
+    var prev = window.fetch;
+    window.fetch = function (input, init) {
+      try {
+        if (previewing()) {
+          var u = new URL(typeof input === 'string' ? input : (input && input.url) || '', location.href);
+          var p = u.pathname.replace(/\/+$/, '');
+          var refuse = false;
+          if (u.origin === location.origin && p.indexOf('/wp-json/sml/v1/') === 0) {
+            var r = p.slice(15);
+            /* not group/posts or group/chat: the hidden legacy renderer alert()s their errors (the server answers posts with an empty feed) */
+            if (/^\/group\/(typing|unread|read|roster|mentions)(\/|$)/.test(r)) refuse = true;
+            else if (r === '/group/channel/messages' && !isOpen(u.searchParams.get('channel_id'))) refuse = true;
+            else if (r.indexOf('/portal/') === 0 && !state.access.logged_in) refuse = true;
+          }
+          if (refuse) {
+            return Promise.resolve(new Response(JSON.stringify({ code: 'sml_ob_preview', message: 'Unlock Premium to see this.', data: { status: 403 } }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+          }
+        }
+      } catch (e) { /* never let the guard break a request */ }
+      return prev.apply(this, arguments);
+    };
+  }
+
+  /* ------------------------------------------------------------------ the onboarding over Premium channels */
+
+  function priceLine() {
+    var price = state.access.overlay && state.access.overlay.price_loopbucks;
+    /* Plain text, never inside a button: the groups engine hides any button that mentions its old wallet name. */
+    return price ? '<p class="sml-ob-price">' + esc(fmt(price)) + ' Loop Bucks per month</p>' : '';
+  }
+
+  function primaryCta() {
+    var a = state.access;
+    if (!a.logged_in) return '<a class="sml-ob-cta sml-ob-main-cta" href="' + esc(a.overlay.login_url) + '">Sign in to unlock</a>';
+    return '<button type="button" class="sml-ob-cta sml-ob-main-cta" data-sml-ob-unlock>Unlock Premium</button>' + priceLine();
+  }
+
+  function isFreePlan(p) {
+    return !p || p.slug === 'free' || /^\$?\s*0+(\.0+)?$/.test(String(p.price_display || '').trim());
+  }
+
+  function plansHtml() {
+    var a = state.access;
+    var plans = ((a.overlay && a.overlay.plans) || []).filter(function (p) { return p && p.active !== false && !isFreePlan(p); });
+    if (!plans.length) return '';
+    return '<div class="sml-ob-plans">' + plans.map(function (p) {
+      var interval = p.interval === 'lifetime' ? 'one-time' : '/ ' + (p.interval || 'month');
+      var cta = p.cta_url
+        ? '<a class="sml-ob-cta" href="' + esc(p.cta_url) + '">' + esc(p.cta_text || 'Choose') + '</a>'
+        : (a.logged_in
+          ? '<button type="button" class="sml-ob-cta" data-sml-ob-unlock>Choose</button>'
+          : '<a class="sml-ob-cta" href="' + esc(a.overlay.login_url) + '">Sign in</a>');
+      return '<div class="sml-ob-plan" style="--c:' + esc(/^#[0-9a-fA-F]{3,8}$/.test(p.color || '') ? p.color : '#00ccff') + '"><b>' + esc(p.name) + '</b>' +
+        '<span class="p">' + esc(p.price_display) + '<small>' + esc(interval) + '</small></span>' +
+        (p.description ? '<p>' + esc(p.description) + '</p>' : '') + cta + '</div>';
+    }).join('') + '</div>';
+  }
+
+  function gateHtml(cid) {
+    var a = state.access;
+    var o = a.overlay || {};
+    var name = channelName(cid);
+    var html = '<div class="sml-ob-card">';
+    html += '<span class="sml-ob-eyebrow">' + LOCK + ' Premium channel</span>';
+    html += '<h2 id="sml-ob-gate-title">' + esc(name ? '#' + name : (o.group_name || 'Premium')) + '</h2>';
+    html += '<p class="sml-ob-sub">Part of <b>' + esc(o.group_name) + '</b> Premium' + (o.owner_name ? ' · run by ' + esc(o.owner_name) : '') + '</p>';
+    if (a.onboarding && o.welcome_message) html += '<p class="sml-ob-welcome">' + esc(o.welcome_message) + '</p>';
+    if (!a.onboarding) html += '<p class="sml-ob-sub" style="margin:0">Premium members read and post here.</p>';
+    if (o.featured && o.featured.length) {
+      html += '<div><h3>Inside Premium</h3><ul class="sml-ob-chips">' + o.featured.map(function (c) { return '<li>#' + esc(c.name) + '</li>'; }).join('') + '</ul></div>';
+    }
+    html += plansHtml();
+    html += primaryCta();
+    html += '<p class="sml-ob-status" data-sml-ob-status role="status" aria-live="polite"></p>';
+    if (o.open && o.open.length) {
+      html += '<div class="sml-ob-open"><h3>Free to browse</h3><div class="sml-ob-chips">' + o.open.map(function (c) { return '<button type="button" data-sml-ob-goto="' + Number(c.id) + '">#' + esc(c.name) + '</button>'; }).join('') + '</div></div>';
+    }
+    if (o.rules && o.rules.length) {
+      html += '<details><summary>Group rules (' + o.rules.length + ')</summary><ol>' + o.rules.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ol></details>';
+    }
+    return html + '</div>';
+  }
+
+  function unlock(btn) {
+    var a = state.access;
+    var o = a.overlay || {};
+    var box = btn && btn.closest('.sml-ob-joinbar, #sml-ob-gate');
+    var status = box && box.querySelector('[data-sml-ob-status]');
+    var ask = 'Unlock ' + (o.group_name || 'this group') + ' Premium' + (o.price_loopbucks ? ' for ' + fmt(o.price_loopbucks) + ' Loop Bucks per month' : '') + '?';
+    if (!window.confirm(ask)) return;
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = '';
+    req('/wp-json/sml/v1/group/join', { method: 'POST', body: JSON.stringify({ group_id: a.group_id }) })
+      .then(function () { location.reload(); })
+      .catch(function (err) {
+        if (btn) btn.disabled = false;
+        if (status) status.textContent = err.message; else window.alert(err.message);
+      });
+  }
+
+  function onClick(e) {
+    var go = e.target.closest('[data-sml-ob-goto]');
+    if (go) { var b = channelButton(go.getAttribute('data-sml-ob-goto')); if (b) b.click(); return; }
+    var u = e.target.closest('[data-sml-ob-unlock]');
+    if (u) unlock(u);
+  }
+
+  function placeGate(gate, main) {
+    var conv = main.querySelector('[data-smlgs-conversation]');
+    var head = main.querySelector('.sml-gshell__main-head');
+    var top = conv ? conv.offsetTop : (head ? head.offsetTop + head.offsetHeight : 0);
+    gate.style.top = Math.max(0, top) + 'px';
+  }
+
+  function showGate(cid) {
+    var main = mainEl();
+    if (!main) return;
+    if (window.getComputedStyle(main).position === 'static') main.style.position = 'relative';
+    var gate = document.getElementById('sml-ob-gate');
+    if (!gate) {
+      gate = document.createElement('section');
+      gate.id = 'sml-ob-gate';
+      gate.setAttribute('aria-labelledby', 'sml-ob-gate-title');
+      gate.addEventListener('click', onClick);
+      main.appendChild(gate);
+      var head = main.querySelector('.sml-gshell__main-head');
+      if (head && window.ResizeObserver) new ResizeObserver(function () { var g = document.getElementById('sml-ob-gate'); if (g && g.parentNode) placeGate(g, g.parentNode); }).observe(head);
+    }
+    placeGate(gate, main);
+    if (gate.getAttribute('data-channel') !== String(cid)) {
+      gate.setAttribute('data-channel', String(cid));
+      gate.innerHTML = gateHtml(cid);
+      gate.scrollTop = 0;
+    }
+  }
+
+  function removeGate() {
+    var gate = document.getElementById('sml-ob-gate');
+    if (gate) gate.remove();
+  }
+
+  function ensureJoinBar() {
+    var main = mainEl();
+    if (!main || main.querySelector('.sml-ob-joinbar')) return;
+    var a = state.access;
+    var bar = document.createElement('div');
+    bar.className = 'sml-ob-joinbar';
+    bar.innerHTML = '<span>You are previewing <b>' + esc(a.overlay.group_name) + '</b>. Premium members can post and read every channel.</span>' +
+      (a.logged_in ? '<button type="button" class="sml-ob-cta" data-sml-ob-unlock>Unlock Premium</button>' : '<a class="sml-ob-cta" href="' + esc(a.overlay.login_url) + '">Sign in to join</a>') +
+      '<p class="sml-ob-status" data-sml-ob-status role="status" aria-live="polite"></p>';
+    bar.addEventListener('click', onClick);
+    var composer = main.querySelector('[data-smlgs-composer]');
+    if (composer && composer.parentNode === main) main.insertBefore(bar, composer); else main.appendChild(bar);
+  }
+
+  /* Premium channels get .is-locked, so the sidebar's landing module (group-categories.js firstOpen) opens an open channel first. */
+  function markLocked() {
+    channelButtons().forEach(function (b) {
+      b.classList.toggle('is-locked', !isOpen(b.getAttribute('data-smlgs-channel')));
+    });
+  }
+
+  function readContext() {
+    var c = window.SMLGroupShellContext;
+    if (c) { state.mode = c.mode || ''; state.channelId = Number(c.channelId) || 0; }
+  }
+
+  /* Fallback landing: the sidebar module lands on the owner's landing channel or the first open channel. With no open
+     channel (or if it has not landed within 3 s of the shell going live) open the first channel so the onboarding shows. */
+  function land() {
+    if (state.landed || !previewing() || !shellActive()) return;
+    if (!state.activeAt) state.activeAt = Date.now();
+    readContext();
+    if (state.mode === 'channel' && state.channelId) { state.landed = true; return; }
+    var buttons = channelButtons();
+    if (!buttons.length) return;
+    var open = buttons.filter(function (b) { return isOpen(b.getAttribute('data-smlgs-channel')); });
+    if (open.length && Date.now() - state.activeAt < 3000) return;
+    state.landed = true;
+    (open[0] || buttons[0]).click();
+  }
+
+  function update() {
+    var on = previewing();
+    document.documentElement.classList.toggle('sml-ob-preview', on);
+    if (!on || !mainEl()) { removeGate(); return; }
+    markLocked();
+    ensureJoinBar();
+    land();
+    readContext();
+    if (state.mode === 'channel' && state.channelId && !isOpen(state.channelId)) showGate(state.channelId);
+    else removeGate(); // open channels, Portal and tools stay usable
+  }
+
+  /* ------------------------------------------------------------------ owners: "Onboarding" in the ⋮ menu */
+
+  function installMenu() {
+    if (!state.access || !state.access.can_manage) return;
+    var menu = document.querySelector('[data-smlgs-owner-menu]');
+    if (!menu || menu.querySelector('[data-sml-ob-open]')) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-sml-ob-open', '');
+    b.textContent = 'Onboarding';
+    b.addEventListener('click', function () {
+      menu.classList.remove('open');
+      var dots = document.querySelector('[data-smlgs-owner-dots]');
+      if (dots) dots.setAttribute('aria-expanded', 'false');
+      openConfig();
+    });
+    menu.appendChild(b);
+  }
+
+  function escClose(e) { if (e.key === 'Escape') closeConfig(); }
+
+  function closeConfig() {
+    var o = document.getElementById('sml-ob-config');
+    if (o) o.remove();
+    document.removeEventListener('keydown', escClose);
+  }
+
+  function openConfig() {
+    if (document.getElementById('sml-ob-config')) return;
+    var overlay = document.createElement('div');
+    overlay.id = 'sml-ob-config';
+    overlay.innerHTML = '<div class="sml-ob-panel" role="dialog" aria-modal="true" aria-labelledby="sml-ob-cfg-title"><h2 id="sml-ob-cfg-title">Onboarding</h2><p class="note">Loading…</p></div>';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeConfig(); });
     document.body.appendChild(overlay);
-    renderStep();
+    document.addEventListener('keydown', escClose);
+    api('/config?slug=' + encodeURIComponent(slug()))
+      .then(function (d) { renderConfig(overlay.querySelector('.sml-ob-panel'), d); })
+      .catch(function (err) { overlay.querySelector('.note').textContent = err.message; });
   }
 
-  function renderChannelStep(data) {
-    var html = '<div style="padding:0 20px;display:flex;flex-direction:column;gap:8px;flex:1;overflow-y:auto;max-height:400px;">';
+  function renderConfig(panel, d) {
+    var cfg = d.config || {};
+    var channels = d.channels || [];
+    var open = (cfg.open_channels || []).map(Number);
+    if (!cfg.updated) { /* first setup: the default PUBLIC ALERTS channel starts open to everyone */
+      channels.forEach(function (c) { if (c.openable && String(c.name).trim().toUpperCase() === 'PUBLIC ALERTS' && open.indexOf(c.id) === -1) open.push(c.id); });
+    }
+    var featured = (cfg.featured_channels || []).map(Number);
+    var rules = (cfg.rules || []).slice();
 
-    if (data.featured_channels.length > 0) {
-      html += '<div style="font:600 11px/1 Archivo,sans-serif;color:#5d7085;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:2px;">Featured by owner</div>';
-      data.featured_channels.forEach(function (ch) {
-        html += channelRow(ch, true);
-      });
+    if (!d.premium) {
+      panel.innerHTML = '<h2 id="sml-ob-cfg-title">Onboarding</h2>' +
+        '<p class="note">Onboarding is a Premium group feature. It shows over your Premium channels to everyone who has not joined yet, together with your membership cards, and lets you open chosen channels to everyone for info and promo.</p>' +
+        (d.can_set_pricing
+          ? '<p class="note">Make <b>' + esc(d.group_name) + '</b> Premium by setting membership pricing, then come back here.</p><div class="actions"><a class="ghost" href="/?sml_group_slug=' + encodeURIComponent(slug()) + '&amp;owner_tools=1">Set membership pricing</a><button type="button" class="primary" data-close>Close</button></div>'
+          : '<p class="note">Ask the group owner to set membership pricing to make this group Premium.</p><div class="actions"><button type="button" class="primary" data-close>Close</button></div>');
+      panel.querySelector('[data-close]').addEventListener('click', closeConfig);
+      return;
     }
 
-    if (data.other_channels.length > 0) {
-      html += '<div style="font:600 11px/1 Archivo,sans-serif;color:#5d7085;text-transform:uppercase;letter-spacing:0.8px;padding:8px 0 2px;">All channels</div>';
-      data.other_channels.forEach(function (ch) {
-        html += channelRow(ch, false);
-      });
+    function chanRow(c) {
+      var isOpenCh = open.indexOf(c.id) !== -1;
+      var control = c.openable
+        ? '<span class="seg" role="group" aria-label="Access for #' + esc(c.name) + '"><button type="button" data-set="premium" aria-pressed="' + (!isOpenCh) + '">Premium</button><button type="button" class="open" data-set="open" aria-pressed="' + isOpenCh + '">Open to everyone</button></span>'
+        : '<span class="fixed">Premium · ' + esc(c.type) + ' rooms stay members-only</span>';
+      return '<div class="chan" data-id="' + Number(c.id) + '"><span>#' + esc(c.name) + '</span>' + control +
+        '<label class="feat"' + (isOpenCh ? ' hidden' : '') + '><input type="checkbox" data-feat' + (featured.indexOf(c.id) !== -1 ? ' checked' : '') + '> Feature</label></div>';
     }
 
-    // notification bar
-    if (data.auto_notifications) {
-      html += '<div style="padding:14px 0;display:flex;align-items:center;gap:10px;border-top:1px solid #0e1620;margin-top:8px;">';
-      html += '<div style="width:20px;height:20px;border-radius:6px;background:#22c55e;display:flex;align-items:center;justify-content:center;flex:none;">';
-      html += '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      html += '</div>';
-      html += '<div style="font:400 11px/1.4 Archivo,sans-serif;color:#8fa3b5;">Notifications on for channels you follow</div>';
-      html += '</div>';
+    function ruleRow(r) {
+      return '<div class="rule"><input type="text" maxlength="200" value="' + esc(r) + '" data-rule aria-label="Rule"><button type="button" class="ghost" data-del-rule>Remove</button></div>';
     }
 
-    html += '</div>';
-    return html;
-  }
+    panel.innerHTML = '<h2 id="sml-ob-cfg-title">Onboarding</h2>' +
+      (d.private ? '<p class="note">This group is private, so visitors cannot preview it. Onboarding and open channels apply to public Premium groups.</p>' : '') +
+      '<div><h3>Channels</h3><p class="note" style="margin-bottom:8px">Premium channels are for members. Open channels can be read by everyone — good for info and promo — and visitors can browse them before joining.</p>' +
+      channels.map(chanRow).join('') + '</div>' +
+      '<label class="row"><input type="checkbox" data-enabled' + (cfg.premium_onboarding ? ' checked' : '') + '> Show the onboarding over Premium channels</label>' +
+      '<div><h3>Welcome message</h3><textarea rows="3" maxlength="400" data-welcome placeholder="What members get, and why it is worth it.">' + esc(cfg.welcome_message) + '</textarea></div>' +
+      '<p class="note">Tick <b>Feature</b> on up to 5 Premium channels to show them off in the onboarding. Membership cards come from ⋮ → Membership cards &amp; store.</p>' +
+      '<div><h3>Rules</h3><div data-rules>' + rules.map(ruleRow).join('') + '</div><button type="button" class="ghost" data-add-rule style="margin-top:8px">Add rule</button></div>' +
+      '<div class="actions"><span class="status" data-status role="status" aria-live="polite"></span><button type="button" class="ghost" data-close>Cancel</button><button type="button" class="primary" data-save>Save onboarding</button></div>';
 
-  function channelRow(ch, featured) {
-    var isSelected = state.selected.indexOf(ch.id) > -1;
-    var borderStyle = featured
-      ? 'border:1px solid rgba(0,204,255,0.2);background:rgba(0,204,255,0.03);'
-      : 'border:1px solid #16202b;background:#080c12;';
-    var iconBg = featured
-      ? 'background:rgba(0,204,255,0.1);border:1px solid rgba(0,204,255,0.15);'
-      : 'background:#0d141c;border:1px solid #1d2b39;';
-
-    var html = '<div class="sml-ob-ch" data-cid="' + ch.id + '" style="' + borderStyle + 'border-radius:11px;padding:12px 14px;display:flex;align-items:center;gap:11px;cursor:pointer;">';
-    html += '<div style="width:34px;height:34px;border-radius:9px;' + iconBg + 'display:flex;align-items:center;justify-content:center;flex:none;">';
-    html += '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4H13M3 8H10M3 12H7" stroke="' + (featured ? '#00ccff' : '#5d7085') + '" stroke-width="1.3" stroke-linecap="round"/></svg>';
-    html += '</div>';
-    html += '<div style="flex:1;min-width:0;">';
-    html += '<div style="font:600 12px/1.3 Archivo,sans-serif;color:#e6edf3;">#' + esc(ch.name) + '</div>';
-    if (ch.description) {
-      html += '<div style="font:400 10px/1.3 Archivo,sans-serif;color:#5d7085;">' + esc(ch.description) + '</div>';
-    }
-    html += '</div>';
-
-    if (isSelected) {
-      html += '<div style="width:18px;height:18px;border-radius:5px;background:#00ccff;display:flex;align-items:center;justify-content:center;flex:none;">';
-      html += '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4 7L8 3" stroke="#080c12" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      html += '</div>';
-    } else {
-      html += '<div style="width:18px;height:18px;border-radius:5px;border:1.5px solid #2a3a4a;flex:none;"></div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function renderRulesStep(data) {
-    var html = '<div style="padding:0 20px;display:flex;flex-direction:column;gap:8px;flex:1;overflow-y:auto;max-height:400px;">';
-    html += '<div style="font:600 11px/1 Archivo,sans-serif;color:#5d7085;text-transform:uppercase;letter-spacing:0.8px;padding-bottom:2px;">Group Rules</div>';
-    html += '<div style="border:1px solid #16202b;border-radius:12px;background:#080c12;padding:14px 18px;display:flex;flex-direction:column;gap:8px;">';
-
-    data.rules.forEach(function (rule, i) {
-      html += '<div style="display:flex;align-items:flex-start;gap:8px;' + (i < data.rules.length - 1 ? 'padding-bottom:8px;border-bottom:1px solid #0e1620;' : '') + '">';
-      html += '<div style="font:600 11px/1 \'IBM Plex Mono\',monospace;color:#4c5d6d;width:16px;flex:none;padding-top:2px;">' + (i + 1) + '.</div>';
-      html += '<div style="font:400 11px/1.5 Archivo,sans-serif;color:#c9d6e2;flex:1;">' + esc(rule) + '</div>';
-      html += '</div>';
+    panel.addEventListener('click', function (e) {
+      var seg = e.target.closest('.seg button');
+      if (seg) {
+        var row = seg.closest('.chan');
+        var toOpen = seg.getAttribute('data-set') === 'open';
+        row.querySelectorAll('.seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b === seg)); });
+        row.querySelector('.feat').hidden = toOpen;
+        if (toOpen) row.querySelector('[data-feat]').checked = false;
+        return;
+      }
+      if (e.target.closest('[data-add-rule]')) {
+        var box = panel.querySelector('[data-rules]');
+        if (box.querySelectorAll('[data-rule]').length >= 10) return;
+        box.insertAdjacentHTML('beforeend', ruleRow(''));
+        box.lastElementChild.querySelector('input').focus();
+        return;
+      }
+      if (e.target.closest('[data-del-rule]')) { e.target.closest('.rule').remove(); return; }
+      if (e.target.closest('[data-close]')) { closeConfig(); return; }
+      if (e.target.closest('[data-save]')) save(panel);
     });
 
-    html += '</div>';
-    html += '<label style="display:flex;align-items:center;gap:10px;padding:12px 0;cursor:pointer;">';
-    html += '<input type="checkbox" id="sml-ob-rules-accept" ' + (state.rulesAccepted ? 'checked' : '') + ' style="width:16px;height:16px;accent-color:#00ccff;">';
-    html += '<span style="font:400 12px/1.4 Archivo,sans-serif;color:#8fa3b5;">I agree to follow these rules</span>';
-    html += '</label>';
-    html += '</div>';
-    return html;
-  }
-
-  function renderNotifStep(data) {
-    var html = '<div style="padding:0 20px;display:flex;flex-direction:column;gap:16px;flex:1;align-items:center;justify-content:center;min-height:200px;text-align:center;">';
-    html += '<div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#0a2a15,#155e2e);border:2px solid rgba(34,197,94,0.3);display:flex;align-items:center;justify-content:center;">';
-    html += '<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M16 4C16 4 18 8 18 12C18 16 16 20 16 20M16 20C16 20 14 16 14 12C14 8 16 4 16 4" stroke="#22c55e" stroke-width="1.5"/><path d="M8 26H24L22 22H10L8 26Z" stroke="#22c55e" stroke-width="1.5" stroke-linejoin="round"/><circle cx="16" cy="26" r="2" fill="#22c55e"/></svg>';
-    html += '</div>';
-    html += '<div style="font:700 16px/1.2 Archivo,sans-serif;color:#e6edf3;">You\'re all set!</div>';
-    html += '<div style="font:400 12px/1.5 Archivo,sans-serif;color:#8fa3b5;max-width:280px;">';
-    if (data.auto_notifications) {
-      html += 'Notifications are enabled for the channels you selected. You can change this anytime from group settings.';
-    } else {
-      html += 'You\'re following ' + state.selected.length + ' channel' + (state.selected.length !== 1 ? 's' : '') + '. Jump in and start exploring!';
-    }
-    html += '</div></div>';
-    return html;
-  }
-
-  // ---- Owner Config Panel ----
-
-  function renderOwnerConfig(cfgData) {
-    var btn = document.createElement('button');
-    btn.id = 'sml-ob-config-btn';
-    btn.textContent = 'Onboarding Setup';
-    btn.style.cssText = 'position:fixed;bottom:60px;right:20px;padding:10px 18px;border:1px solid #22c55e33;border-radius:10px;background:#080c12;color:#22c55e;font:600 12px/1 Archivo,sans-serif;cursor:pointer;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
-    btn.addEventListener('click', function () { openOwnerPanel(); });
-    document.body.appendChild(btn);
-  }
-
-  function openOwnerPanel() {
-    if (document.getElementById('sml-ob-config-panel')) return;
-
-    api('/config?slug=' + encodeURIComponent(slug()))
-      .then(function (res) {
-        var config = res.config || {};
-        var channels = res.channels || [];
-
-        var overlay = document.createElement('div');
-        overlay.id = 'sml-ob-config-panel';
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10002;display:flex;align-items:center;justify-content:center;padding:16px;';
-
-        var panel = document.createElement('div');
-        panel.style.cssText = 'background:#040608;border:1px solid #16202b;border-radius:14px;max-width:460px;width:100%;max-height:85vh;overflow-y:auto;padding:24px 22px;display:flex;flex-direction:column;gap:18px;';
-
-        var html = '';
-
-        // header
-        html += '<div style="display:flex;align-items:center;gap:10px;">';
-        html += '<div style="font:700 16px/1.2 Archivo,sans-serif;color:#e6edf3;">Onboarding Setup</div>';
-        html += '<div style="margin-left:auto;font:500 10px/1 \'IBM Plex Mono\',monospace;color:#5d7085;">OWNER ONLY</div>';
-        html += '</div>';
-
-        // enable toggle
-        html += '<div style="border:1px solid #16202b;border-radius:12px;background:#080c12;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;flex-direction:column;gap:3px;">';
-        html += '<div style="font:600 13px/1.3 Archivo,sans-serif;color:#e6edf3;">Enable Onboarding</div>';
-        html += '<div style="font:400 10.5px/1.4 Archivo,sans-serif;color:#5d7085;">New members see a guided setup when they join.</div>';
-        html += '</div>';
-        html += '<label style="cursor:pointer;"><input type="checkbox" id="sml-ob-enabled" ' + (config.enabled ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:#22c55e;"></label>';
-        html += '</div>';
-
-        // welcome message
-        html += '<div style="border:1px solid #16202b;border-radius:12px;background:#080c12;overflow:hidden;">';
-        html += '<div style="padding:14px 18px;border-bottom:1px solid #0e1620;">';
-        html += '<div style="font:600 12px/1 Archivo,sans-serif;color:#e6edf3;margin-bottom:3px;">Welcome Message</div>';
-        html += '<div style="font:400 10px/1.3 Archivo,sans-serif;color:#5d7085;">Shown at the top of the onboarding screen.</div>';
-        html += '</div>';
-        html += '<div style="padding:14px 18px;">';
-        html += '<textarea id="sml-ob-welcome" maxlength="200" rows="3" style="width:100%;border:1px solid #1d2b39;border-radius:8px;background:#0a1018;padding:10px 12px;font:400 12px/1.5 Archivo,sans-serif;color:#c9d6e2;resize:vertical;box-sizing:border-box;">' + esc(config.welcome_message || '') + '</textarea>';
-        html += '<div id="sml-ob-charcount" style="font:400 9px/1 \'IBM Plex Mono\',monospace;color:#4c5d6d;text-align:right;margin-top:6px;">' + (config.welcome_message || '').length + ' / 200</div>';
-        html += '</div></div>';
-
-        // featured channels
-        html += '<div style="border:1px solid #16202b;border-radius:12px;background:#080c12;overflow:hidden;">';
-        html += '<div style="padding:14px 18px;border-bottom:1px solid #0e1620;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div><div style="font:600 12px/1 Archivo,sans-serif;color:#e6edf3;margin-bottom:3px;">Featured Channels</div>';
-        html += '<div style="font:400 10px/1.3 Archivo,sans-serif;color:#5d7085;">Pre-selected for new members (max 5).</div></div>';
-        html += '<div id="sml-ob-feat-count" style="font:500 10px/1 \'IBM Plex Mono\',monospace;color:#00ccff;">' + (config.featured_channels || []).length + ' / 5</div>';
-        html += '</div>';
-        html += '<div id="sml-ob-channels" style="padding:8px 18px 14px;display:flex;flex-direction:column;gap:4px;">';
-
-        var featIds = config.featured_channels || [];
-        channels.forEach(function (ch) {
-          var isFeat = featIds.indexOf(ch.id) > -1;
-          html += '<label style="display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer;">';
-          html += '<input type="checkbox" class="sml-ob-feat-ch" data-cid="' + ch.id + '" ' + (isFeat ? 'checked' : '') + ' style="width:16px;height:16px;accent-color:#00ccff;">';
-          html += '<span style="font:500 11px/1 Archivo,sans-serif;color:' + (isFeat ? '#00ccff' : '#e6edf3') + ';">#' + esc(ch.name) + '</span>';
-          html += '</label>';
-        });
-
-        html += '</div></div>';
-
-        // rules
-        html += '<div style="border:1px solid #16202b;border-radius:12px;background:#080c12;overflow:hidden;">';
-        html += '<div style="padding:14px 18px;border-bottom:1px solid #0e1620;">';
-        html += '<div style="font:600 12px/1 Archivo,sans-serif;color:#e6edf3;margin-bottom:3px;">Group Rules</div>';
-        html += '<div style="font:400 10px/1.3 Archivo,sans-serif;color:#5d7085;">Members must accept before they can post.</div>';
-        html += '</div>';
-        html += '<div id="sml-ob-rules" style="padding:10px 18px 14px;display:flex;flex-direction:column;gap:6px;">';
-
-        (config.rules || []).forEach(function (rule, i) {
-          html += '<div class="sml-ob-rule" style="display:flex;align-items:center;gap:8px;">';
-          html += '<span style="font:600 11px/1 \'IBM Plex Mono\',monospace;color:#4c5d6d;width:16px;flex:none;">' + (i + 1) + '.</span>';
-          html += '<input type="text" class="sml-ob-rule-input" value="' + esc(rule) + '" maxlength="200" style="flex:1;padding:6px 8px;border:1px solid #1d2b39;border-radius:6px;background:#0a1018;color:#c9d6e2;font:400 11px/1.4 Archivo,sans-serif;">';
-          html += '<button class="sml-ob-rule-rm" style="padding:4px;border:none;background:transparent;color:#ff4444;cursor:pointer;font-size:14px;">&times;</button>';
-          html += '</div>';
-        });
-
-        html += '<button id="sml-ob-add-rule" style="width:100%;padding:8px;border:1px dashed #1d2b39;border-radius:8px;background:transparent;font:500 11px/1 Archivo,sans-serif;color:#5d7085;cursor:pointer;margin-top:4px;">+ Add rule</button>';
-        html += '</div></div>';
-
-        // auto notifications
-        html += '<div style="border:1px solid #16202b;border-radius:12px;background:#080c12;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">';
-        html += '<div style="display:flex;flex-direction:column;gap:3px;">';
-        html += '<div style="font:600 12px/1 Archivo,sans-serif;color:#e6edf3;">Auto-enable Notifications</div>';
-        html += '<div style="font:400 10px/1.3 Archivo,sans-serif;color:#5d7085;">Turn on notifications for featured channels by default.</div>';
-        html += '</div>';
-        html += '<label style="cursor:pointer;"><input type="checkbox" id="sml-ob-auto-notif" ' + (config.auto_notifications !== false ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:#22c55e;"></label>';
-        html += '</div>';
-
-        // buttons
-        html += '<div style="display:flex;gap:10px;">';
-        html += '<button id="sml-ob-cfg-cancel" style="flex:1;padding:12px;border:1px solid rgba(0,204,255,0.2);border-radius:10px;background:transparent;font:600 12px/1 Archivo,sans-serif;color:#00ccff;cursor:pointer;">Cancel</button>';
-        html += '<button id="sml-ob-cfg-save" style="flex:2;padding:12px;border:none;border-radius:10px;background:#00ccff;font:600 12px/1 Archivo,sans-serif;color:#080c12;cursor:pointer;">Save Changes</button>';
-        html += '</div>';
-
-        panel.innerHTML = html;
-        overlay.appendChild(panel);
-        document.body.appendChild(overlay);
-
-        // events
-        overlay.addEventListener('click', function (e) {
-          if (e.target === overlay) overlay.remove();
-        });
-
-        panel.querySelector('#sml-ob-cfg-cancel').addEventListener('click', function () { overlay.remove(); });
-
-        var welcomeEl = panel.querySelector('#sml-ob-welcome');
-        welcomeEl.addEventListener('input', function () {
-          panel.querySelector('#sml-ob-charcount').textContent = welcomeEl.value.length + ' / 200';
-        });
-
-        panel.addEventListener('click', function (e) {
-          if (e.target.classList.contains('sml-ob-rule-rm')) {
-            e.target.parentElement.remove();
-            renumberRules();
-          }
-        });
-
-        panel.querySelector('#sml-ob-add-rule').addEventListener('click', function () {
-          var rulesDiv = panel.querySelector('#sml-ob-rules');
-          var count = rulesDiv.querySelectorAll('.sml-ob-rule').length;
-          if (count >= 10) return;
-          var div = document.createElement('div');
-          div.className = 'sml-ob-rule';
-          div.style.cssText = 'display:flex;align-items:center;gap:8px;';
-          div.innerHTML = '<span style="font:600 11px/1 \'IBM Plex Mono\',monospace;color:#4c5d6d;width:16px;flex:none;">' + (count + 1) + '.</span>' +
-            '<input type="text" class="sml-ob-rule-input" maxlength="200" style="flex:1;padding:6px 8px;border:1px solid #1d2b39;border-radius:6px;background:#0a1018;color:#c9d6e2;font:400 11px/1.4 Archivo,sans-serif;">' +
-            '<button class="sml-ob-rule-rm" style="padding:4px;border:none;background:transparent;color:#ff4444;cursor:pointer;font-size:14px;">&times;</button>';
-          rulesDiv.querySelector('#sml-ob-add-rule').before(div);
-        });
-
-        function renumberRules() {
-          var ruleEls = panel.querySelectorAll('.sml-ob-rule');
-          ruleEls.forEach(function (el, i) {
-            var num = el.querySelector('span');
-            if (num) num.textContent = (i + 1) + '.';
-          });
-        }
-
-        panel.querySelector('#sml-ob-cfg-save').addEventListener('click', function () {
-          var featChecks = panel.querySelectorAll('.sml-ob-feat-ch:checked');
-          var featured = [];
-          featChecks.forEach(function (cb) { featured.push(parseInt(cb.getAttribute('data-cid'))); });
-
-          var ruleInputs = panel.querySelectorAll('.sml-ob-rule-input');
-          var rules = [];
-          ruleInputs.forEach(function (inp) { if (inp.value.trim()) rules.push(inp.value.trim()); });
-
-          var payload = {
-            enabled: panel.querySelector('#sml-ob-enabled').checked,
-            welcome_message: welcomeEl.value,
-            featured_channels: featured,
-            rules: rules,
-            auto_notifications: panel.querySelector('#sml-ob-auto-notif').checked
-          };
-
-          api('/config?slug=' + encodeURIComponent(slug()), {
-            method: 'POST',
-            body: JSON.stringify(payload)
-          }).then(function () { overlay.remove(); });
-        });
-
-        // enforce max 5 featured
-        panel.addEventListener('change', function (e) {
-          if (e.target.classList.contains('sml-ob-feat-ch')) {
-            var checked = panel.querySelectorAll('.sml-ob-feat-ch:checked');
-            if (checked.length > 5) { e.target.checked = false; }
-            panel.querySelector('#sml-ob-feat-count').textContent = Math.min(checked.length, 5) + ' / 5';
-          }
-        });
-      });
-  }
-
-  // ---- Init ----
-  var s = slug();
-  if (!s || !NONCE) return;
-
-  api('/flow?slug=' + encodeURIComponent(s))
-    .then(function (data) {
-      if (data && data.show) {
-        renderOverlay(data);
+    panel.addEventListener('change', function (e) {
+      if (!e.target.matches('[data-feat]') || !e.target.checked) return;
+      if (panel.querySelectorAll('[data-feat]:checked').length > 5) {
+        e.target.checked = false;
+        panel.querySelector('[data-status]').textContent = 'You can feature up to 5 Premium channels.';
       }
-    })
-    .catch(function () {});
+    });
 
-  // check if owner — show config button
-  fetch('/wp-json/sml-onboard/v1/config?slug=' + encodeURIComponent(s), {
-    headers: NONCE ? { 'X-WP-Nonce': NONCE } : {},
-    credentials: 'same-origin'
-  }).then(function (r) {
-    if (r.ok) { renderOwnerConfig(); }
-  }).catch(function () {});
+    var first = panel.querySelector('.seg button');
+    if (first) first.focus();
+  }
+
+  function save(panel) {
+    var status = panel.querySelector('[data-status]');
+    var btn = panel.querySelector('[data-save]');
+    var body = { premium_onboarding: panel.querySelector('[data-enabled]').checked, welcome_message: panel.querySelector('[data-welcome]').value, open_channels: [], featured_channels: [], rules: [] };
+    panel.querySelectorAll('.chan').forEach(function (row) {
+      var id = Number(row.getAttribute('data-id'));
+      var openBtn = row.querySelector('[data-set="open"]');
+      if (openBtn && openBtn.getAttribute('aria-pressed') === 'true') body.open_channels.push(id);
+      else if (row.querySelector('[data-feat]').checked) body.featured_channels.push(id);
+    });
+    panel.querySelectorAll('[data-rule]').forEach(function (i) { if (i.value.trim()) body.rules.push(i.value.trim()); });
+    btn.disabled = true;
+    status.className = 'status';
+    status.textContent = 'Saving…';
+    api('/config?slug=' + encodeURIComponent(slug()), { method: 'POST', body: JSON.stringify(body) })
+      .then(function () { status.textContent = 'Onboarding saved.'; setTimeout(closeConfig, 700); })
+      .catch(function (err) { status.className = 'status err'; status.textContent = err.message; })
+      .then(function () { btn.disabled = false; });
+  }
+
+  /* ------------------------------------------------------------------ boot */
+
+  function tick() {
+    installMenu();
+    update();
+  }
+
+  function start(a) {
+    state.access = a || null;
+    if (!state.access) return;
+    if (previewing()) installFetchGuard();
+    tick();
+    document.addEventListener('sml:group-shell-ready', function () { setTimeout(tick, 0); });
+    document.addEventListener('sml:group-context-change', function (e) {
+      var d = (e && e.detail) || {};
+      state.mode = d.mode || state.mode;
+      state.channelId = Number(d.channelId) || 0;
+      setTimeout(tick, 0);
+    });
+    /* The shell mounts asynchronously and re-renders its sidebar (every few seconds) and ⋮ menu: keep both in step. */
+    var tries = 0;
+    var timer = setInterval(function () { tick(); if (++tries > 40) clearInterval(timer); }, 500);
+    if (window.MutationObserver) {
+      var pending = false;
+      new MutationObserver(function () {
+        if (pending) return;
+        pending = true;
+        setTimeout(function () { pending = false; installMenu(); if (previewing() && shellActive()) { markLocked(); ensureJoinBar(); } }, 150);
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  var s = slug();
+  if (!s) return;
+  injectStyle();
+  if (window.SML_ONBOARD_ACCESS !== undefined) {
+    start(window.SML_ONBOARD_ACCESS);
+  } else {
+    api('/access?slug=' + encodeURIComponent(s)).then(start).catch(function () {});
+  }
 })();

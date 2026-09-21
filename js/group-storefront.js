@@ -2,7 +2,7 @@
  * SML Group Storefront — membership tier cards.
  * Renders on /groups/{slug}/ pages. Fetches plan data from
  * sml-storefront/v1/plans and renders cards matching the SML dark terminal
- * theme. Owner gets an "Edit Plans" button linking to config.
+ * theme. Owners edit the cards from the group's ⋮ menu ("Membership cards & store").
  */
 (function () {
   'use strict';
@@ -58,10 +58,11 @@
     return '1px solid ' + color + '33';
   }
 
+  /* Quote-safe: values also land inside value="…", src="…" and data-url="…" attributes. */
   function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s || '';
-    return d.innerHTML;
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
 
   function renderCard(plan) {
@@ -150,13 +151,40 @@
       }
     }
 
-    // add owner edit button
+    // owners edit from the group's ⋮ menu
     if (data.can_manage) {
-      var editBtn = document.createElement('button');
-      editBtn.textContent = 'Edit Plans';
-      editBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:10px 18px;border:1px solid #00ccff33;border-radius:10px;background:#080c12;color:#00ccff;font:600 12px/1 Archivo,sans-serif;cursor:pointer;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
-      editBtn.addEventListener('click', function () { openEditor(data); });
-      document.body.appendChild(editBtn);
+      installMenu(data);
+    }
+  }
+
+  /* "Membership cards & store" lives in the group's ⋮ menu (the shell mounts asynchronously and may re-render it). */
+  function installMenu(data) {
+    function add() {
+      var menu = document.querySelector('[data-smlgs-owner-menu]');
+      if (!menu || menu.querySelector('[data-sml-sf-open]')) return;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('data-sml-sf-open', '');
+      b.textContent = 'Membership cards & store';
+      b.addEventListener('click', function () {
+        menu.classList.remove('open');
+        var dots = document.querySelector('[data-smlgs-owner-dots]');
+        if (dots) dots.setAttribute('aria-expanded', 'false');
+        openEditor(data);
+      });
+      menu.appendChild(b);
+    }
+    add();
+    document.addEventListener('sml:group-shell-ready', function () { setTimeout(add, 0); });
+    var tries = 0;
+    var timer = setInterval(function () { add(); if (++tries > 40) clearInterval(timer); }, 500);
+    if (window.MutationObserver) {
+      var pending = false;
+      new MutationObserver(function () {
+        if (pending) return;
+        pending = true;
+        setTimeout(function () { pending = false; add(); }, 150);
+      }).observe(document.body, { childList: true, subtree: true });
     }
   }
 
@@ -175,7 +203,7 @@
 
     function planFields(p, idx) {
       var s = '';
-      s += '<div class="sml-sf-plan-block" data-idx="' + idx + '" style="border:1px solid #16202b;border-radius:10px;padding:14px;margin-bottom:12px;background:#0a1018;">';
+      s += '<div class="sml-sf-plan-block" data-idx="' + idx + '" data-slug="' + esc(p.slug || '') + '" style="border:1px solid #16202b;border-radius:10px;padding:14px;margin-bottom:12px;background:#0a1018;">';
       s += '<input data-field="name" value="' + esc(p.name) + '" placeholder="Plan name" style="width:100%;padding:8px;border:1px solid #1d2b39;border-radius:6px;background:#040608;color:#e6edf3;font:400 12px/1.4 Archivo,sans-serif;margin-bottom:8px;box-sizing:border-box;">';
       s += '<textarea data-field="description" placeholder="Description" rows="2" style="width:100%;padding:8px;border:1px solid #1d2b39;border-radius:6px;background:#040608;color:#e6edf3;font:400 12px/1.4 Archivo,sans-serif;margin-bottom:8px;resize:vertical;box-sizing:border-box;">' + esc(p.description || '') + '</textarea>';
       s += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
@@ -226,7 +254,8 @@
         obj.cta_text = bl.querySelector('[data-field="cta_text"]').value;
         obj.cta_url = bl.querySelector('[data-field="cta_url"]').value;
         obj.image_url = bl.querySelector('[data-field="image_url"]').value;
-        obj.slug = (obj.name || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        /* keep an existing plan's slug (e.g. 'free') so renaming a card never changes what it is */
+        obj.slug = bl.getAttribute('data-slug') || (obj.name || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '-');
         obj.interval = 'month';
         obj.active = true;
         out.push(obj);
