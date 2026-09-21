@@ -20,6 +20,7 @@ const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { createAcademyProgress } = require('./academy-progress');
+const { cleanupConnectActivityMessages } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
@@ -1103,7 +1104,14 @@ async function main() {
 
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
   process.once('SIGINT', () => { void shutdown('SIGINT'); });
-  server.listen(config.port, () => log('info', 'api_started', { port: config.port }));
+  server.listen(config.port, () => {
+    log('info', 'api_started', { port: config.port });
+    if (config.discordConnectBotToken) {
+      cleanupConnectActivityMessages({ token: config.discordConnectBotToken, apply: true })
+        .then((result) => log('info', 'connect_activity_cleanup_complete', result))
+        .catch((error) => log('error', 'connect_activity_cleanup_failed', { error }));
+    }
+  });
 }
 
 if (require.main === module) {

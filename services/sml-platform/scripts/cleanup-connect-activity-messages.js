@@ -4,12 +4,7 @@
 const API = 'https://discord.com/api/v10';
 const CHANNEL_ID = '938971234346106910';
 const CONNECT_APP_ID = '1537698927401377894';
-const apply = process.argv.includes('--apply');
-const token = String(process.env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim();
-
-if (!token) throw new Error('SML_DISCORD_CONNECT_BOT_TOKEN is required');
-
-async function discord(path, options = {}) {
+async function discord(token, path, options = {}) {
   const response = await fetch(`${API}${path}`, {
     ...options,
     headers: { authorization: `Bot ${token}`, ...(options.headers || {}) }
@@ -23,15 +18,28 @@ function applicationId(message) {
     message.interaction_metadata?.application_id || '');
 }
 
-(async () => {
-  const messages = await discord(`/channels/${CHANNEL_ID}/messages?limit=100`);
+async function cleanupConnectActivityMessages({
+  token = process.env.SML_DISCORD_CONNECT_BOT_TOKEN,
+  apply = false
+} = {}) {
+  token = String(token || '').trim();
+  if (!token) throw new Error('SML_DISCORD_CONNECT_BOT_TOKEN is required');
+  const messages = await discord(token, `/channels/${CHANNEL_ID}/messages?limit=100`);
   const matches = messages.filter((message) => applicationId(message) === CONNECT_APP_ID);
   if (apply) {
     for (const message of matches) {
-      await discord(`/channels/${CHANNEL_ID}/messages/${message.id}`, { method: 'DELETE' });
+      await discord(token, `/channels/${CHANNEL_ID}/messages/${message.id}`, { method: 'DELETE' });
     }
   }
-  console.log(JSON.stringify({ channelId: CHANNEL_ID, applicationId: CONNECT_APP_ID,
+  return { channelId: CHANNEL_ID, applicationId: CONNECT_APP_ID,
     matched: matches.length, deleted: apply ? matches.length : 0,
-    messageIds: matches.map((message) => message.id) }, null, 2));
-})().catch((error) => { console.error(error.message); process.exit(1); });
+    messageIds: matches.map((message) => message.id) };
+}
+
+if (require.main === module) {
+  cleanupConnectActivityMessages({ apply: process.argv.includes('--apply') })
+    .then((result) => console.log(JSON.stringify(result, null, 2)))
+    .catch((error) => { console.error(error.message); process.exit(1); });
+}
+
+module.exports = { cleanupConnectActivityMessages, applicationId };
