@@ -1028,6 +1028,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       sendJson(response, 200, {
         ok: true, service: 'sml-platform-api', database: 'connected',
+        ...(process.env.RENDER_GIT_COMMIT ? { release: process.env.RENDER_GIT_COMMIT } : {}),
         ...(schema !== undefined ? { schema } : {})
       });
     } catch (error) {
