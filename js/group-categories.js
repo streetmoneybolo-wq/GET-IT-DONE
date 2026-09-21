@@ -1166,7 +1166,7 @@
       +   'pointer-events:auto !important;' /* the banner sets pointer-events:none; re-enable ours or real clicks pass through */
       +   'font-size:20px;line-height:1;color:#cfe;background:rgba(8,18,24,.66);border:1px solid rgba(255,255,255,.14);border-radius:8px;cursor:pointer;backdrop-filter:blur(4px);}'
       + '.sml-ghx-dots:hover{background:rgba(0,255,102,.16);border-color:rgba(0,255,102,.4);}'
-      + '.sml-ghx-menu{position:absolute;top:44px;right:8px;z-index:41;min-width:186px;display:none;flex-direction:column;overflow:hidden;pointer-events:auto !important;'
+      + '.sml-ghx-menu{position:fixed;z-index:2147483100;min-width:186px;display:none;flex-direction:column;overflow:hidden;pointer-events:auto !important;'
       +   'background:#0d171e;border:1px solid rgba(0,255,102,.22);border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.5);}'
       + '.sml-ghx-menu.open{display:flex;}'
       + '.sml-ghx-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:11px 14px;background:none;border:0;cursor:pointer;'
@@ -1301,11 +1301,11 @@
       dots.id = 'sml-ghx-dots'; dots.type = 'button'; dots.className = 'sml-ghx-dots';
       dots.setAttribute('aria-label', 'Group options'); dots.textContent = '⋮';
       var menu = document.createElement('div'); menu.id = 'sml-ghx-menu'; menu.className = 'sml-ghx-menu';
-      anchor.appendChild(dots); anchor.appendChild(menu);
-      dots.addEventListener('click', function (ev) { ev.stopPropagation(); menu.classList.toggle('open'); });
+      anchor.appendChild(dots); document.body.appendChild(menu);
+      dots.addEventListener('click', function (ev) { ev.stopPropagation(); var r = dots.getBoundingClientRect(); menu.style.top = Math.round(r.bottom + 4) + 'px'; menu.style.right = Math.round(document.documentElement.clientWidth - r.right) + 'px'; menu.classList.toggle('open'); });
       document.addEventListener('click', function (ev) { if (!menu.contains(ev.target) && ev.target !== dots) { menu.classList.remove('open'); } });
     }
-    var menu = anchor.querySelector('#sml-ghx-menu');
+    var menu = document.getElementById('sml-ghx-menu');
     // rebuild items to reflect which controls currently exist
     var wantBg = !!bgBtn;
     var wantTitle = titleCanManage();
