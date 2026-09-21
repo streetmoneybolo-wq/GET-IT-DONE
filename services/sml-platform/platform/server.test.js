@@ -102,6 +102,20 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
   });
 });
 
+test('Discord Activity proxy root serves the same native Academy entry point', async () => {
+  await withServer({ academyAppId: '1551336038713139370' }, async (base) => {
+    const response = await fetch(`${base}/`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /^text\/html/);
+    assert.match(response.headers.get('content-security-policy'), /frame-ancestors https:\/\/discord\.com/);
+    assert.match(response.headers.get('content-security-policy'), /frame-src 'none'/);
+    const html = await response.text();
+    assert.match(html, /Making Easy Money Academy/);
+    assert.match(html, /Live interactive candlestick chart/);
+    assert.doesNotMatch(html, /<iframe/i);
+  });
+});
+
 test('Academy Activity serves the official embedded SDK and exchanges Activity authorization codes', async () => {
   const calls = [];
   const academyOAuth = {

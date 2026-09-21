@@ -875,7 +875,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    if (request.method === 'GET' && path === '/academy-activity/') {
+    /* Discord's Activity proxy always enters at `/`, even when the configured
+       origin contains a path. Keep the canonical path for ordinary browser
+       previews, but serve the same no-store Activity document at the proxy
+       root so Discord never receives the API's JSON 404 page. */
+    if (request.method === 'GET' && (path === '/' || path === '/academy-activity/')) {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = params.get('symbol') || 'SPY';
       const timeframe = params.get('tf') || '5m';
