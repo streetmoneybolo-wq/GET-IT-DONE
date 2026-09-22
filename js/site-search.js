@@ -88,7 +88,7 @@
      refreshing a page never replays an old headline. While this tab is visible
      we poll a sequence cursor; each new title crosses the existing tape once,
      remains clickable, pauses on hover, then is removed permanently. */
-  var breaking = { cursor: 0, queue: [], active: false, timer: null, lane: null, tape: null, mountAttempts: 0, mountTimer: null };
+  var breaking = { cursor: 0, booted: false, busy: false, due: 0, empty: 0, fails: 0, hiddenAt: 0, listening: false, queue: [], active: false, timer: null, lane: null, tape: null, mountAttempts: 0, mountTimer: null };
   var BREAKING_SEEN_KEY = 'sml:breaking-posts:seen:v1';
 
   function breakingSeen() {
@@ -108,12 +108,20 @@
     clearTimeout(breaking.timer);
     /* owner call 2026-09-09 (dashboard speed): every poll is a full WordPress bootstrap (~1.7s) from EVERY open tab —
        15s between polls keeps headlines flowing within seconds while freeing the server for the pages themselves */
-    breaking.timer = setTimeout(pollBreaking, delay || 15000);
+    delay = delay || 15000;
+    breaking.due = Date.now() + delay;
+    breaking.timer = setTimeout(tickBreaking, delay);
   }
 
   function breakingRequest(query) {
-    return fetch(BREAKING_REST + query + '&_=' + Date.now(), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
-      .then(function (r) { if (!r.ok) throw new Error('Breaking feed unavailable'); return r.json(); });
+    /* No ?_= buster (2026-09-22): the route answers Cache-Control: no-store, so nothing caches it today;
+       if it ever sends a short public max-age, every guest tab can share the edge copy.
+       A hung request would leave the lane busy forever, so give up after 20s and let the backoff retry. */
+    var ctl = window.AbortController ? new AbortController() : null;
+    var guard = ctl ? setTimeout(function () { ctl.abort(); }, 20000) : 0;
+    return fetch(BREAKING_REST + query, { credentials: 'same-origin', headers: { Accept: 'application/json' }, signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error('Breaking feed unavailable'); return r.json(); })
+      .then(function (data) { clearTimeout(guard); return data; }, function (err) { clearTimeout(guard); throw err; });
   }
 
   function resetBreakingVisual() {
@@ -123,20 +131,28 @@
     if (breaking.tape) breaking.tape.classList.remove('has-breaking');
   }
 
-  function bootstrapBreaking() {
+  /* One timer, one request in flight. The bootstrap (?bootstrap=1 = "the cursor is now") runs ONCE per page view;
+     after that every tick is ?after=<cursor>. Bug 2026-09-22: every hidden→visible flip re-ran the bootstrap and
+     hiding cleared the poll timer, so a tab whose visibility flickered (window occlusion, app switching, screenshot
+     tools) fired a fresh cache-busted bootstrap about once a second, overlapping, and never reached ?after=. */
+  function tickBreaking() {
     clearTimeout(breaking.timer);
-    if (document.hidden || !breaking.lane) return;
-    breakingRequest('?bootstrap=1').then(function (data) {
-      breaking.cursor = Number(data && data.cursor) || 0;
-      scheduleBreaking(3500);
-    }).catch(function () { scheduleBreaking(12000); });
-  }
-
-  function pollBreaking() {
-    if (document.hidden || !breaking.lane) return;
-    breakingRequest('?after=' + encodeURIComponent(breaking.cursor)).then(function (data) {
-      var rows = Array.isArray(data && data.items) ? data.items : [];
-      breaking.cursor = Number(data && data.cursor) || breaking.cursor;
+    if (document.hidden || !breaking.lane || breaking.busy) return;
+    var boot = !breaking.booted;
+    breaking.busy = true;
+    breakingRequest(boot ? '?bootstrap=1' : '?after=' + encodeURIComponent(breaking.cursor)).then(function (data) {
+      breaking.busy = false;
+      var cursor = Number(data && data.cursor);
+      if (!isFinite(cursor) || cursor < 0) throw new Error('Breaking feed answered without a cursor');
+      breaking.fails = 0;
+      if (boot) {
+        breaking.cursor = cursor;
+        breaking.booted = true;
+        scheduleBreaking(3500);
+        return;
+      }
+      var rows = Array.isArray(data.items) ? data.items : [];
+      breaking.cursor = cursor;
       rows.forEach(function (item) {
         var id = Number(item && item.id) || 0;
         var published = Number(item && item.published) || 0;
@@ -145,8 +161,29 @@
         if (rememberBreaking(String(id))) breaking.queue.push(item);
       });
       runBreaking();
-      scheduleBreaking(data && data.has_more ? 250 : 15000);
-    }).catch(function () { scheduleBreaking(12000); });
+      /* quiet feed backs off: after ~1 minute with nothing new, poll every 30s (inside the 120s freshness window) */
+      breaking.empty = rows.length ? 0 : breaking.empty + 1;
+      scheduleBreaking(data.has_more ? 250 : (breaking.empty >= 4 ? 30000 : 15000));
+    }).catch(function () {
+      breaking.busy = false;
+      breaking.fails = Math.min(breaking.fails + 1, 4);
+      scheduleBreaking(Math.min(12000 * Math.pow(2, breaking.fails - 1), 120000));
+    });
+  }
+
+  function onBreakingVisibility() {
+    if (document.hidden) {
+      clearTimeout(breaking.timer);
+      breaking.hiddenAt = Date.now();
+      resetBreakingVisual();
+      return;
+    }
+    /* Away 10+ minutes: re-establish "now" with one bootstrap instead of paging through a backlog the 120s
+       freshness filter would drop anyway. Otherwise resume the existing schedule — never sooner than 1s, so a
+       flicker costs no request and returning to the tab never speeds the cadence up. */
+    if (breaking.hiddenAt && Date.now() - breaking.hiddenAt > 600000) breaking.booted = false;
+    breaking.hiddenAt = 0;
+    scheduleBreaking(Math.max(1000, breaking.due - Date.now()));
   }
 
   /* Owner call 2026-09-08: a breaking headline FLOWS WITH the stock ticker as one more tape cell (the flashy
@@ -191,11 +228,11 @@
     tape.appendChild(lane);
     breaking.tape = tape;
     breaking.lane = lane;
-    document.addEventListener('visibilitychange', function () {
-      if (document.hidden) { clearTimeout(breaking.timer); resetBreakingVisual(); }
-      else bootstrapBreaking();
-    });
-    bootstrapBreaking();
+    if (!breaking.listening) {
+      breaking.listening = true;
+      document.addEventListener('visibilitychange', onBreakingVisibility);
+    }
+    tickBreaking();
   }
 
   function replaceKnownHeader() {
