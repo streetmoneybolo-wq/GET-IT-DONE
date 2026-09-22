@@ -38,7 +38,16 @@ toggle.onclick=()=>{panel.classList.add('open');document.body.classList.add('aca
 })()</script>`
     .replace('overflow:hidden}.academy-deck-head', 'overflow:hidden;contain:layout paint}.academy-deck-head')
     .replace("parts[safe].split(/(\\s+)/).forEach", "(parts[safe].match(/\\S+\\s*/g)||[parts[safe]]).forEach")
-    .replace('wordIndex=Math.floor(Math.max(0,Math.min(.999,partProgress))*words.length)', 'wordIndex=Math.min(words.length-1,Math.floor(Math.max(0,Math.min(.999,partProgress))*words.length))');
+    .replace('wordIndex=Math.floor(Math.max(0,Math.min(.999,partProgress))*words.length)', 'wordIndex=Math.min(words.length-1,Math.floor(Math.max(0,Math.min(.999,partProgress))*words.length))')
+    .replace('.lesson-copy{white-space:pre-line}', '.lesson-copy{display:none!important}')
+    .replace("copy.classList.add('lesson-copy');", "copy.classList.add('lesson-copy');copy.hidden=true;copy.replaceChildren();")
+    .replace('Live synchronized lesson slides', 'Lesson presentation')
+    .replace("copy.textContent=lesson.steps.join('\\n\\n')+'\\n\\nDECISION '+(round+1)+': '+item.prompt;", '')
+    .replace("(claudeSlide?'CLAUDE DESIGNED · ':'')+", '')
+    .replace("feedback.textContent='Preparing Grandmaster-Obi narration…'", "feedback.textContent=''")
+    .replaceAll('Grandmaster-Obi narration is temporarily unavailable.', 'Lesson audio is temporarily unavailable.')
+    .replace("feedback.textContent='Playing Grandmaster-Obi narration with synchronized lesson slides. The next lesson is preloading.'", "feedback.textContent=''")
+    .replace("feedback.textContent=voiceMuted?'Narration muted.':'Playing Grandmaster-Obi narration.'", "feedback.textContent=voiceMuted?'Audio muted.':''");
 }
 
 module.exports = { academyCurriculumScript };

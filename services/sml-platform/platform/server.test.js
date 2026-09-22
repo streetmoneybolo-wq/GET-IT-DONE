@@ -101,7 +101,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /Mute Voice/);
     assert.match(html, /voiceAudio\.muted=voiceMuted/);
     assert.match(html, /academy-live-deck/);
-    assert.match(html, /Live synchronized lesson slides/);
+    assert.match(html, /Lesson presentation/);
     assert.match(html, /syncVoiceDeck/);
     assert.match(html, /parts\[safe\]\.match\(\/\\S\+\\s\*\/g\)/);
     assert.doesNotMatch(html, /parts\[safe\]\.split\(\/\(\\s\+\)\//);
@@ -109,7 +109,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /Starting the next lesson/);
     assert.match(html, /All 101 Academy lessons complete/);
     assert.match(html, /academy-activity\/slide-design/);
-    assert.match(html, /CLAUDE DESIGNED/);
+    assert.doesNotMatch(html, /CLAUDE DESIGNED|Playing Grandmaster-Obi|next lesson is preloading/i);
+    assert.match(html, /copy\.hidden=true/);
     assert.match(html, /loadClaudeDesign/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
