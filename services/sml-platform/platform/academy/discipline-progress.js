@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { EPISODES, episodeFor, splitNarration } = require('./discipline-content');
 
 function createDisciplineProgress({ pool } = {}) {
@@ -9,6 +10,17 @@ function createDisciplineProgress({ pool } = {}) {
     const result = await pool.query(`INSERT INTO academy_students (guild_id, discord_id) VALUES ($1,$2)
       ON CONFLICT (guild_id, discord_id) DO UPDATE SET discord_id=EXCLUDED.discord_id RETURNING id`, [guildId, userId]);
     return result.rows[0].id;
+  }
+
+  async function resolveToken(token) {
+    if (!configured || !/^[A-Za-z0-9_-]{40,80}$/.test(String(token || ''))) return { ok: false, code: 'invalid_token' };
+    const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
+    const result = await pool.query(`SELECT s.discord_id, s.guild_id
+      FROM academy_discipline_player_tokens t
+      JOIN academy_students s ON s.id=t.student_id
+      WHERE t.token_hash=$1 AND t.expires_at > now()`, [tokenHash]);
+    if (!result.rowCount) return { ok: false, code: 'expired_token' };
+    return { ok: true, userId: String(result.rows[0].discord_id), guildId: String(result.rows[0].guild_id) };
   }
 
   async function read(userId, guildId) {
@@ -54,7 +66,7 @@ function createDisciplineProgress({ pool } = {}) {
     return read(userId, guildId);
   }
 
-  return { configured, read, save };
+  return { configured, read, save, resolveToken };
 }
 
 module.exports = { createDisciplineProgress };

@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { SEED_LESSONS } = require('./curriculum');
 const EPHEMERAL = 64;
 const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'briefing', 'discipline', 'replay', 'leaderboard']);
@@ -142,7 +143,8 @@ function nextLessonFor(lesson) {
   return index >= 0 ? ordered[index + 1] || null : null;
 }
 
-function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now, disciplinePlayerUrl = null } = {}) {
+function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now,
+  disciplinePlayerBaseUrl = 'https://sml-platform-api.onrender.com/academy-discipline' } = {}) {
   function canHandle(interaction) {
     const name = String(interaction?.data?.name || '').toLowerCase();
     const customId = String(interaction?.data?.custom_id || '');
@@ -164,6 +166,15 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     const result = await pool.query(`INSERT INTO academy_students (guild_id, discord_id) VALUES ($1,$2)
       ON CONFLICT (guild_id, discord_id) DO UPDATE SET discord_id=EXCLUDED.discord_id RETURNING *`, [guildId, id]);
     return result.rows[0];
+  }
+  async function disciplinePlayerUrl(row) {
+    if (!disciplinePlayerBaseUrl) throw new Error('discipline player is not configured');
+    const token = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    await pool.query('DELETE FROM academy_discipline_player_tokens WHERE expires_at <= now()');
+    await pool.query(`INSERT INTO academy_discipline_player_tokens (token_hash, student_id, expires_at)
+      VALUES ($1,$2,now() + interval '12 hours')`, [tokenHash, row.id]);
+    return `${disciplinePlayerBaseUrl.replace(/\/$/, '')}/?token=${encodeURIComponent(token)}`;
   }
   async function startLesson(row, lesson) {
     await pool.query(`INSERT INTO academy_progress (student_id, module_id, lesson_id)
@@ -280,9 +291,8 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       return { response: response(`**🧭 Your Daily Financial Freedom Goal**\n**${goal.title}** · ${goal.category} · about ${goal.minutes} minutes\n\n**Today’s action**\n${goal.action}\n\n**Do this**\n${steps}\n\n**Finish line**\n${goal.finish}\n\n**Why it matters**\n${goal.why}\n\nSmall, completed actions beat perfect plans. This is general financial education—not personalized investment, tax, credit, or legal advice.`) };
     }
     if (name === 'discipline') {
-      await student(interaction);
-      if (!disciplinePlayerUrl) return { response: response('Daily Discipline Audio is temporarily unavailable. Please try again shortly.') };
-      const url = disciplinePlayerUrl(userId(interaction));
+      const row = await student(interaction);
+      const url = await disciplinePlayerUrl(row);
       return { response: response(`**🎧 Your Daily Discipline Audio is ready**\n\nToday begins with **The Art of Doing Nothing**—a lesson in patience, preparation, and protecting capital. Your place is saved automatically. Missing a day never skips an episode, and finishing early never unlocks tomorrow’s episode today.\n\nStart the player, then keep it open while you browse other Discord channels.`, [], [{ type: 1, components: [linkButton('▶ Play Today’s Discipline', url)] }]) };
     }
     if (name === 'replay') {

@@ -5,7 +5,6 @@
  * exposes no billing or dispute surface. */
 const { createDiscordInteractions } = require('../discord-interactions');
 const { createAcademyCommands } = require('./commands');
-const { issueDisciplineToken } = require('./discipline-token');
 
 function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
   if (!config?.academyEnabled || !config?.academyGuildId ||
@@ -16,10 +15,7 @@ function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
     monarchRoleId: config.academyMonarchRoleId,
     enabled: true,
     now,
-    disciplinePlayerUrl: (userId) => {
-      const token = issueDisciplineToken({ secret: config.academyClientSecret, userId, guildId: config.academyGuildId, now });
-      return `https://sml-platform-api.onrender.com/academy-discipline/?token=${encodeURIComponent(token)}`;
-    }
+    disciplinePlayerBaseUrl: 'https://sml-platform-api.onrender.com/academy-discipline'
   });
   return createDiscordInteractions({
     config: { discordConnectPublicKey: config.academyPublicKey, discordConnectAppId: config.academyAppId },

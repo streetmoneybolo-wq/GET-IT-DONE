@@ -28,7 +28,6 @@ const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
-const { verifyDisciplineToken } = require('./academy/discipline-token');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
@@ -996,7 +995,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
-  academyDiscipline = null, academyDisciplineSecret = '',
+  academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
@@ -1009,10 +1008,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if ((request.method === 'GET' && path === '/academy-discipline/state') || (request.method === 'POST' && path === '/academy-discipline/progress')) {
       const token = new URL(request.url || '/', 'http://localhost').searchParams.get('token');
-      const claims = verifyDisciplineToken(token, academyDisciplineSecret, now);
-      if (!claims.ok) { sendJson(response, 401, { ok: false, error: claims.code }); return; }
       if (!academyDiscipline?.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       try {
+        const claims = await academyDiscipline.resolveToken(token);
+        if (!claims.ok) { sendJson(response, 401, { ok: false, error: claims.code }); return; }
         if (request.method === 'GET') {
           sendJson(response, 200, { ok: true, state: await academyDiscipline.read(claims.userId, claims.guildId) });
           return;
@@ -1032,10 +1031,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'GET' && path === '/academy-discipline/speech') {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
-      const claims = verifyDisciplineToken(params.get('token'), academyDisciplineSecret, now);
-      if (!claims.ok) { sendJson(response, 401, { ok: false, error: claims.code }); return; }
       if (!academyVoice?.configured || !academyDiscipline?.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      let claims = null;
       try {
+        claims = await academyDiscipline.resolveToken(params.get('token'));
+        if (!claims.ok) { sendJson(response, 401, { ok: false, error: claims.code }); return; }
         const state = await academyDiscipline.read(claims.userId, claims.guildId);
         if (Number(params.get('episode')) !== state.episode.id) throw new TypeError('episode is not unlocked');
         const result = await academyVoice.getDisciplineAudio({ episodeId: params.get('episode'), partIndex: params.get('part'), userId: claims.userId });
@@ -1044,7 +1044,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       } catch (error) {
         const invalid = error instanceof TypeError;
         const limited = error?.code === 'rate_limited' || error?.code === 'provider_rate_limited';
-        logger(invalid ? 'warn' : 'error', 'academy_discipline_voice_failed', { error, userId: claims.userId });
+        logger(invalid ? 'warn' : 'error', 'academy_discipline_voice_failed', { error, userId: claims?.userId || null });
         sendJson(response, invalid ? 400 : (limited ? 429 : 503), { ok: false, error: invalid ? 'invalid_audio_part' : (limited ? 'rate_limited' : 'voice_temporarily_unavailable') });
       }
       return;
@@ -1529,7 +1529,7 @@ async function main() {
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner,
-    academyDiscipline, academyDisciplineSecret: config.academyClientSecret,
+    academyDiscipline,
     academyAppId: config.academyAppId
   });
   let shuttingDown = false;
