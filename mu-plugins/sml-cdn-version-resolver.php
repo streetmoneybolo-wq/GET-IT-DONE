@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.7
+ * Version: 1.0.8
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -32,12 +32,15 @@
  * 1.0.7 (2026-09-22): advance pin 552d2f1 -> 52b75c7. Memberships are real money (owner rule): js/group-onboarding.js Unlock opens the
  * owner's checkout link (asks first), shows the price in dollars, links owners to Creator Studio › Groups › Payments for that group;
  * js/creator-analytics.js shows a paid group's price in dollars. Only those two files differ.
+ * 1.0.8 (2026-09-22): advance pin 52b75c7 -> bfa6ca3. Header tape (js/site-search.js only): the breaking-news cursor
+ * (/sml-signal-news/v1/tape?bootstrap=1) is fetched once per page view instead of on every hidden->visible flip — a flickering
+ * tab was firing it ~1/s, each a 1.5 s WP boot. Polls ?after= every 15 s (30 s when quiet), one request in flight, no ?_= buster.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '52b75c714a32a041795e11a3e6fdd0164f1bcfd2' );
+	define( 'SML_CDN_ASSET_REVISION', 'bfa6ca3070d2b6dc0cd0d9546bafa510722f9a6c' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
