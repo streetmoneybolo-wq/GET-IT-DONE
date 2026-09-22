@@ -74,6 +74,7 @@ function createDailySocialCommands({ pool, guildId, channelId, managerRoleId, no
   function verifyScope(interaction, needsManager) {
     if (!userId(interaction)) throw new TypeError('Discord user not available');
     if (String(interaction.guild_id || '') !== String(guildId || '')) throw new TypeError('Use this command in the Making Easy Money server');
+    if (String(interaction.channel_id || '') !== String(channelId || '')) throw new TypeError('Use Daily Social Payouts in its assigned channel');
     if (needsManager && !manager(interaction, String(managerRoleId || ''))) throw new TypeError('Only a server manager can use that command');
   }
 
