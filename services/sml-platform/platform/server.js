@@ -478,6 +478,38 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
 (()=>{const side=document.querySelector('.side'),depth=${initialDepth};if(!side)return;const style=document.createElement('style');style.textContent='.academy-depth{margin-top:14px;border-top:1px solid #1b3540;padding-top:12px}.academy-depth h3{font-size:.68rem;margin:0 0 7px;color:#86a2b0}.academy-depth-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.academy-depth-col b{display:block;font:800 .58rem ui-monospace;margin-bottom:4px}.academy-depth-bid{color:#52e6ad}.academy-depth-ask{color:#ff778b}.academy-depth-row{display:flex;justify-content:space-between;gap:4px;padding:3px 0;border-bottom:1px solid rgba(42,66,78,.45);font:.58rem ui-monospace}.academy-depth-row span:last-child{color:#9db2bd}.academy-depth-empty{font-size:.7rem;color:#8094a2;padding:5px 0}';document.head.appendChild(style);const panel=document.createElement('section');panel.className='academy-depth';const title=document.createElement('h3');title.textContent='LEVEL 2 DEPTH · LIVE';panel.appendChild(title);const bids=Array.isArray(depth.bids)?depth.bids:[],asks=Array.isArray(depth.asks)?depth.asks:[];if(!bids.length&&!asks.length){const empty=document.createElement('div');empty.className='academy-depth-empty';empty.textContent='Level 2 is temporarily unavailable.';panel.appendChild(empty)}else{const grid=document.createElement('div');grid.className='academy-depth-grid';[['BID',bids,'academy-depth-bid'],['ASK',asks,'academy-depth-ask']].forEach(([name,rows,color])=>{const col=document.createElement('div');col.className='academy-depth-col';const head=document.createElement('b');head.className=color;head.textContent=name;col.appendChild(head);rows.slice(0,5).forEach(row=>{const item=document.createElement('div'),p=document.createElement('span'),s=document.createElement('span');item.className='academy-depth-row';p.textContent=Number(row.price).toFixed(2);s.textContent=Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(row.size));item.append(p,s);col.appendChild(item)});grid.appendChild(col)});panel.appendChild(grid)}side.insertBefore(panel,side.querySelector('.meta'))})();
 </script><script>
 (()=>{const button=document.getElementById('load-options'),grid=document.getElementById('options-grid'),status=document.getElementById('options-status'),symbol=document.getElementById('symbol');if(!button||!grid||!status||!symbol)return;let session='';window.addEventListener('sml-academy-session',event=>{session=String(event.detail&&event.detail.sessionToken||'');if(session)status.textContent='Academy access verified. Choose a ticker and load its educational options chain.'});const clean=value=>String(value||'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,10)||'SPY';const optionRows=value=>{const found=[];const walk=node=>{if(found.length>=24||!node)return;if(Array.isArray(node)){node.forEach(walk);return}if(typeof node!=='object')return;const strike=Number(node.strike??node.strikePrice);if(Number.isFinite(strike))found.push(node);else Object.values(node).forEach(walk)};walk(value);return found};const cell=(text,head=false)=>{const span=document.createElement('span');span.textContent=String(text??'—');if(head)span.className='head';grid.appendChild(span)};button.onclick=async()=>{if(!session){status.textContent='Unlock Academy Tools first so Discord can verify your private Academy access.';return}button.disabled=true;status.textContent='Loading options chain…';try{const response=await fetch('/academy-activity/data/options?symbol='+encodeURIComponent(clean(symbol.value)),{headers:{authorization:'Bearer '+session},cache:'no-store'});const payload=await response.json();if(!response.ok||!payload.ok)throw new Error(payload.error||'unavailable');const rows=optionRows(payload.data);grid.replaceChildren();['Expiry','Strike','Call bid','Call ask','Put bid','Put ask'].forEach(label=>cell(label,true));rows.forEach(row=>{cell(row.expiration??row.expiry??row.date);cell(Number(row.strike??row.strikePrice).toFixed(2));cell(row.callBid??row.call?.bid);cell(row.callAsk??row.call?.ask);cell(row.putBid??row.put?.bid);cell(row.putAsk??row.put?.ask)});grid.hidden=false;status.textContent=rows.length?'Educational chain loaded. Use Module 9 and Module 23 before interpreting it.':'The provider returned no displayable contracts for this ticker.'}catch(_){grid.hidden=true;status.textContent='Options data is temporarily unavailable. The options curriculum remains available in Lessons.'}finally{button.disabled=false}}})();
+</script><script type="module">
+import { DiscordSDK } from '/academy-activity/sdk/index.mjs';
+const academyAppId=${academyAppId};
+const academyStatus=document.getElementById('status');
+async function authenticateAcademyActivity(){
+  if(!academyAppId){if(academyStatus)academyStatus.textContent='AUTH UNAVAILABLE';return}
+  try{
+    if(academyStatus)academyStatus.textContent='VERIFYING';
+    const sdk=new DiscordSDK(academyAppId);
+    await sdk.ready();
+    const authorization=await sdk.commands.authorize({
+      client_id:academyAppId,
+      response_type:'code',
+      prompt:'none',
+      scope:['identify','guilds.members.read']
+    });
+    const response=await fetch('/academy-activity/token',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({code:authorization.code})
+    });
+    const payload=await response.json();
+    if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken)throw new Error(payload.error||'authorization_failed');
+    await sdk.commands.authenticate({access_token:payload.access_token});
+    window.smlAcademySessionToken=payload.sessionToken;
+    window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken:payload.sessionToken}}));
+    if(academyStatus)academyStatus.textContent='LIVE';
+  }catch(_){
+    if(academyStatus)academyStatus.textContent='SIGN IN RETRY';
+  }
+}
+void authenticateAcademyActivity();
 </script></body></html>`
     .replace("#academy-unlock{", "body.academy-tools-open .lesson{z-index:2147483600}#academy-unlock{")
     .replace("ctx.setTransform(d,0,0,d,0)", "ctx.setTransform({a:d,b:0,c:0,d:d,e:0,f:0})")

@@ -135,7 +135,11 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /LEVEL 2 DEPTH/);
     assert.match(html, /academy-depth-row/);
     assert.match(html, /Unlock Academy Tools/);
-    assert.doesNotMatch(html, /DiscordSDK/);
+    assert.match(html, /DiscordSDK/);
+    assert.match(html, /academy-activity\/sdk\/index\.mjs/);
+    assert.match(html, /guilds\.members\.read/);
+    assert.match(html, /academy-activity\/token/);
+    assert.match(html, /sml-academy-session/);
     assert.match(html, /LIVE INTERACTIVE ACADEMY/);
     assert.match(html, /academy-tools-open/);
     assert.match(html, /body\.academy-tools-open \.lesson\{z-index:2147483600\}/);
