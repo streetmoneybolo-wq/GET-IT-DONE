@@ -6,6 +6,7 @@ const { createDatabase } = require('../database');
 const { log } = require('../logger');
 const { MAX_BODY_BYTES } = require('../discord-interactions');
 const { createAcademyInteractions } = require('./runtime');
+const { publishAcademyHubs } = require('./hub-publisher');
 
 async function readBody(request, maxBytes = MAX_BODY_BYTES) {
   const chunks = [];
@@ -71,11 +72,26 @@ async function main() {
   }
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
   process.once('SIGINT', () => { void shutdown('SIGINT'); });
-  server.listen(config.port, () => log('info', 'academy_started', {
-    port: config.port,
-    enabled: Boolean(interactions),
-    guildId: config.academyGuildId || null
-  }));
+  server.listen(config.port, () => {
+    log('info', 'academy_started', {
+      port: config.port,
+      enabled: Boolean(interactions),
+      guildId: config.academyGuildId || null
+    });
+    // Keep the Academy's one-click channel launchers in sync after every
+    // successful deploy. The operation is idempotent and reuses pinned channel
+    // IDs, so a rename never creates a duplicate or loses permissions/history.
+    if (config.academyBotToken && config.academyGuildId && config.academyCategoryId) {
+      void publishAcademyHubs({
+        token: config.academyBotToken,
+        guildId: config.academyGuildId,
+        categoryId: config.academyCategoryId,
+        apply: true
+      }).then((result) => log('info', 'academy_hubs_synced', {
+        operations: result.operations.map(({ command, action, channelId }) => ({ command, action, channelId }))
+      })).catch((error) => log('error', 'academy_hubs_sync_failed', { error }));
+    }
+  });
 }
 
 if (require.main === module) {
