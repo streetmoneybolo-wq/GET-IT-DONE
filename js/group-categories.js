@@ -2648,15 +2648,14 @@
       /* first sight of an existing file only sets the cursor: nothing old replays. A file that appears after a 404 (the group's
          first chirps) holds only new chirps, so they play. */
       if (!last && !noFile) { last = l; return; }
-      noFile = false;
-      if (l <= last) { stubTries = 0; }
+      if (l <= last) { stubTries = 0; noFile = false; }
       if (l > last) {
         var mine = function (c) { return c && Number(c.id) > last && Number(c.by && c.by.id) !== ME && wants(c); };
         var items = (j.recent || []).filter(mine).sort(function (a, b) { return a.id - b.id; });
         /* a chirp in a role-restricted channel is held back as a stub without audio ('held'): /chirps answers it per member and moves
            the cursor. One request at a time; after 3 unanswered asks the cursor moves on, so the page never polls /chirps every second */
         if ((j.held || []).some(mine)) { if (polling) return; if (++stubTries <= 3) { poll(); return; } }
-        stubTries = 0;
+        stubTries = 0; noFile = false;   /* cleared only when the cursor really moves, so a deferred first burst still plays */
         last = l;
         items = unheard(items);
         if (items.length) { queue = queue.concat(items); playNext(); }
