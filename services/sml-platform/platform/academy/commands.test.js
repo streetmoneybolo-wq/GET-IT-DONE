@@ -54,8 +54,8 @@ test('Academy controls remain private to the configured Monarch preview role', a
 
 test('all dedicated channel launchers work for members and remain ephemeral', async () => {
   const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true, now: () => Date.UTC(2026, 8, 21) });
-  assert.equal(ACADEMY_HUBS.length, 13);
-  assert.equal(new Set(ACADEMY_HUBS.map((hub) => hub.command)).size, 13);
+  assert.equal(ACADEMY_HUBS.length, 8);
+  assert.equal(new Set(ACADEMY_HUBS.map((hub) => hub.command)).size, 8);
   for (const hub of ACADEMY_HUBS) {
     const input = { type: 3, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { custom_id: `academy:hub:${hub.command}` } };
     const result = await academy.handle(input);

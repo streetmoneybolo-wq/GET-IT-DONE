@@ -6,16 +6,26 @@ const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'ba
 const ACADEMY_HUBS = Object.freeze([
   { command: 'academy', channel: '🎓｜academy-home', title: '🎓 Academy Command Center', button: 'Open My Academy', color: 0x18d36e, topic: 'Your private Making Easy Money Academy dashboard: 101 college-level lessons across 28 modules, tools, milestones, and the live-chart lab. Click the launcher; only you can see your response.' },
   { command: 'enroll', channel: '🚀｜enroll-now', title: '🚀 Start Your Academy Journey', button: 'Enroll Me', color: 0x00c2ff, topic: 'Create your private Academy student profile and begin Module 1. Enrollment details are visible only to you.' },
-  { command: 'lesson', channel: '📚｜academy-lessons-live-chart', title: '📚 Lesson Launchpad + Live Chart', button: 'Open My Next Lesson', color: 0x5865f2, topic: 'Work through 101 interactive lessons across 28 modules, simulations, quizzes, and the live-chart lab. Your lesson view and results stay private.' },
+  {
+    command: 'lesson',
+    channelId: '1551459038405992488',
+    channel: '📚｜academy-lessons-live-chart',
+    title: '📚 Academy Learning Lab + Live Chart',
+    button: 'Open My Next Lesson',
+    color: 0x5865f2,
+    topic: 'The complete Academy learning lab: 101 lessons, live charts, glossary, flashcards, private quizzes, daily chart challenges, and market replays—all in one channel. Every response stays private.',
+    tools: [
+      { command: 'glossary', label: 'Trading Glossary', emoji: '📖' },
+      { command: 'flashcard', label: 'Flashcards', emoji: '🧠' },
+      { command: 'quiz', label: 'Quiz', emoji: '📝' },
+      { command: 'challenge', label: 'Chart Challenge', emoji: '📊' },
+      { command: 'replay', label: 'Market Replay', emoji: '⏪' }
+    ]
+  },
   { command: 'progress', channel: '📈｜my-progress', title: '📈 My Private Progress', button: 'Show My Progress', color: 0x2ecc71, topic: 'See your completed lessons, completion percentage, XP, learning streak, and next lesson. Only you can see your progress card.' },
   { command: 'badges', channel: '🏅｜my-badges', title: '🏅 My Badge Vault', button: 'Show My Badges', color: 0xf1c40f, topic: 'Open your private badge vault and see the learning milestones you have earned.' },
-  { command: 'glossary', channel: '📖｜trading-glossary', title: '📖 Trading Glossary', button: 'Open Today\'s Term', color: 0x9b59b6, topic: 'Learn market structure, charting, risk, options, valuation, and execution vocabulary with clear educational definitions.' },
-  { command: 'flashcard', channel: '🧠｜flashcard-lab', title: '🧠 Flashcard Lab', button: 'Draw My Flashcard', color: 0xe67e22, topic: 'Test recall with a private Academy flashcard, reveal the explanation, and jump into the full lesson.' },
-  { command: 'quiz', channel: '📝｜quiz-arena', title: '📝 Private Quiz Arena', button: 'Start My Quiz', color: 0xe74c3c, topic: 'Run a private knowledge check drawn from your Academy curriculum. Your questions and answers are visible only to you.' },
-  { command: 'challenge', channel: '📊｜daily-chart-challenge', title: '📊 Daily Chart Challenge', button: 'Open Today\'s Challenge', color: 0x1abc9c, topic: 'Practice context, triggers, invalidation, position risk, and no-trade decisions with a fresh private chart challenge.' },
   { command: 'briefing', channelId: '1551147441993285692', channel: '🧭｜daily-financial-briefing', title: '🧭 Daily Financial Freedom Briefing', button: 'Generate My Daily Goal', color: 0x00d084, topic: 'Get one private, realistic daily action for saving, cash-flow control, debt awareness, portfolio funding, risk management, or trading discipline. Designed for ordinary budgets; no balance or income disclosure required.' },
   { command: 'discipline', channel: '🎧｜daily-discipline-audio', title: '🎧 Daily Discipline Desk', button: 'Open Today\'s Discipline', color: 0x3498db, topic: 'Build patience, risk control, trading psychology, journaling, and pre-trade discipline through a private daily coaching prompt.' },
-  { command: 'replay', channel: '⏪｜market-replay-lab', title: '⏪ Market Replay Lab', button: 'Launch My Replay', color: 0x34495e, topic: 'Pause the market, declare a hypothesis and risk plan, then compare your reasoning with an educational replay lesson.' },
   { command: 'leaderboard', channel: '🏆｜learning-leaderboard', title: '🏆 Learning Leaderboard', button: 'View Milestones', color: 0xf39c12, topic: 'View anonymized Academy learning milestones based on completed education, XP, and study streaks—not trading profits.' }
 ]);
 const HUB_OPTIONS = Object.freeze({

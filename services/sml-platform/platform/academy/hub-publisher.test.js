@@ -20,6 +20,27 @@ test('briefing launcher is private, practical, and one click', () => {
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
 });
 
+test('lesson launcher consolidates all five learning tools into one channel', () => {
+  const hub = {
+    command: 'lesson', channel: '📚｜academy-lessons-live-chart', title: 'Academy Learning Lab',
+    button: 'Open My Next Lesson', color: 0x5865f2, topic: 'One learning channel.',
+    tools: [
+      { command: 'glossary', label: 'Trading Glossary', emoji: '📖' },
+      { command: 'flashcard', label: 'Flashcards', emoji: '🧠' },
+      { command: 'quiz', label: 'Quiz', emoji: '📝' },
+      { command: 'challenge', label: 'Chart Challenge', emoji: '📊' },
+      { command: 'replay', label: 'Market Replay', emoji: '⏪' }
+    ]
+  };
+  const payload = launcher(hub);
+  assert.equal(payload.components.length, 2);
+  assert.deepEqual(payload.components[1].components.map((item) => item.custom_id), [
+    'academy:hub:glossary', 'academy:hub:flashcard', 'academy:hub:quiz',
+    'academy:hub:challenge', 'academy:hub:replay'
+  ]);
+  assert.match(payload.embeds[0].fields.map((field) => field.value).join(' '), /visible only to you/i);
+});
+
 test('publisher reuses the fixed briefing channel and pins its launcher', async () => {
   const calls = [];
   const fetchImpl = async (url, options = {}) => {

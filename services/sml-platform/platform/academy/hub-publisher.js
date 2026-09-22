@@ -6,6 +6,15 @@ const DISCORD_API = 'https://discord.com/api/v10';
 
 function launcher(hub) {
   const isBriefing = hub.command === 'briefing';
+  const toolButtons = Array.isArray(hub.tools) ? hub.tools.slice(0, 5).map((tool) => ({
+    type: 2,
+    style: 2,
+    label: tool.label,
+    ...(tool.emoji ? { emoji: { name: tool.emoji } } : {}),
+    custom_id: `academy:hub:${tool.command}`
+  })) : [];
+  const components = [{ type: 1, components: [{ type: 2, style: isBriefing ? 3 : 1, label: hub.button, custom_id: `academy:hub:${hub.command}` }] }];
+  if (toolButtons.length) components.push({ type: 1, components: toolButtons });
   return {
     content: '',
     embeds: [{
@@ -16,6 +25,10 @@ function launcher(hub) {
         { name: '🎯 Daily action', value: 'One realistic step for saving, cash flow, debt awareness, portfolio funding, risk, or trading discipline.' },
         { name: '🧰 Built for real life', value: 'Small enough for an average person to complete today. You never need to post your income, balances, or account numbers.' },
         { name: '🔒 Private', value: 'Your generated briefing is visible only to you.' }
+      ] : hub.command === 'lesson' ? [
+        { name: '🎓 Core curriculum', value: '101 lessons across 28 modules with the live chart and interactive simulations.' },
+        { name: '🧠 Practice tools', value: 'Glossary · Flashcards · Private Quiz · Daily Chart Challenge · Market Replay' },
+        { name: '🔒 One channel, private work', value: 'Choose a button below. Your tool response, answers, and results are visible only to you.' }
       ] : [
         { name: '🎓 Curriculum', value: '101 lessons across 28 modules', inline: true },
         { name: '🔒 Privacy', value: 'Your response is visible only to you', inline: true },
@@ -23,7 +36,7 @@ function launcher(hub) {
       ],
       footer: { text: 'Educational only · Not financial advice' }
     }],
-    components: [{ type: 1, components: [{ type: 2, style: isBriefing ? 3 : 1, label: hub.button, custom_id: `academy:hub:${hub.command}` }] }],
+    components,
     allowed_mentions: { parse: [] }
   };
 }
