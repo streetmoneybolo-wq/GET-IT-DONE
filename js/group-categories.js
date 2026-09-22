@@ -2636,7 +2636,7 @@
   }
   document.addEventListener('touchstart', unlock, { passive: true, capture: true });
   document.addEventListener('pointerdown', unlock, { passive: true, capture: true });
-  var loaded = false, member = true, ME = 0, sigFails = 0;
+  var loaded = false, member = true, ME = 0, sigFails = 0, stubTries = 0, polling = false, heard = {};
   /* client-side copy of the member's picks (the signal file is shared, so the filter runs here) */
   function wants(c) { var ch = (G && G.chirpChannels) || [], vo = (G && G.chirpVoices) || []; if (ch.length && Number(c.channelId) && ch.indexOf(Number(c.channelId)) < 0) return false; if (vo.length && vo.indexOf(Number(c.by && c.by.id)) < 0) return false; return true; }
   function pollSignal() {
@@ -2646,9 +2646,16 @@
       sigFails = 0;
       var l = Number(j.last) || 0;
       if (!last) { last = l; return; }   /* first sight only sets the cursor: nothing old replays */
+      if (l <= last) { stubTries = 0; }
       if (l > last) {
-        var items = (j.recent || []).filter(function (c) { return Number(c.id) > last && Number(c.by && c.by.id) !== ME && wants(c); }).sort(function (a, b) { return a.id - b.id; });
+        var mine = function (c) { return c && Number(c.id) > last && Number(c.by && c.by.id) !== ME && wants(c); };
+        var items = (j.recent || []).filter(mine).sort(function (a, b) { return a.id - b.id; });
+        /* a chirp in a role-restricted channel is held back as a stub without audio ('held'): /chirps answers it per member and moves
+           the cursor. One request at a time; after 3 unanswered asks the cursor moves on, so the page never polls /chirps every second */
+        if ((j.held || []).some(mine)) { if (polling) return; if (++stubTries <= 3) { poll(); return; } }
+        stubTries = 0;
         last = l;
+        items = unheard(items);
         if (items.length) { queue = queue.concat(items); playNext(); }
       }
     }).catch(function () { if (++sigFails > 3) poll(); });
@@ -2929,13 +2936,17 @@
 
   /* listening on the page: every member on the page hears a chirp within ~4s */
   function poll() {
-    var g = gid(); if (!g || !member || !loaded || !G || !G.chirp) return;
+    var g = gid(); if (polling || !g || !member || !loaded || !G || !G.chirp) return;
+    polling = true;   /* one /chirps request at a time: overlapping answers would replay the same chirps */
     get('chirps?group_id=' + encodeURIComponent(g) + '&since=' + last).then(function (j) {
       var l = Number(j.last) || 0;
       last = Math.max(last, l);   /* with no cursor the server only sends the last 45 s, so the first chirp ever still plays */
-      if (j.chirps && j.chirps.length) { queue = queue.concat(j.chirps); playNext(); }
-    }).catch(function () {});
+      var items = unheard(j.chirps);
+      if (items.length) { queue = queue.concat(items); playNext(); }
+    }).catch(function () {}).then(function () { polling = false; });
   }
+  /* each chirp id plays once, whether it came from the signal file or /chirps */
+  function unheard(list) { return (list || []).filter(function (c) { var id = Number(c && c.id); if (!id || !c.url || heard[id]) return false; heard[id] = 1; return true; }); }
   function toast(c, needTap) {
     var t = document.getElementById('sml-gk-toast');
     if (!c) { if (t) t.remove(); return; }
