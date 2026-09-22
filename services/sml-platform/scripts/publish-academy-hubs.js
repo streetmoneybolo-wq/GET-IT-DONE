@@ -52,15 +52,18 @@ async function main() {
   const channels = await discord(`/guilds/${guildId}/channels`);
   const operations = [];
   for (const hub of ACADEMY_HUBS) {
-    let channel = channels.find((entry) => entry.parent_id === categoryId && entry.name === hub.channel);
+    // A pinned channel id lets a renamed launcher keep its history and
+    // permissions instead of creating a duplicate channel.
+    let channel = (hub.channelId && channels.find((entry) => entry.id === hub.channelId))
+      || channels.find((entry) => entry.parent_id === categoryId && entry.name === hub.channel);
     operations.push({ command: hub.command, channel: hub.channel, action: channel ? 'update' : 'create' });
     if (!apply) continue;
 
     if (!channel) {
       channel = await discord(`/guilds/${guildId}/channels`, { method: 'POST', body: { name: hub.channel, type: 0, parent_id: categoryId, topic: hub.topic } });
       channels.push(channel);
-    } else if (channel.topic !== hub.topic) {
-      channel = await discord(`/channels/${channel.id}`, { method: 'PATCH', body: { topic: hub.topic } });
+    } else if (channel.topic !== hub.topic || channel.name !== hub.channel || channel.parent_id !== categoryId) {
+      channel = await discord(`/channels/${channel.id}`, { method: 'PATCH', body: { name: hub.channel, topic: hub.topic, parent_id: categoryId } });
     }
 
     const existing = await findLauncher(channel.id, hub.command);

@@ -54,8 +54,8 @@ test('Academy controls remain private to the configured Monarch preview role', a
 
 test('all dedicated channel launchers work for members and remain ephemeral', async () => {
   const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true, now: () => Date.UTC(2026, 8, 21) });
-  assert.equal(ACADEMY_HUBS.length, 12);
-  assert.equal(new Set(ACADEMY_HUBS.map((hub) => hub.command)).size, 12);
+  assert.equal(ACADEMY_HUBS.length, 13);
+  assert.equal(new Set(ACADEMY_HUBS.map((hub) => hub.command)).size, 13);
   for (const hub of ACADEMY_HUBS) {
     const input = { type: 3, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { custom_id: `academy:hub:${hub.command}` } };
     const result = await academy.handle(input);
@@ -120,6 +120,7 @@ test('every registered Academy command returns working content instead of a road
     interaction('flashcard', { options: [{ name: 'topic', value: 'tape reading' }] }),
     interaction('quiz', { options: [{ name: 'module', value: 28 }] }),
     interaction('challenge'),
+    interaction('briefing'),
     interaction('discipline'),
     interaction('replay', { options: [{ name: 'scenario', value: 'breakout' }] })
   ];
@@ -128,6 +129,19 @@ test('every registered Academy command returns working content instead of a road
     assert.ok(result.response.data.content.length > 20);
     assert.doesNotMatch(result.response.data.content, /roadmap|being added|unlock after/i);
   }
+});
+
+test('daily financial briefing is private, practical, and stable for the member and day', async () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true, now: () => Date.UTC(2026, 8, 22) });
+  const first = await academy.handle(interaction('briefing'));
+  const second = await academy.handle(interaction('briefing'));
+  assert.equal(first.response.data.flags, 64);
+  assert.equal(first.response.data.content, second.response.data.content);
+  assert.match(first.response.data.content, /Daily Financial Freedom Goal/);
+  assert.match(first.response.data.content, /Today’s action/);
+  assert.match(first.response.data.content, /Finish line/);
+  assert.match(first.response.data.content, /general financial education/);
+  assert.doesNotMatch(first.response.data.content, /guarantee|buy this stock|profit target/i);
 });
 
 test('flashcards reveal a real lesson and the leaderboard protects Discord identities', async () => {

@@ -2,7 +2,7 @@
 
 const { SEED_LESSONS } = require('./curriculum');
 const EPHEMERAL = 64;
-const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'discipline', 'replay', 'leaderboard']);
+const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'briefing', 'discipline', 'replay', 'leaderboard']);
 const ACADEMY_HUBS = Object.freeze([
   { command: 'academy', channel: '🎓｜academy-home', title: '🎓 Academy Command Center', button: 'Open My Academy', color: 0x18d36e, topic: 'Your private Making Easy Money Academy dashboard: 101 college-level lessons across 28 modules, tools, milestones, and the live-chart lab. Click the launcher; only you can see your response.' },
   { command: 'enroll', channel: '🚀｜enroll-now', title: '🚀 Start Your Academy Journey', button: 'Enroll Me', color: 0x00c2ff, topic: 'Create your private Academy student profile and begin Module 1. Enrollment details are visible only to you.' },
@@ -13,6 +13,7 @@ const ACADEMY_HUBS = Object.freeze([
   { command: 'flashcard', channel: '🧠｜flashcard-lab', title: '🧠 Flashcard Lab', button: 'Draw My Flashcard', color: 0xe67e22, topic: 'Test recall with a private Academy flashcard, reveal the explanation, and jump into the full lesson.' },
   { command: 'quiz', channel: '📝｜quiz-arena', title: '📝 Private Quiz Arena', button: 'Start My Quiz', color: 0xe74c3c, topic: 'Run a private knowledge check drawn from your Academy curriculum. Your questions and answers are visible only to you.' },
   { command: 'challenge', channel: '📊｜daily-chart-challenge', title: '📊 Daily Chart Challenge', button: 'Open Today\'s Challenge', color: 0x1abc9c, topic: 'Practice context, triggers, invalidation, position risk, and no-trade decisions with a fresh private chart challenge.' },
+  { command: 'briefing', channelId: '1551147441993285692', channel: '🧭｜daily-financial-briefing', title: '🧭 Daily Financial Freedom Briefing', button: 'Generate My Daily Goal', color: 0x00d084, topic: 'Get one private, realistic daily action for saving, cash-flow control, debt awareness, portfolio funding, risk management, or trading discipline. Designed for ordinary budgets; no balance or income disclosure required.' },
   { command: 'discipline', channel: '🎧｜daily-discipline-audio', title: '🎧 Daily Discipline Desk', button: 'Open Today\'s Discipline', color: 0x3498db, topic: 'Build patience, risk control, trading psychology, journaling, and pre-trade discipline through a private daily coaching prompt.' },
   { command: 'replay', channel: '⏪｜market-replay-lab', title: '⏪ Market Replay Lab', button: 'Launch My Replay', color: 0x34495e, topic: 'Pause the market, declare a hypothesis and risk plan, then compare your reasoning with an educational replay lesson.' },
   { command: 'leaderboard', channel: '🏆｜learning-leaderboard', title: '🏆 Learning Leaderboard', button: 'View Milestones', color: 0xf39c12, topic: 'View anonymized Academy learning milestones based on completed education, XP, and study streaks—not trading profits.' }
@@ -50,6 +51,7 @@ const COMMAND_DEFINITIONS = [
   { type: 1, name: 'flashcard', description: 'Review an Academy flashcard', contexts: [0], options: [{ type: 3, name: 'topic', description: 'Topic to review', required: true, max_length: 80 }] },
   { type: 1, name: 'quiz', description: 'Start an Academy quiz', contexts: [0], options: [{ type: 4, name: 'module', description: 'Module number', required: true, min_value: 1, max_value: 28 }] },
   { type: 1, name: 'challenge', description: 'Open today’s Academy chart challenge', contexts: [0] },
+  { type: 1, name: 'briefing', description: 'Generate today’s practical financial freedom goal', contexts: [0] },
   { type: 1, name: 'discipline', description: 'Open today’s Academy discipline lesson', contexts: [0] },
   { type: 1, name: 'replay', description: 'Open an educational market replay', contexts: [0], options: [{ type: 3, name: 'scenario', description: 'Scenario name', required: true, max_length: 80 }] },
   { type: 1, name: 'leaderboard', description: 'View Academy learning milestones', contexts: [0] }
@@ -79,6 +81,27 @@ function dailyLesson(scope, now = Date.now) {
   const day = Math.floor(Number(now()) / 86_400_000);
   const candidates = scope.length ? scope : SEED_LESSONS;
   return candidates[((day % candidates.length) + candidates.length) % candidates.length];
+}
+
+const DAILY_FINANCIAL_GOALS = Object.freeze([
+  { title: 'Start a Tiny Emergency-Fund Win', category: 'Savings', minutes: 10, action: 'Move an amount you can genuinely afford—even $1—into a separate emergency-savings bucket.', steps: ['Choose an amount that will not interfere with food, housing, transportation, medicine, or minimum payments.', 'Transfer it now and name the bucket “Emergency Only.”', 'Choose one day for the next small transfer.'], finish: 'You finish with one completed transfer and a repeat date.', why: 'A small repeatable buffer is more useful than an ambitious goal that breaks the budget.' },
+  { title: 'Find One Spending Leak', category: 'Cash flow', minutes: 15, action: 'Review the last seven days and identify one purchase or fee you would happily skip next time.', steps: ['Open one bank or card history—no need to share it.', 'Circle one avoidable charge, duplicate service, or convenience fee.', 'Create a simple rule that prevents the next occurrence.'], finish: 'You finish with one specific expense and one prevention rule.', why: 'Financial progress often begins by keeping money already earned.' },
+  { title: 'Build a Portfolio-Funding Lane', category: 'Portfolio funding', minutes: 10, action: 'Choose a small recurring amount that could eventually fund investing after essential bills and minimum obligations are covered.', steps: ['Confirm essentials and minimum payments come first.', 'Pick a sustainable weekly or payday amount; $1 is acceptable.', 'Write where it will wait safely until you make an informed investing decision.'], finish: 'You finish with an affordable amount, frequency, and funding destination.', why: 'A portfolio grows more reliably from a repeatable funding process than from chasing one trade.' },
+  { title: 'Know Your Highest-Cost Debt', category: 'Debt awareness', minutes: 15, action: 'List each debt’s balance, minimum payment, and interest rate, then mark the highest rate.', steps: ['Use statements rather than memory.', 'Do not make an extra payment that threatens essentials.', 'Write one question to ask the lender if a rate or fee is unclear.'], finish: 'You finish knowing which debt costs the most—not with pressure to solve everything today.', why: 'Clear costs help you compare debt reduction with other uses of cash.' },
+  { title: 'Set a Trading Loss Boundary', category: 'Risk management', minutes: 10, action: 'Write the maximum dollar loss you could accept on one trade without affecting bills, savings, or sleep.', steps: ['Start with money that is genuinely risk capital.', 'Write the dollar cap before looking for an entry.', 'If no safe amount exists today, make “no trade” the correct limit.'], finish: 'You finish with a written maximum or a deliberate zero-risk day.', why: 'Risk limits protect financial freedom better than predictions do.' },
+  { title: 'Run a Subscription Audit', category: 'Expense control', minutes: 15, action: 'Check recurring charges and challenge one service you rarely use.', steps: ['Search one statement for repeating charges.', 'Keep, downgrade, pause, or cancel one item based on actual use.', 'Redirect any savings toward a priority you already chose.'], finish: 'You finish with one decision and its monthly dollar impact.', why: 'Recurring savings continue working after today’s effort ends.' },
+  { title: 'Create a 24-Hour Speculation Rule', category: 'Trading discipline', minutes: 10, action: 'Write a rule requiring a 24-hour pause before adding money to an unplanned speculative idea.', steps: ['Define what counts as unplanned.', 'During the pause, write the thesis, invalidation, and maximum loss.', 'Skip the trade if urgency is the only reason to act.'], finish: 'You finish with a rule you can apply before the next impulse trade.', why: 'A pause separates opportunity from fear of missing out.' },
+  { title: 'Make a One-Page Money Snapshot', category: 'Money management', minutes: 20, action: 'Write four private numbers: cash available, upcoming essential bills, minimum debt payments, and planned savings.', steps: ['Use current balances and due dates.', 'Subtract near-term essentials before labeling money investable.', 'Choose the single category needing attention first.'], finish: 'You finish with a private snapshot and one priority; nothing is uploaded or shared.', why: 'Decisions improve when available cash is separated from obligated cash.' },
+  { title: 'Check Workplace Benefits', category: 'Long-term planning', minutes: 15, action: 'Review whether your employer offers a retirement match or another benefit you may be missing.', steps: ['Open the official benefits page or ask HR.', 'Write the eligibility and match rules exactly.', 'Do not change contributions until you confirm the effect on take-home pay.'], finish: 'You finish knowing whether a benefit exists and what question comes next.', why: 'Understanding existing benefits can be more valuable than finding a new product.' },
+  { title: 'Reduce One Financial Fee', category: 'Cost control', minutes: 15, action: 'Identify one bank, brokerage, card, or account fee and investigate a legitimate way to avoid it.', steps: ['Find the fee on an actual statement or official schedule.', 'Check the provider’s waiver or lower-cost option.', 'Never move money solely to earn a waiver without comparing the tradeoff.'], finish: 'You finish with one verified fee and one possible next action.', why: 'Lower friction leaves more money available for goals.' },
+  { title: 'Plan a No-Spend Swap', category: 'Habit building', minutes: 10, action: 'Replace one planned discretionary purchase today with a free alternative.', steps: ['Pick something optional—not food, medicine, or another need.', 'Choose the free substitute before temptation arrives.', 'Record the amount not spent without treating it as permission to overspend elsewhere.'], finish: 'You finish with one completed swap and a measured amount preserved.', why: 'Small substitutions train control without requiring an unrealistic spending freeze.' },
+  { title: 'Grade Yesterday’s Process', category: 'Trader development', minutes: 15, action: 'Review one recent trade or money decision and grade the process, not the profit.', steps: ['Write what you knew before acting.', 'Check whether risk and invalidation were defined.', 'Name one repeatable strength and one change for next time.'], finish: 'You finish with a two-line lesson that can improve the next decision.', why: 'Good outcomes can hide bad process; process review builds durable skill.' }
+]);
+
+function dailyFinancialGoal(discordId, now = Date.now) {
+  const day = Math.floor(Number(now()) / 86_400_000);
+  const userSeed = [...String(discordId || '')].reduce((sum, digit) => sum + Number(digit || 0), 0);
+  return DAILY_FINANCIAL_GOALS[(day + userSeed) % DAILY_FINANCIAL_GOALS.length];
 }
 
 const GLOSSARY = Object.freeze({
@@ -239,6 +262,12 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       const lesson = dailyLesson(SEED_LESSONS.filter((entry) => /chart|tape|replay|technical|momentum|pattern|risk/i.test(`${entry.title} ${entry.description}`)), now);
       await student(interaction);
       return { response: response(`**Today’s Chart Challenge**\n${lesson.steps[2]}\n\nWrite your context, trigger, invalidation, maximum risk, and no-trade condition before revealing later bars. Grade the process—not the outcome.`, [lessonEmbed(lesson)], [{ type: 1, components: [button('Study the Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+    }
+    if (name === 'briefing') {
+      const goal = dailyFinancialGoal(userId(interaction), now);
+      await student(interaction);
+      const steps = goal.steps.map((step, index) => `${index + 1}. ${step}`).join('\n');
+      return { response: response(`**🧭 Your Daily Financial Freedom Goal**\n**${goal.title}** · ${goal.category} · about ${goal.minutes} minutes\n\n**Today’s action**\n${goal.action}\n\n**Do this**\n${steps}\n\n**Finish line**\n${goal.finish}\n\n**Why it matters**\n${goal.why}\n\nSmall, completed actions beat perfect plans. This is general financial education—not personalized investment, tax, credit, or legal advice.`) };
     }
     if (name === 'discipline') {
       const lesson = dailyLesson(SEED_LESSONS.filter((entry) => /discipline|psychology|bias|process|journal|risk|decision/i.test(`${entry.title} ${entry.description}`)), now);
