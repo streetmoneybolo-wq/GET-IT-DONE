@@ -2636,13 +2636,13 @@
   }
   document.addEventListener('touchstart', unlock, { passive: true, capture: true });
   document.addEventListener('pointerdown', unlock, { passive: true, capture: true });
-  var loaded = false, member = true, ME = 0, sigFails = 0, stubTries = 0, polling = false, heard = {};
+  var loaded = false, member = true, ME = 0, sigFails = 0, stubTries = 0, polling = false, heard = {}, fallbackAt = 0;
   /* client-side copy of the member's picks (the signal file is shared, so the filter runs here) */
   function wants(c) { var ch = (G && G.chirpChannels) || [], vo = (G && G.chirpVoices) || []; if (ch.length && Number(c.channelId) && ch.indexOf(Number(c.channelId)) < 0) return false; if (vo.length && vo.indexOf(Number(c.by && c.by.id)) < 0) return false; return true; }
   function pollSignal() {
     if (!G || !G.chirp || !G.signal) return;
     fetch(G.signal + '?v=' + Date.now(), { cache: 'no-store', credentials: 'omit' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-      if (!j) { if (++sigFails > 3) poll(); return; }
+      if (!j) { fallback(); return; }
       sigFails = 0;
       var l = Number(j.last) || 0;
       if (!last) { last = l; return; }   /* first sight only sets the cursor: nothing old replays */
@@ -2658,8 +2658,10 @@
         items = unheard(items);
         if (items.length) { queue = queue.concat(items); playNext(); }
       }
-    }).catch(function () { if (++sigFails > 3) poll(); });
+    }).catch(fallback);
   }
+  /* no signal file yet (a group that never chirped) or it is unreachable: ask /chirps instead, at most every 15 s */
+  function fallback() { if (++sigFails > 3 && Date.now() - fallbackAt > 15000) { fallbackAt = Date.now(); poll(); } }
   var last = 0, queue = [], audio = null, playing = null;
   var rec = null, chunks = [], recStart = 0, recTimer = null, busy = '';
 
@@ -2873,6 +2875,7 @@
   function toggle(channelId, field, on) {
     var body = { group_id: Number(G.id), channel_id: Number(channelId) }; body[field] = on;
     post('sub', body).then(function (j) { var members = G.members; G = j.group; G.members = members; paint(); repaintPanel();
+      if (field === 'chirp' && on) { last = 0; stubTries = 0; }   /* the next signal read only sets the cursor: chirps from while it was off never replay */
       if (field === 'chirp') { status(on ? '🔊 You will hear this group\'s chirps anywhere on the site (Loop Kick open or not on this page).' : 'Chirp off for this group.'); toast(on ? { by: { name: 'Chirp is on' }, duration: 0, note: 'You will hear the analysts and owner the moment they chirp — here and in LOOP-KICK.' } : null, false); if (on) setTimeout(function () { if (!playing) toast(null); }, 5000); }
       else if (!channelId) status(on ? '🔔 Every channel now alerts your Loop Kick in real time.' : 'Group alerts off.');
       else status(on ? '🔔 This channel now alerts your Loop Kick.' : 'Channel alerts off.');
