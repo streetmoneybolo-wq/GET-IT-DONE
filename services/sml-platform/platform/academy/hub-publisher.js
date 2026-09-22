@@ -3,7 +3,7 @@
 const { ACADEMY_HUBS } = require('./commands');
 
 const DISCORD_API = 'https://discord.com/api/v10';
-const ACADEMY_BANNER_URL = 'https://sml-platform-api.onrender.com/academy-activity/assets/mem-academy-banner.gif?v=20260922-1';
+const ACADEMY_BANNER_URL = 'https://sml-platform-api.onrender.com/academy-activity/assets/mem-academy-banner.gif?v=20260922-2';
 
 function launcher(hub) {
   const isBriefing = hub.command === 'briefing';
