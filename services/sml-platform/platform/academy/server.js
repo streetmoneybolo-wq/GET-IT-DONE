@@ -7,6 +7,7 @@ const { log } = require('../logger');
 const { MAX_BODY_BYTES } = require('../discord-interactions');
 const { createAcademyInteractions } = require('./runtime');
 const { publishAcademyHubs } = require('./hub-publisher');
+const { scheduleAcademyActivityInviteGuard } = require('./activity-invite-guard');
 
 async function readBody(request, maxBytes = MAX_BODY_BYTES) {
   const chunks = [];
@@ -90,6 +91,14 @@ async function main() {
       }).then((result) => log('info', 'academy_hubs_synced', {
         operations: result.operations.map(({ command, action, channelId }) => ({ command, action, channelId }))
       })).catch((error) => log('error', 'academy_hubs_sync_failed', { error }));
+      if (config.academyAppId) {
+        scheduleAcademyActivityInviteGuard({
+          token: config.academyBotToken,
+          guildId: config.academyGuildId,
+          categoryId: config.academyCategoryId,
+          applicationId: config.academyAppId
+        }, { logger: log });
+      }
     }
   });
 }

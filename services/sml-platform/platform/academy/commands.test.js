@@ -131,6 +131,30 @@ test('every registered Academy command returns working content instead of a road
   }
 });
 
+test('each member receives an independent private lesson session', async () => {
+  const studentLookups = [];
+  const db = {
+    async query(sql, values = []) {
+      if (sql.includes('academy_students') && sql.includes('RETURNING *')) {
+        studentLookups.push(values);
+        return { rows: [{ id: studentLookups.length, xp: 0, streak_days: 0, current_module: 1, current_lesson: 1 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    }
+  };
+  const academy = createAcademyCommands({ pool: db, guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const firstUser = '123456789012345678';
+  const secondUser = '987654321098765432';
+  const request = (id) => ({ type: 3, guild_id: GUILD, member: { user: { id }, roles: [], permissions: '0' }, data: { custom_id: 'academy:hub:lesson' } });
+
+  const first = await academy.handle(request(firstUser));
+  const second = await academy.handle(request(secondUser));
+
+  assert.equal(first.response.data.flags, 64);
+  assert.equal(second.response.data.flags, 64);
+  assert.deepEqual(studentLookups, [[GUILD, firstUser], [GUILD, secondUser]]);
+});
+
 test('daily financial briefing is private, practical, and stable for the member and day', async () => {
   const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true, now: () => Date.UTC(2026, 8, 22) });
   const first = await academy.handle(interaction('briefing'));
