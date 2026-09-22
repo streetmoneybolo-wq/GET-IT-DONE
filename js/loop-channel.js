@@ -363,6 +363,18 @@
       loadIdentity(profileHandle); loadNewsletter(profileHandle);
       var stats = channel.stats || {}; if (stats.videos != null) el('#ch-videos').textContent = fmt(stats.videos); if (stats.views != null) el('#ch-views').textContent = fmt(stats.views);
       renderOrbit(videos); renderCommunity(posts);
+      /* Layout Engine (plugin sml-channel-layout) replaces the orbit only after
+         its own API returns a valid layout. The plugin enqueues its script only
+         for enabled channels; everywhere else SML_LCE never exists and the
+         listener below never fires, so the orbit stays exactly as it is. */
+      (function mountLayoutEngine() {
+        var target = el('#ch-orbit');
+        var mount = function () {
+          if (window.SML_LCE && target) window.SML_LCE.mount(target, { handle: HANDLE, nonce: NONCE, isOwner: OWNER });
+        };
+        if (window.SML_LCE) mount();
+        else window.addEventListener('sml:lce-ready', mount, { once: true });
+      })();
       return profileHandle ? api('/sml-live/v1/feeds/' + encodeURIComponent(profileHandle)).then(function (feedRes) { return loadHero(feedRes.ok ? (feedRes.j || {}) : {}, videos[0]); }) : loadHero({}, videos[0]);
     }).catch(function () { el('#ch-sync').textContent = '● CHANNEL FEED UNAVAILABLE'; });
   }
