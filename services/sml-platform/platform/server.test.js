@@ -143,6 +143,12 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /LIVE INTERACTIVE ACADEMY/);
     assert.match(html, /academy-tools-open/);
     assert.match(html, /body\.academy-tools-open \.lesson\{z-index:2147483600\}/);
+    assert.match(html, /id="academy-intro-video"/);
+    assert.match(html, /making-easy-money-academy-intro\.mp4/);
+    assert.match(html, /smlAcademyWarmPromise/);
+    assert.match(html, /Preparing live chart, scanner, lessons, and Academy tools/);
+    assert.match(html, /video\.addEventListener\('ended',finish/);
+    assert.match(html, /Tap to begin with sound/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
     assert.match(html, /let bars=\[/);
@@ -162,6 +168,20 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /\['Options',\[9,23\]\]/);
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     assert.doesNotThrow(() => new Function(scripts.at(-1)[1]));
+  });
+});
+
+test('Academy intro video supports cached byte-range streaming', async () => {
+  await withServer({}, async (base) => {
+    const response = await fetch(`${base}/academy-activity/assets/making-easy-money-academy-intro.mp4`, {
+      headers: { range: 'bytes=0-1023' }
+    });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get('content-type'), 'video/mp4');
+    assert.equal(response.headers.get('accept-ranges'), 'bytes');
+    assert.match(response.headers.get('cache-control'), /immutable/);
+    assert.match(response.headers.get('content-range'), /^bytes 0-1023\/\d+$/);
+    assert.equal((await response.arrayBuffer()).byteLength, 1024);
   });
 });
 

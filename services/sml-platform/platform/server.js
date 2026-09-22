@@ -27,6 +27,7 @@ const { createAcademyVoice } = require('./academy-voice');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
+const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -551,7 +552,7 @@ function sendHtml(response, status, body) {
     ? body.replace('new ResizeObserver(resize).observe(canvas);', '')
     : body;
   const safeBody = typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
-    ? strippedBody.replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}</body></html>`)
+    ? strippedBody.replace('<body>', `<body>${academyIntroMarkup()}`).replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}</body></html>`)
     : strippedBody;
   const payload = zlib.gzipSync(Buffer.from(safeBody), { level: zlib.constants.Z_BEST_SPEED });
   response.writeHead(status, {
@@ -563,6 +564,62 @@ function sendHtml(response, status, body) {
     'x-content-type-options': 'nosniff'
   });
   response.end(payload);
+}
+
+function sendAcademyIntro(request, response) {
+  let stat;
+  try { stat = fs.statSync(ACADEMY_INTRO_PATH); } catch (_) { return sendJson(response, 404, { ok: false, error: 'not_found' }); }
+  const size = stat.size;
+  const etag = `"academy-intro-${size}-${Math.floor(stat.mtimeMs)}"`;
+  const common = {
+    'content-type': 'video/mp4',
+    'accept-ranges': 'bytes',
+    'cache-control': 'public, max-age=31536000, immutable',
+    etag,
+    'x-content-type-options': 'nosniff'
+  };
+  if (!request.headers.range && request.headers['if-none-match'] === etag) {
+    response.writeHead(304, common);
+    response.end();
+    return;
+  }
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(String(request.headers.range || ''));
+  let start = 0;
+  let end = size - 1;
+  if (request.headers.range) {
+    if (!match || (!match[1] && !match[2])) {
+      response.writeHead(416, { ...common, 'content-range': `bytes */${size}` });
+      response.end();
+      return;
+    }
+    if (!match[1]) {
+      const suffix = Math.min(size, Number(match[2]));
+      start = size - suffix;
+    } else {
+      start = Number(match[1]);
+      if (match[2]) end = Math.min(size - 1, Number(match[2]));
+    }
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= size || end < start) {
+      response.writeHead(416, { ...common, 'content-range': `bytes */${size}` });
+      response.end();
+      return;
+    }
+  }
+  const partial = Boolean(request.headers.range);
+  const length = end - start + 1;
+  response.writeHead(partial ? 206 : 200, {
+    ...common,
+    'content-length': length,
+    ...(partial ? { 'content-range': `bytes ${start}-${end}/${size}` } : {})
+  });
+  if (request.method === 'HEAD') { response.end(); return; }
+  fs.createReadStream(ACADEMY_INTRO_PATH, { start, end }).pipe(response);
+}
+
+function academyIntroMarkup() {
+  return `<div class="academy-intro" id="academy-intro" role="dialog" aria-label="Making Easy Money Academy introduction"><video id="academy-intro-video" autoplay playsinline preload="auto"><source src="/academy-activity/assets/making-easy-money-academy-intro.mp4" type="video/mp4"></video><div class="academy-intro-fallback" id="academy-intro-fallback" hidden><strong>Making Easy Money Academy</strong><span>Tap to begin with sound</span><button id="academy-intro-play" type="button">PLAY INTRO</button></div><button class="academy-intro-skip" id="academy-intro-skip" type="button">Skip intro</button><span class="academy-intro-loading" aria-live="polite">Preparing live chart, scanner, lessons, and Academy tools…</span></div><style>
+.academy-intro{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;overflow:hidden;background:#020609;opacity:1;transition:opacity .38s ease}.academy-intro.closing{opacity:0;pointer-events:none}.academy-intro video{width:100%;height:100%;object-fit:contain;background:#020609}.academy-intro-skip{position:absolute;right:18px;top:16px;padding:8px 12px;border:1px solid rgba(255,255,255,.5);border-radius:999px;background:rgba(0,0,0,.58);color:#fff;font:800 .72rem system-ui;cursor:pointer}.academy-intro-loading{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);width:min(92%,620px);padding:8px 12px;border-radius:999px;background:rgba(0,0,0,.7);color:#baf7da;text-align:center;font:700 .66rem system-ui;letter-spacing:.02em}.academy-intro-fallback{position:absolute;inset:0;display:grid;place-content:center;gap:12px;text-align:center;background:radial-gradient(circle,#0c3b2b,#020609 70%)}.academy-intro-fallback[hidden]{display:none}.academy-intro-fallback strong{font-size:clamp(1.3rem,4vw,2.8rem)}.academy-intro-fallback span{color:#a6bbc5}.academy-intro-fallback button{justify-self:center;padding:11px 20px;border:1px solid #43e6a1;border-radius:8px;background:#00c47d;color:#032318;font-weight:900;cursor:pointer}@media(prefers-reduced-motion:reduce){.academy-intro{transition:none}.academy-intro video{display:none}.academy-intro-fallback{display:grid!important}}
+</style><script>(()=>{const overlay=document.getElementById('academy-intro'),video=document.getElementById('academy-intro-video'),fallback=document.getElementById('academy-intro-fallback'),play=document.getElementById('academy-intro-play'),skip=document.getElementById('academy-intro-skip');if(!overlay||!video)return;let finished=false;const warmUrls=['/academy-activity/curriculum','/academy-activity/market?symbol=SPY&tf=5m','/academy-activity/scanner','/academy-activity/slide-design?moduleId=1&lessonId=1'];window.smlAcademyWarmPromise=Promise.allSettled(warmUrls.map((url,index)=>fetch(url,{cache:index===0||index===3?'force-cache':'no-store'})));const finish=()=>{if(finished)return;finished=true;overlay.classList.add('closing');setTimeout(()=>overlay.remove(),420);window.dispatchEvent(new Event('sml-academy-intro-complete'))};const attempt=()=>video.play().then(()=>{fallback.hidden=true}).catch(()=>{fallback.hidden=false});video.addEventListener('ended',finish,{once:true});video.addEventListener('error',()=>{fallback.hidden=false});play?.addEventListener('click',attempt);skip?.addEventListener('click',finish);if(matchMedia('(prefers-reduced-motion: reduce)').matches)fallback.hidden=false;else void attempt();setTimeout(()=>{if(video.readyState===0)fallback.hidden=false},3000)})()</script>`;
 }
 
 function sendAcademySdkModule(response, requestPath) {
@@ -991,6 +1048,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     if (request.method === 'GET' && path.startsWith('/academy-activity/sdk/')) {
       sendAcademySdkModule(response, path);
+      return;
+    }
+
+    if ((request.method === 'GET' || request.method === 'HEAD') && path === '/academy-activity/assets/making-easy-money-academy-intro.mp4') {
+      sendAcademyIntro(request, response);
       return;
     }
 
