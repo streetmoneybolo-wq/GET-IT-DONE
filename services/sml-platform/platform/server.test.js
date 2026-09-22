@@ -102,6 +102,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /academy-live-deck/);
     assert.match(html, /Live synchronized lesson slides/);
     assert.match(html, /syncVoiceDeck/);
+    assert.match(html, /parts\[safe\]\.match\(\/\\S\+\\s\*\/g\)/);
+    assert.doesNotMatch(html, /parts\[safe\]\.split\(\/\(\\s\+\)\//);
     assert.match(html, /requestAnimationFrame\(syncVoiceDeck\)/);
     assert.match(html, /Starting the next lesson/);
     assert.match(html, /All 101 Academy lessons complete/);
@@ -129,7 +131,15 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /refreshScanner/);
     assert.match(html, /academy-activity\/scanner/);
     assert.match(html, /id="academy-scanner-host"/);
-    assert.match(html, /Options Chain Lab/);
+    assert.match(html, /College Options Chain Lab/);
+    assert.match(html, /academy-lesson-open/);
+    assert.match(html, /width:calc\(100% - var\(--academy-lesson-rail\)\)/);
+    assert.match(html, /body\.academy-lesson-open \.academy-below/);
+    assert.match(html, /id="options-expiry"/);
+    assert.match(html, /Call IV/);
+    assert.match(html, /intrinsic value is immediate exercise value/);
+    assert.match(html, /sideFrom\(object\.call\|\|object\.calls\|\|object,object\.call\|\|object\.calls\?'':'call'\)/);
+    assert.match(html, /Select any strike for derived economics and risk interpretation/);
     assert.match(html, /height:calc\(100dvh - 86px\)/);
     assert.match(html, /canvas\.addEventListener\('wheel',\(\)=>\{\},\{passive:true\}\)/);
     assert.match(html, /LEVEL 2 DEPTH/);
