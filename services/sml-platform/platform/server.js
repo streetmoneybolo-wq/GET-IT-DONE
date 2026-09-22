@@ -678,7 +678,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   alertRouter = null, alertRouterSecret = '',
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
   newsIngestToken = '',
-  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null,
+  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null,
   logger = log, now = Date.now }) {
@@ -813,6 +813,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       return;
     }
+    if (request.method === 'POST' && path === '/v1/daily-social-payouts/interactions') {
+      if (!dailySocialPayoutsInteractions) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const body = await readRequestBody(request, discordInteractionsModule.MAX_BODY_BYTES);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      await dailySocialPayoutsInteractions.handleRequest(request, response, body.rawBody);
+      return;
+    }
 
     if (request.method === 'GET' && path === '/academy-activity/') {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
@@ -932,6 +939,24 @@ async function main() {
   const alertRouter = createAlertRouter(database.pool);
   const { createDisputeRuntime } = require('./dispute-runtime');
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
+  const { createDiscordInteractions } = require('./discord-interactions');
+  const { createDailySocialCommands } = require('./daily-social-commands');
+  const dailySocialPayoutsInteractions = config.dailySocialPayoutsEnabled
+    ? createDiscordInteractions({
+        config: {
+          discordPublicKey: config.dailySocialPayoutsPublicKey,
+          discordAppId: config.dailySocialPayoutsAppId,
+          discordBotToken: config.dailySocialPayoutsBotToken
+        },
+        pool: database.pool,
+        commands: createDailySocialCommands({
+          pool: database.pool,
+          guildId: config.dailySocialPayoutsGuildId,
+          channelId: config.dailySocialPayoutsChannelId,
+          managerRoleId: config.dailySocialPayoutsManagerRoleId
+        })
+      })
+    : null;
   const { createAcademyInteractions } = require('./academy/runtime');
   const academyInteractions = disputes.discordInteractions || createAcademyInteractions({ config, pool: database.pool });
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
@@ -940,7 +965,8 @@ async function main() {
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
-    paypal: !!disputes.paypalClient, connectBot: !!academyInteractions });
+    paypal: !!disputes.paypalClient, connectBot: !!academyInteractions,
+    dailySocialPayouts: !!dailySocialPayoutsInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
   const corporate = createCorporateRuntime({ config, pool: database.pool, stripe, logger: log });
   log('info', 'corporate_runtime', { enabled: corporate.enabled, reason: corporate.reason });
@@ -956,6 +982,7 @@ async function main() {
     paypalWebhook: disputes.paypalWebhook,
     upgradeChatWebhook: disputes.upgradeChatWebhook,
     discordInteractions: academyInteractions,
+    dailySocialPayoutsInteractions,
     disputeService: disputes.disputeService,
     schemaVersion,
     stripeWebhookSecret: config.stripeWebhookSecret,

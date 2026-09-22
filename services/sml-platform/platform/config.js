@@ -74,6 +74,14 @@ function getConfig(env = process.env) {
     connectReviewUrlBase: String(env.SML_CONNECT_REVIEW_URL_BASE || 'https://stockmarketloop.com/connect-review/').trim(),
     upgradeChatWebhookPathToken: String(env.SML_UC_WEBHOOK_PATH_TOKEN || '').trim(),
     connectGuildIds: String(env.SML_CONNECT_GUILD_IDS || '').split(',').map((g) => g.trim()).filter(Boolean),
+    // --- Daily Social Payouts (separate Making Easy Money Discord app) ---
+    dailySocialPayoutsEnabled: String(env.SML_DSP_ENABLED || '').trim() === '1',
+    dailySocialPayoutsPublicKey: String(env.SML_DSP_DISCORD_PUBLIC_KEY || '').trim(),
+    dailySocialPayoutsAppId: String(env.SML_DSP_DISCORD_APP_ID || '').trim(),
+    dailySocialPayoutsBotToken: String(env.SML_DSP_DISCORD_BOT_TOKEN || '').trim(),
+    dailySocialPayoutsGuildId: String(env.SML_DSP_GUILD_ID || '938894329076940820').trim(),
+    dailySocialPayoutsChannelId: String(env.SML_DSP_CHANNEL_ID || '1417576889878446256').trim(),
+    dailySocialPayoutsManagerRoleId: String(env.SML_DSP_MANAGER_ROLE_ID || '1260433215189946420').trim(),
     // --- corporate accounts (every route 503s and no projection is pushed until all set) ---
     corporateEnabled: String(env.SML_CORPORATE_ENABLED || '').trim() === '1',
     corporateVerificationSecret: String(env.SML_CORPORATE_VERIFICATION_SECRET || '').trim(),

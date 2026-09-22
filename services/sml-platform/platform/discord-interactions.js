@@ -84,10 +84,13 @@ function createDiscordInteractions(deps = {}) {
   const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now || Date.now;
 
-  const publicKeyObject = buildPublicKey(config.discordConnectPublicKey);
-  const appId = SNOWFLAKE_RE.test(String(config.discordConnectAppId || ''))
-    ? String(config.discordConnectAppId) : null;
-  const botToken = typeof config.discordConnectBotToken === 'string' ? config.discordConnectBotToken.trim() : '';
+  // The interaction verifier is reusable by separately registered Discord
+  // apps. The legacy Connect names remain as a backwards-compatible fallback.
+  const publicKeyObject = buildPublicKey(config.discordPublicKey || config.discordConnectPublicKey);
+  const appId = SNOWFLAKE_RE.test(String(config.discordAppId || config.discordConnectAppId || ''))
+    ? String(config.discordAppId || config.discordConnectAppId) : null;
+  const botToken = typeof (config.discordBotToken || config.discordConnectBotToken) === 'string'
+    ? String(config.discordBotToken || config.discordConnectBotToken).trim() : '';
 
   async function fetchGuild(guildId) {
     if (!botToken || !SNOWFLAKE_RE.test(String(guildId)) || typeof fetchImpl !== 'function') return null;
