@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, createAcademyCommands } = require('./commands');
+const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, LAUNCH_ID, TEXT_LESSON_ID, createAcademyCommands } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
 
 const GUILD = '938894329076940820';
@@ -59,6 +59,7 @@ test('all dedicated channel launchers work for members and remain ephemeral', as
   for (const hub of ACADEMY_HUBS) {
     const input = { type: 3, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { custom_id: `academy:hub:${hub.command}` } };
     const result = await academy.handle(input);
+    if (hub.command === 'lesson') { assert.deepEqual(result.response, { type: 12 }, 'lesson launcher must open the Activity'); continue; }
     assert.equal(result.response.data.flags, 64, `${hub.command} response must be private`);
     assert.notEqual(result.response.data.content, 'This Academy control is no longer valid.');
     assert.notEqual(result.response.data.content, 'The Academy is not available in this server yet.');
@@ -221,7 +222,7 @@ test('each member receives an independent private lesson session', async () => {
   const academy = createAcademyCommands({ pool: db, guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
   const firstUser = '123456789012345678';
   const secondUser = '987654321098765432';
-  const request = (id) => ({ type: 3, guild_id: GUILD, member: { user: { id }, roles: [], permissions: '0' }, data: { custom_id: 'academy:hub:lesson' } });
+  const request = (id) => ({ type: 3, guild_id: GUILD, member: { user: { id }, roles: [], permissions: '0' }, data: { custom_id: TEXT_LESSON_ID } });
 
   const first = await academy.handle(request(firstUser));
   const second = await academy.handle(request(secondUser));
@@ -277,4 +278,47 @@ test('flashcards reveal a real lesson and the leaderboard protects Discord ident
   assert.match(leaders.response.data.content, /800 XP/);
   assert.match(leaders.response.data.content, new RegExp(USER.slice(-4)));
   assert.doesNotMatch(leaders.response.data.content, new RegExp(USER));
+});
+
+test('the lesson hub primary action launches the Activity instead of a text-only lesson', async () => {
+  const db = pool();
+  const academy = createAcademyCommands({ pool: db, guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const member = { user: { id: USER }, roles: [], permissions: '0' };
+  for (const customId of ['academy:hub:lesson', LAUNCH_ID]) {
+    const result = await academy.handle({ type: 3, guild_id: GUILD, member, data: { custom_id: customId } });
+    assert.deepEqual(result.response, { type: 12 });
+  }
+  // Launching reads no member data: the Activity resolves the student itself
+  // from the Discord-authorized session.
+  assert.equal(db.calls.length, 0);
+  const hub = ACADEMY_HUBS.find((entry) => entry.command === 'lesson');
+  assert.equal(hub.channelId, '1551459038405992488');
+});
+
+test('Academy text surfaces offer the in-Discord Activity, never an external browser link', async () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const results = [
+    await academy.handle(interaction('academy')),
+    await academy.handle(interaction('lesson')),
+    await academy.handle(component('academy:answer:1:1:B'))
+  ];
+  for (const result of results) {
+    const buttons = result.response.data.components.flatMap((row) => row.components);
+    assert.ok(buttons.some((item) => item.custom_id === LAUNCH_ID), 'launch control present');
+    assert.ok(buttons.every((item) => !item.url), 'no link buttons that leave Discord');
+  }
+});
+
+test('text lesson fallback explains the situation and offers a retry launch', async () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const result = await academy.handle({ type: 3, guild_id: GUILD, member: { user: { id: USER }, roles: [], permissions: '0' }, data: { custom_id: TEXT_LESSON_ID } });
+  assert.equal(result.response.type, 4);
+  assert.equal(result.response.data.flags, 64);
+  assert.match(result.response.data.content, /did not open/);
+  assert.match(result.response.data.embeds[0].title, /Module 1 · Lesson 1/);
+  const buttons = result.response.data.components.flatMap((row) => row.components);
+  const ids = buttons.map((item) => item.custom_id);
+  assert.equal(new Set(ids).size, ids.length, 'Discord rejects duplicate custom_ids in one message');
+  assert.ok(buttons.some((item) => item.custom_id === LAUNCH_ID && /Again/.test(item.label)));
+  assert.ok(ids.includes('academy:start:1:1'));
 });

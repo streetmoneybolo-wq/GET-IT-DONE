@@ -750,3 +750,43 @@ test('alert ingestion rejects bad signatures before the router is called', async
   });
   assert.equal(calls, 0);
 });
+
+test('Academy Activity resumes each authenticated member at their own next lesson', async () => {
+  const members = {
+    'session-a': { userId: '111111111111111111', student: { currentModule: 14, currentLesson: 2, xp: 900, streakDays: 3, badges: ['first_lesson'] } },
+    'session-b': { userId: '222222222222222222', student: { currentModule: 1, currentLesson: 1, xp: 0, streakDays: 0, badges: [] } }
+  };
+  const byUser = Object.fromEntries(Object.values(members).map((entry) => [entry.userId, entry.student]));
+  const academyProgress = {
+    configured: true,
+    read: async () => [],
+    state: async (userId) => byUser[userId],
+    save: async (_userId, input) => ({ ...input, completed: input.score >= 70 })
+  };
+  const academyOAuth = { verifySession: (authorization) => {
+    const entry = members[String(authorization).replace(/^Bearer /, '')];
+    return entry ? { ok: true, userId: entry.userId } : { ok: false, status: 401, code: 'authorization_required' };
+  } };
+  await withServer({ academyOAuth, academyProgress }, async (base) => {
+    const a = await (await fetch(`${base}/academy-activity/progress`, { headers: { authorization: 'Bearer session-a' } })).json();
+    const b = await (await fetch(`${base}/academy-activity/progress`, { headers: { authorization: 'Bearer session-b' } })).json();
+    assert.deepEqual([a.student.currentModule, a.student.currentLesson], [14, 2]);
+    assert.deepEqual([b.student.currentModule, b.student.currentLesson], [1, 1]);
+    // A user id in the query string is ignored; identity comes only from the session.
+    const spoof = await fetch(`${base}/academy-activity/progress?discord_id=111111111111111111`, { headers: { authorization: 'Bearer expired' } });
+    assert.equal(spoof.status, 401);
+    const write = await fetch(`${base}/academy-activity/progress`, { method: 'POST', headers: { authorization: 'Bearer expired', 'content-type': 'application/json' }, body: JSON.stringify({ moduleId: 1, lessonId: 1, score: 100 }) });
+    assert.equal(write.status, 401);
+    // Modules 14-28 are real lessons and must save.
+    const late = await fetch(`${base}/academy-activity/progress`, { method: 'POST', headers: { authorization: 'Bearer session-a', 'content-type': 'application/json' }, body: JSON.stringify({ moduleId: 28, lessonId: 5, score: 90 }) });
+    assert.equal(late.status, 200);
+  });
+});
+
+test('Activity client restores the authenticated lesson and keeps implementation labels off screen', () => {
+  const { academyCurriculumScript } = require('./academy-activity-curriculum');
+  const script = academyCurriculumScript(require('./academy/curriculum').SEED_LESSONS);
+  assert.match(script, /restoreNextLesson\(data\.student\)/);
+  assert.match(script, /render\(\);if\(session\)loadProgress\(\);/, 'a session issued before the curriculum loads is still used');
+  assert.doesNotMatch(script, /Grandmaster-Obi narration|Claude generated|AI generated/i);
+});

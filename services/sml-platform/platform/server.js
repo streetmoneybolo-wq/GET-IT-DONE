@@ -1385,7 +1385,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       try {
         if (request.method === 'GET') {
-          sendJson(response, 200, { ok: true, progress: await academyProgress.read(session.userId) });
+          const [progress, student] = await Promise.all([academyProgress.read(session.userId), typeof academyProgress.state === 'function' ? academyProgress.state(session.userId) : null]);
+          sendJson(response, 200, { ok: true, progress, student });
           return;
         }
         if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }

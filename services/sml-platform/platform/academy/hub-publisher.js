@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { ACADEMY_HUBS } = require('./commands');
+const { ACADEMY_HUBS, TEXT_LESSON_ID } = require('./commands');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const ACADEMY_BANNER_FILE = 'making-easy-money-academy.gif';
@@ -17,7 +17,11 @@ function launcher(hub) {
     ...(tool.emoji ? { emoji: { name: tool.emoji } } : {}),
     custom_id: `academy:hub:${tool.command}`
   })) : [];
-  const components = [{ type: 1, components: [{ type: 2, style: isBriefing ? 3 : 1, label: hub.button, custom_id: `academy:hub:${hub.command}` }] }];
+  const primary = [{ type: 2, style: isBriefing ? 3 : 1, label: hub.button, custom_id: `academy:hub:${hub.command}` }];
+  // The lesson launcher opens the Activity (LAUNCH_ACTIVITY). Discord clients
+  // that cannot run Activities still get the same lesson as a private card.
+  if (hub.command === 'lesson') primary.push({ type: 2, style: 2, label: 'Text Lesson', emoji: { name: '📄' }, custom_id: TEXT_LESSON_ID });
+  const components = [{ type: 1, components: primary }];
   if (toolButtons.length) components.push({ type: 1, components: toolButtons });
   const academyCard = {
     color: hub.color,

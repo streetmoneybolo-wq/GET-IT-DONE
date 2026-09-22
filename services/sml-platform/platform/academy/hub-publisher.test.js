@@ -84,3 +84,38 @@ test('publisher reuses the fixed briefing channel and pins its launcher', async 
   assert.equal(posts[1].multipart, false);
   assert.equal(calls.filter((call) => call.path.includes('/pins/') && call.method === 'PUT').length, 2);
 });
+
+test('lesson launcher opens the Activity and keeps a private text fallback beside it', () => {
+  const { TEXT_LESSON_ID } = require('./commands');
+  const hub = require('./commands').ACADEMY_HUBS.find((entry) => entry.command === 'lesson');
+  const payload = launcher(hub);
+  const primary = payload.components[0].components;
+  assert.equal(primary[0].custom_id, 'academy:hub:lesson');
+  assert.equal(primary[0].style, 1);
+  assert.equal(primary[1].custom_id, TEXT_LESSON_ID);
+  assert.equal(launcher({ ...hub, command: 'progress', tools: [] }).components[0].components.length, 1);
+});
+
+test('republishing an existing lesson hub edits its launcher in place (no duplicate posts)', async () => {
+  const hub = require('./commands').ACADEMY_HUBS.find((entry) => entry.command === 'lesson');
+  const categoryId = '1551147999999999999';
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    const path = new URL(url).pathname + new URL(url).search;
+    calls.push({ path, method: options.method || 'GET' });
+    let payload = null;
+    if (path === '/api/v10/guilds/938894329076940820/channels') payload = [{ id: hub.channelId, name: hub.channel, topic: hub.topic, parent_id: categoryId }];
+    else if (path.includes('/messages?limit=50')) payload = [
+      { id: '1', author: { bot: true }, attachments: [{ filename: ACADEMY_BANNER_FILE }], components: [] },
+      { id: '2', author: { bot: true }, attachments: [], components: [{ type: 1, components: [{ custom_id: 'academy:hub:lesson' }] }] }
+    ];
+    else if (path.endsWith('/messages/2')) payload = { id: '2' };
+    return { ok: true, status: 200, text: async () => payload == null ? '' : JSON.stringify(payload) };
+  };
+  for (let run = 0; run < 2; run += 1) {
+    await publishAcademyHubs({ token: 't', guildId: '938894329076940820', categoryId, hubs: [hub], fetchImpl });
+  }
+  assert.equal(calls.filter((call) => call.method === 'POST').length, 0);
+  assert.equal(calls.filter((call) => call.method === 'DELETE').length, 0);
+  assert.equal(calls.filter((call) => call.method === 'PATCH' && call.path.endsWith('/messages/2')).length, 2);
+});

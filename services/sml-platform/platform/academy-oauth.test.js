@@ -35,3 +35,21 @@ test('Academy OAuth exchanges a Discord Activity code without a popup redirect',
   assert.match(requests[0].options.body, /code=embedded-code/);
   assert.doesNotMatch(requests[0].options.body, /redirect_uri=/);
 });
+
+test('two Discord members receive distinct Activity sessions bound to their own IDs', async () => {
+  let counter = 0;
+  const tokens = { 'code-a': 'token-a', 'code-b': 'token-b' };
+  const users = { 'Bearer token-a': '111111111111111111', 'Bearer token-b': '222222222222222222' };
+  const oauth = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async (value) => ({ ok: true, userId: users[value] }) },
+    randomBytes: () => Buffer.alloc(32, ++counter),
+    fetchImpl: async (_url, options) => response(200, { access_token: tokens[new URLSearchParams(options.body).get('code')] })
+  });
+  const a = await oauth.completeActivity({ code: 'code-a' });
+  const b = await oauth.completeActivity({ code: 'code-b' });
+  assert.notEqual(a.sessionToken, b.sessionToken);
+  assert.equal(oauth.verifySession(`Bearer ${a.sessionToken}`).userId, '111111111111111111');
+  assert.equal(oauth.verifySession(`Bearer ${b.sessionToken}`).userId, '222222222222222222');
+  assert.equal(oauth.verifySession('Bearer forged').ok, false);
+});
