@@ -454,7 +454,6 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
   const initialScanner = JSON.stringify(Array.isArray(initialMarket.scanner?.rows) ? initialMarket.scanner.rows.slice(0, 100) : []);
   const initialDepth = JSON.stringify(initialMarket.depth && typeof initialMarket.depth === 'object' ? initialMarket.depth : { bids: [], asks: [] });
   const academyAppId = JSON.stringify(String(options.appId || ''));
-  const academyRedirectUri = JSON.stringify(String(options.redirectUri || ''));
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Making Easy Money Academy — Live Chart Lab</title>
@@ -491,7 +490,6 @@ async function authenticateAcademyActivity(){
     await sdk.ready();
     const authorization=await sdk.commands.authorize({
       client_id:academyAppId,
-      redirect_uri:${academyRedirectUri},
       response_type:'code',
       prompt:'none',
       scope:['identify','guilds.members.read']
@@ -849,7 +847,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
-  academySlideDesigner = null, academyAppId = '', academyRedirectUri = '',
+  academySlideDesigner = null, academyAppId = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -1026,7 +1024,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const activity = market.status === 'fulfilled' ? market.value : { symbol, tf: timeframe, bars: [] };
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
       activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
-      sendHtml(response, 200, academyActivityHtml(activity, { appId: academyAppId, redirectUri: academyRedirectUri }));
+      sendHtml(response, 200, academyActivityHtml(activity, { appId: academyAppId }));
       return;
     }
 
@@ -1314,8 +1312,7 @@ async function main() {
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner,
-    academyAppId: config.academyAppId,
-    academyRedirectUri: config.discordRedirectUri
+    academyAppId: config.academyAppId
   });
   let shuttingDown = false;
 

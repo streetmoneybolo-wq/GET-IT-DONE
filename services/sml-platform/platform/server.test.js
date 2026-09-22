@@ -77,7 +77,7 @@ test('all other routes are a no-store 404', async () => {
 });
 
 test('Academy Activity serves the read-only live chart host for Discord', async () => {
-  await withServer({ academyAppId: '1551336038713139370', academyRedirectUri: 'https://example.test/callback' }, async (base) => {
+  await withServer({ academyAppId: '1551336038713139370' }, async (base) => {
     const response = await fetch(`${base}/academy-activity/`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/html/);
@@ -138,7 +138,6 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /DiscordSDK/);
     assert.match(html, /academy-activity\/sdk\/index\.mjs/);
     assert.match(html, /guilds\.members\.read/);
-    assert.match(html, /redirect_uri:"https:\/\/example\.test\/callback"/);
     assert.match(html, /academy-activity\/token/);
     assert.match(html, /sml-academy-session/);
     assert.match(html, /LIVE INTERACTIVE ACADEMY/);

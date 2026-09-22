@@ -33,5 +33,5 @@ test('Academy OAuth exchanges a Discord Activity code without a popup redirect',
   assert.equal(oauth.verifySession(`Bearer ${result.sessionToken}`).userId, '77');
   assert.equal(requests[0].url, 'https://discord.com/api/v10/oauth2/token');
   assert.match(requests[0].options.body, /code=embedded-code/);
-  assert.match(requests[0].options.body, /redirect_uri=https%3A%2F%2Fexample.test%2Fcallback/);
+  assert.doesNotMatch(requests[0].options.body, /redirect_uri=/);
 });

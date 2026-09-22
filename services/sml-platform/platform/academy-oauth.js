@@ -11,8 +11,8 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
   fetchImpl = fetch, now = Date.now, randomBytes = crypto.randomBytes } = {}) {
   const pending = new Map();
   const sessions = new Map();
-  const activityConfigured = Boolean(clientId && clientSecret && redirectUri && academyAccess && typeof academyAccess.verify === 'function');
-  const configured = activityConfigured;
+  const activityConfigured = Boolean(clientId && clientSecret && academyAccess && typeof academyAccess.verify === 'function');
+  const configured = Boolean(activityConfigured && redirectUri);
   const nonce = () => randomBytes(32).toString('base64url');
   const clean = (map) => { const cutoff = now(); for (const [key, value] of map) if (value.expiresAt <= cutoff) map.delete(key); };
   function start() {
@@ -47,9 +47,7 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     if (!entry) return { ok: false, status: 400, code: 'invalid_authorization_state' };
     return exchangeCode(code, redirectUri);
   }
-  /* Discord requires the registered redirect URI on the token exchange even
-     when its embedded Activity issued the authorization code. */
-  const completeActivity = ({ code = '' } = {}) => exchangeCode(code, redirectUri);
+  const completeActivity = ({ code = '' } = {}) => exchangeCode(code);
   function verifySession(authorization) { clean(sessions); const match = /^Bearer\s+(.+)$/i.exec(String(authorization || '')); const session = match && sessions.get(match[1]); return session ? { ok: true, userId: session.userId } : { ok: false, status: 401, code: 'authorization_required' }; }
   return { configured, activityConfigured, start, complete, completeActivity, verifySession };
 }
