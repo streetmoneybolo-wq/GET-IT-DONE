@@ -503,9 +503,11 @@ async function authenticateAcademyActivity(){
     if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken)throw new Error(payload.error||'authorization_failed');
     await sdk.commands.authenticate({access_token:payload.access_token});
     window.smlAcademySessionToken=payload.sessionToken;
+    document.body.dataset.academyAuth='ready';
     window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken:payload.sessionToken}}));
     if(academyStatus)academyStatus.textContent='LIVE';
-  }catch(_){
+  }catch(error){
+    document.body.dataset.academyAuth=String(error&&error.message||'authorization_failed').replace(/[^a-z0-9_-]/gi,'').slice(0,64);
     if(academyStatus)academyStatus.textContent='SIGN IN RETRY';
   }
 }
@@ -1098,6 +1100,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
       try {
         const result = await academyOAuth.completeActivity({ code: input.code });
+        logger(result.ok ? 'info' : 'warn', result.ok ? 'academy_activity_oauth_completed' : 'academy_activity_oauth_refused', {
+          ...(result.ok ? {} : { code: result.code, status: result.status })
+        });
         sendJson(response, result.ok ? 200 : (result.status || 401), result.ok
           ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken }
           : { ok: false, error: result.code });
