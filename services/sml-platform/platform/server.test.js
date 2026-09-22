@@ -152,6 +152,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /videoWidth\/video\.videoHeight/);
     assert.match(html, /new ResizeObserver\(fitVideo\)/);
     assert.match(html, /window\.visualViewport\?\.addEventListener\('resize',fitVideo/);
+    assert.match(html, /academy-intro-rail-left/);
+    assert.match(html, /academy-intro\.banner-mode/);
+    assert.match(html, /availableWidth\/availableHeight>=2/);
     assert.match(html, /Tap to begin with sound/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
