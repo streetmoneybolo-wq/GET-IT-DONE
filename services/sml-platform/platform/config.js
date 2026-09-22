@@ -106,6 +106,9 @@ function getConfig(env = process.env) {
     academyMonarchRoleId: String(env.SML_ACADEMY_MONARCH_ROLE_ID || '1260433215189946420').trim(),
     academyBridgeUrl: String(env.SML_ACADEMY_BRIDGE_URL || '').trim(),
     academyBridgeSecret: String(env.SML_ACADEMY_BRIDGE_SECRET || '').trim(),
+    elevenLabsApiKey: String(env.ELEVENLABS_API_KEY || '').trim(),
+    academyVoiceId: String(env.SML_ACADEMY_ELEVENLABS_VOICE_ID || '').trim(),
+    academyVoiceModel: String(env.SML_ACADEMY_ELEVENLABS_MODEL || 'eleven_multilingual_v2').trim(),
     discordClientId: String(env.DISCORD_CLIENT_ID || '').trim(),
     discordClientSecret: String(env.DISCORD_CLIENT_SECRET || '').trim(),
     discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim()

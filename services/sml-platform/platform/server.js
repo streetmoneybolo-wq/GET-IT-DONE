@@ -21,6 +21,7 @@ const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { createAcademyProgress } = require('./academy-progress');
+const { createAcademyVoice } = require('./academy-voice');
 const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 
@@ -808,7 +809,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyAppId = '',
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyAppId = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -1096,6 +1097,42 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path === '/academy-activity/speech') {
+      if (!academyOAuth || !academyVoice || !academyVoice.configured) {
+        sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
+        return;
+      }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) {
+        sendJson(response, session.status || 401, { ok: false, error: session.code });
+        return;
+      }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        const result = await academyVoice.getLessonAudio({
+          moduleId: params.get('moduleId'), lessonId: params.get('lessonId'), userId: session.userId
+        });
+        response.writeHead(200, {
+          'content-type': 'audio/mpeg',
+          'content-length': result.audio.length,
+          'cache-control': 'private, max-age=86400',
+          'x-content-type-options': 'nosniff',
+          'x-academy-voice-cache': result.cached ? 'hit' : 'miss'
+        });
+        response.end(result.audio);
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
+        logger(invalid ? 'warn' : 'error', 'academy_voice_request_failed', {
+          error, userId: session.userId, moduleId: params.get('moduleId'), lessonId: params.get('lessonId')
+        });
+        sendJson(response, invalid ? 400 : (limited ? 429 : 503), {
+          ok: false, error: invalid ? 'invalid_lesson' : (limited ? 'rate_limited' : 'voice_temporarily_unavailable')
+        });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && /^\/academy-activity\/data\/(options|earnings)$/.test(path)) {
       if (!academyOAuth || !academyDataBridge) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -1155,6 +1192,10 @@ async function main() {
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
+  const academyVoice = createAcademyVoice({
+    apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
+    modelId: config.academyVoiceModel, lessons: SEED_LESSONS
+  });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -1187,7 +1228,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyAppId: config.academyAppId
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academyAppId: config.academyAppId
   });
   let shuttingDown = false;
 

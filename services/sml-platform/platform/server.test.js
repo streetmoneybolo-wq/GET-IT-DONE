@@ -91,6 +91,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /Choose an Academy lesson/);
     assert.match(html, /academy-activity\/curriculum/);
     assert.match(html, /speechSynthesis/);
+    assert.match(html, /academy-activity\/speech/);
+    assert.match(html, /new Audio\(voiceUrl\)/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
     assert.match(html, /TOP OF BOOK/);
@@ -214,6 +216,35 @@ test('Academy Activity stores simulation progress only for an authenticated Disc
     assert.equal(save.status, 200);
     assert.deepEqual(calls.map((entry) => entry.slice(0, 2)), [['read', '123456789012345678'], ['save', '123456789012345678']]);
   });
+});
+
+test('Academy lesson narration is session gated and returned as private MP3 audio', async () => {
+  const calls = [];
+  const academyOAuth = {
+    verifySession: (authorization) => authorization === 'Bearer academy-session'
+      ? { ok: true, userId: 'member-123' }
+      : { ok: false, status: 401, code: 'authorization_required' }
+  };
+  const academyVoice = {
+    configured: true,
+    getLessonAudio: async (input) => {
+      calls.push(input);
+      return { audio: Buffer.from('lesson-mp3'), cached: false };
+    }
+  };
+  await withServer({ academyOAuth, academyVoice }, async (base) => {
+    const denied = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`);
+    assert.equal(denied.status, 401);
+    assert.equal(calls.length, 0);
+    const allowed = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`, {
+      headers: { authorization: 'Bearer academy-session' }
+    });
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.headers.get('content-type'), 'audio/mpeg');
+    assert.match(allowed.headers.get('cache-control'), /private/);
+    assert.equal(Buffer.from(await allowed.arrayBuffer()).toString(), 'lesson-mp3');
+  });
+  assert.deepEqual(calls, [{ moduleId: '1', lessonId: '1', userId: 'member-123' }]);
 });
 
 test('Academy private data is role-session gated before the WordPress bridge is called', async () => {
