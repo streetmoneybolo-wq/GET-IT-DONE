@@ -168,6 +168,25 @@ test('daily financial briefing is private, practical, and stable for the member 
   assert.doesNotMatch(first.response.data.content, /guarantee|buy this stock|profit target/i);
 });
 
+test('daily discipline returns a private native Discord MP3 follow-up', async () => {
+  const audio = Buffer.from('native-discord-mp3');
+  const academy = createAcademyCommands({
+    pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true,
+    disciplineAudio: async ({ episodeId, userId }) => {
+      assert.equal(episodeId, 1);
+      assert.equal(userId, USER);
+      return { audio, partCount: 3 };
+    }
+  });
+  const result = await academy.handle(interaction('discipline'));
+  assert.equal(result.response.data.flags, 64);
+  assert.match(result.response.data.content, /no browser required/i);
+  const followUp = await result.followUp();
+  assert.equal(followUp.file.buffer, audio);
+  assert.equal(followUp.file.contentType, 'audio/mpeg');
+  assert.match(followUp.content, /The Art of Doing Nothing/);
+});
+
 test('flashcards reveal a real lesson and the leaderboard protects Discord identities', async () => {
   const db = pool();
   const academy = createAcademyCommands({ pool: db, guildId: GUILD, monarchRoleId: MONARCH, enabled: true });

@@ -60,3 +60,18 @@ test('Academy voice generates and caches bounded discipline audio parts', async 
   assert.equal(calls, 1);
   await assert.rejects(() => service.getDisciplineAudio({ episodeId: 1, partIndex: 999, userId: 'one' }), TypeError);
 });
+
+test('Academy voice combines every discipline part into one Discord MP3', async () => {
+  let calls = 0;
+  const service = createAcademyVoice({
+    apiKey: 'key', voiceId: 'obi-clone', lessons: [],
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(Buffer.from(`part-${calls}|`), { status: 200 });
+    }
+  });
+  const result = await service.getDisciplineEpisodeAudio({ episodeId: 1, userId: 'discord-user' });
+  assert.equal(result.partCount, 3);
+  assert.equal(result.audio.toString(), 'part-1|part-2|part-3|');
+  assert.equal(calls, 3);
+});

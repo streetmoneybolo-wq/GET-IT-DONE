@@ -239,6 +239,23 @@ test('the follow-up sender retries after a 429 using the returned retry_after', 
   }
 });
 
+test('a private follow-up can upload a native Discord audio attachment', async () => {
+  const { handler, fetched } = build();
+  const status = await handler.sendFollowUp({ token: 'follow-up-token-xyz' }, {
+    content: 'Daily discipline audio',
+    attachments: [{ id: 0, filename: 'discipline.mp3' }],
+    file: { buffer: Buffer.from('mp3-bytes'), filename: 'discipline.mp3', contentType: 'audio/mpeg' }
+  });
+  assert.equal(status, 200);
+  assert.equal(fetched.calls.length, 1);
+  const body = fetched.calls[0].options.body;
+  assert.ok(body instanceof FormData);
+  const payload = JSON.parse(body.get('payload_json'));
+  assert.equal(payload.flags, 64);
+  assert.equal(payload.attachments[0].filename, 'discipline.mp3');
+  assert.equal(body.get('files[0]').type, 'audio/mpeg');
+});
+
 test('interaction types other than PING, command, and component get an ephemeral not-supported reply', async () => {
   const { handler } = build();
   const body = JSON.stringify({ id: 'interaction_c', type: 99, token: 'tok', data: {} });

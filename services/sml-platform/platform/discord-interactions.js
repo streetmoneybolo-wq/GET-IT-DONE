@@ -124,16 +124,28 @@ function createDiscordInteractions(deps = {}) {
     const webhookToken = interaction && typeof interaction.token === 'string' ? interaction.token : '';
     if (!WEBHOOK_TOKEN_RE.test(webhookToken)) return null;
     const url = `https://discord.com/api/v10/webhooks/${appId}/${webhookToken}`;
-    const body = JSON.stringify(Object.assign({}, payload, { flags: EPHEMERAL }));
+    const file = payload && payload.file;
+    const jsonPayload = Object.assign({}, payload, { flags: EPHEMERAL });
+    delete jsonPayload.file;
+    function requestBody() {
+      if (!file) return { body: JSON.stringify(jsonPayload), headers: { 'content-type': 'application/json' } };
+      if (!Buffer.isBuffer(file.buffer) || !file.buffer.length || file.buffer.length > 24 * 1024 * 1024) return null;
+      const form = new FormData();
+      form.append('payload_json', JSON.stringify(jsonPayload));
+      form.append('files[0]', new Blob([file.buffer], { type: file.contentType || 'application/octet-stream' }), file.filename || 'academy-audio.mp3');
+      return { body: form, headers: {} };
+    }
 
     let status = null;
     for (let attempt = 0; attempt < FOLLOW_UP_ATTEMPTS; attempt += 1) {
       let result;
       try {
+        const request = requestBody();
+        if (!request) return null;
         result = await fetchImpl(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body
+          headers: request.headers,
+          body: request.body
         });
       } catch (_) {
         return null;

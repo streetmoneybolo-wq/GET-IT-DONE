@@ -121,7 +121,27 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     return { audio: await inflight.get(digest), cached: false, partCount: parts.length };
   }
 
-  return { configured, getLessonAudio, getDisciplineAudio };
+  async function getDisciplineEpisodeAudio({ episodeId, userId }) {
+    const episode = episodeFor(episodeId);
+    if (!episode) throw new TypeError('invalid discipline episode');
+    const partCount = splitNarration(episode.script).length;
+    const buffers = [];
+    let allCached = true;
+    for (let partIndex = 0; partIndex < partCount; partIndex += 1) {
+      const result = await getDisciplineAudio({ episodeId, partIndex, userId });
+      buffers.push(result.audio);
+      allCached = allCached && result.cached;
+    }
+    const audio = Buffer.concat(buffers);
+    if (audio.length > 24 * 1024 * 1024) {
+      const error = new Error('discipline episode exceeds Discord attachment limit');
+      error.code = 'attachment_too_large';
+      throw error;
+    }
+    return { audio, cached: allCached, partCount };
+  }
+
+  return { configured, getLessonAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
 }
 
 module.exports = { createAcademyVoice, narrationFor };

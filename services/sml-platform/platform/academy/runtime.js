@@ -5,17 +5,29 @@
  * exposes no billing or dispute surface. */
 const { createDiscordInteractions } = require('../discord-interactions');
 const { createAcademyCommands } = require('./commands');
+const { createAcademyVoice } = require('../academy-voice');
+const { SEED_LESSONS } = require('./curriculum');
 
 function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
   if (!config?.academyEnabled || !config?.academyGuildId ||
       !config?.academyPublicKey || !config?.academyAppId) return null;
+  const academyVoice = createAcademyVoice({
+    apiKey: config.elevenLabsApiKey,
+    voiceId: config.academyVoiceId,
+    modelId: config.academyVoiceModel,
+    lessons: SEED_LESSONS,
+    fetchImpl,
+    now
+  });
   const academy = createAcademyCommands({
     pool,
     guildId: config.academyGuildId,
     monarchRoleId: config.academyMonarchRoleId,
     enabled: true,
     now,
-    disciplinePlayerBaseUrl: 'https://sml-platform-api.onrender.com/academy-discipline'
+    disciplineAudio: academyVoice.configured
+      ? ({ episodeId, userId }) => academyVoice.getDisciplineEpisodeAudio({ episodeId, userId })
+      : null
   });
   return createDiscordInteractions({
     config: { discordConnectPublicKey: config.academyPublicKey, discordConnectAppId: config.academyAppId },
