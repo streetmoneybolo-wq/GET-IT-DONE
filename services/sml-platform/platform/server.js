@@ -23,6 +23,7 @@ const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { academyVisualLabScript } = require('./academy-visual-lab');
+const { academyChartIntelligenceScript } = require('./academy-chart-intelligence');
 const { createAcademyProgress } = require('./academy-progress');
 const { createAcademyVoice } = require('./academy-voice');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -135,21 +136,40 @@ function sanitizeHubScanner(value) {
       previousVolume: asHubNumber(row.previousVolume || row.pv),
       previousClose: asHubNumber(row.previousClose || row.pc),
       open: asHubNumber(row.open || row.o),
+      high: asHubNumber(row.high || row.h),
+      low: asHubNumber(row.low || row.l),
       close: asHubNumber(row.close || row.c),
       bid: asHubNumber(row.bid),
       bidSize: asHubNumber(row.bidSize || row.bs),
       ask: asHubNumber(row.ask),
       askSize: asHubNumber(row.askSize || row.as),
       postMarketPct: asHubNumber(row.postPct),
+      turnoverRate: asHubNumber(row.turnoverRate || row.turnover_rate),
+      volatility: asHubNumber(row.volatility),
+      amplitude: asHubNumber(row.amplitude),
+      volumeRatio: asHubNumber(row.volumeRatio || row.volume_ratio),
+      rvol: asHubNumber(row.rvol || row.relativeVolume),
+      marketCap: asHubNumber(row.marketCap || row.market_cap),
+      peTtm: asHubNumber(row.peTtm || row.pe_ttm),
+      pb: asHubNumber(row.pb),
+      roe: asHubNumber(row.roe),
+      roa: asHubNumber(row.roa),
+      dividendYield: asHubNumber(row.dividendYield || row.dividend_yield),
+      rsi: asHubNumber(row.rsi),
+      macd: asHubNumber(row.macd),
+      bidAskPressure: asHubNumber(row.bidAskPressure || row.bid_ask_pressure),
+      orderImbalance: asHubNumber(row.orderImbalance || row.order_imbalance),
+      depthImbalance: asHubNumber(row.depthImbalance || row.depth_imbalance),
       quality: asHubText(row.quality).slice(0, 80)
     };
   }).filter((row) => /^[A-Z0-9.-]{1,10}$/.test(row.symbol));
 }
 
-function calculateThreeMinuteChange(currentPrice, history, sampledAt) {
+function calculateWindowChange(currentPrice, history, sampledAt, windowMs) {
   const current = Number(currentPrice);
-  const target = Number(sampledAt) - 180_000;
-  if (!Number.isFinite(current) || current <= 0 || !Array.isArray(history)) return { percent: null, windowSeconds: null };
+  const safeWindow = Number(windowMs);
+  const target = Number(sampledAt) - safeWindow;
+  if (!Number.isFinite(current) || current <= 0 || !Array.isArray(history) || !Number.isFinite(safeWindow) || safeWindow <= 0) return { percent: null, windowSeconds: null };
   const valid = history.filter((sample) => Number.isFinite(Number(sample?.t)) && Number(sample?.price) > 0);
   const before = valid.filter((sample) => Number(sample.t) <= target).at(-1);
   const after = valid.find((sample) => Number(sample.t) >= target);
@@ -161,8 +181,12 @@ function calculateThreeMinuteChange(currentPrice, history, sampledAt) {
   }
   return {
     percent: ((current - baselinePrice) / baselinePrice) * 100,
-    windowSeconds: after ? 180 : Math.round((Number(sampledAt) - Number(before.t)) / 1000)
+    windowSeconds: after ? Math.round(safeWindow / 1000) : Math.round((Number(sampledAt) - Number(before.t)) / 1000)
   };
+}
+
+function calculateThreeMinuteChange(currentPrice, history, sampledAt) {
+  return calculateWindowChange(currentPrice, history, sampledAt, 180_000);
 }
 
 function sanitizeHubNews(value) {
@@ -389,14 +413,18 @@ async function getAcademyScanner() {
       const sampledAt = Date.now();
       const rows = sanitizeHubScanner(await upstream.json()).map((row) => {
         const history = (academySirePriceHistory.get(row.symbol) || [])
-          .filter((sample) => sample.t >= sampledAt - 600_000);
+          .filter((sample) => sample.t >= sampledAt - 3_900_000);
         if (Number.isFinite(row.price) && row.price > 0) history.push({ t: sampledAt, price: row.price });
-        academySirePriceHistory.set(row.symbol, history.slice(-180));
+        academySirePriceHistory.set(row.symbol, history.slice(-1_000));
         const sire = calculateThreeMinuteChange(row.price, history, sampledAt);
-        return { ...row, changeRate3min: sire.percent, sireWindowSeconds: sire.windowSeconds };
+        const rate = (seconds) => calculateWindowChange(row.price, history, sampledAt, seconds * 1_000).percent;
+        return { ...row,
+          changeRate30sec: rate(30), changeRate1min: rate(60), changeRate3min: sire.percent,
+          changeRate5min: rate(300), changeRate15min: rate(900), changeRate1hour: rate(3_600),
+          sireWindowSeconds: sire.windowSeconds };
       });
       for (const [symbol, history] of academySirePriceHistory) {
-        if (!history.length || history.at(-1).t < sampledAt - 600_000) academySirePriceHistory.delete(symbol);
+        if (!history.length || history.at(-1).t < sampledAt - 3_900_000) academySirePriceHistory.delete(symbol);
       }
       if (!rows.length) throw new Error('academy_scanner_empty');
       const payload = { rows, asOf: Date.now() };
@@ -542,7 +570,7 @@ void authenticateAcademyActivity();
     .replaceAll("['sire','S.I.R.E']", "['sire','S.I.R.E 3m %']")
     .replace("['changePct','preMarketPct','postMarketPct'].includes(k)", "['changePct','preMarketPct','postMarketPct','sire'].includes(k)")
     .replace("['macd','MACD']]", "['macd','MACD'],['high52','52wk High'],['low52','52wk Low'],['chg5mPct','% Chg 5M'],['chg5dPct','% Chg 5D'],['chg10dPct','% Chg 10D'],['chg20dPct','% Chg 20D'],['chg60dPct','% Chg 60D'],['chg120dPct','% Chg 120D'],['chg250dPct','% Chg 250D'],['ytdPct','YTD Chg'],['handTurnover','Hand Turnover'],['amplitude','Amplitude'],['peLyr','PE LYR'],['divYield','Dividend Yield'],['roe','ROE'],['roa','ROA'],['netMargin','Net Margin'],['grossMargin','Gross Margin'],['revenueGrowth','Revenue Growth'],['epsGrowth','EPS Growth'],['assetTurnover','Asset Turnover'],['inventoryTurnover','Inventory Turnover'],['currentRatio','Current Ratio'],['quickRatio','Quick Ratio'],['ma20','MA20'],['ma50','MA50'],['institutionalHoldings','Institutional Holdings'],['insiderHoldings','Insider Holdings'],['profitRatio','Profit Ratio'],['overlapDegree','Degree of Overlap']]")
-    .replace("panel.querySelector('#academy-scan-refresh').onclick=()=>location.reload();render()", "const refreshScanner=async()=>{const badge=panel.querySelector('.academy-scan-live');badge.textContent='Refreshing';try{const response=await fetch('/academy-activity/scanner',{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');rows=payload.rows;render();badge.textContent='Live stream'}catch(_){badge.textContent='Reconnecting'}};panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;render();refreshScanner();setInterval(()=>{if(!document.hidden)refreshScanner()},4000)")
+    .replace("panel.querySelector('#academy-scan-refresh').onclick=()=>location.reload();render()", "window.smlAcademyScannerRows=()=>rows.slice();const refreshScanner=async()=>{const badge=panel.querySelector('.academy-scan-live');badge.textContent='Refreshing';try{const response=await fetch('/academy-activity/scanner',{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');rows=payload.rows;render();window.dispatchEvent(new CustomEvent('sml-academy-scanner-update'));badge.textContent='Live stream'}catch(_){badge.textContent='Reconnecting'}};panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;render();window.dispatchEvent(new CustomEvent('sml-academy-scanner-update'));refreshScanner();setInterval(()=>{if(!document.hidden)refreshScanner()},4000)")
     .replace('</body></html>', `<script>(()=>{const unlock=document.getElementById('academy-unlock'),state=document.querySelector('.market-state');if(!unlock||!state)return;let open=false;const render=()=>{document.body.classList.toggle('academy-tools-open',open);unlock.textContent=open?'Close Academy Tools':'Unlock Academy Tools';unlock.setAttribute('aria-pressed',String(open));state.textContent=open?'LIVE INTERACTIVE ACADEMY':'READ-ONLY TRAINING';state.style.color=open?'#52e6ad':'#ffbf5d'};unlock.onclick=()=>{open=!open;render()};render()})()</script></body></html>`);
 }
 
@@ -565,7 +593,7 @@ function sendHtml(response, status, body) {
     ? body.replace('new ResizeObserver(resize).observe(canvas);', '')
     : body;
   const safeBody = typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
-    ? strippedBody.replace('<body>', `<body>${academyIntroMarkup()}`).replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}</body></html>`)
+    ? strippedBody.replace('<body>', `<body>${academyIntroMarkup()}`).replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}${academyChartIntelligenceScript()}</body></html>`)
     : strippedBody;
   const payload = zlib.gzipSync(Buffer.from(safeBody), { level: zlib.constants.Z_BEST_SPEED });
   response.writeHead(status, {
@@ -1444,5 +1472,6 @@ module.exports = {
   handleConnectRequest,
   handleCorporateRequest,
   DISPUTE_ACTIONS,
+  calculateWindowChange,
   calculateThreeMinuteChange
 };

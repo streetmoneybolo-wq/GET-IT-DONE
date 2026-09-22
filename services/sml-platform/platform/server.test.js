@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createServer, calculateThreeMinuteChange } = require('./server');
+const { createServer, calculateWindowChange, calculateThreeMinuteChange } = require('./server');
 const { hmac } = require('./wordpress-gateway');
 
 async function withServer(options, run) {
@@ -41,7 +41,8 @@ test('S.I.R.E calculates the signed three-minute price change without exposing a
     windowSeconds: null
   });
   const serverSource = require('node:fs').readFileSync(require.resolve('./server'), 'utf8');
-  assert.match(serverSource, /history\.slice\(-180\)/);
+  assert.match(serverSource, /history\.slice\(-1_000\)/);
+  assert.equal(calculateWindowChange(105, [{ t: now - 300_000, price: 100 }], now, 300_000).percent, 5);
 });
 
 test('health returns 200 only when the database check passes', async () => {

@@ -2,6 +2,7 @@
 
 const { simulationFor } = require('./simulations');
 const { EXPANSION_LESSONS } = require('./expansion');
+const { attachIndicatorCurriculum } = require('../academy-chart-intelligence');
 
 /* Original StockMarketLoop Academy material. It never ingests the legacy
  * Investing Essentials category and is educational, not financial advice. */
@@ -158,6 +159,6 @@ const CORE_LESSONS = [
   ], 'Which satisfies the capstone standard?', { A: 'Unsourced target', B: 'Sourced scenario thesis with risks and falsification', C: 'Viral screenshot', D: 'Guaranteed return' }, 'B', 'College-level analysis is sourced, conditional, numerate, transparent, and open to disconfirmation.', '30 min')
 ];
 
-const SEED_LESSONS = [...CORE_LESSONS, ...EXPANSION_LESSONS];
+const SEED_LESSONS = attachIndicatorCurriculum([...CORE_LESSONS, ...EXPANSION_LESSONS]);
 
 module.exports = { SEED_LESSONS };
