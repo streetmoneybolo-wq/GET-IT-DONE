@@ -148,6 +148,10 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /smlAcademyWarmPromise/);
     assert.match(html, /Preparing live chart, scanner, lessons, and Academy tools/);
     assert.match(html, /video\.addEventListener\('ended',finish/);
+    assert.match(html, /const fitVideo=/);
+    assert.match(html, /videoWidth\/video\.videoHeight/);
+    assert.match(html, /new ResizeObserver\(fitVideo\)/);
+    assert.match(html, /window\.visualViewport\?\.addEventListener\('resize',fitVideo/);
     assert.match(html, /Tap to begin with sound/);
     assert.match(html, /keepWarm/);
     assert.doesNotMatch(html, /setInterval\(\(\)=>location\.reload\(\),30000\)/);
