@@ -1,4 +1,4 @@
-# Making Easy Money Academy: 101-Lesson Voice Script
+# Making Easy Money Academy: 121-Lesson Voice Script
 
 ## Voice-generation directions — do not read this section aloud
 
@@ -8,11 +8,535 @@ Use only a voice that the account owner has supplied or has permission to use. R
 
 Welcome to Making Easy Money Academy.
 
-This is a complete guided tour through 101 interactive lessons organized across 28 modules. The purpose is not to hand you predictions. It is to teach you how markets work, how evidence should be tested, how risk should be controlled, and how professional decisions are made when the future is uncertain.
+This is a complete guided tour through 121 interactive lessons organized across 29 modules. The purpose is not to hand you predictions. It is to teach you how markets work, how evidence should be tested, how risk should be controlled, and how professional decisions are made when the future is uncertain.
 
 Nothing in this program is financial, legal, tax, or investment advice. Markets can move quickly. Options can expire worthless. Short positions can create substantial losses. Leverage can magnify mistakes. Every example is educational, and every simulated trade should be treated as a process exercise rather than a promise.
 
 As you listen, pause when a question is presented. State your answer before the explanation. In the interactive Academy, complete the matching decision lab and record what evidence would change your conclusion.
+
+## Module 0
+
+We are beginning module 0. Take a breath, clear any assumptions from the previous section, and focus on the decision process in front of you.
+
+### Lesson 0.1: What a Share Actually Is
+
+A share is a slice of a real business, not just a number on a screen.
+
+Here is the simple version. Orbit Oats is a made-up bakery cut into 1,000 equal slices called shares. Ava buys 10 of them at $20 each and pays $200. Ten slices out of a thousand is 1% of the bakery. Last year the bakery earned $2,000, which is $2 for every share. So Ava's slices stand behind $20 of it, and nobody owes her the $200 back.
+
+Point 1. A company can be cut into equal slices, and one slice is called a share. If a bakery is cut into 1,000 shares and you own 10 of them, you own 10 slices out of 1,000. Those slices are a piece of the company that owns the ovens and the recipes. If it makes a profit, your slices stand behind their share of it. You only see cash if the company decides to hand some out.
+
+Point 2. You usually buy your slice from another owner who wants to sell, not from the company itself. Your broker, the firm that handles the trade, holds the slice for you. If the business does well your slice is worth more to the next buyer. If it does badly it is worth less, and nobody owes you your money back.
+
+Point 3. Practice lab: take a made-up shop, cut it into 1,000 shares, buy 10 of them, and work out what share of one year of profit those 10 slices stand behind.
+
+Knowledge check. Ava owns 10 of a bakery's 1,000 shares. What does she own?
+
+Option A. Money lent to the bakery that it must pay back with interest
+
+Option B. One hundredth of the business, its profits and its losses
+
+Option C. Her broker's promise to buy the shares back at what she paid
+
+Option D. The right to a fixed payment from the bakery every year
+
+The best answer is option B. One hundredth of the business, its profits and its losses. A share is ownership, not a loan and not a promise. Ten slices out of a thousand is one hundredth of the bakery, so they stand behind one hundredth of any profit and one hundredth of any loss.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.2: Reading a Stock's Numbers
+
+What the numbers beside a company's name mean, and which one is not the size of the company.
+
+Here is the simple version. Tidewater Toys trades at $5 a share and has 200,000 shares. Multiply them and the whole business is priced at $1,000,000. Maple Mill trades at $200 a share but has only 4,000 shares, which is $800,000. The cheaper share belongs to the bigger company, by $200,000. A price tag on one slice only tells you how finely a company was cut.
+
+Point 1. The price on the screen is the price of one slice. Multiply it by how many slices exist and you get what the whole company is priced at. The ticker is the short code for a company. The volume is how many shares changed hands today. The day range is the highest and the lowest price traded today.
+
+Point 2. There is never one price, there are two. The bid is the best price someone will pay for your shares right now. The ask is the best price someone will sell to you right now. The last price on the screen is only a receipt for a trade that already happened.
+
+Point 3. Practice lab: take two made-up companies with very different share prices, multiply each price by its share count, and say which company is actually bigger. Module 1 Lesson 1 works through the bid and the ask, and Module 2 Lesson 1 explains a candle.
+
+Knowledge check. Fizz Town trades at $4 and Lagoon Lane at $400. Which is the bigger business?
+
+Option A. Lagoon Lane, because one of its shares costs a lot more
+
+Option B. Fizz Town, because more buyers can afford a cheap share
+
+Option C. Neither, until each price is multiplied by its share count
+
+Option D. They match, because price and share count always balance
+
+The best answer is option C. Neither, until each price is multiplied by its share count. The size of a business is its share price multiplied by how many shares exist. A four dollar share can belong to a far bigger company than a four hundred dollar one if there are many more of them.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.3: Opening an Account and What Happens After You Press Buy
+
+The account, the order, the fill, and the day the trade actually becomes final.
+
+Here is the simple version. Ava moves $500 into a brand new brokerage account on Monday. On Tuesday she buys 20 shares of Orbit Oats at $20, which costs $400. That leaves $100 in cash, and one business day later the trade settles. If her broker collapsed, a protection scheme would look for those shares and her $100. If Orbit Oats instead slid to $15, the shares are worth $300 and nothing covers that $100.
+
+Point 1. A brokerage account is where your money and your shares sit. A broker is the firm that holds them and sends your order to the market. You move money in, you place an order, and when somebody takes the other side your order is filled. Filled means the trade happened.
+
+Point 2. Settling is the day the shares and the cash actually change hands. In the United States that is one business day after the trade. In the European Union and the United Kingdom it is still two business days, so check the rule where you live. Many brokers now charge nothing to trade a share and let you buy a fraction of one. If a brokerage firm itself failed, many countries have a scheme that returns your missing cash and shares up to a limit. No scheme anywhere refunds a price that fell.
+
+Point 3. Practice lab: walk one order from money in to settled, name the day the cash actually leaves the account, and say which of the two, a broker that collapses or a price that slides, a protection scheme would not cover.
+
+Knowledge check. Ava's shares fall from $20 to $15. What does a broker protection scheme cover here?
+
+Option A. Her whole $100 loss, because the account itself is protected
+
+Option B. The loss, but only up to the scheme's limit for the year
+
+Option C. Everything she paid, since the shares were bought inside it
+
+Option D. Nothing; it replaces missing cash and shares if the firm fails
+
+The best answer is option D. Nothing; it replaces missing cash and shares if the firm fails. A protection scheme steps in when the brokerage firm fails and a customer's cash or shares go missing. A price that simply fell is an ordinary investment loss, and no scheme anywhere refunds that.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.4: Placing Your First Order: Market or Limit
+
+Two ways to ask for shares: take the price that is there, or name the price you will pay.
+
+Here is the simple version. Harbor Bikes shows a bid of $24 and an ask of $25. Zoe sends a market order for 50 shares as prices move, and it fills at $26, costing $1,300. Ava sends a limit order at $25, but the ask has moved to $26, so her order waits all day. The next morning it fills, so she pays $1,250, which is $50 less. Had the stock kept climbing, Ava would own nothing at all.
+
+Point 1. A market order says buy me the shares now, at whatever the best price is. A limit order says buy me the shares only at this price or better. That is the whole difference between them.
+
+Point 2. A market order almost always fills, but in a fast-moving stock it can fill above the price you saw a second ago. A limit order protects you from that and may never fill at all, and a stock that keeps climbing leaves the limit buyer holding nothing. Module 1 Lesson 2 goes deeper into order types and what a good fill actually costs.
+
+Point 3. Practice lab: place one market order and one limit order on the same practice stock, then write down what each one cost you, the price or the shares.
+
+Knowledge check. What does a limit order to buy at $25 actually promise?
+
+Option A. That no more than $25 a share will ever be paid
+
+Option B. That the shares will be owned before the day ends
+
+Option C. That the price paid will come in below $25 a share
+
+Option D. That the price will fall back to $25 before long
+
+The best answer is option A. That no more than $25 a share will ever be paid. A limit sets the worst price that is acceptable and nothing else. It cannot make a seller appear, so the order may never fill, and it is neither a discount nor a forecast that the price will come back.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.5: The Cost Nobody Bills You For
+
+The cost you pay on every trade even when the commission is zero.
+
+Here is the simple version. Pixel Pops has a bid of $19.90 and an ask of $20.10, a gap of $0.20. Zoe pays the ask to get in and takes the bid to get out, all in one week. On 100 shares that is $20 gone before the price has done anything. She goes in and out 12 times in a year, which adds up to $240. Her account holds $2,000, so the gap alone took 12% of it.
+
+Point 1. Buying takes the ask, the price a seller wants, and selling takes the bid, the price a buyer offers. The gap between the two is called the spread. You pay that gap every time you buy and sell again, and no statement ever shows it as a line.
+
+Point 2. Brokers in many countries now charge no commission on a share trade. In the United States a broker can be paid by the firm that fills your order. In the United Kingdom and the European Union that payment is banned. Brokers there earn from interest on your cash, from currency conversion, or from a plain commission. The gap itself goes to whoever takes the other side of your trade, and that is usually not your broker. It is narrow on a heavily traded share, wide on a thinly traded one, and charged on every trip.
+
+Point 3. Practice lab: take one made-up stock's bid and ask, multiply the gap by your share count, then multiply that by how many times you went in and out last month.
+
+Knowledge check. Zoe's broker charges no commission. Where does the cost of her twelve round trips come from?
+
+Option A. From a monthly account fee she has not noticed on her statement
+
+Option B. From the gap between the price she buys at and the price she sells at
+
+Option C. Nowhere, because commission-free trades really are free to make
+
+Option D. Only from the tax she will owe later on any gain she makes
+
+The best answer is option B. From the gap between the price she buys at and the price she sells at. She buys at the higher of the two quoted prices and sells at the lower one, so each round trip hands over that gap. A broker that charges no commission is paid in other ways instead.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.6: Why a Big Loss Is Harder to Undo Than It Looks
+
+Losses and gains are not mirror images of each other.
+
+Here is the simple version. Zoe's practice account of $1,000 falls by half, which leaves $500. She thinks a gain of 50% puts her back, but that only reaches $750. Getting from $500 to $1,000 means doubling her money, a gain of 100%. A smaller fall is kinder: 20% off $1,000 leaves $800 and needs only 25%. The deeper the hole, the more the climb out costs.
+
+Point 1. A fall takes a percentage of everything you have, which leaves a smaller pile behind. The recovery then has to grow that smaller pile all the way back up to the bigger one. That is why the two percentages never match.
+
+Point 2. This is why somebody can be right several times, be badly wrong once, and still end the year behind. It is also why putting everything into one exciting idea is a bigger risk than the size of the position makes it look. Module 7 Lesson 2 measures peak-to-trough loss properly, and Module 2 Lesson 2 covers returns and how much they move.
+
+Point 3. Practice lab: take three practice accounts that fall 20 percent, 50 percent and 80 percent, and work out the gain each one needs just to get back to where it started.
+
+Knowledge check. A practice account falls 80 percent. What gain brings it back to where it started?
+
+Option A. 80 percent, the same figure that was lost on the way down
+
+Option B. 100 percent, because doubling always undoes a halving
+
+Option C. 400 percent, because a fifth has to become a whole again
+
+Option D. 180 percent, the fall itself plus a doubling on top
+
+The best answer is option C. 400 percent, because a fifth has to become a whole again. An 80 percent fall leaves a fifth of the money. Turning a fifth back into a whole means multiplying it by five, which is a gain of 400 percent. Matching the percentage back works only when nothing was lost.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.7: Compounding: Growth on Top of Growth
+
+Why money left alone grows more in later years than in early ones.
+
+Here is the simple version. Suppose Kofi's $1,000 grows 10% a year for three years. The first year adds $100, so he holds $1,100. The second year takes 10% of $1,100, which adds $110 and reaches $1,210. The third year ends at $1,331. Three flat gains of $100 would end at $1,300, so $31 came from growth that grew.
+
+Point 1. Ten percent of $1,000 is $100. The next ten percent is taken on $1,100, so it is $110. The gain gets bigger because the pile it is taken from got bigger. That is all compounding is.
+
+Point 2. Real returns are not a steady number. Some years are negative, and a year that falls resets the pile downward. That is why the shape only shows up over long stretches, and never on a schedule. Compounding describes how growth stacks, not what any investment will do. Module 14 Lesson 1 does the mathematics behind it.
+
+Point 3. Practice lab: grow a made-up $1,000 at a made-up ten percent a year for three years by hand, add up three flat $100 gains instead, and explain where the difference came from.
+
+Knowledge check. Why does three years of ten percent growth on $1,000 end above $1,300?
+
+Option A. Each year's ten percent is taken on a bigger amount than the last
+
+Option B. The real rate must have been higher than the ten percent stated
+
+Option C. Growth was added every month instead of once at the year's end
+
+Option D. The final year pays an extra bonus for having held on so long
+
+The best answer is option A. Each year's ten percent is taken on a bigger amount than the last. The first year of ten percent is taken on $1,000, the second on $1,100 and the third on $1,210. The pile grows each time, so the gains grow too and the total passes three flat gains of $100.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.8: Dollar-Cost Averaging: Same Money, Different Prices
+
+Buying a fixed amount on a schedule, and what that does to your average cost.
+
+Here is the simple version. Every month Kofi puts $600 into the Town Ten Fund, where one slice of the fund is called a unit. The first month a unit costs $10, so his $600 buys 60 units. The next month a unit costs $6, so the same $600 buys 100 units. He has paid $1,200 for 160 units, an average cost of $7.50, below the $8 average of the two prices. Zoe put her whole $1,200 in at $10 and holds 120 units. At $8 a unit Kofi holds $1,280 and Zoe holds $960, though a price that only climbed would have suited Zoe.
+
+Point 1. Dollar-cost averaging means putting the same amount of money in on the same day each month, whatever the price is that day. You can buy shares with it, or units of a fund, which is a pot of money many people buy into. One unit is one slice of that pot, just as one share is one slice of a company. You choose the amount and the date, and you never choose the price.
+
+Point 2. The same money buys more units when the price is low and fewer when it is high. So your average cost per unit lands below the plain average of the prices you paid. That is arithmetic, not protection. It does not assure a profit and it does not protect you in a falling market. If the price had only ever risen, putting the whole amount in at the start would have bought more units. This is a way to keep buying without guessing, not a way to win.
+
+Point 3. Practice lab: buy the same dollar amount at two different prices, work out your average cost per unit, and explain why it sits below the plain average of the two prices.
+
+Knowledge check. Someone puts $600 in at $12 a unit and $600 in at $4 a unit. What is the average cost per unit?
+
+Option A. $8, the middle of the two prices paid
+
+Option B. $4, since most of the units came at that price
+
+Option C. It cannot be known until the price is checked later
+
+Option D. $6, because the low price bought far more of the units
+
+The best answer is option D. $6, because the low price bought far more of the units. The same money buys 50 units at $12 and 150 units at $4, so $1,200 buys 200 units, which is $6 each. The money spent, not the list of prices, sets the average, and no later price is needed.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.9: One Company or Many
+
+What changes when the same money is spread across several businesses.
+
+Here is the simple version. Ava puts her whole $1,000 into Harbor Bikes, while Nia splits the same $1,000 across four companies, $250 each. Harbor Bikes then goes to zero, so Ava has nothing left and Nia still has $750. That is a loss of 25% for Nia against a total loss for Ava. Run it the other way, with Harbor Bikes doubling, and Ava holds $2,000 while Nia holds $1,250. Spreading left her a quarter of the disaster and a quarter of the jackpot, and it cannot stop every company falling together.
+
+Point 1. Buying shares in one company ties your money to that one business. A company can fail for reasons nobody outside it could see coming: a lost contract, a fire, a fraud. Nothing about owning the shares protects you from that.
+
+Point 2. Spreading the same money across several different businesses shrinks the worst case, because four companies rarely collapse on the same day. It shrinks the best case by exactly as much, since the one that doubles now moves only a quarter of your money. Spreading helps least when the things you hold rise and fall together. Four bakeries in one town are closer to one bet than four different kinds of business are. It never removes the risk of losing. Module 7 Lesson 2 measures this properly.
+
+Point 3. Practice lab: put $1,000 into one company and the same $1,000 across four, then run the same collapse and the same doubling through both and compare what is left.
+
+Knowledge check. Nia holds four companies instead of one. What has she actually changed?
+
+Option A. The size of her worst outcome and of her best one
+
+Option B. Her chance of losing money, which is now zero
+
+Option C. Only the worst outcome, since her best is untouched
+
+Option D. Nothing, because the same money is invested either way
+
+The best answer is option A. The size of her worst outcome and of her best one. Spreading changes how big the outcomes are, not whether a loss can happen. It cut her collapse to a quarter of her money and cut her doubling to a quarter as well, and four companies can still fall together.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.10: Index Funds: Buying the Whole List
+
+One purchase that holds every company on a list.
+
+Here is the simple version. The Town Ten is a made-up list of ten companies, each one counted the same. Kofi puts $1,000 into a fund that copies the list, so $100 goes into each name. Harbor Bikes halves and costs him $50, while Bright Kettle doubles and gains him $100. The other eight names sit still, so he ends the year with $1,050, a gain of 5%. One name could not wipe him out, and one name could not make him rich either.
+
+Point 1. An index is a named list of companies plus a rule for how much of each one counts. An index fund is a pot of money that buys that whole list and keeps itself matching it. Nobody inside it is choosing which name will do well. These lessons use a made-up broad fund because it is simple to price and easy to follow. It is not being put forward as the thing to buy.
+
+Point 2. One purchase spreads your money over every company on the list, which means you own the ones that do badly too. Your result is the list's result, less whatever the fund charges, and Lesson 12 of this module takes that charge apart. Owning every name on a list does nothing to stop the list itself falling, so an index fund can drop hard. Set against picking one company, it trades away the chance of a huge single win for a much smaller chance of losing everything.
+
+Point 3. Practice lab: build a made-up ten-name list, work out what $1,000 buys of each name, and say what happens to the fund when one name halves.
+
+Knowledge check. A fund copies a ten-name list and one name on it collapses. What happens to the fund?
+
+Option A. It sells that name before the fall, since someone manages it
+
+Option B. It drops by that name's share and keeps holding the other nine
+
+Option C. It drops by the same percentage the name itself dropped
+
+Option D. Nothing, because funds are protected from a company failing
+
+The best answer is option B. It drops by that name's share and keeps holding the other nine. A fund that copies a list holds every name on it, so one collapse takes only its own slice of the money. The rest keep their value, and nothing promises the list itself will hold up.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.11: Index Fund or ETF: Same List, Two Wrappers
+
+The same list of companies, bought two different ways.
+
+Here is the simple version. The Town Ten Fund and the Town Ten ETF hold exactly the same ten companies. At tonight's close the list is worth $50 a unit, so Kofi's 20 units in the fund cost $1,000. Zoe buys the ETF in the morning at an ask of $50.20, so her 20 units cost $1,004. The extra $4, which is 0.4% of the purchase, came from the wrapper and the moment she chose. On a day the ETF trades a little below the list, her units would have cost less instead.
+
+Point 1. A mutual fund is a pot of money priced once a day, after the market closes. That one price is the value of everything the fund holds, minus what it owes, divided by the number of units. Everyone whose order arrives before the fund's daily cut-off is filled at that price. An order sent after the cut-off waits and is filled at the next day's price.
+
+Point 2. An exchange-traded fund, or ETF, trades on the exchange all day like a share. It has a bid, an ask, and a price that moves minute to minute. So you cross that gap each time, and its price can sit a little above or below the value of what it holds. The mutual fund fills you at the closing value, so you cannot pick your moment. Neither wrapper improves the list inside it. The questions are the same for both: which list, and what charge?
+
+Point 3. Practice lab: buy the same list twice, once at the end-of-day value and once at a mid-morning ask, and compare what the two purchases cost.
+
+Knowledge check. Two products hold exactly the same ten companies, one as a fund and one as an ETF. What differs for a buyer?
+
+Option A. The ETF holds extra companies picked for easy trading
+
+Option B. The fund is safer, because it is priced only once a day
+
+Option C. When the purchase happens and at what price it is filled
+
+Option D. An ETF has to be sold on the same day it is bought
+
+The best answer is option C. When the purchase happens and at what price it is filled. Both wrappers hold the same list. One fills everybody at a single end-of-day value, while the other is filled at a market price that moves all day and can sit a little above or below what it holds.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.12: Fees: The Small Number That Never Stops
+
+What a fund's yearly charge is taken from, and why a small difference is not small.
+
+Here is the simple version. Two funds hold exactly the same ten companies, but one charges 0.1% a year and the other charges 1%. On a balance of $1,000 that is $1 a year against $10, a difference of $9. When Kofi's balance reaches $10,000 the gap grows with it, $10 against $100. That is $90 every year, and he never sees a bill, because the fee comes out of the fund's own value. In a year the list falls, the cheap fund still takes its $10 and the dear one still takes its $100.
+
+Point 1. A fund's expense ratio is the slice it keeps each year, written as a percentage of whatever you hold in it. A tenth of one percent on $1,000 is one dollar a year. A full one percent on the same $1,000 is ten dollars a year.
+
+Point 2. No bill ever arrives. The charge comes out of the fund's own value, so the price just grows a little more slowly. It is taken from your whole balance, not from your gain, so a falling year still costs you the fee. For scale, the Investment Company Institute reported that in 2025 the average dollar in an index equity ETF paid 0.14 percent a year. The average dollar in an equity mutual fund paid 0.40 percent. Count every fund equally instead of every dollar and the average is far higher, around 1.1 percent.
+
+Point 3. Practice lab: take two funds holding the same list, one charging a tenth of a percent and one charging a full percent, and work out the yearly cost on $1,000 and again on $10,000. Read the fund's own page: no single fund is the average. Module 21 Lesson 5 looks at fees and results together.
+
+Knowledge check. A fund charges one percent a year. In a year when the fund falls ten percent, what does the fee cost?
+
+Option A. One percent of the balance, taken even though the fund fell
+
+Option B. Nothing, since a fund only charges a fee out of gains
+
+Option C. One percent of the loss, so the fee shrinks with the fund
+
+Option D. Ten percent of the balance, because the fee follows results
+
+The best answer is option A. One percent of the balance, taken even though the fund fell. The yearly charge is a slice of everything held, not a slice of profit, so it is taken in losing years too. It comes out of the fund's own value, which is why no bill ever arrives.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.13: Dividends: Getting Paid to Hold
+
+Cash a company hands to its owners, and what that cash is not.
+
+Here is the simple version. Nia owns 100 Bright Kettle shares bought at $40, so her stake is $4,000. Bright Kettle pays $0.25 a share every quarter, which is $25 to Nia four times a year. That is $100 across the year, or 2.5% of her stake. On the morning a payment goes out, the price typically opens about $0.25 lower, near $39.75. That cash has left the company, and nothing obliges Bright Kettle to keep paying it.
+
+Point 1. Some companies hand part of their cash to the people who own the shares, usually a few times a year. That payment is called a dividend. Twenty-five cents a share, paid four times a year on a hundred shares, is a hundred dollars over the year.
+
+Point 2. The cash leaves the company, so a dividend is not money on top of the share price. On the first morning the shares trade without the next payment attached, the price typically opens lower by roughly the amount being paid. That morning is called the ex-dividend day, and when it falls depends on the local settlement rule. The company decides the payment and can cut it or stop it whenever it likes. A payment that looks unusually large next to the price often means the price has fallen, not that the business is strong.
+
+Point 3. Practice lab: count a year of quarterly payments on a made-up holding, then take one payment off the share price on the morning it goes out. Module 19 Lesson 4 studies payout policy.
+
+Knowledge check. A company pays its dividend. What usually happens to the share price on the morning it goes out?
+
+Option A. It rises by the payment, since the shares just earned cash
+
+Option B. It opens roughly the payment lower, as that cash has left
+
+Option C. It does not move, because the payment is separate from it
+
+Option D. It climbs over the next week by twice the payment
+
+The best answer is option B. It opens roughly the payment lower, as that cash has left. The cash leaves the company on its way to the owners, so the shares are worth that much less the moment they trade without the next payment attached. It is a transfer, not an extra.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.14: How Long You Held It Changes the Tax
+
+Why the date you sell, and not only the profit, decides what a gain costs you.
+
+Here is the simple version. Nia buys 100 shares of Maple Mill at $30 and spends $3,000. The price reaches $36, so her screen shows a gain of $600, and in most systems nothing is owed while she holds. She sells in month 8, a short hold, which many countries tax at the rate on ordinary income. Kofi bought the same day and sells in month 14, a long hold, which many countries tax more lightly. Same company, same $600, but the calendar changed the treatment, and how much depends on where each of them lives.
+
+Point 1. A gain is the money you make when you sell something for more than you paid. While you still own the shares, that gain only exists on your screen, and in most countries nothing is owed until you actually sell. A loss you take can usually be set against gains, so selling something at a loss is not simply wasted.
+
+Point 2. Many countries treat a long hold differently from a short one. In the United States, holding for more than one year makes the gain long-term, and one year or less is short-term. Other countries draw that line somewhere else, or nowhere at all. Some countries also ignore a loss if you buy the same thing straight back soon after selling it. The loss is not gone; it just moves onto the new shares. Rates, holding periods and rules all differ by country and change over time, so look up your own.
+
+Point 3. Practice lab: take one gain sold at month eight and the same gain sold at month fourteen, say which one could be treated differently, and do it without naming a single rate. This lesson teaches the shape, not the numbers, and it is not tax advice.
+
+Knowledge check. Nia's shares are worth $600 more than she paid and she has not sold. What is taxed?
+
+Option A. The $600, because the gain already exists on her screen
+
+Option B. The $600, at the lighter treatment a long hold can get
+
+Option C. Usually nothing yet, since most systems tax a gain on sale
+
+Option D. Nothing ever, because gains on shares are never taxed
+
+The best answer is option C. Usually nothing yet, since most systems tax a gain on sale. In most systems a gain is taxed when it is sold, not while it sits on a screen. Choosing a long-hold treatment for a sale that has not happened skips that step, and a delay is not the same as an exemption.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.15: Your First $1,000: What Goes First
+
+The order money usually goes in, and why clearing a debt can beat an investment.
+
+Here is the simple version. Ava has $1,000 spare and a card balance of $1,000 that charges 18% a year. Clearing the card saves about $180 of interest, a little more in practice, and the saving is certain. Putting the same $1,000 into the Town Ten Fund might return more than $180, or it might lose money. Nobody knows which, so she clears the card, then adds $50 a month, which is $600 over the year. Because she can buy a fraction of a share, the whole $50 goes to work instead of sitting as leftover cash.
+
+Point 1. Before you invest anything, look at what your money is already doing. A debt you carry charges you interest every month, and that cost is certain: it happens whether markets rise or fall. An investment might return more than the debt costs, or less, or nothing at all, and nobody knows which in advance.
+
+Point 2. Money you might need next month is money a bad month could force you to sell at a low price. Once expensive debt is gone and some cash is set aside, small amounts still work. A fractional share is part of one share, so fifty dollars can buy part of a five-hundred-dollar share. Commission-free is not cost-free. Firms still earn from interest on idle cash and from currency conversion. In the United States a firm can also be paid for routing your order, which the United Kingdom and the European Union ban.
+
+Point 3. Practice lab: write a certain debt cost next to an uncertain investment return and say out loud which of the two numbers you actually know today. The sensible order depends on your own rates and your own life, so this is education, not advice about your debts.
+
+Knowledge check. Ava can clear a card charging 18% a year or invest the same money. What makes the card different?
+
+Option A. Its cost is known in advance, while the return is not
+
+Option B. The card charges more than any investment could return
+
+Option C. Nothing, since both come to 18% and cancel out
+
+Option D. Investing always wins, because money grows over time
+
+The best answer is option A. Its cost is known in advance, while the return is not. The card's interest happens whatever markets do, so its cost is knowable today. The investment might return more, less or nothing, and a rate on a debt is not a forecast for a fund.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.16: A Simple Four-Part Mix and Keeping It That Way
+
+A portfolio is a set of proportions, and proportions drift.
+
+Here is the simple version. Kofi splits $4,000 into four equal slices of $1,000: home fund, world fund, bond fund and cash. A year later home is $1,600, world $1,150, bond $850, and cash is still $1,000. He holds $4,600, so the home slice he chose as a quarter is now about 35% of it. Equal quarters would be $1,150, so he sells $450 of home and puts $300 into bond. The $150 left over stays in the cash slice, so all four land on $1,150. He never picked a winner; he picked the shape and put it back.
+
+Point 1. A mix is a set of slices that add up to one whole. Picture four of them. One broad fund holds many companies from your own country, and another holds companies from the rest of the world. The third is a bond fund, which lends money out rather than buying companies. The fourth is plain cash. Four slices is already a plan, and choosing the sizes is the real decision.
+
+Point 2. The parts grow at different speeds, so after a year the slices are no longer the ones you picked. The mix is now riskier, or duller, than you intended. Rebalancing means selling a little of what grew and buying what lagged until the proportions are back where you set them. It restores the shape you chose, and it is not a way to make the mix earn more. Selling can cost trading fees and can trigger tax. Module 21 Lesson 2 studies allocation and rebalancing in depth.
+
+Point 3. Practice lab: set four slices that add up to a whole, grow two of them and shrink one, then work out exactly what to sell and what to buy to get the shape back.
+
+Knowledge check. A year of growth leaves one slice much bigger than the rest. What does selling some of it to buy the laggards do?
+
+Option A. Locks in the winner's gains so they can never be lost
+
+Option B. Raises the expected return by buying whatever is cheap
+
+Option C. Removes any need to hold bonds or cash in the mix
+
+Option D. Puts the mix back to the proportions that were chosen
+
+The best answer is option D. Puts the mix back to the proportions that were chosen. Rebalancing restores the proportions you picked and nothing more. It is not a way to bank a winner, it makes no promise about future returns, and the bond and cash slices stay because you chose them.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.17: A Pattern in the Past Is Not a Promise
+
+Why a rule that worked every time may rest on almost no evidence at all.
+
+Here is the simple version. A made-up rule says the Town Ten rises after a town election, and it has been right 4 times out of 5. That is 80%, which sounds strong. Flip one of those 5 and it becomes 3 out of 5, or 60%. Five coin flips can land 32 different ways, and 6 of those ways give four or more heads. That is about 19% of coin runs, so 5 cases cannot tell you which this rule is.
+
+Point 1. Someone tells you a rule has worked nearly every time. The first question is how many times that actually is. Say something has only happened five times and the rule held in four of them. One different outcome would have made it three out of five. Five is not many, and a rule built on five cases is one case away from falling apart.
+
+Point 2. Calendar rules, such as a month, a season or an election year, collect very few separate cases. The person repeating one usually found it by testing many rules and keeping the one that fitted. Acting on it costs you the gap between buy and sell prices every time, and possibly tax, while the edge may never have existed. Ask three things: how many cases there were, who counted them, and what else was tested and quietly dropped. Module 8 Lesson 2 and Module 17 Lesson 2 cover this properly.
+
+Point 3. Practice lab: count how many separate cases a calendar rule really rests on, then work out how many of them would have to flip before the rule disappears.
+
+Knowledge check. A calendar rule has worked four times out of five. Why is that weak evidence?
+
+Option A. Eighty percent is below the 95% that real proof needs
+
+Option B. Five cases are few enough that luck often looks like this
+
+Option C. Past results in markets never repeat, so no rule holds
+
+Option D. Nobody has tested the rule with a proper computer
+
+The best answer is option B. Five cases are few enough that luck often looks like this. Flip one of the five and the record falls to three out of five. A fair coin gives a record that good in roughly one run in five. The weakness is the tiny sample, not a missing percentage threshold and not some law that patterns never repeat.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.18: Options, Plainly: A Right With a Deadline
+
+What a call and a put are, what they cost, and how fast the money can be gone.
+
+Here is the simple version. Pebblestone Phones is at $36, and Ava pays Ravi $3 a share for a call with a $40 strike. One contract covers 100 shares, so the call costs $300 and she breaks even at $43. Break-even is the $40 strike plus the $3 premium. Ending at $48, the call is worth $8 a share, so she nets $500. Ending at $39, above the start but under the strike, the call is worthless and her $300 is gone. The shares rose and she still lost every cent.
+
+Point 1. A call is the right to buy shares at a set price, called the strike, up to a set date. A put is the right to sell at the strike, up to that date. The money you pay for the right is called the premium. You are buying a right, not an obligation, and not the shares. A call buyer needs the price above the strike plus the premium to break even. A put buyer needs it below the strike minus the premium. One contract usually covers one hundred shares, though that differs by market.
+
+Point 2. The right expires. If the move has not happened by the deadline, the option is worth nothing and the whole premium is gone. FINRA, which oversees brokerage firms in the United States, puts it plainly. An option that expires out of the money, meaning the price never reached the strike, loses the entire premium paid. Owning shares and owning a call are not the same, because shares have no deadline and the call does. A call can lose everything in a week that leaves the share owner fine.
+
+Point 3. Practice lab: price one call, work out the break-even, then mark the price at which the buyer loses every cent paid. Module 9 Lesson 1 works through puts in depth. This lesson explains how these contracts work; it is not a suggestion that you trade them.
+
+Knowledge check. A $30-strike call costs $3 a share and the stock finishes at $31. What does the buyer end up with?
+
+Option A. Profit of $100, since it finished above the $30 strike
+
+Option B. Nothing at all, because break-even at $33 was not reached
+
+Option C. $100 back on the contract, so a $200 loss after the premium
+
+Option D. The $300 premium refunded, since it finished above the strike
+
+The best answer is option C. $100 back on the contract, so a $200 loss after the premium. The call is worth $31 minus $30, which is $1 a share, so 100 shares return $100. She paid $300, so she is down $200. Finishing above the strike is not the same as making money, and there is no refund.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.19: The Other Side: Selling a Call You Cover, Selling a Put You Fund
+
+What you are agreeing to when you take the premium instead of paying it.
+
+Here is the simple version. Nia owns 100 Pebblestone shares bought at $36, so $3,600, and sells Ravi a $40 call for $200. It climbs to $50, her shares go at $40, and she holds $4,200 rather than the $5,000 holding would have left. She is still ahead of her $3,600 start, but the ceiling gave up $800 of the climb. Other ending: it falls to $28, so holding alone leaves $2,800 and the premium makes it $3,000. Against holding she is $200 better off, and still $600 below her start. The premium softened the fall, never stopped it.
+
+Point 1. Every option has two sides. The seller takes the premium up front and then has to do whatever the buyer decides. A covered call means you already own one hundred shares and sell someone the right to buy them at the strike. A cash-secured put means you hold the cash ready and sell someone the right to sell you shares at the strike. Say you sell a put at a thirty dollar strike for two hundred dollars and hold three thousand dollars ready. If the shares fall to fifteen you still buy at thirty.
+
+Point 2. The premium is payment for taking on risk, not income that turns up for free. A covered call swaps an unlimited climb for a fixed ceiling and leaves the whole fall with you. On the put side the premium barely covers a drop like that one. You can also be assigned before the deadline. Being assigned means the buyer uses their right, on their day and not yours. Whether that can happen early depends on the contract, so it is worth checking.
+
+Point 3. Practice lab: sell one covered call and run both endings, the shares taken away at the strike and the stock falling while you keep the premium. Module 9 Lesson 1 goes deeper. This lesson explains how these contracts work; it is not a suggestion that you trade them.
+
+Knowledge check. Nia sells a covered call and the stock jumps far above the strike. What has she given up?
+
+Option A. Everything the shares gained above the strike, for the premium
+
+Option B. Nothing, since she keeps the premium whatever the stock does
+
+Option C. Her shares, which she must now buy back at the higher price
+
+Option D. Only the gain above her own break-even price on the shares
+
+The best answer is option A. Everything the shares gained above the strike, for the premium. The premium was payment for capping her upside at the strike. She already owned the shares, so nothing has to be bought back, and the whole fall below her own cost still belongs to her.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 0.20: The Get-Rich Math, Checked
+
+The arithmetic behind the big option win, and behind the other nine tries.
+
+Here is the simple version. Zoe buys 10 calls over a year at $200 each, so she spends $2,000. One works and is sold for $1,000, five times what that single bet cost her. The other 9 expire worthless, so $1,800 is gone. She spent $2,000 and holds $1,000, so she is down $1,000, or 50% of her money. The year held a winner worth five times its cost, and the winners still have to cover every loser.
+
+Point 1. An option can turn a small move into a large percentage gain, because you only paid the premium and not the price of the shares. That is leverage: a small amount of money controlling a much larger position. The same multiplier works downward, and the floor for a buyer is zero rather than some smaller loss.
+
+Point 2. A screenshot shows one trade. The honest question is what the same bet did across every attempt. A winner only means something once the losing tries are counted beside it. Remember too that the person on the other side was paid to take that risk and chose to. Nothing here predicts how often any real option pays. Every frequency in this lesson is a made-up example, and a result you cannot count is not a strategy.
+
+Point 3. Practice lab: take ten identical option bets where one wins big and nine expire worthless, then work out the total for the year. Module 7 Lesson 1 shows how an average trade is worked out, and Module 8 Lesson 1 covers base rates.
+
+Knowledge check. Eight of ten $100 option bets expire worthless. The other two are each sold for $400. How did the year go?
+
+Option A. Up $700, the two winners minus the single loser they cover
+
+Option B. Up 300 percent, because each winner quadrupled what it cost
+
+Option C. Up $600, counting the two sales and ignoring the eight that failed
+
+Option D. Short by $200, since the winners returned less than the bets cost
+
+The best answer is option D. Short by $200, since the winners returned less than the bets cost. Ten bets at $100 cost $1,000 and the two sales bring back $800, so the year is down $200. Sold for $400 means $400 comes back, not $400 of profit, and one big multiple is not a year.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
 ## Module 1
 

@@ -397,7 +397,7 @@ test('attachWorkedExamples falls back to auto for invalid or mismatched authored
 });
 
 test('every SEED lesson gets one example part and identical voice, designer and client parts', () => {
-  assert.equal(SEED_LESSONS.length, 101);
+  assert.equal(SEED_LESSONS.length, 121);
   let longest = 0;
   for (const lesson of SEED_LESSONS) {
     const id = key(lesson);
@@ -439,7 +439,7 @@ test('narration versions are stable and change only when narration changes', () 
   const changed = SEED_LESSONS.map((lesson, index) => (index === 0 ? { ...lesson, title: `${lesson.title}!` } : lesson));
   assert.notEqual(curriculumVersion(changed), version);
   assert.notEqual(narrationVersion(changed[0]), SEED_LESSONS[0].narrationVersion);
-  assert.equal(new Set(SEED_LESSONS.map((lesson) => lesson.narrationVersion)).size, 101);
+  assert.equal(new Set(SEED_LESSONS.map((lesson) => lesson.narrationVersion)).size, 121);
 });
 
 test('lessonParts keeps the old part list for plain lessons and ignores invalid examples', () => {
@@ -705,8 +705,8 @@ function exampleStrings(example) {
   return out;
 }
 
-test('no example repeats its knowledge-check answer nearly word for word (all 101 lessons)', () => {
-  assert.equal(SEED_LESSONS.length, 101);
+test('no example repeats its knowledge-check answer nearly word for word (all 121 lessons)', () => {
+  assert.equal(SEED_LESSONS.length, 121);
   for (const lesson of SEED_LESSONS) {
     const answer = lesson.question.options[lesson.question.correct];
     if (checkWords(answer).size < 4) continue;
@@ -762,8 +762,8 @@ function earlyReveals(example) {
   return problems;
 }
 
-test('non-line whiteboard items never show a number before the voice says it (all 101 lessons)', () => {
-  assert.equal(SEED_LESSONS.length, 101);
+test('non-line whiteboard items never show a number before the voice says it (all 121 lessons)', () => {
+  assert.equal(SEED_LESSONS.length, 121);
   for (const lesson of SEED_LESSONS) assert.deepEqual(earlyReveals(lesson.example), [], key(lesson));
   // The check itself catches a big, bars, compare or tree value shown a
   // sentence early, including one the voice only says rounded ("about 9.5%").

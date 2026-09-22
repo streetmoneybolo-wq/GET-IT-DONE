@@ -41,7 +41,7 @@ test('lesson launcher consolidates all five learning tools into one channel', ()
     'academy:hub:challenge', 'academy:hub:replay'
   ]);
   assert.equal(payload.embeds.length, 1);
-  assert.match(payload.embeds[0].fields.map((field) => `${field.name} ${field.value}`).join(' '), /101 LESSONS/);
+  assert.match(payload.embeds[0].fields.map((field) => `${field.name} ${field.value}`).join(' '), /121 LESSONS/);
 });
 
 test('banner is a separate animated GIF upload', () => {

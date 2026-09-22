@@ -175,7 +175,7 @@ test('every lesson example renders a complete, well-formed whiteboard SVG', () =
     assert.equal(api.build(example).markup, markup, `${label} deterministic`);
     assert.ok(markup.includes(`<title>${escapeXml(example.title)}</title>`), `${label} title`);
   }
-  assert.equal(heights.length, 101);
+  assert.equal(heights.length, 121);
 });
 
 test('the 9.1 put example draws its computed numbers and escapes hostile text', () => {

@@ -3,6 +3,10 @@
 const { SEED_LESSONS } = require('./academy/curriculum');
 
 const ORDERED_LESSONS = SEED_LESSONS.slice().sort((left, right) => left.moduleId - right.moduleId || left.lessonId - right.lessonId);
+/* Module 0 ("Start Here") is a real module, so the lower bound is read from the
+ * curriculum. A hard-coded floor of 1 silently rejected every beginner lesson
+ * with invalid_module, which lost the learner's score on all 20 of them. */
+const MIN_MODULE_ID = Math.min(...SEED_LESSONS.map((lesson) => lesson.moduleId));
 
 function integer(value, min, max, name) {
   const parsed = Number(value);
@@ -39,8 +43,10 @@ function createAcademyProgress({ pool, guildId } = {}) {
     const row = await student(discordId);
     const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]);
     return {
-      currentModule: Number(row.current_module || 1),
-      currentLesson: Number(row.current_lesson || 1),
+      /* `?? `, not `|| `: a student sitting on module 0 has a current_module of
+       * 0, and `0 || 1` would have bounced them out of the Start Here track. */
+      currentModule: Number(row.current_module ?? ORDERED_LESSONS[0].moduleId),
+      currentLesson: Number(row.current_lesson || ORDERED_LESSONS[0].lessonId),
       xp: Number(row.xp || 0),
       streakDays: Number(row.streak_days || 0),
       badges: badges.rows.map((entry) => String(entry.badge_key))
@@ -49,7 +55,7 @@ function createAcademyProgress({ pool, guildId } = {}) {
   async function save(discordId, input = {}) {
     // The route verifies the lesson exists in the curriculum; these bounds only
     // reject malformed input before it reaches SQL.
-    const moduleId = integer(input.moduleId, 1, 99, 'module');
+    const moduleId = integer(input.moduleId, MIN_MODULE_ID, 99, 'module');
     const lessonId = integer(input.lessonId, 1, 99, 'lesson');
     const score = integer(input.score, 0, 100, 'score');
     const row = await student(discordId);

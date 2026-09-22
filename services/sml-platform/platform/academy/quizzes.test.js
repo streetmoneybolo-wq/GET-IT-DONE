@@ -34,7 +34,7 @@ const byLesson = (a, b) => a.moduleId - b.moduleId || a.lessonId - b.lessonId;
 const EXPANSION = SEED_LESSONS.filter((lesson) => lesson.moduleId >= 14 && lesson.moduleId <= 28).sort(byLesson);
 
 test('every expansion lesson exists and carries an authored knowledge check', () => {
-  assert.equal(SEED_LESSONS.length, 101);
+  assert.equal(SEED_LESSONS.length, 121);
   assert.equal(EXPANSION.length, 75);
   assert.equal(new Set(EXPANSION.map(key)).size, 75);
   for (const lesson of EXPANSION) {
@@ -45,8 +45,9 @@ test('every expansion lesson exists and carries an authored knowledge check', ()
 });
 
 test('assertQuizzes accepts the authored data against the real curriculum', () => {
-  assert.equal(assertQuizzes(SEED_LESSONS), 75);
-  assert.equal(Object.keys(DATA).length, 75);
+  // 75 expansion checks plus the 20 Start Here checks.
+  assert.equal(assertQuizzes(SEED_LESSONS), 95);
+  assert.equal(Object.keys(DATA).length, 95);
   assert.throws(() => assertQuizzes([]), /no lesson with that id/);
 });
 

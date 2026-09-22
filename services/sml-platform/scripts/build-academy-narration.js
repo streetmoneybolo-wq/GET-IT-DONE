@@ -3,6 +3,9 @@
 
 /*
  * Regenerates content/making-easy-money-academy-101-lesson-voice-script.md.
+ * The 101 in the FILE NAME is historical and deliberately frozen, so the
+ * committed path stays stable; the lesson count inside the document is counted
+ * from the curriculum and moves with it.
  * Deterministic and offline: it only reads the curriculum.
  *
  * Each lesson's spoken lines come from lessonPartsInfo() in
@@ -22,7 +25,7 @@ const OUTPUT = path.resolve(__dirname, '../content/making-easy-money-academy-101
 
 function introduction(lessons) {
   const moduleCount = new Set(lessons.map((lesson) => lesson.moduleId)).size;
-  return `# Making Easy Money Academy: 101-Lesson Voice Script
+  return `# Making Easy Money Academy: ${lessons.length}-Lesson Voice Script
 
 ## Voice-generation directions — do not read this section aloud
 
@@ -61,7 +64,9 @@ function lessonBlock(lesson) {
 
 function buildNarrationScript(lessons = SEED_LESSONS) {
   const spoken = [introduction(lessons)];
-  let currentModule = 0;
+  /* null, not 0: module 0 ("Start Here") is a real module, and seeding this
+   * with 0 swallowed its heading. */
+  let currentModule = null;
   for (const lesson of lessons) {
     if (lesson.moduleId !== currentModule) {
       currentModule = lesson.moduleId;

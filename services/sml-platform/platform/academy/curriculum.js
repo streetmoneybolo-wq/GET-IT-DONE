@@ -2,6 +2,7 @@
 
 const { simulationFor } = require('./simulations');
 const { EXPANSION_LESSONS } = require('./expansion');
+const { START_HERE_LESSONS } = require('./start-here');
 const { attachIndicatorCurriculum } = require('../academy-chart-intelligence');
 
 /* Original StockMarketLoop Academy material. It never ingests the legacy
@@ -159,6 +160,13 @@ const CORE_LESSONS = [
   ], 'Which satisfies the capstone standard?', { A: 'Unsourced target', B: 'Sourced scenario thesis with risks and falsification', C: 'Viral screenshot', D: 'Guaranteed return' }, 'B', 'College-level analysis is sourced, conditional, numerate, transparent, and open to disconfirmation.', '30 min')
 ];
 
-const SEED_LESSONS = require('./examples').attachWorkedExamples(attachIndicatorCurriculum([...CORE_LESSONS, ...EXPANSION_LESSONS]));
+/* Module 0 "Start Here" comes first, so the picker, the narration script and
+ * every "next lesson" walk open on the beginner track rather than on market
+ * microstructure. attachIndicatorCurriculum() only touches the lessons named in
+ * INDICATOR_CATEGORIES (modules 2-6, 9, 10, 12, 13) plus 1.1, so module 0 passes
+ * through it untouched; start-here.test.js pins that. */
+const SEED_LESSONS = require('./examples').attachWorkedExamples(
+  attachIndicatorCurriculum([...START_HERE_LESSONS, ...CORE_LESSONS, ...EXPANSION_LESSONS])
+);
 
 module.exports = { SEED_LESSONS };

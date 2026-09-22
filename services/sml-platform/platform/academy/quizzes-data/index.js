@@ -1,10 +1,15 @@
 'use strict';
 
-/* Authored knowledge checks, keyed "moduleId.lessonId". Split by module range so
+/* Authored knowledge checks, keyed "moduleId.lessonId". Split by authoring range
+ * (the three Start Here files for module 0, then the expansion modules 14-28) so
  * several authors can work without touching one another's file. A missing file is
- * skipped: those lessons keep the generated check instead of breaking the load. */
+ * skipped: those lessons keep the generated check instead of breaking the load.
+ *
+ * Note that quizFor() is only consulted by expansion.js buildLesson(); the Start
+ * Here files import these checks directly, so the lesson and the authored data
+ * cannot drift apart. start-here.test.js asserts they stay equal. */
 
-const FILES = ['./m14-17', './m18-22', './m23-28'];
+const FILES = ['./start-here-a', './start-here-b', './start-here-c', './m14-17', './m18-22', './m23-28'];
 
 const DATA = {};
 for (const file of FILES) {

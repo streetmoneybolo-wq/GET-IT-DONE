@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { ACADEMY_HUBS, TEXT_LESSON_ID } = require('./commands');
+const { ACADEMY_HUBS, TEXT_LESSON_ID, LESSON_COUNT, MODULE_COUNT, FIRST_MODULE } = require('./commands');
 
 const DISCORD_API = 'https://discord.com/api/v10';
 const ACADEMY_BANNER_FILE = 'making-easy-money-academy.gif';
@@ -32,11 +32,11 @@ function launcher(hub) {
       { name: '💵 SMALL ACTION. REAL MOMENTUM.', value: 'Complete a practical step today that an average person can actually repeat tomorrow.' },
       { name: '🔒 BUILT FOR YOU', value: 'Your generated briefing and financial details stay private.' }
     ] : hub.command === 'lesson' ? [
-      { name: '🎓 101 LESSONS. 28 MODULES. ONE MISSION.', value: 'Build the knowledge, discipline, and decision-making process of a stronger trader.' },
+      { name: `🎓 ${LESSON_COUNT} LESSONS. ${MODULE_COUNT} MODULES. ONE MISSION.`, value: `Start at Module ${FIRST_MODULE} if you have never bought a share, then build the knowledge, discipline and decision-making process of a stronger trader.` },
       { name: '📈 TRAIN WITH THE MARKET', value: 'Live charts · Interactive simulations · Market replay · Daily chart challenges' },
       { name: '🧠 TEST YOUR EDGE', value: 'Glossary · Flashcards · Private quizzes · Progress that moves at your pace' }
     ] : [
-      { name: '🚀 KEEP BUILDING', value: '101 college-level lessons across 28 focused modules', inline: true },
+      { name: '🚀 KEEP BUILDING', value: `${LESSON_COUNT} lessons across ${MODULE_COUNT} focused modules, beginner track first`, inline: true },
       { name: '🔒 YOUR PRIVATE WORKSPACE', value: 'Your personal results are visible only to you', inline: true },
       { name: '⚡ EVERYTHING WORKS TOGETHER', value: 'Quizzes · Flashcards · Challenges · Progress · Badges · Discipline · Replays · Glossary · Leaderboard' }
     ],

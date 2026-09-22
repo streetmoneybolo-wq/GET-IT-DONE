@@ -48,8 +48,11 @@ test('Academy controls remain private to the configured Monarch preview role', a
   assert.match(denied.response.data.content, /not available/);
   const allowed = await academy.handle(interaction('academy'));
   assert.match(allowed.response.data.content, /dedicated Academy channels/);
-  assert.match(allowed.response.data.content, /101 interactive/);
-  assert.match(allowed.response.data.content, /28 modules/);
+  assert.match(allowed.response.data.content, /121 interactive/);
+  assert.match(allowed.response.data.content, /29 modules/);
+  // The welcome copy is counted from the curriculum, so it cannot go stale.
+  assert.match(allowed.response.data.content, new RegExp(`${SEED_LESSONS.length} interactive`));
+  assert.match(allowed.response.data.content, new RegExp(`${new Set(SEED_LESSONS.map((lesson) => lesson.moduleId)).size} modules`));
 });
 
 test('all dedicated channel launchers work for members and remain ephemeral', async () => {
@@ -83,10 +86,11 @@ test('member cannot use restricted slash command just because channel launchers 
   assert.match(denied.response.data.content, /not available/);
 });
 
-test('Academy publishes a complete 101-lesson college-level curriculum', () => {
-  assert.equal(SEED_LESSONS.length, 101);
-  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, 101);
-  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], Array.from({ length: 28 }, (_, index) => index + 1));
+test('Academy publishes a complete 121-lesson college-level curriculum', () => {
+  assert.equal(SEED_LESSONS.length, 121);
+  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, 121);
+  // Module 0 is the Start Here beginner track and sorts ahead of module 1.
+  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], Array.from({ length: 29 }, (_, index) => index));
   for (const entry of SEED_LESSONS) {
     assert.equal(entry.steps.length, 3);
     assert.match(entry.steps[2], /lab:/i);
@@ -142,7 +146,7 @@ test('every lesson has an authored whiteboard example spoken between the title a
     // Original, fictional, educational: no reference-creator names anywhere in the example.
     assert.doesNotMatch(JSON.stringify(example), forbiddenNames, id);
   }
-  assert.deepEqual(sources, { authored: 101 });
+  assert.deepEqual(sources, { authored: 121 });
 
   // 9.1 pins: the steps keep the worked put contract and the example agrees with them.
   const put = SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1);
@@ -180,11 +184,14 @@ test('the long-form voice script is generated from the shared lesson parts and i
   assert.equal(committed, text, 'content/making-easy-money-academy-101-lesson-voice-script.md is stale: run node scripts/build-academy-narration.js');
 });
 
-test('all 28 modules can be selected from lesson and quiz commands', () => {
+test('all 29 modules, module 0 included, can be selected from lesson and quiz commands', () => {
   const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
   for (const commandName of ['lesson', 'quiz']) {
     const definition = academy.definitions.find((entry) => entry.name === commandName);
     const moduleOption = definition.options.find((entry) => entry.name === 'module');
+    // Discord rejects a value outside the range, so a floor of 1 would have made
+    // the whole Start Here track unreachable from both slash commands.
+    assert.equal(moduleOption.min_value, 0);
     assert.equal(moduleOption.max_value, 28);
   }
 });
@@ -315,10 +322,12 @@ test('text lesson fallback explains the situation and offers a retry launch', as
   assert.equal(result.response.type, 4);
   assert.equal(result.response.data.flags, 64);
   assert.match(result.response.data.content, /did not open/);
-  assert.match(result.response.data.embeds[0].title, /Module 1 · Lesson 1/);
+  // A student with no saved position starts at the beginning of the curriculum,
+  // which is now Module 0 Lesson 1 of the Start Here track.
+  assert.match(result.response.data.embeds[0].title, /Module 0 · Lesson 1/);
   const buttons = result.response.data.components.flatMap((row) => row.components);
   const ids = buttons.map((item) => item.custom_id);
   assert.equal(new Set(ids).size, ids.length, 'Discord rejects duplicate custom_ids in one message');
   assert.ok(buttons.some((item) => item.custom_id === LAUNCH_ID && /Again/.test(item.label)));
-  assert.ok(ids.includes('academy:start:1:1'));
+  assert.ok(ids.includes('academy:start:0:1'));
 });

@@ -69,9 +69,34 @@ test('modules 14-28 save like every other module', async () => {
   assert.deepEqual(await progress.save(A, { moduleId: 28, lessonId: 5, score: 83 }), { moduleId: 28, lessonId: 5, score: 83, completed: true });
 });
 
+test('module 0 Start Here lessons save and resume like every other module', async () => {
+  const pool = memoryPool();
+  const progress = createAcademyProgress({ pool, guildId: GUILD });
+  // The module bound used to start at 1, which rejected all 20 beginner
+  // lessons with invalid_module and threw away the learner's score.
+  assert.deepEqual(await progress.save(A, { moduleId: 0, lessonId: 1, score: 90 }), { moduleId: 0, lessonId: 1, score: 90, completed: true });
+  assert.deepEqual((await progress.read(A)).map((row) => [row.moduleId, row.lessonId, row.completed]), [[0, 1, true]]);
+  const next = nextLessonAfter(0, 1);
+  assert.deepEqual([next.moduleId, next.lessonId], [0, 2], 'the first Start Here lesson leads to the second');
+  const state = await progress.state(A);
+  assert.deepEqual([state.currentModule, state.currentLesson], [0, 2]);
+});
+
+test('a student resting on module 0 is not bumped into module 1', async () => {
+  const pool = memoryPool();
+  const progress = createAcademyProgress({ pool, guildId: GUILD });
+  await progress.state(A);
+  // `Number(row.current_module || 1)` turned a genuine module 0 into module 1.
+  pool.students[0].current_module = 0;
+  pool.students[0].current_lesson = 7;
+  const state = await progress.state(A);
+  assert.deepEqual([state.currentModule, state.currentLesson], [0, 7]);
+});
+
 test('Academy simulation progress rejects malformed scores and users', async () => {
   const progress = createAcademyProgress({ pool: memoryPool(), guildId: GUILD });
   await assert.rejects(progress.save('bad', { moduleId: 1, lessonId: 1, score: 80 }), /invalid_user/);
   await assert.rejects(progress.save(A, { moduleId: 1, lessonId: 1, score: 101 }), /invalid_score/);
+  await assert.rejects(progress.save(A, { moduleId: -1, lessonId: 1, score: 80 }), /invalid_module/);
   await assert.rejects(progress.state(''), /invalid_user/);
 });

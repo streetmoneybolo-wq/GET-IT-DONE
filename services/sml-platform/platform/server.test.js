@@ -193,7 +193,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.doesNotMatch(html, /parts\[safe\]\.split\(\/\(\\s\+\)\//);
     assert.match(html, /requestAnimationFrame\(syncVoiceDeck\)/);
     assert.match(html, /Starting the next lesson/);
-    assert.match(html, /All 101 Academy lessons complete/);
+    assert.match(html, /All 121 Academy lessons complete/);
     assert.match(html, /academy-activity\/slide-design/);
     assert.doesNotMatch(html, /CLAUDE DESIGNED|Playing Grandmaster-Obi|next lesson is preloading/i);
     assert.match(html, /copy\.hidden=true/);
@@ -347,7 +347,7 @@ test('Academy curriculum loads separately and is cacheable after first paint', a
     assert.match(response.headers.get('cache-control'), /max-age=3600/);
     assert.equal(response.headers.get('content-encoding'), 'gzip');
     const payload = await response.json();
-    assert.equal(payload.lessons.length, 101);
+    assert.equal(payload.lessons.length, 121);
     const text = JSON.stringify(payload);
     assert.match(text, /Market Structure and Price Discovery/);
     assert.match(text, /Cash-secured put/);

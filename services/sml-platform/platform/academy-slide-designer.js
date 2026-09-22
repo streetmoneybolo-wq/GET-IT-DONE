@@ -5,7 +5,12 @@ const { lessonParts, lessonPartsInfo } = require('./academy/lesson-parts');
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
 const REQUESTS_PER_MINUTE = 6;
-const MAX_CACHE_ITEMS = 101;
+/* One entry per lesson in the curriculum, so a full pass never evicts a design
+ * the learner is about to come back to. Written out rather than read from
+ * ./academy/curriculum, which would pull the whole example library into every
+ * process that only wants the designer; academy-slide-designer.test.js pins
+ * this number to SEED_LESSONS.length so it cannot drift. */
+const MAX_CACHE_ITEMS = 121;
 const VISUAL_KINDS = Object.freeze([
   'auction', 'candles', 'flow', 'comparison', 'timeline', 'formula',
   'checklist', 'options', 'risk', 'tape', 'chart', 'question'
@@ -151,4 +156,4 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
   return { configured, getLessonDesign };
 }
 
-module.exports = { createAcademySlideDesigner, partsFor, validateDesign, DESIGN_SCHEMA };
+module.exports = { createAcademySlideDesigner, partsFor, validateDesign, DESIGN_SCHEMA, MAX_CACHE_ITEMS };

@@ -12,7 +12,11 @@
  * At runtime attachWorkedExamples() then falls back to autoExample(); the
  * strict test (examples.test.js) fails on every recorded problem. */
 
-const MODULES = Object.freeze(['./reference', './m01-13', './m14-20', './m21-28']);
+const MODULES = Object.freeze([
+  './reference',
+  './start-here-a', './start-here-b', './start-here-c',
+  './m01-13', './m14-20', './m21-28'
+]);
 
 const RECORDS = [];
 const LOAD_ERRORS = [];
