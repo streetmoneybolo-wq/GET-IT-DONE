@@ -94,6 +94,11 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /speechSynthesis/);
     assert.match(html, /academy-activity\/speech/);
     assert.match(html, /new Audio\(voiceUrl\)/);
+    assert.match(html, /academy-voice-control/);
+    assert.match(html, /playNarration/);
+    assert.match(html, /render\(true\)/);
+    assert.match(html, /Mute Voice/);
+    assert.match(html, /voiceAudio\.muted=voiceMuted/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
     assert.match(html, /TOP OF BOOK/);
