@@ -1,9 +1,49 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { createServer, calculateWindowChange, calculateThreeMinuteChange } = require('./server');
 const { hmac } = require('./wordpress-gateway');
+const { SEED_LESSONS } = require('./academy/curriculum');
+const { lessonParts, narrationVersion, curriculumVersion, EXAMPLE_LEAD, CHECK_LEAD } = require('./academy/lesson-parts');
+const { academyCurriculumScript, academyCurriculumVersion } = require('./academy-activity-curriculum');
+const { academyCartoonVisualsScript } = require('./academy-cartoon-visuals');
+const { academyVisualLabScript } = require('./academy-visual-lab');
+
+/* Strings that must never reach the Activity page, in any injected script or
+   comment, in any letter case. */
+const PAGE_BANNED = /<iframe|location\.assign|CLAUDE DESIGNED|Playing Grandmaster-Obi|next lesson is preloading/i;
+
+/* Every <script> on the served page must parse, not only the last one. Classic
+   scripts are compiled with new Function; module scripts are syntax-checked by
+   node --check (import declarations are not valid in a function body). */
+function assertEveryScriptParses(html) {
+  const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
+  assert.equal(scripts.length, (html.match(/<script\b/gi) || []).length, 'every <script> is closed');
+  let modules = 0;
+  scripts.forEach(([, attributes, source], index) => {
+    if (/\btype\s*=\s*["']?module/i.test(attributes)) {
+      modules += 1;
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'academy-module-'));
+      const file = path.join(dir, `script-${index}.mjs`);
+      try {
+        fs.writeFileSync(file, source);
+        const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+        assert.equal(check.status, 0, `module <script> #${index} does not parse: ${check.stderr}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+      return;
+    }
+    assert.doesNotThrow(() => new Function(source), `<script> #${index} does not parse: ${source.slice(0, 80)}`);
+  });
+  return { total: scripts.length, modules };
+}
 
 async function withServer(options, run) {
   const server = createServer({
@@ -102,6 +142,52 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /voiceAudio\.muted=voiceMuted/);
     assert.match(html, /academy-live-deck/);
     assert.match(html, /Lesson presentation/);
+    // The whiteboard "simple version" renderer replaces Codex's hard-coded 9.1
+    // cartoon. Injected scripts are served verbatim (no `$'`-style replacement
+    // corruption), with the renderer right after the curriculum client and
+    // before the visual lab.
+    const curriculumScript = academyCurriculumScript(SEED_LESSONS);
+    const whiteboardScript = academyCartoonVisualsScript();
+    const curriculumAt = html.indexOf(curriculumScript);
+    const whiteboardAt = html.indexOf(whiteboardScript);
+    assert.ok(curriculumAt > 0, 'curriculum client is served verbatim');
+    assert.equal(whiteboardAt, curriculumAt + curriculumScript.length, 'whiteboard renderer follows the curriculum client verbatim');
+    assert.equal(html.indexOf(academyVisualLabScript()), whiteboardAt + whiteboardScript.length, 'visual lab follows the whiteboard renderer');
+    assert.doesNotMatch(html, /ORIGINAL ACADEMY VISUAL|cartoon-put|\$45 STRIKE/);
+    assert.match(html, /win\.addEventListener\('sml-academy-slide-sync', onSync\)/);
+    assert.match(html, /win\.addEventListener\('sml-academy-slide-progress', onProgress\)/);
+    assert.match(html, /win\.SMLWhiteboard = api/);
+    assert.match(html, /visual\.setAttribute\('data-board', 'whiteboard'\)/);
+    assert.match(html, /\.academy-live-deck \.academy-slide-visual\[data-board\]/);
+    assert.match(html, /'<svg class="wb-svg" xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 '/);
+    assert.match(html, /@media \(prefers-reduced-motion:reduce\)\{[^@]*\.wb-r\{opacity:1!important/);
+    // renderDeck dispatches the contract events the renderer listens to.
+    assert.match(html, /window\.dispatchEvent\(new CustomEvent\('sml-academy-slide-sync',\{detail:\{lesson,lessonKey:key\(lesson\),slide:/);
+    assert.match(html, /text:parts\[safe\],partIndex:safe,partProgress,visual:deckVisual,example:lesson\.example\|\|null,isExample,playing:voicePlaying\(\)\}\}\)\)/);
+    assert.match(html, /window\.dispatchEvent\(new CustomEvent\('sml-academy-slide-progress',\{detail:\{lessonKey:key\(lesson\),partIndex:safe,wordIndex,wordCount:words\.length,partProgress,playing:voicePlaying\(\)\}\}\)\)/);
+    assert.match(html, /const narrationParts=lesson=>Array\.isArray\(lesson\.parts\)&&lesson\.parts\.length\?lesson\.parts:/);
+    // The example callout promises line-by-line drawing only while the voice
+    // is playing (and motion is allowed); a board drawn all at once (no audio,
+    // paused, reduced motion, manual browsing) gets a neutral callout, and a
+    // pause re-renders the slide so the callout and the board update at once.
+    assert.match(html, /if\(isExample\)\{const callout=voicePlaying\(\)&&!reduceMotion\(\)\?'Watch each line appear as it is explained\.':'Read the board from top to bottom\.';if\(deckCallout\.textContent!==callout\)deckCallout\.textContent=callout\}/);
+    assert.doesNotMatch(html, /deckCallout\.textContent='Watch each line appear as it is explained\.'/);
+    assert.match(html, /const reduceMotion=\(\)=>\{try\{return Boolean\(window\.matchMedia&&window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\)\}/);
+    assert.match(html, /voiceAudio\.onpause=\(\)=>\{if\(requestId!==voiceRequest\)return;deckWord=-1;renderDeck\(activeDeckPart,activeDeckProgress\)\}/);
+    // The whiteboard SVG carries the example title, so the deck heading above
+    // it is a short neutral label instead of the same title twice.
+    assert.match(html, /deckTitle\.textContent=claudeSlide&&claudeSlide\.heading\?claudeSlide\.heading:'The simple version';/);
+    assert.doesNotMatch(html, /sheet\.title\|\|'The simple version'/);
+    // Versioned URLs: the curriculum payload and every lesson's audio change
+    // URL whenever what is spoken or drawn changes.
+    const version = curriculumVersion(SEED_LESSONS);
+    assert.match(version, /^[0-9a-f]{12}$/);
+    assert.equal(academyCurriculumVersion(SEED_LESSONS), version);
+    assert.ok(html.includes(`const curriculumVersion='${version}';`), 'client embeds the curriculum version');
+    assert.ok(html.includes("fetch('/academy-activity/curriculum?v='+curriculumVersion,{cache:'force-cache'})"), 'client fetches the versioned curriculum');
+    assert.ok(html.includes(`'/academy-activity/curriculum?v=${version}'`), 'intro warm-up primes the same versioned URL');
+    assert.doesNotMatch(html, /'\/academy-activity\/curriculum'/);
+    assert.ok(html.includes("'/academy-activity/speech?moduleId='+encodeURIComponent(lesson.moduleId)+'&lessonId='+encodeURIComponent(lesson.lessonId)+'&v='+encodeURIComponent(lesson.narrationVersion||curriculumVersion)"), 'speech URL carries the narration version');
     assert.match(html, /syncVoiceDeck/);
     assert.match(html, /parts\[safe\]\.match\(\/\\S\+\\s\*\/g\)/);
     assert.doesNotMatch(html, /parts\[safe\]\.split\(\/\(\\s\+\)\//);
@@ -187,7 +273,40 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /\['Options',\[9,23\]\]/);
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     assert.doesNotThrow(() => new Function(scripts.at(-1)[1]));
+    const parsed = assertEveryScriptParses(html);
+    assert.ok(parsed.total >= 15, `expected every Activity script, found ${parsed.total}`);
+    assert.equal(parsed.modules, 1, 'the Discord SDK bootstrap is the only module script');
+    // Whole page and each injected Academy script, any letter case.
+    assert.doesNotMatch(html, PAGE_BANNED);
+    for (const script of [curriculumScript, whiteboardScript, academyVisualLabScript()]) assert.doesNotMatch(script, PAGE_BANNED);
   });
+});
+
+test('Academy curriculum client: every patch in the trailing replace chain still finds its target', () => {
+  /* academy-activity-curriculum.js post-processes its template with a chain of
+     .replace()/.replaceAll() calls whose targets are exact substrings of
+     renderDeck and friends. A missed target fails silently, so check each one:
+     the target exists in the template source, is gone from the output, and the
+     replacement is present. */
+  const source = fs.readFileSync(require.resolve('./academy-activity-curriculum'), 'utf8');
+  const templateEnd = source.indexOf('})()</script>`');
+  const template = source.slice(source.indexOf('return `<style>'), templateEnd);
+  const chain = source.slice(templateEnd + '})()</script>`'.length, source.indexOf('module.exports'));
+  const literal = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
+  const patches = [...chain.matchAll(/\.(?:replace|replaceAll)\(/g)].map((match) => {
+    const [target, replacement] = [...chain.slice(match.index).matchAll(literal)].slice(0, 2)
+      .map((entry) => new Function(`return ${entry[0]}`)());
+    return { target, replacement };
+  });
+  assert.equal(patches.length, 12);
+  const output = academyCurriculumScript(SEED_LESSONS);
+  for (const { target, replacement } of patches) {
+    // Template-literal source keeps backslashes doubled (\\s, \\n).
+    assert.ok(template.includes(target.replace(/\\/g, '\\\\')), `replace target missing from the template: ${target}`);
+    if (!replacement.includes(target)) assert.equal(output.includes(target), false, `replace target survived: ${target}`);
+    if (replacement) assert.ok(output.includes(replacement), `replacement not applied: ${replacement}`);
+  }
+  assert.ok(patches.some((patch) => patch.target === 'parts[safe].split(/(\\s+)/).forEach'));
 });
 
 test('Academy intro video supports cached byte-range streaming', async () => {
@@ -229,6 +348,36 @@ test('Academy curriculum loads separately and is cacheable after first paint', a
     assert.match(text, /Cash-secured put/);
     assert.match(text, /Grandmaster-Obi Alert Analysis and Falsification/);
     assert.match(text, /Capstone: Investment Committee Defense/);
+    assert.doesNotMatch(text, PAGE_BANNED);
+
+    // The client deck plays exactly the parts the voice and designer use.
+    assert.equal(payload.version, curriculumVersion(SEED_LESSONS));
+    assert.match(payload.version, /^[0-9a-f]{12}$/);
+    payload.lessons.forEach((lesson, index) => {
+      const seed = SEED_LESSONS[index];
+      const id = `${seed.moduleId}.${seed.lessonId}`;
+      assert.equal(`${lesson.moduleId}.${lesson.lessonId}`, id);
+      assert.deepEqual(Object.keys(lesson), ['moduleId', 'lessonId', 'title', 'description', 'duration', 'level', 'steps', 'question', 'simulation', 'parts', 'example', 'exampleIndex', 'narrationVersion'], id);
+      assert.deepEqual(lesson.parts, lessonParts(seed), id);
+      assert.equal(lesson.parts.length, 6, id);
+      assert.equal(lesson.steps.length, 3, id);
+      assert.equal(lesson.exampleIndex, 1, id);
+      assert.equal(lesson.parts[0], lesson.title, id);
+      assert.equal(lesson.parts[1], `${EXAMPLE_LEAD} ${lesson.example.say.join(' ')}`, id);
+      assert.deepEqual(lesson.parts.slice(2, 5), lesson.steps, id);
+      assert.equal(lesson.parts.at(-1), `${CHECK_LEAD}${lesson.question.prompt}`, `${id} knowledge check is last`);
+      assert.deepEqual(lesson.example, JSON.parse(JSON.stringify(seed.example)), id);
+      assert.equal(lesson.example.source, 'authored', id);
+      assert.equal(lesson.example.id, id);
+      assert.equal(lesson.narrationVersion, narrationVersion(seed), id);
+      assert.equal(lesson.narrationVersion, crypto.createHash('sha256').update(lesson.parts.join('\n\n')).digest('hex').slice(0, 12), id);
+    });
+
+    // The versioned URL the client and intro warm-up use serves the same body.
+    const versioned = await fetch(`${base}/academy-activity/curriculum?v=${payload.version}`);
+    assert.equal(versioned.status, 200);
+    assert.match(versioned.headers.get('cache-control'), /max-age=3600/);
+    assert.deepEqual(await versioned.json(), payload);
   });
 });
 
@@ -243,6 +392,9 @@ test('Discord Activity proxy root serves the same native Academy entry point', a
     assert.match(html, /Making Easy Money Academy/);
     assert.match(html, /Live interactive candlestick chart/);
     assert.doesNotMatch(html, /<iframe/i);
+    assert.doesNotMatch(html, PAGE_BANNED);
+    assert.ok(html.includes(academyCartoonVisualsScript()), 'proxy root serves the whiteboard renderer too');
+    assertEveryScriptParses(html);
   });
 });
 
@@ -315,8 +467,17 @@ test('Academy lesson narration works in Discord without a session and honors aut
     assert.equal(allowed.headers.get('content-type'), 'audio/mpeg');
     assert.match(allowed.headers.get('cache-control'), /private/);
     assert.equal(Buffer.from(await allowed.arrayBuffer()).toString(), 'lesson-mp3');
+    // The client appends &v=<narrationVersion> purely to bust the private
+    // browser cache when narration changes; the server ignores it.
+    const lesson = SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1);
+    const versioned = await fetch(`${base}/academy-activity/speech?moduleId=9&lessonId=1&v=${lesson.narrationVersion}`, {
+      headers: { authorization: 'Bearer academy-session' }
+    });
+    assert.equal(versioned.status, 200);
+    assert.match(versioned.headers.get('cache-control'), /private, max-age=86400/);
   });
   assert.deepEqual(calls[1], { moduleId: '1', lessonId: '1', userId: 'member-123' });
+  assert.deepEqual(calls[2], { moduleId: '9', lessonId: '1', userId: 'member-123' });
 });
 
 test('Academy Claude slide design stays server-side, rate-scoped, and session-aware', async () => {

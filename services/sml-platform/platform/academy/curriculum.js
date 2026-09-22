@@ -103,11 +103,11 @@ const CORE_LESSONS = [
     'Statistics lab: separate train, validation, and untouched test periods and report confidence, turnover, and drawdown.'
   ], 'What does walk-forward testing approximate?', { A: 'Using future data', B: 'Sequential fitting and out-of-sample evaluation', C: 'Removing losses', D: 'Guaranteed significance' }, 'B', 'It preserves time order and tests on observations not used in the immediately preceding fit.'),
 
-  L(9, 1, 'Options Strategies: Protection, Direction, and Premium', 'Compare major options structures, including put-based premium strategies, by payoff and risk.', 'Advanced', [
-    'The builder covers long calls and puts, covered calls, cash-secured puts, protective puts, collars, debit and credit verticals, iron condors, straddles, strangles, calendars, diagonals, butterflies, and ratio spreads.',
-    'Selling puts or other premium can produce cash credits, but it is not passive or guaranteed income: assignment, gap, volatility, liquidity, and tail losses remain.',
-    'Options lab: choose a structure for a thesis, draw its payoff, and identify break-even, maximum loss, assignment risk, volatility exposure, and exit rules.'
-  ], 'A $50-strike call expires with stock at $57. Intrinsic value?', { A: '$0', B: '$5', C: '$7', D: '$57' }, 'C', 'Call intrinsic value is max(stock minus strike, zero).'),
+  L(9, 1, 'Put Options: The Right to Sell, Protection, and Premium', 'Learn puts with one simple contract before comparing advanced strategies.', 'Advanced', [
+    'A put buyer pays a premium for the right—not the obligation—to sell 100 shares at the strike price before expiration. For someone who also owns the shares, the strike works like a temporary price floor. The buyer can lose the premium, and the contract loses time value as expiration approaches.',
+    'Payoff rules at expiration: a put is worth the strike minus the stock price when the stock finishes below the strike, and nothing otherwise. The buyer breaks even at the strike minus the premium, and the most the buyer can lose is the premium paid. Before expiration the put also holds time value, so its price moves with the stock, time, and volatility.',
+    'Options lab: compare the other side. A cash-secured put seller receives the premium but accepts the obligation to buy 100 shares at $45 if assigned. The $2 credit makes the effective entry $43, but the downside below $43 remains real. Premium is payment for taking risk—not guaranteed passive income. Protective puts, covered calls, spreads, collars, straddles, and other structures should be learned only after this basic payoff is clear.'
+  ], 'A $30-strike put costs $1.50. The stock finishes at $26 at expiration. What is the buyer’s net profit per share before fees?', { A: '$0', B: '$1.50', C: '$2.50', D: '$4' }, 'C', 'The put has $30 − $26 = $4 of intrinsic value. Subtract the $1.50 premium: $4 − $1.50 = $2.50 per share, or $250 for one standard 100-share contract.'),
   L(9, 2, 'Greeks, Implied Volatility, and Volatility Surfaces', 'Explain nonlinear option sensitivities and volatility pricing.', 'Advanced', [
     'Delta measures underlying sensitivity, gamma delta curvature, theta time decay, vega implied-volatility sensitivity, and rho rate sensitivity.',
     'Greeks change with price, time, and volatility. Implied volatility is the input consistent with price, not guaranteed realized volatility.',
@@ -159,6 +159,6 @@ const CORE_LESSONS = [
   ], 'Which satisfies the capstone standard?', { A: 'Unsourced target', B: 'Sourced scenario thesis with risks and falsification', C: 'Viral screenshot', D: 'Guaranteed return' }, 'B', 'College-level analysis is sourced, conditional, numerate, transparent, and open to disconfirmation.', '30 min')
 ];
 
-const SEED_LESSONS = attachIndicatorCurriculum([...CORE_LESSONS, ...EXPANSION_LESSONS]);
+const SEED_LESSONS = require('./examples').attachWorkedExamples(attachIndicatorCurriculum([...CORE_LESSONS, ...EXPANSION_LESSONS]));
 
 module.exports = { SEED_LESSONS };

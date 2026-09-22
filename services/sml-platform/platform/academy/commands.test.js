@@ -95,12 +95,88 @@ test('Academy publishes a complete 101-lesson college-level curriculum', () => {
     assert.ok(entry.simulation.rounds.length >= 3);
   }
   assert.ok(SEED_LESSONS.find((entry) => entry.moduleId === 3 && entry.lessonId === 1).simulation.rounds.length > 50);
-  assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1).steps.join(' '), /cash-secured puts/i);
+  const putLesson = SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1);
+  assert.match(putLesson.steps.join(' '), /cash-secured put/i);
+  // The worked numbers live only on the whiteboard example; the steps teach the
+  // rules, qualify the floor, and show the seller's side of the same contract.
+  assert.match(putLesson.steps[0], /For someone who also owns the shares, the strike works like a temporary price floor/);
+  assert.match(putLesson.steps[2], /\$45.*\$2.*\$43/s);
+  assert.doesNotMatch(putLesson.steps.join(' '), /Worked example|\$50\b|\$55|\$40|\$300/);
+  assert.match(putLesson.question.explanation, /\$250/);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 10 && entry.lessonId === 1).title, /Read the Tape/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 11 && entry.lessonId === 2).title, /Grandmaster-Obi/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 17 && entry.lessonId === 4).title, /Regression/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 22 && entry.lessonId === 2).title, /Duration/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 28 && entry.lessonId === 5).title, /Capstone/i);
+});
+
+test('every lesson has an authored whiteboard example spoken between the title and its three steps', () => {
+  const { lessonParts, EXAMPLE_LEAD, CHECK_LEAD } = require('./lesson-parts');
+  const { validateExample } = require('./examples');
+  const { narrationFor } = require('../academy-voice');
+  const { partsFor } = require('../academy-slide-designer');
+  const forbiddenNames = /\b(?:brian|dave|buster|clear\s?value)\b/i;
+  const sources = {};
+  for (const entry of SEED_LESSONS) {
+    const id = `${entry.moduleId}.${entry.lessonId}`;
+    const example = entry.example;
+    sources[example && example.source] = (sources[example && example.source] || 0) + 1;
+    assert.equal(example.source, 'authored', `${id} uses an authored example, not the auto fallback`);
+    assert.equal(example.id, id);
+    assert.deepEqual(validateExample(example), [], id);
+    // Examples are narration only: exactly three steps, none of them the example.
+    assert.equal(entry.steps.length, 3, id);
+    for (const step of entry.steps) {
+      assert.equal(step.includes(EXAMPLE_LEAD), false, `${id} step contains the example`);
+      for (const sentence of example.say) assert.equal(step.includes(sentence), false, `${id} step repeats an example sentence`);
+    }
+    // One part list for voice, slide designer and Activity client.
+    const parts = lessonParts(entry);
+    assert.deepEqual(entry.parts, parts, id);
+    assert.deepEqual(partsFor(entry), parts, id);
+    assert.deepEqual(narrationFor(entry).split('\n\n'), parts, id);
+    assert.deepEqual(parts, [entry.title, `${EXAMPLE_LEAD} ${example.say.join(' ')}`, ...entry.steps, `${CHECK_LEAD}${entry.question.prompt}`], id);
+    assert.equal(entry.exampleIndex, 1, id);
+    assert.equal(parts.at(-1), `${CHECK_LEAD}${entry.question.prompt}`, `${id} knowledge check stays last`);
+    // Original, fictional, educational: no reference-creator names anywhere in the example.
+    assert.doesNotMatch(JSON.stringify(example), forbiddenNames, id);
+  }
+  assert.deepEqual(sources, { authored: 101 });
+
+  // 9.1 pins: the steps keep the worked put contract and the example agrees with them.
+  const put = SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1);
+  assert.equal(put.question.correct, 'C');
+  assert.equal(put.question.options.C, '$2.50');
+  // The check uses different numbers, so the example never speaks an option first.
+  for (const option of Object.values(put.question.options)) {
+    if (option !== '$0') assert.equal(new RegExp(`\\${option.replace('.', '\\.')}\\b`).test(put.parts[1]), false, `9.1 example speaks the check option ${option}`);
+  }
+  assert.deepEqual([put.example.facts.strike, put.example.facts.premium, put.example.facts.breakEven, put.example.facts.netLow, put.example.facts.netHigh], [45, 2, 43, 300, -200]);
+});
+
+test('the long-form voice script is generated from the shared lesson parts and is up to date', () => {
+  const fs = require('node:fs');
+  const { OUTPUT, buildNarrationScript, lessonBlock } = require('../../scripts/build-academy-narration');
+  const text = buildNarrationScript(SEED_LESSONS);
+  let cursor = 0;
+  for (const entry of SEED_LESSONS) {
+    const id = `${entry.moduleId}.${entry.lessonId}`;
+    const [title, example, ...rest] = entry.parts;
+    const check = rest.pop();
+    const block = lessonBlock(entry);
+    const expected = [`### Lesson ${id}: ${title}`, example, ...rest.map((step, index) => `Point ${index + 1}. ${step}`), check];
+    let at = 0;
+    for (const line of expected) {
+      const found = block.indexOf(`\n${line}\n`, at);
+      assert.ok(found >= 0, `${id} voice script is missing, or reorders: ${line.slice(0, 60)}`);
+      at = found + line.length;
+    }
+    const start = text.indexOf(block, cursor);
+    assert.ok(start >= cursor, `${id} block appears in curriculum order`);
+    cursor = start + block.length;
+  }
+  const committed = fs.readFileSync(OUTPUT, 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(committed, text, 'content/making-easy-money-academy-101-lesson-voice-script.md is stale: run node scripts/build-academy-narration.js');
 });
 
 test('all 28 modules can be selected from lesson and quiz commands', () => {

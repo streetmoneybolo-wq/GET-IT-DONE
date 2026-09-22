@@ -2,18 +2,18 @@
 
 const crypto = require('node:crypto');
 const { episodeFor, splitNarration } = require('./academy/discipline-content');
+const { lessonParts } = require('./academy/lesson-parts');
 
 const DEFAULT_MODEL = 'eleven_multilingual_v2';
 const MAX_CACHE_ITEMS = 64;
 const MAX_CACHE_BYTES = 64 * 1024 * 1024;
 const REQUESTS_PER_MINUTE = 12;
 
+/* The exact text sent to ElevenLabs: the shared narration parts (title, the
+ * whiteboard "simple version" example, steps, knowledge check) joined by
+ * blank lines, so audio timing matches the slides part for part. */
 function narrationFor(lesson) {
-  return [
-    lesson.title,
-    ...(Array.isArray(lesson.steps) ? lesson.steps : []),
-    lesson.question && lesson.question.prompt ? `Knowledge check. ${lesson.question.prompt}` : ''
-  ].filter(Boolean).join('\n\n');
+  return lessonParts(lesson).join('\n\n');
 }
 
 function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL,

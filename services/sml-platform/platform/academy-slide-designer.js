@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { lessonParts, lessonPartsInfo } = require('./academy/lesson-parts');
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
 const REQUESTS_PER_MINUTE = 6;
@@ -33,13 +34,9 @@ const DESIGN_SCHEMA = Object.freeze({
   }
 });
 
-function partsFor(lesson) {
-  return [
-    lesson.title,
-    ...(Array.isArray(lesson.steps) ? lesson.steps : []),
-    lesson.question && lesson.question.prompt ? 'Knowledge check. ' + lesson.question.prompt : ''
-  ].filter(Boolean);
-}
+/* One slide per narration part. The parts come from the same shared builder
+ * the voice and the Activity client use (academy/lesson-parts.js). */
+const partsFor = lessonParts;
 
 function validText(value, max) {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
@@ -91,7 +88,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
   }
 
   async function generate(lesson, digest) {
-    const parts = partsFor(lesson);
+    const { parts, exampleIndex, example } = lessonPartsInfo(lesson);
     const source = {
       moduleId: lesson.moduleId,
       lessonId: lesson.lessonId,
@@ -99,6 +96,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       description: lesson.description,
       level: lesson.level,
       narrationParts: parts,
+      workedExample: example ? { partIndex: exampleIndex, title: example.title, say: example.say } : null,
       simulation: lesson.simulation
     };
     const response = await fetchImpl('https://api.anthropic.com/v1/messages', {
@@ -110,8 +108,8 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       },
       body: JSON.stringify({
         model,
-        max_tokens: 2200,
-        system: 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use plain language, concrete examples already present in the source, and visual structures that help a learner understand. Never invent prices, market events, performance claims, guarantees, or financial advice. Do not change the lesson facts or answer the knowledge check.',
+        max_tokens: 4000,
+        system: 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use the simplest accurate explanation first. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent prices, market events, performance claims, guarantees, or financial advice. Do not change the lesson facts or answer the knowledge check.',
         messages: [{ role: 'user', content: JSON.stringify(source) }],
         output_config: { format: { type: 'json_schema', schema: DESIGN_SCHEMA } }
       }),
