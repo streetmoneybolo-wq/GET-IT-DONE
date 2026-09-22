@@ -40,6 +40,21 @@ services:
         sync: false
       - key: SML_ALERT_ROUTER_SECRET
         sync: false
+      # --- private owner-only member email analytics; no plaintext email enters browser analytics ---
+      - key: SML_MEMBER_EMAIL_ENABLED
+        sync: false
+      - key: SML_EMAIL_ENCRYPTION_KEY
+        sync: false
+      - key: SML_EMAIL_HASH_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SML_EMAIL_FROM
+        sync: false
+      - key: SML_EMAIL_REPLY_TO
+        sync: false
+      - key: SML_EMAIL_BUSINESS_ADDRESS
+        sync: false
       # --- dispute-evidence system (all disabled until set; values live only in Render) ---
       # --- corporate accounts (disabled until all three are set; also needs SML_EVIDENCE_ENCRYPTION_KEY) ---
       - key: SML_CORPORATE_ENABLED
@@ -164,6 +179,21 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: SML_ALERT_ROUTER_SECRET
+        sync: false
+      # Must match the API service so the worker can decrypt and deliver queued messages.
+      - key: SML_MEMBER_EMAIL_ENABLED
+        sync: false
+      - key: SML_EMAIL_ENCRYPTION_KEY
+        sync: false
+      - key: SML_EMAIL_HASH_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SML_EMAIL_FROM
+        sync: false
+      - key: SML_EMAIL_REPLY_TO
+        sync: false
+      - key: SML_EMAIL_BUSINESS_ADDRESS
         sync: false
       - key: OPENAI_API_KEY
         sync: false

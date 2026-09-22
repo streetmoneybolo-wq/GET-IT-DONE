@@ -13,6 +13,7 @@ const stripeWebhook = require('./stripe-webhook');
 const Stripe = require('stripe');
 const billingService = require('./billing-service');
 const { createUpgradeChatClient } = require('./upgrade-chat');
+const { createMemberEmailService, createResendSender, stripeContact } = require('./member-email');
 const newsWebhook = require('./news-webhook');
 const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
@@ -957,6 +958,26 @@ async function handleConnectRequest(request, response, options, action) {
   }
 }
 
+async function handleMemberEmailRequest(request, response, options, action) {
+  if (!options.memberEmail) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+  if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+  const body = await readRequestBody(request, 128 * 1024);
+  if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+  const verified = verifySignature({ secret: options.billingApiSecret,
+    timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody, now: options.now() });
+  if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
+  let input;
+  try { input = JSON.parse(body.rawBody); if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid'); }
+  catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+  try { sendJson(response, 200, { ok: true, ...(await action(input)) }); }
+  catch (error) {
+    const invalid = error instanceof TypeError;
+    options.logger(invalid ? 'warn' : 'error', 'member_email_request_failed', { error });
+    sendJson(response, invalid ? 400 : 503, { ok: false, error: invalid ? 'invalid_request' : 'temporary_unavailable' });
+  }
+}
+
 async function handleNewsWebhook(request, response, options) {
   if (!contentTypeIsJson(request)) {
     sendJson(response, 415, { ok: false, error: 'content_type_required' });
@@ -1007,6 +1028,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
+  memberEmail = null,
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -1160,6 +1182,27 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'POST' && path === '/v1/connect/migration/event') {
       await handleConnectRequest(request, response, connectOptions, connectMigration.recordEvent);
+      return;
+    }
+    const memberEmailOptions = { billingApiSecret, memberEmail, logger, now };
+    if (request.method === 'POST' && path === '/v1/member-email/analytics') {
+      await handleMemberEmailRequest(request, response, memberEmailOptions, (input) => memberEmail.analytics(input));
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/member-email/sync') {
+      await handleMemberEmailRequest(request, response, memberEmailOptions, (input) => memberEmail.syncProviderRecords(input.limit));
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/member-email/consent') {
+      await handleMemberEmailRequest(request, response, memberEmailOptions, (input) => memberEmail.recordMarketingConsent(input));
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/member-email/queue-renewals') {
+      await handleMemberEmailRequest(request, response, memberEmailOptions, (input) => memberEmail.queueRenewals(input.daysBefore));
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/member-email/special-offer') {
+      await handleMemberEmailRequest(request, response, memberEmailOptions, (input) => memberEmail.queueSpecialOffer(input));
       return;
     }
     if (request.method === 'GET' && path.startsWith('/v1/connect/public/')) {
@@ -1484,6 +1527,16 @@ async function main() {
   const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : null;
   const upgradeChat = config.upgradeChatClientId && config.upgradeChatClientSecret
     ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
+  let memberEmail = null;
+  if (config.memberEmailEnabled && config.memberEmailEncryptionKey && config.memberEmailHashKey) {
+    memberEmail = createMemberEmailService({ pool: database.pool,
+      encryptionKey: config.memberEmailEncryptionKey, hashKey: config.memberEmailHashKey,
+      sender: createResendSender({ apiKey: config.resendApiKey, from: config.memberEmailFrom,
+        replyTo: config.memberEmailReplyTo }), siteUrl: config.wordpressUrl,
+      businessAddress: config.memberEmailBusinessAddress, logger: log });
+  }
+  log('info', 'member_email_runtime', { enabled: !!memberEmail,
+    delivery: !!(config.resendApiKey && config.memberEmailFrom) });
   const { createAlertRouter } = require('./alert-router');
   const alertRouter = createAlertRouter(database.pool);
   const { createDisputeRuntime } = require('./dispute-runtime');
@@ -1518,7 +1571,14 @@ async function main() {
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
     wordpressWebhookSecret: config.wordpressWebhookSecret,
-    acceptStripeEvent: disputes.wrapStripeAccept(database.acceptStripeEvent),
+    acceptStripeEvent: disputes.wrapStripeAccept(async (event) => {
+      const status = await database.acceptStripeEvent(event);
+      if (memberEmail) {
+        try { await memberEmail.upsert(stripeContact(event), event.id); }
+        catch (error) { log('error', 'member_email_stripe_sync_failed', { error, eventId: event.id }); }
+      }
+      return status;
+    }),
     paypalWebhook: disputes.paypalWebhook,
     upgradeChatWebhook: disputes.upgradeChatWebhook,
     discordInteractions: connectInteractions,
@@ -1540,7 +1600,8 @@ async function main() {
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner,
     academyDiscipline,
-    academyAppId: config.academyAppId
+    academyAppId: config.academyAppId,
+    memberEmail
   });
   let shuttingDown = false;
 
@@ -1585,6 +1646,7 @@ module.exports = {
   handleDisputeRequest,
   handleConnectRequest,
   handleCorporateRequest,
+  handleMemberEmailRequest,
   DISPUTE_ACTIONS,
   calculateWindowChange,
   calculateThreeMinuteChange

@@ -43,6 +43,7 @@ const { createPersonalFlow, createClient: createPersonalClient, createAI: create
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
 const { createUpgradeChatClient } = require('./upgrade-chat');
+const { createMemberEmailService, createResendSender } = require('./member-email');
 const { createDisputeRuntime } = require('./dispute-runtime');
 const { createCorporateRuntime } = require('./corporate-runtime');
 const {
@@ -76,6 +77,16 @@ async function main() {
   });
   const upgradeChat = config.upgradeChatClientId && config.upgradeChatClientSecret
     ? createUpgradeChatClient({ clientId: config.upgradeChatClientId, clientSecret: config.upgradeChatClientSecret }) : null;
+  let memberEmail = null;
+  if (config.memberEmailEnabled && config.memberEmailEncryptionKey && config.memberEmailHashKey) {
+    memberEmail = createMemberEmailService({ pool: database.pool,
+      encryptionKey: config.memberEmailEncryptionKey, hashKey: config.memberEmailHashKey,
+      sender: createResendSender({ apiKey: config.resendApiKey, from: config.memberEmailFrom,
+        replyTo: config.memberEmailReplyTo }), siteUrl: config.wordpressUrl,
+      businessAddress: config.memberEmailBusinessAddress, logger: log });
+  }
+  log('info', 'member_email_worker', { enabled: !!memberEmail,
+    delivery: !!(config.resendApiKey && config.memberEmailFrom) });
   /* Dispute-evidence subsystem: absent (no handlers, no sweeps, no policy)
      until SML_DISPUTE_EVIDENCE_ENABLED and its encryption key are set. */
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, wordpressNotify: wordpress, logger: log });
@@ -199,6 +210,20 @@ async function main() {
         }
       }
       const disputeSweeps = disputes.enabled ? await disputes.runSweeps() : null;
+      let memberEmailResult = null;
+      if (memberEmail) {
+        const sync = await memberEmail.syncProviderRecords(100);
+        const renewals = await memberEmail.queueRenewals(7);
+        let sent = 0;
+        let failed = 0;
+        for (let i = 0; i < 25; i += 1) {
+          const outcome = await memberEmail.processOne();
+          if (outcome === 'empty' || outcome === 'disabled') break;
+          if (outcome === 'sent') sent++;
+          else failed++;
+        }
+        memberEmailResult = { ...sync, ...renewals, sent, failed };
+      }
       /* Unchanged projections are skipped by digest, so this is one cheap
          SELECT per tick when nothing moved. Never throws. */
       const corporateProjection = corporate.enabled ? await corporate.publishProjection() : null;
@@ -206,6 +231,7 @@ async function main() {
         jobs: ['billing_outbox', 'subscription_sweep', 'news_article_pipeline', 'alert_router',
           ...(disputes.enabled ? ['dispute_evidence_sweeps'] : []),
           ...(corporate.enabled ? ['corporate_projection'] : []),
+          ...(memberEmail ? ['member_email_sync', 'renewal_email_outbox'] : []),
           ...(aiOrchestrator ? ['ai_orchestrator'] : [])],
         expired,
         promoted,
@@ -215,7 +241,8 @@ async function main() {
         alertsProcessed,
         aiTasksProcessed,
         ...(disputeSweeps ? { disputeSweeps } : {}),
-        ...(corporateProjection && corporateProjection.published ? { corporateProjectionPublished: true } : {})
+        ...(corporateProjection && corporateProjection.published ? { corporateProjectionPublished: true } : {}),
+        ...(memberEmailResult ? { memberEmail: memberEmailResult } : {})
       });
     } catch (error) {
       log('error', 'worker_database_unavailable', { error });

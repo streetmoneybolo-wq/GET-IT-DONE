@@ -560,6 +560,44 @@ function eventBody(overrides = {}) {
   });
 }
 
+test('member email analytics fails closed until the private service is configured', async () => {
+  const body = '{}';
+  await withServer({ billingApiSecret: 'billing-test-secret' }, async (base) => {
+    const response = await fetch(`${base}/v1/member-email/analytics`, {
+      method: 'POST', body, headers: signedHeaders('billing-test-secret', body)
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { ok: false, error: 'integration_unconfigured' });
+  });
+});
+
+test('member email analytics requires a valid server signature and returns owner data only after verification', async () => {
+  let calls = 0;
+  const body = JSON.stringify({ limit: 25, includeRawEmails: true });
+  const memberEmail = {
+    analytics: async (input) => {
+      calls += 1;
+      assert.deepEqual(input, { limit: 25, includeRawEmails: true });
+      return { summary: { contacts: 1 }, contacts: [{ email: 'member@example.com' }] };
+    }
+  };
+  await withServer({ billingApiSecret: 'billing-test-secret', memberEmail }, async (base) => {
+    const denied = await fetch(`${base}/v1/member-email/analytics`, {
+      method: 'POST', body, headers: signedHeaders('wrong-secret', body)
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(calls, 0);
+    const allowed = await fetch(`${base}/v1/member-email/analytics`, {
+      method: 'POST', body, headers: signedHeaders('billing-test-secret', body)
+    });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), {
+      ok: true, summary: { contacts: 1 }, contacts: [{ email: 'member@example.com' }]
+    });
+  });
+  assert.equal(calls, 1);
+});
+
 test('WordPress gateway fails closed until its secret exists', async () => {
   const body = eventBody();
   await withServer({}, async (base) => {
