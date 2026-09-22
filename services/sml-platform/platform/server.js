@@ -62,7 +62,8 @@ const academyDepthCache = new Map();
 const academyDepthInflight = new Map();
 const academyCurriculumPayload = JSON.stringify({ lessons: SEED_LESSONS.map((lesson) => ({
   moduleId: lesson.moduleId, lessonId: lesson.lessonId, title: lesson.title,
-  steps: lesson.steps, simulation: lesson.simulation
+  description: lesson.description, duration: lesson.duration, level: lesson.level,
+  steps: lesson.steps, question: lesson.question, simulation: lesson.simulation
 })) });
 const academyCurriculumPayloadGzip = zlib.gzipSync(Buffer.from(academyCurriculumPayload), {
   level: zlib.constants.Z_BEST_SPEED

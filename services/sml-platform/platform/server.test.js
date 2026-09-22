@@ -99,6 +99,12 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /render\(true\)/);
     assert.match(html, /Mute Voice/);
     assert.match(html, /voiceAudio\.muted=voiceMuted/);
+    assert.match(html, /academy-live-deck/);
+    assert.match(html, /Live synchronized lesson slides/);
+    assert.match(html, /syncVoiceDeck/);
+    assert.match(html, /requestAnimationFrame\(syncVoiceDeck\)/);
+    assert.match(html, /Starting the next lesson/);
+    assert.match(html, /All 101 Academy lessons complete/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
     assert.match(html, /TOP OF BOOK/);
