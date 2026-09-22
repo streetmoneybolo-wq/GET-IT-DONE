@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.6
+ * Version: 1.0.7
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -29,12 +29,15 @@
  * 1.0.6 (2026-09-22): advance pin 7016d20 -> 552d2f1. Group Chirp on the group page (js/group-categories.js only): chirps in
  * role-restricted channels arrive as audio-less 'held' stubs (sml-group-kick 1.5.1) and are fetched per member from /chirps,
  * one /chirps request at a time, each chirp plays once, switching Chirp on never replays old chirps, a group's first chirps play.
+ * 1.0.7 (2026-09-22): advance pin 552d2f1 -> 52b75c7. Memberships are real money (owner rule): js/group-onboarding.js Unlock opens the
+ * owner's checkout link (asks first), shows the price in dollars, links owners to Creator Studio › Groups › Payments for that group;
+ * js/creator-analytics.js shows a paid group's price in dollars. Only those two files differ.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '552d2f1c610692884e69e80c9bbb6102a054084f' );
+	define( 'SML_CDN_ASSET_REVISION', '52b75c714a32a041795e11a3e6fdd0164f1bcfd2' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
