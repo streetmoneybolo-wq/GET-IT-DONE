@@ -23,6 +23,7 @@ const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { createAcademyProgress } = require('./academy-progress');
 const { createAcademyVoice } = require('./academy-voice');
+const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 
@@ -811,7 +812,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyAppId = '',
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
+  academySlideDesigner = null, academyAppId = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -1144,6 +1146,36 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path === '/academy-activity/slide-design') {
+      if (!academySlideDesigner || !academySlideDesigner.configured) {
+        sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
+        return;
+      }
+      const session = academyOAuth && academyOAuth.verifySession(request.headers.authorization);
+      if (!session || !session.ok) {
+        sendJson(response, session?.status || 401, { ok: false, error: session?.code || 'authorization_required' });
+        return;
+      }
+      const designUserId = session.userId;
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        const result = await academySlideDesigner.getLessonDesign({
+          moduleId: params.get('moduleId'), lessonId: params.get('lessonId'), userId: designUserId
+        });
+        sendJson(response, 200, { ok: true, cached: result.cached, ...result.design });
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
+        logger(invalid ? 'warn' : 'error', 'academy_slide_design_failed', {
+          error, userId: designUserId, moduleId: params.get('moduleId'), lessonId: params.get('lessonId')
+        });
+        sendJson(response, invalid ? 400 : (limited ? 429 : 503), {
+          ok: false, error: invalid ? 'invalid_lesson' : (limited ? 'rate_limited' : 'design_temporarily_unavailable')
+        });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && /^\/academy-activity\/data\/(options|earnings)$/.test(path)) {
       if (!academyOAuth || !academyDataBridge) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -1207,6 +1239,9 @@ async function main() {
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
   });
+  const academySlideDesigner = createAcademySlideDesigner({
+    apiKey: config.anthropicApiKey, model: config.academyClaudeModel, lessons: SEED_LESSONS
+  });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -1239,7 +1274,8 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academyAppId: config.academyAppId
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner,
+    academyAppId: config.academyAppId
   });
   let shuttingDown = false;
 

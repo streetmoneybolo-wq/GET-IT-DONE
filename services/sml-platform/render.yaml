@@ -200,6 +200,8 @@ services:
         value: "0"
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: SML_ACADEMY_CLAUDE_MODEL
+        value: claude-sonnet-5
       - key: SML_AI_OPENAI_MODEL
         value: gpt-5.4-mini
       - key: SML_AI_ANTHROPIC_MODEL

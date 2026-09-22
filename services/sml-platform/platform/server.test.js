@@ -105,6 +105,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /requestAnimationFrame\(syncVoiceDeck\)/);
     assert.match(html, /Starting the next lesson/);
     assert.match(html, /All 101 Academy lessons complete/);
+    assert.match(html, /academy-activity\/slide-design/);
+    assert.match(html, /CLAUDE DESIGNED/);
+    assert.match(html, /loadClaudeDesign/);
     assert.match(html, /ANALYST DASHBOARD/);
     assert.match(html, /data-tf="1D"/);
     assert.match(html, /TOP OF BOOK/);
@@ -259,6 +262,44 @@ test('Academy lesson narration works in Discord without a session and honors aut
     assert.equal(Buffer.from(await allowed.arrayBuffer()).toString(), 'lesson-mp3');
   });
   assert.deepEqual(calls[1], { moduleId: '1', lessonId: '1', userId: 'member-123' });
+});
+
+test('Academy Claude slide design stays server-side, rate-scoped, and session-aware', async () => {
+  const calls = [];
+  const academyOAuth = {
+    verifySession: (authorization) => authorization === 'Bearer academy-session'
+      ? { ok: true, userId: 'member-123' }
+      : { ok: false, status: 401, code: 'authorization_required' }
+  };
+  const academySlideDesigner = {
+    configured: true,
+    getLessonDesign: async (input) => {
+      calls.push(input);
+      return {
+        cached: false,
+        design: {
+          provider: 'claude',
+          model: 'claude-sonnet-5',
+          slides: [{ heading: 'Auction', visual: 'Buyers and sellers meet.', callout: 'Price is discovered.', visualKind: 'auction' }]
+        }
+      };
+    }
+  };
+  await withServer({ academyOAuth, academySlideDesigner }, async (base) => {
+    const anonymous = await fetch(base + '/academy-activity/slide-design?moduleId=1&lessonId=1');
+    assert.equal(anonymous.status, 401);
+    assert.equal(calls.length, 0);
+    const allowed = await fetch(base + '/academy-activity/slide-design?moduleId=1&lessonId=1', {
+      headers: { authorization: 'Bearer academy-session' }
+    });
+    assert.equal(allowed.status, 200);
+    const payload = await allowed.json();
+    assert.equal(payload.provider, 'claude');
+    assert.equal(payload.model, 'claude-sonnet-5');
+    assert.equal(payload.slides[0].visualKind, 'auction');
+    assert.equal(JSON.stringify(payload).includes('key'), false);
+  });
+  assert.deepEqual(calls[0], { moduleId: '1', lessonId: '1', userId: 'member-123' });
 });
 
 test('Academy private data is role-session gated before the WordPress bridge is called', async () => {

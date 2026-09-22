@@ -109,6 +109,7 @@ function getConfig(env = process.env) {
     elevenLabsApiKey: String(env.ELEVENLABS_API_KEY || '').trim(),
     academyVoiceId: String(env.SML_ACADEMY_ELEVENLABS_VOICE_ID || '').trim(),
     academyVoiceModel: String(env.SML_ACADEMY_ELEVENLABS_MODEL || 'eleven_multilingual_v2').trim(),
+    academyClaudeModel: String(env.SML_ACADEMY_CLAUDE_MODEL || env.SML_AI_ANTHROPIC_MODEL || 'claude-sonnet-5').trim(),
     discordClientId: String(env.DISCORD_CLIENT_ID || '').trim(),
     discordClientSecret: String(env.DISCORD_CLIENT_SECRET || '').trim(),
     discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim()
