@@ -1,6 +1,7 @@
 'use strict';
 
 const { simulationFor } = require('./simulations');
+const { quizFor } = require('./quizzes');
 
 const LEVEL_COLOR = { Foundation: 0x00E676, Intermediate: 0xFFB400, Advanced: 0xFF3D3D };
 
@@ -121,7 +122,10 @@ function buildLesson(moduleId, lessonId, moduleTitle, level, row) {
     description: `${moduleTitle}: ${principle}`,
     duration: moduleId >= 17 ? '30 min' : '25 min', level, color: LEVEL_COLOR[level],
     steps: [principle, `Method: define the variables, assumptions, evidence, uncertainty, and conditions that would overturn the conclusion.`, `Interactive lab: ${lab}`],
-    question: {
+    /* A real knowledge check when one is authored (platform/academy/quizzes-data), otherwise the
+       original generated one. The generated form asks the same question in every lesson with the
+       same three wrong options and the answer always at A, so it tests nothing. */
+    question: quizFor(moduleId, lessonId) || {
       prompt: 'Which statement is most defensible?',
       options: { A: answer, B: 'One observation proves the conclusion in every market regime.', C: 'Uncertainty and implementation costs can be ignored.', D: 'The model guarantees the future outcome.' },
       correct: 'A', explanation: `${answer} The result remains conditional on data quality, assumptions, and context.`

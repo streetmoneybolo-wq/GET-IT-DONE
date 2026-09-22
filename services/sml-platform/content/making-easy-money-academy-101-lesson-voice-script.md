@@ -758,17 +758,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Calculate annualized returns across unequal holding periods.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A cart's yearly takings grow from $200 to $288 over two years. What is the growth per year?
 
-Option A. Annualized growth must account for both total return and elapsed time.
+Option A. 44%, the total growth across the two years
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 22%, half of the 44% total
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 20%, because 1.2 times 1.2 is 1.44
 
-Option D. The model guarantees the future outcome.
+Option D. 31%, the $88 gain measured against the $288 it ended at
 
-The best answer is option A. Annualized growth must account for both total return and elapsed time.. Annualized growth must account for both total return and elapsed time. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. 20%, because 1.2 times 1.2 is 1.44. 1.44 is 1.2 times 1.2, so each year multiplies by 1.2, which is 20% a year. The 44% is the two-year total, and halving it to 22% ignores that the second year grows on a bigger base.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -784,17 +784,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Price a level annuity and stress its discount rate.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A stand pays $60 every year forever. What is it worth today to someone who needs 4% a year?
 
-Option A. A higher discount rate lowers present value when cash flows are unchanged.
+Option A. $1,500, since 4% of $1,500 is exactly the $60 a year
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Unlimited, because the payments never stop
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $2.40, the $60 payment multiplied by 0.04
 
-Option D. The model guarantees the future outcome.
+Option D. $600, ten years of payments, since later ones hardly matter
 
-The best answer is option A. A higher discount rate lowers present value when cash flows are unchanged.. A higher discount rate lowers present value when cash flows are unchanged. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. $1,500, since 4% of $1,500 is exactly the $60 a year. A payment that never ends is worth the payment divided by the rate: $60 divided by 0.04 is $1,500. Later payments are worth less and less but never nothing, so the total is finite, not unlimited.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -810,17 +810,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compute return and variance for a three-asset weight vector.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Stand A pays $40 when it rains and $0 when it is sunny; stand B is the opposite. What does a mix of 75% A and 25% B pay?
 
-Option A. Covariances, not just individual volatilities, drive portfolio risk.
+Option A. $20 whatever the weather, since opposite stands always cancel out
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $30 on rainy days and $10 on sunny days, steadier but not flat
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $40 on rainy days and $0 on sunny days, following the bigger share
 
-Option D. The model guarantees the future outcome.
+Option D. $30 every day, three quarters of the $40 that either stand can pay
 
-The best answer is option A. Covariances, not just individual volatilities, drive portfolio risk.. Covariances, not just individual volatilities, drive portfolio risk. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. $30 on rainy days and $10 on sunny days, steadier but not flat. Rain pays 0.75 times $40 plus 0.25 times $0, which is $30, and sun pays $10. Opposite stands flatten into one figure only when the two shares are equal, so an uneven mix still swings.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -836,17 +836,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Solve a simple allocation first without and then with position limits.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Dev has $600. Stall A hopes for 10% but sells only $100; B hopes 7% and C hopes 5%, and no stall may take over $300. What is the best hoped gain?
 
-Option A. Constraints belong inside the optimization rather than being checked afterward.
+Option A. $60, the paper plan of all $600 at 10%
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $10, since only $100 of the best stall can be bought
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $31, filling the 10% and 7% stalls and stopping there
 
-Option D. The model guarantees the future outcome.
+Option D. $41, spreading $100, $300 and $200 across the three
 
-The best answer is option A. Constraints belong inside the optimization rather than being checked afterward.. Constraints belong inside the optimization rather than being checked afterward. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. $41, spreading $100, $300 and $200 across the three. $100 at 10% plus $300 at 7% plus $200 at 5% is $10 + $21 + $10 = $41. Chopping the paper plan afterwards leaves $500 idle for only $10, so the $300 cap and the $100 supply belong inside the plan.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -862,17 +862,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Approximate a bond price move with duration and convexity.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A $200 bond has duration 5 and convexity 50. Rates rise 2%, so the straight-line drop is $20. What does convexity add back?
 
-Option A. Convexity improves a linear duration estimate for larger yield changes.
+Option A. Nothing, because duration already allows for the curve
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Another $20 of loss, doubling the drop to $40
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $0.50, the same fix a 1% rise would give
 
-Option D. The model guarantees the future outcome.
+Option D. $2, lifting the estimate to about $182
 
-The best answer is option A. Convexity improves a linear duration estimate for larger yield changes.. Convexity improves a linear duration estimate for larger yield changes. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. $2, lifting the estimate to about $182. Half of 50 times 2% times 2% is 1%, and 1% of $200 is $2, so the drop is nearer $18 than $20. The fix grows with the square of the move, so a 1% rise would add only $0.50.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -892,17 +892,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Map a commodity supply shock into price and quantity effects.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A new machine lets growers bring 30 more baskets at every price, so the price drops from $3 to $2 and buyers take 15 more. Has demand shifted?
 
-Option A. A movement along a curve differs from a shift of the curve itself.
+Option A. Yes, because more baskets are bought than before
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Yes, because the balancing price moved
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. No, buyers are responding to a lower price along the same demand
 
-Option D. The model guarantees the future outcome.
+Option D. No, demand shifts only when buyer incomes change, not when supply does
 
-The best answer is option A. A movement along a curve differs from a shift of the curve itself.. A movement along a curve differs from a shift of the curve itself. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. No, buyers are responding to a lower price along the same demand. The machine changed how much growers bring at every price, so supply shifted. Buyers taking 15 more is a movement along the same demand curve, a reaction to the lower price, not a shift of demand.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -918,17 +918,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Estimate demand elasticity from a price-and-volume scenario.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A stand raises a cup from $5 to $5.50 and weekly cups fall from 200 to 160. What happens to the money it takes in?
 
-Option A. Inelastic demand changes quantity less proportionally than price.
+Option A. It falls from $1,000 to $880, since cups fell more than price rose
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. It rises from $1,000 to $1,100, since the price went up 10%
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. It rises a little, because a higher price always brings in more
 
-Option D. The model guarantees the future outcome.
+Option D. It stays at $1,000, since the price rise offsets the lost cups
 
-The best answer is option A. Inelastic demand changes quantity less proportionally than price.. Inelastic demand changes quantity less proportionally than price. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. It falls from $1,000 to $880, since cups fell more than price rose. 160 cups at $5.50 is $880, down from 200 at $5, or $1,000. Cups fell 20% while price rose only 10%, so demand is elastic and the rise loses money. Assuming the two percentages cancel is the trap.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -944,17 +944,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare competitive, oligopoly, and monopoly economics.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Two carts each keep $4 of every $6. One sits on a street anyone can rent a pitch on; the other holds the pier's only licence. Which margin is likelier to last?
 
-Option A. High current margins alone do not prove a durable moat.
+Option A. Neither, because $4 of $6 is too wide a margin for any cart to hold
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. The pier cart, because the licence keeps new carts from copying it
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. The street cart, since its margin proves it is already winning there
 
-Option D. The model guarantees the future outcome.
+Option D. Both, since they keep the same $4 today and start from the same place
 
-The best answer is option A. High current margins alone do not prove a durable moat.. High current margins alone do not prove a durable moat. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. The pier cart, because the licence keeps new carts from copying it. Both carts keep the same $4 today, so the size of the margin settles nothing. Only the pier licence stops a rival opening alongside, and a barrier like that is what makes a margin last.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -970,17 +970,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build a payoff matrix for two firms choosing capacity.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Two cafes each choose once, with no deal beforehand. Both plain pays $20 each, both fancy pays $14 each, and going fancy alone pays $24 while the other gets $8. What will each pick?
 
-Option A. A dominant strategy is optimal regardless of the rival action.
+Option A. Plain, because $20 each beats the $14 each if both go fancy
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Plain, because going fancy risks dropping to $8
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Fancy, because it pays more whatever the other cafe does
 
-Option D. The model guarantees the future outcome.
+Option D. Fancy, but only if the other cafe is expected to stay plain
 
-The best answer is option A. A dominant strategy is optimal regardless of the rival action.. A dominant strategy is optimal regardless of the rival action. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. Fancy, because it pays more whatever the other cafe does. Fancy pays $24 against a plain rival and $14 against a fancy one, beating plain at $20 and $8, so it wins either way and is dominant. Both end on $14 although both plain paid $20 each.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -996,17 +996,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Classify a financing choice as signal, screening device, or incentive.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Good scooters are worth $200 and duds $80. A guarantee costs a good seller $30 but a dud seller $40. Does it separate them?
 
-Option A. A costly signal is credible only when weaker types find it harder to imitate.
+Option A. Yes, since it still costs a dud seller more than a good one
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Yes, because $30 is a real cost the good seller has to pay
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. No, because buyers cannot check the repair work themselves
 
-Option D. The model guarantees the future outcome.
+Option D. No, a dud seller nets $160 by copying it, well above $80
 
-The best answer is option A. A costly signal is credible only when weaker types find it harder to imitate.. A costly signal is credible only when weaker types find it harder to imitate. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. No, a dud seller nets $160 by copying it, well above $80. Copying pays a dud seller $200 minus $40, or $160, far more than the $80 he gets without the promise, so every dud copies and buyers learn nothing. Costing more for duds is not enough on its own.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1026,17 +1026,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Reconcile consumption, investment, government, and net exports.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. An island made 200 pairs of socks at $5 last year and 220 pairs at $6 this year. How much did its real GDP grow?
 
-Option A. Real GDP removes the effect of changing prices with a price index.
+Option A. 32%, because $1,320 is 32% above $1,000
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 10%, because 220 pairs at last year's $5 is $1,100
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 20%, because prices rose from $5 to $6, a fifth more
 
-Option D. The model guarantees the future outcome.
+Option D. 12%, the 32% rise less the 20% price rise
 
-The best answer is option A. Real GDP removes the effect of changing prices with a price index.. Real GDP removes the effect of changing prices with a price index. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. 10%, because 220 pairs at last year's $5 is $1,100. Real GDP counts this year's 220 pairs at last year's $5, or $1,100, a 10% rise. The $1,320 total is up 32%, but most of that is bigger price tags, and subtracting 20% from 32% is not the answer.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1052,17 +1052,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare an inflation surprise with breakeven changes.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A regular bond pays 5% and a protected one 1.5% plus inflation. The regular bond then moves to 5.5% and the protected one does not. What is the new gap, and what does it mean?
 
-Option A. Breakevens include inflation expectations plus risk and liquidity premia.
+Option A. 4%, though the rise may be more pay for inflation risk, not a forecast
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 4%, and inflation will now average exactly 4% over the bonds' life
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 0.5%, since the gap is the size of the move in the regular bond
 
-Option D. The model guarantees the future outcome.
+Option D. 3.5%, because only the protected bond's rate can move the gap
 
-The best answer is option A. Breakevens include inflation expectations plus risk and liquidity premia.. Breakevens include inflation expectations plus risk and liquidity premia. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. 4%, though the rise may be more pay for inflation risk, not a forecast. 5.5% less 1.5% is a 4% gap, half a point wider than before. That extra half point may be a higher inflation guess or simply more pay for taking inflation risk, so a breakeven is a clue, not a forecast.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1078,17 +1078,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Interpret a payroll gain alongside rising unemployment.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A town has 285 of its 300 workers employed. Firms add 30 jobs and 50 more people start looking. What is the new jobless rate?
 
-Option A. Payrolls and unemployment can diverge because they use different surveys and denominators.
+Option A. Still 5%, because the new jobs roughly match the new seekers
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Under 5%, since 30 more people are working than before
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 10%, because 35 of the 350 in the workforce are looking
 
-Option D. The model guarantees the future outcome.
+Option D. About 12%, the 35 looking divided by the old workforce of 300
 
-The best answer is option A. Payrolls and unemployment can diverge because they use different surveys and denominators.. Payrolls and unemployment can diverge because they use different surveys and denominators. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. 10%, because 35 of the 350 in the workforce are looking. Working rises to 315 and the workforce to 350, so 35 are looking: 35 divided by 350 is 10%, up from 5%. The job count comes from firms while the rate divides by a workforce that grew too.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1104,17 +1104,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Trace a hawkish surprise across bonds, banks, growth stocks, and FX.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Everyone expects a 0.75% rate rise, but the bank raises only 0.25%. A bond moves 4% for each 1% of surprise. What happens to it?
 
-Option A. Asset prices react to the surprise relative to expectations, not the announcement alone.
+Option A. It falls about 1%, since rates still went up by 0.25%
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. It rises about 2%, since the rise was 0.5% smaller than expected
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. It falls about 3%, since 4 times 0.75% is 3%
 
-Option D. The model guarantees the future outcome.
+Option D. It barely moves, because a quarter-point rise is too small to matter
 
-The best answer is option A. Asset prices react to the surprise relative to expectations, not the announcement alone.. Asset prices react to the surprise relative to expectations, not the announcement alone. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. It rises about 2%, since the rise was 0.5% smaller than expected. The surprise is 0.25% minus 0.75%, or half a percent less tightening than was priced in, so the bond gains about 4 times 0.5%, or 2%. Marking it down because the headline says rates rose is the trap.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1130,17 +1130,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Map a currency appreciation into exporters and importers.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A firm earns 500 Marks abroad. A Mark was worth $2 and is now worth $2.50. What happens to its dollar earnings?
 
-Option A. A stronger home currency can reduce translated foreign earnings, all else equal.
+Option A. They fall to $200, dividing the 500 Marks by the new $2.50 rate
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. They stay at $1,000, because nothing changed abroad
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. They rise to $1,250 only if the firm also sells more goods abroad
 
-Option D. The model guarantees the future outcome.
+Option D. They rise to $1,250, a 25% gain with no change in sales
 
-The best answer is option A. A stronger home currency can reduce translated foreign earnings, all else equal.. A stronger home currency can reduce translated foreign earnings, all else equal. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. They rise to $1,250, a 25% gain with no change in sales. 500 Marks at $2.50 is $1,250, up from $1,000, a 25% gain with no change in sales. Dividing by the rate instead of multiplying is the usual slip, and a weaker home currency helps an exporter.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1160,17 +1160,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare normal loss estimates with an empirical tail.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A model says a 6% daily drop should come about 1 day in 1,000. Over 2,000 days a fund had 8. What does that suggest?
 
-Option A. Fat tails make extreme observations more frequent than a normal model predicts.
+Option A. Roughly four times as many big drops as the bell curve expected
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. About six times as many, the usual gap when tails are fat
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. The model held up, since 8 days out of 2,000 is still rare
 
-Option D. The model guarantees the future outcome.
+Option D. The model expected about 1 such day, so it was off by 7
 
-The best answer is option A. Fat tails make extreme observations more frequent than a normal model predicts.. Fat tails make extreme observations more frequent than a normal model predicts. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Roughly four times as many big drops as the bell curve expected. About 1 day in 1,000 means roughly 2 days in 2,000, and 8 divided by 2 is 4, so extreme drops arrived about four times as often as the bell curve allowed. That is what a fat tail looks like.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1186,17 +1186,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Construct and interpret a confidence interval for mean return.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A fund averages 2% a month over 36 months with a standard wiggle of 6%. What is the rough 95% range for its true average?
 
-Option A. A confidence interval describes a repeated-sampling procedure, not a probability that a fixed parameter moved.
+Option A. -10% to 14%, the average give or take two standard wiggles
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 1.67% to 2.33%, dividing the 6% wiggle by the 36 months
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 0% to 4%, since the 2% could be out by about 2% in either direction
 
-Option D. The model guarantees the future outcome.
+Option D. Exactly 2%, since 36 months is enough data to settle the question
 
-The best answer is option A. A confidence interval describes a repeated-sampling procedure, not a probability that a fixed parameter moved.. A confidence interval describes a repeated-sampling procedure, not a probability that a fixed parameter moved. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. 0% to 4%, since the 2% could be out by about 2% in either direction. The average wiggles less than a single month does: its standard error is 6% divided by the square root of 36, or 1%, and two errors either side of 2% gives 0% to 4%. Using the 6% wiggle itself is far too wide.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1212,17 +1212,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Test a mean return and subtract estimated trading costs.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A rule beats chance by $0.40 a trade with a standard error of $0.10, but fees cost $0.60 a trade. Over 2,500 trades, what happens?
 
-Option A. A tiny effect can be statistically significant yet economically useless.
+Option A. It makes $1,000, since $0.40 across 2,500 trades is a tested gain
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. It breaks even, because the test showed the edge is real
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. It makes $500, since the edge is 4 times its own error
 
-Option D. The model guarantees the future outcome.
+Option D. It loses $500, since $0.40 less $0.60 leaves minus $0.20 a trade
 
-The best answer is option A. A tiny effect can be statistically significant yet economically useless.. A tiny effect can be statistically significant yet economically useless. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. It loses $500, since $0.40 less $0.60 leaves minus $0.20 a trade. The edge is 4 times its $0.10 error, so it is unlikely to be luck, yet costs of $0.60 swallow it: minus $0.20 a trade across 2,500 trades is minus $500. Statistically real is not the same as worth doing.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1238,17 +1238,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Diagnose omitted-variable bias in a valuation regression.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Shops with 10 staff take $500 a day and shops with 30 take $1,500. Two shops on one busy street both take $1,500, with 20 and 25 staff. What does that show?
 
-Option A. Correlation after controls is not automatically causal evidence.
+Option A. Each extra staff member adds $50 a day, as the first comparison showed
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. The busy street drives both staff numbers and sales, so staff may add nothing
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Five more staff adds $1,500 a day once a shop is on a busy street
 
-Option D. The model guarantees the future outcome.
+Option D. Staff and sales are unrelated, so the first comparison was pure chance
 
-The best answer is option A. Correlation after controls is not automatically causal evidence.. Correlation after controls is not automatically causal evidence. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. The busy street drives both staff numbers and sales, so staff may add nothing. On one busy street, 5 extra staff added nothing, so the $50 a head came from busy streets having both more staff and more shoppers. Going together is not causing, but it does not mean unrelated either.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1264,17 +1264,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Run a walk-forward forecast across a regime break.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A stand sold about 30 cups a day until a festival lifted it to 50. A walk-forward test trained on the quiet days predicts the first festival day. What error does it report?
 
-Option A. Random train-test shuffling can leak future regimes into financial models.
+Option A. Roughly 40%, a 20-cup gap between the guess of 30 and the true 50
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Near zero, because walk-forward tests are more accurate than shuffled ones
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. About 67%, comparing the 20-cup miss with the 30 cups it guessed
 
-Option D. The model guarantees the future outcome.
+Option D. None, since the festival days were never in the training data
 
-The best answer is option A. Random train-test shuffling can leak future regimes into financial models.. Random train-test shuffling can leak future regimes into financial models. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Roughly 40%, a 20-cup gap between the guess of 30 and the true 50. It guesses 30 against a real 50, a 20-cup miss, and 20 divided by 50 is 40%. Walk-forward does not make the model better; it reports the honest error that a shuffled test would hide.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1294,17 +1294,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Reconcile bookings, billings, revenue, and deferred revenue.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A gym collects $600 up front for 10 months of classes and has run 4 of them. What has it earned so far?
 
-Option A. Cash collection and revenue recognition can occur in different periods.
+Option A. $600, because all of the cash is already in the bank
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $240, the four months already delivered
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $360, the part of the plan not yet delivered
 
-Option D. The model guarantees the future outcome.
+Option D. $60, one month of classes
 
-The best answer is option A. Cash collection and revenue recognition can occur in different periods.. Cash collection and revenue recognition can occur in different periods. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. $240, the four months already delivered. $600 divided by 10 months is $60 a month, and 4 months delivered is $240 earned. The other $360 is still owed as classes, so cash day and revenue day are not the same day.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1320,17 +1320,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Trace an inventory build through all three statements.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Sales grew 8% while unsold stock rose from $400 to $580. What has that done to the cash the shop is holding this year?
 
-Option A. Inventory growth faster than sales can indicate stocking, slowdown, or strategy and needs context.
+Option A. Nothing: stock is an asset, so the shop is exactly as well off
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Cash rose $180, because stock on the shelf counts as cash
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $180 of cash now sits in goods on the shelf, not in the bank
 
-Option D. The model guarantees the future outcome.
+Option D. Profit fell $180, because goods that have not sold are a loss
 
-The best answer is option A. Inventory growth faster than sales can indicate stocking, slowdown, or strategy and needs context.. Inventory growth faster than sales can indicate stocking, slowdown, or strategy and needs context. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. $180 of cash now sits in goods on the shelf, not in the bank. $580 less $400 is $180 more tied up in goods, so that money sits on the shelf rather than in the bank. Nothing is a loss yet and profit is untouched until the goods sell or are marked down.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1346,17 +1346,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare expensing with capitalization for the same investment.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A $2,000 machine lasting 4 years is spread over its life instead of charged all at once. Over the 4 years together, what changes?
 
-Option A. Capitalizing a cost raises current profit but creates future amortization or impairment risk.
+Option A. Total profit is $2,000 higher, because the cost is spread out
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Nothing changes in any year: the two ways look identical
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Total profit is lower, since the machine is charged four times over
 
-Option D. The model guarantees the future outcome.
+Option D. Total profit is the same; only which year carries the cost moves
 
-The best answer is option A. Capitalizing a cost raises current profit but creates future amortization or impairment risk.. Capitalizing a cost raises current profit but creates future amortization or impairment risk. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. Total profit is the same; only which year carries the cost moves. Either way the machine costs $2,000 in total. Spreading charges $500 a year, so it lifts year one by $1,500 and pushes that cost into later years, leaving value on the books to write off if the machine dies early.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1372,17 +1372,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build an adjusted leverage bridge including leases and pensions.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A shop owes $100 to the bank, $200 on store leases and $100 in pensions, and earns $80 a year after $20 of rent. Promises to earnings?
 
-Option A. Enterprise risk depends on economic claims, not only the debt line item.
+Option A. 5 times: $400 of promises divided by $80
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 4 times: $400 of promises divided by $100
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 1.25 times: only the $100 bank loan counts as debt
 
-Option D. The model guarantees the future outcome.
+Option D. 3 times: $300 divided by $100, leaving the pensions out
 
-The best answer is option A. Enterprise risk depends on economic claims, not only the debt line item.. Enterprise risk depends on economic claims, not only the debt line item. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. 4 times: $400 of promises divided by $100. Leases and pensions are promises to pay too, so the total is $400. Because rent is now counted as debt, add the $20 of rent back to earnings: $400 divided by $100 is 4 times, not the 1.25 times the loan line suggests.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1398,17 +1398,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Create a forensic checklist for a profit-to-cash divergence.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Profit is $400 but operating cash is only $100, and unpaid customer bills rose $300. Which finding would show the gap was only timing?
 
-Option A. A red flag is a reason to investigate, not a verdict.
+Option A. The gap is smaller than the one the shop reported last year
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. An auditor signed the accounts, so the figures were checked
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. The buyers paid up in January, once the year had closed
 
-Option D. The model guarantees the future outcome.
+Option D. One new buyer owes the whole $300 and nobody can trace it
 
-The best answer is option A. A red flag is a reason to investigate, not a verdict.. A red flag is a reason to investigate, not a verdict. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. The buyers paid up in January, once the year had closed. Money arriving in January means the sales were real and simply landed after the year end, which is timing. An untraceable single buyer points the other way, and a signature settles nothing.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1428,17 +1428,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build an NPV model that excludes sunk costs.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A $200 survey is already paid for. A cart costs $500 today and brings $660 in a year, and money is worth 10%. What value does the cart add?
 
-Option A. Sunk costs are already incurred and are not incremental to the decision.
+Option A. Plus $100, the $600 value today less the $500 spent now
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Minus $100, once the $200 survey is subtracted
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Plus $160: $660 minus $500, with no discounting
 
-Option D. The model guarantees the future outcome.
+Option D. Minus $40: $660 minus the $500 cart and the $200 survey
 
-The best answer is option A. Sunk costs are already incurred and are not incremental to the decision.. Sunk costs are already incurred and are not incremental to the decision. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Plus $100, the $600 value today less the $500 spent now. $660 divided by 1.1 is $600, and $600 minus the $500 spent now is plus $100. The $200 survey is gone whatever is decided, so subtracting it would hide a project that adds value.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1454,17 +1454,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Estimate WACC and stress beta, credit spread, and tax rate.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Owners supply 70% of the money and want 10%; loans supply 30% at 8%, and the tax rate is 25%. What is the blended cost of money?
 
-Option A. A corporate WACC should not discount every project regardless of project risk.
+Option A. 9.4%, using the 8% loan rate before any tax saving
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 9%, the plain average of 10% and 8%
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 8.8%, blending the owners and the loans after tax
 
-Option D. The model guarantees the future outcome.
+Option D. 10%, the return the owners want
 
-The best answer is option A. A corporate WACC should not discount every project regardless of project risk.. A corporate WACC should not discount every project regardless of project risk. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. 8.8%, blending the owners and the loans after tax. Interest cuts the tax bill, so the loans really cost 8% times 0.75, or 6%. Then 0.7 times 10% plus 0.3 times 6% is 8.8%. Using 8% before tax overstates what borrowing costs.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1480,17 +1480,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare financing plans under recession and expansion cases.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A plan puts in $1,000 of the owners' money and borrows $1,000 at 8%. In a bad year the business earns $60. What do the owners earn?
 
-Option A. Optimal leverage balances benefits against expected distress and constraint costs.
+Option A. 6%: $60 divided by the $1,000 of owners' money
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 3%, the same as a plan with no loan at all
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Minus 8%, because the loan charges 8%
 
-Option D. The model guarantees the future outcome.
+Option D. Minus 2%, once the $80 of interest is paid first
 
-The best answer is option A. Optimal leverage balances benefits against expected distress and constraint costs.. Optimal leverage balances benefits against expected distress and constraint costs. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. Minus 2%, once the $80 of interest is paid first. Interest of $80 is paid first, so owners are left with $60 minus $80, or minus $20 on their $1,000. With no loan the same $60 would be a small gain of 3%: borrowing stretches both good and bad years.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1506,17 +1506,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Reconcile gross buybacks with net share-count change.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A firm with 2,000 shares buys back 100 of them and hands staff 130 new shares as pay. What is the net change?
 
-Option A. A repurchase may fail to reduce shares when issuance and compensation offset it.
+Option A. Plus 30 shares, so every holder owns a slightly smaller slice
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Minus 100 shares, the size of the buyback
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Minus 230 shares, since buybacks and grants both remove shares
 
-Option D. The model guarantees the future outcome.
+Option D. No change, because the buyback cash paid for the grants
 
-The best answer is option A. A repurchase may fail to reduce shares when issuance and compensation offset it.. A repurchase may fail to reduce shares when issuance and compensation offset it. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Plus 30 shares, so every holder owns a slightly smaller slice. 2,000 minus 100 plus 130 is 2,030 shares, which is 30 more than before. The buyback headline hides the grants, so a holder ends up with a smaller share of the company even though cash went out.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1532,17 +1532,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build an accretion and value-creation bridge.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. After a deal, earnings per share rise from $1.50 to $1.60, but the target was worth $250 and cost $400. What really happened?
 
-Option A. EPS accretion can occur even when an acquisition destroys economic value.
+Option A. Value was created, because earnings per share went up
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Value was destroyed by $150, even though earnings per share rose
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Nothing changed: earnings per share and value always move together
 
-Option D. The model guarantees the future outcome.
+Option D. Value was created by $150, the premium paid over the target's worth
 
-The best answer is option A. EPS accretion can occur even when an acquisition destroys economic value.. EPS accretion can occur even when an acquisition destroys economic value. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. Value was destroyed by $150, even though earnings per share rose. Cheap borrowing can lift earnings per share while the buyer still overpays. Paying $400 for something worth $250 throws away $150, and earnings per share say nothing about the price paid.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1562,17 +1562,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Estimate beta and separate total from systematic risk.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A share tends to move 8% when the market moves 4%. With a 2% safe rate and an expected 7% market return, what does the model expect?
 
-Option A. Beta measures market covariance, not the full probability of loss.
+Option A. 12%: 2% safe plus 2 times the 5% market premium
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 14%: sensitivity of 2 times the 7% market return
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 16%: the 2% safe rate plus 2 times 7%
 
-Option D. The model guarantees the future outcome.
+Option D. 8%, the size of the share's own move
 
-The best answer is option A. Beta measures market covariance, not the full probability of loss.. Beta measures market covariance, not the full probability of loss. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. 12%: 2% safe plus 2 times the 5% market premium. Sensitivity is 8% divided by 4%, or 2, and the extra pay for market risk is 7% minus 2%, or 5%. So 2% plus 2 times 5% is 12%. Multiplying by the whole 7% counts the safe rate twice.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1588,17 +1588,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Decompose a portfolio into market, size, value, quality, and momentum.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A fund gained 15%. Market exposure explains 9%, its small tilt 2% and its cheap tilt 3%. What does the rest tell you?
 
-Option A. Factor labels describe modeled exposure rather than guaranteed causal engines.
+Option A. That the manager has real skill, since the factors cannot explain it
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. That the model is broken, because the pieces must add to the total
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 1% the chosen factors miss, which one year cannot pin on skill
 
-Option D. The model guarantees the future outcome.
+Option D. That the fee was 1%, the only thing left to explain the gap
 
-The best answer is option A. Factor labels describe modeled exposure rather than guaranteed causal engines.. Factor labels describe modeled exposure rather than guaranteed causal engines. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. 1% the chosen factors miss, which one year cannot pin on skill. 9% plus 2% plus 3% is 14%, so 1% of the 15% is left. That leftover is whatever the chosen factors do not capture, and a single year of it cannot separate skill from luck.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1614,17 +1614,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Value a firm whose accounting book value is informative.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A shop uses $3,000 of the owners' money that has to earn 10% a year, and it earns $240 a year forever. What is the shop worth?
 
-Option A. Positive accounting profit can coexist with negative residual income.
+Option A. More than $3,000, because the profit is positive
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Exactly $3,000: the owners' money is all still in the shop
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Less: about $2,940, the $3,000 minus one year of the shortfall
 
-Option D. The model guarantees the future outcome.
+Option D. Less: about $2,400, since it misses the bar by $60 every year
 
-The best answer is option A. Positive accounting profit can coexist with negative residual income.. Positive accounting profit can coexist with negative residual income. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. Less: about $2,400, since it misses the bar by $60 every year. The bar is $3,000 times 10%, or $300 a year, and $240 falls $60 short. Missing by $60 forever costs $60 divided by 10%, or $600, so the shop is worth $2,400. Real profit can still destroy value.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1640,17 +1640,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Value a staged investment with an abandonment decision.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A $40 test comes before a $300 build that is worth $700 half the time and $100 half the time. What is it worth if he can stop after the test?
 
-Option A. Flexibility is valuable when uncertainty exists and decisions can adapt.
+Option A. Plus $160, once the $40 test and the good half are counted
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Plus $60, the same as building no matter what
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Plus $400, the average value of the finished project
 
-Option D. The model guarantees the future outcome.
+Option D. Plus $360: $700 minus the $300 build and the $40 test
 
-The best answer is option A. Flexibility is valuable when uncertainty exists and decisions can adapt.. Flexibility is valuable when uncertainty exists and decisions can adapt. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Plus $160, once the $40 test and the good half are counted. He pays $40, then builds only in the good half: minus $40 plus 50% of ($700 minus $300) is $160. Building regardless averages $400 against $340 spent, just $60, so the freedom to stop is worth $100.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1666,17 +1666,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Reverse-engineer revenue growth and margins from enterprise value.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A business priced at $900 must return 10% a year, and today it earns $60 on $600 of sales. What does that price quietly assume?
 
-Option A. Reverse valuation exposes embedded expectations rather than declaring one true value.
+Option A. That sales stay at $600 and the margin stays at 10%
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. That profit reaches $90, say sales of $900 at the same margin
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. That the business is really worth $600, the level of its sales
 
-Option D. The model guarantees the future outcome.
+Option D. That profit doubles, to $120 a year
 
-The best answer is option A. Reverse valuation exposes embedded expectations rather than declaring one true value.. Reverse valuation exposes embedded expectations rather than declaring one true value. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. That profit reaches $90, say sales of $900 at the same margin. $900 times 10% is $90 a year, up from $60, a rise of half. That could come from sales of $900 at the same 10% margin or a 15% margin on the sales it already has, not from a doubling.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1696,17 +1696,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build a frontier and perturb one expected-return input.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. An optimizer splits $90 evenly across three funds that move almost together. One guessed return is nudged up half a point. What happens?
 
-Option A. Small input errors can cause extreme changes in optimized weights.
+Option A. Nothing: the funds are near twins, so the even split holds
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. That fund gains a little, perhaps a dollar or two
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. The split can swing hard toward that fund, up to the whole $90
 
-Option D. The model guarantees the future outcome.
+Option D. The optimizer moves money away from it, to hold the risk down
 
-The best answer is option A. Small input errors can cause extreme changes in optimized weights.. Small input errors can cause extreme changes in optimized weights. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. The split can swing hard toward that fund, up to the whole $90. When holdings move almost together the optimizer sees nearly the same risk everywhere, so it chases the highest guess and a tiny input change can move most of the money. Test other guesses and add limits.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1722,17 +1722,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare calendar, threshold, and cash-flow rebalancing.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A 50/50 split of $1,000 has drifted to $700 in stocks and $500 in bonds. How much moves to get back to plan?
 
-Option A. Rebalancing controls allocation; it does not guarantee higher returns.
+Option A. $100 from stocks to bonds, back to an even split
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $200 from stocks to bonds, the whole gain
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $100 from bonds to stocks, to follow the winner
 
-Option D. The model guarantees the future outcome.
+Option D. Nothing: selling the winner gives up future profit
 
-The best answer is option A. Rebalancing controls allocation; it does not guarantee higher returns.. Rebalancing controls allocation; it does not guarantee higher returns. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. $100 from stocks to bonds, back to an even split. The pot is now $1,200, so half of it is $600 and $100 of stocks moves across. Moving the whole $200 gain would overshoot to $500 of stocks, below the plan rather than on it.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1748,17 +1748,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Stress an endowment during a simultaneous drawdown and capital call.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A fund can sell $60M of its holdings. That slice falls 20%, then $8M of bills and a $20M call come due. What can still be sold?
 
-Option A. A long horizon does not eliminate near-term liquidity obligations.
+Option A. $32M: $60M minus the $28M paid out
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $48M, the value before the bills are paid
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $20M, once the fall and both payments are taken out
 
-Option D. The model guarantees the future outcome.
+Option D. $28M, because a long horizon lets the $8M of bills wait
 
-The best answer is option A. A long horizon does not eliminate near-term liquidity obligations.. A long horizon does not eliminate near-term liquidity obligations. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. $20M, once the fall and both payments are taken out. $60M times 80% is $48M after the fall, and $48M less $8M less $20M leaves $20M. Starting from $60M forgets the drop, and a long horizon does not let bills due this year wait.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1774,17 +1774,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Explain active return against a stated benchmark.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A fund allowed to buy only bonds returned 5%. A stock index returned 3% and the bond index returned 7%. How did it do?
 
-Option A. A benchmark must reflect the mandate before performance can be judged fairly.
+Option A. It beat the market by 2 points, since the stock index is the market
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. It trailed by 2 points, judged against the index it was allowed to buy
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. It is level, judged against the average of the two indexes at 5%
 
-Option D. The model guarantees the future outcome.
+Option D. It beat one and trailed the other, so the two results cancel out
 
-The best answer is option A. A benchmark must reflect the mandate before performance can be judged fairly.. A benchmark must reflect the mandate before performance can be judged fairly. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. It trailed by 2 points, judged against the index it was allowed to buy. A bond-only fund is judged against bonds, so 5% against 7% is a 2-point shortfall. The stock index is the wrong yardstick, and averaging the two invents a benchmark nobody set.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1800,17 +1800,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare gross alpha with net, risk-adjusted, capacity-aware results.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A manager returns 11% and charges a 1.5% fee; an index returns 10% and charges 0.1%. Where does an investor keep more?
 
-Option A. Past outperformance alone is weak evidence of persistent skill.
+Option A. With the manager: 11% beats the index return of 10%
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. The same either way: the extra 1% covers the 1.5% fee
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. It cannot be compared, since fees and returns are separate things
 
-Option D. The model guarantees the future outcome.
+Option D. With the index: 9.9% kept a year against the manager's 9.5%
 
-The best answer is option A. Past outperformance alone is weak evidence of persistent skill.. Past outperformance alone is weak evidence of persistent skill. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. With the index: 9.9% kept a year against the manager's 9.5%. 11% minus 1.5% leaves 9.5%, while 10% minus 0.1% leaves 9.9%. The 1-point lead is smaller than the fee gap, and the fee is charged every single year.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1830,17 +1830,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Price a coupon bond and compare current yield with yield to maturity.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A one-year bond costs $90 today and pays $8 of interest plus the $100 back. What is its yield to maturity?
 
-Option A. Yield to maturity assumes reinvestment and holding conditions that may not occur.
+Option A. 8.9%, the $8 of interest divided by the $90 paid today
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 20%, the $18 gained measured against the $90 actually paid
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 8%, the interest measured against the $100 face value
 
-Option D. The model guarantees the future outcome.
+Option D. 18%, the $18 gained divided by the $100 face value
 
-The best answer is option A. Yield to maturity assumes reinvestment and holding conditions that may not occur.. Yield to maturity assumes reinvestment and holding conditions that may not occur. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. 20%, the $18 gained measured against the $90 actually paid. $108 comes back for the $90 paid, an $18 gain on that $90, which is 20%. Current yield counts only the $8 of interest, so it misses the $10 climb from $90 back up to $100.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1856,17 +1856,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Estimate key-rate exposures across the yield curve.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Pile A is one 4-year bond; pile B is half a 1-year and half a 7-year bond, so both have duration 4. Short rates rise 1%, long rates fall 1%, middle rates hold. What happens to pile B?
 
-Option A. Two bonds with equal duration can respond differently to a curve twist.
+Option A. It falls about 4%, the drop its duration of 4 implies
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Nothing, because the 1% rise and the 1% fall cancel out
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. It gains about 3%, once both halves are counted
 
-Option D. The model guarantees the future outcome.
+Option D. It loses about 1%, the move of its short half alone
 
-The best answer is option A. Two bonds with equal duration can respond differently to a curve twist.. Two bonds with equal duration can respond differently to a curve twist. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. It gains about 3%, once both halves are counted. The short half loses about 1% and the long half gains about 7%, so half of each is near plus 3%. Pile A sits on the middle rate and barely moves, although duration says the two should match.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1882,17 +1882,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build a downside debt-service and recovery waterfall.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A $100 loan promises 15%, but 2 times in 10 the borrower fails and returns only $50. What return can the lender expect?
 
-Option A. A high yield can compensate for risk or signal expected impairment; it is not free return.
+Option A. 15%, the rate the borrower promised
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 12%: the 15% cut back by the one-in-five failure rate
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 7.5%, the average of 15% and nothing
 
-Option D. The model guarantees the future outcome.
+Option D. 2%, once one failure in five is averaged in
 
-The best answer is option A. A high yield can compensate for risk or signal expected impairment; it is not free return.. A high yield can compensate for risk or signal expected impairment; it is not free return. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. 2%, once one failure in five is averaged in. 0.8 times $115 plus 0.2 times $50 is $102, a 2% return on the $100 lent. Trimming the 15% to 12% forgets that a failure also loses part of the $100 itself, not just the interest.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1908,17 +1908,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Allocate losses across an example capital structure.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A $200 loan pool is sliced Senior $150, Middle $30 and Junior $20, and $60 of loans fail. What does the Senior slice lose?
 
-Option A. Seniority changes loss timing and probability but does not eliminate underlying asset risk.
+Option A. $10, the loss the two lower slices could not absorb
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Nothing, because seniority removes the risk of loss
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $45, its three-quarters share of the $60 lost
 
-Option D. The model guarantees the future outcome.
+Option D. $40, the loss left over once Junior is gone
 
-The best answer is option A. Seniority changes loss timing and probability but does not eliminate underlying asset risk.. Seniority changes loss timing and probability but does not eliminate underlying asset risk. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. $10, the loss the two lower slices could not absorb. Losses climb from the bottom: Junior absorbs $20 and Middle $30, so the last $10 hits Senior, about 7% of its $150. Being senior delays and shrinks a loss; it does not remove it.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1934,17 +1934,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Simulate a margin spiral after a collateral decline.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Bonds fall to $190 and the haircut rises to 20%, so the lender will fund only $152 while $180 is owed. How much must be sold?
 
-Option A. Forced deleveraging can create feedback between prices and funding constraints.
+Option A. $28, the size of the gap the lender will not fund
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $35, the gap divided by the 80% funding rate
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $152, the new borrowing limit
 
-Option D. The model guarantees the future outcome.
+Option D. $140, since each $1 sold closes only $0.20 of the gap
 
-The best answer is option A. Forced deleveraging can create feedback between prices and funding constraints.. Forced deleveraging can create feedback between prices and funding constraints. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. $140, since each $1 sold closes only $0.20 of the gap. Selling $1 of bonds repays $1 but also cuts the borrowing limit by $0.80, closing only $0.20 of the gap, so $28 divided by $0.20 is $140. Selling just the $28 leaves the loan still too big.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1964,17 +1964,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Calculate fair value and diagnose a basis difference.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Coffee costs $200 today, a year of storage costs $6, and $10 of interest is given up. Everyone expects $190 next year. What is the fair one-year futures price?
 
-Option A. Futures price and expected spot price are distinct concepts.
+Option A. $190
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $216
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $206
 
-Option D. The model guarantees the future outcome.
+Option D. $200
 
-The best answer is option A. Futures price and expected spot price are distinct concepts.. Futures price and expected spot price are distinct concepts. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. $216. Carry is added to today's price: $200 + $10 of interest + $6 of storage = $216. The $190 forecast does not set the futures price, and $206 forgets the interest given up.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -1990,17 +1990,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Map fixed-versus-floating payments after a rate shock.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Nadia owes $2,000 at a floating rate and swapped into a fixed 4%. Rates rise to 9% and her swap partner fails. What does the loan cost her a year now?
 
-Option A. A swap can hedge rate exposure while adding counterparty and basis risk.
+Option A. $80, because the fixed rate is locked in
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $260, because she pays both the fixed and the floating
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $180, the floating cost with no swap to offset it
 
-Option D. The model guarantees the future outcome.
+Option D. $100, the extra the swap had been covering
 
-The best answer is option A. A swap can hedge rate exposure while adding counterparty and basis risk.. A swap can hedge rate exposure while adding counterparty and basis risk. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. $180, the floating cost with no swap to offset it. The swap held her cost at $80 only while the partner paid the floating leg. With the partner gone she owes 9% of $2,000, or $180, on the loan itself.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2016,17 +2016,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Find the mispriced leg in a parity table.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A stock is $68 with a $65 strike, so call minus put should be $3. The market shows $4, and trading every leg costs $0.60. What is left?
 
-Option A. A parity violation must exceed transaction, funding, borrow, and execution costs to be actionable.
+Option A. $4, the market call minus the market put
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $1, the full size of the mispricing
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $0.40, the $1 gap minus $0.60 of costs
 
-Option D. The model guarantees the future outcome.
+Option D. Nothing worth doing, a $1 gap never beats costs
 
-The best answer is option A. A parity violation must exceed transaction, funding, borrow, and execution costs to be actionable.. A parity violation must exceed transaction, funding, borrow, and execution costs to be actionable. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. $0.40, the $1 gap minus $0.60 of costs. Parity says call minus put should be $68 - $65 = $3, so the market's $4 is $1 too big, and $1 - $0.60 of costs leaves $0.40. The $4 is the raw difference, not the mispricing.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2042,17 +2042,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Rehedge a short-gamma position across a volatile path.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Priya is hedging calls on 200 shares. The price drops to $26 so she sells 40 shares, then it returns to $30 and she buys them back. What did that cost?
 
-Option A. Short gamma often forces buying after rises and selling after falls.
+Option A. $160 lost, sold 40 at $26 and bought back at $30
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Nothing, the price ended where it started
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $160 gained, since the hedge sold high and bought low
 
-Option D. The model guarantees the future outcome.
+Option D. $800 lost, all 200 shares times the $4 move
 
-The best answer is option A. Short gamma often forces buying after rises and selling after falls.. Short gamma often forces buying after rises and selling after falls. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. $160 lost, sold 40 at $26 and bought back at $30. Rebalancing forced her to sell 40 shares at $26 and buy them back at $30, so 40 x $4 = $160 went out. The price returning to $30 does not undo trades already made.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2068,17 +2068,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare implied move with a scenario distribution around earnings.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A straddle sells for $6. There is an 80% chance the stock moves $3 and a 20% chance it jumps $15. What is the seller's average result?
 
-Option A. Selling high implied volatility can still lose when realized moves or skew dynamics are larger.
+Option A. Down $9, the jump is bigger than the premium collected
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Up $3, the $6 premium minus the likely $3 move
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Up $6, the seller keeps the whole premium
 
-Option D. The model guarantees the future outcome.
+Option D. Up $0.60, the $6 premium minus a $5.40 average payout
 
-The best answer is option A. Selling high implied volatility can still lose when realized moves or skew dynamics are larger.. Selling high implied volatility can still lose when realized moves or skew dynamics are larger. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. Up $0.60, the $6 premium minus a $5.40 average payout. The average payout is 0.8 x $3 plus 0.2 x $15, which is $5.40, so the seller nets $0.60. Looking only at the $15 jump ignores how rarely it happens.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2098,17 +2098,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare queue outcomes under two priority rules.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. At $8, Ana bids for 200 first, then Ben for 400 and Cleo for 400. A seller sells 600. What does Cleo get under price-time versus pro-rata?
 
-Option A. Execution priority depends on the venue rulebook, not just displayed price.
+Option A. 400 either way, since everyone bid the same price
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Nothing under price-time, 240 under pro-rata
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 240 under price-time, nothing under pro-rata
 
-Option D. The model guarantees the future outcome.
+Option D. 200 each way, the 600 split evenly between the three
 
-The best answer is option A. Execution priority depends on the venue rulebook, not just displayed price.. Execution priority depends on the venue rulebook, not just displayed price. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. Nothing under price-time, 240 under pro-rata. Price-time fills Ana's 200 and Ben's 400 first, leaving Cleo nothing. Pro-rata gives everyone 600 out of the 1,000 wanted, or 60%, so Cleo gets 240.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2124,17 +2124,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Decompose quoted and effective spread in a trade sample.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A market maker keeps $0.15 from an ordinary customer and loses $0.90 to an informed one. Of 20 customers, 4 are informed. How does the day end?
 
-Option A. A wider spread can reflect greater adverse-selection or inventory risk.
+Option A. Down $1.20, $3.60 of losses against $2.40 of spread
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Up $2.40, the spread kept from the other 16 customers
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Up $3.00, $0.15 from each of the 20 customers
 
-Option D. The model guarantees the future outcome.
+Option D. Behind by $0.75, the $0.90 loss minus the $0.15 earned
 
-The best answer is option A. A wider spread can reflect greater adverse-selection or inventory risk.. A wider spread can reflect greater adverse-selection or inventory risk. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Down $1.20, $3.60 of losses against $2.40 of spread. 16 ordinary customers pay 16 x $0.15 = $2.40, while 4 informed ones cost 4 x $0.90 = $3.60, so he is $1.20 down. That is why more informed flow forces a wider spread.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2150,17 +2150,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Infer hidden replenishment without claiming certainty.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. The screen shows 200 shares for sale at $15, and buyers take 200 five times as a fresh 200 keeps appearing. What does that support?
 
-Option A. Repeated fills at a level may suggest hidden interest but do not reveal its full size or intent.
+Option A. Exactly 1,000 shares were for sale, and the seller is now finished
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. At least 1,000 were for sale, and the seller is probably nearly done
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. A hidden seller is trapped, so the price has to fall from here
 
-Option D. The model guarantees the future outcome.
+Option D. At least 1,000 were for sale, though the size left stays unknown
 
-The best answer is option A. Repeated fills at a level may suggest hidden interest but do not reveal its full size or intent.. Repeated fills at a level may suggest hidden interest but do not reveal its full size or intent. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. At least 1,000 were for sale, though the size left stays unknown. Five refills of 200 prove at least 1,000 shares were available, 800 more than the screen showed. Refills say nothing about how much is left, so guessing the seller is done goes past the evidence.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2176,17 +2176,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Estimate cost for urgent versus patient execution.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Lena decides to buy 2,000 shares at $25. Rushing averages $25.30. Going slow adds $0.10 on 1,500 but misses 500 as the price hits $26. Which cost more, and by how much?
 
-Option A. Larger and faster orders usually consume more liquidity and increase impact.
+Option A. The rushed path, by $450: $600 against $150 of patient impact
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. The patient path, by $500, the price run on the shares it missed
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. They cost the same once everything is measured from the $25 decision
 
-Option D. The model guarantees the future outcome.
+Option D. The patient path, by $50, since $650 beats the rushed $600
 
-The best answer is option A. Larger and faster orders usually consume more liquidity and increase impact.. Larger and faster orders usually consume more liquidity and increase impact. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. The patient path, by $50, since $650 beats the rushed $600. Rushing cost 2,000 x $0.30 = $600. Going slow cost 1,500 x $0.10 = $150 plus 500 missed shares x $1 = $500, or $650 in all, so it cost $50 more. Missed trades are a real cost.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2202,17 +2202,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Audit two routing outcomes including rebates and improvement.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Broker Maple charges no commission and fills 400 shares at $20.03. Broker Pine charges $6 and fills at $20.00. Which is cheaper, and by how much?
 
-Option A. The lowest explicit commission does not prove best execution.
+Option A. Maple, since a zero commission cannot be beaten
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Pine, by $6, once the price and the commission are added up
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Maple, by $6, since the commission is the only real cost
 
-Option D. The model guarantees the future outcome.
+Option D. Pine, by $12, the three-cent better price on 400 shares
 
-The best answer is option A. The lowest explicit commission does not prove best execution.. The lowest explicit commission does not prove best execution. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. Pine, by $6, once the price and the commission are added up. Maple costs 400 x $20.03 = $8,012, and Pine costs 400 x $20 plus $6 = $8,006, so Pine saves $6. The $12 price edge is real, but the commission takes half of it back.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2232,17 +2232,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Reframe the same payoff around two reference points.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Ana rose from $300 to $400 this month and Ben fell from $500 to $400. If losses weigh about twice as much, how do their months compare?
 
-Option A. Changing a reference point can change choice without changing final wealth.
+Option A. They match, since both end the month holding $400
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Ana feels a $100 gain and Ben a loss that weighs like $50
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Ana feels a $100 gain and Ben a loss that weighs like $200
 
-Option D. The model guarantees the future outcome.
+Option D. Ben feels a $100 gain too, since $400 is more than Ana started with
 
-The best answer is option A. Changing a reference point can change choice without changing final wealth.. Changing a reference point can change choice without changing final wealth. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. Ana feels a $100 gain and Ben a loss that weighs like $200. Each judges the change from their own start, and a loss weighs about double, so Ben's $100 drop feels like roughly $200. Halving it instead of doubling flips the idea the wrong way.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2258,17 +2258,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Record probability forecasts and build a calibration curve.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Theo made 50 calls and said he was 80% sure of each one. Thirty came true. What does that say about his confidence?
 
-Option A. A calibrated 70% forecast should occur roughly 70% of the time over many comparable cases.
+Option A. Overconfident, 80% confidence produced only 60% accuracy
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Well calibrated, since he was right more often than not
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Underconfident, he should have claimed more than 80%
 
-Option D. The model guarantees the future outcome.
+Option D. Just bad luck, 30 right is close enough to the 40 expected
 
-The best answer is option A. A calibrated 70% forecast should occur roughly 70% of the time over many comparable cases.. A calibrated 70% forecast should occur roughly 70% of the time over many comparable cases. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Overconfident, 80% confidence produced only 60% accuracy. Being 80% sure 50 times should produce about 40 hits, and 30 out of 50 is 60%, so his confidence ran 20 points above his accuracy.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2284,17 +2284,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Make a forecast before and after exposing an irrelevant anchor.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Shares traded at $120 last year and $60 now. The firm earns $3 a share and similar firms trade at 12 times earnings. Is $60 a bargain?
 
-Option A. An old high is psychologically salient but not automatically fair value.
+Option A. Yes, half the old price is a clear discount
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. No, the yardstick says about $36, so $60 is $24 above it
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Yes, $3 of earnings against a $60 price is already cheap
 
-Option D. The model guarantees the future outcome.
+Option D. No, but only because the price fell so fast recently
 
-The best answer is option A. An old high is psychologically salient but not automatically fair value.. An old high is psychologically salient but not automatically fair value. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. No, the yardstick says about $36, so $60 is $24 above it. The yardstick is $3 x 12 = $36, and $60 sits $24 above it. The old $120 is a sticky memory, not a measure of what the shares are worth.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2310,17 +2310,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Map a reflexive financing loop during a boom.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A firm plans to sell 2 million new shares. A buying rush lifts the price from $12 to $30 before the sale. What does that change?
 
-Option A. Price can influence fundamentals when it changes financing access or behavior.
+Option A. Nothing real, since a share price cannot touch the business
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. The sale still raises $24 million, because the plan was set at $12 a share
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. The sale raises $60 million instead of $24 million, funding more shops
 
-Option D. The model guarantees the future outcome.
+Option D. The sale raises $42 million, the average of the two prices
 
-The best answer is option A. Price can influence fundamentals when it changes financing access or behavior.. Price can influence fundamentals when it changes financing access or behavior. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. The sale raises $60 million instead of $24 million, funding more shops. 2 million shares at $30 raise $60 million instead of $24 million at $12, so the price feeds real cash into the business. A falling price runs the same loop backwards.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2336,17 +2336,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Score a decision before its outcome is revealed.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Before each of 20 trades Omar wrote down a 60% chance. Twelve of them worked. What does comparing the two show?
 
-Option A. A journal is useful when it records contemporaneous reasoning rather than hindsight.
+Option A. His 60% matched the 12 of 20 that actually worked
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. He was too hopeful, since 12 of 20 is under the 60% he wrote
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. He was too cautious, since 12 of 20 beats the 60% he wrote
 
-Option D. The model guarantees the future outcome.
+Option D. The eight losses show the plans behind them were wrong
 
-The best answer is option A. A journal is useful when it records contemporaneous reasoning rather than hindsight.. A journal is useful when it records contemporaneous reasoning rather than hindsight. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. His 60% matched the 12 of 20 that actually worked. 12 of 20 is 60%, the very chance he wrote down, so his odds held up. Writing the odds before the result is what makes that check possible, because a note already made cannot be edited later.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2366,17 +2366,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Classify primary filings for a hypothetical issuer event.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A filing shows sales of $24 million, up from $20 million, but a footnote says $3 million came from a one-time settlement. What growth repeats?
 
-Option A. A filing is primary evidence but still requires careful interpretation.
+Option A. 20%, since $24 million is what the company really sold
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Minus 12.5%, sales fell once the $3 million is removed
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 15%, the one-time $3 million as a share of last year's $20 million
 
-Option D. The model guarantees the future outcome.
+Option D. 5%, since $21 million against $20 million is the repeatable part
 
-The best answer is option A. A filing is primary evidence but still requires careful interpretation.. A filing is primary evidence but still requires careful interpretation. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. 5%, since $21 million against $20 million is the repeatable part. Strip the one-time $3 million and sales are $21 million against $20 million, which is 5%. Comparing $21 million with this year's own $24 million is the wrong pair.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2392,17 +2392,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Identify when to stop and escalate an information scenario.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A friend says his firm will be bought next month at $45, with shares at $36. A neighbour repeats a figure from last week's published report. Which one is a stop sign?
 
-Option A. When MNPI may be present, the safe process is to stop, preserve facts, and seek qualified compliance advice.
+Option A. The neighbour's, because passing a figure along makes it a secret
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Any tip about a company has to be treated as secret, so both
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Neither, because neither of them works in the markets business
 
-Option D. The model guarantees the future outcome.
+Option D. The friend's tip, because a 25% takeover price is not yet public
 
-The best answer is option A. When MNPI may be present, the safe process is to stop, preserve facts, and seek qualified compliance advice.. When MNPI may be present, the safe process is to stop, preserve facts, and seek qualified compliance advice. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. The friend's tip, because a 25% takeover price is not yet public. A takeover price the public does not know is both material and nonpublic, so it is the stop sign. A figure already printed in a published report is public, and repeating it cannot make it secret.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2418,17 +2418,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Separate legitimate order cancellation from deceptive intent indicators.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Dana posts a 9,000-share bid though real interest is 400, sells into the tick up, then pulls it a second later. Raj pulls his bid after a headline. Which would regulators question?
 
-Option A. A trading strategy must not rely on creating a false appearance of supply, demand, or activity.
+Option A. Both, because each of them cancelled a bid that others could see
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Dana's, because the bid was far larger than any interest behind it
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Raj's, because he acted on a headline before others could read it
 
-Option D. The model guarantees the future outcome.
+Option D. Neither, since every venue lets a trader cancel a resting order
 
-The best answer is option A. A trading strategy must not rely on creating a false appearance of supply, demand, or activity.. A trading strategy must not rely on creating a false appearance of supply, demand, or activity. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. Dana's, because the bid was far larger than any interest behind it. A bid more than twenty times the real interest, pulled the moment the sale is done, shows an order never meant to fill. Raj cancelled because news changed his plan, which is ordinary.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2444,17 +2444,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Evaluate a compensation plan for risk-shifting incentives.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A boss earns a $2M bonus only above $20M of profit. The safe plan makes a sure $18M. The risky plan is half a chance of $26M, half of losing $2M. Who prefers what?
 
-Option A. Incentive design can change behavior even when headline targets appear aligned.
+Option A. Both prefer the safe plan, since $18M beats an $11M average
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Each prefers the risky plan, the only path to the $20M target
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Owners prefer the safe $18M, but the bonus pushes her to the risky plan
 
-Option D. The model guarantees the future outcome.
+Option D. Owners prefer the risky plan, since its $26M upside outweighs the $2M loss
 
-The best answer is option A. Incentive design can change behavior even when headline targets appear aligned.. Incentive design can change behavior even when headline targets appear aligned. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. Owners prefer the safe $18M, but the bonus pushes her to the risky plan. The safe plan hands owners a sure $18M. The risky one averages half of $24M left after her bonus plus half of minus $2M, or $11M, yet only it can pay the bonus.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2470,17 +2470,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Write a conflict disclosure and mitigation plan.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. On $20,000, Fund P charges 0.3% and Fund Q charges 1.3% and pays the adviser a bonus. He discloses the bonus. What does that settle?
 
-Option A. Disclosure alone may not cure a conflict when avoidance or control is required.
+Option A. Nothing on its own, Fund Q still costs $200 more a year and must suit her
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. It cures the conflict, because she was told and chose to stay
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. The gap is small, since $200 on $20,000 is only a rounding cost
 
-Option D. The model guarantees the future outcome.
+Option D. Fund Q is fine, since a higher fee usually buys better management and service
 
-The best answer is option A. Disclosure alone may not cure a conflict when avoidance or control is required.. Disclosure alone may not cure a conflict when avoidance or control is required. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Nothing on its own, Fund Q still costs $200 more a year and must suit her. 0.3% of $20,000 is $60 and 1.3% is $260, so Fund Q costs $200 more every year. Telling the client about the bonus does not make the costlier fund right for her.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2500,17 +2500,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build a point-in-time feature table without future leakage.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A quarter ends June 30, the results publish August 10, and a revision from $2 to $2.40 lands in October. What may a backtest use in September?
 
-Option A. The date a fact became knowable matters more than the period it describes.
+Option A. From July 1, and $2.40, the figure that turned out to be right
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. From August 10, and $2, the only figure anyone knew in September
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. From June 30, and $2.40, since the quarter was already over
 
-Option D. The model guarantees the future outcome.
+Option D. From August 10, and $2.40, because tables should hold corrected data
 
-The best answer is option A. The date a fact became knowable matters more than the period it describes.. The date a fact became knowable matters more than the period it describes. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. From August 10, and $2, the only figure anyone knew in September. Nobody could know the results before they were published on August 10, and the revision to $2.40 only arrived in October, so September's record still reads $2.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2526,17 +2526,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Use nested or walk-forward validation for a time-series signal.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Zoe tries 10 useless ideas on her held-out data, and each has a 10% chance of looking good by luck. What is the chance at least one does?
 
-Option A. Repeatedly checking the test set turns it into training data.
+Option A. 10%, the chance that any one of the ten ideas looks good
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 100%, since ten tries at 10% cover every possibility
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. About 65%, since 0.9 to the tenth power is about 0.35
 
-Option D. The model guarantees the future outcome.
+Option D. About 35%, which is the chance that every idea fails
 
-The best answer is option A. Repeatedly checking the test set turns it into training data.. Repeatedly checking the test set turns it into training data. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. About 65%, since 0.9 to the tenth power is about 0.35. All ten failing has probability 0.9 to the tenth, about 0.35, so a fake winner turns up about 65% of the time. Adding 10% ten times to reach 100% double counts.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2552,17 +2552,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Compare rank weighting with cost-aware optimization.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Signal Willow earns 12% raw and turns over 8 times a year. Signal Fern earns 9% and turns over 3 times. Each turn costs 0.4%. Which keeps more?
 
-Option A. A stronger raw signal can produce a worse net portfolio when turnover and impact dominate.
+Option A. Willow, 8.8% against 7.8% once turnover costs are taken out
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Willow, 12% against 9%, since costs hit both the same way
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Fern, because lower turnover always nets more in the end
 
-Option D. The model guarantees the future outcome.
+Option D. Fern, since Willow keeps only 3.2% once its costs are out
 
-The best answer is option A. A stronger raw signal can produce a worse net portfolio when turnover and impact dominate.. A stronger raw signal can produce a worse net portfolio when turnover and impact dominate. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. Willow, 8.8% against 7.8% once turnover costs are taken out. Willow pays 8 x 0.4% = 3.2% and keeps 8.8%, while Fern pays 3 x 0.4% = 1.2% and keeps 7.8%. Low turnover helps, but it does not win on its own.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2578,17 +2578,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Audit a feature pipeline for target and timestamp leakage.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A model scored 96% until an audit removed a leaked input, and it now gets 810 of 1,500 days right. How much edge over a coin flip is left?
 
-Option A. High validation accuracy can be meaningless when labels or future information leak into features.
+Option A. 42 points, the score it lost when the leak was removed
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. 54 points, the share of the days it now gets right
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. 46 points, what is left of the original 96%
 
-Option D. The model guarantees the future outcome.
+Option D. 4 points, 54% against a coin flip at 50%
 
-The best answer is option A. High validation accuracy can be meaningless when labels or future information leak into features.. High validation accuracy can be meaningless when labels or future information leak into features. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. 4 points, 54% against a coin flip at 50%. 810 of 1,500 is 54%, only 4 points above a coin flip. The 96% came mostly from an input nobody could have known that day, so it was never a real edge.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2604,17 +2604,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Design a dashboard and shutdown rule for a live model.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A live model has a safe band of 55% to 65%, and its rule pauses it below 55% over 50 calls. It just got 26 of 50 right. What happens?
 
-Option A. A model that worked historically still requires ongoing validity and safety monitoring.
+Option A. Keep trading, 52% still beats a coin flip
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Keep trading and widen the band, since 52% is close to 55%
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Pause, alert a human and roll back: 52% is under the floor
 
-Option D. The model guarantees the future outcome.
+Option D. Pause only if the next 50 calls also land below the floor
 
-The best answer is option A. A model that worked historically still requires ongoing validity and safety monitoring.. A model that worked historically still requires ongoing validity and safety monitoring. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. Pause, alert a human and roll back: 52% is under the floor. 26 of 50 is 52%, three points under the 55% floor the rule set in advance, so the switch fires now. Beating a coin flip was never the standard this model was held to.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2634,17 +2634,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Build a three-branch opening scenario tree.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. A plan buys 200 shares above $42 with an exit at $41. The stock opens at $43 and fills there. What is the risk on the trade?
 
-Option A. Planning multiple paths reduces the urge to force one prediction.
+Option A. $200, since the plan set the trigger at $42 and the exit at $41
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $400, because she filled at $43 and her exit is $41
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Nothing, because the exit order guarantees a sale at $41
 
-Option D. The model guarantees the future outcome.
+Option D. $8,600, the 200 shares bought at the $43 fill price
 
-The best answer is option A. Planning multiple paths reduces the urge to force one prediction.. Planning multiple paths reduces the urge to force one prediction. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. $400, because she filled at $43 and her exit is $41. Risk runs from the fill to the exit: $43 - $41 = $2 on 200 shares, or $400. The $200 assumed a fill right at the trigger, and $8,600 is the size of the position, not the amount at risk.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2660,17 +2660,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Stress a small-cap plan through a halt and reopening auction.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Leo buys 300 shares at $8 with a stop at $7.60. News halts trading and the stock reopens at $6.80. What does the trade cost him?
 
-Option A. A stop order cannot guarantee a fill price through a gap or halt.
+Option A. $360, since it sold at $6.80, a $1.20 loss on 300 shares
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. $120, the stop sold at $7.60 exactly as it was set to do
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. $1.20 a share, the gap between the $8 buy and the $6.80 reopen
 
-Option D. The model guarantees the future outcome.
+Option D. $240, the distance between the stop and the reopening price
 
-The best answer is option A. A stop order cannot guarantee a fill price through a gap or halt.. A stop order cannot guarantee a fill price through a gap or halt. The result remains conditional on data quality, assumptions, and context.
+The best answer is option A. $360, since it sold at $6.80, a $1.20 loss on 300 shares. A stop decides when to sell, not at what price, and a halt does not hold the price there. It filled at the $6.80 reopen, so $1.20 a share on 300 shares is $360, three times the planned $120.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2686,17 +2686,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Score a replay before revealing subsequent trades.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Earlier 2,000 shares of buying lifted the price 8 cents. Now buyers keep taking 12,000 shares at $25 over three minutes and the price never moves. What does that suggest?
 
-Option A. Executed aggression without price progress may indicate absorption rather than continuation.
+Option A. Buyers have given up, since the price stopped rising
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. Nothing, because only the price itself carries information
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. Proof the price must fall, since sellers are clearly winning
 
-Option D. The model guarantees the future outcome.
+Option D. A large seller may be meeting the buying, so the climb may stall
 
-The best answer is option A. Executed aggression without price progress may indicate absorption rather than continuation.. Executed aggression without price progress may indicate absorption rather than continuation. The result remains conditional on data quality, assumptions, and context.
+The best answer is option D. A large seller may be meeting the buying, so the climb may stall. Six times the earlier buying with no price progress points to a big seller on the other side. That is evidence to weigh, which is why calling it proof of a fall goes too far.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2712,17 +2712,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Decompose one trade into planned and unplanned P&L.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Nia planned 200 shares at $30 with a $29 stop. She bought 500 at $30.40 and sold at $30.90 for $250. How should the review score it?
 
-Option A. A winning trade can reflect poor process and a losing trade can follow sound process.
+Option A. Good trade, the $250 made beats the $200 the plan risked
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. A win that carried $700 of real risk against the $200 planned
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. A bad trade, since selling at $30.90 left more money on the table
 
-Option D. The model guarantees the future outcome.
+Option D. A win of $250 on $200 of risk, exactly as the plan intended
 
-The best answer is option A. A winning trade can reflect poor process and a losing trade can follow sound process.. A winning trade can reflect poor process and a losing trade can follow sound process. The result remains conditional on data quality, assumptions, and context.
+The best answer is option B. A win that carried $700 of real risk against the $200 planned. Result and process are separate. 500 shares from $30.40 down to the $29 stop is 500 x $1.40 = $700 at risk, three and a half times the $200 the plan allowed.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
@@ -2738,17 +2738,17 @@ Point 2. Method: define the variables, assumptions, evidence, uncertainty, and c
 
 Point 3. Interactive lab: Present a thesis and strongest rebuttal to a mock risk committee.
 
-Knowledge check. Which statement is most defensible?
+Knowledge check. Maya risks $3 a share to try to make $6 a share. How often must she be right for the idea to pay off on average?
 
-Option A. Professional analysis is sourced, conditional, numerate, reproducible, and open to being wrong.
+Option A. More than 50%, since being right has to happen more often than not
 
-Option B. One observation proves the conclusion in every market regime.
+Option B. More than 67%, the $6 gain as a share of the $9 range
 
-Option C. Uncertainty and implementation costs can be ignored.
+Option C. More than about 33%, the $3 risk as a share of the $9 total
 
-Option D. The model guarantees the future outcome.
+Option D. Any odds will do, because the $6 gain is twice the $3 risk
 
-The best answer is option A. Professional analysis is sourced, conditional, numerate, reproducible, and open to being wrong.. Professional analysis is sourced, conditional, numerate, reproducible, and open to being wrong. The result remains conditional on data quality, assumptions, and context.
+The best answer is option C. More than about 33%, the $3 risk as a share of the $9 total. Break-even is risk divided by gain plus risk, so $3 out of $9, about 33%. Flipping it to $6 out of $9 gives 67% and makes a sound idea look hopeless.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
