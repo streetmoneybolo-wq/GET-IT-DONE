@@ -2,8 +2,12 @@
 /**
  * Plugin Name: SML Creator Videos tab (mu)
  * Description: /creator-studio/videos/ — every Loop Channel video the creator owns with its metadata (title, SEO title, description, ticker, tags, hashtags, visibility, duration, thumbnail, published/updated), real performance (views, 7-day views, impressions, click-through, comments, likes) and an SEO audit per video (title/description/keyword/tags/thumbnail/indexability/video sitemap/VideoObject schema on the watch page) with a score, fixes, inline metadata editing, Google/Bing index checks and a "Request indexing" ping (IndexNow + the sitemap pinger). Owner call 2026-09-10.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: StockMarketLoop
+ *
+ * 1.3.0 (2026-09-22): thumbnail editing (upload an image or pick a frame from the video) via POST /thumbnail — the upload
+ * studio had no way to change a thumbnail after publishing. Removed-video redirects: option sml_cv_redirects {old_id: kept_id}
+ * 301s /watch/{old_id}/… (and /video/…) to the kept video, only while old_id is no longer in the library.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -169,7 +173,73 @@ add_action( 'rest_api_init', function () {
 		set_transient( 'sml_cv_ping_' . $slug, 1, HOUR_IN_SECONDS );
 		return array( 'ok' => true, 'url' => $url, 'did' => $did, 'note' => 'Google reads the video sitemap (' . home_url( '/sml-video-sitemap.xml' ) . ') — it was refreshed; Bing was pinged through IndexNow.' );
 	} ) );
+	register_rest_route( SML_CV_NS, '/thumbnail', array( 'methods' => 'POST', 'permission_callback' => $own, 'callback' => 'sml_cv_rest_thumbnail' ) );
 } );
+
+/**
+ * Replace a video's thumbnail (1.3.0). Multipart: id + thumbnail (an uploaded image or a frame the page captured from the
+ * video). Stored like the upload studio stores thumbnails — a plain file in uploads/ — and written to the library row.
+ */
+function sml_cv_rest_thumbnail( WP_REST_Request $r ) {
+	$uid  = get_current_user_id();
+	$slug = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $r->get_param( 'id' ) );
+	$lib  = sml_cv_library();
+	if ( '' === $slug || empty( $lib[ $slug ] ) || ! is_array( $lib[ $slug ] ) ) { return new WP_Error( 'sml_cv_missing', 'That video is not in the library.', array( 'status' => 404 ) ); }
+	$author = (int) ( $lib[ $slug ]['author_id'] ?? 0 );
+	if ( $author !== $uid && ! current_user_can( 'manage_options' ) ) { return new WP_Error( 'sml_cv_forbidden', 'Only the creator can change this thumbnail.', array( 'status' => 403 ) ); }
+	$files = $r->get_file_params();
+	$file  = $files['thumbnail'] ?? null;
+	if ( ! is_array( $file ) || UPLOAD_ERR_OK !== (int) ( $file['error'] ?? UPLOAD_ERR_NO_FILE ) ) { return new WP_Error( 'sml_cv_no_image', 'Choose an image or a frame first.', array( 'status' => 400 ) ); }
+	if ( (int) ( $file['size'] ?? 0 ) > 50 * MB_IN_BYTES ) { return new WP_Error( 'sml_cv_too_big', 'Thumbnails must be 50 MB or smaller.', array( 'status' => 413 ) ); }
+	$rl = 'sml_cv_thumb_rl_' . $uid;
+	$n  = (int) get_transient( $rl );
+	if ( $n >= 20 ) { return new WP_Error( 'sml_cv_slow', 'Too many thumbnail uploads — try again in a few minutes.', array( 'status' => 429 ) ); }
+	set_transient( $rl, $n + 1, 10 * MINUTE_IN_SECONDS );
+
+	require_once ABSPATH . 'wp-admin/includes/file.php';
+	$mimes = array( 'jpg|jpeg|jpe' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif' );
+	$check = wp_check_filetype_and_ext( (string) $file['tmp_name'], (string) ( $file['name'] ?? '' ), $mimes );
+	if ( empty( $check['type'] ) || empty( $check['ext'] ) ) { return new WP_Error( 'sml_cv_bad_type', 'Use a JPG, PNG, WebP or GIF image.', array( 'status' => 400 ) ); }
+	$size = @getimagesize( (string) $file['tmp_name'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+	if ( ! $size || (int) $size[0] < 320 || (int) $size[1] < 180 ) { return new WP_Error( 'sml_cv_small', 'The image must be at least 320×180 (1280×720 works best).', array( 'status' => 400 ) ); }
+	$file['name'] = sanitize_file_name( $slug . '-thumbnail.' . $check['ext'] );
+	$up = wp_handle_upload( $file, array( 'test_form' => false, 'mimes' => $mimes ) );
+	if ( ! empty( $up['error'] ) || empty( $up['url'] ) ) { return new WP_Error( 'sml_cv_upload_failed', 'The upload failed: ' . sanitize_text_field( (string) ( $up['error'] ?? 'unknown error' ) ), array( 'status' => 500 ) ); }
+
+	$lib = sml_cv_library(); // re-read: views and likes read-modify-write the same option
+	if ( empty( $lib[ $slug ] ) || ! is_array( $lib[ $slug ] ) ) { return new WP_Error( 'sml_cv_missing', 'That video was removed while uploading.', array( 'status' => 404 ) ); }
+	$lib[ $slug ]['thumbnail_url'] = esc_url_raw( (string) $up['url'] );
+	$lib[ $slug ]['updated_at']    = gmdate( DATE_W3C );
+	sml_cv_save_library( $lib );
+	if ( class_exists( 'SML_Google_Sitemaps' ) && method_exists( 'SML_Google_Sitemaps', 'invalidate' ) ) { SML_Google_Sitemaps::invalidate(); }
+	delete_transient( 'sml_cv_schema_' . md5( $slug ) );
+	delete_transient( 'sml_cv_all_' . $uid );
+	delete_transient( 'sml_cv_all_' . $author );
+	return array( 'ok' => true, 'video' => sml_cv_video( $slug, $lib[ $slug ], true ) );
+}
+
+/**
+ * Removed-video redirects (1.3.0). A duplicate that was taken out of the library keeps working links: /watch/{old}/… and
+ * /video/{old}/… 301 to the kept video's watch page (query string kept, e.g. ?b= share codes). Runs before the clean-URL
+ * router (init -10000) and only while {old} is really gone and the target still exists.
+ */
+add_action( 'init', function () {
+	$method = strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) );
+	if ( 'GET' !== $method && 'HEAD' !== $method ) { return; }
+	$uri = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
+	if ( 0 !== strncmp( $uri, '/watch/', 7 ) && 0 !== strncmp( $uri, '/video/', 7 ) ) { return; }
+	if ( ! preg_match( '#^/(?:watch|video)/([A-Za-z0-9_-]{8,32})(?:[/?]|$)#', $uri, $m ) ) { return; }
+	$map = get_option( 'sml_cv_redirects', array() );
+	if ( ! is_array( $map ) || empty( $map[ $m[1] ] ) ) { return; }
+	$lib = sml_cv_library();
+	$to  = (string) $map[ $m[1] ];
+	if ( ! empty( $lib[ $m[1] ] ) || empty( $lib[ $to ] ) || ! is_array( $lib[ $to ] ) ) { return; }
+	$url = sml_cv_watch_url( $to, $lib[ $to ] );
+	$q   = strpos( $uri, '?' );
+	if ( false !== $q ) { $url .= ( false === strpos( $url, '?' ) ? '?' : '&' ) . substr( $uri, $q + 1 ); }
+	wp_safe_redirect( $url, 301, 'SML Creator Videos' );
+	exit;
+}, -10001 );
 
 /* ------------------------------------------------------ Go live: past + upcoming streams */
 /** UTC MySQL time → Unix time. The live-room table is written with current_time('mysql', true), i.e. UTC. */
@@ -440,6 +510,10 @@ function sml_cv_styles(): string {
 		. '.cs-v-form{display:flex;flex-direction:column;gap:8px}.cs-v-form label{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8798ac}.cs-v-form input,.cs-v-form textarea,.cs-v-form select{width:100%;border-radius:9px;border:1px solid #223146;background:#0b131f;color:#e6edf5;padding:9px 11px;font:inherit;font-size:13px;box-sizing:border-box}.cs-v-form textarea{min-height:110px;resize:vertical}.cs-v-form .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.cs-v-form .cnt{font-size:11px;color:#708399;text-align:right;margin-top:-4px}.cs-v-form .cnt.bad{color:#ff9aa8}.cs-v-form .cnt.ok{color:#8fd6b0}.cs-v-note{font-size:12px;color:#8fd6b0;min-height:16px}.cs-v-note.err{color:#ff9aa8}'
 		. '.cs-cv-tab.is-live{border-color:#4a1f28}.cs-cv-tab.is-live.on{background:#ff4d6a;border-color:#ff4d6a;color:#fff}.cs-lv-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,rgba(255,77,106,.12),rgba(11,19,31,.9));border:1px solid #3a1d27;border-radius:14px;padding:14px 16px;margin-bottom:14px}.cs-lv-bar b{display:block;font-size:17px}.cs-lv-bar span{font-size:13px;color:#a9b8c8}.cs-lv-go{display:flex;gap:8px;flex-wrap:wrap}.cs-lv-go .cs-v-btn{padding:0 16px;height:40px}.cs-lv-go .cs-v-btn.primary{background:#ff4d6a;border-color:#ff4d6a;color:#fff}.cs-lv-sec{margin:0 0 18px}.cs-lv-sec h2{margin:0 0 10px;font-size:15px;letter-spacing:.2px}.cs-lv-sec h2 b{margin-left:6px;color:#8798ac;font-weight:700}.cs-lv-card{display:grid;grid-template-columns:180px minmax(0,1fr) 190px;gap:14px;align-items:center;background:#0b131f;border:1px solid #182130;border-radius:14px;padding:12px;margin-bottom:10px}.cs-lv-card.st-live{border-color:#ff4d6a}.cs-lv-card.st-miss{opacity:.78}.cs-lv-ph{position:absolute;inset:0;display:grid;place-items:center;font-size:30px;color:#3a4b60}.cs-lv-body h3{margin:6px 0 4px;font-size:15.5px;line-height:1.3}.cs-lv-pill{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:999px;background:#14202f;color:#cfe0f2}.cs-lv-pill.sch{background:#10263b;color:#8cc9ff}.cs-lv-pill.due{background:#3a2a08;color:#ffcf5c}.cs-lv-pill.live{background:#ff4d6a;color:#fff}.cs-lv-pill.end{background:#16222f;color:#b9c8d8}.cs-lv-pill.warn{background:#2c2410;color:#ffcf5c}.cs-lv-pill.miss{background:#2a1418;color:#ff9aa9}.cs-lv-extra{grid-column:1/-1;display:flex;flex-direction:column;gap:8px}.cs-lv-suggest{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;background:#0d1d17;border:1px solid #1d4a33;border-radius:10px;padding:8px 10px}.cs-lv-suggest b{color:#e6edf5}.cs-lv-suggest .cs-v-btn{padding:0 12px;height:30px}.cs-lv-pick{background:#08111b;border:1px solid #1d2c3e;border-radius:10px;padding:10px}.cs-lv-pick label{display:block;font-size:12px;font-weight:700;color:#a9b8c8;margin-bottom:6px}.cs-lv-pickrow{display:flex;gap:8px;flex-wrap:wrap}.cs-lv-pickrow select{flex:1 1 260px;min-width:0;height:34px;border-radius:9px;border:1px solid #223146;background:#0b131f;color:#e6edf5;padding:0 10px;font:inherit;font-size:13px}.cs-lv-pickrow .cs-v-btn{padding:0 14px}.cs-lv-pill.rep{margin-left:6px;background:#12301f;color:#a6ffd2}.cs-lv-eyes b{color:#e6edf5}.cs-lv-note a{color:#8cc9ff}.cs-lv-count{color:#8cc9ff;font-weight:700}.cs-lv-vis{text-transform:capitalize}.cs-lv-note{margin:6px 0 0;font-size:12.5px;color:#a9b8c8}.cs-lv-acts{display:flex;flex-direction:column;gap:7px}.cs-lv-foot{font-size:12px;color:#708399;margin:4px 0 0}.cs-lv-muted{color:#708399}@media(max-width:980px){.cs-lv-card{grid-template-columns:150px minmax(0,1fr)}.cs-lv-acts{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.cs-lv-acts .cs-v-btn{padding:0 12px}}@media(max-width:620px){.cs-lv-card{grid-template-columns:minmax(0,1fr)}}'
 		. '.cs-cv-empty{padding:34px 12px;text-align:center;color:#708399;font-size:13.5px;border:1px dashed #26384c;border-radius:12px}'
+		. '.cs-v-thumbed{display:flex;flex-direction:column;gap:9px;background:#08111b;border:1px solid #14202f;border-radius:12px;padding:12px;margin-bottom:12px}.cs-v-thumbed [hidden]{display:none!important}.cs-v-thumbed .lbl{font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8798ac}'
+		. '.cs-v-thumbrow{display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;align-items:start}.cs-v-thumbprev{position:relative;aspect-ratio:16/9;border-radius:9px;overflow:hidden;background:#06101a;border:1px solid #1d2c3e}.cs-v-thumbprev img{width:100%;height:100%;object-fit:cover;display:block}.cs-v-thumbprev .none{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;color:#ff9aa8;text-align:center;padding:10px;line-height:1.35}.cs-v-thumbprev .new{position:absolute;left:6px;top:6px;font-size:10px;font-weight:800;letter-spacing:.3px;padding:3px 7px;border-radius:5px;background:#38f58a;color:#06120c}'
+		. '.cs-v-thumbacts{display:flex;flex-direction:column;gap:7px}.cs-v-thumbacts .cs-v-btn{padding:0 12px}.cs-v-thumbacts small{font-size:11.5px;color:#708399;line-height:1.4}.cs-v-frame{display:flex;flex-direction:column;gap:8px}.cs-v-frame video{width:100%;max-height:280px;border-radius:9px;background:#000}.cs-v-frame input[type=range]{width:100%;accent-color:#38f58a}.cs-v-frame .row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#a9b8c8}.cs-v-frame .row .cs-v-btn{padding:0 14px}.cs-v-thumbsave{display:flex;gap:8px;align-items:center}'
+		. '@media(max-width:720px){.cs-v-thumbrow{grid-template-columns:minmax(0,1fr)}}'
 		. '@media(max-width:980px){.cs-v{grid-template-columns:160px minmax(0,1fr)}.cs-v-seo{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.cs-v-seo .cs-v-score{flex:1 1 200px}.cs-v-detail{grid-template-columns:minmax(0,1fr)}}@media(max-width:720px){.cs-cv{padding:16px}.cs-v{grid-template-columns:minmax(0,1fr)}.cs-v-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}';
 }
 function sml_cv_script(): string {
@@ -447,7 +521,7 @@ function sml_cv_script(): string {
 (function(){
   'use strict';
   var cfg=window.smlCreatorVideosConfig||{};var root=document.getElementById('cs-videos');if(!root)return;
-  var list=root.querySelector('[data-cv-list]'),tabsEl=root.querySelector('[data-cv-tabs]'),sum=root.querySelector('[data-cv-sum]');var data=null,tab='all',open={};
+  var list=root.querySelector('[data-cv-list]'),tabsEl=root.querySelector('[data-cv-tabs]'),sum=root.querySelector('[data-cv-sum]');var data=null,tab='all',open={},pendingThumb={};
   function esc(v){var d=document.createElement('div');d.textContent=String(v==null?'':v);return d.innerHTML;}
   function n(x){return Number(x||0).toLocaleString();}
   function hms(s){s=Math.max(0,s|0);var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');}
@@ -474,14 +548,60 @@ function sml_cv_script(): string {
   function detail(v){var seo=v.seo||{};
     var checks=(seo.checks||[]).map(function(c){return '<div class="cs-v-check '+c.status+'"><i>'+(c.status==='pass'?'✓':c.status==='warn'?'!':'✕')+'</i><div>'+esc(c.label)+(c.status!=='pass'?'<small>'+esc(c.tip)+'</small>':'')+'</div><em>'+esc(c.value||'')+'</em></div>';}).join('');
     return '<div class="cs-v-detail"><div><div style="font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8798ac;margin-bottom:8px">SEO audit · '+(seo.fixes&&seo.fixes.length?seo.fixes.length+' thing'+(seo.fixes.length>1?'s':'')+' to fix':'all clear')+'</div><div class="cs-v-checks">'+checks+'</div></div>'
-      +'<form class="cs-v-form" data-form="'+esc(v.id)+'"><div style="font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8798ac">Edit metadata</div>'
+      +'<div>'+thumbEditor(v)+'<form class="cs-v-form" data-form="'+esc(v.id)+'"><div style="font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8798ac">Edit metadata</div>'
       +'<label>Title</label><input name="title" maxlength="160" value="'+esc(v.title)+'"><div class="cnt" data-cnt="title"></div>'
       +'<label>SEO title (search result headline, ≤60)</label><input name="seo_title" maxlength="120" value="'+esc(v.seo_title)+'" placeholder="$'+esc(v.ticker||'TICKER')+' — what the viewer learns | StockMarketLoop"><div class="cnt" data-cnt="seo_title"></div>'
       +'<label>Description (120+ characters, mention the tickers)</label><textarea name="description">'+esc(v.description)+'</textarea><div class="cnt" data-cnt="description"></div>'
       +'<div class="row"><div><label>Main ticker</label><input name="ticker" value="'+esc(v.ticker)+'" placeholder="NVDA"></div><div><label>Visibility</label><select name="visibility">'+['public','unlisted','members','premium','private','draft'].map(function(x){return '<option value="'+x+'"'+(v.visibility===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div></div>'
       +'<label>Tags (comma separated)</label><input name="tags" value="'+esc((v.tags||[]).join(', '))+'" placeholder="NVDA, semiconductors, earnings play">'
       +'<label>Hashtags</label><input name="hashtags" value="'+esc((v.hashtags||[]).join(' '))+'" placeholder="#NVDA #Earnings">'
-      +'<div style="display:flex;gap:8px;align-items:center"><button type="submit" class="cs-v-btn primary" style="padding:0 16px">Save metadata</button><a class="cs-v-btn" style="padding:0 12px" href="'+esc(v.links.edit_studio)+'">Open Upload Studio</a><span class="cs-v-note" data-fnote="'+esc(v.id)+'"></span></div></form></div>';}
+      +'<div style="display:flex;gap:8px;align-items:center"><button type="submit" class="cs-v-btn primary" style="padding:0 16px">Save metadata</button><a class="cs-v-btn" style="padding:0 12px" href="'+esc(v.links.edit_studio)+'">Open Upload Studio</a><span class="cs-v-note" data-fnote="'+esc(v.id)+'"></span></div></form></div></div>';}
+  /* ---------- thumbnail editor (1.3.0): upload an image or capture a frame from the video ---------- */
+  var NOTHUMB='<span class="none">No thumbnail — Google can’t list this video without one</span>';
+  function thumbInner(v,p){var src=p?p.url:(v&&v.thumbnail);return (src?'<img src="'+esc(src)+'" alt="">':NOTHUMB)+(p?'<span class="new">New · not saved</span>':'');}
+  function thumbEditor(v){var p=pendingThumb[v.id],can=!!v.video_url;
+    return '<div class="cs-v-thumbed" data-thumbed="'+esc(v.id)+'"><div class="lbl">Thumbnail</div>'
+      +'<div class="cs-v-thumbrow"><div class="cs-v-thumbprev">'+thumbInner(v,p)+'</div>'
+      +'<div class="cs-v-thumbacts"><label class="cs-v-btn" style="cursor:pointer">⬆ Upload an image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-thumbfile="'+esc(v.id)+'" hidden></label>'
+      +(can?'<button type="button" class="cs-v-btn" data-frameopen="'+esc(v.id)+'">🎞 Pick a frame from the video</button>':'')
+      +'<small>16:9 at 1280×720 looks best. JPG, PNG, WebP or GIF, at least 320×180.</small></div></div>'
+      +(can?'<div class="cs-v-frame" data-frame="'+esc(v.id)+'" hidden><video crossorigin="anonymous" muted playsinline preload="none" data-src="'+esc(v.video_url)+'"></video><input type="range" data-frameseek min="0" max="'+Math.max(1,v.duration|0)+'" step="0.1" value="0" aria-label="Scrub the video to choose a frame"><div class="row"><span data-frametime>0:00</span><button type="button" class="cs-v-btn" data-frameuse>Use this frame</button></div></div>':'')
+      +'<div class="cs-v-thumbsave" data-thumbsave'+(p?'':' hidden')+'><button type="button" class="cs-v-btn primary" data-thumbsavebtn="'+esc(v.id)+'" style="padding:0 16px">Save thumbnail</button><button type="button" class="cs-v-btn" data-thumbcancel="'+esc(v.id)+'" style="padding:0 12px">Cancel</button></div>'
+      +'<div class="cs-v-note" data-tnote="'+esc(v.id)+'"></div></div>';}
+  function thumbBox(id){return list.querySelector('[data-thumbed="'+CSS.escape(id)+'"]');}
+  function tnote(id,t,err){var el=list.querySelector('[data-tnote="'+CSS.escape(id)+'"]');if(el){el.textContent=t;el.className='cs-v-note'+(err?' err':'');}}
+  function refreshThumb(id){var box=thumbBox(id);if(!box)return;var p=pendingThumb[id];box.querySelector('.cs-v-thumbprev').innerHTML=thumbInner(find(id),p);box.querySelector('[data-thumbsave]').hidden=!p;}
+  function setPending(id,blob,name){if(pendingThumb[id])URL.revokeObjectURL(pendingThumb[id].url);pendingThumb[id]={blob:blob,name:name,url:URL.createObjectURL(blob)};refreshThumb(id);tnote(id,'Preview only — press Save thumbnail to publish it.');}
+  function dropPending(id){if(pendingThumb[id]){URL.revokeObjectURL(pendingThumb[id].url);delete pendingThumb[id];}}
+  function recount(){var sc=data.videos.map(function(v){return v.seo.score;});data.summary.avgSeo=sc.length?Math.round(sc.reduce(function(a,b){return a+b;},0)/sc.length):0;data.summary.public=data.videos.filter(function(v){return v.visibility==='public';}).length;data.summary.inSitemap=data.videos.filter(function(v){return v.seo.inSitemap;}).length;}
+  list.addEventListener('change',function(e){var inp=e.target.closest('[data-thumbfile]');if(!inp||!inp.files||!inp.files[0])return;var id=inp.getAttribute('data-thumbfile'),f=inp.files[0];inp.value='';
+    if(!/^image\/(jpeg|png|webp|gif)$/.test(f.type)){tnote(id,'Use a JPG, PNG, WebP or GIF image.',true);return;}
+    if(f.size>50*1024*1024){tnote(id,'That image is over 50 MB.',true);return;}
+    setPending(id,f,f.name);});
+  list.addEventListener('input',function(e){var r=e.target.closest('[data-frameseek]');if(!r)return;var v=r.closest('[data-frame]').querySelector('video');if(v.readyState>=1)v.currentTime=Number(r.value);});
+  list.addEventListener('click',function(e){
+    var fo=e.target.closest('[data-frameopen]');
+    if(fo){var box=list.querySelector('[data-frame="'+CSS.escape(fo.getAttribute('data-frameopen'))+'"]');if(!box)return;box.hidden=!box.hidden;var vid=box.querySelector('video');
+      if(!box.hidden&&!vid.getAttribute('src')){var seek=box.querySelector('[data-frameseek]'),tm=box.querySelector('[data-frametime]');
+        vid.addEventListener('loadedmetadata',function(){if(isFinite(vid.duration)&&vid.duration>0){seek.max=vid.duration;vid.currentTime=Math.min(3,vid.duration/10);}});
+        vid.addEventListener('seeked',function(){tm.textContent=hms(vid.currentTime);seek.value=vid.currentTime;});
+        vid.preload='auto';vid.src=vid.getAttribute('data-src');}
+      return;}
+    var fu=e.target.closest('[data-frameuse]');
+    if(fu){var fb=fu.closest('[data-frame]'),fid=fb.getAttribute('data-frame'),fv=fb.querySelector('video');
+      if(!fv.videoWidth){tnote(fid,'The video is still loading — try again in a moment.',true);return;}
+      try{var w=Math.min(1920,fv.videoWidth),h=Math.round(w*fv.videoHeight/fv.videoWidth),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(fv,0,0,w,h);
+        c.toBlob(function(b){if(!b){tnote(fid,'Could not capture that frame.',true);return;}setPending(fid,b,'frame-'+Math.round(fv.currentTime)+'s.jpg');},'image/jpeg',0.9);}
+      catch(err){tnote(fid,'This video can’t be captured here — upload an image instead.',true);}
+      return;}
+    var sv=e.target.closest('[data-thumbsavebtn]');
+    if(sv){var sid=sv.getAttribute('data-thumbsavebtn'),p=pendingThumb[sid];if(!p)return;sv.disabled=true;tnote(sid,'Uploading…');var fd=new FormData();fd.append('id',sid);fd.append('thumbnail',p.blob,p.name||'thumbnail.jpg');
+      fetch(cfg.thumb,{method:'POST',credentials:'same-origin',headers:{'X-WP-Nonce':cfg.nonce||''},body:fd}).then(function(r){return r.json().then(function(j){if(!r.ok||j.code)throw new Error(j.message||'Could not save the thumbnail.');return j;});})
+        .then(function(j){dropPending(sid);var i=data.videos.findIndex(function(v){return v.id===sid;});if(i>-1)data.videos[i]=j.video;recount();paintTabs();paint();tnote(sid,'Thumbnail saved. SEO score now '+j.video.seo.score+'/100.');})
+        .catch(function(err){sv.disabled=false;tnote(sid,err.message,true);});
+      return;}
+    var cc=e.target.closest('[data-thumbcancel]');
+    if(cc){var cid=cc.getAttribute('data-thumbcancel');dropPending(cid);refreshThumb(cid);tnote(cid,'');}});
   function counters(form){var f=form;[['title',30,70],['seo_title',1,60],['description',120,5000]].forEach(function(x){var el=f.querySelector('[name="'+x[0]+'"]'),c=f.querySelector('[data-cnt="'+x[0]+'"]');if(!el||!c)return;var L=el.value.trim().length;c.textContent=L+' chars'+(L<x[1]?' · aim for '+x[1]+'+':L>x[2]?' · over '+x[2]:' · good');c.className='cnt '+(L>=x[1]&&L<=x[2]?'ok':'bad');});}
   function paint(){if(tab==='live'){paintLive();return;}var s=rows();if(!s.length){list.innerHTML='<div class="cs-cv-empty">'+(data?(tab==='all'?'No videos on your Loop Channel yet. Upload your first video and it shows up here with its SEO audit.':'Nothing in this view.'):'Loading…')+'</div>';return;}
     list.innerHTML=s.map(card).join('');Array.prototype.forEach.call(list.querySelectorAll('form[data-form]'),function(f){counters(f);f.addEventListener('input',function(){counters(f);});});}
@@ -589,7 +709,7 @@ function sml_cv_render_page(): void {
 	echo '<div class="cs-cv-actions"><a class="primary" href="' . esc_url( home_url( '/upload-video/' ) ) . '">⬆ Upload video</a><button type="button" data-cv-live="top">● Go live</button><button type="button" data-cv-drafts>Drafts &amp; private</button><button type="button" data-cv-live="past">Live replays</button></div>';
 	echo '<div class="cs-cv-sum" data-cv-sum></div><div class="cs-cv-tabs" data-cv-tabs></div><div class="cs-cv-list" data-cv-list></div>';
 	echo '</section></div></div>';
-	echo '<script>window.smlCreatorVideosConfig=' . wp_json_encode( array( 'endpoint' => esc_url_raw( rest_url( SML_CV_NS . '/list' ) ), 'update' => esc_url_raw( rest_url( SML_CV_NS . '/update' ) ), 'index' => esc_url_raw( rest_url( SML_CV_NS . '/request-index' ) ), 'live' => esc_url_raw( rest_url( SML_CV_NS . '/live' ) ), 'nonce' => wp_create_nonce( 'wp_rest' ) ) ) . ';</script><script>' . sml_cv_script() . '</script></body></html>';
+	echo '<script>window.smlCreatorVideosConfig=' . wp_json_encode( array( 'endpoint' => esc_url_raw( rest_url( SML_CV_NS . '/list' ) ), 'update' => esc_url_raw( rest_url( SML_CV_NS . '/update' ) ), 'index' => esc_url_raw( rest_url( SML_CV_NS . '/request-index' ) ), 'thumb' => esc_url_raw( rest_url( SML_CV_NS . '/thumbnail' ) ), 'live' => esc_url_raw( rest_url( SML_CV_NS . '/live' ) ), 'nonce' => wp_create_nonce( 'wp_rest' ) ) ) . ';</script><script>' . sml_cv_script() . '</script></body></html>';
 	exit;
 }
 add_action( 'template_redirect', function () {
