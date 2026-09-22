@@ -281,19 +281,23 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       return { response: response(`**🧭 Your Daily Financial Freedom Goal**\n**${goal.title}** · ${goal.category} · about ${goal.minutes} minutes\n\n**Today’s action**\n${goal.action}\n\n**Do this**\n${steps}\n\n**Finish line**\n${goal.finish}\n\n**Why it matters**\n${goal.why}\n\nSmall, completed actions beat perfect plans. This is general financial education—not personalized investment, tax, credit, or legal advice.`) };
     }
     if (name === 'discipline') {
-      await student(interaction);
+      const row = await student(interaction);
       if (!disciplineAudio) return { response: response('Daily Discipline Audio is temporarily unavailable. Please try again shortly.') };
       const discordId = userId(interaction);
       return {
         response: response('**🎧 Preparing “The Art of Doing Nothing”**\n\nYour private Discord audio player is being generated with your Academy voice. It will appear here as soon as it is ready—no browser required.'),
         followUp: async () => {
-          const result = await disciplineAudio({ episodeId: 1, userId: discordId });
-          return {
-            content: '**🎧 Daily Discipline · Episode 1**\n**The Art of Doing Nothing**\n\nPress play below and keep listening while you move through Discord. Missing a day will not skip your place. Educational content only—not financial advice.',
-            file: { buffer: result.audio, filename: 'daily-discipline-01-the-art-of-doing-nothing.mp3', contentType: 'audio/mpeg' },
-            attachments: [{ id: 0, filename: 'daily-discipline-01-the-art-of-doing-nothing.mp3', description: 'Daily Discipline Episode 1 — The Art of Doing Nothing' }],
-            allowed_mentions: { parse: [] }
-          };
+          try {
+            const result = await disciplineAudio({ episodeId: 1, userId: discordId, studentId: row.id });
+            return {
+              content: '**🎧 Daily Discipline · Episode 1**\n**The Art of Doing Nothing**\n\nPress play below and keep listening while you move through Discord. Missing a day will not skip your place. Educational content only—not financial advice.',
+              file: { buffer: result.audio, filename: 'daily-discipline-01-the-art-of-doing-nothing.mp3', contentType: 'audio/mpeg' },
+              attachments: [{ id: 0, filename: 'daily-discipline-01-the-art-of-doing-nothing.mp3', description: 'Daily Discipline Episode 1 — The Art of Doing Nothing' }],
+              allowed_mentions: { parse: [] }
+            };
+          } catch (_) {
+            return { content: 'The private Discord audio could not be generated right now. Please press **Play Today’s Audio** again in a moment.', allowed_mentions: { parse: [] } };
+          }
         }
       };
     }
