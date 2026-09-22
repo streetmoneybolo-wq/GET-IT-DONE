@@ -733,7 +733,7 @@
     var rt = S.rt || {}, gad = rt.group_ad_analytics || {}, g = x.g, perf = x.perf;
     var ge = null; (gad.groups || []).forEach(function (r) { if (String(r.group_id || r.id) === String(x.id)) ge = r; });
     var share = gad.creator_share_percent != null ? gad.creator_share_percent : null;
-    var html = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + backBar(g.name, '/groups/' + g.slug + '/ · you are ' + x.role + (g.is_paid ? ' · paid group (' + fmt(g.monthly_price_loopbucks) + ' LB/mo)' : ''), 'group') +
+    var html = '<div class="ca-wrap">' + header(rt) + '<main class="ca-main">' + backBar(g.name, '/groups/' + g.slug + '/ · you are ' + x.role + (g.is_paid ? ' · paid group ($' + (Number(g.monthly_price_loopbucks || 0) / 100).toFixed(2) + '/mo)' : ''), 'group') +
       '<div class="ca-grid ca-g4">' +
         '<div class="ca-card"><h3>Members</h3><div class="ca-big">' + fmt(g.member_count || x.members.length) + '</div><div class="ca-sub">' + esc(x.role === 'owner' ? 'you own this group' : (x.role === 'admin' ? 'you help run this group' : 'you are a member')) + '</div></div>' +
         '<div class="ca-card"><h3>Posts (28d)</h3><div class="ca-big">' + fmt(x.posts28) + '</div><div class="ca-sub">' + fmt(x.postsAll) + ' recent posts loaded</div></div>' +

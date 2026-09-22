@@ -168,9 +168,9 @@
   /* ------------------------------------------------------------------ the onboarding over Premium channels */
 
   function priceLine() {
-    var price = state.access.overlay && state.access.overlay.price_loopbucks;
-    /* Plain text, never inside a button: the groups engine hides any button that mentions its old wallet name. */
-    return price ? '<p class="sml-ob-price">' + esc(fmt(price)) + ' Loop Bucks per month</p>' : '';
+    /* memberships are paid in real money on the owner's checkout page (owner, 2026-09-22) */
+    var price = state.access.overlay && state.access.overlay.price_display;
+    return price ? '<p class="sml-ob-price">' + esc(price) + ' per month</p>' : '';
   }
 
   function primaryCta() {
@@ -230,16 +230,15 @@
     var o = a.overlay || {};
     var box = btn && btn.closest('.sml-ob-joinbar, #sml-ob-gate');
     var status = box && box.querySelector('[data-sml-ob-status]');
-    var ask = 'Unlock ' + (o.group_name || 'this group') + ' Premium' + (o.price_loopbucks ? ' for ' + fmt(o.price_loopbucks) + ' Loop Bucks per month' : '') + '?';
-    if (!window.confirm(ask)) return;
-    if (btn) btn.disabled = true;
-    if (status) status.textContent = '';
-    req('/wp-json/sml/v1/group/join', { method: 'POST', body: JSON.stringify({ group_id: a.group_id }) })
-      .then(function () { location.reload(); })
-      .catch(function (err) {
-        if (btn) btn.disabled = false;
-        if (status) status.textContent = err.message; else window.alert(err.message);
-      });
+    /* Premium is bought on the group owner's checkout page (real money), never with Loop Bucks */
+    var url = o.checkout_url, host = '';
+    try { host = /^https:\/\//i.test(url || '') ? new URL(url).host : ''; } catch (e) { host = ''; }
+    if (host) {
+      if (window.confirm('Membership is paid on ' + host + '. Continue to checkout?')) location.assign(url);
+      return;
+    }
+    var msg = o.checkout_message || ('The owner of ' + (o.group_name || 'this group') + ' has not added a membership checkout link yet.');
+    if (status) status.textContent = msg; else window.alert(msg);
   }
 
   function onClick(e) {
@@ -390,7 +389,7 @@
       panel.innerHTML = '<h2 id="sml-ob-cfg-title">Onboarding</h2>' +
         '<p class="note">Onboarding is a Premium group feature. It shows over your Premium channels to everyone who has not joined yet, together with your membership cards, and lets you open chosen channels to everyone for info and promo.</p>' +
         (d.can_set_pricing
-          ? '<p class="note">Make <b>' + esc(d.group_name) + '</b> Premium by setting membership pricing, then come back here.</p><div class="actions"><a class="ghost" href="/?sml_group_slug=' + encodeURIComponent(slug()) + '&amp;owner_tools=1">Set membership pricing</a><button type="button" class="primary" data-close>Close</button></div>'
+          ? '<p class="note">Make <b>' + esc(d.group_name) + '</b> Premium by setting membership pricing, then come back here.</p><div class="actions"><a class="ghost" href="/creator-studio/?tab=groups&amp;group_id=' + encodeURIComponent(String(state.access.group_id || '')) + '">Set price and checkout link</a><button type="button" class="primary" data-close>Close</button></div>'
           : '<p class="note">Ask the group owner to set membership pricing to make this group Premium.</p><div class="actions"><button type="button" class="primary" data-close>Close</button></div>');
       panel.querySelector('[data-close]').addEventListener('click', closeConfig);
       return;
