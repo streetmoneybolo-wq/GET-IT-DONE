@@ -31,6 +31,7 @@ const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
+const ACADEMY_BANNER_PATH = pathModule.join(__dirname, 'assets', 'mem-academy-banner.gif');
 
 /* Dispute-evidence admin actions behind POST /v1/billing/disputes/{action}.
    Every action is HMAC-gated with SML_BILLING_API_SECRET (same scheme as the
@@ -676,6 +677,27 @@ function sendAcademyIntro(request, response) {
   fs.createReadStream(ACADEMY_INTRO_PATH, { start, end }).pipe(response);
 }
 
+function sendAcademyBanner(request, response) {
+  let stat;
+  try { stat = fs.statSync(ACADEMY_BANNER_PATH); } catch (_) { return sendJson(response, 404, { ok: false, error: 'not_found' }); }
+  const etag = `"mem-academy-banner-${stat.size}-${Math.floor(stat.mtimeMs)}"`;
+  const headers = {
+    'content-type': 'image/gif',
+    'content-length': stat.size,
+    'cache-control': 'public, max-age=31536000, immutable',
+    etag,
+    'x-content-type-options': 'nosniff'
+  };
+  if (request.headers['if-none-match'] === etag) {
+    response.writeHead(304, headers);
+    response.end();
+    return;
+  }
+  response.writeHead(200, headers);
+  if (request.method === 'HEAD') { response.end(); return; }
+  fs.createReadStream(ACADEMY_BANNER_PATH).pipe(response);
+}
+
 function academyIntroMarkup() {
   return `<div class="academy-intro" id="academy-intro" role="dialog" aria-label="Making Easy Money Academy introduction"><div class="academy-intro-rail academy-intro-rail-left"><b>LEARN</b><span>PRACTICE</span><span>STRATEGIZE</span></div><video id="academy-intro-video" autoplay playsinline preload="auto"><source src="/academy-activity/assets/making-easy-money-academy-intro.mp4" type="video/mp4"></video><div class="academy-intro-rail academy-intro-rail-right"><b>EXECUTE</b><span>REVIEW</span><span>GROW</span></div><div class="academy-intro-fallback" id="academy-intro-fallback" hidden><strong>Making Easy Money Academy</strong><span>Tap to begin with sound</span><button id="academy-intro-play" type="button">PLAY INTRO</button></div><button class="academy-intro-skip" id="academy-intro-skip" type="button">Skip intro</button><span class="academy-intro-loading" aria-live="polite">Preparing live chart, scanner, lessons, and Academy tools…</span></div><style>
 .academy-intro{position:fixed;inset:0;z-index:2147483647;display:block;overflow:hidden;background:radial-gradient(circle at 50% 45%,#153a2d 0,#07130f 34%,#020609 74%);opacity:1;transition:opacity .38s ease}.academy-intro:before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,255,151,.09) 1px,transparent 1px),linear-gradient(rgba(0,255,151,.06) 1px,transparent 1px);background-size:42px 42px;mask-image:linear-gradient(90deg,#000,transparent 44%,transparent 56%,#000);pointer-events:none}.academy-intro.closing{opacity:0;pointer-events:none}.academy-intro video{position:absolute;left:50%;top:50%;z-index:2;display:block;width:0;height:0;max-width:none;max-height:none;transform:translate(-50%,-50%);object-fit:fill;background:#020609;border:1px solid rgba(71,255,173,.38);border-radius:8px;box-shadow:0 0 52px rgba(0,255,151,.2)}.academy-intro-rail{display:none;position:absolute;z-index:1;top:50%;transform:translateY(-50%);width:clamp(130px,16vw,300px);gap:clamp(8px,2vh,20px);color:#8af5c6;font:800 clamp(.65rem,1.05vw,1rem) ui-monospace;letter-spacing:.12em;text-align:center}.academy-intro-rail b{color:#fff;font-size:1.25em}.academy-intro-rail span{color:#6ba990}.academy-intro-rail-left{left:2vw}.academy-intro-rail-right{right:2vw}.academy-intro.banner-mode .academy-intro-rail{display:grid}.academy-intro-skip{position:absolute;z-index:5;right:max(18px,env(safe-area-inset-right));top:max(16px,env(safe-area-inset-top));padding:8px 12px;border:1px solid rgba(255,255,255,.5);border-radius:999px;background:rgba(0,0,0,.58);color:#fff;font:800 .72rem system-ui;cursor:pointer}.academy-intro-loading{position:absolute;z-index:5;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(92%,620px);padding:8px 12px;border-radius:999px;background:rgba(0,0,0,.7);color:#baf7da;text-align:center;font:700 .66rem system-ui;letter-spacing:.02em}.academy-intro-fallback{position:absolute;z-index:4;inset:0;display:grid;place-content:center;gap:12px;text-align:center;background:radial-gradient(circle,#0c3b2b,#020609 70%)}.academy-intro-fallback[hidden]{display:none}.academy-intro-fallback strong{font-size:clamp(1.3rem,4vw,2.8rem)}.academy-intro-fallback span{color:#a6bbc5}.academy-intro-fallback button{justify-self:center;padding:11px 20px;border:1px solid #43e6a1;border-radius:8px;background:#00c47d;color:#032318;font-weight:900;cursor:pointer}@media(max-width:799px),(max-aspect-ratio:2/1){.academy-intro-rail{display:none!important}.academy-intro video{border-radius:0;box-shadow:none}}@media(prefers-reduced-motion:reduce){.academy-intro{transition:none}.academy-intro video{display:none}.academy-intro-fallback{display:grid!important}}
@@ -1120,6 +1142,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     if ((request.method === 'GET' || request.method === 'HEAD') && path === '/academy-activity/assets/making-easy-money-academy-intro.mp4') {
       sendAcademyIntro(request, response);
+      return;
+    }
+
+    if ((request.method === 'GET' || request.method === 'HEAD') && path === '/academy-activity/assets/mem-academy-banner.gif') {
+      sendAcademyBanner(request, response);
       return;
     }
 

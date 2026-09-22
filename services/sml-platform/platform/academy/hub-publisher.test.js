@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { launcher, publishAcademyHubs } = require('./hub-publisher');
+const { ACADEMY_BANNER_URL, launcher, publishAcademyHubs } = require('./hub-publisher');
 
 const briefing = {
   command: 'briefing', channelId: '1551147441993285692', channel: '🧭｜daily-financial-briefing',
@@ -12,11 +12,13 @@ const briefing = {
 
 test('briefing launcher is private, practical, and one click', () => {
   const payload = launcher(briefing);
+  assert.equal(payload.embeds[0].image.url, ACADEMY_BANNER_URL);
+  assert.equal(payload.embeds[1].title, briefing.title);
   assert.equal(payload.components[0].components[0].custom_id, 'academy:hub:briefing');
   assert.equal(payload.components[0].components[0].style, 3);
-  assert.match(payload.embeds[0].description, /One click/);
-  assert.match(payload.embeds[0].fields.map((field) => field.value).join(' '), /average person/i);
-  assert.match(payload.embeds[0].fields.map((field) => field.value).join(' '), /visible only to you/i);
+  assert.match(payload.embeds[1].description, /One click/);
+  assert.match(payload.embeds[1].fields.map((field) => field.value).join(' '), /average person/i);
+  assert.match(payload.embeds[1].fields.map((field) => field.value).join(' '), /visible only to you/i);
   assert.deepEqual(payload.allowed_mentions, { parse: [] });
 });
 
@@ -38,7 +40,8 @@ test('lesson launcher consolidates all five learning tools into one channel', ()
     'academy:hub:glossary', 'academy:hub:flashcard', 'academy:hub:quiz',
     'academy:hub:challenge', 'academy:hub:replay'
   ]);
-  assert.match(payload.embeds[0].fields.map((field) => field.value).join(' '), /visible only to you/i);
+  assert.equal(payload.embeds[0].image.url, ACADEMY_BANNER_URL);
+  assert.match(payload.embeds[1].fields.map((field) => field.value).join(' '), /visible only to you/i);
 });
 
 test('publisher reuses the fixed briefing channel and pins its launcher', async () => {

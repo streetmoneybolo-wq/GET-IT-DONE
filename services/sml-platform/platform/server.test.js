@@ -204,6 +204,18 @@ test('Academy intro video supports cached byte-range streaming', async () => {
   });
 });
 
+test('Academy Discord banner is a cacheable animated GIF', async () => {
+  await withServer({}, async (base) => {
+    const response = await fetch(`${base}/academy-activity/assets/mem-academy-banner.gif`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'image/gif');
+    assert.match(response.headers.get('cache-control'), /immutable/);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.subarray(0, 6).toString('ascii'), 'GIF89a');
+    assert.ok(bytes.length > 100_000);
+  });
+});
+
 test('Academy curriculum loads separately and is cacheable after first paint', async () => {
   await withServer({}, async (base) => {
     const response = await fetch(`${base}/academy-activity/curriculum`);
