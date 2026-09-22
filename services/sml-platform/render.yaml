@@ -76,6 +76,12 @@ services:
         value: "1551336038713139370"
       - key: SML_ACADEMY_CLIENT_SECRET
         sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: SML_ACADEMY_ELEVENLABS_VOICE_ID
+        sync: false
+      - key: SML_ACADEMY_ELEVENLABS_MODEL
+        value: eleven_multilingual_v2
       - key: SML_ACADEMY_GUILD_ID
         sync: false
       - key: SML_ACADEMY_MANAGER_ROLE_ID

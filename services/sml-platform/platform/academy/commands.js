@@ -142,7 +142,7 @@ function nextLessonFor(lesson) {
   return index >= 0 ? ordered[index + 1] || null : null;
 }
 
-function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now } = {}) {
+function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now, disciplinePlayerUrl = null } = {}) {
   function canHandle(interaction) {
     const name = String(interaction?.data?.name || '').toLowerCase();
     const customId = String(interaction?.data?.custom_id || '');
@@ -280,9 +280,10 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       return { response: response(`**🧭 Your Daily Financial Freedom Goal**\n**${goal.title}** · ${goal.category} · about ${goal.minutes} minutes\n\n**Today’s action**\n${goal.action}\n\n**Do this**\n${steps}\n\n**Finish line**\n${goal.finish}\n\n**Why it matters**\n${goal.why}\n\nSmall, completed actions beat perfect plans. This is general financial education—not personalized investment, tax, credit, or legal advice.`) };
     }
     if (name === 'discipline') {
-      const lesson = dailyLesson(SEED_LESSONS.filter((entry) => /discipline|psychology|bias|process|journal|risk|decision/i.test(`${entry.title} ${entry.description}`)), now);
       await student(interaction);
-      return { response: response(`**Daily Discipline**\n${lesson.steps[0]}\n\nBefore your next decision, write what would invalidate the idea and the maximum loss you accept. If either is missing, the disciplined action is to wait.`, [lessonEmbed(lesson)], [{ type: 1, components: [button('Open Today’s Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
+      if (!disciplinePlayerUrl) return { response: response('Daily Discipline Audio is temporarily unavailable. Please try again shortly.') };
+      const url = disciplinePlayerUrl(userId(interaction));
+      return { response: response(`**🎧 Your Daily Discipline Audio is ready**\n\nToday begins with **The Art of Doing Nothing**—a lesson in patience, preparation, and protecting capital. Your place is saved automatically. Missing a day never skips an episode, and finishing early never unlocks tomorrow’s episode today.\n\nStart the player, then keep it open while you browse other Discord channels.`, [], [{ type: 1, components: [linkButton('▶ Play Today’s Discipline', url)] }]) };
     }
     if (name === 'replay') {
       const scenario = option(interaction, 'scenario');

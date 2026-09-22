@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { episodeFor, splitNarration } = require('./academy/discipline-content');
 
 const DEFAULT_MODEL = 'eleven_multilingual_v2';
 const MAX_CACHE_ITEMS = 64;
@@ -49,7 +50,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     }
   }
 
-  async function generate(lesson, cacheKey) {
+  async function generateText(text, cacheKey) {
     const response = await fetchImpl(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`, {
       method: 'POST',
       headers: {
@@ -58,7 +59,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
         'xi-api-key': apiKey
       },
       body: JSON.stringify({
-        text: narrationFor(lesson),
+        text,
         model_id: modelId,
         voice_settings: {
           stability: 0.58,
@@ -97,12 +98,30 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0${text}`).digest('hex');
     if (cache.has(digest)) return { audio: cache.get(digest), cached: true };
     if (!inflight.has(digest)) {
-      inflight.set(digest, generate(lesson, digest).finally(() => inflight.delete(digest)));
+      inflight.set(digest, generateText(text, digest).finally(() => inflight.delete(digest)));
     }
     return { audio: await inflight.get(digest), cached: false };
   }
 
-  return { configured, getLessonAudio };
+  async function getDisciplineAudio({ episodeId, partIndex, userId }) {
+    if (!configured) {
+      const error = new Error('academy voice is not configured');
+      error.code = 'integration_unconfigured';
+      throw error;
+    }
+    const episode = episodeFor(episodeId);
+    const parts = episode ? splitNarration(episode.script) : [];
+    const index = Number(partIndex);
+    if (!episode || !Number.isInteger(index) || index < 0 || index >= parts.length) throw new TypeError('invalid discipline audio part');
+    consume(String(userId || 'unknown'));
+    const text = parts[index];
+    const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0discipline\0${episode.id}\0${index}\0${text}`).digest('hex');
+    if (cache.has(digest)) return { audio: cache.get(digest), cached: true, partCount: parts.length };
+    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest).finally(() => inflight.delete(digest)));
+    return { audio: await inflight.get(digest), cached: false, partCount: parts.length };
+  }
+
+  return { configured, getLessonAudio, getDisciplineAudio };
 }
 
 module.exports = { createAcademyVoice, narrationFor };

@@ -27,6 +27,8 @@ const { academyChartIntelligenceScript } = require('./academy-chart-intelligence
 const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createAcademyVoice } = require('./academy-voice');
+const { createDisciplineProgress } = require('./academy/discipline-progress');
+const { verifyDisciplineToken } = require('./academy/discipline-token');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
@@ -627,6 +629,13 @@ function sendHtml(response, status, body) {
   response.end(payload);
 }
 
+function academyDisciplinePlayerHtml() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#060a0d"><title>Daily Discipline Audio</title><style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#173526 0,#07100d 38%,#030608 80%);color:#f3f7f5;font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;padding:24px}.player{width:min(720px,100%);border:1px solid #254b3b;border-radius:22px;background:rgba(5,12,10,.96);box-shadow:0 24px 80px #0009;overflow:hidden}.hero{padding:28px;background:linear-gradient(135deg,#11291f,#07110e);border-bottom:1px solid #214332}.eyebrow{color:#57eea9;font-size:.75rem;font-weight:900;letter-spacing:.14em}.hero h1{margin:.35rem 0 .4rem;font-size:clamp(1.75rem,6vw,3rem);line-height:1.05}.summary{margin:0;color:#a9bbb4}.body{padding:24px}.progress{height:8px;background:#14241e;border-radius:999px;overflow:hidden}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#00c978,#69ffb9);transition:width .25s}.time{display:flex;justify-content:space-between;color:#8fa39b;font-size:.78rem;margin:.55rem 0 1.5rem}.controls{display:flex;align-items:center;justify-content:center;gap:12px}.controls button{border:0;border-radius:999px;cursor:pointer;font-weight:900}.play{width:92px;height:92px;background:#00d084;color:#03130c;font-size:1.15rem;box-shadow:0 0 34px #00d08455}.skip{width:48px;height:48px;background:#17251f;color:#e9fff6}.status{min-height:1.5em;text-align:center;color:#9db0a8;margin:18px 0 0}.note{margin:22px 0 0;padding:14px;border-left:3px solid #00d084;background:#0a1712;color:#b8c8c1;font-size:.88rem}.done{color:#66f4b3;font-weight:800}.error{color:#ff8d95}</style></head><body><main class="player"><header class="hero"><div class="eyebrow">MAKING EASY MONEY ACADEMY · DAILY DISCIPLINE</div><h1 id="title">Preparing your episode…</h1><p class="summary" id="summary">Your position will be restored automatically.</p></header><section class="body"><div class="progress"><span id="bar"></span></div><div class="time"><span id="elapsed">0:00</span><span id="part">Loading</span></div><div class="controls"><button class="skip" id="back" aria-label="Back 15 seconds">−15</button><button class="play" id="play">PLAY</button><button class="skip" id="forward" aria-label="Forward 15 seconds">+15</button></div><p class="status" id="status">Loading your private progress…</p><p class="note">Keep this player open and the audio can continue while you browse other Discord text channels. Your place is saved automatically. Educational content only—not financial advice.</p><audio id="audio" preload="auto"></audio></section></main><script>
+(()=>{const token=new URLSearchParams(location.search).get('token')||'',audio=document.getElementById('audio'),play=document.getElementById('play'),status=document.getElementById('status'),title=document.getElementById('title'),summary=document.getElementById('summary'),bar=document.getElementById('bar'),elapsed=document.getElementById('elapsed'),part=document.getElementById('part');let state=null,saving=false,lastSaved=0;const fmt=v=>{const s=Math.max(0,Math.floor(Number(v)||0));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')},api=(path,options={})=>fetch(path+(path.includes('?')?'&':'?')+'token='+encodeURIComponent(token),{cache:'no-store',...options}),setStatus=(copy,kind='')=>{status.textContent=copy;status.className='status '+kind},audioUrl=i=>'/academy-discipline/speech?episode='+state.episode.id+'&part='+i+'&token='+encodeURIComponent(token);const save=async completed=>{if(!state||saving)return;saving=true;try{await api('/academy-discipline/progress',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({episodeId:state.episode.id,partIndex:state.partIndex,playbackMs:Math.round(audio.currentTime*1000),completed:Boolean(completed)})});lastSaved=Date.now()}catch{}finally{saving=false}};const render=()=>{play.textContent=audio.paused?'PLAY':'PAUSE';elapsed.textContent=fmt(audio.currentTime);part.textContent='Part '+(state.partIndex+1)+' of '+state.episode.partCount;bar.style.width=((state.partIndex+(audio.duration?audio.currentTime/audio.duration:0))/state.episode.partCount*100)+'%'},loadPart=(index,resume=0,autoplay=false)=>{state.partIndex=index;audio.src=audioUrl(index);audio.onloadedmetadata=()=>{audio.currentTime=Math.min(Math.max(0,resume/1000),Math.max(0,audio.duration-.2));render();if(autoplay)void audio.play()};audio.load();if(index+1<state.episode.partCount){const next=new Audio();next.preload='auto';next.src=audioUrl(index+1)}};play.onclick=()=>{if(audio.paused)audio.play().catch(()=>setStatus('Tap Play again to allow audio.','error'));else audio.pause()};document.getElementById('back').onclick=()=>audio.currentTime=Math.max(0,audio.currentTime-15);document.getElementById('forward').onclick=()=>audio.currentTime=Math.min(audio.duration||0,audio.currentTime+15);audio.ontimeupdate=()=>{render();if(Date.now()-lastSaved>10000)void save(false)};audio.onplay=()=>{setStatus('Now playing. Your place is being saved.');render()};audio.onpause=()=>{void save(false);render()};audio.onended=()=>{if(state.partIndex+1<state.episode.partCount){void save(false);loadPart(state.partIndex+1,0,true)}else{void save(true);bar.style.width='100%';play.textContent='DONE';play.disabled=true;setStatus(state.nextAvailable?'Episode complete. Your next episode unlocks tomorrow.':'Episode complete. Your progress is saved; the next recording will appear when it is added.','done')}};addEventListener('pagehide',()=>{if(state)navigator.sendBeacon('/academy-discipline/progress?token='+encodeURIComponent(token),new Blob([JSON.stringify({episodeId:state.episode.id,partIndex:state.partIndex,playbackMs:Math.round(audio.currentTime*1000),completed:false})],{type:'application/json'}))});api('/academy-discipline/state').then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j.error||'unavailable');return j})).then(payload=>{state=payload.state;title.textContent=state.episode.title;summary.textContent=state.episode.summary;if(state.completed){play.textContent='DONE';play.disabled=true;bar.style.width='100%';setStatus(state.nextAvailable?'Completed. The next episode unlocks tomorrow.':'Completed. The next recording will appear when it is added.','done');return}loadPart(state.partIndex,state.playbackMs);setStatus('Ready. Press Play to begin.');if('mediaSession'in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:state.episode.title,artist:'Making Easy Money Academy',album:'Daily Discipline'})}).catch(()=>setStatus('This private player link expired. Return to the Daily Discipline channel and open it again.','error'))})();
+</script></body></html>`;
+}
+
 function sendAcademyIntro(request, response) {
   let stat;
   try { stat = fs.statSync(ACADEMY_INTRO_PATH); } catch (_) { return sendJson(response, 404, { ok: false, error: 'not_found' }); }
@@ -987,12 +996,59 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
+  academyDiscipline = null, academyDisciplineSecret = '',
   academySlideDesigner = null, academyAppId = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
+    if (request.method === 'GET' && (path === '/academy-discipline' || path === '/academy-discipline/')) {
+      sendHtml(response, 200, academyDisciplinePlayerHtml());
+      return;
+    }
+    if ((request.method === 'GET' && path === '/academy-discipline/state') || (request.method === 'POST' && path === '/academy-discipline/progress')) {
+      const token = new URL(request.url || '/', 'http://localhost').searchParams.get('token');
+      const claims = verifyDisciplineToken(token, academyDisciplineSecret, now);
+      if (!claims.ok) { sendJson(response, 401, { ok: false, error: claims.code }); return; }
+      if (!academyDiscipline?.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      try {
+        if (request.method === 'GET') {
+          sendJson(response, 200, { ok: true, state: await academyDiscipline.read(claims.userId, claims.guildId) });
+          return;
+        }
+        if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+        const body = await readRequestBody(request, 4096);
+        if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+        let input;
+        try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+        sendJson(response, 200, { ok: true, state: await academyDiscipline.save(claims.userId, claims.guildId, input) });
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        logger(invalid ? 'warn' : 'error', 'academy_discipline_progress_failed', { error });
+        sendJson(response, invalid ? 400 : 503, { ok: false, error: invalid ? 'invalid_progress' : 'temporary_unavailable' });
+      }
+      return;
+    }
+    if (request.method === 'GET' && path === '/academy-discipline/speech') {
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      const claims = verifyDisciplineToken(params.get('token'), academyDisciplineSecret, now);
+      if (!claims.ok) { sendJson(response, 401, { ok: false, error: claims.code }); return; }
+      if (!academyVoice?.configured || !academyDiscipline?.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      try {
+        const state = await academyDiscipline.read(claims.userId, claims.guildId);
+        if (Number(params.get('episode')) !== state.episode.id) throw new TypeError('episode is not unlocked');
+        const result = await academyVoice.getDisciplineAudio({ episodeId: params.get('episode'), partIndex: params.get('part'), userId: claims.userId });
+        response.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': result.audio.length, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff', 'x-academy-voice-cache': result.cached ? 'hit' : 'miss' });
+        response.end(result.audio);
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        const limited = error?.code === 'rate_limited' || error?.code === 'provider_rate_limited';
+        logger(invalid ? 'warn' : 'error', 'academy_discipline_voice_failed', { error, userId: claims.userId });
+        sendJson(response, invalid ? 400 : (limited ? 429 : 503), { ok: false, error: invalid ? 'invalid_audio_part' : (limited ? 'rate_limited' : 'voice_temporarily_unavailable') });
+      }
+      return;
+    }
     /* ---- dispute-evidence surfaces: every one 503s until configured ---- */
     if (request.method === 'POST' && path === '/v1/paypal/webhook') {
       if (!paypalWebhook) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -1435,6 +1491,7 @@ async function main() {
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
   });
+  const academyDiscipline = createDisciplineProgress({ pool: database.pool });
   const academySlideDesigner = createAcademySlideDesigner({
     apiKey: config.anthropicApiKey, model: config.academyClaudeModel, lessons: SEED_LESSONS
   });
@@ -1472,6 +1529,7 @@ async function main() {
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner,
+    academyDiscipline, academyDisciplineSecret: config.academyClientSecret,
     academyAppId: config.academyAppId
   });
   let shuttingDown = false;

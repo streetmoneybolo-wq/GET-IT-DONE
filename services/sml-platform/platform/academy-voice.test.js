@@ -41,3 +41,22 @@ test('Academy voice fails closed when unconfigured or asked for a non-canonical 
   const configured = createAcademyVoice({ apiKey: 'key', voiceId: 'voice', lessons: [lesson], fetchImpl: async () => new Response('x') });
   await assert.rejects(() => configured.getLessonAudio({ moduleId: 99, lessonId: 99, userId: 'member' }), TypeError);
 });
+
+test('Academy voice generates and caches bounded discipline audio parts', async () => {
+  let calls = 0;
+  const service = createAcademyVoice({
+    apiKey: 'key', voiceId: 'obi-clone', lessons: [],
+    fetchImpl: async (_url, options) => {
+      calls += 1;
+      const body = JSON.parse(options.body);
+      assert.ok(body.text.length <= 3200);
+      return new Response(Buffer.from('discipline-mp3'), { status: 200 });
+    }
+  });
+  const first = await service.getDisciplineAudio({ episodeId: 1, partIndex: 0, userId: 'one' });
+  const second = await service.getDisciplineAudio({ episodeId: 1, partIndex: 0, userId: 'two' });
+  assert.equal(first.audio.toString(), 'discipline-mp3');
+  assert.equal(second.cached, true);
+  assert.equal(calls, 1);
+  await assert.rejects(() => service.getDisciplineAudio({ episodeId: 1, partIndex: 999, userId: 'one' }), TypeError);
+});
