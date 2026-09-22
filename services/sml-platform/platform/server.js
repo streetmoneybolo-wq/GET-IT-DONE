@@ -3,6 +3,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const zlib = require('node:zlib');
+const crypto = require('node:crypto');
 const pathModule = require('node:path');
 const { getConfig } = require('./config');
 const { createDatabase } = require('./database');
@@ -1098,19 +1099,28 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     if (request.method === 'GET' && path === '/academy-activity/speech') {
-      if (!academyOAuth || !academyVoice || !academyVoice.configured) {
+      if (!academyVoice || !academyVoice.configured) {
         sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
         return;
       }
-      const session = academyOAuth.verifySession(request.headers.authorization);
-      if (!session.ok) {
-        sendJson(response, session.status || 401, { ok: false, error: session.code });
-        return;
+      const authorization = String(request.headers.authorization || '').trim();
+      let voiceUserId;
+      if (authorization) {
+        const session = academyOAuth && academyOAuth.verifySession(authorization);
+        if (!session || !session.ok) {
+          sendJson(response, session?.status || 401, { ok: false, error: session?.code || 'authorization_required' });
+          return;
+        }
+        voiceUserId = session.userId;
+      } else {
+        const forwarded = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+        const userAgent = String(request.headers['user-agent'] || '').slice(0, 160);
+        voiceUserId = `anonymous:${crypto.createHash('sha256').update(`${forwarded}\0${userAgent}`).digest('hex').slice(0, 24)}`;
       }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       try {
         const result = await academyVoice.getLessonAudio({
-          moduleId: params.get('moduleId'), lessonId: params.get('lessonId'), userId: session.userId
+          moduleId: params.get('moduleId'), lessonId: params.get('lessonId'), userId: voiceUserId
         });
         response.writeHead(200, {
           'content-type': 'audio/mpeg',
@@ -1124,7 +1134,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         const invalid = error instanceof TypeError;
         const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
         logger(invalid ? 'warn' : 'error', 'academy_voice_request_failed', {
-          error, userId: session.userId, moduleId: params.get('moduleId'), lessonId: params.get('lessonId')
+          error, userId: voiceUserId, moduleId: params.get('moduleId'), lessonId: params.get('lessonId')
         });
         sendJson(response, invalid ? 400 : (limited ? 429 : 503), {
           ok: false, error: invalid ? 'invalid_lesson' : (limited ? 'rate_limited' : 'voice_temporarily_unavailable')

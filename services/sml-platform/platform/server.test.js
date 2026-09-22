@@ -218,7 +218,7 @@ test('Academy Activity stores simulation progress only for an authenticated Disc
   });
 });
 
-test('Academy lesson narration is session gated and returned as private MP3 audio', async () => {
+test('Academy lesson narration works in Discord without a session and honors authenticated sessions', async () => {
   const calls = [];
   const academyOAuth = {
     verifySession: (authorization) => authorization === 'Bearer academy-session'
@@ -233,9 +233,11 @@ test('Academy lesson narration is session gated and returned as private MP3 audi
     }
   };
   await withServer({ academyOAuth, academyVoice }, async (base) => {
-    const denied = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`);
-    assert.equal(denied.status, 401);
-    assert.equal(calls.length, 0);
+    const anonymous = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`, {
+      headers: { 'x-forwarded-for': '203.0.113.9', 'user-agent': 'Discord-Activity-Test' }
+    });
+    assert.equal(anonymous.status, 200);
+    assert.match(calls[0].userId, /^anonymous:[a-f0-9]{24}$/);
     const allowed = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`, {
       headers: { authorization: 'Bearer academy-session' }
     });
@@ -244,7 +246,7 @@ test('Academy lesson narration is session gated and returned as private MP3 audi
     assert.match(allowed.headers.get('cache-control'), /private/);
     assert.equal(Buffer.from(await allowed.arrayBuffer()).toString(), 'lesson-mp3');
   });
-  assert.deepEqual(calls, [{ moduleId: '1', lessonId: '1', userId: 'member-123' }]);
+  assert.deepEqual(calls[1], { moduleId: '1', lessonId: '1', userId: 'member-123' });
 });
 
 test('Academy private data is role-session gated before the WordPress bridge is called', async () => {
