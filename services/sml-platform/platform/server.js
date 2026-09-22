@@ -24,6 +24,7 @@ const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
 const { academyVisualLabScript } = require('./academy-visual-lab');
 const { academyChartIntelligenceScript } = require('./academy-chart-intelligence');
+const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createAcademyVoice } = require('./academy-voice');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -144,17 +145,31 @@ function sanitizeHubScanner(value) {
       ask: asHubNumber(row.ask),
       askSize: asHubNumber(row.askSize || row.as),
       postMarketPct: asHubNumber(row.postPct),
-      turnoverRate: asHubNumber(row.turnoverRate || row.turnover_rate),
+      postMarketPrice: asHubNumber(row.postMarketPrice || row.post_price || row.postPrice),
+      turnoverRate: asHubNumber(row.turnoverRate || row.turnover_rate || row.handTurnover),
+      turnover: asHubNumber(row.turnover || row.amount),
       volatility: asHubNumber(row.volatility),
       amplitude: asHubNumber(row.amplitude),
-      volumeRatio: asHubNumber(row.volumeRatio || row.volume_ratio),
-      rvol: asHubNumber(row.rvol || row.relativeVolume),
-      marketCap: asHubNumber(row.marketCap || row.market_cap),
+      volumeRatio: asHubNumber(row.volumeRatio || row.volume_ratio || row.relV),
+      rvol: asHubNumber(row.rvol || row.relativeVolume || row.relV),
+      avgPrice: asHubNumber(row.avgPrice || row.averagePrice || row.avg_price),
+      high52: asHubNumber(row.high52 || row.week52High || row.high_52_week),
+      low52: asHubNumber(row.low52 || row.week52Low || row.low_52_week),
+      historicalHigh: asHubNumber(row.historicalHigh || row.historical_high),
+      historicalLow: asHubNumber(row.historicalLow || row.historical_low),
+      marketCap: asHubNumber(row.marketCap || row.market_cap || row.mcap),
       peTtm: asHubNumber(row.peTtm || row.pe_ttm),
+      peLyr: asHubNumber(row.peLyr || row.pe_lyr),
       pb: asHubNumber(row.pb),
       roe: asHubNumber(row.roe),
       roa: asHubNumber(row.roa),
-      dividendYield: asHubNumber(row.dividendYield || row.dividend_yield),
+      dividendYield: asHubNumber(row.dividendYield || row.dividend_yield || row.divYield),
+      dividendTtm: asHubNumber(row.dividendTtm || row.dividend_ttm),
+      sharesOutstanding: asHubNumber(row.sharesOutstanding || row.totalShares || row.shares_outstanding),
+      floatMarketCap: asHubNumber(row.floatMarketCap || row.float_market_cap),
+      sharesFloat: asHubNumber(row.sharesFloat || row.floatShares || row.shares_float),
+      minTradingUnit: asHubNumber(row.minTradingUnit || row.lotSize || row.min_trading_unit),
+      bidAskRatio: asHubNumber(row.bidAskRatio || row.bid_ask_ratio),
       rsi: asHubNumber(row.rsi),
       macd: asHubNumber(row.macd),
       bidAskPressure: asHubNumber(row.bidAskPressure || row.bid_ask_pressure),
@@ -593,7 +608,7 @@ function sendHtml(response, status, body) {
     ? body.replace('new ResizeObserver(resize).observe(canvas);', '')
     : body;
   const safeBody = typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
-    ? strippedBody.replace('<body>', `<body>${academyIntroMarkup()}`).replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}${academyChartIntelligenceScript()}</body></html>`)
+    ? strippedBody.replace('<body>', `<body>${academyIntroMarkup()}`).replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}${academyChartIntelligenceScript()}${academyQuoteStatisticsScript()}</body></html>`)
     : strippedBody;
   const payload = zlib.gzipSync(Buffer.from(safeBody), { level: zlib.constants.Z_BEST_SPEED });
   response.writeHead(status, {

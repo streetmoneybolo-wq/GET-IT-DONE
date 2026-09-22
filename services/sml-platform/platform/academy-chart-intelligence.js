@@ -1,5 +1,7 @@
 'use strict';
 
+const { QUOTE_STAT_FIELDS } = require('./academy-quote-statistics');
+
 const INDICATOR_CATEGORIES = [
   { name: 'Trend Indicators', lesson: [3, 2], indicators: ['SMA','EMA','WMA','HMA','KAMA','MACD','ADX','Parabolic SAR','SuperTrend','Ichimoku Cloud','Moving Average Ribbon','Trendlines','Linear Regression','Donchian Channels','MA Crossovers','Price Channels','Gann Trend','Heikin-Ashi Trend Bias','MA Envelopes','Adaptive Moving Average','Zero-Lag MA','Triangular MA','Fractal Trend','DEMA','TEMA','McGinley Dynamic','Chande TrendScore','Trend Intensity Index','Trend Confirmation Index','Trend Direction Force'] },
   { name: 'Momentum Indicators', lesson: [3, 2], indicators: ['RSI','Stochastic (%K/%D)','CCI','Williams %R','ROC','TRIX','Ultimate Oscillator','Chande Momentum Oscillator','KDJ','BIAS','PSY','Momentum (Rate of Change)','Elder Force Index','Connors RSI','QQE','Fisher Transform','Stochastic RSI','Awesome Oscillator','Coppock Curve','DPO','Relative Vigor Index','Balance of Power','Price Momentum Oscillator','True Strength Index','McClellan Oscillator','McClellan Summation Index'] },
@@ -38,8 +40,10 @@ function attachIndicatorCurriculum(lessons) {
   }
   return lessons.map((lesson) => {
     const categories = grouped.get(`${lesson.moduleId}:${lesson.lessonId}`);
-    if (!categories) return lesson;
-    const additions = categories.map((category) => `${category.name}: ${category.indicators.join(', ')}. For every item, identify its inputs, formula or source, valid use, lag, failure modes, and whether it is price-derived or requires a verified external feed.`);
+    const quoteLesson = lesson.moduleId === 1 && lesson.lessonId === 1;
+    if (!categories && !quoteLesson) return lesson;
+    const additions = (categories || []).map((category) => `${category.name}: ${category.indicators.join(', ')}. For every item, identify its inputs, formula or source, valid use, lag, failure modes, and whether it is price-derived or requires a verified external feed.`);
+    if (quoteLesson) additions.push(`Quote-statistics panel: ${QUOTE_STAT_FIELDS.map(([, label]) => label).join(', ')}. Distinguish intraday price fields, liquidity measures, valuation ratios, share structure, historical ranges, dividends, and post-market fields; a missing verified field remains blank rather than being estimated.`);
     const steps = [...lesson.steps];
     steps[steps.length - 1] += ` Indicator lab: ${additions.join(' ')}`;
     return { ...lesson, steps };
