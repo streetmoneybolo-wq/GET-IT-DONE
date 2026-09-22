@@ -16,6 +16,7 @@ const { createUpgradeChatClient } = require('./upgrade-chat');
 const newsWebhook = require('./news-webhook');
 const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
+const dailySocialPayoutsModule = require('./dsp-interactions');
 const connectMigration = require('./connect-migration');
 const { createAcademyAccess } = require('./academy-access');
 const { createAcademyOAuth } = require('./academy-oauth');
@@ -914,7 +915,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   alertRouter = null, alertRouterSecret = '',
   enqueueNewsArticle = async () => { throw new Error('not configured'); },
   newsIngestToken = '',
-  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
+  paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
   academySlideDesigner = null, academyAppId = '',
@@ -948,6 +949,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const body = await readRequestBody(request, discordInteractionsModule.MAX_BODY_BYTES);
       if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
       await disputeDiscordInteractions.handleRequest(request, response, body.rawBody);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/daily-social-payouts/interactions') {
+      if (!dailySocialPayoutsInteractions) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const body = await readRequestBody(request, dailySocialPayoutsModule.MAX_BODY_BYTES);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      await dailySocialPayoutsInteractions.handle(request, response, body.rawBody);
       return;
     }
     if (request.method === 'POST' && path.startsWith('/v1/billing/disputes/')) {
@@ -1341,6 +1349,8 @@ async function main() {
   const { createDisputeRuntime } = require('./dispute-runtime');
   const disputes = createDisputeRuntime({ config, pool: database.pool, stripe, upgradeChat, logger: log });
   const connectInteractions = disputes.discordInteractions;
+  const dailySocialPayoutsInteractions = config.dailySocialPayoutsEnabled
+    ? dailySocialPayoutsModule.createDailySocialPayoutsInteractions({ config, pool: database.pool }) : null;
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
@@ -1372,6 +1382,7 @@ async function main() {
     upgradeChatWebhook: disputes.upgradeChatWebhook,
     discordInteractions: connectInteractions,
     disputeDiscordInteractions: disputes.disputeDiscordInteractions,
+    dailySocialPayoutsInteractions,
     disputeService: disputes.disputeService,
     schemaVersion,
     stripeWebhookSecret: config.stripeWebhookSecret,

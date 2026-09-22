@@ -110,6 +110,13 @@ function getConfig(env = process.env) {
     academyVoiceId: String(env.SML_ACADEMY_ELEVENLABS_VOICE_ID || '').trim(),
     academyVoiceModel: String(env.SML_ACADEMY_ELEVENLABS_MODEL || 'eleven_multilingual_v2').trim(),
     academyClaudeModel: String(env.SML_ACADEMY_CLAUDE_MODEL || env.SML_AI_ANTHROPIC_MODEL || 'claude-sonnet-5').trim(),
+    dailySocialPayoutsEnabled: String(env.SML_DSP_ENABLED || '').trim() === '1',
+    dailySocialPayoutsPublicKey: String(env.SML_DSP_DISCORD_PUBLIC_KEY || '').trim(),
+    dailySocialPayoutsAppId: String(env.SML_DSP_DISCORD_APP_ID || '').trim(),
+    dailySocialPayoutsBotToken: String(env.SML_DSP_DISCORD_BOT_TOKEN || '').trim(),
+    dailySocialPayoutsGuildId: String(env.SML_DSP_GUILD_ID || '938894329076940820').trim(),
+    dailySocialPayoutsChannelId: String(env.SML_DSP_CHANNEL_ID || '1417576889878446256').trim(),
+    dailySocialPayoutsManagerRoleId: String(env.SML_DSP_MANAGER_ROLE_ID || '1260433215189946420').trim(),
     discordClientId: String(env.DISCORD_CLIENT_ID || '').trim(),
     discordClientSecret: String(env.DISCORD_CLIENT_SECRET || '').trim(),
     discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim()
