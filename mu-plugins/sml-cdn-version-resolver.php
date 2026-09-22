@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML CDN Version Resolver
  * Description: Pins the shared frontend asset revision WITHOUT replacing the real resolver.
- * Version: 1.0.8
+ * Version: 1.0.9
  *
  * 1.0.0 defined sml_cdn_resolve_ref() here. mu-plugins load before WPCode, and
  * WPCode #6873 "SML CDN Loader" declares that same function inside its loader
@@ -35,12 +35,14 @@
  * 1.0.8 (2026-09-22): advance pin 52b75c7 -> bfa6ca3. Header tape (js/site-search.js only): the breaking-news cursor
  * (/sml-signal-news/v1/tape?bootstrap=1) is fetched once per page view instead of on every hidden->visible flip — a flickering
  * tab was firing it ~1/s, each a 1.5 s WP boot. Polls ?after= every 15 s (30 s when quiet), one request in flight, no ?_= buster.
+ * 1.0.9 (2026-09-22): advance pin bfa6ca3 -> 5223f7b. js/loop-channel.js only: hands #ch-orbit to window.SML_LCE.mount() — a no-op
+ * unless plugin sml-channel-layout 1.1.0 enqueued its script (enabled channels only); the orbit stays unless a valid layout arrives.
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'bfa6ca3070d2b6dc0cd0d9546bafa510722f9a6c' );
+	define( 'SML_CDN_ASSET_REVISION', '5223f7b91c82ba9904250e88fe93fd775c63faee' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
