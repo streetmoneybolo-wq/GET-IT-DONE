@@ -21,6 +21,7 @@ const { createAcademyAccess } = require('./academy-access');
 const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript } = require('./academy-activity-curriculum');
+const { academyVisualLabScript } = require('./academy-visual-lab');
 const { createAcademyProgress } = require('./academy-progress');
 const { createAcademyVoice } = require('./academy-voice');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -518,7 +519,7 @@ void authenticateAcademyActivity();
     .replace("canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.7,Math.min(4,scale*(e.deltaY>0?.86:1.16)));draw()},{passive:false})", "canvas.addEventListener('wheel',()=>{},{passive:true})")
     .replace("function load(){const s=esc(sym.value);location.assign(location.pathname+'?symbol='+encodeURIComponent(s))}", "function load(){window.smlAcademyNavigateMarket?.(esc(sym.value))}")
     .replace("new ResizeObserver(resize).observe(canvas);setQuote();draw()", "const chartObserver=new ResizeObserver(resize);chartObserver.observe(canvas);window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)resize()});requestAnimationFrame(resize);setTimeout(resize,250);setTimeout(resize,1000);setQuote();draw()")
-    .replace('function renderSlide()', "window.smlAcademyApplyMarket=payload=>{if(!payload||!Array.isArray(payload.bars)||!payload.bars.length)return;bars=payload.bars.slice(-250);symbol=esc(payload.symbol||sym.value);offset=0;setQuote();resize();window.smlAcademyRefreshQuote?.()};function renderSlide()")
+    .replace('function renderSlide()', "window.smlAcademyChartState=()=>({bars:bars.slice(),symbol,offset,scale});window.smlAcademyApplyMarket=payload=>{if(!payload||!Array.isArray(payload.bars)||!payload.bars.length)return;bars=payload.bars.slice(-250);symbol=esc(payload.symbol||sym.value);offset=0;setQuote();resize();window.smlAcademyRefreshQuote?.();window.dispatchEvent(new CustomEvent('sml-academy-market',{detail:{bars:bars.slice(),symbol}}))};queueMicrotask(()=>window.dispatchEvent(new CustomEvent('sml-academy-market',{detail:{bars:bars.slice(),symbol}})));function renderSlide()")
     .replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'}),payload=await response.json();if(!response.ok)throw new Error('market');window.smlAcademyApplyMarket?.(payload);document.getElementById('status').textContent='LIVE'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};keepWarm();setInterval(keepWarm,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})")
     .replace("page=1,sortKey='changePct'", "page=1,sortKey='changeRate3min'")
     .replace("if(k==='sire')return r.sire", "if(k==='sire')return r.changeRate3min")
@@ -550,7 +551,7 @@ function sendHtml(response, status, body) {
     ? body.replace('new ResizeObserver(resize).observe(canvas);', '')
     : body;
   const safeBody = typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
-    ? strippedBody.replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}</body></html>`)
+    ? strippedBody.replace('</body></html>', `${academyCurriculumScript(SEED_LESSONS)}${academyVisualLabScript()}</body></html>`)
     : strippedBody;
   const payload = zlib.gzipSync(Buffer.from(safeBody), { level: zlib.constants.Z_BEST_SPEED });
   response.writeHead(status, {
