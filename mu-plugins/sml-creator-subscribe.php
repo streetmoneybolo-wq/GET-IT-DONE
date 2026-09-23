@@ -72,6 +72,8 @@ function sml_csub_set( $viewer, $creator, $level ) {
 		$who = function_exists( 'sml_members_handle' ) ? sml_members_handle( $viewer ) : ( get_userdata( $viewer ) ? get_userdata( $viewer )->display_name : 'Someone' );
 		sml_members_add_notification( $creator, 'follow', $who . ' subscribed to your channel.', home_url( '/creator-studio/?tab=subscribers' ), $viewer );
 	}
+	/* Live Insights (sml-live-insights) attributes the new subscriber to where they were watching from */
+	if ( 0 === $was && $level >= 1 ) { do_action( 'sml_csub_new_subscriber', $viewer, $creator ); }
 	return array( 'level' => $level, 'followers' => count( $followers ) );
 }
 

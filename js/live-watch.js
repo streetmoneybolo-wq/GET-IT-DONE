@@ -277,11 +277,8 @@
     '<div id="slw-lb-mount"></div><div id="slw-modal-mount"></div>' +
 
     /* admin-only banner (scenario switcher rides along) */
-    /* The admin/scenario bar is a design-preview tool: it sat on every admin's live page. It now opens only with ?tools=1 (or ?sim=1). */
-    (ADMIN && /[?&](tools|sim)=1/.test(location.search) ? '<div class="slw-banner"><b>LIVE WATCH' + (typeof window.SML_LW_ADMIN !== 'undefined' ? '' : ' PREVIEW') + '</b><span>admin tools</span>' +
-      '<select id="slw-scene"><option value="idle">cam: idle (closed)</option><option value="cam">cam: host cam live</option><option value="wait">cam: viewer waiting</option><option value="call">cam: incoming call</option><option value="dial">cam: calling out</option></select>' +
-      '<button class="slw-x" id="slw-orbbtn" style="padding:6px 9px;font-size:9px">orbit images</button>' +
-      '<a href="?lw=0">exit</a></div>' : '');
+    /* admin tools live in the Go Live hub (/go-live/), not on the watch page (owner 2026-09-23) */
+    ''
 
   /* The plugin's native viewer owns the real microphone, signaling and WebRTC
      session. Move it into the Watch Page's Speak tab after the shell renders. */
@@ -2231,23 +2228,61 @@
       else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { after(); flashGate('Stream link copied — paste it anywhere.'); });
     };
   }
-  /* presence: heartbeat while watching; real viewer count */
+  /* presence: heartbeat while watching; real viewer count.
+     Each heartbeat also names the stream and says where this viewer came from (referrer host, campaign tag, the site
+     surface they clicked from). The server keeps only the first one per viewer and turns it into the creator's
+     "where views come from" (sml-live-insights); nothing personal is sent. */
+  function surfaceOf(path) {
+    if (path === '/' || path === '') return 'home';
+    if (/^\/channel\//.test(path)) return 'channel';
+    if (/^\/live(\/|$)/.test(path)) return 'live_hub';
+    if (/^\/groups?\//.test(path)) return 'group';
+    if (/^\/watch\//.test(path)) return 'video';
+    if (/^\/q\//.test(path)) return 'qa';
+    if (/^\/(tradingfloor|stock-chart)/.test(path)) return 'terminal';
+    if (/^\/(stocks|options)\//.test(path)) return 'ticker';
+    if (/^\/(n|letters)\//.test(path)) return 'letters';
+    if (/^\/search/.test(path)) return 'search';
+    return 'other';
+  }
+  function watchCtx() {
+    var store = 'slw_ctx_' + (STREAM_ID || HANDLE), ctx = {};
+    try { var saved = JSON.parse(sessionStorage.getItem(store) || 'null'); if (saved && typeof saved === 'object') return saved; } catch (e) { /* no storage */ }
+    try {
+      var q = new URLSearchParams(location.search);
+      if (document.referrer) {
+        var ru = new URL(document.referrer), rh = ru.hostname.replace(/^www\./, '');
+        ctx.ref = rh;
+        if (rh === location.hostname.replace(/^www\./, '')) ctx.surf = surfaceOf(ru.pathname);
+      }
+      ctx.utm = String(q.get('utm_source') || q.get('src') || q.get('ref') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 24);
+      try { sessionStorage.setItem(store, JSON.stringify(ctx)); } catch (e) { /* ignore */ }
+    } catch (e) { /* malformed referrer */ }
+    return ctx;
+  }
   function beat() {
     if (SIM || document.hidden) return;
-    api('/sml-lw/v1/presence', { method: 'POST', body: JSON.stringify({ handle: HANDLE }) }).then(function (res) {
+    api('/sml-lw/v1/presence', { method: 'POST', body: JSON.stringify({ handle: HANDLE, stream: STREAM_ID, ctx: watchCtx() }) }).then(function (res) {
       if (res.ok && res.j && typeof res.j.count === 'number' && res.j.count > 0) el('#slw-viewers').textContent = res.j.count.toLocaleString();
     }).catch(function () {});
   }
   function pollPresence() {
     if (SIM || document.hidden) return;
-    api('/sml-lw/v1/presence?handle=' + HANDLE).then(function (res) {
+    api('/sml-lw/v1/presence?handle=' + HANDLE + (STREAM_ID ? '&stream=' + encodeURIComponent(STREAM_ID) : '')).then(function (res) {
       if (res.ok && res.j && typeof res.j.count === 'number' && res.j.count > 0) el('#slw-viewers').textContent = res.j.count.toLocaleString();
     }).catch(function () {});
   }
   if (!SIM) {
     beat();
-    setInterval(beat, 45000);
+    setInterval(beat, 20000);
     setInterval(pollPresence, 20000);
+    /* closing the page counts the viewer out at once (keepalive lets the request finish while the page unloads) */
+    window.addEventListener('pagehide', function () {
+      try {
+        var h = { 'Content-Type': 'application/json' }; if (NONCE) h['X-WP-Nonce'] = NONCE;
+        fetch('/wp-json/sml-lw/v1/presence', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: h, body: JSON.stringify({ handle: HANDLE, stream: STREAM_ID, leave: 1 }) });
+      } catch (e) { /* best effort */ }
+    });
   }
 
   /* ---------- Phase 5: Speak tab on the real voice engine (sml-voice) ---------- */

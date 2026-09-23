@@ -1158,6 +1158,7 @@ if (!function_exists('sml_gl_script')) {
 
   function stopCreatorChat() {
     if (creatorChat.timer) { window.clearInterval(creatorChat.timer); creatorChat.timer = null; }
+    stopInsights();   /* every place that closes the live room also closes its analytics feed */
   }
 
   function sendCreatorChat() {
@@ -1293,7 +1294,10 @@ if (!function_exists('sml_gl_script')) {
     html += '<section class="cs-card"><h3 style="margin-bottom:14px">Quick Tools</h3><div class="gl-tools">'
       + tool('test', 'Test Stream', stream ? 'Preview running' : 'Run a test', 'test', false)
       + tool('record', recorder ? 'Stop Recording' : 'Start Recording', recorder ? 'Recording locally' : 'Record locally', 'rec', !stream, !!recorder)
-      + tool('key', 'Stream Key', 'No RTMP server', 'key', true)
+      // The RTMP details live in Stream Settings.  This used to be a permanent
+      // disabled "No RTMP server" placeholder even when an ingest URL and key
+      // were present, which made a healthy live setup look broken.
+      + tool('key', 'Stream Key', streamKey && streamKey.configured ? 'View OBS connection' : 'Set up RTMP server', 'key', false, !!(streamKey && streamKey.configured))
       + tool('alerts', 'Alerts', 'Manage alerts', 'bell', true)
       + tool('polls', 'Polls', 'Create poll', 'poll', true)
       + tool('chat', 'Live Chat Overlay', overlaySettings.enabled ? 'Shown on stream' : 'Configure on-screen chat', 'chat', false, overlaySettings.enabled)
@@ -1736,6 +1740,235 @@ if (!function_exists('sml_gl_script')) {
     return html;
   }
 
+  /* ---------------- Live Insights: the real-time analytics feed for the stream (2026-09-23) ----------------
+     Reads /wp-json/sml-live-insights/v1/stream every 5 s (pauses while the tab is hidden). Everything shown comes from real
+     heartbeats, chat, likes and subscriptions of THIS stream; small samples are labelled, nothing is estimated. */
+  var insights = { data: null, timer: null, busy: false, streamId: '', error: '' };
+  var GLI_GROUP_COLOR = { social: '#a78bfa', search: '#f5a623', site: '#2b6cff', direct: '#7e92a8', email: '#22d3a0', other: '#64748b' };
+
+  function gliCss() {
+    if (document.getElementById('gli-css')) { return; }
+    var st = document.createElement('style');
+    st.id = 'gli-css';
+    st.textContent = ''
+      + '.gli{--gli-mut:#7e92a8;--gli-line:#182130;--gli-blue:#2b6cff;--gli-green:#22d3a0;--gli-amber:#f5a623;--gli-red:#ff566e;--gli-vio:#a78bfa}'
+      + '.gli-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.gli-head h3{margin:0;font-size:16px}'
+      + '.gli-chip{display:inline-flex;align-items:center;gap:6px;font:700 10px/1 Inter,sans-serif;letter-spacing:.12em;padding:5px 9px;border-radius:999px;background:rgba(34,211,160,.12);color:var(--gli-green)}'
+      + '.gli-chip i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:gliPulse 1.6s ease-out infinite}.gli-chip.wait{background:rgba(245,166,35,.12);color:var(--gli-amber)}.gli-chip.end{background:rgba(126,146,168,.14);color:var(--gli-mut)}.gli-chip.end i{animation:none}'
+      + '.gli-sub{color:var(--gli-mut);font-size:11.5px;margin-left:auto}.gli-sel{background:#0d1622;color:#dbe6f2;border:1px solid #223146;border-radius:8px;padding:5px 8px;font-size:11.5px;max-width:210px}'
+      + '.gli-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-bottom:14px}'
+      + '.gli-k{background:#0d1622;border:1px solid var(--gli-line);border-radius:12px;padding:12px 13px;min-width:0}.gli-k small{display:block;color:var(--gli-mut);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}'
+      + '.gli-k b{display:block;font-size:24px;line-height:1.05;font-variant-numeric:tabular-nums;color:#f2f7fb}.gli-k em{display:block;font-style:normal;color:var(--gli-mut);font-size:11px;margin-top:5px}'
+      + '.gli-k.hero{background:linear-gradient(160deg,rgba(43,108,255,.16),rgba(13,22,34,1));border-color:rgba(43,108,255,.4)}.gli-k.hero b{font-size:34px}'
+      + '.gli-up{color:var(--gli-green)!important}.gli-down{color:var(--gli-red)!important}'
+      + '.gli-panel{background:#0d1622;border:1px solid var(--gli-line);border-radius:12px;padding:14px;margin-bottom:12px;min-width:0}.gli-panel h4{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#a9b8c9;display:flex;gap:8px;align-items:center}'
+      + '.gli-panel h4 span{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400;color:var(--gli-mut);font-size:11px}'
+      + '.gli-chart{position:relative;height:170px}.gli-chart svg{width:100%;height:100%;display:block;overflow:visible}.gli-tip{position:absolute;pointer-events:none;background:#050a12;border:1px solid #2a3b55;border-radius:8px;padding:6px 9px;font-size:11.5px;color:#e6edf5;white-space:nowrap;transform:translate(-50%,-110%);display:none;z-index:3}'
+      + '.gli-leg{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--gli-mut);font-size:11px}.gli-leg i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}'
+      + '.gli-two{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:12px}@media(max-width:1100px){.gli-two{grid-template-columns:1fr}}'
+      + '.gli-tbl{width:100%;border-collapse:collapse;font-size:12px}.gli-tbl th{color:var(--gli-mut);font-weight:600;font-size:10.5px;text-align:right;padding:0 6px 7px;letter-spacing:.04em;white-space:nowrap}.gli-tbl th:first-child,.gli-tbl td:first-child{text-align:left}'
+      + '.gli-tbl td{padding:8px 6px;border-top:1px solid var(--gli-line);text-align:right;font-variant-numeric:tabular-nums;color:#dbe6f2;white-space:nowrap}.gli-tbl td:first-child{white-space:normal;min-width:130px}'
+      + '.gli-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}.gli-bar{display:block;height:4px;border-radius:2px;background:#16233a;margin-top:5px;overflow:hidden}.gli-bar i{display:block;height:100%;border-radius:2px}'
+      + '.gli-best{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--gli-green);border:1px solid rgba(34,211,160,.4);border-radius:5px;padding:2px 5px;margin-left:7px}'
+      + '.gli-scroll{overflow-x:auto}.gli-row{display:flex;align-items:center;gap:9px;margin:7px 0;font-size:12px}.gli-row span:first-child{flex:0 0 118px;color:#dbe6f2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+      + '.gli-row .gli-bar{flex:1;margin:0}.gli-row b{flex:0 0 44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}'
+      + '.gli-stack{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#16233a;margin:7px 0 4px}.gli-stack i{display:block;height:100%}.gli-cap{display:flex;gap:12px;flex-wrap:wrap;color:var(--gli-mut);font-size:11px}'
+      + '.gli-ins{list-style:none;margin:0;padding:0}.gli-ins li{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--gli-line);font-size:13px;line-height:1.5;color:#dbe6f2}.gli-ins li:first-child{border-top:0}'
+      + '.gli-ins li:before{content:"";flex:0 0 8px;height:8px;margin-top:7px;border-radius:50%;background:#5b6b82}.gli-ins li.good:before{background:var(--gli-green)}.gli-ins li.warn:before{background:var(--gli-amber)}'
+      + '.gli-empty{padding:22px 8px;text-align:center;color:var(--gli-mut);font-size:13px;line-height:1.6}.gli-empty b{color:#dbe6f2}'
+      + '@keyframes gliPulse{0%{box-shadow:0 0 0 0 currentColor}70%,100%{box-shadow:0 0 0 7px transparent}}@media(prefers-reduced-motion:reduce){.gli-chip i{animation:none}}';
+    document.head.appendChild(st);
+  }
+
+  function gliDur(s) {
+    s = Math.max(0, Math.round(Number(s) || 0));
+    if (s < 60) { return s + 's'; }
+    var m = Math.floor(s / 60);
+    if (m < 60) { return m + 'm ' + ('0' + (s % 60)).slice(-2) + 's'; }
+    return Math.floor(m / 60) + 'h ' + ('0' + (m % 60)).slice(-2) + 'm';
+  }
+  function gliClock(epoch) { return new Date(epoch * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  function gliPct(n, d) { return d > 0 ? Math.round(n / d * 100) : 0; }
+
+  function insightsMarkup() {
+    gliCss();
+    return '<section class="cs-card gli" style="margin-top:18px" data-gli><div class="gli-head"><h3>Live Insights</h3><span class="gli-chip wait" data-gli-chip><i></i>CONNECTING</span><span class="gli-sub" data-gli-sub></span></div>'
+      + '<div data-gli-body><div class="gli-empty">Loading your audience…</div></div></section>';
+  }
+
+  function insightsUrl() {
+    var id = insights.streamId || (draft.live && draft.live.id ? String(draft.live.id).replace(/[^A-Za-z0-9]/g, '') : '') || 'current';
+    return '/wp-json/sml-live-insights/v1/stream?stream=' + encodeURIComponent(id) + '&_=' + Date.now();
+  }
+  function pollInsights() {
+    if (insights.busy || document.hidden) { return; }
+    insights.busy = true;
+    api(insightsUrl())
+      .then(function (data) { insights.data = data; insights.error = ''; })
+      .catch(function (e) { insights.error = (e && e.message) || 'Insights are unavailable right now.'; })
+      .then(function () { insights.busy = false; paintInsights(); });
+  }
+  function startInsights() {
+    if (insights.timer) { return; }
+    pollInsights();
+    insights.timer = window.setInterval(pollInsights, 5000);
+  }
+  function stopInsights() {
+    if (insights.timer) { window.clearInterval(insights.timer); insights.timer = null; }
+    insights.data = null; insights.streamId = '';
+  }
+
+  /* the audience curve: area of viewers per minute, the previous stream dotted, the moments that moved it as markers */
+  function gliChart(d) {
+    var vals = d.curve.vals || [], prev = d.curve.prev || null, n = vals.length;
+    if (n < 2) { return '<div class="gli-empty">The curve starts drawing after the first minute of viewers.</div>'; }
+    var W = 1000, H = 170, padL = 34, padB = 20, padT = 10;
+    var max = Math.max(4, Math.max.apply(null, vals), prev ? Math.max.apply(null, prev) : 0);
+    var pw = W - padL - 6, ph = H - padB - padT;
+    function x(i) { return padL + i / (n - 1) * pw; }
+    function y(v) { return padT + ph - v / max * ph; }
+    var line = vals.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ');
+    var area = line + ' L' + x(n - 1).toFixed(1) + ' ' + (padT + ph) + ' L' + x(0).toFixed(1) + ' ' + (padT + ph) + ' Z';
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Viewers per minute">';
+    out += '<defs><linearGradient id="gliFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2b6cff" stop-opacity=".38"/><stop offset="1" stop-color="#2b6cff" stop-opacity="0"/></linearGradient></defs>';
+    [0, 0.5, 1].forEach(function (f) {
+      var yy = padT + ph - ph * f;
+      out += '<line x1="' + padL + '" x2="' + (W - 6) + '" y1="' + yy + '" y2="' + yy + '" stroke="#182130" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+        + '<text x="' + (padL - 6) + '" y="' + (yy + 3) + '" fill="#7e92a8" font-size="11" text-anchor="end">' + Math.round(max * f) + '</text>';
+    });
+    if (prev) {
+      out += '<path d="' + prev.slice(0, n).map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ') + '" fill="none" stroke="#7e92a8" stroke-width="1.6" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" opacity=".85"/>';
+    }
+    out += '<path d="' + area + '" fill="url(#gliFill)"/><path d="' + line + '" fill="none" stroke="#5b8cff" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+    var sx = d.curve.step || 1, col = { sub: '#22d3a0', likes: '#ff566e', chat: '#a78bfa', peak: '#f5a623' };
+    (d.moments || []).forEach(function (m) {
+      var i = Math.min(n - 1, Math.floor(m.m / sx));
+      out += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(vals[i] || 0).toFixed(1) + '" r="5.5" fill="#0b131f" stroke="' + (col[m.type] || '#fff') + '" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+    });
+    var labels = Math.min(6, n);
+    for (var k = 0; k < labels; k++) {
+      var i2 = Math.round(k / Math.max(1, labels - 1) * (n - 1));
+      out += '<text x="' + x(i2).toFixed(1) + '" y="' + (H - 4) + '" fill="#7e92a8" font-size="11" text-anchor="' + (k === 0 ? 'start' : (k === labels - 1 ? 'end' : 'middle')) + '">' + esc(gliClock(d.curve.start + i2 * sx * 60)) + '</text>';
+    }
+    out += '</svg><div class="gli-tip" data-gli-tip></div>';
+    return out;
+  }
+
+  function gliSources(d) {
+    var rows = d.sources || [];
+    if (!rows.length) { return '<div class="gli-empty">No viewers yet — sources appear the moment someone lands on your Watch Page.</div>'; }
+    var maxTotal = Math.max.apply(null, rows.map(function (r) { return r.total; })) || 1;
+    var eligible = rows.filter(function (r) { return r.total >= 3; });
+    var best = eligible.length >= 2 ? eligible.slice().sort(function (a, b) { return b.avg_watch - a.avg_watch; })[0] : null;
+    var html = '<div class="gli-scroll"><table class="gli-tbl"><thead><tr><th>Source</th><th>Now</th><th>Viewers</th><th>Avg stay</th><th>Chat</th><th>Left &lt;30s</th><th>Subs</th></tr></thead><tbody>';
+    rows.forEach(function (r) {
+      var color = GLI_GROUP_COLOR[r.group] || '#64748b';
+      html += '<tr><td><span class="gli-dot" style="background:' + color + '"></span>' + esc(r.label) + (best && best.key === r.key ? '<span class="gli-best">BEST STAY</span>' : '')
+        + '<span class="gli-bar"><i style="width:' + Math.max(3, Math.round(r.total / maxTotal * 100)) + '%;background:' + color + '"></i></span></td>'
+        + '<td>' + r.now + '</td><td>' + r.total + ' <span style="color:#7e92a8">· ' + r.share + '%</span></td><td>' + esc(gliDur(r.avg_watch)) + '</td>'
+        + '<td>' + (r.members ? r.chat_pct + '%' : '—') + '</td><td>' + (r.bounce_pct == null ? '—' : r.bounce_pct + '%') + '</td><td>' + (r.subs || '—') + '</td></tr>';
+    });
+    return html + '</tbody></table></div>';
+  }
+
+  function gliBars(list, total, color) {
+    if (!list.length) { return '<div class="gli-empty" style="padding:10px 0">Not enough data yet.</div>'; }
+    var max = Math.max.apply(null, list.map(function (r) { return r.total; })) || 1;
+    return list.map(function (r) {
+      return '<div class="gli-row"><span title="' + esc(r.label) + '">' + esc(r.label) + '</span><span class="gli-bar"><i style="width:' + Math.max(4, Math.round(r.total / max * 100)) + '%;background:' + color + '"></i></span><b>' + gliPct(r.total, total) + '%</b></div>';
+    }).join('');
+  }
+
+  function paintInsights() {
+    var root = document.querySelector('[data-gli]');
+    if (!root) { return; }
+    var body = root.querySelector('[data-gli-body]'), chip = root.querySelector('[data-gli-chip]'), sub = root.querySelector('[data-gli-sub]');
+    var d = insights.data;
+    if (!d) {
+      if (insights.error) { body.innerHTML = '<div class="gli-empty"><b>Insights are unavailable right now.</b><br>' + esc(insights.error) + '</div>'; chip.className = 'gli-chip end'; chip.innerHTML = '<i></i>OFFLINE'; }
+      return;
+    }
+    var st = d.stream || {}, live = st.status === 'live', ended = st.status === 'ended';
+    chip.className = 'gli-chip' + (live ? '' : (ended ? ' end' : ' wait'));
+    chip.innerHTML = '<i></i>' + (live ? 'LIVE' : (ended ? 'ENDED' : 'WAITING ROOM'));
+    var streams = d.streams || [];
+    sub.innerHTML = (streams.length > 1 ? '<select class="gli-sel" data-gli-stream>' + streams.map(function (s) {
+        return '<option value="' + esc(s.id) + '"' + (s.id === st.id ? ' selected' : '') + '>' + esc((s.status === 'live' ? '● ' : '') + (s.title || 'Stream') + (s.when ? ' · ' + new Date(s.when).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '')) + '</option>';
+      }).join('') + '</select> ' : '') + (ended ? 'final numbers' : 'updates every 5 s');
+
+    if (!d.tracked) {
+      body.innerHTML = '<div class="gli-empty"><b>' + (live ? 'Waiting for your first viewer' : 'Your Watch Page is open') + '.</b><br>Everything here is real and updates every 5 seconds: who is watching, where they came from, how long they stay, what they do in chat, and where in the world they are. '
+        + 'Share your Watch Page link and watch this fill in.</div>';
+      return;
+    }
+
+    var v = d.curve.vals || [], nv = v.length;
+    var trend = '';
+    if (nv >= 7 && (d.curve.step || 1) === 1) {
+      var base = (v[nv - 7] + v[nv - 6] + v[nv - 5] + v[nv - 4] + v[nv - 3]) / 5;
+      if (base >= 3) { var ch = Math.round((v[nv - 1] - base) / base * 100); trend = '<em class="' + (ch >= 0 ? 'gli-up' : 'gli-down') + '">' + (ch >= 0 ? '▲ ' : '▼ ') + Math.abs(ch) + '% vs previous 5 min</em>'; }
+    }
+    var au = d.audience || {}, ch2 = d.chat || {}, lk = d.likes || {};
+    var vsPrev = d.vs_prev && d.vs_prev.then >= 3 ? '<em class="' + (d.vs_prev.pct >= 0 ? 'gli-up' : 'gli-down') + '">' + (d.vs_prev.pct >= 0 ? '▲ ' : '▼ ') + Math.abs(d.vs_prev.pct) + '% vs your last stream</em>' : '';
+    var kpis = '<div class="gli-kpis">'
+      + '<div class="gli-k hero"><small>Watching now</small><b>' + d.now + '</b>' + (trend || vsPrev || '<em>' + (live ? 'live viewers' : 'in the room') + '</em>') + '</div>'
+      + '<div class="gli-k"><small>Peak</small><b>' + d.peak.n + '</b><em>' + (d.peak.at ? 'at ' + esc(gliClock(Date.parse(d.peak.at) / 1000)) : 'so far') + '</em></div>'
+      + '<div class="gli-k"><small>Unique viewers</small><b>' + d.unique + '</b><em>' + (au.returning ? au.returning + ' have watched before' : 'this stream') + '</em></div>'
+      + '<div class="gli-k"><small>Avg watch time</small><b>' + esc(gliDur(d.avg_watch)) + '</b><em>' + (d.unique ? gliPct(d.stayed_5m, d.unique) + '% stayed 5+ min' : '') + '</em></div>'
+      + '<div class="gli-k"><small>Chat</small><b>' + ch2.total + '</b><em>' + ch2.per_min + '/min · ' + ch2.chatters + ' chatter' + (ch2.chatters === 1 ? '' : 's') + '</em></div>'
+      + '<div class="gli-k"><small>Likes</small><b>' + lk.total + '</b><em>' + (lk.last10 ? '+' + lk.last10 + ' in 10 min' : 'this stream') + '</em></div>'
+      + '<div class="gli-k"><small>New subscribers</small><b>' + (d.subs ? d.subs.gained : 0) + '</b><em>' + (au.subscribers_watching ? au.subscribers_watching + ' subscribers watching' : 'this stream') + '</em></div>'
+      + '<div class="gli-k"><small>Signed in</small><b>' + gliPct(au.members, d.unique) + '%</b><em>' + au.members + ' members · ' + au.guests + ' guests</em></div>'
+      + '</div>';
+
+    var chart = '<div class="gli-panel"><h4>Audience curve<span>viewers per minute' + (d.curve.prev ? ' · dotted = ' + esc(d.curve.prev_title || 'your last stream') : '') + '</span></h4><div class="gli-chart" data-gli-chart>' + gliChart(d) + '</div>'
+      + '<div class="gli-leg"><span><i style="background:#5b8cff"></i>This stream</span>' + (d.curve.prev ? '<span><i style="background:#7e92a8"></i>Last stream, same minute</span>' : '')
+      + '<span style="color:#22d3a0">★ new subscriber</span><span style="color:#ff566e">♥ likes burst</span><span style="color:#a78bfa">✦ chat burst</span><span style="color:#f5a623">▲ peak</span></div></div>';
+
+    var sources = '<div class="gli-panel"><h4>Where viewers come from<span>quality, not just counts</span></h4>' + gliSources(d) + '</div>';
+
+    var totalG = ((d.geo && d.geo.countries) || []).reduce(function (a, c) { return a + c.total; }, 0) || d.unique;
+    var countries = ((d.geo && d.geo.countries) || []).slice(0, 6).map(function (c) { return { label: c.name, total: c.total }; });
+    var cities = ((d.geo && d.geo.cities) || []).slice(0, 5).map(function (c) { return { label: c.city, total: c.total }; });
+    var dv = d.devices || { m: 0, d: 0, t: 0 }, dvT = (dv.m + dv.d + dv.t) || 1;
+    var aud = '<div class="gli-panel"><h4>Audience</h4>'
+      + '<div style="font-size:11px;color:#7e92a8;margin-bottom:2px">Countries</div>' + gliBars(countries, totalG, '#2b6cff')
+      + (cities.length ? '<div style="font-size:11px;color:#7e92a8;margin:10px 0 2px">Cities (3+ viewers)</div>' + gliBars(cities, totalG, '#22d3a0') : '')
+      + '<div style="font-size:11px;color:#7e92a8;margin:12px 0 2px">Devices</div><div class="gli-stack"><i style="width:' + gliPct(dv.d, dvT) + '%;background:#2b6cff"></i><i style="width:' + gliPct(dv.m, dvT) + '%;background:#22d3a0"></i><i style="width:' + gliPct(dv.t, dvT) + '%;background:#f5a623"></i></div>'
+      + '<div class="gli-cap"><span><b style="color:#2b6cff">●</b> Desktop ' + gliPct(dv.d, dvT) + '%</span><span><b style="color:#22d3a0">●</b> Phone ' + gliPct(dv.m, dvT) + '%</span><span><b style="color:#f5a623">●</b> Tablet ' + gliPct(dv.t, dvT) + '%</span></div>'
+      + '<div style="font-size:11px;color:#7e92a8;margin:12px 0 2px">Who is watching</div><div class="gli-stack"><i style="width:' + gliPct(au.members, d.unique) + '%;background:#a78bfa"></i><i style="width:' + gliPct(au.guests, d.unique) + '%;background:#334155"></i></div>'
+      + '<div class="gli-cap"><span><b style="color:#a78bfa">●</b> Signed in ' + gliPct(au.members, d.unique) + '%</span><span><b style="color:#64748b">●</b> Guests ' + gliPct(au.guests, d.unique) + '%</span></div></div>';
+
+    var ins = (d.insights || []).length ? '<ul class="gli-ins">' + d.insights.map(function (i) { return '<li class="' + esc(i.tone) + '">' + esc(i.text) + '</li>'; }).join('') + '</ul>' : '<div class="gli-empty">Insights appear as your audience grows.</div>';
+    body.innerHTML = kpis + chart + '<div class="gli-two">' + sources + aud + '</div><div class="gli-panel" style="margin-bottom:0"><h4>What the data says<span>from this stream only</span></h4>' + ins + '</div>';
+  }
+
+  /* delegated handlers: the panel is re-drawn every 5 s, so nothing is bound to its nodes */
+  document.addEventListener('change', function (event) {
+    var sel = event.target.closest ? event.target.closest('[data-gli-stream]') : null;
+    if (!sel) { return; }
+    insights.streamId = sel.value; insights.data = null; pollInsights();
+  });
+  document.addEventListener('mousemove', function (event) {
+    var box = event.target.closest ? event.target.closest('[data-gli-chart]') : null;
+    var tip = document.querySelector('[data-gli-tip]');
+    if (!tip) { return; }
+    if (!box || !insights.data) { tip.style.display = 'none'; return; }
+    var d = insights.data, vals = d.curve.vals || [], n = vals.length;
+    if (n < 2) { return; }
+    var rect = box.getBoundingClientRect();
+    var frac = (event.clientX - rect.left - rect.width * 0.034) / (rect.width * 0.96);
+    var i = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+    var sx = d.curve.step || 1;
+    var ev = (d.moments || []).filter(function (m) { return Math.floor(m.m / sx) === i; }).map(function (m) {
+      return ({ sub: '★ new subscriber', likes: '♥ ' + m.n + ' likes', chat: '✦ ' + m.n + ' messages', peak: '▲ peak' })[m.type] || '';
+    }).filter(Boolean);
+    tip.innerHTML = '<b>' + vals[i] + ' viewers</b> · ' + esc(gliClock(d.curve.start + i * sx * 60)) + (d.curve.prev && d.curve.prev[i] != null ? '<br><span style="color:#7e92a8">last stream: ' + d.curve.prev[i] + '</span>' : '') + (ev.length ? '<br>' + esc(ev.join(' · ')) : '');
+    tip.style.left = Math.max(60, Math.min(rect.width - 60, event.clientX - rect.left)) + 'px';
+    tip.style.top = '30px';
+    tip.style.display = 'block';
+  });
+
   function stepLiveDashboard() {
     if (draft.live && draft.live.status === 'scheduled') {
     var scheduled = !!(draft.live && draft.live.status === 'scheduled');
@@ -1749,6 +1982,7 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-stat"><small>' + icon('cam', 14) + 'Video</small><b style="font-size:16px">' + (scheduled ? 'Waiting to start' : 'Check Watch Page') + '</b></div>'
       + '</div>'
       + '<div class="cs-hint" style="margin-top:14px">Your Watch Page is available now. It shows your thumbnail or GIF until the real stream reports live; this control does not pretend the video is live before then.</div></section>'
+      + insightsMarkup()
       + creatorChatMarkup();
     }
 
@@ -1766,7 +2000,7 @@ if (!function_exists('sml_gl_script')) {
           + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div>'
         : '<div class="cs-hint" style="margin-top:14px">You are live on your Watch Page — no host group. '
           + '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">Open your Watch Page</a> to see what viewers see.</div>')
-      + '</section>' + creatorChatMarkup();
+      + '</section>' + insightsMarkup() + creatorChatMarkup();
   }
 
   function groupName() {
@@ -1960,7 +2194,7 @@ if (!function_exists('sml_gl_script')) {
     bindVideo();
     paintQuote();
     paintMovers();
-    if (draft.live) { startCreatorChat(); } else { stopCreatorChat(); }
+    if (draft.live) { startCreatorChat(); startInsights(); paintInsights(); } else { stopCreatorChat(); stopInsights(); }
     if (window.smlVoiceHostDockAfterRender) { window.smlVoiceHostDockAfterRender(); }
   }
 
@@ -2105,6 +2339,7 @@ if (!function_exists('sml_gl_script')) {
       var tkey = tool.getAttribute('data-tool');
       if (tkey === 'test') { startCapture(); }
       else if (tkey === 'record') { toggleRecording(); }
+      else if (tkey === 'key') { draft.step = 2; save(); render(); }
       else if (tkey === 'chat') { openChatOverlayEditor(); }
       return;
     }
