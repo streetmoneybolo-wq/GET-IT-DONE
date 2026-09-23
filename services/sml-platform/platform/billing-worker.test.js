@@ -33,18 +33,18 @@ test('seller recovery reverses the original transfer before account debit', asyn
   assert.equal(calls[1][1].amount, 500);
 });
 
-test('12.5% dispute fee uses a separate account debit', async () => {
+test('15.5% dispute fee uses a separate account debit', async () => {
   const calls = [];
   const stripe = {
     charges: { create: async (params) => { calls.push(params); } },
     transfers: {}
   };
   const handle = W.createStripeRecoveryHandler(stripe);
-  await handle({ amountCents: 1250, connectedAccountId: 'acct_1', currency: 'usd',
-    disputeId: 'dp_1', reason: 'platform_dispute_fee_12_5_percent' },
+  await handle({ amountCents: 1550, connectedAccountId: 'acct_1', currency: 'usd',
+    disputeId: 'dp_1', reason: 'platform_dispute_fee_15_5_percent' },
   { source_key: 'seller-recover-fee:dp_1' });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].amount, 1250);
+  assert.equal(calls[0].amount, 1550);
   assert.equal(calls[0].source, 'acct_1');
 });
 

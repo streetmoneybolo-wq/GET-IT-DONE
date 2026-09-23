@@ -56,14 +56,14 @@ function disputeDb(state) {
       dispute_debit_consent_at: '2026-08-30T00:00:00Z', currency: 'usd' }] };
     if (text.startsWith('INSERT INTO marketplace_disputes')) return { rows: [{
       stripe_dispute_id: 'dp_1', seller_id: 4, stripe_charge_id: 'ch_1',
-      disputed_principal_cents: 10000, platform_dispute_fee_cents: 1250,
+      disputed_principal_cents: 10000, platform_dispute_fee_cents: 1550,
       currency: 'usd', state
     }] };
     return { rows: [], rowCount: 1 };
   });
 }
 
-test('a new seller dispute queues principal recovery but not the 12.5% fee yet', async () => {
+test('a new seller dispute queues principal recovery but not the 15.5% fee yet', async () => {
   const db = disputeDb('needs_response');
   const event = { type: 'charge.dispute.created', account: null, data: { object: {
     id: 'dp_1', charge: 'ch_1', amount: 10000, currency: 'usd', status: 'needs_response'
@@ -73,16 +73,16 @@ test('a new seller dispute queues principal recovery but not the 12.5% fee yet',
   assert.equal(db.calls.some((c) => c.values && c.values[1] === 'dispute-fee:dp_1'), false);
 });
 
-test('lost dispute finalizes a separate 12.5% seller fee', async () => {
+test('lost dispute finalizes a separate 15.5% seller fee', async () => {
   const db = disputeDb('lost');
   const event = { type: 'charge.dispute.closed', account: null, data: { object: {
     id: 'dp_1', charge: 'ch_1', amount: 10000, currency: 'usd', status: 'lost'
   } } };
   assert.equal(await M.applyMarketplaceEvent(db, event), 'processed');
   const fee = db.calls.find((c) => c.values && c.values[1] === 'dispute-fee:dp_1');
-  assert.equal(fee.values[2], -1250);
+  assert.equal(fee.values[2], -1550);
   const recovery = db.calls.find((c) => c.values && c.values[0] === 'seller-recover-fee:dp_1');
-  assert.equal(JSON.parse(recovery.values[2]).amountCents, 1250);
+  assert.equal(JSON.parse(recovery.values[2]).amountCents, 1550);
 });
 
 test('won dispute restores principal and never charges the seller fee', async () => {

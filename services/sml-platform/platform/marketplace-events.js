@@ -110,7 +110,7 @@ function disputeState(dispute) {
 async function ensureDispute(client, event, dispute) {
   const seller = await findSeller(client, event, dispute);
   /* A Loop Bucks/customer-platform dispute has no marketplace seller. The
-     separate 12.5% seller fee must never be charged to an unrelated account. */
+     separate 15.5% seller fee must never be charged to an unrelated account. */
   if (!seller) return null;
   if (!seller.dispute_debit_consent_at) throw new Error('seller dispute-debit consent is missing');
 
@@ -158,7 +158,7 @@ async function applyDispute(client, event, dispute) {
       [seller.id, `dispute-fee:${dispute.id}`, -Number(row.platform_dispute_fee_cents), row.currency, dispute.id]
     );
     await outbox(client, `seller-recover-fee:${dispute.id}`, 'seller_recovery', {
-      ...base, amountCents: Number(row.platform_dispute_fee_cents), reason: 'platform_dispute_fee_12_5_percent'
+      ...base, amountCents: Number(row.platform_dispute_fee_cents), reason: 'platform_dispute_fee_15_5_percent'
     });
     await client.query(
       `UPDATE marketplace_disputes SET fee_finalized_at = now(), resolved_at = now()

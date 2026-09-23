@@ -369,7 +369,7 @@ function createStripeRecoveryHandler(stripe) {
           source: payload.connectedAccountId,
           description: payload.reason === 'dispute_principal'
             ? 'Marketplace dispute principal recovery'
-            : 'StockMarketLoop 12.5% seller dispute fee',
+            : 'StockMarketLoop 15.5% seller dispute fee',
           metadata: { sml_source_key: row.source_key, sml_dispute_id: payload.disputeId }
         }, { idempotencyKey: `${row.source_key}:account-debit` });
       } catch (error) {

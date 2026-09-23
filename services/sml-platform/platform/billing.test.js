@@ -11,9 +11,9 @@ test('Loop Bucks quote adds a separately disclosed 2% fee exactly once', () => {
   });
 });
 
-test('seller dispute fee is 12.5% of disputed principal', () => {
-  assert.equal(B.disputeFee(10_00), 125);
-  assert.equal(B.disputeFee(9_99), 125);
+test('seller dispute fee is 15.5% of disputed principal', () => {
+  assert.equal(B.disputeFee(10_00), 155);
+  assert.equal(B.disputeFee(9_99), 155);
 });
 
 test('Loop Bucks checkout trusts the stored package, enables Tax, and has two lines', () => {

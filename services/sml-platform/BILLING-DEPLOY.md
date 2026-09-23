@@ -16,7 +16,7 @@
   date. The imported membership remains active until the first SML payment.
 - Website/Discord access reconciliation through the existing role system.
 - Seller dispute accounting. Principal is recovered when a dispute opens. The
-  separate 12.5% seller fee is finalized only when the dispute is lost. A won
+  separate 15.5% seller fee is finalized only when the dispute is lost. A won
   dispute restores principal and never charges that fee.
 - Failed seller debits become retry-safe seller debt; later Stripe balance
   availability lets the same idempotent account debit recover it.

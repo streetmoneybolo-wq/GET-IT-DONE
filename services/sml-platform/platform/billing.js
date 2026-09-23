@@ -2,7 +2,7 @@
 
 const MEMBERSHIP_FEE_BPS = 600;
 const LOOP_BUCK_SERVICE_FEE_BPS = 200;
-const SELLER_DISPUTE_FEE_BPS = 1250;
+const SELLER_DISPUTE_FEE_BPS = 1550;
 
 function centsAtBps(cents, bps) {
   if (!Number.isSafeInteger(cents) || cents < 0) throw new TypeError('cents must be a non-negative integer');
