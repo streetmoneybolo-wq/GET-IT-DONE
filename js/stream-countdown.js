@@ -16,6 +16,9 @@
  */
 (function () {
   'use strict';
+  /* DISABLED (owner 2026-09-23): the flip-clock countdown overlay is gone from watch pages and channel heroes; the watch page
+     shows the scheduled start date and time instead. Kept in the repo (and loaded by the loader snippet) as a no-op. */
+  if (true) return;
   if (window.__smlCountdownBooted) return;
   window.__smlCountdownBooted = true;
 

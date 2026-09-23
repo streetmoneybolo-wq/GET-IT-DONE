@@ -1219,13 +1219,8 @@
         detail: 'Scheduled for ' + date + ' · video appears when the creator starts the broadcast'
       };
     }
-    var seconds = Math.floor(remaining / 1000);
-    var days = Math.floor(seconds / 86400); seconds -= days * 86400;
-    var hours = Math.floor(seconds / 3600); seconds -= hours * 3600;
-    var minutes = Math.floor(seconds / 60); seconds -= minutes * 60;
-    var countdown = (days ? days + 'd ' : '') + String(hours).padStart(2, '0') + 'h '
-      + String(minutes).padStart(2, '0') + 'm ' + String(seconds).padStart(2, '0') + 's';
-    return { headline: 'STARTS IN ' + countdown, detail: 'Scheduled for ' + date + ' · chat is open now' };
+    /* no running countdown (owner 2026-09-23): the start date and time are shown instead */
+    return { headline: 'SCHEDULED LIVE', detail: 'Starts ' + date + ' · chat is open now' };
   }
   /* Control bar while a stream is scheduled: the start date and time (viewer's own time zone) instead of "STARTING SOON". */
   function paintScheduledClock(info) {

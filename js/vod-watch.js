@@ -181,7 +181,7 @@
     premCard = document.createElement('div');
     premCard.className = 'slw-premiere';
     premCard.innerHTML = '<div class="slw-premiere-in"><span class="slw-premiere-tag">PREMIERE · ' + esc(whenTxt) + '</span><b>' + esc(VID.title || 'Premiere') + '</b>' +
-      '<div class="slw-premiere-cd"><span class="lbl">STARTS IN</span><span class="cd" id="vw-prem-cd">' + fmtCountdown(PREM.start - Date.now()) + '</span></div>' +
+      /* no running countdown (owner 2026-09-23): the tag above carries the start date and time; the timer below still reloads at the start */
       '<span>It plays for everyone at the same time — live chat is open now.</span></div>';
     if (VID.poster) premCard.style.backgroundImage = 'url(' + VID.poster + ')';
     media.appendChild(premCard);
