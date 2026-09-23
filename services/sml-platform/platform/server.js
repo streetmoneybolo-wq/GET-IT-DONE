@@ -553,35 +553,66 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
 import { DiscordSDK } from '/academy-activity/sdk/index.mjs';
 const academyAppId=${academyAppId};
 const academyStatus=document.getElementById('status');
-async function authenticateAcademyActivity(){
-  if(!academyAppId){if(academyStatus)academyStatus.textContent='AUTH UNAVAILABLE';return}
-  try{
-    if(academyStatus)academyStatus.textContent='VERIFYING';
-    const sdk=new DiscordSDK(academyAppId);
-    await sdk.ready();
-    const authorization=await sdk.commands.authorize({
-      client_id:academyAppId,
-      response_type:'code',
-      prompt:'none',
-      scope:['identify','guilds.members.read']
-    });
-    const response=await fetch('/academy-activity/token',{
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify({code:authorization.code})
-    });
-    const payload=await response.json();
-    if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken)throw new Error(payload.error||'authorization_failed');
-    await sdk.commands.authenticate({access_token:payload.access_token});
-    window.smlAcademySessionToken=payload.sessionToken;
-    document.body.dataset.academyAuth='ready';
-    window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken:payload.sessionToken}}));
-    if(academyStatus)academyStatus.textContent='LIVE';
-  }catch(error){
-    document.body.dataset.academyAuth=String(error&&error.message||'authorization_failed').replace(/[^a-z0-9_-]/gi,'').slice(0,64);
-    if(academyStatus)academyStatus.textContent='SIGN IN RETRY';
-  }
+/* One Discord SDK instance per Activity. Sign-in failures show a plain
+   recovery message in the top bar (the bar wraps, so the chart shrinks rather
+   than being covered) and retry only when the member asks. */
+let academySdk=null,academyAuthInflight=null;
+const academyNoticeText={
+  academy_role_required:['ACCESS REQUIRED','Academy lessons are for Making Easy Money members. The chart and scanner stay open; your lesson progress starts saving once your membership role is active in this server.','Check again'],
+  authorization_required:['SIGN-IN NEEDED','Discord sign-in did not finish, so your lesson progress cannot save yet.','Sign in again'],
+  authorization_failed:['SIGN-IN NEEDED','Discord sign-in did not finish, so your lesson progress cannot save yet.','Sign in again'],
+  authorization_denied:['SIGN-IN NEEDED','Discord sign-in was cancelled, so your lesson progress cannot save yet.','Sign in again'],
+  outside_discord:['OPEN IN DISCORD','Open the Academy from the Making Easy Money Discord server to save your lesson progress.',''],
+  temporary_unavailable:['OFFLINE','Academy sign-in is temporarily unavailable. The chart still works; try again in a moment to save your progress.','Retry']
+};
+function academyNotice(code){
+  const bar=document.querySelector('main .bar');let notice=document.getElementById('academy-auth-notice');
+  if(!code){if(notice)notice.remove();if(bar)bar.style.flexWrap='';return}
+  const entry=academyNoticeText[code]||academyNoticeText.temporary_unavailable;
+  if(academyStatus)academyStatus.textContent=entry[0];
+  if(!bar)return;
+  if(!notice){notice=document.createElement('div');notice.id='academy-auth-notice';notice.setAttribute('role','status');notice.style.cssText='order:99;flex:1 1 100%;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.35rem .1rem 0;color:#ffd7a1;font-size:.78rem;line-height:1.35';bar.appendChild(notice)}
+  bar.style.flexWrap='wrap';
+  const text=document.createElement('div');text.textContent=entry[1];text.style.flex='1 1 260px';
+  notice.replaceChildren(text);
+  if(entry[2]){const retry=document.createElement('button');retry.type='button';retry.textContent=entry[2];retry.style.cssText='border:1px solid #75f5bf;background:#0b2a20;color:#dffbee;border-radius:6px;padding:.25rem .6rem;font:inherit;cursor:pointer';retry.onclick=()=>{retry.disabled=true;void authenticateAcademyActivity()};notice.appendChild(retry)}
 }
+async function academySignIn(){
+  if(!academySdk){academySdk=new DiscordSDK(academyAppId);await academySdk.ready()}
+  const authorization=await academySdk.commands.authorize({client_id:academyAppId,response_type:'code',prompt:'none',scope:['identify','guilds.members.read']});
+  const response=await fetch('/academy-activity/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:authorization.code})});
+  let payload={};try{payload=await response.json()}catch(_){}
+  if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken){const code=payload.error||(response.status>=500?'temporary_unavailable':'authorization_failed');throw Object.assign(new Error(code),{academyCode:code})}
+  await academySdk.commands.authenticate({access_token:payload.access_token});
+  return payload.sessionToken;
+}
+function authenticateAcademyActivity(){
+  if(academyAuthInflight)return academyAuthInflight;
+  academyAuthInflight=(async()=>{
+    if(!academyAppId){if(academyStatus)academyStatus.textContent='AUTH UNAVAILABLE';return ''}
+    try{
+      if(academyStatus)academyStatus.textContent='VERIFYING';
+      const sessionToken=await academySignIn();
+      window.smlAcademySessionToken=sessionToken;
+      document.body.dataset.academyAuth='ready';
+      academyNotice('');
+      window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken}}));
+      if(academyStatus)academyStatus.textContent='LIVE';
+      return sessionToken;
+    }catch(error){
+      const raw=String(error&&(error.academyCode||error.message)||'');
+      const code=error&&error.academyCode?raw:(/frame_id|instance_id|platform/i.test(raw)?'outside_discord':(/cancel|denied|5000|4002/i.test(raw)?'authorization_denied':'temporary_unavailable'));
+      document.body.dataset.academyAuth=code.replace(/[^a-z0-9_-]/gi,'').slice(0,64);
+      academyNotice(code);
+      return '';
+    }finally{academyAuthInflight=null}
+  })();
+  return academyAuthInflight;
+}
+/* Sessions last 15 minutes. Any Academy request that gets a 401 calls this
+   once to renew silently (prompt:none) before retrying; concurrent callers
+   share one renewal, and the renewal re-checks the member's role. */
+window.smlAcademyReauth=()=>authenticateAcademyActivity();
 void authenticateAcademyActivity();
 </script></body></html>`
     .replace("#academy-unlock{", "body.academy-tools-open .lesson{z-index:2147483600}#academy-unlock{")
@@ -1406,6 +1437,25 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         const invalid = error instanceof TypeError;
         logger(invalid ? 'warn' : 'error', 'academy_progress_request_failed', { error });
         sendJson(response, invalid ? 400 : 503, { ok: false, error: invalid ? 'invalid_progress' : 'temporary_unavailable' });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/academy-activity/resume') {
+      if (!academyOAuth || !academyProgress || typeof academyProgress.saveResume !== 'function') { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 1024);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input;
+      try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      try {
+        sendJson(response, 200, { ok: true, resume: await academyProgress.saveResume(session.userId, input) });
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        if (!invalid) logger('error', 'academy_resume_request_failed', { error });
+        sendJson(response, invalid ? 400 : 503, { ok: false, error: invalid ? 'invalid_resume' : 'temporary_unavailable' });
       }
       return;
     }

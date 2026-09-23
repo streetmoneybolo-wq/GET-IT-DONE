@@ -790,3 +790,40 @@ test('Activity client restores the authenticated lesson and keeps implementation
   assert.match(script, /render\(\);if\(session\)loadProgress\(\);/, 'a session issued before the curriculum loads is still used');
   assert.doesNotMatch(script, /Grandmaster-Obi narration|Claude generated|AI generated/i);
 });
+
+test('Activity resume points are saved only for the signed-in member and validated', async () => {
+  const calls = [];
+  const academyProgress = {
+    configured: true, read: async () => [], state: async () => ({}), save: async () => ({}),
+    saveResume: async (userId, input) => {
+      calls.push([userId, input]);
+      if (input.timeframe === '2h') throw new TypeError('invalid_timeframe');
+      return input;
+    }
+  };
+  const academyOAuth = { verifySession: (authorization) => authorization === 'Bearer member-a'
+    ? { ok: true, userId: '111111111111111111' } : { ok: false, status: 401, code: 'authorization_required' } };
+  await withServer({ academyOAuth, academyProgress }, async (base) => {
+    const post = (authorization, body) => fetch(`${base}/academy-activity/resume`, { method: 'POST', headers: { authorization, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await post('Bearer expired', { moduleId: 1, lessonId: 1 })).status, 401);
+    const ok = await post('Bearer member-a', { moduleId: 9, lessonId: 1, part: 2, positionMs: 1000, symbol: 'SPY', timeframe: '5m', userId: '222222222222222222' });
+    assert.equal(ok.status, 200);
+    assert.equal((await post('Bearer member-a', { moduleId: 1, lessonId: 1, timeframe: '2h' })).status, 400);
+    // Identity always comes from the session, never from the request body.
+    assert.deepEqual(calls.map(([userId]) => userId), ['111111111111111111', '111111111111111111']);
+  });
+});
+
+test('Activity sign-in explains access problems and renews expired sessions', async () => {
+  let html = '';
+  await withServer({}, async (base) => { html = await (await fetch(`${base}/academy-activity/`)).text(); });
+  assert.match(html, /academy_role_required:\['ACCESS REQUIRED'/);
+  assert.match(html, /Check again/);
+  assert.match(html, /window\.smlAcademyReauth=/);
+  assert.doesNotMatch(html, /SIGN IN RETRY/, 'the vague retry-forever status is gone');
+  const { academyCurriculumScript } = require('./academy-activity-curriculum');
+  const script = academyCurriculumScript(require('./academy/curriculum').SEED_LESSONS);
+  assert.match(script, /response\.status===401&&typeof window\.smlAcademyReauth==='function'/);
+  assert.match(script, /'\/academy-activity\/resume'/);
+  assert.match(script, /pendingResume\.positionMs\/1000/);
+});

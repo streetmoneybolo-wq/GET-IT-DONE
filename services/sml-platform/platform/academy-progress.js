@@ -8,6 +8,9 @@ const ORDERED_LESSONS = SEED_LESSONS.slice().sort((left, right) => left.moduleId
  * with invalid_module, which lost the learner's score on all 20 of them. */
 const MIN_MODULE_ID = Math.min(...SEED_LESSONS.map((lesson) => lesson.moduleId));
 
+const RESUME_SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
+const RESUME_TIMEFRAMES = new Set(['1m', '3m', '5m', '15m', '1h', '1D']);
+
 function integer(value, min, max, name) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw new TypeError(`invalid_${name}`);
@@ -42,7 +45,15 @@ function createAcademyProgress({ pool, guildId } = {}) {
   async function state(discordId) {
     const row = await student(discordId);
     const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]);
+    const saved = await pool.query(`SELECT module_id, lesson_id, narration_part, narration_ms, symbol, timeframe
+      FROM academy_activity_resume WHERE student_id=$1`, [row.id]);
+    const place = saved.rows[0];
     return {
+      resume: place ? {
+        moduleId: Number(place.module_id), lessonId: Number(place.lesson_id),
+        part: Number(place.narration_part), positionMs: Number(place.narration_ms),
+        symbol: place.symbol || null, timeframe: place.timeframe || null
+      } : null,
       /* `?? `, not `|| `: a student sitting on module 0 has a current_module of
        * 0, and `0 || 1` would have bounced them out of the Start Here track. */
       currentModule: Number(row.current_module ?? ORDERED_LESSONS[0].moduleId),
@@ -85,7 +96,29 @@ function createAcademyProgress({ pool, guildId } = {}) {
     }
     return { moduleId: Number(saved.module_id), lessonId: Number(saved.lesson_id), score: Number(saved.score), completed };
   }
-  return { configured, read, state, save };
+  /* Where the member left off: lesson + narration slide/position + chart
+   * symbol/timeframe. Validated here and again by the table's CHECKs. */
+  async function saveResume(discordId, input = {}) {
+    const moduleId = integer(input.moduleId, MIN_MODULE_ID, 99, 'module');
+    const lessonId = integer(input.lessonId, 1, 99, 'lesson');
+    if (!ORDERED_LESSONS.some((lesson) => lesson.moduleId === moduleId && lesson.lessonId === lessonId)) throw new TypeError('invalid_lesson');
+    const part = integer(input.part ?? 0, 0, 50, 'part');
+    const positionMs = integer(Math.round(Number(input.positionMs ?? 0)), 0, 3_600_000, 'position');
+    const symbol = input.symbol == null || input.symbol === '' ? null : String(input.symbol).toUpperCase();
+    if (symbol !== null && !RESUME_SYMBOL.test(symbol)) throw new TypeError('invalid_symbol');
+    const timeframe = input.timeframe == null || input.timeframe === '' ? null : String(input.timeframe);
+    if (timeframe !== null && !RESUME_TIMEFRAMES.has(timeframe)) throw new TypeError('invalid_timeframe');
+    const row = await student(discordId);
+    await pool.query(`INSERT INTO academy_activity_resume (student_id, module_id, lesson_id, narration_part, narration_ms, symbol, timeframe, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+      ON CONFLICT (student_id) DO UPDATE SET module_id=EXCLUDED.module_id, lesson_id=EXCLUDED.lesson_id,
+        narration_part=EXCLUDED.narration_part, narration_ms=EXCLUDED.narration_ms,
+        symbol=COALESCE(EXCLUDED.symbol, academy_activity_resume.symbol),
+        timeframe=COALESCE(EXCLUDED.timeframe, academy_activity_resume.timeframe), updated_at=now()`,
+    [row.id, moduleId, lessonId, part, positionMs, symbol, timeframe]);
+    return { moduleId, lessonId, part, positionMs, symbol, timeframe };
+  }
+  return { configured, read, state, save, saveResume };
 }
 
 module.exports = { createAcademyProgress, nextLessonAfter };

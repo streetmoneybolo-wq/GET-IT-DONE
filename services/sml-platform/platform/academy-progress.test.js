@@ -8,8 +8,15 @@ const { createAcademyProgress, nextLessonAfter } = require('./academy-progress')
  * real schema: students by (guild_id, discord_id), progress by
  * (student_id, module_id, lesson_id). */
 function memoryPool() {
-  const students = []; const progress = new Map(); const badges = new Set();
-  return { students, async query(sql, params) {
+  const students = []; const progress = new Map(); const badges = new Set(); const resume = new Map();
+  return { students, resume, async query(sql, params) {
+    if (sql.includes('INSERT INTO academy_activity_resume')) {
+      const [studentId, moduleId, lessonId, part, positionMs, symbol, timeframe] = params;
+      const prior = resume.get(studentId) || {};
+      resume.set(studentId, { module_id: moduleId, lesson_id: lessonId, narration_part: part, narration_ms: positionMs, symbol: symbol ?? prior.symbol ?? null, timeframe: timeframe ?? prior.timeframe ?? null });
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes('FROM academy_activity_resume')) return { rows: resume.has(params[0]) ? [{ ...resume.get(params[0]) }] : [], rowCount: 0 };
     if (sql.includes('INSERT INTO academy_students')) {
       let row = students.find((entry) => entry.guild_id === params[0] && entry.discord_id === params[1]);
       if (!row) { row = { id: students.length + 1, guild_id: params[0], discord_id: params[1], current_module: 1, current_lesson: 1, xp: 0, streak_days: 0 }; students.push(row); }
@@ -50,8 +57,8 @@ test('two members studying at once keep separate progress and resume points', as
   assert.deepEqual((await progress.read(A)).map((row) => [row.moduleId, row.lessonId, row.completed]), [[3, 1, true]]);
   assert.deepEqual((await progress.read(B)).map((row) => [row.moduleId, row.lessonId, row.completed]), [[1, 1, false]]);
   const next = nextLessonAfter(3, 1);
-  assert.deepEqual(await progress.state(A), { currentModule: next.moduleId, currentLesson: next.lessonId, xp: 100, streakDays: 0, badges: ['first_lesson'] });
-  assert.deepEqual(await progress.state(B), { currentModule: 1, currentLesson: 1, xp: 0, streakDays: 0, badges: [] });
+  assert.deepEqual(await progress.state(A), { resume: null, currentModule: next.moduleId, currentLesson: next.lessonId, xp: 100, streakDays: 0, badges: ['first_lesson'] });
+  assert.deepEqual(await progress.state(B), { resume: null, currentModule: 1, currentLesson: 1, xp: 0, streakDays: 0, badges: [] });
   assert.ok(pool.students.every((row) => row.guild_id === GUILD));
 });
 
@@ -117,4 +124,38 @@ test('the database schema accepts every module id the curriculum uses', () => {
   assert.match(up, /CHECK \(%I >= 0\)/);
   assert.match(up, /RAISE EXCEPTION/, 'fails the deploy if an old check survives');
   assert.match(up, /current_module SET DEFAULT 0/);
+});
+
+test('each member keeps their own narration position, symbol, and timeframe', async () => {
+  const pool = memoryPool();
+  const progress = createAcademyProgress({ pool, guildId: GUILD });
+  await progress.saveResume(A, { moduleId: 9, lessonId: 1, part: 3, positionMs: 41_250, symbol: 'nvda', timeframe: '15m' });
+  await progress.saveResume(B, { moduleId: 0, lessonId: 2, part: 1, positionMs: 5_000, symbol: 'SPY', timeframe: '1D' });
+  assert.deepEqual((await progress.state(A)).resume, { moduleId: 9, lessonId: 1, part: 3, positionMs: 41_250, symbol: 'NVDA', timeframe: '15m' });
+  assert.deepEqual((await progress.state(B)).resume, { moduleId: 0, lessonId: 2, part: 1, positionMs: 5_000, symbol: 'SPY', timeframe: '1D' });
+  // A lesson-only update keeps the last chart the member chose.
+  await progress.saveResume(A, { moduleId: 9, lessonId: 2, part: 0, positionMs: 0 });
+  assert.deepEqual((await progress.state(A)).resume, { moduleId: 9, lessonId: 2, part: 0, positionMs: 0, symbol: 'NVDA', timeframe: '15m' });
+});
+
+test('resume input is validated before it reaches SQL', async () => {
+  const progress = createAcademyProgress({ pool: memoryPool(), guildId: GUILD });
+  const good = { moduleId: 1, lessonId: 1, part: 0, positionMs: 0 };
+  await assert.rejects(progress.saveResume(A, { ...good, lessonId: 98 }), /invalid_lesson/);
+  await assert.rejects(progress.saveResume(A, { ...good, part: 51 }), /invalid_part/);
+  await assert.rejects(progress.saveResume(A, { ...good, positionMs: 3_600_001 }), /invalid_position/);
+  await assert.rejects(progress.saveResume(A, { ...good, symbol: 'DROP TABLE' }), /invalid_symbol/);
+  await assert.rejects(progress.saveResume(A, { ...good, timeframe: '2h' }), /invalid_timeframe/);
+  await assert.rejects(progress.saveResume('not-a-member', good), /invalid_user/);
+});
+
+test('migration 025 stores resume points per student with matching limits', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const up = fs.readFileSync(path.join(__dirname, '..', 'group-subs', 'migrations', '025_academy_activity_resume_up.sql'), 'utf8');
+  assert.match(up, /student_id BIGINT PRIMARY KEY REFERENCES academy_students\(id\) ON DELETE CASCADE/);
+  assert.match(up, /module_id >= 0/);
+  assert.match(up, /narration_part BETWEEN 0 AND 50/);
+  assert.match(up, /narration_ms BETWEEN 0 AND 3600000/);
+  assert.match(up, /'1m','3m','5m','15m','1h','1D'/);
 });
