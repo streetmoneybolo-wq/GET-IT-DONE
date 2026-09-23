@@ -1011,14 +1011,14 @@
     return String(v);
   }
   function pollQuote() {
-    if (SIM || document.hidden) return;
+    if (SIM || document.hidden || !qSym) return;   /* no desk ticker chosen yet: nothing to ask for */
     api('/sml/v1/quote?symbol=' + qSym).then(function (res) {
       var j = res.j || {};
       if (typeof j.current === 'number') { QR[qSym] = j; paintQ(); }
     }).catch(function () {});
   }
   function pollHistory() {
-    if (SIM || document.hidden) return;
+    if (SIM || document.hidden || !qSym) return;
     var requested = qSym;
     api('/sml/v1/history?symbol=' + encodeURIComponent(requested) + '&interval=1m&range=1d').then(function (res) {
       var bars = res.j && Array.isArray(res.j.bars) ? res.j.bars.filter(function (bar) {
@@ -1030,7 +1030,7 @@
     }).catch(function () {});
   }
   function pollCompany() {
-    if (SIM || document.hidden || QN[qSym]) return;
+    if (SIM || document.hidden || !qSym || QN[qSym]) return;
     var requested = qSym;
     api('/sml/v1/company2?symbol=' + encodeURIComponent(requested)).then(function (res) {
       var company = res.j || {};
