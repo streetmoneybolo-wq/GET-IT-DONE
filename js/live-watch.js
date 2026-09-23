@@ -277,7 +277,8 @@
     '<div id="slw-lb-mount"></div><div id="slw-modal-mount"></div>' +
 
     /* admin-only banner (scenario switcher rides along) */
-    (ADMIN ? '<div class="slw-banner"><b>LIVE WATCH' + (typeof window.SML_LW_ADMIN !== 'undefined' ? '' : ' PREVIEW') + '</b><span>admin tools</span>' +
+    /* The admin/scenario bar is a design-preview tool: it sat on every admin's live page. It now opens only with ?tools=1 (or ?sim=1). */
+    (ADMIN && /[?&](tools|sim)=1/.test(location.search) ? '<div class="slw-banner"><b>LIVE WATCH' + (typeof window.SML_LW_ADMIN !== 'undefined' ? '' : ' PREVIEW') + '</b><span>admin tools</span>' +
       '<select id="slw-scene"><option value="idle">cam: idle (closed)</option><option value="cam">cam: host cam live</option><option value="wait">cam: viewer waiting</option><option value="call">cam: incoming call</option><option value="dial">cam: calling out</option></select>' +
       '<button class="slw-x" id="slw-orbbtn" style="padding:6px 9px;font-size:9px">orbit images</button>' +
       '<a href="?lw=0">exit</a></div>' : '');
@@ -1226,9 +1227,21 @@
       + String(minutes).padStart(2, '0') + 'm ' + String(seconds).padStart(2, '0') + 's';
     return { headline: 'STARTS IN ' + countdown, detail: 'Scheduled for ' + date + ' · chat is open now' };
   }
+  /* Control bar while a stream is scheduled: the start date and time (viewer's own time zone) instead of "STARTING SOON". */
+  function paintScheduledClock(info) {
+    var wrap = root.querySelector('.slw-clock'), num = el('#slw-clock');
+    if (!wrap || !num) return;
+    var at = Date.parse((info && info.scheduled_at) || '');
+    var text = !at ? 'STARTING SOON'
+      : (at <= Date.now() ? 'STARTING NOW'
+        : 'STARTS ' + new Date(at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).replace(/,/g, ' ·').replace(/ · (\d)/, ' · $1').toUpperCase());
+    num.textContent = '';
+    if (wrap.lastChild) wrap.lastChild.textContent = text;
+  }
   function paintScheduledCountdown(info) {
     var copy = scheduledCountdownText(info && info.scheduled_at);
     phState(copy.headline, copy.detail);
+    paintScheduledClock(info);
   }
   function scheduledStartText(value) {
     var at = Date.parse(value || '');
