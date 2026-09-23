@@ -1808,11 +1808,47 @@
   }
   /* composer: live gate states from the wallet */
   var gateState = null;
+  /* Signed-out visitors can watch and read the chat, but joining needs an account. A 25% tint keeps the conversation
+     visible underneath while a join card asks them to sign up or sign in (owner 2026-09-23). */
+  function returnCookie() {
+    try { document.cookie = 'sml_return_to=' + encodeURIComponent(location.pathname + location.search) + ';path=/;max-age=1800;SameSite=Lax'; } catch (e) { /* cookies off: they just land on the home page */ }
+  }
+  function paintChatLock() {
+    var pane = el('#slw-pane-0'); if (!pane) return;
+    var lock = pane.querySelector('.slw-lock');
+    if (!gateState || gateState.loggedIn) { if (lock) lock.remove(); return; }
+    if (!lock) {
+      var back = encodeURIComponent(location.pathname + location.search);
+      var before = !!scheduledLive;
+      lock = document.createElement('div');
+      lock.className = 'slw-lock';
+      lock.innerHTML = '<div class="slw-lock-card" role="dialog" aria-label="Join the live chat">' +
+        '<span class="slw-lock-k"><i></i>' + (before ? 'CHAT IS OPEN · STREAM STARTS SOON' : 'LIVE CHAT') + '</span>' +
+        '<b class="slw-lock-t">Join the conversation</b>' +
+        '<span class="slw-lock-s">' + (before
+          ? 'Get in early: chat with traders now, like the stream, and be here the second it goes live.'
+          : 'Traders are talking right now. Ask questions, react to the calls and like the stream.') + '</span>' +
+        '<a class="slw-lock-p" href="/register/?redirect_to=' + back + '">Sign up free</a>' +
+        '<a class="slw-lock-a" href="/login/?redirect_to=' + back + '">I already have an account</a></div>';
+      lock.addEventListener('click', function (e) { if (e.target.closest('a')) returnCookie(); });
+      pane.style.position = 'relative';
+      pane.appendChild(lock);
+    }
+    var feed = el('#slw-feed');
+    if (feed) lock.style.top = feed.offsetTop + 'px';
+  }
+  function nudgeChatLock() {
+    paintChatLock();
+    var lock = el('#slw-pane-0 .slw-lock'); if (!lock) return;
+    lock.classList.remove('nudge'); void lock.offsetWidth; lock.classList.add('nudge');
+    try { lock.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* older browsers */ }
+  }
   function paintComposer() {
     if (SIM) return;
     var row = el('#slw-gaterow'), input = el('#slw-cin'), btn = el('#slw-csend');
     var g = gateState;
     if (!g) { input.disabled = true; btn.disabled = true; return; }
+    paintChatLock();
     if (!g.loggedIn) {
       row.style.display = '';
       row.innerHTML = 'Sign in to join live chat. <a href="/wp-login.php?redirect_to=' + encodeURIComponent(location.pathname + location.search) + '">Sign in</a>';
@@ -2050,28 +2086,41 @@
   }
 
   /* ---------- Phase 4: economy — real like, tomato API, share, presence ---------- */
-  var LIVE_PAGE_ID = 3540; /* /live/ WP page — the like/react target for the stream */
+  /* Likes belong to ONE stream (owner 2026-09-23: viewers can like a scheduled stream before it starts and the count stays).
+     The reaction engine keys long_video by a BIGINT, so a stream (or, with no stream id, the creator's room) hashes to a stable
+     number that every viewer computes identically. It used to be the shared /live/ page id 3540 for every stream, and the
+     count was read from a response shape the engine never returns, so it always showed 0 and forgot your like on reload. */
+  function likeHash(str) { var h = 0x811c9dc5, i; for (i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
+  function likeTarget(kind, key) { var k = kind + ':' + String(key).toLowerCase(); return 10000000000000 + likeHash(k) * 65536 + (likeHash(k.split('').reverse().join('')) & 0xffff); }
+  var LIVE_PAGE_ID = STREAM_ID ? likeTarget('stream', STREAM_ID) : likeTarget('room', HANDLE);
+  var likeCount = 0;
+  function paintLikes() { el('#slw-likes').textContent = likeCount.toLocaleString(); el('#slw-like').classList.toggle('on', !!S.liked); }
   function loadLikes() {
     if (SIM) return;
-    api('/sml-reactions/v1/summary?content_type=long_video&content_id=' + LIVE_PAGE_ID).then(function (res) {
-      var j = res.j || {};
-      var counts = j.counts || j.totals || j.summary || {};
-      var likeN = counts.like != null ? counts.like : (typeof j.like === 'number' ? j.like : null);
-      if (likeN != null) el('#slw-likes').textContent = Number(likeN).toLocaleString();
-      var mine = j.mine || j.my_reaction || j.user_reaction || '';
-      S.liked = mine === 'like';
-      el('#slw-like').classList.toggle('on', S.liked);
+    api('/sml-reactions/v1/summary?content_type=long_video&ids=' + LIVE_PAGE_ID).then(function (res) {
+      var items = (res.j && res.j.items) || {};
+      var it = items[LIVE_PAGE_ID] || items[String(LIVE_PAGE_ID)] || (Array.isArray(items) ? items[0] : null) || {};
+      var counts = it.counts || {};
+      likeCount = Number(counts.like != null ? counts.like : 0) || 0;
+      S.liked = it.mine === 'like';
+      paintLikes();
     }).catch(function () {});
   }
   if (!SIM) {
     el('#slw-likes').textContent = '0';
     el('#slw-likers').style.display = 'none';
     el('#slw-like').onclick = function () {
+      if (gateState && !gateState.loggedIn) { nudgeChatLock(); return; }   /* signed out: pull the eye to the join card */
+      var was = !!S.liked;
+      S.liked = !was; likeCount = Math.max(0, likeCount + (was ? -1 : 1)); paintLikes();   /* instant, then the server's truth */
       api('/sml-reactions/v1/react', { method: 'POST', body: JSON.stringify({ content_type: 'long_video', content_id: LIVE_PAGE_ID, reaction: 'like' }) })
         .then(function (res) {
-          if (res.ok) { S.liked = !S.liked; el('#slw-like').classList.toggle('on', S.liked); loadLikes(); }
-          else if (res.status === 401) flashGate('Sign in to like the stream.');
-        }).catch(function () {});
+          if (res.ok) loadLikes();
+          else {
+            S.liked = was; likeCount = Math.max(0, likeCount + (was ? 1 : -1)); paintLikes();
+            if (res.status === 401) { nudgeChatLock(); flashGate('Sign in to like the stream.'); }
+          }
+        }).catch(function () { S.liked = was; likeCount = Math.max(0, likeCount + (was ? 1 : -1)); paintLikes(); });
     };
     loadLikes();
   }

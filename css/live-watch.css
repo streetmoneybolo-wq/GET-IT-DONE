@@ -1140,3 +1140,26 @@ html.sml-mobile .slw-premiere-in span:last-child{font-size:12px}
 .vw-chat-gate a{color:#00ff88;font-weight:700}
 html.sml-mobile .vw-chat{max-height:340px}
 html.sml-mobile .slw-premiere-cd .cd{font-size:22px}
+
+/* ===== Signed-out chat lock (owner 2026-09-23) =====
+   Live/scheduled chat stays readable through a 25% tint; a join card asks visitors to sign up or sign in.
+   Shared by the live watch page (.slw-lock in #slw-pane-0) and premiere chat (.vw-chat .slw-lock). */
+.slw-lock{position:absolute;left:0;right:0;bottom:0;top:0;z-index:8;display:flex;align-items:center;justify-content:center;padding:14px;
+  background:rgba(4,8,13,.25);-webkit-backdrop-filter:blur(1.2px);backdrop-filter:blur(1.2px);cursor:default}
+.slw-lock-card{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;width:min(300px,100%);padding:18px 18px 16px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(11,18,26,.96),rgba(7,12,18,.97));border:1px solid rgba(0,255,136,.38);
+  box-shadow:0 0 0 1px rgba(0,0,0,.5),0 14px 44px rgba(0,0,0,.6),0 0 34px rgba(0,255,136,.16);animation:slwLockIn .45s cubic-bezier(.2,.9,.3,1) both}
+.slw-lock-k{display:inline-flex;align-items:center;gap:7px;font:700 9.5px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.14em;color:#00ff88}
+.slw-lock-k i{width:7px;height:7px;border-radius:50%;background:#00ff88;box-shadow:0 0 0 0 rgba(0,255,136,.6);animation:slwLockPulse 1.8s ease-out infinite}
+.slw-lock-t{font:700 19px/1.15 Archivo,system-ui,sans-serif;color:#f2f7fb;letter-spacing:-.01em}
+.slw-lock-s{font:400 12px/1.5 Archivo,system-ui,sans-serif;color:#9fb0bf;max-width:250px}
+.slw-lock-p{display:block;width:100%;margin-top:4px;padding:11px 14px;border-radius:10px;background:#00ff88;color:#04120a !important;font:800 13px/1 Archivo,system-ui,sans-serif;text-decoration:none !important;
+  letter-spacing:.01em;box-shadow:0 6px 22px rgba(0,255,136,.32);transition:transform .15s,box-shadow .15s}
+.slw-lock-p:hover,.slw-lock-p:focus-visible{transform:translateY(-1px);box-shadow:0 9px 28px rgba(0,255,136,.45);outline:0}
+.slw-lock-a{font:600 11.5px/1 Archivo,system-ui,sans-serif;color:#b9c7d3 !important;text-decoration:underline !important;text-underline-offset:3px}
+.slw-lock-a:hover{color:#fff !important}
+.slw-lock.nudge .slw-lock-card{animation:slwLockNudge .7s ease both}
+@keyframes slwLockIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes slwLockPulse{0%{box-shadow:0 0 0 0 rgba(0,255,136,.6)}70%,100%{box-shadow:0 0 0 9px rgba(0,255,136,0)}}
+@keyframes slwLockNudge{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@media (prefers-reduced-motion:reduce){.slw-lock-card,.slw-lock-k i,.slw-lock.nudge .slw-lock-card{animation:none}}

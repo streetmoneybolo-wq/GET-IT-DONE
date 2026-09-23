@@ -303,6 +303,26 @@
       }).catch(function () { busy = false; el('#vw-chat-send').textContent = 'Send'; });
     }
     if (ME) { el('#vw-chat-send').onclick = send; el('#vw-chat-in').addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); }); }
+    else {
+      /* Signed-out visitors can read the chat through a 25% tint; the card asks them to sign up or sign in (owner 2026-09-23). */
+      var back = encodeURIComponent(location.pathname + location.search), ph0 = premPhase();
+      var lock = document.createElement('div');
+      lock.className = 'slw-lock';
+      lock.innerHTML = '<div class="slw-lock-card" role="dialog" aria-label="Join the premiere chat">' +
+        '<span class="slw-lock-k"><i></i>' + (ph0 === 'upcoming' ? 'PREMIERE CHAT IS OPEN' : (ph0 === 'live' ? 'PREMIERE · LIVE CHAT' : 'PREMIERE CHAT')) + '</span>' +
+        '<b class="slw-lock-t">Join the conversation</b>' +
+        '<span class="slw-lock-s">' + (ph0 === 'upcoming'
+          ? 'Get in early: chat with viewers before the premiere starts, like the video, and be there when it begins.'
+          : 'Viewers are talking right now. Chat, react and like the video with a free account.') + '</span>' +
+        '<a class="slw-lock-p" href="/register/?redirect_to=' + back + '">Sign up free</a>' +
+        '<a class="slw-lock-a" href="/login/?redirect_to=' + back + '">I already have an account</a></div>';
+      lock.addEventListener('click', function (e) {
+        if (e.target.closest('a')) { try { document.cookie = 'sml_return_to=' + encodeURIComponent(location.pathname + location.search) + ';path=/;max-age=1800;SameSite=Lax'; } catch (err) { /* land on home */ } }
+      });
+      box.style.position = 'relative';
+      box.appendChild(lock);
+      var lst = el('#vw-chat-list'); if (lst) lock.style.top = lst.offsetTop + 'px';
+    }
     poll();
     setInterval(poll, premPhase() ? 4000 : 12000);
   })();
@@ -417,19 +437,36 @@
   /* ---------- like + share (reaction engine, long_video set) ---------- */
   var liked = false, CID = null; /* content_id resolves from the rail (numeric id) or falls back to the video slug hash */
   function likeCID() { return CID != null ? CID : VID.id; }
+  /* The engine answers /summary with { items: { <numeric id>: { counts, mine } } } — the slug is turned into that id server-side
+     (sml-watch-likes), so read the one item back. Reading j.counts made every video show 0 and forget your like on reload.
+     Likes work while a premiere is still upcoming; the count stays after it starts. */
+  var likeN = 0;
+  function paintLikes() { el('#vw-likes').textContent = likeN.toLocaleString(); el('#vw-like').classList.toggle('on', liked); }
   function loadLikes() {
     api('/sml-reactions/v1/summary?content_type=long_video&content_id=' + encodeURIComponent(likeCID())).then(function (res) {
-      var j = res.j || {}; var counts = j.counts || j.totals || j.summary || {};
-      var n = counts.like != null ? counts.like : (typeof j.like === 'number' ? j.like : null);
-      el('#vw-likes').textContent = n != null ? Number(n).toLocaleString() : '0';
-      var mine = j.mine || j.my_reaction || j.user_reaction || '';
-      liked = mine === 'like'; el('#vw-like').classList.toggle('on', liked);
-    }).catch(function () { el('#vw-likes').textContent = '0'; });
+      var items = (res.j && res.j.items) || {};
+      var it = Array.isArray(items) ? (items[0] || {}) : (items[Object.keys(items)[0]] || {});
+      var counts = it.counts || {};
+      likeN = Number(counts.like != null ? counts.like : 0) || 0;
+      liked = it.mine === 'like';
+      paintLikes();
+    }).catch(function () { paintLikes(); });
   }
   el('#vw-like').onclick = function () {
+    if (!ME) { if (nudgeLock()) return; gate('Sign in to like this video.'); return; }
+    var was = liked;
+    liked = !was; likeN = Math.max(0, likeN + (was ? -1 : 1)); paintLikes();
+    var undo = function () { liked = was; likeN = Math.max(0, likeN + (was ? 1 : -1)); paintLikes(); };
     api('/sml-reactions/v1/react', { method: 'POST', body: JSON.stringify({ content_type: 'long_video', content_id: likeCID(), reaction: 'like' }) })
-      .then(function (res) { if (res.ok) { liked = !liked; el('#vw-like').classList.toggle('on', liked); loadLikes(); } else if (res.status === 401) gate('Sign in to like this video.'); });
+      .then(function (res) { if (res.ok) loadLikes(); else { undo(); if (res.status === 401) gate('Sign in to like this video.'); } })
+      .catch(undo);
   };
+  function nudgeLock() {
+    var lock = document.querySelector('#vw-chat .slw-lock'); if (!lock) return false;
+    lock.classList.remove('nudge'); void lock.offsetWidth; lock.classList.add('nudge');
+    try { lock.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* older browsers */ }
+    return true;
+  }
   el('#vw-share').onclick = function () {
     var url = VID.url; var b = el('#vw-share');
     var done = function () { b.className = 'slw-share done'; b.innerHTML = '<span class="arm">💪</span> Shared'; };
