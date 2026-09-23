@@ -19,7 +19,7 @@ add_action( 'init', function () {
 	setcookie( 'sml_return_to', '', array( 'expires' => time() - 3600, 'path' => '/', 'samesite' => 'Lax' ) );
 
 	$to = rawurldecode( (string) wp_unslash( $_COOKIE['sml_return_to'] ) );
-	if ( strlen( $to ) > 400 || ! preg_match( '#^/(live|watch)/[A-Za-z0-9._~%/\-]*(\?[A-Za-z0-9._~%=&\-]*)?$#', $to ) || false !== strpos( $to, '//' ) ) { return; }
+	if ( strlen( $to ) > 400 || ! preg_match( '#^/(live|watch)/[A-Za-z0-9._~%/\-]*(\?[A-Za-z0-9._~%=&\-]*)?$#', $to ) || false !== strpos( $to, '//' ) || false !== strpos( $to, '..' ) ) { return; }
 
 	wp_safe_redirect( home_url( $to ) );
 	exit;
