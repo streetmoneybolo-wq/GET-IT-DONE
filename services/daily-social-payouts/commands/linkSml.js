@@ -3,7 +3,7 @@ import { isRoleSyncGuild, linkSmlAccount, roleSyncEnabled } from '../utils/siteR
 
 export const data = new SlashCommandBuilder()
   .setName('link-sml')
-  .setDescription('Connect your Discord account to your StockMarketLoop account.')
+  .setDescription('Connect your Discord account to your linked website account.')
   .addStringOption((option) => option
     .setName('code')
     .setDescription('Your one-time code from stockmarketloop.com/connect-discord/')
@@ -11,7 +11,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   if (!interaction.guildId || !isRoleSyncGuild(interaction.guildId)) {
-    return interaction.reply({ content: 'Run this command in the Discord server connected to your StockMarketLoop group, after choosing **Connect Discord** on that group’s website page.', ephemeral: true });
+    return interaction.reply({ content: 'Run this command in the Discord server connected to your linked website group, after choosing **Connect Discord** on that group’s website page.', ephemeral: true });
   }
   if (!roleSyncEnabled()) {
     return interaction.reply({ content: 'Website role sync is temporarily unavailable. Please try again shortly.', ephemeral: true });
@@ -31,7 +31,7 @@ export async function execute(interaction) {
       : protectedMembership
         ? 'Your existing website membership was left unchanged and remains protected.'
         : 'Your Discord account is connected. No mapped role access was added at this time.';
-    return interaction.editReply(`✅ **StockMarketLoop connected.**\n${access}\n\nReturn to the group page to see your updated access.`);
+    return interaction.editReply(`✅ **Account connected.**\n${access}\n\nReturn to the group page to see your updated access.`);
   } catch (error) {
     return interaction.editReply(`Could not connect your account: ${String(error?.message || error).slice(0, 400)}`);
   }

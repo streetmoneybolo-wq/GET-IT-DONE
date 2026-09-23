@@ -3,7 +3,7 @@ import { dashboardUrl, ownerDashboardComponents } from '../utils/onboarding.js';
 
 export const data = new SlashCommandBuilder()
   .setName('connect-dashboard')
-  .setDescription('Get the StockMarketLoop Connect dashboard link for this Discord server.')
+  .setDescription('Get the Connect dashboard link for this Discord server.')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .setDMPermission(false);
 

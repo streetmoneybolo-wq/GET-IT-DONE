@@ -3,7 +3,7 @@ import { claimGroupDiscordServer, roleSyncEnabled } from '../utils/siteRoleSync.
 
 export const data = new SlashCommandBuilder()
   .setName('connect-sml-group')
-  .setDescription('Securely connect this Discord server to a StockMarketLoop group.')
+  .setDescription('Securely connect this Discord server to a linked website group.')
   .addStringOption((option) => option
     .setName('code')
     .setDescription('One-time code from the group owner’s Discord Access panel')
@@ -26,7 +26,7 @@ export async function execute(interaction) {
       guild: interaction.guild,
       user: interaction.user,
     });
-    return interaction.editReply(`✅ This Discord server is now securely connected to StockMarketLoop group #${result.group_id}. Return to that group’s **Discord Access** panel and map the Discord roles that should receive website access.`);
+    return interaction.editReply(`✅ This Discord server is now securely connected to website group #${result.group_id}. Return to that group’s **Discord Access** panel and map the Discord roles that should receive website access.`);
   } catch (error) {
     return interaction.editReply(`Could not connect this Discord server: ${String(error?.message || error).slice(0, 400)}`);
   }

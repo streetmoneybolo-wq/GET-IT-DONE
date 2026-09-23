@@ -3,11 +3,11 @@ import { isRoleSyncGuild, roleSyncEnabled, syncMemberRoles } from '../utils/site
 
 export const data = new SlashCommandBuilder()
   .setName('refresh-sml-access')
-  .setDescription('Refresh your StockMarketLoop group access from your current Discord roles.');
+  .setDescription('Refresh your linked website group access from your current Discord roles.');
 
 export async function execute(interaction) {
   if (!interaction.guildId || !isRoleSyncGuild(interaction.guildId)) {
-    return interaction.reply({ content: 'Run this in a Discord server that is connected to a StockMarketLoop group.', ephemeral: true });
+    return interaction.reply({ content: 'Run this in a Discord server that is connected to a linked website group.', ephemeral: true });
   }
   if (!roleSyncEnabled()) {
     return interaction.reply({ content: 'Website role sync is temporarily unavailable. Please try again shortly.', ephemeral: true });
