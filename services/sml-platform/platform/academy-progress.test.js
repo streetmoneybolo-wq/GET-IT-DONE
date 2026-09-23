@@ -100,3 +100,21 @@ test('Academy simulation progress rejects malformed scores and users', async () 
   await assert.rejects(progress.save(A, { moduleId: -1, lessonId: 1, score: 80 }), /invalid_module/);
   await assert.rejects(progress.state(''), /invalid_user/);
 });
+
+test('the database schema accepts every module id the curriculum uses', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { SEED_LESSONS } = require('./academy/curriculum');
+  const dir = path.join(__dirname, '..', 'group-subs', 'migrations');
+  const up = fs.readFileSync(path.join(dir, '024_academy_start_here_module_up.sql'), 'utf8');
+  const lowest = Math.min(...SEED_LESSONS.map((lesson) => lesson.moduleId));
+  assert.equal(lowest, 0, 'Start Here is module 0');
+  // 019 declared "> 0" on these columns; 024 must relax each one, or
+  // Postgres rejects Start Here saves that the in-memory pool accepts.
+  for (const [table, column] of [['academy_students', 'current_module'], ['academy_progress', 'module_id'], ['academy_content', 'module_id'], ['academy_quizzes', 'module_id']]) {
+    assert.match(up, new RegExp(`\\('${table}',\\s*'${column}'\\)`), `${table}.${column} relaxed`);
+  }
+  assert.match(up, /CHECK \(%I >= 0\)/);
+  assert.match(up, /RAISE EXCEPTION/, 'fails the deploy if an old check survives');
+  assert.match(up, /current_module SET DEFAULT 0/);
+});
