@@ -1817,11 +1817,13 @@
     var pane = el('#slw-pane-0'); if (!pane) return;
     var lock = pane.querySelector('.slw-lock');
     if (!gateState || gateState.loggedIn) { if (lock) lock.remove(); return; }
+    if (lock && lock.getAttribute('data-before') !== String(!!scheduledLive)) { lock.remove(); lock = null; }   /* the schedule loads after the gates */
     if (!lock) {
       var back = encodeURIComponent(location.pathname + location.search);
       var before = !!scheduledLive;
       lock = document.createElement('div');
       lock.className = 'slw-lock';
+      lock.setAttribute('data-before', String(before));
       lock.innerHTML = '<div class="slw-lock-card" role="dialog" aria-label="Join the live chat">' +
         '<span class="slw-lock-k"><i></i>' + (before ? 'CHAT IS OPEN · STREAM STARTS SOON' : 'LIVE CHAT') + '</span>' +
         '<b class="slw-lock-t">Join the conversation</b>' +
