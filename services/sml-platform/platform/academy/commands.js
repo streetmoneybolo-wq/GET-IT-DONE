@@ -2,7 +2,7 @@
 
 const { SEED_LESSONS } = require('./curriculum');
 const EPHEMERAL = 64;
-const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'discipline', 'replay', 'leaderboard']);
+const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'discipline', 'replay', 'leaderboard', 'launch']);
 
 // Phase 1 is an owner-only preview. Keeping this permission on the command
 // definitions (rather than setting it once in Discord) means a later command
@@ -10,6 +10,16 @@ const ACADEMY_COMMANDS = new Set(['academy', 'enroll', 'lesson', 'progress', 'ba
 const PRIVATE_PREVIEW_PERMISSIONS = '8'; // Discord ADMINISTRATOR bit
 const privatePreview = (command) => ({ ...command, default_member_permissions: PRIVATE_PREVIEW_PERMISSIONS });
 const COMMAND_DEFINITIONS = [
+  // Primary Entry Point command (type 4) with handler 2 (DISCORD_LAUNCH_ACTIVITY):
+  // Discord opens the Activity URL configured for this app in the Developer
+  // Portal directly on the client. Our interaction endpoint is NOT called for
+  // a normal launch, so `default_member_permissions` below (applied by
+  // privatePreview) is the only way to keep this preview-gated for now -
+  // there is no server-side check we can add for the launch itself. Widening
+  // access later means removing the privatePreview() wrap and re-running
+  // `npm run academy:register -- --apply`; it does not require a code change
+  // to this handler.
+  { type: 4, name: 'launch', description: 'Launch the Making Easy Money Academy live-chart Activity', handler: 2, contexts: [0] },
   { type: 1, name: 'academy', description: 'Open Making Easy Money Academy', contexts: [0] },
   { type: 1, name: 'enroll', description: 'Enroll in Making Easy Money Academy', contexts: [0] },
   { type: 1, name: 'lesson', description: 'Open an Academy lesson', contexts: [0], options: [
@@ -128,6 +138,12 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); return { response: response(`Private progress: ${counts.rows[0]?.completed || 0} completed lessons · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak.`) }; }
     if (name === 'badges') { const row = await student(interaction); const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]); const earned = badges.rows.map((entry) => entry.badge_key === 'first_lesson' ? 'First Lesson' : text(entry.badge_key, 40)); return { response: response(earned.length ? `Your badges: ${earned.join(' · ')}` : 'No badges yet. Complete your first lesson to earn First Lesson.') }; }
     if (name === 'glossary') return { response: response(`Glossary lookup for “${text(option(interaction, 'term'))}” is being added with the approved Module 1–3 content pack.`) };
+    /* handler:2 (DISCORD_LAUNCH_ACTIVITY) means Discord normally opens the
+     * Activity client-side without ever sending us this interaction. If we
+     * do receive one anyway (e.g. the Activity URL mapping isn't configured
+     * yet in the Developer Portal), fail with a clear, actionable message
+     * instead of the generic "registered for the roadmap" copy below. */
+    if (name === 'launch') return { response: response('The Academy Activity could not be launched. If this keeps happening, its Activity URL mapping may not be configured yet in the Discord Developer Portal.') };
     return { response: response(`${name} is registered for the Academy roadmap and will unlock after its manager-approved content is published.`) };
   }
   return Object.freeze({ canHandle, handle, definitions: COMMAND_DEFINITIONS });

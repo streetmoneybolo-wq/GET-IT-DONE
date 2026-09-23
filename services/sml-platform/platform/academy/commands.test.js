@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createAcademyCommands } = require('./commands');
+const { createAcademyCommands, COMMAND_DEFINITIONS } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
 
 const GUILD = '938894329076940820';
@@ -66,4 +66,18 @@ test('Academy publishes a complete 26-lesson college-level curriculum', () => {
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1).steps.join(' '), /cash-secured puts/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 10 && entry.lessonId === 1).title, /Read the Tape/i);
   assert.match(SEED_LESSONS.find((entry) => entry.moduleId === 11 && entry.lessonId === 2).title, /Grandmaster-Obi/i);
+});
+
+test('the launch command is a Primary Entry Point that Discord launches natively, gated to the Phase 1 preview', () => {
+  const launch = COMMAND_DEFINITIONS.find((command) => command.name === 'launch');
+  assert.ok(launch, 'a launch command must be registered');
+  assert.equal(launch.type, 4, 'must be a Primary Entry Point command (type 4)');
+  assert.equal(launch.handler, 2, 'must use DISCORD_LAUNCH_ACTIVITY (handler 2) so Discord opens the Activity natively');
+  assert.equal(launch.default_member_permissions, '8', 'must stay preview-gated like every other Phase 1 Academy command');
+});
+
+test('an unexpected launch interaction fails with an actionable message instead of the generic roadmap copy', async () => {
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
+  const result = await academy.handle(interaction('launch'));
+  assert.match(result.response.data.content, /Activity URL mapping/);
 });
