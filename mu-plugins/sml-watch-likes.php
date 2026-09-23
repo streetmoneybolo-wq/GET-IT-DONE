@@ -25,3 +25,11 @@ add_filter( 'rest_post_dispatch', function ( $response, $server, $request ) {
 	}
 	return $response;
 }, 10, 3 );
+
+/* Live and scheduled-live streams have no row in wp_sml_video_index (which is what the engine's long_video store checks), so
+   live-watch.js likes a stream through a stable hash id in this reserved range: 1e13 + fnv32 * 65536 + 16 more bits.
+   Answer "exists" for that range only, ahead of the engine's own store check (priority 5). */
+add_filter( 'sml_reaction_content_exists_long_video', function ( $answer, $content_id ) {
+	$id = (int) $content_id;
+	return ( $id >= 10000000000000 && $id < 10000000000000 + 4294967296 * 65536 ) ? true : $answer;
+}, 4, 2 );
