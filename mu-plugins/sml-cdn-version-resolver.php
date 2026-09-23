@@ -37,12 +37,13 @@
  * tab was firing it ~1/s, each a 1.5 s WP boot. Polls ?after= every 15 s (30 s when quiet), one request in flight, no ?_= buster.
  * 1.0.9 (2026-09-22): advance pin bfa6ca3 -> 5223f7b. js/loop-channel.js only: hands #ch-orbit to window.SML_LCE.mount() — a no-op
  * unless plugin sml-channel-layout 1.1.0 enqueued its script (enabled channels only); the orbit stays unless a valid layout arrives.
+ * 2026-09-23: advance pin -> 796efdd (js/live-watch.js: no empty-symbol quote/history/company polls).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '5223f7b91c82ba9904250e88fe93fd775c63faee' );
+	define( 'SML_CDN_ASSET_REVISION', '796efddaf77e98cbb16b74eafb1624c06c639b03' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
