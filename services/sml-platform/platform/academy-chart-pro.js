@@ -13,6 +13,9 @@
   const DEFAULT_N = 105, MIN_N = 8;
   const defaultN = () => (stage.clientWidth && stage.clientWidth < 560 ? 48 : DEFAULT_N); // fewer, fatter candles on a phone
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  /* Drawing resolution for every chart layer. A phone screen packs 3 device pixels into each CSS pixel; four stacked full-size layers at that density is what makes dragging heavy,
+     so cap it (1.5x on phones, 2x elsewhere). Coordinates stay in CSS pixels, so nothing moves; text and thin lines are only slightly softer. */
+  window.smlChartDpr = () => Math.min(window.devicePixelRatio || 1, stage.clientWidth && stage.clientWidth < 560 ? 1.5 : 2);
   const fin = Number.isFinite;
   let qsCache = '', qsParsed = new URLSearchParams('');
   const q = () => { if (location.search !== qsCache) { qsCache = location.search; qsParsed = new URLSearchParams(qsCache); } return qsParsed; }; // parsed once per URL change, not on every call
@@ -327,7 +330,7 @@
   const compact = (v) => Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(Number(v) || 0);
 
   function drawPro() {
-    const m = model(), dpr = window.devicePixelRatio || 1, w = stage.clientWidth, h = stage.clientHeight;
+    const m = model(), dpr = window.smlChartDpr(), w = stage.clientWidth, h = stage.clientHeight;
     if (layer.width !== Math.round(w * dpr) || layer.height !== Math.round(h * dpr)) { layer.width = Math.round(w * dpr); layer.height = Math.round(h * dpr); }
     lctx.setTransform(dpr, 0, 0, dpr, 0, 0); lctx.clearRect(0, 0, w, h);
     if (!m) return;

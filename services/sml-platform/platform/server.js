@@ -660,6 +660,7 @@ void authenticateAcademyActivity();
 </script></body></html>`
     .replace("#academy-unlock{", "body.academy-tools-open .lesson{z-index:2147483600}#academy-unlock{")
     .replace("ctx.setTransform(d,0,0,d,0)", "ctx.setTransform({a:d,b:0,c:0,d:d,e:0,f:0})")
+    .replace("d=devicePixelRatio||1;canvas.width=", "d=1;canvas.width=")
     .replace("canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.max(.7,Math.min(4,scale*(e.deltaY>0?.86:1.16)));draw()},{passive:false})", "canvas.addEventListener('wheel',()=>{},{passive:true})")
     .replace("function load(){const s=esc(sym.value);location.assign(location.pathname+'?symbol='+encodeURIComponent(s))}", "function load(){window.smlAcademyNavigateMarket?.(esc(sym.value))}")
     .replace("new ResizeObserver(resize).observe(canvas);setQuote();draw()", "const chartObserver=new ResizeObserver(resize);chartObserver.observe(canvas);window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)resize()});requestAnimationFrame(resize);setTimeout(resize,250);setTimeout(resize,1000);setQuote();draw()")
