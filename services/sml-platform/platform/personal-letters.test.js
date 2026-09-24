@@ -57,3 +57,18 @@ test('a rewrite that is still robotic is held, not published', async () => {
     return { ok: true, json: async () => ({ status: 'completed', output_text: JSON.stringify(out), output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(out) }] }] }) }; };
   await assert.rejects(createAI({ apiKey: 'k', model: 'm', fetchImpl }).generate(p), /voice_check_failed/);
 });
+const { unsupportedLevels } = require('./personal-letters');
+test('scenario levels must come from the evidence', () => {
+  const p = { ...packet(), snapshot: { current: 41.97, high: 42.1, low: 41.67, prev_close: 40.74, open: 45.84 }, bars: [{ date: 'd', close: 43.2 }] };
+  const a = modern(); a.scenarios.bullish = 'Closes north of about 42.50 would turn this bullish.';
+  assert.equal(unsupportedLevels(a, p).length, 1);
+  a.scenarios.bullish = 'Holding above the $42 area and the session high near 42.1 keeps buyers in charge over the next 3 sessions or 5%.';
+  a.scenarios.bearish = 'Losing the 41.67 low, or a slide back toward the 40.74 prior close, flips it.';
+  assert.equal(unsupportedLevels(a, p).length, 0);
+});
+test('a rewrite that still invents levels is held', async () => {
+  const p = { ...packet(), snapshot: { current: 100 } }; const bad = modern(); bad.scenarios.bullish = 'A close above 250 would confirm it.';
+  const fetchImpl = async (u, o) => { const name = JSON.parse(o.body).text.format.name; const out = name === 'personal_letter_voice_audit' ? { pass: true, issues: [] } : bad;
+    return { ok: true, json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(out) }] }] }) }; };
+  await assert.rejects(createAI({ apiKey: 'k', model: 'm', fetchImpl }).generate(p), /unsupported_levels/);
+});
