@@ -8,7 +8,7 @@
   window.__memAlgoUi = true;
 
   const KEY = 'sml-mem-algo-v1';
-  const S = { on: false, mode: 'day', overlays: { ema: true, signals: true, levels: true }, params: { day: {}, swing: {} }, data: null, sigKey: '', loading: false, error: '', open: false };
+  const S = { on: false, mode: 'day', overlays: { ema: true, signals: true, levels: true, book: true }, of: null, ofBusy: false, ofErr: '', params: { day: {}, swing: {} }, data: null, sigKey: '', loading: false, error: '', open: false };
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) { S.on = !!saved.on; S.mode = E.STRATEGIES[saved.mode] ? saved.mode : 'day'; Object.assign(S.overlays, saved.overlays || {}); S.params = { day: (saved.params && saved.params.day) || {}, swing: (saved.params && saved.params.swing) || {} }; S.open = !!saved.on; } } catch (_) { /* storage can be blocked inside Discord */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, mode: S.mode, overlays: S.overlays, params: S.params })); } catch (_) { /* ignore */ } };
 
@@ -55,6 +55,15 @@
 #mem-algo-panel ul{margin:6px 0 0;padding-left:18px;color:#9fb3be;font-size:.72rem}
 .mem-foot{padding:9px 12px;color:#7f98a6;font-size:.64rem}
 .mem-btn{margin-top:6px;padding:5px 10px;border:1px solid #23495a;border-radius:7px;background:#0a1118;color:#b8c9d3;font:700 .68rem system-ui;cursor:pointer}
+.mem-of-chip{display:inline-block;padding:3px 9px;border-radius:999px;font:800 .68rem ui-monospace,monospace;letter-spacing:.05em}
+.mem-of-chip.bull{background:#0d3a2a;color:#3ef0a8}.mem-of-chip.bear{background:#421a24;color:#ff7a92}.mem-of-chip.flat{background:#1c2b33;color:#9db4c0}
+.mem-meter{position:relative;height:7px;border-radius:4px;background:#16303a;margin:6px 0 2px;overflow:hidden}.mem-meter i{position:absolute;top:0;bottom:0}.mem-meter em{position:absolute;left:50%;top:-1px;bottom:-1px;width:1px;background:#3f6070}
+.mem-of-row{padding:7px 0;border-top:1px solid #16303a;font-size:.72rem;color:#b8c9d3}.mem-of-row:first-of-type{border-top:0}.mem-of-row b{color:#eaf3f6}
+.mem-ladder{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;font:11px ui-monospace,monospace}.mem-ladder div{position:relative;display:flex;justify-content:space-between;padding:2px 5px;overflow:hidden;border-radius:3px}
+.mem-ladder .b i,.mem-ladder .a i{position:absolute;top:0;bottom:0;right:0;opacity:.28}.mem-ladder .b i{background:#00d084}.mem-ladder .a i{background:#ff5470}.mem-ladder span{position:relative}
+.mem-ev{font-size:.7rem;color:#9fb3be;padding:3px 0}.mem-ev u{text-decoration:none;display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.mem-ev u.bull{background:#00d084}.mem-ev u.bear{background:#ff5470}
+.mem-grade{margin-top:7px;font-size:.72rem}.mem-grade b{padding:2px 8px;border-radius:999px;font:800 .64rem ui-monospace,monospace;letter-spacing:.04em}
+.mem-grade .confirms{background:#0d3a2a;color:#3ef0a8}.mem-grade .disagrees{background:#421a24;color:#ff7a92}.mem-grade .neutral,.mem-grade .unavailable{background:#1c2b33;color:#9db4c0}
 @media(max-width:520px){#mem-algo-panel{right:8px;left:8px;width:auto;top:52px}}`;
   document.head.appendChild(css);
 
@@ -103,14 +112,15 @@
     let html = '<header><b>MEM ALGO</b><small>Educational simulation · no orders are placed</small><button type="button" data-mem="close" aria-label="Close">×</button></header>';
     html += '<div class="mem-tabs">' + Object.keys(E.STRATEGIES).map((k) => '<button type="button" data-mem-mode="' + k + '" class="' + (S.mode === k ? 'on' : '') + '">' + esc(E.STRATEGIES[k].label) + '</button>').join('') + '</div>';
     html += '<div class="mem-sec"><p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide.</div>') + '</div>';
+    html += '<div class="mem-sec" id="mem-of"></div>';
     if (S.error) html += '<div class="mem-sec"><div class="mem-warn">' + esc(S.error) + '</div></div>';
     if (!d) { html += '<div class="mem-sec">Loading candles for $' + esc(symbol()) + '…</div>'; }
     else {
       const biasMap = { long: ['long', 'LONG BIAS'], short: ['short', 'SHORT BIAS'], pullback: ['flat', 'PULLBACK IN UPTREND'], bounce: ['flat', 'BOUNCE IN DOWNTREND'], warming: ['flat', 'WARMING UP'] };
       const b = biasMap[d.bias] || biasMap.warming, L = d.latest;
       html += '<div class="mem-sec"><h5>Right now · $' + esc(symbol()) + ' · ' + esc(tfNow) + '</h5><span class="mem-chip ' + b[0] + '">' + b[1] + '</span>';
-      if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Paper trade open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · Stop ' + num(d.open.stop) + ' · Target ' + num(d.open.target) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span></div>';
-      else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (L.dir > 0 ? 'BUY' : 'SELL') + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · Stop ' + num(L.stop) + ' · Target ' + num(L.target) + '<br><span class="mem-blurb">Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1). A signal is a closed-candle event; the paper trade enters on the next open.</span></div>';
+      if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Paper trade open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · Stop ' + num(d.open.stop) + ' · Target ' + num(d.open.target) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span><div class="mem-grade" id="mem-grade" data-dir="' + d.open.dir + '"></div></div>';
+      else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (L.dir > 0 ? 'BUY' : 'SELL') + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · Stop ' + num(L.stop) + ' · Target ' + num(L.target) + '<br><span class="mem-blurb">Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1). A signal is a closed-candle event; the paper trade enters on the next open.</span><div class="mem-grade" id="mem-grade" data-dir="' + L.dir + '"></div></div>';
       else html += '<div class="mem-sec" style="padding:8px 0 0"><span class="mem-blurb">No signal in the candles loaded. That is normal — the model waits for a clean, confirmed cross.</span></div>';
       html += '</div>';
       if (!d.enoughData) html += '<div class="mem-sec"><div class="mem-warn">Only ' + d.bars + ' candles are loaded and this mode needs about ' + (d.warm + 30) + ' to warm up its averages. Try a shorter-period timeframe or another ticker.</div></div>';
@@ -129,12 +139,53 @@
       }
     }
     html += '<div class="mem-sec"><h5>Show on chart</h5>'
-      + [['ema', 'EMA lines'], ['signals', 'Buy / sell markers'], ['levels', 'Stop & target levels']].map((o) => '<label class="mem-row"><input type="checkbox" data-mem-ov="' + o[0] + '"' + (S.overlays[o[0]] ? ' checked' : '') + '> ' + o[1] + '</label>').join('') + '</div>';
+      + [['ema', 'EMA lines'], ['signals', 'Buy / sell markers'], ['levels', 'Stop & target levels'], ['book', 'Level 2 book walls']].map((o) => '<label class="mem-row"><input type="checkbox" data-mem-ov="' + o[0] + '"' + (S.overlays[o[0]] ? ' checked' : '') + '> ' + o[1] + '</label>').join('') + '</div>';
     const fields = [['fast', 'Fast EMA'], ['slow', 'Slow EMA'], ['trend', 'Trend EMA'], ['atr', 'ATR length'], ['minSep', 'Price gap to slow EMA (×ATR)'], ['confirm', 'Confirm bars'], ['stopAtr', 'Stop (×ATR)'], ['targetAtr', 'Target (×ATR)'], ['maxHold', 'Max hold (candles)'], ['costBps', 'Cost (bps/side)']];
     html += '<div class="mem-sec"><details><summary>Settings</summary><div class="mem-set">' + fields.map((f) => '<label>' + f[1] + '<input type="number" step="any" data-mem-p="' + f[0] + '" value="' + esc(p[f[0]]) + '"></label>').join('') + '</div><button type="button" class="mem-btn" data-mem="reset">Reset to defaults</button></details></div>';
     html += '<div class="mem-sec"><details><summary>How MEM ALGO decides</summary><ul><li>Fast EMA crossing the slow EMA starts a setup.</li><li>It must stay crossed for ' + p.confirm + ' closed candles — the signal fires on the last of them, never on the cross candle.</li><li>Longs only above the trend EMA, shorts only below it.</li><li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.</li><li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>' + (p.session ? '<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>' : '') + '<li>Backtest enters on the next candle\'s open; if one candle touches both stop and target it counts as a loss.</li></ul></details></div>';
     html += '<div class="mem-foot">Educational simulation on closed candles. Past results do not predict future returns. Not financial advice, and nothing here places a trade.</div>';
     panel.innerHTML = html;
+    paintOF();
+  }
+
+  // ---- Level 2 order flow (server-side reading; the panel only displays it) ----
+  const gradeText = { confirms: 'Book confirms', disagrees: 'Book disagrees', neutral: 'Book neutral', unavailable: 'Book unavailable' };
+  function bar(score) { const w = Math.min(50, Math.abs(score) / 2); return '<div class="mem-meter"><em></em><i style="' + (score >= 0 ? 'left:50%;background:#00d084' : 'right:50%;background:#ff5470') + ';width:' + w + '%"></i></div>'; }
+  function paintOF() {
+    const box = panel.querySelector('#mem-of'); if (!box) return;
+    const o = S.of && S.of.symbol === symbol() ? S.of : null;
+    let h = '<h5>Order flow · Level 2</h5>';
+    if (!o) h += '<div class="mem-blurb" style="margin-top:0">' + esc(S.ofErr || 'Reading the order book…') + '</div>';
+    else if (o.closed && !o.ready) h += '<div class="mem-warn">The market is closed, so there is no live order book. Order flow updates during market hours.</div>';
+    else if (!o.ready) h += '<div class="mem-blurb" style="margin-top:0">Collecting order flow… ' + (o.snapshots || 0) + ' of ' + (o.needed || 12) + ' book snapshots. It needs about half a minute of live data before it can read anything.</div>';
+    else {
+      const cls = o.bias === 'bullish' ? 'bull' : (o.bias === 'bearish' ? 'bear' : 'flat');
+      h += '<span class="mem-of-chip ' + cls + '">' + esc(o.bias.toUpperCase()) + '</span> <span class="mem-blurb">score ' + (o.score > 0 ? '+' : '') + o.score + ' (−100 to +100)</span>' + bar(o.score);
+      if (o.stale || o.closed || o.failing) h += '<div class="mem-warn" style="margin:6px 0">' + (o.closed ? 'The book has stopped updating (market closed?).' : 'Order flow is not updating right now, so it is not being graded.') + '</div>';
+      const m = o.momentum, a = o.absorption;
+      h += '<div class="mem-of-row"><b>Pulling &amp; stacking</b> · ' + esc(m.label) + ' (' + (m.score > 0 ? '+' : '') + m.score + ')' + bar(m.score) + 'Bid depth ×' + m.stackBid.toFixed(1) + ', ask depth ×' + m.stackAsk.toFixed(1) + ' vs normal' + (m.pulledAsk > 0.15 ? ' · <b>asks pulled ' + Math.round(m.pulledAsk * 100) + '%</b>' : '') + (m.pulledBid > 0.15 ? ' · <b>bids pulled ' + Math.round(m.pulledBid * 100) + '%</b>' : '') + '</div>';
+      h += '<div class="mem-of-row"><b>Absorption</b> · ' + (a.state === 'bull' ? 'bullish — ' + a.sellVol.toLocaleString() + ' shares sold into the bid and price held' : (a.state === 'bear' ? 'bearish — ' + a.buyVol.toLocaleString() + ' shares bought into the ask and price stalled' : 'none right now')) + (a.iceberg ? '<br>Possible iceberg at <b>' + a.iceberg.price.toFixed(2) + '</b>: ' + Math.round(a.iceberg.vol).toLocaleString() + ' traded vs ' + Math.round(a.iceberg.shown).toLocaleString() + ' shown' : '') + '</div>';
+      h += '<div class="mem-of-row"><b>Bid/ask flip</b> · ' + (o.flip ? (o.flip.side === 'bull' ? 'resistance flipped to support at ' : 'support flipped to resistance at ') + '<b>' + Number(o.flip.price).toFixed(2) + '</b> (' + Math.max(0, Math.round((Date.now() - o.flip.at) / 1000)) + 's ago)' : 'none right now') + '</div>';
+      const maxSz = Math.max(1, ...o.book.bids.map((x) => x.size), ...o.book.asks.map((x) => x.size));
+      h += '<div class="mem-ladder"><div style="grid-column:1/-1;color:#7f98a6;font-size:.6rem">TOP OF BOOK · spread ' + o.book.spread.toFixed(2) + '</div>'
+        + '<div>' + o.book.bids.map((x) => '<div class="b"><i style="width:' + Math.round(x.size / maxSz * 100) + '%"></i><span>' + x.price.toFixed(2) + '</span><span>' + x.size.toLocaleString() + '</span></div>').join('') + '</div>'
+        + '<div>' + o.book.asks.map((x) => '<div class="a"><i style="width:' + Math.round(x.size / maxSz * 100) + '%"></i><span>' + x.price.toFixed(2) + '</span><span>' + x.size.toLocaleString() + '</span></div>').join('') + '</div></div>';
+      if ((o.events || []).length) h += '<div style="margin-top:8px">' + o.events.slice(0, 5).map((e) => '<div class="mem-ev"><u class="' + e.side + '"></u>' + esc(new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })) + ' · ' + esc(e.note) + '</div>').join('') + '</div>';
+      h += '<p class="mem-blurb">Level 2 is a reading of what buyers and sellers are doing, not a prediction. Every signal is being recorded with what price did next, so it can be measured before anyone relies on it.</p>';
+    }
+    box.innerHTML = h;
+    const g = panel.querySelector('#mem-grade');
+    if (g) { const dir = Number(g.dataset.dir), gr = o && o.grades ? (dir > 0 ? o.grades.long : o.grades.short) : null; g.innerHTML = gr ? 'Level 2 vs this ' + (dir > 0 ? 'BUY' : 'SELL') + ': <b class="' + gr.grade + '">' + gradeText[gr.grade] + '</b> <span class="mem-blurb">' + esc(gr.reason) + '</span>' : ''; }
+  }
+  async function pollOF() {
+    if (!S.on || S.ofBusy || (document.hidden && S.of)) return;
+    S.ofBusy = true;
+    try {
+      const r = await fetch('/academy-activity/orderflow?symbol=' + encodeURIComponent(symbol()), { cache: 'no-store' });
+      const p = await r.json(); if (!r.ok) throw new Error('of');
+      S.of = p; S.ofErr = '';
+    } catch (_) { S.ofErr = 'Order flow is not available right now.'; }
+    S.ofBusy = false; paintOF(); if (S.overlays.book) draw();
   }
 
   // ---- overlay drawing (mirrors the chart's own geometry so markers sit exactly on the candles) ----
@@ -171,6 +222,13 @@
       }
     }
     lctx.restore();
+    if (S.overlays.book && S.of && S.of.symbol === symbol() && !S.of.stale && Array.isArray(S.of.walls)) {
+      S.of.walls.forEach((wl) => {
+        if (wl.price < lo || wl.price > hi) return; const yy = y(wl.price), color = wl.side === 'bid' ? '0,208,132' : '255,84,112';
+        lctx.fillStyle = 'rgba(' + color + ',.16)'; lctx.fillRect(pad.l, yy - 2, pw, 4);
+        lctx.fillStyle = 'rgb(' + color + ')'; lctx.font = '700 9px ui-monospace,monospace'; lctx.textAlign = 'right'; lctx.fillText((wl.side === 'bid' ? 'BID WALL ' : 'ASK WALL ') + Math.round(wl.size).toLocaleString(), pad.l + pw - 4, yy - 4);
+      });
+    }
     if (S.overlays.levels) {
       const lv = d.open ? { dir: d.open.dir, stop: d.open.stop, target: d.open.target, entry: d.open.entry } : (d.latest && d.bars - 1 - d.latest.i <= 30 ? { dir: d.latest.dir, stop: d.latest.stop, target: d.latest.target, entry: d.latest.price } : null);
       if (lv) [['STOP', lv.stop, '#ff5470'], ['TARGET', lv.target, '#00d084']].forEach(([label, price, color]) => {
@@ -182,7 +240,7 @@
   }
 
   // ---- events ----
-  toggle.addEventListener('click', () => { if (S.on && S.open) { S.on = false; S.open = false; } else { S.on = true; S.open = true; } save(); paint(); draw(); if (S.on) refresh(true); });
+  toggle.addEventListener('click', () => { if (S.on && S.open) { S.on = false; S.open = false; } else { S.on = true; S.open = true; } save(); paint(); draw(); if (S.on) { refresh(true); pollOF(); } });
   panel.addEventListener('click', (e) => {
     const t = e.target.closest('[data-mem],[data-mem-mode]'); if (!t) return;
     if (t.dataset.mem === 'close') { S.open = false; paint(); return; }
@@ -198,13 +256,14 @@
   (function frame() { // redraw whenever the chart moves (drag, zoom, new candles, resize)
     try {
       const st = window.smlAcademyChartState(), lastBar = st.bars[st.bars.length - 1];
-      const sig = [st.bars.length, lastBar && lastBar.t, lastBar && lastBar.c, st.offset, st.scale, chartCanvas.clientWidth, chartCanvas.clientHeight, S.on, S.data && S.data.bars].join('|');
+      const sig = [st.bars.length, lastBar && lastBar.t, lastBar && lastBar.c, st.offset, st.scale, chartCanvas.clientWidth, chartCanvas.clientHeight, S.on, S.data && S.data.bars, S.of && S.of.asOf].join('|');
       if (sig !== last) { last = sig; draw(); }
       if (S.on && S.sigKey !== symbol() + ':' + tf() && !S.loading) refresh(true);
     } catch (_) { /* chart not ready yet */ }
     requestAnimationFrame(frame);
   })();
   setInterval(() => { if (S.on) refresh(false); }, 20000);
+  setInterval(pollOF, 2500);
   window.addEventListener('sml-academy-market', () => { if (S.on) setTimeout(() => refresh(true), 300); });
-  paint(); if (S.on) refresh(true);
+  paint(); if (S.on) { refresh(true); pollOF(); }
 })();

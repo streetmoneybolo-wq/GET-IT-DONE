@@ -28,6 +28,8 @@ const { academyCartoonVisualsScript } = require('./academy-cartoon-visuals');
 const { academyChartIntelligenceScript } = require('./academy-chart-intelligence');
 const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
+const { createOrderFlowService } = require('./academy-order-flow-service');
+const { createOrderFlowStore } = require('./academy-order-flow-store');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -1096,7 +1098,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null,
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
   memberEmail = null,
@@ -1391,6 +1393,15 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Level 2 reading (pulling & stacking, absorption, bid/ask flip) for the MEM ALGO panel. Read-only, public like the chart, never cached. */
+    if (request.method === 'GET' && path === '/academy-activity/orderflow') {
+      if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try { sendJson(response, 200, academyOrderFlow.get(params.get('symbol'))); }
+      catch (error) { sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' }); }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/scanner') {
       try {
         sendJson(response, 200, await getAcademyScanner());
@@ -1654,6 +1665,8 @@ async function main() {
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
+  const orderFlowStore = createOrderFlowStore({ pool: database.pool });
+  const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
@@ -1702,7 +1715,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow,
     academyDiscipline,
     academyAppId: config.academyAppId,
     memberEmail
@@ -1713,6 +1726,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     log('info', 'shutdown_started', { signal });
+    if (academyOrderFlow) academyOrderFlow.stop();
     server.close(async () => {
       await database.close();
       log('info', 'shutdown_complete', { signal });
@@ -1726,6 +1740,11 @@ async function main() {
   server.listen(config.port, () => {
     log('info', 'api_started', { port: config.port });
     startAcademyChartWarmers(log);
+    if (academyOrderFlow) {
+      academyOrderFlow.start();
+      const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
+      if (pruneTimer.unref) pruneTimer.unref();
+    }
     if (config.discordConnectBotToken) {
       cleanupConnectActivityMessages({ token: config.discordConnectBotToken, apply: true })
         .then((result) => log('info', 'connect_activity_cleanup_complete', result))

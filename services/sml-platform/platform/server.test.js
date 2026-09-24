@@ -862,3 +862,23 @@ test('activity page ships the MEM ALGO engine and panel, and the chart still loa
   assert.match(html, /Swing Trading/);
   assert.ok(html.indexOf('__smlChartGuard') < html.indexOf('MemAlgoEngine'), 'the chart guard loads before the model');
 });
+
+test('the order flow route validates symbols, reports disabled, and serves the reading', async () => {
+  await withServer({}, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/orderflow?symbol=SPY`)).status, 503);
+  });
+  const academyOrderFlow = { get: (s) => { if (!/^[A-Z]+$/i.test(String(s))) throw new TypeError('invalid_symbol'); return { symbol: String(s).toUpperCase(), ready: false, state: 'warming' }; } };
+  await withServer({ academyOrderFlow }, async (base) => {
+    const ok = await fetch(`${base}/academy-activity/orderflow?symbol=spy`);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).symbol, 'SPY');
+    assert.equal((await fetch(`${base}/academy-activity/orderflow?symbol=../x`)).status, 400);
+  });
+});
+
+test('the activity page carries the order flow panel', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /academy-activity\/orderflow/);
+  assert.match(html, /mem-of/);
+});
