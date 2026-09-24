@@ -1191,8 +1191,8 @@ if (!function_exists('sml_gl_script')) {
     if (!handle) {
       return '<section class="cs-card" style="margin-top:18px"><h3>Shared Watch Page Chat</h3><p class="cs-sub">Set a public profile handle before opening a live chat room.</p></section>';
     }
-    return '<section class="cs-card" style="margin-top:18px"><div class="cs-head-row"><div><h3 style="margin-bottom:5px">Shared Watch Page Chat</h3><p class="cs-sub">Messages here and on your Watch Page are one live conversation.</p></div><a class="gl-btn-line" style="text-decoration:none;white-space:nowrap" target="_blank" rel="noopener" href="' + esc(watchPageUrl()) + '">Open Watch Page ↗</a></div>'
-      + '<div data-creator-chat-feed style="max-height:260px;overflow:auto;margin-top:10px"></div><div data-creator-chat-empty style="padding:18px 0;color:#7e92a8;font-size:12.5px">Chat is open. Your viewers can start the conversation now.</div>'
+    return '<section class="cs-card" id="gl-live-chat" style="border-color:rgba(43,108,255,.35)"><div class="cs-head-row"><div><h3 style="margin-bottom:5px">Live Chat</h3><p class="cs-sub">Messages here and on your Watch Page are one live conversation.</p></div><a class="gl-btn-line" style="text-decoration:none;white-space:nowrap" target="_blank" rel="noopener" href="' + esc(watchPageUrl()) + '">Open Watch Page ↗</a></div>'
+      + '<div data-creator-chat-feed style="height:min(50vh,440px);overflow:auto;margin-top:10px"></div><div data-creator-chat-empty style="padding:18px 0;color:#7e92a8;font-size:12.5px">Chat is open. Your viewers can start the conversation now.</div>'
       + '<div style="display:flex;gap:9px;margin-top:12px"><input data-creator-chat-input class="cs-input" maxlength="500" autocomplete="off" placeholder="Reply to viewers…"><button type="button" class="cs-btn cs-btn-primary" data-send-creator-chat>Send</button></div></section>';
   }
 
@@ -1283,6 +1283,8 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-quote" data-quote style="display:none"></div>'
       + overlayPreviewMarkup(false) + '</div>'
       + '<div class="gl-movers" data-movers></div></section>';
+
+    if (draft.live && draft.live.status !== 'ended') { html += creatorChatMarkup() + miniQaMarkup(); }
 
     html += '<section class="cs-card"><h3 style="margin-bottom:14px">Stream Health</h3><div class="gl-health"><div>'
       + healthRow('Video', t && t.videoOk, t && t.video ? t.video : 'No camera', 'cam')
@@ -2031,8 +2033,10 @@ if (!function_exists('sml_gl_script')) {
     var id = glcStreamId();
     Promise.all([
       api(glcBase() + '/state?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; }),
-      api(glcBase() + '/moves?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; })
+      api(glcBase() + '/moves?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; }),
+      api('/wp-json/sml-engage/v1/qa').catch(function () { return null; })
     ]).then(function (r) {
+      if (r[2] && r[2].questions) { ctl.qa = r[2].questions; }
       if (r[0]) { ctl.st = r[0]; glcFormInit(); if (ctl.form.accounts === null) { ctl.form.accounts = {}; (r[0].accounts || []).forEach(function (a) { if (a.ok) { ctl.form.accounts[a.id] = true; } }); } }
       if (r[1]) { ctl.moves = r[1].moves || []; }
     }).then(function () { ctl.busy = false; paintControl(false); });
@@ -2207,6 +2211,7 @@ if (!function_exists('sml_gl_script')) {
   }
 
   function paintControl(keepScroll) {
+    paintMiniQa();
     var root = document.querySelector('[data-glc]');
     if (!root) { return; }
     var body = root.querySelector('[data-glc-body]');
@@ -2216,6 +2221,20 @@ if (!function_exists('sml_gl_script')) {
     if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'checkbox' && ae.type !== 'file' && keepScroll !== 'force') { return; }
     var tab = ctl.tab === 'promote' ? glcPromoTab() : ctl.tab === 'qa' ? glcQaTab() : ctl.tab === 'boost' ? glcBoostTab() : ctl.tab === 'money' ? glcMoneyTab() : ctl.tab === 'groups' ? glcGroupsTab() : glcOrbitTab();
     body.innerHTML = glcMoves() + glcTabs() + tab;
+  }
+
+  function miniQaMarkup() {
+    glcCss();
+    return '<section class="cs-card glc" data-glc-mini><h3 style="margin-bottom:8px">Questions waiting <span class="glc-pill" data-glc-mq-n style="margin-left:6px">0</span></h3><div data-glc-mq-body class="glc-note" style="margin:0">Loading…</div></section>';
+  }
+  function paintMiniQa() {
+    var box = document.querySelector('[data-glc-mq-body]');
+    if (!box) { return; }
+    var all = (ctl.qa || []).filter(function (q) { return q.status !== 'answered'; }), qs = all.slice(0, 4);
+    var n = document.querySelector('[data-glc-mq-n]'); if (n) { n.textContent = all.length; }
+    box.innerHTML = qs.length ? qs.map(function (x) {
+      return '<div class="glc-row"><span>' + (x.pinned ? '📌 ' : '') + esc(x.body) + '<small>' + esc(x.from || 'Viewer') + ' · ' + (x.upvotes || 0) + ' ▲</small></span><button class="glc-btn sm" data-glc-qa="answer:' + x.id + '">Answered</button></div>';
+    }).join('') : (ctl.qa === null ? 'Loading…' : 'No questions waiting.');
   }
 
   function glcSetTab(tab) { ctl.tab = tab; ctl.msg = ''; glcTabLoad(tab); paintControl('force'); }
@@ -2237,7 +2256,7 @@ if (!function_exists('sml_gl_script')) {
   }
 
   function glcClick(e) {
-    var t = e.target.closest ? e.target.closest('[data-glc] button, [data-glc] input[type=checkbox], [data-glc] a') : null;
+    var t = e.target.closest ? e.target.closest('[data-glc] button, [data-glc] input[type=checkbox], [data-glc] a, [data-glc-mini] button') : null;
     if (!t) { return; }
     var a = function (n) { return t.getAttribute(n); }, f = ctl.form;
     if (a('data-glc-tab')) { glcSetTab(a('data-glc-tab')); return; }
@@ -2344,6 +2363,7 @@ if (!function_exists('sml_gl_script')) {
     return '<nav class="gl-studionav" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:0 0 14px;font-size:12.5px">'
       + '<a style="color:#7e92a8;text-decoration:none" href="/creator-studio/?tab=live">&larr; All streams</a>'
       + '<a style="color:#7e92a8;text-decoration:none" href="/go-live/">+ New stream</a>'
+      + (draft.live && draft.live.status !== 'ended' ? '<a style="color:#22d3a0;text-decoration:none" href="#gl-live-chat">Live chat &darr;</a>' : '')
       + (draft.live && draft.live.watch_url ? '<a style="color:#2b6cff;text-decoration:none" href="' + esc(draft.live.watch_url) + '" target="_blank" rel="noopener">Open watch page &nearr;</a>' : '') + '</nav>';
   }
 
@@ -2364,8 +2384,7 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-stat"><small>' + icon('cam', 14) + 'Video</small><b style="font-size:16px">' + (scheduled ? 'Waiting to start' : 'Check Watch Page') + '</b></div>'
       + '</div>'
       + '<div class="cs-hint" style="margin-top:14px">Your Watch Page is available now. It shows your thumbnail or GIF until the real stream reports live; this control does not pretend the video is live before then.</div></section>'
-      + controlMarkup() + insightsMarkup()
-      + creatorChatMarkup();
+      + controlMarkup() + insightsMarkup();
     }
 
     var elapsed = liveStats.startedAt ? Math.floor((Date.now() - liveStats.startedAt) / 1000) : 0;
@@ -2382,7 +2401,7 @@ if (!function_exists('sml_gl_script')) {
           + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div>'
         : '<div class="cs-hint" style="margin-top:14px">You are live on your Watch Page — no host group. '
           + '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">Open your Watch Page</a> to see what viewers see.</div>')
-      + '</section>' + controlMarkup() + insightsMarkup() + creatorChatMarkup();
+      + '</section>' + controlMarkup() + insightsMarkup();
   }
 
   function groupName() {
@@ -2941,7 +2960,7 @@ if (!function_exists('sml_gl_script')) {
     }
   });
 
-  content.addEventListener('keydown', function (event) {
+  [content, middle].forEach(function (host) { host.addEventListener('keydown', function (event) {
     if (event.target.getAttribute('data-creator-chat-input') !== null) {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
@@ -2956,7 +2975,7 @@ if (!function_exists('sml_gl_script')) {
     if (value && draft.related.length < 4 && draft.related.indexOf(value) === -1) { draft.related.push(value); }
     event.target.value = '';
     save(); render();
-  });
+  }); });
 
   var saveBtn = document.getElementById('gl-save-draft');
   if (saveBtn) {
