@@ -41,12 +41,13 @@
  * 2026-09-23: advance pin -> c7d414a (watch pages: per-stream likes, chat lock, live-insights beacon, orbit max 5).
  * 2026-09-23: advance pin -> 744bf0e (js/creator-live-library.js: Manage link to per-stream studio).
  * 2026-09-24: advance pin -> 3c6e547 (js/live-watch.js + css: channel emotes picker/render).
+ * 2026-09-24: advance pin -> fcc9f04 (js/creator-analytics.js: admin-only Moderation tab).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '3c6e547ba820d770a45d31122fdea38415c1e6fd' );
+	define( 'SML_CDN_ASSET_REVISION', 'fcc9f04b2c9891efe57275f1f2e2c643be146edf' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
