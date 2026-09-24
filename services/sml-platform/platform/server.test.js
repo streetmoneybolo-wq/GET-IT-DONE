@@ -852,3 +852,13 @@ test('an empty chart still loads while the Activity window reports hidden', () =
   assert.match(html, /if\(refreshPending\|\|\(document\.hidden&&window\.smlAcademyChartState&&window\.smlAcademyChartState\(\)\.bars\.length\)\)return/);
   assert.match(html, /const fix=async\(\)=>\{if\(document\.hidden&&bars\(\)\.length\)return/);
 });
+
+test('activity page ships the MEM ALGO engine and panel, and the chart still loads without them', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /window\.MemAlgoEngine=module\.exports/);
+  assert.match(html, /mem-algo-toggle/);
+  assert.match(html, /Day Trading/);
+  assert.match(html, /Swing Trading/);
+  assert.ok(html.indexOf('__smlChartGuard') < html.indexOf('MemAlgoEngine'), 'the chart guard loads before the model');
+});

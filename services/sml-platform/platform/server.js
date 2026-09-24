@@ -531,8 +531,17 @@ async function getAcademyDepth(symbol) {
  */
 /* Chart guard: a CSS floor + watchdog appended to the Activity page (see ACADEMY_CHART_GUARD). */
 const ACADEMY_CHART_GUARD = "<style>main{min-height:560px}.chart{min-height:320px}.chart canvas{min-height:240px}</style><script>(()=>{if(window.__smlChartGuard)return;window.__smlChartGuard=1;\nconst q=new URLSearchParams(location.search),SYM=()=>(q.get('symbol')||'SPY').toUpperCase(),TF=()=>q.get('tf')||'5m',status=document.getElementById('status'),canvas=document.getElementById('chart');\nconst bars=()=>{try{return window.smlAcademyChartState().bars}catch(_){return[]}},key=()=>'sml-academy-bars:'+SYM()+':'+TF();\nwindow.addEventListener('sml-academy-market',e=>{const b=e.detail&&e.detail.bars;if(b&&b.length>20){try{sessionStorage.setItem(key(),JSON.stringify({t:Date.now(),symbol:e.detail.symbol,bars:b.slice(-250)}))}catch(_){}}});\nconst restore=()=>{if(bars().length)return false;try{const c=JSON.parse(sessionStorage.getItem(key())||'null');if(c&&Array.isArray(c.bars)&&c.bars.length&&Date.now()-c.t<216e5){window.smlAcademyApplyMarket({symbol:c.symbol,bars:c.bars});if(status)status.textContent='STALE';return true}}catch(_){}return false};\nlet misses=0,reported=false,delay=1500;const started=Date.now();\nconst fix=async()=>{if(document.hidden&&bars().length)return;if(canvas&&(!canvas.clientWidth||!canvas.clientHeight))window.dispatchEvent(new Event('resize'));if(bars().length){misses=0;return}misses++;\ntry{const r=await fetch('/academy-activity/market?symbol='+encodeURIComponent(SYM())+'&tf='+encodeURIComponent(TF()),{cache:'no-store'}),p=await r.json();if(r.ok&&p&&Array.isArray(p.bars)&&p.bars.length){window.smlAcademyApplyMarket(p);if(status)status.textContent='LIVE';return}}catch(_){}\nrestore();if(!reported&&Date.now()-started>8000&&!bars().length){reported=true;try{navigator.sendBeacon('/academy-activity/report',new Blob([JSON.stringify({kind:'chart_blank',w:canvas?canvas.clientWidth:-1,h:canvas?canvas.clientHeight:-1,symbol:SYM(),tf:TF(),misses,hidden:document.hidden,ua:navigator.userAgent.slice(0,120)})],{type:'text/plain'}))}catch(_){}}};\nsetTimeout(restore,400);(function loop(){fix().finally(()=>setTimeout(loop,bars().length?10000:(delay=Math.min(8000,Math.round(delay*1.4)))))})();\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden)fix()});})();</script>";
+/* MEM ALGO (Day & Swing trading model) — engine + chart panel, inlined so the Activity stays a single document behind Discord's proxy. */
+const ACADEMY_MEM_ALGO = (() => {
+  try {
+    const engine = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo.js'), 'utf8');
+    const ui = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8');
+    return '<script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
+  } catch (_) { return ''; } // the chart must load even if the model files are missing
+})();
+
 function academyActivityHtml(initialMarket = {}, options = {}) {
-  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + '</body></html>');
+  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + '</body></html>');
 }
 
 function academyActivityHtmlBase(initialMarket = {}, options = {}) {
