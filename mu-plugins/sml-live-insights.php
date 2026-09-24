@@ -343,7 +343,7 @@ function sml_li_insights( array $r, $prev ) {
 	if ( count( $good ) >= 2 ) {
 		usort( $good, function ( $a, $b ) { return $b['avg_watch'] <=> $a['avg_watch']; } );
 		$top = $good[0]; $avg = max( 1, (int) $r['avg_watch'] );
-		if ( $top['avg_watch'] >= $avg * 1.3 ) { $add( 'good', $top['label'] . ' viewers stay the longest: ' . sml_li_dur( $top['avg_watch'] ) . ' on average, ' . round( $top['avg_watch'] / $avg, 1 ) . '× your overall ' . sml_li_dur( $avg ) . '. Share your next link there first.' ); }
+		if ( $top['avg_watch'] >= $avg * 1.3 ) { $add( 'good', $top['label'] . ' viewers stay the longest: ' . sml_li_dur( $top['avg_watch'] ) . ' on average, ' . round( $top['avg_watch'] / $avg, 1 ) . '× your overall ' . sml_li_dur( $avg ) . '. ' . ( 'site' === $top['group'] ? 'That placement is working.' : 'Share your next link there first.' ) ); }
 		$vol = $r['sources'][0];
 		if ( $vol['share'] >= 40 && $vol['label'] !== $top['label'] ) { $add( 'info', $vol['label'] . ' sends the most people (' . $vol['share'] . '% of viewers), but ' . $top['label'] . ' sends the most engaged ones.' ); }
 		$weak = array_values( array_filter( $good, function ( $s ) { return null !== $s['bounce_pct'] && $s['bounce_pct'] >= 60 && $s['total'] >= 5; } ) );

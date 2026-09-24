@@ -139,6 +139,7 @@ add_action( 'rest_api_init', function () {
 function sml_csub_notify( $creator, $message, $link ) {
 	if ( ! function_exists( 'sml_members_add_notification' ) ) { return 0; }
 	$sent = 0;
+	$link = add_query_arg( 'utm_source', 'notify', (string) $link );   /* the creator's Live Insights counts these as "A notification" */
 	foreach ( sml_csub_ids( get_user_meta( (int) $creator, 'sml_bell_subscribers', true ) ) as $uid ) {
 		if ( $uid === (int) $creator || ! get_userdata( $uid ) ) { continue; }
 		sml_members_add_notification( $uid, 'creator_live', $message, $link, (int) $creator );
