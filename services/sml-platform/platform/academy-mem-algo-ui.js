@@ -8,8 +8,8 @@
   window.__memAlgoUi = true;
 
   const KEY = 'sml-mem-algo-v1';
-  const S = { on: false, mode: 'day', overlays: { ema: true, signals: true, levels: true, book: true }, of: null, ofBusy: false, ofErr: '', params: { day: {}, swing: {} }, data: null, sigKey: '', loading: false, error: '', open: false };
-  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) { S.on = !!saved.on; S.mode = E.STRATEGIES[saved.mode] ? saved.mode : 'day'; Object.assign(S.overlays, saved.overlays || {}); S.params = { day: (saved.params && saved.params.day) || {}, swing: (saved.params && saved.params.swing) || {} }; S.open = !!saved.on; } } catch (_) { /* storage can be blocked inside Discord */ }
+  const S = { on: false, mode: 'day', overlays: { ema: true, signals: true, levels: true, book: true }, of: null, ofBusy: false, ofErr: '', params: { day: {}, swing: {}, mid: {}, long: {}, short: {} }, data: null, sigKey: '', loading: false, error: '', open: false };
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) { S.on = !!saved.on; S.mode = E.STRATEGIES[saved.mode] ? saved.mode : 'day'; Object.assign(S.overlays, saved.overlays || {}); Object.keys(E.STRATEGIES).forEach((k) => { S.params[k] = (saved.params && saved.params[k]) || {}; }); S.open = !!saved.on; } } catch (_) { /* storage can be blocked inside Discord */ }
   if (window.innerWidth < 700) S.open = false; // on a phone the panel is a sheet the trader opens on purpose
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, mode: S.mode, overlays: S.overlays, params: S.params })); } catch (_) { /* ignore */ } };
 
@@ -33,8 +33,8 @@
 #mem-algo-panel header b{font:900 .8rem ui-monospace,monospace;letter-spacing:.08em;color:#52e6ad}
 #mem-algo-panel header small{color:#7f98a6;font-size:.62rem}
 #mem-algo-panel header button{margin-left:auto;background:none;border:0;color:#7f98a6;font-size:18px;cursor:pointer}
-.mem-tabs{display:flex;gap:6px;padding:10px 12px 0}
-.mem-tabs button{flex:1;padding:7px 6px;border:1px solid #23495a;border-radius:8px;background:#0a1118;color:#b8c9d3;font:700 .72rem system-ui;cursor:pointer}
+.mem-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px 0}
+.mem-tabs button{flex:1 1 30%;padding:7px 6px;border:1px solid #23495a;border-radius:8px;background:#0a1118;color:#b8c9d3;font:700 .72rem system-ui;cursor:pointer}
 .mem-tabs button.on{background:#12362b;border-color:#00d084;color:#fff}
 .mem-sec{padding:10px 12px;border-bottom:1px solid #16303a}
 .mem-sec h5{margin:0 0 6px;font:800 .62rem ui-monospace,monospace;letter-spacing:.09em;color:#7f98a6;text-transform:uppercase}
@@ -80,7 +80,7 @@
   function refreshUrl() { return '/academy-activity/market?symbol=' + encodeURIComponent(symbol()) + '&tf=' + encodeURIComponent(tf()); }
   function recompute() {
     if (!S.raw) return;
-    S.data = E.analyze(S.raw.bars, S.mode, S.params[S.mode]);
+    S.data = E.analyze(S.raw.bars, S.mode, S.params[S.mode] || {}, tf());
     S.idx = new Map(); S.raw.bars.forEach((b, i) => S.idx.set(Number(b.t), i));
   }
   async function refresh(force) {
@@ -108,11 +108,11 @@
     toggle.classList.toggle('on', S.on);
     panel.classList.toggle('open', S.on && S.open);
     if (!(S.on && S.open)) return;
-    const st = E.STRATEGIES[S.mode], d = S.data, p = E.resolveParams(S.mode, S.params[S.mode]);
+    const st = E.STRATEGIES[S.mode], d = S.data, p = E.resolveParams(S.mode, S.params[S.mode] || {}, tf());
     const tfNow = tf(), fitTf = st.tfHint.indexOf(tfNow) >= 0;
     let html = '<header><b>MEM ALGO</b><small>Educational simulation · no orders are placed</small><button type="button" data-mem="close" aria-label="Close">×</button></header>';
     html += '<div class="mem-tabs">' + Object.keys(E.STRATEGIES).map((k) => '<button type="button" data-mem-mode="' + k + '" class="' + (S.mode === k ? 'on' : '') + '">' + esc(E.STRATEGIES[k].label) + '</button>').join('') + '</div>';
-    html += '<div class="mem-sec"><p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide.</div>') + '</div>';
+    html += '<div class="mem-sec"><p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide. <button type="button" class="mem-btn" data-mem-tf="' + esc(st.bestTf || st.tfHint[0]) + '" style="margin-top:6px">Switch chart to ' + esc(st.bestTf || st.tfHint[0]) + '</button></div>') + '</div>';
     html += '<div class="mem-sec" id="mem-of"></div>';
     if (S.error) html += '<div class="mem-sec"><div class="mem-warn">' + esc(S.error) + '</div></div>';
     if (!d) { html += '<div class="mem-sec">Loading candles for $' + esc(symbol()) + '…</div>'; }
@@ -120,8 +120,8 @@
       const biasMap = { long: ['long', 'LONG BIAS'], short: ['short', 'SHORT BIAS'], pullback: ['flat', 'PULLBACK IN UPTREND'], bounce: ['flat', 'BOUNCE IN DOWNTREND'], warming: ['flat', 'WARMING UP'] };
       const b = biasMap[d.bias] || biasMap.warming, L = d.latest;
       html += '<div class="mem-sec"><h5>Right now · $' + esc(symbol()) + ' · ' + esc(tfNow) + '</h5><span class="mem-chip ' + b[0] + '">' + b[1] + '</span>';
-      if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Paper trade open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · Stop ' + num(d.open.stop) + ' · Target ' + num(d.open.target) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span><div class="mem-grade" id="mem-grade" data-dir="' + d.open.dir + '"></div></div>';
-      else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (L.dir > 0 ? 'BUY' : 'SELL') + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · Stop ' + num(L.stop) + ' · Target ' + num(L.target) + '<br><span class="mem-blurb">Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1). A signal is a closed-candle event; the paper trade enters on the next open.</span><div class="mem-grade" id="mem-grade" data-dir="' + L.dir + '"></div></div>';
+      if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Paper trade open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · ' + (p.trail ? 'Trailing stop ' : 'Stop ') + num(d.open.stop) + (d.open.target == null ? '' : ' · Target ' + num(d.open.target)) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span><div class="mem-grade" id="mem-grade" data-dir="' + d.open.dir + '"></div></div>';
+      else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (st.dirs === 'short' ? 'SHORT' : (L.dir > 0 ? 'BUY' : 'SELL')) + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · ' + (p.trail ? 'Starting stop ' : 'Stop ') + num(L.stop) + (L.target == null ? '' : ' · Target ' + num(L.target)) + '<br><span class="mem-blurb">' + (L.target == null ? 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to start; the stop then trails ' + p.trail + '× ATR behind the best price and the position is held until it is hit or the trend reverses.' : 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1).') + ' A signal is a closed-candle event; the paper trade enters on the next open.</span><div class="mem-grade" id="mem-grade" data-dir="' + L.dir + '"></div></div>';
       else html += '<div class="mem-sec" style="padding:8px 0 0"><span class="mem-blurb">No signal in the candles loaded. That is normal — the model waits for a clean, confirmed cross.</span></div>';
       html += '</div>';
       if (!d.enoughData) html += '<div class="mem-sec"><div class="mem-warn">Only ' + d.bars + ' candles are loaded and this mode needs about ' + (d.warm + 30) + ' to warm up its averages. Try a shorter-period timeframe or another ticker.</div></div>';
@@ -133,17 +133,25 @@
           + stat('Expectancy', rr(s.expectancyR), s.expectancyR > 0 ? 'mem-pos' : (s.expectancyR < 0 ? 'mem-neg' : ''))
           + stat('Profit factor', s.profitFactor == null ? '–' : (s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2)))
           + stat('Max drawdown', '−' + num(s.maxDrawdownPct, 1) + '%', s.maxDrawdownPct > 15 ? 'mem-neg' : '')
-          + stat('Return (1% risk)', pct(s.returnPct), s.returnPct >= 0 ? 'mem-pos' : 'mem-neg') + stat('Buy & hold', pct(d.buyHoldPct))
+          + (p.trail ? stat('Return (whole account)', pct(s.compoundPct), s.compoundPct >= 0 ? 'mem-pos' : 'mem-neg') + stat('Avg trade', pct(s.avgTradePct), s.avgTradePct >= 0 ? 'mem-pos' : 'mem-neg') : stat('Return (1% risk)', pct(s.returnPct), s.returnPct >= 0 ? 'mem-pos' : 'mem-neg')) + stat('Buy & hold', pct(d.buyHoldPct))
           + '</div><p class="mem-blurb">Costs of ' + p.costBps + ' bps per side are included. R means multiples of the amount risked on each trade.</p>'
-          + (s.trades < 20 ? '<div class="mem-warn" style="margin-top:8px">Only ' + s.trades + ' trades. Small samples flatter or punish any strategy — do not read too much into them.</div>' : '') + '</div>';
+          + (p.trail ? '<p class="mem-blurb">A hold strategy is in the market for long stretches and skips the rest, so it is judged against buy &amp; hold. Compare “Return (whole account)” with “Buy &amp; hold” — and note the drawdown.</p>' : '') + (s.trades < 20 ? '<div class="mem-warn" style="margin-top:8px">Only ' + s.trades + ' trades. Small samples flatter or punish any strategy — do not read too much into them.</div>' : '') + '</div>';
         html += '<div class="mem-sec"><h5>Is it robust? In-sample vs out-of-sample</h5><table class="mem-split"><thead><tr><th></th><th>Trades</th><th>Win</th><th>Expectancy</th></tr></thead><tbody>' + splitRow('First 70% (tuned on)', d.inSample) + splitRow('Last 30% (unseen)', d.outOfSample) + '</tbody></table><p class="mem-blurb">If the unseen part is much worse than the first part, the setup was probably fitted to old data.</p></div>';
       }
     }
     html += '<div class="mem-sec"><h5>Show on chart</h5>'
       + [['ema', 'EMA lines'], ['signals', 'Buy / sell markers'], ['levels', 'Stop & target levels'], ['book', 'Level 2 book walls']].map((o) => '<label class="mem-row"><input type="checkbox" data-mem-ov="' + o[0] + '"' + (S.overlays[o[0]] ? ' checked' : '') + '> ' + o[1] + '</label>').join('') + '</div>';
-    const fields = [['fast', 'Fast EMA'], ['slow', 'Slow EMA'], ['trend', 'Trend EMA'], ['atr', 'ATR length'], ['minSep', 'Price gap to slow EMA (×ATR)'], ['confirm', 'Confirm bars'], ['stopAtr', 'Stop (×ATR)'], ['targetAtr', 'Target (×ATR)'], ['maxHold', 'Max hold (candles)'], ['costBps', 'Cost (bps/side)']];
+    const fields = [['fast', 'Fast EMA'], ['slow', 'Slow EMA'], ['trend', 'Trend EMA'], ['atr', 'ATR length'], ['minSep', 'Price gap to slow EMA (×ATR)'], ['confirm', 'Confirm bars'], ['stopAtr', 'Stop (×ATR)'], ['targetAtr', 'Target (×ATR)'], ['trail', 'Trailing stop (×ATR)'], ['maxSep', 'Skip if stretched beyond (×ATR)'], ['maxHold', 'Max hold (candles)'], ['costBps', 'Cost (bps/side)']].filter((f) => p[f[0]] != null);
     html += '<div class="mem-sec"><details><summary>Settings</summary><div class="mem-set">' + fields.map((f) => '<label>' + f[1] + '<input type="number" step="any" data-mem-p="' + f[0] + '" value="' + esc(p[f[0]]) + '"></label>').join('') + '</div><button type="button" class="mem-btn" data-mem="reset">Reset to defaults</button></details></div>';
-    html += '<div class="mem-sec"><details><summary>How MEM ALGO decides</summary><ul><li>Fast EMA crossing the slow EMA starts a setup.</li><li>It must stay crossed for ' + p.confirm + ' closed candles — the signal fires on the last of them, never on the cross candle.</li><li>Longs only above the trend EMA, shorts only below it.</li><li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.</li><li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>' + (p.session ? '<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>' : '') + '<li>Backtest enters on the next candle\'s open; if one candle touches both stop and target it counts as a loss.</li></ul></details></div>';
+    const rules = [];
+    rules.push('<li>Fast EMA(' + p.fast + ') crossing the slow EMA(' + p.slow + ') starts a setup. It must stay crossed for ' + p.confirm + ' closed candle' + (p.confirm > 1 ? 's' : '') + ' — the signal fires on the last of them, never on the cross candle.</li>');
+    rules.push(st.dirs === 'long' ? '<li>Long only, and only above the trend EMA(' + p.trend + '). Bearish crosses are never traded — they are the exit.</li>' : st.dirs === 'short' ? '<li>Short only, and only below the trend EMA(' + p.trend + '). Bullish crosses are never traded — they are the exit (cover).</li>' : '<li>Longs only above the trend EMA, shorts only below it.</li>');
+    rules.push('<li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.' + (p.maxSep ? ' It must also be no more than ' + p.maxSep + '× ATR away, so it does not chase a move that is already stretched.' : '') + '</li>');
+    rules.push(p.trail ? '<li>Starting stop ' + p.stopAtr + '× ATR from the entry, then a trailing stop ' + p.trail + '× ATR behind the best price (it only moves in your favour). No fixed target: the trade is held until the stop is hit or the crossover turns against it.</li>' : '<li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>');
+    if (p.session) rules.push('<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>');
+    if (st.dirs === 'short') rules.push('<li>A short can lose more than 100% of what you put in, pays borrow fees, and can be forced closed in a squeeze. The backtest cannot model those — treat its results as optimistic.</li>');
+    rules.push('<li>Backtest enters on the next candle\'s open; if one candle touches both stop and target it counts as a loss.</li>');
+    html += '<div class="mem-sec"><details><summary>How MEM ALGO decides</summary><ul>' + rules.join('') + '</ul></details></div>';
     html += '<div class="mem-foot">Educational simulation on closed candles. Past results do not predict future returns. Not financial advice, and nothing here places a trade.</div>';
     panel.innerHTML = html;
     paintOF();
@@ -233,7 +241,7 @@
     if (S.overlays.levels) {
       const lv = d.open ? { dir: d.open.dir, stop: d.open.stop, target: d.open.target, entry: d.open.entry } : (d.latest && d.bars - 1 - d.latest.i <= 30 ? { dir: d.latest.dir, stop: d.latest.stop, target: d.latest.target, entry: d.latest.price } : null);
       if (lv) [['STOP', lv.stop, '#ff5470'], ['TARGET', lv.target, '#00d084']].forEach(([label, price, color]) => {
-        if (price < lo || price > hi) return; const yy = y(price);
+        if (price == null || price < lo || price > hi) return; const yy = y(price);
         lctx.save(); lctx.setLineDash([5, 4]); lctx.strokeStyle = color; lctx.lineWidth = 1; lctx.beginPath(); lctx.moveTo(pad.l, yy); lctx.lineTo(pad.l + pw, yy); lctx.stroke(); lctx.restore();
         lctx.fillStyle = color; lctx.font = '700 9px ui-monospace,monospace'; lctx.textAlign = 'left'; lctx.fillText(label + ' ' + price.toFixed(2), pad.l + 4, yy - 3);
       });
@@ -244,6 +252,7 @@
   toggle.addEventListener('click', () => { if (S.on && S.open) { S.on = false; S.open = false; } else { S.on = true; S.open = true; } save(); paint(); draw(); if (S.on) { refresh(true); pollOF(); } });
   panel.addEventListener('click', (e) => {
     const t = e.target.closest('[data-mem],[data-mem-mode]'); if (!t) return;
+    if (t.dataset.memTf) { const sy = symbol(); if (window.smlAcademyNavigateMarket) window.smlAcademyNavigateMarket(sy, t.dataset.memTf); return; }
     if (t.dataset.mem === 'close') { S.open = false; paint(); return; }
     if (t.dataset.mem === 'reset') { S.params[S.mode] = {}; save(); recompute(); paint(); draw(); return; }
     if (t.dataset.memMode) { S.mode = t.dataset.memMode; save(); recompute(); paint(); draw(); }

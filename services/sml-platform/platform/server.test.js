@@ -937,3 +937,9 @@ test('the options chain sits under the chart with a price calculator beside it',
   assert.match(html, /OPTIONS PRICE CALCULATOR/);
   assert.match(html, /SmlOptionsCalc/);
 });
+
+test('MEM ALGO lists all five strategies including mid-term hold, long-term hold and short sale', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  for (const label of ['Mid-Term Hold', 'Long-Term Hold', 'Short Sale']) assert.ok(html.includes(label), label);
+});

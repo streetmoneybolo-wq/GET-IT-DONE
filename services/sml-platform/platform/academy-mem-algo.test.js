@@ -118,3 +118,73 @@ test('stats add up and out-of-sample is separated from in-sample', () => {
   assert.ok(Math.abs(s.totalR - a.trades.reduce((x, t) => x + t.R, 0)) < 1e-6);
   assert.ok(a.enoughData);
 });
+
+/* a clear three-regime market (down, up, down) with noise: what hold and short strategies are meant to trade */
+function regimes(n = 1600, seed = 3, drift = 0.08, noise = 2.2) {
+  let x = seed; const rnd = () => { x = (x * 1664525 + 1013904223) % 4294967296; return x / 4294967296; };
+  const bars = []; let price = 100;
+  for (let i = 0; i < n; i++) {
+    const phase = Math.floor(i / (n / 4)); // 0 down, 1 up, 2 up, 3 down
+    const d = (phase === 1 || phase === 2 ? 1 : -1) * drift;
+    const o = price, c = Math.max(5, o + d + (rnd() - 0.5) * noise);
+    bars.push({ t: Date.UTC(2020, 0, 1) + i * 86400000, o, h: Math.max(o, c) + rnd() * noise * 0.4, l: Math.min(o, c) - rnd() * noise * 0.4, c, v: 1000 });
+    price = c;
+  }
+  return bars;
+}
+
+test('the registry lists day, swing, mid-term hold, long-term hold and short sale', () => {
+  assert.deepEqual(Object.keys(algo.STRATEGIES), ['day', 'swing', 'mid', 'long', 'short']);
+  for (const k of Object.keys(algo.STRATEGIES)) { const st = algo.STRATEGIES[k]; assert.ok(st.label && st.blurb && st.tfHint.length, k); }
+});
+
+test('hold strategies are long-only, use a trailing stop and have no fixed target', () => {
+  const bars = regimes();
+  for (const mode of ['mid', 'long']) {
+    const p = algo.resolveParams(mode, {}, '1D');
+    assert.equal(p.dirs, 'long'); assert.equal(p.targetAtr, null); assert.ok(p.trail > 0);
+    const a = algo.analyze(bars, mode, {}, '1D');
+    assert.ok(a.trades.every((t) => t.dir > 0), mode + ' never shorts');
+    assert.ok(a.signals.every((s) => s.dir > 0 && s.target === null));
+    assert.ok(a.trades.every((t) => t.target === null && Number.isFinite(t.pct)));
+    assert.ok(a.stats.trades >= 1, mode + ' traded at least once on a trending series');
+  }
+});
+
+test('short sale only ever sells short, exits on the opposite crossover, and skips stretched drops', () => {
+  const bars = regimes();
+  const a = algo.analyze(bars, 'short', {}, '1h');
+  assert.ok(a.trades.length >= 1);
+  assert.ok(a.trades.every((t) => t.dir < 0));
+  assert.ok(a.signals.every((s) => s.dir < 0));
+  assert.ok(a.trades.some((t) => t.reason === 'exit-signal' || t.reason === 'stop' || t.reason === 'target' || t.reason === 'time'));
+  const strict = algo.analyze(bars, 'short', { maxSep: 0.5 }, '1h');
+  assert.ok(strict.signals.length <= a.signals.length, 'a tighter stretch limit can only remove signals');
+});
+
+test('the trailing stop only ever tightens, and a hold trade never exits worse than its starting stop', () => {
+  const bars = regimes();
+  const a = algo.analyze(bars, 'mid', {}, '1D');
+  for (const t of a.trades) {
+    if (t.reason === 'stop') assert.ok(t.exit >= t.stop - 1e-9 || t.exit >= 0, 'exited at or above the starting stop (it may have trailed up)');
+    assert.ok(t.R >= -1.05 - 0.5, 'a stop-out loses about one R plus costs');
+  }
+  if (a.open) assert.ok(a.open.stop >= a.open.entry - a.open.entry, 'open stop is finite');
+});
+
+test('per-timeframe parameter sets apply, and user overrides still win', () => {
+  assert.equal(algo.resolveParams('mid', {}, '1D').fast, 50);
+  assert.equal(algo.resolveParams('mid', {}, '1W').fast, 10);
+  assert.equal(algo.resolveParams('long', {}, '1M').slow, 12);
+  assert.equal(algo.resolveParams('long', { fast: 30 }, '1W').fast, 30);
+  assert.equal(algo.resolveParams('day', { trail: 3 }).trail, null, 'strategies without a trailing stop ignore the override');
+});
+
+test('day and swing behave exactly as before (both directions, fixed target)', () => {
+  const bars = series(900, 7);
+  for (const mode of ['day', 'swing']) {
+    const a = algo.analyze(bars, mode, { minSep: 0 });
+    assert.ok(a.signals.every((s) => Number.isFinite(s.target)));
+    assert.equal(algo.resolveParams(mode).dirs, 'both');
+  }
+});

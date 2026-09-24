@@ -18,6 +18,10 @@
  *  5. Costs (per-side slippage/commission) are charged, and results are split into an in-sample and an out-of-sample part so members can
  *     see how much a result depends on the data it was tuned on.
  * Add new strategies by adding an entry to STRATEGIES; the chart panel lists whatever is registered.
+ *  - dirs: 'both' (default), 'long' or 'short'. A one-direction strategy only opens that side; the opposite crossover becomes an EXIT signal.
+ *  - trail: an ATR trailing stop that only ever moves in the trade's favour (hold strategies). targetAtr: null means "no fixed target".
+ *  - byTf: parameter overrides for a specific candle size, so one strategy can sensibly run on 1D, 1W and 1M candles.
+ *  - maxSep: skip entries where price is already stretched more than this many ATR from the slow EMA (guards shorts against chasing a drop into a squeeze).
  */
 
 const INTRADAY = ['1m', '3m', '5m', '10m', '15m', '30m'];
@@ -36,6 +40,35 @@ const STRATEGIES = {
     blurb: 'Fast EMA(20) vs slow EMA(50) inside the EMA(200) trend, on hourly or daily candles. Wider ATR stops, held for days to weeks.',
     tfHint: ['1h', '2h', '4h', '1D'],
     params: { fast: 20, slow: 50, trend: 200, atr: 14, minSep: 0.5, confirm: 2, stopAtr: 2.0, targetAtr: 4.0, maxHold: 40, costBps: 2, session: null }
+  },
+  mid: {
+    key: 'mid',
+    label: 'Mid-Term Hold',
+    blurb: 'Buy and hold for weeks to months while the trend lasts: EMA(50) over EMA(100) with price above the EMA(200), on daily candles. A wide ATR trailing stop protects the position and it exits when the trend rolls over. Long only.',
+    tfHint: ['1D', '1W'],
+    bestTf: '1D',
+    dirs: 'long',
+    params: { fast: 50, slow: 100, trend: 200, atr: 14, minSep: 0.5, confirm: 3, stopAtr: 3, targetAtr: null, trail: 4, maxHold: 250, costBps: 3, session: null },
+    byTf: { '1W': { fast: 10, slow: 30, trend: 40, confirm: 2, maxHold: 52 } }
+  },
+  long: {
+    key: 'long',
+    label: 'Long-Term Hold',
+    blurb: 'Invest for months to years: EMA(50) crossing over EMA(200) (the classic golden cross), held until it reverses. Very wide trailing stop. Long only. Best on weekly candles.',
+    tfHint: ['1D', '1W', '1M'],
+    bestTf: '1W',
+    dirs: 'long',
+    params: { fast: 50, slow: 200, trend: 200, atr: 14, minSep: 0.5, confirm: 5, stopAtr: 4, targetAtr: null, trail: 6, maxHold: 500, costBps: 3, session: null },
+    byTf: { '1W': { fast: 20, slow: 50, trend: 50, confirm: 2, maxHold: 260, trail: 5 }, '1M': { fast: 6, slow: 12, trend: 12, confirm: 1, maxHold: 120, trail: 4 } }
+  },
+  short: {
+    key: 'short',
+    label: 'Short Sale',
+    blurb: 'Bearish only: EMA(12) under EMA(26) with price below the EMA(100), confirmed on closed candles, skipping drops that are already stretched (squeeze and bounce risk). Shorting can lose more than the money you put in, so this is a paper model only.',
+    tfHint: ['15m', '30m', '1h', '2h', '4h', '1D'],
+    bestTf: '1h',
+    dirs: 'short',
+    params: { fast: 12, slow: 26, trend: 100, atr: 14, minSep: 0.5, maxSep: 3.5, confirm: 2, stopAtr: 1.6, targetAtr: 3.2, trail: null, maxHold: 30, costBps: 4, session: null }
   }
 };
 
@@ -43,13 +76,16 @@ function clampInt(v, lo, hi, dflt) { const n = Math.round(Number(v)); return Num
 function clampNum(v, lo, hi, dflt) { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; }
 
 /** Merge user overrides into a strategy's defaults with hard limits, so a bad input can never break the model. */
-function resolveParams(mode, overrides = {}) {
-  const base = (STRATEGIES[mode] || STRATEGIES.day).params;
+function resolveParams(mode, overrides = {}, tf = '') {
+  const st = STRATEGIES[mode] || STRATEGIES.day;
+  const base = Object.assign({}, st.params, (st.byTf && st.byTf[tf]) || {});
   const o = overrides || {};
   const p = {
     fast: clampInt(o.fast, 2, 200, base.fast), slow: clampInt(o.slow, 3, 400, base.slow), trend: clampInt(o.trend, 5, 600, base.trend),
     atr: clampInt(o.atr, 2, 100, base.atr), minSep: clampNum(o.minSep, 0, 5, base.minSep), confirm: clampInt(o.confirm, 1, 10, base.confirm),
-    stopAtr: clampNum(o.stopAtr, 0.2, 10, base.stopAtr), targetAtr: clampNum(o.targetAtr, 0.2, 20, base.targetAtr),
+    stopAtr: clampNum(o.stopAtr, 0.2, 10, base.stopAtr), targetAtr: base.targetAtr == null ? null : clampNum(o.targetAtr, 0.2, 20, base.targetAtr),
+    trail: base.trail == null ? null : clampNum(o.trail, 0.5, 20, base.trail), maxSep: base.maxSep == null ? null : clampNum(o.maxSep, 0.5, 20, base.maxSep),
+    dirs: st.dirs || 'both',
     maxHold: clampInt(o.maxHold, 1, 500, base.maxHold), costBps: clampNum(o.costBps, 0, 50, base.costBps),
     session: base.session ? { ...base.session } : null
   };
@@ -109,7 +145,7 @@ function computeSignals(bars, params) {
   const close = bars.map((b) => b.c);
   const fast = ema(close, p.fast), slow = ema(close, p.slow), trend = ema(close, p.trend), a = atr(bars, p.atr);
   const warm = Math.max(p.trend, p.slow, p.atr) + 1;
-  const sig = new Array(n).fill(0), sep = new Array(n).fill(NaN);
+  const sig = new Array(n).fill(0), xsig = new Array(n).fill(0), sep = new Array(n).fill(NaN);
   let above = 0, below = 0;
   for (let i = 0; i < n; i++) {
     const up = fast[i] > slow[i], dn = fast[i] < slow[i];
@@ -118,12 +154,15 @@ function computeSignals(bars, params) {
     // how far price has pulled away from the slow EMA, in ATRs. (The gap BETWEEN the two EMAs is ~0 right after a cross, so it cannot be the gate.)
     sep[i] = a[i] > 0 ? Math.abs(close[i] - slow[i]) / a[i] : NaN;
     if (i < warm || !(a[i] > 0)) continue;
-    const volOk = sep[i] >= p.minSep;
+    // a one-direction strategy leaves its trade when the crossover turns against it (no volatility or session filter on the way out)
+    if (p.dirs === 'long' && below === p.confirm) xsig[i] = -1;
+    else if (p.dirs === 'short' && above === p.confirm) xsig[i] = 1;
+    const volOk = sep[i] >= p.minSep && !(p.maxSep && sep[i] > p.maxSep);
     if (!volOk || !sessionAllows(bars[i].t, p.session)) continue;
-    if (above === p.confirm && close[i] > trend[i] && close[i] > slow[i]) sig[i] = 1;
-    else if (below === p.confirm && close[i] < trend[i] && close[i] < slow[i]) sig[i] = -1;
+    if (above === p.confirm && close[i] > trend[i] && close[i] > slow[i] && p.dirs !== 'short') sig[i] = 1;
+    else if (below === p.confirm && close[i] < trend[i] && close[i] < slow[i] && p.dirs !== 'long') sig[i] = -1;
   }
-  return { fast, slow, trend, atr: a, sep, sig, warm };
+  return { fast, slow, trend, atr: a, sep, sig, xsig, warm };
 }
 
 function emptyStats() { return { trades: 0, wins: 0, losses: 0, winRate: null, avgWinR: null, avgLossR: null, expectancyR: null, profitFactor: null, totalR: 0, returnPct: 0, maxDrawdownPct: 0, avgBars: null, longs: 0, shorts: 0 }; }
@@ -131,12 +170,13 @@ function emptyStats() { return { trades: 0, wins: 0, losses: 0, winRate: null, a
 function summarize(trades) {
   const s = emptyStats();
   if (!trades.length) return s;
-  let win = 0, loss = 0, wins = 0, losses = 0, eq = 1, peak = 1, dd = 0, bars = 0;
+  let win = 0, loss = 0, wins = 0, losses = 0, eq = 1, peak = 1, dd = 0, bars = 0, comp = 1, pctSum = 0;
   for (const t of trades) {
     if (t.R > 0) { win += t.R; wins++; } else { loss += -t.R; losses++; }
     eq *= 1 + 0.01 * t.R; // 1% of equity risked per trade
     peak = Math.max(peak, eq); dd = Math.max(dd, (peak - eq) / peak);
     bars += t.bars; if (t.dir > 0) s.longs++; else s.shorts++;
+    if (Number.isFinite(t.pct)) { comp *= 1 + t.pct / 100; pctSum += t.pct; }
   }
   s.trades = trades.length; s.wins = wins; s.losses = losses;
   s.winRate = wins / trades.length;
@@ -148,6 +188,8 @@ function summarize(trades) {
   s.returnPct = (eq - 1) * 100;
   s.maxDrawdownPct = dd * 100;
   s.avgBars = bars / trades.length;
+  s.compoundPct = (comp - 1) * 100; // every trade taking the whole account, one after another (what a hold strategy actually earns)
+  s.avgTradePct = pctSum / trades.length;
   return s;
 }
 
@@ -164,7 +206,8 @@ function backtest(bars, p, ind) {
     const risk = pos.risk;
     const gross = pos.dir * (exitPrice - pos.entry);
     const R = (gross - cost(pos.entry)) / risk;
-    trades.push({ dir: pos.dir, signalIdx: pos.signalIdx, entryIdx: pos.entryIdx, exitIdx, entry: pos.entry, stop: pos.stop, target: pos.target, exit: exitPrice, reason, R: Math.round(R * 1e4) / 1e4, bars: exitIdx - pos.entryIdx + 1 });
+    const pctRet = ((gross - cost(pos.entry)) / pos.entry) * 100; // whole-position % result, for hold strategies
+    trades.push({ dir: pos.dir, signalIdx: pos.signalIdx, entryIdx: pos.entryIdx, exitIdx, entry: pos.entry, stop: pos.stop0, target: Number.isFinite(pos.target) ? pos.target : null, exit: exitPrice, reason, R: Math.round(R * 1e4) / 1e4, pct: Math.round(pctRet * 100) / 100, bars: exitIdx - pos.entryIdx + 1 });
     pos = null;
   };
   for (let i = 0; i < n; i++) {
@@ -185,15 +228,17 @@ function backtest(bars, p, ind) {
     }
     // a signal on the PREVIOUS candle is acted on at this candle's open
     const prev = i > 0 ? ind.sig[i - 1] : 0;
+    const prevExit = i > 0 && ind.xsig ? ind.xsig[i - 1] : 0;
+    if (pos && prevExit !== 0 && prevExit === -pos.dir) close(b.o, i, 'exit-signal');
     if (prev !== 0) {
       if (pos && pos.dir !== prev) close(b.o, i, 'reverse');
       if (!pos) {
         const risk = ind.atr[i - 1] * p.stopAtr;
         const entry = b.o;
-        const stop = entry - prev * risk, target = entry + prev * ind.atr[i - 1] * p.targetAtr;
+        const stop = entry - prev * risk, target = p.targetAtr == null ? (prev > 0 ? Infinity : -Infinity) : entry + prev * ind.atr[i - 1] * p.targetAtr;
         const gapped = prev > 0 ? entry <= stop : entry >= stop;
         if (risk > 0 && !gapped) {
-          pos = { dir: prev, signalIdx: i - 1, entryIdx: i, entry, stop, target, risk };
+          pos = { dir: prev, signalIdx: i - 1, entryIdx: i, entry, stop, stop0: stop, target, risk, ext: entry };
           // the entry candle itself can already hit the stop or target
           const hitStop = prev > 0 ? b.l <= stop : b.h >= stop;
           const hitTarget = prev > 0 ? b.h >= target : b.l <= target;
@@ -201,16 +246,22 @@ function backtest(bars, p, ind) {
         }
       }
     }
+    // trailing stop: follows the best price reached, only ever tightens, and applies from the NEXT candle
+    if (pos && p.trail && ind.atr[i] > 0) {
+      pos.ext = pos.dir > 0 ? Math.max(pos.ext, b.h) : Math.min(pos.ext, b.l);
+      const ts = pos.ext - pos.dir * p.trail * ind.atr[i];
+      pos.stop = pos.dir > 0 ? Math.max(pos.stop, ts) : Math.min(pos.stop, ts);
+    }
   }
-  const open = pos ? { dir: pos.dir, entry: pos.entry, stop: pos.stop, target: pos.target, entryIdx: pos.entryIdx, unrealizedR: Math.round(((pos.dir * (bars[n - 1].c - pos.entry)) / pos.risk) * 100) / 100 } : null;
+  const open = pos ? { dir: pos.dir, entry: pos.entry, stop: pos.stop, target: Number.isFinite(pos.target) ? pos.target : null, entryIdx: pos.entryIdx, unrealizedR: Math.round(((pos.dir * (bars[n - 1].c - pos.entry)) / pos.risk) * 100) / 100 } : null;
   return { trades, open };
 }
 
 /** Everything the chart panel needs, from candles ordered oldest → newest. */
-function analyze(rawBars, mode = 'day', overrides = {}) {
+function analyze(rawBars, mode = 'day', overrides = {}, tf = '') {
   const bars = (rawBars || []).map((b) => ({ t: Number(b.t), o: Number(b.o), h: Number(b.h), l: Number(b.l), c: Number(b.c), v: Number(b.v) || 0 }))
     .filter((b) => [b.t, b.o, b.h, b.l, b.c].every(Number.isFinite));
-  const params = resolveParams(mode, overrides);
+  const params = resolveParams(mode, overrides, tf);
   const ind = computeSignals(bars, params);
   const { trades, open } = backtest(bars, params, ind);
   const split = Math.floor(bars.length * 0.7);
@@ -219,7 +270,7 @@ function analyze(rawBars, mode = 'day', overrides = {}) {
   for (let i = 0; i < bars.length; i++) {
     if (!ind.sig[i]) continue;
     const dir = ind.sig[i], a = ind.atr[i];
-    signals.push({ i, t: bars[i].t, dir, price: bars[i].c, stop: bars[i].c - dir * a * params.stopAtr, target: bars[i].c + dir * a * params.targetAtr, sep: ind.sep[i] });
+    signals.push({ i, t: bars[i].t, dir, price: bars[i].c, stop: bars[i].c - dir * a * params.stopAtr, target: params.targetAtr == null ? null : bars[i].c + dir * a * params.targetAtr, sep: ind.sep[i] });
   }
   const last = bars[bars.length - 1];
   const bias = !last || !Number.isFinite(ind.trend[bars.length - 1]) || bars.length < ind.warm ? 'warming' : (last.c > ind.trend[bars.length - 1] ? (ind.fast[bars.length - 1] > ind.slow[bars.length - 1] ? 'long' : 'pullback') : (ind.fast[bars.length - 1] < ind.slow[bars.length - 1] ? 'short' : 'bounce'));
