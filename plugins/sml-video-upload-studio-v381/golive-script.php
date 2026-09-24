@@ -2129,7 +2129,7 @@ if (!function_exists('sml_gl_script')) {
     var list = (st.promos || []).map(function (p) {
       var pill = p.status === 'active' ? '<span class="glc-pill g">SCHEDULED</span>' : '<span class="glc-pill">DONE</span>';
       var when = p.min_viewers ? 'at ' + p.min_viewers + ' viewers' : glcWhen(p.fire_at);
-      return '<div class="glc-row"><span><b>' + esc(p.kind === 'soon' ? 'Going live soon' : p.kind === 'start' ? 'Live now' : p.kind === 'update' ? 'Still live' : p.kind === 'milestone' ? 'Milestone' : 'Custom') + '</b> ' + pill
+      return '<div class="glc-row"><span><b>' + esc(p.kind === 'soon' ? 'Going live soon' : p.kind === 'start' ? 'Live now' : p.kind === 'update' ? 'Still live' : p.kind === 'milestone' ? 'Milestone' : p.kind === 'wrap' ? 'Wrap-up' : 'Custom') + '</b> ' + pill
         + '<small>' + esc(when) + (p.repeat_every ? ' · every ' + p.repeat_every + ' min (' + p.runs + '/' + p.max_runs + ')' : '') + ' · ' + (p.accounts.length + (p.network ? 1 : 0)) + ' account' + ((p.accounts.length + (p.network ? 1 : 0)) === 1 ? '' : 's') + (p.groups.length ? ' + ' + p.groups.length + ' group' : '') + (p.note ? ' · ' + esc(p.note) : '') + '</small></span>'
         + (p.status === 'active' ? '<button class="glc-btn red sm" data-glc-cancel="' + p.id + '">Cancel</button>' : '') + '</div>';
     }).join('') || '<p class="glc-note">Nothing scheduled yet.</p>';
@@ -2142,6 +2142,8 @@ if (!function_exists('sml_gl_script')) {
       + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="glc-btn ghost" data-glc-preview>Preview text</button><button class="glc-btn" data-glc-send>' + (f.when === 'now' ? 'Post now' : 'Schedule') + '</button></div>'
       + (ctl.msg ? '<p class="glc-note ' + (/^✓/.test(ctl.msg) ? 'ok' : 'bad') + '">' + esc(ctl.msg) + '</p>' : '')
       + (ctl.prev ? ctl.prev.map(function (p) { var v = p.variant || {}; return '<div class="glc-prev"><small>' + esc(p.platform) + ' · ' + esc(p.handle) + '</small>' + esc(v.caption || [v.hook, v.body, v.cta].filter(Boolean).join('\n')) + '</div>'; }).join('') : '')
+      + '<label class="glc-pick" style="margin-top:12px"><input type="checkbox" data-glc-wrap' + ((st.wrap && st.wrap.on) ? ' checked' : '') + '> <span>When I end the stream, post a wrap-up to the places selected above <small style="color:#7e92a8">(only for streams of 5+ minutes with 3+ viewers)</small></span></label>'
+      + (st.timing ? '<p class="glc-note">Your audience peaks when you start around <b>' + esc(st.timing.hour) + ' ET</b> (avg peak ' + st.timing.hour_avg_peak + ') and on <b>' + esc(st.timing.day) + 's</b> (avg peak ' + st.timing.day_avg_peak + '), across ' + st.timing.samples + ' streams.</p>' : '')
       + '<p class="glc-note">Spaced out automatically: at least ' + ((st.limits && st.limits.gap_min) || 15) + ' minutes between posts and ' + ((st.limits && st.limits.per_hour) || 8) + ' an hour, so your accounts are never spammed.</p></div>'
       + '<div class="glc-box"><h4>Scheduled &amp; sent</h4>' + list + '</div></div>';
   }
@@ -2273,6 +2275,13 @@ if (!function_exists('sml_gl_script')) {
     if (a('data-glc-acc')) { f.accounts[a('data-glc-acc')] = t.checked; return; }
     if (t.hasAttribute('data-glc-net')) { f.network = t.checked; return; }
     if (a('data-glc-chan')) { f.channels[a('data-glc-chan')] = t.checked; return; }
+    if (t.hasAttribute('data-glc-wrap')) {
+      var wp = glcPayload(false);
+      api(glcBase() + '/wrap-setting', { method: 'POST', json: { on: t.checked, accounts: wp.accounts, network: wp.network, group_channels: wp.group_channels } })
+        .then(function (d) { if (ctl.st) { ctl.st.wrap = d.wrap; } ctl.msg = d.wrap && d.wrap.on ? '✓ Wrap-up post is on for this selection.' : '✓ Wrap-up post is off.'; })
+        .catch(function (er) { t.checked = false; ctl.msg = er.message; }).then(function () { paintControl('force'); });
+      return;
+    }
     if (t.hasAttribute('data-glc-preview')) {
       var pl = glcPayload(true);
       if (!pl.accounts.length) { ctl.msg = 'Pick at least one connected account to preview.'; paintControl('force'); return; }

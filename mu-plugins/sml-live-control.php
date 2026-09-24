@@ -186,7 +186,7 @@ function sml_lc_is_live( $uid, $stream_id ) {
 }
 
 function sml_lc_kind_event( $kind ) {
-	$map = array( 'start' => 'stream.start', 'soon' => 'stream.soon', 'update' => 'stream.update', 'milestone' => 'stream.milestone', 'custom' => 'stream.custom' );
+	$map = array( 'start' => 'stream.start', 'soon' => 'stream.soon', 'update' => 'stream.update', 'milestone' => 'stream.milestone', 'wrap' => 'stream.wrap', 'custom' => 'stream.custom' );
 	return $map[ $kind ] ?? 'stream.custom';
 }
 
@@ -277,7 +277,9 @@ function sml_lc_fire( $promo ) {
 		$line   = trim( (string) $promo['text'] ) ?: ( 'soon' === $promo['kind'] ? '⏰ Going live soon' : '🔴 Live now' ) . ' — ' . $stream['title'];
 		$msg    = $line . "\n" . $stream['watch_url'];
 		foreach ( $groups as $cid ) {
-			$res = sml_lc_group_post( $uid, (int) $cid, $msg );
+			$gid  = (int) $GLOBALS['wpdb']->get_var( $GLOBALS['wpdb']->prepare( 'SELECT group_id FROM ' . $GLOBALS['wpdb']->prefix . 'sml_group_channels WHERE id = %d', (int) $cid ) );
+			$msg2 = $gid ? $line . "\n" . add_query_arg( 'utm_source', 'grp' . $gid, $stream['watch_url'] ) : $msg;
+			$res = sml_lc_group_post( $uid, (int) $cid, $msg2 );
 			if ( true === $res ) { $posted++; } else { $note[] = 'group: ' . $res->get_error_message(); }
 		}
 	}
@@ -476,6 +478,7 @@ add_action( 'rest_api_init', function () {
 	register_rest_route( $ns, '/moves', array( 'methods' => 'GET', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_moves' ) );
 	register_rest_route( $ns, '/promo', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_promo' ) );
 	register_rest_route( $ns, '/promo/(?P<id>\d+)/cancel', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_cancel' ) );
+	register_rest_route( $ns, '/wrap-setting', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_wrap' ) );
 	register_rest_route( $ns, '/arm', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_arm' ) );
 	register_rest_route( $ns, '/preview', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_preview' ) );
 	register_rest_route( $ns, '/group-channels', array( 'methods' => 'GET', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_group_channels' ) );
@@ -532,6 +535,8 @@ function sml_lc_rest_state( WP_REST_Request $req ) {
 		'groups'    => $groups,
 		'money'     => array( 'n' => (int) $agg['n'], 'lb' => (int) $agg['lb'], 'recent' => $recent ),
 		'orbit'     => array( 'count' => count( $orbit ), 'max' => 5 ),
+		'wrap'      => sml_lc_wrap_get( $uid ),
+		'timing'    => sml_lc_timing( $uid ),
 		'limits'    => array( 'gap_min' => SML_LC_MIN_GAP / 60, 'per_hour' => SML_LC_PER_HOUR, 'max_runs' => SML_LC_MAX_RUNS ),
 	);
 }
@@ -559,7 +564,7 @@ function sml_lc_rest_group_channels( WP_REST_Request $req ) {
 /** Parse + validate the body shared by /promo and /preview. */
 function sml_lc_read_promo( WP_REST_Request $req, $uid ) {
 	$kind = sanitize_key( (string) $req->get_param( 'kind' ) );
-	if ( ! in_array( $kind, array( 'start', 'soon', 'update', 'milestone', 'custom' ), true ) ) { $kind = 'custom'; }
+	if ( ! in_array( $kind, array( 'start', 'soon', 'update', 'milestone', 'wrap', 'custom' ), true ) ) { $kind = 'custom'; }
 	$sid  = sml_lc_own_stream_id( $uid, $req->get_param( 'stream' ) );
 	if ( '' === $sid ) { return new WP_Error( 'sml_lc_stream', 'That stream is not yours.', array( 'status' => 403 ) ); }
 
@@ -669,4 +674,82 @@ function sml_lc_rest_arm( WP_REST_Request $req ) {
 	if ( ! is_array( $row ) || empty( $row['id'] ) || ! in_array( (string) ( $row['status'] ?? '' ), array( 'scheduled', 'live' ), true ) ) { return new WP_Error( 'sml_lc_arm', 'That stream cannot be started.', array( 'status' => 404 ) ); }
 	sml_scheduled_live_store( $uid, $row, true );
 	return array( 'ok' => true, 'stream_id' => (string) $row['id'] );
+}
+
+/* ------------------------------------------------------------------ wrap-up post + timing learner */
+
+function sml_lc_wrap_get( $uid ) {
+	$w = get_user_meta( $uid, 'sml_lc_wrap', true );
+	$w = is_array( $w ) ? $w : array();
+	return array( 'on' => ! empty( $w['on'] ), 'accounts' => array_map( 'intval', (array) ( $w['accounts'] ?? array() ) ), 'network' => ! empty( $w['network'] ), 'groups' => array_map( 'intval', (array) ( $w['groups'] ?? array() ) ) );
+}
+
+/** Opt-in: when this creator ends a stream that had a real audience, post a wrap-up to the chosen places. */
+function sml_lc_rest_wrap( WP_REST_Request $req ) {
+	$uid = get_current_user_id();
+	$req->set_param( 'stream', 'current' );
+	$in = sml_lc_read_promo( $req, $uid );
+	$owned = array();
+	foreach ( sml_lc_accounts( $uid ) as $a ) { $owned[ $a['id'] ] = true; }
+	$accounts = array();
+	foreach ( (array) $req->get_param( 'accounts' ) as $aid ) { if ( isset( $owned[ (int) $aid ] ) ) { $accounts[] = (int) $aid; } }
+	$myg = array(); foreach ( sml_lc_groups( $uid ) as $g ) { $myg[ $g['id'] ] = true; }
+	$chan = array();
+	global $wpdb;
+	foreach ( (array) $req->get_param( 'group_channels' ) as $cid ) {
+		$gid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT group_id FROM {$wpdb->prefix}sml_group_channels WHERE id = %d", (int) $cid ) );
+		if ( $gid && isset( $myg[ $gid ] ) ) { $chan[] = (int) $cid; }
+	}
+	$w = array( 'on' => (bool) $req->get_param( 'on' ), 'accounts' => array_slice( $accounts, 0, 10 ), 'network' => (bool) $req->get_param( 'network' ), 'groups' => array_slice( array_unique( $chan ), 0, 10 ) );
+	if ( $w['on'] && ! $w['accounts'] && ! $w['network'] && ! $w['groups'] ) { return new WP_Error( 'sml_lc_none', 'Pick at least one place for the wrap-up post.', array( 'status' => 400 ) ); }
+	update_user_meta( $uid, 'sml_lc_wrap', $w );
+	return array( 'ok' => true, 'wrap' => sml_lc_wrap_get( $uid ) );
+}
+
+add_action( 'sml_scheduled_live_status_changed', function ( $uid, $row, $status ) {
+	if ( 'ended' !== $status || ! is_array( $row ) || empty( $row['id'] ) || ! sml_lc_dist_ready() ) { return; }
+	$uid = (int) $uid;
+	$w   = sml_lc_wrap_get( $uid );
+	if ( ! $w['on'] ) { return; }
+	$done = get_user_meta( $uid, 'sml_lc_wrap_done', true );
+	$done = is_array( $done ) ? $done : array();
+	$sid  = (string) $row['id'];
+	if ( isset( $done[ $sid ] ) ) { return; }
+	/* only for a real broadcast: 5+ minutes long and at least 3 different viewers */
+	$start = strtotime( (string) ( $row['started_at'] ?? $row['scheduled_at'] ?? '' ) );
+	$end   = strtotime( (string) ( $row['ended_at'] ?? '' ) ) ?: time();
+	$st    = function_exists( 'sml_lv_stream_stats' ) ? sml_lv_stream_stats( $uid, $sid ) : array( 'unique' => 0, 'peak' => 0 );
+	if ( ! $start || $end - $start < 300 || (int) $st['unique'] < 3 ) { return; }
+	$done[ $sid ] = time();
+	update_user_meta( $uid, 'sml_lc_wrap_done', array_slice( $done, -40, 40, true ) );
+	$text = sprintf( '%d traders joined, peak %d watching at once. The replay is on the watch page.', (int) $st['unique'], (int) $st['peak'] );
+	global $wpdb;
+	$wpdb->insert( sml_lc_t(), array( 'user_id' => $uid, 'stream_id' => $sid, 'kind' => 'wrap', 'text' => $text,
+		'platforms' => wp_json_encode( array( 'accounts' => $w['accounts'], 'jetpack' => $w['network'] ) ), 'groups' => wp_json_encode( $w['groups'] ),
+		'fire_at' => gmdate( 'Y-m-d H:i:s' ), 'max_runs' => 1, 'cond' => 'any', 'status' => 'active', 'created_at' => gmdate( 'Y-m-d H:i:s' ) ) );
+	$promo = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . sml_lc_t() . ' WHERE id = %d', (int) $wpdb->insert_id ), ARRAY_A );
+	if ( ! $promo ) { return; }
+	$res = sml_lc_fire( $promo );
+	$wpdb->update( sml_lc_t(), array( 'status' => 'done', 'runs' => 1, 'last_run' => gmdate( 'Y-m-d H:i:s' ), 'last_note' => substr( count( $res['queued'] ) . ' queued' . ( $res['groups'] ? ', ' . $res['groups'] . ' group' : '' ) . ( $res['note'] ? ' · ' . $res['note'] : '' ), 0, 190 ) ), array( 'id' => $promo['id'] ) );
+}, 20, 3 );
+
+/** When this creator's own streams drew the biggest audiences (US Eastern), from real peaks. Needs 3+ measured streams. */
+function sml_lc_timing( $uid ) {
+	if ( ! function_exists( 'sml_scheduled_live_library' ) ) { return null; }
+	$stats = get_user_meta( $uid, '_sml_live_viewer_stats', true );
+	$stats = is_array( $stats ) ? $stats : array();
+	$tz    = new DateTimeZone( 'America/New_York' );
+	$by_h  = array(); $by_d = array(); $n = 0;
+	foreach ( (array) sml_scheduled_live_library( $uid ) as $r ) {
+		if ( ! is_array( $r ) || empty( $r['id'] ) || empty( $stats[ $r['id'] ]['peak'] ) ) { continue; }
+		$t = strtotime( (string) ( $r['started_at'] ?? $r['scheduled_at'] ?? '' ) );
+		if ( ! $t ) { continue; }
+		$d = ( new DateTime( '@' . $t ) )->setTimezone( $tz );
+		$peak = (int) $stats[ $r['id'] ]['peak'];
+		$by_h[ $d->format( 'G' ) ][] = $peak; $by_d[ $d->format( 'l' ) ][] = $peak; $n++;
+	}
+	if ( $n < 3 ) { return null; }
+	$best = function ( $g ) { $b = null; $bv = -1; foreach ( $g as $k => $v ) { $a = array_sum( $v ) / count( $v ); if ( $a > $bv ) { $bv = $a; $b = $k; } } return array( $b, (int) round( $bv ) ); };
+	list( $h, $hv ) = $best( $by_h ); list( $dn, $dv ) = $best( $by_d );
+	return array( 'samples' => $n, 'hour' => gmdate( 'g A', mktime( (int) $h, 0, 0, 1, 1, 2000 ) ), 'hour_avg_peak' => $hv, 'day' => $dn, 'day_avg_peak' => $dv );
 }

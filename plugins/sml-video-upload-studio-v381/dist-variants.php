@@ -167,6 +167,9 @@ if (!function_exists('sml_dist_hook')) {
             $n = (int) ($bundle['promo']['viewers'] ?? 0);
             return '🚀 ' . ($n > 0 ? number_format($n) . ' traders are' : 'The room is') . ' live right now';
         }
+        if ($event === 'stream.wrap') {
+            return $primary ? '✅ That\'s a wrap — ' . $primary : '✅ That\'s a wrap';
+        }
         if ($event === 'stream.custom') {
             return '';
         }
@@ -215,6 +218,9 @@ if (!function_exists('sml_dist_cta')) {
         }
         if ($event === 'stream.update' || $event === 'stream.milestone') {
             return $platform === 'instagram' ? 'Link in bio to jump in.' : 'Jump in ↓';
+        }
+        if ($event === 'stream.wrap') {
+            return $platform === 'instagram' ? 'Replay — link in bio.' : 'Catch the replay ↓';
         }
         if ($event === 'stream.custom') {
             return '';
@@ -285,7 +291,7 @@ if (!function_exists('sml_dist_body')) {
         if ($event === 'stream.start') {
             return $bundle['title'];
         }
-        if (in_array($event, array('stream.soon', 'stream.update', 'stream.milestone', 'stream.custom'), true)) {
+        if (in_array($event, array('stream.soon', 'stream.update', 'stream.milestone', 'stream.wrap', 'stream.custom'), true)) {
             $said = trim((string) ($bundle['promo']['text'] ?? ''));
             return $said !== '' ? $said : $bundle['title'];
         }

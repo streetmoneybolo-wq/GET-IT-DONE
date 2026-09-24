@@ -35,12 +35,19 @@ function sml_li_source_label( $src, $surf, $refhost ) {
 		'home' => 'Home feed', 'channel' => 'Your channel page', 'live_hub' => 'Live page', 'group' => 'A group', 'video' => 'A video page', 'profile' => 'A profile',
 		'qa' => 'Q&A', 'ticker' => 'A ticker page', 'terminal' => 'Trading Floor', 'letters' => 'Loop Letters', 'search' => 'Site search', 'notify' => 'A notification', 'other' => 'Elsewhere on the site',
 	);
+	if ( 'group' === $src ) {
+		global $wpdb;
+		$gid  = (int) ltrim( (string) $refhost, 'g' );
+		$name = $gid ? (string) $wpdb->get_var( $wpdb->prepare( 'SELECT name FROM ' . $wpdb->prefix . 'sml_groups WHERE id = %d', $gid ) ) : '';
+		return $name ? 'Group · ' . wp_strip_all_tags( $name ) : 'A group';
+	}
 	if ( 'site' === $src ) { return 'On site · ' . ( $surfs[ $surf ] ?? 'Elsewhere on the site' ); }
 	if ( 'other' === $src ) { return '' !== $refhost ? $refhost : 'Other websites'; }
 	return $names[ $src ] ?? ucfirst( (string) $src );
 }
 function sml_li_source_group( $src ) {
 	if ( in_array( $src, array( 'x', 'facebook', 'linkedin', 'reddit', 'discord', 'telegram', 'tiktok', 'instagram', 'youtube', 'bluesky', 'threads', 'tumblr', 'whatsapp', 'stocktwits' ), true ) ) { return 'social'; }
+	if ( 'group' === $src ) { return 'site'; }
 	return in_array( $src, array( 'site', 'search', 'email', 'direct' ), true ) ? $src : 'other';
 }
 

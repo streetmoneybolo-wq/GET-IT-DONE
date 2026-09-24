@@ -169,6 +169,8 @@ function sml_lv_classify( $ctx ) {
 	/* a campaign tag or a notification link beats the referrer (referrers are often stripped) */
 	if ( in_array( $utm, array( 'notify', 'notification', 'push', 'loopkick', 'loop-kick' ), true ) ) { return array( 'site', $ref, 'notify' ); }
 	if ( in_array( $utm, array( 'email', 'newsletter', 'mail' ), true ) ) { return array( 'email', $ref, '' ); }
+	/* links the Control Room posts into a group carry utm_source=grp{group id} */
+	if ( preg_match( '/^grp(\d{1,9})$/', $utm, $gm ) ) { return array( 'group', 'g' . $gm[1], '' ); }
 	$domains = sml_lv_source_domains();
 	if ( '' !== $utm ) {
 		if ( isset( $domains[ $utm ] ) ) { return array( $utm, $ref, '' ); }
