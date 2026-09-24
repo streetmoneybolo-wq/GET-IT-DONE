@@ -806,7 +806,7 @@
     var prop = q('.ca-side-prop span:last-child'); if (prop) prop.innerHTML = 'Pulse <small>/ SITE-WIDE · admin</small>';
     var nav = q('.ca-nav');
     if (nav) {
-      nav.innerHTML = [['site', '🌐 Site-wide'], ['realtime', '⚡ Realtime · all'], ['users', '👥 Users · monitor'], ['me', '👤 My own analytics']].map(function (x) { return '<a class="' + (ADM.nav === x[0] ? 'on' : '') + '" href="#adm-' + x[0] + '" data-adm-nav="' + x[0] + '"><span></span>' + x[1] + '</a>'; }).join('');
+      nav.innerHTML = [['site', '🌐 Site-wide'], ['realtime', '⚡ Realtime · all'], ['users', '👥 Users · monitor'], ['moderation', '🛡️ Moderation'], ['me', '👤 My own analytics']].map(function (x) { return '<a class="' + (ADM.nav === x[0] ? 'on' : '') + '" href="#adm-' + x[0] + '" data-adm-nav="' + x[0] + '"><span></span>' + x[1] + '</a>'; }).join('');
       Array.prototype.forEach.call(nav.querySelectorAll('[data-adm-nav]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); admGo(a.getAttribute('data-adm-nav')); }); });
     }
     var top = q('.ca-top > div'); if (top) top.innerHTML = '<span>' + esc(sub || 'Admin · entire platform') + '</span><b>' + esc(title || 'Site-wide analytics') + '</b>';
@@ -823,6 +823,7 @@
     if (view === 'me') { ADM.scope = 'me'; ADM.user = null; clearInterval(ADM.timer); ADM.timer = 0; renderMainOrig(); return; }
     ADM.scope = 'site'; ADM.nav = view; ADM.user = null;
     if (view === 'users') { renderAdminUsers(); return; }
+    if (view === 'moderation') { MOD.user = null; renderAdminModeration(); return; }
     if (view === 'realtime') { renderAdminRealtime(); return; }
     renderAdmin();
   }
@@ -906,6 +907,102 @@
     initLiveLocationMap(pr.countries || [], [], 1);
     clearInterval(ADM.timer); ADM.timer = 0;
   }
+  /* ---------------- Moderation (admins only) ----------------
+     IP + device fingerprint clusters, posting patterns and content types. Backed by mu-plugin sml-moderation
+     (sml-moderation/v1, manage_options only) and the link tracker's admin feed. Nothing here is rendered for non-admins:
+     the nav item only exists when /sml-site-analytics/v1/me says admin, and every endpoint refuses anyone else. */
+  var MOD = { tab: 'overview', days: 7, sort: 'risk', type: '', data: {}, user: null };
+  function modApi(path) { return api('/sml-moderation/v1' + path); }
+  function modWhen(iso) { var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  var MOD_TYPES = { chat: 'Live chat', chat_reply: 'Chat reply', group_msg: 'Group chat', group_post: 'Group post', comment: 'Comment / answer', qa: 'Q&A question', letter: 'Loop Letter' };
+  function modTypeLabel(t) { return MOD_TYPES[t] || t; }
+  function modUserChip(u) { return '<a href="#" class="ca-adm-chip" data-mod-user="' + n(u.id) + '">' + esc(u.name) + '</a>'; }
+  function modTabs() {
+    var tabs = [['overview', 'Overview'], ['accounts', 'Accounts'], ['clusters', 'Shared IPs & devices'], ['feed', 'Live feed'], ['links', 'Link clicks']];
+    return '<div class="ca-row" style="margin-bottom:14px;gap:8px;flex-wrap:wrap">' + tabs.map(function (t) { return '<button class="ca-pill' + (MOD.tab === t[0] && !MOD.user ? ' ca-pill-primary' : '') + '" type="button" data-mod-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('')
+      + '<span style="margin-left:auto" class="ca-sub">Window</span>' + [[1, '24 h'], [7, '7 d'], [30, '30 d'], [90, '90 d']].map(function (d) { return '<button class="ca-pill' + (MOD.days === d[0] ? ' ca-pill-primary' : '') + '" type="button" data-mod-days="' + d[0] + '">' + d[1] + '</button>'; }).join('') + '</div>';
+  }
+  function modFlags(f) { return (f || []).length ? f.map(admFlag).join('') : '<span class="ca-sub">No patterns flagged</span>'; }
+  function modRisk(r) { return '<b class="ca-adm-risk r' + (r >= 50 ? '3' : r >= 25 ? '2' : r > 0 ? '1' : '0') + '">' + n(r) + '</b>'; }
+  function modLoad(key, path, then) {
+    if (MOD.data[key]) { then(MOD.data[key]); return; }
+    (path.indexOf('/sml-') === 0 ? api(path) : modApi(path)).then(function (r) { MOD.data[key] = r.ok ? r.j : { error: (r.j && r.j.message) || 'Could not load.' }; then(MOD.data[key]); });
+  }
+  function modShell(html) { admShell(modTabs() + html, 'Moderation', 'Admin only · IPs, devices, posting patterns'); modBind(); }
+  function modBind() {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-mod-tab]'), function (b) { b.addEventListener('click', function () { MOD.tab = b.getAttribute('data-mod-tab'); MOD.user = null; ADM.jump = true; renderAdminModeration(); }); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-mod-days]'), function (b) { b.addEventListener('click', function () { MOD.days = +b.getAttribute('data-mod-days'); MOD.data = {}; renderAdminModeration(); }); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-mod-sort]'), function (b) { b.addEventListener('click', function () { MOD.sort = b.getAttribute('data-mod-sort'); MOD.data = {}; renderAdminModeration(); }); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-mod-type]'), function (b) { b.addEventListener('click', function () { MOD.type = b.getAttribute('data-mod-type'); MOD.data = {}; renderAdminModeration(); }); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-mod-user]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); modOpenUser(+a.getAttribute('data-mod-user')); }); });
+  }
+  function modOpenUser(id) {
+    MOD.user = id; ADM.jump = true;
+    modShell('<div class="ca-onboard"><div class="ca-big">Loading account #' + id + '…</div></div>');
+    modApi('/user/' + id + '?days=' + Math.max(30, MOD.days)).then(function (r) { if (!r.ok) { modShell('<div class="ca-card"><div class="ca-sub">' + esc((r.j && r.j.message) || 'Could not load that account.') + '</div></div>'); return; } modRenderUser(r.j); });
+  }
+  function modRenderUser(d) {
+    var u = d.user, st = d.stats || { posts: 0, flags: [], risk: 0, types: {} };
+    var sess = (d.sessions || []).map(function (s) { return '<tr><td><code>' + esc(s.ip) + '</code></td><td>' + esc(s.geo || '—') + '</td><td>' + esc(modWhen(s.login)) + '</td><td class="ca-sub">' + esc(s.ua) + '</td></tr>'; }).join('');
+    var devs = (d.devices || []).map(function (x) { var f = x.fp || {}; return '<tr><td><code title="' + esc(x.client_fp) + '">' + esc(x.client_fp.slice(0, 16)) + '</code></td><td>' + esc([f.plat, f.sw && f.sh ? f.sw + 'x' + f.sh : '', f.tz].filter(Boolean).join(' · ')) + '</td><td><code>' + esc(x.ip || '') + '</code> ' + esc([x.city, x.region, x.country_code].filter(Boolean).join(', ')) + '</td><td>' + n(x.hits) + '</td><td>' + esc(modWhen(x.last_seen + ' UTC')) + '</td></tr>'; }).join('');
+    var sharedIps = Object.keys(d.shared_ips || {}).map(function (ip) { return '<div style="margin:6px 0"><code>' + esc(ip) + '</code> also used by ' + d.shared_ips[ip].map(modUserChip).join(' ') + '</div>'; }).join('');
+    var sharedDevs = Object.keys(d.shared_devices || {}).map(function (fp) { return '<div style="margin:6px 0"><code>' + esc(fp.slice(0, 16)) + '</code> also used by ' + d.shared_devices[fp].map(modUserChip).join(' ') + '</div>'; }).join('');
+    var tl = (d.timeline || []).map(function (e) { return '<div class="ca-adm-msg' + (e.link ? ' link' : '') + '"><b>' + esc(modTypeLabel(e.type)) + '</b> · ' + esc(modWhen(e.at)) + '<br>' + esc(e.text) + '</div>'; }).join('') || '<div class="ca-sub">No activity in this window.</div>';
+    modShell('<div class="ca-card"><div class="ca-row" style="align-items:center;gap:14px"><img src="' + esc(u.avatar) + '" alt="" style="width:56px;height:56px;border-radius:50%"><div><div class="ca-big" style="font-size:22px">' + esc(u.name) + '</div><div class="ca-sub">@' + esc(u.handle) + ' · #' + n(u.id) + ' · joined ' + esc((u.registered || '').slice(0, 10)) + '</div></div><button class="ca-pill" type="button" style="margin-left:auto" data-mod-tab="accounts">← Accounts</button></div>'
+      + '<div style="margin-top:12px">Risk ' + modRisk(st.risk) + ' ' + modFlags(st.flags) + '</div></div>'
+      + '<div class="ca-grid ca-kpi-grid">' + admChip('Posts', fmt(st.posts), Object.keys(st.types || {}).map(function (t) { return fmt(st.types[t]) + ' ' + modTypeLabel(t).toLowerCase(); }).join(' · ')) + admChip('Burst', fmt(st.burst60 || 0) + '<span class="ca-fresh"> /min</span>', fmt(st.burst5m || 0) + ' in 5 min') + admChip('Repeated text', Math.round(n(st.dup_ratio) * 100) + '%', fmt(st.links || 0) + ' with links') + admChip('Rhythm', st.cadence_cv == null ? '–' : st.cadence_cv, st.cadence_cv != null && st.cadence_cv < 0.15 ? 'machine-regular' : 'human-like variation') + '</div>'
+      + '<div class="ca-card"><h3>Shared with other accounts</h3>' + ((sharedIps || sharedDevs) ? sharedIps + sharedDevs : '<div class="ca-sub">No other account uses this account’s IPs or devices in the window.</div>') + '</div>'
+      + '<div class="ca-card"><h3>Sign-ins &amp; IPs<span class="ca-fresh">' + (d.sessions || []).length + ' active sessions</span></h3><div class="ca-adm-table"><table><thead><tr><th>IP</th><th>Location</th><th>Signed in</th><th>Browser</th></tr></thead><tbody>' + (sess || '<tr><td colspan="4" class="ca-sub">No sessions.</td></tr>') + '</tbody></table></div></div>'
+      + '<div class="ca-card"><h3>Device fingerprints<span class="ca-fresh">recorded from their browser</span></h3><div class="ca-adm-table"><table><thead><tr><th>Device ID</th><th>Screen · timezone</th><th>Last IP</th><th>Visits</th><th>Last seen</th></tr></thead><tbody>' + (devs || '<tr><td colspan="5" class="ca-sub">None yet — a fingerprint is recorded the next time this member opens the site.</td></tr>') + '</tbody></table></div></div>'
+      + '<div class="ca-card"><h3>Recent posts &amp; comments<span class="ca-fresh">newest first</span></h3>' + tl + '</div>');
+  }
+  function renderAdminModeration() {
+    S.view = 'main'; ADM.nav = 'moderation';
+    clearInterval(ADM.timer); ADM.timer = 0;
+    if (MOD.user) { modOpenUser(MOD.user); return; }
+    var d = MOD.days;
+    if (MOD.tab === 'overview') {
+      modLoad('ov', '/overview?days=' + d, function (o) {
+        if (o.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(o.error) + '</div></div>'); return; }
+        var mx = Math.max.apply(null, [1].concat(o.hours || []));
+        var hours = '<div class="ca-minute-chart"><div class="ca-minute-bars">' + (o.hours || []).map(function (v, i) { return '<i style="height:' + (v ? Math.max(8, Math.round(v / mx * 100)) : 3) + '%" title="' + i + ':00 — ' + fmt(v) + ' posts"></i>'; }).join('') + '</div><div class="ca-minute-axis"><span>12 am</span><span>6 am</span><span>12 pm</span><span>6 pm</span><span>now</span></div></div>';
+        var types = Object.keys(o.types || {}).map(function (t) { return { k: modTypeLabel(t), v: o.types[t] }; }).sort(function (a, b) { return b.v - a.v; });
+        var top = (o.top || []).map(function (s) { return '<tr><td>' + modUserChip(s.user) + '</td><td>' + fmt(s.posts) + '</td><td>' + modRisk(s.risk) + '</td><td>' + modFlags(s.flags) + '</td></tr>'; }).join('');
+        modShell('<div class="ca-grid ca-kpi-grid">' + admChip('Posts & comments', fmt(o.total), 'in the last ' + o.days + ' day' + (o.days === 1 ? '' : 's')) + admChip('Active accounts', fmt(o.active_accounts), 'members who posted') + admChip('Worth a look', fmt(o.flagged), 'risk 25 or higher') + admChip('Shared IPs', fmt(o.shared_ips), 'IPs used by 2+ accounts') + admChip('Shared devices', fmt(o.shared_devices), 'fingerprints on 2+ accounts') + '</div>'
+          + '<div class="ca-grid ca-aud-grid"><div class="ca-card"><h3>Content types<span class="ca-fresh">' + fmt(o.total) + ' items</span></h3>' + admList(types, 'k', 'v', null, 10) + '</div><div class="ca-card"><h3>When people post<span class="ca-fresh">by hour, site time</span></h3>' + hours + '</div></div>'
+          + '<div class="ca-card"><h3>Most active accounts</h3><div class="ca-adm-table"><table><thead><tr><th>Account</th><th>Posts</th><th>Risk</th><th>Patterns</th></tr></thead><tbody>' + (top || '<tr><td colspan="4" class="ca-sub">No activity.</td></tr>') + '</tbody></table></div></div>'
+          + '<div class="ca-foot">IP addresses come from sign-in sessions, stamped activity and signed-in link clicks (' + fmt(o.stamped_events) + ' events stamped so far, ' + fmt(o.known_devices) + ' device fingerprints recorded). Device fingerprints are read from each member’s browser once a day. A score is a reason to look, not a verdict: offices, phone carriers and households share IPs.</div>');
+      });
+    } else if (MOD.tab === 'accounts') {
+      modLoad('users' + MOD.sort, '/users?days=' + d + '&sort=' + MOD.sort, function (u) {
+        if (u.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(u.error) + '</div></div>'); return; }
+        var rows = (u.users || []).map(function (s) { return '<tr><td>' + modUserChip(s.user) + '</td><td>' + modRisk(s.risk) + '</td><td>' + modFlags(s.flags) + '</td><td>' + fmt(s.posts) + '</td><td>' + Object.keys(s.types || {}).map(function (t) { return fmt(s.types[t]) + ' ' + modTypeLabel(t).toLowerCase(); }).join('<br>') + '</td><td>' + fmt(s.burst60) + '/min</td><td>' + Math.round(n(s.dup_ratio) * 100) + '%</td><td>' + (s.account_age_days == null ? '–' : s.account_age_days + 'd') + '</td></tr>'; }).join('');
+        modShell('<div class="ca-card"><h3>Accounts<span class="ca-fresh">' + fmt(u.total) + ' active in the window</span></h3><div class="ca-row" style="margin-bottom:10px">' + [['risk', 'Highest risk'], ['volume', 'Most active'], ['new', 'Newest accounts']].map(function (s2) { return '<button class="ca-pill' + (MOD.sort === s2[0] ? ' ca-pill-primary' : '') + '" type="button" data-mod-sort="' + s2[0] + '">' + s2[1] + '</button>'; }).join('') + '</div>'
+          + '<div class="ca-adm-table"><table><thead><tr><th>Account</th><th>Risk</th><th>Patterns</th><th>Posts</th><th>Content mix</th><th>Burst</th><th>Repeats</th><th>Age</th></tr></thead><tbody>' + (rows || '<tr><td colspan="8" class="ca-sub">No activity.</td></tr>') + '</tbody></table></div></div>'
+          + '<div class="ca-foot">Rules are transparent: 8+ posts in a minute, 20+ in five, 40%+ repeated text, the same text in 3+ places, link-heavy posting, machine-regular timing, brand-new accounts posting a lot, and accounts that share an IP or a device.</div>');
+      });
+    } else if (MOD.tab === 'clusters') {
+      modLoad('cl', '/clusters?days=' + Math.max(30, d), function (c) {
+        if (c.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(c.error) + '</div></div>'); return; }
+        function block(rows, title, sub, isIp) {
+          return '<div class="ca-card"><h3>' + title + '<span class="ca-fresh">' + fmt((rows || []).length) + ' ' + sub + '</span></h3>' + ((rows || []).length ? rows.map(function (r) { return '<div class="ca-adm-cluster"><div class="ca-row" style="gap:10px;align-items:baseline"><code>' + esc(isIp ? r.key : r.key.slice(0, 16)) + '</code>' + (r.geo ? '<span class="ca-sub">' + esc(r.geo) + '</span>' : '') + '<span class="ca-adm-flag">' + r.accounts + ' accounts</span></div><div style="margin-top:6px">' + r.users.map(modUserChip).join(' ') + '</div></div>'; }).join('') : '<div class="ca-sub">Nothing shared in this window.</div>') + '</div>';
+        }
+        modShell(block(c.ips, 'IP addresses used by more than one account', 'IPs', true) + block(c.devices, 'Devices (fingerprints) used by more than one account', 'devices', false) + '<div class="ca-foot">' + esc(c.note) + '</div>');
+      });
+    } else if (MOD.tab === 'feed') {
+      modLoad('feed' + MOD.type, '/feed?days=' + Math.min(d, 30) + '&limit=120' + (MOD.type ? '&type=' + MOD.type : ''), function (f) {
+        if (f.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(f.error) + '</div></div>'); return; }
+        var pills = '<div class="ca-row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px"><button class="ca-pill' + (!MOD.type ? ' ca-pill-primary' : '') + '" type="button" data-mod-type="">All</button>' + Object.keys(MOD_TYPES).map(function (t) { return '<button class="ca-pill' + (MOD.type === t ? ' ca-pill-primary' : '') + '" type="button" data-mod-type="' + t + '">' + MOD_TYPES[t] + '</button>'; }).join('') + '</div>';
+        modShell('<div class="ca-card"><h3>Latest activity<span class="ca-fresh">newest first</span></h3>' + pills + ((f.events || []).map(function (e) { return '<div class="ca-adm-msg' + (e.link ? ' link' : '') + '">' + modUserChip(e.user) + ' <span class="ca-sub">' + esc(modTypeLabel(e.type)) + ' · ' + esc(modWhen(e.at)) + (e.link ? ' · has link' : '') + '</span><br>' + esc(e.text) + '</div>'; }).join('') || '<div class="ca-sub">No activity.</div>') + '</div>');
+      });
+    } else {
+      modLoad('links', '/sml-intel/v1/admin/live?limit=120', function (l) {
+        if (l.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(l.error) + '</div></div>'); return; }
+        var rows = (l.clicks || []).map(function (c) { var loc = [c.city, c.region, c.country || c.country_code].filter(Boolean).join(', '); var fp = c.client_fp || c.server_fp || ''; return '<tr><td>' + esc(c.created_at && c.created_at.indexOf('0000') !== 0 ? c.created_at : '—') + '</td><td><code>' + esc(c.raw_ip || '') + '</code></td><td>' + esc(loc || '—') + '</td><td>' + esc([c.device, c.browser, c.platform].filter(Boolean).join(' · ')) + (c.screen ? '<br><span class="ca-sub">' + esc(c.screen) + ' · ' + esc(c.timezone || '') + '</span>' : '') + '</td><td>' + (fp ? '<code title="' + esc(fp) + '">' + esc(fp.slice(0, 12)) + '</code>' + (c.client_fp ? '' : ' <span class="ca-sub">browser-level</span>') : '—') + '</td><td>' + esc(c.label || c.slug || '') + '</td><td>' + (c.is_bot ? '<span class="ca-adm-flag">bot / preview</span>' : (c.visitor_user_id ? '<a href="#" data-mod-user="' + n(c.visitor_user_id) + '">member #' + n(c.visitor_user_id) + '</a>' : 'visitor')) + '</td></tr>'; }).join('');
+        modShell('<div class="ca-card"><h3>Tracked-link clicks<span class="ca-fresh">every creator’s links · newest first</span></h3><div class="ca-adm-table"><table><thead><tr><th>When</th><th>IP</th><th>Location</th><th>Device</th><th>Device ID</th><th>Link</th><th>Who</th></tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="ca-sub">No clicks yet.</td></tr>') + '</tbody></table></div></div><div class="ca-foot">Clicks recorded before 24 Sep 2026 have no timestamp (a bug in the old tracker); newer clicks carry the full device fingerprint.</div>');
+      });
+    }
+  }
   (function admBoot() {
     var tries = 0;
     var t = setInterval(function () {
@@ -915,8 +1012,8 @@
       admApi('/me').then(function (r) {
         if (!(r.ok && r.j && r.j.admin)) return;
         ADM.on = true;
-        var css = document.createElement('style'); css.textContent = '.ca-adm-scope{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:14px;border:1px solid var(--ca-line);border-radius:12px;background:var(--ca-panel)}.ca-adm-lbl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--ca-muted)}.ca-adm-scope b{font-size:14px}.ca-adm-search{flex:1;min-width:220px;border:1px solid var(--ca-line);border-radius:8px;background:transparent;color:var(--ca-text);padding:8px 10px;font:inherit}.ca-bars{display:grid;gap:6px}.ca-bar-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}.ca-bar-k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}.ca-bar i{display:block;height:100%;background:var(--ca-acc)}.ca-bar-v{font-weight:700;font-size:12px}.ca-adm-table{overflow:auto}.ca-adm-table table{width:100%;border-collapse:collapse;font-size:12px}.ca-adm-table th{text-align:left;color:var(--ca-muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:6px}.ca-adm-table td{padding:8px 6px;border-top:1px solid var(--ca-line);vertical-align:top}.ca-adm-av{width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px}.ca-adm-risk{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}.ca-adm-risk.r0{background:rgba(255,255,255,.06)}.ca-adm-risk.r1{background:rgba(224,163,54,.18);color:#ffd166}.ca-adm-risk.r2{background:rgba(255,122,69,.2);color:#ffb08a}.ca-adm-risk.r3{background:rgba(255,91,110,.22);color:#ff8f9c}.ca-adm-flag{display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(255,91,110,.12);color:#ff8f9c;border:1px solid rgba(255,91,110,.3)}.ca-adm-msg{padding:8px 10px;border-top:1px solid var(--ca-line);font-size:12.5px;line-height:1.45}.ca-adm-msg.link{border-left:3px solid #ff8f9c}.ca-pill-primary{background:#2b6cff!important;border-color:#2b6cff!important;color:#fff!important}'; document.head.appendChild(css);
-        renderMain = function () { if (ADM.on && ADM.scope === 'site') { if (ADM.user) renderAdminUser(); else if (ADM.nav === 'users') renderAdminUsers(); else if (ADM.nav === 'realtime') renderAdminRealtime(); else renderAdmin(); } else renderMainOrig(); };
+        var css = document.createElement('style'); css.textContent = '.ca-adm-chip{display:inline-block;padding:3px 9px;margin:2px 4px 2px 0;border:1px solid var(--ca-line);border-radius:999px;font-size:12px;text-decoration:none}.ca-adm-chip:hover{border-color:var(--ca-accent,#2b6cff)}.ca-adm-cluster{padding:10px 0;border-top:1px solid var(--ca-line)}.ca-adm-cluster:first-of-type{border-top:0}.ca-adm-scope{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:14px;border:1px solid var(--ca-line);border-radius:12px;background:var(--ca-panel)}.ca-adm-lbl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--ca-muted)}.ca-adm-scope b{font-size:14px}.ca-adm-search{flex:1;min-width:220px;border:1px solid var(--ca-line);border-radius:8px;background:transparent;color:var(--ca-text);padding:8px 10px;font:inherit}.ca-bars{display:grid;gap:6px}.ca-bar-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}.ca-bar-k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}.ca-bar i{display:block;height:100%;background:var(--ca-acc)}.ca-bar-v{font-weight:700;font-size:12px}.ca-adm-table{overflow:auto}.ca-adm-table table{width:100%;border-collapse:collapse;font-size:12px}.ca-adm-table th{text-align:left;color:var(--ca-muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:6px}.ca-adm-table td{padding:8px 6px;border-top:1px solid var(--ca-line);vertical-align:top}.ca-adm-av{width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px}.ca-adm-risk{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}.ca-adm-risk.r0{background:rgba(255,255,255,.06)}.ca-adm-risk.r1{background:rgba(224,163,54,.18);color:#ffd166}.ca-adm-risk.r2{background:rgba(255,122,69,.2);color:#ffb08a}.ca-adm-risk.r3{background:rgba(255,91,110,.22);color:#ff8f9c}.ca-adm-flag{display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(255,91,110,.12);color:#ff8f9c;border:1px solid rgba(255,91,110,.3)}.ca-adm-msg{padding:8px 10px;border-top:1px solid var(--ca-line);font-size:12.5px;line-height:1.45}.ca-adm-msg.link{border-left:3px solid #ff8f9c}.ca-pill-primary{background:#2b6cff!important;border-color:#2b6cff!important;color:#fff!important}'; document.head.appendChild(css);
+        renderMain = function () { if (ADM.on && ADM.scope === 'site') { if (ADM.user) renderAdminUser(); else if (ADM.nav === 'users') renderAdminUsers(); else if (ADM.nav === 'moderation') renderAdminModeration(); else if (ADM.nav === 'realtime') renderAdminRealtime(); else renderAdmin(); } else renderMainOrig(); };
         renderAdmin();
       }).catch(function () {});
     }, 250);
