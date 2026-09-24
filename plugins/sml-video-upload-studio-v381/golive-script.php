@@ -104,6 +104,11 @@ if (!function_exists('sml_gl_script')) {
   }
 
   var draft = defaults();
+  /* Per-stream studio URL: /go-live/{handle}/{slug}-{id}. The server serves the normal Go Live page; this script reads the id from the path
+     and opens THAT stream in the studio. routeMode keeps such a stream out of the saved wizard draft. */
+  var routeMatch = window.location.pathname.match(/^\/go-live\/([A-Za-z0-9_-]+)\/([^\/]+?)\/?$/);
+  var routeId = routeMatch ? ((routeMatch[2].match(/(?:^|-)([A-Za-z0-9]{8,32})$/) || [])[1] || '') : '';
+  var routeMode = !!routeId, routeNotice = '';
   var stream = null;
   var recorder = null;
   var recordedChunks = [];
@@ -305,6 +310,7 @@ if (!function_exists('sml_gl_script')) {
   }
 
   function save() {
+    if (routeMode) { return; }
     var copy = {};
     Object.keys(draft).forEach(function (k) {
       if (k === 'orbitCards') {
@@ -1947,6 +1953,7 @@ if (!function_exists('sml_gl_script')) {
   document.addEventListener('change', function (event) {
     var sel = event.target.closest ? event.target.closest('[data-gli-stream]') : null;
     if (!sel) { return; }
+    if (routeMode && sel.value && sel.value !== routeId && window.__glStreams && window.__glStreams[sel.value]) { window.location.href = window.__glStreams[sel.value]; return; }
     insights.streamId = sel.value; insights.data = null; pollInsights();
   });
   document.addEventListener('mousemove', function (event) {
@@ -2325,13 +2332,32 @@ if (!function_exists('sml_gl_script')) {
     document.addEventListener('change', function (e) { glcInput(e); glcFile(e); });
   }
 
+  function studioUrl(row) {
+    var u = String((row && row.watch_url) || '');
+    var m = u.match(/\/live\/([^\/?#]+)\/([^\/?#]+)/);
+    if (m) { return '/go-live/' + m[1] + '/' + m[2] + '/'; }
+    var id = String((row && row.id) || '');
+    return id && /^[A-Za-z0-9]{8,32}$/.test(id) ? '/go-live/' + encodeURIComponent((row && row.handle) || watchChatHandle() || 'me') + '/' + id + '/' : '/go-live/';
+  }
+
+  function studioNav() {
+    return '<nav class="gl-studionav" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:0 0 14px;font-size:12.5px">'
+      + '<a style="color:#7e92a8;text-decoration:none" href="/creator-studio/?tab=live">&larr; All streams</a>'
+      + '<a style="color:#7e92a8;text-decoration:none" href="/go-live/">+ New stream</a>'
+      + (draft.live && draft.live.watch_url ? '<a style="color:#2b6cff;text-decoration:none" href="' + esc(draft.live.watch_url) + '" target="_blank" rel="noopener">Open watch page &nearr;</a>' : '') + '</nav>';
+  }
+
   function stepLiveDashboard() {
+    if (draft.live && draft.live.status === 'ended') {
+      return (routeMode ? studioNav() : '') + '<div class="gl-live-banner"><span class="gl-live-dot" style="background:#7e92a8;box-shadow:none"></span><div><b>STREAM ENDED</b><span style="display:block">' + esc(draft.title) + '</span></div></div>'
+        + insightsMarkup();
+    }
     if (draft.live && draft.live.status === 'scheduled') {
     var scheduled = !!(draft.live && draft.live.status === 'scheduled');
     var startLabel = scheduledStartLabel(draft.live && draft.live.scheduled_at);
-    return '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
+    return (routeMode ? studioNav() : '') + '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
       + '<div><b>' + (scheduled ? 'WATCH PAGE OPEN' : 'LIVE') + '</b><span style="display:block">' + esc(draft.title) + '</span></div>'
-      + '<button class="cs-btn" style="margin-left:auto;border-color:rgba(255,86,110,.4);color:#ff566e" data-endlive>' + icon('stop', 17) + (scheduled ? 'Cancel scheduled stream' : 'Close Watch Page') + '</button></div>'
+      + '' + (scheduled ? '<button class="cs-btn cs-btn-gold" style="margin-left:auto" data-startsched>Go Live Now ' + icon('rocket', 18) + '</button>' : '') + '<button class="cs-btn" style="' + (scheduled ? '' : 'margin-left:auto;') + 'border-color:rgba(255,86,110,.4);color:#ff566e" data-endlive>' + icon('stop', 17) + (scheduled ? 'Cancel scheduled stream' : 'Close Watch Page') + '</button></div>'
       + '<section class="cs-card" style="margin-top:18px"><h3 style="margin-bottom:14px">' + (scheduled ? 'Scheduled stream' : 'Live status') + '</h3><div class="gl-live-stats">'
       + '<div class="gl-stat"><small>' + icon('clock', 14) + (scheduled ? 'Scheduled for' : 'Opened') + '</small><b data-live="scheduled" style="font-size:16px;line-height:1.35">' + esc(startLabel) + '</b></div>'
       + '<div class="gl-stat"><small>' + icon('chat', 14) + 'Shared chat</small><b style="font-size:16px">Open now</b></div>'
@@ -2343,7 +2369,7 @@ if (!function_exists('sml_gl_script')) {
     }
 
     var elapsed = liveStats.startedAt ? Math.floor((Date.now() - liveStats.startedAt) / 1000) : 0;
-    return '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
+    return (routeMode ? studioNav() : '') + '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
       + '<div><b>LIVE</b><span style="display:block">' + esc(draft.title) + '</span></div>'
       + '<button class="cs-btn" style="margin-left:auto;border-color:rgba(255,86,110,.4);color:#ff566e" data-endlive>' + icon('stop', 17) + 'End stream</button></div>'
       + '<section class="cs-card" style="margin-top:18px"><h3 style="margin-bottom:14px">Live stats</h3><div class="gl-live-stats">'
@@ -2477,6 +2503,59 @@ if (!function_exists('sml_gl_script')) {
     });
   }
 
+  /* Start the stream this studio page is about (a scheduled one): make it the current record so the live lifecycle flips THIS one, then start. */
+  function startScheduled() {
+    var row = draft.live;
+    if (!row || row.status !== 'scheduled') { return; }
+    var btn = document.querySelector('[data-startsched]');
+    if (btn) { btn.disabled = true; }
+    api('/wp-json/sml-live-control/v1/arm', { method: 'POST', json: { stream: row.id } })
+      .then(function () {
+        return api(cfg.liveStartEndpoint, { method: 'POST', json: {
+          group_id: Number(draft.groupId) || 0, kind: draft.scene === 'screen' ? 'screen' : 'video', title: draft.title, description: draft.description,
+          ticker: draft.ticker, tickers: [draft.ticker].concat(draft.related || []).filter(Boolean), visibility: draft.audience } });
+      })
+      .then(function (payload) {
+        return api(scheduledLiveEndpoint() + '?_=' + Date.now()).then(function (p) {
+          var fresh = (p.streams || []).filter(function (s) { return s.id === row.id; })[0];
+          draft.live = fresh && fresh.status === 'live' ? fresh : Object.assign({}, payload && payload.room || {}, row, { status: 'live' });
+          liveStats.startedAt = Date.now(); liveStats.viewers = 0;
+          save(); render(); syncRoomMonetization(); startPolling();
+        });
+      })
+      .catch(function (error) { if (btn) { btn.disabled = false; } window.alert('Could not start the stream: ' + error.message); });
+  }
+
+  function applyRouteRow(row) {
+    draft = defaults();
+    draft.title = row.title || ''; draft.description = row.description || ''; draft.ticker = String(row.ticker || '').toUpperCase();
+    draft.thumbUrl = row.thumbnail_url || ''; draft.audience = row.visibility || 'public'; draft.step = 4;
+    draft.schedule = row.status === 'scheduled' ? 'later' : 'now';
+    draft.live = row;
+    liveStats.startedAt = Date.parse(row.scheduled_at || '') || Date.now();
+    if (row.status === 'live') { startPolling(); }
+    if (draft.ticker) { loadQuote(draft.ticker); }
+    if (window.history && history.replaceState) {
+      var want = studioUrl(row);
+      if (want !== '/go-live/' && want !== window.location.pathname) { history.replaceState(null, '', want + window.location.search + window.location.hash); }
+    }
+  }
+
+  /* /go-live/{handle}/{slug}-{id}: find that stream among the creator's own; anything else falls back to the normal studio */
+  function loadRouteStream() {
+    return api(scheduledLiveEndpoint() + '?_=' + Date.now()).then(function (p) {
+      var row = (p.streams || []).filter(function (s) { return s.id === routeId; })[0];
+      if (!row || row.status === 'cancelled') { throw new Error('missing'); }
+      window.__glStreams = {};
+      (p.streams || []).forEach(function (s) { window.__glStreams[s.id] = studioUrl(s); });
+      applyRouteRow(row);
+      render();
+    }).catch(function () {
+      routeMode = false; routeNotice = 'That stream is not in your library, so here is your studio.';
+      restore(); render();
+    });
+  }
+
   function endLive() {
     if (draft.live && draft.live.status === 'scheduled') {
       api(scheduledLiveEndpoint(), { method: 'DELETE' })
@@ -2543,14 +2622,14 @@ if (!function_exists('sml_gl_script')) {
     else { body = stepSetup(); }
 
     if (window.smlVoiceHostDockBeforeRender) { window.smlVoiceHostDockBeforeRender(); }
-    content.innerHTML = body;
+    content.innerHTML = (routeNotice ? '<div class="cs-hint" style="margin-bottom:12px">' + esc(routeNotice) + '</div>' : '') + body;
     middle.innerHTML = middleMarkup();
     rail.innerHTML = railMarkup();
     paintStepper();
     bindVideo();
     paintQuote();
     paintMovers();
-    if (draft.live) { startCreatorChat(); startInsights(); paintInsights(); startControl(); paintControl(true); } else { stopCreatorChat(); stopInsights(); stopControl(); }
+    if (draft.live && draft.live.status === 'ended') { stopCreatorChat(); stopControl(); startInsights(); paintInsights(); } else if (draft.live) { startCreatorChat(); startInsights(); paintInsights(); startControl(); paintControl(true); } else { stopCreatorChat(); stopInsights(); stopControl(); }
     if (window.smlVoiceHostDockAfterRender) { window.smlVoiceHostDockAfterRender(); }
   }
 
@@ -2574,6 +2653,7 @@ if (!function_exists('sml_gl_script')) {
       return;
     }
     if (target.closest('[data-golive]')) { goLive(); return; }
+    if (target.closest('[data-startsched]')) { startScheduled(); return; }
     if (target.closest('[data-endlive]')) { endLive(); return; }
     if (target.closest('[data-send-creator-chat]')) { sendCreatorChat(); return; }
 
@@ -2910,12 +2990,11 @@ if (!function_exists('sml_gl_script')) {
     if (event.key === 'Escape' && document.getElementById('gl-money-modal')) { closeMonetization(); }
   });
 
-  restore();
-  render();
+  if (routeMode) { render(); loadRouteStream(); } else { restore(); render(); }
   // Also catches streams scheduled before this release. The server record is
   // authoritative; if it exists, the browser must not reuse its old setup as
   // the next stream draft.
-  clearSetupIfServerHasScheduledStream();
+  if (!routeMode) { clearSetupIfServerHasScheduledStream(); }
   if (cfg.openMonetization) { openMonetization(); }
   if (cfg.openChatOverlay) { openChatOverlayEditor(); }
   loadMonetizationSettings(false);

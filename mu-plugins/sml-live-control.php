@@ -476,6 +476,7 @@ add_action( 'rest_api_init', function () {
 	register_rest_route( $ns, '/moves', array( 'methods' => 'GET', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_moves' ) );
 	register_rest_route( $ns, '/promo', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_promo' ) );
 	register_rest_route( $ns, '/promo/(?P<id>\d+)/cancel', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_cancel' ) );
+	register_rest_route( $ns, '/arm', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_arm' ) );
 	register_rest_route( $ns, '/preview', array( 'methods' => 'POST', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_preview' ) );
 	register_rest_route( $ns, '/group-channels', array( 'methods' => 'GET', 'permission_callback' => $p, 'callback' => 'sml_lc_rest_group_channels' ) );
 } );
@@ -657,4 +658,15 @@ function sml_lc_rest_cancel( WP_REST_Request $req ) {
 	global $wpdb;
 	$n = $wpdb->update( sml_lc_t(), array( 'status' => 'cancelled', 'last_note' => 'cancelled' ), array( 'id' => (int) $req['id'], 'user_id' => get_current_user_id() ) );
 	return array( 'ok' => (bool) $n );
+}
+
+/** Make one of the creator's own not-yet-ended streams the current record, so starting the stream flips that one live. */
+function sml_lc_rest_arm( WP_REST_Request $req ) {
+	$uid = get_current_user_id();
+	$sid = sanitize_text_field( (string) $req->get_param( 'stream' ) );
+	if ( '' === $sid || ! function_exists( 'sml_scheduled_live_row' ) || ! function_exists( 'sml_scheduled_live_store' ) ) { return new WP_Error( 'sml_lc_arm', 'Stream not available.', array( 'status' => 400 ) ); }
+	$row = sml_scheduled_live_row( $uid, $sid );
+	if ( ! is_array( $row ) || empty( $row['id'] ) || ! in_array( (string) ( $row['status'] ?? '' ), array( 'scheduled', 'live' ), true ) ) { return new WP_Error( 'sml_lc_arm', 'That stream cannot be started.', array( 'status' => 404 ) ); }
+	sml_scheduled_live_store( $uid, $row, true );
+	return array( 'ok' => true, 'stream_id' => (string) $row['id'] );
 }

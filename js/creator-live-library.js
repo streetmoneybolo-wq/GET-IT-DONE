@@ -27,13 +27,17 @@
     style.textContent = '.cs-live-library{margin:0 0 18px}.cs-live-library .cs-dash-panel-head{margin-bottom:12px}.cs-live-library-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.cs-live-library-card{display:grid;grid-template-columns:118px minmax(0,1fr);gap:13px;align-items:center;padding:12px;border:1px solid #1b2a3c;background:#0d1724;border-radius:12px;color:inherit;text-decoration:none}.cs-live-library-thumb{aspect-ratio:16/9;border-radius:8px;background:#101b2a center/cover no-repeat;border:1px solid #203047;display:grid;place-items:center;color:#60758d;font-size:10px}.cs-live-library-copy{grid-column:1/-1;display:flex;gap:8px;align-items:center}.cs-live-library-copy input{min-width:0;flex:1;height:34px;border:1px solid #223146;border-radius:7px;background:#07101b;color:#9fb4c9;padding:0 9px;font-size:11px}.cs-live-library-copy button{height:34px;border:1px solid #2b6cff;border-radius:7px;background:#2b6cff;color:#fff;font-size:11px;font-weight:800;padding:0 11px;cursor:pointer}.cs-live-library-card b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cs-live-library-card small{display:block;color:#71859b;font-size:11.5px;margin-top:5px}.cs-live-library-badge{display:inline-flex;margin-top:7px;padding:3px 7px;border-radius:999px;background:rgba(43,108,255,.13);color:#72a8ff;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase}@media(max-width:640px){.cs-live-library-card{grid-template-columns:92px minmax(0,1fr)}}';
     document.head.appendChild(style);
   }
+  function studio(row) {
+    var m = String(row.watch_url || '').match(/\/live\/([^\/?#]+)\/([^\/?#]+)/);
+    return m ? '/go-live/' + m[1] + '/' + m[2] + '/' : (/^[A-Za-z0-9]{8,32}$/.test(String(row.id || '')) ? '/go-live/' + encodeURIComponent(row.handle || 'me') + '/' + row.id + '/' : '/go-live/');
+  }
   function card(row, replay) {
     var image = safeImage(row.thumbnail_url);
     var url = replay && row.recording_url ? row.recording_url : row.watch_url;
     return '<article class="cs-live-library-card">'
       + '<a class="cs-live-library-thumb" href="' + esc(url) + '"' + (image ? ' style="background-image:url(&quot;' + esc(image) + '&quot;)"' : '') + '>' + (image ? '' : 'No thumbnail') + '</a>'
       + '<div><a href="' + esc(url) + '"><b>' + esc(row.title || 'Untitled stream') + '</b></a><small>' + esc(when(row.scheduled_at)) + '</small><span class="cs-live-library-badge">' + esc(replay ? 'Replay ready' : 'Upcoming live') + '</span></div>'
-      + '<div class="cs-live-library-copy"><input readonly value="' + esc(url) + '" aria-label="Stream link"><button type="button" data-copy-stream="' + esc(url) + '">Copy link</button></div>'
+      + '<div class="cs-live-library-copy"><input readonly value="' + esc(url) + '" aria-label="Stream link"><button type="button" data-copy-stream="' + esc(url) + '">Copy link</button>' + (replay ? '' : '<a href="' + esc(studio(row)) + '" style="margin-left:8px;font-weight:700">Manage</a>') + '</div>'
       + '</article>';
   }
   function render(root, payload) {
