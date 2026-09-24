@@ -374,8 +374,8 @@ function sml_mod_rest_user( WP_REST_Request $req ) {
 	$stamped = $wpdb->get_results( $wpdb->prepare( 'SELECT ctype, target, CONVERT(ip USING utf8mb4) ip, client_fp, snippet, has_link, created_at FROM ' . sml_mod_t( 'events' ) . ' WHERE user_id = %d ORDER BY id DESC LIMIT 50', $uid ), ARRAY_A ) ?: array();
 	$timeline = array(); foreach ( array_slice( $ev, 0, 60 ) as $e ) { $timeline[] = array( 'type' => $e[1], 'target' => $e[2], 'text' => mb_substr( wp_strip_all_tags( $e[3] ), 0, 200 ), 'at' => wp_date( 'c', $e[4] ), 'link' => sml_mod_has_link( $e[3] ) ); }
 	$id = sml_mod_identities( max( $days, 30 ) ); $shared_ips = array(); $shared_devs = array();
-	foreach ( $id['ips'] as $ip => $users ) { if ( isset( $users[ $uid ] ) && count( $users ) > 1 ) { $shared_ips[ $ip ] = array_map( 'sml_mod_user_public', array_diff( array_keys( $users ), array( $uid ) ) ); } }
-	foreach ( $id['devs'] as $fp => $users ) { if ( isset( $users[ $uid ] ) && count( $users ) > 1 ) { $shared_devs[ $fp ] = array_map( 'sml_mod_user_public', array_diff( array_keys( $users ), array( $uid ) ) ); } }
+	foreach ( $id['ips'] as $ip => $users ) { if ( isset( $users[ $uid ] ) && count( $users ) > 1 ) { $shared_ips[ $ip ] = array_values( array_map( 'sml_mod_user_public', array_diff( array_keys( $users ), array( $uid ) ) ) ); } }
+	foreach ( $id['devs'] as $fp => $users ) { if ( isset( $users[ $uid ] ) && count( $users ) > 1 ) { $shared_devs[ $fp ] = array_values( array_map( 'sml_mod_user_public', array_diff( array_keys( $users ), array( $uid ) ) ) ); } }
 	return array( 'user' => sml_mod_user_public( $uid ), 'stats' => $stats[ $uid ] ?? null, 'sessions' => $sessions, 'devices' => $devices, 'stamped' => $stamped, 'timeline' => $timeline, 'shared_ips' => $shared_ips, 'shared_devices' => $shared_devs );
 }
 
