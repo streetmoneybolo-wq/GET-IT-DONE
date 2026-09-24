@@ -907,3 +907,10 @@ test('the market route accepts the long intervals and still rejects junk', async
     assert.equal((await fetch(`${base}/academy-activity/market?symbol=SPY&tf=9x`)).status, 400);
   });
 });
+
+test('a phone member can always get from an open lesson back to the chart', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /id='academy-back-to-chart'|backBtn\.id='academy-back-to-chart'/);
+  assert.match(html, /body\.academy-lesson-open #academy-back-to-chart/);
+});
