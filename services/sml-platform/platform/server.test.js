@@ -945,8 +945,11 @@ test('MEM ALGO lists all five strategies including mid-term hold, long-term hold
 });
 
 test('every chart layer draws at a capped resolution so phones repaint far fewer pixels', () => {
+  const fs = require('node:fs'), path = require('node:path');
   const { academyActivityHtml } = require('./server');
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
   assert.match(html, /window\.smlChartDpr\s*=/);
-  assert.equal((html.match(/smlChartDpr\s*\?/g) || []).length >= 3, true, 'the overlay, indicator and MEM layers read the cap');
+  for (const file of ['academy-visual-lab.js', 'academy-chart-intelligence.js', 'academy-mem-algo-ui.js']) {
+    assert.match(fs.readFileSync(path.join(__dirname, file), 'utf8'), /smlChartDpr/, file + ' reads the cap');
+  }
 });
