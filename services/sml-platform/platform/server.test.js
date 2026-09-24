@@ -914,3 +914,18 @@ test('a phone member can always get from an open lesson back to the chart', () =
   assert.match(html, /id='academy-back-to-chart'|backBtn\.id='academy-back-to-chart'/);
   assert.match(html, /body\.academy-lesson-open #academy-back-to-chart/);
 });
+
+test('the live tick route serves the fast book + prints, validates symbols, and the page carries the live feed', async () => {
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/live?symbol=SPY`)).status, 503); });
+  const academyOrderFlow = { get: () => ({}), live: (s) => { if (!/^[A-Z]+$/i.test(String(s))) throw new TypeError('invalid_symbol'); return { symbol: String(s).toUpperCase(), ready: true, book: { bids: [], asks: [] }, tape: [] }; } };
+  await withServer({ academyOrderFlow }, async (base) => {
+    const ok = await fetch(`${base}/academy-activity/live?symbol=spy`);
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).symbol, 'SPY');
+    assert.equal((await fetch(`${base}/academy-activity/live?symbol=../x`)).status, 400);
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /__smlLiveTape/);
+  assert.match(html, /body:not\(\.academy-lesson-open\) \.academy-guide/);
+});

@@ -20,16 +20,35 @@
 
   const baseState = window.smlAcademyChartState;
   const symNow = () => { try { return String(baseState().symbol || q().get('symbol') || 'SPY').toUpperCase(); } catch (_) { return String(q().get('symbol') || 'SPY').toUpperCase(); } };
-  const rawBars = () => { try { const b = baseState().bars; return Array.isArray(b) ? b : []; } catch (_) { return []; } };
+  const baseBars = () => { try { const b = baseState().bars; return Array.isArray(b) ? b : []; } catch (_) { return []; } };
+  /* Live prints: the forming candle is the base candle with the newest trades folded in, so the chart moves tick by tick between the periodic refreshes. */
+  const rawBars = () => {
+    const b = baseBars(), L = V.live;
+    if (!L || !b.length) return b;
+    const last = b[b.length - 1];
+    if (L.t < last.t) { V.live = null; return b; }
+    if (L.t === last.t) { const out = b.slice(0, -1); out.push(Object.assign({}, last, { h: Math.max(+last.h, L.h), l: Math.min(+last.l, L.l), c: L.c, v: Math.max(+last.v || 0, L.v) })); return out; }
+    return b.concat([Object.assign({}, L)]);
+  };
+  const TF_MS = { '1m': 6e4, '3m': 18e4, '5m': 3e5, '10m': 6e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '2h': 72e5, '4h': 144e5 };
+  function liveTick(price, size, ts) {
+    const base = baseBars(); price = Number(price); if (!base.length || !fin(price)) return;
+    const last = base[base.length - 1], ms = TF_MS[tfNow()];
+    let t = last.t;
+    if (ms) { if (ts < last.t) return; t = last.t + Math.floor((ts - last.t) / ms) * ms; }
+    if (!V.live || V.live.t !== t) V.live = t === last.t ? { t, o: +last.o, h: +last.h, l: +last.l, c: +last.c, v: +last.v || 0 } : { t, o: price, h: price, l: price, c: price, v: 0 };
+    const L = V.live; L.c = price; if (price > L.h) L.h = price; if (price < L.l) L.l = price; L.v += Number(size) || 0;
+    emit();
+  }
 
-  const V = { n: defaultN(), end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
+  const V = { live: null, n: defaultN(), end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
 
   /* ---------- view model ---------- */
   let cache = null, cacheKey = '';
   function dtOf(bars) { const n = bars.length; if (n < 2) return 60000; const d = []; for (let i = Math.max(1, n - 60); i < n; i++) { const x = bars[i].t - bars[i - 1].t; if (x > 0) d.push(x); } d.sort((a, b) => a - b); return d.length ? d[Math.floor(d.length / 2)] : 60000; }
   function syncKey(bars) {
     const key = symNow() + ':' + tfNow();
-    if (key !== V.key) { V.key = key; V.n = defaultN(); V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
+    if (key !== V.key) { V.key = key; V.live = null; V.n = defaultN(); V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
     if (bars.length !== V.lastN) { // live update: stay glued to the live edge if the trader was there
       if (V.end != null && V.lastN && V.end >= V.lastN) V.end += bars.length - V.lastN;
       V.lastN = bars.length;
@@ -88,7 +107,7 @@
   window.smlChartModel = model;
   window.smlAcademyChartState = () => {
     const s = baseState(), m = model();
-    return m ? Object.assign({}, s, { offset: Math.max(0, m.N - m.end), scale: DEFAULT_N / m.slots, slots: m.slots, start: m.start, end: m.end, lo: m.lo, hi: m.hi }) : s;
+    return m ? Object.assign({}, s, { bars: m.bars, offset: Math.max(0, m.N - m.end), scale: DEFAULT_N / m.slots, slots: m.slots, start: m.start, end: m.end, lo: m.lo, hi: m.hi }) : s;
   };
   const baseApply = window.smlAcademyApplyMarket;
   if (typeof baseApply === 'function') window.smlAcademyApplyMarket = (payload) => { const r = baseApply(payload); emit(); return r; };
@@ -388,7 +407,7 @@
   let patternsDirty = true, found = null, foundKey = '';
   function runPatterns(m) {
     const P = window.SmlPatterns; if (!P || !P.detect) return null;
-    const key = m.symbol + ':' + m.tf + ':' + m.N + ':' + (m.bars[m.N - 1] && m.bars[m.N - 1].c);
+    const key = m.symbol + ':' + m.tf + ':' + m.N + ':' + (m.bars[m.N - 1] && m.bars[m.N - 1].t);
     if (found && key === foundKey && !patternsDirty) return found;
     try { found = P.detect(m.bars.map((b) => ({ t: +b.t, o: +b.o, h: +b.h, l: +b.l, c: +b.c, v: +b.v || 0 }))); } catch (_) { found = null; }
     foundKey = key; patternsDirty = false; renderPatternPanel(m); return found;
@@ -494,6 +513,6 @@
   let mtTries = 0; const mt = setInterval(() => { if (mountToolbar() || ++mtTries > 40) clearInterval(mt); }, 250);
   new ResizeObserver(() => emit()).observe(stage);
   window.addEventListener('resize', emit);
-  window.smlChartPro = { view: V, model, resetView, goLatest, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); } };
+  window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); } };
   emit();
 })(0);

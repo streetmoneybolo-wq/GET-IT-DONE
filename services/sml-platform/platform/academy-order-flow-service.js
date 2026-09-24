@@ -10,7 +10,7 @@ const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
  * WordPress sees a steady trickle instead of a burst. Symbols nobody looks at for two minutes are dropped; SPY and QQQ stay warm.
  * Every event is stored with its price so a job can record the 5-minute outcome, which is how the signals get measured before anyone leans on them.
  */
-function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, timers = { setTimeout, clearTimeout } } = {}) {
+function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timers = { setTimeout, clearTimeout } } = {}) {
   const engines = new Map();   // symbol -> { flow, lastTouch, nextAt, failures, closed, lastError, lastOk }
   const pending = [];          // { id, symbol, price0, side, dueAt }
   let running = false, timer = null, warnedAt = 0;
@@ -26,7 +26,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
         if (!victim) throw new TypeError('too_many_symbols');
         engines.delete(victim[0]);
       }
-      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0 };
+      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0 };
       engines.set(symbol, e);
     }
     e.lastTouch = now();
@@ -49,9 +49,14 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
       const data = await fetchOne(symbol);
       if (data.closed) { e.closed = true; e.nextAt = now() + closedPollMs; return; }
       e.closed = false; e.failures = 0; e.lastOk = now();
+      /* Poll fast for whoever is watching (live view), but feed the order-flow model at its calibrated ~2.5 s cadence so its windows keep their meaning. */
+      const cadence = now() - e.lastTouch < fastWindowMs ? fastPollMs : pollMs;
+      e.nextAt = now() + cadence;
+      absorbLive(e, data);
+      if (now() - e.lastPush < pollMs - 150) return;
+      e.lastPush = now();
       const r = e.flow.push(data);
-      if (!r.ok) { e.nextAt = now() + pollMs; return; }
-      e.nextAt = now() + pollMs;
+      if (!r.ok) return;
       const reading = r.emitted.length ? e.flow.analyze(now()) : null;
       for (const ev of r.emitted) {
         const price0 = reading && reading.book ? reading.book.mid : ev.price;
@@ -66,6 +71,21 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
       e.nextAt = now() + Math.min(60000, pollMs * 2 ** Math.min(5, e.failures));
       if (e.failures === 3 && now() - warnedAt > 300000) { warnedAt = now(); logger('warn', 'orderflow_poll_failing', { symbol, error: e.lastError }); }
     }
+  }
+
+  /* Keep the newest book and a de-duplicated tape of individual prints for the live view. */
+  function absorbLive(e, data) {
+    e.latest = data; e.seq++;
+    for (const k of data.ticks || []) {
+      const id = k && (k.id != null ? String(k.id) : [k.timestamp_ms, k.price, k.size].join(':'));
+      if (!id || e.seen.has(id)) continue;
+      const price = Number(k.price), size = Number(k.size), t = Number(k.timestamp_ms);
+      if (!Number.isFinite(price) || !Number.isFinite(size) || !Number.isFinite(t)) continue;
+      e.seen.add(id); e.tape.push({ t, price, size, dir: String(k.direction || '').toUpperCase() === 'BUY' ? 'B' : String(k.direction || '').toUpperCase() === 'SELL' ? 'S' : 'N' });
+    }
+    if (e.seen.size > 600) e.seen = new Set([...e.seen].slice(-300));
+    e.tape.sort((a, b) => a.t - b.t);
+    if (e.tape.length > 60) e.tape = e.tape.slice(-60);
   }
 
   async function settleOutcomes() {
@@ -113,7 +133,17 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return { symbol, ...a, grades, closed: e.closed, failing: e.failures >= 3, error: e.failures >= 3 ? e.lastError : '', servedAt: now() };
   }
 
-  return { start, stop, touch, get, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
+  /** Fast path for the live view: newest book levels + individual prints, straight from memory. */
+  function live(symbolRaw) {
+    const symbol = String(symbolRaw || '').toUpperCase();
+    const e = touch(symbol);
+    const d = e.latest;
+    if (!d) return { symbol, ready: false, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
+    const tape = e.tape.slice(-30).reverse();
+    return { symbol, ready: true, asOf: d.t, seq: e.seq, book: { bids: d.bids.slice(0, 10), asks: d.asks.slice(0, 10) }, tape, last: tape.length ? tape[0].price : null, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
+  }
+
+  return { start, stop, touch, get, live, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
 }
 
 module.exports = { createOrderFlowService };

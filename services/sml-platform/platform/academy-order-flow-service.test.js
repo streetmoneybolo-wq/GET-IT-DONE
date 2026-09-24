@@ -89,3 +89,21 @@ test('the store validates what it writes and never throws without a database', a
   assert.equal(await none.recordEvent({ symbol: 'SPY', ts: 1, kind: 'flip', side: 'bull' }), null);
   assert.deepEqual(await none.summary(), []);
 });
+
+test('live view: fast polling for a watched symbol, de-duplicated prints, model still fed at its own cadence', async () => {
+  const h = harness(); h.svc.start();
+  let n = 0;
+  h.setResponder(() => { n++; const ticks = [{ id: 'a' + (n % 3), timestamp_ms: h.now() - 200, price: 100 + n * 0.01, size: 100 + n, direction: n % 2 ? 'BUY' : 'SELL' }]; return { ok: true, json: async () => bookJson(h.now(), { ticks }) }; });
+  assert.equal(h.svc.live('SPY').ready, false);
+  for (let i = 0; i < 6; i++) { h.advance(1050); await h.svc.tick(); }
+  const v = h.svc.live('SPY');
+  assert.equal(v.ready, true);
+  assert.ok(v.book.bids.length && v.book.asks.length);
+  assert.ok(v.tape.length >= 1 && v.tape.length <= 30);
+  assert.ok(v.tape.every((t, i, a) => !i || a[i - 1].t >= t.t), 'newest first');
+  assert.equal(new Set(v.tape.map((t) => t.t + ':' + t.price + ':' + t.size)).size, v.tape.length, 'no duplicate prints');
+  assert.ok(n >= 5, 'polled about once a second while watched');
+  assert.ok(h.svc.get('SPY').snapshots <= 3, 'the order-flow model is fed at ~2.5s, not every poll');
+  assert.throws(() => h.svc.live('../x'), /invalid_symbol/);
+  h.svc.stop();
+});
