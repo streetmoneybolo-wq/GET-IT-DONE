@@ -34,7 +34,7 @@ const ROBOTIC = [
   /possibilit(?:y|ies),? not forecasts?/i, /not a (?:live|streaming) quote/i, /it is (?:important|worth) (?:to note|noting)/i,
   /in (?:conclusion|summary)\b/i, /\bdelve\b/i, /navigat(?:e|ing) the (?:landscape|market)/i, /\bin today'?s (?:fast-paced|dynamic) market/i,
   /as an ai\b/i, /\bAI[- ](?:assisted|generated|written|powered analysis)\b/i, /generated (?:by|with) (?:AI|an? (?:language|AI) model)/i, /\blanguage model\b/i,
-  /\b(?:this|the) (?:letter|article|analysis) was (?:auto-?)?generated\b/i, /\bit remains to be seen\b/i, /\bonly time will tell\b/i
+  /\b(?:this|the) (?:letter|article|analysis) was (?:automatically |auto-?)?generated\b/i, /\bit remains to be seen\b/i, /\bonly time will tell\b/i
 ];
 /* Every price-like number in the scenarios must sit on a number from the evidence (within rounding). This is the check the verifier kept failing letters on. */
 function evidenceNumbers(p) {
