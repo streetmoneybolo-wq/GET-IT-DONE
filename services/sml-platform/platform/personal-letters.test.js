@@ -31,3 +31,29 @@ test('uncertain claim is not retried', async () => {
  let count=0;const p=packet();
  await assert.rejects(runOnce({request:async path=>{if(path==='context')return{due:true,packet:p};count++;throw new Error('timeout');},ai:{}}));assert.equal(count,1);
 });
+const { roboticHits, createAI } = require('./personal-letters');
+const long = 'word '.repeat(60).trim();
+const modern = () => ({ title: '$NVDA Pushes Higher and the Range Gets Tight', subtitle: 'A tighter tape', excerpt: 'Buyers stepped in.', focus_keyword: 'NVDA stock', meta_description: 'Why the NVDA move matters.',
+  hook: 'Buyers showed up early. They did not leave.', watch_next: long, image_prompt: 'Abstract glowing green line chart on dark glass', keywords: ['NVDA stock', 'NVDA breakout'],
+  sections: [1, 2, 3].map(i => ({ heading: `Part ${i}`, paragraphs: [long] })), scenarios: { bullish: long, bearish: long, neutral: long } });
+test('new structured article (hook, scenarios, keywords) validates', () => { const r = validateArticle(modern(), packet()); assert.deepEqual(Object.keys(r.scenarios), ['bullish', 'bearish', 'neutral']); assert.equal(r.keywords.length, 2); });
+test('scenarios must be exactly bullish/bearish/neutral', () => { const a = modern(); a.scenarios = { bullish: long, bearish: long }; assert.throws(() => validateArticle(a, packet())); });
+test('robotic phrasing from the old voice is caught', () => {
+  const a = modern(); a.sections[0].paragraphs = ['What the observed move shows is limited. This does not establish a trend, and these are possibilities, not forecasts.'];
+  assert.ok(roboticHits(a).length >= 2); assert.equal(roboticHits(modern()).length, 0);
+});
+test('generate = write, audit, one rewrite when the audit fails; still one attempt', async () => {
+  const p = packet(), calls = []; let n = 0;
+  const fetchImpl = async (url, opts) => { const body = JSON.parse(opts.body); const name = body.text.format.name; calls.push(name);
+    const out = name === 'personal_letter_voice_audit' ? { pass: false, issues: ['Scenarios are generic.'] } : modern();
+    return { ok: true, json: async () => ({ status: 'completed', output_text: JSON.stringify(out), output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(out) }] }] }) }; };
+  const ai = createAI({ apiKey: 'k', model: 'm', fetchImpl });
+  const r = await ai.generate(p);
+  assert.deepEqual(calls, ['personal_letter', 'personal_letter_voice_audit', 'personal_letter']); assert.ok(r.hook);
+});
+test('a rewrite that is still robotic is held, not published', async () => {
+  const p = packet(); const bad = modern(); bad.hook = 'This does not establish anything. Nothing else.';
+  const fetchImpl = async (url, opts) => { const name = JSON.parse(opts.body).text.format.name; const out = name === 'personal_letter_voice_audit' ? { pass: true, issues: [] } : bad;
+    return { ok: true, json: async () => ({ status: 'completed', output_text: JSON.stringify(out), output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(out) }] }] }) }; };
+  await assert.rejects(createAI({ apiKey: 'k', model: 'm', fetchImpl }).generate(p), /voice_check_failed/);
+});
