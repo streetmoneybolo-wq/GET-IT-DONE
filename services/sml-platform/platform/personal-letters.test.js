@@ -78,3 +78,20 @@ test('any hint at how the piece was produced is caught', () => {
   }
   const ok = modern(); ok.hook = 'AI chip demand keeps pulling buyers into the tape. They have not left.'; assert.equal(roboticHits(ok).length, 0);
 });
+test('over-long SEO fields are trimmed to a whole word, byte-counted (curly quotes cost 3)', () => {
+  const a = modern(); a.meta_description = ('“Buyers” kept stepping in — and sellers didn’t answer. '.repeat(8)).trim(); a.excerpt = 'word '.repeat(200);
+  const r = validateArticle(a, packet());
+  assert.ok(Buffer.byteLength(r.meta_description) <= 180 && r.meta_description.length > 40); assert.ok(Buffer.byteLength(r.excerpt) <= 400);
+});
+test('angle brackets and urls in text are removed, not fatal', () => {
+  const a = modern(); a.hook = 'Buyers showed up <early> and stayed. See https://example.com now.'; const r = validateArticle(a, packet());
+  assert.ok(!/[<>]|https?:/.test(r.hook));
+});
+test('a too-long title gets the one rewrite with the exact reason, then publishes', async () => {
+  const p = packet(), calls = []; const bad = modern(); bad.title = '$NVDA ' + 'x'.repeat(200);
+  const fetchImpl = async (u, o) => { const b = JSON.parse(o.body); const name = b.text.format.name; calls.push(name + (name === 'personal_letter' ? ':' + (/failed validation \(invalid_text_title\)/.test(b.input[1].content) ? 'rewrite' : 'write') : ''));
+    const out = name === 'personal_letter_voice_audit' ? { pass: true, issues: [] } : (calls.filter(c => c.startsWith('personal_letter:')).length === 1 ? bad : modern());
+    return { ok: true, json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(out) }] }] }) }; };
+  const r = await createAI({ apiKey: 'k', model: 'm', fetchImpl }).generate(p);
+  assert.deepEqual(calls, ['personal_letter:write', 'personal_letter:rewrite']); assert.ok(r.title.length < 140);
+});

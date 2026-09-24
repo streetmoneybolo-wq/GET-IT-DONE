@@ -116,26 +116,38 @@ function packetValid(p, now = Date.now()) {
 function validateArticle(a, p) {
   const allowed = new Set([...Object.keys(bounds), ...Object.keys(extraBounds), 'sections', 'scenarios', 'keywords']);
   if (!a || Object.keys(a).some(k => !allowed.has(k))) throw new Error('invalid_article');
-  const check = (v, n) => {
-    if (typeof v !== 'string' || !v.trim() || Buffer.byteLength(v) > n || /[<>]|https?:\/\//i.test(v)) throw new Error('invalid_text');
+  /* The limits are BYTES (the WordPress side measures bytes too); curly quotes and dashes cost 3 each, so a model that counts characters overshoots.
+     Short SEO-style fields are trimmed to the last whole word that fits; anything that would need a real rewrite fails with the field name. */
+  const fit = (v, n) => {
+    if (Buffer.byteLength(v) <= n) return v;
+    let out = '';
+    for (const word of v.split(/(\s+)/)) { if (Buffer.byteLength(out + word) > n) break; out += word; }
+    return out.trim().replace(/[\s,;:—–-]+$/, '');
+  };
+  const SOFT = new Set(['subtitle', 'excerpt', 'meta_description', 'focus_keyword', 'image_prompt', 'watch_next']);
+  const check = (v, n, label = 'text') => {
+    if (typeof v !== 'string' || !v.trim()) throw new Error(`invalid_text_${label}`);
+    v = v.replace(/https?:\/\/\S+/gi, '').replace(/[<>]/g, '').replace(/[ \t]{2,}/g, ' ').trim();
+    if (SOFT.has(label)) v = fit(v, n);
+    if (!v || Buffer.byteLength(v) > n) throw new Error(`invalid_text_${label}`);
     for (const m of v.matchAll(/\$([A-Z][A-Z0-9.-]*)\b/g)) if (m[1] !== p.symbol) throw new Error('unsupported_ticker');
     return ensureTickerPrefixes(v, [`$${p.symbol}`]);
   };
-  const result = Object.fromEntries(Object.entries(bounds).map(([k, n]) => [k, check(a[k], n)]));
+  const result = Object.fromEntries(Object.entries(bounds).map(([k, n]) => [k, check(a[k], n, k)]));
   // Newer fields are optional so an older-shaped article still validates; the model is asked for all of them.
-  for (const [k, n] of Object.entries(extraBounds)) if (a[k] !== undefined) result[k] = check(a[k], n);
+  for (const [k, n] of Object.entries(extraBounds)) if (a[k] !== undefined) result[k] = check(a[k], n, k);
   if (!Array.isArray(a.sections) || a.sections.length < 3 || a.sections.length > 8) throw new Error('invalid_sections');
   result.sections = a.sections.map(s => {
     if (!s || Object.keys(s).some(k => !['heading', 'paragraphs'].includes(k)) || !Array.isArray(s.paragraphs) || !s.paragraphs.length || s.paragraphs.length > 5) throw new Error('invalid_section');
-    return { heading: check(s.heading, 120), paragraphs: s.paragraphs.map(v => check(v, 2500)) };
+    return { heading: check(s.heading, 120, 'heading'), paragraphs: s.paragraphs.map(v => check(v, 2500, 'paragraph')) };
   });
   if (a.scenarios !== undefined) {
     if (!a.scenarios || typeof a.scenarios !== 'object' || Object.keys(a.scenarios).sort().join() !== [...SCENARIO_KEYS].sort().join()) throw new Error('invalid_scenarios');
-    result.scenarios = Object.fromEntries(SCENARIO_KEYS.map(k => [k, check(a.scenarios[k], 1500)]));
+    result.scenarios = Object.fromEntries(SCENARIO_KEYS.map(k => [k, check(a.scenarios[k], 1500, 'scenario')]));
   }
   if (a.keywords !== undefined) {
     if (!Array.isArray(a.keywords) || a.keywords.length > 8) throw new Error('invalid_keywords');
-    result.keywords = a.keywords.map(k => check(k, 60));
+    result.keywords = a.keywords.map(k => check(k, 60, 'keyword'));
   }
   const words = [result.hook, ...result.sections.flatMap(s => s.paragraphs), ...Object.values(result.scenarios || {}), result.watch_next]
     .filter(Boolean).join(' ').split(/\s+/).length;
@@ -163,9 +175,17 @@ function createAI({ apiKey, model, fetchImpl = fetch }) {
     // One reserved attempt = write, a voice audit, and at most one rewrite. The daily ledger still counts a single attempt.
     async generate(p) {
       packetValid(p);
-      let draft = validateArticle(await call(WRITE, p, ARTICLE_SCHEMA, 'personal_letter', 5000), p);
-      const audit = await call(AUDIT, { evidence: p, article: draft }, VERIFY_SCHEMA, 'personal_letter_voice_audit', 1500);
-      const issues = [...(audit.pass ? [] : audit.issues || []), ...roboticHits(draft), ...unsupportedLevels(draft, p)];
+      const first = await call(WRITE, p, ARTICLE_SCHEMA, 'personal_letter', 5000);
+      let draft, issues;
+      try {
+        draft = validateArticle(first, p);
+        const audit = await call(AUDIT, { evidence: p, article: draft }, VERIFY_SCHEMA, 'personal_letter_voice_audit', 1500);
+        issues = [...(audit.pass ? [] : audit.issues || []), ...roboticHits(draft), ...unsupportedLevels(draft, p)];
+      } catch (error) {
+        if (!/^(invalid_text_[a-z_]+|insufficient_or_excessive_content|missing_title_ticker|unsupported_ticker|invalid_section[s]?|invalid_scenarios|invalid_keywords)$/.test(error.message || '')) throw error;
+        draft = first;
+        issues = [`The draft failed validation (${error.message}). Fix it: keep every field within its length limit (counted in bytes; curly quotes and dashes count 3), 400 to 750 words in total, the $TICKER in the title, no angle brackets or URLs, and only the supplied ticker.`];
+      }
       if (issues.length) {
         draft = validateArticle(await call(REWRITE, { evidence: p, draft, issues }, ARTICLE_SCHEMA, 'personal_letter', 5000), p);
         if (roboticHits(draft).length) throw new Error('voice_check_failed');
