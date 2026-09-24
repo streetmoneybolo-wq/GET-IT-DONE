@@ -1163,3 +1163,19 @@ html.sml-mobile .slw-premiere-cd .cd{font-size:22px}
 @keyframes slwLockPulse{0%{box-shadow:0 0 0 0 rgba(0,255,136,.6)}70%,100%{box-shadow:0 0 0 9px rgba(0,255,136,0)}}
 @keyframes slwLockNudge{0%,100%{transform:none}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
 @media (prefers-reduced-motion:reduce){.slw-lock-card,.slw-lock-k i,.slw-lock.nudge .slw-lock-card{animation:none}}
+
+/* channel emotes */
+.slw-emote{height:1.7em;width:auto;max-width:5em;vertical-align:-.45em;margin:0 1px}
+.slw-emo{background:transparent;border:0;color:#9fb2c7;font-size:20px;line-height:1;cursor:pointer;padding:0 6px}
+.slw-emo:hover{color:#fff}
+.slw-composer{position:relative}
+.slw-emopop{position:absolute;left:0;bottom:calc(100% + 8px);width:min(320px,92vw);background:#0b131f;border:1px solid #223146;border-radius:12px;padding:10px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:30}
+.slw-emopop[hidden]{display:none}
+.slw-emopop .ep-note{font-size:12px;color:#9fb2c7;margin:0 0 8px;line-height:1.45}
+.slw-emopop .ep-note.lock{color:#f5a623}
+.slw-emopop .ep-note a{color:#2b6cff;font-weight:700}
+.slw-emopop .ep-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;max-height:190px;overflow:auto}
+.slw-emopop .ep-e{background:#0d1622;border:1px solid #182130;border-radius:8px;padding:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;aspect-ratio:1}
+.slw-emopop .ep-e:hover{border-color:#2b6cff}
+.slw-emopop .ep-e.off{opacity:.4;cursor:not-allowed}
+.slw-emopop .ep-e img{max-width:100%;max-height:100%;object-fit:contain}

@@ -306,6 +306,48 @@
     var stored = parseInt(m.replyCount, 10) || 0;
     return Math.max(loaded, stored);
   }
+  /* Channel emotes: the creator's uploads render as :name: in chat. Only Premium members of the channel can SEND them (enforced by the server at send time). */
+  var EM = { map: {}, list: [], can: false, join: '', channel: '', signed: false, ready: false };
+  function emo(t) {
+    if (!EM || !EM.ready || !t || t.indexOf(':') < 0) return t;
+    return t.replace(/:([a-z0-9_]{2,24}):/gi, function (all, n) {
+      var u = EM.map[String(n).toLowerCase()];
+      return u ? '<img class="slw-emote" src="' + esc(u) + '" alt=":' + esc(n) + ':" title=":' + esc(n) + ':" loading="lazy">' : all;
+    });
+  }
+  function emoPaint() {
+    var pop = el('#slw-emopop'); if (!pop) return;
+    var head = EM.can ? '<div class="ep-note">Your channel emotes</div>'
+      : '<div class="ep-note lock">🔒 ' + (EM.signed ? 'Premium members of ' + esc(EM.channel || 'this channel') + ' can use these emotes.' : 'Sign in — Premium members of ' + esc(EM.channel || 'this channel') + ' can use these emotes.') +
+        (EM.join && EM.signed ? ' <a href="' + esc(EM.join) + '" target="_blank" rel="noopener">Join Premium</a>' : '') + '</div>';
+    pop.innerHTML = head + '<div class="ep-grid">' + EM.list.map(function (e) {
+      return '<button type="button" class="ep-e' + (EM.can ? '' : ' off') + '" data-emo="' + esc(e.name) + '" title=":' + esc(e.name) + ':"' + (EM.can ? '' : ' disabled') + '><img src="' + esc(e.url) + '" alt=":' + esc(e.name) + ':"></button>';
+    }).join('') + '</div>';
+  }
+  function loadEmotes() {
+    if (SIM) return;
+    api('/sml-emotes/v1/list/' + encodeURIComponent(HANDLE)).then(function (res) {
+      var j = res.ok && res.j; if (!j || !Array.isArray(j.emotes) || !j.emotes.length) return;
+      EM.list = j.emotes; EM.can = !!j.can_use; EM.join = j.join_url || ''; EM.channel = j.channel || ''; EM.signed = !!j.signed_in;
+      j.emotes.forEach(function (e) { EM.map[String(e.name).toLowerCase()] = e.url; });
+      EM.ready = true;
+      var comp = el('#slw-composer'), cin = el('#slw-cin');
+      if (comp && cin && !el('#slw-emo')) {
+        var b = document.createElement('button'); b.type = 'button'; b.id = 'slw-emo'; b.className = 'slw-emo'; b.title = 'Channel emotes'; b.setAttribute('aria-label', 'Channel emotes'); b.textContent = '☺';
+        var pop = document.createElement('div'); pop.id = 'slw-emopop'; pop.className = 'slw-emopop'; pop.hidden = true;
+        comp.insertBefore(b, cin); comp.insertBefore(pop, cin);
+        b.onclick = function () { pop.hidden = !pop.hidden; if (!pop.hidden) emoPaint(); };
+        pop.addEventListener('click', function (ev) {
+          var t = ev.target.closest('[data-emo]'); if (!t || !EM.can) return;
+          cin.value += (cin.value && !/\s$/.test(cin.value) ? ' ' : '') + ':' + t.getAttribute('data-emo') + ': ';
+          cin.focus(); pop.hidden = true;
+        });
+        document.addEventListener('click', function (ev) { if (!pop.hidden && !ev.target.closest('#slw-emopop') && !ev.target.closest('#slw-emo')) pop.hidden = true; });
+      }
+      if (S.msgs && S.msgs.length) renderFeed();
+    }).catch(function () {});
+  }
+
   function msgHTML(m, i) {
     if (m.sys) {
       return '<div class="slw-msg sys" data-id="' + m.id + '"><div class="av">' + m.ini + '</div><div class="bd">' +
@@ -319,7 +361,7 @@
       '<div class="hd"><span class="hn" style="' + avStyle(i) + '">@' + m.h + '</span><span class="at">' + m.at + '</span>' +
       '<button class="rp" data-th="' + m.id + '">↩ Reply</button>' +
       (canRm ? '<button class="rm" data-rm="' + esc(String(m.rawId)) + '" title="' + (S.canMod ? 'Remove (moderator)' : 'Remove my message') + '">✕</button>' : '') + '</div>' +
-      '<span class="tx">' + esc(m.tx) + '</span>' +
+      '<span class="tx">' + emo(esc(m.tx)) + '</span>' +
       (rl ? '<button class="open-th" data-th="' + m.id + '">↳ ' + rl + ' repl' + (rl === 1 ? 'y' : 'ies') + ' — open thread</button>' : '') +
       '</div></div>';
   }
@@ -336,7 +378,7 @@
     el('#slw-tt').style.display = ranked.length ? '' : 'none';
     el('#slw-tt-rows').innerHTML = ranked.map(function (m, i) {
       return '<div class="slw-tt' + (i === 0 ? ' first' : '') + '" data-th="' + m.id + '"><span class="rk">' + (i + 1) + '</span>' +
-        '<span class="tx"><b>@' + m.h + '</b> · ' + esc(m.tx) + '</span><span class="ct">' + replyCount(m) + ' ↩</span></div>';
+        '<span class="tx"><b>@' + m.h + '</b> · ' + emo(esc(m.tx)) + '</span><span class="ct">' + replyCount(m) + ' ↩</span></div>';
     }).join('');
   }
   function threadMessage() {
@@ -378,7 +420,7 @@
       : '<div class="slw-thread-gate">' + esc(threadPostReason()) + '</div>';
     tw.innerHTML = '<div class="slw-thread-h"><button class="slw-back" id="slw-tback">← All chat</button><b>THREAD</b><span>' + replyCount(m) + ' repl' + (replyCount(m) === 1 ? 'y' : 'ies') + '</span></div>' +
       '<div class="slw-thread-root"><div class="av" style="' + avStyle(ti) + rootAvatar + '">' + (rootAvatar ? '' : m.ini) + '</div><div class="bd">' +
-      '<span class="hn" style="' + avStyle(ti) + '">@' + m.h + '</span><span class="at">' + m.at + '</span><span class="tx">' + esc(m.tx) + '</span></div></div>' +
+      '<span class="hn" style="' + avStyle(ti) + '">@' + m.h + '</span><span class="at">' + m.at + '</span><span class="tx">' + emo(esc(m.tx)) + '</span></div></div>' +
       '<div class="slw-thread-list">' + (m.threadLoading ? '<div class="slw-chat-empty" style="display:block">Loading replies…</div>' : (replies.length ? replies.map(function (r, j) {
         var replyAvatar = avatarExtra(r.avatar);
         return '<div class="slw-reply"><div class="av" style="' + avStyle(j + 1) + replyAvatar + '">' + (replyAvatar ? '' : r.ini) + '</div><div class="bd">' +
@@ -1723,6 +1765,7 @@
     el('#slw-chat-empty').style.display = '';
   }
   var seen = {}, chatCursor = '';
+  loadEmotes();
   if (!SIM) {
     api('/sml-lcm/v1/room/' + CHAT_ROOM + '/me').then(function (res) {
       if (res.ok && res.j) { S.me = parseInt(res.j.uid || 0, 10) || 0; S.canMod = !!res.j.can_moderate; if (S.msgs.length) renderFeed(); }

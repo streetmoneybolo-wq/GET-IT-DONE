@@ -1128,7 +1128,7 @@ if (!function_exists('sml_gl_script')) {
         : '<span style="width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#17314c;color:#9ce7c0;font-size:10px;font-weight:800">' + esc(m.name.slice(0, 2).toUpperCase()) + '</span>';
       return '<article style="display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid rgba(151,175,200,.10)">'
         + avatar + '<div style="min-width:0"><div style="display:flex;gap:7px;align-items:baseline"><b style="font-size:12px;color:#e6edf5">' + esc(m.name) + '</b><small style="font-size:10px;color:#7e92a8">' + esc(creatorChatTime(m.created)) + '</small></div>'
-        + '<p style="margin:2px 0 0;color:#c6d2df;font-size:12.5px;line-height:1.4;overflow-wrap:anywhere">' + esc(m.message) + '</p></div></article>';
+        + '<p style="margin:2px 0 0;color:#c6d2df;font-size:12.5px;line-height:1.4;overflow-wrap:anywhere">' + glcEmo(esc(m.message)) + '</p></div></article>';
     }).join('');
     feed.scrollTop = feed.scrollHeight;
   }
@@ -1982,7 +1982,7 @@ if (!function_exists('sml_gl_script')) {
      One panel, six tabs, every action real: Distribute posts (now / at a time / before start / at a viewer milestone / repeating),
      Q&A + polls (sml-engage), Boost (sml-lw), Super Chat totals, groups the creator owns or belongs to, and the watch-page orbit.
      "Next Best Moves" ranks what to do next from live signals; nothing posts without the creator pressing a button. */
-  var ctl = { st: null, moves: null, tab: 'promote', timer: null, busy: false, sel: null, form: null, prev: null, msg: '', qa: null, polls: null, boost: null, orbit: null, chan: {}, orbitMsg: '' };
+  var ctl = { st: null, moves: null, tab: 'promote', timer: null, busy: false, sel: null, form: null, prev: null, msg: '', qa: null, polls: null, boost: null, orbit: null, chan: {}, orbitMsg: '', em: null, emMsg: '', emMap: {} };
 
   function glcCss() {
     if (document.getElementById('glc-css')) { return; }
@@ -2044,6 +2044,7 @@ if (!function_exists('sml_gl_script')) {
   function startControl() {
     if (ctl.timer) { return; }
     pollControl();
+    if (ctl.em === null) { glcEmoLoad(); }
     ctl.timer = window.setInterval(pollControl, 12000);
   }
   function stopControl() {
@@ -2059,6 +2060,8 @@ if (!function_exists('sml_gl_script')) {
       api('/wp-json/sml-lw/v1/boost?handle=' + encodeURIComponent(glcHandle()) + '&_=' + Date.now()).then(function (d) { ctl.boost = d; paintControl(true); }).catch(function () {});
     } else if (tab === 'orbit') {
       glcOrbitLoad();
+    } else if (tab === 'emotes') {
+      glcEmoLoad();
     } else if (tab === 'groups') {
       (ctl.st && ctl.st.groups || []).forEach(function (g) {
         if (ctl.chan[g.id]) { return; }
@@ -2084,9 +2087,9 @@ if (!function_exists('sml_gl_script')) {
 
   function glcTabs() {
     var st = ctl.st || {};
-    var tabs = [['promote', 'Promote'], ['qa', 'Q&A + Polls'], ['boost', 'Boost'], ['money', 'Super Chats'], ['groups', 'Groups'], ['orbit', 'Orbit']];
+    var tabs = [['promote', 'Promote'], ['qa', 'Q&A + Polls'], ['boost', 'Boost'], ['money', 'Super Chats'], ['groups', 'Groups'], ['orbit', 'Orbit'], ['emotes', 'Emotes']];
     return '<div class="glc-tabs" role="tablist">' + tabs.map(function (t) {
-      var n = t[0] === 'promote' ? (st.promos || []).filter(function (p) { return p.status === 'active'; }).length : t[0] === 'money' ? ((st.money && st.money.n) || 0) : t[0] === 'groups' ? (st.groups || []).length : 0;
+      var n = t[0] === 'promote' ? (st.promos || []).filter(function (p) { return p.status === 'active'; }).length : t[0] === 'money' ? ((st.money && st.money.n) || 0) : t[0] === 'groups' ? (st.groups || []).length : t[0] === 'emotes' ? ((ctl.em && ctl.em.used) || 0) : 0;
       return '<button class="glc-tab' + (ctl.tab === t[0] ? ' on' : '') + '" role="tab" data-glc-tab="' + t[0] + '">' + t[1] + (n ? '<em>' + n + '</em>' : '') + '</button>';
     }).join('') + '</div>';
   }
@@ -2221,7 +2224,9 @@ if (!function_exists('sml_gl_script')) {
     /* never repaint under a control the creator is typing in */
     var ae = document.activeElement;
     if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'checkbox' && ae.type !== 'file' && keepScroll !== 'force') { return; }
-    var tab = ctl.tab === 'promote' ? glcPromoTab() : ctl.tab === 'qa' ? glcQaTab() : ctl.tab === 'boost' ? glcBoostTab() : ctl.tab === 'money' ? glcMoneyTab() : ctl.tab === 'groups' ? glcGroupsTab() : glcOrbitTab();
+    /* a picked-but-unsent emote file must survive the 12 s refresh */
+    if (ctl.tab === 'emotes' && keepScroll !== 'force') { var pf = document.querySelector('[data-glc-emo-file]'), pn = document.querySelector('[data-glc-emo-name]'); if ((pf && pf.files && pf.files.length) || (pn && pn.value)) { return; } }
+    var tab = ctl.tab === 'promote' ? glcPromoTab() : ctl.tab === 'qa' ? glcQaTab() : ctl.tab === 'boost' ? glcBoostTab() : ctl.tab === 'money' ? glcMoneyTab() : ctl.tab === 'groups' ? glcGroupsTab() : ctl.tab === 'emotes' ? glcEmotesTab() : glcOrbitTab();
     body.innerHTML = glcMoves() + glcTabs() + tab;
   }
 
@@ -2237,6 +2242,37 @@ if (!function_exists('sml_gl_script')) {
     box.innerHTML = qs.length ? qs.map(function (x) {
       return '<div class="glc-row"><span>' + (x.pinned ? '📌 ' : '') + esc(x.body) + '<small>' + esc(x.from || 'Viewer') + ' · ' + (x.upvotes || 0) + ' ▲</small></span><button class="glc-btn sm" data-glc-qa="answer:' + x.id + '">Answered</button></div>';
     }).join('') : (ctl.qa === null ? 'Loading…' : 'No questions waiting.');
+  }
+
+  /* Channel emotes: up to 25 per channel (server-side limit). Only Premium members of the channel can use them in chat. */
+  function glcEmo(t) {
+    if (typeof ctl === 'undefined' || !ctl || !ctl.emMap || !t || t.indexOf(':') < 0) { return t; }
+    return t.replace(/:([a-z0-9_]{2,24}):/gi, function (all, n) {
+      var u = ctl.emMap[String(n).toLowerCase()];
+      return u ? '<img src="' + esc(u) + '" alt=":' + esc(n) + ':" title=":' + esc(n) + ':" style="height:1.7em;width:auto;max-width:5em;vertical-align:-.45em">' : all;
+    });
+  }
+  function glcEmoLoad() {
+    return api('/wp-json/sml-emotes/v1/mine').then(function (d) {
+      ctl.em = d; ctl.emMap = {};
+      (d.emotes || []).forEach(function (e) { ctl.emMap[String(e.name).toLowerCase()] = e.url; });
+      paintControl(true); renderCreatorChat();
+    }).catch(function (e) { ctl.em = { emotes: [], used: 0, limit: 25, error: (e && e.message) || 'Emotes are unavailable.' }; paintControl(true); });
+  }
+  function glcEmotesTab() {
+    var d = ctl.em;
+    if (d === null) { return '<div class="glc-box"><p class="glc-note">Loading…</p></div>'; }
+    if (d.error) { return '<div class="glc-box"><p class="glc-note bad">' + esc(d.error) + '</p></div>'; }
+    var full = d.used >= d.limit;
+    return '<div class="glc-box"><h4>Channel emotes · ' + d.used + ' / ' + d.limit + '</h4>'
+      + (d.emotes.length ? '<div class="glc-orb">' + d.emotes.map(function (e) {
+        return '<figure><img alt=":' + esc(e.name) + ':" src="' + esc(e.url) + '" style="height:64px"><span style="font-size:12px;color:#dbe6f2;text-align:center">:' + esc(e.name) + ':</span><button class="glc-btn red sm" data-glc-emo-rm="' + e.id + '">Remove</button></figure>';
+      }).join('') + '</div>' : '<p class="glc-note" style="margin-top:0">No emotes yet. Add up to ' + d.limit + ' — viewers type <b>:name:</b> in chat to use one.</p>')
+      + '<div class="glc-f"><input class="glc-in" style="width:150px" maxlength="24" placeholder="name (e.g. pog)" data-glc-emo-name' + (full ? ' disabled' : '') + '>'
+      + '<input type="file" accept="image/png,image/gif,image/webp" data-glc-emo-file' + (full ? ' disabled' : '') + '> <button class="glc-btn" data-glc-emo-add' + (full ? ' disabled' : '') + '>Add emote</button></div>'
+      + (ctl.emMsg ? '<p class="glc-note ' + (/^✓/.test(ctl.emMsg) ? 'ok' : 'bad') + '">' + esc(ctl.emMsg) + '</p>' : '')
+      + '<p class="glc-note">PNG, GIF (animated is fine) or WebP, up to ' + d.max_kb + ' KB and ' + d.max_px + ' px. <b>Only your Premium members can use your emotes in chat</b>; everyone else sees them but cannot send them.'
+      + (d.premium_groups ? '' : ' You have no Premium group yet, so for now only you can use them.') + '</p></div>';
   }
 
   function glcSetTab(tab) { ctl.tab = tab; ctl.msg = ''; glcTabLoad(tab); paintControl('force'); }
@@ -2315,6 +2351,21 @@ if (!function_exists('sml_gl_script')) {
       if (!window.confirm('Post your stream link in this group now?')) { return; }
       api(glcBase() + '/promo', { method: 'POST', json: { stream: glcStreamId(), kind: (draft.live && draft.live.status === 'scheduled') ? 'soon' : 'start', text: '', accounts: [], group_channels: [Number(a('data-glc-gann'))], when: 'now' } })
         .then(function () { ctl.msg = '✓ Announced.'; pollControl(); }).catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
+      return;
+    }
+    if (t.hasAttribute('data-glc-emo-add')) {
+      var en = document.querySelector('[data-glc-emo-name]'), ef = document.querySelector('[data-glc-emo-file]');
+      if (!en || !ef || !ef.files || !ef.files[0]) { ctl.emMsg = 'Pick an image first.'; paintControl('force'); return; }
+      var efd = new FormData(); efd.append('name', en.value); efd.append('file', ef.files[0]);
+      ctl.emMsg = 'Uploading…'; paintControl('force');
+      api('/wp-json/sml-emotes/v1/upload', { method: 'POST', body: efd })
+        .then(function () { ctl.emMsg = '✓ Added.'; return glcEmoLoad(); })
+        .catch(function (er) { ctl.emMsg = er.message || 'Upload failed.'; paintControl('force'); });
+      return;
+    }
+    if (a('data-glc-emo-rm')) {
+      if (!window.confirm('Remove this emote? Old chat messages using it will show the plain text.')) { return; }
+      api('/wp-json/sml-emotes/v1/' + a('data-glc-emo-rm'), { method: 'DELETE' }).then(function () { ctl.emMsg = ''; return glcEmoLoad(); }).catch(function (er) { ctl.emMsg = er.message; paintControl('force'); });
       return;
     }
     if (a('data-glc-orm') !== null) { var om = ctl.orbit[Number(a('data-glc-orm'))]; if (om && window.confirm('Remove this image from your orbit?')) { glcDo(api('/wp-json/wp/v2/media/' + om.id, { method: 'POST', json: { title: 'orbit-removed-' + Date.now() } }), '', 'orbit'); } return; }
