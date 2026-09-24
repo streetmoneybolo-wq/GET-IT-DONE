@@ -929,3 +929,11 @@ test('the live tick route serves the fast book + prints, validates symbols, and 
   assert.match(html, /__smlLiveTape/);
   assert.match(html, /body:not\(\.academy-lesson-open\) \.academy-guide/);
 });
+
+test('the options chain sits under the chart with a price calculator beside it', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /__smlOptionsDock/);
+  assert.match(html, /OPTIONS PRICE CALCULATOR/);
+  assert.match(html, /SmlOptionsCalc/);
+});

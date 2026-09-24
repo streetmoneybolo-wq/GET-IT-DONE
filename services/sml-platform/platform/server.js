@@ -541,8 +541,10 @@ const ACADEMY_MEM_ALGO = (() => {
     const patterns = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-patterns.js'), 'utf8'); } catch (_) { return ''; } })();
     const pro = fs.readFileSync(pathModule.join(__dirname, 'academy-chart-pro.js'), 'utf8');
     const liveFeed = fs.readFileSync(pathModule.join(__dirname, 'academy-live.js'), 'utf8');
+    const optionsCalc = fs.readFileSync(pathModule.join(__dirname, 'academy-options-calc.js'), 'utf8');
+    const optionsDock = fs.readFileSync(pathModule.join(__dirname, 'academy-options-dock.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
-    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
+    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
   } catch (_) { return ''; } // the chart must load even if the model files are missing
 })();
 
