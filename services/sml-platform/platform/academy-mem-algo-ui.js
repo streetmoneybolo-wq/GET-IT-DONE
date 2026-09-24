@@ -26,6 +26,7 @@
   css.textContent = `
 #mem-algo-toggle{margin-left:4px;padding:5px 10px;border:1px solid #2b5c4c;border-radius:7px;background:#0e1f1a;color:#52e6ad;font:800 .66rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}
 #mem-algo-toggle.on{background:#00d084;color:#04140d;border-color:#00d084}
+#mem-algo-panel .mem-conv{margin-top:8px;padding:8px 10px;border:1px solid #1d3a48;border-radius:8px;background:#07121b}#mem-algo-panel .mem-conv.warnbox{border-color:#a4485a}#mem-algo-panel .mem-conv ul{list-style:none;margin:6px 0 0;padding:0}#mem-algo-panel .mem-conv li{margin:0 0 5px;font-size:.72rem}#mem-algo-panel .mem-conv li span{display:inline-block;width:14px;font-weight:800}#mem-algo-panel .mem-conv li.ok span{color:#52e6ad}#mem-algo-panel .mem-conv li.no span{color:#ff778b}#mem-algo-panel .mem-conv li.na{opacity:.55}#mem-algo-panel .mem-conv em{float:right;font-style:normal;color:#8fa6b3}#mem-algo-panel .mem-conv small{color:#8fa6b3}
 #mem-algo-layer{position:absolute;pointer-events:none;z-index:4;background:transparent;border:0;border-radius:0;min-height:0;max-width:none}
 #mem-algo-panel{position:absolute;right:14px;top:58px;z-index:7;width:min(340px,calc(100% - 28px));max-height:calc(100% - 76px);overflow:auto;background:#0b141c;border:1px solid #23495a;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.55);color:#dbe6ec;font:13px/1.45 system-ui,sans-serif;display:none}
 #mem-algo-panel.open{display:block}
@@ -80,8 +81,21 @@
   function refreshUrl() { return '/academy-activity/market?symbol=' + encodeURIComponent(symbol()) + '&tf=' + encodeURIComponent(tf()); }
   function recompute() {
     if (!S.raw) return;
-    S.data = E.analyze(S.raw.bars, S.mode, S.params[S.mode] || {}, tf());
+    S.data = E.analyze(S.raw.bars, S.mode, S.params[S.mode] || {}, tf(), S.ctx || {});
     S.idx = new Map(); S.raw.bars.forEach((b, i) => S.idx.set(Number(b.t), i));
+  }
+  // Confluence data for the hold strategies: the next timeframe up, and the benchmark (SPY) on the same timeframe. Fetched once per symbol/timeframe.
+  const HTF = { '1D': '1W', '1W': '1M' };
+  async function loadCtx() {
+    const st = E.STRATEGIES[S.mode]; if (!st || st.params.minScore == null) { S.ctx = null; return; }
+    const sym = symbol(), t = tf(), key = sym + ':' + t;
+    if (S.ctx && S.ctx.key === key) return;
+    const ctx = { key, htf: null, bench: null, benchSelf: sym === 'SPY', patterns: window.SmlPatterns && window.SmlPatterns.detect ? (b) => window.SmlPatterns.detect(b) : null, patternCache: new Map() };
+    S.ctx = ctx;
+    const get = async (s2, tt) => { try { const r = await fetch('/academy-activity/market?symbol=' + encodeURIComponent(s2) + '&tf=' + encodeURIComponent(tt), { cache: 'no-store' }); const j = await r.json(); return r.ok && Array.isArray(j.bars) ? j.bars : null; } catch (_) { return null; } };
+    const [h, b] = await Promise.all([HTF[t] ? get(sym, HTF[t]) : null, ctx.benchSelf ? null : get('SPY', t)]);
+    if (S.ctx !== ctx) return;
+    ctx.htf = h; ctx.bench = b; recompute(); paint(); draw();
   }
   async function refresh(force) {
     if (!S.on || S.loading) return;
@@ -93,7 +107,7 @@
       const p = await r.json();
       if (!r.ok || !p || !Array.isArray(p.bars) || !p.bars.length) throw new Error('market');
       S.raw = { symbol: p.symbol, tf: p.tf, bars: p.bars }; S.error = '';
-      recompute();
+      recompute(); loadCtx();
     } catch (_) {
       S.error = S.data ? '' : 'Live candles are not available right now. Trying again…';
       if (!S.retry) { S.retry = setTimeout(() => { S.retry = 0; refresh(true); }, 4000); }
@@ -123,6 +137,17 @@
       if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Paper trade open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · ' + (p.trail ? 'Trailing stop ' : 'Stop ') + num(d.open.stop) + (d.open.target == null ? '' : ' · Target ' + num(d.open.target)) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span><div class="mem-grade" id="mem-grade" data-dir="' + d.open.dir + '"></div></div>';
       else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (st.dirs === 'short' ? 'SHORT' : (L.dir > 0 ? 'BUY' : 'SELL')) + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · ' + (p.trail ? 'Starting stop ' : 'Stop ') + num(L.stop) + (L.target == null ? '' : ' · Target ' + num(L.target)) + '<br><span class="mem-blurb">' + (L.target == null ? 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to start; the stop then trails ' + p.trail + '× ATR behind the best price and the position is held until it is hit or the trend reverses.' : 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1).') + ' A signal is a closed-candle event; the paper trade enters on the next open.</span><div class="mem-grade" id="mem-grade" data-dir="' + L.dir + '"></div></div>';
       else html += '<div class="mem-sec" style="padding:8px 0 0"><span class="mem-blurb">No signal in the candles loaded. That is normal — the model waits for a clean, confirmed cross.</span></div>';
+      if (d.confluence) {
+        const cf = d.confluence, open = d.open, sigForOpen = open && d.signals.length ? d.signals.filter((x) => x.i <= open.entryIdx).pop() : null, shown = open ? sigForOpen : L;
+        if (shown && shown.conf) {
+          html += '<div class="mem-conv"><b>Conviction ' + shown.conf.score + ' / 100 · grade ' + shown.conf.grade + '</b><ul>' + shown.conf.factors.map((f) => '<li class="' + (f.available ? (f.ok ? 'ok' : 'no') : 'na') + '"><span>' + (f.available ? (f.ok ? '✓' : '✗') : '–') + '</span> ' + esc(f.label) + ' <em>' + (f.available ? f.pts + '/' + f.max : 'n/a') + '</em><br><small>' + esc(f.detail) + '</small></li>').join('') + '</ul></div>';
+        } else if (cf.skipped.length) {
+          const s2 = cf.skipped[cf.skipped.length - 1];
+          html += '<div class="mem-conv"><b>Last raw signal was skipped</b><br><small>' + esc(fmtTime(s2.t)) + ' scored ' + s2.score + ' (grade ' + s2.grade + '), below your minimum of ' + cf.minScore + '. Lower the minimum in Settings to see it.</small></div>';
+        }
+        if (cf.exitWatch) html += '<div class="mem-conv ' + (cf.exitWatch.level === 'exit' ? 'warnbox' : '') + '"><b>Exit watch · ' + (cf.exitWatch.level === 'clear' ? 'nothing flagged' : cf.exitWatch.level === 'exit' ? 'several warnings' : 'caution') + '</b>' + (cf.exitWatch.flags.length ? '<ul>' + cf.exitWatch.flags.map((f) => '<li class="no"><span>!</span> ' + esc(f) + '</li>').join('') + '</ul>' : '') + '</div>';
+        if (!(cf.htf && (cf.bench || S.ctx && S.ctx.benchSelf))) html += '<div class="mem-blurb" style="margin-top:6px">' + (S.ctx && S.ctx.key ? 'Loading higher-timeframe and benchmark candles for extra confirmation…' : '') + '</div>';
+      }
       html += '</div>';
       if (!d.enoughData) html += '<div class="mem-sec"><div class="mem-warn">Only ' + d.bars + ' candles are loaded and this mode needs about ' + (d.warm + 30) + ' to warm up its averages. Try a shorter-period timeframe or another ticker.</div></div>';
       else {
@@ -136,17 +161,24 @@
           + (p.trail ? stat('Return (whole account)', pct(s.compoundPct), s.compoundPct >= 0 ? 'mem-pos' : 'mem-neg') + stat('Avg trade', pct(s.avgTradePct), s.avgTradePct >= 0 ? 'mem-pos' : 'mem-neg') : stat('Return (1% risk)', pct(s.returnPct), s.returnPct >= 0 ? 'mem-pos' : 'mem-neg')) + stat('Buy & hold', pct(d.buyHoldPct))
           + '</div><p class="mem-blurb">Costs of ' + p.costBps + ' bps per side are included. R means multiples of the amount risked on each trade.</p>'
           + (p.trail ? '<p class="mem-blurb">A hold strategy is in the market for long stretches and skips the rest, so it is judged against buy &amp; hold. Compare “Return (whole account)” with “Buy &amp; hold” — and note the drawdown.</p>' : '') + (s.trades < 20 ? '<div class="mem-warn" style="margin-top:8px">Only ' + s.trades + ' trades. Small samples flatter or punish any strategy — do not read too much into them.</div>' : '') + '</div>';
+        if (d.confluence) {
+          const cf = d.confluence, row = (name, x) => '<tr><td>' + name + '</td><td>' + x.trades + '</td><td>' + (x.winRate == null ? '–' : Math.round(x.winRate * 100) + '%') + '</td><td>' + rr(x.expectancyR) + '</td><td>' + (x.avgTradePct == null ? '–' : pct(x.avgTradePct)) + '</td></tr>';
+          html += '<div class="mem-sec"><h5>Does confluence help? Measured on these candles</h5><table class="mem-split"><thead><tr><th></th><th>Trades</th><th>Win</th><th>Expect.</th><th>Avg trade</th></tr></thead><tbody>'
+            + row('Every crossover signal', cf.all) + row('Only conviction ≥ ' + cf.minScore, cf.kept) + row('Grade A (75+)', cf.buckets.A) + row('Grade B (60–74)', cf.buckets.B) + row('Grade C (45–59)', cf.buckets.C) + row('Grade D (under 45)', cf.buckets.D) + '</tbody></table>'
+            + '<p class="mem-blurb">If the filtered row is not better than the unfiltered row, the extra checks are not helping on this chart. With so few trades this is a sanity check, not proof — the same numbers on other tickers are worth comparing.</p></div>';
+        }
         html += '<div class="mem-sec"><h5>Is it robust? In-sample vs out-of-sample</h5><table class="mem-split"><thead><tr><th></th><th>Trades</th><th>Win</th><th>Expectancy</th></tr></thead><tbody>' + splitRow('First 70% (tuned on)', d.inSample) + splitRow('Last 30% (unseen)', d.outOfSample) + '</tbody></table><p class="mem-blurb">If the unseen part is much worse than the first part, the setup was probably fitted to old data.</p></div>';
       }
     }
     html += '<div class="mem-sec"><h5>Show on chart</h5>'
       + [['ema', 'EMA lines'], ['signals', 'Buy / sell markers'], ['levels', 'Stop & target levels'], ['book', 'Level 2 book walls']].map((o) => '<label class="mem-row"><input type="checkbox" data-mem-ov="' + o[0] + '"' + (S.overlays[o[0]] ? ' checked' : '') + '> ' + o[1] + '</label>').join('') + '</div>';
-    const fields = [['fast', 'Fast EMA'], ['slow', 'Slow EMA'], ['trend', 'Trend EMA'], ['atr', 'ATR length'], ['minSep', 'Price gap to slow EMA (×ATR)'], ['confirm', 'Confirm bars'], ['stopAtr', 'Stop (×ATR)'], ['targetAtr', 'Target (×ATR)'], ['trail', 'Trailing stop (×ATR)'], ['maxSep', 'Skip if stretched beyond (×ATR)'], ['maxHold', 'Max hold (candles)'], ['costBps', 'Cost (bps/side)']].filter((f) => p[f[0]] != null);
+    const fields = [['fast', 'Fast EMA'], ['slow', 'Slow EMA'], ['trend', 'Trend EMA'], ['atr', 'ATR length'], ['minSep', 'Price gap to slow EMA (×ATR)'], ['confirm', 'Confirm bars'], ['stopAtr', 'Stop (×ATR)'], ['targetAtr', 'Target (×ATR)'], ['minScore', 'Minimum conviction (0–100)'], ['trail', 'Trailing stop (×ATR)'], ['maxSep', 'Skip if stretched beyond (×ATR)'], ['maxHold', 'Max hold (candles)'], ['costBps', 'Cost (bps/side)']].filter((f) => p[f[0]] != null);
     html += '<div class="mem-sec"><details><summary>Settings</summary><div class="mem-set">' + fields.map((f) => '<label>' + f[1] + '<input type="number" step="any" data-mem-p="' + f[0] + '" value="' + esc(p[f[0]]) + '"></label>').join('') + '</div><button type="button" class="mem-btn" data-mem="reset">Reset to defaults</button></details></div>';
     const rules = [];
     rules.push('<li>Fast EMA(' + p.fast + ') crossing the slow EMA(' + p.slow + ') starts a setup. It must stay crossed for ' + p.confirm + ' closed candle' + (p.confirm > 1 ? 's' : '') + ' — the signal fires on the last of them, never on the cross candle.</li>');
     rules.push(st.dirs === 'long' ? '<li>Long only, and only above the trend EMA(' + p.trend + '). Bearish crosses are never traded — they are the exit.</li>' : st.dirs === 'short' ? '<li>Short only, and only below the trend EMA(' + p.trend + '). Bullish crosses are never traded — they are the exit (cover).</li>' : '<li>Longs only above the trend EMA, shorts only below it.</li>');
     rules.push('<li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.' + (p.maxSep ? ' It must also be no more than ' + p.maxSep + '× ATR away, so it does not chase a move that is already stretched.' : '') + '</li>');
+    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, and chart structure from the pattern scanner. Signals scoring under ' + p.minScore + ' are skipped. The exit also triggers if the higher timeframe rolls over while price is under the slow EMA.</li>');
     rules.push(p.trail ? '<li>Starting stop ' + p.stopAtr + '× ATR from the entry, then a trailing stop ' + p.trail + '× ATR behind the best price (it only moves in your favour). No fixed target: the trade is held until the stop is hit or the crossover turns against it.</li>' : '<li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>');
     if (p.session) rules.push('<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>');
     if (st.dirs === 'short') rules.push('<li>A short can lose more than 100% of what you put in, pays borrow fees, and can be forced closed in a squeeze. The backtest cannot model those — treat its results as optimistic.</li>');
@@ -227,7 +259,7 @@
         const buy = sg.dir > 0, px = x(j), py = buy ? y(+view[j].l) + 12 : y(+view[j].h) - 12;
         lctx.fillStyle = buy ? '#00d084' : '#ff5470'; lctx.beginPath();
         if (buy) { lctx.moveTo(px, py - 7); lctx.lineTo(px - 6, py + 4); lctx.lineTo(px + 6, py + 4); } else { lctx.moveTo(px, py + 7); lctx.lineTo(px - 6, py - 4); lctx.lineTo(px + 6, py - 4); }
-        lctx.closePath(); lctx.fill(); lctx.fillText(buy ? 'BUY' : 'SELL', px, buy ? py + 15 : py - 10);
+        lctx.closePath(); lctx.fill(); lctx.fillText((buy ? 'BUY' : 'SELL') + (sg.conf ? ' ' + sg.conf.grade : ''), px, buy ? py + 15 : py - 10);
       }
     }
     lctx.restore();
@@ -255,7 +287,7 @@
     if (t.dataset.memTf) { const sy = symbol(); if (window.smlAcademyNavigateMarket) window.smlAcademyNavigateMarket(sy, t.dataset.memTf); return; }
     if (t.dataset.mem === 'close') { S.open = false; paint(); return; }
     if (t.dataset.mem === 'reset') { S.params[S.mode] = {}; save(); recompute(); paint(); draw(); return; }
-    if (t.dataset.memMode) { S.mode = t.dataset.memMode; save(); recompute(); paint(); draw(); }
+    if (t.dataset.memMode) { S.mode = t.dataset.memMode; save(); recompute(); loadCtx(); paint(); draw(); }
   });
   panel.addEventListener('change', (e) => {
     const ov = e.target.closest('[data-mem-ov]'), pr = e.target.closest('[data-mem-p]');

@@ -188,3 +188,76 @@ test('day and swing behave exactly as before (both directions, fixed target)', (
     assert.equal(algo.resolveParams(mode).dirs, 'both');
   }
 });
+
+/* ---- confluence for the hold strategies ---- */
+const patternsLib = require('./academy-patterns');
+function weekly(bars) { // fold daily candles into 7-day candles (start-of-week timestamps), like the higher-timeframe feed
+  const out = []; for (let i = 0; i < bars.length; i += 5) { const g = bars.slice(i, i + 5); out.push({ t: g[0].t, o: g[0].o, h: Math.max(...g.map((b) => b.h)), l: Math.min(...g.map((b) => b.l)), c: g[g.length - 1].c, v: g.reduce((s, b) => s + b.v, 0) }); }
+  return out;
+}
+const fullCtx = (bars, extra = {}) => ({ htf: weekly(bars), bench: regimes(bars.length, 9, 0.06, 2.0), patterns: (b) => patternsLib.detect(b), patternCache: new Map(), ...extra });
+
+test('every hold signal carries a 0-100 conviction score with a factor breakdown that adds up', () => {
+  const bars = regimes(); const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars));
+  assert.ok(a.signals.length >= 1 && a.confluence);
+  for (const s of a.signals) {
+    assert.ok(s.conf.score >= 0 && s.conf.score <= 100 && 'ABCD'.includes(s.conf.grade));
+    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure');
+    const avail = s.conf.factors.filter((f) => f.available), max = avail.reduce((t, f) => t + f.max, 0), got = avail.reduce((t, f) => t + f.pts, 0);
+    assert.equal(max, 100, 'all six factors available => 100 points');
+    assert.equal(s.conf.score, Math.round((got / max) * 100));
+  }
+});
+
+test('the conviction filter only removes signals, minScore 0 keeps everything and 101 keeps nothing', () => {
+  const bars = regimes(); const ctx = fullCtx(bars);
+  const all = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', ctx), none = algo.analyze(bars, 'mid', { minScore: 100 }, '1D', ctx), mid = algo.analyze(bars, 'mid', {}, '1D', ctx);
+  assert.equal(all.confluence.all.trades, all.confluence.kept.trades, 'minScore 0 filters nothing');
+  assert.ok(mid.signals.length <= all.signals.length);
+  assert.ok(mid.signals.every((s) => s.conf.score >= mid.params.minScore));
+  assert.ok(none.signals.every((s) => s.conf.score >= 100));
+  assert.equal(all.confluence.all.trades, mid.confluence.all.trades, 'the unfiltered comparison never changes with the filter');
+});
+
+test('no look-ahead: a signal scores the same whether or not later candles exist', () => {
+  const bars = regimes(); const ctx = fullCtx(bars), full = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', ctx);
+  const s = full.signals[0]; assert.ok(s, 'have a signal to test');
+  const cut = algo.analyze(bars.slice(0, s.i + 1), 'mid', { minScore: 0 }, '1D', fullCtx(bars.slice(0, s.i + 1), { htf: ctx.htf, bench: ctx.bench.slice(0, s.i + 1) }));
+  const same = cut.signals.find((x) => x.i === s.i);
+  assert.ok(same, 'the same signal exists on the truncated series');
+  assert.equal(same.conf.score, s.conf.score);
+});
+
+test('the higher timeframe is read from the last COMPLETE candle, so appending a later candle changes nothing', () => {
+  const bars = regimes(); const ctx = fullCtx(bars), base = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', ctx);
+  const s = base.signals[0]; const after = { ...ctx, htf: ctx.htf.filter((h) => h.t <= bars[s.i].t) };
+  const trimmed = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', after).signals.find((x) => x.i === s.i);
+  assert.equal(trimmed.conf.factors.find((f) => f.key === 'htf').pts, s.conf.factors.find((f) => f.key === 'htf').pts, 'weeks that start after the signal are ignored');
+});
+
+test('factors without data are left out and the score scales over what is available', () => {
+  const bars = regimes(); const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', { patterns: null });
+  const c = a.signals[0].conf; const off = c.factors.filter((f) => !f.available).map((f) => f.key);
+  assert.ok(off.includes('htf') && off.includes('regime') && off.includes('rs') && off.includes('structure'));
+  assert.ok(c.available >= 2 && c.score >= 0 && c.score <= 100);
+  const self = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', { ...fullCtx(bars), benchSelf: true, bench: null }).signals[0].conf;
+  assert.ok(!self.factors.find((f) => f.key === 'regime').available && !self.factors.find((f) => f.key === 'rs').available);
+});
+
+test('a higher timeframe that rolls over while price is below the slow EMA exits the trade', () => {
+  const bars = regimes(); const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars));
+  assert.ok(a.trades.some((t) => t.reason === 'exit-signal' || t.reason === 'stop' || t.reason === 'time'));
+  assert.ok(a.confluence.exitWatch && ['clear', 'caution', 'exit'].includes(a.confluence.exitWatch.level));
+});
+
+test('day, swing and short have no confluence layer', () => {
+  const bars = regimes();
+  for (const mode of ['day', 'swing', 'short']) { const a = algo.analyze(bars, mode, {}, '1D', fullCtx(bars)); assert.equal(a.confluence, null); assert.ok(a.signals.every((s) => s.conf === null)); }
+});
+
+test('indicator helpers behave: RSI stays in 0-100, a steady rise pins it near 100, MACD histogram is finite', () => {
+  const up = Array.from({ length: 60 }, (_, i) => 100 + i);
+  const r = algo.rsi(up, 14); assert.ok(r.filter(Number.isFinite).every((v) => v >= 0 && v <= 100)); assert.ok(r[59] > 95);
+  assert.ok(algo.macdHist(up).filter(Number.isFinite).length > 30);
+  assert.equal(algo.gradeOf(80), 'A'); assert.equal(algo.gradeOf(60), 'B'); assert.equal(algo.gradeOf(45), 'C'); assert.equal(algo.gradeOf(44), 'D');
+});

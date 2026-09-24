@@ -48,8 +48,8 @@ const STRATEGIES = {
     tfHint: ['1D', '1W'],
     bestTf: '1D',
     dirs: 'long',
-    params: { fast: 50, slow: 100, trend: 200, atr: 14, minSep: 0.5, confirm: 3, stopAtr: 3, targetAtr: null, trail: 4, maxHold: 250, costBps: 3, session: null },
-    byTf: { '1W': { fast: 10, slow: 30, trend: 40, confirm: 2, maxHold: 52 } }
+    params: { fast: 50, slow: 100, trend: 200, atr: 14, minSep: 0.5, confirm: 3, stopAtr: 3, targetAtr: null, trail: 4, maxHold: 250, costBps: 3, session: null, minScore: 55, htfFast: 10, htfSlow: 30, regimeLen: 200, rsLook: 90 },
+    byTf: { '1W': { fast: 10, slow: 30, trend: 40, confirm: 2, maxHold: 52, regimeLen: 40, rsLook: 26, htfFast: 6, htfSlow: 12 } }
   },
   long: {
     key: 'long',
@@ -58,8 +58,8 @@ const STRATEGIES = {
     tfHint: ['1D', '1W', '1M'],
     bestTf: '1W',
     dirs: 'long',
-    params: { fast: 50, slow: 200, trend: 200, atr: 14, minSep: 0.5, confirm: 5, stopAtr: 4, targetAtr: null, trail: 6, maxHold: 500, costBps: 3, session: null },
-    byTf: { '1W': { fast: 20, slow: 50, trend: 50, confirm: 2, maxHold: 260, trail: 5 }, '1M': { fast: 6, slow: 12, trend: 12, confirm: 1, maxHold: 120, trail: 4 } }
+    params: { fast: 50, slow: 200, trend: 200, atr: 14, minSep: 0.5, confirm: 5, stopAtr: 4, targetAtr: null, trail: 6, maxHold: 500, costBps: 3, session: null, minScore: 55, htfFast: 10, htfSlow: 30, regimeLen: 200, rsLook: 180 },
+    byTf: { '1W': { fast: 20, slow: 50, trend: 50, confirm: 2, maxHold: 260, trail: 5, regimeLen: 40, rsLook: 52, htfFast: 6, htfSlow: 12 }, '1M': { fast: 6, slow: 12, trend: 12, confirm: 1, maxHold: 120, trail: 4, regimeLen: 10, rsLook: 12, htfFast: 3, htfSlow: 6 } }
   },
   short: {
     key: 'short',
@@ -86,6 +86,7 @@ function resolveParams(mode, overrides = {}, tf = '') {
     stopAtr: clampNum(o.stopAtr, 0.2, 10, base.stopAtr), targetAtr: base.targetAtr == null ? null : clampNum(o.targetAtr, 0.2, 20, base.targetAtr),
     trail: base.trail == null ? null : clampNum(o.trail, 0.5, 20, base.trail), maxSep: base.maxSep == null ? null : clampNum(o.maxSep, 0.5, 20, base.maxSep),
     dirs: st.dirs || 'both',
+    minScore: base.minScore == null ? null : clampInt(o.minScore, 0, 100, base.minScore), htfFast: base.htfFast, htfSlow: base.htfSlow, regimeLen: base.regimeLen, rsLook: base.rsLook,
     maxHold: clampInt(o.maxHold, 1, 500, base.maxHold), costBps: clampNum(o.costBps, 0, 50, base.costBps),
     session: base.session ? { ...base.session } : null
   };
@@ -165,7 +166,131 @@ function computeSignals(bars, params) {
   return { fast, slow, trend, atr: a, sep, sig, xsig, warm };
 }
 
-function emptyStats() { return { trades: 0, wins: 0, losses: 0, winRate: null, avgWinR: null, avgLossR: null, expectancyR: null, profitFactor: null, totalR: 0, returnPct: 0, maxDrawdownPct: 0, avgBars: null, longs: 0, shorts: 0 }; }
+
+/* ---------- Confluence for the hold strategies (Mid-Term / Long-Term) ----------
+ * A crossover on its own is one opinion. Before a hold signal is taken, the model asks what else agrees, using only data that already exists on the page:
+ *   higher-timeframe trend (20)  the next timeframe up is also trending up (previous COMPLETE higher-timeframe candle, so no look-ahead)
+ *   volume (15)                  the signal candle traded on real volume and money has been flowing in (up-volume vs down-volume)
+ *   momentum (15)                RSI in a healthy 50-70 zone (not exhausted) and MACD histogram positive and rising
+ *   market regime (15)           the benchmark (SPY) is above its long average
+ *   relative strength (10)       the stock beat the benchmark over the last ~90 candles
+ *   structure (25)               pattern scanner: confirmed bullish pattern, support just below, resistance not immediately overhead, no confirmed bearish pattern
+ * Each factor that has no data (for example no benchmark when the chart IS the benchmark) is left out and the score is scaled over what is available.
+ * Score 0-100 -> grade A 75+, B 60+, C 45+, D. Signals below the minimum conviction are skipped. The backtest is run both ways so the panel shows whether the filter actually helped.
+ */
+function sma(values, len) {
+  const out = new Array(values.length).fill(NaN); let sum = 0;
+  for (let i = 0; i < values.length; i++) { sum += values[i]; if (i >= len) sum -= values[i - len]; if (i >= len - 1) out[i] = sum / len; }
+  return out;
+}
+function rsi(close, len = 14) {
+  const out = new Array(close.length).fill(NaN); let g = 0, l = 0;
+  for (let i = 1; i < close.length; i++) {
+    const d = close[i] - close[i - 1], up = Math.max(0, d), dn = Math.max(0, -d);
+    if (i <= len) { g += up; l += dn; if (i === len) { g /= len; l /= len; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } }
+    else { g = (g * (len - 1) + up) / len; l = (l * (len - 1) + dn) / len; out[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); }
+  }
+  return out;
+}
+function macdHist(close) {
+  const f = ema(close, 12), s = ema(close, 26), line = f.map((v, i) => v - s[i]), sig = ema(line.map((v) => (Number.isFinite(v) ? v : 0)), 9);
+  return line.map((v, i) => (Number.isFinite(v) ? v - sig[i] : NaN));
+}
+/** index of the last candle in `arr` whose start time is <= t (or -1). `arr` is oldest -> newest. */
+function lastIdxLE(arr, t) { let lo = 0, hi = arr.length - 1, ans = -1; while (lo <= hi) { const mid = (lo + hi) >> 1; if (arr[mid].t <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1; } return ans; }
+const gradeOf = (score) => (score >= 75 ? 'A' : score >= 60 ? 'B' : score >= 45 ? 'C' : 'D');
+const clean = (list) => (list || []).map((b) => ({ t: Number(b.t), o: Number(b.o), h: Number(b.h), l: Number(b.l), c: Number(b.c), v: Number(b.v) || 0 })).filter((b) => [b.t, b.o, b.h, b.l, b.c].every(Number.isFinite));
+
+function buildConfluence(bars, p, ind, tf, ctx) {
+  const n = bars.length, close = bars.map((b) => b.c), vol = bars.map((b) => b.v);
+  const rs = rsi(close, 14), mh = macdHist(close), vAvg = sma(vol, 50);
+  const htf = clean(ctx.htf), bench = ctx.benchSelf ? [] : clean(ctx.bench);
+  // higher-timeframe trend, evaluated on the previous COMPLETE higher-timeframe candle
+  const hC = htf.map((b) => b.c), hFast = ema(hC, p.htfFast || 10), hSlow = ema(hC, p.htfSlow || 30);
+  const htfState = (t) => {
+    if (htf.length < (p.htfSlow || 30) + 2) return null;
+    const j = lastIdxLE(htf, t) - 1; if (j < (p.htfSlow || 30)) return null;
+    if (hC[j] > hSlow[j] && hFast[j] > hSlow[j]) return 'up';
+    if (hC[j] < hSlow[j] && hFast[j] < hSlow[j]) return 'down';
+    return 'flat';
+  };
+  const bC = bench.map((b) => b.c), bEma = ema(bC, p.regimeLen || 200);
+  const benchAt = (t) => { const k = lastIdxLE(bench, t); return k >= (p.regimeLen || 200) ? k : (k >= 30 ? k : -1); };
+  const lookback = p.rsLook || 90;
+  const patternsFn = typeof ctx.patterns === 'function' ? ctx.patterns : null;
+  const accDist = (i) => { let up = 0, dn = 0; for (let k = Math.max(1, i - 19); k <= i; k++) { if (close[k] >= close[k - 1]) up += vol[k]; else dn += vol[k]; } return up + dn > 0 ? up / (up + dn) : null; };
+
+  function scoreAt(i, withPatterns) {
+    const F = [];
+    const add = (key, label, max, pts, detail, available = true) => F.push({ key, label, max, pts: available ? pts : 0, ok: available ? pts >= max * 0.6 : null, detail, available });
+    const hs = htfState(bars[i].t);
+    add('htf', 'Higher-timeframe trend', 20, hs === 'up' ? 20 : hs === 'flat' ? 8 : 0, hs === null ? 'no higher-timeframe data' : 'next timeframe up is ' + hs, hs !== null);
+    const vr = Number.isFinite(vAvg[i]) && vAvg[i] > 0 ? bars[i].v / vAvg[i] : null, ad = accDist(i);
+    if (vr === null || !(bars[i].v > 0)) add('volume', 'Volume', 15, 0, 'no volume data', false);
+    else add('volume', 'Volume', 15, (vr >= 1.2 ? 10 : vr >= 0.9 ? 5 : 0) + (ad != null && ad >= 0.55 ? 5 : 0), (vr).toFixed(2) + '× average volume' + (ad != null ? ', ' + Math.round(ad * 100) + '% of recent volume on up candles' : ''));
+    const r = rs[i], h = mh[i], hPrev = mh[i - 1];
+    if (!Number.isFinite(r)) add('momentum', 'Momentum', 15, 0, 'warming up', false);
+    else add('momentum', 'Momentum', 15, (r >= 50 && r <= 70 ? 10 : (r >= 45 && r < 50) || (r > 70 && r <= 78) ? 5 : 0) + (Number.isFinite(h) && h > 0 && h >= (hPrev || 0) ? 5 : 0), 'RSI ' + r.toFixed(0) + (Number.isFinite(h) ? ', MACD histogram ' + (h > 0 ? 'positive' : 'negative') + (h >= (hPrev || 0) ? ' and rising' : ' and falling') : ''));
+    const bi = benchAt(bars[i].t);
+    if (bi < 0 || ctx.benchSelf) { add('regime', 'Market regime', 15, 0, ctx.benchSelf ? 'this chart is the benchmark' : 'no benchmark data', false); add('rs', 'Relative strength', 10, 0, ctx.benchSelf ? 'this chart is the benchmark' : 'no benchmark data', false); }
+    else {
+      const above = Number.isFinite(bEma[bi]) ? bC[bi] > bEma[bi] : bC[bi] > sma(bC.slice(0, bi + 1), Math.min(bi + 1, 50)).pop();
+      add('regime', 'Market regime', 15, above ? 15 : 0, 'benchmark is ' + (above ? 'above' : 'below') + ' its long average');
+      const bj = bi - lookback, ij = i - lookback;
+      if (bj < 0 || ij < 0) add('rs', 'Relative strength', 10, 0, 'not enough history', false);
+      else { const mine = close[i] / close[ij] - 1, theirs = bC[bi] / bC[bj] - 1; add('rs', 'Relative strength', 10, mine > theirs ? 10 : 0, (mine * 100).toFixed(0) + '% vs benchmark ' + (theirs * 100).toFixed(0) + '% over ' + lookback + ' candles'); }
+    }
+    if (!patternsFn || !withPatterns) add('structure', 'Chart structure', 25, 0, 'pattern scanner not available', false);
+    else {
+      const ck = bars[0].t + ':' + bars[i].t + ':' + (i + 1);
+      let res = ctx.patternCache ? ctx.patternCache.get(ck) : undefined;
+      if (res === undefined) { try { res = patternsFn(bars.slice(0, i + 1)); } catch (_) { res = null; } if (ctx.patternCache) ctx.patternCache.set(ck, res); }
+      if (!res || !res.ok) add('structure', 'Chart structure', 25, 0, 'not enough candles to scan', false);
+      else {
+        const a = ind.atr[i] > 0 ? ind.atr[i] : bars[i].c * 0.02, c0 = bars[i].c;
+        const recent = (c) => c.status === 'confirmed' && Number.isFinite(c.endIdx) && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 40;
+        const bullP = (res.charts || []).filter((c) => recent(c) && c.dir === 'bull'), bearP = (res.charts || []).filter((c) => recent(c) && c.dir === 'bear');
+        const above = (res.levels || []).filter((l) => l.kind === 'resistance' && l.p > c0 && l.p - c0 < a), below = (res.levels || []).filter((l) => l.kind === 'support' && l.p < c0 && c0 - l.p <= 2 * a && l.touches >= 2);
+        let pts = 12; const notes = [];
+        if (bullP.length) { pts += 8; notes.push('bullish ' + bullP[0].name.replace(/_/g, ' ')); }
+        if (below.length) { pts += 5; notes.push('support just below'); }
+        if (bearP.length) { pts -= 10; notes.push('bearish ' + bearP[0].name.replace(/_/g, ' ') + ' confirmed'); }
+        if (above.length) { pts -= 6; notes.push('resistance right overhead'); }
+        add('structure', 'Chart structure', 25, Math.max(0, Math.min(25, pts)), notes.length ? notes.join(', ') : 'nothing decisive');
+      }
+    }
+    const avail = F.filter((f) => f.available), max = avail.reduce((s, f) => s + f.max, 0), got = avail.reduce((s, f) => s + f.pts, 0);
+    const score = max > 0 ? Math.round((got / max) * 100) : 0;
+    return { score, grade: gradeOf(score), factors: F, available: avail.length };
+  }
+
+  const rawSig = ind.sig.slice(), keptSig = ind.sig.slice(), byIndex = new Map();
+  for (let i = 0; i < n; i++) {
+    if (ind.sig[i] !== 1) continue;
+    const c = scoreAt(i, true); byIndex.set(i, c);
+    if (c.score < p.minScore) keptSig[i] = 0;
+  }
+  // exit: the higher timeframe rolls over while price is under the slow average
+  const xsig = ind.xsig.slice();
+  if (htf.length) {
+    let prev = null;
+    for (let i = 0; i < n; i++) { const s = htfState(bars[i].t); if (prev === 'up' && s === 'down' && close[i] < ind.slow[i]) xsig[i] = -1; if (s) prev = s; }
+  }
+  // exit watch on the latest candle: warnings, not orders
+  let exitWatch = null;
+  if (n > 30) {
+    const i = n - 1, flags = [];
+    if (close[i] < ind.slow[i]) flags.push('Price is below the slow EMA');
+    if (htfState(bars[i].t) === 'down') flags.push('Higher-timeframe trend has turned down');
+    if (Number.isFinite(rs[i]) && rs[i] < 45 && Math.max(...rs.slice(Math.max(0, i - 30), i).filter(Number.isFinite)) > 60) flags.push('Momentum is fading (RSI fell from above 60 to below 45)');
+    const ad = accDist(i); if (ad != null && ad < 0.4) flags.push('Volume is leaning to the sell side (' + Math.round(ad * 100) + '% of recent volume on up candles)');
+    if (patternsFn) { try { const fk = 'full:' + bars[0].t + ':' + bars[i].t + ':' + bars[i].c; let r = ctx.patternCache ? ctx.patternCache.get(fk) : undefined; if (r === undefined) { r = patternsFn(bars); if (ctx.patternCache) ctx.patternCache.set(fk, r); } const bear = r && r.ok ? (r.charts || []).filter((c) => c.status === 'confirmed' && c.dir === 'bear' && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 30) : []; if (bear.length) flags.push('Bearish ' + bear[0].name.replace(/_/g, ' ') + ' confirmed'); } catch (_) { /* scanner optional */ } }
+    exitWatch = { flags, level: flags.length >= 3 ? 'exit' : flags.length >= 1 ? 'caution' : 'clear' };
+  }
+  return { rawSig, keptSig, xsig, byIndex, exitWatch, htfAvailable: htf.length > 0, benchAvailable: bench.length > 0 || !!ctx.benchSelf };
+}
+
+function emptyStats() { return { trades: 0, wins: 0, losses: 0, winRate: null, avgWinR: null, avgLossR: null, expectancyR: null, profitFactor: null, totalR: 0, returnPct: 0, maxDrawdownPct: 0, avgBars: null, longs: 0, shorts: 0, compoundPct: null, avgTradePct: null }; }
 
 function summarize(trades) {
   const s = emptyStats();
@@ -258,19 +383,29 @@ function backtest(bars, p, ind) {
 }
 
 /** Everything the chart panel needs, from candles ordered oldest → newest. */
-function analyze(rawBars, mode = 'day', overrides = {}, tf = '') {
+function analyze(rawBars, mode = 'day', overrides = {}, tf = '', ctx = {}) {
   const bars = (rawBars || []).map((b) => ({ t: Number(b.t), o: Number(b.o), h: Number(b.h), l: Number(b.l), c: Number(b.c), v: Number(b.v) || 0 }))
     .filter((b) => [b.t, b.o, b.h, b.l, b.c].every(Number.isFinite));
   const params = resolveParams(mode, overrides, tf);
   const ind = computeSignals(bars, params);
-  const { trades, open } = backtest(bars, params, ind);
+  const conf = params.minScore != null ? buildConfluence(bars, params, ind, tf, ctx || {}) : null;
+  let trades, open, allTrades = null;
+  if (conf) {
+    // run the backtest twice: with every raw signal, and with only the signals that clear the conviction filter, so the panel can show whether the filter helped
+    allTrades = backtest(bars, params, Object.assign({}, ind, { sig: conf.rawSig, xsig: conf.xsig })).trades;
+    ({ trades, open } = backtest(bars, params, Object.assign({}, ind, { sig: conf.keptSig, xsig: conf.xsig })));
+    const scoreOf = (t) => { const c = conf.byIndex.get(t.signalIdx); return c ? c.score : null; };
+    allTrades.forEach((t) => { t.score = scoreOf(t); }); trades.forEach((t) => { t.score = scoreOf(t); });
+    ind.sig = conf.keptSig;
+  } else ({ trades, open } = backtest(bars, params, ind));
   const split = Math.floor(bars.length * 0.7);
   const inS = trades.filter((t) => t.entryIdx < split), oos = trades.filter((t) => t.entryIdx >= split);
   const signals = [];
   for (let i = 0; i < bars.length; i++) {
     if (!ind.sig[i]) continue;
     const dir = ind.sig[i], a = ind.atr[i];
-    signals.push({ i, t: bars[i].t, dir, price: bars[i].c, stop: bars[i].c - dir * a * params.stopAtr, target: params.targetAtr == null ? null : bars[i].c + dir * a * params.targetAtr, sep: ind.sep[i] });
+    const cf = conf && conf.byIndex.get(i);
+    signals.push({ i, t: bars[i].t, dir, conf: cf || null, price: bars[i].c, stop: bars[i].c - dir * a * params.stopAtr, target: params.targetAtr == null ? null : bars[i].c + dir * a * params.targetAtr, sep: ind.sep[i] });
   }
   const last = bars[bars.length - 1];
   const bias = !last || !Number.isFinite(ind.trend[bars.length - 1]) || bars.length < ind.warm ? 'warming' : (last.c > ind.trend[bars.length - 1] ? (ind.fast[bars.length - 1] > ind.slow[bars.length - 1] ? 'long' : 'pullback') : (ind.fast[bars.length - 1] < ind.slow[bars.length - 1] ? 'short' : 'bounce'));
@@ -280,8 +415,13 @@ function analyze(rawBars, mode = 'day', overrides = {}, tf = '') {
     signals, latest: signals.length ? signals[signals.length - 1] : null, open, bias,
     stats: summarize(trades), inSample: summarize(inS), outOfSample: summarize(oos), trades,
     buyHoldPct: first && last && first.o ? ((last.c - first.o) / first.o) * 100 : null,
-    enoughData: bars.length >= ind.warm + 30
+    enoughData: bars.length >= ind.warm + 30,
+    confluence: conf ? (() => {
+      const bucket = (g) => summarize((allTrades || []).filter((t) => t.score != null && gradeOf(t.score) === g));
+      const skipped = [...conf.byIndex.entries()].filter(([, c]) => c.score < params.minScore).map(([i, c]) => ({ i, t: bars[i].t, score: c.score, grade: c.grade }));
+      return { minScore: params.minScore, all: summarize(allTrades || []), kept: summarize(trades), buckets: { A: bucket('A'), B: bucket('B'), C: bucket('C'), D: bucket('D') }, skipped, exitWatch: conf.exitWatch, htf: conf.htfAvailable, bench: conf.benchAvailable };
+    })() : null
   };
 }
 
-module.exports = { STRATEGIES, INTRADAY, resolveParams, ema, atr, computeSignals, backtest, summarize, analyze, sessionAllows, minutesET };
+module.exports = { rsi, macdHist, sma, gradeOf, buildConfluence, STRATEGIES, INTRADAY, resolveParams, ema, atr, computeSignals, backtest, summarize, analyze, sessionAllows, minutesET };
