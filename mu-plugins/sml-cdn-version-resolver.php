@@ -39,12 +39,13 @@
  * unless plugin sml-channel-layout 1.1.0 enqueued its script (enabled channels only); the orbit stays unless a valid layout arrives.
  * 2026-09-23: advance pin -> 796efdd (js/live-watch.js: no empty-symbol quote/history/company polls).
  * 2026-09-23: advance pin -> c7d414a (watch pages: per-stream likes, chat lock, live-insights beacon, orbit max 5).
+ * 2026-09-23: advance pin -> 744bf0e (js/creator-live-library.js: Manage link to per-stream studio).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'c7d414aeddf26902af3b339ff0ca76ea03b574b9' );
+	define( 'SML_CDN_ASSET_REVISION', '744bf0e6d2ce574cf325b4f01203c655d65e6bc7' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
