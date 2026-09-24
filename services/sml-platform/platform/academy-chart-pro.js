@@ -14,13 +14,16 @@
   const defaultN = () => (stage.clientWidth && stage.clientWidth < 560 ? 48 : DEFAULT_N); // fewer, fatter candles on a phone
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const fin = Number.isFinite;
-  const q = () => new URLSearchParams(location.search);
+  let qsCache = '', qsParsed = new URLSearchParams('');
+  const q = () => { if (location.search !== qsCache) { qsCache = location.search; qsParsed = new URLSearchParams(qsCache); } return qsParsed; }; // parsed once per URL change, not on every call
   const tfNow = () => q().get('tf') || '5m';
     const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const baseState = window.smlAcademyChartState;
-  const symNow = () => { try { return String(baseState().symbol || q().get('symbol') || 'SPY').toUpperCase(); } catch (_) { return String(q().get('symbol') || 'SPY').toUpperCase(); } };
-  const baseBars = () => { try { const b = baseState().bars; return Array.isArray(b) ? b : []; } catch (_) { return []; } };
+  const symNow = () => { const u = q().get('symbol'); if (u) return String(u).toUpperCase(); try { return String(baseState().symbol || 'SPY').toUpperCase(); } catch (_) { return 'SPY'; } };
+  /* The chart's own state hands out a fresh copy of every candle on each call; the layers ask many times per frame, so reuse one copy for a few milliseconds. */
+  let bbMemo = null, bbAt = -1e9;
+  const baseBars = () => { const now = performance.now(); if (bbMemo && now - bbAt < 8) return bbMemo; let b = []; try { b = baseState().bars; } catch (_) { b = []; } bbMemo = Array.isArray(b) ? b : []; bbAt = now; return bbMemo; };
   /* Live prints: the forming candle is the base candle with the newest trades folded in, so the chart moves tick by tick between the periodic refreshes. */
   const rawBars = () => {
     const b = baseBars(), L = V.live;
@@ -103,14 +106,18 @@
   }
 
   let raf = 0;
+  /* One render pass per frame: every layer (candles, indicators, MEM ALGO, drawings) draws synchronously inside the same animation frame, so nothing trails the candles. */
   function emit() { cache = null; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; window.dispatchEvent(new Event('sml-chart-view')); drawPro(); }); }
+  /* Hover only moves the crosshair, so only the pro layer needs to repaint. */
+  let rafLight = 0;
+  function emitLight() { if (raf || rafLight) return; rafLight = requestAnimationFrame(() => { rafLight = 0; drawPro(); }); }
   window.smlChartModel = model;
   window.smlAcademyChartState = () => {
     const s = baseState(), m = model();
     return m ? Object.assign({}, s, { bars: m.bars, offset: Math.max(0, m.N - m.end), scale: DEFAULT_N / m.slots, slots: m.slots, start: m.start, end: m.end, lo: m.lo, hi: m.hi }) : s;
   };
   const baseApply = window.smlAcademyApplyMarket;
-  if (typeof baseApply === 'function') window.smlAcademyApplyMarket = (payload) => { const r = baseApply(payload); emit(); return r; };
+  if (typeof baseApply === 'function') window.smlAcademyApplyMarket = (payload) => { const r = baseApply(payload); bbMemo = null; emit(); return r; };
   window.addEventListener('sml-academy-market', () => { patternsDirty = true; emit(); });
 
   /* ---------- view changes ---------- */
@@ -214,7 +221,7 @@
     const m = model(); if (!m) return;
     const { x, y } = rel(e);
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x, y });
-    if (!D) { V.crosshair = { x, y }; setCursor(m, x, y, e); emit(); return; }
+    if (!D) { V.crosshair = { x, y }; setCursor(m, x, y, e); emitLight(); return; }
     V.crosshair = { x, y };
     if (D.mode === 'pinch') { if (pointers.size >= 2) { const [a, b] = [...pointers.values()]; const f = D.d0 / (Math.hypot(a.x - b.x, a.y - b.y) || 1), nNew = clamp(Math.round(D.n0 * f), Math.min(MIN_N, m.N), m.N), c = D.m0.idxAt(D.cx), relp = (c - D.m0.start) / D.m0.slots; setView(nNew, Math.round(c - relp * nNew + nNew)); } return; }
     if (D.mode === 'pan') { const dx = x - D.x0; const end = D.end0 - dx / D.step; V.end = end; if (V.manual) { const dp = (y - D.y0) / D.ph * (D.hi0 - D.lo0); V.manual = { lo: D.lo0 + dp, hi: D.hi0 + dp }; } emit(); return; }
@@ -238,7 +245,7 @@
   }
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
-  stage.addEventListener('pointerleave', () => { if (!D) { V.crosshair = null; emit(); } });
+  stage.addEventListener('pointerleave', () => { if (!D) { V.crosshair = null; emitLight(); } });
   stage.addEventListener('dblclick', (e) => { if (uiTarget(e)) return; const m = model(); if (!m) return; const { x, y } = rel(e), z = zoneAt(m, x, y); if (z === 'yaxis') { V.manual = null; emit(); } else if (z === 'xaxis') resetView(); });
 
   function commitDraft() {

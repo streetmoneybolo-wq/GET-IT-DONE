@@ -262,16 +262,9 @@
     if (ov) { S.overlays[ov.dataset.memOv] = ov.checked; save(); draw(); }
     if (pr) { S.params[S.mode][pr.dataset.memP] = pr.value; save(); recompute(); paint(); draw(); }
   });
-  let last = '';
-  (function frame() { // redraw whenever the chart moves (drag, zoom, new candles, resize)
-    try {
-      const st = window.smlAcademyChartState(), lastBar = st.bars[st.bars.length - 1];
-      const sig = [st.bars.length, lastBar && lastBar.t, lastBar && lastBar.c, st.offset, st.scale, chartCanvas.clientWidth, chartCanvas.clientHeight, S.on, S.data && S.data.bars, S.of && S.of.asOf].join('|');
-      if (sig !== last) { last = sig; draw(); }
-      if (S.on && S.sigKey !== symbol() + ':' + tf() && !S.loading) refresh(true);
-    } catch (_) { /* chart not ready yet */ }
-    requestAnimationFrame(frame);
-  })();
+  // Redraw in the SAME frame as the candles (the chart view model announces every change), instead of polling the chart 60 times a second.
+  window.addEventListener('sml-chart-view', () => { try { draw(); } catch (_) { /* chart not ready yet */ } });
+  setInterval(() => { try { if (S.on && S.sigKey !== symbol() + ':' + tf() && !S.loading) refresh(true); } catch (_) { /* chart not ready yet */ } }, 500);
   setInterval(() => { if (S.on) refresh(false); }, 20000);
   setInterval(pollOF, 2500);
   window.addEventListener('sml-academy-market', () => { if (S.on) setTimeout(() => refresh(true), 300); });
