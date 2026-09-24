@@ -882,3 +882,9 @@ test('the activity page carries the order flow panel', () => {
   assert.match(html, /academy-activity\/orderflow/);
   assert.match(html, /mem-of/);
 });
+
+test('the chart guard lifts the Indicator Engine out of the chart grid so the candles keep their row', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /\.chart > \.academy-intelligence/);
+});
