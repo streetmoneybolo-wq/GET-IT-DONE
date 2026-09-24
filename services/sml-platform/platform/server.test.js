@@ -953,3 +953,20 @@ test('every chart layer draws at a capped resolution so phones repaint far fewer
     assert.match(fs.readFileSync(path.join(__dirname, file), 'utf8'), /smlChartDpr/, file + ' reads the cap');
   }
 });
+
+test('the frame-rate beacon is logged as numbers only and junk is ignored safely', async () => {
+  const events = [];
+  await withServer({ logger: (level, name, data) => events.push({ level, name, data }) }, async (base) => {
+    const body = JSON.stringify({ kind: 'perf', fps: 41.234, p95: 33.3, worst: 80, n: 60, layers: 6.1, pro: 1.2, by: { candles: 2, indicators: 1.5, memalgo: 2.6, evil: 9 }, dpr: 3, cap: 1.5, w: 365, h: 394, tf: '5m', bars: 600, view: 48, mem: true, patterns: false, ua: 'x'.repeat(500), extra: '<script>' });
+    const ok = await fetch(`${base}/academy-activity/report`, { method: 'POST', body, headers: { 'content-type': 'text/plain', 'x-forwarded-for': '9.9.9.9' } });
+    assert.equal(ok.status, 204);
+    const junk = await fetch(`${base}/academy-activity/report`, { method: 'POST', body: '{not json', headers: { 'content-type': 'text/plain', 'x-forwarded-for': '9.9.9.9' } });
+    assert.equal(junk.status, 204);
+  });
+  const perf = events.find((e) => e.name === 'academy_chart_perf');
+  assert.ok(perf, 'logged');
+  assert.equal(perf.data.fps, 41.2); assert.equal(perf.data.frames, 60); assert.equal(perf.data.cap, 1.5);
+  assert.deepEqual(Object.keys(perf.data.layers).sort(), ['candles', 'indicators', 'memalgo'], 'only known layer names are kept');
+  assert.ok(perf.data.ua.length <= 90);
+  assert.ok(!JSON.stringify(perf.data).includes('script'));
+});

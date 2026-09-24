@@ -1394,7 +1394,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const body = await readRequestBody(request, 1024);
       if (seen <= 5 && body.ok) {
         let info = {}; try { info = JSON.parse(body.rawBody) || {}; } catch (_) { /* text/plain beacons only */ }
+        if (info.kind === 'perf') {
+          const n = (v, d = 1) => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 10 ** d) / 10 ** d : null);
+          const layers = {}; if (info.by && typeof info.by === 'object') for (const k of ['candles', 'indicators', 'memalgo']) if (k in info.by) layers[k] = n(info.by[k]);
+          logger('info', 'academy_chart_perf', { fps: n(info.fps), p95: n(info.p95), worst: n(info.worst), frames: n(info.n, 0), layersMs: n(info.layers), proMs: n(info.pro), layers, dpr: n(info.dpr), cap: n(info.cap), w: n(info.w, 0), h: n(info.h, 0), tf: String(info.tf || '').slice(0, 4), bars: n(info.bars, 0), view: n(info.view, 0), mem: !!info.mem, patterns: !!info.patterns, ua: String(info.ua || '').slice(0, 90) });
+        } else {
         logger('warn', 'academy_chart_client_blank', { kind: String(info.kind || '').slice(0, 24), w: Number(info.w), h: Number(info.h), symbol: String(info.symbol || '').slice(0, 10), tf: String(info.tf || '').slice(0, 4), misses: Number(info.misses), hidden: !!info.hidden, ua: String(info.ua || '').slice(0, 120) });
+        }
       }
       response.writeHead(204, { 'cache-control': 'no-store' }); response.end();
       return;

@@ -295,7 +295,7 @@
     if (pr) { S.params[S.mode][pr.dataset.memP] = pr.value; save(); recompute(); paint(); draw(); }
   });
   // Redraw in the SAME frame as the candles (the chart view model announces every change), instead of polling the chart 60 times a second.
-  window.addEventListener('sml-chart-view', () => { try { draw(); } catch (_) { /* chart not ready yet */ } });
+  window.addEventListener('sml-chart-view', () => { try { if (window.smlPerfTime) window.smlPerfTime('memalgo', draw); else draw(); } catch (_) { /* chart not ready yet */ } });
   setInterval(() => { try { if (S.on && S.sigKey !== symbol() + ':' + tf() && !S.loading) refresh(true); } catch (_) { /* chart not ready yet */ } }, 500);
   setInterval(() => { if (S.on) refresh(false); }, 20000);
   setInterval(pollOF, 2500);

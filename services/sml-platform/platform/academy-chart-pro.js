@@ -110,7 +110,31 @@
 
   let raf = 0;
   /* One render pass per frame: every layer (candles, indicators, MEM ALGO, drawings) draws synchronously inside the same animation frame, so nothing trails the candles. */
-  function emit() { cache = null; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; window.dispatchEvent(new Event('sml-chart-view')); drawPro(); }); }
+  function emit() { cache = null; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const t0 = performance.now(); window.dispatchEvent(new Event('sml-chart-view')); const t1 = performance.now(); drawPro(); perfSample(t0, t1 - t0, performance.now() - t1); }); }
+
+  /* ---------- frame-rate probe ----------
+     While the trader drags or zooms, record how long each frame took and how long each layer took to draw. When the gesture ends, send ONE small timing summary to the server log
+     (numbers only, no personal data; at most 3 per page load, 30 s apart). It exists so real phone performance can be read instead of guessed. */
+  const PERF = { active: false, lastFrame: 0, frames: [], layers: { layers: [], pro: [] }, byName: {}, sent: 0, lastSent: -1e9, gestureAt: 0 };
+  window.smlPerfTime = (name, fn) => { const t = performance.now(); try { fn(); } finally { if (PERF.active) (PERF.byName[name] || (PERF.byName[name] = [])).push(performance.now() - t); } };
+  function perfStart() { PERF.active = true; PERF.lastFrame = 0; PERF.frames = []; PERF.layers = { layers: [], pro: [] }; PERF.byName = {}; PERF.gestureAt = performance.now(); }
+  function perfSample(t0, layersMs, proMs) {
+    if (!PERF.active) return;
+    if (PERF.lastFrame) { const dt = t0 - PERF.lastFrame; if (dt < 250) PERF.frames.push(dt); } // a long gap is a pause in the gesture, not a slow frame
+    PERF.lastFrame = t0; PERF.layers.layers.push(layersMs); PERF.layers.pro.push(proMs);
+  }
+  const pctl = (a, p) => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  function perfEnd() {
+    if (!PERF.active) return; PERF.active = false;
+    const f = PERF.frames; if (f.length < 15 || PERF.sent >= 3 || performance.now() - PERF.lastSent < 30000) return;
+    PERF.sent++; PERF.lastSent = performance.now();
+    const m = model(), by = {}; for (const k of Object.keys(PERF.byName)) by[k] = r1(mean(PERF.byName[k]));
+    const body = { kind: 'perf', fps: r1(1000 / mean(f)), p95: r1(pctl(f, 0.95)), worst: r1(Math.max(...f)), n: f.length, layers: r1(mean(PERF.layers.layers)), pro: r1(mean(PERF.layers.pro)), by, dpr: window.devicePixelRatio || 1, cap: window.smlChartDpr ? window.smlChartDpr() : 1, w: stage.clientWidth, h: stage.clientHeight, tf: tfNow(), bars: m ? m.N : 0, view: m ? m.slots : 0, mem: !!document.querySelector('#mem-algo-toggle.on'), patterns: !!V.patterns, ua: navigator.userAgent.slice(0, 90) };
+    try { navigator.sendBeacon('/academy-activity/report', new Blob([JSON.stringify(body)], { type: 'text/plain' })); } catch (_) { /* reporting is best effort */ }
+  }
+  window.smlChartPro_perfEnd = perfEnd;
   /* Hover only moves the crosshair, so only the pro layer needs to repaint. */
   let rafLight = 0;
   function emitLight() { if (raf || rafLight) return; rafLight = requestAnimationFrame(() => { rafLight = 0; drawPro(); }); }
@@ -199,6 +223,7 @@
     stage.focus({ preventScroll: true });
     if (V.tool === 'range' && zone === 'plot') return; // interval stats keep their own drag
     e.preventDefault(); e.stopPropagation();
+    perfStart();
     try { stage.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     if (pointers.size === 2) { const [a, b] = [...pointers.values()]; D = { mode: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, n0: m.slots, cx: (a.x + b.x) / 2, end0: m.end, m0: m }; return; }
     if (zone === 'yaxis') { D = { mode: 'yscale', y0: y, lo0: m.lo, hi0: m.hi, p0: m.priceAt(y), clickAt: Date.now() }; return; }
@@ -237,6 +262,7 @@
 
   function endDrag(e) {
     pointers.delete(e.pointerId);
+    if (!pointers.size) perfEnd();
     if (!D) return;
     const mode = D.mode;
     if (mode === 'draw' && V.draft) { if (V.draft.moved) commitDraft(); else V.draft.armed = true; }
@@ -265,6 +291,7 @@
     if (uiTarget(e)) return;
     const m = model(); if (!m) return;
     e.preventDefault();
+    if (!PERF.active) perfStart(); clearTimeout(PERF.wheelTimer); PERF.wheelTimer = setTimeout(perfEnd, 400);
     const { x, y } = rel(e), zone = zoneAt(m, x, y);
     if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { const d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) / m.step; setView(null, m.end + d); return; }
     const f = Math.exp(clamp(e.deltaY, -120, 120) * 0.0016);
