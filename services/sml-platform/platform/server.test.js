@@ -827,3 +827,28 @@ test('Activity sign-in explains access problems and renews expired sessions', as
   assert.match(script, /'\/academy-activity\/resume'/);
   assert.match(script, /pendingResume\.positionMs\/1000/);
 });
+
+test('activity page carries the chart guard and never collapses the chart', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, { appId: '123456789012345678' });
+  assert.match(html, /__smlChartGuard/);
+  assert.match(html, /\.chart canvas\{min-height:240px\}/);
+  assert.match(html, /academy-activity\/report/);
+  assert.ok(html.trimEnd().endsWith('</html>'));
+});
+
+test('a blank-chart report is accepted, logged and capped', async () => {
+  await withServer({}, async (base) => {
+    for (let i = 0; i < 7; i++) {
+      const res = await fetch(`${base}/academy-activity/report`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ kind: 'chart_blank', w: 0, h: 0, symbol: 'SPY', tf: '5m', misses: 5 }) });
+      assert.equal(res.status, 204);
+    }
+  });
+});
+
+test('an empty chart still loads while the Activity window reports hidden', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /if\(refreshPending\|\|\(document\.hidden&&window\.smlAcademyChartState&&window\.smlAcademyChartState\(\)\.bars\.length\)\)return/);
+  assert.match(html, /const fix=async\(\)=>\{if\(document\.hidden&&bars\(\)\.length\)return/);
+});

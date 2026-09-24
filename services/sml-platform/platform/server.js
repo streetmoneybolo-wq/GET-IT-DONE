@@ -66,6 +66,7 @@ const REDDIT_HUB_CACHE_MS = 15_000;
 let redditHubCache = { expiresAt: 0, payload: null };
 const academyMarketCache = new Map();
 const academyMarketInflight = new Map();
+const academyReportLimit = { bucket: 0, n: new Map() };
 let academyScannerCache = { freshUntil: 0, staleUntil: 0, payload: null, inflight: null };
 const academySirePriceHistory = new Map();
 const academyDepthCache = new Map();
@@ -414,7 +415,7 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
       })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
       if (!bars.length) throw new Error('academy_market_empty');
       const payload = { symbol: safeSymbol, tf: safeTimeframe, bars, asOf: Number(source?.asOf) || Date.now() };
-      academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 300_000, payload });
+      academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 1_800_000, payload });
       return payload;
     } catch (error) {
       /* A brief upstream slowdown should not blank or freeze an active lesson.
@@ -427,6 +428,25 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
   })();
   academyMarketInflight.set(cacheKey, request);
   return request;
+}
+
+/* The upstream history call takes ~2 s when cold, but the Activity page only waited 650 ms for it, so a cold cache produced a page with no candles.
+   Keep the busiest charts warm in the background so the first paint always has data. Errors are logged (throttled) so a dead feed is visible. */
+const ACADEMY_WARM = [['SPY', '5m'], ['QQQ', '5m'], ['SPY', '1D']];
+let academyWarmFailLogged = 0;
+function startAcademyChartWarmers(log = logger) {
+  const tick = async () => {
+    for (const [symbol, tf] of ACADEMY_WARM) {
+      try { await getAcademyCandles(symbol, tf); }
+      catch (error) {
+        if (Date.now() - academyWarmFailLogged > 300_000) { academyWarmFailLogged = Date.now(); log('warn', 'academy_chart_warm_failed', { symbol, tf, error }); }
+      }
+    }
+  };
+  void tick();
+  const timer = setInterval(() => { void tick(); }, 15_000);
+  if (timer.unref) timer.unref();
+  return timer;
 }
 
 async function getAcademyScanner() {
@@ -509,7 +529,13 @@ async function getAcademyDepth(symbol) {
  * read-only through its academy=1 mode. No Discord token, user identity, or
  * market credential is exposed to this page.
  */
+/* Chart guard: a CSS floor + watchdog appended to the Activity page (see ACADEMY_CHART_GUARD). */
+const ACADEMY_CHART_GUARD = "<style>main{min-height:560px}.chart{min-height:320px}.chart canvas{min-height:240px}</style><script>(()=>{if(window.__smlChartGuard)return;window.__smlChartGuard=1;\nconst q=new URLSearchParams(location.search),SYM=()=>(q.get('symbol')||'SPY').toUpperCase(),TF=()=>q.get('tf')||'5m',status=document.getElementById('status'),canvas=document.getElementById('chart');\nconst bars=()=>{try{return window.smlAcademyChartState().bars}catch(_){return[]}},key=()=>'sml-academy-bars:'+SYM()+':'+TF();\nwindow.addEventListener('sml-academy-market',e=>{const b=e.detail&&e.detail.bars;if(b&&b.length>20){try{sessionStorage.setItem(key(),JSON.stringify({t:Date.now(),symbol:e.detail.symbol,bars:b.slice(-250)}))}catch(_){}}});\nconst restore=()=>{if(bars().length)return false;try{const c=JSON.parse(sessionStorage.getItem(key())||'null');if(c&&Array.isArray(c.bars)&&c.bars.length&&Date.now()-c.t<216e5){window.smlAcademyApplyMarket({symbol:c.symbol,bars:c.bars});if(status)status.textContent='STALE';return true}}catch(_){}return false};\nlet misses=0,reported=false,delay=1500;const started=Date.now();\nconst fix=async()=>{if(document.hidden&&bars().length)return;if(canvas&&(!canvas.clientWidth||!canvas.clientHeight))window.dispatchEvent(new Event('resize'));if(bars().length){misses=0;return}misses++;\ntry{const r=await fetch('/academy-activity/market?symbol='+encodeURIComponent(SYM())+'&tf='+encodeURIComponent(TF()),{cache:'no-store'}),p=await r.json();if(r.ok&&p&&Array.isArray(p.bars)&&p.bars.length){window.smlAcademyApplyMarket(p);if(status)status.textContent='LIVE';return}}catch(_){}\nrestore();if(!reported&&Date.now()-started>8000&&!bars().length){reported=true;try{navigator.sendBeacon('/academy-activity/report',new Blob([JSON.stringify({kind:'chart_blank',w:canvas?canvas.clientWidth:-1,h:canvas?canvas.clientHeight:-1,symbol:SYM(),tf:TF(),misses,hidden:document.hidden,ua:navigator.userAgent.slice(0,120)})],{type:'text/plain'}))}catch(_){}}};\nsetTimeout(restore,400);(function loop(){fix().finally(()=>setTimeout(loop,bars().length?10000:(delay=Math.min(8000,Math.round(delay*1.4)))))})();\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden)fix()});})();</script>";
 function academyActivityHtml(initialMarket = {}, options = {}) {
+  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + '</body></html>');
+}
+
+function academyActivityHtmlBase(initialMarket = {}, options = {}) {
   const initialBars = JSON.stringify(Array.isArray(initialMarket.bars) ? initialMarket.bars.slice(-250) : []);
   const initialSymbol = JSON.stringify(String(initialMarket.symbol || 'SPY'));
   const initialScanner = JSON.stringify(Array.isArray(initialMarket.scanner?.rows) ? initialMarket.scanner.rows.slice(0, 100) : []);
@@ -621,7 +647,7 @@ void authenticateAcademyActivity();
     .replace("function load(){const s=esc(sym.value);location.assign(location.pathname+'?symbol='+encodeURIComponent(s))}", "function load(){window.smlAcademyNavigateMarket?.(esc(sym.value))}")
     .replace("new ResizeObserver(resize).observe(canvas);setQuote();draw()", "const chartObserver=new ResizeObserver(resize);chartObserver.observe(canvas);window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)resize()});requestAnimationFrame(resize);setTimeout(resize,250);setTimeout(resize,1000);setQuote();draw()")
     .replace('function renderSlide()', "window.smlAcademyChartState=()=>({bars:bars.slice(),symbol,offset,scale});window.smlAcademyApplyMarket=payload=>{if(!payload||!Array.isArray(payload.bars)||!payload.bars.length)return;bars=payload.bars.slice(-250);symbol=esc(payload.symbol||sym.value);offset=0;setQuote();resize();window.smlAcademyRefreshQuote?.();window.dispatchEvent(new CustomEvent('sml-academy-market',{detail:{bars:bars.slice(),symbol}}))};queueMicrotask(()=>window.dispatchEvent(new CustomEvent('sml-academy-market',{detail:{bars:bars.slice(),symbol}})));function renderSlide()")
-    .replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(document.hidden||refreshPending)return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'}),payload=await response.json();if(!response.ok)throw new Error('market');window.smlAcademyApplyMarket?.(payload);document.getElementById('status').textContent='LIVE'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};keepWarm();setInterval(keepWarm,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})")
+    .replace('setInterval(()=>location.reload(),30000)', "let refreshPending=false;const keepWarm=async()=>{if(refreshPending||(document.hidden&&window.smlAcademyChartState&&window.smlAcademyChartState().bars.length))return;refreshPending=true;try{const query=new URLSearchParams(location.search),symbol=query.get('symbol')||'SPY',tf=query.get('tf')||'5m';const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(symbol)+'&tf='+encodeURIComponent(tf),{cache:'no-store'}),payload=await response.json();if(!response.ok)throw new Error('market');window.smlAcademyApplyMarket?.(payload);document.getElementById('status').textContent='LIVE'}catch{document.getElementById('status').textContent='RETRY'}finally{refreshPending=false}};keepWarm();setInterval(keepWarm,5000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)keepWarm()})")
     .replace("page=1,sortKey='changePct'", "page=1,sortKey='changeRate3min'")
     .replace("if(k==='sire')return r.sire", "if(k==='sire')return r.changeRate3min")
     .replace("rows.map((r,i)=>({...r,sire:i+1}))", "rows.map(r=>({...r}))")
@@ -1316,7 +1342,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = params.get('symbol') || 'SPY';
       const timeframe = params.get('tf') || '5m';
       const [market, scanner, depth] = await Promise.all([
-        settleWithin(getAcademyCandles(symbol, timeframe), 650),
+        settleWithin(getAcademyCandles(symbol, timeframe), 1_800),
         settleWithin(getAcademyScanner(), 650),
         settleWithin(getAcademyDepth(symbol), 650)
       ]);
@@ -1340,6 +1366,19 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_market_request_failed', { error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
       }
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/academy-activity/report') {
+      const bucket = Math.floor(Date.now() / 60_000), ip = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || '').split(',')[0].trim();
+      if (academyReportLimit.bucket !== bucket) { academyReportLimit.bucket = bucket; academyReportLimit.n = new Map(); }
+      const seen = (academyReportLimit.n.get(ip) || 0) + 1; academyReportLimit.n.set(ip, seen);
+      const body = await readRequestBody(request, 1024);
+      if (seen <= 5 && body.ok) {
+        let info = {}; try { info = JSON.parse(body.rawBody) || {}; } catch (_) { /* text/plain beacons only */ }
+        logger('warn', 'academy_chart_client_blank', { kind: String(info.kind || '').slice(0, 24), w: Number(info.w), h: Number(info.h), symbol: String(info.symbol || '').slice(0, 10), tf: String(info.tf || '').slice(0, 4), misses: Number(info.misses), hidden: !!info.hidden, ua: String(info.ua || '').slice(0, 120) });
+      }
+      response.writeHead(204, { 'cache-control': 'no-store' }); response.end();
       return;
     }
 
@@ -1677,6 +1716,7 @@ async function main() {
   process.once('SIGINT', () => { void shutdown('SIGINT'); });
   server.listen(config.port, () => {
     log('info', 'api_started', { port: config.port });
+    startAcademyChartWarmers(log);
     if (config.discordConnectBotToken) {
       cleanupConnectActivityMessages({ token: config.discordConnectBotToken, apply: true })
         .then((result) => log('info', 'connect_activity_cleanup_complete', result))
