@@ -390,6 +390,7 @@
     try { found = P.detect(m.bars.map((b) => ({ t: +b.t, o: +b.o, h: +b.h, l: +b.l, c: +b.c, v: +b.v || 0 }))); } catch (_) { found = null; }
     foundKey = key; patternsDirty = false; renderPatternPanel(m); return found;
   }
+  const human = (n) => String(n || '').replace(/_/g, ' ').replace(/[a-z]/g, (c) => c.toUpperCase());
   const COL = { bull: '#00d084', bear: '#ff5470', neutral: '#ffd166' };
   const abbr = (name) => { const w = String(name || '').replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean); if (w.length === 1) return w[0].slice(0, 3); return w.map((x) => (/^three$/i.test(x) ? '3' : /^bullish$|^bearish$/i.test(x) ? '' : x[0].toUpperCase())).join('').slice(0, 4) || 'P'; };
   function drawPatterns(m) {
@@ -408,7 +409,7 @@
       if (fin(p.target)) { const ty = m.y(p.target); lctx.setLineDash([3, 5]); lctx.globalAlpha = 0.6; lctx.beginPath(); lctx.moveTo(m.x(p.endIdx), ty); lctx.lineTo(m.w - PAD.r, ty); lctx.stroke(); lctx.setLineDash([]); lctx.font = '700 8px ui-monospace,monospace'; lctx.textAlign = 'right'; lctx.fillText('TARGET ' + fmt(p.target), m.w - PAD.r - 4, ty - 2); }
       lctx.globalAlpha = 1; lctx.font = '800 10px system-ui'; lctx.textAlign = 'left';
       const lx = clamp(m.x(p.startIdx), PAD.l + 2, m.w - PAD.r - 130), ly = clamp(m.y(Math.max(...(pts.length ? pts.map((q2) => q2.p) : [p.level || 0]))) - 12, PAD.t + 10, m.h - PAD.b - 6);
-      const label = p.name + ' · ' + p.status + ' ' + Math.round(p.confidence * 100) + '%', tw = lctx.measureText(label).width;
+      const label = human(p.name) + ' · ' + p.status + ' ' + Math.round(p.confidence * 100) + '%', tw = lctx.measureText(label).width;
       lctx.fillStyle = 'rgba(7,16,24,.88)'; lctx.fillRect(lx - 3, ly - 10, tw + 8, 15); lctx.fillStyle = c; lctx.fillText(label, lx + 1, ly + 1);
       lctx.restore();
     });
@@ -419,7 +420,7 @@
         const j = cp.i, x = m.x(j); if (x < PAD.l || x > m.w - PAD.r) return;
         const bar = m.bars[j]; if (!bar) return;
         const up = cp.dir === 'bull', c = COL[cp.dir] || COL.neutral, y = up ? m.y(+bar.l) + 12 + (seen[j] || 0) : m.y(+bar.h) - 6 - (seen[j] || 0);
-        seen[j] = (seen[j] || 0) + 10; lctx.fillStyle = c; lctx.fillText((up ? '▲' : cp.dir === 'bear' ? '▼' : '◆') + abbr(cp.name), x, y);
+        seen[j] = (seen[j] || 0) + 10; lctx.fillStyle = c; lctx.fillText((up ? '▲' : cp.dir === 'bear' ? '▼' : '◆') + abbr(human(cp.name)), x, y);
       });
       lctx.restore();
     }
@@ -428,8 +429,8 @@
     const box = panel && panel.querySelector('.plist'); if (!box) return;
     const r = found; if (!r || !r.ok) { box.innerHTML = '<div style="padding:8px;color:#8ba2af">Not enough candles to scan this interval yet.</div>'; return; }
     const items = [];
-    (r.charts || []).forEach((p, k) => items.push({ id: 'c' + k, idx: p.endIdx, title: p.name, dir: p.dir, sub: p.status + ' · ' + Math.round(p.confidence * 100) + '% · ' + (p.note || ''), kind: 'chart' }));
-    (r.candles || []).slice(-40).forEach((p, k) => items.push({ id: 'k' + k, idx: p.i, title: p.name, dir: p.dir, sub: fullTime(p.t, m.tf) + (p.note ? ' · ' + p.note : ''), kind: 'candle' }));
+    (r.charts || []).forEach((p, k) => items.push({ id: 'c' + k, idx: p.endIdx, title: human(p.name), dir: p.dir, sub: p.status + ' · ' + Math.round(p.confidence * 100) + '% · ' + (p.note || ''), kind: 'chart' }));
+    (r.candles || []).slice(-40).forEach((p, k) => items.push({ id: 'k' + k, idx: p.i, title: human(p.name), dir: p.dir, sub: fullTime(p.t, m.tf) + (p.note ? ' · ' + p.note : ''), kind: 'candle' }));
     (r.levels || []).forEach((p, k) => items.push({ id: 'l' + k, idx: p.lastIdx, title: (p.kind === 'support' ? 'Support ' : 'Resistance ') + fmt(p.p), dir: p.kind === 'support' ? 'bull' : 'bear', sub: p.touches + ' touches', kind: 'level' }));
     (r.gaps || []).forEach((p, k) => items.push({ id: 'g' + k, idx: p.i, title: (p.dir === 'bull' ? 'Gap up' : 'Gap down') + (p.filled ? ' (filled)' : ' (open)'), dir: p.dir, sub: fmt(p.from) + ' → ' + fmt(p.to), kind: 'gap' }));
     items.sort((a, b) => b.idx - a.idx);
