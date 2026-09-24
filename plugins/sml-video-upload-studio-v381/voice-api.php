@@ -215,38 +215,7 @@ if (!function_exists('sml_voice_room_host')) {
             /* Creator rooms on /live/ are keyed by the creator's public handle (or creator-{uid}); without this the
                host was 0, so creator pricing/levels were never read and a non-admin creator could not moderate
                their own queue (2026-09-15). */
-            /* Per-stream rooms. The Live Watch page sends 'stream-{id}' as the room for chat, Super Chat, voice passes and
-               gifts on every URL that names a stream — and this returned 0 for it: the viewer was debited, the row was
-               written with streamer_id 0 (so the creator was never credited) and the creator's own pricing was ignored
-               (found 2026-09-19). The owner is whoever holds that stream in their scheduled-live records. A stream never
-               changes owner, so the answer is cached; this function runs on every eligibility / now-playing poll. */
-            if (preg_match('/^stream-([a-z0-9]{8,32})$/', $room_id, $sm)) {
-                $ck = 'sml_stream_owner2_' . $sm[1]; // "2": the first version of this lookup cached loose matches for a day
-                $owner = wp_cache_get($ck, 'sml');
-                if (false === $owner) {
-                    $lib_key = function_exists('sml_scheduled_live_library_key') ? sml_scheduled_live_library_key() : '_sml_scheduled_live_library';
-                    $cur_key = function_exists('sml_scheduled_live_meta_key') ? sml_scheduled_live_meta_key() : '_sml_scheduled_live';
-                    $owner = 0;
-                    /* The LIKE only NARROWS the search; the hit is then confirmed against the unserialized records. A bare
-                       LIKE '%"word"%' also matches any quoted word inside a schedule, so 'stream-scheduled' and
-                       'stream-cancelled' resolved to a real creator and a payment into such a room was credited to them. */
-                    $cands = $wpdb->get_col($wpdb->prepare(
-                        "SELECT DISTINCT user_id FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s) AND meta_value LIKE %s LIMIT 5",
-                        $lib_key, $cur_key, '%' . $wpdb->esc_like('"' . $sm[1] . '"') . '%'
-                    ));
-                    foreach ((array) $cands as $cand) {
-                        $cand = (int) $cand;
-                        $lib = get_user_meta($cand, $lib_key, true);
-                        $cur = get_user_meta($cand, $cur_key, true);
-                        $in_lib = is_array($lib) && isset($lib[$sm[1]]) && is_array($lib[$sm[1]]);
-                        $is_cur = is_array($cur) && isset($cur['id']) && strtolower((string) preg_replace('/[^a-zA-Z0-9]/', '', (string) $cur['id'])) === $sm[1];
-                        if ($in_lib || $is_cur) { $owner = $cand; break; }
-                    }
-                    wp_cache_set($ck, $owner, 'sml', $owner ? DAY_IN_SECONDS : 60);
-                }
-                return (int) $owner;
-            }
-            if (preg_match('/^creator-(\d+)$/', $room_id, $cm)) { return get_userdata((int) $cm[1]) ? (int) $cm[1] : 0; } // 'creator-999999999' used to come back as a creator
+            if (preg_match('/^creator-(\d+)$/', $room_id, $cm)) { return (int) $cm[1]; }
             if (function_exists('sml_ppe_user_id_by_handle')) {
                 $uid = (int) sml_ppe_user_id_by_handle($room_id);
                 if ($uid > 0) { return $uid; }
@@ -446,21 +415,14 @@ if (!function_exists('sml_voice_refund')) {
             return false;
         }
 
-        /* The status flip IS the lock. This used to read the status, credit the wallet and only then write
-           'refunded', so two triggers in the same instant (a double-clicked Deny, two moderators, Deny racing the
-           session-end auto refund) both saw 'paid' and both paid out. Now only the request whose UPDATE actually
-           changes the row may credit (2026-09-19). */
-        $claimed = $wpdb->query($wpdb->prepare(
-            "UPDATE $charges SET status = 'refunded', refunded_at = %s WHERE id = %d AND status = 'paid'",
-            gmdate('Y-m-d H:i:s'), (int) $charge['id']
-        ));
-        if (1 !== (int) $claimed) {
-            return false;
-        }
-
         if ($charge['rail'] === 'loop_bucks' && (int) $charge['loop_bucks'] > 0) {
             sml_voice_wallet_credit((int) $charge['user_id'], (int) $charge['loop_bucks'], 'voice_refund:' . $token_id);
         }
+
+        $wpdb->update($charges, array(
+            'status' => 'refunded',
+            'refunded_at' => gmdate('Y-m-d H:i:s'),
+        ), array('id' => $charge['id']));
 
         sml_voice_log($token['room_id'], null, 0, 'refund', array(
             'reason' => $reason,
@@ -508,19 +470,6 @@ if (!function_exists('sml_voice_sweep')) {
               WHERE status = 'waiting'
                 AND requested_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 2 HOUR)"
         );
-        /* "Refund when the caller never actually got to speak" (see sml_voice_end_session) was never applied here: a
-           pass that ran out unused - the host never decided, the stream ended, the buyer was on cooldown - was
-           marked expired and the Loop Bucks were simply gone. A token only becomes 'consumed' when the host approves,
-           so anything still unused/queued at expiry was never heard. sml_voice_refund() is atomic and only pays a
-           charge that is still 'paid', so this cannot double-refund (2026-09-19). */
-        $stale = $wpdb->get_col(
-            "SELECT id FROM " . sml_voice_table('tokens') . "
-              WHERE status IN ('unused','queued') AND consumed_at IS NULL AND expires_at < UTC_TIMESTAMP()
-              LIMIT 50"
-        );
-        foreach ((array) $stale as $stale_token_id) {
-            sml_voice_refund((int) $stale_token_id, 'expired');
-        }
         $wpdb->query(
             "UPDATE " . sml_voice_table('tokens') . "
                 SET status = 'expired'
@@ -663,16 +612,6 @@ if (!function_exists('sml_voice_rest_superchat')) {
             return new WP_Error('sml_voice_disabled', 'Voice call-ins are turned off for this stream.', array('status' => 423));
         }
         $room_host_id = (int) sml_voice_room_host($room_id);
-        /* Never take Loop Bucks for a room nobody owns. With host 0 the wallet was debited, the row was written with
-           streamer_id 0 (so no creator ever saw it) and nothing refunded it (2026-09-19). */
-        if ($room_host_id <= 0 || !get_userdata($room_host_id)) {
-            return new WP_Error('sml_voice_no_host', 'This room has no creator to receive a Super Chat.', array('status' => 409));
-        }
-        /* The cooldown was only enforced when QUEUEING a pass, so a viewer on cooldown could still be charged for one
-           they could not use until it expired. */
-        if ($cooldown_until = sml_voice_cooldown_until($user_id, $room_id)) {
-            return new WP_Error('sml_voice_cooldown', 'You can send another voice Super Chat here once your cooldown ends.', array('status' => 429, 'cooldown_until' => $cooldown_until));
-        }
         if (!empty($settings['members_only'])
             && (!function_exists('sml_gl_user_has_content_access') || !sml_gl_user_has_content_access($user_id, $room_host_id))) {
             return new WP_Error('sml_voice_members_only', 'This live room is available to this creator\'s Content Members.', array('status' => 403));
@@ -1235,15 +1174,11 @@ if (!function_exists('sml_voice_rest_deny')) {
             return new WP_Error('sml_voice_forbidden', 'Only the host can deny.', array('status' => 403));
         }
 
-        /* Only a request that is still WAITING can be denied. Without this an already approved-and-played message
-           could be denied afterwards and refunded - the viewer got the airtime and the money (2026-09-19). */
-        $denied = $wpdb->query($wpdb->prepare(
-            "UPDATE " . sml_voice_table('queue') . " SET status = 'denied', decided_at = %s, decided_by = %d WHERE id = %d AND status = 'waiting'",
-            gmdate('Y-m-d H:i:s'), get_current_user_id(), $queue_id
-        ));
-        if (1 !== (int) $denied) {
-            return new WP_Error('sml_voice_decided', 'That request was already handled.', array('status' => 409));
-        }
+        $wpdb->update(sml_voice_table('queue'), array(
+            'status' => 'denied',
+            'decided_at' => gmdate('Y-m-d H:i:s'),
+            'decided_by' => get_current_user_id(),
+        ), array('id' => $queue_id));
 
         // Denied always refunds - they never got to speak.
         sml_voice_refund((int) $row['token_id'], 'denied');
@@ -1692,10 +1627,6 @@ if (!function_exists('sml_voice_rest_chat_post')) {
             $tier_slug = sanitize_key($tier['slug']);
             $amount_cents = max(0, (int) $tier['min_amount_cents']);
             $loop_bucks = max((int) $tier['min_loop_bucks'], $amount_cents);
-            $chat_host_id = (int) sml_voice_room_host($room_id);
-            if ($chat_host_id <= 0 || !get_userdata($chat_host_id)) { // same rule as the pass route: no creator, no charge
-                return new WP_Error('sml_voice_no_host', 'This room has no creator to receive a Super Chat.', array('status' => 409));
-            }
             if (!user_can($user_id, 'manage_options')) {
                 $balance = sml_voice_wallet_debit($user_id, $loop_bucks, 'live_chat:' . $room_id . ':' . $tier_slug);
                 if (is_wp_error($balance)) {

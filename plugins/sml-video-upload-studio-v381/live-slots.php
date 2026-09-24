@@ -189,35 +189,8 @@ if (!function_exists('sml_slots_rest_feeds')) {
 
         $count = sml_slots_count($user->ID);
 
-        // The creator's chosen tickers for this stream: PRIMARY first, then the related tickers they picked
-        // at go-live / schedule (sidecar meta _sml_live_desk_tickers, written by sml-live-desk-tickers.php on
-        // both start routes). The live desk module shows ONLY these — never a generic/global "top" list. When
-        // the creator picked nothing the desk stays neutral rather than inventing tickers. Falls back to the
-        // scheduled-live primary alone for streams started before the sidecar existed (no regression).
-        $sched = get_user_meta($user->ID, '_sml_scheduled_live', true);
-        $sched_primary = is_array($sched) ? strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($sched['ticker'] ?? ''))) : '';
-
-        $desk_tickers = array();
-        $desk_list = get_user_meta($user->ID, '_sml_live_desk_tickers', true);
-        if (is_array($desk_list)) {
-            foreach ($desk_list as $desk_sym) {
-                $desk_sym = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) $desk_sym));
-                if ($desk_sym === '' || strlen($desk_sym) > 5) { continue; }
-                if (in_array($desk_sym, $desk_tickers, true)) { continue; }
-                $desk_tickers[] = $desk_sym;
-                if (count($desk_tickers) >= 5) { break; }
-            }
-        }
-        // Fall back to the scheduled-live primary ONLY when the sidecar was never written (old stream / OBS
-        // go-live). An explicit empty sidecar array means the creator deliberately picked no ticker — honor it
-        // as a neutral desk rather than resurrecting a stale scheduled primary.
-        if (empty($desk_tickers) && !is_array($desk_list) && $sched_primary !== '' && strlen($sched_primary) <= 5) {
-            $desk_tickers = array($sched_primary);
-        }
-        $desk_ticker = isset($desk_tickers[0]) ? $desk_tickers[0] : '';
-
         if (!$row) {
-            return array('live' => false, 'count' => $count, 'slots' => array(), 'ticker' => $desk_ticker, 'tickers' => $desk_tickers);
+            return array('live' => false, 'count' => $count, 'slots' => array());
         }
 
         $settings = sml_rtmp_settings();
@@ -240,8 +213,6 @@ if (!function_exists('sml_slots_rest_feeds')) {
             'live'    => (bool) $row['is_live'],
             'count'   => $count,
             'slots'   => $slots,
-            'ticker'  => $desk_ticker,
-            'tickers' => $desk_tickers,
             'creator' => array(
                 'id'     => (int) $user->ID,
                 'name'   => $user->display_name ?: $user->user_login,

@@ -94,6 +94,7 @@
       visibility: 'public',
       embeddingAllowed: true,
       commentsAllowed: true,
+		archiveOptIn: false,
       publishDate: schedule.date,
       publishTime: schedule.time,
       seoTitle: '',
@@ -342,6 +343,7 @@
           + '  <div class="sml-upload-toggle-grid">'
           + '    <div class="sml-upload-toggle"><label><input type="checkbox" data-check="embeddingAllowed"' + (draft.embeddingAllowed ? ' checked' : '') + '> Allow embedding</label><p>Helps creators and sites reuse the watch page player cleanly.</p></div>'
           + '    <div class="sml-upload-toggle"><label><input type="checkbox" data-check="commentsAllowed"' + (draft.commentsAllowed ? ' checked' : '') + '> Allow comments</label><p>Comments help engagement and recommendation quality.</p></div>'
+		  + '    <div class="sml-upload-toggle"><label><input type="checkbox" data-check="archiveOptIn"' + (draft.archiveOptIn ? ' checked' : '') + '> Save replay and submit for indexing</label><p>Required to keep this video after 24 hours. Public videos also need a detailed title, description, and thumbnail before search indexing is allowed.</p></div>'
           + '  </div>'
           + '  <button type="button" class="sml-upload-review-publish" data-publish>Publish video</button>'
           + '</div>';
@@ -534,7 +536,8 @@
         video_mime: uploaded.videoUpload.mime || '',
         thumbnail_url: (uploaded.thumbUpload && uploaded.thumbUpload.url) || draft.thumbUrl || '',
         tags: outputs.tags || [],
-        hashtags: outputs.hashtags || []
+        hashtags: outputs.hashtags || [],
+		archive_opt_in: !!draft.archiveOptIn
       })
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {

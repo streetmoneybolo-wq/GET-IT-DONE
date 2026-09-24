@@ -558,9 +558,9 @@ if (!function_exists('sml_letters_render_public')) {
         if (!$unlocked) {
             echo '<div class="lp-lock lp-gated">';
             if ($letter['visibility'] === 'subscribers') {
-                echo '<h3>This letter is for followers</h3>';
-                echo '<p>Follow ' . esc_html($author['name']) . ' to read the rest.</p>';
-                echo '<a class="lp-cta" href="' . esc_url(home_url('/members/' . $author['handle'] . '/')) . '">Follow ' . esc_html($author['name']) . '</a>';
+                echo '<h3>This letter is for subscribers</h3>';
+                echo '<p>Subscribe to ' . esc_html($author['name']) . ' to read the rest.</p>';
+                echo '<a class="lp-cta" href="' . esc_url(home_url('/members/' . $author['handle'] . '/')) . '">Subscribe to ' . esc_html($author['name']) . '</a>';
             } else {
                 echo '<h3>Sign in to keep reading</h3>';
                 echo '<p>This letter is for StockMarketLoop members.</p>';

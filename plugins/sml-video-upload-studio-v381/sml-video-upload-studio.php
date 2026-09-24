@@ -2,13 +2,42 @@
 /**
  * Plugin Name: StockMarketLoop Video Upload Studio
  * Description: Adds a YouTube-style upload flow at /upload-video/ that publishes into the existing StockMarketLoop video library and watch-page system.
- * Version: 3.8.8
+ * Version: 3.8.11
  * Author: OpenAI
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
+
+/* Archive policy: creator opt-in is required before an uploaded video becomes
+ * a durable library asset or is eligible for public indexing. */
+if (!function_exists('sml_vus_archive_quality')) {
+    function sml_vus_archive_quality($title, $description, $thumbnail_url, $visibility) {
+        return 'public' === $visibility && strlen(trim((string) $title)) >= 30 && strlen(trim((string) $description)) >= 150 && '' !== trim((string) $thumbnail_url);
+    }
+}
+
+if (!function_exists('sml_vus_retention_sweep')) {
+    function sml_vus_retention_sweep() {
+        $library = function_exists('sml_video_upload_studio_library') ? sml_video_upload_studio_library() : array();
+        $changed = false;
+        foreach ($library as $id => $video) {
+            if (!is_array($video) || !empty($video['archive_opt_in']) || empty($video['expires_at']) || strtotime((string) $video['expires_at']) > time()) { continue; }
+            $url = (string) ($video['video_url'] ?? '');
+            $uploads = wp_upload_dir();
+            if ($url && 0 === strpos($url, (string) $uploads['baseurl'] . '/')) {
+                $file = (string) $uploads['basedir'] . '/' . ltrim(substr($url, strlen((string) $uploads['baseurl'])), '/');
+                if (is_file($file)) { wp_delete_file($file); }
+            }
+            unset($library[$id]);
+            $changed = true;
+        }
+        if ($changed && function_exists('sml_video_upload_studio_save_library')) { sml_video_upload_studio_save_library($library); }
+    }
+}
+add_action('sml_vus_retention_sweep', 'sml_vus_retention_sweep');
+add_action('init', function () { if (!wp_next_scheduled('sml_vus_retention_sweep')) { wp_schedule_event(time() + DAY_IN_SECONDS, 'daily', 'sml_vus_retention_sweep'); } }, 20);
 
 require_once __DIR__ . '/watch-page.php';
 require_once __DIR__ . '/studio-page.php';
@@ -418,6 +447,8 @@ if (!function_exists('sml_video_upload_studio_publish_video')) {
         $language = sanitize_text_field((string) $request->get_param('language'));
         $recorded_at = sanitize_text_field((string) $request->get_param('recorded_at'));
         $schedule_at = sanitize_text_field((string) $request->get_param('schedule_at'));
+		$archive_opt_in = filter_var($request->get_param('archive_opt_in'), FILTER_VALIDATE_BOOLEAN);
+		$index_eligible = $archive_opt_in && sml_vus_archive_quality($title, $description, $thumbnail_url, $visibility);
 
         $video_id = sml_video_upload_studio_generate_id();
         $dist_entity_id = function_exists('sml_dist_numeric_entity_id')
@@ -456,6 +487,9 @@ if (!function_exists('sml_video_upload_studio_publish_video')) {
             'created_at' => gmdate('c'),
             'updated_at' => gmdate('c'),
             'watch_url' => sml_video_upload_studio_watch_url($video_id),
+			'archive_opt_in' => $archive_opt_in,
+			'index_eligible' => $index_eligible,
+			'expires_at' => $archive_opt_in ? null : gmdate('c', time() + DAY_IN_SECONDS),
         );
 
         $library = sml_video_upload_studio_library();

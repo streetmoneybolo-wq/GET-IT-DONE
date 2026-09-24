@@ -476,7 +476,7 @@ if (!function_exists('sml_letters_editor_script')) {
       + 'recorded at publish time so the call can be scored later.</div></div>'
       + '<div class="le-card"><h4>Visibility options</h4><div class="cs-hint">'
       + '<b>Public</b> - anyone.<br><b>Members only</b> - signed-in users.<br>'
-      + '<b>Followers</b> - people who follow you.'
+      + '<b>Subscribers</b> - people subscribed to your Loop Letters.'
       + '</div></div>';
   }
 
@@ -611,7 +611,7 @@ if (!function_exists('sml_letters_editor_script')) {
   function renderEditSide() {
     issues = preflight();
     var syms = symbolsInDoc();
-    var vis = [['public','Public'],['members','Members only'],['subscribers','Followers']];
+    var vis = [['public','Public'],['members','Members only'],['subscribers','Subscribers']];
 
     side.innerHTML = '<div class="le-card"><h4>Tickers</h4>'
       + (syms.length
@@ -667,7 +667,7 @@ if (!function_exists('sml_letters_editor_script')) {
       + '<div class="le-settings-field wide"><label>Publication description</label><textarea data-set="description" maxlength="500" placeholder="Tell readers what your publication covers.">' + esc(s.description) + '</textarea></div>'
       + '<div class="le-settings-field"><label>Brand color</label><input data-set="brand_color" type="color" value="' + esc(s.brand_color || '#2b6cff') + '"></div>'
       + '<div class="le-settings-field"><label>Default audience for new letters</label><select data-set="default_visibility">'
-      + [['public','Public'],['members','Members only'],['subscribers','Followers']].map(function (v) { return '<option value="' + v[0] + '"' + (s.default_visibility === v[0] ? ' selected' : '') + '>' + v[1] + '</option>'; }).join('')
+      + [['public','Public'],['members','Members only'],['subscribers','Subscribers']].map(function (v) { return '<option value="' + v[0] + '"' + (s.default_visibility === v[0] ? ' selected' : '') + '>' + v[1] + '</option>'; }).join('')
       + '</select></div>'
       + '<div class="le-settings-field wide"><label>Default disclosure</label><textarea data-set="default_disclosure" maxlength="500" placeholder="Example: No current position. This is not financial advice.">' + esc(s.default_disclosure) + '</textarea><div class="cs-hint">Added automatically as a disclosure block when you create a new letter.</div></div>'
       + '</div></div>'
@@ -735,8 +735,8 @@ if (!function_exists('sml_letters_editor_script')) {
 
     side.innerHTML = '<div class="le-card"><h4>Newsletter readiness</h4>'
       + '<div class="le-status"><span>Website and ticker delivery</span><b class="ok">Active</b></div>'
-      + '<div class="le-status"><span>Audience source</span><b>Followers</b></div>'
-      + '<div class="le-status"><span>Current followers</span><b>' + Number(st.subscriber_count || 0) + '</b></div>'
+      + '<div class="le-status"><span>Audience source</span><b>Subscribers</b></div>'
+      + '<div class="le-status"><span>Current subscribers</span><b>' + Number(st.subscriber_count || 0) + '</b></div>'
       + '<div class="le-status"><span>Uploaded subscribers</span><b>' + Number(st.imported_subscriber_count || 0) + '</b></div>'
       + '<div class="le-status"><span>Email delivery</span><b class="' + (st.email_delivery ? 'ok' : 'off') + '">' + (st.email_delivery ? 'Enabled' : 'Not connected') + '</b></div>'
       + '<div class="le-status"><span>Provider</span><b>' + esc(st.email_provider || 'manual') + '</b></div>'

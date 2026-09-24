@@ -976,7 +976,10 @@ if (!function_exists('sml_letters_rest_settings')) {
         return array(
             'settings' => $settings,
             'status' => array(
-                'audience_source' => 'followers',
+                // The underlying member graph remains backward-compatible,
+                // but the Loop Letters product is always presented as a
+                // subscriber audience to creators and readers.
+                'audience_source' => 'subscribers',
                 'subscriber_count' => is_array($followers) ? count(array_unique(array_map('intval', $followers))) : 0,
                 'site_delivery' => true,
                 'email_delivery' => !empty($email['enabled']),

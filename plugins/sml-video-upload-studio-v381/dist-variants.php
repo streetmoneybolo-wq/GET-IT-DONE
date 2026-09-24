@@ -154,25 +154,6 @@ if (!function_exists('sml_dist_hook')) {
         if ($event === 'stream.start') {
             return $primary ? '🔴 LIVE NOW — ' . $primary : '🔴 LIVE NOW';
         }
-        /* Live Control Room promos (mu-plugin sml-live-control): a countdown, a mid-stream nudge, a milestone, or the creator's own words */
-        if ($event === 'stream.soon') {
-            $mins = (int) ($bundle['promo']['minutes'] ?? 0);
-            $when = $mins > 1 ? 'in ' . $mins . ' minutes' : ($mins === 1 ? 'in 1 minute' : 'soon');
-            return '⏰ Live ' . $when . ($primary ? ' — ' . $primary : '');
-        }
-        if ($event === 'stream.update') {
-            return $primary ? '🔴 STILL LIVE — ' . $primary : '🔴 STILL LIVE';
-        }
-        if ($event === 'stream.milestone') {
-            $n = (int) ($bundle['promo']['viewers'] ?? 0);
-            return '🚀 ' . ($n > 0 ? number_format($n) . ' traders are' : 'The room is') . ' live right now';
-        }
-        if ($event === 'stream.wrap') {
-            return $primary ? '✅ That\'s a wrap — ' . $primary : '✅ That\'s a wrap';
-        }
-        if ($event === 'stream.custom') {
-            return '';
-        }
         if ($event === 'replay.ready') {
             return 'Missed it? The full session is up.';
         }
@@ -212,18 +193,6 @@ if (!function_exists('sml_dist_cta')) {
     function sml_dist_cta($platform, $event, $seo) {
         if ($event === 'stream.start') {
             return $platform === 'instagram' ? 'Link in bio to watch live.' : 'Join and bring your ticker ↓';
-        }
-        if ($event === 'stream.soon') {
-            return $platform === 'instagram' ? 'Link in bio — chat is open.' : 'Chat is open — join early ↓';
-        }
-        if ($event === 'stream.update' || $event === 'stream.milestone') {
-            return $platform === 'instagram' ? 'Link in bio to jump in.' : 'Jump in ↓';
-        }
-        if ($event === 'stream.wrap') {
-            return $platform === 'instagram' ? 'Replay — link in bio.' : 'Catch the replay ↓';
-        }
-        if ($event === 'stream.custom') {
-            return '';
         }
         if ($event === 'replay.ready') {
             return $platform === 'instagram' ? 'Replay — link in bio.' : 'Watch the replay ↓';
@@ -290,10 +259,6 @@ if (!function_exists('sml_dist_body')) {
 
         if ($event === 'stream.start') {
             return $bundle['title'];
-        }
-        if (in_array($event, array('stream.soon', 'stream.update', 'stream.milestone', 'stream.wrap', 'stream.custom'), true)) {
-            $said = trim((string) ($bundle['promo']['text'] ?? ''));
-            return $said !== '' ? $said : $bundle['title'];
         }
 
         // Long-form platforms get the creator's actual prose, not a summary of it.

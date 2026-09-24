@@ -104,11 +104,6 @@ if (!function_exists('sml_gl_script')) {
   }
 
   var draft = defaults();
-  /* Per-stream studio URL: /go-live/{handle}/{slug}-{id}. The server serves the normal Go Live page; this script reads the id from the path
-     and opens THAT stream in the studio. routeMode keeps such a stream out of the saved wizard draft. */
-  var routeMatch = window.location.pathname.match(/^\/go-live\/([A-Za-z0-9_-]+)\/([^\/]+?)\/?$/);
-  var routeId = routeMatch ? ((routeMatch[2].match(/(?:^|-)([A-Za-z0-9]{8,32})$/) || [])[1] || '') : '';
-  var routeMode = !!routeId, routeNotice = '';
   var stream = null;
   var recorder = null;
   var recordedChunks = [];
@@ -310,7 +305,6 @@ if (!function_exists('sml_gl_script')) {
   }
 
   function save() {
-    if (routeMode) { return; }
     var copy = {};
     Object.keys(draft).forEach(function (k) {
       if (k === 'orbitCards') {
@@ -862,7 +856,7 @@ if (!function_exists('sml_gl_script')) {
     draft.groupId = Number.isFinite(Number(draft.groupId)) ? Number(draft.groupId) : 0;
     draft.framerate = Number.isFinite(Number(draft.framerate)) ? Number(draft.framerate) : fallback.framerate;
     draft.related = Array.isArray(draft.related)
-      ? draft.related.map(function (ticker) { return String(ticker || '').toUpperCase().replace(/[^A-Z]/g, ''); }).filter(Boolean).slice(0, 4)
+      ? draft.related.map(function (ticker) { return String(ticker || '').toUpperCase().replace(/[^A-Z]/g, ''); }).filter(Boolean).slice(0, 12)
       : [];
     draft.orbitCards = Array.isArray(draft.orbitCards)
       ? draft.orbitCards.filter(function (card) { return card && typeof card === 'object'; }).slice(0, 3)
@@ -1011,10 +1005,11 @@ if (!function_exists('sml_gl_script')) {
         seen[g.id] = 1;
         return true;
       });
-      /* A host group is optional (owner call 2026-09-19), so 0 now MEANS "no group" and must never be
-         overwritten. This used to auto-pick groups[0] — and since the list is mine + trending, a creator with
-         no groups of their own was silently put into a trending group they had not joined, and Go Live then
-         failed with "You must be a member of this group". */
+      if (!draft.groupId && groups.length) {
+        draft.groupId = groups[0].id;
+        draft.groupName = groups[0].name;
+        draft.groupNameFor = Number(groups[0].id);
+      }
       render();
     }).catch(function () { /* groups optional until Go Live */ });
   }
@@ -1128,7 +1123,7 @@ if (!function_exists('sml_gl_script')) {
         : '<span style="width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#17314c;color:#9ce7c0;font-size:10px;font-weight:800">' + esc(m.name.slice(0, 2).toUpperCase()) + '</span>';
       return '<article style="display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;padding:8px 0;border-bottom:1px solid rgba(151,175,200,.10)">'
         + avatar + '<div style="min-width:0"><div style="display:flex;gap:7px;align-items:baseline"><b style="font-size:12px;color:#e6edf5">' + esc(m.name) + '</b><small style="font-size:10px;color:#7e92a8">' + esc(creatorChatTime(m.created)) + '</small></div>'
-        + '<p style="margin:2px 0 0;color:#c6d2df;font-size:12.5px;line-height:1.4;overflow-wrap:anywhere">' + glcEmo(esc(m.message)) + '</p></div></article>';
+        + '<p style="margin:2px 0 0;color:#c6d2df;font-size:12.5px;line-height:1.4;overflow-wrap:anywhere">' + esc(m.message) + '</p></div></article>';
     }).join('');
     feed.scrollTop = feed.scrollHeight;
   }
@@ -1164,7 +1159,6 @@ if (!function_exists('sml_gl_script')) {
 
   function stopCreatorChat() {
     if (creatorChat.timer) { window.clearInterval(creatorChat.timer); creatorChat.timer = null; }
-    stopInsights();   /* every place that closes the live room also closes its analytics feed */
   }
 
   function sendCreatorChat() {
@@ -1191,8 +1185,8 @@ if (!function_exists('sml_gl_script')) {
     if (!handle) {
       return '<section class="cs-card" style="margin-top:18px"><h3>Shared Watch Page Chat</h3><p class="cs-sub">Set a public profile handle before opening a live chat room.</p></section>';
     }
-    return '<section class="cs-card" id="gl-live-chat" style="border-color:rgba(43,108,255,.35)"><div class="cs-head-row"><div><h3 style="margin-bottom:5px">Live Chat</h3><p class="cs-sub">Messages here and on your Watch Page are one live conversation.</p></div><a class="gl-btn-line" style="text-decoration:none;white-space:nowrap" target="_blank" rel="noopener" href="' + esc(watchPageUrl()) + '">Open Watch Page ↗</a></div>'
-      + '<div data-creator-chat-feed style="height:min(50vh,440px);overflow:auto;margin-top:10px"></div><div data-creator-chat-empty style="padding:18px 0;color:#7e92a8;font-size:12.5px">Chat is open. Your viewers can start the conversation now.</div>'
+    return '<section class="cs-card" style="margin-top:18px"><div class="cs-head-row"><div><h3 style="margin-bottom:5px">Shared Watch Page Chat</h3><p class="cs-sub">Messages here and on your Watch Page are one live conversation.</p></div><a class="gl-btn-line" style="text-decoration:none;white-space:nowrap" target="_blank" rel="noopener" href="' + esc(watchPageUrl()) + '">Open Watch Page ↗</a></div>'
+      + '<div data-creator-chat-feed style="max-height:260px;overflow:auto;margin-top:10px"></div><div data-creator-chat-empty style="padding:18px 0;color:#7e92a8;font-size:12.5px">Chat is open. Your viewers can start the conversation now.</div>'
       + '<div style="display:flex;gap:9px;margin-top:12px"><input data-creator-chat-input class="cs-input" maxlength="500" autocomplete="off" placeholder="Reply to viewers…"><button type="button" class="cs-btn cs-btn-primary" data-send-creator-chat>Send</button></div></section>';
   }
 
@@ -1283,8 +1277,6 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-quote" data-quote style="display:none"></div>'
       + overlayPreviewMarkup(false) + '</div>'
       + '<div class="gl-movers" data-movers></div></section>';
-
-    if (draft.live && draft.live.status !== 'ended') { html += creatorChatMarkup() + miniQaMarkup(); }
 
     html += '<section class="cs-card"><h3 style="margin-bottom:14px">Stream Health</h3><div class="gl-health"><div>'
       + healthRow('Video', t && t.videoOk, t && t.video ? t.video : 'No camera', 'cam')
@@ -1418,7 +1410,7 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-resolved" data-ticker-name><span>' + esc(draft.tickerName || (draft.ticker ? 'Looking up...' : 'Enter a ticker symbol')) + '</span>'
       + (draft.tickerName ? '<span class="gl-verified" style="margin-left:auto">' + icon('check', 14) + 'Verified</span>' : '') + '</div>'
       + '<button class="cs-edit" style="height:44px" data-action="refresh-ticker">Refresh</button></div>'
-      + '<div class="cs-field" style="margin-top:16px"><label>Related Tickers (optional, up to 4)</label>'
+      + '<div class="cs-field" style="margin-top:16px"><label>Related Tickers (optional)</label>'
       + '<div class="cs-tags" data-tags="related">'
       + draft.related.map(function (t, i) { return '<span class="cs-tag">' + esc(t) + '<button data-remove-related="' + i + '">&times;</button></span>'; }).join('')
       + '<input data-tag-input="related" placeholder="AMD" style="text-transform:uppercase"></div></div></section>';
@@ -1689,19 +1681,14 @@ if (!function_exists('sml_gl_script')) {
 
   function stepAudience() {
     var html = '<section class="cs-card"><h3 style="margin-bottom:6px">Where does this stream go?</h3>'
-      + '<p class="cs-sub">Your stream always goes to your public Watch Page. You can also host it inside one of your groups — that part is optional.</p>'
-      + '<div class="cs-field"><label>Host group <span style="font-weight:400;opacity:.7">(optional)</span></label><select class="cs-select" data-field="groupId">'
-      + '<option value="0"' + (Number(draft.groupId) ? '' : ' selected') + '>No group — my Watch Page only</option>'
-      + groups.map(function (g) {
-          return '<option value="' + esc(g.id) + '"' + (Number(draft.groupId) === Number(g.id) ? ' selected' : '') + '>' + esc(g.name) + '</option>';
-        }).join('')
-      /* a saved group that is not in the loaded list still has to show as the selection, or the menu would
-         read "No group" while Go Live quietly sent the old id */
-      + (Number(draft.groupId) && !groups.some(function (g) { return Number(g.id) === Number(draft.groupId); })
-        ? '<option value="' + esc(draft.groupId) + '" selected>' + esc(groupName()) + '</option>' : '')
-      + '</select>'
-      + '<div class="cs-hint">Pick a group to open a live room there and notify its members — you must be a member of it. '
-      + 'Leave it on “No group” to go live on your channel only. '
+      + '<p class="cs-sub">Live streams run inside a group live room, so pick the group that hosts it.</p>'
+      + '<div class="cs-field"><label>Host group</label><select class="cs-select" data-field="groupId">'
+      + (groups.length
+        ? '<option value="0">Select a group</option>' + groups.map(function (g) {
+            return '<option value="' + esc(g.id) + '"' + (Number(draft.groupId) === Number(g.id) ? ' selected' : '') + '>' + esc(g.name) + '</option>';
+          }).join('')
+        : '<option value="0">No groups found</option>') + '</select>'
+      + '<div class="cs-hint">You must be a member of the group to broadcast into it. '
       + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Browse groups</a></div></div></section>';
 
     html += '<section class="cs-card"><h3 style="margin-bottom:6px">Engagement</h3><p class="cs-sub">Toggle what viewers can do during the stream.</p>'
@@ -1737,7 +1724,7 @@ if (!function_exists('sml_gl_script')) {
       + '<dt>Category</dt><dd>' + esc(draft.category) + '</dd>'
       + '<dt>Content type</dt><dd>' + esc(draft.contentType) + '</dd>'
       + '<dt>Audience</dt><dd>' + esc((AUDIENCES.filter(function (a) { return a.key === draft.audience; })[0] || {}).label || '') + '</dd>'
-      + '<dt>Host group</dt><dd>' + esc(groupName() || 'None — Watch Page only') + '</dd>'
+      + '<dt>Host group</dt><dd>' + esc(groupName() || 'Not selected') + '</dd>'
       + '<dt>Scene</dt><dd>' + esc(draft.scene === 'screen' ? 'Screen share' : 'Camera only') + '</dd>'
       + '<dt>Watch Page</dt><dd>' + (watchChatHandle() ? '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">' + esc(watchPageUrl()) + '</a>' : 'Set a public profile handle first') + '</dd>'
       + '</dl></section>';
@@ -1748,707 +1735,24 @@ if (!function_exists('sml_gl_script')) {
     return html;
   }
 
-  /* ---------------- Live Insights: the real-time analytics feed for the stream (2026-09-23) ----------------
-     Reads /wp-json/sml-live-insights/v1/stream every 5 s (pauses while the tab is hidden). Everything shown comes from real
-     heartbeats, chat, likes and subscriptions of THIS stream; small samples are labelled, nothing is estimated. */
-  var insights = { data: null, timer: null, busy: false, streamId: '', error: '' };
-  var GLI_GROUP_COLOR = { social: '#a78bfa', search: '#f5a623', site: '#2b6cff', direct: '#7e92a8', email: '#22d3a0', other: '#64748b' };
-
-  function gliCss() {
-    if (document.getElementById('gli-css')) { return; }
-    var st = document.createElement('style');
-    st.id = 'gli-css';
-    st.textContent = ''
-      + '.gli{--gli-mut:#7e92a8;--gli-line:#182130;--gli-blue:#2b6cff;--gli-green:#22d3a0;--gli-amber:#f5a623;--gli-red:#ff566e;--gli-vio:#a78bfa}'
-      + '.gli-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}.gli-head h3{margin:0;font-size:16px}'
-      + '.gli-chip{display:inline-flex;align-items:center;gap:6px;font:700 10px/1 Inter,sans-serif;letter-spacing:.12em;padding:5px 9px;border-radius:999px;background:rgba(34,211,160,.12);color:var(--gli-green)}'
-      + '.gli-chip i{width:7px;height:7px;border-radius:50%;background:currentColor;animation:gliPulse 1.6s ease-out infinite}.gli-chip.wait{background:rgba(245,166,35,.12);color:var(--gli-amber)}.gli-chip.end{background:rgba(126,146,168,.14);color:var(--gli-mut)}.gli-chip.end i{animation:none}'
-      + '.gli-sub{color:var(--gli-mut);font-size:11.5px;margin-left:auto}.gli-sel{background:#0d1622;color:#dbe6f2;border:1px solid #223146;border-radius:8px;padding:5px 8px;font-size:11.5px;max-width:210px}'
-      + '.gli-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-bottom:14px}'
-      + '.gli-k{background:#0d1622;border:1px solid var(--gli-line);border-radius:12px;padding:12px 13px;min-width:0}.gli-k small{display:block;color:var(--gli-mut);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}'
-      + '.gli-k b{display:block;font-size:24px;line-height:1.05;font-variant-numeric:tabular-nums;color:#f2f7fb}.gli-k em{display:block;font-style:normal;color:var(--gli-mut);font-size:11px;margin-top:5px}'
-      + '.gli-k.hero{background:linear-gradient(160deg,rgba(43,108,255,.16),rgba(13,22,34,1));border-color:rgba(43,108,255,.4)}.gli-k.hero b{font-size:34px}'
-      + '.gli-up{color:var(--gli-green)!important}.gli-down{color:var(--gli-red)!important}'
-      + '.gli-panel{background:#0d1622;border:1px solid var(--gli-line);border-radius:12px;padding:14px;margin-bottom:12px;min-width:0}.gli-panel h4{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#a9b8c9;display:flex;gap:8px;align-items:center}'
-      + '.gli-panel h4 span{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400;color:var(--gli-mut);font-size:11px}'
-      + '.gli-chart{position:relative;height:170px}.gli-chart svg{width:100%;height:100%;display:block;overflow:visible}.gli-tip{position:absolute;pointer-events:none;background:#050a12;border:1px solid #2a3b55;border-radius:8px;padding:6px 9px;font-size:11.5px;color:#e6edf5;white-space:nowrap;transform:translate(-50%,-110%);display:none;z-index:3}'
-      + '.gli-leg{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--gli-mut);font-size:11px}.gli-leg i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}'
-      + '.gli-two{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:12px}@media(max-width:1100px){.gli-two{grid-template-columns:1fr}}'
-      + '.gli-tbl{width:100%;border-collapse:collapse;font-size:12px}.gli-tbl th{color:var(--gli-mut);font-weight:600;font-size:10.5px;text-align:right;padding:0 6px 7px;letter-spacing:.04em;white-space:nowrap}.gli-tbl th:first-child,.gli-tbl td:first-child{text-align:left}'
-      + '.gli-tbl td{padding:8px 6px;border-top:1px solid var(--gli-line);text-align:right;font-variant-numeric:tabular-nums;color:#dbe6f2;white-space:nowrap}.gli-tbl td:first-child{white-space:normal;min-width:130px}'
-      + '.gli-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}.gli-bar{display:block;height:4px;border-radius:2px;background:#16233a;margin-top:5px;overflow:hidden}.gli-bar i{display:block;height:100%;border-radius:2px}'
-      + '.gli-best{font-size:9.5px;font-weight:700;letter-spacing:.08em;color:var(--gli-green);border:1px solid rgba(34,211,160,.4);border-radius:5px;padding:2px 5px;margin-left:7px}'
-      + '.gli-scroll{overflow-x:auto}.gli-row{display:flex;align-items:center;gap:9px;margin:7px 0;font-size:12px}.gli-row span:first-child{flex:0 0 118px;color:#dbe6f2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-      + '.gli-row .gli-bar{flex:1;margin:0}.gli-row b{flex:0 0 44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}'
-      + '.gli-stack{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#16233a;margin:7px 0 4px}.gli-stack i{display:block;height:100%}.gli-cap{display:flex;gap:12px;flex-wrap:wrap;color:var(--gli-mut);font-size:11px}'
-      + '.gli-ins{list-style:none;margin:0;padding:0}.gli-ins li{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--gli-line);font-size:13px;line-height:1.5;color:#dbe6f2}.gli-ins li:first-child{border-top:0}'
-      + '.gli-ins li:before{content:"";flex:0 0 8px;height:8px;margin-top:7px;border-radius:50%;background:#5b6b82}.gli-ins li.good:before{background:var(--gli-green)}.gli-ins li.warn:before{background:var(--gli-amber)}'
-      + '.gli-empty{padding:22px 8px;text-align:center;color:var(--gli-mut);font-size:13px;line-height:1.6}.gli-empty b{color:#dbe6f2}'
-      + '@keyframes gliPulse{0%{box-shadow:0 0 0 0 currentColor}70%,100%{box-shadow:0 0 0 7px transparent}}@media(prefers-reduced-motion:reduce){.gli-chip i{animation:none}}';
-    document.head.appendChild(st);
-  }
-
-  function gliDur(s) {
-    s = Math.max(0, Math.round(Number(s) || 0));
-    if (s < 60) { return s + 's'; }
-    var m = Math.floor(s / 60);
-    if (m < 60) { return m + 'm ' + ('0' + (s % 60)).slice(-2) + 's'; }
-    return Math.floor(m / 60) + 'h ' + ('0' + (m % 60)).slice(-2) + 'm';
-  }
-  function gliClock(epoch) { return new Date(epoch * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
-  function gliPct(n, d) { return d > 0 ? Math.round(n / d * 100) : 0; }
-
-  function insightsMarkup() {
-    gliCss();
-    return '<section class="cs-card gli" style="margin-top:18px" data-gli><div class="gli-head"><h3>Live Insights</h3><span class="gli-chip wait" data-gli-chip><i></i>CONNECTING</span><span class="gli-sub" data-gli-sub></span></div>'
-      + '<div data-gli-body><div class="gli-empty">Loading your audience…</div></div></section>';
-  }
-
-  function insightsUrl() {
-    var id = insights.streamId || (draft.live && draft.live.id ? String(draft.live.id).replace(/[^A-Za-z0-9]/g, '') : '') || 'current';
-    return '/wp-json/sml-live-insights/v1/stream?stream=' + encodeURIComponent(id) + '&_=' + Date.now();
-  }
-  function pollInsights() {
-    if (insights.busy || document.hidden) { return; }
-    insights.busy = true;
-    api(insightsUrl())
-      .then(function (data) { insights.data = data; insights.error = ''; })
-      .catch(function (e) { insights.error = (e && e.message) || 'Insights are unavailable right now.'; })
-      .then(function () { insights.busy = false; paintInsights(); });
-  }
-  function startInsights() {
-    if (insights.timer) { return; }
-    pollInsights();
-    insights.timer = window.setInterval(pollInsights, 5000);
-  }
-  function stopInsights() {
-    if (insights.timer) { window.clearInterval(insights.timer); insights.timer = null; }
-    insights.data = null; insights.streamId = '';
-  }
-
-  /* the audience curve: area of viewers per minute, the previous stream dotted, the moments that moved it as markers */
-  function gliChart(d) {
-    var vals = d.curve.vals || [], prev = d.curve.prev || null, n = vals.length;
-    if (n < 2) { return '<div class="gli-empty">The curve starts drawing after the first minute of viewers.</div>'; }
-    var W = 1000, H = 170, padL = 34, padB = 20, padT = 10;
-    var max = Math.max(4, Math.max.apply(null, vals), prev ? Math.max.apply(null, prev) : 0);
-    var pw = W - padL - 6, ph = H - padB - padT;
-    function x(i) { return padL + i / (n - 1) * pw; }
-    function y(v) { return padT + ph - v / max * ph; }
-    var line = vals.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ');
-    var area = line + ' L' + x(n - 1).toFixed(1) + ' ' + (padT + ph) + ' L' + x(0).toFixed(1) + ' ' + (padT + ph) + ' Z';
-    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Viewers per minute">';
-    out += '<defs><linearGradient id="gliFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2b6cff" stop-opacity=".38"/><stop offset="1" stop-color="#2b6cff" stop-opacity="0"/></linearGradient></defs>';
-    [0, 0.5, 1].forEach(function (f) {
-      var yy = padT + ph - ph * f;
-      out += '<line x1="' + padL + '" x2="' + (W - 6) + '" y1="' + yy + '" y2="' + yy + '" stroke="#182130" stroke-width="1" vector-effect="non-scaling-stroke"/>'
-        + '<text x="' + (padL - 6) + '" y="' + (yy + 3) + '" fill="#7e92a8" font-size="11" text-anchor="end">' + Math.round(max * f) + '</text>';
-    });
-    if (prev) {
-      out += '<path d="' + prev.slice(0, n).map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ') + '" fill="none" stroke="#7e92a8" stroke-width="1.6" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" opacity=".85"/>';
-    }
-    out += '<path d="' + area + '" fill="url(#gliFill)"/><path d="' + line + '" fill="none" stroke="#5b8cff" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
-    var sx = d.curve.step || 1, col = { sub: '#22d3a0', likes: '#ff566e', chat: '#a78bfa', peak: '#f5a623' };
-    (d.moments || []).forEach(function (m) {
-      var i = Math.min(n - 1, Math.floor(m.m / sx));
-      out += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(vals[i] || 0).toFixed(1) + '" r="5.5" fill="#0b131f" stroke="' + (col[m.type] || '#fff') + '" stroke-width="2" vector-effect="non-scaling-stroke"/>';
-    });
-    var labels = Math.min(6, n);
-    for (var k = 0; k < labels; k++) {
-      var i2 = Math.round(k / Math.max(1, labels - 1) * (n - 1));
-      out += '<text x="' + x(i2).toFixed(1) + '" y="' + (H - 4) + '" fill="#7e92a8" font-size="11" text-anchor="' + (k === 0 ? 'start' : (k === labels - 1 ? 'end' : 'middle')) + '">' + esc(gliClock(d.curve.start + i2 * sx * 60)) + '</text>';
-    }
-    out += '</svg><div class="gli-tip" data-gli-tip></div>';
-    return out;
-  }
-
-  function gliSources(d) {
-    var rows = d.sources || [];
-    if (!rows.length) { return '<div class="gli-empty">No viewers yet — sources appear the moment someone lands on your Watch Page.</div>'; }
-    var maxTotal = Math.max.apply(null, rows.map(function (r) { return r.total; })) || 1;
-    var eligible = rows.filter(function (r) { return r.total >= 3; });
-    var best = eligible.length >= 2 ? eligible.slice().sort(function (a, b) { return b.avg_watch - a.avg_watch; })[0] : null;
-    var html = '<div class="gli-scroll"><table class="gli-tbl"><thead><tr><th>Source</th><th>Now</th><th>Viewers</th><th>Avg stay</th><th>Chat</th><th>Left &lt;30s</th><th>Subs</th></tr></thead><tbody>';
-    rows.forEach(function (r) {
-      var color = GLI_GROUP_COLOR[r.group] || '#64748b';
-      html += '<tr><td><span class="gli-dot" style="background:' + color + '"></span>' + esc(r.label) + (best && best.key === r.key ? '<span class="gli-best">BEST STAY</span>' : '')
-        + '<span class="gli-bar"><i style="width:' + Math.max(3, Math.round(r.total / maxTotal * 100)) + '%;background:' + color + '"></i></span></td>'
-        + '<td>' + r.now + '</td><td>' + r.total + ' <span style="color:#7e92a8">· ' + r.share + '%</span></td><td>' + esc(gliDur(r.avg_watch)) + '</td>'
-        + '<td>' + (r.members ? r.chat_pct + '%' : '—') + '</td><td>' + (r.bounce_pct == null ? '—' : r.bounce_pct + '%') + '</td><td>' + (r.subs || '—') + '</td></tr>';
-    });
-    return html + '</tbody></table></div>';
-  }
-
-  function gliBars(list, total, color) {
-    if (!list.length) { return '<div class="gli-empty" style="padding:10px 0">Not enough data yet.</div>'; }
-    var max = Math.max.apply(null, list.map(function (r) { return r.total; })) || 1;
-    return list.map(function (r) {
-      return '<div class="gli-row"><span title="' + esc(r.label) + '">' + esc(r.label) + '</span><span class="gli-bar"><i style="width:' + Math.max(4, Math.round(r.total / max * 100)) + '%;background:' + color + '"></i></span><b>' + gliPct(r.total, total) + '%</b></div>';
-    }).join('');
-  }
-
-  function paintInsights() {
-    var root = document.querySelector('[data-gli]');
-    if (!root) { return; }
-    var body = root.querySelector('[data-gli-body]'), chip = root.querySelector('[data-gli-chip]'), sub = root.querySelector('[data-gli-sub]');
-    var d = insights.data;
-    if (!d) {
-      if (insights.error) { body.innerHTML = '<div class="gli-empty"><b>Insights are unavailable right now.</b><br>' + esc(insights.error) + '</div>'; chip.className = 'gli-chip end'; chip.innerHTML = '<i></i>OFFLINE'; }
-      return;
-    }
-    var st = d.stream || {}, live = st.status === 'live', ended = st.status === 'ended';
-    chip.className = 'gli-chip' + (live ? '' : (ended ? ' end' : ' wait'));
-    chip.innerHTML = '<i></i>' + (live ? 'LIVE' : (ended ? 'ENDED' : 'WAITING ROOM'));
-    var streams = d.streams || [];
-    sub.innerHTML = (streams.length > 1 ? '<select class="gli-sel" data-gli-stream>' + streams.map(function (s) {
-        return '<option value="' + esc(s.id) + '"' + (s.id === st.id ? ' selected' : '') + '>' + esc((s.status === 'live' ? '● ' : '') + (s.title || 'Stream') + (s.when ? ' · ' + new Date(s.when).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '')) + '</option>';
-      }).join('') + '</select> ' : '') + (ended ? 'final numbers' : 'updates every 5 s');
-
-    if (!d.tracked) {
-      body.innerHTML = '<div class="gli-empty"><b>' + (live ? 'Waiting for your first viewer' : 'Your Watch Page is open') + '.</b><br>Everything here is real and updates every 5 seconds: who is watching, where they came from, how long they stay, what they do in chat, and where in the world they are. '
-        + 'Share your Watch Page link and watch this fill in.</div>';
-      return;
-    }
-
-    var v = d.curve.vals || [], nv = v.length;
-    var trend = '';
-    if (nv >= 7 && (d.curve.step || 1) === 1) {
-      var base = (v[nv - 7] + v[nv - 6] + v[nv - 5] + v[nv - 4] + v[nv - 3]) / 5;
-      if (base >= 3) { var ch = Math.round((v[nv - 1] - base) / base * 100); trend = '<em class="' + (ch >= 0 ? 'gli-up' : 'gli-down') + '">' + (ch >= 0 ? '▲ ' : '▼ ') + Math.abs(ch) + '% vs previous 5 min</em>'; }
-    }
-    var au = d.audience || {}, ch2 = d.chat || {}, lk = d.likes || {};
-    var vsPrev = d.vs_prev && d.vs_prev.then >= 3 ? '<em class="' + (d.vs_prev.pct >= 0 ? 'gli-up' : 'gli-down') + '">' + (d.vs_prev.pct >= 0 ? '▲ ' : '▼ ') + Math.abs(d.vs_prev.pct) + '% vs your last stream</em>' : '';
-    var kpis = '<div class="gli-kpis">'
-      + '<div class="gli-k hero"><small>Watching now</small><b>' + d.now + '</b>' + (trend || vsPrev || '<em>' + (live ? 'live viewers' : 'in the room') + '</em>') + '</div>'
-      + '<div class="gli-k"><small>Peak</small><b>' + d.peak.n + '</b><em>' + (d.peak.at ? 'at ' + esc(gliClock(Date.parse(d.peak.at) / 1000)) : 'so far') + '</em></div>'
-      + '<div class="gli-k"><small>Unique viewers</small><b>' + d.unique + '</b><em>' + (au.returning ? au.returning + ' have watched before' : 'this stream') + '</em></div>'
-      + '<div class="gli-k"><small>Avg watch time</small><b>' + esc(gliDur(d.avg_watch)) + '</b><em>' + (d.unique ? gliPct(d.stayed_5m, d.unique) + '% stayed 5+ min' : '') + '</em></div>'
-      + '<div class="gli-k"><small>Chat</small><b>' + ch2.total + '</b><em>' + ch2.per_min + '/min · ' + ch2.chatters + ' chatter' + (ch2.chatters === 1 ? '' : 's') + '</em></div>'
-      + '<div class="gli-k"><small>Likes</small><b>' + lk.total + '</b><em>' + (lk.last10 ? '+' + lk.last10 + ' in 10 min' : 'this stream') + '</em></div>'
-      + '<div class="gli-k"><small>New subscribers</small><b>' + (d.subs ? d.subs.gained : 0) + '</b><em>' + (au.subscribers_watching ? au.subscribers_watching + ' subscribers watching' : 'this stream') + '</em></div>'
-      + '<div class="gli-k"><small>Signed in</small><b>' + gliPct(au.members, d.unique) + '%</b><em>' + au.members + ' members · ' + au.guests + ' guests</em></div>'
-      + '</div>';
-
-    var chart = '<div class="gli-panel"><h4>Audience curve<span>viewers per minute' + (d.curve.prev ? ' · dotted = ' + esc(d.curve.prev_title || 'your last stream') : '') + '</span></h4><div class="gli-chart" data-gli-chart>' + gliChart(d) + '</div>'
-      + '<div class="gli-leg"><span><i style="background:#5b8cff"></i>This stream</span>' + (d.curve.prev ? '<span><i style="background:#7e92a8"></i>Last stream, same minute</span>' : '')
-      + '<span style="color:#22d3a0">★ new subscriber</span><span style="color:#ff566e">♥ likes burst</span><span style="color:#a78bfa">✦ chat burst</span><span style="color:#f5a623">▲ peak</span></div></div>';
-
-    var sources = '<div class="gli-panel"><h4>Where viewers come from<span>quality, not just counts</span></h4>' + gliSources(d) + '</div>';
-
-    var totalG = ((d.geo && d.geo.countries) || []).reduce(function (a, c) { return a + c.total; }, 0) || d.unique;
-    var countries = ((d.geo && d.geo.countries) || []).slice(0, 6).map(function (c) { return { label: c.name, total: c.total }; });
-    var cities = ((d.geo && d.geo.cities) || []).slice(0, 5).map(function (c) { return { label: c.city, total: c.total }; });
-    var dv = d.devices || { m: 0, d: 0, t: 0 }, dvT = (dv.m + dv.d + dv.t) || 1;
-    var aud = '<div class="gli-panel"><h4>Audience</h4>'
-      + '<div style="font-size:11px;color:#7e92a8;margin-bottom:2px">Countries</div>' + gliBars(countries, totalG, '#2b6cff')
-      + (cities.length ? '<div style="font-size:11px;color:#7e92a8;margin:10px 0 2px">Cities (3+ viewers)</div>' + gliBars(cities, totalG, '#22d3a0') : '')
-      + '<div style="font-size:11px;color:#7e92a8;margin:12px 0 2px">Devices</div><div class="gli-stack"><i style="width:' + gliPct(dv.d, dvT) + '%;background:#2b6cff"></i><i style="width:' + gliPct(dv.m, dvT) + '%;background:#22d3a0"></i><i style="width:' + gliPct(dv.t, dvT) + '%;background:#f5a623"></i></div>'
-      + '<div class="gli-cap"><span><b style="color:#2b6cff">●</b> Desktop ' + gliPct(dv.d, dvT) + '%</span><span><b style="color:#22d3a0">●</b> Phone ' + gliPct(dv.m, dvT) + '%</span><span><b style="color:#f5a623">●</b> Tablet ' + gliPct(dv.t, dvT) + '%</span></div>'
-      + '<div style="font-size:11px;color:#7e92a8;margin:12px 0 2px">Who is watching</div><div class="gli-stack"><i style="width:' + gliPct(au.members, d.unique) + '%;background:#a78bfa"></i><i style="width:' + gliPct(au.guests, d.unique) + '%;background:#334155"></i></div>'
-      + '<div class="gli-cap"><span><b style="color:#a78bfa">●</b> Signed in ' + gliPct(au.members, d.unique) + '%</span><span><b style="color:#64748b">●</b> Guests ' + gliPct(au.guests, d.unique) + '%</span></div></div>';
-
-    var ins = (d.insights || []).length ? '<ul class="gli-ins">' + d.insights.map(function (i) { return '<li class="' + esc(i.tone) + '">' + esc(i.text) + '</li>'; }).join('') + '</ul>' : '<div class="gli-empty">Insights appear as your audience grows.</div>';
-    body.innerHTML = kpis + chart + '<div class="gli-two">' + sources + aud + '</div><div class="gli-panel" style="margin-bottom:0"><h4>What the data says<span>from this stream only</span></h4>' + ins + '</div>';
-  }
-
-  /* delegated handlers: the panel is re-drawn every 5 s, so nothing is bound to its nodes */
-  document.addEventListener('change', function (event) {
-    var sel = event.target.closest ? event.target.closest('[data-gli-stream]') : null;
-    if (!sel) { return; }
-    if (routeMode && sel.value && sel.value !== routeId && window.__glStreams && window.__glStreams[sel.value]) { window.location.href = window.__glStreams[sel.value]; return; }
-    insights.streamId = sel.value; insights.data = null; pollInsights();
-  });
-  document.addEventListener('mousemove', function (event) {
-    var box = event.target.closest ? event.target.closest('[data-gli-chart]') : null;
-    var tip = document.querySelector('[data-gli-tip]');
-    if (!tip) { return; }
-    if (!box || !insights.data) { tip.style.display = 'none'; return; }
-    var d = insights.data, vals = d.curve.vals || [], n = vals.length;
-    if (n < 2) { return; }
-    var rect = box.getBoundingClientRect();
-    var frac = (event.clientX - rect.left - rect.width * 0.034) / (rect.width * 0.96);
-    var i = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
-    var sx = d.curve.step || 1;
-    var ev = (d.moments || []).filter(function (m) { return Math.floor(m.m / sx) === i; }).map(function (m) {
-      return ({ sub: '★ new subscriber', likes: '♥ ' + m.n + ' likes', chat: '✦ ' + m.n + ' messages', peak: '▲ peak' })[m.type] || '';
-    }).filter(Boolean);
-    tip.innerHTML = '<b>' + vals[i] + ' viewers</b> · ' + esc(gliClock(d.curve.start + i * sx * 60)) + (d.curve.prev && d.curve.prev[i] != null ? '<br><span style="color:#7e92a8">last stream: ' + d.curve.prev[i] + '</span>' : '') + (ev.length ? '<br>' + esc(ev.join(' · ')) : '');
-    tip.style.left = Math.max(60, Math.min(rect.width - 60, event.clientX - rect.left)) + 'px';
-    tip.style.top = '30px';
-    tip.style.display = 'block';
-  });
-
-  /* ---------------- Live Control Room: the command hub for a stream (2026-09-23) ----------------
-     One panel, six tabs, every action real: Distribute posts (now / at a time / before start / at a viewer milestone / repeating),
-     Q&A + polls (sml-engage), Boost (sml-lw), Super Chat totals, groups the creator owns or belongs to, and the watch-page orbit.
-     "Next Best Moves" ranks what to do next from live signals; nothing posts without the creator pressing a button. */
-  var ctl = { st: null, moves: null, tab: 'promote', timer: null, busy: false, sel: null, form: null, prev: null, msg: '', qa: null, polls: null, boost: null, orbit: null, chan: {}, orbitMsg: '', em: null, emMsg: '', emMap: {} };
-
-  function glcCss() {
-    if (document.getElementById('glc-css')) { return; }
-    var st = document.createElement('style');
-    st.id = 'glc-css';
-    st.textContent = ''
-      + '.glc{--m:#7e92a8;--l:#182130;--b:#2b6cff;--g:#22d3a0;--a:#f5a623;--r:#ff566e}'
-      + '.glc h3{margin:0 0 4px;font-size:16px}.glc-sub{color:var(--m);font-size:12px;margin:0 0 14px}'
-      + '.glc-moves{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:14px}'
-      + '.glc-move{background:#0d1622;border:1px solid var(--l);border-radius:12px;padding:12px 13px;display:flex;flex-direction:column;gap:6px}.glc-move:first-child{border-color:rgba(43,108,255,.5);background:linear-gradient(160deg,rgba(43,108,255,.14),#0d1622)}'
-      + '.glc-move b{font-size:13.5px;line-height:1.3;color:#f2f7fb}.glc-move p{margin:0;color:var(--m);font-size:12px;line-height:1.45}.glc-conf{height:4px;border-radius:2px;background:#16233a;overflow:hidden}.glc-conf i{display:block;height:100%;background:var(--b)}'
-      + '.glc-move button{align-self:flex-start;margin-top:2px}.glc-move small{color:var(--m);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}'
-      + '.glc-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--l);margin-bottom:14px;padding-bottom:10px}'
-      + '.glc-tab{background:transparent;border:1px solid #223146;color:#b8c7d8;border-radius:999px;padding:7px 13px;font:600 12px/1 Inter,sans-serif;cursor:pointer}.glc-tab.on{background:var(--b);border-color:var(--b);color:#fff}.glc-tab em{font-style:normal;opacity:.7;margin-left:5px}'
-      + '.glc-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}@media(max-width:1000px){.glc-grid{grid-template-columns:1fr}}'
-      + '.glc-box{background:#0d1622;border:1px solid var(--l);border-radius:12px;padding:14px;min-width:0}.glc-box h4{margin:0 0 10px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--m)}'
-      + '.glc-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--l);font-size:13px;color:#dbe6f2}.glc-row:first-of-type{border-top:0}.glc-row>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.glc-row small{color:var(--m);display:block;font-size:11px}'
-      + '.glc label.glc-pick{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid #223146;border-radius:10px;margin:0 0 7px;font-size:13px;color:#dbe6f2;cursor:pointer}.glc label.glc-pick.off{opacity:.5;cursor:not-allowed}.glc label.glc-pick input{margin:0}'
-      + '.glc-in,.glc textarea.glc-in,.glc select.glc-in{width:100%;background:#0b131f;border:1px solid #223146;border-radius:9px;color:#dbe6f2;padding:9px 11px;font:400 13px/1.4 Inter,sans-serif;box-sizing:border-box}.glc-in:focus{outline:2px solid rgba(43,108,255,.6);outline-offset:1px}'
-      + '.glc-seg{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}.glc-seg button{background:#0b131f;border:1px solid #223146;color:#b8c7d8;border-radius:8px;padding:7px 11px;font:600 12px/1 Inter,sans-serif;cursor:pointer}.glc-seg button.on{border-color:var(--b);color:#fff;background:rgba(43,108,255,.22)}'
-      + '.glc-f{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;color:var(--m);font-size:12px}.glc-f .glc-in{width:90px}.glc-f .glc-in.w{width:190px}'
-      + '.glc-btn{background:var(--b);border:0;color:#fff;border-radius:9px;padding:9px 15px;font:700 12.5px/1 Inter,sans-serif;cursor:pointer}.glc-btn:disabled{opacity:.5;cursor:not-allowed}.glc-btn.ghost{background:transparent;border:1px solid #2a3b55;color:#b8c7d8}.glc-btn.red{background:transparent;border:1px solid rgba(255,86,110,.45);color:var(--r)}.glc-btn.sm{padding:6px 10px;font-size:11.5px}'
-      + '.glc-note{font-size:12px;color:var(--m);line-height:1.5;margin:8px 0 0}.glc-note.ok{color:var(--g)}.glc-note.bad{color:var(--r)}'
-      + '.glc-prev{border:1px dashed #2a3b55;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12.5px;color:#dbe6f2;line-height:1.5;white-space:pre-wrap;word-break:break-word}.glc-prev small{display:block;color:var(--m);text-transform:uppercase;letter-spacing:.08em;font-size:10px;margin-bottom:4px}'
-      + '.glc-pill{display:inline-block;font:700 10px/1 Inter,sans-serif;letter-spacing:.08em;padding:4px 7px;border-radius:999px;background:#16233a;color:#9fb2c7}.glc-pill.g{background:rgba(34,211,160,.14);color:var(--g)}.glc-pill.a{background:rgba(245,166,35,.14);color:var(--a)}'
-      + '.glc-orb{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:12px}.glc-orb figure{margin:0;background:#0b131f;border:1px solid #223146;border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:5px}.glc-orb img{width:100%;height:90px;object-fit:contain;border-radius:6px;background:#050a12}.glc-orb .glc-in{padding:5px 7px;font-size:11.5px}'
-      + '.glc-big{font-size:26px;font-weight:700;color:#f2f7fb;font-variant-numeric:tabular-nums}';
-    document.head.appendChild(st);
-  }
-
-  function glcStreamId() { return String((draft.live && draft.live.id) || 'current').replace(/[^A-Za-z0-9]/g, '') || 'current'; }
-  function glcBase() { return '/wp-json/sml-live-control/v1'; }
-  function glcHandle() { return String(cfg.watchChatHandle || (ctl.st && ctl.st.handle) || cfg.handle || '').replace(/[^A-Za-z0-9_-]/g, ''); }
-  function glcFormInit() {
-    if (ctl.form) { return; }
-    ctl.form = { kind: 'update', text: '', when: 'now', at: '', minutes: 30, minv: 25, every: 0, runs: 3, accounts: null, network: false, channels: {}, onlyLive: false };
-  }
-
-  function controlMarkup() {
-    glcCss();
-    return '<section class="cs-card glc" style="margin-top:18px" data-glc><h3>Control Room</h3>'
-      + '<p class="glc-sub">Everything you run during a stream, in one place. Next moves come from your live numbers.</p><div data-glc-body><div class="gli-empty" style="color:#7e92a8;padding:18px 4px">Loading your control room…</div></div></section>';
-  }
-
-  function pollControl() {
-    if (ctl.busy || document.hidden) { return; }
-    ctl.busy = true;
-    var id = glcStreamId();
-    Promise.all([
-      api(glcBase() + '/state?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; }),
-      api(glcBase() + '/moves?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; }),
-      api('/wp-json/sml-engage/v1/qa').catch(function () { return null; })
-    ]).then(function (r) {
-      if (r[2] && r[2].questions) { ctl.qa = r[2].questions; }
-      if (r[0]) { ctl.st = r[0]; glcFormInit(); if (ctl.form.accounts === null) { ctl.form.accounts = {}; (r[0].accounts || []).forEach(function (a) { if (a.ok) { ctl.form.accounts[a.id] = true; } }); } }
-      if (r[1]) { ctl.moves = r[1].moves || []; }
-    }).then(function () { ctl.busy = false; paintControl(false); });
-  }
-  function startControl() {
-    if (ctl.timer) { return; }
-    pollControl();
-    if (ctl.em === null) { glcEmoLoad(); }
-    ctl.timer = window.setInterval(pollControl, 12000);
-  }
-  function stopControl() {
-    if (ctl.timer) { window.clearInterval(ctl.timer); ctl.timer = null; }
-    ctl.st = null; ctl.moves = null; ctl.form = null; ctl.prev = null;
-  }
-
-  function glcTabLoad(tab) {
-    if (tab === 'qa') {
-      api('/wp-json/sml-engage/v1/qa').then(function (d) { ctl.qa = d.questions || []; paintControl(true); }).catch(function () {});
-      api('/wp-json/sml-engage/v1/polls').then(function (d) { ctl.polls = d.polls || []; paintControl(true); }).catch(function () {});
-    } else if (tab === 'boost') {
-      api('/wp-json/sml-lw/v1/boost?handle=' + encodeURIComponent(glcHandle()) + '&_=' + Date.now()).then(function (d) { ctl.boost = d; paintControl(true); }).catch(function () {});
-    } else if (tab === 'orbit') {
-      glcOrbitLoad();
-    } else if (tab === 'emotes') {
-      glcEmoLoad();
-    } else if (tab === 'groups') {
-      (ctl.st && ctl.st.groups || []).forEach(function (g) {
-        if (ctl.chan[g.id]) { return; }
-        ctl.chan[g.id] = [];
-        api(glcBase() + '/group-channels?group_id=' + g.id).then(function (d) { ctl.chan[g.id] = d.channels || []; paintControl(true); }).catch(function () {});
-      });
-    }
-  }
-
-  function glcOrbitLoad() {
-    var tag = 'sml-orbit-' + glcHandle();
-    api('/wp-json/wp/v2/media?search=' + encodeURIComponent(tag) + '&per_page=30&_fields=id,title,caption,description,source_url,mime_type&_=' + Date.now()).then(function (list) {
-      var div = document.createElement('div');
-      var strip = function (s) { div.innerHTML = s || ''; return (div.textContent || '').trim(); };
-      ctl.orbit = (Array.isArray(list) ? list : []).filter(function (m) { return m && m.source_url && m.title && String(m.title.rendered || '').indexOf(tag) === 0; })
-        .sort(function (a, b) { return String(a.title.rendered).localeCompare(String(b.title.rendered)); }).slice(0, 5)
-        .map(function (m) { var lk = strip(m.description && m.description.rendered).match(/https:\/\/\S+/); return { id: m.id, img: m.source_url, cap: strip(m.caption && m.caption.rendered), link: lk ? lk[0] : '', gif: /gif/i.test(m.mime_type || m.source_url) }; });
-      paintControl(true);
-    }).catch(function () { ctl.orbit = ctl.orbit || []; paintControl(true); });
-  }
-
-  function glcWhen(iso) { if (!iso) { return ''; } var d = new Date(iso); return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
-
-  function glcTabs() {
-    var st = ctl.st || {};
-    var tabs = [['promote', 'Promote'], ['qa', 'Q&A + Polls'], ['boost', 'Boost'], ['money', 'Super Chats'], ['groups', 'Groups'], ['orbit', 'Orbit'], ['emotes', 'Emotes']];
-    return '<div class="glc-tabs" role="tablist">' + tabs.map(function (t) {
-      var n = t[0] === 'promote' ? (st.promos || []).filter(function (p) { return p.status === 'active'; }).length : t[0] === 'money' ? ((st.money && st.money.n) || 0) : t[0] === 'groups' ? (st.groups || []).length : t[0] === 'emotes' ? ((ctl.em && ctl.em.used) || 0) : 0;
-      return '<button class="glc-tab' + (ctl.tab === t[0] ? ' on' : '') + '" role="tab" data-glc-tab="' + t[0] + '">' + t[1] + (n ? '<em>' + n + '</em>' : '') + '</button>';
-    }).join('') + '</div>';
-  }
-
-  function glcMoves() {
-    var mv = ctl.moves || [];
-    if (!mv.length) { return '<div class="glc-note" style="margin:0 0 14px">No suggestions right now — your stream is on track.</div>'; }
-    return '<div class="glc-moves">' + mv.map(function (m, i) {
-      var label = m.act && m.act.type === 'promo' ? 'Prepare post' : m.act && m.act.type === 'countdown' ? 'Schedule countdown' : m.act && m.act.type === 'say' ? 'Got it' : 'Open';
-      return '<div class="glc-move"><small>' + (i === 0 ? 'Best next move' : 'Also worth it') + ' · ' + m.confidence + '%</small><b>' + esc(m.label) + '</b>'
-        + '<div class="glc-conf"><i style="width:' + Math.max(6, m.confidence) + '%"></i></div>'
-        + '<p>' + esc((m.why || []).join(' ')) + '</p><button class="glc-btn sm' + (i ? ' ghost' : '') + '" data-glc-move="' + i + '">' + label + '</button></div>';
-    }).join('') + '</div>';
-  }
-
-  function glcPromoTab() {
-    var st = ctl.st || {}, f = ctl.form, accts = st.accounts || [];
-    var kinds = [['soon', 'Going live soon'], ['start', 'Live now'], ['update', 'Still live'], ['milestone', 'Viewer milestone'], ['custom', 'My own words']];
-    var whens = [['now', 'Now'], ['at', 'At a time'], ['before', 'Before start'], ['milestone', 'At N viewers']];
-    var acc = accts.length ? accts.map(function (a) {
-      return '<label class="glc-pick' + (a.ok ? '' : ' off') + '"><input type="checkbox" data-glc-acc="' + a.id + '"' + (f.accounts && f.accounts[a.id] && a.ok ? ' checked' : '') + (a.ok ? '' : ' disabled') + '> <span>' + esc(a.platform.charAt(0).toUpperCase() + a.platform.slice(1)) + ' · ' + esc(a.handle) + '</span>'
-        + (a.ok ? '' : ' <span class="glc-pill a">' + esc(a.status) + '</span>') + '</label>';
-    }).join('') : '<p class="glc-note">No connected accounts yet. <a style="color:#2b6cff" href="/distribute/" target="_blank" rel="noopener">Connect them in Distribute</a>.</p>';
-    if (st.network) { acc += '<label class="glc-pick"><input type="checkbox" data-glc-net' + (f.network ? ' checked' : '') + '> <span>Facebook · LinkedIn · Tumblr <small style="color:#7e92a8">(your connected network)</small></span></label>'; }
-    var grp = (st.groups || []).map(function (g) {
-      var ch = ctl.chan[g.id];
-      if (ch === undefined) { ctl.chan[g.id] = []; api(glcBase() + '/group-channels?group_id=' + g.id).then(function (d) { ctl.chan[g.id] = d.channels || []; paintControl(true); }).catch(function () {}); }
-      ch = ctl.chan[g.id] || [];
-      if (!ch.length) { return ''; }
-      var best = ch.filter(function (c) { return c.live; })[0] || ch[0];
-      return '<label class="glc-pick"><input type="checkbox" data-glc-chan="' + best.id + '"' + (f.channels[best.id] ? ' checked' : '') + '> <span>' + esc(g.name) + ' <small style="color:#7e92a8">#' + esc(best.name) + '</small></span></label>';
-    }).join('');
-
-    var timing = '';
-    if (f.when === 'at') { timing = '<div class="glc-f">Send at <input class="glc-in w" type="datetime-local" data-glc-f="at" value="' + esc(f.at) + '"></div>'; }
-    if (f.when === 'before') { timing = '<div class="glc-f">Send <input class="glc-in" type="number" min="1" max="1440" data-glc-f="minutes" value="' + f.minutes + '"> minutes before the scheduled start</div>'; }
-    if (f.when === 'milestone') { timing = '<div class="glc-f">Send once <input class="glc-in" type="number" min="5" data-glc-f="minv" value="' + f.minv + '"> viewers are watching</div>'; }
-    var rep = f.when !== 'milestone' ? '<div class="glc-f">Repeat every <input class="glc-in" type="number" min="0" max="720" data-glc-f="every" value="' + f.every + '"> min (0 = once, minimum 15) · up to <input class="glc-in" type="number" min="1" max="12" data-glc-f="runs" value="' + f.runs + '"> posts</div>' : '';
-
-    var list = (st.promos || []).map(function (p) {
-      var pill = p.status === 'active' ? '<span class="glc-pill g">SCHEDULED</span>' : '<span class="glc-pill">DONE</span>';
-      var when = p.min_viewers ? 'at ' + p.min_viewers + ' viewers' : glcWhen(p.fire_at);
-      return '<div class="glc-row"><span><b>' + esc(p.kind === 'soon' ? 'Going live soon' : p.kind === 'start' ? 'Live now' : p.kind === 'update' ? 'Still live' : p.kind === 'milestone' ? 'Milestone' : p.kind === 'wrap' ? 'Wrap-up' : 'Custom') + '</b> ' + pill
-        + '<small>' + esc(when) + (p.repeat_every ? ' · every ' + p.repeat_every + ' min (' + p.runs + '/' + p.max_runs + ')' : '') + ' · ' + (p.accounts.length + (p.network ? 1 : 0)) + ' account' + ((p.accounts.length + (p.network ? 1 : 0)) === 1 ? '' : 's') + (p.groups.length ? ' + ' + p.groups.length + ' group' : '') + (p.note ? ' · ' + esc(p.note) : '') + '</small></span>'
-        + (p.status === 'active' ? '<button class="glc-btn red sm" data-glc-cancel="' + p.id + '">Cancel</button>' : '') + '</div>';
-    }).join('') || '<p class="glc-note">Nothing scheduled yet.</p>';
-
-    return '<div class="glc-grid"><div class="glc-box"><h4>New post</h4>'
-      + '<div class="glc-seg">' + kinds.map(function (k) { return '<button data-glc-kind="' + k[0] + '" class="' + (f.kind === k[0] ? 'on' : '') + '">' + k[1] + '</button>'; }).join('') + '</div>'
-      + '<textarea class="glc-in" rows="2" maxlength="240" placeholder="Add your own line (optional) — the link and tags are added for you" data-glc-f="text">' + esc(f.text) + '</textarea>'
-      + '<h4 style="margin-top:14px">Where</h4>' + acc + (grp ? '<h4 style="margin-top:10px">Your groups</h4>' + grp : '')
-      + '<h4 style="margin-top:14px">When</h4><div class="glc-seg">' + whens.map(function (w) { return '<button data-glc-when="' + w[0] + '" class="' + (f.when === w[0] ? 'on' : '') + '">' + w[1] + '</button>'; }).join('') + '</div>' + timing + rep
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="glc-btn ghost" data-glc-preview>Preview text</button><button class="glc-btn" data-glc-send>' + (f.when === 'now' ? 'Post now' : 'Schedule') + '</button></div>'
-      + (ctl.msg ? '<p class="glc-note ' + (/^✓/.test(ctl.msg) ? 'ok' : 'bad') + '">' + esc(ctl.msg) + '</p>' : '')
-      + (ctl.prev ? ctl.prev.map(function (p) { var v = p.variant || {}; return '<div class="glc-prev"><small>' + esc(p.platform) + ' · ' + esc(p.handle) + '</small>' + esc(v.caption || [v.hook, v.body, v.cta].filter(Boolean).join('\n')) + '</div>'; }).join('') : '')
-      + '<label class="glc-pick" style="margin-top:12px"><input type="checkbox" data-glc-wrap' + ((st.wrap && st.wrap.on) ? ' checked' : '') + '> <span>When I end the stream, post a wrap-up to the places selected above <small style="color:#7e92a8">(only for streams of 5+ minutes with 3+ viewers)</small></span></label>'
-      + (st.timing ? '<p class="glc-note">Your audience peaks when you start around <b>' + esc(st.timing.hour) + ' ET</b> (avg peak ' + st.timing.hour_avg_peak + ') and on <b>' + esc(st.timing.day) + 's</b> (avg peak ' + st.timing.day_avg_peak + '), across ' + st.timing.samples + ' streams.</p>' : '')
-      + '<p class="glc-note">Spaced out automatically: at least ' + ((st.limits && st.limits.gap_min) || 15) + ' minutes between posts and ' + ((st.limits && st.limits.per_hour) || 8) + ' an hour, so your accounts are never spammed.</p></div>'
-      + '<div class="glc-box"><h4>Scheduled &amp; sent</h4>' + list + '</div></div>';
-  }
-
-  function glcQaTab() {
-    var qs = ctl.qa, ps = ctl.polls;
-    var q = qs === null ? '<p class="glc-note">Loading…</p>' : qs.length ? qs.map(function (x) {
-      return '<div class="glc-row"><span>' + (x.pinned ? '📌 ' : '') + esc(x.body) + '<small>' + esc(x.from || 'Viewer') + ' · ' + (x.upvotes || 0) + ' ▲' + (x.status === 'answered' ? ' · answered' : '') + '</small></span>'
-        + (x.status !== 'answered' ? '<button class="glc-btn sm" data-glc-qa="answer:' + x.id + '">Answered</button><button class="glc-btn ghost sm" data-glc-qa="pin:' + x.id + '">Pin</button>' : '<button class="glc-btn ghost sm" data-glc-qa="queue:' + x.id + '">Reopen</button>')
-        + '<button class="glc-btn red sm" data-glc-qa="delete:' + x.id + '">✕</button></div>';
-    }).join('') : '<p class="glc-note">No questions yet. Viewers ask from your watch page; you can also add your own below.</p>';
-    var p = ps === null ? '<p class="glc-note">Loading…</p>' : ps.length ? ps.map(function (x) {
-      var tot = (x.counts || []).reduce(function (a, b) { return a + b; }, 0);
-      return '<div class="glc-row"><span>' + esc(x.question) + '<small>' + esc(x.status) + ' · ' + tot + ' votes</small></span>'
-        + (x.status === 'live' ? '<button class="glc-btn red sm" data-glc-poll="close:' + x.id + '">Close</button>' : '<button class="glc-btn sm" data-glc-poll="open:' + x.id + '">Show on stream</button>')
-        + '<button class="glc-btn ghost sm" data-glc-poll="delete:' + x.id + '">✕</button></div>';
-    }).join('') : '<p class="glc-note">No polls yet.</p>';
-    return '<div class="glc-grid"><div class="glc-box"><h4>Questions</h4>' + q
-      + '<div class="glc-f" style="margin-top:10px"><input class="glc-in w" style="flex:1;width:auto" maxlength="500" placeholder="Add your own question to the queue" data-glc-qtext><button class="glc-btn sm" data-glc-qadd>Add</button></div></div>'
-      + '<div class="glc-box"><h4>Polls</h4>' + p
-      + '<div style="margin-top:10px"><input class="glc-in" maxlength="140" placeholder="Poll question" data-glc-pq><input class="glc-in" style="margin-top:7px" placeholder="Answers, separated by commas (2–6)" data-glc-pc><button class="glc-btn sm" style="margin-top:8px" data-glc-padd>Create poll</button></div>'
-      + (ctl.msg && ctl.tab === 'qa' ? '<p class="glc-note bad">' + esc(ctl.msg) + '</p>' : '') + '</div></div>';
-  }
-
-  function glcBoostTab() {
-    var b = ctl.boost;
-    if (b === null) { return '<div class="glc-box"><p class="glc-note">Loading…</p></div>'; }
-    var open = b && b.open;
-    var left = open ? Math.max(0, Math.round((b.endsAt * 1000 - Date.now()) / 60000)) : 0;
-    var board = (b && b.board || []).map(function (r, i) { return '<div class="glc-row"><span>' + (i + 1) + '. ' + esc(r.name) + '<small>' + r.shares + ' shares · ' + r.clicks + ' clicks</small></span><b>' + r.lb + ' LB</b></div>'; }).join('') || '<p class="glc-note">No shares yet this round.</p>';
-    return '<div class="glc-grid"><div class="glc-box"><h4>Boost round</h4>'
-      + (open ? '<p class="glc-big">' + left + ' min left</p><p class="glc-note">Viewers earn ' + b.perShare + ' Loop Bucks per share; the top sharer wins ' + b.winnerBonus + '.</p><button class="glc-btn red" data-glc-boost="close">End round now</button>'
-        : '<p class="glc-note" style="margin-top:0">Viewers share your stream and earn Loop Bucks for real clicks. Great when your room is growing.' + (b && b.winnerName ? ' Last winner: <b>' + esc(b.winnerName) + '</b>.' : '') + '</p>'
-          + '<div class="glc-f">Length <input class="glc-in" type="number" min="1" max="120" value="10" data-glc-bm> min · per share <input class="glc-in" type="number" min="0" max="5000" value="250" data-glc-bp> LB · winner <input class="glc-in" type="number" min="0" max="100000" value="5000" data-glc-bw> LB</div><button class="glc-btn" data-glc-boost="open">Start round</button>')
-      + (ctl.msg && ctl.tab === 'boost' ? '<p class="glc-note bad">' + esc(ctl.msg) + '</p>' : '') + '</div><div class="glc-box"><h4>Leaderboard</h4>' + board + '</div></div>';
-  }
-
-  function glcMoneyTab() {
-    var m = (ctl.st && ctl.st.money) || { n: 0, lb: 0, recent: [] };
-    var rows = (m.recent || []).map(function (r) { return '<div class="glc-row"><span><b>' + esc(r.name) + '</b> · ' + r.loop_bucks + ' LB<small>' + esc(r.message || 'No message') + ' · ' + glcWhen(r.at) + '</small></span></div>'; }).join('') || '<p class="glc-note">No Super Chats yet for this stream. Viewers send them from the chat box; voice ones are recorded for you to play or decline in the voice dock below.</p>';
-    return '<div class="glc-grid"><div class="glc-box"><h4>This stream</h4><p class="glc-big">' + m.lb + ' <span style="font-size:14px;color:#7e92a8">Loop Bucks</span></p><p class="glc-note" style="margin-top:0">' + m.n + ' Super Chat' + (m.n === 1 ? '' : 's') + '. Levels, prices and voice rules are set in Monetization above.</p></div>'
-      + '<div class="glc-box"><h4>Latest</h4>' + rows + '</div></div>';
-  }
-
-  function glcGroupsTab() {
-    var gs = (ctl.st && ctl.st.groups) || [];
-    if (!gs.length) { return '<div class="glc-box"><p class="glc-note">You are not in any groups yet. Groups you own or join appear here so you can bring them into the stream.</p></div>'; }
-    return '<div class="glc-box"><h4>Your groups</h4>' + gs.map(function (g) {
-      var ch = ctl.chan[g.id] || [], best = ch.filter(function (c) { return c.live; })[0] || ch[0];
-      return '<div class="glc-row"><span><b>' + esc(g.name) + '</b> <span class="glc-pill' + (g.owned ? ' g' : '') + '">' + esc(String(g.role).toUpperCase()) + '</span>'
-        + '<small>' + (ch.length ? 'Posts to #' + esc(best.name) : 'You can read here but not post announcements') + '</small></span>'
-        + (ch.length ? '<button class="glc-btn sm" data-glc-gann="' + best.id + '">Announce stream</button>' : '') + '<a class="glc-btn ghost sm" style="text-decoration:none" href="' + esc(g.url) + '" target="_blank" rel="noopener">Open</a></div>';
-    }).join('') + (ctl.msg && ctl.tab === 'groups' ? '<p class="glc-note ' + (/^✓/.test(ctl.msg) ? 'ok' : 'bad') + '">' + esc(ctl.msg) + '</p>' : '') + '<p class="glc-note">Announcing posts your stream title and watch link in the group channel, as you. Members see it instantly.</p></div>';
-  }
-
-  function glcOrbitTab() {
-    var o = ctl.orbit;
-    if (o === null) { return '<div class="glc-box"><p class="glc-note">Loading…</p></div>'; }
-    return '<div class="glc-box"><h4>Watch-page orbit · ' + o.length + ' / 5</h4>'
-      + (o.length ? '<div class="glc-orb">' + o.map(function (m, i) {
-        return '<figure><img alt="" src="' + esc(m.img) + '">' + (m.gif ? '<span class="glc-pill g" style="align-self:flex-start">GIF</span>' : '')
-          + '<input class="glc-in" placeholder="Caption" maxlength="80" value="' + esc(m.cap) + '" data-glc-oc="' + i + '"><input class="glc-in" placeholder="Link (https://)" value="' + esc(m.link) + '" data-glc-ol="' + i + '">'
-          + '<button class="glc-btn red sm" data-glc-orm="' + i + '">Remove</button></figure>';
-      }).join('') + '</div>' : '<p class="glc-note" style="margin-top:0">Nothing here yet. Photos and GIFs you add rotate on your watch page under “From the host”.</p>')
-      + '<div class="glc-f"><input type="file" accept="image/*" data-glc-ofile' + (o.length >= 5 ? ' disabled' : '') + '> <button class="glc-btn" data-glc-osave>Save captions &amp; links</button></div>'
-      + (ctl.orbitMsg ? '<p class="glc-note ' + (/^✓/.test(ctl.orbitMsg) ? 'ok' : '') + '">' + esc(ctl.orbitMsg) + '</p>' : '') + '<p class="glc-note">Up to 5. Animated GIFs play. Full image is always shown, uncropped.</p></div>';
-  }
-
-  function paintControl(keepScroll) {
-    paintMiniQa();
-    var root = document.querySelector('[data-glc]');
-    if (!root) { return; }
-    var body = root.querySelector('[data-glc-body]');
-    if (!ctl.st) { return; }
-    /* never repaint under a control the creator is typing in */
-    var ae = document.activeElement;
-    if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'checkbox' && ae.type !== 'file' && keepScroll !== 'force') { return; }
-    /* a picked-but-unsent emote file must survive the 12 s refresh */
-    if (ctl.tab === 'emotes' && keepScroll !== 'force') { var pf = document.querySelector('[data-glc-emo-file]'), pn = document.querySelector('[data-glc-emo-name]'); if ((pf && pf.files && pf.files.length) || (pn && pn.value)) { return; } }
-    var tab = ctl.tab === 'promote' ? glcPromoTab() : ctl.tab === 'qa' ? glcQaTab() : ctl.tab === 'boost' ? glcBoostTab() : ctl.tab === 'money' ? glcMoneyTab() : ctl.tab === 'groups' ? glcGroupsTab() : ctl.tab === 'emotes' ? glcEmotesTab() : glcOrbitTab();
-    body.innerHTML = glcMoves() + glcTabs() + tab;
-  }
-
-  function miniQaMarkup() {
-    glcCss();
-    return '<section class="cs-card glc" data-glc-mini><h3 style="margin-bottom:8px">Questions waiting <span class="glc-pill" data-glc-mq-n style="margin-left:6px">0</span></h3><div data-glc-mq-body class="glc-note" style="margin:0">Loading…</div></section>';
-  }
-  function paintMiniQa() {
-    var box = document.querySelector('[data-glc-mq-body]');
-    if (!box) { return; }
-    var all = (ctl.qa || []).filter(function (q) { return q.status !== 'answered'; }), qs = all.slice(0, 4);
-    var n = document.querySelector('[data-glc-mq-n]'); if (n) { n.textContent = all.length; }
-    box.innerHTML = qs.length ? qs.map(function (x) {
-      return '<div class="glc-row"><span>' + (x.pinned ? '📌 ' : '') + esc(x.body) + '<small>' + esc(x.from || 'Viewer') + ' · ' + (x.upvotes || 0) + ' ▲</small></span><button class="glc-btn sm" data-glc-qa="answer:' + x.id + '">Answered</button></div>';
-    }).join('') : (ctl.qa === null ? 'Loading…' : 'No questions waiting.');
-  }
-
-  /* Channel emotes: up to 25 per channel (server-side limit). Only Premium members of the channel can use them in chat. */
-  function glcEmo(t) {
-    if (typeof ctl === 'undefined' || !ctl || !ctl.emMap || !t || t.indexOf(':') < 0) { return t; }
-    return t.replace(/:([a-z0-9_]{2,24}):/gi, function (all, n) {
-      var u = ctl.emMap[String(n).toLowerCase()];
-      return u ? '<img src="' + esc(u) + '" alt=":' + esc(n) + ':" title=":' + esc(n) + ':" style="height:1.7em;width:auto;max-width:5em;vertical-align:-.45em">' : all;
-    });
-  }
-  function glcEmoLoad() {
-    return api('/wp-json/sml-emotes/v1/mine').then(function (d) {
-      ctl.em = d; ctl.emMap = {};
-      (d.emotes || []).forEach(function (e) { ctl.emMap[String(e.name).toLowerCase()] = e.url; });
-      paintControl(true); renderCreatorChat();
-    }).catch(function (e) { ctl.em = { emotes: [], used: 0, limit: 25, error: (e && e.message) || 'Emotes are unavailable.' }; paintControl(true); });
-  }
-  function glcEmotesTab() {
-    var d = ctl.em;
-    if (d === null) { return '<div class="glc-box"><p class="glc-note">Loading…</p></div>'; }
-    if (d.error) { return '<div class="glc-box"><p class="glc-note bad">' + esc(d.error) + '</p></div>'; }
-    var full = d.used >= d.limit;
-    return '<div class="glc-box"><h4>Channel emotes · ' + d.used + ' / ' + d.limit + '</h4>'
-      + (d.emotes.length ? '<div class="glc-orb">' + d.emotes.map(function (e) {
-        return '<figure><img alt=":' + esc(e.name) + ':" src="' + esc(e.url) + '" style="height:64px"><span style="font-size:12px;color:#dbe6f2;text-align:center">:' + esc(e.name) + ':</span><button class="glc-btn red sm" data-glc-emo-rm="' + e.id + '">Remove</button></figure>';
-      }).join('') + '</div>' : '<p class="glc-note" style="margin-top:0">No emotes yet. Add up to ' + d.limit + ' — viewers type <b>:name:</b> in chat to use one.</p>')
-      + '<div class="glc-f"><input class="glc-in" style="width:150px" maxlength="24" placeholder="name (e.g. pog)" data-glc-emo-name' + (full ? ' disabled' : '') + '>'
-      + '<input type="file" accept="image/png,image/gif,image/webp" data-glc-emo-file' + (full ? ' disabled' : '') + '> <button class="glc-btn" data-glc-emo-add' + (full ? ' disabled' : '') + '>Add emote</button></div>'
-      + (ctl.emMsg ? '<p class="glc-note ' + (/^✓/.test(ctl.emMsg) ? 'ok' : 'bad') + '">' + esc(ctl.emMsg) + '</p>' : '')
-      + '<p class="glc-note">PNG, GIF (animated is fine) or WebP, up to ' + d.max_kb + ' KB and ' + d.max_px + ' px. <b>Only your Premium members can use your emotes in chat</b>; everyone else sees them but cannot send them.'
-      + (d.premium_groups ? '' : ' You have no Premium group yet, so for now only you can use them.') + '</p></div>';
-  }
-
-  function glcSetTab(tab) { ctl.tab = tab; ctl.msg = ''; glcTabLoad(tab); paintControl('force'); }
-
-  function glcPayload(dry) {
-    var f = ctl.form, accounts = Object.keys(f.accounts || {}).filter(function (k) { return f.accounts[k]; }).map(Number);
-    var chans = Object.keys(f.channels || {}).filter(function (k) { return f.channels[k]; }).map(Number);
-    var body = { stream: glcStreamId(), kind: f.kind, text: f.text, accounts: accounts, network: !!f.network, group_channels: chans, when: f.when };
-    if (f.when === 'at') { body.at = f.at ? new Date(f.at).toISOString() : ''; }
-    if (f.when === 'before') { body.minutes = Number(f.minutes) || 30; }
-    if (f.when === 'milestone') { body.min_viewers = Number(f.minv) || 25; }
-    if (f.when !== 'milestone' && Number(f.every) > 0) { body.every = Number(f.every); body.runs = Number(f.runs) || 3; }
-    if (f.kind === 'update' || f.kind === 'milestone') { body.only_live = true; }
-    return body;
-  }
-
-  function glcDo(promise, okMsg, tab) {
-    return promise.then(function () { ctl.msg = okMsg || ''; }).catch(function (e) { ctl.msg = (e && e.message) || 'That did not work.'; }).then(function () { paintControl('force'); if (tab) { glcTabLoad(tab); } });
-  }
-
-  function glcClick(e) {
-    var t = e.target.closest ? e.target.closest('[data-glc] button, [data-glc] input[type=checkbox], [data-glc] a, [data-glc-mini] button') : null;
-    if (!t) { return; }
-    var a = function (n) { return t.getAttribute(n); }, f = ctl.form;
-    if (a('data-glc-tab')) { glcSetTab(a('data-glc-tab')); return; }
-    if (a('data-glc-move') !== null) {
-      var mv = (ctl.moves || [])[Number(a('data-glc-move'))]; if (!mv) { return; }
-      var act = mv.act || {};
-      if (act.type === 'tab') { glcSetTab(act.tab); }
-      else if (act.type === 'promo') { glcFormInit(); f = ctl.form; f.kind = act.kind; f.when = 'now'; ctl.tab = 'promote'; ctl.msg = ''; ctl.prev = null; paintControl('force'); }
-      else if (act.type === 'countdown') { glcFormInit(); f = ctl.form; f.kind = 'soon'; f.when = 'before'; f.minutes = 30; f.every = 0; ctl.tab = 'promote'; ctl.msg = 'Pick where it goes, then press Schedule. Add a second one at 10 minutes for a stronger push.'; ctl.prev = null; paintControl('force'); }
-      return;
-    }
-    if (a('data-glc-kind')) { f.kind = a('data-glc-kind'); if (f.kind === 'milestone' && f.when === 'now') { f.when = 'milestone'; } if (f.kind === 'soon' && f.when === 'now' && draft.live && draft.live.scheduled_at) { f.when = 'before'; } ctl.prev = null; paintControl('force'); return; }
-    if (a('data-glc-when')) { f.when = a('data-glc-when'); ctl.prev = null; paintControl('force'); return; }
-    if (a('data-glc-acc')) { f.accounts[a('data-glc-acc')] = t.checked; return; }
-    if (t.hasAttribute('data-glc-net')) { f.network = t.checked; return; }
-    if (a('data-glc-chan')) { f.channels[a('data-glc-chan')] = t.checked; return; }
-    if (t.hasAttribute('data-glc-wrap')) {
-      var wp = glcPayload(false);
-      api(glcBase() + '/wrap-setting', { method: 'POST', json: { on: t.checked, accounts: wp.accounts, network: wp.network, group_channels: wp.group_channels } })
-        .then(function (d) { if (ctl.st) { ctl.st.wrap = d.wrap; } ctl.msg = d.wrap && d.wrap.on ? '✓ Wrap-up post is on for this selection.' : '✓ Wrap-up post is off.'; })
-        .catch(function (er) { t.checked = false; ctl.msg = er.message; }).then(function () { paintControl('force'); });
-      return;
-    }
-    if (t.hasAttribute('data-glc-preview')) {
-      var pl = glcPayload(true);
-      if (!pl.accounts.length) { ctl.msg = 'Pick at least one connected account to preview.'; paintControl('force'); return; }
-      ctl.msg = 'Building preview…'; paintControl('force');
-      api(glcBase() + '/preview', { method: 'POST', json: pl }).then(function (d) { ctl.prev = d.previews || []; ctl.msg = ctl.prev.length ? '' : 'Nothing to preview for those accounts.'; }).catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
-      return;
-    }
-    if (t.hasAttribute('data-glc-send')) {
-      var body = glcPayload(false);
-      if (!body.accounts.length && !body.network && !body.group_channels.length) { ctl.msg = 'Pick at least one place to post.'; paintControl('force'); return; }
-      if (body.when === 'now' && !window.confirm('Post to ' + (body.accounts.length + (body.network ? 1 : 0) + body.group_channels.length) + ' place(s) right now?')) { return; }
-      t.disabled = true;
-      api(glcBase() + '/promo', { method: 'POST', json: body }).then(function () { ctl.msg = body.when === 'now' ? '✓ Sent to the queue — it goes out in a moment.' : '✓ Scheduled.'; ctl.prev = null; pollControl(); })
-        .catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
-      return;
-    }
-    if (a('data-glc-cancel')) { api(glcBase() + '/promo/' + a('data-glc-cancel') + '/cancel', { method: 'POST' }).then(function () { pollControl(); }); return; }
-    if (a('data-glc-qa')) { var qp = a('data-glc-qa').split(':'); glcDo(api('/wp-json/sml-engage/v1/qa/' + qp[1] + '/' + qp[0], { method: 'POST' }), '', 'qa'); return; }
-    if (t.hasAttribute('data-glc-qadd')) { var qi = document.querySelector('[data-glc-qtext]'); if (qi && qi.value.trim()) { glcDo(api('/wp-json/sml-engage/v1/qa', { method: 'POST', json: { body: qi.value.trim() } }), '', 'qa'); } return; }
-    if (a('data-glc-poll')) { var pp = a('data-glc-poll').split(':'); glcDo(api('/wp-json/sml-engage/v1/polls/' + pp[1] + '/' + pp[0], { method: 'POST' }), '', 'qa'); return; }
-    if (t.hasAttribute('data-glc-padd')) {
-      var pq = document.querySelector('[data-glc-pq]').value.trim(), pc = document.querySelector('[data-glc-pc]').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      glcDo(api('/wp-json/sml-engage/v1/polls', { method: 'POST', json: { question: pq, choices: pc } }), '', 'qa'); return;
-    }
-    if (a('data-glc-boost') === 'open') {
-      var q = function (s) { return Number(document.querySelector(s).value) || 0; };
-      glcDo(api('/wp-json/sml-lw/v1/boost/open', { method: 'POST', json: { handle: glcHandle(), minutes: q('[data-glc-bm]'), per_share: q('[data-glc-bp]'), winner: q('[data-glc-bw]') } }), '', 'boost'); return;
-    }
-    if (a('data-glc-boost') === 'close') { if (window.confirm('End the Boost round now and pay the winner?')) { glcDo(api('/wp-json/sml-lw/v1/boost/close', { method: 'POST', json: { handle: glcHandle() } }), '', 'boost'); } return; }
-    if (a('data-glc-gann')) {
-      if (!window.confirm('Post your stream link in this group now?')) { return; }
-      api(glcBase() + '/promo', { method: 'POST', json: { stream: glcStreamId(), kind: (draft.live && draft.live.status === 'scheduled') ? 'soon' : 'start', text: '', accounts: [], group_channels: [Number(a('data-glc-gann'))], when: 'now' } })
-        .then(function () { ctl.msg = '✓ Announced.'; pollControl(); }).catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
-      return;
-    }
-    if (t.hasAttribute('data-glc-emo-add')) {
-      var en = document.querySelector('[data-glc-emo-name]'), ef = document.querySelector('[data-glc-emo-file]');
-      if (!en || !ef || !ef.files || !ef.files[0]) { ctl.emMsg = 'Pick an image first.'; paintControl('force'); return; }
-      var efd = new FormData(); efd.append('name', en.value); efd.append('file', ef.files[0]);
-      ctl.emMsg = 'Uploading…'; paintControl('force');
-      api('/wp-json/sml-emotes/v1/upload', { method: 'POST', body: efd })
-        .then(function () { ctl.emMsg = '✓ Added.'; return glcEmoLoad(); })
-        .catch(function (er) { ctl.emMsg = er.message || 'Upload failed.'; paintControl('force'); });
-      return;
-    }
-    if (a('data-glc-emo-rm')) {
-      if (!window.confirm('Remove this emote? Old chat messages using it will show the plain text.')) { return; }
-      api('/wp-json/sml-emotes/v1/' + a('data-glc-emo-rm'), { method: 'DELETE' }).then(function () { ctl.emMsg = ''; return glcEmoLoad(); }).catch(function (er) { ctl.emMsg = er.message; paintControl('force'); });
-      return;
-    }
-    if (a('data-glc-orm') !== null) { var om = ctl.orbit[Number(a('data-glc-orm'))]; if (om && window.confirm('Remove this image from your orbit?')) { glcDo(api('/wp-json/wp/v2/media/' + om.id, { method: 'POST', json: { title: 'orbit-removed-' + Date.now() } }), '', 'orbit'); } return; }
-    if (t.hasAttribute('data-glc-osave')) {
-      ctl.orbit.forEach(function (m, i) {
-        var c = document.querySelector('[data-glc-oc="' + i + '"]'), l = document.querySelector('[data-glc-ol="' + i + '"]');
-        if (c) { m.cap = c.value; } if (l) { m.link = l.value.trim(); }
-      });
-      Promise.all(ctl.orbit.map(function (m) { return api('/wp-json/wp/v2/media/' + m.id, { method: 'POST', json: { caption: m.cap || '', description: /^https:\/\//.test(m.link) ? m.link : '' } }); }))
-        .then(function () { ctl.orbitMsg = '✓ Saved.'; }).catch(function () { ctl.orbitMsg = 'Save failed — check your connection.'; }).then(function () { paintControl('force'); });
-      return;
-    }
-  }
-
-  function glcInput(e) {
-    var t = e.target; if (!t || !t.closest || !t.closest('[data-glc]')) { return; }
-    var k = t.getAttribute('data-glc-f');
-    if (k && ctl.form) { ctl.form[k] = t.value; ctl.prev = null; }
-  }
-
-  function glcFile(e) {
-    var t = e.target; if (!t || !t.hasAttribute || !t.hasAttribute('data-glc-ofile')) { return; }
-    var file = t.files && t.files[0]; if (!file) { return; }
-    if (ctl.orbit && ctl.orbit.length >= 5) { ctl.orbitMsg = '5 is the max — remove one first.'; paintControl('force'); return; }
-    if (!/^image\//.test(file.type)) { ctl.orbitMsg = 'Images and GIFs only.'; paintControl('force'); return; }
-    if (file.size > 8 * 1024 * 1024) { ctl.orbitMsg = 'Keep it under 8 MB.'; paintControl('force'); return; }
-    ctl.orbitMsg = 'Uploading…'; paintControl('force');
-    var fd = new FormData(); fd.append('file', file);
-    fetch('/wp-json/wp/v2/media', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': cfg.nonce }, body: fd })
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (!j || !j.id) { throw new Error((j && j.message) || 'Upload failed.'); }
-        return api('/wp-json/wp/v2/media/' + j.id, { method: 'POST', json: { title: 'sml-orbit-' + glcHandle() + '-' + Date.now() } });
-      })
-      .then(function () { ctl.orbitMsg = '✓ Added.'; glcOrbitLoad(); })
-      .catch(function (er) { ctl.orbitMsg = er.message || 'Upload failed.'; paintControl('force'); });
-  }
-
-  if (!window.__glcBound) {
-    window.__glcBound = true;
-    document.addEventListener('click', glcClick);
-    document.addEventListener('input', glcInput);
-    document.addEventListener('change', function (e) { glcInput(e); glcFile(e); });
-  }
-
-  function studioUrl(row) {
-    var u = String((row && row.watch_url) || '');
-    var m = u.match(/\/live\/([^\/?#]+)\/([^\/?#]+)/);
-    if (m) { return '/go-live/' + m[1] + '/' + m[2] + '/'; }
-    var id = String((row && row.id) || '');
-    return id && /^[A-Za-z0-9]{8,32}$/.test(id) ? '/go-live/' + encodeURIComponent((row && row.handle) || watchChatHandle() || 'me') + '/' + id + '/' : '/go-live/';
-  }
-
-  function studioNav() {
-    return '<nav class="gl-studionav" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:0 0 14px;font-size:12.5px">'
-      + '<a style="color:#7e92a8;text-decoration:none" href="/creator-studio/?tab=live">&larr; All streams</a>'
-      + '<a style="color:#7e92a8;text-decoration:none" href="/go-live/">+ New stream</a>'
-      + (draft.live && draft.live.status !== 'ended' ? '<a style="color:#22d3a0;text-decoration:none" href="#gl-live-chat">Live chat &darr;</a>' : '')
-      + (draft.live && draft.live.watch_url ? '<a style="color:#2b6cff;text-decoration:none" href="' + esc(draft.live.watch_url) + '" target="_blank" rel="noopener">Open watch page &nearr;</a>' : '') + '</nav>';
-  }
-
   function stepLiveDashboard() {
-    if (draft.live && draft.live.status === 'ended') {
-      return (routeMode ? studioNav() : '') + '<div class="gl-live-banner"><span class="gl-live-dot" style="background:#7e92a8;box-shadow:none"></span><div><b>STREAM ENDED</b><span style="display:block">' + esc(draft.title) + '</span></div></div>'
-        + insightsMarkup();
-    }
     if (draft.live && draft.live.status === 'scheduled') {
     var scheduled = !!(draft.live && draft.live.status === 'scheduled');
     var startLabel = scheduledStartLabel(draft.live && draft.live.scheduled_at);
-    return (routeMode ? studioNav() : '') + '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
+    return '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
       + '<div><b>' + (scheduled ? 'WATCH PAGE OPEN' : 'LIVE') + '</b><span style="display:block">' + esc(draft.title) + '</span></div>'
-      + '' + (scheduled ? '<button class="cs-btn cs-btn-gold" style="margin-left:auto" data-startsched>Go Live Now ' + icon('rocket', 18) + '</button>' : '') + '<button class="cs-btn" style="' + (scheduled ? '' : 'margin-left:auto;') + 'border-color:rgba(255,86,110,.4);color:#ff566e" data-endlive>' + icon('stop', 17) + (scheduled ? 'Cancel scheduled stream' : 'Close Watch Page') + '</button></div>'
+      + '<button class="cs-btn" style="margin-left:auto;border-color:rgba(255,86,110,.4);color:#ff566e" data-endlive>' + icon('stop', 17) + (scheduled ? 'Cancel scheduled stream' : 'Close Watch Page') + '</button></div>'
       + '<section class="cs-card" style="margin-top:18px"><h3 style="margin-bottom:14px">' + (scheduled ? 'Scheduled stream' : 'Live status') + '</h3><div class="gl-live-stats">'
       + '<div class="gl-stat"><small>' + icon('clock', 14) + (scheduled ? 'Scheduled for' : 'Opened') + '</small><b data-live="scheduled" style="font-size:16px;line-height:1.35">' + esc(startLabel) + '</b></div>'
       + '<div class="gl-stat"><small>' + icon('chat', 14) + 'Shared chat</small><b style="font-size:16px">Open now</b></div>'
       + '<div class="gl-stat"><small>' + icon('cam', 14) + 'Video</small><b style="font-size:16px">' + (scheduled ? 'Waiting to start' : 'Check Watch Page') + '</b></div>'
       + '</div>'
       + '<div class="cs-hint" style="margin-top:14px">Your Watch Page is available now. It shows your thumbnail or GIF until the real stream reports live; this control does not pretend the video is live before then.</div></section>'
-      + controlMarkup() + insightsMarkup();
+      + creatorChatMarkup();
     }
 
     var elapsed = liveStats.startedAt ? Math.floor((Date.now() - liveStats.startedAt) / 1000) : 0;
-    return (routeMode ? studioNav() : '') + '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
+    return '<div class="gl-live-banner"><span class="gl-live-dot"></span>'
       + '<div><b>LIVE</b><span style="display:block">' + esc(draft.title) + '</span></div>'
       + '<button class="cs-btn" style="margin-left:auto;border-color:rgba(255,86,110,.4);color:#ff566e" data-endlive>' + icon('stop', 17) + 'End stream</button></div>'
       + '<section class="cs-card" style="margin-top:18px"><h3 style="margin-bottom:14px">Live stats</h3><div class="gl-live-stats">'
@@ -2456,12 +1760,8 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-stat"><small>' + icon('users', 14) + 'Viewers</small><b data-live="viewers">' + compact(liveStats.viewers) + '</b></div>'
       + '<div class="gl-stat"><small>' + icon('signal', 14) + 'Health</small><b>' + healthScore() + '%</b></div>'
       + '</div>'
-      + (Number(draft.groupId)
-        ? '<div class="cs-hint" style="margin-top:14px">Your live room is open in <b>' + esc(groupName()) + '</b>. '
-          + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div>'
-        : '<div class="cs-hint" style="margin-top:14px">You are live on your Watch Page — no host group. '
-          + '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">Open your Watch Page</a> to see what viewers see.</div>')
-      + '</section>' + controlMarkup() + insightsMarkup();
+      + '<div class="cs-hint" style="margin-top:14px">Your live room is open in <b>' + esc(groupName()) + '</b>. '
+      + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div></section>' + creatorChatMarkup();
   }
 
   function groupName() {
@@ -2480,8 +1780,7 @@ if (!function_exists('sml_gl_script')) {
     var scheduled = draft.schedule === 'later';
     var rows = [
       { label: 'Stream title added', ok: !!draft.title.trim() },
-      /* informational only: a host group is optional, so this row can never block Go Live or Schedule */
-      { label: Number(draft.groupId) ? 'Host group selected' : 'No host group — Watch Page only', ok: true, note: groupName() || '' },
+      { label: 'Host group selected', ok: !!Number(draft.groupId), note: groupName() || '' },
       { label: 'Public Watch Page handle available', ok: !!watchChatHandle(), note: watchChatHandle() ? '@' + watchChatHandle() : 'Set this in your profile first' }
     ];
     if (scheduled) {
@@ -2530,7 +1829,6 @@ if (!function_exists('sml_gl_script')) {
         title: draft.title,
         description: draft.description,
         ticker: draft.ticker,
-        tickers: [draft.ticker].concat(draft.related || []).filter(Boolean),
         visibility: draft.audience,
         thumbnail_url: draft.thumbUrl
       }
@@ -2579,59 +1877,6 @@ if (!function_exists('sml_gl_script')) {
       startPolling();
     }).catch(function (error) {
       window.alert('Could not start the live room: ' + error.message);
-    });
-  }
-
-  /* Start the stream this studio page is about (a scheduled one): make it the current record so the live lifecycle flips THIS one, then start. */
-  function startScheduled() {
-    var row = draft.live;
-    if (!row || row.status !== 'scheduled') { return; }
-    var btn = document.querySelector('[data-startsched]');
-    if (btn) { btn.disabled = true; }
-    api('/wp-json/sml-live-control/v1/arm', { method: 'POST', json: { stream: row.id } })
-      .then(function () {
-        return api(cfg.liveStartEndpoint, { method: 'POST', json: {
-          group_id: Number(draft.groupId) || 0, kind: draft.scene === 'screen' ? 'screen' : 'video', title: draft.title, description: draft.description,
-          ticker: draft.ticker, tickers: [draft.ticker].concat(draft.related || []).filter(Boolean), visibility: draft.audience } });
-      })
-      .then(function (payload) {
-        return api(scheduledLiveEndpoint() + '?_=' + Date.now()).then(function (p) {
-          var fresh = (p.streams || []).filter(function (s) { return s.id === row.id; })[0];
-          draft.live = fresh && fresh.status === 'live' ? fresh : Object.assign({}, payload && payload.room || {}, row, { status: 'live' });
-          liveStats.startedAt = Date.now(); liveStats.viewers = 0;
-          save(); render(); syncRoomMonetization(); startPolling();
-        });
-      })
-      .catch(function (error) { if (btn) { btn.disabled = false; } window.alert('Could not start the stream: ' + error.message); });
-  }
-
-  function applyRouteRow(row) {
-    draft = defaults();
-    draft.title = row.title || ''; draft.description = row.description || ''; draft.ticker = String(row.ticker || '').toUpperCase();
-    draft.thumbUrl = row.thumbnail_url || ''; draft.audience = row.visibility || 'public'; draft.step = 4;
-    draft.schedule = row.status === 'scheduled' ? 'later' : 'now';
-    draft.live = row;
-    liveStats.startedAt = Date.parse(row.scheduled_at || '') || Date.now();
-    if (row.status === 'live') { startPolling(); }
-    if (draft.ticker) { loadQuote(draft.ticker); }
-    if (window.history && history.replaceState) {
-      var want = studioUrl(row);
-      if (want !== '/go-live/' && want !== window.location.pathname) { history.replaceState(null, '', want + window.location.search + window.location.hash); }
-    }
-  }
-
-  /* /go-live/{handle}/{slug}-{id}: find that stream among the creator's own; anything else falls back to the normal studio */
-  function loadRouteStream() {
-    return api(scheduledLiveEndpoint() + '?_=' + Date.now()).then(function (p) {
-      var row = (p.streams || []).filter(function (s) { return s.id === routeId; })[0];
-      if (!row || row.status === 'cancelled') { throw new Error('missing'); }
-      window.__glStreams = {};
-      (p.streams || []).forEach(function (s) { window.__glStreams[s.id] = studioUrl(s); });
-      applyRouteRow(row);
-      render();
-    }).catch(function () {
-      routeMode = false; routeNotice = 'That stream is not in your library, so here is your studio.';
-      restore(); render();
     });
   }
 
@@ -2701,14 +1946,14 @@ if (!function_exists('sml_gl_script')) {
     else { body = stepSetup(); }
 
     if (window.smlVoiceHostDockBeforeRender) { window.smlVoiceHostDockBeforeRender(); }
-    content.innerHTML = (routeNotice ? '<div class="cs-hint" style="margin-bottom:12px">' + esc(routeNotice) + '</div>' : '') + body;
+    content.innerHTML = body;
     middle.innerHTML = middleMarkup();
     rail.innerHTML = railMarkup();
     paintStepper();
     bindVideo();
     paintQuote();
     paintMovers();
-    if (draft.live && draft.live.status === 'ended') { stopCreatorChat(); stopControl(); startInsights(); paintInsights(); } else if (draft.live) { startCreatorChat(); startInsights(); paintInsights(); startControl(); paintControl(true); } else { stopCreatorChat(); stopInsights(); stopControl(); }
+    if (draft.live) { startCreatorChat(); } else { stopCreatorChat(); }
     if (window.smlVoiceHostDockAfterRender) { window.smlVoiceHostDockAfterRender(); }
   }
 
@@ -2732,7 +1977,6 @@ if (!function_exists('sml_gl_script')) {
       return;
     }
     if (target.closest('[data-golive]')) { goLive(); return; }
-    if (target.closest('[data-startsched]')) { startScheduled(); return; }
     if (target.closest('[data-endlive]')) { endLive(); return; }
     if (target.closest('[data-send-creator-chat]')) { sendCreatorChat(); return; }
 
@@ -3020,7 +2264,7 @@ if (!function_exists('sml_gl_script')) {
     }
   });
 
-  [content, middle].forEach(function (host) { host.addEventListener('keydown', function (event) {
+  content.addEventListener('keydown', function (event) {
     if (event.target.getAttribute('data-creator-chat-input') !== null) {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
@@ -3032,10 +2276,10 @@ if (!function_exists('sml_gl_script')) {
     if (event.key !== 'Enter' && event.key !== ',') { return; }
     event.preventDefault();
     var value = event.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-    if (value && draft.related.length < 4 && draft.related.indexOf(value) === -1) { draft.related.push(value); }
+    if (value && draft.related.indexOf(value) === -1) { draft.related.push(value); }
     event.target.value = '';
     save(); render();
-  }); });
+  });
 
   var saveBtn = document.getElementById('gl-save-draft');
   if (saveBtn) {
@@ -3069,11 +2313,12 @@ if (!function_exists('sml_gl_script')) {
     if (event.key === 'Escape' && document.getElementById('gl-money-modal')) { closeMonetization(); }
   });
 
-  if (routeMode) { render(); loadRouteStream(); } else { restore(); render(); }
+  restore();
+  render();
   // Also catches streams scheduled before this release. The server record is
   // authoritative; if it exists, the browser must not reuse its old setup as
   // the next stream draft.
-  if (!routeMode) { clearSetupIfServerHasScheduledStream(); }
+  clearSetupIfServerHasScheduledStream();
   if (cfg.openMonetization) { openMonetization(); }
   if (cfg.openChatOverlay) { openChatOverlayEditor(); }
   loadMonetizationSettings(false);

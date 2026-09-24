@@ -162,14 +162,10 @@ if (!function_exists('sml_dist_enqueue')) {
 
         $run_at = sml_dist_run_at($seo, $args);
 
-        $idem_parts = array(
+        $idem = sha1(implode('|', array(
             (int) $args['user_id'], $platform, $bundle['entity_type'],
             (int) $bundle['entity_id'], $event, gmdate('Y-m-d'),
-        );
-        if (!empty($args["idem_suffix"])) {
-            $idem_parts[] = (string) $args["idem_suffix"];
-        }
-        $idem = sha1(implode("|", $idem_parts));
+        )));
 
         $ok = $wpdb->insert($table, array(
             'user_id'         => (int) $args['user_id'],
@@ -206,7 +202,7 @@ if (!function_exists('sml_dist_run_at')) {
 
         // A live announcement is only useful while the stream is live. Keep an
         // owner's explicit delay, but never move it into a later market window.
-        if (0 === strpos((string) ($args['event'] ?? ''), 'stream.')) {
+        if (($args['event'] ?? '') === 'stream.start') {
             return gmdate('Y-m-d H:i:s', $base);
         }
 
