@@ -2917,7 +2917,7 @@
         if (!Array.isArray(list)) return [];
         return list.filter(function (m) { return m && m.source_url && m.title && String(m.title.rendered || '').indexOf(ORB_TAG) === 0; })
           .sort(function (a, b) { return String(a.title.rendered).localeCompare(String(b.title.rendered)); })
-          .slice(0, 10)
+          .slice(0, 5)
           .map(function (m) { return { id: m.id, img: m.source_url, title: orbStrip(m.caption && m.caption.rendered), sub: '', link: orbLink(m.description && m.description.rendered) }; });
       });
   }
@@ -2942,7 +2942,7 @@
           '<input data-f="title" data-i="' + i + '" placeholder="caption (optional)" value="' + esc(m.title || '') + '">' +
           '<input data-f="link" data-i="' + i + '" placeholder="link https:// (optional)" value="' + esc(m.link || '') + '">' +
           '<button class="rm" data-i="' + i + '">✕</button></div>';
-      }).join('') || '<span class="slw-orbmgr-note">No orbit images yet — add up to 10. Full image always shows, boxless, GIFs play.</span>';
+      }).join('') || '<span class="slw-orbmgr-note">No orbit images yet — add up to 5. Full image always shows, boxless, GIFs play.</span>';
       Array.prototype.forEach.call(box.querySelectorAll('input'), function (inp) {
         inp.oninput = function () { mgr[+inp.getAttribute('data-i')][inp.getAttribute('data-f')] = inp.value; };
       });
@@ -2965,7 +2965,7 @@
     el('#slw-omgr-file').onchange = function () {
       var f = el('#slw-omgr-file').files[0];
       if (!f) return;
-      if (mgr.length >= 10) { el('#slw-omgr-st').textContent = '10 is the max — remove one first.'; return; }
+      if (mgr.length >= 5) { el('#slw-omgr-st').textContent = '5 is the max — remove one first.'; return; }
       el('#slw-omgr-st').textContent = 'Uploading…';
       var fd = new FormData();
       fd.append('file', f);

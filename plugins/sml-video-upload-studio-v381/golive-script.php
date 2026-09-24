@@ -1969,6 +1969,362 @@ if (!function_exists('sml_gl_script')) {
     tip.style.display = 'block';
   });
 
+  /* ---------------- Live Control Room: the command hub for a stream (2026-09-23) ----------------
+     One panel, six tabs, every action real: Distribute posts (now / at a time / before start / at a viewer milestone / repeating),
+     Q&A + polls (sml-engage), Boost (sml-lw), Super Chat totals, groups the creator owns or belongs to, and the watch-page orbit.
+     "Next Best Moves" ranks what to do next from live signals; nothing posts without the creator pressing a button. */
+  var ctl = { st: null, moves: null, tab: 'promote', timer: null, busy: false, sel: null, form: null, prev: null, msg: '', qa: null, polls: null, boost: null, orbit: null, chan: {}, orbitMsg: '' };
+
+  function glcCss() {
+    if (document.getElementById('glc-css')) { return; }
+    var st = document.createElement('style');
+    st.id = 'glc-css';
+    st.textContent = ''
+      + '.glc{--m:#7e92a8;--l:#182130;--b:#2b6cff;--g:#22d3a0;--a:#f5a623;--r:#ff566e}'
+      + '.glc h3{margin:0 0 4px;font-size:16px}.glc-sub{color:var(--m);font-size:12px;margin:0 0 14px}'
+      + '.glc-moves{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:14px}'
+      + '.glc-move{background:#0d1622;border:1px solid var(--l);border-radius:12px;padding:12px 13px;display:flex;flex-direction:column;gap:6px}.glc-move:first-child{border-color:rgba(43,108,255,.5);background:linear-gradient(160deg,rgba(43,108,255,.14),#0d1622)}'
+      + '.glc-move b{font-size:13.5px;line-height:1.3;color:#f2f7fb}.glc-move p{margin:0;color:var(--m);font-size:12px;line-height:1.45}.glc-conf{height:4px;border-radius:2px;background:#16233a;overflow:hidden}.glc-conf i{display:block;height:100%;background:var(--b)}'
+      + '.glc-move button{align-self:flex-start;margin-top:2px}.glc-move small{color:var(--m);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}'
+      + '.glc-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--l);margin-bottom:14px;padding-bottom:10px}'
+      + '.glc-tab{background:transparent;border:1px solid #223146;color:#b8c7d8;border-radius:999px;padding:7px 13px;font:600 12px/1 Inter,sans-serif;cursor:pointer}.glc-tab.on{background:var(--b);border-color:var(--b);color:#fff}.glc-tab em{font-style:normal;opacity:.7;margin-left:5px}'
+      + '.glc-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}@media(max-width:1000px){.glc-grid{grid-template-columns:1fr}}'
+      + '.glc-box{background:#0d1622;border:1px solid var(--l);border-radius:12px;padding:14px;min-width:0}.glc-box h4{margin:0 0 10px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--m)}'
+      + '.glc-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--l);font-size:13px;color:#dbe6f2}.glc-row:first-of-type{border-top:0}.glc-row>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.glc-row small{color:var(--m);display:block;font-size:11px}'
+      + '.glc label.glc-pick{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid #223146;border-radius:10px;margin:0 0 7px;font-size:13px;color:#dbe6f2;cursor:pointer}.glc label.glc-pick.off{opacity:.5;cursor:not-allowed}.glc label.glc-pick input{margin:0}'
+      + '.glc-in,.glc textarea.glc-in,.glc select.glc-in{width:100%;background:#0b131f;border:1px solid #223146;border-radius:9px;color:#dbe6f2;padding:9px 11px;font:400 13px/1.4 Inter,sans-serif;box-sizing:border-box}.glc-in:focus{outline:2px solid rgba(43,108,255,.6);outline-offset:1px}'
+      + '.glc-seg{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}.glc-seg button{background:#0b131f;border:1px solid #223146;color:#b8c7d8;border-radius:8px;padding:7px 11px;font:600 12px/1 Inter,sans-serif;cursor:pointer}.glc-seg button.on{border-color:var(--b);color:#fff;background:rgba(43,108,255,.22)}'
+      + '.glc-f{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;color:var(--m);font-size:12px}.glc-f .glc-in{width:90px}.glc-f .glc-in.w{width:190px}'
+      + '.glc-btn{background:var(--b);border:0;color:#fff;border-radius:9px;padding:9px 15px;font:700 12.5px/1 Inter,sans-serif;cursor:pointer}.glc-btn:disabled{opacity:.5;cursor:not-allowed}.glc-btn.ghost{background:transparent;border:1px solid #2a3b55;color:#b8c7d8}.glc-btn.red{background:transparent;border:1px solid rgba(255,86,110,.45);color:var(--r)}.glc-btn.sm{padding:6px 10px;font-size:11.5px}'
+      + '.glc-note{font-size:12px;color:var(--m);line-height:1.5;margin:8px 0 0}.glc-note.ok{color:var(--g)}.glc-note.bad{color:var(--r)}'
+      + '.glc-prev{border:1px dashed #2a3b55;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12.5px;color:#dbe6f2;line-height:1.5;white-space:pre-wrap;word-break:break-word}.glc-prev small{display:block;color:var(--m);text-transform:uppercase;letter-spacing:.08em;font-size:10px;margin-bottom:4px}'
+      + '.glc-pill{display:inline-block;font:700 10px/1 Inter,sans-serif;letter-spacing:.08em;padding:4px 7px;border-radius:999px;background:#16233a;color:#9fb2c7}.glc-pill.g{background:rgba(34,211,160,.14);color:var(--g)}.glc-pill.a{background:rgba(245,166,35,.14);color:var(--a)}'
+      + '.glc-orb{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:12px}.glc-orb figure{margin:0;background:#0b131f;border:1px solid #223146;border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:5px}.glc-orb img{width:100%;height:90px;object-fit:contain;border-radius:6px;background:#050a12}.glc-orb .glc-in{padding:5px 7px;font-size:11.5px}'
+      + '.glc-big{font-size:26px;font-weight:700;color:#f2f7fb;font-variant-numeric:tabular-nums}';
+    document.head.appendChild(st);
+  }
+
+  function glcStreamId() { return String((draft.live && draft.live.id) || 'current').replace(/[^A-Za-z0-9]/g, '') || 'current'; }
+  function glcBase() { return '/wp-json/sml-live-control/v1'; }
+  function glcHandle() { return String(cfg.watchChatHandle || (ctl.st && ctl.st.handle) || cfg.handle || '').replace(/[^A-Za-z0-9_-]/g, ''); }
+  function glcFormInit() {
+    if (ctl.form) { return; }
+    ctl.form = { kind: 'update', text: '', when: 'now', at: '', minutes: 30, minv: 25, every: 0, runs: 3, accounts: null, network: false, channels: {}, onlyLive: false };
+  }
+
+  function controlMarkup() {
+    glcCss();
+    return '<section class="cs-card glc" style="margin-top:18px" data-glc><h3>Control Room</h3>'
+      + '<p class="glc-sub">Everything you run during a stream, in one place. Next moves come from your live numbers.</p><div data-glc-body><div class="gli-empty" style="color:#7e92a8;padding:18px 4px">Loading your control room…</div></div></section>';
+  }
+
+  function pollControl() {
+    if (ctl.busy || document.hidden) { return; }
+    ctl.busy = true;
+    var id = glcStreamId();
+    Promise.all([
+      api(glcBase() + '/state?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; }),
+      api(glcBase() + '/moves?stream=' + encodeURIComponent(id) + '&_=' + Date.now()).catch(function () { return null; })
+    ]).then(function (r) {
+      if (r[0]) { ctl.st = r[0]; glcFormInit(); if (ctl.form.accounts === null) { ctl.form.accounts = {}; (r[0].accounts || []).forEach(function (a) { if (a.ok) { ctl.form.accounts[a.id] = true; } }); } }
+      if (r[1]) { ctl.moves = r[1].moves || []; }
+    }).then(function () { ctl.busy = false; paintControl(false); });
+  }
+  function startControl() {
+    if (ctl.timer) { return; }
+    pollControl();
+    ctl.timer = window.setInterval(pollControl, 12000);
+  }
+  function stopControl() {
+    if (ctl.timer) { window.clearInterval(ctl.timer); ctl.timer = null; }
+    ctl.st = null; ctl.moves = null; ctl.form = null; ctl.prev = null;
+  }
+
+  function glcTabLoad(tab) {
+    if (tab === 'qa') {
+      api('/wp-json/sml-engage/v1/qa').then(function (d) { ctl.qa = d.questions || []; paintControl(true); }).catch(function () {});
+      api('/wp-json/sml-engage/v1/polls').then(function (d) { ctl.polls = d.polls || []; paintControl(true); }).catch(function () {});
+    } else if (tab === 'boost') {
+      api('/wp-json/sml-lw/v1/boost?handle=' + encodeURIComponent(glcHandle()) + '&_=' + Date.now()).then(function (d) { ctl.boost = d; paintControl(true); }).catch(function () {});
+    } else if (tab === 'orbit') {
+      glcOrbitLoad();
+    } else if (tab === 'groups') {
+      (ctl.st && ctl.st.groups || []).forEach(function (g) {
+        if (ctl.chan[g.id]) { return; }
+        ctl.chan[g.id] = [];
+        api(glcBase() + '/group-channels?group_id=' + g.id).then(function (d) { ctl.chan[g.id] = d.channels || []; paintControl(true); }).catch(function () {});
+      });
+    }
+  }
+
+  function glcOrbitLoad() {
+    var tag = 'sml-orbit-' + glcHandle();
+    api('/wp-json/wp/v2/media?search=' + encodeURIComponent(tag) + '&per_page=30&_fields=id,title,caption,description,source_url,mime_type&_=' + Date.now()).then(function (list) {
+      var div = document.createElement('div');
+      var strip = function (s) { div.innerHTML = s || ''; return (div.textContent || '').trim(); };
+      ctl.orbit = (Array.isArray(list) ? list : []).filter(function (m) { return m && m.source_url && m.title && String(m.title.rendered || '').indexOf(tag) === 0; })
+        .sort(function (a, b) { return String(a.title.rendered).localeCompare(String(b.title.rendered)); }).slice(0, 5)
+        .map(function (m) { var lk = strip(m.description && m.description.rendered).match(/https:\/\/\S+/); return { id: m.id, img: m.source_url, cap: strip(m.caption && m.caption.rendered), link: lk ? lk[0] : '', gif: /gif/i.test(m.mime_type || m.source_url) }; });
+      paintControl(true);
+    }).catch(function () { ctl.orbit = ctl.orbit || []; paintControl(true); });
+  }
+
+  function glcWhen(iso) { if (!iso) { return ''; } var d = new Date(iso); return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+
+  function glcTabs() {
+    var st = ctl.st || {};
+    var tabs = [['promote', 'Promote'], ['qa', 'Q&A + Polls'], ['boost', 'Boost'], ['money', 'Super Chats'], ['groups', 'Groups'], ['orbit', 'Orbit']];
+    return '<div class="glc-tabs" role="tablist">' + tabs.map(function (t) {
+      var n = t[0] === 'promote' ? (st.promos || []).filter(function (p) { return p.status === 'active'; }).length : t[0] === 'money' ? ((st.money && st.money.n) || 0) : t[0] === 'groups' ? (st.groups || []).length : 0;
+      return '<button class="glc-tab' + (ctl.tab === t[0] ? ' on' : '') + '" role="tab" data-glc-tab="' + t[0] + '">' + t[1] + (n ? '<em>' + n + '</em>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function glcMoves() {
+    var mv = ctl.moves || [];
+    if (!mv.length) { return '<div class="glc-note" style="margin:0 0 14px">No suggestions right now — your stream is on track.</div>'; }
+    return '<div class="glc-moves">' + mv.map(function (m, i) {
+      var label = m.act && m.act.type === 'promo' ? 'Prepare post' : m.act && m.act.type === 'countdown' ? 'Schedule countdown' : m.act && m.act.type === 'say' ? 'Got it' : 'Open';
+      return '<div class="glc-move"><small>' + (i === 0 ? 'Best next move' : 'Also worth it') + ' · ' + m.confidence + '%</small><b>' + esc(m.label) + '</b>'
+        + '<div class="glc-conf"><i style="width:' + Math.max(6, m.confidence) + '%"></i></div>'
+        + '<p>' + esc((m.why || []).join(' ')) + '</p><button class="glc-btn sm' + (i ? ' ghost' : '') + '" data-glc-move="' + i + '">' + label + '</button></div>';
+    }).join('') + '</div>';
+  }
+
+  function glcPromoTab() {
+    var st = ctl.st || {}, f = ctl.form, accts = st.accounts || [];
+    var kinds = [['soon', 'Going live soon'], ['start', 'Live now'], ['update', 'Still live'], ['milestone', 'Viewer milestone'], ['custom', 'My own words']];
+    var whens = [['now', 'Now'], ['at', 'At a time'], ['before', 'Before start'], ['milestone', 'At N viewers']];
+    var acc = accts.length ? accts.map(function (a) {
+      return '<label class="glc-pick' + (a.ok ? '' : ' off') + '"><input type="checkbox" data-glc-acc="' + a.id + '"' + (f.accounts && f.accounts[a.id] && a.ok ? ' checked' : '') + (a.ok ? '' : ' disabled') + '> <span>' + esc(a.platform.charAt(0).toUpperCase() + a.platform.slice(1)) + ' · ' + esc(a.handle) + '</span>'
+        + (a.ok ? '' : ' <span class="glc-pill a">' + esc(a.status) + '</span>') + '</label>';
+    }).join('') : '<p class="glc-note">No connected accounts yet. <a style="color:#2b6cff" href="/distribute/" target="_blank" rel="noopener">Connect them in Distribute</a>.</p>';
+    if (st.network) { acc += '<label class="glc-pick"><input type="checkbox" data-glc-net' + (f.network ? ' checked' : '') + '> <span>Facebook · LinkedIn · Tumblr <small style="color:#7e92a8">(your connected network)</small></span></label>'; }
+    var grp = (st.groups || []).map(function (g) {
+      var ch = ctl.chan[g.id];
+      if (ch === undefined) { ctl.chan[g.id] = []; api(glcBase() + '/group-channels?group_id=' + g.id).then(function (d) { ctl.chan[g.id] = d.channels || []; paintControl(true); }).catch(function () {}); }
+      ch = ctl.chan[g.id] || [];
+      if (!ch.length) { return ''; }
+      var best = ch.filter(function (c) { return c.live; })[0] || ch[0];
+      return '<label class="glc-pick"><input type="checkbox" data-glc-chan="' + best.id + '"' + (f.channels[best.id] ? ' checked' : '') + '> <span>' + esc(g.name) + ' <small style="color:#7e92a8">#' + esc(best.name) + '</small></span></label>';
+    }).join('');
+
+    var timing = '';
+    if (f.when === 'at') { timing = '<div class="glc-f">Send at <input class="glc-in w" type="datetime-local" data-glc-f="at" value="' + esc(f.at) + '"></div>'; }
+    if (f.when === 'before') { timing = '<div class="glc-f">Send <input class="glc-in" type="number" min="1" max="1440" data-glc-f="minutes" value="' + f.minutes + '"> minutes before the scheduled start</div>'; }
+    if (f.when === 'milestone') { timing = '<div class="glc-f">Send once <input class="glc-in" type="number" min="5" data-glc-f="minv" value="' + f.minv + '"> viewers are watching</div>'; }
+    var rep = f.when !== 'milestone' ? '<div class="glc-f">Repeat every <input class="glc-in" type="number" min="0" max="720" data-glc-f="every" value="' + f.every + '"> min (0 = once, minimum 15) · up to <input class="glc-in" type="number" min="1" max="12" data-glc-f="runs" value="' + f.runs + '"> posts</div>' : '';
+
+    var list = (st.promos || []).map(function (p) {
+      var pill = p.status === 'active' ? '<span class="glc-pill g">SCHEDULED</span>' : '<span class="glc-pill">DONE</span>';
+      var when = p.min_viewers ? 'at ' + p.min_viewers + ' viewers' : glcWhen(p.fire_at);
+      return '<div class="glc-row"><span><b>' + esc(p.kind === 'soon' ? 'Going live soon' : p.kind === 'start' ? 'Live now' : p.kind === 'update' ? 'Still live' : p.kind === 'milestone' ? 'Milestone' : 'Custom') + '</b> ' + pill
+        + '<small>' + esc(when) + (p.repeat_every ? ' · every ' + p.repeat_every + ' min (' + p.runs + '/' + p.max_runs + ')' : '') + ' · ' + (p.accounts.length + (p.network ? 1 : 0)) + ' account' + ((p.accounts.length + (p.network ? 1 : 0)) === 1 ? '' : 's') + (p.groups.length ? ' + ' + p.groups.length + ' group' : '') + (p.note ? ' · ' + esc(p.note) : '') + '</small></span>'
+        + (p.status === 'active' ? '<button class="glc-btn red sm" data-glc-cancel="' + p.id + '">Cancel</button>' : '') + '</div>';
+    }).join('') || '<p class="glc-note">Nothing scheduled yet.</p>';
+
+    return '<div class="glc-grid"><div class="glc-box"><h4>New post</h4>'
+      + '<div class="glc-seg">' + kinds.map(function (k) { return '<button data-glc-kind="' + k[0] + '" class="' + (f.kind === k[0] ? 'on' : '') + '">' + k[1] + '</button>'; }).join('') + '</div>'
+      + '<textarea class="glc-in" rows="2" maxlength="240" placeholder="Add your own line (optional) — the link and tags are added for you" data-glc-f="text">' + esc(f.text) + '</textarea>'
+      + '<h4 style="margin-top:14px">Where</h4>' + acc + (grp ? '<h4 style="margin-top:10px">Your groups</h4>' + grp : '')
+      + '<h4 style="margin-top:14px">When</h4><div class="glc-seg">' + whens.map(function (w) { return '<button data-glc-when="' + w[0] + '" class="' + (f.when === w[0] ? 'on' : '') + '">' + w[1] + '</button>'; }).join('') + '</div>' + timing + rep
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="glc-btn ghost" data-glc-preview>Preview text</button><button class="glc-btn" data-glc-send>' + (f.when === 'now' ? 'Post now' : 'Schedule') + '</button></div>'
+      + (ctl.msg ? '<p class="glc-note ' + (/^✓/.test(ctl.msg) ? 'ok' : 'bad') + '">' + esc(ctl.msg) + '</p>' : '')
+      + (ctl.prev ? ctl.prev.map(function (p) { var v = p.variant || {}; return '<div class="glc-prev"><small>' + esc(p.platform) + ' · ' + esc(p.handle) + '</small>' + esc(v.caption || [v.hook, v.body, v.cta].filter(Boolean).join('\n')) + '</div>'; }).join('') : '')
+      + '<p class="glc-note">Spaced out automatically: at least ' + ((st.limits && st.limits.gap_min) || 15) + ' minutes between posts and ' + ((st.limits && st.limits.per_hour) || 8) + ' an hour, so your accounts are never spammed.</p></div>'
+      + '<div class="glc-box"><h4>Scheduled &amp; sent</h4>' + list + '</div></div>';
+  }
+
+  function glcQaTab() {
+    var qs = ctl.qa, ps = ctl.polls;
+    var q = qs === null ? '<p class="glc-note">Loading…</p>' : qs.length ? qs.map(function (x) {
+      return '<div class="glc-row"><span>' + (x.pinned ? '📌 ' : '') + esc(x.body) + '<small>' + esc(x.from || 'Viewer') + ' · ' + (x.upvotes || 0) + ' ▲' + (x.status === 'answered' ? ' · answered' : '') + '</small></span>'
+        + (x.status !== 'answered' ? '<button class="glc-btn sm" data-glc-qa="answer:' + x.id + '">Answered</button><button class="glc-btn ghost sm" data-glc-qa="pin:' + x.id + '">Pin</button>' : '<button class="glc-btn ghost sm" data-glc-qa="queue:' + x.id + '">Reopen</button>')
+        + '<button class="glc-btn red sm" data-glc-qa="delete:' + x.id + '">✕</button></div>';
+    }).join('') : '<p class="glc-note">No questions yet. Viewers ask from your watch page; you can also add your own below.</p>';
+    var p = ps === null ? '<p class="glc-note">Loading…</p>' : ps.length ? ps.map(function (x) {
+      var tot = (x.counts || []).reduce(function (a, b) { return a + b; }, 0);
+      return '<div class="glc-row"><span>' + esc(x.question) + '<small>' + esc(x.status) + ' · ' + tot + ' votes</small></span>'
+        + (x.status === 'live' ? '<button class="glc-btn red sm" data-glc-poll="close:' + x.id + '">Close</button>' : '<button class="glc-btn sm" data-glc-poll="open:' + x.id + '">Show on stream</button>')
+        + '<button class="glc-btn ghost sm" data-glc-poll="delete:' + x.id + '">✕</button></div>';
+    }).join('') : '<p class="glc-note">No polls yet.</p>';
+    return '<div class="glc-grid"><div class="glc-box"><h4>Questions</h4>' + q
+      + '<div class="glc-f" style="margin-top:10px"><input class="glc-in w" style="flex:1;width:auto" maxlength="500" placeholder="Add your own question to the queue" data-glc-qtext><button class="glc-btn sm" data-glc-qadd>Add</button></div></div>'
+      + '<div class="glc-box"><h4>Polls</h4>' + p
+      + '<div style="margin-top:10px"><input class="glc-in" maxlength="140" placeholder="Poll question" data-glc-pq><input class="glc-in" style="margin-top:7px" placeholder="Answers, separated by commas (2–6)" data-glc-pc><button class="glc-btn sm" style="margin-top:8px" data-glc-padd>Create poll</button></div>'
+      + (ctl.msg && ctl.tab === 'qa' ? '<p class="glc-note bad">' + esc(ctl.msg) + '</p>' : '') + '</div></div>';
+  }
+
+  function glcBoostTab() {
+    var b = ctl.boost;
+    if (b === null) { return '<div class="glc-box"><p class="glc-note">Loading…</p></div>'; }
+    var open = b && b.open;
+    var left = open ? Math.max(0, Math.round((b.endsAt * 1000 - Date.now()) / 60000)) : 0;
+    var board = (b && b.board || []).map(function (r, i) { return '<div class="glc-row"><span>' + (i + 1) + '. ' + esc(r.name) + '<small>' + r.shares + ' shares · ' + r.clicks + ' clicks</small></span><b>' + r.lb + ' LB</b></div>'; }).join('') || '<p class="glc-note">No shares yet this round.</p>';
+    return '<div class="glc-grid"><div class="glc-box"><h4>Boost round</h4>'
+      + (open ? '<p class="glc-big">' + left + ' min left</p><p class="glc-note">Viewers earn ' + b.perShare + ' Loop Bucks per share; the top sharer wins ' + b.winnerBonus + '.</p><button class="glc-btn red" data-glc-boost="close">End round now</button>'
+        : '<p class="glc-note" style="margin-top:0">Viewers share your stream and earn Loop Bucks for real clicks. Great when your room is growing.' + (b && b.winnerName ? ' Last winner: <b>' + esc(b.winnerName) + '</b>.' : '') + '</p>'
+          + '<div class="glc-f">Length <input class="glc-in" type="number" min="1" max="120" value="10" data-glc-bm> min · per share <input class="glc-in" type="number" min="0" max="5000" value="250" data-glc-bp> LB · winner <input class="glc-in" type="number" min="0" max="100000" value="5000" data-glc-bw> LB</div><button class="glc-btn" data-glc-boost="open">Start round</button>')
+      + (ctl.msg && ctl.tab === 'boost' ? '<p class="glc-note bad">' + esc(ctl.msg) + '</p>' : '') + '</div><div class="glc-box"><h4>Leaderboard</h4>' + board + '</div></div>';
+  }
+
+  function glcMoneyTab() {
+    var m = (ctl.st && ctl.st.money) || { n: 0, lb: 0, recent: [] };
+    var rows = (m.recent || []).map(function (r) { return '<div class="glc-row"><span><b>' + esc(r.name) + '</b> · ' + r.loop_bucks + ' LB<small>' + esc(r.message || 'No message') + ' · ' + glcWhen(r.at) + '</small></span></div>'; }).join('') || '<p class="glc-note">No Super Chats yet for this stream. Viewers send them from the chat box; voice ones are recorded for you to play or decline in the voice dock below.</p>';
+    return '<div class="glc-grid"><div class="glc-box"><h4>This stream</h4><p class="glc-big">' + m.lb + ' <span style="font-size:14px;color:#7e92a8">Loop Bucks</span></p><p class="glc-note" style="margin-top:0">' + m.n + ' Super Chat' + (m.n === 1 ? '' : 's') + '. Levels, prices and voice rules are set in Monetization above.</p></div>'
+      + '<div class="glc-box"><h4>Latest</h4>' + rows + '</div></div>';
+  }
+
+  function glcGroupsTab() {
+    var gs = (ctl.st && ctl.st.groups) || [];
+    if (!gs.length) { return '<div class="glc-box"><p class="glc-note">You are not in any groups yet. Groups you own or join appear here so you can bring them into the stream.</p></div>'; }
+    return '<div class="glc-box"><h4>Your groups</h4>' + gs.map(function (g) {
+      var ch = ctl.chan[g.id] || [], best = ch.filter(function (c) { return c.live; })[0] || ch[0];
+      return '<div class="glc-row"><span><b>' + esc(g.name) + '</b> <span class="glc-pill' + (g.owned ? ' g' : '') + '">' + esc(String(g.role).toUpperCase()) + '</span>'
+        + '<small>' + (ch.length ? 'Posts to #' + esc(best.name) : 'You can read here but not post announcements') + '</small></span>'
+        + (ch.length ? '<button class="glc-btn sm" data-glc-gann="' + best.id + '">Announce stream</button>' : '') + '<a class="glc-btn ghost sm" style="text-decoration:none" href="' + esc(g.url) + '" target="_blank" rel="noopener">Open</a></div>';
+    }).join('') + (ctl.msg && ctl.tab === 'groups' ? '<p class="glc-note ' + (/^✓/.test(ctl.msg) ? 'ok' : 'bad') + '">' + esc(ctl.msg) + '</p>' : '') + '<p class="glc-note">Announcing posts your stream title and watch link in the group channel, as you. Members see it instantly.</p></div>';
+  }
+
+  function glcOrbitTab() {
+    var o = ctl.orbit;
+    if (o === null) { return '<div class="glc-box"><p class="glc-note">Loading…</p></div>'; }
+    return '<div class="glc-box"><h4>Watch-page orbit · ' + o.length + ' / 5</h4>'
+      + (o.length ? '<div class="glc-orb">' + o.map(function (m, i) {
+        return '<figure><img alt="" src="' + esc(m.img) + '">' + (m.gif ? '<span class="glc-pill g" style="align-self:flex-start">GIF</span>' : '')
+          + '<input class="glc-in" placeholder="Caption" maxlength="80" value="' + esc(m.cap) + '" data-glc-oc="' + i + '"><input class="glc-in" placeholder="Link (https://)" value="' + esc(m.link) + '" data-glc-ol="' + i + '">'
+          + '<button class="glc-btn red sm" data-glc-orm="' + i + '">Remove</button></figure>';
+      }).join('') + '</div>' : '<p class="glc-note" style="margin-top:0">Nothing here yet. Photos and GIFs you add rotate on your watch page under “From the host”.</p>')
+      + '<div class="glc-f"><input type="file" accept="image/*" data-glc-ofile' + (o.length >= 5 ? ' disabled' : '') + '> <button class="glc-btn" data-glc-osave>Save captions &amp; links</button></div>'
+      + (ctl.orbitMsg ? '<p class="glc-note ' + (/^✓/.test(ctl.orbitMsg) ? 'ok' : '') + '">' + esc(ctl.orbitMsg) + '</p>' : '') + '<p class="glc-note">Up to 5. Animated GIFs play. Full image is always shown, uncropped.</p></div>';
+  }
+
+  function paintControl(keepScroll) {
+    var root = document.querySelector('[data-glc]');
+    if (!root) { return; }
+    var body = root.querySelector('[data-glc-body]');
+    if (!ctl.st) { return; }
+    /* never repaint under a control the creator is typing in */
+    var ae = document.activeElement;
+    if (ae && root.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.type !== 'checkbox' && ae.type !== 'file' && keepScroll !== 'force') { return; }
+    var tab = ctl.tab === 'promote' ? glcPromoTab() : ctl.tab === 'qa' ? glcQaTab() : ctl.tab === 'boost' ? glcBoostTab() : ctl.tab === 'money' ? glcMoneyTab() : ctl.tab === 'groups' ? glcGroupsTab() : glcOrbitTab();
+    body.innerHTML = glcMoves() + glcTabs() + tab;
+  }
+
+  function glcSetTab(tab) { ctl.tab = tab; ctl.msg = ''; glcTabLoad(tab); paintControl('force'); }
+
+  function glcPayload(dry) {
+    var f = ctl.form, accounts = Object.keys(f.accounts || {}).filter(function (k) { return f.accounts[k]; }).map(Number);
+    var chans = Object.keys(f.channels || {}).filter(function (k) { return f.channels[k]; }).map(Number);
+    var body = { stream: glcStreamId(), kind: f.kind, text: f.text, accounts: accounts, network: !!f.network, group_channels: chans, when: f.when };
+    if (f.when === 'at') { body.at = f.at ? new Date(f.at).toISOString() : ''; }
+    if (f.when === 'before') { body.minutes = Number(f.minutes) || 30; }
+    if (f.when === 'milestone') { body.min_viewers = Number(f.minv) || 25; }
+    if (f.when !== 'milestone' && Number(f.every) > 0) { body.every = Number(f.every); body.runs = Number(f.runs) || 3; }
+    if (f.kind === 'update' || f.kind === 'milestone') { body.only_live = true; }
+    return body;
+  }
+
+  function glcDo(promise, okMsg, tab) {
+    return promise.then(function () { ctl.msg = okMsg || ''; }).catch(function (e) { ctl.msg = (e && e.message) || 'That did not work.'; }).then(function () { paintControl('force'); if (tab) { glcTabLoad(tab); } });
+  }
+
+  function glcClick(e) {
+    var t = e.target.closest ? e.target.closest('[data-glc] button, [data-glc] input[type=checkbox], [data-glc] a') : null;
+    if (!t) { return; }
+    var a = function (n) { return t.getAttribute(n); }, f = ctl.form;
+    if (a('data-glc-tab')) { glcSetTab(a('data-glc-tab')); return; }
+    if (a('data-glc-move') !== null) {
+      var mv = (ctl.moves || [])[Number(a('data-glc-move'))]; if (!mv) { return; }
+      var act = mv.act || {};
+      if (act.type === 'tab') { glcSetTab(act.tab); }
+      else if (act.type === 'promo') { glcFormInit(); f = ctl.form; f.kind = act.kind; f.when = 'now'; ctl.tab = 'promote'; ctl.msg = ''; ctl.prev = null; paintControl('force'); }
+      else if (act.type === 'countdown') { glcFormInit(); f = ctl.form; f.kind = 'soon'; f.when = 'before'; f.minutes = 30; f.every = 0; ctl.tab = 'promote'; ctl.msg = 'Pick where it goes, then press Schedule. Add a second one at 10 minutes for a stronger push.'; ctl.prev = null; paintControl('force'); }
+      return;
+    }
+    if (a('data-glc-kind')) { f.kind = a('data-glc-kind'); if (f.kind === 'milestone' && f.when === 'now') { f.when = 'milestone'; } if (f.kind === 'soon' && f.when === 'now' && draft.live && draft.live.scheduled_at) { f.when = 'before'; } ctl.prev = null; paintControl('force'); return; }
+    if (a('data-glc-when')) { f.when = a('data-glc-when'); ctl.prev = null; paintControl('force'); return; }
+    if (a('data-glc-acc')) { f.accounts[a('data-glc-acc')] = t.checked; return; }
+    if (t.hasAttribute('data-glc-net')) { f.network = t.checked; return; }
+    if (a('data-glc-chan')) { f.channels[a('data-glc-chan')] = t.checked; return; }
+    if (t.hasAttribute('data-glc-preview')) {
+      var pl = glcPayload(true);
+      if (!pl.accounts.length) { ctl.msg = 'Pick at least one connected account to preview.'; paintControl('force'); return; }
+      ctl.msg = 'Building preview…'; paintControl('force');
+      api(glcBase() + '/preview', { method: 'POST', json: pl }).then(function (d) { ctl.prev = d.previews || []; ctl.msg = ctl.prev.length ? '' : 'Nothing to preview for those accounts.'; }).catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
+      return;
+    }
+    if (t.hasAttribute('data-glc-send')) {
+      var body = glcPayload(false);
+      if (!body.accounts.length && !body.network && !body.group_channels.length) { ctl.msg = 'Pick at least one place to post.'; paintControl('force'); return; }
+      if (body.when === 'now' && !window.confirm('Post to ' + (body.accounts.length + (body.network ? 1 : 0) + body.group_channels.length) + ' place(s) right now?')) { return; }
+      t.disabled = true;
+      api(glcBase() + '/promo', { method: 'POST', json: body }).then(function () { ctl.msg = body.when === 'now' ? '✓ Sent to the queue — it goes out in a moment.' : '✓ Scheduled.'; ctl.prev = null; pollControl(); })
+        .catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
+      return;
+    }
+    if (a('data-glc-cancel')) { api(glcBase() + '/promo/' + a('data-glc-cancel') + '/cancel', { method: 'POST' }).then(function () { pollControl(); }); return; }
+    if (a('data-glc-qa')) { var qp = a('data-glc-qa').split(':'); glcDo(api('/wp-json/sml-engage/v1/qa/' + qp[1] + '/' + qp[0], { method: 'POST' }), '', 'qa'); return; }
+    if (t.hasAttribute('data-glc-qadd')) { var qi = document.querySelector('[data-glc-qtext]'); if (qi && qi.value.trim()) { glcDo(api('/wp-json/sml-engage/v1/qa', { method: 'POST', json: { body: qi.value.trim() } }), '', 'qa'); } return; }
+    if (a('data-glc-poll')) { var pp = a('data-glc-poll').split(':'); glcDo(api('/wp-json/sml-engage/v1/polls/' + pp[1] + '/' + pp[0], { method: 'POST' }), '', 'qa'); return; }
+    if (t.hasAttribute('data-glc-padd')) {
+      var pq = document.querySelector('[data-glc-pq]').value.trim(), pc = document.querySelector('[data-glc-pc]').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      glcDo(api('/wp-json/sml-engage/v1/polls', { method: 'POST', json: { question: pq, choices: pc } }), '', 'qa'); return;
+    }
+    if (a('data-glc-boost') === 'open') {
+      var q = function (s) { return Number(document.querySelector(s).value) || 0; };
+      glcDo(api('/wp-json/sml-lw/v1/boost/open', { method: 'POST', json: { handle: glcHandle(), minutes: q('[data-glc-bm]'), per_share: q('[data-glc-bp]'), winner: q('[data-glc-bw]') } }), '', 'boost'); return;
+    }
+    if (a('data-glc-boost') === 'close') { if (window.confirm('End the Boost round now and pay the winner?')) { glcDo(api('/wp-json/sml-lw/v1/boost/close', { method: 'POST', json: { handle: glcHandle() } }), '', 'boost'); } return; }
+    if (a('data-glc-gann')) {
+      if (!window.confirm('Post your stream link in this group now?')) { return; }
+      api(glcBase() + '/promo', { method: 'POST', json: { stream: glcStreamId(), kind: (draft.live && draft.live.status === 'scheduled') ? 'soon' : 'start', text: '', accounts: [], group_channels: [Number(a('data-glc-gann'))], when: 'now' } })
+        .then(function () { ctl.msg = '✓ Announced.'; pollControl(); }).catch(function (er) { ctl.msg = er.message; }).then(function () { paintControl('force'); });
+      return;
+    }
+    if (a('data-glc-orm') !== null) { var om = ctl.orbit[Number(a('data-glc-orm'))]; if (om && window.confirm('Remove this image from your orbit?')) { glcDo(api('/wp-json/wp/v2/media/' + om.id, { method: 'POST', json: { title: 'orbit-removed-' + Date.now() } }), '', 'orbit'); } return; }
+    if (t.hasAttribute('data-glc-osave')) {
+      ctl.orbit.forEach(function (m, i) {
+        var c = document.querySelector('[data-glc-oc="' + i + '"]'), l = document.querySelector('[data-glc-ol="' + i + '"]');
+        if (c) { m.cap = c.value; } if (l) { m.link = l.value.trim(); }
+      });
+      Promise.all(ctl.orbit.map(function (m) { return api('/wp-json/wp/v2/media/' + m.id, { method: 'POST', json: { caption: m.cap || '', description: /^https:\/\//.test(m.link) ? m.link : '' } }); }))
+        .then(function () { ctl.orbitMsg = '✓ Saved.'; }).catch(function () { ctl.orbitMsg = 'Save failed — check your connection.'; }).then(function () { paintControl('force'); });
+      return;
+    }
+  }
+
+  function glcInput(e) {
+    var t = e.target; if (!t || !t.closest || !t.closest('[data-glc]')) { return; }
+    var k = t.getAttribute('data-glc-f');
+    if (k && ctl.form) { ctl.form[k] = t.value; ctl.prev = null; }
+  }
+
+  function glcFile(e) {
+    var t = e.target; if (!t || !t.hasAttribute || !t.hasAttribute('data-glc-ofile')) { return; }
+    var file = t.files && t.files[0]; if (!file) { return; }
+    if (ctl.orbit && ctl.orbit.length >= 5) { ctl.orbitMsg = '5 is the max — remove one first.'; paintControl('force'); return; }
+    if (!/^image\//.test(file.type)) { ctl.orbitMsg = 'Images and GIFs only.'; paintControl('force'); return; }
+    if (file.size > 8 * 1024 * 1024) { ctl.orbitMsg = 'Keep it under 8 MB.'; paintControl('force'); return; }
+    ctl.orbitMsg = 'Uploading…'; paintControl('force');
+    var fd = new FormData(); fd.append('file', file);
+    fetch('/wp-json/wp/v2/media', { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': cfg.nonce }, body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.id) { throw new Error((j && j.message) || 'Upload failed.'); }
+        return api('/wp-json/wp/v2/media/' + j.id, { method: 'POST', json: { title: 'sml-orbit-' + glcHandle() + '-' + Date.now() } });
+      })
+      .then(function () { ctl.orbitMsg = '✓ Added.'; glcOrbitLoad(); })
+      .catch(function (er) { ctl.orbitMsg = er.message || 'Upload failed.'; paintControl('force'); });
+  }
+
+  if (!window.__glcBound) {
+    window.__glcBound = true;
+    document.addEventListener('click', glcClick);
+    document.addEventListener('input', glcInput);
+    document.addEventListener('change', function (e) { glcInput(e); glcFile(e); });
+  }
+
   function stepLiveDashboard() {
     if (draft.live && draft.live.status === 'scheduled') {
     var scheduled = !!(draft.live && draft.live.status === 'scheduled');
@@ -1982,7 +2338,7 @@ if (!function_exists('sml_gl_script')) {
       + '<div class="gl-stat"><small>' + icon('cam', 14) + 'Video</small><b style="font-size:16px">' + (scheduled ? 'Waiting to start' : 'Check Watch Page') + '</b></div>'
       + '</div>'
       + '<div class="cs-hint" style="margin-top:14px">Your Watch Page is available now. It shows your thumbnail or GIF until the real stream reports live; this control does not pretend the video is live before then.</div></section>'
-      + insightsMarkup()
+      + controlMarkup() + insightsMarkup()
       + creatorChatMarkup();
     }
 
@@ -2000,7 +2356,7 @@ if (!function_exists('sml_gl_script')) {
           + '<a style="color:#2b6cff" href="' + esc(cfg.groupsUrl) + '">Open the group</a> to see chat and viewers.</div>'
         : '<div class="cs-hint" style="margin-top:14px">You are live on your Watch Page — no host group. '
           + '<a style="color:#2b6cff" href="' + esc(watchPageUrl()) + '" target="_blank" rel="noopener">Open your Watch Page</a> to see what viewers see.</div>')
-      + '</section>' + insightsMarkup() + creatorChatMarkup();
+      + '</section>' + controlMarkup() + insightsMarkup() + creatorChatMarkup();
   }
 
   function groupName() {
@@ -2194,7 +2550,7 @@ if (!function_exists('sml_gl_script')) {
     bindVideo();
     paintQuote();
     paintMovers();
-    if (draft.live) { startCreatorChat(); startInsights(); paintInsights(); } else { stopCreatorChat(); stopInsights(); }
+    if (draft.live) { startCreatorChat(); startInsights(); paintInsights(); startControl(); paintControl(true); } else { stopCreatorChat(); stopInsights(); stopControl(); }
     if (window.smlVoiceHostDockAfterRender) { window.smlVoiceHostDockAfterRender(); }
   }
 

@@ -428,7 +428,7 @@
         if (!Array.isArray(list)) return;
         var items = list.filter(function (m) { return m && m.source_url && m.title && String(m.title.rendered || '').indexOf(tag) === 0; })
           .sort(function (a, b) { return String(a.title.rendered).localeCompare(String(b.title.rendered)); })
-          .slice(0, 10)
+          .slice(0, 5)
           .map(function (m) { return { id: m.id, img: m.source_url, title: orbStrip(m.caption && m.caption.rendered), sub: '', link: orbLink(m.description && m.description.rendered) }; });
         if (items.length) { buildOrbit(items); el('#vw-orbit-sec').style.display = ''; }
       }).catch(function () {});
