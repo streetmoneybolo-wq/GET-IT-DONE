@@ -33,7 +33,8 @@ const ROBOTIC = [
   /does not establish/i, /single snapshot/i, /does not prove/i, /observed move shows?/i, /what the observed move/i,
   /possibilit(?:y|ies),? not forecasts?/i, /not a (?:live|streaming) quote/i, /it is (?:important|worth) (?:to note|noting)/i,
   /in (?:conclusion|summary)\b/i, /\bdelve\b/i, /navigat(?:e|ing) the (?:landscape|market)/i, /\bin today'?s (?:fast-paced|dynamic) market/i,
-  /as an ai\b/i, /\bit remains to be seen\b/i, /\bonly time will tell\b/i
+  /as an ai\b/i, /\bAI[- ](?:assisted|generated|written|powered analysis)\b/i, /generated (?:by|with) (?:AI|an? (?:language|AI) model)/i, /\blanguage model\b/i,
+  /\b(?:this|the) (?:letter|article|analysis) was (?:auto-?)?generated\b/i, /\bit remains to be seen\b/i, /\bonly time will tell\b/i
 ];
 /* Every price-like number in the scenarios must sit on a number from the evidence (within rounding). This is the check the verifier kept failing letters on. */
 function evidenceNumbers(p) {
@@ -67,6 +68,7 @@ const VOICE = `You are Loop-Letters Brain, the permanent writing voice of Making
 You write like a sharp human market analyst with rhythm and a point of view: confident, clean, narrative, market-aware, readable, never robotic, never defensive.
 Vary sentence length. Lead with the story of the tape, then the number that proves it. Short sentences are fine. So are a few long ones.
 Never write like a compliance printout or a generic AI. Never repeat a sentence pattern, a transition or a disclaimer.
+Never mention or hint at how the piece was produced: no AI, models, prompts, automation, data pipelines, captured snapshots or "this analysis uses". Write as the publication's own voice. (Talking about AI as a market topic is fine.)
 BANNED phrasing (rewrite if you catch yourself): "does not establish", "single snapshot", "does not prove", "observed move shows", "possibilities, not forecasts", "not a live quote", "it is important to note", "in conclusion", "delve", "navigate the landscape".`;
 
 const WRITE = `${VOICE}
