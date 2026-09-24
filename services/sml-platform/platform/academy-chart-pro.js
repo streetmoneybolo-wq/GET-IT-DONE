@@ -11,6 +11,7 @@
 
   const PAD = { l: 12, r: 64, t: 18, b: 24 };
   const DEFAULT_N = 105, MIN_N = 8;
+  const defaultN = () => (stage.clientWidth && stage.clientWidth < 560 ? 48 : DEFAULT_N); // fewer, fatter candles on a phone
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const fin = Number.isFinite;
   const q = () => new URLSearchParams(location.search);
@@ -21,14 +22,14 @@
   const symNow = () => { try { return String(baseState().symbol || q().get('symbol') || 'SPY').toUpperCase(); } catch (_) { return String(q().get('symbol') || 'SPY').toUpperCase(); } };
   const rawBars = () => { try { const b = baseState().bars; return Array.isArray(b) ? b : []; } catch (_) { return []; } };
 
-  const V = { n: DEFAULT_N, end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
+  const V = { n: defaultN(), end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
 
   /* ---------- view model ---------- */
   let cache = null, cacheKey = '';
   function dtOf(bars) { const n = bars.length; if (n < 2) return 60000; const d = []; for (let i = Math.max(1, n - 60); i < n; i++) { const x = bars[i].t - bars[i - 1].t; if (x > 0) d.push(x); } d.sort((a, b) => a - b); return d.length ? d[Math.floor(d.length / 2)] : 60000; }
   function syncKey(bars) {
     const key = symNow() + ':' + tfNow();
-    if (key !== V.key) { V.key = key; V.n = DEFAULT_N; V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
+    if (key !== V.key) { V.key = key; V.n = defaultN(); V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
     if (bars.length !== V.lastN) { // live update: stay glued to the live edge if the trader was there
       if (V.end != null && V.lastN && V.end >= V.lastN) V.end += bars.length - V.lastN;
       V.lastN = bars.length;
@@ -107,7 +108,7 @@
     const lo = p - (p - m.lo) * factor, hi = p + (m.hi - p) * factor;
     V.manual = { lo, hi }; emit();
   }
-  const resetView = () => { V.n = DEFAULT_N; V.end = null; V.manual = null; emit(); };
+  const resetView = () => { V.n = defaultN(); V.end = null; V.manual = null; emit(); };
   const goLatest = () => { const m = model(); if (m) { V.end = null; emit(); } };
 
   /* ---------- drawings ---------- */
@@ -159,7 +160,7 @@
   const rel = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   function zoneAt(m, x, y) { if (x > m.w - PAD.r) return 'yaxis'; if (y > m.h - PAD.b) return 'xaxis'; return 'plot'; }
   const uiTarget = (e) => e.target && e.target.closest && e.target.closest('.academy-pro-panel,.academy-pro-palette,.academy-interval-stats,#mem-algo-panel,button,input,select,textarea,a');
-  stage.tabIndex = 0; stage.style.outline = 'none'; stage.style.touchAction = 'none';
+  stage.tabIndex = 0; stage.style.outline = 'none'; stage.style.touchAction = 'pan-y'; // a finger can still scroll the page vertically; the axis strips below take full control
 
   stage.addEventListener('pointerdown', (e) => {
     if (uiTarget(e)) return;
@@ -284,6 +285,8 @@
     + '.academy-pro-panel header{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid #244052;font:800 .6rem ui-monospace;color:#8ee8c1;flex-wrap:wrap}.academy-pro-panel header label{color:#a6bcc8;font-weight:700;display:flex;gap:3px;align-items:center;cursor:pointer}.academy-pro-panel .plist{overflow:auto;padding:4px}'
     + '.academy-pro-panel .pit{display:block;width:100%;text-align:left;border:1px solid #1d3a48;background:#0b1a24;color:#dcebf4;border-radius:6px;padding:5px 7px;margin:0 0 4px;cursor:pointer;font:inherit}.academy-pro-panel .pit:hover,.academy-pro-panel .pit.on{border-color:#42f5b3}.academy-pro-panel .pit b{font-weight:800}.academy-pro-panel .pit small{display:block;color:#8ba2af;font-weight:600;margin-top:2px}'
     + '.academy-pro-panel .chip{display:inline-block;padding:1px 5px;border-radius:9px;font:800 .54rem ui-monospace;margin-left:4px}.academy-pro-panel .chip.bull{background:#0d3a2b;color:#5df0b0}.academy-pro-panel .chip.bear{background:#40151d;color:#ff8ea1}.academy-pro-panel .chip.neutral{background:#26343d;color:#c5d3db}'
+    + '.academy-pro-zone{position:absolute;z-index:6;touch-action:none;background:transparent}.academy-pro-zone.y{right:0;top:0;bottom:0;width:64px;cursor:ns-resize}.academy-pro-zone.x{left:0;right:64px;bottom:0;height:24px;cursor:ew-resize}'
+    + '@media(max-width:700px){.academy-pro-panel{position:fixed;left:6px;right:6px;bottom:6px;width:auto;max-height:40vh;z-index:2147483000}.academy-pro-panel .pit{padding:9px 10px}.academy-pro-palette{right:8px}.academy-pro-palette button{height:32px;font-size:.66rem}}'
     + '.academy-pro-panel .foot{padding:5px 8px;border-top:1px solid #244052;color:#7f97a4;font-weight:600;font-size:.56rem}';
   document.head.appendChild(styleEl);
 
@@ -374,9 +377,9 @@
   function drawReadout(m) {
     const c = V.crosshair; let i = m.N - 1; if (c && c.x >= PAD.l && c.x <= m.w - PAD.r) i = clamp(Math.round(m.idxAt(c.x)), 0, m.N - 1);
     const b = m.bars[i]; if (!b) return; const prev = m.bars[i - 1], chg = prev ? (+b.c - +prev.c) / +prev.c * 100 : 0, up = +b.c >= +b.o;
-    const parts = [['O', fmt(+b.o)], ['H', fmt(+b.h)], ['L', fmt(+b.l)], ['C', fmt(+b.c)], [(chg >= 0 ? '+' : '') + chg.toFixed(2) + '%', ''], ['V', compact(b.v)]];
+    const narrow = m.w < 560, parts = narrow ? [['C', fmt(+b.c)], [(chg >= 0 ? '+' : '') + chg.toFixed(2) + '%', '']] : [['O', fmt(+b.o)], ['H', fmt(+b.h)], ['L', fmt(+b.l)], ['C', fmt(+b.c)], [(chg >= 0 ? '+' : '') + chg.toFixed(2) + '%', ''], ['V', compact(b.v)]];
     lctx.save(); lctx.font = '700 10px ui-monospace,monospace'; lctx.textAlign = 'left'; let x = PAD.l + 4; const y = PAD.t - 5;
-    const head = m.symbol + ' · ' + m.tf + ' · '; lctx.fillStyle = '#a9bfcb'; lctx.fillText(head, x, y); x += lctx.measureText(head).width;
+    const head = narrow ? m.tf + ' · ' : m.symbol + ' · ' + m.tf + ' · '; lctx.fillStyle = '#a9bfcb'; lctx.fillText(head, x, y); x += lctx.measureText(head).width;
     for (const [k, v] of parts) { lctx.fillStyle = '#7f98a6'; lctx.fillText(k, x, y); x += lctx.measureText(k).width + 2; if (v) { lctx.fillStyle = up ? '#5df0b0' : '#ff8ea1'; lctx.fillText(v, x, y); x += lctx.measureText(v).width + 8; } else x += 8; }
     lctx.restore();
   }
@@ -440,10 +443,10 @@
   let panel = null, palette = null;
   function buildPanel() {
     panel = document.createElement('section'); panel.className = 'academy-pro-panel';
-    panel.innerHTML = '<header><span>PATTERN SCANNER</span><span class="pcount"></span><label><input type="checkbox" data-f="charts" checked>Chart</label><label><input type="checkbox" data-f="candles" checked>Candles</label><label><input type="checkbox" data-f="levels" checked>S/R</label></header><div class="plist"></div><div class="foot">Rule-matched shapes on the candles loaded for this interval. Shapes describe what price did — they are not predictions. Confirm with your own plan.</div>';
+    panel.innerHTML = '<header><span>PATTERN SCANNER</span><button type="button" data-close="1" aria-label="Close pattern scanner" style="margin-left:auto;background:none;border:0;color:#a9bfcb;font:800 14px system-ui;cursor:pointer">✕</button><span class="pcount"></span><label><input type="checkbox" data-f="charts" checked>Chart</label><label><input type="checkbox" data-f="candles" checked>Candles</label><label><input type="checkbox" data-f="levels" checked>S/R</label></header><div class="plist"></div><div class="foot">Rule-matched shapes on the candles loaded for this interval. Shapes describe what price did — they are not predictions. Confirm with your own plan.</div>';
     stage.appendChild(panel);
     panel.addEventListener('change', (e) => { const f = e.target && e.target.dataset && e.target.dataset.f; if (f) { V.patternFilter[f] = e.target.checked; emit(); } });
-    panel.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.pit'); if (!b) return; const m = model(); if (!m) return; const idx = +b.dataset.idx; V.patternFocus = b.dataset.id; panel.querySelectorAll('.pit').forEach((x) => x.classList.toggle('on', x === b)); const n = m.slots; setView(null, Math.round(clamp(idx + n / 2, n, m.N + Math.floor(n * 0.9)))); });
+    panel.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-close]')) { const pb = document.getElementById('academy-pro-patterns'); if (pb) pb.click(); return; } const b = e.target.closest && e.target.closest('.pit'); if (!b) return; const m = model(); if (!m) return; const idx = +b.dataset.idx; V.patternFocus = b.dataset.id; panel.querySelectorAll('.pit').forEach((x) => x.classList.toggle('on', x === b)); const n = m.slots; setView(null, Math.round(clamp(idx + n / 2, n, m.N + Math.floor(n * 0.9)))); });
     ['pointerdown', 'wheel'].forEach((ev) => panel.addEventListener(ev, (e) => e.stopPropagation()));
   }
   function buildPalette() {
@@ -486,6 +489,7 @@
     try { if (localStorage.getItem('sml-chart-patterns') === '1') { V.patterns = true; pat.classList.add('on'); panel.classList.add('open'); } } catch (_) { /* ignore */ }
     return true;
   }
+  for (const k of ['y', 'x']) { const z = document.createElement('div'); z.className = 'academy-pro-zone ' + k; stage.appendChild(z); }
   buildPanel(); buildPalette(); loadDrawings(); syncPalette();
   let mtTries = 0; const mt = setInterval(() => { if (mountToolbar() || ++mtTries > 40) clearInterval(mt); }, 250);
   new ResizeObserver(() => emit()).observe(stage);

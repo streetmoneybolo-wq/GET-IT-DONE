@@ -10,6 +10,7 @@
   const KEY = 'sml-mem-algo-v1';
   const S = { on: false, mode: 'day', overlays: { ema: true, signals: true, levels: true, book: true }, of: null, ofBusy: false, ofErr: '', params: { day: {}, swing: {} }, data: null, sigKey: '', loading: false, error: '', open: false };
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) { S.on = !!saved.on; S.mode = E.STRATEGIES[saved.mode] ? saved.mode : 'day'; Object.assign(S.overlays, saved.overlays || {}); S.params = { day: (saved.params && saved.params.day) || {}, swing: (saved.params && saved.params.swing) || {} }; S.open = !!saved.on; } } catch (_) { /* storage can be blocked inside Discord */ }
+  if (window.innerWidth < 700) S.open = false; // on a phone the panel is a sheet the trader opens on purpose
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, mode: S.mode, overlays: S.overlays, params: S.params })); } catch (_) { /* ignore */ } };
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,7 +65,7 @@
 .mem-ev{font-size:.7rem;color:#9fb3be;padding:3px 0}.mem-ev u{text-decoration:none;display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.mem-ev u.bull{background:#00d084}.mem-ev u.bear{background:#ff5470}
 .mem-grade{margin-top:7px;font-size:.72rem}.mem-grade b{padding:2px 8px;border-radius:999px;font:800 .64rem ui-monospace,monospace;letter-spacing:.04em}
 .mem-grade .confirms{background:#0d3a2a;color:#3ef0a8}.mem-grade .disagrees{background:#421a24;color:#ff7a92}.mem-grade .neutral,.mem-grade .unavailable{background:#1c2b33;color:#9db4c0}
-@media(max-width:520px){#mem-algo-panel{right:8px;left:8px;width:auto;top:52px}}`;
+@media(max-width:700px){#mem-algo-panel{position:fixed;left:6px;right:6px;bottom:6px;top:auto;width:auto;max-height:52vh;z-index:2147483000}}`;
   document.head.appendChild(css);
 
   // toolbar button + panel + overlay layer
@@ -190,6 +191,7 @@
 
   // ---- overlay drawing (mirrors the chart's own geometry so markers sit exactly on the candles) ----
   function draw() {
+    if (chartCanvas.parentElement && layer.parentElement !== chartCanvas.parentElement) chartCanvas.parentElement.appendChild(layer); // the chart is moved into its stage after this script starts
     const w = chartCanvas.clientWidth, h = chartCanvas.clientHeight, dpr = window.devicePixelRatio || 1;
     layer.style.left = chartCanvas.offsetLeft + 'px'; layer.style.top = chartCanvas.offsetTop + 'px'; layer.style.width = w + 'px'; layer.style.height = h + 'px';
     if (layer.width !== Math.round(w * dpr) || layer.height !== Math.round(h * dpr)) { layer.width = Math.round(w * dpr); layer.height = Math.round(h * dpr); }
