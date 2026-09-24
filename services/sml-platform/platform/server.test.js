@@ -888,3 +888,22 @@ test('the chart guard lifts the Indicator Engine out of the chart grid so the ca
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
   assert.match(html, /\.chart > \.academy-intelligence/);
 });
+
+test('the chart offers week, month, quarter and year intervals and ships the chart mechanics', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  for (const tf of ['1W', '1M', '1Q', '1Y']) assert.match(html, new RegExp(`data-tf="${tf}"`));
+  assert.match(html, /smlChartModel/);
+  assert.match(html, /academy-pro-layer/);
+  assert.match(html, /academy-pro-draw/);
+});
+
+test('the market route accepts the long intervals and still rejects junk', async () => {
+  await withServer({}, async (base) => {
+    for (const tf of ['1M', '1Q', '1Y']) {
+      const res = await fetch(`${base}/academy-activity/market?symbol=SPY&tf=${tf}`);
+      assert.notEqual(res.status, 400, tf);
+    }
+    assert.equal((await fetch(`${base}/academy-activity/market?symbol=SPY&tf=9x`)).status, 400);
+  });
+});

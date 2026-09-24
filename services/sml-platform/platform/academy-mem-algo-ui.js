@@ -197,10 +197,9 @@
     if (!S.on || !S.data || !w || !h) return;
     let st; try { st = window.smlAcademyChartState(); } catch (_) { return; }
     const bars = st.bars || []; if (!bars.length) return;
-    const pad = { l: 12, r: 64, t: 18, b: 24 }, pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
-    const n = Math.max(12, Math.min(bars.length, Math.floor(105 / st.scale))), end = Math.max(n, Math.min(bars.length, bars.length - st.offset)), view = bars.slice(end - n, end);
-    let lo = Math.min(...view.map((b) => +b.l)), hi = Math.max(...view.map((b) => +b.h)); if (hi === lo) { hi += 1; lo -= 1; }
-    const y = (v) => pad.t + (hi - v) / (hi - lo) * ph, step = pw / view.length, x = (j) => pad.l + (j + 0.5) * step;
+    const M = window.smlChartModel && window.smlChartModel(); if (!M) return;
+    const pad = M.pad, pw = M.pw, ph = M.ph, view = M.view, lo = M.lo, hi = M.hi;
+    const y = (v) => M.y(v), step = M.step, x = (j) => M.x(M.start + j);
     const d = S.data, ind = d.ind, ai = (j) => S.idx.get(Number(view[j].t));
     lctx.save(); lctx.beginPath(); lctx.rect(pad.l, pad.t, pw, ph); lctx.clip();
     if (S.overlays.ema) {
