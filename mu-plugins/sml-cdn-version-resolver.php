@@ -38,12 +38,13 @@
  * 1.0.9 (2026-09-22): advance pin bfa6ca3 -> 5223f7b. js/loop-channel.js only: hands #ch-orbit to window.SML_LCE.mount() — a no-op
  * unless plugin sml-channel-layout 1.1.0 enqueued its script (enabled channels only); the orbit stays unless a valid layout arrives.
  * 2026-09-23: advance pin -> 796efdd (js/live-watch.js: no empty-symbol quote/history/company polls).
+ * 2026-09-23: advance pin -> c7d414a (watch pages: per-stream likes, chat lock, live-insights beacon, orbit max 5).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '796efddaf77e98cbb16b74eafb1624c06c639b03' );
+	define( 'SML_CDN_ASSET_REVISION', 'c7d414aeddf26902af3b339ff0ca76ea03b574b9' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
