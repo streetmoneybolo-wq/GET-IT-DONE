@@ -1,4 +1,5 @@
 'use strict';
+process.env.ACADEMY_ALERTS_MAX = '25'; // most tests exercise the full list; the default of one call per stream has its own test below
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { parseAlertMessage } = require('./academy-alerts-parse');
@@ -245,4 +246,17 @@ test('news wording is part of the chatter grade and reaches the detail view', as
   assert.ok(scary.risk > calm.risk); assert.match(scary.detail, /red-flag/); assert.equal(stale.available, false, 'a month-old headline is not this week\'s news');
   const p = R.planFor({ alert: swing(), quote: quote(2.2), daily: series(120, { start: 2 }), since: { high: 2.25, low: 2 }, risk: { band: 'MODERATE' }, algoView: { bias: 'long', latestSignal: null }, flow: null, news: [{ title: 'Company files for bankruptcy protection', date: fresh }], now: Date.now() });
   assert.notEqual(p.action, 'RAISE_TARGET');
+});
+
+test('by default the desk starts with only the latest swing alert and the latest long-term alert', () => {
+  const saved = process.env.ACADEMY_ALERTS_MAX; delete process.env.ACADEMY_ALERTS_MAX;
+  delete require.cache[require.resolve('./academy-alerts')];
+  const fresh = require('./academy-alerts');
+  process.env.ACADEMY_ALERTS_MAX = saved; delete require.cache[require.resolve('./academy-alerts')];
+  const NOW = Date.now();
+  const svc = fresh.createAlertsService({ channels: [{ key: 'swings', id: '1' }, { key: 'longterm', id: '2' }], now: () => NOW });
+  const m = (id, sym, ago) => ({ id, content: `@everyone ${sym} entry $2 pt 3`, timestamp: new Date(NOW - ago).toISOString(), author: { id: '258456543', username: 'x' } });
+  svc.ingest('swings', m('101', 'AAA', 3 * 3600_000)); svc.ingest('swings', m('102', 'BBB', 1 * 3600_000)); svc.ingest('swings', m('103', 'CCC', 5 * 3600_000));
+  svc.ingest('longterm', m('201', 'DDD', 40 * 86400_000)); svc.ingest('longterm', m('202', 'EEE', 60 * 86400_000));
+  assert.deepEqual(svc.active().map((a) => a.symbol).sort(), ['BBB', 'DDD']);
 });

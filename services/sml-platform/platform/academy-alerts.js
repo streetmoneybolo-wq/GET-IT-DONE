@@ -26,7 +26,9 @@ const sectorFor = (company) => { const text = company && company.sic_description
 
 const TTL = { quotes: 12_000, daily: 600_000, intraday: 60_000, fundamentals: 6 * 3_600_000, short: 6 * 3_600_000, sentiment: 600_000, filings: 6 * 3_600_000, company: 24 * 3_600_000 };
 const WINDOW_DAYS = { swings: 7, longterm: 150 };
-const MAX_ACTIVE = { swings: 20, longterm: 25 };
+/* The desk starts with only the latest call in each stream (the newest swing alert and the newest long-term alert). Raise ACADEMY_ALERTS_MAX to show more history. */
+const ENV_MAX = Math.max(1, Math.min(25, Number(process.env.ACADEMY_ALERTS_MAX) || 1));
+const MAX_ACTIVE = { swings: ENV_MAX, longterm: ENV_MAX };
 
 function createAlertsService({
   tokens = [], channels = [], origin = '', fetchImpl = globalThis.fetch, candles = null, orderFlow = null, patterns = null,
