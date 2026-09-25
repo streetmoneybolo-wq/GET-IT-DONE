@@ -1,0 +1,20 @@
+{
+  "name": "social-payouts",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Social posting tasks, engagement proof, payout records, XP and leaderboards for Discord (rebuilt from daily-social-payouts).",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "check": "node --check index.js && node --test",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.7"
+  }
+}
