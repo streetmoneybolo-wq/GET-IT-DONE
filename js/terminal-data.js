@@ -17,14 +17,25 @@
 
   function leaves(scope) { return [].filter.call(scope.querySelectorAll('span,div,p,b,strong,em'), function (e) { return e.children.length === 0; }); }
   function findLeaf(scope, rx) { var L = leaves(scope); for (var i = 0; i < L.length; i++) { if (rx.test((L[i].textContent || '').trim())) return L[i]; } return null; }
-  // value cell = the numeric leaf nearest a label leaf (same cell container)
+  // Resolve the value by the artifact's cell structure, not by its current
+  // text. Other live modules may legitimately replace a captured value with
+  // an em dash before this module boots, so requiring a digit creates a race
+  // that leaves quote fields permanently unwired.
   function valueFor(label) {
+    if (!label) return null;
+    var cell = label.closest && label.closest('[data-dc-tpl="332"], [data-dc-tpl="41"]');
+    if (cell) {
+      var wrap = cell.querySelector('[data-dc-tpl="334"], [data-dc-tpl="43"]');
+      if (wrap) return wrap.querySelector('.sc-interp') || wrap;
+    }
     var p = label, hops = 0;
     while (p && hops < 3) {
       p = p.parentElement; hops++;
       if (!p) break;
-      var cands = leaves(p).filter(function (e) { return e !== label && /[0-9]/.test(e.textContent || ''); });
-      if (cands.length) return cands[0];
+      var cands = leaves(p).filter(function (e) {
+        return e !== label && !label.contains(e) && (e.textContent || '').trim() !== (label.textContent || '').trim();
+      });
+      if (cands.length) return cands[cands.length - 1];
     }
     return null;
   }
@@ -63,8 +74,8 @@
     var big = null, bigSize = 0;
     leaves(strip).forEach(function (e) { var t = (e.textContent || '').trim(); if (/^[0-9]{1,5}\.[0-9]{2}$/.test(t)) { var fs = parseFloat(getComputedStyle(e).fontSize) || 0; if (fs > bigSize) { bigSize = fs; big = e; } } });
     slots.last = big;
-    slots.change = findLeaf(strip, /^[+−-][0-9.,]+ \([+−-]?[0-9.,]+%\)$/);
-    slots.time = findLeaf(strip, /[A-Z][a-z]{2} \d{1,2}, \d{4}.*\bET\b/);
+    slots.change = strip.querySelector('[data-dc-tpl="36"]') || findLeaf(strip, /^[+−-][0-9.,]+ \([+−-]?[0-9.,]+%\)$/);
+    slots.time = root.querySelector('[data-dc-tpl="63"]') || findLeaf(root, /[A-Z][a-z]{2} \d{1,2}, \d{4}.*\bET\b/);
     // rail "Quotes" card
     grab(rail, /^High$/, 'qHigh'); grab(rail, /^Low$/, 'qLow'); grab(rail, /^Open$/, 'qOpen');
     grab(rail, /^Volume$/i, 'qVolume'); grab(rail, /^Prev\.? ?close$/i, 'qPrev'); grab(rail, /^Last$/i, 'qLast');
