@@ -548,8 +548,24 @@ const ACADEMY_MEM_ALGO = (() => {
   } catch (_) { return ''; } // the chart must load even if the model files are missing
 })();
 
+const ACADEMY_MOOMOO_BUY = `<style>#academy-moomoo-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}#academy-moomoo-buy:hover{background:#1a3157;color:#c4d9ff}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
+const toolbar=document.querySelector('.toolbar');if(!toolbar)return;
+const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbol'),typed=document.getElementById('symbol')?.value;return String(q||typed||'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g,'').slice(0,10)||'SPY'};
+/* moomoo's /stock/ URLs are NOT iOS universal links (absent from their AASA), so on phones we route
+   through moomoo's own first-party /deeplink/ bridge, which IS allowlisted and opens the installed app
+   on that exact stock (double-encoding required - the page unescapes twice). Only ftmm://url/ targets,
+   never ftmm://trade/ - the button must always land on the quote page, not an order ticket. */
+const moomooUrl=(s)=>{const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(s)+'-US';const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);return mobile?'https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl)):stockUrl};
+const btn=document.createElement('button');btn.id='academy-moomoo-buy';btn.type='button';
+const paint=()=>{btn.textContent='Buy '+currentSymbol()+' on moomoo ↗';btn.title='Opens '+currentSymbol()+' in your moomoo app. Any order is reviewed and placed by you in moomoo — nothing is traded from the Academy.'};paint();
+btn.setAttribute('aria-label','Open this stock in the moomoo app');
+btn.onclick=()=>{const s=currentSymbol();const url=moomooUrl(s);if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
+const buyChip=toolbar.querySelector('.quote-chip.buy');(buyChip&&buyChip.nextSibling)?toolbar.insertBefore(btn,buyChip.nextSibling):toolbar.appendChild(btn);
+new MutationObserver(paint).observe(document.getElementById('label')||document.body,{childList:true,characterData:true,subtree:true});
+window.addEventListener('popstate',paint)})();</script>`;
+
 function academyActivityHtml(initialMarket = {}, options = {}) {
-  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + '</body></html>');
+  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + '</body></html>');
 }
 
 function academyActivityHtmlBase(initialMarket = {}, options = {}) {
@@ -656,6 +672,20 @@ function authenticateAcademyActivity(){
    once to renew silently (prompt:none) before retrying; concurrent callers
    share one renewal, and the renewal re-checks the member's role. */
 window.smlAcademyReauth=()=>authenticateAcademyActivity();
+/* External links from inside a Discord Activity must go through the SDK -
+   the sandboxed iframe swallows plain window.open. Outside Discord (no
+   frame_id) a normal new tab is correct. */
+window.smlAcademyOpenExternal=async(url)=>{
+  const inDiscord=new URLSearchParams(location.search).has('frame_id');
+  if(inDiscord){
+    try{
+      if(!academySdk){academySdk=new DiscordSDK(academyAppId);await academySdk.ready()}
+      await academySdk.commands.openExternalLink({url});
+      return true;
+    }catch(_){/* fall through to a plain tab attempt */}
+  }
+  try{window.open(url,'_blank','noopener');return true}catch(_){return false}
+};
 void authenticateAcademyActivity();
 </script></body></html>`
     .replace("#academy-unlock{", "body.academy-tools-open .lesson{z-index:2147483600}#academy-unlock{")
