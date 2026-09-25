@@ -43,12 +43,13 @@
  * 2026-09-24: advance pin -> 3c6e547 (js/live-watch.js + css: channel emotes picker/render).
  * 2026-09-24: advance pin -> fcc9f04 (js/creator-analytics.js: admin-only Moderation tab).
  * 2026-09-25: advance pin -> 14a122d (js/vod-watch.js + css: remove watch-page voice cues).
+ * 2026-09-25: advance pin -> d4444fd (js/live-watch.js: Boost Arena guardrail client).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '14a122d66282ebfd5006f7f0f6f8c44bc4b8c47b' );
+	define( 'SML_CDN_ASSET_REVISION', 'd4444fdfba414b84784c5b615b231b7791d6ece1' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
