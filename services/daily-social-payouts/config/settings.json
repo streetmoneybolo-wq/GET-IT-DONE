@@ -372,6 +372,7 @@
   "articleFeed": {
     "enabled": true,
     "pollSeconds": 600,
-    "maxPerCycle": 3
+    "maxPerCycle": 3,
+    "feedUrl": "https://stockmarketloop.com/wp-json/wp/v2/posts?categories=7212965&per_page=12&orderby=date&order=desc&_fields=id,link,date_gmt,title"
   }
 }
