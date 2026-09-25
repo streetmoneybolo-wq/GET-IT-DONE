@@ -208,7 +208,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /PREMARKET/);
     assert.match(html, /AFTER HOURS/);
     assert.match(html, /Pro Screener/);
-    assert.match(html, /S\.I\.R\.E 3m %/);
+    assert.match(html, /\['sire','S\.I\.R\.E\.'\]/);
+    assert.doesNotMatch(html, /S\.I\.R\.E 3m %/);
     assert.match(html, /changeRate3min/);
     assert.doesNotMatch(html, /\['rank','#'\]/);
     assert.match(html, /Volume Ratio/);
