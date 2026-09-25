@@ -56,3 +56,23 @@ if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
 add_filter( 'pre_transient_sml_cdn_ref', function () {
 	return SML_CDN_ASSET_REVISION;
 } );
+
+/* Some long-lived WPCode loaders resolve their ref before the shared loader has
+ * initialized. Enforce the same immutable revision at WordPress' final asset URL
+ * filter so the Ticker Terminal can never ship a stale shell beside newer assets. */
+function sml_cdn_pin_asset_url( $src, $handle ) {
+	if ( ! is_string( $src ) || false === strpos( $src, 'streetmoneybolo-wq/GET-IT-DONE@' ) ) {
+		return $src;
+	}
+	if ( ! in_array( $handle, array( 'sml-tv2', 'sml-tv2-shell' ), true ) ) {
+		return $src;
+	}
+	return preg_replace(
+		'#(streetmoneybolo-wq/GET-IT-DONE@)[0-9a-z._-]+/#i',
+		'$1' . SML_CDN_ASSET_REVISION . '/',
+		$src,
+		1
+	);
+}
+add_filter( 'script_loader_src', 'sml_cdn_pin_asset_url', PHP_INT_MAX, 2 );
+add_filter( 'style_loader_src', 'sml_cdn_pin_asset_url', PHP_INT_MAX, 2 );
