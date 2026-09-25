@@ -983,3 +983,11 @@ test('lesson narration reports the real length of every part so slides change wh
   assert.match(script, /x-academy-part-ms/);
   assert.match(script, /measured\?duration\*exact\[index\]\/measuredTotal/);
 });
+
+test('a lesson shows its written text once: no duplicate slide visual or filler callout, and chart panels stay out of the lesson', () => {
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /\.academy-live-deck \.academy-slide-visual:not\(:has\(svg\)\)\{display:none\}/);
+  assert.match(html, /\.academy-live-deck:not\(:has\(\.wb-svg\)\) \.academy-slide-callout\{display:none\}/);
+  assert.match(html, /body\.academy-lesson-open #mem-algo-panel/);
+});
