@@ -307,6 +307,39 @@ services:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
 
+  # Staging copy of the rebuilt social payouts bot (services/social-payouts). Its own Discord application,
+  # its own data disk, and every payout lock left closed: it can only ever preview. Delete it after cutover.
+  - type: worker
+    name: social-payouts-staging
+    runtime: node
+    rootDir: services/social-payouts
+    region: ohio
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    autoDeployTrigger: commit
+    disk:
+      name: social-payouts-staging-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: PAYPAL_PAYOUT_DRY_RUN
+        value: "1"
+      - key: PAYOUT_AUTO_DAILY
+        value: "0"
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: PAYOUT_DETAILS_KEY
+        sync: false
+
   # Read-only alert watcher and article pipeline; isolated from the social bot.
   - type: worker
     name: retail-trader-spotlight-monitor
