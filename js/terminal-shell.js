@@ -98,6 +98,7 @@
         /* module chain — async=false keeps INSERTION ORDER (a dynamically inserted script
            is async by default): the native chart must set its flag before adopt runs */
         var chain = function (file) { var s = document.createElement('script'); s.src = base + file; s.async = false; document.body.appendChild(s); };
+        chain('js/massive-market-relay.js'); // shared live relay; falls back silently while public licensing is off
         chain('js/terminal-data.js');      // Phase B: real quote/strip/rail data
         chain('js/terminal-chart.js');     // Phase 2: NATIVE chart (history + quote), replaces the adopted LoopCharts canvas
         chain('js/terminal-feed.js');      // Phase 2: NATIVE live feed (stream/moomoo/webull/stocktwits/voice), replaces the adopted #sml-lf

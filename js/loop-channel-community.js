@@ -14,6 +14,33 @@
 
   /* ---------- ticker tokens + popover ---------- */
   var TCACHE = {};
+  var TSTREAMS = {};
+  var RELAY_WAITERS = [], RELAY_LOADING = false;
+  function ensureMarketRelay(done) {
+    if (window.SMLMarketRelay) { done(); return; }
+    RELAY_WAITERS.push(done);
+    if (RELAY_LOADING) return;
+    RELAY_LOADING = true;
+    var current = document.currentScript || [].slice.call(document.scripts).filter(function (script) {
+      return /loop-channel-community\.js(?:\?|$)/.test(script.src || '');
+    })[0];
+    if (!current || !current.src) return;
+    var script = document.createElement('script');
+    script.src = current.src.replace(/loop-channel-community\.js.*$/, 'massive-market-relay.js');
+    script.onload = function () {
+      var waiters = RELAY_WAITERS.splice(0);
+      waiters.forEach(function (waiter) { try { waiter(); } catch (_) {} });
+    };
+    document.head.appendChild(script);
+  }
+  function liveTicker(sym) {
+    if (TSTREAMS[sym]) return;
+    if (!window.SMLMarketRelay) { ensureMarketRelay(function () { liveTicker(sym); }); return; }
+    TSTREAMS[sym] = window.SMLMarketRelay.subscribe(sym, {
+      onTrade: function (trade) { if (TCACHE[sym] && trade && Number(trade.price) > 0) { TCACHE[sym].current = Number(trade.price); TCACHE[sym].stale = false; renderTickers(); } },
+      onQuote: function (quote) { if (TCACHE[sym] && quote && Number(quote.bid) > 0 && Number(quote.ask) > 0) { TCACHE[sym].current = (Number(quote.bid) + Number(quote.ask)) / 2; TCACHE[sym].stale = false; renderTickers(); } }
+    });
+  }
   function segs(text) {
     return esc(text).replace(/(^|[\s(])\$([A-Za-z]{1,6})\b/g, function (m, pre, sym) { return pre + '<span class="lch-tk" data-tk="' + sym.toUpperCase() + '">$' + sym.toUpperCase() + '</span>'; });
   }
@@ -30,6 +57,7 @@
   var pop;
   function showPop(anchor, sym) {
     hidePop();
+    liveTicker(sym);
     pop = document.createElement('div'); pop.className = 'lch-tkpop'; pop.innerHTML = '<span class="s">' + esc(sym) + '</span><span class="lch-muted" style="font-size:9px">loading…</span>';
     document.body.appendChild(pop); placePop(anchor);
     tickerCard(sym).then(function (c) {
@@ -64,9 +92,7 @@
       var list = (r.ok && r.j && (r.j.watchlist || r.j.items || r.j.symbols)) || [];
       S.tickers = list.map(function (x) { return String(typeof x === 'string' ? x : (x.symbol || x.ticker || x.sym || '')).toUpperCase().replace(/^\$/, ''); }).filter(Boolean).slice(0, 8);
       renderTickers();
-      if (S.tickers.length) {
-        Promise.all(S.tickers.map(function (sym) { return tickerCard(sym); })).then(function () { renderTickers(); });
-      }
+      S.tickers.slice(0, 8).forEach(function (sym) { liveTicker(sym); tickerCard(sym).then(function () { renderTickers(); }); });
     });
   }
   function renderTickers() {
