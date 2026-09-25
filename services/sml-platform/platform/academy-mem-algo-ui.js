@@ -9,8 +9,8 @@
 
   const KEY = 'sml-mem-algo-v1';
   const S = { on: false, mode: 'day', overlays: { ema: true, signals: true, levels: true, book: true }, of: null, ofBusy: false, ofErr: '', params: { day: {}, swing: {}, mid: {}, long: {}, short: {} }, data: null, sigKey: '', loading: false, error: '', open: false };
-  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) { S.on = !!saved.on; S.mode = E.STRATEGIES[saved.mode] ? saved.mode : 'day'; Object.assign(S.overlays, saved.overlays || {}); Object.keys(E.STRATEGIES).forEach((k) => { S.params[k] = (saved.params && saved.params[k]) || {}; }); S.open = !!saved.on; } } catch (_) { /* storage can be blocked inside Discord */ }
-  if (window.innerWidth < 700) S.open = false; // on a phone the panel is a sheet the trader opens on purpose
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) { S.on = !!saved.on; S.mode = E.STRATEGIES[saved.mode] ? saved.mode : 'day'; Object.assign(S.overlays, saved.overlays || {}); Object.keys(E.STRATEGIES).forEach((k) => { S.params[k] = (saved.params && saved.params[k]) || {}; }); } } catch (_) { /* storage can be blocked inside Discord */ }
+  S.open = false; // the panel never pops open on load: the quote column shows first and the toggle is one click away (saved overlays still draw)
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, mode: S.mode, overlays: S.overlays, params: S.params })); } catch (_) { /* ignore */ } };
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -148,8 +148,8 @@
       const biasMap = { long: ['long', 'LONG BIAS'], short: ['short', 'SHORT BIAS'], pullback: ['flat', 'PULLBACK IN UPTREND'], bounce: ['flat', 'BOUNCE IN DOWNTREND'], warming: ['flat', 'WARMING UP'] };
       const b = biasMap[d.bias] || biasMap.warming, L = d.latest;
       html += '<div class="mem-sec"><h5>Right now · $' + esc(symbol()) + ' · ' + esc(tfNow) + '</h5><span class="mem-chip ' + b[0] + '">' + b[1] + '</span>';
-      if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Paper trade open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · ' + (p.trail ? 'Trailing stop ' : 'Stop ') + num(d.open.stop) + (d.open.target == null ? '' : ' · Target ' + num(d.open.target)) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span><div class="mem-grade" id="mem-grade" data-dir="' + d.open.dir + '"></div></div>';
-      else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (st.dirs === 'short' ? 'SHORT' : (L.dir > 0 ? 'BUY' : 'SELL')) + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · ' + (p.trail ? 'Starting stop ' : 'Stop ') + num(L.stop) + (L.target == null ? '' : ' · Target ' + num(L.target)) + '<br><span class="mem-blurb">' + (L.target == null ? 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to start; the stop then trails ' + p.trail + '× ATR behind the best price and the position is held until it is hit or the trend reverses.' : 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1).') + ' A signal is a closed-candle event; the paper trade enters on the next open.</span><div class="mem-grade" id="mem-grade" data-dir="' + L.dir + '"></div></div>';
+      if (d.open) html += '<div class="mem-sig"><b class="' + (d.open.dir > 0 ? 'buy' : 'sell') + '">Signal open · ' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + '</b><br>Entry ' + num(d.open.entry) + ' · ' + (p.trail ? 'Trailing stop ' : 'Stop ') + num(d.open.stop) + (d.open.target == null ? '' : ' · Target ' + num(d.open.target)) + '<br>Unrealized ' + '<span class="' + (d.open.unrealizedR >= 0 ? 'mem-pos' : 'mem-neg') + '">' + rr(d.open.unrealizedR) + '</span><div class="mem-grade" id="mem-grade" data-dir="' + d.open.dir + '"></div></div>';
+      else if (L) html += '<div class="mem-sig"><b class="' + (L.dir > 0 ? 'buy' : 'sell') + '">Last signal · ' + (st.dirs === 'short' ? 'SHORT' : (L.dir > 0 ? 'BUY' : 'SELL')) + '</b> ' + esc(fmtTime(L.t)) + '<br>Price ' + num(L.price) + ' · ' + (p.trail ? 'Starting stop ' : 'Stop ') + num(L.stop) + (L.target == null ? '' : ' · Target ' + num(L.target)) + '<br><span class="mem-blurb">' + (L.target == null ? 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to start; the stop then trails ' + p.trail + '× ATR behind the best price and the position is held until it is hit or the trend reverses.' : 'Risk ' + num(Math.abs(L.price - L.stop)) + ' to make ' + num(Math.abs(L.target - L.price)) + ' (' + num(p.targetAtr / p.stopAtr, 1) + ' : 1).') + ' A signal is a closed-candle event; it is counted from the next candle\'s open.</span><div class="mem-grade" id="mem-grade" data-dir="' + L.dir + '"></div></div>';
       else html += '<div class="mem-sec" style="padding:8px 0 0"><span class="mem-blurb">No signal in the candles loaded. That is normal — the model waits for a clean, confirmed cross.</span></div>';
       if (d.confluence) {
         const cf = d.confluence, open = d.open, sigForOpen = open && d.signals.length ? d.signals.filter((x) => x.i <= open.entryIdx).pop() : null, shown = open ? sigForOpen : L;
@@ -166,7 +166,7 @@
       if (!d.enoughData) html += '<div class="mem-sec"><div class="mem-warn">Only ' + d.bars + ' candles are loaded and this mode needs about ' + (d.warm + 30) + ' to warm up its averages. Try a shorter-period timeframe or another ticker.</div></div>';
       else {
         const s = d.stats;
-        html += '<div class="mem-sec"><h5>Paper backtest · ' + d.bars + ' candles</h5><div class="mem-grid">'
+        html += '<div class="mem-sec"><h5>Backtest · ' + d.bars + ' candles</h5><div class="mem-grid">'
           + stat('Trades', s.trades) + stat('Win rate', s.winRate == null ? '–' : Math.round(s.winRate * 100) + '%')
           + stat('Avg win / loss', s.trades ? rr(s.avgWinR) + ' / ' + rr(s.avgLossR) : '–')
           + stat('Expectancy', rr(s.expectancyR), s.expectancyR > 0 ? 'mem-pos' : (s.expectancyR < 0 ? 'mem-neg' : ''))
@@ -199,7 +199,15 @@
     rules.push('<li>Backtest enters on the next candle\'s open; if one candle touches both stop and target it counts as a loss.</li>');
     html += '<div class="mem-sec"><details><summary>How MEM ALGO decides</summary><ul>' + rules.join('') + '</ul></details></div>';
     html += '<div class="mem-foot">Educational simulation on closed candles. Past results do not predict future returns. Not financial advice, and nothing here places a trade.</div>';
-    panel.innerHTML = html;
+    // Repaints arrive every few seconds (candle refreshes, the 20s timer). Replacing the markup would throw the reader back to the top
+    // and fold the Settings / rules sections, so unchanged markup is left alone and otherwise the scroll position and open sections survive.
+    if (html !== S.lastHtml) {
+      const scrollTop = panel.scrollTop;
+      const openSections = new Set(Array.from(panel.querySelectorAll('details[open] > summary')).map((s) => s.textContent));
+      panel.innerHTML = html; S.lastHtml = html;
+      panel.querySelectorAll('details').forEach((d) => { const s = d.querySelector('summary'); if (s && openSections.has(s.textContent)) d.open = true; });
+      panel.scrollTop = scrollTop;
+    }
     paintOF();
   }
 
@@ -228,7 +236,13 @@
       if ((o.events || []).length) h += '<div style="margin-top:8px">' + o.events.slice(0, 5).map((e) => '<div class="mem-ev"><u class="' + e.side + '"></u>' + esc(new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })) + ' · ' + esc(e.note) + '</div>').join('') + '</div>';
       h += '<p class="mem-blurb">Level 2 is a reading of what buyers and sellers are doing, not a prediction. Every signal is being recorded with what price did next, so it can be measured before anyone relies on it.</p>';
     }
-    box.innerHTML = h;
+    if (h !== S.lastOfHtml) {
+      // The order-flow box sits above the signal and backtest sections; when it grows or shrinks, keep whatever the reader is looking at in place.
+      const before = box.offsetHeight, above = panel.scrollTop > box.offsetTop;
+      box.innerHTML = h; S.lastOfHtml = h;
+      const delta = box.offsetHeight - before;
+      if (delta && above) panel.scrollTop += delta;
+    }
     const g = panel.querySelector('#mem-grade');
     if (g) { const dir = Number(g.dataset.dir), gr = o && o.grades ? (dir > 0 ? o.grades.long : o.grades.short) : null; g.innerHTML = gr ? 'Level 2 vs this ' + (dir > 0 ? 'BUY' : 'SELL') + ': <b class="' + gr.grade + '">' + gradeText[gr.grade] + '</b> <span class="mem-blurb">' + esc(gr.reason) + '</span>' : ''; }
   }

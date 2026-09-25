@@ -14,7 +14,8 @@
   const KEY = 'sml-smc-v1';
   const OPTS = [['fvg', 'Imbalances (FVG)'], ['struct', 'Structure (BOS / CHoCH)'], ['ob', 'Order blocks'], ['liq', 'Liquidity (equal highs / lows)'], ['gaps', 'Opening gaps'], ['vwap', 'VWAP + bands'], ['pd', 'Premium / discount'], ['profile', 'Volume profile'], ['flags', 'Absorption']];
   const S = { on: false, collapsed: window.innerWidth < 720, o: { fvg: true, struct: true, ob: true, liq: true, gaps: true, vwap: true, pd: false, profile: false, flags: true }, a: null, key: '', at: 0 };
-  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; S.collapsed = v.collapsed === true; Object.assign(S.o, v.o || {}); } } catch (_) { /* storage can be blocked */ }
+  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; Object.assign(S.o, v.o || {}); } } catch (_) { /* storage can be blocked */ }
+  S.collapsed = true; // the map starts as a chip on the chart; expanding it over the quote column is a deliberate click each session
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, collapsed: S.collapsed, o: S.o })); } catch (_) { /* ignore */ } };
 
   const css = document.createElement('style');

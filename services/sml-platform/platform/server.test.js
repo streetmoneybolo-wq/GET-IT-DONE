@@ -792,6 +792,20 @@ test('Activity client restores the authenticated lesson and keeps implementation
   assert.doesNotMatch(script, /Grandmaster-Obi narration|Claude generated|AI generated/i);
 });
 
+test('Activity opens on the chart: a resumed lesson is selected but not popped open, and nothing is called a paper trade', async () => {
+  const { academyCurriculumScript } = require('./academy-activity-curriculum');
+  const script = academyCurriculumScript(require('./academy/curriculum').SEED_LESSONS);
+  assert.match(script, /current=index;rebuildPicker\(\);document\.body\.dataset\.academyResumed=/, 'resume selects the lesson');
+  assert.doesNotMatch(script, /rebuildPicker\(\);panel\.classList\.add\('open'\)/, 'resume no longer opens the lesson rail on load');
+  await withServer({ academyAppId: '1551336038713139370' }, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    assert.doesNotMatch(html, /paper trade|paper backtest/i);
+    assert.match(html, /S\.open = false; \/\/ the panel never pops open on load/, 'MEM ALGO starts closed');
+    assert.match(html, /S\.collapsed = true; \/\/ the map starts as a chip/, 'the smart-money map starts collapsed');
+    assert.doesNotMatch(html, /pat\.classList\.add\('on'\); panel\.classList\.add\('open'\)/, 'the patterns list does not open on load');
+  });
+});
+
 test('Activity resume points are saved only for the signed-in member and validated', async () => {
   const calls = [];
   const academyProgress = {
