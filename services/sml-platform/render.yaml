@@ -88,6 +88,12 @@ services:
         sync: false
       - key: SML_UC_WEBHOOK_PATH_TOKEN
         sync: false
+      # This process serves the Academy Activity's live chart, which calls
+      # Massive directly for streaming-speed candles (see platform/server.js
+      # getAcademyCandles). Render env vars are per-service, so this needs its
+      # own copy even though retail-trader-spotlight-monitor already has one.
+      - key: MASSIVE_API_KEY
+        sync: false
 
   # Separate Discord application and process. It shares only the platform
   # database with Connect; it has its own token, signing key and deploy cycle.

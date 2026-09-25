@@ -49,6 +49,43 @@ const DISPUTE_ACTIONS = Object.freeze({
  */
 const REDDIT_HUB_ORIGIN = 'https://stockmarketloop.com';
 const REDDIT_HUB_CACHE_MS = 15_000;
+
+/* The Academy chart pulls candles straight from Massive (the same market-data
+   API keyed by MASSIVE_API_KEY elsewhere in this codebase) instead of
+   round-tripping through a WordPress REST proxy, for streaming-grade speed. */
+const MASSIVE_BASE_URL = 'https://api.massive.com';
+const ACADEMY_TIMEFRAME_MAP = Object.freeze({
+  '1m': { multiplier: 1, timespan: 'minute', lookbackMs: 5 * 24 * 60 * 60 * 1000 },
+  '3m': { multiplier: 3, timespan: 'minute', lookbackMs: 10 * 24 * 60 * 60 * 1000 },
+  '5m': { multiplier: 5, timespan: 'minute', lookbackMs: 15 * 24 * 60 * 60 * 1000 },
+  '10m': { multiplier: 10, timespan: 'minute', lookbackMs: 25 * 24 * 60 * 60 * 1000 },
+  '15m': { multiplier: 15, timespan: 'minute', lookbackMs: 35 * 24 * 60 * 60 * 1000 },
+  '30m': { multiplier: 30, timespan: 'minute', lookbackMs: 60 * 24 * 60 * 60 * 1000 },
+  '1h': { multiplier: 1, timespan: 'hour', lookbackMs: 90 * 24 * 60 * 60 * 1000 },
+  '2h': { multiplier: 2, timespan: 'hour', lookbackMs: 150 * 24 * 60 * 60 * 1000 },
+  '4h': { multiplier: 4, timespan: 'hour', lookbackMs: 250 * 24 * 60 * 60 * 1000 },
+  '1D': { multiplier: 1, timespan: 'day', lookbackMs: 600 * 24 * 60 * 60 * 1000 },
+  '1W': { multiplier: 1, timespan: 'week', lookbackMs: 600 * 7 * 24 * 60 * 60 * 1000 }
+});
+
+async function fetchMassiveCandles(symbol, timeframe, apiKey) {
+  const spec = ACADEMY_TIMEFRAME_MAP[timeframe];
+  const to = Date.now();
+  const from = to - spec.lookbackMs;
+  const url = new URL(`/v2/aggs/ticker/${encodeURIComponent(symbol)}/range/${spec.multiplier}/${spec.timespan}/${from}/${to}`, MASSIVE_BASE_URL);
+  url.searchParams.set('adjusted', 'true');
+  url.searchParams.set('sort', 'asc');
+  url.searchParams.set('limit', '5000');
+  const upstream = await fetch(url, {
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(7_000)
+  });
+  if (!upstream.ok) throw new Error(`academy_market_${upstream.status}`);
+  const source = await upstream.json();
+  return Array.isArray(source?.results) ? source.results.map((bar) => ({
+    t: Number(bar?.t), o: Number(bar?.o), h: Number(bar?.h), l: Number(bar?.l), c: Number(bar?.c), v: Number(bar?.v)
+  })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
+}
 let redditHubCache = { expiresAt: 0, payload: null };
 const academyMarketCache = new Map();
 const academyMarketInflight = new Map();
@@ -281,30 +318,23 @@ function sendJson(response, status, body) {
    the public SML feed in the browser would therefore fail the browser's CORS
    check. This narrow same-origin relay exposes only validated 5-minute candle
    data, has no credentials, and absorbs repeat opens with a short cache. */
-async function getAcademyCandles(symbol, timeframe = '5m') {
+async function getAcademyCandles(symbol, timeframe = '5m', apiKey = '') {
   const safeSymbol = String(symbol || '').toUpperCase();
   if (!/^[A-Z0-9.:-]{1,10}$/.test(safeSymbol)) throw new TypeError('invalid_symbol');
   const safeTimeframe = String(timeframe || '5m');
-  if (!/^(1m|3m|5m|10m|15m|30m|1h|2h|4h|1D|1W)$/.test(safeTimeframe)) throw new TypeError('invalid_timeframe');
+  if (!ACADEMY_TIMEFRAME_MAP[safeTimeframe]) throw new TypeError('invalid_timeframe');
   const cacheKey = `${safeSymbol}:${safeTimeframe}`;
   const cached = academyMarketCache.get(cacheKey);
   if (cached && cached.freshUntil > Date.now()) return cached.payload;
   if (academyMarketInflight.has(cacheKey)) return academyMarketInflight.get(cacheKey);
   const request = (async () => {
     try {
-      const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=${encodeURIComponent(safeTimeframe)}`, {
-        headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
-        signal: AbortSignal.timeout(7_000)
-      });
-      if (!upstream.ok) throw new Error(`academy_market_${upstream.status}`);
-      const source = await upstream.json();
+      if (!apiKey) throw new Error('academy_market_no_api_key');
       /* The Activity draws at most 250 candles. Retaining a modest scrolling
        * window avoids parsing and serialising an unnecessarily large response. */
-      const bars = Array.isArray(source?.bars) ? source.bars.slice(-600).map((bar) => ({
-        t: Number(bar?.t), o: Number(bar?.o), h: Number(bar?.h), l: Number(bar?.l), c: Number(bar?.c), v: Number(bar?.v)
-      })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
+      const bars = (await fetchMassiveCandles(safeSymbol, safeTimeframe, apiKey)).slice(-600);
       if (!bars.length) throw new Error('academy_market_empty');
-      const payload = { symbol: safeSymbol, tf: safeTimeframe, bars, asOf: Number(source?.asOf) || Date.now() };
+      const payload = { symbol: safeSymbol, tf: safeTimeframe, bars, asOf: Date.now() };
       academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 28_000, staleUntil: Date.now() + 300_000, payload });
       return payload;
     } catch (error) {
@@ -729,6 +759,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyAppId = '',
+  massiveApiKey = '',
   logger = log, now = Date.now }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -878,7 +909,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = params.get('symbol') || 'SPY';
       const timeframe = params.get('tf') || '5m';
-      const [market, scanner, depth] = await Promise.allSettled([getAcademyCandles(symbol, timeframe), getAcademyScanner(), getAcademyDepth(symbol)]);
+      const [market, scanner, depth] = await Promise.allSettled([getAcademyCandles(symbol, timeframe, massiveApiKey), getAcademyScanner(), getAcademyDepth(symbol)]);
       if (market.status !== 'fulfilled') logger('warn', 'academy_activity_initial_market_failed', { error: market.reason });
       if (scanner.status !== 'fulfilled') logger('warn', 'academy_activity_scanner_failed', { error: scanner.reason });
       if (depth.status !== 'fulfilled') logger('warn', 'academy_activity_depth_failed', { error: depth.reason });
@@ -894,7 +925,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = params.get('symbol');
       const timeframe = params.get('tf') || '5m';
       try {
-        sendJson(response, 200, await getAcademyCandles(symbol, timeframe));
+        sendJson(response, 200, await getAcademyCandles(symbol, timeframe, massiveApiKey));
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_market_request_failed', { error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
@@ -1075,7 +1106,8 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyAppId: config.academyAppId
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyAppId: config.academyAppId,
+    massiveApiKey: config.massiveApiKey
   });
   let shuttingDown = false;
 
@@ -1113,5 +1145,6 @@ module.exports = {
   handleDisputeRequest,
   handleConnectRequest,
   handleCorporateRequest,
-  DISPUTE_ACTIONS
+  DISPUTE_ACTIONS,
+  getAcademyCandles
 };

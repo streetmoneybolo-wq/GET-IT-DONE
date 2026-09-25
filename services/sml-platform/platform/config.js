@@ -106,6 +106,11 @@ function getConfig(env = process.env) {
     academyMonarchRoleId: String(env.SML_ACADEMY_MONARCH_ROLE_ID || '1260433215189946420').trim(),
     academyBridgeUrl: String(env.SML_ACADEMY_BRIDGE_URL || '').trim(),
     academyBridgeSecret: String(env.SML_ACADEMY_BRIDGE_SECRET || '').trim(),
+    // Massive market-data API. The Academy Activity's live chart calls Massive
+    // directly for streaming-speed candles instead of round-tripping through
+    // WordPress; other services already use the same key (see
+    // services/daily-social-payouts/utils/massiveClient.js).
+    massiveApiKey: String(env.MASSIVE_API_KEY || '').trim(),
     discordClientId: String(env.DISCORD_CLIENT_ID || '').trim(),
     discordClientSecret: String(env.DISCORD_CLIENT_SECRET || '').trim(),
     discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim()
