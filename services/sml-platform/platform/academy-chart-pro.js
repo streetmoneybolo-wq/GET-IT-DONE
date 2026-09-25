@@ -47,7 +47,7 @@
     emit();
   }
 
-  const V = { live: null, n: defaultN(), end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
+  const V = { volPane: true, live: null, n: defaultN(), end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
 
   /* ---------- view model ---------- */
   let cache = null, cacheKey = '';
@@ -71,7 +71,7 @@
     if (V.end != null) V.end = end;
     const start = end - n;
     const last = bars[N - 1];
-    const ck = [N, last && last.t, last && last.c, last && last.h, last && last.l, n, end, w, h, V.manual ? V.manual.lo + ':' + V.manual.hi : 'a'].join('|');
+    const ck = [N, last && last.t, last && last.c, last && last.h, last && last.l, n, end, w, h, V.manual ? V.manual.lo + ':' + V.manual.hi : 'a', V.volPane !== false ? 'v' : 'n'].join('|');
     if (cache && ck === cacheKey) return cache;
     const view = bars.slice(Math.max(0, start), Math.min(N, end));
     let lo = Infinity, hi = -Infinity;
@@ -80,6 +80,7 @@
     if (hi === lo) { hi += 1; lo -= 1; }
     const autoLo = lo, autoHi = hi, mg = (hi - lo) * 0.06;
     lo -= mg; hi += mg;
+    if (!V.manual && V.volPane !== false) lo -= (hi - lo) * 0.13; // keep the candles clear of the volume bars along the bottom
     if (V.manual) { lo = V.manual.lo; hi = V.manual.hi; }
     const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b, step = pw / n, dt = dtOf(bars);
     const m = {
@@ -436,13 +437,29 @@
   }
 
   function drawAxisTags(m) {
-    // time axis
-    lctx.save(); lctx.font = '10px ui-monospace,monospace'; lctx.textAlign = 'center'; lctx.fillStyle = '#78919d';
-    const minGap = 78; let lastX = -1e9, lastLabel = '';
-    for (let i = Math.max(0, m.start); i < Math.min(m.N, m.end); i++) {
-      const x = m.x(i); if (x - lastX < minGap || x < PAD.l + 20 || x > m.w - PAD.r - 20) continue;
-      const lab = timeLabel(m.bars[i].t, m.tf); if (lab === lastLabel) continue;
-      lctx.fillText(lab, x, m.h - 9); lctx.strokeStyle = 'rgba(116,153,170,.5)'; lctx.beginPath(); lctx.moveTo(x, m.h - PAD.b); lctx.lineTo(x, m.h - PAD.b + 3); lctx.stroke(); lastX = x; lastLabel = lab;
+    // time axis: a bold date where the day changes, round clock times in between, never two labels closer than minGap
+    lctx.save(); lctx.textAlign = 'center';
+    const intraday = m.dt < 72e6, minGap = 74, placed = [];
+    const pxPerMin = m.step / Math.max(1, m.dt / 60000), wantMin = minGap / pxPerMin, niceMin = [1, 2, 5, 10, 15, 30, 60, 120, 240, 360, 720].find((v) => v >= wantMin) || 720;
+    const dayOfT = (t) => new Date(t).toDateString();
+    const fits = (x) => placed.every((p) => Math.abs(p - x) >= minGap);
+    const first = Math.max(0, m.start), last = Math.min(m.N, m.end);
+    if (intraday) {
+      for (let i = Math.max(1, first); i < last; i++) {
+        if (dayOfT(m.bars[i].t) === dayOfT(m.bars[i - 1].t)) continue;
+        const x = m.x(i) - m.step / 2; if (x < PAD.l + 24 || x > m.w - PAD.r - 24 || !fits(x)) continue;
+        lctx.font = '800 10px ui-monospace,monospace'; lctx.fillStyle = '#dbe6ec'; lctx.fillText(new Date(m.bars[i].t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), x, m.h - 9);
+        lctx.strokeStyle = 'rgba(190,215,228,.6)'; lctx.beginPath(); lctx.moveTo(x, m.h - PAD.b); lctx.lineTo(x, m.h - PAD.b + 4); lctx.stroke(); placed.push(x);
+      }
+    }
+    lctx.font = '10px ui-monospace,monospace'; lctx.fillStyle = '#78919d';
+    let lastLabel = '';
+    for (let i = first; i < last; i++) {
+      const x = m.x(i); if (x < PAD.l + 20 || x > m.w - PAD.r - 20 || !fits(x)) continue;
+      const t = m.bars[i].t, d = new Date(t);
+      if (intraday && (d.getHours() * 60 + d.getMinutes()) % niceMin !== 0) continue;
+      const lab = timeLabel(t, m.tf); if (lab === lastLabel) continue;
+      lctx.fillText(lab, x, m.h - 9); lctx.strokeStyle = 'rgba(116,153,170,.5)'; lctx.beginPath(); lctx.moveTo(x, m.h - PAD.b); lctx.lineTo(x, m.h - PAD.b + 3); lctx.stroke(); placed.push(x); lastLabel = lab;
     }
     lctx.restore();
     // last price tag
@@ -451,6 +468,7 @@
       if (y > PAD.t - 6 && y < m.h - PAD.b + 6) {
         lctx.save(); lctx.strokeStyle = c; lctx.globalAlpha = 0.55; lctx.setLineDash([3, 4]); lctx.beginPath(); lctx.moveTo(PAD.l, y); lctx.lineTo(m.w - PAD.r, y); lctx.stroke(); lctx.restore();
         tag(m.w - PAD.r + 1, y, fmt(+lb.c), c, '#04140e');
+        const ms = TF_MS[m.tf]; if (ms && !document.hidden) { const left = lb.t + ms - Date.now(); if (left > 0 && left <= ms) { const s2 = Math.floor(left / 1000), txt = (s2 >= 3600 ? Math.floor(s2 / 3600) + ':' : '') + String(Math.floor(s2 % 3600 / 60)).padStart(2, '0') + ':' + String(s2 % 60).padStart(2, '0'); tag(m.w - PAD.r + 1, y + 17, txt, '#17303c', '#9fb4c0'); } }
       }
     }
     if (V.manual) { lctx.save(); lctx.font = '800 9px ui-monospace,monospace'; lctx.fillStyle = '#ffd166'; lctx.textAlign = 'right'; lctx.fillText('MANUAL SCALE · dbl-click axis for auto', m.w - PAD.r - 6, PAD.t + 10); lctx.restore(); }
@@ -587,6 +605,7 @@
   let mtTries = 0; const mt = setInterval(() => { if (mountToolbar() || ++mtTries > 40) clearInterval(mt); }, 250);
   new ResizeObserver(() => emit()).observe(stage);
   window.addEventListener('resize', emit);
+  setInterval(() => { if (!document.hidden && !D) emitLight(); }, 1000); // the bar-close countdown under the last price
   window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); } };
   emit();
 })(0);

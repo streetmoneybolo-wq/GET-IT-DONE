@@ -122,7 +122,7 @@
     es.addEventListener('snapshot', (e) => { try { const d = JSON.parse(e.data); sse.okAt = Date.now(); if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });
     es.addEventListener('trade', (e) => { try { onTrade(JSON.parse(e.data)); } catch (_) { /* ignore */ } });
     es.addEventListener('quote', (e) => { try { const q = JSON.parse(e.data); sse.okAt = Date.now(); st.rt = { bid: q.bid, ask: q.ask, bs: q.bs, as: q.as, t: q.t, fresh: true }; if (!window.smlChartGesture) schedulePaint(); } catch (_) { /* ignore */ } });
-    es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.retryAt = Date.now() + 30000; } };
+    es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.retryAt = Date.now() + 300000; } };
   }
   (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? 2500 : 700; once().finally(() => setTimeout(loop, wait)); })();
 })();
