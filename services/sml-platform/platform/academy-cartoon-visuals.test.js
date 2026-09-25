@@ -340,3 +340,13 @@ test('every lesson board keeps every label readable on a 270px deck', () => {
   assert.match(problems, /"Parking and sales" drops to 10/);
   assert.match(problems, /number line labels .* overlap/);
 });
+
+test('boards carry Making Easy Money Academy branding and draw no skin-toned people', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-cartoon-visuals.js'), 'utf8');
+  assert.match(src, /MAKING EASY MONEY/);
+  assert.doesNotMatch(src, /SKIN\b/, 'no skin-tone colour is defined or used');
+  assert.doesNotMatch(src, /#f3d2b3|#e9c39d|#fde4cc/i, 'no skin-tone hex values');
+  const board = loadRuntime().api.build(require('./academy/curriculum').SEED_LESSONS.find((l) => l.moduleId === 0 && l.lessonId === 13).example);
+  assert.match(board.markup, /MAKING EASY MONEY/);
+  assert.match(board.markup, /Making Easy Money Academy whiteboard/);
+});

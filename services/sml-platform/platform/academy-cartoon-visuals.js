@@ -59,7 +59,8 @@ function whiteboardRuntime(win, doc) {
   const TINTS = { good: '#d8f1e2', bad: '#f9dcdd', key: '#dce5fa', note: '#e8eaeb' };
   const FONT = "'Segoe Print','Ink Free','Marker Felt','Chalkboard SE','Comic Sans MS',system-ui,sans-serif";
   const INTRO = 'Here is the simple version.';
-  const SKIN = '#fde4cc';
+  /* Making Easy Money Academy palette: neon green, gold, black and white. The characters are branded arrow mascots, never drawn people. */
+  const BRAND = { green: '#19e36b', greenDark: '#0a9a45', gold: '#ffd84d', black: '#0b0f12', white: '#ffffff' };
   const WATCHDOG_MS = 4000;
 
   const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -238,21 +239,18 @@ function whiteboardRuntime(win, doc) {
     return P.fill(P.curve(pts, false) + 'Z', color) + P.stroke(P.curve(pts.map((p) => [p[0] + P.j(0.6), p[1] + P.j(0.6)]), false), INK, 2.2);
   };
   const head = (P, cx, cy, rx, ry, color) => P.fill(P.oval(cx, cy, rx, ry, 0.02, false), color) + P.twice(() => P.oval(cx, cy, rx, ry, 0.04, true), INK, 2.1);
+  /* The Making Easy Money "Arrow" mascot: the up-arrow from the brand mark with a friendly face, in green (or gold for the second character). */
+  const arrowHead = (P, cx, cy, s, color) => {
+    const pts = [[cx, cy - 17 * s], [cx + 13 * s, cy + 1 * s], [cx + 5.2 * s, cy + 1 * s], [cx + 5.2 * s, cy + 14 * s], [cx - 5.2 * s, cy + 14 * s], [cx - 5.2 * s, cy + 1 * s], [cx - 13 * s, cy + 1 * s]];
+    return P.fill(P.shape(pts), color) + P.twice(() => P.poly(pts, true, 0.35), INK, 2.1)
+      + P.stroke(P.seg(cx - 1.4 * s, cy - 11 * s, cx - 8 * s, cy - 0.4 * s, 0.2), BRAND.white, 1.8 * s, ' opacity=".85"');
+  };
+  const arrowFace = (P, cx, cy, s) => P.dot(cx - 2.5 * s, cy + 6.2 * s, 1.35 * s, INK) + P.dot(cx + 2.5 * s, cy + 6.2 * s, 1.35 * s, INK)
+    + P.stroke('M' + r1(cx - 2.6 * s) + ' ' + r1(cy + 9.4 * s) + 'Q' + r1(cx) + ' ' + r1(cy + 12.2 * s) + ' ' + r1(cx + 2.6 * s) + ' ' + r1(cy + 9.4 * s), INK, 1.4 * s);
   const person = (P, x, y, shirt, variant) => {
     const cx = x + 30;
-    const cy = y + 20;
-    let out = torso(P, x, y, shirt);
-    if (variant === 2) {
-      out += P.dot(cx + 2, cy - 15.5, 4.6, '#7a4a2b');
-      out += head(P, cx, cy, 12.5, 13.2, SKIN);
-      out += P.fill(P.curve([[cx - 13.6, cy + 7], [cx - 14.6, cy - 5], [cx - 8, cy - 14], [cx + 3, cy - 15.4], [cx + 12.6, cy - 9], [cx + 14.6, cy + 1], [cx + 13.6, cy + 8],
-        [cx + 10.2, cy + 0.5], [cx + 7, cy - 6.5], [cx - 2, cy - 7.2], [cx - 9, cy - 4], [cx - 10.6, cy + 3]], true), '#7a4a2b');
-    } else {
-      out += head(P, cx, cy, 12.5, 13.2, SKIN);
-      out += P.fill(P.curve([[cx - 12.6, cy - 2], [cx - 11, cy - 10.5], [cx - 3, cy - 14.6], [cx + 7, cy - 13.6], [cx + 12.6, cy - 5], [cx + 6, cy - 8.6],
-        [cx - 1, cy - 7.6], [cx - 7, cy - 5.4]], true), INK);
-    }
-    return out + face(P, cx, cy + 1);
+    const cy = y + 21;
+    return torso(P, x, y, shirt) + arrowHead(P, cx, cy, 1, variant === 2 ? BRAND.gold : BRAND.green) + arrowFace(P, cx, cy, 1);
   };
   const company = (P, x, y) => {
     let out = P.fill(P.rect(x + 13, y + 11, 34, 47), '#e2eaf3') + P.twice(() => P.box(x + 13, y + 11, 34, 47, 0.9), INK, 2.2);
@@ -311,20 +309,17 @@ function whiteboardRuntime(win, doc) {
       return P.fill(P.curve(pts, false) + 'Z', color) + P.stroke(P.curve(pts, false), INK, 1.9);
     };
     const eyes = (cx, cy) => P.dot(cx - 3, cy, 1.3, INK) + P.dot(cx + 3, cy, 1.3, INK);
-    return body(x + 15, y + 30, 11, '#a9c0d6') + head(P, x + 15, y + 20, 8, 8.4, '#f3d2b3') + eyes(x + 15, y + 20)
-      + body(x + 45, y + 30, 11, '#b7d3bd') + head(P, x + 45, y + 20, 8, 8.4, '#e9c39d') + eyes(x + 45, y + 20)
-      + body(x + 30, y + 40, 14, '#e9a35a') + head(P, x + 30, y + 28, 10, 10.5, SKIN) + face(P, x + 30, y + 29);
+    return body(x + 15, y + 30, 11, '#a9c0d6') + arrowHead(P, x + 15, y + 22, 0.6, BRAND.green) + arrowFace(P, x + 15, y + 22, 0.6)
+      + body(x + 45, y + 30, 11, '#b7d3bd') + arrowHead(P, x + 45, y + 22, 0.6, BRAND.gold) + arrowFace(P, x + 45, y + 22, 0.6)
+      + body(x + 30, y + 40, 14, '#e9a35a') + arrowHead(P, x + 30, y + 31, 0.75, BRAND.green) + arrowFace(P, x + 30, y + 31, 0.75);
   };
   const judge = (P, x, y) => {
     const cx = x + 28;
-    const cy = y + 20;
+    const cy = y + 21;
     let out = torso(P, x - 2, y, '#2f3b48') + P.fill(P.shape([[cx - 4.5, y + 37], [cx, y + 44], [cx + 4.5, y + 37]]), '#ffffff');
-    [[-12, -3], [-13, 4], [-12, 11], [12, -3], [13, 4], [12, 11]].forEach((o) => {
-      out += P.fill(P.oval(cx + o[0], cy + o[1], 3.8, 3.8, 0.03, false), '#f5f4ee') + P.stroke(P.oval(cx + o[0], cy + o[1], 3.8, 3.8, 0.05, false), INK, 1.1);
-    });
-    out += head(P, cx, cy, 11, 12, SKIN);
-    const wig = [[cx - 11.5, cy - 2], [cx - 8, cy - 11], [cx, cy - 14.5], [cx + 8, cy - 11], [cx + 11.5, cy - 2], [cx, cy - 7.5]];
-    out += P.fill(P.curve(wig, true), '#f5f4ee') + P.stroke(P.curve(wig, true), INK, 1.2) + face(P, cx, cy + 1.5);
+    out += arrowHead(P, cx, cy, 0.95, BRAND.green) + arrowFace(P, cx, cy, 0.95);
+    const cap = [[cx - 12, cy - 12], [cx, cy - 18], [cx + 12, cy - 12], [cx, cy - 6.5]];
+    out += P.fill(P.shape(cap), BRAND.black) + P.stroke(P.poly(cap, true, 0.3), INK, 1.4) + P.stroke(P.seg(cx + 12, cy - 12, cx + 14.5, cy - 4, 0.2), BRAND.gold, 1.6);
     const mallet = [[x + 47.5, y + 38.5], [x + 53.5, y + 32.5], [x + 59, y + 38], [x + 53, y + 44]];
     return out + P.stroke(P.seg(x + 44, y + 56, x + 54.5, y + 42, 0.3), '#8a5a33', 2.8) + P.fill(P.shape(mallet), '#8a5a33') + P.stroke(P.poly(mallet, true, 0.3), INK, 1.4);
   };
@@ -352,6 +347,15 @@ function whiteboardRuntime(win, doc) {
   const icon = (P, id, x, y, who) => {
     const draw = ICONS[id] || ICONS.person;
     return draw(P, x, y, who && TONES[who.tone] ? TONES[who.tone] : null);
+  };
+
+  /* Footer strip on every board: the brand arrow and the academy name. */
+  const BRAND_FOOT = 12;
+  const brandFooter = (height) => {
+    const y = height - BRAND_FOOT + 1;
+    const arrow = 'M' + 17 + ' ' + (y + 1) + 'L' + 22 + ' ' + (y + 6.5) + 'L' + 19.2 + ' ' + (y + 6.5) + 'L' + 19.2 + ' ' + (y + 10) + 'L' + 14.8 + ' ' + (y + 10) + 'L' + 14.8 + ' ' + (y + 6.5) + 'L' + 12 + ' ' + (y + 6.5) + 'Z';
+    return '<path d="M12 ' + (y - 2) + 'H348" stroke="#dfd6c0" stroke-width="1"/><path d="' + arrow + '" fill="' + BRAND.green + '" stroke="' + INK + '" stroke-width="1.2" stroke-linejoin="round"/>'
+      + '<text x="29" y="' + (y + 9.6) + '" font-size="11" letter-spacing="0.6" fill="' + INK + '" font-family="system-ui,sans-serif" font-weight="800">MAKING EASY MONEY <tspan fill="' + BRAND.greenDark + '">ACADEMY</tspan></text>';
   };
 
   /* ---------- Item kinds: each returns { h, svg } for a slot at y ---------- */
@@ -658,22 +662,23 @@ function whiteboardRuntime(win, doc) {
       bottom = Math.max(bottom, y);
       groups.push({ at: frameAt, frame: index, svg: content }, ...own);
     });
-    const height = Math.ceil(bottom + 8);
+    const height = Math.ceil(bottom + 8) + BRAND_FOOT;
     const limit = revealUpTo == null ? Infinity : revealUpTo;
     let current = -1;
     if (paged) frameAts.forEach((frameAt, index) => { if (frameAt <= limit) current = index; });
     const visible = (group) => group.at <= limit && (!paged || group.frame === current);
     let paper = '<rect x="1" y="1" width="358" height="' + (height - 2) + '" rx="14" fill="#fbf7ee" stroke="#e0d5bf" stroke-width="1.5"/>';
     for (let ly = 58; ly < height - 10; ly += 24) paper += '<path d="M14 ' + ly + 'H346" stroke="#ece4d1" stroke-width="1"/>';
-    paper += '<path d="M152 1 L210 3.6 L208.6 14.4 L150.8 11.8 Z" fill="#f1e2a4" opacity=".75"/>';
+    paper += '<path d="M152 1 L210 3.6 L208.6 14.4 L150.8 11.8 Z" fill="#bff5d3" opacity=".85"/>';
+    paper += brandFooter(height);
     let titleSize = 19;
     const titleRaw = measure(title, titleSize);
     if (titleRaw > INNER - 10) titleSize = Math.max(12, titleSize * (INNER - 10) / titleRaw);
     const titleW = Math.min(INNER - 10, measure(title, titleSize));
-    const heading = P.stroke(P.seg(PAD + 3, 29, PAD + 9 + titleW, 28, 0.8), '#ffd84d', 12, ' opacity=".55"')
+    const heading = P.stroke(P.seg(PAD + 3, 29, PAD + 9 + titleW, 28, 0.8), BRAND.green, 12, ' opacity=".4"')
       + label(PAD + 6, 34, title, { size: titleSize, max: INNER - 10 })
       + P.stroke(P.seg(PAD + 4, 42, PAD + 10 + titleW, 41, 1), INK, 2);
-    const markup = '<svg class="wb-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + height + '" role="img" aria-label="' + esc('Whiteboard: ' + title)
+    const markup = '<svg class="wb-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + height + '" role="img" aria-label="' + esc('Making Easy Money Academy whiteboard: ' + title)
       + '" font-family="' + esc(FONT) + '" font-weight="700"><title>' + esc(title) + '</title>' + paper + heading
       + groups.map((group) => '<g class="wb-r' + (visible(group) ? ' wb-on' : '') + '" data-at="' + group.at + '" data-frame="' + group.frame + '">' + (group.svg || '') + '</g>').join('')
       + '</svg>';
