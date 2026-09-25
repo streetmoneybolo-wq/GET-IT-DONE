@@ -76,3 +76,23 @@ function sml_cdn_pin_asset_url( $src, $handle ) {
 }
 add_filter( 'script_loader_src', 'sml_cdn_pin_asset_url', PHP_INT_MAX, 2 );
 add_filter( 'style_loader_src', 'sml_cdn_pin_asset_url', PHP_INT_MAX, 2 );
+
+/* WPCode keeps an independently compiled copy of loader snippets. If that copy
+ * was compiled with an older ref, normalize only the two terminal asset URLs in
+ * the completed document. Starting this buffer first makes it the outermost
+ * guard, after every later snippet buffer has finished. */
+add_action( 'template_redirect', function () {
+	if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+		return;
+	}
+	ob_start( function ( $html ) {
+		if ( ! is_string( $html ) || false === strpos( $html, 'GET-IT-DONE@' ) ) {
+			return $html;
+		}
+		return preg_replace(
+			'#(streetmoneybolo-wq/GET-IT-DONE@)[0-9a-z._-]+/(css/terminal-v2\.css|js/terminal-shell\.js)#i',
+			'$1' . SML_CDN_ASSET_REVISION . '/$2',
+			$html
+		);
+	} );
+}, -PHP_INT_MAX );
