@@ -64,6 +64,7 @@
     leaves(strip).forEach(function (e) { var t = (e.textContent || '').trim(); if (/^[0-9]{1,5}\.[0-9]{2}$/.test(t)) { var fs = parseFloat(getComputedStyle(e).fontSize) || 0; if (fs > bigSize) { bigSize = fs; big = e; } } });
     slots.last = big;
     slots.change = findLeaf(strip, /^[+−-][0-9.,]+ \([+−-]?[0-9.,]+%\)$/);
+    slots.time = findLeaf(strip, /[A-Z][a-z]{2} \d{1,2}, \d{4}.*\bET\b/);
     // rail "Quotes" card
     grab(rail, /^High$/, 'qHigh'); grab(rail, /^Low$/, 'qLow'); grab(rail, /^Open$/, 'qOpen');
     grab(rail, /^Volume$/i, 'qVolume'); grab(rail, /^Prev\.? ?close$/i, 'qPrev'); grab(rail, /^Last$/i, 'qLast');
@@ -83,8 +84,20 @@
     });
 
     // ---- live quote: one poller, stale-aware, never fabricates ----
-    function apply(q) {
+    var fullQuote = null, lastFullAt = 0;
+    function mergeQuote(previous, patch) {
+      var merged = {}, key;
+      previous = previous || {};
+      patch = patch || {};
+      for (key in previous) if (Object.prototype.hasOwnProperty.call(previous, key)) merged[key] = previous[key];
+      for (key in patch) if (Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== undefined && patch[key] !== null) merged[key] = patch[key];
+      return merged;
+    }
+    function apply(q, complete) {
       if (!q || q.symbol !== SYM) return;
+      fullQuote = mergeQuote(fullQuote, q);
+      q = fullQuote;
+      if (complete) lastFullAt = Date.now();
       setTxt(slots.last, f2(q.current));
       if (slots.change) {
         var up = (q.change || 0) >= 0;
@@ -100,12 +113,16 @@
       setTxt(slots.qHigh, f2(q.high)); setTxt(slots.qLow, f2(q.low)); setTxt(slots.qOpen, f2(q.open));
       setTxt(slots.qVolume, fmtM(q.volume)); setTxt(slots.qPrev, f2(q.previousClose)); setTxt(slots.qLast, f2(q.current));
       setTxt(slots.qVwap, f2(q.vwap)); setTxt(slots.qBid, f2(q.bid)); setTxt(slots.qAsk, f2(q.ask));
+      if (slots.time && q.timestamp) {
+        var stamp = Number(q.timestamp); if (stamp > 0 && stamp < 1e12) stamp *= 1000;
+        if (stamp > 0) setTxt(slots.time, new Date(stamp).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET');
+      }
     }
     function poll() {
-      if (window.SMLMarketRelay && window.SMLMarketRelay.isLive(SYM)) return;
+      if (window.SMLMarketRelay && window.SMLMarketRelay.isLive(SYM) && Date.now() - lastFullAt < 60000) return;
       fetch('/wp-json/sml/v1/quote?symbol=' + SYM, { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
-        .then(function (q) { apply(q); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: q })); } catch (e) {} })   /* ONE poller: the native chart listens */
+        .then(function (q) { apply(q, true); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: q })); } catch (e) {} })   /* ONE poller: the native chart listens */
         .catch(function () {});
     }
     poll(); setInterval(poll, 8000);
