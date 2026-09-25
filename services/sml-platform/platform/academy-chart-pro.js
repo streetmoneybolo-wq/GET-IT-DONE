@@ -220,6 +220,29 @@
   /* ---------- pointer mechanics ---------- */
   const pointers = new Map();
   let D = null; // active drag
+  /* While a finger is on the chart (and while a flick is coasting) nothing else on the page should repaint: the live feed, the options calculator and friends wait. */
+  window.smlChartGesture = false;
+  let inertiaRaf = 0, gestureTimer = 0;
+  const stopInertia = () => { if (inertiaRaf) { cancelAnimationFrame(inertiaRaf); inertiaRaf = 0; } };
+  const gesture = (on) => { clearTimeout(gestureTimer); if (on) window.smlChartGesture = true; else gestureTimer = setTimeout(() => { window.smlChartGesture = false; }, 120); };
+  /* A flick keeps the chart gliding and slows it down smoothly, like a phone chart app: velocity comes from the last ~100 ms of the drag. */
+  function startInertia(vpx, step) {
+    stopInertia();
+    let v = -vpx / step, last = performance.now(); // bars per ms (dragging right shows older candles, so the right edge index falls)
+    if (Math.abs(vpx) < 0.25) return;
+    window.smlChartGesture = true;
+    const tick = (now) => {
+      const dt = Math.min(48, now - last); last = now;
+      const m0 = model(); if (!m0) { inertiaRaf = 0; gesture(false); return; }
+      const before = V.end == null ? m0.end : V.end;
+      V.end = before + v * dt; emit();
+      v *= Math.pow(0.9, dt / 16); // about 10% slower every frame
+      const m1 = model();
+      if (Math.abs(v * step) < 0.03 || (m1 && (m1.end <= m1.slots || m1.end >= m1.N + Math.floor(m1.slots * 0.9)) && Math.abs((V.end || 0) - before) < 0.01)) { inertiaRaf = 0; gesture(false); return; }
+      inertiaRaf = requestAnimationFrame(tick);
+    };
+    inertiaRaf = requestAnimationFrame(tick);
+  }
   const rel = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   function zoneAt(m, x, y) { if (x > m.w - PAD.r) return 'yaxis'; if (y > m.h - PAD.b) return 'xaxis'; return 'plot'; }
   const uiTarget = (e) => e.target && e.target.closest && e.target.closest('.academy-pro-panel,.academy-pro-palette,.academy-interval-stats,#mem-algo-panel,button,input,select,textarea,a');
@@ -233,6 +256,7 @@
     stage.focus({ preventScroll: true });
     if (V.tool === 'range' && zone === 'plot') return; // interval stats keep their own drag
     e.preventDefault(); e.stopPropagation();
+    stopInertia(); gesture(true);
     perfStart();
     try { stage.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     if (pointers.size === 2) { const [a, b] = [...pointers.values()]; D = { mode: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, n0: m.slots, cx: (a.x + b.x) / 2, end0: m.end, m0: m }; return; }
@@ -252,7 +276,7 @@
     const h = hit(m, x, y);
     if (h) { V.selected = h.id; snapshot(); D = { mode: 'move', id: h.id, last: pointAt(m, x, y, false), moved: false }; emit(); return; }
     if (V.selected) { V.selected = null; emit(); }
-    D = { mode: 'pan', x0: x, y0: y, end0: m.end, lo0: m.lo, hi0: m.hi, step: m.step, ph: m.ph };
+    D = { mode: 'pan', x0: x, y0: y, end0: m.end, lo0: m.lo, hi0: m.hi, step: m.step, ph: m.ph, samples: [{ t: performance.now(), x }] };
   }, true);
 
   stage.addEventListener('pointermove', (e) => {
@@ -262,7 +286,7 @@
     if (!D) { V.crosshair = { x, y }; setCursor(m, x, y, e); emitLight(); return; }
     V.crosshair = { x, y };
     if (D.mode === 'pinch') { if (pointers.size >= 2) { const [a, b] = [...pointers.values()]; const f = D.d0 / (Math.hypot(a.x - b.x, a.y - b.y) || 1), nNew = clamp(Math.round(D.n0 * f), Math.min(MIN_N, m.N), m.N), c = D.m0.idxAt(D.cx), relp = (c - D.m0.start) / D.m0.slots; setView(nNew, Math.round(c - relp * nNew + nNew)); } return; }
-    if (D.mode === 'pan') { const dx = x - D.x0; const end = D.end0 - dx / D.step; V.end = end; if (V.manual) { const dp = (y - D.y0) / D.ph * (D.hi0 - D.lo0); V.manual = { lo: D.lo0 + dp, hi: D.hi0 + dp }; } emit(); return; }
+    if (D.mode === 'pan') { const dx = x - D.x0; const end = D.end0 - dx / D.step; V.end = end; D.samples.push({ t: performance.now(), x }); if (D.samples.length > 8) D.samples.shift(); if (V.manual) { const dp = (y - D.y0) / D.ph * (D.hi0 - D.lo0); V.manual = { lo: D.lo0 + dp, hi: D.hi0 + dp }; } emit(); return; }
     if (D.mode === 'yscale') { const f = Math.exp((y - D.y0) / 220); const range = (D.hi0 - D.lo0) * f; if (range > 1e-6 && range < (D.hi0 - D.lo0) * 60) { V.manual = { lo: D.p0 - (D.p0 - D.lo0) * f, hi: D.p0 + (D.hi0 - D.p0) * f }; emit(); } return; }
     if (D.mode === 'xscale') { const nNew = clamp(Math.round(D.n0 * Math.exp(-(x - D.x0) / 220)), Math.min(MIN_N, m.N), m.N); setView(nNew, D.end0); return; }
     if (D.mode === 'draw' && V.draft) { V.draft.pts[1] = pointAt(m, x, y, true); if (Math.hypot(x - V.draft.x0, y - V.draft.y0) > 5) V.draft.moved = true; emit(); return; }
@@ -273,14 +297,17 @@
   function endDrag(e) {
     pointers.delete(e.pointerId);
     if (!pointers.size) perfEnd();
-    if (!D) return;
+    if (!D) { if (!pointers.size) gesture(false); return; }
     const mode = D.mode;
+    let flick = null;
+    if (mode === 'pan' && D.samples && D.samples.length > 1 && !pointers.size) { const now = performance.now(), recent = D.samples.filter((p) => now - p.t <= 110); if (recent.length > 1 && now - recent[recent.length - 1].t <= 70) { const a = recent[0], b = recent[recent.length - 1]; if (b.t > a.t) flick = { v: (b.x - a.x) / (b.t - a.t), step: D.step }; } }
     if (mode === 'draw' && V.draft) { if (V.draft.moved) commitDraft(); else V.draft.armed = true; }
     if ((mode === 'anchor' || mode === 'move')) { saveDrawings(); }
     if (mode === 'xscale' && Date.now() - D.clickAt < 250 && Math.abs((rel(e).x) - D.x0) < 3) resetView();
     if (mode === 'yscale' && Date.now() - D.clickAt < 250 && Math.abs((rel(e).y) - D.y0) < 3) { const now = Date.now(); if (V.lastAxisClick && now - V.lastAxisClick < 350) { V.manual = null; emit(); } V.lastAxisClick = now; }
     if (mode === 'pinch' && pointers.size) return;
     D = null;
+    if (flick) startInertia(flick.v, flick.step); else if (!pointers.size) gesture(false);
   }
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
@@ -301,7 +328,7 @@
     if (uiTarget(e)) return;
     const m = model(); if (!m) return;
     e.preventDefault();
-    if (!PERF.active) perfStart(); clearTimeout(PERF.wheelTimer); PERF.wheelTimer = setTimeout(perfEnd, 400);
+    if (!PERF.active) perfStart(); clearTimeout(PERF.wheelTimer); PERF.wheelTimer = setTimeout(() => { perfEnd(); gesture(false); }, 400); stopInertia(); gesture(true);
     const { x, y } = rel(e), zone = zoneAt(m, x, y);
     if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { const d = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) / m.step; setView(null, m.end + d); return; }
     const f = Math.exp(clamp(e.deltaY, -120, 120) * 0.0016);

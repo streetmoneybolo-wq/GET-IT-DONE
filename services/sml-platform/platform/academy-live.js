@@ -68,13 +68,20 @@
       const d = await res.json();
       if (!res.ok || !d || !d.ready || sym() !== symbol) { st.failures = d && d.ready === false ? 0 : st.failures + 1; return; }
       st.failures = 0; st.freshAt = Date.now(); st.lastBook = d;
+      if (window.smlChartGesture) { st.deferred = d; return; } // a finger is on the chart: keep the main thread free, apply this when it lifts
+      st.deferred = null;
+      apply(d);
+    } catch (_) { st.failures++; } finally { clearTimeout(timer); }
+  }
+  function apply(d) {
+    {
       let fresh = (d.tape || []).filter((t) => t.t > st.lastT).sort((a, b) => a.t - b.t);
       if (!st.lastT && fresh.length > 1) fresh = [Object.assign({}, fresh[fresh.length - 1], { size: 0 })]; // first look: take the price, don't replay history as volume
       if (window.smlChartPro && window.smlChartPro.liveTick) for (const t of fresh) window.smlChartPro.liveTick(t.price, t.size, t.t);
       if (fresh.length) st.lastT = fresh[fresh.length - 1].t;
       paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)));
       paintTape(d.tape || []); paintQuote(d);
-    } catch (_) { st.failures++; } finally { clearTimeout(timer); }
+    }
   }
-  (function loop() { const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : 700; once().finally(() => setTimeout(loop, wait)); })();
+  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : 700; once().finally(() => setTimeout(loop, wait)); })();
 })();

@@ -991,3 +991,12 @@ test('a lesson shows its written text once: no duplicate slide visual or filler 
   assert.match(html, /\.academy-live-deck:not\(:has\(\.wb-svg\)\) \.academy-slide-callout\{display:none\}/);
   assert.match(html, /body\.academy-lesson-open #mem-algo-panel/);
 });
+
+test('the chart glides after a flick and pauses other repaints while a finger is on it', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const pro = fs.readFileSync(path.join(__dirname, 'academy-chart-pro.js'), 'utf8');
+  assert.match(pro, /function startInertia/);
+  assert.match(pro, /window\.smlChartGesture = false/);
+  assert.match(fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8'), /if \(window\.smlChartGesture\) \{ st\.deferred = d; return; \}/);
+  assert.match(fs.readFileSync(path.join(__dirname, 'academy-options-dock.js'), 'utf8'), /if \(window\.smlChartGesture\) return;/);
+});

@@ -118,6 +118,6 @@
     if (!btn || !session || btn.disabled || sym === shownSymbol) return;
     shownSymbol = sym; btn.click();
   }
-  setInterval(() => { autoLoad(); seedFromLive(); if (!document.activeElement || !card.contains(document.activeElement)) render(); }, 1500);
+  setInterval(() => { if (window.smlChartGesture) return; autoLoad(); seedFromLive(); if (!document.activeElement || !card.contains(document.activeElement)) render(); }, 1500);
   seedFromLive(); render();
 })(0);
