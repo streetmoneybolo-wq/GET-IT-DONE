@@ -19,7 +19,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   const enabled = Boolean(apiKey && WebSocketImpl);
 
   const send = (obj) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch (_) { /* reconnect handles it */ } };
-  const entry = (sym) => { let e = symbols.get(sym); if (!e) { e = { tape: [], quote: null, last: null, lastAt: 0, wantedAt: now(), subscribed: false }; symbols.set(sym, e); } return e; };
+  const entry = (sym) => { let e = symbols.get(sym); if (!e) { e = { tape: [], quote: null, last: null, lastAt: 0, wantedAt: now(), subscribed: false, stats: newStats() }; symbols.set(sym, e); } return e; };
   const fire = (sym, evt) => { const set = listeners.get(sym); if (!set) return; for (const fn of set) { try { fn(evt); } catch (_) { /* a broken listener must not stop the feed */ } } };
 
   function subscribeAll() {
@@ -28,6 +28,26 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     if (!fresh.length) return;
     send({ action: 'subscribe', params: fresh.flatMap((s) => [`T.${s}`, `Q.${s}`]).join(',') });
     for (const s of fresh) symbols.get(s).subscribed = true;
+  }
+
+  /* Session tape statistics since the symbol was first watched: lift the offer / hit the bid / neutral split, VWAP, price-by-volume, off-exchange share and the biggest prints. */
+  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, pv: new Map(), big: [], times: [] }; }
+  const pvKey = (price) => { const step = price >= 100 ? 0.5 : price >= 20 ? 0.1 : price >= 5 ? 0.05 : 0.01; return (Math.round(price / step) * step).toFixed(step < 0.05 ? 2 : step < 0.5 ? 2 : 2); };
+  function record(e, trade, off) {
+    const st = e.stats; st.count += 1; st.vol += trade.size; st.notional += trade.size * trade.price;
+    if (trade.dir === 'B') { st.buy += trade.size; st.buyN += 1; } else if (trade.dir === 'S') { st.sell += trade.size; st.sellN += 1; } else { st.neu += trade.size; st.neuN += 1; }
+    if (off) { st.offVol += trade.size; st.offN += 1; trade.off = true; }
+    const k = pvKey(trade.price); st.pv.set(k, (st.pv.get(k) || 0) + trade.size);
+    if (st.pv.size > 400) { const small = [...st.pv.entries()].sort((a, b) => a[1] - b[1])[0]; st.pv.delete(small[0]); }
+    const notional = trade.size * trade.price;
+    if (trade.size >= 500 && notional >= 50_000) { st.big.push({ t: trade.t, price: trade.price, size: trade.size, dir: trade.dir, off: Boolean(off) }); st.big.sort((a, b) => b.size * b.price - a.size * a.price); if (st.big.length > 5) st.big.length = 5; }
+    st.times.push(trade.t); if (st.times.length > 600) st.times.shift();
+  }
+  function summarize(e) {
+    const st = e.stats; if (!st || !st.count) return null;
+    const t = now(); const rate60 = st.times.filter((x) => t - x < 60_000).length;
+    return { since: st.since, count: st.count, vol: st.vol, vwap: st.vol > 0 ? st.notional / st.vol : null, buy: st.buy, sell: st.sell, neu: st.neu, buyN: st.buyN, sellN: st.sellN, neuN: st.neuN, offVol: st.offVol, offN: st.offN, rate60,
+      pv: [...st.pv.entries()].map(([price, vol]) => ({ price: Number(price), vol })).sort((a, b) => b.vol - a.vol).slice(0, 8), big: st.big.slice() };
   }
 
   function classify(price, quote) {
@@ -59,6 +79,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
         const price = Number(m.p), size = Number(m.s) > 0 ? Number(m.s) : Number(m.ds) || 0; if (!(price > 0)) continue;
         const t = Number(m.t) || now();
         const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: classify(price, e.quote) };
+        record(e, trade, m.x === 4 || m.trfi != null);
         e.tape.push(trade); if (e.tape.length > TAPE_MAX) e.tape.shift();
         e.last = price; e.lastAt = t;
         fire(sym, { type: 'trade', trade });
@@ -118,7 +139,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     if (!e) return null;
     const qFresh = e.quote && now() - e.quote.t < maxAgeMs, tFresh = e.tape.length && now() - e.tape[e.tape.length - 1].t < 6 * 3600_000;
     if (!qFresh && !e.tape.length) return null;
-    return { symbol: sym, quote: e.quote, tape: e.tape.slice(-30).reverse(), last: tFresh ? e.last : (e.quote ? (e.quote.bid + e.quote.ask) / 2 : null), quoteFresh: Boolean(qFresh), lastTradeAt: e.lastAt };
+    return { symbol: sym, quote: e.quote, tape: e.tape.slice(-30).reverse(), last: tFresh ? e.last : (e.quote ? (e.quote.bid + e.quote.ask) / 2 : null), quoteFresh: Boolean(qFresh), lastTradeAt: e.lastAt, stats: summarize(e) };
   }
 
   function on(symbolRaw, fn) {

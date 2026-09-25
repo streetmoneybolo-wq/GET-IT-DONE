@@ -83,6 +83,8 @@
       if (d.rt) st.rt = d.rt;
       if (d.book && ((d.book.bids && d.book.bids.length) || (d.book.asks && d.book.asks.length))) paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)), !!d.topOnly);
       paintTape(d.tape || []); paintQuote(d);
+      window.smlLive = d; window.dispatchEvent(new Event('sml-live-data'));
+      window.smlLive = d; window.dispatchEvent(new Event('sml-live-data'));
     }
   }
   /* Push feed: every trade and quote as it happens (Server-Sent Events from the shared Massive connection). The polling above keeps running as the fallback and for the Level 2 ladder. */

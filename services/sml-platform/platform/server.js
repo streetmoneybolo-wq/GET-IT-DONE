@@ -546,9 +546,10 @@ const ACADEMY_MEM_ALGO = (() => {
     const liveFeed = fs.readFileSync(pathModule.join(__dirname, 'academy-live.js'), 'utf8');
     const optionsCalc = fs.readFileSync(pathModule.join(__dirname, 'academy-options-calc.js'), 'utf8');
     const optionsDock = fs.readFileSync(pathModule.join(__dirname, 'academy-options-dock.js'), 'utf8');
+    const depthTools = fs.readFileSync(pathModule.join(__dirname, 'academy-depth-tools.js'), 'utf8');
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
-    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
+    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
   } catch (_) { return ''; } // the chart must load even if the model files are missing
 })();
 
@@ -1182,7 +1183,7 @@ function mergeLive(base, massive, symbolRaw) {
   const ms = massive ? massive.peek(symbolRaw) : null;
   if (!ms) return base;
   const rt = ms.quote ? { bid: ms.quote.bid, ask: ms.quote.ask, bs: ms.quote.bs, as: ms.quote.as, t: ms.quote.t, fresh: ms.quoteFresh } : null;
-  const out = Object.assign({}, base, { source: 'massive', tape: ms.tape.length ? ms.tape : (base.tape || []), last: Number.isFinite(ms.last) ? ms.last : base.last, rt });
+  const out = Object.assign({}, base, { source: 'massive', stats: ms.stats || null, tape: ms.tape.length ? ms.tape : (base.tape || []), last: Number.isFinite(ms.last) ? ms.last : base.last, rt });
   if (!out.ready) { out.ready = true; out.symbol = String(symbolRaw).toUpperCase(); out.book = { bids: ms.quote ? [{ price: ms.quote.bid, size: ms.quote.bs }] : [], asks: ms.quote ? [{ price: ms.quote.ask, size: ms.quote.as }] : [] }; out.asOf = ms.quote ? ms.quote.t : Date.now(); out.topOnly = true; out.failing = false; }
   return out;
 }
