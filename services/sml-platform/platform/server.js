@@ -30,6 +30,7 @@ const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
+const { createMassiveStream } = require('./academy-massive-stream');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
@@ -1173,6 +1174,18 @@ async function handleNewsWebhook(request, response, options) {
   }
 }
 
+let streamClients = 0;
+/* Real-time trades and quotes from Massive replace the (minutes-old) tape and top of book whenever they are fresh; moomoo still supplies the deeper Level 2 ladder. */
+function mergeLive(base, massive, symbolRaw) {
+  if (massive) massive.watch(symbolRaw);
+  const ms = massive ? massive.peek(symbolRaw) : null;
+  if (!ms) return base;
+  const rt = ms.quote ? { bid: ms.quote.bid, ask: ms.quote.ask, bs: ms.quote.bs, as: ms.quote.as, t: ms.quote.t, fresh: ms.quoteFresh } : null;
+  const out = Object.assign({}, base, { source: 'massive', tape: ms.tape.length ? ms.tape : (base.tape || []), last: Number.isFinite(ms.last) ? ms.last : base.last, rt });
+  if (!out.ready) { out.ready = true; out.symbol = String(symbolRaw).toUpperCase(); out.book = { bids: ms.quote ? [{ price: ms.quote.bid, size: ms.quote.bs }] : [], asks: ms.quote ? [{ price: ms.quote.ask, size: ms.quote.as }] : [] }; out.asOf = ms.quote ? ms.quote.t : Date.now(); out.topOnly = true; out.failing = false; }
+  return out;
+}
+
 function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSecret = '',
   acceptStripeEvent, stripeWebhookSecret = '', billingApiSecret = '', stripe = null,
   pool = null, upgradeChat = null, upgradeChatPlanMap = {},
@@ -1181,7 +1194,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyMassive = null,
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
   memberEmail = null,
@@ -1520,8 +1533,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     if (request.method === 'GET' && path === '/academy-activity/live') {
       if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
-      try { sendJson(response, 200, academyOrderFlow.live(params.get('symbol'))); }
+      try { sendJson(response, 200, mergeLive(academyOrderFlow.live(params.get('symbol')), academyMassive, params.get('symbol'))); }
       catch (error) { sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' }); }
+      return;
+    }
+
+    /* Real-time push of every trade and quote for one symbol (Server-Sent Events) from the shared Massive connection. The polled /live above stays as the fallback. */
+    if (request.method === 'GET' && path === '/academy-activity/stream') {
+      const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
+      if (!academyMassive || !academyMassive.status().enabled) { sendJson(response, 503, { ok: false, error: 'stream_disabled' }); return; }
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      if (streamClients >= 400) { sendJson(response, 503, { ok: false, error: 'stream_busy' }); return; }
+      streamClients += 1;
+      response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+      const write = (event, data) => { try { response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { /* closed */ } };
+      write('snapshot', mergeLive(academyOrderFlow ? academyOrderFlow.live(symbol) : { symbol, ready: false }, academyMassive, symbol));
+      let pendingQuote = null, quoteTimer = null;
+      const off = academyMassive.on(symbol, (evt) => {
+        if (evt.type === 'trade') write('trade', evt.trade);
+        else { pendingQuote = evt.quote; if (!quoteTimer) quoteTimer = setTimeout(() => { quoteTimer = null; if (pendingQuote) { write('quote', pendingQuote); pendingQuote = null; } }, 100); }
+      });
+      const beat = setInterval(() => { try { response.write(': keep-alive\n\n'); } catch (_) { /* closed */ } }, 15_000);
+      const done = () => { clearInterval(beat); if (quoteTimer) clearTimeout(quoteTimer); off(); streamClients -= 1; };
+      request.on('close', done);
       return;
     }
 
@@ -1801,6 +1835,7 @@ async function main() {
   const orderFlowStore = createOrderFlowStore({ pool: database.pool });
   const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
+  const academyMassive = process.env.ACADEMY_MASSIVE_STREAM === 'off' ? null : createMassiveStream({ apiKey: config.massiveApiKey, logger: log });
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
     tokens: alertTokens, channels: defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
     orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
@@ -1854,7 +1889,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyMassive,
     academyDiscipline,
     academyAppId: config.academyAppId,
     memberEmail
@@ -1867,6 +1902,7 @@ async function main() {
     log('info', 'shutdown_started', { signal });
     if (academyOrderFlow) academyOrderFlow.stop();
     if (academyAlerts) academyAlerts.stop();
+    if (academyMassive) academyMassive.stop();
     server.close(async () => {
       await database.close();
       log('info', 'shutdown_complete', { signal });
@@ -1884,6 +1920,7 @@ async function main() {
       academyOrderFlow.start();
     }
     if (academyAlerts) academyAlerts.start();
+    if (academyMassive) academyMassive.start();
     if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
       if (pruneTimer.unref) pruneTimer.unref();

@@ -44,7 +44,8 @@
     box.querySelector('.rows').innerHTML = tape.slice(0, 12).map((t) => '<div class="academy-tape-row ' + esc(t.dir) + '"><i>' + new Date(t.t).toLocaleTimeString('en-US', { hour12: false }) + '</i><span>' + fmt(t.price) + '</span><span>' + size(t.size) + '</span></div>').join('');
   }
   function paintQuote(d) {
-    const bid = d.book.bids[0], ask = d.book.asks[0]; if (!bid || !ask) return;
+    const rt = d.rt && d.rt.fresh ? d.rt : null;
+    const bid = rt ? { price: rt.bid, size: rt.bs } : d.book.bids[0], ask = rt ? { price: rt.ask, size: rt.as } : d.book.asks[0]; if (!bid || !ask) return;
     const b = Number(bid.price), a = Number(ask.price);
     const set = (id, text) => { const e = $(id); if (e && e.textContent !== text) e.textContent = text; };
     set('sell', fmt(b)); set('buy', fmt(a)); set('bidbook', fmt(b) + ' × ' + size(bid.size)); set('askbook', fmt(a) + ' × ' + size(ask.size)); set('spread', (a - b).toFixed(4));
@@ -79,9 +80,47 @@
       if (!st.lastT && fresh.length > 1) fresh = [Object.assign({}, fresh[fresh.length - 1], { size: 0 })]; // first look: take the price, don't replay history as volume
       if (window.smlChartPro && window.smlChartPro.liveTick) for (const t of fresh) window.smlChartPro.liveTick(t.price, t.size, t.t);
       if (fresh.length) st.lastT = fresh[fresh.length - 1].t;
-      paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)));
+      if (d.rt) st.rt = d.rt;
+      if (d.book && ((d.book.bids && d.book.bids.length) || (d.book.asks && d.book.asks.length))) paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)));
       paintTape(d.tape || []); paintQuote(d);
     }
   }
-  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : 700; once().finally(() => setTimeout(loop, wait)); })();
+  /* Push feed: every trade and quote as it happens (Server-Sent Events from the shared Massive connection). The polling above keeps running as the fallback and for the Level 2 ladder. */
+  const sse = { es: null, symbol: '', okAt: 0, tape: [], seen: new Set(), retryAt: 0, raf: 0 };
+  function closeStream() { if (sse.es) { try { sse.es.close(); } catch (_) { /* closing */ } } sse.es = null; }
+  function schedulePaint() {
+    if (sse.raf) return;
+    sse.raf = requestAnimationFrame(() => {
+      sse.raf = 0;
+      const book = st.lastBook && st.lastBook.book ? st.lastBook.book : { bids: [], asks: [] };
+      const last = sse.tape.length ? sse.tape[0].price : (st.lastBook && st.lastBook.last);
+      paintQuote({ book, last, rt: st.rt });
+      if (sse.tape.length) paintTape(sse.tape);
+    });
+  }
+  function onTrade(t) {
+    sse.okAt = Date.now();
+    if (window.smlChartGesture || !t || !Number.isFinite(t.price)) return; // a finger is on the chart: the poll catches these up afterwards
+    if (t.t < st.lastT) return;
+    const key = t.t + '|' + t.price + '|' + t.size; if (sse.seen.has(key)) return;
+    sse.seen.add(key); if (sse.seen.size > 300) sse.seen.delete(sse.seen.values().next().value);
+    if (window.smlChartPro && window.smlChartPro.liveTick) window.smlChartPro.liveTick(t.price, t.size, t.t);
+    st.lastT = Math.max(st.lastT, t.t); st.freshAt = Date.now();
+    sse.tape.unshift(t); if (sse.tape.length > 30) sse.tape.length = 30;
+    schedulePaint();
+  }
+  function openStream() {
+    const symbol = sym();
+    if (sse.es && sse.symbol === symbol) return;
+    if (!sse.es && Date.now() < sse.retryAt && sse.symbol === symbol) return;
+    closeStream(); if (!window.EventSource) return;
+    sse.symbol = symbol; sse.tape = []; sse.seen = new Set();
+    let es; try { es = new EventSource('/academy-activity/stream?symbol=' + encodeURIComponent(symbol)); } catch (_) { sse.retryAt = Date.now() + 60000; return; }
+    sse.es = es;
+    es.addEventListener('snapshot', (e) => { try { const d = JSON.parse(e.data); sse.okAt = Date.now(); if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });
+    es.addEventListener('trade', (e) => { try { onTrade(JSON.parse(e.data)); } catch (_) { /* ignore */ } });
+    es.addEventListener('quote', (e) => { try { const q = JSON.parse(e.data); sse.okAt = Date.now(); st.rt = { bid: q.bid, ask: q.ask, bs: q.bs, as: q.as, t: q.t, fresh: true }; if (!window.smlChartGesture) schedulePaint(); } catch (_) { /* ignore */ } });
+    es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.retryAt = Date.now() + 30000; } };
+  }
+  (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? 2500 : 700; once().finally(() => setTimeout(loop, wait)); })();
 })();
