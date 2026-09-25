@@ -242,12 +242,12 @@ test('Start Here comes first everywhere a learner meets the curriculum', () => {
   assert.equal(SEED_LESSONS[0].lessonId, 1);
   assert.deepEqual(SEED_LESSONS.slice(0, 20).map(key), START_HERE.map(key));
   const moduleIds = [...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))];
-  assert.deepEqual(moduleIds, Array.from({ length: 29 }, (_, index) => index));
+  assert.deepEqual(moduleIds, Array.from({ length: 30 }, (_, index) => index)); // 0 to 29: Street Smarts is module 29
   assert.equal(moduleIds[0], 0, 'module 0 sorts ahead of module 1');
 
   // 2. In the totals the copy and the command bounds are built from.
   assert.equal(LESSON_COUNT, TOTAL_LESSONS);
-  assert.equal(MODULE_COUNT, 29);
+  assert.equal(MODULE_COUNT, 30);
   assert.equal(FIRST_MODULE, 0);
   assert.equal(key(FIRST_LESSON), '0.1');
 

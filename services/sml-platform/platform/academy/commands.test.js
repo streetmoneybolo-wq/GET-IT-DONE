@@ -5,6 +5,7 @@ const test = require('node:test');
 const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, LAUNCH_ID, TEXT_LESSON_ID, createAcademyCommands } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
 const TOTAL_LESSONS = 121 + require('./street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
+const TOTAL_MODULES = 30; // modules 0 to 29
 
 const GUILD = '938894329076940820';
 const MONARCH = '1260433215189946420';
@@ -50,7 +51,7 @@ test('Academy controls remain private to the configured Monarch preview role', a
   const allowed = await academy.handle(interaction('academy'));
   assert.match(allowed.response.data.content, /dedicated Academy channels/);
   assert.match(allowed.response.data.content, new RegExp(`${TOTAL_LESSONS} interactive`));
-  assert.match(allowed.response.data.content, /29 modules/);
+  assert.match(allowed.response.data.content, new RegExp(`${TOTAL_MODULES} modules`));
   // The welcome copy is counted from the curriculum, so it cannot go stale.
   assert.match(allowed.response.data.content, new RegExp(`${SEED_LESSONS.length} interactive`));
   assert.match(allowed.response.data.content, new RegExp(`${new Set(SEED_LESSONS.map((lesson) => lesson.moduleId)).size} modules`));
@@ -91,7 +92,7 @@ test('Academy publishes a complete college-level curriculum (the original 121 le
   assert.equal(SEED_LESSONS.length, TOTAL_LESSONS);
   assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, TOTAL_LESSONS);
   // Module 0 is the Start Here beginner track and sorts ahead of module 1.
-  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], Array.from({ length: 29 }, (_, index) => index));
+  assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], Array.from({ length: TOTAL_MODULES }, (_, index) => index));
   for (const entry of SEED_LESSONS) {
     assert.equal(entry.steps.length, 3);
     assert.match(entry.steps[2], /lab:/i);
@@ -185,7 +186,7 @@ test('the long-form voice script is generated from the shared lesson parts and i
   assert.equal(committed, text, 'content/making-easy-money-academy-101-lesson-voice-script.md is stale: run node scripts/build-academy-narration.js');
 });
 
-test('all 29 modules, module 0 included, can be selected from lesson and quiz commands', () => {
+test('every module, module 0 and Street Smarts included, can be selected from lesson and quiz commands', () => {
   const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, monarchRoleId: MONARCH, enabled: true });
   for (const commandName of ['lesson', 'quiz']) {
     const definition = academy.definitions.find((entry) => entry.name === commandName);
@@ -193,7 +194,7 @@ test('all 29 modules, module 0 included, can be selected from lesson and quiz co
     // Discord rejects a value outside the range, so a floor of 1 would have made
     // the whole Start Here track unreachable from both slash commands.
     assert.equal(moduleOption.min_value, 0);
-    assert.equal(moduleOption.max_value, 28);
+    assert.equal(moduleOption.max_value, TOTAL_MODULES - 1);
   }
 });
 

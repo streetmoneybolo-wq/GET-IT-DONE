@@ -10,7 +10,7 @@ const REQUESTS_PER_MINUTE = 6;
  * ./academy/curriculum, which would pull the whole example library into every
  * process that only wants the designer; academy-slide-designer.test.js pins
  * this number to SEED_LESSONS.length so it cannot drift. */
-const MAX_CACHE_ITEMS = 121;
+const MAX_CACHE_ITEMS = 151;
 const VISUAL_KINDS = Object.freeze([
   'auction', 'candles', 'flow', 'comparison', 'timeline', 'formula',
   'checklist', 'options', 'risk', 'tape', 'chart', 'question'

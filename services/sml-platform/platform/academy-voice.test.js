@@ -115,7 +115,7 @@ test('Academy voice speaks the shared lesson parts, including the whiteboard exa
 });
 
 test('every curriculum lesson narrates title, example, three steps and the check within one ElevenLabs request', () => {
-  assert.equal(SEED_LESSONS.length, 121);
+  assert.equal(SEED_LESSONS.length, 121 + require('./academy/street-smarts').STREET_LESSONS.length);
   for (const entry of SEED_LESSONS) {
     const id = entry.moduleId + '.' + entry.lessonId;
     const text = narrationFor(entry);

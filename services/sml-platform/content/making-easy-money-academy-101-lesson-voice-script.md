@@ -1,4 +1,4 @@
-# Making Easy Money Academy: 121-Lesson Voice Script
+# Making Easy Money Academy: 151-Lesson Voice Script
 
 ## Voice-generation directions — do not read this section aloud
 
@@ -8,7 +8,7 @@ Use only a voice that the account owner has supplied or has permission to use. R
 
 Welcome to Making Easy Money Academy.
 
-This is a complete guided tour through 121 interactive lessons organized across 29 modules. The purpose is not to hand you predictions. It is to teach you how markets work, how evidence should be tested, how risk should be controlled, and how professional decisions are made when the future is uncertain.
+This is a complete guided tour through 151 interactive lessons organized across 30 modules. The purpose is not to hand you predictions. It is to teach you how markets work, how evidence should be tested, how risk should be controlled, and how professional decisions are made when the future is uncertain.
 
 Nothing in this program is financial, legal, tax, or investment advice. Markets can move quickly. Options can expire worthless. Short positions can create substantial losses. Leverage can magnify mistakes. Every example is educational, and every simulated trade should be treated as a process exercise rather than a promise.
 
@@ -3273,6 +3273,790 @@ Option C. More than about 33%, the $3 risk as a share of the $9 total
 Option D. Any odds will do, because the $6 gain is twice the $3 risk
 
 The best answer is option C. More than about 33%, the $3 risk as a share of the $9 total. Break-even is risk divided by gain plus risk, so $3 out of $9, about 33%. Flipping it to $6 out of $9 gives 67% and makes a sound idea look hopeless.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+## Module 29
+
+We are beginning module 29. Take a breath, clear any assumptions from the previous section, and focus on the decision process in front of you.
+
+### Lesson 29.1: How a Stock Price Actually Gets Set
+
+Nobody sets a price: buyers and sellers meet in the middle, and the last trade is only the latest handshake.
+
+Here is the simple version. Bright Kettle is a made-up coffee company, and Zoe bids $20 a share to buy. Ravi wants to sell at $21, so nothing happens, because the two are $1 apart. Zoe gives in and raises her bid to $21, and 100 shares change hands for $2,100. That trade becomes the last price, which is just a receipt for a handshake. Then Nia shows up, but the next seller wants $22, so she pays it and the last price ticks up by $1.
+
+Point 1. Nobody sits in an office and sets a stock's price. Think of haggling at a flea market. The seller wants a high number, the buyer wants a low one, and a deal only happens where they meet. Buyers post bids, the most they will pay. Sellers post asks, the least they will accept. Line them all up and you have what is called the order book.
+
+Point 2. A trade happens only when a bid and an ask match. The price of that trade shows on your screen as the last price. It is just the latest handshake, not a rule. If more buyers than sellers show up, buyers raise their bids to win, so the price drifts up. If sellers crowd in, it drifts down. Prices move because people change their minds, not because a company pressed a button.
+
+Point 3. Practice lab: a sneaker drop has 5 pairs and 8 people who want one. Write down who bids what, and say what happens to the price as the sellers keep asking for more. Then flip it to 8 pairs and 5 buyers, and say which way the price drifts.
+
+Knowledge check. Kofi sees that a stock's last price is $50. What does that number really tell him?
+
+Option A. What the company officially says one share is worth today
+
+Option B. The price the exchange promises for the very next trade
+
+Option C. The price where a buyer and a seller last agreed to deal
+
+Option D. Whatever the biggest shareholder decides it should be that day
+
+The best answer is option C. The price where a buyer and a seller last agreed to deal. The last price is a record of one completed trade. It does not promise the next trade will match it, because bids and asks keep changing.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.2: Why the Market Can Rise When the Economy Feels Bad
+
+Stock prices look ahead at profits, interest rates and expectations, so the market is not the economy.
+
+Here is the simple version. Comet Cafe is a made-up chain, and its profit falls from $4 a share to $2 in a rough year. That sounds bad, and the headlines say so, but investors had feared just $1 a share. The result beats the fear by $1, so buyers step in and the price moves from $30 to $33. That is a rise of 10%, on the same day the news called the year a disaster. The economy felt bad, yet the price rose, because prices chase what comes next.
+
+Point 1. The stock market and the economy are cousins, not twins. The economy is everything people make, buy and sell: jobs, rent, grocery bills. The market is a scoreboard of share prices. Those prices are set by people betting on what comes next, not by the mood in your group chat today. So the chat can be gloomy about rent while prices climb, and neither is lying.
+
+Point 2. Three things push prices. First, company profits: what businesses are expected to earn in the years ahead. Second, interest rates: when borrowing gets cheaper, businesses can grow and future profits look better today. Third, expectations: prices already hold what people think will happen, so a surprise moves them more than old news. A bad month everyone saw coming may already be in the price.
+
+Point 3. Practice lab: picture a made-up car wash chain with a rough year ahead. Investors feared its profit would collapse, and it only dipped. Say why its shares might rise on the day of the bad headline, and what would have to happen for them to fall instead.
+
+Knowledge check. Zoe asks why shares rose the day a rough economic report came out. What is the best answer?
+
+Option A. Prices held the fear already, and the report beat what people expected
+
+Option B. Every piece of bad news makes investors rush to buy more shares
+
+Option C. The exchange lifts prices whenever the economy feels weak, to calm people
+
+Option D. Shares mirror the economy day by day, so the report must have been wrong
+
+The best answer is option A. Prices held the fear already, and the report beat what people expected. Prices move on what people expect versus what arrives. A report that is bad but better than feared can lift shares, because the market was already looking ahead.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.3: Where the Money Goes When the Market Crashes
+
+Most crash losses are paper value that fades as prices fall, and only selling makes them real.
+
+Here is the simple version. Harbor Bikes has 1,000 shares, and at $10 each the company is priced at $10,000. A bad week drags the last price down to $6, so the company is now priced at $6,000. On paper that is $4,000 gone, yet not one dollar left anyone's account when the price moved. Ravi needs cash for rent and sells 100 shares at $6 to Kofi, so $600 moves from Kofi to Ravi. Ravi now has a real loss of $400, while everyone still holding has $3,600 of loss on paper.
+
+Point 1. When the market crashes, headlines say billions vanished. Where did it go? Mostly nowhere, because it was never cash in a drawer. It was paper value: the last price times the number of shares. If one share drops from $10 to $6, every share of that company loses $4 on paper, even the shares nobody touched.
+
+Point 2. Cash only changes hands when someone sells, and every sale has a buyer. No one carried a suitcase of money out the back door. The seller takes a real loss, and the buyer now owns the share at the lower price. Everyone who holds on has a loss that only exists on a screen. It can shrink, grow or stay put. If a company truly earns less, though, the old price may not come back.
+
+Point 3. Practice lab: a made-up hair salon chain has 100 shares at $10 each. The price falls to $6. Work out the paper loss on all 100 shares. Then say what changes for the one owner who sells to pay rent, and what changes for the buyer.
+
+Knowledge check. Ava owns shares and does nothing while the price drops sharply. What is her loss?
+
+Option A. Fully real already, because the cash was taken out of her account
+
+Option B. Cancelled out completely, since every seller is matched by a buyer
+
+Option C. None at all, since numbers on a screen cannot cost anything
+
+Option D. Still only a paper loss, which turns real if she sells at the low price
+
+The best answer is option D. Still only a paper loss, which turns real if she sells at the low price. Falling prices shrink the value of shares on paper. Money only leaves the picture for someone who sells lower than they paid, so Ava's loss stays unrealized until she decides.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.4: Market Talk Decoder
+
+Bull, bear, volume, spread, liquidity, gap and correction, told as one small story.
+
+Here is the simple version. Taco Tide is a made-up food truck company, and after a long bull run it closes at $50. Overnight bad news hits, and it opens at $46, so it gapped down $4 with no trades in between. At $45 it sits 10% under its high, and that is called a correction. If it slides to $40, it is 20% under the high, and the gloomy mood is called a bear market. Volume jumps on the way down, and the spread between bid and ask grows from $0.10 to $0.50.
+
+Point 1. Here is one story that uses every word. A made-up food truck company, Taco Tide, is on a roll. Its price climbs week after week. That is a bull market: prices rising and everyone feeling brave. Volume, the number of shares traded in a day, is high because everyone wants in. So many buyers and sellers are around that the market is liquid, meaning you can trade fast without moving the price. The spread, the gap between bid and ask, is tiny.
+
+Point 2. Then bad news lands overnight. The stock opens far below yesterday's close, skipping every price in the middle. That jump is a gap. Prices keep sliding until they sit ten percent under the recent high, which traders call a correction. Past twenty percent, and with a gloomy mood, people say bear market. Volume spikes, liquidity thins and the spread widens, because buyers step back and sellers rush the door.
+
+Point 3. Practice lab: write bull, bear, volume, spread, liquidity, gap and correction on seven cards. Match each card to one line of the Taco Tide story. Then tell the same story again with a barbershop chain, using every word once.
+
+Knowledge check. Zoe hears that a stock gapped down overnight. What just happened?
+
+Option A. Its price slid slowly, one small trade at a time, all through the night
+
+Option B. It opened far under the last close and skipped the prices in between
+
+Option C. Its bid and ask drifted apart while the market was still open
+
+Option D. It fell ten percent below its high, which is a normal pullback
+
+The best answer is option B. It opened far under the last close and skipped the prices in between. A gap is a jump between one close and the next open with no trades in between. Sliding slowly, a wide spread and a correction are different ideas.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.5: Short Selling: Betting on the Drop
+
+How borrow, sell and buy back works, why the gain is capped and the loss is not, and what a squeeze is.
+
+Here is the simple version. Nia borrows 100 shares of Pixel Pops and sells them at $20, which brings in $2,000. If the price falls to $15, she buys them back for $1,500 and keeps $500. If it climbs to $30 instead, buying back costs $3,000, a loss of $1,000. Her best case is a price of zero, which would leave her $2,000, but a rising price has no top. The broker also charges a borrowing fee, say $50, and that comes off whatever she makes.
+
+Point 1. Short selling is a bet that a price will fall. Picture Nia borrowing Kofi's sneakers and selling them today for $200. Later she buys the same pair back for $150 and returns it. She keeps the $50 difference. That is a short: borrow, sell, buy back later. With shares, the broker arranges the borrowing. This is education only, and the rules differ by country and by broker.
+
+Point 2. The catch is the shape of the bet. A price cannot fall below zero, so the most a short seller can gain is what the shares sold for. A price can climb with no ceiling, so the possible loss has no limit. Borrowing also costs a fee. If the price jumps and shorts rush to buy back, that rush pushes it even higher. That scramble is called a squeeze.
+
+Point 3. Practice lab: say Nia sells 10 borrowed shares at $20. Work out her gain if she buys back at $15 and her loss if she buys back at $30. Then write down why the best case has a ceiling and the worst case does not.
+
+Knowledge check. Kofi shorts a share. What is unusual about his possible gain and loss?
+
+Option A. His most possible gain is limited, but his possible loss has no top
+
+Option B. His loss is limited to the fee, because the broker owns the share
+
+Option C. His gain is unlimited, while his loss stops at the price he sold
+
+Option D. He is protected from losing money, since he sold before the move
+
+The best answer is option A. His most possible gain is limited, but his possible loss has no top. A share can only fall to zero, so a short can gain at most the sale price. A share can rise without a ceiling, so a short can lose far more than that.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.6: Arbitrage: One Thing, Two Prices
+
+When the same item sells for two prices at once, and why crowds and costs shrink the gap.
+
+Here is the simple version. Bright Kettle shares cost $20 on one trading board and $21 on another, at the same moment. Ravi buys 100 on the cheap board and sells 100 on the pricey one, a gross gap of $100. Each trade costs $30 in fees, so two trades cost $60 and he keeps $40. Word spreads and others pile in, so the two prices drift together to $20.25 and $20.75. Now the same trade earns $50 against $60 of fees, which is a loss of $10.
+
+Point 1. Arbitrage means the same thing is priced differently in two places at the same moment. Picture a flea market where one stall sells a lamp for $30 and another sells the identical lamp for $40, both open today. Someone can buy at the cheap stall and sell at the pricey one. That gap is the whole idea, and it is a small hustle, not a jackpot.
+
+Point 2. It is not free money. Once people notice, they pile in. Buying at the cheap stall pushes that price up, and selling at the pricey one pushes that price down, so the gap shrinks. Then costs eat what is left: fees, shipping, taxes and the chance a price moves before the second trade. Fast firms with powerful computers usually grab these gaps first, and even they can lose.
+
+Point 3. Practice lab: buy 100 shares of a made-up company at $20 on one board and sell them at $21 on another. Work out the gap, then take off $30 in fees for each trade. Now shrink the gap to 50 cents and see what is left.
+
+Knowledge check. Nia spots one item priced two ways in two places. Why can she not count on keeping the whole gap?
+
+Option A. Exchanges refuse to let anyone trade the same item twice in one day
+
+Option B. Gaps only ever show up on items that nobody actually wants to buy
+
+Option C. Others close the gap fast, and fees can swallow whatever remains
+
+Option D. The two prices always move together, so no gap can ever appear
+
+The best answer is option C. Others close the gap fast, and fees can swallow whatever remains. A price gap draws traders who buy the cheap side and sell the dear side until it narrows. Fees and delays take a bite too, so the gap on the screen is not what ends up in her pocket.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.7: EPS: Profit Per Slice
+
+Earnings per share is a company's profit split evenly across its shares, so companies of any size can be compared slice to slice.
+
+Here is the simple version. Rooftop Wings and Corner Crisp are two made-up companies, and each earned $1,200,000 last year. Rooftop has 400,000 shares, so its earnings per share come to $3. Corner Crisp has 1,200,000 shares, so each of its shares stands behind only $1. Same profit, but a Rooftop share carries 3 times as much of it. That is why a big profit alone tells you little until you divide it by the shares.
+
+Point 1. Earnings per share, or EPS, is a company's profit divided by its number of shares. Say a made-up food truck company earned $600,000 last year and has 200,000 shares. Divide, and every share stands behind $3 of that profit. It works like a Cash App dinner split: the total bill means little until you know how many people are at the table.
+
+Point 2. This matters because companies come in different sizes. Two wing spots can each earn $1,000,000. If one has 1,000,000 shares and the other has 4,000,000, the first earns $1 per share and the second only 25 cents. If a company issues new shares, the same profit is shared by more owners, so EPS drops even though the total did not move. Profit here means what is left after costs, interest and taxes.
+
+Point 3. Practice lab: a made-up laundromat company earns $90,000 with 30,000 shares. Next year it earns the same but has 45,000 shares. Work out EPS both years, then say in one sentence what happened to each owner's slice.
+
+Knowledge check. A barbershop company earns $400,000 in both years, but sells new shares in year two. What happens to its EPS?
+
+Option A. It rises, because a larger share count means a larger company
+
+Option B. It stays put, because the total profit did not change at all
+
+Option C. It rises, because the new owners bring extra profit with them
+
+Option D. It falls, because each share now stands behind less of the profit
+
+The best answer is option D. It falls, because each share now stands behind less of the profit. EPS is profit divided by shares. With the same profit and more shares, each share gets a thinner cut. New shares bring in cash, but they do not add profit on their own.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.8: The P/E Ratio: What You Pay for a Dollar of Profit
+
+Price divided by EPS shows what buyers pay for each dollar of yearly profit, and why a high or low number is a question, not a verdict.
+
+Here is the simple version. Two made-up companies, Loop Laundry and Glow Nails, each earn $2 per share. Loop Laundry trades at $30, so its price to earnings ratio is 15, meaning $15 for each dollar of yearly profit. Glow Nails trades at $60, so its ratio is 30. Buyers pay 2 times as much per profit dollar for Glow, and the number alone cannot say why. Maybe they expect faster growth, or maybe they are just excited, so you compare before judging.
+
+Point 1. The P/E ratio is the share price divided by EPS. It tells you how many dollars buyers pay for each dollar of yearly profit. If a share trades at $30 and earns $2 per share, the P/E is 15, so buyers pay $15 for every $1 of yearly profit. Think of paying rent on a snack stand: the P/E is how many years of its profit you are handing over.
+
+Point 2. A high P/E is not a verdict, and neither is a low one. Buyers may pay a lot because they expect profit to grow fast, or they may just be excited. A low P/E may mean a bargain, or it may mean buyers expect trouble. Compare a company with similar businesses and with its own past. Also check whether the EPS looks back at last year or forward at a forecast. A company with a loss has no useful P/E.
+
+Point 3. Practice lab: a made-up gym chain trades at $40 with EPS of $2, and a made-up tailor shop chain trades at $30 with EPS of $3. Work out both P/E ratios, then write one reason each price could be fair.
+
+Knowledge check. Nia sees one stock with a P/E of 40 and another with a P/E of 8. What is the sensible reading?
+
+Option A. The 8 is a bargain, because a lower P/E always means cheaper
+
+Option B. The 40 costs more per profit dollar, so ask why before judging
+
+Option C. The 40 is overpriced, because any P/E above 20 is too high
+
+Option D. Both are equal, because P/E ignores how much profit there is
+
+The best answer is option B. The 40 costs more per profit dollar, so ask why before judging. A P/E is the price paid per dollar of profit, so 40 costs more per dollar than 8. But that is only a starting point: growth, risk and the industry can all explain the gap.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.9: Price-to-Book: Price vs What's on the Books
+
+Book value is what a company owns minus what it owes, and price-to-book compares that to the share price. Useful for some businesses, misleading for others.
+
+Here is the simple version. Bolt Vans is a made-up company that owns $500,000 of vans and gear but owes $200,000, which leaves a book value of $300,000. Spread over 100,000 shares, that is $3 of book value per share. The shares trade at $4.50, so the price-to-book ratio is 1.5. The books count vans well, but they would barely count a famous brand.
+
+Point 1. Book value is a company's assets minus its debts. Assets are what it owns, like trucks, ovens and cash. Say a made-up van company owns $500,000 of stuff and owes $200,000. Its book value is $300,000, like a car worth $12,000 with a $5,000 loan left on it, where you own $7,000 of it. Split across 100,000 shares, that is $3 of book value per share.
+
+Point 2. Price-to-book, or P/B, is the share price divided by book value per share. A $4.50 price against $3 of book value is a P/B of 1.5. It helps for businesses full of physical things, like trucks or buildings. It misleads for a hair salon brand, a software firm or a recipe-driven company. A brand and an idea barely show up on the books. Books also record what things cost, not what they would sell for today.
+
+Point 3. Practice lab: a made-up laundromat company owns $80,000 of machines and cash and owes $30,000. It has 10,000 shares priced at $10. Work out book value, book value per share and P/B, then name one thing the books would miss.
+
+Knowledge check. Ravi checks a well-loved sneaker brand whose price is far above its book value. Why might that not mean it is overpriced?
+
+Option A. Much of its worth is a brand that the books barely count
+
+Option B. Its book value counts brand value at the full price it earns
+
+Option C. Any company with a high P/B must have no debts on the books
+
+Option D. Book value only shows cash, and the brand holds very little
+
+The best answer is option A. Much of its worth is a brand that the books barely count. Book value counts assets like machines and cash, not a loved brand or a smart idea. So a company that runs on those can have a high price-to-book without being overpriced.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.10: Market Cap vs Enterprise Value
+
+Market cap is the price of all the shares; enterprise value adds the debt and subtracts the cash, like the true price of a house with a mortgage.
+
+Here is the simple version. Sunny Side Foods is a made-up snack company with 100,000 shares at $10 each. Price times shares gives a market cap of $1,000,000. But a buyer of the whole company also takes on $300,000 of debt, and gets $100,000 of cash. Add the debt and take away the cash, and the enterprise value is $1,200,000. That is $200,000 above the market cap, like a mortgage a house buyer cannot ignore.
+
+Point 1. Market cap, short for market capitalization, is the share price times the number of shares. It is the price to buy every share. Picture a house worth $400,000 with a $250,000 mortgage. Your own stake in it is only $150,000, but anyone taking over the whole house takes on that mortgage too. The share price only covers the owners' part.
+
+Point 2. Enterprise value, or EV, is the price of the whole business. Start with market cap, add the debt a buyer would take on, and subtract the cash a buyer would get. A made-up snack company with a $1,000,000 market cap, $300,000 of debt and $100,000 of cash has an EV of $1,200,000. EV lets you compare companies with different debt and cash. It is still an estimate, since debt and cash come from the last report, and some cash is needed to keep the doors open.
+
+Point 3. Practice lab: a made-up taco truck company trades at $5 with 200,000 shares, owes $150,000 and holds $50,000 in cash. Work out its market cap and its EV, then say which one a buyer of the whole business would care about.
+
+Knowledge check. Kofi says two bakeries have the same market cap, but one carries heavy debt. Which has the higher enterprise value?
+
+Option A. The cash-rich one, since cash counts as something a buyer gets
+
+Option B. Neither one, since market cap alone fixes enterprise value
+
+Option C. The indebted one, since its debt adds to what a buyer takes on
+
+Option D. They match, because debt and cash cancel out in every case
+
+The best answer is option C. The indebted one, since its debt adds to what a buyer takes on. Enterprise value is market cap plus debt minus cash. With equal market caps, the bakery with more debt has the higher EV, because a buyer would inherit that debt.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.11: Intrinsic Value: What It's Worth vs What It Costs
+
+Intrinsic value is an estimate of what a business is worth from the cash it may pay out over time. A margin of safety protects against estimates being wrong.
+
+Here is the simple version. Nia thinks a made-up car wash company will pay $11 per share next year and $12.10 the year after. Money later is worth less, so at 10% a year, the first payment is worth $10 today. The second shrinks to $10, so her estimate of worth is $20. She wants a margin of safety of 30%, so she pays at most $14, and a share at $19 is above that. It is only an estimate, so her guesses could be off in either direction.
+
+Point 1. Price is what a share costs today. Intrinsic value is your estimate of what it is worth, based on the cash the business may hand its owners in the future. Money later is worth less than money now. At a 10% yearly rate, $110 next year is worth $100 today. Shrinking each future payment back to today is called discounting.
+
+Point 2. To estimate, guess the cash for each coming year, discount each payment, and add them up. Then comes the honest part: it is a guess, and a small change in growth or rate can move the answer a lot. So careful people want a margin of safety. That means paying well below their estimate, leaving a cushion if the guess is wrong. It is a habit for handling uncertainty, not a promise of any result.
+
+Point 3. Practice lab: a made-up car wash company may pay $11 per share one year from now and $12.10 two years from now. At 10% a year, work out what each payment is worth today and add them. Then find a price with a 30% margin of safety.
+
+Knowledge check. Zoe estimates a share is worth $50 and it costs $48. What does that thin gap tell her?
+
+Option A. It is a bargain, because any price below her estimate is safe
+
+Option B. There is little cushion, so a small error in her guess wipes it out
+
+Option C. Her estimate is proven right, since the price landed so close
+
+Option D. Worth only changes when the share price changes on the screen
+
+The best answer is option B. There is little cushion, so a small error in her guess wipes it out. Intrinsic value is an estimate, not a fact. When the price sits just under it, a small mistake in the guesses erases the gap, which is why a margin of safety asks for a much wider one.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.12: Beta: How Wild Is This Stock Compared to the Market
+
+Beta compares how much a stock has swung relative to the whole market in the past. It describes history, not the future.
+
+Here is the simple version. Ravi tracks two made-up stocks, Ember Gym with a beta of 1.5 and Still Water Tea with a beta of 0.5. In a week the market rises 8%, Ember has tended to rise about 12% and Still Water about 4%. When the market falls 6%, it works the same way, with Ember down 9% and Still Water down 3%. Beta only shows how they moved in the past, so it is a look back and never a forecast.
+
+Point 1. Beta measures how much a stock has tended to move compared with the market as a whole. A beta of 1 means it has moved about in step. A beta above 1 means bigger swings, and a beta below 1 means smaller ones. If the market rose 10%, a beta of 1.5 stock has tended to rise about 15%, and a beta of 0.5 stock about 5%. It goes both ways, so a market drop hurts the high beta stock more.
+
+Point 2. Beta is a look in the rearview mirror. It is worked out from past prices over a chosen window, so different sites can show different betas for the same stock. It is not a forecast and does not say if the business is good. It also misses trouble that is only about the company, like a bad product launch. Think of a sneaker drop: the resale price may bounce around no matter what the wider market does.
+
+Point 3. Practice lab: a made-up market rises 8% one week and falls 6% the next. Work out the likely move of a beta 1.5 stock and a beta 0.5 stock in each week, then say why those are guides and not promises.
+
+Knowledge check. Ravi sees a stock with a beta of 0.5. What does that number tell him?
+
+Option A. It is half as risky as any other stock, in every way
+
+Option B. It will lose only half as much as the market next year
+
+Option C. The company earns half the profit of the average business
+
+Option D. In its past record, it has moved about half as much as the market
+
+The best answer is option D. In its past record, it has moved about half as much as the market. Beta compares past swings with the market. A 0.5 means the stock has tended to move about half as much. It is not a forecast, and it says nothing about profit or company-specific risk.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.13: Stocks vs Bonds
+
+Owning a slice of a business versus lending it money, and why many people hold both.
+
+Here is the simple version. Nia has $1,000 to place. She can buy 20 shares of Fresh Kicks, a made-up sneaker shop, at $50 each, or lend it to the city as a bond. The bond pays 5% a year, so she collects $50, and gets her $1,000 back at the end if the city pays. If Fresh Kicks has a hot year and the share hits $65, she is up $300, but at $40 she is down $200. Through both years the bond keeps paying its $50, which is why many people hold a bit of each.
+
+Point 1. A stock is a slice of a business. Say you own a slice of a wing spot. When the place packs out, your slice is worth more, and when the fryer breaks, it is worth less. Nobody promises you a payout, and if the business fails, the owners get paid last. A bond is the opposite deal. You lend money to a company or a government, and they promise set payments plus your money back on a fixed date.
+
+Point 2. Each one can lose in its own way. A stock can fall hard, even to zero. A bond can lose if the borrower cannot pay, which is called a default, or if you sell early after rates rose. Bond payments are usually smaller and steadier than what a stock can swing. Many people hold some of each, like a corner store that sells hot food and shelf goods. One side leans toward growth, the other toward steadier income.
+
+Point 3. Practice lab: take 1,000 practice dollars and split it in half. Then write one way the stock half could lose money and one way the bond half could lose money, in your own words.
+
+Knowledge check. Kofi buys $500 of a wing spot's stock and Zoe lends the city $500 through a bond. What is true about the two?
+
+Option A. Kofi owns a slice with no promised payout; Zoe is owed set payments
+
+Option B. Zoe owns a slice of the city, so she shares in whatever it earns
+
+Option C. Both of them are lenders, so both are owed the same fixed payments
+
+Option D. Kofi is shielded from loss because owning a slice means owning real stuff
+
+The best answer is option A. Kofi owns a slice with no promised payout; Zoe is owed set payments. A stock is ownership with no promised payout, while a bond is a loan with promised payments. Owners take the swings of the business; lenders take the risk that the borrower cannot pay.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.14: Bond Basics: Lending Money for a Coupon
+
+Face value, coupon and maturity, plus the see-saw between interest rates and bond prices.
+
+Here is the simple version. Ava buys a made-up city bond with a $1,000 face value and a 4% coupon, so it pays $40 every year. Then rates rise, and brand new bonds pay 5%, so nobody pays full price for her 4% bond. Buyers would pay about $981 for the two-year version, but only about $923 for a ten-year one. The longer bond falls more, because it is stuck on the lower coupon for longer. If she holds to the end and the city pays, she still collects the $1,000. Rates up, prices down. Rates down, prices up.
+
+Point 1. A bond is a loan you can trade. Picture a friend who borrows money for a food truck and writes down a deal. The face value is the amount to be repaid, like 1,000 dollars. The coupon is the yearly interest, quoted as a percent of face value. The maturity is the date the loan ends and the face value comes back.
+
+Point 2. Yield is what a buyer earns at today's price. The quick version is the yearly coupon divided by the price paid. Now the see-saw. If you hold a 4 percent bond and new bonds start paying 5 percent, nobody pays full price for yours. Its price falls until a new buyer gets a fair deal. If rates fall, your older coupon looks better and the price rises. Longer bonds swing more. A borrower who pays still returns the full face value at maturity.
+
+Point 3. Practice lab: write a bond with a 1,000 dollar face value and a 4 percent coupon. Work out the yearly coupon, then say what happens to its price when new bonds start paying 5 percent.
+
+Knowledge check. A bond pays a 4 percent coupon. Rates rise and new bonds pay 5 percent. What usually happens to the older bond's price?
+
+Option A. It rises, because steady payments become more valuable to buyers
+
+Option B. It stays put, since the face value and the coupon are both fixed
+
+Option C. It only changes if the borrower misses a payment along the way
+
+Option D. It falls, so a new buyer's yield lines up with the newer bonds
+
+The best answer is option D. It falls, so a new buyer's yield lines up with the newer bonds. Buyers can get 5 percent on new bonds, so the older bond has to get cheaper until its yield catches up. The coupon and face value never change, but the price does. That is the see-saw.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.15: The Yield Curve: Why Short and Long Rates Disagree
+
+What a normal and an inverted yield curve look like, and why a signal is not a promise.
+
+Here is the simple version. A yield curve lists what a government pays to borrow for one year, five years and ten years, side by side. Normally longer means more: 3% for one year, 4% for five and 5% for ten, a gap of 2%. Sometimes it flips. One year pays 5%, five pay 4% and ten pay only 3%, so the curve is inverted by 2%. That shape has often come before slowdowns, but it is a signal, not a promise, and the record differs by country. Treat it like a weather app: worth a look, never a verdict.
+
+Point 1. A yield curve lines up what a government pays to borrow for different lengths of time, from a few months up to thirty years. Think of the price list at a car wash: quick wash, full wash, deluxe. Normally the longer you lend, the more you are paid, because tying your money up for years is a bigger ask. That upward slope is a normal curve.
+
+Point 2. Sometimes the slope flips, and short loans pay more than long ones. That is called an inverted curve. One common reading is that lenders expect rates and growth to fall later, so they lock in long loans now. Inverted curves have often come before slowdowns, but that is a signal, not a promise, and it can be early or wrong. Rules, markets and history differ by country, so a curve in one place says little about another.
+
+Point 3. Practice lab: write three made-up rates for one year, five years and ten years. Draw them once as a normal curve and once as an inverted one, and say what each shape seems to tell you about lenders.
+
+Knowledge check. Ravi sees that one-year government bonds pay more than ten-year ones. What is the best way to describe that?
+
+Option A. Normal shape, since long loans always pay less than short ones
+
+Option B. A default, because the ten-year borrower has stopped paying anyone
+
+Option C. An inverted curve, which has often come before slowdowns but proves nothing
+
+Option D. A sure crash signal within the year, which works like a countdown clock
+
+The best answer is option C. An inverted curve, which has often come before slowdowns but proves nothing. When short rates beat long rates the curve is inverted. It has often come before slowdowns, yet it is only a signal, and the record differs from country to country.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.16: Ranking Assets From Calm to Wild
+
+A rough order of how much value can swing, and why risk is not the same as reward.
+
+Here is the simple version. Ava pictures one rough year for $1,000 parked in four made-up places, from the calm end to the wild end. In her rough year, cash stays at $1,000 and short bonds slip 2% to $980. The broad fund drops 25% to $750, and the single stock drops 50% to $500. Wilder swings can pay more over time, or just hurt more, so risk is not the same as reward. Even calm cash has a catch: rising prices quietly shrink what it can buy.
+
+Point 1. Line up places to park money from calm to wild by how much the value can swing. Cash sits at the calm end, though rising prices slowly shrink what it can buy. Next come short bonds, then long bonds, which swing more when rates move. Then broad stock funds, which hold many companies at once. Single stocks swing harder because one business carries all the weight. At the wild end sit speculative bets, like flipping sneakers from a hyped drop.
+
+Point 2. This is a rough order, not a law. A long bond can have a worse year than a stock fund. A single stock in a steady business can be calmer than you would guess. Also, risk is not the same as reward. A wilder ride can pay more over time, or it can just hurt more. Nobody gets paid extra for every bit of risk. Time horizon and comfort with swings shape what suits a person.
+
+Point 3. Practice lab: rank six made-up holdings from calmest to wildest. Then write one sentence about a situation where your order could turn out wrong.
+
+Knowledge check. Nia ranks four places to park money by how much the value can swing. Which order runs from calmest to wildest?
+
+Option A. Cash, a single stock, short bonds, then a broad stock fund
+
+Option B. Cash, short bonds, a broad stock fund, then a single stock
+
+Option C. Short bonds, cash, a single stock, then a broad stock fund
+
+Option D. A broad stock fund, cash, short bonds, then a single stock
+
+The best answer is option B. Cash, short bonds, a broad stock fund, then a single stock. Cash swings least, short bonds a bit more, and a broad fund spreads its risk across many businesses. One stock carries all of its own risk. The order is rough, and a wilder ride is no promise of more reward.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.17: Index Funds, Mutual Funds, ETFs and Hedge Funds
+
+What each kind of fund is, who runs it, what it costs and who is allowed to buy it.
+
+Here is the simple version. Kofi has $10,000 to put in a fund, and he compares three bills. An index fund follows a list and charges 0.1% a year, so $10 on his balance. A managed mutual fund pays a team to pick, and at 1% a year it takes $100. A hedge fund might charge 2% plus 20% of profit, so a $1,000 gain leaves a bill of $400. Hedge funds are usually open only to qualified investors, and the rules differ by country.
+
+Point 1. Four names, four different tools. An index fund follows a list of companies, like the biggest hundred, and holds them all with almost no picking. A mutual fund pools many people's money and is priced once a day. It can be run by a manager who picks holdings or by a simple rule. An ETF is a fund that trades on an exchange all day like a share, and many ETFs follow an index too.
+
+Point 2. A hedge fund is a private pool for qualified investors, free to use tactics ordinary funds skip. It often charges a yearly fee plus a cut of profits. Costs differ a lot, and a pricier fund is not automatically better or worse. Who may buy hedge funds, and how they are regulated, differs by country. None of the four is good or bad. They are different tools, like a barbershop, a nail salon and a car wash.
+
+Point 3. Practice lab: make a small table with the four fund types. For each one write who runs it, how you buy it, and the yearly cost you would look up before buying.
+
+Knowledge check. Ava asks how a hedge fund differs from an index fund. Which description is accurate?
+
+Option A. It trades on an exchange all day and any beginner can buy it
+
+Option B. It follows a public list of companies and charges the lowest fees
+
+Option C. It is a bank product backed by the government against any loss
+
+Option D. It is a private pool, usually for qualified investors, with higher fees
+
+The best answer is option D. It is a private pool, usually for qualified investors, with higher fees. A hedge fund is a private pool that is usually limited to qualified investors, with more flexible tactics and higher fees. An index fund follows a public list and is open to almost anyone.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.18: Ways an Index Fund Can Still Lose Money
+
+Market drops, concentration, bad timing, fees and panic selling: diversified does not mean protected.
+
+Here is the simple version. Nia puts $10,000 in a broad index fund, and diversified sounds safe. Then the whole market falls 30%, so her $10,000 becomes $7,000, a loss of $3,000. To get back to $10,000 she needs a gain of about 43%, because it is measured on the smaller $7,000. If she panics and sells at $7,000, the loss becomes real. If she stays, the 0.2% yearly fee still takes $14. Diversified spreads out the risk of one bad company, but it is no seatbelt against a market-wide fall.
+
+Point 1. A broad index fund holds hundreds of companies, so one company failing hardly dents it. That is diversification. It does not shield the fund from the whole market falling. If everything drops in a rough year, the fund drops with it. Some funds also lean on a few giant names or one industry, so when those stumble, the whole fund feels it.
+
+Point 2. Bad timing, fees and panic finish the job. Buying right before a fall, then selling at the bottom, turns a paper loss into a real one. Fees come out every year, up or down, like a subscription that never pauses. A fund that fell 30 percent needs about a 43 percent gain to get back, because the gain is measured on a smaller balance. No rule says a recovery arrives on a set schedule.
+
+Point 3. Practice lab: put 10,000 practice dollars in a made-up fund and drop it 30 percent. Work out the gain needed to get back, then write what selling at the bottom would do to the result.
+
+Knowledge check. Nia owns a broad index fund and the whole market drops 30 percent. Which statement is accurate?
+
+Option A. Her fund drops too, since owning many companies cannot shield it from a broad fall
+
+Option B. Her fund holds up, since hundreds of holdings cancel out any loss it might have
+
+Option C. Her fund is insured against the drop, so the loss is refunded to her in time
+
+Option D. Only funds run by a manager fall, while index funds stay level in a big drop
+
+The best answer is option A. Her fund drops too, since owning many companies cannot shield it from a broad fall. Diversification spreads out the risk of one company failing, but it cannot remove the risk of the whole market falling. A broad fund falls with the market, and no insurance refunds that.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.19: Value Investing vs Index Investing
+
+Two ways to shop for shares: hunt for bargains or buy the whole list.
+
+Here is the simple version. Ravi shops the market like a thrift store and spots Suds Corner Laundry at $60 a share. He figures it is worth $90, so he buys 10 shares for $600. If he is right, the shares reach $900, a gain of $300. If he is wrong and it slides to $45, he holds $450, a loss of $150. Nia puts the same $600 into a fund of 100 companies, and when the list rises 8%, she gains $48.
+
+Point 1. Picture two shoppers. One digs through a thrift store rack for a jacket priced far below what it is worth. That is a value investor: someone who hunts for a company priced under what they think it is really worth, then waits. The other shopper buys the whole rack, duds included. That is an index investor. An index is a list of companies, and an index fund buys everything on the list, so you get the average result.
+
+Point 2. Each way asks something different of you. The bargain hunter needs homework, since a fair price is only an estimate, plus the nerve to hold while the crowd disagrees. A cheap price can also be cheap for a good reason. The list buyer needs far less homework and gets the average, never more. Neither way is promised to work, because a whole list can drop and stay low for years.
+
+Point 3. Practice lab: Ravi finds a laundromat company priced at $60 a share that he judges is worth $90, and Nia buys a fund holding 100 companies. Write down what Ravi must be right about, what Nia must accept, and one way each could lose.
+
+Knowledge check. Ravi buys shares he believes are priced under their worth. Nia buys a fund of a whole list. What does Ravi's way rely on that Nia's does not?
+
+Option A. Confirmation from the market that cheap shares must bounce back
+
+Option B. His own estimate of fair worth, which could turn out to be wrong
+
+Option C. Owning fewer companies so that one bad result cannot hurt him
+
+Option D. Payment from the fund if his shares stay cheap for years
+
+The best answer is option B. His own estimate of fair worth, which could turn out to be wrong. Value investing rests on your own estimate of what a business is worth, and estimates can be wrong. The list buyer skips that judgment and accepts the average, with no promise either way.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.20: Active vs Passive: The Cost of Trying
+
+Fees, taxes and trading costs are the price of trying to beat a list.
+
+Here is the simple version. Nia's manager fund and Zoe's list copier each start with $10,000, and both earn 6% before costs, which is $600. Nia's manager charges 1.2% plus 0.3% in trading costs, so $150 leaves no matter what. Zoe's copier charges only 0.1%, which is $10. Nia keeps $450 of the gain and Zoe keeps $590, a gap of $140. So the manager must beat the list by 1.4% just to tie, like a food truck covering the generator before counting profit.
+
+Point 1. Passive means buying a fund that copies a list of companies and mostly leaving it alone. Active means a manager picks shares and trades often, trying to beat that list. Trying has a price tag. There are fees, a yearly slice of your pile taken by the fund. There are trading costs each time shares change hands. In many countries, selling at a profit can also trigger tax, and the rules differ by country.
+
+Point 2. These costs come out whether the manager is right or wrong. They are like a landlord collecting on the first of the month, however the week went. So the manager must beat the list by at least the costs just to tie. Over long stretches, many active managers trail their list after costs. Some do not, and it is hard to spot them beforehand. A great past run is no promise.
+
+Point 3. Practice lab: take $10,000 in two funds that both earn 8 percent before costs. Give the manager's fund total costs of 2 percent and the list-copying fund 0.2 percent. Work out what each holds after one year and the gap between them.
+
+Knowledge check. Two funds each earn 6 percent before costs. The manager's fund charges 1.4 percent all in, and the list copier 0.1 percent. Which ends the year ahead, ignoring tax?
+
+Option A. The manager's fund, since active work always earns its cost
+
+Option B. Neither, since equal returns before costs mean equal results
+
+Option C. The copier, since the manager's costs took more out first
+
+Option D. Nobody can say, since fees only apply in years with losses
+
+The best answer is option C. The copier, since the manager's costs took more out first. Both earned the same before costs, but the manager's costs were bigger, so less was left. Fees and trading costs are charged in good years and bad, which is why trying has to clear a bar first.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.21: Dividend Investing vs Index Funds
+
+Cash paid to you now versus growth mixed in, and why yield is not return.
+
+Here is the simple version. Kofi puts $100 into a dividend share that pays $3 a year, a yield of 3%, and the price ends at $102. His total return is the $3 in cash plus a price rise of $2, so $5 on $100, or 5%. Nia puts $100 into an index fund that pays only $1, a yield of 1%, and its price ends at $104. Her total is $5, also 5%, so a smaller yield gave the same return. Kofi holds more of it as cash to spend at the corner store, and Nia's sits inside the price until she sells. Tax on each part can differ by country, so check the local rule.
+
+Point 1. A dividend is a company's profit paid out to its owners in cash, often every three months. Think of a food truck crew splitting the night's takings. Dividend investing means leaning on companies that pay them, so cash lands in your account along the way. An index fund holds a whole list, with some companies paying a lot and some paying little because they keep their profit to grow.
+
+Point 2. Yield is the yearly payout divided by the price, so a share that costs $80 and pays $4 has a yield of 5 percent. But yield is not return. Total return is the payout plus any rise or fall in the price. A high yield with a falling price can still lose. Tax on payouts and on price gains differs by country, so check the rule where you live. Payouts can be cut, and no approach is promised to win.
+
+Point 3. Practice lab: a share costs $60 and pays $3 a year. Work out its yield. Then find its total return if the price ends the year at $54, and compare it with a fund that pays nothing but rises 5 percent.
+
+Knowledge check. A share yields 4 percent and its price falls 6 percent in the same year. Ignoring tax, what was its total return for the year?
+
+Option A. Higher by 4 percent, since only the payout counts as return
+
+Option B. Lower by 6 percent, since a payout never changes the total
+
+Option C. Higher by 10 percent, since the payout adds to the price
+
+Option D. Lower by 2 percent, as the payout cushioned the fall
+
+The best answer is option D. Lower by 2 percent, as the payout cushioned the fall. Total return adds the payout to the price change. A 4 percent payout and a 6 percent price fall leave a 2 percent loss. Yield alone never tells you how a share did.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.22: The Dividend Trap
+
+Why a huge yield can be a warning sign, and the check that shows it.
+
+Here is the simple version. Kettle Cart Foods paid $2 a year when its shares cost $50, a yield of 4%. Then the price crashed to $20, so the same $2 now shows a yield of 10%, and Zoe gets excited. But the company earns only $1 a share, so it pays out 200% of its profit, which cannot go on. If the payout is cut to $0.50, her 100 shares pay $50 instead of the $200 she counted on. That is $150 missing, and the price often drops on the news too.
+
+Point 1. Yield is the yearly payout divided by the price. So yield jumps when the price crashes, even if the company pays not one cent more. A share paying $2 at $50 yields 4 percent. If the price falls to $20, the same $2 yields 10 percent. That fat number can be a warning. Like a sneaker listing at a suspiciously low price, a giant yield makes you ask why. Often sellers doubt the payout will last.
+
+Point 2. So check whether profits cover the payout. Divide the payout per share by the profit per share. Under 100 percent, the payout comes out of profit. Over 100 percent, it is being paid from savings or borrowing, and that cannot go on forever. When a payout is cut, the price often falls too. Some high yielders do hold up, so this is a check, not a verdict.
+
+Point 3. Practice lab: a made-up company earns $2 a share and pays $3. Work out the share of profit it pays out. Then work out the yield at a $30 price, and again if the payout is cut to $1.50.
+
+Knowledge check. A share's price crashes and its yield leaps to 12 percent. Which check says the most about whether that payout can last?
+
+Option A. Whether the company's earnings per share cover what it hands out
+
+Option B. Whether the yield tops what other shares on the list pay
+
+Option C. Whether the payout dates on the calendar are close together
+
+Option D. Whether people in the group chat are all buying it
+
+The best answer is option A. Whether the company's earnings per share cover what it hands out. A payout that profit does not cover has to come from savings or borrowing, and that cannot last. Comparing yields, payout dates or crowd chatter says nothing about whether the cash is really there.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.23: Lump Sum vs Dollar-Cost Averaging
+
+Invest it all today or split it into equal parts over time.
+
+Here is the simple version. Ava has $1,200 to invest, and she compares putting it all in today with 4 equal buys of $300, one a month. In a made-up rising market the price climbs from $10 to $20, so lump sum owns 120 shares and the split plan 90. At $20 that is $2,400 against $1,800, so waiting cost her. In a made-up falling market the price drops from $10 to $4, and the split plan holds $860 against $480. Both plans lost money there, because neither got back the $1,200.
+
+Point 1. You have money to invest. A lump sum means putting all of it in today. Dollar-cost averaging means splitting it into equal parts and investing one part on each date. It works like a streaming subscription that bills the same amount every month. The total is the same either way. Only the timing is different.
+
+Point 2. Markets have tended to rise over long stretches, so cash waiting on the sidelines often misses some of the climb. In many long-history studies, lump sum came out ahead more often than not. It does not win every time. If the price falls soon after, the split buyer picks up shares cheaper and can finish ahead. Splitting can also feel calmer, and both plans can lose money.
+
+Point 3. Practice lab: take $1,200 and a share that costs $10, then $8, $10 and $12 over four months. Compare buying 120 shares at the start with four buys of $300. Then try a price that rises every month.
+
+Knowledge check. Ava has $1,200. The share price climbs a little every month for a year. Which plan ends with more shares?
+
+Option A. Splitting it up, since smaller buys always cost less per share
+
+Option B. They tie, since the same total money goes in either way
+
+Option C. Investing it all on day one, since it buys at the lowest price
+
+Option D. Neither, since a steady rise leaves no room for any gain
+
+The best answer is option C. Investing it all on day one, since it buys at the lowest price. With prices rising every month, the lump sum bought everything at the lowest price and the split buyer paid more with each later part. If prices had fallen, the answer could flip, so neither plan wins every time.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.24: Buying the Dip vs Steady Buying
+
+Why the bottom is only obvious afterwards, and why a plan you can keep beats a guess.
+
+Here is the simple version. Zoe holds $900 and waits for a sale, so when the price drops from $50 to $45, she buys 20 shares. It keeps sliding to $30, so her shares are worth $600, a loss of $300, and only now is the bottom clear. In another made-up year she waits for $45, but the price only falls to $47 and then climbs to $60. Buying at $50 would have given 18 shares worth $1,080, so the wait cost her $180 of gain. Kofi just buys a set amount every payday and never has to guess the floor.
+
+Point 1. A dip is a fall in price. Buying the dip means holding cash until the price drops, then jumping in, like waiting for a sneaker markdown. It sounds smart. The catch is that a bottom is only obvious afterwards. On the way down every price looks like a dip, and a fall of 10 percent can turn into 30 percent. No sign on the road says the floor is here.
+
+Point 2. Waiting has a cost too. If the price rises instead of dipping, the buyer holding cash misses the climb and may end up chasing a higher price. Steady buying is the plain alternative: the same amount on the same day, like payday, whatever the price is doing. It needs no guessing. A lucky dip buyer can beat it, and both can lose. A plan you can stick to beats a guess you cannot repeat.
+
+Point 3. Practice lab: a share sits at $80 and Zoe waits for a drop to $72. Write what happens to her if it falls to $72 and keeps sliding to $50, and if it never falls and climbs to $100. Then write Kofi's payday plan.
+
+Knowledge check. Zoe holds cash waiting for a dip. The price never falls to her target and instead climbs all year. What did waiting cost her?
+
+Option A. Zero, because cash held back can never lose anything
+
+Option B. Part of the rise, since her cash sat out while it climbed
+
+Option C. Her whole savings, because the dip she wanted has vanished
+
+Option D. Nothing, since prices always drop back to where she waited
+
+The best answer is option B. Part of the rise, since her cash sat out while it climbed. While she waited, the price rose and her cash missed that climb. Nobody can count on a dip arriving, and a fixed plan for when to buy takes the guessing out of it.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.25: Small Companies vs Large Companies
+
+Small caps and large caps trade growth room against steadiness, and neither one is safe.
+
+Here is the simple version. Nia follows a made-up corner store chain and a made-up grocery giant, with $100 in each. In a great year the small chain climbs to $150, while the giant only reaches $110. In a rough year the small chain sinks to $60, a fall of 40%. The giant slips to $92, a fall of 8%, so its ride is calmer. Calmer is not safe, since giants stumble too, and holding some of each is one way to spread the bumps.
+
+Point 1. Every company has a total price tag: its share price times its share count. Investors call the smaller ones small caps and the giants large caps, where cap is short for capitalization. Cap describes size, not quality. Where the lines fall is a habit of the industry, and it shifts by country and over the years.
+
+Point 2. Picture a corner store with one location. It has room to open ten more, so it can grow fast. But one lost supplier or one broken freezer can make it wobble hard. A chain with a store on every block has fewer new blocks left, so it tends to grow slower and move steadier. Steadier is not safe. Giants stumble too, and some fall apart. Some investors hold a mix of both sizes to spread the bumps. That is one option, not a rule.
+
+Point 3. Practice lab: take a made-up laundromat company with a small total price and a made-up grocery giant with a huge one, list one way each could grow and one way each could get hurt, and say why neither size is safe.
+
+Knowledge check. Zoe says big companies never fall and small ones always soar. What is the fairer way to put it?
+
+Option A. Big companies swing more, since they have more customers to lose
+
+Option B. Small companies are safer, since a low total price limits the damage
+
+Option C. Both sizes behave alike, because size does not change how they move
+
+Option D. Small ones can grow faster and swing harder, and neither size is safe
+
+The best answer is option D. Small ones can grow faster and swing harder, and neither size is safe. Small companies often have more room to grow and bigger swings, while large ones tend to be steadier, but any company can fail. Size is a trade-off, not a safety rating.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.26: Growth Stocks vs Dividend Stocks
+
+One kind of company reinvests its profit to grow, the other pays part of it out as cash.
+
+Here is the simple version. Nia holds 100 shares of two made-up companies, each priced at $50, so each stake is $5,000. Pixel Pops keeps its profit to build new shops, so it pays nothing out. Comet Cafe pays $2 a share, which puts $200 of cash in her account. This year Pixel Pops climbs to $56, so that stake is worth $5,600, a gain of $600 on paper. Had it stalled, she would have received nothing, and Comet Cafe could cut its payout too.
+
+Point 1. A growth company keeps its profit and pours it back into the business: more locations, more ovens, more staff. It pays out little or nothing. The hope is that a bigger business is worth a higher price later, so the share price does the work. It is the friend who puts every tip back into a bigger food truck. Hope is not a promise, and plans can miss.
+
+Point 2. A dividend company sends part of its profit to shareholders as cash, often every three months, like a small payday. The price usually moves less wildly, but the payout is not fixed. The board can trim it or drop it. When the cash goes out, the price usually dips by about that amount. Tax on dividends differs by country. One gives cash along the way, the other hopes for a bigger business later.
+
+Point 3. Practice lab: take two made-up companies with the same profit, let one keep it and the other pay half out as cash, and write down what a holder of each has after one year: cash in hand, or a price that moved.
+
+Knowledge check. Ravi holds a company that pays out much of its profit as cash. Zoe holds one that keeps its profit to build new shops. What is the main difference?
+
+Option A. Ravi gets cash along the way, while Zoe's gain depends on the price rising
+
+Option B. Zoe is owed a fixed payment every year, while Ravi is owed nothing
+
+Option C. Ravi's price cannot fall since cash arrives, while Zoe's price can
+
+Option D. Zoe's company owes tax on its profit and Ravi's company never does
+
+The best answer is option A. Ravi gets cash along the way, while Zoe's gain depends on the price rising. A dividend stock hands some profit to holders as cash, while a growth stock keeps it to expand, so its holders rely on the price. Neither is promised: dividends can be cut and prices can fall.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.27: How the Central Bank's Interest Rate Reaches Your Wallet
+
+From the central bank to a car loan, a card balance, a business loan and your savings.
+
+Here is the simple version. The central bank raises its rate, and the banks pass some of it down the block. Nia's car loan of $12,000 moves from 6% to 8%, so a year of interest grows from $720 to $960. That is $240 more a year, a lot of wing spot dinners. Kofi's savings of $2,000 earn more too, going from $20 to $60 a year. With loans pricey, people spend less and the economy cools a little. Other countries may pass the change on faster or slower.
+
+Point 1. A central bank is the official bank that sets a country's base interest rate. Regular banks price their own loans and savings accounts off that rate. When it goes up, borrowing costs more and saving pays more. When it goes down, the reverse. Systems differ by country: who sets the rate, how often, and how fast banks pass it on.
+
+Point 2. Follow a rate rise down the block. A bank pays more to borrow, so it charges more on car loans. A card balance usually floats with rates, so it gets dearer fast. A business owner pricing a loan for a new oven may wait. Savers earn a bit more. With borrowing pricey, people spend less, demand cools, and rising prices slow. It takes months, and fixed-rate loans already signed usually stay put.
+
+Point 3. Practice lab: take a made-up loan, raise its rate by two points, and work out the extra interest per year, then do the same for a savings balance to see who gains and who pays.
+
+Knowledge check. The central bank raises its rate. Which chain of effects is most likely over the following months?
+
+Option A. Loans get cheaper and saving pays less, so spending heats up
+
+Option B. Loans cost more and savings earn more, so spending cools a little
+
+Option C. Only banks notice, since shoppers and firms never see the change
+
+Option D. Prices everywhere drop overnight, and old loans get cheaper too
+
+The best answer is option B. Loans cost more and savings earn more, so spending cools a little. A higher central bank rate is passed along: loans cost more, savings pay more, and people and firms tend to spend a little less. It builds up over months, and how fast varies by country.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.28: How Currencies Work
+
+What gives a currency its value, and why an exchange rate moves.
+
+Here is the simple version. Zoe plans a trip and swaps $500 at 4 zubs per dollar, which gets her 2,000 zubs. A jacket at the flea market there costs 800 zubs, which is $200 to her. Weeks later the zub weakens, because the country cut its interest rates and confidence dipped. Now a dollar gets 5 zubs, so the same 800 zub jacket is only $160. A stronger home currency makes trips cheaper, and a weaker one makes them pricier.
+
+Point 1. A currency is a country's money. Its value is not the number printed on the bill. It is what the money buys at home, and what other people will swap for it. The exchange rate is the price of one currency in another. Say a dollar swaps for four zubs, where the zub is a made-up currency.
+
+Point 2. Three forces push the rate around. Interest rates: a country paying savers more can attract money from abroad, which lifts demand for its currency. Trade: if the world buys a lot from a country, buyers need its money. Confidence: if people doubt a country's future, they swap out and its currency weakens. Usually it is a mix, and nobody times it reliably. The same souvenir can cost you a different amount from one month to the next.
+
+Point 3. Practice lab: pick a made-up exchange rate, swap some dollars into foreign money, price one souvenir there, then move the rate and see how the same souvenir costs a different number of dollars.
+
+Knowledge check. Ava's home currency weakens against the money of the country she is visiting. What happens to her trip?
+
+Option A. Prices there fall for her, so the whole trip gets cheaper for her
+
+Option B. Her home money stops working there, so shops turn it down flat
+
+Option C. Local prices cost her more home money, so the trip gets pricier
+
+Option D. Nothing changes, because a price tag abroad is a fixed number
+
+The best answer is option C. Local prices cost her more home money, so the trip gets pricier. When the home currency weakens, each unit of it buys less foreign money. The same local price then costs more home money, so a trip abroad gets pricier.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.29: How Investment Banks and Hedge Funds Make Money
+
+Fees for arranging deals, and fees plus a share of gains for running a fund.
+
+Here is the simple version. Comet Cafe raises $2,000,000 by selling new shares, and the investment bank arranging it charges 5%, which is $100,000. That fee comes whether or not the shares do well later. A hedge fund manages $1,000,000 and charges 2%, which is $20,000, plus 20% of any gain. In a good year the fund gains $100,000, its share is $20,000, and clients keep $60,000. In a bad year it loses $50,000, still charges the $20,000, and clients are down $70,000. So the manager's pay leans on assets and gains, while clients carry losses.
+
+Point 1. An investment bank is not the bank that holds your paycheck. It helps companies raise money and do big deals: selling new shares or bonds, or merging with another company. It earns a fee, often a percentage of the money raised or the deal value. The fee is paid when the deal happens, whether or not the new shares do well later.
+
+Point 2. A hedge fund is a private pool of money from wealthy people and big institutions, run by managers who use many trading styles. A common pay setup is a yearly fee on the assets plus a share of the gains, though terms vary. Managers gain from more assets and bigger profits. Clients carry the losses, and the fee still applies. Rules differ by country. It helps to ask whose pay depends on what.
+
+Point 3. Practice lab: take a made-up fund with a yearly fee and a profit share, run one good year and one bad year, and compare what the manager collects with what the clients keep.
+
+Knowledge check. A hedge fund charges a yearly fee on its assets plus a share of any gains. What does that pay setup reward?
+
+Option A. Growing the assets and producing gains, since both raise the manager's pay
+
+Option B. Keeping the assets small, since fewer clients means less paperwork
+
+Option C. Refunding losses to clients, since the profit share works both ways
+
+Option D. Trading as little as possible, since the fee is charged in quiet years
+
+The best answer is option A. Growing the assets and producing gains, since both raise the manager's pay. A fee on assets plus a share of gains pays the manager more when the fund is larger and the gains are bigger. Losses fall on the clients, which is why it helps to know how a manager is paid.
+
+Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
+
+### Lesson 29.30: Investing Through a Recession and at All-Time Highs
+
+Recessions are part of the cycle, records are common, and the real risk is needing the money soon.
+
+Here is the simple version. Kofi and Zoe each hold $10,000 of shares when a recession hits and prices fall 30%. That leaves each stake at $7,000, a paper loss of $3,000. Zoe panics and sells, so the loss becomes real, and she holds $7,000 in cash. In this made-up story Kofi waits, the recession ends, and his stake climbs back to $10,500. Nothing promises that ending, and if Kofi needed the cash during the fall, he would have been stuck selling low. Records are common, so the real danger is needing the money soon.
+
+Point 1. A recession is a stretch when the economy shrinks: less spending, fewer new hires, weaker company profits. Recessions come and go as part of the business cycle, though nobody can time one. Share prices often fall during or before them, sometimes a lot. Recoveries have followed in the past, but the wait varies and nothing is promised.
+
+Point 2. An all-time high is just the highest price so far. When an economy grows over the years, new highs happen often, so a record is not a doom sign. The real risk is needing the money soon. If rent, tuition or a house deposit is due next year, a fall can force a sale at a loss. Money with years to wait has more room to ride out a rough patch. Selling in a panic locks the loss in, like leaving the cookout before the food comes out.
+
+Point 3. Practice lab: take a made-up stake, drop it by a third, and compare a holder who sells with one who waits for a recovery, then ask what changes if the cash is needed next month.
+
+Knowledge check. Ravi needs his house deposit in one year, and the market sits at an all-time high. What is his biggest risk?
+
+Option A. The record itself, since prices always fall right after a high
+
+Option B. Missing out, since prices stop climbing once a record is set
+
+Option C. Nothing at all, since a record proves the economy keeps growing
+
+Option D. Prices dipping right when the cash is due, leaving him to sell low
+
+The best answer is option D. Prices dipping right when the cash is due, leaving him to sell low. Records are common and are not a doom sign. The danger is a fall arriving just when the money is needed, which can force a sale at a loss. Money with time to wait has more room to recover.
 
 Before continuing, explain the idea in your own words. Name the evidence you would need, the uncertainty you cannot remove, and the condition that would invalidate your conclusion. Then continue to the next lesson.
 
