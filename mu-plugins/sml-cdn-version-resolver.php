@@ -45,13 +45,13 @@
  * 2026-09-25: advance pin -> 14a122d (js/vod-watch.js + css: remove watch-page voice cues).
  * 2026-09-25: advance pin -> d4444fd (js/live-watch.js: Boost Arena guardrail client).
  * 2026-09-25: advance pin -> 85480be (Ticker Terminal and Loop Channel use the shared Massive SSE relay).
- * 2026-09-25: advance pin -> 1099d13 (preserve complete quote fields while live trades update price).
+ * 2026-09-25: advance pin -> cbfe11e (bind terminal quote slots structurally so live fields cannot disconnect).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', '1099d13c1dc5c9448d965ef8ca504672206607bc' );
+	define( 'SML_CDN_ASSET_REVISION', 'cbfe11e793c302cbb9ed1eda74271fcf74272b12' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
