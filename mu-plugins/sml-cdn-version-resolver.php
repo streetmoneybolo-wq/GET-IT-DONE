@@ -49,7 +49,7 @@
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'd4444fdfba414b84784c5b615b231b7791d6ece1' );
+	define( 'SML_CDN_ASSET_REVISION', 'fcdcc1757768cb838f19a691f7658f8fdf33cb51' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
