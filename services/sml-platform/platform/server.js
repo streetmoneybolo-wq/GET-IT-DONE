@@ -555,7 +555,7 @@ const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbo
    through moomoo's own first-party /deeplink/ bridge, which IS allowlisted and opens the installed app
    on that exact stock (double-encoding required - the page unescapes twice). Only ftmm://url/ targets,
    never ftmm://trade/ - the button must always land on the quote page, not an order ticket. */
-const moomooUrl=(s)=>{const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(s)+'-US';const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);return mobile?'https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl)):stockUrl};
+const moomooUrl=(s)=>{const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(s)+'-US';const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);return mobile?'https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl)):'https://sml-platform-api.onrender.com/academy-activity/moomoo?symbol='+encodeURIComponent(s)};
 const btn=document.createElement('button');btn.id='academy-moomoo-buy';btn.type='button';
 const paint=()=>{btn.textContent='Buy '+currentSymbol()+' on moomoo ↗';btn.title='Opens '+currentSymbol()+' in your moomoo app. Any order is reviewed and placed by you in moomoo — nothing is traded from the Academy.'};paint();
 btn.setAttribute('aria-label','Open this stock in the moomoo app');
@@ -563,6 +563,50 @@ btn.onclick=()=>{const s=currentSymbol();const url=moomooUrl(s);if(window.smlAca
 const buyChip=toolbar.querySelector('.quote-chip.buy');(buyChip&&buyChip.nextSibling)?toolbar.insertBefore(btn,buyChip.nextSibling):toolbar.appendChild(btn);
 new MutationObserver(paint).observe(document.getElementById('label')||document.body,{childList:true,characterData:true,subtree:true});
 window.addEventListener('popstate',paint)})();</script>`;
+
+/**
+ * Standalone launcher the Academy's moomoo button opens in the SYSTEM browser
+ * (Discord's openExternalLink only carries https). Phones bounce straight to
+ * moomoo's universal-link bridge and land inside the moomoo app on this stock.
+ *
+ * Desktop reality, verified 2026-09-25 at the registry level on a machine with
+ * the client installed: the moomoo desktop app registers NO URL protocol (258
+ * schemes enumerated, none moomoo/futu), no moomoo page attempts a desktop
+ * launch, and moomoo's website has no real-money order entry - orders happen
+ * in the mobile app ("Trade") or the desktop app ("Quick Trade") only. So on
+ * desktop the fastest honest path is: copy the ticker, open moomoo desktop,
+ * paste into search, Quick Trade. Do not re-add protocol-launch machinery
+ * without re-verifying - an unregistered scheme throws a browser error dialog.
+ *
+ * Only quote destinations, never a trade deep link: every order is reviewed
+ * and placed by the member inside moomoo.
+ */
+const MOOMOO_DOWNLOAD_URL = 'https://www.moomoo.com/download';
+
+function academyMoomooLaunchHtml(symbol) {
+  const sym = JSON.stringify(symbol);
+  const downloadUrl = JSON.stringify(MOOMOO_DOWNLOAD_URL);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade ${symbol} on moomoo</title>
+<style>body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#070b10;color:#eef4f7;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(450px,calc(100vw - 32px));padding:26px;border:1px solid #1f3942;border-radius:14px;background:#0d1720;text-align:center}.card h1{margin:0 0 6px;font-size:1.15rem}.card .sym{color:#79efbd;font-family:ui-monospace,monospace}.card p{margin:0 0 16px;color:#8fa5b1;font-size:.85rem;line-height:1.5}.steps{margin:0 0 16px;padding:12px 14px;border:1px solid #294554;border-radius:9px;background:#0a1118;text-align:left;color:#c7d5dc;font-size:.82rem;line-height:1.65}.steps b{color:#79efbd}button.copy{width:100%;margin:0 0 9px;padding:12px 14px;border:0;border-radius:8px;background:#00c47d;color:#042217;font:800 .95rem system-ui;cursor:pointer}button.copy.done{background:#0b6a49;color:#dffbee}.card a{display:block;margin:9px 0;padding:11px 14px;border-radius:8px;font-weight:800;text-decoration:none}.secondary{border:1px solid #2f6cf5;background:#12233f;color:#9cc0ff}.tertiary{border:1px solid #294554;background:#101e27;color:#9eb2bc;font-weight:700}.note{margin-top:14px;color:#63798a;font-size:.72rem;line-height:1.5}</style></head><body><div class="card">
+<h1>Trade <span class="sym">${symbol}</span> on moomoo</h1>
+<p id="lead">Buy and sell happen inside your own moomoo app.</p>
+<div class="steps" id="desktop-steps"><b>1.</b> Copy the ticker below.<br><b>2.</b> Open your <b>moomoo desktop</b> app.<br><b>3.</b> Paste ${symbol} into search, then use <b>Quick Trade</b>.</div>
+<button class="copy" id="copy-sym" type="button">Copy ${symbol}</button>
+<a id="open-web" class="secondary" href="#" target="_blank" rel="noopener">View ${symbol} on moomoo web</a>
+<a id="get-app" class="tertiary" href="#" target="_blank" rel="noopener">Get moomoo</a>
+<div class="note">Nothing is traded from the Academy. moomoo is a separate brokerage - your account, your decisions.</div>
+</div><script>(()=>{
+const SYM=${sym},DL=${downloadUrl};
+const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(SYM)+'-US';
+const mobileBridge='https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl));
+document.getElementById('open-web').href=stockUrl;
+document.getElementById('get-app').href=DL;
+if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){location.replace(mobileBridge);return}
+const btn=document.getElementById('copy-sym');
+btn.onclick=async()=>{try{await navigator.clipboard.writeText(SYM);btn.textContent=SYM+' copied ✓ — now open moomoo desktop';btn.classList.add('done')}catch(_){btn.textContent='Select and copy: '+SYM}};
+})();</script></body></html>`;
+}
 
 function academyActivityHtml(initialMarket = {}, options = {}) {
   return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + '</body></html>');
@@ -1401,6 +1445,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
       activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
       sendHtml(response, 200, academyActivityHtml(activity, { appId: academyAppId }));
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/moomoo') {
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(params.get('symbol') || 'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10) || 'SPY';
+      sendHtml(response, 200, academyMoomooLaunchHtml(symbol));
       return;
     }
 
