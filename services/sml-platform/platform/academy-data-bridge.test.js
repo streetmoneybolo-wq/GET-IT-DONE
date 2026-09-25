@@ -24,3 +24,12 @@ test('academy data bridge fails closed while unconfigured', async () => {
   assert.deepEqual(await bridge.get('earnings', 'NVDA'), { ok: false, status: 503, code: 'academy_data_unconfigured' });
   assert.throws(() => cleanSymbol('<>'), /invalid_symbol/);
 });
+
+test('academy data bridge includes a validated option expiration in its signature', async () => {
+  const calls = [];
+  const bridge = createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'b'.repeat(32), now: () => 1_700_000_000_000,
+    fetchImpl: async (url, options) => { calls.push({ url, options }); return new Response('{}', { status: 200 }); } });
+  assert.equal((await bridge.get('options', 'SPY', { expiration: '2026-10-16' })).ok, true);
+  assert.match(calls[0].url, /expiration=2026-10-16$/);
+  await assert.rejects(() => bridge.get('options', 'SPY', { expiration: 'tomorrow' }), /invalid_expiration/);
+});

@@ -94,3 +94,25 @@ test('the SSE route sends a snapshot then live trades, and /live merges Massive 
   assert.equal(bad.status, 400);
   server.close(); svc.stop();
 });
+
+test('public market routes are license-gated, CORS-scoped and serve cached candles when enabled', async () => {
+  const disabled = createServer({ checkDatabase: async () => true, acceptWordPressEvent: async () => 'accepted', logger: () => {}, publicMarketDataEnabled: false });
+  await new Promise((resolve) => disabled.listen(0, '127.0.0.1', resolve));
+  const disabledUrl = `http://127.0.0.1:${disabled.address().port}/market-data/candles?symbol=SPY&tf=5m`;
+  const off = await fetch(disabledUrl, { headers: { origin: 'https://stockmarketloop.com' } });
+  assert.equal(off.status, 503);
+  assert.equal((await off.json()).error, 'public_market_data_disabled');
+  disabled.close();
+
+  const history = { enabled: true, get: async (symbol, tf) => ({ ok: true, status: 200, data: { symbol, tf, bars: [{ t: 1, o: 1, h: 1, l: 1, c: 1, v: 1 }] } }) };
+  const enabled = createServer({ checkDatabase: async () => true, acceptWordPressEvent: async () => 'accepted', logger: () => {}, publicMarketDataEnabled: true, marketHistory: history });
+  await new Promise((resolve) => enabled.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${enabled.address().port}`;
+  const good = await fetch(`${base}/market-data/candles?symbol=SPY&tf=5m`, { headers: { origin: 'https://creator.stockmarketloop.com' } });
+  assert.equal(good.status, 200);
+  assert.equal(good.headers.get('access-control-allow-origin'), 'https://creator.stockmarketloop.com');
+  assert.equal((await good.json()).bars.length, 1);
+  const blocked = await fetch(`${base}/market-data/candles?symbol=SPY&tf=5m`, { headers: { origin: 'https://attacker.test' } });
+  assert.equal(blocked.status, 403);
+  enabled.close();
+});

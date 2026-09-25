@@ -63,6 +63,7 @@ if ( ! function_exists( 'sml_ch_loader_active' ) ) {
 		return '<link rel="stylesheet" id="sml-ch-css" href="' . esc_url( $base . 'css/loop-channel.css' ) . '">'
 			. '<script>window.SML_CH_ADMIN=' . $is_admin . ';window.SML_CH_NONCE=' . wp_json_encode( wp_create_nonce( 'wp_rest' ) ) . ';window.SML_CH_ME=' . wp_json_encode( $config ) . ';</script>'
 			. '<div id="sml-ch-root" aria-label="Loop Channel"></div>'
+			. '<script id="sml-market-relay-js" src="' . esc_url( $base . 'js/massive-market-relay.js' ) . '"></script>'
 			. '<script id="sml-ch-js" src="' . esc_url( $base . 'js/loop-channel.js' ) . '"></script>';
 	}
 

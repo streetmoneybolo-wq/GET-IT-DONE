@@ -102,12 +102,35 @@
       setTxt(slots.qVwap, f2(q.vwap)); setTxt(slots.qBid, f2(q.bid)); setTxt(slots.qAsk, f2(q.ask));
     }
     function poll() {
+      if (window.SMLMarketRelay && window.SMLMarketRelay.isLive(SYM)) return;
       fetch('/wp-json/sml/v1/quote?symbol=' + SYM, { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (q) { apply(q); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: q })); } catch (e) {} })   /* ONE poller: the native chart listens */
         .catch(function () {});
     }
     poll(); setInterval(poll, 8000);
+    if (window.SMLMarketRelay) window.SMLMarketRelay.subscribe(SYM, {
+      onSnapshot: function (snapshot) {
+        var quote = snapshot && snapshot.quote;
+        var price = Number(snapshot && snapshot.last);
+        if (!(price > 0) && quote) price = (Number(quote.bid) + Number(quote.ask)) / 2;
+        if (!(price > 0)) return;
+        var live = { symbol: SYM, current: price, bid: quote && quote.bid, ask: quote && quote.ask,
+          timestamp: Number(snapshot.lastTradeAt || (quote && quote.t)) || Date.now(), source: 'massive-stream', stale: false };
+        apply(live); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: live })); } catch (_) {}
+      },
+      onTrade: function (trade) {
+        if (!trade || !(Number(trade.price) > 0)) return;
+        var live = { symbol: SYM, current: Number(trade.price), timestamp: Number(trade.t) || Date.now(), source: 'massive-stream', stale: false };
+        apply(live); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: live })); } catch (_) {}
+      },
+      onQuote: function (quote) {
+        if (!quote || !(Number(quote.bid) > 0 && Number(quote.ask) > 0)) return;
+        var live = { symbol: SYM, current: (Number(quote.bid) + Number(quote.ask)) / 2, bid: Number(quote.bid), ask: Number(quote.ask),
+          timestamp: Number(quote.t) || Date.now(), source: 'massive-stream', stale: false };
+        apply(live); try { window.dispatchEvent(new CustomEvent('tv2:quote', { detail: live })); } catch (_) {}
+      }
+    });
     document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
 
     // ---- alert box count (real) — terminal-alerts.js owns the pill when it is loaded ----

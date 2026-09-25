@@ -501,10 +501,15 @@
     setStatus(refresh ? 'Refreshing authoritative candles…' : 'Loading authoritative candles…', 'loading');
     rebuildToolbar();
 
-    fetch(endpoint('history', { symbol: symbol, tf: state.timeframe }), {
+    var historyRequest = config.marketRelay && typeof config.marketRelay.history === 'function'
+      ? config.marketRelay.history(symbol, state.timeframe, historyController.signal).then(function (payload) { return { ok: true, json: function () { return Promise.resolve(payload); } }; })
+      : fetch(endpoint('history', { symbol: symbol, tf: state.timeframe }), {
       credentials: 'same-origin',
       signal: historyController.signal,
       headers: { Accept: 'application/json' }
+    });
+    historyRequest.catch(function () {
+      return fetch(endpoint('history', { symbol: symbol, tf: state.timeframe }), { credentials: 'same-origin', signal: historyController.signal, headers: { Accept: 'application/json' } });
     }).then(function (response) {
       if (!response.ok) throw new Error('History request returned ' + response.status);
       return response.json();
@@ -559,6 +564,7 @@
   }
 
   function pollQuote() {
+    if (config.marketRelay && config.marketRelay.isLive(symbol)) { quoteTimer = window.setTimeout(pollQuote, 5000); return; }
     fetch(endpoint('quote', { symbol: symbol }), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
@@ -1335,9 +1341,32 @@
     if (historyController) historyController.abort();
     if (quoteTimer) clearTimeout(quoteTimer);
     if (historyTimer) clearInterval(historyTimer);
+    if (relayOff) relayOff();
     resizeObserver.disconnect();
   }
   window.addEventListener('pagehide', cleanup, { once: true });
+
+  var relayOff = null;
+  if (config.marketRelay && typeof config.marketRelay.subscribe === 'function') {
+    relayOff = config.marketRelay.subscribe(symbol, {
+      onSnapshot: function (snapshot) {
+        var price = snapshot && snapshot.last; if (!(Number(price) > 0) && snapshot && snapshot.quote) price = (Number(snapshot.quote.bid) + Number(snapshot.quote.ask)) / 2;
+        if (Number(price) > 0) applyRelayPrice(price, Number(snapshot.lastTradeAt || (snapshot.quote && snapshot.quote.t)) || Date.now());
+      },
+      onTrade: function (trade) { if (trade && Number(trade.price) > 0) applyRelayPrice(Number(trade.price), Number(trade.t) || Date.now()); },
+      onQuote: function (quote) { if (quote && Number(quote.bid) > 0 && Number(quote.ask) > 0) applyRelayPrice((Number(quote.bid) + Number(quote.ask)) / 2, Number(quote.t) || Date.now()); }
+    });
+  }
+  function applyRelayPrice(price, timestamp) {
+    var quote = { current: price, timestamp: timestamp, source: 'massive-stream' };
+    state.quote = quote;
+    if (state.active && state.quality !== 'demo' && !/^1[WMQY]$/.test(state.timeframe)) {
+      var beforeLength = state.bars.length;
+      state.bars = Mathx.mergeProvisionalQuote(state.bars, quote, state.timeframe);
+      if (state.follow && state.bars.length !== beforeLength) { state.to = state.bars.length; state.from = Math.max(0, state.to - defaultVisibleCount()); }
+      scheduleRender();
+    }
+  }
 
   rebuildToolbar();
   loadHistory(false);

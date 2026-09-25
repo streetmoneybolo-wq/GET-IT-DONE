@@ -79,6 +79,11 @@ function getConfig(env = process.env) {
     discordConnectAppId: String(env.SML_DISCORD_CONNECT_APP_ID || '').trim(),
     discordConnectBotToken: String(env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim(),
     massiveApiKey: String(env.MASSIVE_API_KEY || '').trim(),
+    // Public redistribution is deliberately opt-in. The individual Stocks
+    // plan may power the private Academy, but public pages stay on their
+    // existing provider until the owner confirms a suitable Business license.
+    massivePublicChartsEnabled: String(env.MASSIVE_PUBLIC_CHARTS_ENABLED || '').trim() === '1',
+    massiveOptionsEnabled: String(env.MASSIVE_OPTIONS_ENABLED || '').trim() === '1',
     alertsBotToken: String(env.SML_ALERTS_BOT_TOKEN || '').trim(),
     disputeBotEnabled: String(env.SML_DISPUTE_BOT_ENABLED || '').trim() === '1',
     discordDisputePublicKey: String(env.SML_DISPUTE_BOT_PUBLIC_KEY || '').trim(),

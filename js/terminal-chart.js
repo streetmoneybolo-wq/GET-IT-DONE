@@ -58,6 +58,7 @@
       version: '1.0.4',
       symbol: SYM,
       restRoot: location.origin + '/wp-json/sml/v1/',
+      marketRelay: window.SMLMarketRelay || null,
       demo: false,
       canConfigure: false
     };

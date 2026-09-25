@@ -31,6 +31,7 @@ const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
 const { createMassiveStream } = require('./academy-massive-stream');
+const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
@@ -1195,14 +1196,85 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyMassive = null,
+  marketHistory = null, publicMarketDataEnabled = false,
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
   memberEmail = null,
   logger = log, now = Date.now }) {
+  const publicStreamByIp = new Map();
+  let publicStreamTotal = 0;
+  const requestIp = (request) => String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+  const corsHeaders = (origin) => ({
+    ...(origin ? { 'access-control-allow-origin': origin, vary: 'Origin' } : {}),
+    'access-control-allow-methods': 'GET, OPTIONS',
+    'access-control-allow-headers': 'Accept',
+    'access-control-max-age': '86400'
+  });
+  const corsJson = (request, response, status, body) => {
+    const origin = String(request.headers.origin || '');
+    const payload = JSON.stringify(body);
+    response.writeHead(status, { ...corsHeaders(origin), 'content-type': 'application/json; charset=utf-8',
+      'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+    response.end(payload);
+  };
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
+
+    /* Public chart relay. It is read-only, narrowly CORS-scoped and disabled
+       until the site owner confirms a Massive Business redistribution plan. */
+    if (path.startsWith('/market-data/')) {
+      const origin = String(request.headers.origin || '');
+      if (!allowedPublicOrigin(origin)) { sendJson(response, 403, { ok: false, error: 'origin_not_allowed' }); return; }
+      if (request.method === 'OPTIONS') { response.writeHead(204, corsHeaders(origin)); response.end(); return; }
+      if (!publicMarketDataEnabled) { corsJson(request, response, 503, { ok: false, error: 'public_market_data_disabled' }); return; }
+      if (request.method !== 'GET') { corsJson(request, response, 405, { ok: false, error: 'method_not_allowed' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      let symbol;
+      try { symbol = cleanMarketSymbol(params.get('symbol')); }
+      catch (_) { corsJson(request, response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+
+      if (path === '/market-data/candles') {
+        if (!marketHistory?.enabled) { corsJson(request, response, 503, { ok: false, error: 'history_disabled' }); return; }
+        try {
+          const result = await marketHistory.get(symbol, params.get('tf') || '5m');
+          corsJson(request, response, result.status || (result.ok ? 200 : 503), result.ok ? result.data : { ok: false, error: result.code });
+        } catch (error) { corsJson(request, response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_timeframe' : 'temporary_unavailable' }); }
+        return;
+      }
+
+      if (path === '/market-data/snapshot') {
+        if (!academyMassive?.status().enabled) { corsJson(request, response, 503, { ok: false, error: 'stream_disabled' }); return; }
+        academyMassive.watch(symbol);
+        const snapshot = academyMassive.peek(symbol);
+        if (!snapshot) { corsJson(request, response, 503, { ok: false, error: 'quote_pending' }); return; }
+        corsJson(request, response, 200, { ok: true, source: 'massive', ...snapshot });
+        return;
+      }
+
+      if (path === '/market-data/stream') {
+        if (!academyMassive?.status().enabled) { corsJson(request, response, 503, { ok: false, error: 'stream_disabled' }); return; }
+        const ip = requestIp(request), active = publicStreamByIp.get(ip) || 0;
+        if (active >= 4 || publicStreamTotal >= 400) { corsJson(request, response, 429, { ok: false, error: 'stream_limit' }); return; }
+        publicStreamByIp.set(ip, active + 1); publicStreamTotal += 1;
+        response.writeHead(200, { ...corsHeaders(origin), 'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+        const write = (event, data) => { try { response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { /* close handler cleans up */ } };
+        academyMassive.watch(symbol);
+        write('snapshot', { ok: true, source: 'massive', ...(academyMassive.peek(symbol) || { symbol, pending: true }) });
+        let pendingQuote = null, quoteTimer = null, closed = false;
+        const off = academyMassive.on(symbol, (event) => {
+          if (event.type === 'trade') write('trade', event.trade);
+          else { pendingQuote = event.quote; if (!quoteTimer) quoteTimer = setTimeout(() => { quoteTimer = null; if (pendingQuote) { write('quote', pendingQuote); pendingQuote = null; } }, 100); }
+        });
+        const beat = setInterval(() => { try { response.write(': keep-alive\n\n'); } catch (_) { /* close follows */ } }, 15_000);
+        const done = () => { if (closed) return; closed = true; clearInterval(beat); if (quoteTimer) clearTimeout(quoteTimer); off(); publicStreamTotal = Math.max(0, publicStreamTotal - 1); const left = Math.max(0, (publicStreamByIp.get(ip) || 1) - 1); if (left) publicStreamByIp.set(ip, left); else publicStreamByIp.delete(ip); };
+        request.on('close', done); response.on('close', done);
+        return;
+      }
+      corsJson(request, response, 404, { ok: false, error: 'not_found' }); return;
+    }
     if (request.method === 'GET' && (path === '/academy-discipline' || path === '/academy-discipline/')) {
       sendHtml(response, 200, academyDisciplinePlayerHtml());
       return;
@@ -1475,7 +1547,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = params.get('symbol');
       const timeframe = params.get('tf') || '5m';
       try {
-        sendJson(response, 200, await getAcademyCandles(symbol, timeframe));
+        const massive = marketHistory?.enabled ? await marketHistory.get(symbol, timeframe) : null;
+        sendJson(response, 200, massive?.ok ? massive.data : await getAcademyCandles(symbol, timeframe));
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_market_request_failed', { error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
@@ -1766,9 +1839,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       const kind = path.endsWith('/options') ? 'options' : 'earnings';
-      const symbol = new URL(request.url || '/', 'http://localhost').searchParams.get('symbol');
+      const dataParams = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = dataParams.get('symbol');
       try {
-        const result = await academyDataBridge.get(kind, symbol);
+        const result = await academyDataBridge.get(kind, symbol, { expiration: dataParams.get('expiration') || '' });
         sendJson(response, result.status || (result.ok ? 200 : 503), result.ok ? { ok: true, data: result.data } : { ok: false, error: result.code });
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_data_request_failed', { kind, error });
@@ -1830,12 +1904,31 @@ async function main() {
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
   const { createAcademyDataBridge } = require('./academy-data-bridge');
-  const academyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
+  const rawAcademyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
+  const queuedMoomooBridge = createQueuedDataSource({
+    source: rawAcademyDataBridge,
+    // Five cold options calls per minute is the safe ceiling; cached and
+    // identical in-flight requests never enter this queue.
+    minimumIntervalMs: 12_100,
+    marketOpen: (timestamp) => { const date = new Date(timestamp); const day = date.getUTCDay(); if (day === 0 || day === 6) return false; const minutes = date.getUTCHours() * 60 + date.getUTCMinutes(); return minutes >= 13 * 60 + 30 && minutes < 20 * 60; }
+  });
+  const massiveOptions = createMassiveOptions({ apiKey: config.massiveApiKey, enabled: config.massiveOptionsEnabled });
+  const academyDataBridge = {
+    configured: queuedMoomooBridge.configured || massiveOptions.configured,
+    async get(kind, symbol, params = {}) {
+      if (kind === 'options' && massiveOptions.configured) {
+        const preferred = await massiveOptions.get(kind, symbol, params);
+        if (preferred.ok) return preferred;
+      }
+      return queuedMoomooBridge.get(kind, symbol, params);
+    }
+  };
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
   const orderFlowStore = createOrderFlowStore({ pool: database.pool });
   const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
   const academyMassive = process.env.ACADEMY_MASSIVE_STREAM === 'off' ? null : createMassiveStream({ apiKey: config.massiveApiKey, logger: log });
+  const marketHistory = createMassiveHistory({ apiKey: config.massiveApiKey });
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
     tokens: alertTokens, channels: defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
     orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
@@ -1890,6 +1983,7 @@ async function main() {
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyMassive,
+    marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     academyDiscipline,
     academyAppId: config.academyAppId,
     memberEmail

@@ -95,6 +95,13 @@ services:
         sync: false
       - key: MASSIVE_API_KEY
         sync: false
+      # Public Massive redistribution is OFF unless the owner confirms a
+      # Business license. The private Academy may continue using the feed.
+      - key: MASSIVE_PUBLIC_CHARTS_ENABLED
+        value: "0"
+      # Keep Massive options disabled until an entitled Options plan exists.
+      - key: MASSIVE_OPTIONS_ENABLED
+        value: "0"
       - key: SML_ACADEMY_ELEVENLABS_VOICE_ID
         sync: false
       - key: SML_ACADEMY_ELEVENLABS_MODEL

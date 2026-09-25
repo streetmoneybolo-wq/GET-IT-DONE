@@ -14,6 +14,14 @@
 
   /* ---------- ticker tokens + popover ---------- */
   var TCACHE = {};
+  var TSTREAMS = {};
+  function liveTicker(sym) {
+    if (TSTREAMS[sym] || !window.SMLMarketRelay) return;
+    TSTREAMS[sym] = window.SMLMarketRelay.subscribe(sym, {
+      onTrade: function (trade) { if (TCACHE[sym] && trade && Number(trade.price) > 0) { TCACHE[sym].current = Number(trade.price); TCACHE[sym].stale = false; renderTickers(); } },
+      onQuote: function (quote) { if (TCACHE[sym] && quote && Number(quote.bid) > 0 && Number(quote.ask) > 0) { TCACHE[sym].current = (Number(quote.bid) + Number(quote.ask)) / 2; TCACHE[sym].stale = false; renderTickers(); } }
+    });
+  }
   function segs(text) {
     return esc(text).replace(/(^|[\s(])\$([A-Za-z]{1,6})\b/g, function (m, pre, sym) { return pre + '<span class="lch-tk" data-tk="' + sym.toUpperCase() + '">$' + sym.toUpperCase() + '</span>'; });
   }
@@ -30,6 +38,7 @@
   var pop;
   function showPop(anchor, sym) {
     hidePop();
+    liveTicker(sym);
     pop = document.createElement('div'); pop.className = 'lch-tkpop'; pop.innerHTML = '<span class="s">' + esc(sym) + '</span><span class="lch-muted" style="font-size:9px">loading…</span>';
     document.body.appendChild(pop); placePop(anchor);
     tickerCard(sym).then(function (c) {
@@ -64,7 +73,7 @@
       var list = (r.ok && r.j && (r.j.watchlist || r.j.items || r.j.symbols)) || [];
       S.tickers = list.map(function (x) { return String(typeof x === 'string' ? x : (x.symbol || x.ticker || x.sym || '')).toUpperCase().replace(/^\$/, ''); }).filter(Boolean).slice(0, 8);
       renderTickers();
-      S.tickers.slice(0, 8).forEach(function (sym) { tickerCard(sym).then(function () { renderTickers(); }); });
+      S.tickers.slice(0, 8).forEach(function (sym) { liveTicker(sym); tickerCard(sym).then(function () { renderTickers(); }); });
     });
   }
   function renderTickers() {

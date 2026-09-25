@@ -10,6 +10,13 @@ function cleanSymbol(value) {
   return symbol;
 }
 
+function cleanExpiration(value) {
+  if (value == null || value === '') return '';
+  const expiration = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiration)) throw new TypeError('invalid_expiration');
+  return expiration;
+}
+
 /*
  * Private Render -> WordPress data bridge.  The browser never receives the
  * signing key, and WordPress accepts only short-lived HMAC-signed requests.
@@ -18,11 +25,12 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
   const root = String(baseUrl || '').replace(/\/$/, '');
   const configured = /^https:\/\//i.test(root) && String(secret).length >= 32;
 
-  async function get(kind, symbol) {
+  async function get(kind, symbol, params = {}) {
     if (!configured) return { ok: false, status: 503, code: 'academy_data_unconfigured' };
     if (!ALLOWED_KINDS.has(kind)) return { ok: false, status: 404, code: 'not_found' };
     const safeSymbol = cleanSymbol(symbol);
-    const path = `/wp-json/sml-academy-bridge/v1/${kind}?symbol=${encodeURIComponent(safeSymbol)}`;
+    const expiration = kind === 'options' ? cleanExpiration(params.expiration) : '';
+    const path = `/wp-json/sml-academy-bridge/v1/${kind}?symbol=${encodeURIComponent(safeSymbol)}${expiration ? `&expiration=${encodeURIComponent(expiration)}` : ''}`;
     const timestamp = String(Math.floor(now() / 1000));
     const signature = crypto.createHmac('sha256', secret).update(`${timestamp}.${path}`).digest('hex');
     let response;
@@ -47,4 +55,4 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
   return { configured, get };
 }
 
-module.exports = { createAcademyDataBridge, cleanSymbol };
+module.exports = { createAcademyDataBridge, cleanSymbol, cleanExpiration };

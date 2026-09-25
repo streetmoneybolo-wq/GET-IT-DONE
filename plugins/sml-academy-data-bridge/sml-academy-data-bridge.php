@@ -111,13 +111,17 @@ if ( ! function_exists( 'sml_academy_bridge_authorize' ) ) {
 		$timestamp = (string) $request->get_header( 'x-sml-academy-timestamp' );
 		$provided  = (string) $request->get_header( 'x-sml-academy-signature' );
 		$symbol    = strtoupper( preg_replace( '/[^A-Z0-9.:-]/', '', (string) $request->get_param( 'symbol' ) ) );
+		$expiration = sanitize_text_field( (string) $request->get_param( 'expiration' ) );
+		if ( '' !== $expiration && ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $expiration ) ) {
+			return new WP_Error( 'sml_academy_bridge_expiration', 'Unauthorized.', array( 'status' => 401 ) );
+		}
 		if ( strlen( $secret ) < 32 || ! preg_match( '/^\d{10,12}$/', $timestamp ) || '' === $symbol ) {
 			return new WP_Error( 'sml_academy_bridge_unauthorized', 'Unauthorized.', array( 'status' => 401 ) );
 		}
 		if ( abs( time() - (int) $timestamp ) > 60 ) {
 			return new WP_Error( 'sml_academy_bridge_expired', 'Unauthorized.', array( 'status' => 401 ) );
 		}
-		$path     = '/wp-json' . $request->get_route() . '?symbol=' . rawurlencode( $symbol );
+		$path     = '/wp-json' . $request->get_route() . '?symbol=' . rawurlencode( $symbol ) . ( '' !== $expiration ? '&expiration=' . rawurlencode( $expiration ) : '' );
 		$expected = 'sha256=' . hash_hmac( 'sha256', $timestamp . '.' . $path, $secret );
 		if ( ! hash_equals( $expected, $provided ) ) {
 			return new WP_Error( 'sml_academy_bridge_signature', 'Unauthorized.', array( 'status' => 401 ) );
@@ -127,7 +131,7 @@ if ( ! function_exists( 'sml_academy_bridge_authorize' ) ) {
 }
 
 if ( ! function_exists( 'sml_academy_bridge_subrequest' ) ) {
-	function sml_academy_bridge_subrequest( $route, $symbol ) {
+	function sml_academy_bridge_subrequest( $route, $symbol, $expiration = '' ) {
 		$service_user_id = sml_academy_bridge_service_user_id();
 		if ( ! $service_user_id || ! get_user_by( 'id', $service_user_id ) ) {
 			return new WP_Error( 'sml_academy_bridge_service_user', 'Academy data bridge is not configured.', array( 'status' => 503 ) );
@@ -137,6 +141,7 @@ if ( ! function_exists( 'sml_academy_bridge_subrequest' ) ) {
 		try {
 			$subrequest = new WP_REST_Request( WP_REST_Server::READABLE, $route );
 			$subrequest->set_param( 'symbol', $symbol );
+			if ( '' !== $expiration ) { $subrequest->set_param( 'expiration', $expiration ); }
 			$response = rest_do_request( $subrequest );
 		} finally {
 			wp_set_current_user( $previous_user_id );
@@ -156,7 +161,8 @@ if ( ! function_exists( 'sml_academy_bridge_subrequest' ) ) {
 if ( ! function_exists( 'sml_academy_bridge_options' ) ) {
 	function sml_academy_bridge_options( WP_REST_Request $request ) {
 		$symbol = strtoupper( preg_replace( '/[^A-Z0-9.:-]/', '', (string) $request->get_param( 'symbol' ) ) );
-		$data   = sml_academy_bridge_subrequest( '/sml-options-intelligence/v1/chain', $symbol );
+		$expiration = sanitize_text_field( (string) $request->get_param( 'expiration' ) );
+		$data   = sml_academy_bridge_subrequest( '/sml-options-intelligence/v1/chain', $symbol, $expiration );
 		if ( is_wp_error( $data ) ) {
 			return $data;
 		}
@@ -188,6 +194,11 @@ add_action( 'rest_api_init', static function() {
 				'required'          => true,
 				'sanitize_callback' => static function( $value ) { return strtoupper( preg_replace( '/[^A-Z0-9.:-]/', '', (string) $value ) ); },
 				'validate_callback' => static function( $value ) { return 1 === preg_match( '/^[A-Z0-9.:-]{1,12}$/', (string) $value ); },
+			),
+			'expiration' => array(
+				'required'          => false,
+				'sanitize_callback' => 'sanitize_text_field',
+				'validate_callback' => static function( $value ) { return '' === (string) $value || 1 === preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $value ); },
 			),
 		),
 	);

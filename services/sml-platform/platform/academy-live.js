@@ -1,4 +1,4 @@
-/* Tick-by-tick feed for the Academy Live Chart Lab. Polls /academy-activity/live about once a second and drives, from the same real prints:
+/* Tick-by-tick feed for the Academy Live Chart Lab. Massive trades and quotes arrive over SSE as they happen; slower polling is fallback and refreshes moomoo Level 2:
    the forming candle (window.smlChartPro.liveTick), the price / bid / ask readouts, a Level 2 ladder that flashes as sizes change, and a time & sales tape of individual trades.
    It never blocks the chart: if the feed is down the page keeps its normal five-second refresh. */
 (() => {
@@ -18,7 +18,7 @@
     + '.academy-tape{margin-top:10px;border-top:1px solid #1b3540;padding-top:8px}.academy-tape h4{margin:0 0 5px;font:800 .58rem ui-monospace;color:#86a2b0}.academy-tape-row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;font:.6rem ui-monospace;border-bottom:1px solid rgba(42,66,78,.35)}.academy-tape-row.B{color:#52e6ad}.academy-tape-row.S{color:#ff778b}.academy-tape-row.N{color:#b8c7d0}.academy-tape-row i{font-style:normal;color:#6f8794}';
   document.head.appendChild(style);
 
-  function paintDepth(book, ageMs) {
+  function paintDepth(book, ageMs, topOnly) {
     const panel = document.querySelector('.academy-depth'); if (!panel || !book) return;
     let grid = panel.querySelector('.academy-depth-grid');
     if (!grid) { const empty = panel.querySelector('.academy-depth-empty'); if (empty) empty.remove(); grid = document.createElement('div'); grid.className = 'academy-depth-grid'; panel.appendChild(grid); }
@@ -35,7 +35,7 @@
     };
     grid.innerHTML = col('BID', 'academy-depth-bid', book.bids, st.prev.bids, 'bids') + col('ASK', 'academy-depth-ask', book.asks, st.prev.asks, 'asks');
     const title = panel.querySelector('h3');
-    if (title) { let s = title.querySelector('small'); if (!s) { s = document.createElement('small'); title.appendChild(s); } s.textContent = (ageMs / 1000).toFixed(1) + 's'; s.className = ageMs > 4000 ? 'stale' : ''; }
+    if (title) { let s = title.querySelector('small'); if (!s) { s = document.createElement('small'); title.appendChild(s); } s.textContent = topOnly ? 'TOP OF BOOK' : (ageMs / 1000).toFixed(1) + 's'; s.className = ageMs > 4000 ? 'stale' : ''; }
   }
   function paintTape(tape) {
     const panel = document.querySelector('.academy-depth'); if (!panel) return;
@@ -81,7 +81,7 @@
       if (window.smlChartPro && window.smlChartPro.liveTick) for (const t of fresh) window.smlChartPro.liveTick(t.price, t.size, t.t);
       if (fresh.length) st.lastT = fresh[fresh.length - 1].t;
       if (d.rt) st.rt = d.rt;
-      if (d.book && ((d.book.bids && d.book.bids.length) || (d.book.asks && d.book.asks.length))) paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)));
+      if (d.book && ((d.book.bids && d.book.bids.length) || (d.book.asks && d.book.asks.length))) paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)), !!d.topOnly);
       paintTape(d.tape || []); paintQuote(d);
     }
   }
