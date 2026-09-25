@@ -12,6 +12,7 @@
 const { parseAlertMessage } = require('./academy-alerts-parse');
 const risk = require('./academy-alert-risk');
 const algo = require('./academy-mem-algo');
+const optionsCalc = require('./academy-alert-options');
 
 const DISCORD = 'https://discord.com/api/v10';
 const SECTORS = [
@@ -29,7 +30,7 @@ const MAX_ACTIVE = { swings: 20, longterm: 25 };
 
 function createAlertsService({
   tokens = [], channels = [], origin = '', fetchImpl = globalThis.fetch, candles = null, orderFlow = null, patterns = null,
-  logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
+  optionsChain = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
 } = {}) {
   const alerts = new Map(); // discord message id -> alert record
   const feed = {}; for (const c of channels) feed[c.key] = { ok: false, error: 'not polled yet', lastPollAt: 0, tokenLabel: '', via: 'channel' };
@@ -78,7 +79,8 @@ function createAlertsService({
     const existing = alerts.get(id);
     alerts.set(id, Object.assign(existing || { planLog: [], addedAt: now() }, {
       id, channel: channelKey, symbol: parsed.symbol, kind: 'equity', entry: parsed.entryPrice, target: parsed.targetPrice, targetIsMinimum: parsed.targetIsMinimum,
-      riskFlag: parsed.riskFlag, raw: parsed.raw, at, author: (message.author && (message.author.global_name || message.author.username)) || 'trader', edited: Boolean(message.edited_timestamp)
+      riskFlag: parsed.riskFlag, raw: parsed.raw, at, author: (message.author && (message.author.global_name || message.author.username)) || 'trader', edited: Boolean(message.edited_timestamp),
+      authorId: message.author && /^\d{5,25}$/.test(String(message.author.id)) ? String(message.author.id) : '', avatarHash: message.author && /^(a_)?[0-9a-f]{6,64}$/i.test(String(message.author.avatar || '')) ? String(message.author.avatar) : ''
     }));
     return true;
   }
@@ -129,6 +131,7 @@ function createAlertsService({
   const shortData = (s) => cached(`s:${s}`, TTL.short, async () => wp(`/wp-json/sml-short/v1/short?symbol=${encodeURIComponent(s)}&days=10`));
   const sentiment = (s) => cached(`st:${s}`, TTL.sentiment, async () => wp(`/wp-json/sml-stocktwits/v1/feed?symbol=${encodeURIComponent(s)}`));
   const news = (s) => cached(`n:${s}`, 900_000, async () => { const d = await wp(`/wp-json/sml-ticker-news/v1/feed?symbol=${encodeURIComponent(s)}`); return d && Array.isArray(d.articles) ? d.articles : null; });
+  const chainFor = (s) => (optionsChain ? cached(`oc:${s}`, 600_000, async () => { const d = await optionsChain(s); const rows = d ? optionsCalc.normalizeChain(d) : []; return rows; }) : Promise.resolve(null));
   const filings = (s) => cached(`fi:${s}`, TTL.filings, async () => { const d = await wp(`/wp-json/sml-massive/v1/market-data/filings?symbol=${encodeURIComponent(s)}&limit=30`); return d && d.filings ? d.filings : null; });
 
   const algoMemo = new Map();
@@ -166,8 +169,8 @@ function createAlertsService({
     const symbol = alert.symbol;
     const q = quotes.get(symbol) || null;
     const young = now() - alert.at < 3 * 86_400_000;
-    const [daily, intraday, fin, co, sh, sent, fil, nws] = await Promise.all([
-      candlesFor(symbol, '1D'), young ? candlesFor(symbol, '5m') : Promise.resolve(null), fundamentals(symbol), company(symbol), shortData(symbol), sentiment(symbol), filings(symbol), news(symbol)
+    const [daily, intraday, fin, co, sh, sent, fil, nws, chain] = await Promise.all([
+      candlesFor(symbol, '1D'), young ? candlesFor(symbol, '5m') : Promise.resolve(null), fundamentals(symbol), company(symbol), shortData(symbol), sentiment(symbol), filings(symbol), news(symbol), q && Number(q.last) >= 1 ? chainFor(symbol) : Promise.resolve(null)
     ]);
     const spreadPct = q && q.bid > 0 && q.ask > 0 ? (q.ask - q.bid) / ((q.ask + q.bid) / 2) : null;
     const sector = sectorFor(co); const sq = sector && sectorQuotes.get(sector.etf) ? { name: sector.name, etf: sector.etf, chgPct: sectorQuotes.get(sector.etf).chgPct } : (sector ? { name: sector.name, etf: sector.etf, chgPct: null } : null);
@@ -179,7 +182,10 @@ function createAlertsService({
     const plan = risk.planFor({ alert, quote: q, daily, since, risk: g, algoView: view, flow, sentiment: sent, news: nws, checklist: chk, now: now() });
     const last = alert.planLog[alert.planLog.length - 1];
     if (!last || last.action !== plan.action || Math.abs((last.target || 0) - plan.target) > 1e-9) { alert.planLog.push({ t: now(), action: plan.action, target: plan.target, price: q ? Number(q.last) : null }); if (alert.planLog.length > 12) alert.planLog.shift(); }
-    return { alert, quote: q, risk: g, plan, since, checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
+    let opt = null;
+    if (chain && chain.length) { try { opt = optionsCalc.considerOptions({ alert, price: q ? Number(q.last) : null, atrPct: g.atrPct || (daily && risk.dailyStats(daily) ? risk.dailyStats(daily).atrPct : null), plan, algoView: view, flow, rows: chain, riskBand: g.band, now: now() }); } catch (_) { opt = null; } }
+    else if (chain) opt = { verdict: 'NONE', available: false, reason: 'No listed options were found for this stock.', channel: alert.channel };
+    return { options: opt, alert, quote: q, risk: g, plan, since, checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
   }
 
   const evaluated = new Map();
@@ -207,11 +213,12 @@ function createAlertsService({
   function publicAlert(ev, full) {
     const a = ev.alert, q = ev.quote;
     const out = {
-      id: a.id, channel: a.channel, symbol: a.symbol, entry: a.entry, target0: a.target, at: a.at, raw: a.raw, author: a.author, riskFlag: a.riskFlag,
+      id: a.id, channel: a.channel, symbol: a.symbol, entry: a.entry, target0: a.target, at: a.at, raw: a.raw, author: a.author, avatar: a.authorId ? `/academy-activity/alerts/avatar?a=${a.id}` : '', authorId: a.authorId || '', riskFlag: a.riskFlag,
       price: q ? r4(Number(q.last)) : null, chgPct: q ? r4(Number(q.chgPct)) : null, sincePct: ev.since && ev.since.pct != null ? r4(ev.since.pct) : null, high: r4(ev.since && ev.since.high), low: r4(ev.since && ev.since.low),
       risk: { score: ev.risk.score, band: ev.risk.band, label: ev.risk.label, top: ev.risk.top, flags: ev.risk.flags, coverage: ev.risk.coverage },
       plan: { action: ev.plan.action, target: ev.plan.target, stop: ev.plan.stop, reasons: full ? ev.plan.reasons : ev.plan.reasons.slice(0, 2), progress: r4(ev.plan.progress) },
       sector: ev.sector, flow: ev.flow ? { bias: ev.flow.bias, source: ev.flow.source } : null, algo: ev.algo ? { bias: ev.algo.bias, label: ev.algo.label } : null,
+      options: ev.options ? (full ? ev.options : { verdict: ev.options.verdict, available: ev.options.available, side: ev.options.side || null, strength: ev.options.strength || null, label: ev.options.contract ? `${ev.options.contract.dte}d ${ev.options.contract.strike} ${ev.options.side}` : null }) : null,
       checklist: ev.checklist ? { yes: ev.checklist.yes, no: ev.checklist.no, unknown: ev.checklist.unknown, items: ev.checklist.items.map((i) => ({ k: i.key, l: i.label, ok: i.ok, d: full ? i.detail : undefined })) } : null
     };
     if (full) {
@@ -230,6 +237,25 @@ function createAlertsService({
   }
   async function detail(id) { const a = alerts.get(String(id)); if (!a) return null; if (!evaluated.has(a.id)) await refresh(); const ev = evaluated.get(a.id); if (!ev) return null; const quotes = await loadQuotes([a.symbol]); const fresh = await evaluate(a, quotes, lastContext.market, lastContext.sectorQuotes, true).catch(() => ev); evaluated.set(a.id, fresh); return publicAlert(fresh, true); }
 
+  const avatarCache = new Map();
+  /* the Activity's CSP blocks images from other hosts, so the poster's Discord avatar is fetched here and served from our own origin */
+  async function avatar(alertId) {
+    const a = alerts.get(String(alertId));
+    if (!a || !a.authorId) return null;
+    const key = a.authorId + ':' + (a.avatarHash || 'd');
+    const hit = avatarCache.get(key);
+    if (hit && hit.until > now()) return hit.value;
+    let value = null;
+    try {
+      const url = a.avatarHash ? `https://cdn.discordapp.com/avatars/${a.authorId}/${a.avatarHash}.png?size=64` : `https://cdn.discordapp.com/embed/avatars/${Number((BigInt(a.authorId) >> 22n) % 6n)}.png`;
+      const res = await fetchImpl(url, { headers: { 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' }, signal: AbortSignal.timeout(10_000) });
+      if (res.ok) value = { type: 'image/png', body: Buffer.from(await res.arrayBuffer()) };
+    } catch (_) { value = null; }
+    avatarCache.set(key, { value, until: now() + (value ? 6 * 3600_000 : 300_000) });
+    if (avatarCache.size > 100) avatarCache.delete(avatarCache.keys().next().value);
+    return value;
+  }
+
   function start() {
     if (running) return; running = true;
     const tick = async () => { try { await poll(); await refresh(); } catch (error) { logger('warn', 'academy_alerts_tick_failed', { error }); } };
@@ -239,7 +265,7 @@ function createAlertsService({
   }
   function stop() { running = false; if (pollTimer) timers.clearInterval(pollTimer); if (refreshTimer) timers.clearInterval(refreshTimer); }
 
-  return { start, stop, poll, refresh, snapshot, detail, alerts, feed, evaluated, ingest, active, sectorFor };
+  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */

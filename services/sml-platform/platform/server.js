@@ -789,7 +789,7 @@ function sendHtml(response, status, body) {
     'content-length': payload.length,
     'content-encoding': 'gzip',
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; frame-src 'none'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'none'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
   response.end(payload);
@@ -1489,6 +1489,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* The poster's Discord avatar, re-served from our own origin because the Activity's CSP blocks images from other hosts. Only avatars of people who posted an alert can be requested. */
+    if (request.method === 'GET' && path === '/academy-activity/alerts/avatar') {
+      const aid = String(new URL(request.url || '/', 'http://localhost').searchParams.get('a') || '').replace(/[^0-9]/g, '').slice(0, 24);
+      const image = academyAlerts && aid ? await academyAlerts.avatar(aid).catch(() => null) : null;
+      if (!image) { response.writeHead(404, { 'cache-control': 'public, max-age=300' }); response.end(); return; }
+      response.writeHead(200, { 'content-type': image.type, 'cache-control': 'public, max-age=21600', 'content-length': image.body.length, 'x-content-type-options': 'nosniff' });
+      response.end(image.body);
+      return;
+    }
+
     /* The alerts desk: the trader's posted alerts with risk grade, checklist and plan. Members only (the same Academy session as the options chain). */
     if (request.method === 'GET' && path === '/academy-activity/alerts') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -1792,7 +1802,7 @@ async function main() {
   const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
-    tokens: alertTokens, channels: defaultChannels(), origin: REDDIT_HUB_ORIGIN, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
+    tokens: alertTokens, channels: defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
     orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
     patterns: (() => { try { return require('./academy-patterns').detect; } catch (_) { return null; } })()
   });

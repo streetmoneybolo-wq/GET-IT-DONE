@@ -17,10 +17,10 @@
   const BAND = { LOW: '#19c37d', MODERATE: '#9bd93c', ELEVATED: '#ffb020', HIGH: '#ff6a3d', EXTREME: '#ff2d55' };
   const ACT = { HOLD: ['HOLD', '#7fa6bf', '#0c1a24'], RAISE_TARGET: ['RAISE TARGET', '#19e36b', '#03150c'], PARTIAL: ['TAKE PARTIAL', '#ffb020', '#221500'], SELL: ['SELL', '#ff5470', '#2a0509'] };
 
-  const S = { alerts: [], feed: {}, tab: 'all', open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false };
+  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false };
   const KEY = 'sml-alerts-desk-v1';
-  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; } catch (_) { /* storage can be blocked */ }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab })); } catch (_) { /* ignore */ } };
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; if (saved && saved.hidden === true) S.hidden = true; } catch (_) { /* storage can be blocked */ }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, hidden: S.hidden })); } catch (_) { /* ignore */ } };
 
   const style = document.createElement('style');
   style.textContent = '#academy-alerts{display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#0a1118;border-left:1px solid #1b3540;color:#dcebf4;font:600 .68rem system-ui,sans-serif}'
@@ -39,22 +39,27 @@
     + '#academy-alerts .aa-det ul{margin:0;padding:0 0 0 14px;color:#c5d3db;font-weight:500;font-size:.62rem;line-height:1.45}#academy-alerts .aa-raw{color:#8fa6b3;font:500 .58rem ui-monospace,monospace;word-break:break-word}#academy-alerts .aa-note{padding:8px 9px;color:#6f8794;font-weight:500;font-size:.56rem;line-height:1.4;border-top:1px solid #16303b}'
     + '#academy-alerts .aa-empty{padding:16px 10px;color:#8fa6b3;font-weight:600;line-height:1.5;text-align:center}#academy-alerts .aa-empty button{margin-top:8px;padding:7px 12px;border:0;border-radius:8px;background:#00c47d;color:#042217;font:800 .7rem system-ui;cursor:pointer}#academy-alerts .aa-warn{margin:6px 7px 0;padding:6px 8px;border:1px solid #6a4a1a;border-radius:8px;background:#211609;color:#ffd08a;font-weight:600;font-size:.6rem}'
     + '#academy-alerts .aa-swap{margin-left:4px;padding:3px 7px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#a9bfcb;font:800 .58rem system-ui;cursor:pointer}'
-    + '#academy-alerts .aa-close{display:none;margin-left:auto;padding:3px 9px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#eaf5f8;font:800 .7rem system-ui;cursor:pointer}'
-    + '#academy-alerts-fab{display:none}'
+    + '#academy-alerts .aa-av{width:22px;height:22px;border-radius:50%;object-fit:cover;background:#17303c;flex:none;border:1px solid #2b5362}#academy-alerts .aa-av.none{display:none}#academy-alerts .aa-who{color:#8fa6b3;font:600 .58rem system-ui;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    + '#academy-alerts .aa-opt{padding:2px 7px;border-radius:5px;font:800 .58rem ui-monospace,monospace;white-space:nowrap;border:1px solid}#academy-alerts .aa-oc{margin:0 0 6px;padding:7px 8px;border:1px solid #23495a;border-radius:8px;background:#0b1a24;line-height:1.4;font-weight:500;font-size:.62rem;color:#c5d3db}#academy-alerts .aa-oc b{color:#fff}#academy-alerts .aa-og{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:6px 0}#academy-alerts .aa-og div{background:#10232f;border-radius:6px;padding:4px 6px;font:700 .62rem ui-monospace,monospace;color:#fff}#academy-alerts .aa-og small{display:block;color:#7f97a4;font:600 .5rem system-ui;letter-spacing:.05em}'
+    + '#academy-alerts .aa-close{margin-left:auto;padding:3px 9px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#eaf5f8;font:800 .7rem system-ui;cursor:pointer}'
+    + '#academy-alerts-fab{display:none;position:fixed;left:10px;bottom:14px;z-index:2147481000;align-items:center;gap:6px;padding:9px 13px;border:1px solid #2b5362;border-radius:999px;background:#0b1620;color:#eaf5f8;font:800 .72rem system-ui;box-shadow:0 6px 20px rgba(0,0,0,.5);cursor:pointer}#academy-alerts-fab i{width:9px;height:9px;border-radius:50%;background:#19c37d}'
     // wide: a third column between the chart and the quote panel
-    + '@media(min-width:1280px){body:not(.academy-lesson-open) .shell{grid-template-columns:minmax(0,1fr) 300px 330px!important}#academy-alerts .aa-swap{display:none}}'
+    + '@media(min-width:1280px){body:not(.academy-lesson-open):not(.alerts-hidden) .shell{grid-template-columns:minmax(0,1fr) 300px 330px!important}#academy-alerts .aa-swap{display:none}}'
     // medium: the alerts take the quote column; a button swaps back
-    + '@media(min-width:721px) and (max-width:1279px){body:not(.academy-lesson-open):not(.alerts-quote) .shell{grid-template-columns:minmax(0,1fr) 320px!important}body:not(.academy-lesson-open):not(.alerts-quote) .shell>.side{display:none!important}body.alerts-quote #academy-alerts{display:none!important}}'
+    + '@media(min-width:721px) and (max-width:1279px){body:not(.academy-lesson-open):not(.alerts-quote):not(.alerts-hidden) .shell{grid-template-columns:minmax(0,1fr) 320px!important}body:not(.academy-lesson-open):not(.alerts-quote):not(.alerts-hidden) .shell>.side{display:none!important}body.alerts-quote #academy-alerts{display:none!important}}'
+    + '@media(min-width:721px){body.alerts-hidden #academy-alerts{display:none!important}body.alerts-hidden:not(.academy-lesson-open) #academy-alerts-fab{display:flex}}'
     + 'body.academy-lesson-open #academy-alerts,body.academy-lesson-open #academy-alerts-fab{display:none!important}'
     // phones: a floating button opens the desk as a bottom sheet
-    + '@media(max-width:720px){#academy-alerts .aa-swap{display:none}#academy-alerts .aa-close{display:inline-block}#academy-alerts header small{margin-left:6px}#academy-alerts{display:none}body:not(.academy-lesson-open) #academy-alerts.sheet{display:flex;position:fixed;left:0;right:0;bottom:0;height:72vh;z-index:2147482000;border-left:0;border-top:1px solid #2b5362;border-radius:14px 14px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.6)}'
-    + 'body:not(.academy-lesson-open) #academy-alerts-fab{display:flex;position:fixed;left:10px;bottom:14px;z-index:2147481000;align-items:center;gap:6px;padding:9px 13px;border:1px solid #2b5362;border-radius:999px;background:#0b1620;color:#eaf5f8;font:800 .72rem system-ui;box-shadow:0 6px 20px rgba(0,0,0,.5);cursor:pointer}#academy-alerts-fab i{width:9px;height:9px;border-radius:50%;background:#19c37d}}';
+    + '@media(max-width:720px){#academy-alerts .aa-swap{display:none}#academy-alerts header small{margin-left:6px}#academy-alerts{display:none}body:not(.academy-lesson-open) #academy-alerts.sheet{display:flex;position:fixed;left:0;right:0;bottom:0;height:72vh;z-index:2147482000;border-left:0;border-top:1px solid #2b5362;border-radius:14px 14px 0 0;box-shadow:0 -12px 40px rgba(0,0,0,.6)}'
+    + 'body:not(.academy-lesson-open) #academy-alerts-fab{display:flex}}';
   document.head.appendChild(style);
 
   const panel = document.createElement('aside'); panel.id = 'academy-alerts'; panel.setAttribute('aria-label', 'Alerts desk');
   shell.insertBefore(panel, side);
   const fab = document.createElement('button'); fab.id = 'academy-alerts-fab'; fab.type = 'button'; document.body.appendChild(fab);
 
+  function setHidden(v) { S.hidden = v; document.body.classList.toggle('alerts-hidden', v); if (!v) document.body.classList.remove('alerts-quote'); save(); paint(); window.dispatchEvent(new Event('resize')); }
+  document.body.classList.toggle('alerts-hidden', S.hidden);
   const filtered = () => S.alerts.filter((a) => S.tab === 'all' || a.channel === S.tab);
   const chartSymbol = () => String(new URLSearchParams(location.search).get('symbol') || '').toUpperCase();
 
@@ -69,12 +74,33 @@
     const act = ACT[a.plan.action] || ACT.HOLD, col = BAND[a.risk.band] || '#888', cur = chartSymbol() === a.symbol, open = S.open === a.id;
     const chk = a.checklist ? '<div class="aa-chk">' + a.checklist.items.map((i) => '<span class="' + (i.ok === true ? 'y' : i.ok === false ? 'n' : '') + '" title="' + esc(i.l + (i.ok === true ? ': yes' : i.ok === false ? ': no' : ': unknown')) + '">' + (i.ok === true ? '✓' : i.ok === false ? '✗' : '–') + ' ' + esc(shortLabel(i.k)) + '</span>').join('') + '<b>' + a.checklist.yes + '/' + (a.checklist.yes + a.checklist.no) + ' yes</b></div>' : '';
     let html = '<div class="aa-row' + (cur ? ' cur' : '') + (open ? ' open' : '') + '" data-id="' + esc(a.id) + '" data-sym="' + esc(a.symbol) + '">'
-      + '<div class="aa-top"><span class="aa-risk" style="background:' + col + '" title="Risk ' + a.risk.score + ' of 100">' + a.risk.score + ' ' + esc(a.risk.label.toUpperCase()) + '</span><span class="aa-sym">' + esc(a.symbol) + '</span><span class="mut">' + ago(a.at) + '</span>'
+      + '<div class="aa-top">' + (a.avatar ? '<img class="aa-av" src="' + esc(a.avatar) + '" alt="" loading="lazy" title="' + esc(a.author) + '">' : '') + '<span class="aa-risk" style="background:' + col + '" title="Risk ' + a.risk.score + ' of 100">' + a.risk.score + ' ' + esc(a.risk.label.toUpperCase()) + '</span><span class="aa-sym">' + esc(a.symbol) + '</span><span class="mut">' + ago(a.at) + '</span><span class="aa-who" title="posted by ' + esc(a.author) + '">' + esc(a.author) + '</span>'
       + '<span class="aa-px"><span>$' + px(a.price) + '</span> <span class="' + ((a.chgPct || 0) >= 0 ? 'up' : 'dn') + '">' + (a.chgPct == null ? '' : (a.chgPct >= 0 ? '+' : '') + a.chgPct.toFixed(1) + '%') + '</span><br><span class="' + ((a.sincePct || 0) >= 0 ? 'up' : 'dn') + '" title="since the alert">' + pc(a.sincePct) + ' since alert</span></span></div>'
       + progressBar(a)
-      + '<div class="aa-act"><span class="aa-chip" style="background:' + act[1] + ';color:' + act[2] + '">' + act[0] + (a.plan.action === 'RAISE_TARGET' || a.plan.action === 'PARTIAL' ? ' → ' + px(a.plan.target) : '') + '</span><span class="aa-why">' + esc(a.plan.reasons[0] || '') + '</span></div>' + chk;
+      + '<div class="aa-act"><span class="aa-chip" style="background:' + act[1] + ';color:' + act[2] + '">' + act[0] + (a.plan.action === 'RAISE_TARGET' || a.plan.action === 'PARTIAL' ? ' → ' + px(a.plan.target) : '') + '</span>' + optChip(a) + '<span class="aa-why">' + esc(a.plan.reasons[0] || '') + '</span></div>' + chk;
     if (open) html += detailHtml(a);
     return html + '</div>';
+  }
+  const OPT = { CALL: ['#19e36b', 'CALL'], PUT: ['#ff5470', 'PUT'], WAIT: ['#ffb020', 'OPTIONS: WAIT'], NONE: ['#7f97a4', 'NO OPTIONS'] };
+  function optChip(a) {
+    const o = a.options; if (!o || !o.available) return '';
+    const m = OPT[o.verdict] || OPT.NONE;
+    const label = o.verdict === 'CALL' || o.verdict === 'PUT' ? m[1] + (o.strength ? ' · ' + (o.strength === 'Worth a look' ? 'consider' : 'marginal') : '') : m[1];
+    return '<span class="aa-opt" style="color:' + m[0] + ';border-color:' + m[0] + '" title="Options contract consideration: open the alert for details">' + esc(label) + '</span>';
+  }
+  function optionsHtml(o) {
+    if (!o) return '';
+    const m = OPT[o.verdict] || OPT.NONE;
+    let h = '<h5>OPTIONS CONTRACT CONSIDERATION</h5><div class="aa-oc"><b style="color:' + m[0] + '">' + (o.verdict === 'CALL' || o.verdict === 'PUT' ? esc(o.verdict) + ' · ' + esc(o.strength || '') : o.verdict === 'WAIT' ? 'WAIT' : 'NO CONTRACT') + '</b> ' + esc(o.summary || o.reason || '');
+    if (o.contract) {
+      const c = o.contract;
+      h += '<div class="aa-og"><div><small>COST</small>$' + c.costPerContract + '</div><div><small>BREAKEVEN</small>$' + px(c.breakeven) + '</div><div><small>DELTA</small>' + c.delta.toFixed(2) + '</div>'
+        + '<div><small>BID / ASK</small>' + px(c.bid) + ' / ' + px(c.ask) + '</div><div><small>OPEN INT</small>' + c.oi + '</div><div><small>IV</small>' + (c.iv != null ? Math.round(c.iv * 100) + '%' : '–') + '</div></div>';
+      if (o.reason) h += '<div>' + esc(o.reason) + '.</div>';
+      if (o.flags && o.flags.length) h += '<ul style="margin-top:4px">' + o.flags.map((f) => '<li>' + esc(f) + '</li>').join('') + '</ul>';
+      if (o.alternatives && o.alternatives.length) h += '<div class="mut" style="margin-top:4px">Also fits: ' + o.alternatives.map((x) => esc(x.dte + 'd $' + x.strike + ' ' + x.type.toLowerCase() + ' (~$' + x.costPerContract + ', delta ' + x.delta.toFixed(2) + ')')).join(' · ') + '</div>';
+    }
+    return h + '<div class="mut" style="margin-top:4px">Educational analysis. Options can lose their entire value, and nothing here places a trade.</div></div>';
   }
   const SHORT = { profit: 'Profit', growth: 'Sales', cash: 'Cash flow', debt: 'Debt', liquidity: 'Cash>debt', dilution: 'No dilution', size: 'Size', trend: 'Trend', value: 'Value' };
   const shortLabel = (k) => SHORT[k] || k;
@@ -87,6 +113,7 @@
     if (d.risk.flags && d.risk.flags.length) h += '<h5>FLAGS</h5><ul>' + d.risk.flags.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>';
     h += '<h5>RISK BREAKDOWN · ' + d.risk.score + ' / 100' + (d.risk.coverage < 60 ? ' · ' + d.risk.coverage + '% of data found' : '') + '</h5>';
     h += (d.factors || []).slice().sort((x, y) => (y.available ? y.weight * y.risk : -1) - (x.available ? x.weight * x.risk : -1)).map((f) => '<div class="aa-f' + (f.available ? '' : ' na') + '"><span>' + esc(f.label) + '</span><div class="aa-meter"><i style="width:' + Math.round((f.available ? f.risk : 0) * 100) + '%;background:' + riskColor(f.risk) + '"></i></div><small>' + esc(f.detail) + '</small></div>').join('');
+    if (d.options && d.options.available) h += optionsHtml(d.options);
     if (d.checklist) h += '<h5>COMPANY CHECKLIST</h5><ul>' + d.checklist.items.map((i) => '<li>' + (i.ok === true ? '✓ ' : i.ok === false ? '✗ ' : '– ') + '<b>' + esc(i.l) + '</b>: ' + esc(i.d || '') + '</li>').join('') + '</ul>';
     const sig = [];
     if (d.algo) sig.push('MEM ALGO: ' + d.algo.label); if (d.flow) sig.push('Order book (' + d.flow.source + '): ' + d.flow.bias); if (d.sector) sig.push('Sector: ' + d.sector.name + (d.sector.chgPct != null ? ' ' + (d.sector.chgPct >= 0 ? '+' : '') + d.sector.chgPct.toFixed(1) + '% today' : ''));
@@ -94,7 +121,7 @@
     if (d.news && d.news.length) h += '<h5>NEWS</h5><ul>' + d.news.map((n) => '<li>' + (/^https:\/\//.test(n.url) ? '<a href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer" style="color:#7fd4ff">' + esc(n.title) + '</a>' : esc(n.title)) + '</li>').join('') + '</ul>';
     if (d.chatter && d.chatter.length) h += '<h5>CHATTER</h5><ul>' + d.chatter.map((c) => '<li>' + esc(c.sentiment ? c.sentiment + ': ' : '') + esc(c.text) + '</li>').join('') + '</ul>';
     if (d.planLog && d.planLog.length > 1) h += '<h5>PLAN HISTORY</h5><ul>' + d.planLog.slice().reverse().map((p) => '<li>' + esc((ACT[p.action] || ACT.HOLD)[0]) + (p.target ? ' · target ' + px(p.target) : '') + ' · ' + ago(p.t) + ' ago' + (p.price ? ' at $' + px(p.price) : '') + '</li>').join('') + '</ul>';
-    h += '<h5>ORIGINAL ALERT</h5><div class="aa-raw">' + esc(d.raw) + '</div>';
+    h += '<h5>ORIGINAL ALERT · posted by ' + esc(d.author) + '</h5><div class="aa-raw">' + esc(d.raw) + '</div>';
     return h + '</div>';
   }
   const riskColor = (r) => (r >= 0.85 ? BAND.EXTREME : r >= 0.65 ? BAND.HIGH : r >= 0.45 ? BAND.ELEVATED : r >= 0.25 ? BAND.MODERATE : BAND.LOW);
@@ -141,13 +168,15 @@
     try { const res = await api('/academy-activity/alerts?detail=' + encodeURIComponent(id)); const j = await res.json(); if (res.ok && j.ok && S.open === id) { S.detail = j.alert; paint(); } } catch (_) { /* the summary stays */ }
   }
 
+  // a poster with no picture, or a blocked one, just loses the round image
+  panel.addEventListener('error', (e) => { if (e.target && e.target.classList && e.target.classList.contains('aa-av')) e.target.classList.add('none'); }, true);
   panel.addEventListener('click', (e) => {
     const tab = e.target.closest('[data-tab]'); if (tab) { S.tab = tab.dataset.tab; save(); paint(); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       if (act.dataset.act === 'unlock') { const u = document.getElementById('academy-unlock'); if (u) u.click(); }
       if (act.dataset.act === 'swap') { document.body.classList.add('alerts-quote'); }
-      if (act.dataset.act === 'close') { S.sheet = false; panel.classList.remove('sheet'); }
+      if (act.dataset.act === 'close') { if (window.matchMedia('(max-width:720px)').matches) { S.sheet = false; panel.classList.remove('sheet'); } else setHidden(true); }
       return;
     }
     if (e.target.closest('[data-stop]')) return;
@@ -158,7 +187,7 @@
     else { S.open = id; S.detail = null; paint(); refreshDetail(); }
     if (window.matchMedia('(max-width:720px)').matches && chartSymbol() !== sym) { S.sheet = false; panel.classList.remove('sheet'); }
   });
-  fab.addEventListener('click', () => { S.sheet = !S.sheet; panel.classList.toggle('sheet', S.sheet); paint(); });
+  fab.addEventListener('click', () => { if (S.hidden && !window.matchMedia('(max-width:720px)').matches) { setHidden(false); return; } S.sheet = !S.sheet; panel.classList.toggle('sheet', S.sheet); paint(); });
   // the quote panel gets a way back to the alerts on medium screens
   const back = document.createElement('button'); back.type = 'button'; back.className = 'aa-swap'; back.textContent = '← Alerts'; back.style.cssText = 'display:none;margin:0 0 8px';
   side.insertBefore(back, side.firstChild);
