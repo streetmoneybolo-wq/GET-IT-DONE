@@ -42,12 +42,13 @@
  * 2026-09-23: advance pin -> 744bf0e (js/creator-live-library.js: Manage link to per-stream studio).
  * 2026-09-24: advance pin -> 3c6e547 (js/live-watch.js + css: channel emotes picker/render).
  * 2026-09-24: advance pin -> fcc9f04 (js/creator-analytics.js: admin-only Moderation tab).
+ * 2026-09-25: advance pin -> 14a122d (js/vod-watch.js + css: remove watch-page voice cues).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'fcc9f04b2c9891efe57275f1f2e2c643be146edf' );
+	define( 'SML_CDN_ASSET_REVISION', '14a122d66282ebfd5006f7f0f6f8c44bc4b8c47b' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
