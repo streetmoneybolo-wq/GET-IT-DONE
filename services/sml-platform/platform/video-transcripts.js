@@ -102,7 +102,11 @@ function createSpeech({ apiKey, model = 'whisper-1', fetchImpl = fetch }) {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10 * 60 * 1000),
         headers: { authorization: `Bearer ${apiKey}` }, body: form
       });
-      if (!r.ok) throw new JobError(r.status === 429 ? 'transcription_rate_limited' : 'transcription_failed');
+      if (!r.ok) {
+        let detail = '';
+        try { const e = await r.json(); detail = String((e && e.error && (e.error.code || e.error.message)) || '').slice(0, 200); } catch { /* not json */ }
+        throw Object.assign(new JobError(r.status === 429 ? 'transcription_rate_limited' : `transcription_http_${r.status}`), { detail });
+      }
       const j = await r.json();
       return {
         language: String(j.language || ''),
@@ -221,7 +225,8 @@ async function runOnce({ request, media, speech, chapterer, tmpRoot = os.tmpdir(
   } catch (error) {
     const code = error instanceof JobError && ERROR_CODE.test(error.code) ? error.code : 'transcription_failed';
     try { await request('jobs/complete', { key: job.key, error: code }); } catch { /* WordPress reclaims stale jobs after 45 minutes */ }
-    return { status: 'failed', video_id: job.video_id, error: code };
+    const detail = String(error.detail || (error instanceof JobError ? '' : error.message) || '').replace(/sk-[A-Za-z0-9_-]+/g, '[key]').slice(0, 300);
+    return { status: 'failed', video_id: job.video_id, error: code, detail };
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }
@@ -234,7 +239,8 @@ function createTranscriptFlow({ request, media, speech, chapterer, onResult, onE
     running = runOnce({ request, media, speech, chapterer });
     let result;
     try { result = await running; onResult(result); } catch (_) { onError(); }
-    finally { running = null; if (!stopped) timer = setTimeout(poll, result && result.status !== 'idle' ? 5000 : delay); }
+    /* straight on to the next job after a success; a failure waits a full cycle so retries are spread out */
+    finally { running = null; if (!stopped) timer = setTimeout(poll, result && result.status === 'ready' ? 5000 : delay); }
   }
   return {
     start() { if (!stopped) return; stopped = false; void poll(); },

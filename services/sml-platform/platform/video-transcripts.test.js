@@ -135,6 +135,7 @@ test('speech client maps rate limits to a retryable code', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vxs-'));
   const f = path.join(dir, 'p.mp3'); fs.writeFileSync(f, 'mp3');
   await assert.rejects(createSpeech({ apiKey: 'k', fetchImpl: async () => ({ ok: false, status: 429 }) }).transcribe(f), e => e.code === 'transcription_rate_limited');
+  await assert.rejects(createSpeech({ apiKey: 'k', fetchImpl: async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Invalid file format.' } }) }) }).transcribe(f), e => e.code === 'transcription_http_400' && e.detail === 'Invalid file format.');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
