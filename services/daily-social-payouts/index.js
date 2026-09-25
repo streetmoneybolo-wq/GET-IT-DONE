@@ -47,6 +47,7 @@ import { reportTkKick, reverseTkBan } from './utils/tkModerationLock.js';
 import { recordApprovedProofPayout } from './utils/payoutLedger.js';
 import { startDailyPayoutScheduler } from './utils/dailyPayoutCycle.js';
 import { startArticleFeed } from './utils/articleFeed.js';
+import { runAutoShareSetup } from './utils/autoShareSetup.js';
 import { generateRecruitmentPost, recruitmentComposerTitleOnlyUrl } from './utils/recruitmentPosts.js';
 import * as earnings from './commands/earnings.js';
 import * as connectPayPal from './commands/connectPayPal.js';
@@ -718,6 +719,7 @@ async function enforceMakingEasyMoneyRaidSpam(message) {
 
 client.once('clientReady', async () => {
   if (dailySocialMode) {
+    await runAutoShareSetup(client).catch((error) => console.warn(`Share auto-setup failed safely: ${error.message || error}`));
     startDailyPayoutScheduler(client);
     console.log('Daily payout scheduler started (holds, payable notifications, and the gated payment step).');
     startArticleFeed(client);
