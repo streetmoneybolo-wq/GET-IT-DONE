@@ -343,3 +343,24 @@ test('workflow-scoped duplicate suppression: each program packages once, legacy 
   assert.equal(await tracking.recentPostByLink(link, 24, 'prog-b'), null, 'a different program may package the same article');
   assert.ok(await tracking.recentPostByLink(link, 24), 'unscoped legacy callers still match');
 });
+
+/* ---------------- durable settings overlay ---------------- */
+
+test('the settings overlay wins over the repo config and survives per-key', async () => {
+  const { readSettings, writeSettingsOverride } = await import('../utils/storage.js');
+  const base = await readSettings();
+  assert.ok(base.linkWorkflow, 'repo settings load as the base');
+  await writeSettingsOverride('linkWorkflow', {
+    enabled: true, guildId: 'g-new',
+    sourceChannelId: 'c-src', shareChannelId: 'c-share', engagementChannelId: 'c-eng', returnLinksChannelId: 'c-ret',
+    duplicateWindowHours: 24,
+  });
+  const merged = await readSettings();
+  assert.equal(merged.linkWorkflow.shareChannelId, 'c-share', 'overlay replaces the stale repo channel ids');
+  assert.equal(merged.linkWorkflow.returnLinksChannelId, 'c-ret', 'return-links channel is part of the wiring now');
+  assert.ok(Array.isArray(merged.linkWorkflows), 'untouched top-level keys still come from the repo file');
+  await writeSettingsOverride('workReport', { enabled: true, channels: [{ guildId: 'g-new', channelId: 'c-wr', label: 'New Group' }] });
+  const twice = await readSettings();
+  assert.equal(twice.linkWorkflow.shareChannelId, 'c-share', 'earlier override keys survive later writes');
+  assert.equal(twice.workReport.channels[0].channelId, 'c-wr');
+});

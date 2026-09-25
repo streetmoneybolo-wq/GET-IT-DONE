@@ -729,7 +729,10 @@ client.once('clientReady', async () => {
       return [];
     })
     : [];
-  const commandGuildIds = [...new Set([process.env.GUILD_ID, ...(!dailySocialMode && roleSyncEnabled() ? roleSyncGuildIds() : []), ...dynamicGuilds].filter(Boolean))];
+  /* The bot gets moved between servers; commands must exist wherever it
+     lives, or admin tools like /share-setup cannot be run in a new group. */
+  const joinedGuildIds = dailySocialMode ? [...client.guilds.cache.keys()] : [];
+  const commandGuildIds = [...new Set([process.env.GUILD_ID, ...joinedGuildIds, ...(!dailySocialMode && roleSyncEnabled() ? roleSyncGuildIds() : []), ...dynamicGuilds].filter(Boolean))];
   for (const guildId of commandGuildIds) {
     const guild = await client.guilds.fetch(guildId).catch(() => null);
     if (!guild) {

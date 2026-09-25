@@ -34,6 +34,7 @@ export const paths = {
   memberWarningLog: path.join(dataRoot, 'member-warning-log.json'),
   premiumVerification: path.join(dataRoot, 'premium-verification.json'),
   settings: path.join(root, 'config', 'settings.json'),
+  settingsOverrides: path.join(dataRoot, 'settings-overrides.json'),
 };
 
 export const projectRoot = root;
@@ -105,7 +106,26 @@ export function mutateJson(file, fallback, mutator) {
   return next;
 }
 
+/**
+ * Runtime configuration saved by commands like /share-setup. It lives on the
+ * persistent disk and shallow-merges OVER config/settings.json: the repo file
+ * is the base, the overlay wins per top-level key. Without this, anything an
+ * admin configured in Discord was silently wiped by the next deploy, because
+ * config/settings.json sits on Render's ephemeral build filesystem.
+ */
+export function writeSettingsOverride(key, value) {
+  return mutateJson(paths.settingsOverrides, {}, (overrides) => {
+    overrides[key] = value;
+  });
+}
+
 export async function readSettings() {
+  const overrides = await readJson(paths.settingsOverrides, {});
+  const base = await readBaseSettings();
+  return { ...base, ...(overrides && typeof overrides === 'object' ? overrides : {}) };
+}
+
+async function readBaseSettings() {
   return readJson(paths.settings, {
     boostNotificationsEnabled: false,
     allowRolePing: false,
