@@ -44,12 +44,13 @@
  * 2026-09-24: advance pin -> fcc9f04 (js/creator-analytics.js: admin-only Moderation tab).
  * 2026-09-25: advance pin -> 14a122d (js/vod-watch.js + css: remove watch-page voice cues).
  * 2026-09-25: advance pin -> d4444fd (js/live-watch.js: Boost Arena guardrail client).
+ * 2026-09-25: advance pin -> 85480be (Ticker Terminal and Loop Channel use the shared Massive SSE relay).
  */
 
 defined( 'ABSPATH' ) || exit;
 
 if ( ! defined( 'SML_CDN_ASSET_REVISION' ) ) {
-	define( 'SML_CDN_ASSET_REVISION', 'fcdcc1757768cb838f19a691f7658f8fdf33cb51' );
+	define( 'SML_CDN_ASSET_REVISION', '85480be91a8728ac5295b0493f3a9f187421d966' );
 }
 
 add_filter( 'pre_transient_sml_cdn_ref', function () {
