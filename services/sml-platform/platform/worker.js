@@ -40,6 +40,7 @@ const { createNewsPipeline } = require('./news-pipeline');
 const { createNewsFlow, GAP_MS } = require('./news-flow');
 const { createSpotlightIntake } = require('./spotlight-intake');
 const { createPersonalFlow, createClient: createPersonalClient, createAI: createPersonalAI } = require('./personal-letters');
+const videoTranscripts = require('./video-transcripts');
 const { fetchSourceArticle } = require('./source-article');
 const { createWordPressPublisher } = require('./wordpress-publisher');
 const { createUpgradeChatClient } = require('./upgrade-chat');
@@ -182,6 +183,16 @@ async function main() {
     onError: () => log('warn', 'personal_letters_poll_failed', { retryAfterMs: 300000 })
   }) : null;
 
+  // Uploaded-video transcripts + suggested chapters (WordPress mu-plugin sml-video-extras owns the queue).
+  const transcriptFlow = !missing.length ? videoTranscripts.createTranscriptFlow({
+    request: videoTranscripts.createClient(config),
+    media: videoTranscripts.createMedia(),
+    speech: videoTranscripts.createSpeech({ apiKey: config.openaiApiKey }),
+    chapterer: videoTranscripts.createChapterer({ apiKey: config.openaiApiKey, model: config.openaiModel }),
+    onResult: result => { if (result.status !== 'idle') log(result.status === 'ready' ? 'info' : 'warn', 'video_transcript_result', { status: result.status, videoId: result.video_id, segments: result.segments, chapters: result.chapters, error: result.error }); },
+    onError: () => log('warn', 'video_transcript_poll_failed', { retryAfterMs: 120000 })
+  }) : null;
+
   async function tick() {
     if (stopping) return;
     try {
@@ -274,6 +285,7 @@ async function main() {
     log('info', 'worker_shutdown_started', { signal });
     if (newsFlow) await newsFlow.stop();
     if (personalFlow) await personalFlow.stop();
+    if (transcriptFlow) await transcriptFlow.stop();
     await database.close();
     log('info', 'worker_shutdown_complete', { signal });
     process.exit(0);
@@ -290,6 +302,7 @@ async function main() {
     log('info', 'news_flow_started', { mode: 'continuous_single_job', minGapMs: GAP_MS, batchSize: 1 });
   }
   if (personalFlow) personalFlow.start();
+  if (transcriptFlow) transcriptFlow.start();
 }
 
 if (require.main === module) {
