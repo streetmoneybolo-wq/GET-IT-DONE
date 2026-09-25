@@ -241,6 +241,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /LIVE INTERACTIVE ACADEMY/);
     assert.match(html, /academy-tools-open/);
     assert.match(html, /body\.academy-tools-open \.lesson\{z-index:2147483600\}/);
+    assert.match(html, /body.academy-tools-open main{[^}]*overflow-y:auto/); // the unlocked tools stay scrollable down to the options chain
     assert.match(html, /id="academy-intro-video"/);
     assert.match(html, /making-easy-money-academy-intro\.mp4/);
     assert.match(html, /smlAcademyWarmPromise/);
