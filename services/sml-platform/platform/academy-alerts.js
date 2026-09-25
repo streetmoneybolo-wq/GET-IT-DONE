@@ -26,8 +26,12 @@ const sectorFor = (company) => { const text = company && company.sic_description
 
 const TTL = { quotes: 12_000, daily: 600_000, intraday: 60_000, fundamentals: 6 * 3_600_000, short: 6 * 3_600_000, sentiment: 600_000, filings: 6 * 3_600_000, company: 24 * 3_600_000 };
 const WINDOW_DAYS = { swings: 7, longterm: 150 };
-/* The desk starts with only the latest call in each stream (the newest swing alert and the newest long-term alert). Raise ACADEMY_ALERTS_MAX to show more history. */
-const ENV_MAX = Math.max(1, Math.min(25, Number(process.env.ACADEMY_ALERTS_MAX) || 1));
+/* The desk starts at a chosen alert in each stream (GLND for swings, INTC for long-term) and shows everything posted after it, newest first.
+   ACADEMY_ALERTS_START="swings:GLND,longterm:INTC" changes the starting alerts (empty = the normal recent window). ACADEMY_ALERTS_MAX caps how many show per stream. */
+const START_DEFAULT = 'swings:GLND,longterm:INTC';
+const parseStart = (raw) => { const out = {}; for (const part of String(raw == null ? START_DEFAULT : raw).split(',')) { const [k, v] = part.trim().split(':'); if (k && v) out[k.trim()] = v.trim().toUpperCase(); } return out; };
+const START = parseStart(process.env.ACADEMY_ALERTS_START);
+const ENV_MAX = Math.max(1, Math.min(40, Number(process.env.ACADEMY_ALERTS_MAX) || 25));
 const MAX_ACTIVE = { swings: ENV_MAX, longterm: ENV_MAX };
 
 function createAlertsService({
@@ -111,7 +115,10 @@ function createAlertsService({
     const out = [];
     for (const c of channels) {
       const cutoff = now() - WINDOW_DAYS[c.key] * 86_400_000;
-      const list = [...alerts.values()].filter((a) => a.channel === c.key && a.at >= cutoff).sort((a, b) => b.at - a.at).slice(0, MAX_ACTIVE[c.key]);
+      const all = [...alerts.values()].filter((a) => a.channel === c.key).sort((a, b) => b.at - a.at);
+      const anchor = START[c.key] ? all.findIndex((a) => a.symbol === START[c.key]) : -1;
+      // from the starting alert up to the newest; when that alert is not in the feed (yet), fall back to the normal recent window
+      const list = (anchor >= 0 ? all.slice(0, anchor + 1) : all.filter((a) => a.at >= cutoff)).slice(0, MAX_ACTIVE[c.key]);
       out.push(...list);
     }
     return out;

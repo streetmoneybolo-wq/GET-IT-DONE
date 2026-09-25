@@ -1,5 +1,5 @@
 'use strict';
-process.env.ACADEMY_ALERTS_MAX = '25'; // most tests exercise the full list; the default of one call per stream has its own test below
+process.env.ACADEMY_ALERTS_START = ''; // most tests use the normal recent window; the GLND/INTC starting point has its own test below
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { parseAlertMessage } = require('./academy-alerts-parse');
@@ -248,15 +248,17 @@ test('news wording is part of the chatter grade and reaches the detail view', as
   assert.notEqual(p.action, 'RAISE_TARGET');
 });
 
-test('by default the desk starts with only the latest swing alert and the latest long-term alert', () => {
-  const saved = process.env.ACADEMY_ALERTS_MAX; delete process.env.ACADEMY_ALERTS_MAX;
+test('the desk starts at GLND (swings) and INTC (long-term) and shows everything after them, newest first', () => {
+  const saved = process.env.ACADEMY_ALERTS_START; delete process.env.ACADEMY_ALERTS_START;
   delete require.cache[require.resolve('./academy-alerts')];
   const fresh = require('./academy-alerts');
-  process.env.ACADEMY_ALERTS_MAX = saved; delete require.cache[require.resolve('./academy-alerts')];
-  const NOW = Date.now();
+  if (saved !== undefined) process.env.ACADEMY_ALERTS_START = saved; delete require.cache[require.resolve('./academy-alerts')];
+  const NOW = Date.now(), H = 3600_000;
   const svc = fresh.createAlertsService({ channels: [{ key: 'swings', id: '1' }, { key: 'longterm', id: '2' }], now: () => NOW });
   const m = (id, sym, ago) => ({ id, content: `@everyone ${sym} entry $2 pt 3`, timestamp: new Date(NOW - ago).toISOString(), author: { id: '258456543', username: 'x' } });
-  svc.ingest('swings', m('101', 'AAA', 3 * 3600_000)); svc.ingest('swings', m('102', 'BBB', 1 * 3600_000)); svc.ingest('swings', m('103', 'CCC', 5 * 3600_000));
-  svc.ingest('longterm', m('201', 'DDD', 40 * 86400_000)); svc.ingest('longterm', m('202', 'EEE', 60 * 86400_000));
-  assert.deepEqual(svc.active().map((a) => a.symbol).sort(), ['BBB', 'DDD']);
+  svc.ingest('swings', m('101', 'OLD', 30 * H)); svc.ingest('swings', m('102', 'GLND', 20 * H)); svc.ingest('swings', m('103', 'NEWA', 10 * H)); svc.ingest('swings', m('104', 'NEWB', 2 * H));
+  svc.ingest('longterm', m('201', 'OLDB', 90 * 24 * H)); svc.ingest('longterm', m('202', 'INTC', 40 * 24 * H)); svc.ingest('longterm', m('203', 'NEWC', 5 * 24 * H));
+  const list = svc.active();
+  assert.deepEqual(list.filter((a) => a.channel === 'swings').map((a) => a.symbol), ['NEWB', 'NEWA', 'GLND']);
+  assert.deepEqual(list.filter((a) => a.channel === 'longterm').map((a) => a.symbol), ['NEWC', 'INTC']);
 });
