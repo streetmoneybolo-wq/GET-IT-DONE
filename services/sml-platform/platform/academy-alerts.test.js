@@ -262,3 +262,11 @@ test('the desk starts at GLND (swings) and INTC (long-term) and shows everything
   assert.deepEqual(list.filter((a) => a.channel === 'swings').map((a) => a.symbol), ['NEWB', 'NEWA', 'GLND']);
   assert.deepEqual(list.filter((a) => a.channel === 'longterm').map((a) => a.symbol), ['NEWC', 'INTC']);
 });
+
+test('alerts posted in Discord bold, with the long analysis under them, still parse', () => {
+  const post = '@everyone **$TXG entry $87 pt $120 plus  **\nDistance: $120 is 39.5% above $86.\n\n****Volatility: it has moved at about a 72% annual pace.** Realistic time frame****\n\n  Window    Chance it touches $120\n**3 months    about 30% to 35%**\n\nSTOP LOSS  $67';
+  const a = parseAlertMessage(post, '2026-09-25T15:00:00Z');
+  assert.equal(a.kind, 'equity'); assert.equal(a.symbol, 'TXG'); assert.equal(a.entryPrice, 87); assert.equal(a.targetPrice, 120); assert.equal(a.targetIsMinimum, true);
+  const b = parseAlertMessage('@everyone **$P entry 126 pt 155 plus**', '2026-09-25T15:00:00Z');
+  assert.equal(b.symbol, 'P'); assert.equal(b.entryPrice, 126);
+});

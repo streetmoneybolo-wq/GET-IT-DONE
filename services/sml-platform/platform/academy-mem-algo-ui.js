@@ -118,9 +118,23 @@
   function stat(label, value, cls) { return '<div class="mem-stat"><span>' + label + '</span><b class="' + (cls || '') + '">' + value + '</b></div>'; }
   function splitRow(name, s) { return '<tr><td>' + name + '</td><td>' + s.trades + '</td><td>' + (s.winRate == null ? '–' : Math.round(s.winRate * 100) + '%') + '</td><td>' + rr(s.expectancyR) + '</td></tr>'; }
 
+  /* On desktop the panel pops up over the ticker's quote column (or the alerts column when that is what sits there), never over the chart. Phones keep the bottom sheet. */
+  function place() {
+    if (!(S.on && S.open)) return;
+    if (window.matchMedia('(max-width:700px)').matches) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'bottom', 'zIndex'].forEach((k) => { panel.style[k] = ''; }); return; }
+    const visible = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 80 && getComputedStyle(el).display !== 'none' ? r : null; };
+    const r = visible(document.querySelector('.side')) || visible(document.getElementById('academy-alerts'));
+    if (!r) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { panel.style[k] = ''; }); return; }
+    if (panel.parentElement !== document.body) document.body.appendChild(panel);
+    Object.assign(panel.style, { position: 'fixed', left: Math.round(r.left) + 'px', top: Math.round(r.top) + 'px', width: Math.round(r.width) + 'px', height: Math.round(r.height) + 'px', maxHeight: 'none', right: 'auto', zIndex: '2147483100' });
+  }
+  window.addEventListener('resize', place);
+  setInterval(place, 1500); // the columns move when the alerts panel opens or closes
+
   function paint() {
     toggle.classList.toggle('on', S.on);
     panel.classList.toggle('open', S.on && S.open);
+    place();
     if (!(S.on && S.open)) return;
     const st = E.STRATEGIES[S.mode], d = S.data, p = E.resolveParams(S.mode, S.params[S.mode] || {}, tf());
     const tfNow = tf(), fitTf = st.tfHint.indexOf(tfNow) >= 0;

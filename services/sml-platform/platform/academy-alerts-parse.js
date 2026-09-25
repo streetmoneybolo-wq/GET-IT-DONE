@@ -43,7 +43,8 @@ function resolveOptionExpiration(text, timestamp, timeZone = 'America/New_York')
 }
 
 function parseAlertMessage(content, timestamp = new Date().toISOString(), timeZone = 'America/New_York') {
-  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  // the trader posts alerts in Discord bold ("@everyone **$TXG entry $87 pt $120 plus  **"): drop the formatting marks so the ticker still starts a word
+  const text = String(content || '').replace(/[*_~`|]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!text) return null;
   const normalized = text
     .replace(/\b(\d+(?:\.\d+)?)\s*cents?\b/gi, (_, cents) => String(Number(cents) / 100))
