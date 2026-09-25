@@ -20,6 +20,7 @@ export async function createTrackedPost(input) {
   const post = {
     postID: randomUUID(),
     kind: input.kind || 'share',
+    workflowId: input.workflowId || '',
     sharedBy: input.sharedBy,
     sharedByName: input.sharedByName || '',
     title: input.title,
@@ -84,10 +85,15 @@ export async function postById(postID) {
   return (await readJson(paths.posts, [])).find((post) => post.postID === postID) || null;
 }
 
-export async function recentPostByLink(link, hours = 24) {
+export async function recentPostByLink(link, hours = 24, workflowId = '') {
   const after = Date.now() - Math.max(1, Number(hours) || 24) * 3_600_000;
   return (await readJson(paths.posts, [])).find((post) => (
     post.link === link &&
+    /* Scoped per workflow when the caller says which one: each ambassador
+       program packages an article in its own channels, but never twice in the
+       same one. Legacy rows without a workflowId still match everywhere, so
+       history keeps suppressing until it ages out of the window. */
+    (!workflowId || !post.workflowId || post.workflowId === workflowId) &&
     Date.parse(post.timestamp) >= after &&
     (post.deliveryStatus === 'delivered' || (post.discordMessageId && post.engagementMessageId))
   )) || null;

@@ -28,6 +28,7 @@ export const paths = {
   payoutLedger: path.join(dataRoot, 'payout-ledger.json'),
   payoutReceivers: path.join(dataRoot, 'payout-receivers.json'),
   payoutCycleAudit: path.join(dataRoot, 'payout-cycle-audit.json'),
+  articleFeedCursor: path.join(dataRoot, 'article-feed-cursor.json'),
   memberSecurityAudit: path.join(dataRoot, 'member-security-audit.json'),
   memberSecurityGrandfathered: path.join(dataRoot, 'member-security-grandfathered.json'),
   memberWarningLog: path.join(dataRoot, 'member-warning-log.json'),

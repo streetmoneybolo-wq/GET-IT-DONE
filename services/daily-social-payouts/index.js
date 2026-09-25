@@ -46,6 +46,7 @@ import { archiveProtectedChannelMessage, restoreChannelDeletedByTk, snapshotProt
 import { reportTkKick, reverseTkBan } from './utils/tkModerationLock.js';
 import { recordApprovedProofPayout } from './utils/payoutLedger.js';
 import { startDailyPayoutScheduler } from './utils/dailyPayoutCycle.js';
+import { startArticleFeed } from './utils/articleFeed.js';
 import { generateRecruitmentPost, recruitmentComposerTitleOnlyUrl } from './utils/recruitmentPosts.js';
 import * as earnings from './commands/earnings.js';
 import * as connectPayPal from './commands/connectPayPal.js';
@@ -719,6 +720,8 @@ client.once('clientReady', async () => {
   if (dailySocialMode) {
     startDailyPayoutScheduler(client);
     console.log('Daily payout scheduler started (holds, payable notifications, and the gated payment step).');
+    startArticleFeed(client);
+    console.log('Article feed watcher started (new site articles become share packages automatically).');
   }
   const dynamicGuilds = !dailySocialMode && roleSyncEnabled()
     ? await refreshDynamicRoleSyncGuilds().catch((error) => {

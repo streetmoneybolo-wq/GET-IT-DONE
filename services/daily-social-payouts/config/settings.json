@@ -6,9 +6,27 @@
   "alertMonitor": {
     "enabled": true,
     "sources": [
-      { "guildId": "938894329076940820", "channelId": "938944129348558848", "authorIds": ["1087769175453339648"] },
-      { "guildId": "938894329076940820", "channelId": "938944495209304115", "authorIds": ["1087769175453339648"] },
-      { "guildId": "938894329076940820", "channelId": "1509325055849529455", "authorIds": ["1087769175453339648"] }
+      {
+        "guildId": "938894329076940820",
+        "channelId": "938944129348558848",
+        "authorIds": [
+          "1087769175453339648"
+        ]
+      },
+      {
+        "guildId": "938894329076940820",
+        "channelId": "938944495209304115",
+        "authorIds": [
+          "1087769175453339648"
+        ]
+      },
+      {
+        "guildId": "938894329076940820",
+        "channelId": "1509325055849529455",
+        "authorIds": [
+          "1087769175453339648"
+        ]
+      }
     ],
     "guildId": "1547568823920623658",
     "channelIds": [
@@ -17,7 +35,14 @@
     ],
     "marketTimezone": "America/New_York",
     "trackingTradingDays": 5,
-    "milestoneGainPercents": [25, 50, 100, 250, 500, 1000],
+    "milestoneGainPercents": [
+      25,
+      50,
+      100,
+      250,
+      500,
+      1000
+    ],
     "extendedSession": {
       "start": "04:00",
       "end": "20:15",
@@ -54,7 +79,14 @@
     "version": "universal-alert-v1",
     "draftOnly": true,
     "reviewRequired": true,
-    "gainThresholds": [25, 50, 100, 250, 500, 1000],
+    "gainThresholds": [
+      25,
+      50,
+      100,
+      250,
+      500,
+      1000
+    ],
     "neverAutoPublish": true
   },
   "workReport": {
@@ -336,5 +368,10 @@
       "returnLinksChannelId": "1513375620443406526",
       "duplicateWindowHours": 24
     }
-  ]
+  ],
+  "articleFeed": {
+    "enabled": true,
+    "pollSeconds": 600,
+    "maxPerCycle": 3
+  }
 }

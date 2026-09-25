@@ -305,3 +305,41 @@ test('an entry with corrupt payableAt is NOT payable in the batch path (fail clo
   const groups = await ledger.getPayableEntriesGroupedByUser();
   assert.ok(!groups.some((g) => g.userId === 'u8'), 'corrupt hold data never becomes payable');
 });
+
+/* ---------------- article feed supply rules ---------------- */
+
+test('article feed selection: first-run baseline logic, freshness, ordering, cap', async () => {
+  const { selectNewPosts, articleFeedConfig } = await import('../utils/articleFeed.js');
+  const now = Date.parse('2026-09-24T15:00:00Z');
+  const post = (id, minsAgo) => ({ id, link: `https://stockmarketloop.com/a${id}/`, date_gmt: new Date(now - minsAgo * 60_000).toISOString().replace('Z', '') });
+
+  const cursor = { seenIds: [1, 2] };
+  const picked = selectNewPosts(cursor, [post(5, 10), post(4, 20), post(3, 30), post(2, 40), post(1, 50)], { maxPerCycle: 2, now });
+  assert.deepEqual(picked.map((p) => p.id), [3, 4], 'oldest unseen first, capped; the over-cap post stays for the next cycle');
+
+  const stale = selectNewPosts({ seenIds: [] }, [post(9, 60 * 30)], { maxPerCycle: 3, now });
+  assert.equal(stale.length, 0, 'articles older than 24h are never auto-packaged (flood guard)');
+
+  const future = selectNewPosts({ seenIds: [] }, [{ id: 8, link: 'https://x/', date_gmt: new Date(now + 3_600_000).toISOString().replace('Z', '') }], { maxPerCycle: 3, now });
+  assert.equal(future.length, 0, 'far-future timestamps are refused');
+
+  const junk = selectNewPosts({ seenIds: [] }, [{ id: 0, link: '' }, null, { id: 7, link: 'https://x/', date_gmt: 'garbage' }], { maxPerCycle: 3, now });
+  assert.equal(junk.length, 0, 'malformed feed rows never select');
+
+  const config = articleFeedConfig({ articleFeed: { enabled: true, pollSeconds: 5, maxPerCycle: 99 } });
+  assert.equal(config.pollSeconds, 120, 'poll floor protects the site');
+  assert.equal(config.maxPerCycle, 10, 'per-cycle ceiling protects the channels');
+  assert.equal(articleFeedConfig({}).enabled, false, 'feed is opt-in via settings');
+});
+
+test('workflow-scoped duplicate suppression: each program packages once, legacy rows still block', async () => {
+  const tracking = await import('../utils/tracking.js');
+  const link = 'https://stockmarketloop.com/dup-test/';
+  const base = { kind: 'channel-link', sharedBy: 'u', sharedByName: 'u', title: 'T', description: 'D', link, platformUrls: {} };
+  const a = await tracking.createTrackedPost({ ...base, workflowId: 'prog-a' });
+  await tracking.bindDiscordMessage(a.postID, { id: 'm1', channelId: 'c1', guildId: 'g1', url: 'https://discord/m1' });
+  await tracking.bindEngagementMessage(a.postID, { id: 'm2', channelId: 'c2', guildId: 'g1', url: 'https://discord/m2' });
+  assert.ok(await tracking.recentPostByLink(link, 24, 'prog-a'), 'same workflow sees the duplicate');
+  assert.equal(await tracking.recentPostByLink(link, 24, 'prog-b'), null, 'a different program may package the same article');
+  assert.ok(await tracking.recentPostByLink(link, 24), 'unscoped legacy callers still match');
+});

@@ -41,6 +41,22 @@ When a Manage Server member posts an article link in the intake channel, the bot
 
 Guild slash commands are registered on startup and normally appear quickly.
 
+## Automatic article feed
+
+`articleFeed` in `config/settings.json` replaces the article supply the isolated
+daily-social identity lost: the retired monolith pushed its own published articles
+into the share workflow, and that subsystem does not run here. The feed watcher polls
+the site's public WordPress REST list (default every 10 minutes) and turns each NEW
+published article into the same share + discussion package a Manage Server member
+would create by hand - in every configured workflow, each with its own per-workflow
+duplicate window (the same article may be packaged once per ambassador program).
+
+Flood guards: the first run only records a baseline and posts nothing; articles older
+than 24 hours are never auto-packaged; at most `maxPerCycle` (default 3) per poll with
+the rest carried to the next cycle; a feed failure logs and skips. The manual intake
+channel keeps working unchanged and wins no special treatment - both paths share one
+package pipeline and one duplicate window.
+
 ## Notification safety
 
 Role pings are disabled by default. To enable an already-established opt-in role, set:

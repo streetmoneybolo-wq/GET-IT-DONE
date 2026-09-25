@@ -52,49 +52,49 @@ async function textChannel(client, id) {
   return channel?.isTextBased() ? channel : null;
 }
 
-export async function processLinkWorkflow(message) {
-  const settings = await readSettings();
-  const workflow = linkWorkflowForSource(settings, message);
-  if (!workflow) return false;
-  if (!message.member?.permissions.has(PermissionFlagsBits.ManageGuild)) {
-    await message.reply('Only members with **Manage Server** can submit links to the article workflow.').catch(() => {});
-    return true;
-  }
-  const rawUrl = firstHttpUrl(message.content);
-  if (!rawUrl) return false;
-  if (processing.has(rawUrl)) {
-    await message.reply('That article is already being processed.').catch(() => {});
-    return true;
-  }
-  processing.add(rawUrl);
+/**
+ * The package-creation core, independent of any Discord message so both the
+ * manual intake channel and the automatic article feed can use it: fetch and
+ * validate the article, build one platform-sharing card and one discussion
+ * card in the workflow's channels, and record the tracked post.
+ *
+ * Duplicate suppression is per workflow: the same article may be packaged in
+ * each ambassador program's own channels, but never twice in the same one
+ * inside the duplicate window.
+ *
+ * Returns { status: 'published' | 'duplicate' | 'busy', ... }; throws on a
+ * delivery failure after rolling back partial messages.
+ */
+export async function publishArticlePackage({ client, settings, workflow, url, sharedBy, sharedByName, workEventKey, sourceMessageId = '' }) {
+  const processKey = `${workflow.id || 'default'}:${url}`;
+  if (processing.has(processKey)) return { status: 'busy' };
+  processing.add(processKey);
   let post = null;
   let shareMessage = null;
   let engagementMessage = null;
   try {
     const [sharingChannel, engagementChannel] = await Promise.all([
-      textChannel(message.client, workflow.shareChannelId),
-      textChannel(message.client, workflow.engagementChannelId),
+      textChannel(client, workflow.shareChannelId),
+      textChannel(client, workflow.engagementChannelId),
     ]);
     if (!sharingChannel || !engagementChannel) throw new Error('The configured sharing or engagement channel is unavailable to the bot.');
-    const article = await fetchNewsArticle(rawUrl);
-    const duplicate = await recentPostByLink(article.url, workflow.duplicateWindowHours || 24);
-    if (duplicate) {
-      await message.reply(`That article already has an active package (Post ID: \`${duplicate.postID}\`).`).catch(() => {});
-      return true;
-    }
+    const article = await fetchNewsArticle(url);
+    const duplicate = await recentPostByLink(article.url, workflow.duplicateWindowHours || 24, workflow.id || 'default');
+    if (duplicate) return { status: 'duplicate', duplicate };
     const copy = generateShareCopy({ sourceTitle: article.title, summary: article.summary, tickers: article.tickers, sectors: article.sectors });
     const platformUrls = buildShareUrls({ ...copy, link: article.url });
     post = await createTrackedPost({
       kind: 'channel-link',
-      sharedBy: message.author.id,
-      sharedByName: message.author.username,
+      workflowId: workflow.id || 'default',
+      sharedBy,
+      sharedByName,
       ...copy,
       link: article.url,
       image: article.image,
       platformUrls,
       tickers: article.tickers,
       sectors: article.sectors,
-      sourceMessageId: message.id,
+      sourceMessageId,
       commentIdeas: commentIdeas(article),
     });
     const angles = discussionAngles(article).map((value, index) => ({
@@ -113,23 +113,58 @@ export async function processLinkWorkflow(message) {
       components: engagementComponents(post),
     });
     await bindEngagementMessage(post.postID, engagementMessage);
-    await reportWorkEvent(message.client, {
-      type: 'link_posted', eventKey: `link-posted:${message.id}`, userId: message.author.id,
-      userName: message.author.username, post, articleUrl: article.url,
+    await reportWorkEvent(client, {
+      type: 'link_posted', eventKey: workEventKey, userId: sharedBy,
+      userName: sharedByName, post, articleUrl: article.url,
     });
-    await message.react('✅').catch(() => {});
-    await message.reply(`Published the article package in ${sharingChannel} and the manual discussion tools in ${engagementChannel}.`).catch(() => {});
-    return true;
+    return { status: 'published', post, sharingChannel, engagementChannel };
   } catch (error) {
     await Promise.allSettled([
       engagementMessage?.delete(),
       shareMessage?.delete(),
     ].filter(Boolean));
     if (post) await failTrackedPost(post.postID, error.message || error);
+    throw error;
+  } finally {
+    processing.delete(processKey);
+  }
+}
+
+export async function processLinkWorkflow(message) {
+  const settings = await readSettings();
+  const workflow = linkWorkflowForSource(settings, message);
+  if (!workflow) return false;
+  if (!message.member?.permissions.has(PermissionFlagsBits.ManageGuild)) {
+    await message.reply('Only members with **Manage Server** can submit links to the article workflow.').catch(() => {});
+    return true;
+  }
+  const rawUrl = firstHttpUrl(message.content);
+  if (!rawUrl) return false;
+  try {
+    const result = await publishArticlePackage({
+      client: message.client,
+      settings,
+      workflow,
+      url: rawUrl,
+      sharedBy: message.author.id,
+      sharedByName: message.author.username,
+      workEventKey: `link-posted:${message.id}`,
+      sourceMessageId: message.id,
+    });
+    if (result.status === 'busy') {
+      await message.reply('That article is already being processed.').catch(() => {});
+      return true;
+    }
+    if (result.status === 'duplicate') {
+      await message.reply(`That article already has an active package (Post ID: \`${result.duplicate.postID}\`).`).catch(() => {});
+      return true;
+    }
+    await message.react('✅').catch(() => {});
+    await message.reply(`Published the article package in ${result.sharingChannel} and the manual discussion tools in ${result.engagementChannel}.`).catch(() => {});
+    return true;
+  } catch (error) {
     console.error('Article workflow delivery failed:', error);
     await message.reply(`The article was not published: ${String(error.message || error).slice(0, 300)}`).catch(() => {});
     return true;
-  } finally {
-    processing.delete(rawUrl);
   }
 }
