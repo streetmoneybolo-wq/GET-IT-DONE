@@ -696,5 +696,137 @@
     v.addEventListener('seeked', function () { cv.currentTime = v.currentTime; });
   }
 
-  loadRail(); loadLikes(); loadComments(); loadHomeGroup(); loadFaceCam();
+
+  /* ---------- chapters, transcript, cards + end screen (mu-plugin sml-video-extras, 2026-09-25) ----------
+     GET /sml-video-extras/v1/video/{id} → {duration, chapters:[{t,label}], transcript:{segments:[[s,e,text]]}, cards:[…], end:{start, elements:[…]}}.
+     ?t= (90, 90s, 1m30s, 1:30) starts playback there — the SeekToAction target Google uses for Key Moments. */
+  function vxStartAt() {
+    var q = new URLSearchParams(location.search).get('t'); if (!q) return 0;
+    q = String(q).trim();
+    if (/^\d+(\.\d+)?s?$/.test(q)) return parseFloat(q);
+    var m = q.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/); if (m && (m[1] || m[2] || m[3])) return (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
+    var p = q.split(':').map(Number); if (p.length > 1 && !p.some(isNaN)) return p.reduce(function (a, b) { return a * 60 + b; }, 0);
+    return 0;
+  }
+  (function () {
+    var t0 = vxStartAt(); if (!t0 || LIVE_SYNC || PHASE === 'upcoming') return;
+    var go = function () { if (isFinite(v.duration) && t0 < v.duration) { try { v.currentTime = t0; } catch (e) {} } };
+    if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
+  })();
+  function vxSeek(t, play) {
+    if (LIVE_SYNC) t = Math.min(t, liveEdge());
+    try { v.currentTime = t; } catch (e) {}
+    if (play) v.play().catch(function () {});
+  }
+  function loadExtras() {
+    if (!VID.id || PHASE === 'upcoming') return;
+    api('/sml-video-extras/v1/video/' + encodeURIComponent(VID.id)).then(function (res) {
+      if (!res.ok || !res.j) return;
+      var X = res.j, dur = function () { return v.duration || X.duration || VID.duration || 0; };
+      var CH = (X.chapters || []).slice().sort(function (a, b) { return a.t - b.t; });
+      var SEG = (X.transcript && X.transcript.segments) || [];
+      var anchor = el('#vw-orbit-sec');
+
+      /* chapters: ticks on the bar, current chapter by the clock, list under the video */
+      function chapterAt(t) { var c = null; for (var i = 0; i < CH.length; i++) { if (CH[i].t <= t + 0.25) c = i; } return c; }
+      if (CH.length) {
+        var paintTicks = function () {
+          var d = dur(); if (!d) return; var prog = el('#vw-prog');
+          Array.prototype.forEach.call(prog.querySelectorAll('.mk'), function (m) { m.remove(); });
+          CH.forEach(function (c, i) { if (!i) return; var mk = document.createElement('i'); mk.className = 'mk'; mk.style.left = Math.min(100, c.t / d * 100) + '%'; mk.title = c.label; prog.appendChild(mk); });
+        };
+        if (dur()) paintTicks(); v.addEventListener('loadedmetadata', paintTicks);
+        var cur = document.createElement('button'); cur.className = 'slw-vx-cur'; cur.id = 'vw-chcur'; cur.type = 'button';
+        var clock = el('.slw-vodclock'); if (clock) clock.parentNode.insertBefore(cur, clock.nextSibling);
+        var chBox = document.createElement('section'); chBox.className = 'slw-vx-card'; chBox.id = 'vw-chapters';
+        chBox.innerHTML = '<div class="slw-vx-h"><div class="l"><b>Chapters</b><span>' + CH.length + ' key moments</span></div></div><ol class="slw-vx-chs">' +
+          CH.map(function (c, i) { return '<li><button type="button" data-vxt="' + c.t + '" data-vxi="' + i + '"><span class="t">' + hms(c.t) + '</span><span class="n">' + esc(c.label) + '</span></button></li>'; }).join('') + '</ol>';
+        anchor.parentNode.insertBefore(chBox, anchor);
+        cur.onclick = function (e) { e.stopPropagation(); chBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+        var lastCh = -2;
+        v.addEventListener('timeupdate', function () {
+          var i = chapterAt(v.currentTime); if (i === lastCh) return; lastCh = i;
+          cur.textContent = i == null ? '' : '• ' + CH[i].label + ' ›';
+          Array.prototype.forEach.call(chBox.querySelectorAll('[data-vxi]'), function (b) { b.classList.toggle('on', +b.getAttribute('data-vxi') === i); });
+          Array.prototype.forEach.call(el('#vw-prog').querySelectorAll('.mk'), function (m, k) { m.classList.toggle('past', CH[k + 1] && CH[k + 1].t <= v.currentTime); });
+        });
+        chBox.addEventListener('click', function (e) { var b = e.target.closest('[data-vxt]'); if (b) { vxSeek(+b.getAttribute('data-vxt'), true); el('.slw-player').scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+      }
+
+      /* transcript: visible text (what Google indexes), search, click-to-seek, follow along */
+      if (SEG.length) {
+        var tx = document.createElement('section'); tx.className = 'slw-vx-card'; tx.id = 'vw-tx';
+        tx.innerHTML = '<div class="slw-vx-h"><div class="l"><b>Transcript</b><span>' + SEG.length + ' lines</span></div>' +
+          '<div class="r"><input type="search" id="vw-txq" placeholder="Search the transcript" aria-label="Search the transcript"><label class="slw-vx-follow"><input type="checkbox" id="vw-txf" checked> Follow along</label></div></div>' +
+          '<div class="slw-vx-txb" id="vw-txb">' + SEG.map(function (s, i) { return '<p data-vxs="' + i + '"><button type="button" data-vxt="' + s[0] + '">' + hms(s[0]) + '</button><span>' + esc(s[2]) + '</span></p>'; }).join('') + '</div>';
+        anchor.parentNode.insertBefore(tx, anchor);
+        var txb = tx.querySelector('#vw-txb'), follow = tx.querySelector('#vw-txf'), lastS = -1, userScroll = 0;
+        txb.addEventListener('scroll', function () { userScroll = Date.now(); }, { passive: true });
+        tx.addEventListener('click', function (e) { var b = e.target.closest('[data-vxt]'); if (b) vxSeek(+b.getAttribute('data-vxt'), true); });
+        v.addEventListener('timeupdate', function () {
+          var t = v.currentTime, i = -1; for (var k = 0; k < SEG.length; k++) { if (SEG[k][0] <= t + 0.2) i = k; else break; }
+          if (i === lastS) return;
+          var prev = txb.querySelector('p.on'); if (prev) prev.classList.remove('on');
+          lastS = i; if (i < 0) return;
+          var p = txb.querySelector('[data-vxs="' + i + '"]'); if (!p) return; p.classList.add('on');
+          if (follow.checked && !v.paused && Date.now() - userScroll > 4000) txb.scrollTop = p.offsetTop - txb.offsetTop - txb.clientHeight / 3;
+        });
+        tx.querySelector('#vw-txq').addEventListener('input', function (e) {
+          var q = e.target.value.trim().toLowerCase(), hits = 0;
+          Array.prototype.forEach.call(txb.children, function (p, i) { var m = !q || SEG[i][2].toLowerCase().indexOf(q) !== -1; p.style.display = m ? '' : 'none'; if (m && q) hits++; });
+          tx.querySelector('.slw-vx-h .l span').textContent = q ? hits + ' match' + (hits === 1 ? '' : 'es') : SEG.length + ' lines';
+          if (q) follow.checked = false;
+        });
+      }
+
+      /* cards (teaser at the chosen second) + end screen (last N seconds) */
+      var CARDS = X.cards || [], END = X.end && X.end.elements && X.end.elements.length ? X.end : null;
+      if (!CARDS.length && !END) return;
+      var frame = el('.slw-frame');
+      function tile(o, cls) {
+        var ext = o.external ? ' target="_blank" rel="noopener nofollow ugc"' : '';
+        return '<a class="' + cls + ' k-' + esc(o.kind) + '" href="' + esc(o.url) + '"' + ext + '>' +
+          (o.thumb ? '<span class="im"><img src="' + esc(o.thumb) + '" alt="" loading="lazy"></span>' : '') +
+          '<span class="tx">' + (o.badge ? '<em>' + esc(o.badge) + '</em>' : '') + '<b>' + esc(o.title) + '</b><small>' + esc(o.sub || '') + (o.external ? ' ↗' : '') + '</small></span>' +
+          (o.kind === 'channel' ? '<span class="sub">Subscribe</span>' : '') + '</a>';
+      }
+      var layer = document.createElement('div'); layer.className = 'slw-vx-layer'; frame.appendChild(layer);
+      layer.addEventListener('click', function (e) { e.stopPropagation(); });
+      if (CARDS.length) {
+        var shown = {}, pill = document.createElement('button'), pop = document.createElement('div'), hideAt = 0;
+        pill.type = 'button'; pill.className = 'slw-vx-pill'; pop.className = 'slw-vx-pop';
+        layer.appendChild(pill); layer.appendChild(pop);
+        var openPop = function () {
+          var list = CARDS.filter(function (c, i) { return shown[i]; });
+          pop.innerHTML = '<div class="hd"><b>From the creator</b><button type="button" class="x" aria-label="Close">✕</button></div>' + list.map(function (c) { return tile(c, 'slw-vx-ct'); }).join('');
+          pop.classList.add('open'); pill.classList.remove('show');
+        };
+        pill.onclick = openPop;
+        pop.addEventListener('click', function (e) { if (e.target.closest('.x')) pop.classList.remove('open'); });
+        v.addEventListener('timeupdate', function () {
+          var t = v.currentTime;
+          CARDS.forEach(function (c, i) {
+            if (!shown[i] && t >= c.time && t < c.time + 2) {
+              shown[i] = true; hideAt = t + 8;
+              pill.innerHTML = (c.thumb ? '<img src="' + esc(c.thumb) + '" alt="">' : '') + '<span>' + esc(c.teaser || c.title) + '</span>';
+              pill.classList.add('show', 'has');
+            }
+          });
+          if (hideAt && t > hideAt && !pop.classList.contains('open')) { pill.classList.remove('show'); pill.innerHTML = '<span>ⓘ</span>'; hideAt = 0; }
+        });
+      }
+      if (END) {
+        var endEl = document.createElement('div'); endEl.className = 'slw-vx-end n' + END.elements.length;
+        endEl.innerHTML = '<div class="g">' + END.elements.map(function (o) { return tile(o, 'slw-vx-et'); }).join('') + '</div>';
+        layer.appendChild(endEl);
+        var fitEnd = function () { var g = endEl.firstChild; g.style.transform = ''; var avail = endEl.clientHeight, h = Math.max(g.scrollHeight, g.offsetHeight); if (avail && h > avail) g.style.transform = 'scale(' + (avail / h * 0.96).toFixed(3) + ')'; };
+        var paintEnd = function () { var d = dur(); var on = !LIVE_SYNC && d > 0 && v.currentTime >= d - END.start; var was = endEl.classList.contains('show'); endEl.classList.toggle('show', on); frame.classList.toggle('slw-vx-ending', on); if (on && !was) fitEnd(); };
+        window.addEventListener('resize', function () { if (endEl.classList.contains('show')) fitEnd(); });
+        document.addEventListener('fullscreenchange', function () { setTimeout(function () { if (endEl.classList.contains('show')) fitEnd(); }, 150); });
+        v.addEventListener('timeupdate', paintEnd); v.addEventListener('seeked', paintEnd); v.addEventListener('ended', paintEnd);
+      }
+    });
+  }
+
+  loadRail(); loadLikes(); loadComments(); loadHomeGroup(); loadFaceCam(); loadExtras();
 })();
