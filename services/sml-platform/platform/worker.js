@@ -189,7 +189,7 @@ async function main() {
     media: videoTranscripts.createMedia(),
     speech: videoTranscripts.createSpeech({ apiKey: config.openaiApiKey }),
     chapterer: videoTranscripts.createChapterer({ apiKey: config.openaiApiKey, model: config.openaiModel }),
-    onResult: result => { if (result.status !== 'idle') log(result.status === 'ready' ? 'info' : 'warn', 'video_transcript_result', { status: result.status, videoId: result.video_id, segments: result.segments, chapters: result.chapters, error: result.error, detail: result.detail }); },
+    onResult: result => { if (result.status !== 'idle') log(result.status === 'ready' ? 'info' : 'warn', 'video_transcript_result', { status: result.status, videoId: result.video_id, segments: result.segments, chapters: result.chapters, model: result.model, error: result.error, detail: result.detail }); },
     onError: () => log('warn', 'video_transcript_poll_failed', { retryAfterMs: 120000 })
   }) : null;
 

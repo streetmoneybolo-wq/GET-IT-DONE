@@ -21,6 +21,8 @@ const { extractOutputText } = require('./article-generator');
 
 const POLL_MS = 2 * 60 * 1000;
 const PIECE_SECONDS = 1200;
+const FINE_SECONDS = 30; // piece length when the model returns no timestamps: each piece becomes one transcript line
+const MODELS = ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'];
 const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 3 * 3600;
 const JOB_KEY = /^[a-f0-9]{48}$/;
@@ -66,10 +68,10 @@ function createMedia({ ffmpegPath, fetchImpl = fetch } = {}) {
       return seen;
     },
     /* Mono 16 kHz 32 kbps MP3 in PIECE_SECONDS pieces: ~4.8 MB per 20 minutes. */
-    async split(input, dir) {
+    async split(input, dir, seconds = PIECE_SECONDS, prefix = 'piece') {
       await run(bin, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '32k',
-        '-f', 'segment', '-segment_time', String(PIECE_SECONDS), '-reset_timestamps', '1', path.join(dir, 'piece-%03d.mp3')]);
-      const files = (await fsp.readdir(dir)).filter(f => /^piece-\d{3}\.mp3$/.test(f)).sort();
+        '-f', 'segment', '-segment_time', String(seconds), '-reset_timestamps', '1', path.join(dir, `${prefix}-%04d.mp3`)]);
+      const files = (await fsp.readdir(dir)).filter(f => new RegExp(`^${prefix}-\\d{4}\\.mp3$`).test(f)).sort();
       if (!files.length) throw new JobError('no_audio');
       return files.map(f => path.join(dir, f));
     }
@@ -88,31 +90,51 @@ function run(bin, args) {
 
 /* ------------------------------------------------------------------ speech to text */
 
-function createSpeech({ apiKey, model = 'whisper-1', fetchImpl = fetch }) {
+/*
+ * Tries whisper-1 first (sentence timestamps). An OpenAI project may not allow every model, so on
+ * model_not_found it falls back along MODELS and remembers the one that works. Only whisper returns
+ * timestamps; the others return plain text and the caller times it by cutting finer pieces.
+ */
+function createSpeech({ apiKey, models = MODELS, fetchImpl = fetch }) {
+  const state = { index: 0 };
+  async function once(model, file, prompt, language) {
+    const form = new FormData();
+    form.append('file', new Blob([await fsp.readFile(file)], { type: 'audio/mpeg' }), path.basename(file));
+    form.append('model', model);
+    const stamped = /^whisper/.test(model);
+    form.append('response_format', stamped ? 'verbose_json' : 'json');
+    if (stamped) form.append('timestamp_granularities[]', 'segment');
+    if (prompt) form.append('prompt', prompt.slice(0, 800));
+    if (/^[a-z]{2}$/.test(language)) form.append('language', language);
+    const r = await fetchImpl('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10 * 60 * 1000),
+      headers: { authorization: `Bearer ${apiKey}` }, body: form
+    });
+    if (!r.ok) {
+      let detail = '';
+      try { const e = await r.json(); detail = String((e && e.error && (e.error.code || e.error.message)) || '').slice(0, 200); } catch { /* not json */ }
+      throw Object.assign(new JobError(r.status === 429 ? 'transcription_rate_limited' : `transcription_http_${r.status}`), { detail, status: r.status });
+    }
+    const j = await r.json();
+    return {
+      model, timestamps: stamped,
+      language: String(j.language || ''),
+      duration: Number(j.duration || 0),
+      text: String(j.text || '').trim(),
+      segments: stamped ? (Array.isArray(j.segments) ? j.segments : []).map(x => [Number(x.start) || 0, Number(x.end) || 0, String(x.text || '').trim()]).filter(x => x[2]) : []
+    };
+  }
   return {
+    get model() { return models[state.index]; },
     async transcribe(file, { prompt = '', language = '' } = {}) {
-      const form = new FormData();
-      form.append('file', new Blob([await fsp.readFile(file)], { type: 'audio/mpeg' }), path.basename(file));
-      form.append('model', model);
-      form.append('response_format', 'verbose_json');
-      form.append('timestamp_granularities[]', 'segment');
-      if (prompt) form.append('prompt', prompt.slice(0, 800));
-      if (/^[a-z]{2}$/.test(language)) form.append('language', language);
-      const r = await fetchImpl('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10 * 60 * 1000),
-        headers: { authorization: `Bearer ${apiKey}` }, body: form
-      });
-      if (!r.ok) {
-        let detail = '';
-        try { const e = await r.json(); detail = String((e && e.error && (e.error.code || e.error.message)) || '').slice(0, 200); } catch { /* not json */ }
-        throw Object.assign(new JobError(r.status === 429 ? 'transcription_rate_limited' : `transcription_http_${r.status}`), { detail });
+      for (;;) {
+        try { return await once(models[state.index], file, prompt, language); }
+        catch (error) {
+          const missing = error instanceof JobError && (error.detail === 'model_not_found' || error.status === 404);
+          if (!missing || state.index >= models.length - 1) throw error;
+          state.index += 1; // this project cannot use that model; try the next one and keep using it
+        }
       }
-      const j = await r.json();
-      return {
-        language: String(j.language || ''),
-        duration: Number(j.duration || 0),
-        segments: (Array.isArray(j.segments) ? j.segments : []).map(s => [Number(s.start) || 0, Number(s.end) || 0, String(s.text || '').trim()]).filter(s => s[2])
-      };
     }
   };
 }
@@ -203,17 +225,32 @@ async function runOnce({ request, media, speech, chapterer, tmpRoot = os.tmpdir(
     validJob(job, request.origin);
     const video = path.join(dir, 'video');
     await media.download(job.url, video);
-    const pieces = await media.split(video, dir);
-    await fsp.rm(video, { force: true });
     const prompt = [job.title, job.ticker && `$${job.ticker}`].filter(Boolean).join('. ');
-    const segments = [];
-    let offset = 0, language = '';
-    for (const piece of pieces) {
-      const out = await speech.transcribe(piece, { prompt, language: job.language || '' });
-      language = language || out.language;
-      for (const s of out.segments) segments.push([+(s[0] + offset).toFixed(1), +(s[1] + offset).toFixed(1), s[2]]);
-      offset += out.duration || PIECE_SECONDS;
+    const opts = { prompt, language: job.language || '' };
+    let segments = [], offset = 0, language = '';
+    const pieces = await media.split(video, dir);
+    const first = await speech.transcribe(pieces[0], opts);
+    if (first.timestamps) {
+      for (let i = 0; i < pieces.length; i++) {
+        const out = i ? await speech.transcribe(pieces[i], opts) : first;
+        language = language || out.language;
+        for (const x of out.segments) segments.push([+(x[0] + offset).toFixed(1), +(x[1] + offset).toFixed(1), x[2]]);
+        offset += out.duration || PIECE_SECONDS;
+      }
+    } else {
+      /* No timestamps from this model: re-cut into FINE_SECONDS pieces and time each line by its piece. */
+      for (const f of pieces) await fsp.rm(f, { force: true });
+      const fine = await media.split(video, dir, FINE_SECONDS, 'fine');
+      const total = Number(job.duration) || fine.length * FINE_SECONDS;
+      for (let i = 0; i < fine.length; i++) {
+        const out = await speech.transcribe(fine[i], opts);
+        language = language || out.language;
+        const start = i * FINE_SECONDS, end = Math.min(total, start + FINE_SECONDS);
+        if (out.text) segments.push([start, end, out.text]);
+      }
+      offset = total;
     }
+    await fsp.rm(video, { force: true });
     if (!segments.length) throw new JobError('no_speech');
     const duration = Math.round(Number(job.duration) || offset);
     let chapters = [];
@@ -221,7 +258,7 @@ async function runOnce({ request, media, speech, chapterer, tmpRoot = os.tmpdir(
       try { chapters = await chapterer.suggest(segments, { duration, title: job.title, ticker: job.ticker }); } catch { chapters = []; }
     }
     await request('jobs/complete', { key: job.key, language: langCode(language), segments, chapters, duration: Math.round(offset) });
-    return { status: 'ready', video_id: job.video_id, segments: segments.length, chapters: chapters.length };
+    return { status: 'ready', video_id: job.video_id, segments: segments.length, chapters: chapters.length, model: speech.model };
   } catch (error) {
     const code = error instanceof JobError && ERROR_CODE.test(error.code) ? error.code : 'transcription_failed';
     try { await request('jobs/complete', { key: job.key, error: code }); } catch { /* WordPress reclaims stale jobs after 45 minutes */ }

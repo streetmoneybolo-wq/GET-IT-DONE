@@ -21,12 +21,13 @@ function fakeRequest(next) {
 const media = (pieces = 2) => ({
   downloads: [],
   async download(url, dest) { this.downloads.push(url); fs.writeFileSync(dest, 'x'); return 1; },
-  async split(_input, dir) { return Array.from({ length: pieces }, (_, i) => { const f = path.join(dir, `piece-00${i}.mp3`); fs.writeFileSync(f, 'a'); return f; }); }
+  splits: [],
+  async split(_input, dir, seconds = 1200, prefix = 'piece') { this.splits.push(seconds); const n = seconds === 30 ? 5 : pieces; return Array.from({ length: n }, (_, i) => { const f = path.join(dir, `${prefix}-000${i}.mp3`); fs.writeFileSync(f, 'a'); return f; }); }
 });
 const speech = {
   async transcribe(file) {
     const i = Number(path.basename(file).match(/(\d+)\.mp3$/)[1]);
-    return { language: 'english', duration: 1200, segments: [[0, 4, `piece ${i} start`], [30, 36, `piece ${i} later`]] };
+    return { timestamps: true, language: 'english', duration: 1200, segments: [[0, 4, `piece ${i} start`], [30, 36, `piece ${i} later`]] };
   }
 };
 const chapterer = { async suggest() { return [{ time: '0:00', label: 'Intro' }, { time: '5:00', label: 'The rule' }, { time: '20:10', label: 'Risk' }]; } };
@@ -90,7 +91,7 @@ test('unexpected errors become a generic code and chapter failures do not fail t
 
 test('no speech is reported, not published', async () => {
   const request = fakeRequest(job());
-  const silent = { async transcribe() { return { language: 'en', duration: 1200, segments: [] }; } };
+  const silent = { async transcribe() { return { timestamps: true, language: 'en', duration: 1200, segments: [] }; } };
   const out = await runOnce({ request, media: media(1), speech: silent, chapterer });
   assert.equal(out.error, 'no_speech');
 });
@@ -127,7 +128,7 @@ test('speech client sends a timestamped transcription request', async () => {
   assert.equal(seen.opts.body.get('response_format'), 'verbose_json');
   assert.equal(seen.opts.body.get('timestamp_granularities[]'), 'segment');
   assert.equal(seen.opts.body.get('language'), 'en');
-  assert.deepEqual(out, { language: 'english', duration: 12.5, segments: [[0, 3.2, 'Hello']] });
+  assert.deepEqual(out, { model: 'whisper-1', timestamps: true, language: 'english', duration: 12.5, text: '', segments: [[0, 3.2, 'Hello']] });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -161,4 +162,38 @@ test('client only talks to an https WordPress origin with basic auth', async () 
   assert.equal(seen.opts.method, 'POST');
   assert.match(seen.opts.headers.authorization, /^Basic /);
   assert.equal(request.origin, ORIGIN);
+});
+
+test('falls back to the next model when the project cannot use whisper-1, and remembers it', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vxf-'));
+  const f = path.join(dir, 'fine-0000.mp3'); fs.writeFileSync(f, 'mp3');
+  const asked = [];
+  const fetchImpl = async (_url, opts) => {
+    const model = opts.body.get('model'); asked.push(model);
+    if (model === 'whisper-1') return { ok: false, status: 403, json: async () => ({ error: { code: 'model_not_found' } }) };
+    assert.equal(opts.body.get('response_format'), 'json');
+    assert.equal(opts.body.get('timestamp_granularities[]'), null);
+    return { ok: true, json: async () => ({ text: ' Size your position at ten percent. ' }) };
+  };
+  const sp = createSpeech({ apiKey: 'k', fetchImpl });
+  const a = await sp.transcribe(f); const b = await sp.transcribe(f);
+  assert.deepEqual(asked, ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-mini-transcribe']);
+  assert.equal(a.timestamps, false); assert.equal(a.text, 'Size your position at ten percent.'); assert.equal(b.model, 'gpt-4o-mini-transcribe');
+  assert.equal(sp.model, 'gpt-4o-mini-transcribe');
+  const none = createSpeech({ apiKey: 'k', fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({ error: { code: 'model_not_found' } }) }) });
+  await assert.rejects(none.transcribe(f), e => e.code === 'transcription_http_403' && e.detail === 'model_not_found');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('without timestamps the video is re-cut into 30-second lines timed by position', async () => {
+  const request = fakeRequest(job({ duration: 140 }));
+  const m = media(1);
+  const plain = { model: 'gpt-4o-mini-transcribe', async transcribe(file) { const i = Number(path.basename(file).match(/(\d+)\.mp3$/)[1]); return { timestamps: false, language: 'english', text: i === 3 ? '' : `line ${i}` }; } };
+  const out = await runOnce({ request, media: m, speech: plain, chapterer: { async suggest() { return []; } } });
+  assert.equal(out.status, 'ready');
+  assert.equal(out.model, 'gpt-4o-mini-transcribe');
+  assert.deepEqual(m.splits, [1200, 30]);
+  const done = request.calls.find(c => c.p === 'jobs/complete').body;
+  assert.deepEqual(done.segments, [[0, 30, 'line 0'], [30, 60, 'line 1'], [60, 90, 'line 2'], [120, 140, 'line 4']]);
+  assert.equal(done.duration, 140);
 });
