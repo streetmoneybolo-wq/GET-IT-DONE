@@ -45,6 +45,7 @@ import { restoreProtectedBotMessageDelete, trackProtectedBotMessage } from './ut
 import { archiveProtectedChannelMessage, restoreChannelDeletedByTk, snapshotProtectedChannels } from './utils/channelDeleteGuard.js';
 import { reportTkKick, reverseTkBan } from './utils/tkModerationLock.js';
 import { recordApprovedProofPayout } from './utils/payoutLedger.js';
+import { startDailyPayoutScheduler } from './utils/dailyPayoutCycle.js';
 import { generateRecruitmentPost, recruitmentComposerTitleOnlyUrl } from './utils/recruitmentPosts.js';
 import * as earnings from './commands/earnings.js';
 import * as connectPayPal from './commands/connectPayPal.js';
@@ -715,6 +716,10 @@ async function enforceMakingEasyMoneyRaidSpam(message) {
 }
 
 client.once('clientReady', async () => {
+  if (dailySocialMode) {
+    startDailyPayoutScheduler(client);
+    console.log('Daily payout scheduler started (holds, payable notifications, and the gated payment step).');
+  }
   const dynamicGuilds = !dailySocialMode && roleSyncEnabled()
     ? await refreshDynamicRoleSyncGuilds().catch((error) => {
       console.warn(`Could not load connected group Discord servers: ${error.message || error}`);

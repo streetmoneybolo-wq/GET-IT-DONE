@@ -12,7 +12,8 @@
     "start:daily-social": "node index.js",
     "start:spotlight": "node spotlight.js",
     "check": "node --check index.js && node --check spotlight.js && node --check scripts/provision-daily-social-payouts-server.mjs && node tests/smoke.mjs",
-    "provision:daily-social": "node scripts/provision-daily-social-payouts-server.mjs"
+    "provision:daily-social": "node scripts/provision-daily-social-payouts-server.mjs",
+    "test:payouts": "node --test tests/payouts.test.mjs"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

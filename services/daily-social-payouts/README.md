@@ -78,6 +78,45 @@ The grandfather snapshot is stored in `data/member-security-grandfathered.json`.
 
 The bot also records new-account and rapid-join signals when `newAccountReviewDays` or `joinBurst` are configured. These signals are audit-only: account age or a busy join window never causes an automatic punishment. Discord does not provide a server-wide switch that prevents members from sending friend requests or DMs, so members should also disable direct messages and friend requests from server members in Discord privacy settings when targeted.
 
+## Daily payout cycle
+
+Once a day (default 15:00 UTC, `PAYOUT_DAILY_HOUR_UTC`) the bot runs the cycle this
+service is named for. Three steps always run for real; the fourth is gated:
+
+1. **Hold enforcement.** Reddit work still inside its hold window is re-verified
+   against Reddit's public JSON. An entry is voided only on positive confirmation of
+   removal (404, `removed_by_category`, or a deleted comment). An unreachable page,
+   rate limit, or parse failure never voids anything.
+2. **Payable notifications.** Each member whose held work matured gets one private DM
+   per entry set — never repeated daily — with their new payable total and, if they
+   have no saved payout address, how to add one.
+3. **Payment step.** Members with a **confirmed saved PayPal address** (`/paypal set`)
+   and a payable balance of at least `PAYOUT_MIN_USD` (default $5) are paid in **one**
+   PayPal Payouts batch, oldest-waiting member first, up to `PAYOUT_DAILY_CAP_USD`
+   (default $200) per run. Members are never part-paid: a member who does not fit
+   under the cap is skipped whole and is first in line the next day. Idempotency:
+   one payment per member per day (`daily-YYYYMMDD-{userId}` item ids), and ledger
+   entries are marked paid per item with the batch id.
+4. **Summary card.** A numbers-only card (no addresses) posts to the work-report
+   channel: holds checked/voided, members notified, paid or previewed totals, and
+   skip reasons.
+
+Real money moves only behind three independent locks: `PAYPAL_PAYOUTS_ENABLED=1`,
+`PAYPAL_PAYOUT_DRY_RUN=0`, and `PAYOUT_AUTO_DAILY=1` (or an explicit
+`/payout-admin run-daily execute:true`). Any other combination makes the payment step
+a preview. `/payout-admin batch-preview` shows exactly who the next run would pay and
+why everyone else is skipped.
+
+## Member payout addresses
+
+`/paypal set` opens a private Discord modal (double-entry confirmation) that only the
+bot receives; nothing is posted to any channel. The address is stored encrypted
+(AES-256-GCM, key = `PAYOUT_DETAILS_KEY`, 64 hex chars) and is only ever displayed in
+masked form (`j******@g*****.com`), including in the payout ledger and admin screens.
+`/paypal status` and `/paypal remove` manage it. Without `PAYOUT_DETAILS_KEY` the
+store is disabled and nothing can be saved — the bot never falls back to plaintext.
+`/payout-admin pay` uses the member's saved address when `paypal_email` is omitted.
+
 ## Data safety
 
 JSON writes are serialized and use a temporary-file rename to reduce corruption risk. For multiple bot processes or a large server, migrate the storage adapter to PostgreSQL rather than sharing these JSON files.

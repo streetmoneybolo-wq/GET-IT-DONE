@@ -30,7 +30,7 @@ export async function execute(interaction) {
       { name: 'Total valid work', value: summary.formatted.totalEarnedCents, inline: true },
       { name: 'Hold rules', value: `Links must stay public at least **${payoutPolicy.publicLinkMinimumHours} hours**. Payout entries become payable after **${payoutPolicy.verificationHoldHours} hours** if still valid.`, inline: false },
       { name: 'Recent work', value: summarizeRecent(summary.rows), inline: false },
-      { name: 'PayPal payouts', value: 'PayPal account connection must happen through a secure payout dashboard, not by posting PayPal emails in Discord. Once the secure PayPal setup is connected, this ledger can be paid from the payable balance.', inline: false },
+      { name: 'PayPal payouts', value: 'Save your payout address with `/paypal set` — a private form only the bot receives; it is stored encrypted and only ever shown masked. Members with a saved address and a payable balance over the minimum are included in the daily payout run automatically. Never post PayPal emails in channels.', inline: false },
     )
     .setFooter({ text: 'Use the proof buttons on each work item so your work can be reviewed and counted.' })
     .setTimestamp();

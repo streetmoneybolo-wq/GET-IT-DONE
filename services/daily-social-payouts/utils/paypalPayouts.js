@@ -28,24 +28,47 @@ async function paypalAccessToken(status) {
   return json.access_token;
 }
 
-export async function createPayPalPayout({ receiverEmail, amountCents, note, senderItemId, dryRunOverride = null }) {
+function assertItem({ receiverEmail, amountCents }) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(receiverEmail || ''))) throw new Error('Enter a valid PayPal payout email address.');
+  if (Number(amountCents || 0) <= 0) throw new Error('Payout amount must be greater than $0.00.');
+}
+
+/**
+ * One PayPal Payouts batch with one item per recipient. Every guard the
+ * single-recipient path had applies to every item, and a batch with zero
+ * valid items is refused rather than silently posted empty.
+ */
+export async function createPayPalBatchPayout({ items, senderBatchId, dryRunOverride = null }) {
   const status = paypalPayoutStatus();
   const currency = process.env.PAYPAL_PAYOUT_CURRENCY || 'USD';
   const dryRun = dryRunOverride ?? status.dryRun;
   if (!status.credentialsPresent) throw new Error(`PayPal credentials are missing: ${status.missing.join(', ')}`);
   if (!status.payoutsEnabled) throw new Error('PAYPAL_PAYOUTS_ENABLED=1 is required before payout actions can run.');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(receiverEmail || ''))) throw new Error('Enter a valid PayPal payout email address.');
-  if (Number(amountCents || 0) <= 0) throw new Error('Payout amount must be greater than $0.00.');
-  const senderBatchId = `sml-${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const itemId = senderItemId || `sml-item-${randomUUID()}`;
+  if (!Array.isArray(items) || !items.length) throw new Error('A payout batch needs at least one item.');
+  if (items.length > 500) throw new Error('A payout batch is limited to 500 items.');
+  for (const item of items) assertItem(item);
+  const totalCents = items.reduce((sum, item) => sum + Number(item.amountCents || 0), 0);
+  const batchId = senderBatchId || `sml-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const normalized = items.map((item, index) => ({
+    recipient_type: 'EMAIL',
+    amount: { value: moneyValue(item.amountCents), currency },
+    receiver: item.receiverEmail,
+    note: String(item.note || 'Daily Social Payouts approved work payment').slice(0, 1000),
+    sender_item_id: String(item.senderItemId || `sml-item-${randomUUID()}`).slice(0, 63),
+  }));
   if (dryRun) {
     return {
       dryRun: true,
-      batchId: `DRY-RUN-${senderBatchId}`,
-      itemId,
-      amount: centsToUsd(amountCents),
-      receiverEmail,
+      batchId: `DRY-RUN-${batchId}`,
       status: 'SIMULATED',
+      totalCents,
+      amount: centsToUsd(totalCents),
+      items: normalized.map((item, index) => ({
+        itemId: item.sender_item_id,
+        receiverEmail: items[index].receiverEmail,
+        amountCents: Number(items[index].amountCents || 0),
+        amount: centsToUsd(items[index].amountCents),
+      })),
     };
   }
   const token = await paypalAccessToken(status);
@@ -57,17 +80,11 @@ export async function createPayPalPayout({ receiverEmail, amountCents, note, sen
     },
     body: JSON.stringify({
       sender_batch_header: {
-        sender_batch_id: senderBatchId,
+        sender_batch_id: batchId,
         email_subject: 'Daily Social Payouts payment',
         email_message: 'You received a Daily Social Payouts payment for approved completed work.',
       },
-      items: [{
-        recipient_type: 'EMAIL',
-        amount: { value: moneyValue(amountCents), currency },
-        receiver: receiverEmail,
-        note: String(note || 'Daily Social Payouts approved work payment').slice(0, 1000),
-        sender_item_id: itemId,
-      }],
+      items: normalized,
     }),
   });
   const json = await response.json().catch(() => ({}));
@@ -76,11 +93,33 @@ export async function createPayPalPayout({ receiverEmail, amountCents, note, sen
   }
   return {
     dryRun: false,
-    batchId: json.batch_header?.payout_batch_id || senderBatchId,
-    itemId,
+    batchId: json.batch_header?.payout_batch_id || batchId,
+    status: json.batch_header?.batch_status || 'SUBMITTED',
+    totalCents,
+    amount: centsToUsd(totalCents),
+    items: normalized.map((item, index) => ({
+      itemId: item.sender_item_id,
+      receiverEmail: items[index].receiverEmail,
+      amountCents: Number(items[index].amountCents || 0),
+      amount: centsToUsd(items[index].amountCents),
+    })),
+    raw: json,
+  };
+}
+
+export async function createPayPalPayout({ receiverEmail, amountCents, note, senderItemId, dryRunOverride = null }) {
+  const batch = await createPayPalBatchPayout({
+    items: [{ receiverEmail, amountCents, note, senderItemId }],
+    dryRunOverride,
+  });
+  const item = batch.items[0] || {};
+  return {
+    dryRun: batch.dryRun,
+    batchId: batch.batchId,
+    itemId: item.itemId || senderItemId || '',
     amount: centsToUsd(amountCents),
     receiverEmail,
-    status: json.batch_header?.batch_status || 'SUBMITTED',
-    raw: json,
+    status: batch.status,
+    raw: batch.raw,
   };
 }

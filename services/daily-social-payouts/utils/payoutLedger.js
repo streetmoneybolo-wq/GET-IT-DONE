@@ -7,10 +7,13 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function parseOrNow(timestamp) {
+  const parsed = Date.parse(timestamp || '');
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
 function payableAtFrom(timestamp) {
-  const started = Date.parse(timestamp || '');
-  const base = Number.isFinite(started) ? started : Date.now();
-  return new Date(base + payoutPolicy.verificationHoldHours * 3_600_000).toISOString();
+  return new Date(parseOrNow(timestamp) + payoutPolicy.verificationHoldHours * 3_600_000).toISOString();
 }
 
 function normalizePlatform(platform) {
@@ -63,7 +66,7 @@ export async function recordPublishedLinkPayout({ post, externalPost, intent }) 
     assignedAt,
     submittedAt,
     payableAt: payableAtFrom(submittedAt),
-    minimumPublicUntil: new Date(Date.parse(submittedAt) + payoutPolicy.publicLinkMinimumHours * 3_600_000).toISOString(),
+    minimumPublicUntil: new Date(parseOrNow(submittedAt) + payoutPolicy.publicLinkMinimumHours * 3_600_000).toISOString(),
     holdHours: payoutPolicy.verificationHoldHours,
     notes: 'Pending hold. Void if the public link is removed, hidden, duplicated, or rejected before the verification threshold.',
   });
@@ -97,7 +100,7 @@ export async function recordApprovedProofPayout({ proof, post }) {
     assignedAt,
     submittedAt,
     payableAt: payableAtFrom(submittedAt),
-    minimumPublicUntil: new Date(Date.parse(submittedAt) + payoutPolicy.publicLinkMinimumHours * 3_600_000).toISOString(),
+    minimumPublicUntil: new Date(parseOrNow(submittedAt) + payoutPolicy.publicLinkMinimumHours * 3_600_000).toISOString(),
     holdHours: payoutPolicy.verificationHoldHours,
     proofId: proof.id,
     reviewedBy: proof.reviewedBy || '',
@@ -154,7 +157,7 @@ export async function markPayoutEntriesPaid({ userId, entryIds, paidBy, receiver
   const paidAt = nowIso();
   await mutateJson(paths.payoutLedger, [], (rows) => {
     for (const row of rows) {
-      if (row.userId !== userId || !ids.has(row.id || row.sourceId) || row.status === 'paid') continue;
+      if (row.userId !== userId || !ids.has(row.id || row.sourceId) || !openStatuses.has(row.status)) continue;
       row.status = dryRun ? 'dry_run_paid_preview' : 'paid';
       row.paidAt = paidAt;
       row.paidBy = paidBy || '';
@@ -167,6 +170,56 @@ export async function markPayoutEntriesPaid({ userId, entryIds, paidBy, receiver
     }
   });
   return { changed, totalCents, paidAt };
+}
+
+/**
+ * Open (unpaid, unvoided) entries, for the daily cycle: hold enforcement,
+ * payable notifications, and batch planning all start from this list.
+ */
+export async function getOpenEntries() {
+  return (await getPayoutLedger()).filter((row) => openStatuses.has(row.status));
+}
+
+/**
+ * Payable balances grouped per member, oldest member first so a daily cap
+ * starves nobody permanently: whoever has waited longest is paid first.
+ */
+export async function getPayableEntriesGroupedByUser() {
+  const now = Date.now();
+  const groups = new Map();
+  for (const row of await getPayoutLedger()) {
+    if (!openStatuses.has(row.status)) continue;
+    const payableAtMs = Date.parse(row.payableAt || '');
+    if (!Number.isFinite(payableAtMs) || payableAtMs > now) continue; // corrupt hold data is never payable
+    if (Number(row.amountCents || 0) <= 0) continue;
+    const group = groups.get(row.userId) || { userId: row.userId, userName: row.userName || '', entries: [], totalCents: 0, oldestCreatedAt: row.createdAt || '' };
+    group.entries.push(row);
+    group.totalCents += Number(row.amountCents || 0);
+    if (!group.userName && row.userName) group.userName = row.userName;
+    if (Date.parse(row.createdAt || '') < Date.parse(group.oldestCreatedAt || '') || !group.oldestCreatedAt) group.oldestCreatedAt = row.createdAt || '';
+    groups.set(row.userId, group);
+  }
+  return [...groups.values()].sort((a, b) => Date.parse(a.oldestCreatedAt || '') - Date.parse(b.oldestCreatedAt || ''));
+}
+
+/**
+ * Mark entries as having had their "your balance is payable" notification
+ * sent, so a member is told once per entry, not once per day forever.
+ */
+export async function markEntriesNotifiedPayable(sourceIds, { delivered = true } = {}) {
+  const ids = new Set(sourceIds || []);
+  let changed = 0;
+  const at = nowIso();
+  await mutateJson(paths.payoutLedger, [], (rows) => {
+    for (const row of rows) {
+      if (!ids.has(row.id || row.sourceId) || row.notifiedPayableAt) continue;
+      row.notifiedPayableAt = at;
+      row.notifiedPayableDelivered = Boolean(delivered);
+      row.updatedAt = at;
+      changed += 1;
+    }
+  });
+  return changed;
 }
 
 export async function voidPayoutEntry(sourceId, reason = 'Removed before verification threshold') {
