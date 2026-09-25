@@ -69,7 +69,7 @@ function sml_cdn_pin_asset_url( $src, $handle ) {
 	}
 	return preg_replace(
 		'#(streetmoneybolo-wq/GET-IT-DONE@)[0-9a-z._-]+/#i',
-		'$1' . SML_CDN_ASSET_REVISION . '/',
+		'${1}' . SML_CDN_ASSET_REVISION . '/',
 		$src,
 		1
 	);
@@ -91,7 +91,7 @@ add_action( 'template_redirect', function () {
 		}
 		return preg_replace(
 			'#(streetmoneybolo-wq/GET-IT-DONE@)[0-9a-z._-]+/(css/terminal-v2\.css|js/terminal-shell\.js)#i',
-			'$1' . SML_CDN_ASSET_REVISION . '/$2',
+			'${1}' . SML_CDN_ASSET_REVISION . '/${2}',
 			$html
 		);
 	} );
