@@ -128,11 +128,21 @@
   const r1 = (v) => Math.round(v * 10) / 10;
   function perfEnd() {
     if (!PERF.active) return; PERF.active = false;
-    const f = PERF.frames; if (f.length < 15 || PERF.sent >= 3 || performance.now() - PERF.lastSent < 30000) return;
-    PERF.sent++; PERF.lastSent = performance.now();
+    const f = PERF.frames; if (f.length < 15) return;
     const m = model(), by = {}; for (const k of Object.keys(PERF.byName)) by[k] = r1(mean(PERF.byName[k]));
+    perfChip(r1(1000 / mean(f)), r1(pctl(f, 0.95)), r1(Math.max(...f)), by, r1(mean(PERF.layers.layers)));
+    if (PERF.sent >= 3 || performance.now() - PERF.lastSent < 30000) return;
+    PERF.sent++; PERF.lastSent = performance.now();
     const body = { kind: 'perf', fps: r1(1000 / mean(f)), p95: r1(pctl(f, 0.95)), worst: r1(Math.max(...f)), n: f.length, layers: r1(mean(PERF.layers.layers)), pro: r1(mean(PERF.layers.pro)), by, dpr: window.devicePixelRatio || 1, cap: window.smlChartDpr ? window.smlChartDpr() : 1, w: stage.clientWidth, h: stage.clientHeight, tf: tfNow(), bars: m ? m.N : 0, view: m ? m.slots : 0, mem: !!document.querySelector('#mem-algo-toggle.on'), patterns: !!V.patterns, ua: navigator.userAgent.slice(0, 90) };
-    try { navigator.sendBeacon('/academy-activity/report', new Blob([JSON.stringify(body)], { type: 'text/plain' })); } catch (_) { /* reporting is best effort */ }
+    let queued = false; try { queued = navigator.sendBeacon('/academy-activity/report', new Blob([JSON.stringify(body)], { type: 'text/plain' })); } catch (_) { queued = false; }
+    if (!queued) { try { fetch('/academy-activity/report', { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'text/plain' }, keepalive: true }).catch(() => {}); } catch (_) { /* reporting is best effort */ } }
+  }
+  let chipTimer = 0, chip = null;
+  function perfChip(fps, p95, worst, by, layers) {
+    if (!chip) { chip = document.createElement('div'); chip.className = 'academy-pro-perf'; stage.appendChild(chip); }
+    const name = { candles: 'candles', indicators: 'indicators', memalgo: 'MEM ALGO' };
+    chip.innerHTML = '<b>' + fps + ' fps</b> while dragging · slowest frame ' + worst + ' ms (95% under ' + p95 + ' ms)<br>draw time per frame: ' + layers + ' ms' + Object.keys(by).map((k) => ' · ' + (name[k] || k) + ' ' + by[k]).join('') + '<br><small>screen ' + stage.clientWidth + '×' + stage.clientHeight + ' · resolution ×' + (window.smlChartDpr ? window.smlChartDpr() : 1) + ' of ×' + (window.devicePixelRatio || 1) + '</small>';
+    chip.style.display = 'block'; clearTimeout(chipTimer); chipTimer = setTimeout(() => { chip.style.display = 'none'; }, 12000);
   }
   window.smlChartPro_perfEnd = perfEnd;
   /* Hover only moves the crosshair, so only the pro layer needs to repaint. */
@@ -341,7 +351,7 @@
     + '.academy-pro-panel header{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid #244052;font:800 .6rem ui-monospace;color:#8ee8c1;flex-wrap:wrap}.academy-pro-panel header label{color:#a6bcc8;font-weight:700;display:flex;gap:3px;align-items:center;cursor:pointer}.academy-pro-panel .plist{overflow:auto;padding:4px}'
     + '.academy-pro-panel .pit{display:block;width:100%;text-align:left;border:1px solid #1d3a48;background:#0b1a24;color:#dcebf4;border-radius:6px;padding:5px 7px;margin:0 0 4px;cursor:pointer;font:inherit}.academy-pro-panel .pit:hover,.academy-pro-panel .pit.on{border-color:#42f5b3}.academy-pro-panel .pit b{font-weight:800}.academy-pro-panel .pit small{display:block;color:#8ba2af;font-weight:600;margin-top:2px}'
     + '.academy-pro-panel .chip{display:inline-block;padding:1px 5px;border-radius:9px;font:800 .54rem ui-monospace;margin-left:4px}.academy-pro-panel .chip.bull{background:#0d3a2b;color:#5df0b0}.academy-pro-panel .chip.bear{background:#40151d;color:#ff8ea1}.academy-pro-panel .chip.neutral{background:#26343d;color:#c5d3db}'
-    + '.academy-pro-zone{position:absolute;z-index:6;touch-action:none;background:transparent}.academy-pro-zone.y{right:0;top:0;bottom:0;width:64px;cursor:ns-resize}.academy-pro-zone.x{left:0;right:64px;bottom:0;height:24px;cursor:ew-resize}'
+    + '.academy-pro-perf{position:absolute;left:8px;top:22px;z-index:8;display:none;max-width:calc(100% - 80px);padding:7px 9px;border:1px solid #2b5362;border-radius:8px;background:rgba(6,16,25,.94);color:#dcebf4;font:600 .62rem/1.45 ui-monospace,monospace;pointer-events:none}.academy-pro-perf b{color:#42f5b3}.academy-pro-perf small{color:#8fa6b3}.academy-pro-zone{position:absolute;z-index:6;touch-action:none;background:transparent}.academy-pro-zone.y{right:0;top:0;bottom:0;width:64px;cursor:ns-resize}.academy-pro-zone.x{left:0;right:64px;bottom:0;height:24px;cursor:ew-resize}'
     + '@media(max-width:700px){.academy-pro-panel{position:fixed;left:6px;right:6px;bottom:6px;width:auto;max-height:40vh;z-index:2147483000}.academy-pro-panel .pit{padding:9px 10px}.academy-pro-palette{right:8px}.academy-pro-palette button{height:32px;font-size:.66rem}}'
     + '.academy-pro-panel .foot{padding:5px 8px;border-top:1px solid #244052;color:#7f97a4;font-weight:600;font-size:.56rem}';
   document.head.appendChild(styleEl);
