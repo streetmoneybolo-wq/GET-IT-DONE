@@ -3078,12 +3078,13 @@
     var over = (!d.open && d.winnerName) ? '<div class="slw-boost-over show"><b>ROUND OVER</b><span><b>' + esc(d.winnerName) + '</b> takes the bonus.</span></div>' : '';
     var body = '';
     if (d.open || (d.board && d.board.length)) {
+      var poolDry = d.poolLeft != null && d.poolLeft < d.perShare;
       var plats = PLATS.map(function (p, i) {
         var done = me.shares.indexOf(i) >= 0 || me.shares.indexOf(String(i)) >= 0;
         var locked = !d.open;
         return '<button class="slw-plat' + (done ? ' done' : '') + '" data-bplat="' + i + '"' + (locked && !done ? ' style="opacity:.45;cursor:default"' : '') + '>' +
           '<span class="mk" style="color:' + p[2] + '">' + p[1] + '</span><span class="nm">' + p[0] + '</span>' +
-          '<span class="st">' + (done ? '✓ SHARED' : (locked ? 'CLOSED' : '+' + d.perShare + ' LB')) + '</span></button>';
+          '<span class="st">' + (done ? '✓ SHARED' : (locked ? 'CLOSED' : (poolDry ? 'WINNER RACE' : '+' + d.perShare + ' LB'))) + '</span></button>';
       }).join('');
       var rows = (d.board || []).map(function (e, i) {
         return '<div class="slw-brow' + (i % 2 ? ' alt' : '') + '"><span class="rk' + (i === 0 ? ' top' : (i < 3 ? ' t3' : '')) + '">' + (i + 1) + '</span>' +
@@ -3126,16 +3127,19 @@
         : '<div style="display:flex;gap:6px;align-items:center;padding:10px 16px 14px;flex-wrap:wrap">' +
           '<input id="slw-bmin" type="number" min="1" max="120" value="10" title="minutes" style="width:52px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
           '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">min</span>' +
-          '<input id="slw-bper" type="number" min="0" max="5000" value="250" title="LB per share" style="width:62px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
+          '<input id="slw-bper" type="number" min="0" max="1000" value="250" title="LB per share" style="width:62px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
           '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">LB/share</span>' +
-          '<input id="slw-bwin" type="number" min="0" max="100000" value="5000" title="winner bonus" style="width:70px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
+          '<input id="slw-bwin" type="number" min="0" max="20000" value="5000" title="winner bonus" style="width:70px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
           '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">winner</span>' +
-          '<button class="slw-rematch" id="slw-bopen" style="flex:1;min-width:110px">⚡ Open a round</button></div>';
+          '<input id="slw-bpool" type="number" min="0" max="100000" value="5000" title="share pool — total LB set aside for share rewards" style="width:70px;border:1px solid #1c2833;border-radius:6px;padding:8px;background:#0b1119;color:#e6edf3;font:500 11px/1 \'IBM Plex Mono\',monospace">' +
+          '<span style="font:400 9px/1 Archivo,sans-serif;color:#5d7085">pool</span>' +
+          '<button class="slw-rematch" id="slw-bopen" style="flex:1;min-width:110px">⚡ Open a round</button>' +
+          '<span style="flex-basis:100%;font:400 9px/1.5 Archivo,sans-serif;color:#5d7085">Funded from your Loop Bucks when the round opens (pool + winner) — whatever viewers do not earn comes back automatically.</span></div>';
     }
     /* the 10s poll repaints the pane; carry the host's typed round settings (and focus) across the repaint
        instead of resetting them to the defaults mid-typing (found on the phone 2026-09-13) */
-    var keep = {}, focusId = document.activeElement && /^slw-b(min|per|win)$/.test(document.activeElement.id) ? document.activeElement.id : '';
-    ['slw-bmin', 'slw-bper', 'slw-bwin'].forEach(function (id) { var f = el('#' + id); if (f && f.value !== '') keep[id] = f.value; });
+    var keep = {}, focusId = document.activeElement && /^slw-b(min|per|win|pool)$/.test(document.activeElement.id) ? document.activeElement.id : '';
+    ['slw-bmin', 'slw-bper', 'slw-bwin', 'slw-bpool'].forEach(function (id) { var f = el('#' + id); if (f && f.value !== '') keep[id] = f.value; });
     pane.innerHTML = head + over + body + adminCtl;
     Object.keys(keep).forEach(function (id) { var f = el('#' + id); if (f) f.value = keep[id]; });
     if (focusId && el('#' + focusId)) { try { el('#' + focusId).focus(); } catch (e) {} }
@@ -3143,19 +3147,30 @@
       b.onclick = function () { shareBoost(+b.getAttribute('data-bplat')); };
     });
     if (el('#slw-bopen')) el('#slw-bopen').onclick = function () {
-      vFormG('/sml-lw/v1/boost/open', { handle: HANDLE, minutes: +el('#slw-bmin').value || 10, per_share: +el('#slw-bper').value || 250, winner: +el('#slw-bwin').value || 5000 }).then(function () { loadBoost(); });
+      var ob = el('#slw-bopen'); if (ob.disabled) return; ob.disabled = true; ob.textContent = 'Opening\u2026';
+      var vOr = function (id, dflt) { var v = el('#' + id).value; return v === '' ? dflt : +v; };
+      vFormG('/sml-lw/v1/boost/open', { handle: HANDLE, minutes: vOr('slw-bmin', 10), per_share: vOr('slw-bper', 250), winner: vOr('slw-bwin', 5000), pool_lb: vOr('slw-bpool', 5000) }).then(function (res) { if (res && !res.ok) { boostToast((res.j && res.j.message) || 'Could not open the round.'); } loadBoost(); });
     };
     if (el('#slw-bclose')) el('#slw-bclose').onclick = function () {
-      vFormG('/sml-lw/v1/boost/close', { handle: HANDLE }).then(function () { loadBoost(); });
+      vFormG('/sml-lw/v1/boost/close', { handle: HANDLE }).then(function (res) { if (res && !res.ok) { boostToast((res.j && res.j.message) || 'Could not close the round.'); } loadBoost(); });
     };
+  }
+  /* boost feedback must be visible from tab 3: flashGate's row lives inside the Chat
+     pane, which is display:none while the Boost tab is active */
+  function boostToast(msg) {
+    var t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:2147483000;max-width:86vw;background:#0d1520;color:#e6edf3;border:1px solid #24405c;border-radius:10px;padding:11px 16px;font:500 12px/1.5 Archivo,sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.5)';
+    document.body.appendChild(t);
+    setTimeout(function () { if (t.parentNode) { t.parentNode.removeChild(t); } }, 6000);
   }
   function shareBoost(i) {
     var d = BOOST.d;
     if (!d || !d.open) return;
-    if (!gateState || !gateState.loggedIn) { flashGate('Sign in to boost the stream and earn Loop Bucks.'); return; }
+    if (!gateState || !gateState.loggedIn) { boostToast('Sign in to boost the stream and earn Loop Bucks.'); return; }
     var UTM_MEDIUM = ['reddit', 'x', 'facebook', 'bluesky', 'threads', 'stocktwits', 'linkedin', 'moomoo', 'instagram'];
     vFormG('/sml-lw/v1/boost/share', { handle: HANDLE, platform: i }).then(function (res) {
-      if (!res.ok || !res.j || !res.j.url) { flashGate((res.j && res.j.message) || 'Could not open the share.'); return; }
+      if (!res.ok || !res.j || !res.j.url) { boostToast((res.j && res.j.message) || 'Could not open the share.'); return; }
       /* GA4 (Site Kit) reads these on arrival — Realtime report shows the traffic live,
          full per-round campaign reports consolidate on Google's side */
       /* built with URL(): the old `+= '&utm_…'` assumed the link already had a '?', which a clean URL does not */
@@ -3177,7 +3192,7 @@
         window.open(intent(res.j.url, res.j.text), '_blank', 'noopener');
       } else if (navigator.clipboard) {
         navigator.clipboard.writeText(res.j.text + ' ' + res.j.url);
-        flashGate('Your tracked link is copied — paste it on ' + PLATS[i][0] + '. LB lands when someone opens it.');
+        boostToast('Your tracked link is copied — paste it on ' + PLATS[i][0] + '. LB lands when someone opens it.');
       }
       loadBoost();
     }).catch(function () {});
