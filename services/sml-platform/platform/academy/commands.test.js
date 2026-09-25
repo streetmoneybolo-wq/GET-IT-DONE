@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, LAUNCH_ID, TEXT_LESSON_ID, createAcademyCommands } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
+const TOTAL_LESSONS = 121 + require('./street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
 
 const GUILD = '938894329076940820';
 const MONARCH = '1260433215189946420';
@@ -48,7 +49,7 @@ test('Academy controls remain private to the configured Monarch preview role', a
   assert.match(denied.response.data.content, /not available/);
   const allowed = await academy.handle(interaction('academy'));
   assert.match(allowed.response.data.content, /dedicated Academy channels/);
-  assert.match(allowed.response.data.content, /121 interactive/);
+  assert.match(allowed.response.data.content, new RegExp(`${TOTAL_LESSONS} interactive`));
   assert.match(allowed.response.data.content, /29 modules/);
   // The welcome copy is counted from the curriculum, so it cannot go stale.
   assert.match(allowed.response.data.content, new RegExp(`${SEED_LESSONS.length} interactive`));
@@ -86,9 +87,9 @@ test('member cannot use restricted slash command just because channel launchers 
   assert.match(denied.response.data.content, /not available/);
 });
 
-test('Academy publishes a complete 121-lesson college-level curriculum', () => {
-  assert.equal(SEED_LESSONS.length, 121);
-  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, 121);
+test('Academy publishes a complete college-level curriculum (the original 121 lessons plus Street Smarts)', () => {
+  assert.equal(SEED_LESSONS.length, TOTAL_LESSONS);
+  assert.equal(new Set(SEED_LESSONS.map((lesson) => `${lesson.moduleId}:${lesson.lessonId}`)).size, TOTAL_LESSONS);
   // Module 0 is the Start Here beginner track and sorts ahead of module 1.
   assert.deepEqual([...new Set(SEED_LESSONS.map((lesson) => lesson.moduleId))], Array.from({ length: 29 }, (_, index) => index));
   for (const entry of SEED_LESSONS) {
@@ -146,7 +147,7 @@ test('every lesson has an authored whiteboard example spoken between the title a
     // Original, fictional, educational: no reference-creator names anywhere in the example.
     assert.doesNotMatch(JSON.stringify(example), forbiddenNames, id);
   }
-  assert.deepEqual(sources, { authored: 121 });
+  assert.deepEqual(sources, { authored: TOTAL_LESSONS });
 
   // 9.1 pins: the steps keep the worked put contract and the example agrees with them.
   const put = SEED_LESSONS.find((entry) => entry.moduleId === 9 && entry.lessonId === 1);

@@ -3,6 +3,7 @@
 const { simulationFor } = require('./simulations');
 const { EXPANSION_LESSONS } = require('./expansion');
 const { START_HERE_LESSONS } = require('./start-here');
+const { STREET_LESSONS } = require('./street-smarts');
 const { attachIndicatorCurriculum } = require('../academy-chart-intelligence');
 
 /* Original StockMarketLoop Academy material. It never ingests the legacy
@@ -166,7 +167,7 @@ const CORE_LESSONS = [
  * INDICATOR_CATEGORIES (modules 2-6, 9, 10, 12, 13) plus 1.1, so module 0 passes
  * through it untouched; start-here.test.js pins that. */
 const SEED_LESSONS = require('./examples').attachWorkedExamples(
-  attachIndicatorCurriculum([...START_HERE_LESSONS, ...CORE_LESSONS, ...EXPANSION_LESSONS])
+  attachIndicatorCurriculum([...START_HERE_LESSONS, ...CORE_LESSONS, ...EXPANSION_LESSONS, ...STREET_LESSONS])
 );
 
 module.exports = { SEED_LESSONS };

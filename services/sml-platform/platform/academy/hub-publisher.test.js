@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ACADEMY_BANNER_FILE, bannerUpload, launcher, publishAcademyHubs } = require('./hub-publisher');
+const TOTAL_LESSONS = 121 + require('./street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
 
 const briefing = {
   command: 'briefing', channelId: '1551147441993285692', channel: '🧭｜daily-financial-briefing',
@@ -41,7 +42,7 @@ test('lesson launcher consolidates all five learning tools into one channel', ()
     'academy:hub:challenge', 'academy:hub:replay'
   ]);
   assert.equal(payload.embeds.length, 1);
-  assert.match(payload.embeds[0].fields.map((field) => `${field.name} ${field.value}`).join(' '), /121 LESSONS/);
+  assert.match(payload.embeds[0].fields.map((field) => `${field.name} ${field.value}`).join(' '), new RegExp(`${TOTAL_LESSONS} LESSONS`));
 });
 
 test('banner is a separate animated GIF upload', () => {

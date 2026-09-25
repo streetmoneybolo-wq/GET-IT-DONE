@@ -22,6 +22,7 @@ const { narrationFor } = require('../academy-voice');
 const { partsFor, MAX_CACHE_ITEMS } = require('../academy-slide-designer');
 const { academyCurriculumScript } = require('../academy-activity-curriculum');
 const { LESSON_COUNT, MODULE_COUNT, FIRST_MODULE, FIRST_LESSON } = require('./commands');
+const TOTAL_LESSONS = 121 + require('./street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
 
 const START_HERE = SEED_LESSONS.filter((lesson) => lesson.moduleId === START_HERE_MODULE_ID);
 const key = (lesson) => `${lesson.moduleId}.${lesson.lessonId}`;
@@ -245,7 +246,7 @@ test('Start Here comes first everywhere a learner meets the curriculum', () => {
   assert.equal(moduleIds[0], 0, 'module 0 sorts ahead of module 1');
 
   // 2. In the totals the copy and the command bounds are built from.
-  assert.equal(LESSON_COUNT, 121);
+  assert.equal(LESSON_COUNT, TOTAL_LESSONS);
   assert.equal(MODULE_COUNT, 29);
   assert.equal(FIRST_MODULE, 0);
   assert.equal(key(FIRST_LESSON), '0.1');
@@ -293,7 +294,7 @@ test('the Start Here track is reachable in the served Activity page', async () =
 
     // The curriculum the page fetches leads with module 0.
     const payload = await (await fetch(`${base}/academy-activity/curriculum`)).json();
-    assert.equal(payload.lessons.length, 121);
+    assert.equal(payload.lessons.length, TOTAL_LESSONS);
     assert.equal(payload.lessons[0].moduleId, 0);
     assert.equal(payload.lessons[0].lessonId, 1);
     assert.equal(payload.lessons.filter((lesson) => lesson.moduleId === 0).length, 20);
@@ -308,6 +309,6 @@ test('the Start Here track is reachable in the served Activity page', async () =
 
 test('the injected curriculum script counts the lessons instead of naming a number', () => {
   const script = academyCurriculumScript(SEED_LESSONS);
-  assert.match(script, /All 121 Academy lessons complete\./);
+  assert.match(script, new RegExp(`All ${TOTAL_LESSONS} Academy lessons complete\\.`));
   assert.doesNotMatch(script, /All 101 Academy lessons complete\./);
 });

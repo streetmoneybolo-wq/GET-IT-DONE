@@ -9,6 +9,7 @@ const test = require('node:test');
 const { academyCartoonVisualsScript, whiteboardFit } = require('./academy-cartoon-visuals');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { EXAMPLE_LEAD } = require('./academy/lesson-parts');
+const TOTAL_LESSONS = 121 + require('./academy/street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
 
 const PAGE_BANNED = /<iframe|location\.assign|CLAUDE DESIGNED|Playing Grandmaster-Obi|next lesson is preloading/i;
 const words = (text) => (String(text).match(/\S+/g) || []).length;
@@ -175,7 +176,7 @@ test('every lesson example renders a complete, well-formed whiteboard SVG', () =
     assert.equal(api.build(example).markup, markup, `${label} deterministic`);
     assert.ok(markup.includes(`<title>${escapeXml(example.title)}</title>`), `${label} title`);
   }
-  assert.equal(heights.length, 121);
+  assert.equal(heights.length, TOTAL_LESSONS);
 });
 
 test('the 9.1 put example draws its computed numbers and escapes hostile text', () => {

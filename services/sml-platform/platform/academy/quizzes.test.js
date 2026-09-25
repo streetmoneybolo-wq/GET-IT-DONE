@@ -15,6 +15,7 @@ const test = require('node:test');
 
 const quizzes = require('./quizzes');
 const { SEED_LESSONS } = require('./curriculum');
+const TOTAL_LESSONS = 121 + require('./street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
 
 const {
   quizFor, quizKey, validateQuiz, isValidQuiz, assertQuizzes, LETTERS, LEGACY_PROMPT, LIMITS, DATA
@@ -34,7 +35,7 @@ const byLesson = (a, b) => a.moduleId - b.moduleId || a.lessonId - b.lessonId;
 const EXPANSION = SEED_LESSONS.filter((lesson) => lesson.moduleId >= 14 && lesson.moduleId <= 28).sort(byLesson);
 
 test('every expansion lesson exists and carries an authored knowledge check', () => {
-  assert.equal(SEED_LESSONS.length, 121);
+  assert.equal(SEED_LESSONS.length, TOTAL_LESSONS);
   assert.equal(EXPANSION.length, 75);
   assert.equal(new Set(EXPANSION.map(key)).size, 75);
   for (const lesson of EXPANSION) {

@@ -15,7 +15,8 @@
 const MODULES = Object.freeze([
   './reference',
   './start-here-a', './start-here-b', './start-here-c',
-  './m01-13', './m14-20', './m21-28'
+  './m01-13', './m14-20', './m21-28',
+  './street-a', './street-b', './street-c', './street-d', './street-e'
 ]);
 
 const RECORDS = [];
