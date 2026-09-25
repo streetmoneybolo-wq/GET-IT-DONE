@@ -970,3 +970,16 @@ test('the frame-rate beacon is logged as numbers only and junk is ignored safely
   assert.ok(perf.data.ua.length <= 90);
   assert.ok(!JSON.stringify(perf.data).includes('script'));
 });
+
+test('lesson narration reports the real length of every part so slides change when the voice does', async () => {
+  const academyVoice = { configured: true, getLessonAudio: async () => ({ audio: Buffer.from('mp3'), cached: true, partMs: [1200, 8400, 9100] }) };
+  await withServer({ academyVoice }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-academy-part-ms'), '1200,8400,9100');
+  });
+  const { academyCurriculumScript: academyActivityCurriculumScript } = require('./academy-activity-curriculum');
+  const script = academyActivityCurriculumScript(SEED_LESSONS.slice(0, 2), 'v-test');
+  assert.match(script, /x-academy-part-ms/);
+  assert.match(script, /measured\?duration\*exact\[index\]\/measuredTotal/);
+});

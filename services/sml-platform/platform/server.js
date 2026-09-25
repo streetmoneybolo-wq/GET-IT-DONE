@@ -1570,7 +1570,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           'content-length': result.audio.length,
           'cache-control': 'private, max-age=86400',
           'x-content-type-options': 'nosniff',
-          'x-academy-voice-cache': result.cached ? 'hit' : 'miss'
+          'x-academy-voice-cache': result.cached ? 'hit' : 'miss',
+          'x-academy-part-ms': Array.isArray(result.partMs) ? result.partMs.join(',') : ''
         });
         response.end(result.audio);
       } catch (error) {
