@@ -1000,3 +1000,25 @@ test('the chart glides after a flick and pauses other repaints while a finger is
   assert.match(fs.readFileSync(path.join(__dirname, 'academy-live.js'), 'utf8'), /if \(window\.smlChartGesture\) \{ st\.deferred = d; return; \}/);
   assert.match(fs.readFileSync(path.join(__dirname, 'academy-options-dock.js'), 'utf8'), /if \(window\.smlChartGesture\) return;/);
 });
+
+test('the alerts desk route is members-only, serves the snapshot and one alert in detail, and the page carries the desk', async () => {
+  const academyAlerts = {
+    snapshot: () => ({ ok: true, asOf: 1, feed: {}, alerts: [{ id: '1', symbol: 'GDC' }], pending: 0, disclaimer: 'Not advice' }),
+    detail: async (id) => (id === '1' ? { id: '1', symbol: 'GDC', factors: [] } : null)
+  };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer member' ? { ok: true, userId: 'u1' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyAlerts, academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/alerts`)).status, 401);
+    const ok = await fetch(`${base}/academy-activity/alerts`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200); assert.equal((await ok.json()).alerts[0].symbol, 'GDC');
+    const one = await fetch(`${base}/academy-activity/alerts?detail=1`, { headers: { authorization: 'Bearer member' } });
+    assert.equal((await one.json()).alert.symbol, 'GDC');
+    assert.equal((await fetch(`${base}/academy-activity/alerts?detail=999`, { headers: { authorization: 'Bearer member' } })).status, 404);
+  });
+  await withServer({ academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/alerts`, { headers: { authorization: 'Bearer member' } })).status, 503, 'disabled without a service');
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /__smlAlertsUi/); assert.match(html, /ALERTS DESK/); assert.match(html, /academy-alerts-fab/);
+});

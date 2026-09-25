@@ -78,6 +78,7 @@ function getConfig(env = process.env) {
     discordConnectPublicKey: String(env.SML_DISCORD_CONNECT_PUBLIC_KEY || '').trim(),
     discordConnectAppId: String(env.SML_DISCORD_CONNECT_APP_ID || '').trim(),
     discordConnectBotToken: String(env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim(),
+    alertsBotToken: String(env.SML_ALERTS_BOT_TOKEN || '').trim(),
     disputeBotEnabled: String(env.SML_DISPUTE_BOT_ENABLED || '').trim() === '1',
     discordDisputePublicKey: String(env.SML_DISPUTE_BOT_PUBLIC_KEY || '').trim(),
     discordDisputeAppId: String(env.SML_DISPUTE_BOT_APP_ID || '').trim(),

@@ -143,7 +143,16 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return { symbol, ready: true, asOf: d.t, seq: e.seq, book: { bids: d.bids.slice(0, 10), asks: d.asks.slice(0, 10) }, tape, last: tape.length ? tape[0].price : null, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
   }
 
-  return { start, stop, touch, get, live, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
+  /** Order flow for a symbol that is already being tracked (a member has it on the chart); never starts tracking a new one. */
+  function peek(symbolRaw) {
+    const symbol = String(symbolRaw || '').toUpperCase();
+    const e = engines.get(symbol);
+    if (!e) return null;
+    const a = e.flow.analyze(now());
+    return a && a.ready ? { ready: true, bias: a.bias, score: a.score } : null;
+  }
+
+  return { start, stop, touch, get, live, peek, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
 }
 
 module.exports = { createOrderFlowService };

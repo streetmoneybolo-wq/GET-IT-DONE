@@ -30,6 +30,7 @@ const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
+const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -543,8 +544,9 @@ const ACADEMY_MEM_ALGO = (() => {
     const liveFeed = fs.readFileSync(pathModule.join(__dirname, 'academy-live.js'), 'utf8');
     const optionsCalc = fs.readFileSync(pathModule.join(__dirname, 'academy-options-calc.js'), 'utf8');
     const optionsDock = fs.readFileSync(pathModule.join(__dirname, 'academy-options-dock.js'), 'utf8');
+    const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
-    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
+    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
   } catch (_) { return ''; } // the chart must load even if the model files are missing
 })();
 
@@ -1179,7 +1181,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null,
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
   memberEmail = null,
@@ -1487,6 +1489,23 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* The alerts desk: the trader's posted alerts with risk grade, checklist and plan. Members only (the same Academy session as the options chain). */
+    if (request.method === 'GET' && path === '/academy-activity/alerts') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academyAlerts) { sendJson(response, 503, { ok: false, error: 'alerts_disabled' }); return; }
+      const id = new URL(request.url || '/', 'http://localhost').searchParams.get('detail');
+      try {
+        if (id) {
+          const one = await academyAlerts.detail(String(id).replace(/[^0-9]/g, '').slice(0, 24));
+          if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
+          sendJson(response, 200, { ok: true, alert: one });
+        } else sendJson(response, 200, academyAlerts.snapshot());
+      } catch (error) { logger('error', 'academy_alerts_request_failed', { error }); sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' }); }
+      return;
+    }
+
     /* Tick-by-tick view: newest book levels and individual prints, polled by the Activity about once a second. Read-only, never cached. */
     if (request.method === 'GET' && path === '/academy-activity/live') {
       if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
@@ -1771,6 +1790,12 @@ async function main() {
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
   const orderFlowStore = createOrderFlowStore({ pool: database.pool });
   const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
+  const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
+  const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
+    tokens: alertTokens, channels: defaultChannels(), origin: REDDIT_HUB_ORIGIN, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
+    orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
+    patterns: (() => { try { return require('./academy-patterns').detect; } catch (_) { return null; } })()
+  });
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
@@ -1819,7 +1844,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts,
     academyDiscipline,
     academyAppId: config.academyAppId,
     memberEmail
@@ -1831,6 +1856,7 @@ async function main() {
     shuttingDown = true;
     log('info', 'shutdown_started', { signal });
     if (academyOrderFlow) academyOrderFlow.stop();
+    if (academyAlerts) academyAlerts.stop();
     server.close(async () => {
       await database.close();
       log('info', 'shutdown_complete', { signal });
@@ -1846,6 +1872,9 @@ async function main() {
     startAcademyChartWarmers(log);
     if (academyOrderFlow) {
       academyOrderFlow.start();
+    }
+    if (academyAlerts) academyAlerts.start();
+    if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
       if (pruneTimer.unref) pruneTimer.unref();
     }
