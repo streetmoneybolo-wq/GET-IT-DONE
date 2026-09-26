@@ -897,7 +897,9 @@ function scopeCommands(commands, allowedNames) {
   };
 }
 
-const CONNECT_COMMAND_NAMES = Object.freeze(['role-status', 'role-reconcile']);
+// The Connect bot also owns the /loop-kick Entry Point: it must pass the scope
+// so handleCommand can answer LAUNCH_ACTIVITY instead of "Unknown command."
+const CONNECT_COMMAND_NAMES = Object.freeze(['role-status', 'role-reconcile', LOOP_KICK_COMMAND]);
 const DISPUTE_COMMAND_NAMES = Object.freeze([
   'payments', 'subscriptions', 'customer-history', 'disputes', 'dispute-view',
   'dispute-build', 'dispute-missing', 'dispute-open-dashboard'

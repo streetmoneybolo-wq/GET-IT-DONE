@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { COMMAND_DEFINITIONS, createConnectCommands } = require('./connect-commands');
+const { COMMAND_DEFINITIONS, CONNECT_COMMAND_NAMES, createConnectCommands, scopeCommands } = require('./connect-commands');
 
 const NOW = 1_700_000_000_000;
 const USER = '111222333444555666';
@@ -267,6 +267,15 @@ test('the /loop-kick Entry Point answers LAUNCH_ACTIVITY so Discord opens the Ac
   // Discord may rename the Entry Point (its default is "launch"); the type still routes it.
   const renamed = await commands.handleCommand(interaction('launch', [], { data: { name: 'launch', type: 4 } }));
   assert.deepEqual(renamed.response, { type: 12 });
+});
+
+test('the Connect bot scope lets /loop-kick through to the launcher', async () => {
+  const { deps } = fakes();
+  const scoped = scopeCommands(createConnectCommands(deps), CONNECT_COMMAND_NAMES);
+  const launched = await scoped.handleCommand(interaction('loop-kick', [], { data: { name: 'loop-kick', type: 4 } }));
+  assert.deepEqual(launched.response, { type: 12 });
+  const blocked = await scoped.handleCommand(interaction('disputes'));
+  assert.equal(blocked.response.data.content, 'Unknown command.');
 });
 
 test('no reply string ever contains planted PII, and every reply is ephemeral', async () => {
