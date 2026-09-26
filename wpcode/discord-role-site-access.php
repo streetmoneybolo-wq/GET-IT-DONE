@@ -205,6 +205,32 @@ if ( ! function_exists( 'sml_drs_tables' ) ) {
         return current_user_can( 'manage_options' );
     }
 
+    function sml_drs_loop_kick_secret() {
+        if ( defined( 'SML_LOOP_KICK_BRIDGE_SECRET' ) ) {
+            return trim( (string) SML_LOOP_KICK_BRIDGE_SECRET );
+        }
+        return trim( (string) get_option( 'sml_loop_kick_bridge_secret', '' ) );
+    }
+
+    function sml_drs_loop_kick_permission( WP_REST_Request $request ) {
+        if ( ! sml_drs_bot_permission() ) {
+            return new WP_Error( 'sml_drs_forbidden', 'Forbidden.', array( 'status' => 403 ) );
+        }
+        $secret    = sml_drs_loop_kick_secret();
+        $timestamp = trim( (string) $request->get_header( 'x-sml-lk-timestamp' ) );
+        $provided  = trim( (string) $request->get_header( 'x-sml-lk-signature' ) );
+        if ( strlen( $secret ) < 32 || ! ctype_digit( $timestamp ) || abs( time() - (int) $timestamp ) > 60 ) {
+            return new WP_Error( 'sml_drs_bad_signature', 'Forbidden.', array( 'status' => 403 ) );
+        }
+        $path      = '/wp-json/sml-discord-site/v1/bot/loop-kick-session';
+        $body_hash = hash( 'sha256', (string) $request->get_body() );
+        $expected  = 'sha256=' . hash_hmac( 'sha256', $timestamp . '.' . $path . '.' . $body_hash, $secret );
+        if ( ! hash_equals( $expected, $provided ) ) {
+            return new WP_Error( 'sml_drs_bad_signature', 'Forbidden.', array( 'status' => 403 ) );
+        }
+        return true;
+    }
+
     function sml_drs_register_routes() {
         register_rest_route( 'sml-discord-site/v1', '/status', array(
             'methods'             => 'GET',
@@ -231,6 +257,11 @@ if ( ! function_exists( 'sml_drs_tables' ) ) {
             'permission_callback' => 'sml_drs_bot_permission',
             'callback'            => 'sml_drs_rest_bot_sync_roles',
         ) );
+        register_rest_route( 'sml-discord-site/v1', '/bot/loop-kick-session', array(
+            'methods'             => 'POST',
+            'permission_callback' => 'sml_drs_loop_kick_permission',
+            'callback'            => 'sml_drs_rest_bot_loop_kick_session',
+        ) );
     }
 
     function sml_drs_rest_status() {
@@ -246,6 +277,73 @@ if ( ! function_exists( 'sml_drs_tables' ) ) {
     function sml_drs_rest_link_code() {
         $issued = sml_drs_issue_link_code( get_current_user_id() );
         return is_wp_error( $issued ) ? $issued : array_merge( $issued, array( 'instruction' => 'Use /link-sml code:' . $issued['code'] . ' in the Making Easy Money Discord.' ) );
+    }
+
+    function sml_drs_rest_bot_loop_kick_session( WP_REST_Request $request ) {
+        global $wpdb;
+        $discord_user_id = sml_drs_clean_discord_id( $request->get_param( 'discord_user_id' ) );
+        if ( '' === $discord_user_id ) {
+            return new WP_Error( 'sml_drs_invalid_discord_user', 'Invalid Discord user.', array( 'status' => 400 ) );
+        }
+
+        $rate_key = 'sml_lk_mint_' . substr( hash( 'sha256', $discord_user_id ), 0, 32 );
+        $rate     = get_transient( $rate_key );
+        $rate     = is_array( $rate ) ? $rate : array( 'count' => 0, 'started' => time() );
+        if ( time() - (int) $rate['started'] >= MINUTE_IN_SECONDS ) {
+            $rate = array( 'count' => 0, 'started' => time() );
+        }
+        if ( (int) $rate['count'] >= 20 ) {
+            return new WP_Error( 'sml_drs_rate_limited', 'Too many requests.', array( 'status' => 429 ) );
+        }
+        $rate['count'] = (int) $rate['count'] + 1;
+        set_transient( $rate_key, $rate, MINUTE_IN_SECONDS );
+
+        $tables  = sml_drs_tables();
+        $user_id = absint( $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$tables['links']} WHERE discord_user_id=%s LIMIT 1", $discord_user_id ) ) );
+        if ( ! $user_id ) {
+            return new WP_REST_Response(
+                array( 'ok' => false, 'error' => 'not_linked', 'connect_url' => home_url( '/' . SML_DRS_CONNECT_PATH . '/' ) ),
+                403
+            );
+        }
+        if ( '1' !== (string) get_user_meta( $user_id, 'sml_email_verified', true ) ) {
+            return new WP_REST_Response(
+                array( 'ok' => false, 'error' => 'not_verified', 'verify_url' => home_url( '/verify-email/' ) ),
+                403
+            );
+        }
+        if ( ! class_exists( 'SML_Loop_Kick_Bridge' ) || ! is_callable( array( 'SML_Loop_Kick_Bridge', 'mint_for_user' ) ) ) {
+            return new WP_Error( 'sml_drs_loop_kick_unavailable', 'LOOP-KICK is unavailable.', array( 'status' => 503 ) );
+        }
+        $minted = SML_Loop_Kick_Bridge::mint_for_user( $user_id, 15 * MINUTE_IN_SECONDS );
+        if ( empty( $minted['token'] ) || empty( $minted['expires_at'] ) ) {
+            return new WP_Error( 'sml_drs_loop_kick_unavailable', 'LOOP-KICK is unavailable.', array( 'status' => 503 ) );
+        }
+        $user   = get_userdata( $user_id );
+        $handle = (string) get_user_meta( $user_id, 'sml_public_handle', true );
+        if ( '' === $handle ) {
+            $handle = (string) get_user_meta( $user_id, 'sml_display_handle', true );
+        }
+        if ( '' === $handle ) {
+            $handle = (string) $user->user_nicename;
+        }
+        $response = new WP_REST_Response(
+            array(
+                'ok'         => true,
+                'token'      => (string) $minted['token'],
+                'expires_at' => (int) $minted['expires_at'],
+                'user'       => array(
+                    'id'           => $user_id,
+                    'handle'       => sanitize_title( $handle ),
+                    'display_name' => (string) $user->display_name,
+                    'avatar'       => get_avatar_url( $user_id, array( 'size' => 96 ) ),
+                ),
+                'app_url'    => 'https://stockmarketloop-loop-kick.onrender.com',
+            ),
+            200
+        );
+        $response->header( 'Cache-Control', 'no-store, private' );
+        return $response;
     }
 
     function sml_drs_rest_bot_link( WP_REST_Request $request ) {
