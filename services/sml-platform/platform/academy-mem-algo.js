@@ -3,7 +3,7 @@
 /*
  * MEM ALGO — the Making Easy Money EMA-crossover model for the Academy Live Chart Lab.
  *
- * Educational simulation only: it draws signals and runs a paper backtest on candles the chart already has.
+ * Educational simulation only: it draws signals and runs a backtest on candles the chart already has.
  * It never places orders and makes no promise about future results.
  *
  * Rebuilt from the "SML Crossover v3" Pine indicator. What changed, and why:
@@ -319,7 +319,7 @@ function summarize(trades) {
 }
 
 /**
- * Paper backtest. Enter at the NEXT candle's open; exit on stop, target, opposite signal (next open) or after maxHold candles.
+ * Backtest. Enter at the NEXT candle's open; exit on stop, target, opposite signal (next open) or after maxHold candles.
  * If one candle touches both stop and target the stop is assumed to have hit first.
  */
 function backtest(bars, p, ind) {

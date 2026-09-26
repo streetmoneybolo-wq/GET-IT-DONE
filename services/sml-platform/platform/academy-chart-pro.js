@@ -597,7 +597,7 @@
     draw.onclick = () => { palette.classList.toggle('open'); syncPalette(); };
     pat.onclick = () => { V.patterns = !V.patterns; pat.classList.toggle('on', V.patterns); panel.classList.toggle('open', V.patterns); patternsDirty = true; try { localStorage.setItem('sml-chart-patterns', V.patterns ? '1' : '0'); } catch (_) { /* ignore */ } const m = model(); if (m && V.patterns) runPatterns(m); emit(); };
     auto.onclick = () => { V.manual = null; emit(); }; live.onclick = goLatest; fit.onclick = resetView;
-    try { if (localStorage.getItem('sml-chart-patterns') === '1') { V.patterns = true; pat.classList.add('on'); panel.classList.add('open'); } } catch (_) { /* ignore */ }
+    try { if (localStorage.getItem('sml-chart-patterns') === '1') { V.patterns = true; pat.classList.add('on'); } } catch (_) { /* ignore */ } // markers stay on; the list panel opens on click, not on load
     return true;
   }
   for (const k of ['y', 'x']) { const z = document.createElement('div'); z.className = 'academy-pro-zone ' + k; stage.appendChild(z); }
