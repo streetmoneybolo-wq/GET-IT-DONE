@@ -39,6 +39,19 @@ test('membership checkout sends 6% to platform and rest to seller', () => {
   });
   assert.equal(params.subscription_data.application_fee_percent, 6);
   assert.equal(params.subscription_data.transfer_data.destination, 'acct_seller');
+  assert.equal(params.subscription_data.on_behalf_of, undefined, 'no on_behalf_of until card_payments is active');
+});
+
+test('membership checkout charges on behalf of a seller whose card_payments capability is active', () => {
+  const params = B.buildMembershipCheckout({
+    plan: { stripe_price_id: 'price_1', platform_fee_bps: 600 },
+    subscriptionKey: 'subkey_2', userId: 9, connectedAccountId: 'acct_seller', onBehalfOf: true,
+    successUrl: 'https://stockmarketloop.com/groups/one/?joined=1',
+    cancelUrl: 'https://stockmarketloop.com/groups/one/'
+  });
+  assert.equal(params.subscription_data.on_behalf_of, 'acct_seller');
+  assert.equal(params.subscription_data.transfer_data.destination, 'acct_seller');
+  assert.equal(params.subscription_data.application_fee_percent, 6);
 });
 
 test('migration checkout collects payment method now and bills on verified renewal date', () => {

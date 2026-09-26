@@ -190,9 +190,10 @@ async function applyMarketplaceEvent(client, event) {
   if (event.type === 'account.updated') {
     const result = await client.query(
       `UPDATE marketplace_sellers
-          SET charges_enabled = $2, payouts_enabled = $3, details_submitted = $4
+          SET charges_enabled = $2, payouts_enabled = $3, details_submitted = $4, card_payments_enabled = $5
         WHERE connected_account_id = $1`,
-      [object.id, !!object.charges_enabled, !!object.payouts_enabled, !!object.details_submitted]
+      [object.id, !!object.charges_enabled, !!object.payouts_enabled, !!object.details_submitted,
+        !!(object.capabilities && object.capabilities.card_payments === 'active')]
     );
     return result.rowCount === 1 ? 'processed' : 'ignored';
   }

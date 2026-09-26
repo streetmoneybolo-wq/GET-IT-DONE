@@ -1473,6 +1473,19 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       await handleBillingRequest(request, response, billingOptions, billingService.createSellerOnboarding);
       return;
     }
+    /* Owner-created membership products (the site authorizes the owner) */
+    if (request.method === 'POST' && path === '/v1/billing/plans/create') {
+      await handleBillingRequest(request, response, billingOptions, billingService.createGroupPlan);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/billing/plans/list') {
+      await handleBillingRequest(request, response, billingOptions, billingService.listGroupPlans);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/billing/plans/archive') {
+      await handleBillingRequest(request, response, billingOptions, billingService.archiveGroupPlan);
+      return;
+    }
     if (request.method === 'POST' && path === '/v1/billing/migrations/verify-renewal') {
       await handleBillingRequest(request, response, billingOptions, billingService.verifyImportedRenewal);
       return;

@@ -96,7 +96,7 @@ function buildLoopBuckCheckout({ order, packageRow, successUrl, cancelUrl }) {
 
 /** A native SML membership uses Connect destination charges and exactly 6%. */
 function buildMembershipCheckout({ plan, subscriptionKey, userId, connectedAccountId,
-  successUrl, cancelUrl, migrationRenewalAt = null, now = Date.now() }) {
+  successUrl, cancelUrl, migrationRenewalAt = null, onBehalfOf = false, now = Date.now() }) {
   if (!plan || !plan.stripe_price_id) throw new TypeError('active Stripe price required');
   if (!/^acct_/.test(String(connectedAccountId || ''))) throw new TypeError('connected account required');
   if (plan.platform_fee_bps !== MEMBERSHIP_FEE_BPS) throw new Error('native membership fee must be 6%');
@@ -106,6 +106,11 @@ function buildMembershipCheckout({ plan, subscriptionKey, userId, connectedAccou
     transfer_data: { destination: connectedAccountId },
     metadata: { sml_kind: 'membership', subscription_key: subscriptionKey }
   };
+  /* The seller is the merchant of record once Stripe has activated card_payments
+     on their account: the sale then shows in THEIR Stripe dashboard with the
+     product name, description and price. Stripe requires on_behalf_of to match
+     the transfer destination. */
+  if (onBehalfOf) subscriptionData.on_behalf_of = connectedAccountId;
   const renewalMs = migrationRenewalAt == null ? null : new Date(migrationRenewalAt).getTime();
   if (renewalMs != null) {
     /* Stripe Checkout requires a meaningful future trial. Refuse a date less

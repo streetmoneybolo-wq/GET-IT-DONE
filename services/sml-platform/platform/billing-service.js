@@ -137,7 +137,8 @@ async function createMembershipCheckout(pool, stripe, input) {
     plan, subscriptionKey: subscription.membership_checkout_key, userId: input.userId,
     connectedAccountId: seller.connected_account_id,
     successUrl: input.successUrl, cancelUrl: input.cancelUrl,
-    migrationRenewalAt: imported ? imported.current_period_end : null
+    migrationRenewalAt: imported ? imported.current_period_end : null,
+    onBehalfOf: seller.card_payments_enabled === true
   }), { idempotencyKey: subscription.membership_checkout_key });
   await pool.query(
     `UPDATE subscriptions SET stripe_checkout_session_id = $2 WHERE id = $1`,
@@ -158,7 +159,8 @@ async function createSellerOnboarding(pool, stripe, input) {
       type: 'express',
       country: input.country || 'US',
       email: input.email,
-      capabilities: { transfers: { requested: true } },
+      // card_payments lets subscriptions be charged on_behalf_of the seller (see billing.js)
+      capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
       business_type: 'individual',
       metadata: { sml_owner_user_id: String(input.ownerUserId) }
     }, { idempotencyKey: `seller:${input.ownerUserId}` });
@@ -306,10 +308,192 @@ async function prepareUpgradeChatMigration(pool, stripe, input, context = {}) {
   return { ...checkout, importedSubscriptionId, renewalAt: new Date(renewalMs).toISOString(), provider: 'upgrade_chat' };
 }
 
+/* ---------------------------------------------------------------------------
+   Owner-created membership products (group_plans + a Stripe Product/Price).
+   The site authorizes the owner; this side validates the product, checks the
+   seller's Stripe account is ready, and owns the Stripe objects.
+   ------------------------------------------------------------------------- */
+
+const PLAN_INTERVALS = Object.freeze({
+  weekly: { interval: 'week', count: 1, label: 'week' },
+  monthly: { interval: 'month', count: 1, label: 'month' },
+  quarterly: { interval: 'month', count: 3, label: '3 months' },
+  yearly: { interval: 'year', count: 1, label: 'year' }
+});
+const PLAN_GRANT_ROLES = Object.freeze(['member', 'premium', 'analyst', 'mod', 'admin']);
+const PLAN_MIN_CENTS = 100;
+const PLAN_MAX_CENTS = 100_000_00;
+
+function planSlug(name) {
+  const base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'plan';
+  return `${base}-${crypto.randomBytes(3).toString('hex')}`;
+}
+
+function publicPlan(row, grants = []) {
+  const interval = PLAN_INTERVALS[row.interval_key] || null;
+  return {
+    id: Number(row.id),
+    groupId: Number(row.group_id),
+    slug: row.slug,
+    name: row.name,
+    description: row.description || '',
+    priceCents: Number(row.price_cents),
+    currency: row.currency,
+    intervalKey: row.interval_key,
+    intervalCount: Number(row.interval_count) || 1,
+    intervalLabel: interval ? interval.label : row.interval_key,
+    platformFeeBps: Number(row.platform_fee_bps),
+    stripeProductId: row.stripe_product_id || null,
+    stripePriceId: row.stripe_price_id || null,
+    active: row.active === true,
+    grantsRole: (grants.find((g) => g.target === 'sml_group_role') || {}).role_ref || null,
+    createdAt: row.created_at || null
+  };
+}
+
+function validatePlanInput(input) {
+  const groupId = Number(input.groupId);
+  const ownerUserId = Number(input.ownerUserId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new TypeError('groupId is required');
+  if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) throw new TypeError('ownerUserId is required');
+  const name = String(input.name || '').replace(/\s+/g, ' ').trim();
+  if (name.length < 2 || name.length > 80) throw new TypeError('product name must be 2-80 characters');
+  const description = String(input.description || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  const priceCents = Number(input.priceCents);
+  if (!Number.isInteger(priceCents) || priceCents < PLAN_MIN_CENTS || priceCents > PLAN_MAX_CENTS) {
+    throw new TypeError('price must be between $1.00 and $100,000.00');
+  }
+  const currency = String(input.currency || 'usd').toLowerCase();
+  if (currency !== 'usd') throw new TypeError('only USD products are supported');
+  const intervalKey = String(input.intervalKey || '').toLowerCase();
+  if (!PLAN_INTERVALS[intervalKey]) throw new TypeError('billing interval must be weekly, monthly, quarterly or yearly');
+  const grantsRole = String(input.grantsRole || 'premium').toLowerCase();
+  if (!PLAN_GRANT_ROLES.includes(grantsRole)) throw new TypeError('the granted role must be member, premium, analyst, mod or admin');
+  return { groupId, ownerUserId, name, description, priceCents, currency, intervalKey, grantsRole };
+}
+
+async function readySeller(pool, ownerUserId) {
+  const found = await pool.query(
+    `SELECT * FROM marketplace_sellers
+      WHERE owner_user_id = $1 AND charges_enabled = true AND details_submitted = true`,
+    [ownerUserId]
+  );
+  const seller = found.rows[0];
+  if (!seller) throw new Error('seller Stripe account is not ready');
+  if (!seller.membership_fee_accepted_at || Number(seller.membership_fee_bps_accepted) !== MEMBERSHIP_FEE_BPS) {
+    throw new Error('seller marketplace consent is incomplete');
+  }
+  return seller;
+}
+
+async function createGroupPlan(pool, stripe, input) {
+  const plan = validatePlanInput(input);
+  const seller = await readySeller(pool, plan.ownerUserId);
+  const interval = PLAN_INTERVALS[plan.intervalKey];
+  const slug = planSlug(plan.name);
+  const metadata = {
+    sml_kind: 'membership_product', sml_group_id: String(plan.groupId),
+    sml_owner_user_id: String(plan.ownerUserId), sml_plan_slug: slug, sml_grants_role: plan.grantsRole
+  };
+  const product = await stripe.products.create({
+    name: plan.name,
+    ...(plan.description ? { description: plan.description } : {}),
+    metadata
+  }, { idempotencyKey: `plan-product:${slug}` });
+  const price = await stripe.prices.create({
+    product: product.id,
+    unit_amount: plan.priceCents,
+    currency: plan.currency,
+    recurring: { interval: interval.interval, interval_count: interval.count },
+    metadata
+  }, { idempotencyKey: `plan-price:${slug}` });
+
+  const client = await pool.connect();
+  let row;
+  try {
+    await client.query('BEGIN');
+    const inserted = await client.query(
+      `INSERT INTO group_plans (
+         group_id, slug, name, description, interval_key, interval_count, price_cents, currency,
+         stripe_price_id, stripe_product_id, platform_fee_bps, created_by_user_id, active
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true) RETURNING *`,
+      [plan.groupId, slug, plan.name, plan.description || null, plan.intervalKey, interval.count,
+        plan.priceCents, plan.currency, price.id, product.id, MEMBERSHIP_FEE_BPS, plan.ownerUserId]
+    );
+    row = inserted.rows[0];
+    await client.query(
+      `INSERT INTO plan_role_grants (plan_id, target, role_ref, role_label)
+       VALUES ($1, 'sml_group_role', $2, $3)`,
+      [row.id, plan.grantsRole, plan.grantsRole]
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  /* Sellers onboarded before card_payments was requested: ask Stripe for it so
+     later sales can be charged on_behalf_of them. Best effort; the product exists
+     either way and account.updated records the outcome. */
+  if (!seller.card_payments_enabled && stripe.accounts && typeof stripe.accounts.update === 'function') {
+    try {
+      await stripe.accounts.update(seller.connected_account_id, { capabilities: { card_payments: { requested: true } } });
+    } catch (_) { /* recorded by the next account.updated event */ }
+  }
+
+  return { plan: publicPlan(row, [{ target: 'sml_group_role', role_ref: plan.grantsRole }]) };
+}
+
+async function listGroupPlans(pool, _stripe, input) {
+  const groupId = Number(input.groupId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new TypeError('groupId is required');
+  const includeArchived = input.includeArchived === true;
+  const result = await pool.query(
+    `SELECT p.*,
+            COALESCE(jsonb_agg(jsonb_build_object('target', g.target, 'role_ref', g.role_ref))
+              FILTER (WHERE g.id IS NOT NULL), '[]'::jsonb) AS grants
+       FROM group_plans p
+       LEFT JOIN plan_role_grants g ON g.plan_id = p.id
+      WHERE p.group_id = $1 AND ($2::boolean OR p.active = true)
+      GROUP BY p.id
+      ORDER BY p.active DESC, p.price_cents ASC, p.id ASC`,
+    [groupId, includeArchived]
+  );
+  return { plans: result.rows.map((row) => publicPlan(row, Array.isArray(row.grants) ? row.grants : [])) };
+}
+
+async function archiveGroupPlan(pool, stripe, input) {
+  const groupId = Number(input.groupId);
+  const planId = Number(input.planId);
+  if (!Number.isInteger(groupId) || groupId <= 0) throw new TypeError('groupId is required');
+  if (!Number.isInteger(planId) || planId <= 0) throw new TypeError('planId is required');
+  const updated = await pool.query(
+    `UPDATE group_plans SET active = false, archived_at = now()
+      WHERE id = $1 AND group_id = $2 AND active = true RETURNING *`,
+    [planId, groupId]
+  );
+  const row = updated.rows[0];
+  if (!row) throw new Error('membership plan not found');
+  /* Existing subscribers keep their subscription; the price just stops being
+     purchasable. Best effort: the row is already archived. */
+  try {
+    if (row.stripe_price_id) await stripe.prices.update(row.stripe_price_id, { active: false });
+    if (row.stripe_product_id) await stripe.products.update(row.stripe_product_id, { active: false });
+  } catch (_) { /* Stripe objects can be archived from the dashboard */ }
+  return { plan: publicPlan(row) };
+}
+
 module.exports = {
   createLoopBuckCheckout,
   createMembershipCheckout,
   createSellerOnboarding,
+  createGroupPlan,
+  listGroupPlans,
+  archiveGroupPlan,
+  PLAN_INTERVALS,
+  PLAN_GRANT_ROLES,
   verifyImportedRenewal,
   prepareUpgradeChatMigration,
   checkoutUrl

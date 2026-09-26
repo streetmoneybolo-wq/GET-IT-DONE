@@ -202,7 +202,43 @@ function sml_platform_group_plan_map() {
 
 function sml_platform_group_plan_id( $group_id ) {
 	$map = sml_platform_group_plan_map();
-	return isset( $map[ (string) absint( $group_id ) ] ) ? absint( $map[ (string) absint( $group_id ) ] ) : 0;
+	if ( isset( $map[ (string) absint( $group_id ) ] ) ) return absint( $map[ (string) absint( $group_id ) ] );
+	// Owner-created products: the cheapest active one stands in for the legacy single plan.
+	return sml_platform_first_active_plan_id( $group_id );
+}
+
+/** The group's owner (the marketplace seller whose Stripe account receives the payments). */
+function sml_platform_group_owner_user_id( $group_id ) {
+	global $wpdb;
+	if ( ! function_exists( 'sml_dgc_tables' ) ) return 0;
+	$tables = sml_dgc_tables();
+	return absint( $wpdb->get_var( $wpdb->prepare( "SELECT owner_id FROM {$tables['groups']} WHERE id=%d", absint( $group_id ) ) ) );
+}
+
+/** Owner-created membership products for a group, from the platform (array of plans, or WP_Error). */
+function sml_platform_group_plans( $group_id, $include_archived = false ) {
+	$result = sml_platform_billing_call( '/v1/billing/plans/list', array(
+		'groupId' => absint( $group_id ), 'includeArchived' => (bool) $include_archived,
+	) );
+	if ( is_wp_error( $result ) ) return $result;
+	return isset( $result['plans'] ) && is_array( $result['plans'] ) ? $result['plans'] : array();
+}
+
+function sml_platform_first_active_plan_id( $group_id ) {
+	$group_id = absint( $group_id );
+	if ( ! $group_id ) return 0;
+	$key = 'sml_platform_plan_' . $group_id;
+	$cached = get_transient( $key );
+	if ( false !== $cached ) return absint( $cached );
+	$plans = sml_platform_group_plans( $group_id );
+	$id = 0;
+	if ( ! is_wp_error( $plans ) ) {
+		foreach ( $plans as $plan ) {
+			if ( ! empty( $plan['active'] ) ) { $id = absint( $plan['id'] ); break; }
+		}
+	}
+	set_transient( $key, $id, MINUTE_IN_SECONDS );
+	return $id;
 }
 
 function sml_platform_group_context( $group_id ) {
@@ -270,6 +306,76 @@ function sml_platform_start_seller_onboarding( WP_REST_Request $request ) {
 	return rest_ensure_response( array( 'onboardingUrl' => esc_url_raw( $result['onboardingUrl'] ?? '' ) ) );
 }
 
+/* ---- Owner-created membership products ---------------------------------- */
+
+function sml_platform_rest_group_plans( WP_REST_Request $request ) {
+	$group_id = absint( $request['group_id'] );
+	$manage = sml_platform_can_manage_group_billing( $group_id );
+	$plans = sml_platform_group_plans( $group_id, $manage );
+	if ( is_wp_error( $plans ) ) return $plans;
+	if ( ! $manage ) $plans = array_values( array_filter( $plans, function ( $plan ) { return ! empty( $plan['active'] ); } ) );
+	return rest_ensure_response( array( 'plans' => $plans, 'canManage' => $manage, 'ownerUserId' => sml_platform_group_owner_user_id( $group_id ) ) );
+}
+
+function sml_platform_rest_create_group_plan( WP_REST_Request $request ) {
+	$group_id = absint( $request['group_id'] );
+	if ( ! sml_platform_can_manage_group_billing( $group_id ) ) {
+		return new WP_Error( 'billing_forbidden', 'Only this group owner or an administrator can manage membership products.', array( 'status' => 403 ) );
+	}
+	$owner_id = sml_platform_group_owner_user_id( $group_id );
+	if ( ! $owner_id ) return new WP_Error( 'group_owner_missing', 'This group has no owner on record.', array( 'status' => 409 ) );
+	$price = $request->get_param( 'priceCents' );
+	if ( null === $price && null !== $request->get_param( 'price' ) ) {
+		$price = (int) round( (float) str_replace( array( '$', ',' ), '', (string) $request->get_param( 'price' ) ) * 100 );
+	}
+	$result = sml_platform_billing_call( '/v1/billing/plans/create', array(
+		'groupId'     => $group_id,
+		'ownerUserId' => $owner_id,
+		'name'        => sanitize_text_field( (string) $request->get_param( 'name' ) ),
+		'description' => sanitize_textarea_field( (string) $request->get_param( 'description' ) ),
+		'priceCents'  => (int) $price,
+		'currency'    => 'usd',
+		'intervalKey' => sanitize_key( (string) $request->get_param( 'intervalKey' ) ),
+		'grantsRole'  => sanitize_key( (string) ( $request->get_param( 'grantsRole' ) ?: 'premium' ) ),
+	) );
+	if ( is_wp_error( $result ) ) return $result;
+	delete_transient( 'sml_platform_plan_' . $group_id );
+	return rest_ensure_response( array( 'plan' => $result['plan'] ?? null ) );
+}
+
+function sml_platform_rest_archive_group_plan( WP_REST_Request $request ) {
+	$group_id = absint( $request['group_id'] );
+	if ( ! sml_platform_can_manage_group_billing( $group_id ) ) {
+		return new WP_Error( 'billing_forbidden', 'Only this group owner or an administrator can manage membership products.', array( 'status' => 403 ) );
+	}
+	$result = sml_platform_billing_call( '/v1/billing/plans/archive', array(
+		'groupId' => $group_id, 'planId' => absint( $request['plan_id'] ),
+	) );
+	if ( is_wp_error( $result ) ) return $result;
+	delete_transient( 'sml_platform_plan_' . $group_id );
+	return rest_ensure_response( array( 'plan' => $result['plan'] ?? null ) );
+}
+
+/** A member joins a product: Stripe Checkout, with the 6% platform fee disclosed on the button. */
+function sml_platform_rest_plan_checkout( WP_REST_Request $request ) {
+	$group_id = absint( $request['group_id'] );
+	$plan_id  = absint( $request['plan_id'] );
+	$owner_id = sml_platform_group_owner_user_id( $group_id );
+	if ( ! $owner_id ) return new WP_Error( 'group_owner_missing', 'This group has no owner on record.', array( 'status' => 409 ) );
+	if ( get_current_user_id() === $owner_id ) return new WP_Error( 'owner_cannot_join', 'You own this group; members join it.', array( 'status' => 409 ) );
+	$group_url = wp_validate_redirect( wp_get_referer(), home_url( '/' ) );
+	$result = sml_platform_membership_checkout( array(
+		'planId'      => $plan_id,
+		'groupId'     => $group_id,
+		'ownerUserId' => $owner_id,
+		'userId'      => get_current_user_id(),
+		'successUrl'  => add_query_arg( 'billing', 'joined', $group_url ),
+		'cancelUrl'   => $group_url,
+	) );
+	if ( is_wp_error( $result ) ) return $result;
+	return rest_ensure_response( array( 'checkoutUrl' => esc_url_raw( $result['checkoutUrl'] ?? '' ) ) );
+}
+
 function sml_platform_start_upgrade_chat_migration( WP_REST_Request $request ) {
 	$context = sml_platform_group_context( $request['group_id'] );
 	if ( ! $context ) return new WP_Error( 'discord_required', 'Connect Discord to this group first.', array( 'status' => 409 ) );
@@ -302,6 +408,16 @@ add_action( 'rest_api_init', function () {
 	) );
 	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/seller-onboarding', array(
 		'methods' => 'POST', 'callback' => 'sml_platform_start_seller_onboarding', 'permission_callback' => 'is_user_logged_in',
+	) );
+	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/plans', array(
+		array( 'methods' => 'GET', 'callback' => 'sml_platform_rest_group_plans', 'permission_callback' => 'is_user_logged_in' ),
+		array( 'methods' => 'POST', 'callback' => 'sml_platform_rest_create_group_plan', 'permission_callback' => 'is_user_logged_in' ),
+	) );
+	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/plans/(?P<plan_id>\d+)/archive', array(
+		'methods' => 'POST', 'callback' => 'sml_platform_rest_archive_group_plan', 'permission_callback' => 'is_user_logged_in',
+	) );
+	register_rest_route( 'sml-platform/v1', '/group/(?P<group_id>\d+)/plans/(?P<plan_id>\d+)/checkout', array(
+		'methods' => 'POST', 'callback' => 'sml_platform_rest_plan_checkout', 'permission_callback' => 'is_user_logged_in',
 	) );
 } );
 
@@ -357,7 +473,55 @@ add_action( 'wp_footer', function () {
 	if ( ! is_user_logged_in() ) return;
 	$nonce = wp_create_nonce( 'wp_rest' );
 	?>
-	<style>.sml-billing-action{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px!important;font-weight:900!important}.sml-billing-migrate{border:1px solid #f5c84b!important;background:linear-gradient(135deg,#fff3a3,#d69b00)!important;color:#251600!important;box-shadow:0 0 18px #f5c84b66;animation:smlBillingGlow 1.8s ease-in-out infinite}.sml-billing-setup{border:1px solid #19f28b!important;background:#071b14!important;color:#66ffb1!important}@keyframes smlBillingGlow{50%{transform:translateY(-1px);box-shadow:0 0 28px #f5c84baa}}</style>
+	<style>.sml-billing-action{display:inline-flex!important;align-items:center;gap:7px;margin-left:8px!important;font-weight:900!important}.sml-billing-migrate{border:1px solid #f5c84b!important;background:linear-gradient(135deg,#fff3a3,#d69b00)!important;color:#251600!important;box-shadow:0 0 18px #f5c84b66;animation:smlBillingGlow 1.8s ease-in-out infinite}.sml-billing-setup{border:1px solid #19f28b!important;background:#071b14!important;color:#66ffb1!important}@keyframes smlBillingGlow{50%{transform:translateY(-1px);box-shadow:0 0 28px #f5c84baa}}
+.sml-billing-join{border:1px solid #19f28b!important;background:#071b14!important;color:#66ffb1!important}.sml-billing-join small{font-weight:600;opacity:.8}
+.sml-billing-plans{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.sml-billing-modal{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:16px;background:rgba(1,5,13,.78);backdrop-filter:blur(7px)}
+.sml-billing-card{width:min(720px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:22px;border:1px solid #1f8f5a;border-radius:18px;background:#09111f;color:#eaf0ff;box-shadow:0 26px 90px #000b;font-size:15px}
+.sml-billing-card h2{margin:0 38px 8px 0;color:#fff}.sml-billing-card h3{margin:18px 0 6px;color:#9df5c9}.sml-billing-card p{color:#b9c7db;line-height:1.55;margin:6px 0}
+.sml-billing-close{float:right;border:0;border-radius:8px;padding:7px 10px;background:#24324b;color:#fff;cursor:pointer}
+.sml-billing-plan{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;margin:8px 0;padding:10px 12px;border:1px solid #1e2c44;border-radius:10px;background:#0b1626}
+.sml-billing-plan b{color:#fff}.sml-billing-plan small{display:block;color:#9eb0c8}.sml-billing-plan.is-archived{opacity:.55}
+.sml-billing-plan button{border:0;border-radius:8px;padding:8px 10px;background:#632f42;color:#fff;cursor:pointer;font-weight:700}
+.sml-billing-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}.sml-billing-form label{display:flex;flex-direction:column;gap:4px;color:#9eb0c8;font-size:13px;font-weight:700}.sml-billing-form label.wide{grid-column:1/-1}
+.sml-billing-form input,.sml-billing-form select,.sml-billing-form textarea{min-width:0;padding:10px;border:1px solid #31415e;border-radius:8px;background:#060c16;color:#fff;font:inherit}.sml-billing-form textarea{min-height:70px;resize:vertical}
+.sml-billing-primary{grid-column:1/-1;border:0;border-radius:9px;padding:12px 14px;background:#19c37d;color:#04160d;font-weight:800;cursor:pointer}.sml-billing-primary:disabled{opacity:.6;cursor:default}
+.sml-billing-msg{grid-column:1/-1;color:#ffabb3;font-weight:700}.sml-billing-msg.ok{color:#8ff5c0}
+@media(max-width:640px){.sml-billing-form{grid-template-columns:1fr}.sml-billing-form label.wide{grid-column:auto}.sml-billing-primary,.sml-billing-msg{grid-column:auto}.sml-billing-plan{grid-template-columns:1fr}}
+</style>
 	<script>(function(){var nonce=<?php echo wp_json_encode( $nonce ); ?>;function call(url,body){return fetch(url,{method:'POST',headers:{'X-WP-Nonce':nonce,'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.message||'Billing request failed.');return j;});});}function boot(){var root=document.getElementById('sml-group-root'),gid=root&&String(root.dataset.groupId||'').replace(/\D/g,'');if(!gid||root.dataset.smlBillingReady==='1'||root.dataset.smlBillingLoading==='1')return;root.dataset.smlBillingLoading='1';fetch('/wp-json/sml-platform/v1/group/'+gid+'/migration-status',{headers:{'X-WP-Nonce':nonce}}).then(function(r){return r.json();}).then(function(s){var actions=root.querySelector('.sml-gshell__owner-menu');if(!actions){delete root.dataset.smlBillingLoading;return;}delete root.dataset.smlBillingLoading;root.dataset.smlBillingReady='1';if(s.canManageBilling){var setup=document.createElement('button');setup.type='button';setup.className='sml-group-btn sml-billing-action sml-billing-setup';setup.textContent='⚙ Membership Billing · 6%';setup.onclick=function(){if(!confirm('Enable StockMarketLoop membership billing? I accept the 6% platform fee deducted from each subscription payment and authorize dispute recovery under the seller terms.'))return;setup.disabled=true;setup.textContent='Opening secure setup…';call('/wp-json/sml-platform/v1/group/'+gid+'/seller-onboarding',{acceptFee:true}).then(function(j){location.href=j.onboardingUrl;}).catch(function(e){setup.disabled=false;setup.textContent='⚙ Membership Billing · 6%';alert(e.message);});};actions.appendChild(setup);}if(s.eligible){var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-action sml-billing-migrate';b.dataset.smlBillingMigrate='1';b.textContent='💳 Move Membership Billing';b.onclick=function(){if(!confirm('Move this membership to StockMarketLoop? Stripe will collect your payment method now but will not charge until your verified Upgrade.Chat renewal date. The group creator receives the payment after StockMarketLoop\'s disclosed 6% platform fee.'))return;b.disabled=true;b.textContent='Verifying membership…';call('/wp-json/sml-platform/v1/group/'+gid+'/migrate-upgrade-chat',{}).then(function(j){location.href=j.checkoutUrl;}).catch(function(e){b.disabled=false;b.textContent='💳 Move Membership Billing';alert(e.message);});};actions.appendChild(b);}}).catch(function(){delete root.dataset.smlBillingLoading;});}boot();[400,1000,2200].forEach(function(ms){setTimeout(boot,ms);});})();</script>
+	<script>(function(){
+	/* Membership products: owners create them (name, description, price, interval, granted role);
+	   members see one Join button per product. The platform creates the Stripe product + price. */
+	var nonce=<?php echo wp_json_encode( $nonce ); ?>,API='/wp-json/sml-platform/v1/group/';
+	function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+	function req(url,opt){opt=opt||{};opt.credentials='same-origin';opt.headers=Object.assign({'X-WP-Nonce':nonce},opt.headers||{});if(opt.body&&!opt.headers['Content-Type'])opt.headers['Content-Type']='application/json';return fetch(url,opt).then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(j.message||'Request failed.');return j;});});}
+	function money(c){return '$'+(Number(c||0)/100).toFixed(2);}
+	function every(p){return p.intervalLabel||p.intervalKey;}
+	function gid(){var root=document.getElementById('sml-group-root');return root&&String(root.dataset.groupId||'').replace(/\D/g,'');}
+	var INTERVALS=[['weekly','Weekly'],['monthly','Monthly'],['quarterly','Every 3 months'],['yearly','Yearly']],ROLES=[['member','Member'],['premium','Premium'],['analyst','Analyst'],['mod','Moderator'],['admin','Admin']];
+	function options(list,value){return list.map(function(o){return '<option value="'+o[0]+'"'+(o[0]===value?' selected':'')+'>'+o[1]+'</option>';}).join('');}
+	function closeModal(){var m=document.querySelector('.sml-billing-modal');if(m)m.remove();}
+	function modal(html){closeModal();var m=document.createElement('div');m.className='sml-billing-modal';m.innerHTML='<section class="sml-billing-card" role="dialog" aria-modal="true" aria-label="Membership products"><button class="sml-billing-close" type="button">Close</button>'+html+'</section>';m.querySelector('.sml-billing-close').onclick=closeModal;m.addEventListener('click',function(e){if(e.target===m)closeModal();});document.body.appendChild(m);return m;}
+	function planRow(p){return '<div class="sml-billing-plan'+(p.active?'':' is-archived')+'" data-plan="'+esc(p.id)+'"><div><b>'+esc(p.name)+'</b> · '+money(p.priceCents)+' / '+esc(every(p))+' · grants <b>'+esc(p.grantsRole||'premium')+'</b>'+(p.description?'<small>'+esc(p.description)+'</small>':'')+'<small>'+(p.active?'Live in Stripe':'Archived')+(p.stripeProductId?' · '+esc(p.stripeProductId):'')+'</small></div>'+(p.active?'<button type="button" data-archive="'+esc(p.id)+'">Archive</button>':'<span></span>')+'</div>';}
+	function render(m,d){var g=gid(),plans=d.plans||[];var h='<h2>Membership products</h2><p>Name a product, set its price and how often members pay, and pick the website access it grants. Saving creates the product and price in Stripe automatically; members pay through Stripe Checkout and the payout lands in your connected account after the disclosed 6% platform fee.</p><h3>Your products</h3><div data-list>'+(plans.length?plans.map(planRow).join(''):'<p>No products yet.</p>')+'</div><h3>Add a product</h3><form class="sml-billing-form" data-form><label>Name<input name="name" maxlength="80" required placeholder="Premium Alerts"></label><label>Price (USD)<input name="price" type="number" min="1" max="100000" step="0.01" required placeholder="29.99"></label><label>Members pay<select name="intervalKey">'+options(INTERVALS,'monthly')+'</select></label><label>Grants website role<select name="grantsRole">'+options(ROLES,'premium')+'</select></label><label class="wide">Description<textarea name="description" maxlength="500" placeholder="What members get. Shown in Stripe Checkout."></textarea></label><div class="sml-billing-msg" data-msg hidden></div><button class="sml-billing-primary" type="submit">Create in Stripe</button></form>';
+	  var card=m.querySelector('.sml-billing-card');card.innerHTML='<button class="sml-billing-close" type="button">Close</button>'+h;card.querySelector('.sml-billing-close').onclick=closeModal;
+	  var form=card.querySelector('[data-form]'),msg=card.querySelector('[data-msg]');
+	  function say(text,ok){msg.hidden=false;msg.textContent=text;msg.classList.toggle('ok',!!ok);}
+	  form.onsubmit=function(e){e.preventDefault();var btn=form.querySelector('button[type=submit]');btn.disabled=true;say('Creating in Stripe…',true);
+	    var body={name:form.name.value,description:form.description.value,priceCents:Math.round(parseFloat(form.price.value||'0')*100),intervalKey:form.intervalKey.value,grantsRole:form.grantsRole.value};
+	    req(API+g+'/plans',{method:'POST',body:JSON.stringify(body)}).then(function(j){return req(API+g+'/plans').then(function(d2){render(m,d2);var mm=m.querySelector('[data-msg]');if(mm){mm.hidden=false;mm.classList.add('ok');mm.textContent='Created '+(j.plan&&j.plan.name?j.plan.name:'the product')+' in Stripe.';}});}).catch(function(err){btn.disabled=false;var t=String(err.message||err);if(/not ready/i.test(t))t='Finish “⚙ Membership Billing” (your Stripe payout setup) first, then create products.';say(t,false);});};
+	  card.querySelectorAll('[data-archive]').forEach(function(b){b.onclick=function(){if(!confirm('Archive this product? Current subscribers keep their subscription; nobody new can buy it.'))return;b.disabled=true;req(API+g+'/plans/'+b.getAttribute('data-archive')+'/archive',{method:'POST',body:'{}'}).then(function(){return req(API+g+'/plans');}).then(function(d2){render(m,d2);}).catch(function(err){b.disabled=false;alert(err.message);});};});}
+	function openProducts(){var g=gid();if(!g)return;var m=modal('<h2>Membership products</h2><p>Loading…</p>');req(API+g+'/plans').then(function(d){render(m,d);}).catch(function(err){m.querySelector('.sml-billing-card').insertAdjacentHTML('beforeend','<p class="sml-billing-msg">'+esc(err.message)+'</p>');});}
+	window.smlPlatformOpenProducts=openProducts;
+	function host(root){return root.querySelector('.sml-gshell__owner-menu')||root.querySelector('.sml-gshell__actions')||(function(){var d=root.querySelector('.sml-billing-plans');if(!d){d=document.createElement('div');d.className='sml-billing-plans';root.insertBefore(d,root.firstChild);}return d;})();}
+	function boot(){var root=document.getElementById('sml-group-root'),g=gid();if(!root||!g||root.dataset.smlPlansReady==='1'||root.dataset.smlPlansLoading==='1')return;root.dataset.smlPlansLoading='1';
+	  req(API+g+'/plans').then(function(d){root.dataset.smlPlansReady='1';delete root.dataset.smlPlansLoading;var box=host(root);
+	    if(d.canManage){if(box.querySelector('[data-sml-products]'))return;var o=document.createElement('button');o.type='button';o.className='sml-group-btn sml-billing-action sml-billing-setup';o.setAttribute('data-sml-products','1');o.textContent='🛍 Membership products';o.onclick=openProducts;box.appendChild(o);return;}
+	    (d.plans||[]).forEach(function(p){if(!p.active||box.querySelector('[data-sml-join="'+p.id+'"]'))return;var b=document.createElement('button');b.type='button';b.className='sml-group-btn sml-billing-action sml-billing-join';b.setAttribute('data-sml-join',p.id);b.innerHTML='💳 Join · '+esc(p.name)+' <small>'+money(p.priceCents)+' / '+esc(every(p))+'</small>';
+	      b.onclick=function(){if(!confirm('Join '+p.name+' for '+money(p.priceCents)+' per '+every(p)+'? Stripe Checkout opens next. The group creator receives the payment after StockMarketLoop\'s disclosed 6% platform fee.'))return;b.disabled=true;req(API+g+'/plans/'+p.id+'/checkout',{method:'POST',body:'{}'}).then(function(j){location.href=j.checkoutUrl;}).catch(function(err){b.disabled=false;alert(err.message);});};box.appendChild(b);});
+	  }).catch(function(){delete root.dataset.smlPlansLoading;});}
+	boot();[600,1500,3000].forEach(function(ms){setTimeout(boot,ms);});
+	})();</script>
 	<?php
 }, 100 );
