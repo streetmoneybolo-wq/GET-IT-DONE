@@ -89,10 +89,6 @@ services:
         value: "https://stockmarketloop.com"
       - key: SML_LOOP_KICK_APP_URL
         value: "https://stockmarketloop-loop-kick.onrender.com"
-      - key: SML_WORDPRESS_USERNAME
-        sync: false
-      - key: SML_WORDPRESS_APP_PASSWORD
-        sync: false
       - key: SML_DISPUTE_BOT_ENABLED
         sync: false
       - key: SML_DISPUTE_BOT_PUBLIC_KEY
