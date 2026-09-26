@@ -269,6 +269,14 @@ test('the /loop-kick Entry Point answers LAUNCH_ACTIVITY so Discord opens the Ac
   assert.deepEqual(renamed.response, { type: 12 });
 });
 
+test('the retired recruitment-post button is answered as an unknown component', async () => {
+  const { deps, audits } = fakes();
+  const result = await createConnectCommands(deps).handleComponent(interaction('', [], { type: 3, data: { custom_id: 'dsp-recruit-random' } }));
+  assert.match(result.response.data.content, /not recognized/);
+  assert.equal(result.response.data.flags, 64);
+  assert.equal(audits.at(-1).fields.detail.outcome, 'unknown_component');
+});
+
 test('the Connect bot scope lets /loop-kick through to the launcher', async () => {
   const { deps } = fakes();
   const scoped = scopeCommands(createConnectCommands(deps), CONNECT_COMMAND_NAMES);

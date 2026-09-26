@@ -37,7 +37,6 @@ const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
-const { cleanupConnectActivityMessages, getLastCleanupResult } = require('../scripts/cleanup-connect-activity-messages');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
 const ACADEMY_BANNER_PATH = pathModule.join(__dirname, 'assets', 'mem-academy-banner.gif');
@@ -1983,7 +1982,6 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       sendJson(response, 200, {
         ok: true, service: 'sml-platform-api', database: 'connected',
         ...(process.env.RENDER_GIT_COMMIT ? { release: process.env.RENDER_GIT_COMMIT } : {}),
-        ...(getLastCleanupResult() ? { connectActivityCleanup: getLastCleanupResult() } : {}),
         ...(schema !== undefined ? { schema } : {})
       });
     } catch (error) {
@@ -2140,11 +2138,10 @@ async function main() {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
       if (pruneTimer.unref) pruneTimer.unref();
     }
-    if (config.discordConnectBotToken) {
-      cleanupConnectActivityMessages({ token: config.discordConnectBotToken, apply: true })
-        .then((result) => log('info', 'connect_activity_cleanup_complete', result))
-        .catch((error) => log('error', 'connect_activity_cleanup_failed', { error }));
-    }
+    // No Discord write happens at startup: bulk-deleting the Connect bot's old
+    // Activity messages on every restart looked like abuse to Discord's
+    // anti-spam system. scripts/cleanup-connect-activity-messages.js remains a
+    // manual, one-off tool.
   });
 }
 
