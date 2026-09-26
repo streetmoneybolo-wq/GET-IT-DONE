@@ -9,7 +9,7 @@ const SECRET = 's'.repeat(40);
 const NOW = 1_700_000_000_000;
 
 function bridgeWith(fetchImpl, overrides = {}) {
-  return createLoopKickBridge({ baseUrl: 'https://site.example', secret: SECRET, appUrl: 'https://phone.example', fetchImpl, now: () => NOW, ...overrides });
+  return createLoopKickBridge({ baseUrl: 'https://site.example', secret: SECRET, appUrl: 'https://phone.example', username: 'bot', appPassword: 'app-pass', fetchImpl, now: () => NOW, ...overrides });
 }
 
 test('unconfigured bridge fails closed', async () => {
@@ -36,13 +36,14 @@ test('signs timestamp.path.sha256(body) and sends the exact headers', async () =
   assert.equal(result.ok, true);
   assert.equal(result.token, 'a'.repeat(64));
   assert.equal(result.app_url, 'https://phone.example');
-  assert.equal(seen.url, 'https://site.example/wp-json/sml-loop-kick/v1/discord-session');
+  assert.equal(seen.url, 'https://site.example/wp-json/sml-discord-site/v1/bot/loop-kick-session');
   const ts = seen.init.headers['x-sml-lk-timestamp'];
   assert.equal(ts, String(Math.floor(NOW / 1000)));
   const bodyHash = crypto.createHash('sha256').update(seen.init.body).digest('hex');
   const expected = 'sha256=' + crypto.createHmac('sha256', SECRET)
-    .update(`${ts}./wp-json/sml-loop-kick/v1/discord-session.${bodyHash}`).digest('hex');
+    .update(`${ts}./wp-json/sml-discord-site/v1/bot/loop-kick-session.${bodyHash}`).digest('hex');
   assert.equal(seen.init.headers['x-sml-lk-signature'], expected);
+  assert.equal(seen.init.headers.authorization, `Basic ${Buffer.from('bot:app-pass').toString('base64')}`);
   assert.deepEqual(JSON.parse(seen.init.body), { discord_user_id: '123456789012345678' });
 });
 

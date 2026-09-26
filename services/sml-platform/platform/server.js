@@ -2018,7 +2018,13 @@ async function main() {
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
-  const loopKickBridge = createLoopKickBridge({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret, appUrl: config.loopKickAppUrl });
+  const loopKickBridge = createLoopKickBridge({
+    baseUrl: config.loopKickBridgeUrl,
+    secret: config.loopKickBridgeSecret,
+    appUrl: config.loopKickAppUrl,
+    username: config.wordpressUsername,
+    appPassword: config.wordpressAppPassword,
+  });
   const connectOAuth = config.discordConnectAppId && config.discordConnectClientSecret
     ? createAcademyOAuth({ clientId: config.discordConnectAppId, clientSecret: config.discordConnectClientSecret, academyAccess: createIdentityAccess({}) })
     : null;
