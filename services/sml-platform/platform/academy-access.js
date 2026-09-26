@@ -21,4 +21,24 @@ function createAcademyAccess({ guildId = '', allowedRoleIds = [], fetchImpl = fe
   return { verify };
 }
 
-module.exports = { createAcademyAccess };
+/** Identity-only access: proves who the Discord user is, gates nothing else.
+ *  The Connect app's LOOP-KICK Activity uses this — the real gate is the
+ *  linked + verified stockmarketloop.com account, checked by the site. */
+function createIdentityAccess({ fetchImpl = fetch } = {}) {
+  async function verify(authorization) {
+    const match = /^Bearer\s+(.+)$/i.exec(String(authorization || ''));
+    if (!match) return { ok: false, status: 401, code: 'authorization_required' };
+    const response = await fetchImpl(`${DISCORD_API}/users/@me`, {
+      headers: { authorization: `Bearer ${match[1]}`, accept: 'application/json' },
+      signal: AbortSignal.timeout(5_000)
+    });
+    if (response.status === 401) return { ok: false, status: 401, code: 'authorization_required' };
+    if (!response.ok) throw new Error(`discord_identity_${response.status}`);
+    const user = await response.json();
+    const userId = String(user?.id || '');
+    return /^\d{15,24}$/.test(userId) ? { ok: true, userId } : { ok: false, status: 401, code: 'authorization_required' };
+  }
+  return { verify };
+}
+
+module.exports = { createAcademyAccess, createIdentityAccess };

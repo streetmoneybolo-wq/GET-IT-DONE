@@ -19,7 +19,8 @@ const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
 const dailySocialPayoutsModule = require('./dsp-interactions');
 const connectMigration = require('./connect-migration');
-const { createAcademyAccess } = require('./academy-access');
+const { createAcademyAccess, createIdentityAccess } = require('./academy-access');
+const { createLoopKickBridge } = require('./loop-kick-bridge');
 const { createAcademyOAuth } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript, academyCurriculumVersion } = require('./academy-activity-curriculum');
@@ -615,8 +616,72 @@ btn.onclick=async()=>{try{await navigator.clipboard.writeText(SYM);btn.textConte
 })();</script></body></html>`;
 }
 
+
+/* LOOP-KICK client module: the header button + panel that embeds the real hosted
+   phone through Discord's /.proxy/loop-kick mapping. Shared by the Academy page
+   (panel mode) and the Connect app's standalone Activity (full screen). */
+const ACADEMY_LOOP_KICK = (() => {
+  try {
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-loop-kick.js'), 'utf8') + '</script>';
+  } catch (_) { return ''; }
+})();
+
+function loopKickActivityHtml(options = {}) {
+  const appId = JSON.stringify(String(options.appId || ''));
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOOP-KICK</title>
+<style>html,body{margin:0;height:100%;background:#04070c;color:#cfdbe8;font:400 13px/1.5 system-ui,sans-serif}
+#lk-status{position:fixed;top:14px;left:50%;transform:translateX(-50%);font:700 10px/1 system-ui,sans-serif;letter-spacing:1.2px;color:#5d7085;z-index:5}</style>
+</head><body>
+<div id="lk-status">CONNECTING</div>
+<script>window.SML_LOOP_KICK_ACTIVITY={standalone:true,sessionRoute:'/loop-kick-activity/session-bridge'};</script>
+<script type="module">
+import { DiscordSDK } from '/academy-activity/sdk/index.mjs';
+const appId=${appId};
+const statusEl=document.getElementById('lk-status');
+let sdk=null,inflight=null;
+const inDiscord=new URLSearchParams(location.search).has('frame_id');
+async function signIn(){
+  if(!sdk)sdk=new DiscordSDK(appId);
+  await sdk.ready();
+  const authorization=await sdk.commands.authorize({client_id:appId,response_type:'code',prompt:'none',scope:['identify']});
+  const response=await fetch('/loop-kick-activity/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:authorization.code})});
+  let payload={};try{payload=await response.json()}catch(_){}
+  if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken)throw new Error(payload.error||'authorization_failed');
+  await sdk.commands.authenticate({access_token:payload.access_token});
+  return payload.sessionToken;
+}
+async function authenticate(){
+  if(inflight)return inflight;
+  inflight=(async()=>{
+    try{
+      const sessionToken=await signIn();
+      window.smlAcademySessionToken=sessionToken;
+      statusEl.style.display='none';
+      window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken}}));
+      return sessionToken;
+    }catch(error){
+      statusEl.textContent=inDiscord?'SIGN-IN FAILED — REOPEN THE ACTIVITY':'OPEN THIS INSIDE DISCORD';
+      return '';
+    }finally{inflight=null}
+  })();
+  return inflight;
+}
+window.smlAcademyReauth=()=>authenticate();
+window.smlAcademyOpenExternal=async(url)=>{
+  const framed=inDiscord||(window.self!==window.top);
+  if(framed){try{if(!sdk)sdk=new DiscordSDK(appId);await sdk.ready();await sdk.commands.openExternalLink({url});return true}catch(_){}}
+  try{window.open(url,'_blank','noopener')}catch(_){}
+  return false;
+};
+void authenticate();
+</script>
+${ACADEMY_LOOP_KICK}
+</body></html>`;
+}
+
 function academyActivityHtml(initialMarket = {}, options = {}) {
-  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + '</body></html>');
+  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + '</body></html>');
 }
 
 function academyActivityHtmlBase(initialMarket = {}, options = {}) {
@@ -794,7 +859,7 @@ function sendHtml(response, status, body) {
     'content-length': payload.length,
     'content-encoding': 'gzip',
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'none'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'self'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
   response.end(payload);
@@ -1202,6 +1267,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   marketHistory = null, publicMarketDataEnabled = false,
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
+  loopKickBridge = null, connectOAuth = null, connectAppId = '',
   memberEmail = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
@@ -1535,6 +1601,47 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
       activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
       sendHtml(response, 200, academyActivityHtml(activity, { appId: academyAppId }));
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/loop-kick/session') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!loopKickBridge || !loopKickBridge.configured) { sendJson(response, 503, { ok: false, error: 'loop_kick_unconfigured' }); return; }
+      const minted = await loopKickBridge.session(session.userId);
+      const { status, ...body } = minted;
+      sendJson(response, status || (minted.ok ? 200 : 503), body);
+      return;
+    }
+
+    if (request.method === 'GET' && (path === '/loop-kick-activity/' || path === '/loop-kick-activity')) {
+      sendHtml(response, 200, loopKickActivityHtml({ appId: connectAppId }));
+      return;
+    }
+
+    if (request.method === 'POST' && path === '/loop-kick-activity/token') {
+      if (!connectOAuth || !connectOAuth.activityConfigured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const tokenBody = await readRequestBody(request, 4096);
+      if (!tokenBody.ok) { sendJson(response, tokenBody.status, { ok: false, error: tokenBody.error }); return; }
+      let input = null;
+      try { input = JSON.parse(tokenBody.rawBody); } catch (_) { input = null; }
+      if (!input || typeof input.code !== 'string') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      const result = await connectOAuth.completeActivity({ code: input.code });
+      if (!result.ok) { sendJson(response, result.status || 401, { ok: false, error: result.code }); return; }
+      sendJson(response, 200, { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken });
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/loop-kick-activity/session-bridge') {
+      if (!connectOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = connectOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!loopKickBridge || !loopKickBridge.configured) { sendJson(response, 503, { ok: false, error: 'loop_kick_unconfigured' }); return; }
+      const minted = await loopKickBridge.session(session.userId);
+      const { status, ...body } = minted;
+      sendJson(response, status || (minted.ok ? 200 : 503), body);
       return;
     }
 
@@ -1906,6 +2013,10 @@ async function main() {
   const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess });
+  const loopKickBridge = createLoopKickBridge({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret, appUrl: config.loopKickAppUrl });
+  const connectOAuth = config.discordConnectAppId && config.discordConnectClientSecret
+    ? createAcademyOAuth({ clientId: config.discordConnectAppId, clientSecret: config.discordConnectClientSecret, academyAccess: createIdentityAccess({}) })
+    : null;
   const { createAcademyDataBridge } = require('./academy-data-bridge');
   const rawAcademyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
   const queuedMoomooBridge = createQueuedDataSource({
@@ -1989,6 +2100,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     academyDiscipline,
     academyAppId: config.academyAppId,
+    loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
     memberEmail
   });
   let shuttingDown = false;
@@ -2042,6 +2154,7 @@ module.exports = {
   sendJson,
   sendHtml,
   academyActivityHtml,
+  loopKickActivityHtml,
   handleBillingRequest,
   handleAlertRequest,
   handleDisputeRequest,

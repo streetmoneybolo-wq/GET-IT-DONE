@@ -81,6 +81,14 @@ services:
         sync: false
       - key: SML_DISCORD_CONNECT_APP_ID
         sync: false
+      - key: SML_DISCORD_CONNECT_CLIENT_SECRET
+        sync: false
+      - key: SML_LOOP_KICK_BRIDGE_SECRET
+        sync: false
+      - key: SML_LOOP_KICK_BRIDGE_URL
+        value: "https://stockmarketloop.com"
+      - key: SML_LOOP_KICK_APP_URL
+        value: "https://stockmarketloop-loop-kick.onrender.com"
       - key: SML_DISPUTE_BOT_ENABLED
         sync: false
       - key: SML_DISPUTE_BOT_PUBLIC_KEY

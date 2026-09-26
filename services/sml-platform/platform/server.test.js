@@ -125,7 +125,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors https:\/\/discord\.com/);
     assert.match(response.headers.get('content-security-policy'), /connect-src 'self'/);
     assert.match(response.headers.get('content-security-policy'), /media-src 'self' blob:/);
-    assert.match(response.headers.get('content-security-policy'), /frame-src 'none'/);
+    assert.match(response.headers.get('content-security-policy'), /frame-src 'self'/);
     const html = await response.text();
     assert.match(html, /Making Easy Money Academy/);
     assert.match(html, /Live interactive candlestick chart/);
@@ -394,7 +394,7 @@ test('Discord Activity proxy root serves the same native Academy entry point', a
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/html/);
     assert.match(response.headers.get('content-security-policy'), /frame-ancestors https:\/\/discord\.com/);
-    assert.match(response.headers.get('content-security-policy'), /frame-src 'none'/);
+    assert.match(response.headers.get('content-security-policy'), /frame-src 'self'/);
     const html = await response.text();
     assert.match(html, /Making Easy Money Academy/);
     assert.match(html, /Live interactive candlestick chart/);

@@ -78,6 +78,10 @@ function getConfig(env = process.env) {
     discordConnectPublicKey: String(env.SML_DISCORD_CONNECT_PUBLIC_KEY || '').trim(),
     discordConnectAppId: String(env.SML_DISCORD_CONNECT_APP_ID || '').trim(),
     discordConnectBotToken: String(env.SML_DISCORD_CONNECT_BOT_TOKEN || '').trim(),
+    discordConnectClientSecret: String(env.SML_DISCORD_CONNECT_CLIENT_SECRET || '').trim(),
+    loopKickBridgeUrl: String(env.SML_LOOP_KICK_BRIDGE_URL || 'https://stockmarketloop.com').trim(),
+    loopKickBridgeSecret: String(env.SML_LOOP_KICK_BRIDGE_SECRET || '').trim(),
+    loopKickAppUrl: String(env.SML_LOOP_KICK_APP_URL || 'https://stockmarketloop-loop-kick.onrender.com').trim(),
     massiveApiKey: String(env.MASSIVE_API_KEY || '').trim(),
     // Public redistribution is deliberately opt-in. The individual Stocks
     // plan may power the private Academy, but public pages stay on their
