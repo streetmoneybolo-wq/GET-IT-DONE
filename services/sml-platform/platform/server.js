@@ -625,6 +625,13 @@ const ACADEMY_LOOP_KICK = (() => {
   } catch (_) { return ''; }
 })();
 
+// Phone layout for the Live Chart Lab; appended last so its rules win by source order.
+const ACADEMY_MOBILE_COMPACT = (() => {
+  try {
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-mobile-compact.js'), 'utf8') + '</script>';
+  } catch (_) { return ''; }
+})();
+
 function loopKickActivityHtml(options = {}) {
   const appId = JSON.stringify(String(options.appId || ''));
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -681,7 +688,7 @@ ${ACADEMY_LOOP_KICK}
 }
 
 function academyActivityHtml(initialMarket = {}, options = {}) {
-  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + '</body></html>');
+  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + '</body></html>');
 }
 
 function academyActivityHtmlBase(initialMarket = {}, options = {}) {
