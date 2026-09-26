@@ -634,9 +634,9 @@ function loopKickActivityHtml(options = {}) {
 #lk-status{position:fixed;top:14px;left:50%;transform:translateX(-50%);font:700 10px/1 system-ui,sans-serif;letter-spacing:1.2px;color:#5d7085;z-index:5}</style>
 </head><body>
 <div id="lk-status">CONNECTING</div>
-<script>window.SML_LOOP_KICK_ACTIVITY={standalone:true,sessionRoute:'/loop-kick-activity/session-bridge'};</script>
+<script>window.SML_LOOP_KICK_ACTIVITY={standalone:true,sessionRoute:'session-bridge'};</script>
 <script type="module">
-import { DiscordSDK } from '/academy-activity/sdk/index.mjs';
+import { DiscordSDK } from './sdk/index.mjs';
 const appId=${appId};
 const statusEl=document.getElementById('lk-status');
 let sdk=null,inflight=null;
@@ -645,7 +645,7 @@ async function signIn(){
   if(!sdk)sdk=new DiscordSDK(appId);
   await sdk.ready();
   const authorization=await sdk.commands.authorize({client_id:appId,response_type:'code',prompt:'none',scope:['identify']});
-  const response=await fetch('/loop-kick-activity/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:authorization.code})});
+  const response=await fetch('token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:authorization.code})});
   let payload={};try{payload=await response.json()}catch(_){}
   if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken)throw new Error(payload.error||'authorization_failed');
   await sdk.commands.authenticate({access_token:payload.access_token});
@@ -1612,6 +1612,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
       sendJson(response, status || (minted.ok ? 200 : 503), body);
+      return;
+    }
+
+    if (request.method === 'GET' && path.startsWith('/loop-kick-activity/sdk/')) {
+      sendAcademySdkModule(response, '/academy-activity/sdk/' + path.slice('/loop-kick-activity/sdk/'.length));
       return;
     }
 

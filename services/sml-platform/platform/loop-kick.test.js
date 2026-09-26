@@ -75,8 +75,11 @@ test('the academy page ships the LOOP-KICK module and button wiring', () => {
 test('the standalone activity page authenticates with the Connect app and ships the module full screen', () => {
   const html = loopKickActivityHtml({ appId: '1400000000000000000' });
   assert.match(html, /1400000000000000000/);
-  assert.match(html, /loop-kick-activity\/token/);
-  assert.match(html, /loop-kick-activity\/session-bridge/);
+  // relative on purpose: the Connect app's root mapping targets .../loop-kick-activity
+  assert.match(html, /fetch\('token'/);
+  assert.match(html, /sessionRoute:'session-bridge'/);
+  assert.match(html, /from '\.\/sdk\/index\.mjs'/);
+  assert.doesNotMatch(html, /'\/loop-kick-activity\//);
   assert.match(html, /standalone:true/);
   assert.match(html, /academy-lk-panel/);
   assert.doesNotMatch(html, /id="lesson"/);
