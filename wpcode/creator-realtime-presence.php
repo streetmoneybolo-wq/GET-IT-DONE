@@ -218,7 +218,7 @@ if ( ! function_exists( 'sml_creator_presence_context' ) ) {
 if ( ! function_exists( 'sml_creator_presence_markup' ) ) {
 	function sml_creator_presence_markup( $context ) {
 		// Analytics attribution must not drift with the cached moving resolver.
-		$ref  = '6e3ce9f';
+		$ref  = '70bf7ed3e30d0cd268c8a8fa740bc0aabee367f8';
 		$base = 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@' . rawurlencode( $ref ) . '/';
 		$user = get_userdata( (int) $context['creator_id'] );
 		$cfg  = array(
