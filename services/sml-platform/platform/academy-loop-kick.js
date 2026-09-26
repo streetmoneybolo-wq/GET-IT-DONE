@@ -15,7 +15,8 @@
   var CFG = window.SML_LOOP_KICK_ACTIVITY || {};
   var STANDALONE = !!CFG.standalone;
   var SESSION_ROUTE = CFG.sessionRoute || '/academy-activity/loop-kick/session';
-  var FRAME_PATH = '/.proxy/loop-kick/?embed=1&peer=loop&peerName=Loop&prewarm=1';
+  var FRAME_PATH = '/.proxy/loop-kick/?embed=1&peer=loop&peerName=Loop';
+  var EXTERNAL_OK = /^https:\/\/(stockmarketloop-loop-kick\.onrender\.com\/enable-alerts\.html|stockmarketloop\.com\/)/;
 
   var S = {
     open: false, frame: null, panel: null, badge: null, button: null,
@@ -60,6 +61,7 @@
       if (res && res.j && res.j.ok && res.j.token) {
         S.token = res.j.token; S.expiresAt = Number(res.j.expires_at) || 0;
         sendAuth();
+        if (S.open) tellFrame('open');
         scheduleRefresh();
       } else {
         scheduleRefresh(); /* transient failure: try again in a minute */
@@ -87,10 +89,22 @@
     var d = event.data || {};
     if (d.type === 'sml-loop-kick:ready' || d.type === 'sml-loop-kick:auth-needed') {
       S.frameReady = true;
-      if (S.token) { sendAuth(); if (S.open) tellFrame('open'); }
-      else refreshToken();
+      var stale = !S.token || (S.expiresAt && S.expiresAt * 1000 <= Date.now() + 5000);
+      if (d.type === 'sml-loop-kick:auth-needed' || stale) {
+        S.token = '';
+        refreshToken();
+      } else {
+        sendAuth();
+      }
+      if (S.open) tellFrame('open');
     } else if (d.type === 'sml-loop-kick:notifications') {
       paintBadge(Number(d.unread) || 0);
+    } else if (d.type === 'sml-loop-kick:external') {
+      /* the phone cannot leave Discord's sandbox itself (e.g. phone-alert setup) */
+      var url = String(d.url || '');
+      if (!EXTERNAL_OK.test(url)) return;
+      if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url);
+      else { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
     }
   });
 
@@ -145,6 +159,7 @@
       var go = card.querySelector('button');
       go.textContent = buttonLabel;
       go.onclick = function () {
+        if (url === '#') { S.lastCard = ''; openPanel(); return; }
         if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url);
         else { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
       };
