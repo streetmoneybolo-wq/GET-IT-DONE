@@ -1033,7 +1033,19 @@
      Countries light up from country codes and the city panel counts the feed's own cities, so it works even before the
      feed carries coordinates. Refreshes every 5 s while the tab is visible and re-renders only when the feed changed,
      so the reader and the map zoom never move under them. */
-  var CLICKS = { owner: '', sig: '', loading: false };
+  var CLICKS = { owner: '', sig: '', loading: false, pendingOpen: false };
+  function openLiveClicks(owner) {
+    CLICKS.owner = owner == null ? CLICKS.owner : String(owner);
+    CLICKS.sig = '';
+    MOD.tab = 'links';
+    MOD.user = null;
+    if (ADM.on) admGo('moderation');
+    else CLICKS.pendingOpen = true;
+  }
+  // Publish this as soon as the analytics bundle initializes. Companion panels can
+  // safely call it while admin discovery is still running; the request is queued.
+  window.SMLPulse = window.SMLPulse || {};
+  window.SMLPulse.openLiveClicks = openLiveClicks;
   function clickPoint(c) {
     var lat = Number(c.lat != null ? c.lat : c.latitude), lng = Number(c.lng != null ? c.lng : (c.lon != null ? c.lon : c.longitude));
     if (!isFinite(lat) || !isFinite(lng) || (!lat && !lng)) return null;
@@ -1084,11 +1096,10 @@
       admApi('/me').then(function (r) {
         if (!(r.ok && r.j && r.j.admin)) return;
         ADM.on = true;
-        // Hook for companion admin panels (the intel plugin's raw-IP view): jump straight to the live click map.
-        window.SMLPulse = { openLiveClicks: function (owner) { CLICKS.owner = owner == null ? CLICKS.owner : String(owner); CLICKS.sig = ''; MOD.tab = 'links'; MOD.user = null; admGo('moderation'); } };
         var css = document.createElement('style'); css.textContent = '.ca-adm-chip{display:inline-block;padding:3px 9px;margin:2px 4px 2px 0;border:1px solid var(--ca-line);border-radius:999px;font-size:12px;text-decoration:none}.ca-adm-chip:hover{border-color:var(--ca-accent,#2b6cff)}.ca-adm-cluster{padding:10px 0;border-top:1px solid var(--ca-line)}.ca-adm-cluster:first-of-type{border-top:0}.ca-adm-scope{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:14px;border:1px solid var(--ca-line);border-radius:12px;background:var(--ca-panel)}.ca-adm-lbl{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--ca-muted)}.ca-adm-scope b{font-size:14px}.ca-adm-search{flex:1;min-width:220px;border:1px solid var(--ca-line);border-radius:8px;background:transparent;color:var(--ca-text);padding:8px 10px;font:inherit}.ca-bars{display:grid;gap:6px}.ca-bar-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px}.ca-bar-k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ca-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}.ca-bar i{display:block;height:100%;background:var(--ca-acc)}.ca-bar-v{font-weight:700;font-size:12px}.ca-adm-table{overflow:auto}.ca-adm-table table{width:100%;border-collapse:collapse;font-size:12px}.ca-adm-table th{text-align:left;color:var(--ca-muted);font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:6px}.ca-adm-table td{padding:8px 6px;border-top:1px solid var(--ca-line);vertical-align:top}.ca-adm-av{width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px}.ca-adm-risk{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}.ca-adm-risk.r0{background:rgba(255,255,255,.06)}.ca-adm-risk.r1{background:rgba(224,163,54,.18);color:#ffd166}.ca-adm-risk.r2{background:rgba(255,122,69,.2);color:#ffb08a}.ca-adm-risk.r3{background:rgba(255,91,110,.22);color:#ff8f9c}.ca-adm-flag{display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(255,91,110,.12);color:#ff8f9c;border:1px solid rgba(255,91,110,.3)}.ca-adm-msg{padding:8px 10px;border-top:1px solid var(--ca-line);font-size:12.5px;line-height:1.45}.ca-adm-msg.link{border-left:3px solid #ff8f9c}.ca-pill-primary{background:#2b6cff!important;border-color:#2b6cff!important;color:#fff!important}'; document.head.appendChild(css);
         renderMain = function () { if (ADM.on && ADM.scope === 'site') { if (ADM.user) renderAdminUser(); else if (ADM.nav === 'users') renderAdminUsers(); else if (ADM.nav === 'moderation') renderAdminModeration(); else if (ADM.nav === 'realtime') renderAdminRealtime(); else renderAdmin(); } else renderMainOrig(); };
-        renderAdmin();
+        if (CLICKS.pendingOpen) { CLICKS.pendingOpen = false; admGo('moderation'); }
+        else renderAdmin();
       }).catch(function () {});
     }, 250);
   })();
