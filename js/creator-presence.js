@@ -71,7 +71,7 @@
 
   trackCreatorView(0);
   beat();
-  window.setInterval(beat, Math.max(30000, Number(cfg.interval) || 40000));
+  window.setInterval(beat, Math.max(10000, Number(cfg.interval) || 15000));
   document.addEventListener('visibilitychange', function () { if (!document.hidden) beat(); });
   window.addEventListener('online', beat);
 })();

@@ -222,12 +222,12 @@
       (rows.length ? '<div class="ca-map-note">Live country-level presence · hover a marker for its count</div>' : '<div class="ca-map-empty"><b>No located active viewers right now</b><span>The map updates as creator-page heartbeats arrive through the site CDN.</span></div>') + '</div>';
   }
 
-  function liveLocationMap(rows) {
-    rows = Array.isArray(rows) ? rows : [];
-    return '<div class="ca-map ca-geo-map" data-ca-geo-map><div class="ca-map-loading"><span></span>Loading geographic map…</div>' +
+  function liveLocationMap(rows, opts) {
+    rows = Array.isArray(rows) ? rows : []; opts = opts || {};
+    return '<div class="ca-map ca-geo-map" data-ca-geo-map' + (opts.id ? ' data-ca-geo-map-id="' + esc(opts.id) + '"' : '') + '><div class="ca-map-loading"><span></span>Loading geographic map…</div>' +
       '<button class="ca-map-reset" type="button" data-ca-map-reset hidden>← World view</button>' +
       '<div class="ca-map-caption" data-ca-map-caption>Click a country to explore</div>' +
-      (!rows.length ? '<div class="ca-map-empty ca-map-empty-live"><b>No located active viewers right now</b><span>You can still explore the map. Live markers appear when creator-page heartbeats arrive.</span></div>' : '') + '</div>';
+      (!rows.length ? '<div class="ca-map-empty ca-map-empty-live"><b>' + esc(opts.emptyTitle || 'No located active viewers right now') + '</b><span>' + esc(opts.emptyBody || 'You can still explore the map. Live markers appear when creator-page heartbeats arrive.') + '</span></div>' : '') + '</div>';
   }
 
   var mapLibsPromise = null, mapDataPromise = null;
@@ -264,17 +264,22 @@
     var alias = { unitedstates: 'unitedstatesofamerica', russianfederation: 'russia', southkorea: 'korea', republicofkorea: 'korea', czechia: 'czechrepublic' };
     return alias[name] || name;
   }
-  function initLiveLocationMap(rows, cities, privacyThreshold) {
-    var host = q('[data-ca-geo-map]'); if (!host) return;
+  /* One map engine, two uses: country-level presence (rows = [{countryCode, viewers}]) and, with opts.points,
+     individual located events such as tracked-link clicks ([{lat, lng, bot, fresh, title}]) drawn on the same
+     world → country → state views. opts.host targets a specific map when a page shows more than one. */
+  function initLiveLocationMap(rows, cities, privacyThreshold, opts) {
+    opts = opts || {};
+    var host = opts.host || (opts.id ? q('[data-ca-geo-map-id="' + opts.id + '"]') : null) || q('[data-ca-geo-map]'); if (!host) return;
     rows = Array.isArray(rows) ? rows : []; cities = Array.isArray(cities) ? cities : [];
+    var points = (Array.isArray(opts.points) ? opts.points : []).filter(function (p) { return p && isFinite(Number(p.lat)) && isFinite(Number(p.lng)); });
     Promise.all([ensureMapLibraries(), loadMapData()]).then(function (loaded) {
       if (!host.isConnected) return;
       var d3 = window.d3, topojson = window.topojson, world = loaded[1][0], statesTopo = loaded[1][1];
       var countries = topojson.feature(world, world.objects.countries).features;
       var reset = host.querySelector('[data-ca-map-reset]'), caption = host.querySelector('[data-ca-map-caption]');
-      host.querySelector('.ca-map-loading').remove();
+      var loading = host.querySelector('.ca-map-loading'); if (loading) loading.remove();
       var W = Math.max(520, Math.round(host.getBoundingClientRect().width || 720)), H = Math.max(300, Math.round(W * .53));
-      var svg = d3.select(host).append('svg').attr('class', 'ca-geo-svg').attr('viewBox', '0 0 ' + W + ' ' + H).attr('role', 'img').attr('aria-label', 'Interactive active users map');
+      var svg = d3.select(host).append('svg').attr('class', 'ca-geo-svg').attr('viewBox', '0 0 ' + W + ' ' + H).attr('role', 'img').attr('aria-label', opts.ariaLabel || 'Interactive active users map');
       var liveByName = {};
       rows.forEach(function (r) { liveByName[normalizedPlace(countryName(String(r.countryCode || '').toUpperCase()))] = n(r.viewers || r.users); });
 
@@ -284,19 +289,29 @@
         var matches = cities.filter(function (c) { return normalizedPlace(c.country) === key; }).slice(0, 8);
         if (!matches.length) return;
         var panel = document.createElement('div'); panel.className = 'ca-map-city-list';
-        panel.innerHTML = '<b>Reportable cities · 28 days</b>' + matches.map(function (c) { return '<span><i>' + esc(c.city) + '</i><strong>' + fmt(c.users) + '</strong></span>'; }).join('') + '<small>Aggregated GA4 data · privacy threshold ≥ ' + fmt(privacyThreshold || 10) + '</small>';
+        panel.innerHTML = '<b>' + esc(opts.cityTitle || 'Reportable cities · 28 days') + '</b>' + matches.map(function (c) { return '<span><i>' + esc(c.city) + '</i><strong>' + fmt(c.users) + '</strong></span>'; }).join('') + '<small>' + esc(opts.cityNote || ('Aggregated GA4 data · privacy threshold ≥ ' + fmt(privacyThreshold || 10))) + '</small>';
         host.appendChild(panel);
+      }
+      function pointDots(layer, projection) {
+        points.forEach(function (p) {
+          var xy = projection([Number(p.lng), Number(p.lat)]); if (!xy || !isFinite(xy[0]) || !isFinite(xy[1]) || xy[0] < 0 || xy[1] < 0 || xy[0] > W || xy[1] > H) return;
+          var g = layer.append('g').attr('class', 'ca-click-dot' + (p.bot ? ' bot' : ' human') + (p.fresh ? ' fresh' : ''));
+          g.append('circle').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 3.6);
+          g.append('circle').attr('class', 'ring').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 8);
+          g.append('title').text(p.title || (p.bot ? 'Bot / preview click' : 'Human click'));
+        });
       }
       function liveDots(layer, projection, features) {
         var max = 1; Object.keys(liveByName).forEach(function (k) { max = Math.max(max, liveByName[k]); });
         features.forEach(function (feature) {
           var count = liveByName[normalizedPlace(feature.properties && feature.properties.name)]; if (!count) return;
           var point = projection(d3.geoCentroid(feature)); if (!point || !isFinite(point[0]) || !isFinite(point[1])) return;
-          var radius = Math.max(4, Math.min(9, 4 + count / max * 5)), g = layer.append('g').attr('class', 'ca-real-live-dot');
+          var radius = Math.max(4, Math.min(9, 4 + count / max * 5)), g = layer.append('g').attr('class', 'ca-real-live-dot' + (points.length ? ' ca-real-live-dot-quiet' : ''));
           g.append('circle').attr('cx', point[0]).attr('cy', point[1]).attr('r', radius);
           g.append('circle').attr('class', 'ring').attr('cx', point[0]).attr('cy', point[1]).attr('r', radius + 5);
-          g.append('title').text((feature.properties.name || 'Country') + ': ' + count + ' active now');
+          g.append('title').text((feature.properties.name || 'Country') + ': ' + count + ' ' + (opts.countUnit || 'active now'));
         });
+        pointDots(layer, projection);
       }
       function satelliteTiles(layer, projection) {
         if (!d3.tile) return;
@@ -309,7 +324,7 @@
       }
       function renderWorld() {
         S.mapFocus = null; clearCityList(); reset.hidden = true; reset.textContent = '← World view';
-        caption.textContent = 'Click a country to zoom · live markers show country-level presence';
+        caption.textContent = opts.worldCaption || 'Click a country to zoom · live markers show country-level presence';
         svg.selectAll('*').remove();
         var projection = d3.geoNaturalEarth1().fitExtent([[8, 8], [W - 8, H - 8]], { type: 'FeatureCollection', features: countries }), path = d3.geoPath(projection);
         svg.append('g').selectAll('path').data(countries).join('path')
@@ -426,11 +441,20 @@
     warm(api('/sml-video-upload-studio/v1/creator-dashboard'), function (x) { S.uploads = x.ok && x.j ? (x.j.recent_uploads || []) : []; });
     warm(loadGroups(), function (g) { S.groups = g || []; });
 
-    setInterval(refreshRealtime, 60000);
-    setInterval(refreshPresence, 20000);
+    liveLoop(refreshRealtime, 15000);
+    liveLoop(refreshPresence, 5000);
   });
-  function refreshRealtime() { api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderMain(); } }); }
-  function refreshPresence() { api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); if (S.view === 'main') renderMain(); } }); }
+  function refreshRealtime() { return api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderMain(); } }); }
+  function refreshPresence() { return api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); if (S.view === 'main') renderMain(); } }); }
+  /* Timer loops that behave: one request in flight at a time, nothing while the tab is hidden, and an immediate
+     catch-up tick the moment the tab is visible again — so "live now" is live, not up to a minute old. */
+  var LOOPS = [];
+  function liveLoop(fn, ms) {
+    var busy = false;
+    function tick() { if (busy || document.hidden) return; busy = true; Promise.resolve().then(fn).catch(function () {}).then(function () { busy = false; }); }
+    setInterval(tick, ms); LOOPS.push(tick); return tick;
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) LOOPS.forEach(function (t) { t(); }); });
 
   function loadGroups() {
     // the site has no "my groups" route; the Groups page marks membership on each tile
@@ -797,6 +821,11 @@
   function emitRender(phase, detail) {
     try { root.dispatchEvent(new CustomEvent('sml-ca-' + phase + '-render', { detail: detail || {} })); } catch (e) {}
   }
+  /* Per-view refresh loop: one request in flight at a time and nothing while the tab is hidden. */
+  function admLoop(ms, fn) {
+    clearInterval(ADM.timer); var busy = false;
+    ADM.timer = setInterval(function () { if (document.hidden || busy) return; busy = true; Promise.resolve().then(fn).catch(function () {}).then(function () { busy = false; }); }, ms);
+  }
   function admShell(content, title, sub) {
     var html = pulseShell(S.rt || {}, content);
     var navigate = !!ADM.jump, keepY = navigate ? 0 : window.scrollY;
@@ -855,7 +884,7 @@
     admShell(html, 'Site-wide analytics', 'Admin · entire platform · 28 days');
     initLiveLocationMap(live, g ? g.cities : [], 10);
     Array.prototype.forEach.call(root.querySelectorAll('[data-adm-user]'), function (a) { a.addEventListener('click', function (e) { e.preventDefault(); admOpenUser(+a.getAttribute('data-adm-user')); }); });
-    clearInterval(ADM.timer); ADM.timer = setInterval(function () { if (ADM.scope === 'site' && ADM.nav === 'site') admApi('/overview?range=28').then(function (r) { if (r.ok) { ADM.ov = r.j; renderAdmin(); } }); }, 60000);
+    admLoop(30000, function () { if (ADM.scope === 'site' && ADM.nav === 'site') return admApi('/overview?range=28').then(function (r) { if (r.ok) { ADM.ov = r.j; renderAdmin(); } }); }, 60000);
   }
   function renderAdminRealtime() {
     S.view = 'main'; ADM.nav = 'realtime';
@@ -871,10 +900,10 @@
       '<div class="ca-card"><h3>Every event right now<span class="ca-fresh">30 min</span></h3>' + admList(g.events, 'name', 'count', null, 14) + '</div></div>' +
       '<div class="ca-grid ca-aud-grid"><div class="ca-card ca-map-card"><h3>Where everyone is<span class="ca-fresh">GA4 realtime + creator-page heartbeats</span></h3>' + liveLocationMap(live) + '</div>' +
       '<div class="ca-card"><h3>Pages being viewed now</h3>' + admList((g.pages || []).map(function (p2) { return { k: (p2.page || '').replace(/ - Stock Market Loop$/, ''), v: p2.views }; }), 'k', 'v', null, 12) + '<h3 style="margin-top:14px">Countries now</h3>' + admList(live, 'countryCode', 'viewers', null, 10) + '</div></div>' +
-      '<div class="ca-foot">GA4 realtime refreshes every 20 seconds; the creator-page heartbeat window is ' + fmt(pr.window || 90) + ' seconds.</div>';
+      '<div class="ca-foot">GA4 realtime and creator-page presence refresh every 5 seconds while this tab is open; the creator-page heartbeat window is ' + fmt(pr.window || 90) + ' seconds.</div>';
     admShell(html, 'Realtime · everyone', 'Admin · last 30 minutes');
     initLiveLocationMap(live, g.cities || [], 1);
-    clearInterval(ADM.timer); ADM.timer = setInterval(function () { if (ADM.nav === 'realtime') admApi('/realtime').then(function (x) { if (x.ok) { ADM.rt = x.j; renderAdminRealtime(); } }); }, 20000);
+    admLoop(5000, function () { if (ADM.nav === 'realtime') return admApi('/realtime').then(function (x) { if (x.ok) { ADM.rt = x.j; renderAdminRealtime(); } }); }, 20000);
   }
   function admFlag(f) { return '<span class="ca-adm-flag">' + esc(f) + '</span>'; }
   function renderAdminUsers() {
@@ -996,12 +1025,55 @@
         modShell('<div class="ca-card"><h3>Latest activity<span class="ca-fresh">newest first</span></h3>' + pills + ((f.events || []).map(function (e) { return '<div class="ca-adm-msg' + (e.link ? ' link' : '') + '">' + modUserChip(e.user) + ' <span class="ca-sub">' + esc(modTypeLabel(e.type)) + ' · ' + esc(modWhen(e.at)) + (e.link ? ' · has link' : '') + '</span><br>' + esc(e.text) + '</div>'; }).join('') || '<div class="ca-sub">No activity.</div>') + '</div>');
       });
     } else {
-      modLoad('links', '/sml-intel/v1/admin/live?limit=120', function (l) {
-        if (l.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(l.error) + '</div></div>'); return; }
-        var rows = (l.clicks || []).map(function (c) { var loc = [c.city, c.region, c.country || c.country_code].filter(Boolean).join(', '); var fp = c.client_fp || c.server_fp || ''; return '<tr><td>' + esc(c.created_at && c.created_at.indexOf('0000') !== 0 ? c.created_at : '—') + '</td><td><code>' + esc(c.raw_ip || '') + '</code></td><td>' + esc(loc || '—') + '</td><td>' + esc([c.device, c.browser, c.platform].filter(function (x) { return x && x !== '0'; }).join(' · ')) + (c.screen ? '<br><span class="ca-sub">' + esc(c.screen) + ' · ' + esc(c.timezone || '') + '</span>' : '') + '</td><td>' + (fp ? '<code title="' + esc(fp) + '">' + esc(fp.slice(0, 12)) + '</code>' + (c.client_fp ? '' : ' <span class="ca-sub">browser-level</span>') : '—') + '</td><td>' + esc(c.label || c.slug || '') + '</td><td>' + (c.is_bot ? '<span class="ca-adm-flag">bot / preview</span>' : (c.visitor_user_id ? '<a href="#" data-mod-user="' + n(c.visitor_user_id) + '">member #' + n(c.visitor_user_id) + '</a>' : 'visitor')) + '</td></tr>'; }).join('');
-        modShell('<div class="ca-card"><h3>Tracked-link clicks<span class="ca-fresh">every creator’s links · newest first</span></h3><div class="ca-adm-table"><table><thead><tr><th>When</th><th>IP</th><th>Location</th><th>Device</th><th>Device ID</th><th>Link</th><th>Who</th></tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="ca-sub">No clicks yet.</td></tr>') + '</tbody></table></div></div><div class="ca-foot">Clicks recorded before 24 Sep 2026 have no timestamp (a bug in the old tracker); newer clicks carry the full device fingerprint.</div>');
-      });
+      renderLiveClicks(MOD.data.links);
     }
+  }
+  /* Live click map + feed (admin only). The same world → country → satellite/state map as the presence views, drawn with
+     every tracked-link click from the intel feed: human clicks green, bot / preview fetches red, the newest minute pulsing.
+     Countries light up from country codes and the city panel counts the feed's own cities, so it works even before the
+     feed carries coordinates. Refreshes every 5 s while the tab is visible and re-renders only when the feed changed,
+     so the reader and the map zoom never move under them. */
+  var CLICKS = { owner: '', sig: '', loading: false };
+  function clickPoint(c) {
+    var lat = Number(c.lat != null ? c.lat : c.latitude), lng = Number(c.lng != null ? c.lng : (c.lon != null ? c.lon : c.longitude));
+    if (!isFinite(lat) || !isFinite(lng) || (!lat && !lng)) return null;
+    var t = Date.parse(c.created_at);
+    return { lat: lat, lng: lng, bot: !!c.is_bot, fresh: !!t && (Date.now() - t) < 60000, title: [c.created_at, c.raw_ip, [c.city, c.region, c.country || c.country_code].filter(Boolean).join(', '), c.label || c.slug].filter(Boolean).join(' · ') };
+  }
+  function clickOwner(c) { return String(c.owner_user_id || c.owner_id || c.owner || c.creator_id || c.link_owner_id || ''); }
+  function loadLiveClicks(first) {
+    if (CLICKS.loading) return Promise.resolve();
+    CLICKS.loading = true;
+    return api('/sml-intel/v1/admin/live?limit=120' + (CLICKS.owner ? '&owner=' + encodeURIComponent(CLICKS.owner) : '')).then(function (r) {
+      CLICKS.loading = false;
+      var l = r.ok && r.j ? r.j : { error: (r.j && r.j.message) || 'Could not load.' }, top = (l.clicks || [])[0];
+      var sig = l.error ? 'err:' + l.error : (l.clicks || []).length + ':' + (top ? (top.created_at || '') + (top.raw_ip || '') + (top.id || '') : '');
+      if (!first && sig === CLICKS.sig) return;
+      CLICKS.sig = sig; MOD.data.links = l;
+      if (ADM.nav === 'moderation' && MOD.tab === 'links' && !MOD.user) renderLiveClicks(l);
+    });
+  }
+  function renderLiveClicks(l) {
+    if (!l) { modShell('<div class="ca-onboard"><div class="ca-big">Loading live clicks…</div></div>'); loadLiveClicks(true); return; }
+    if (l.error) { modShell('<div class="ca-card"><div class="ca-sub">' + esc(l.error) + '</div></div>'); return; }
+    var all = l.clicks || [], clicks = CLICKS.owner ? all.filter(function (c) { return clickOwner(c) === CLICKS.owner; }) : all;
+    var points = clicks.map(clickPoint).filter(Boolean), byCountry = {}, byCity = {};
+    clicks.forEach(function (c) {
+      var code = String(c.country_code || '').toUpperCase(); if (/^[A-Z]{2}$/.test(code)) byCountry[code] = (byCountry[code] || 0) + 1;
+      var country = c.country || (code ? countryName(code) : ''); if (c.city && country) { var k = country + '|' + c.city; byCity[k] = byCity[k] || { country: country, city: c.city, users: 0 }; byCity[k].users++; }
+    });
+    var countryRows = Object.keys(byCountry).map(function (k) { return { countryCode: k, viewers: byCountry[k] }; });
+    var cities = Object.keys(byCity).map(function (k) { return byCity[k]; }).sort(function (a, b) { return b.users - a.users; });
+    var humans = clicks.filter(function (c) { return !c.is_bot; }).length;
+    var rows = clicks.map(function (c) { var loc = [c.city, c.region, c.country || c.country_code].filter(Boolean).join(', '); var fp = c.client_fp || c.server_fp || ''; return '<tr><td>' + esc(c.created_at && c.created_at.indexOf('0000') !== 0 ? c.created_at : '—') + '</td><td><code>' + esc(c.raw_ip || '') + '</code></td><td>' + esc(loc || '—') + '</td><td>' + esc([c.device, c.browser, c.platform].filter(function (x) { return x && x !== '0'; }).join(' · ')) + (c.screen ? '<br><span class="ca-sub">' + esc(c.screen) + ' · ' + esc(c.timezone || '') + '</span>' : '') + '</td><td>' + (fp ? '<code title="' + esc(fp) + '">' + esc(fp.slice(0, 12)) + '</code>' + (c.client_fp ? '' : ' <span class="ca-sub">browser-level</span>') : '—') + '</td><td>' + esc(c.label || c.slug || '') + '</td><td>' + (c.is_bot ? '<span class="ca-adm-flag">bot / preview</span>' : (c.visitor_user_id ? '<a href="#" data-mod-user="' + n(c.visitor_user_id) + '">member #' + n(c.visitor_user_id) + '</a>' : 'visitor')) + '</td></tr>'; }).join('');
+    modShell('<div class="ca-card ca-map-card"><h3>Live click map<span class="ca-fresh">' + fmt(humans) + ' human · ' + fmt(clicks.length - humans) + ' bot / preview</span><span class="ca-click-legend"><span><i></i>Human click</span><span><i class="bot"></i>Bot / preview click</span></span></h3>'
+      + '<div class="ca-click-tools"><input type="text" data-click-owner value="' + esc(CLICKS.owner) + '" placeholder="Filter by link owner user ID" inputmode="numeric" aria-label="Filter by link owner user ID"><button class="ca-pill ca-pill-primary" type="button" data-click-refresh><span class="ca-live-dot"></span>Refresh Live Clicks</button><span class="ca-sub">auto-refreshes every 5 s while this tab is open</span></div>'
+      + liveLocationMap(points.length || countryRows.length ? [1] : [], { id: 'clicks', emptyTitle: 'No located clicks yet', emptyBody: 'You can still explore the map. Markers appear as tracked links are clicked.' }) + '</div>'
+      + '<div class="ca-card"><h3>Tracked-link clicks<span class="ca-fresh">every creator’s links · newest first</span></h3><div class="ca-adm-table"><table><thead><tr><th>When</th><th>IP</th><th>Location</th><th>Device</th><th>Device ID</th><th>Link</th><th>Who</th></tr></thead><tbody>' + (rows || '<tr><td colspan="7" class="ca-sub">No clicks yet.</td></tr>') + '</tbody></table></div></div><div class="ca-foot">Raw IP addresses are visible only to admin accounts. Clicks recorded before 24 Sep 2026 have no timestamp (a bug in the old tracker); newer clicks carry the full device fingerprint.</div>');
+    initLiveLocationMap(countryRows, cities, 1, { id: 'clicks', points: points, ariaLabel: 'Live click map', countUnit: 'clicks in this feed', worldCaption: 'Click a country to zoom · green = human click, red = bot / preview', cityTitle: 'Click cities · this feed', cityNote: 'Counted from the tracked-link click feed' });
+    var inp = q('[data-click-owner]'); if (inp) inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { CLICKS.owner = inp.value.trim(); CLICKS.sig = ''; ADM.jump = true; renderLiveClicks(); } });
+    var btn = q('[data-click-refresh]'); if (btn) btn.addEventListener('click', function () { CLICKS.sig = ''; loadLiveClicks(false); });
+    admLoop(5000, function () { return loadLiveClicks(false); });
   }
   (function admBoot() {
     var tries = 0;

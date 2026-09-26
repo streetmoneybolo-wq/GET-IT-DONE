@@ -30,7 +30,7 @@ if ( ! defined( 'SML_CREATOR_PRESENCE_DB_VERSION' ) ) {
 	define( 'SML_CREATOR_PRESENCE_DB_VERSION', '1.1.0' );
 }
 if ( ! defined( 'SML_CREATOR_PRESENCE_TTL' ) ) {
-	define( 'SML_CREATOR_PRESENCE_TTL', 90 );
+	define( 'SML_CREATOR_PRESENCE_TTL', 45 ); // three 15-second heartbeats: a closed tab drops off "live now" within a minute
 }
 
 if ( ! function_exists( 'sml_creator_presence_table' ) ) {
@@ -227,7 +227,7 @@ if ( ! function_exists( 'sml_creator_presence_markup' ) ) {
 			'creatorHandle' => $user ? sanitize_title( $user->user_nicename ) : '',
 			'contentKind'   => sanitize_key( $context['kind'] ),
 			'contentId'     => sanitize_text_field( (string) $context['content_id'] ),
-			'interval'      => 40000,
+			'interval'      => 15000,
 		);
 		return '<script id="sml-cp-config">window.SML_CREATOR_PRESENCE=' . wp_json_encode( $cfg ) . ';</script>'
 			. '<script id="sml-cp-js" defer src="' . esc_url( $base . 'js/creator-presence.js' ) . '"></script>';
@@ -275,7 +275,7 @@ if ( ! function_exists( 'sml_creator_presence_rest_beat' ) ) {
 		$rate      = (int) get_transient( $rate_key );
 		$visitor_rate_key = 'sml_cp_visitor_rate_' . substr( hash_hmac( 'sha256', $visitor, wp_salt( 'nonce' ) ), 0, 24 );
 		$visitor_rate     = (int) get_transient( $visitor_rate_key );
-		if ( $rate >= 600 || $visitor_rate >= 6 ) {
+		if ( $rate >= 600 || $visitor_rate >= 8 ) { // 15-second beats are 4/min; headroom for a visibility-change catch-up beat
 			return new WP_Error( 'sml_presence_rate_limited', 'Too many heartbeat requests.', array( 'status' => 429 ) );
 		}
 		set_transient( $rate_key, $rate + 1, MINUTE_IN_SECONDS );
