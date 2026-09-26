@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Platform Billing Bridge
  * Description: Signed bridge between WordPress, the Render billing service, Loop Bucks, and group access.
- * Version: 0.4.2
+ * Version: 0.5.0
  * Author: Stock Market Loop
  */
 
