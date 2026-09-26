@@ -26,6 +26,14 @@ const MAX_BUCKETS = 5000;
 const BUCKET_IDLE_MS = 10 * 60 * 1000;
 const MAX_LIST_LINES = 10;
 
+// Discord's Entry Point command (type 4) for this application is `/loop-kick`
+// (scripts/register-loop-kick-command.js). When Discord routes it here instead
+// of launching the Activity itself, callback 12 (LAUNCH_ACTIVITY) tells Discord
+// to open the LOOP-KICK Activity — no message is posted.
+const ENTRY_POINT_COMMAND_TYPE = 4;
+const LOOP_KICK_COMMAND = 'loop-kick';
+const LAUNCH_ACTIVITY = Object.freeze({ type: 12 });
+
 const DEFAULT_REVIEW_URL_BASE = 'https://stockmarketloop.com/connect-review/';
 const DEFAULT_SITE_BASE = 'https://stockmarketloop.com';
 const MANAGE_GUILD_PERMISSION = '32';
@@ -732,6 +740,10 @@ Join the onboarding server here: https://discord.gg/cxMvYdm4a2`
       const guildName = await resolveGuildName(interaction, guildId);
       await audit(Object.assign({ outcome: 'dashboard_link_requested' }, auditBase));
       return { response: { type: 4, data: Object.assign(ownerDashboardCard({ guildId, guildName }), { flags: EPHEMERAL }) } };
+    }
+    if (commandName === LOOP_KICK_COMMAND || (interaction.data && interaction.data.type === ENTRY_POINT_COMMAND_TYPE)) {
+      await audit(Object.assign({ outcome: 'activity_launched' }, auditBase));
+      return { response: LAUNCH_ACTIVITY };
     }
     if (!handler) {
       await audit(Object.assign({ outcome: 'unknown_command' }, auditBase));

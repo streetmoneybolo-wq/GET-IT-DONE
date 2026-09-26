@@ -258,6 +258,17 @@ test('unknown commands get an ephemeral error and an audit row', async () => {
   assert.equal(audits.at(-1).fields.detail.outcome, 'unknown_command');
 });
 
+test('the /loop-kick Entry Point answers LAUNCH_ACTIVITY so Discord opens the Activity', async () => {
+  const { deps, audits } = fakes();
+  const commands = createConnectCommands(deps);
+  const named = await commands.handleCommand(interaction('loop-kick', [], { data: { name: 'loop-kick', type: 4 } }));
+  assert.deepEqual(named.response, { type: 12 });
+  assert.equal(audits.at(-1).fields.detail.outcome, 'activity_launched');
+  // Discord may rename the Entry Point (its default is "launch"); the type still routes it.
+  const renamed = await commands.handleCommand(interaction('launch', [], { data: { name: 'launch', type: 4 } }));
+  assert.deepEqual(renamed.response, { type: 12 });
+});
+
 test('no reply string ever contains planted PII, and every reply is ephemeral', async () => {
   const { deps } = fakes();
   const commands = createConnectCommands(deps);
