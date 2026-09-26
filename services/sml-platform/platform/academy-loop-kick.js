@@ -91,8 +91,13 @@
       S.frameReady = true;
       var stale = !S.token || (S.expiresAt && S.expiresAt * 1000 <= Date.now() + 5000);
       if (d.type === 'sml-loop-kick:auth-needed' || stale) {
-        S.token = '';
-        refreshToken();
+        /* at most one forced re-mint per 15 s: a site that keeps refusing tokens
+           must not turn the phone's 401 nudges into a mint storm */
+        if (!S.lastRemint || Date.now() - S.lastRemint > 15000) {
+          S.lastRemint = Date.now();
+          S.token = '';
+          refreshToken();
+        }
       } else {
         sendAuth();
       }
