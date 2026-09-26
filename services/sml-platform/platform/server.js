@@ -661,7 +661,8 @@ async function authenticate(){
       window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken}}));
       return sessionToken;
     }catch(error){
-      statusEl.textContent=inDiscord?'SIGN-IN FAILED — REOPEN THE ACTIVITY':'OPEN THIS INSIDE DISCORD';
+      const reason=String((error&&(error.message||error.code))||error||'').replace(/[^\\w .:_-]/g,' ').trim().slice(0,120);
+      statusEl.textContent=(inDiscord?'SIGN-IN FAILED — REOPEN THE ACTIVITY':'OPEN THIS INSIDE DISCORD')+(reason?' · '+reason:'');
       return '';
     }finally{inflight=null}
   })();
