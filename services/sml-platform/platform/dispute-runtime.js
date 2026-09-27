@@ -30,6 +30,7 @@ const { createUpgradeChatWebhookHandler } = require('./upgrade-chat-webhook');
 const { createUpgradeChatReconciler } = require('./upgrade-chat-reconcile');
 const { createDiscordInteractions } = require('./discord-interactions');
 const { createConnectCommands, scopeCommands, CONNECT_COMMAND_NAMES, DISPUTE_COMMAND_NAMES } = require('./connect-commands');
+const { createLinkTracker, withLinkTracker } = require('./link-tracker');
 const {
   createConnectAuthorizer, createConnectDisputeService, createConnectRoleTools, createConnectRoleHandlers
 } = require('./connect-adapter');
@@ -82,6 +83,7 @@ function disabledRuntime(reason) {
     upgradeChatWebhook: null,
     disputeService: null,
     discordInteractions: null,
+    linkTracker: null,
     disputeDiscordInteractions: null,
     notifier: null,
     usageConsumer: null,
@@ -137,6 +139,11 @@ function createDisputeRuntime({
     pool, graph, store, authorize, disputeService: connectService,
     reconciler: roleTools, now, reviewUrlBase: config.connectReviewUrlBase
   });
+  const linkTracker = config.connectBotEnabled ? createLinkTracker({ pool, now }) : null;
+  if (linkTracker && config.discordConnectAppId && config.discordConnectBotToken) {
+    linkTracker.registerCommands({ appId: config.discordConnectAppId, botToken: config.discordConnectBotToken, fetchImpl, logger })
+      .catch((error) => logger('warn', 'link_tracker_register_failed', { error }));
+  }
   const discordInteractions = config.connectBotEnabled
     ? createDiscordInteractions({
         config: {
@@ -149,7 +156,7 @@ function createDisputeRuntime({
         pool, graph, store, authorize,
         // Strict identity boundary: Connect never mounts Academy handlers.
         // Academy commands are served only by the dedicated Academy process.
-        commands: scopeCommands(commandBase, CONNECT_COMMAND_NAMES),
+        commands: withLinkTracker(scopeCommands(commandBase, CONNECT_COMMAND_NAMES), linkTracker),
         fetchImpl, now
       })
     : null;
@@ -361,6 +368,7 @@ function createDisputeRuntime({
     upgradeChatWebhook,
     disputeService,
     discordInteractions,
+    linkTracker,
     disputeDiscordInteractions,
     notifier,
     usageConsumer,

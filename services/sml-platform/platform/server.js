@@ -1261,6 +1261,27 @@ async function handleSiteExportIngest(request, response, options) {
   sendJson(response, 201, { ok: true, name, seq, total });
 }
 
+/* Discord tracked links: who tapped which link, for the site dashboard. Signed
+   with the billing bridge secret like every other site-to-platform call. */
+async function handleLinkReport(request, response, options) {
+  if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+  const body = await readRequestBody(request);
+  if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+  const verified = verifySignature({ secret: options.billingApiSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: options.now() });
+  if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
+  if (!options.linkTracker) { sendJson(response, 503, { ok: false, error: 'link_tracker_disabled' }); return; }
+  let input;
+  try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+  try {
+    const result = await options.linkTracker.report({ guildId: input && input.guildId, linkId: input && input.linkId, limit: input && input.limit });
+    sendJson(response, 200, { ok: true, ...result });
+  } catch (error) {
+    if (error instanceof TypeError) { sendJson(response, 400, { ok: false, error: String(error.message) }); return; }
+    options.logger('error', 'link_report_failed', { error });
+    sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+  }
+}
+
 async function handleConnectRequest(request, response, options, action) {
   if (!contentTypeIsJson(request)) {
     sendJson(response, 415, { ok: false, error: 'content_type_required' });
@@ -1392,7 +1413,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
-  memberEmail = null, siteExportSink = null,
+  memberEmail = null, siteExportSink = null, linkTracker = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -1657,6 +1678,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'POST' && path === '/v1/billing/migrations/upgrade-chat') {
       await handleBillingRequest(request, response, billingOptions, billingService.prepareUpgradeChatMigration);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/links/report') {
+      await handleLinkReport(request, response, { ...billingOptions, linkTracker });
       return;
     }
     if (request.method === 'POST' && path === '/v1/site-export/ingest') {
@@ -2386,6 +2411,7 @@ async function main() {
     paypalWebhook: disputes.paypalWebhook,
     upgradeChatWebhook: disputes.upgradeChatWebhook,
     discordInteractions: connectInteractions,
+    linkTracker: disputes.linkTracker,
     disputeDiscordInteractions: disputes.disputeDiscordInteractions,
     dailySocialPayoutsInteractions,
     disputeService: disputes.disputeService,

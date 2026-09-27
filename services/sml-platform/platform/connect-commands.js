@@ -729,6 +729,12 @@ function scopeCommands(commands, allowedNames) {
         return { response: { type: 4, data: { content: MSG_UNKNOWN, flags: EPHEMERAL } } };
       }
       return commands.handleCommand(interaction);
+    },
+    // Buttons posted by this bot (setup flow) come back as components; without
+    // this pass-through they fell into handleCommand and answered "Unknown command".
+    async handleComponent(interaction) {
+      if (typeof commands.handleComponent === 'function') return commands.handleComponent(interaction);
+      return { response: { type: 4, data: { content: MSG_UNKNOWN, flags: EPHEMERAL } } };
     }
   };
 }
