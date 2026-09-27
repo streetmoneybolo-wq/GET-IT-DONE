@@ -32,6 +32,7 @@ const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
 const { createMassiveStream } = require('./academy-massive-stream');
+const { createBrokerLinks } = require('./academy-brokers');
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAcademyVoice } = require('./academy-voice');
@@ -596,7 +597,7 @@ const ACADEMY_MEM_ALGO_TEASER_SOURCE = ACADEMY_MEM_ALGO_PARTS && ACADEMY_MEM_ALG
   : '';
 const ACADEMY_MEM_ALGO_LOADER = "<script>(()=>{if(window.__smlMemAlgoLoader)return;window.__smlMemAlgoLoader=1;let loaded=false,busy=false;const load=async()=>{const token=window.smlAcademySessionToken;if(loaded||busy||!token)return;busy=true;try{const response=await fetch('/academy-activity/mem-algo.js',{headers:{authorization:'Bearer '+token},cache:'no-store'});if(response.ok){const code=await response.text();loaded=true;const script=document.createElement('script');script.textContent=code;document.body.appendChild(script)}}catch(_){}finally{busy=false}};window.addEventListener('sml-academy-session',()=>{void load()});void load()})();</script>";
 
-const ACADEMY_MOOMOO_BUY = `<style>#academy-moomoo-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}#academy-moomoo-buy:hover{background:#1a3157;color:#c4d9ff}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
+const ACADEMY_MOOMOO_BUY = `<style>.toolbar .academy-brokers{display:contents}.toolbar button.academy-broker-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}.toolbar button.academy-broker-buy:hover{background:#1a3157;color:#c4d9ff}.toolbar #academy-webull-buy{border-color:#1f8fff;background:#0d2238;color:#8fc8ff}.toolbar #academy-robinhood-buy{border-color:#2fbf4f;background:#0f2a17;color:#9ff0b0}.toolbar #academy-robinhood-buy:hover{background:#163a20;color:#c8ffd4}.toolbar button.academy-broker-join{border-style:dashed;background:#1a1606;border-color:#e0b43a;color:#ffd86b}.toolbar button.academy-broker-join:hover{background:#2a2209;color:#ffe9a3}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
 const toolbar=document.querySelector('.toolbar');if(!toolbar)return;
 const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbol'),typed=document.getElementById('symbol')?.value;return String(q||typed||'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g,'').slice(0,10)||'SPY'};
 /* moomoo's /stock/ URLs are NOT iOS universal links (absent from their AASA), so on phones we route
@@ -604,11 +605,17 @@ const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbo
    on that exact stock (double-encoding required - the page unescapes twice). Only ftmm://url/ targets,
    never ftmm://trade/ - the button must always land on the quote page, not an order ticket. */
 const moomooUrl=(s)=>{const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(s)+'-US';const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);return mobile?'https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl)):'https://sml-platform-api.onrender.com/academy-activity/moomoo?symbol='+encodeURIComponent(s)};
-const btn=document.createElement('button');btn.id='academy-moomoo-buy';btn.type='button';
-const paint=()=>{btn.textContent='Buy '+currentSymbol()+' on moomoo ↗';btn.title='Opens '+currentSymbol()+' in your moomoo app. Any order is reviewed and placed by you in moomoo — nothing is traded from the Academy.'};paint();
-btn.setAttribute('aria-label','Open this stock in the moomoo app');
-btn.onclick=()=>{const s=currentSymbol();const url=moomooUrl(s);if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
-const buyChip=toolbar.querySelector('.quote-chip.buy');(buyChip&&buyChip.nextSibling)?toolbar.insertBefore(btn,buyChip.nextSibling):toolbar.appendChild(btn);
+/* Webull quote URLs need the listing exchange, so they go through the server, which looks it up. Robinhood's
+   robinhood.com/stocks/ links open the installed app on phones. Every link is a quote page, never an order ticket. */
+const BROKER_REDIRECT='https://sml-platform-api.onrender.com/academy-activity/broker';
+const brokers=[['moomoo','moomoo',moomooUrl],['webull','Webull',(s)=>BROKER_REDIRECT+'?b=webull&symbol='+encodeURIComponent(s)],['robinhood','Robinhood',(s)=>'https://robinhood.com/stocks/'+encodeURIComponent(s)]];
+const open=(url)=>{if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
+const buttons=brokers.map(([key,name,urlOf])=>{const b=document.createElement('button');b.id='academy-'+key+'-buy';b.type='button';b.className='academy-broker-buy';b.dataset.broker=key;b.dataset.short=name+' ↗';b.setAttribute('aria-label','Open this stock in '+name);b.onclick=()=>open(urlOf(currentSymbol()));return b});
+const paint=()=>{const s=currentSymbol();buttons.forEach((b,i)=>{const name=brokers[i][1];b.dataset.full='Buy '+s+' on '+name+' ↗';if(!b.classList.contains('academy-broker-short'))b.textContent=b.dataset.full;b.title='Opens '+s+' in '+name+'. Any order is reviewed and placed by you in '+name+' — nothing is traded from the Academy.'})};paint();
+/* Owner's referral sign-up links. Labelled as referral links in the tooltip; the owner may earn a reward when a member opens an account. */
+const joins=[['moomoo','moomoo','https://j.moomoo.com/00isCK'],['webull','Webull','https://a.webull.com/gsHkJGq3lyekBxLcvC']].map(([key,name,url])=>{const b=document.createElement('button');b.id='academy-'+key+'-join';b.type='button';b.className='academy-broker-buy academy-broker-join';b.dataset.full='Join '+name+' ↗';b.dataset.short='Join '+name;b.textContent=b.dataset.full;b.title='Open a '+name+' account (referral link — Making Easy Money may earn a reward if you sign up).';b.setAttribute('aria-label','Sign up for '+name+' (referral link)');b.onclick=()=>open(url);return b});
+const group=document.createElement('span');group.className='academy-brokers';buttons.concat(joins).forEach((b)=>group.appendChild(b));
+const buyChip=toolbar.querySelector('.quote-chip.buy');const anchor=buyChip&&buyChip.nextSibling;anchor?toolbar.insertBefore(group,anchor):toolbar.appendChild(group);
 new MutationObserver(paint).observe(document.getElementById('label')||document.body,{childList:true,characterData:true,subtree:true});
 window.addEventListener('popstate',paint)})();</script>`;
 
@@ -774,7 +781,7 @@ function academyActivityHtmlBase(initialMarket = {}, options = {}) {
 </style><style>
 .lesson-picker{width:100%;margin:8px 0 4px;padding:8px;border:1px solid #285061;border-radius:6px;background:#0d1720;color:#eef4f7;font-weight:800}.lesson button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:720px){.answers{grid-template-columns:1fr}}
 .academy-scanner{border:1px solid #1b3540;border-radius:10px;background:#0a1118;overflow:hidden}.academy-scan-head{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid #1b3540}.academy-scan-title{font:900 .76rem ui-monospace;color:#eaf5f8}.academy-scan-live{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(82,230,173,.35);border-radius:999px;padding:3px 7px;color:#52e6ad;font:900 .58rem ui-monospace}.academy-scan-live:before{content:'';width:5px;height:5px;border-radius:50%;background:#52e6ad;box-shadow:0 0 8px #52e6ad}.academy-scan-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid #1b3540}.academy-scan-tabs button,.academy-scan-tools button{border:1px solid #294554;border-radius:5px;background:#101e27;color:#9eb2bc;padding:5px 8px;font:800 .62rem ui-monospace;cursor:pointer}.academy-scan-tabs button.on{border-color:#00c47d;background:#0b3b2e;color:#7ef0bd}.academy-scan-tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid #1b3540}.academy-scan-tools input,.academy-scan-tools select{height:30px;border:1px solid #294554;border-radius:5px;background:#0d1720;color:#eaf5f8;padding:5px 8px;font:700 .64rem system-ui}.academy-scan-tools input{min-width:240px;flex:1}.academy-monitor{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:#1b3540;border-bottom:1px solid #1b3540}.academy-monitor span{padding:8px 12px;background:#0d1720;color:#8fa5b1;font:.62rem ui-monospace}.academy-monitor b{display:block;margin-top:2px;color:#eaf5f8;font-size:.74rem}.academy-scan-wrap{max-width:100%;overflow:auto;overscroll-behavior:contain}.academy-scan-table{width:100%;min-width:940px;border-collapse:collapse;font:.64rem ui-monospace}.academy-scan-table th,.academy-scan-table td{padding:7px 8px;border-bottom:1px solid rgba(42,66,78,.55);white-space:nowrap;text-align:right}.academy-scan-table th{position:sticky;top:0;background:#13242d;color:#8ee8c1;cursor:pointer}.academy-scan-table th:nth-child(-n+3),.academy-scan-table td:nth-child(-n+3){text-align:left}.academy-scan-table tbody tr{cursor:pointer}.academy-scan-table tbody tr:hover{background:#10232b}.academy-scan-symbol{font-weight:900;color:#eef4f7}.academy-scan-name{display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;color:#738995;font-size:.55rem}.academy-positive{color:#52e6ad}.academy-negative{color:#ff778b}.academy-muted{color:#718694}.academy-scan-foot{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 12px;color:#8094a2;font:.62rem ui-monospace}.academy-scan-pages{display:flex;gap:4px}.academy-scan-pages button{border:1px solid #294554;border-radius:4px;background:#101e27;color:#9eb2bc;padding:4px 7px;cursor:pointer}.academy-scan-pages button.on{background:#00c47d;color:#042217}.academy-scan-empty{font-size:.7rem;color:#8094a2;padding:14px}.academy-pro-note{padding:7px 12px;border-bottom:1px solid #1b3540;color:#8fa5b1;font:.6rem ui-monospace}@media(max-width:720px){.academy-monitor{grid-template-columns:1fr}.academy-scan-tools input{min-width:160px}}
-#academy-unlock{margin-left:0;border:2px solid #75f5bf;background:#00c47d;color:#042217;box-shadow:0 0 14px rgba(0,196,125,.25)}body.academy-tools-open{overflow:hidden}body.academy-tools-open main{position:fixed;inset:0;z-index:2147483000;width:100vw;height:100dvh;background:#070b10;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}body.academy-tools-open #academy-unlock{position:relative;inset:auto}
+#academy-unlock{margin-left:0;border:2px solid #75f5bf;background:#00c47d;color:#042217;box-shadow:0 0 14px rgba(0,196,125,.25)}body.academy-tools-open #academy-unlock{position:relative;inset:auto}
 /* A lesson is a real layout rail, never an overlay. The chart, quote rail,
    scanner, and options lab all share the same reserved desktop width. */
 :root{--academy-lesson-rail:clamp(390px,33vw,520px)}main,.academy-below{width:100%;transition:width .22s ease}.lesson{top:0;right:0;width:var(--academy-lesson-rail);height:100dvh;max-height:none;border-width:0 0 0 1px;border-radius:0;box-shadow:-16px 0 42px rgba(0,0,0,.42);overscroll-behavior:contain;scrollbar-gutter:stable}.lesson.open{display:block}body.academy-lesson-open main,body.academy-lesson-open .academy-below{width:calc(100% - var(--academy-lesson-rail))}body.academy-lesson-open .shell{grid-template-columns:minmax(0,1fr) clamp(205px,18vw,238px)}body.academy-lesson-open .toolbar small{display:none}
@@ -1409,7 +1416,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyMassive = null,
-  marketHistory = null, publicMarketDataEnabled = false,
+  marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
@@ -1908,6 +1915,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
       sendJson(response, status || (minted.ok ? 200 : 503), body);
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/broker') {
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        const location = await brokerLinks.urlFor(String(params.get('b') || ''), params.get('symbol'));
+        response.writeHead(302, { location, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+        response.end();
+      } catch (error) {
+        sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? error.message : 'temporary_unavailable' });
+      }
       return;
     }
 
@@ -2446,6 +2465,7 @@ async function main() {
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyMassive,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
+    brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
     academyAppId: config.academyAppId,
     academyGate,

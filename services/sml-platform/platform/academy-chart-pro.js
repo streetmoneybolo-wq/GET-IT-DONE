@@ -140,6 +140,8 @@
   }
   let chipTimer = 0, chip = null;
   function perfChip(fps, p95, worst, by, layers) {
+    // Diagnostic readout for the owner only (?perf=1); members never see it cover the chart. The numbers are still reported.
+    if (!/[?&]perf=1\b/.test(location.search)) return;
     if (!chip) { chip = document.createElement('div'); chip.className = 'academy-pro-perf'; stage.appendChild(chip); }
     const name = { candles: 'candles', indicators: 'indicators', memalgo: 'MEM ALGO' };
     chip.innerHTML = '<b>' + fps + ' fps</b> while dragging · slowest frame ' + worst + ' ms (95% under ' + p95 + ' ms)<br>draw time per frame: ' + layers + ' ms' + Object.keys(by).map((k) => ' · ' + (name[k] || k) + ' ' + by[k]).join('') + '<br><small>screen ' + stage.clientWidth + '×' + stage.clientHeight + ' · resolution ×' + (window.smlChartDpr ? window.smlChartDpr() : 1) + ' of ×' + (window.devicePixelRatio || 1) + '</small>';
