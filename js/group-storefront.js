@@ -113,7 +113,7 @@
   function render(data) {
     var root = document.createElement('div');
     root.id = 'sml-storefront-root';
-    root.style.cssText = 'padding:24px 20px;display:flex;flex-direction:column;gap:20px;max-width:440px;margin:0 auto;overflow-y:auto;overflow-x:hidden;';
+    root.style.cssText = 'padding:24px 20px;display:flex;flex-direction:column;gap:20px;max-width:440px;margin:0 auto;';
 
     var header = '<div style="display:flex;flex-direction:column;gap:6px;">';
     header += '<div style="font:800 20px/1.2 Archivo,sans-serif;color:#e6edf3;">Memberships</div>';
@@ -137,15 +137,21 @@
       }
     });
 
-    function fitHeight() {
-      var avail = window.innerHeight - root.getBoundingClientRect().top - 16;
-      if (avail > 200) root.style.maxHeight = avail + 'px';
-    }
     function mount() {
       var t = document.querySelector('.sml-gshell__main');
       if (t) {
+        t.style.overflowY = 'auto';
+        t.style.overflowX = 'hidden';
+        var shell = document.getElementById('sml-group-shell');
+        if (shell) {
+          var hdr = shell.getBoundingClientRect().top;
+          var h = window.innerHeight - hdr;
+          if (h > 300) {
+            shell.style.height = h + 'px';
+            shell.style.minHeight = h + 'px';
+          }
+        }
         t.appendChild(root);
-        setTimeout(fitHeight, 600);
         return true;
       }
       return false;
