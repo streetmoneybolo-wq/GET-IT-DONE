@@ -3,7 +3,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { EventEmitter } = require('node:events');
-const { createVerifyGate, withVerifyGate, accountCreatedAt, networkOf, clientIp } = require('./verify-gate');
+const { createVerifyGate, withVerifyGate, accountCreatedAt, networkOf, clientIp, RULES_QUIZ } = require('./verify-gate');
+const RIGHT = RULES_QUIZ.map((x) => x.a);
 
 function fakePool() {
   const cfgs = new Map(), rows = []; let seq = 0;
@@ -35,6 +36,7 @@ function fakePool() {
         return { rows: [] };
       }
       if (s.startsWith('UPDATE discord_verifications SET status=$2, decided_at')) { const r = rows.find((x) => x.id === String(p[0])); r.status = p[1]; r.decided_by = p[2]; return { rows: [] }; }
+      if (s.startsWith('UPDATE discord_verifications SET quiz_attempts')) { const r = rows.find((x) => x.id === p[0]); r.quiz_attempts = p[1]; return { rows: [] }; }
       if (s.startsWith('UPDATE discord_verifications SET flags')) { const r = rows.find((x) => x.id === String(p[0])); r.flags = JSON.parse(p[1]); return { rows: [] }; }
       if (s.startsWith('SELECT id, discord_user_id')) return { rows: rows.filter((x) => x.guild_id === p[0]) };
       throw new Error('unexpected query: ' + s.slice(0, 80));
@@ -65,7 +67,7 @@ function fakeRequest(method, { headers = {}, body = '' } = {}) {
   return req;
 }
 function fakeResponse() { const r = { status: 0, headers: null, body: '' }; r.writeHead = (s, h) => { r.status = s; r.headers = h; }; r.end = (b) => { r.body = String(b || ''); }; return r; }
-async function visit(gate, token, { method = 'POST', ip = '203.0.113.9', ua = 'Mozilla/5.0 (iPhone)', country = 'US', signals = { deviceId: 'dev-a', timezone: 'America/New_York', languages: 'en-US', screen: '390x844@3', webdriver: false } } = {}) {
+async function visit(gate, token, { method = 'POST', ip = '203.0.113.9', ua = 'Mozilla/5.0 (iPhone)', country = 'US', signals = { answers: RIGHT, deviceId: 'dev-a', timezone: 'America/New_York', languages: 'en-US', screen: '390x844@3', webdriver: false } } = {}) {
   const res = fakeResponse();
   const req = fakeRequest(method, { headers: { 'x-forwarded-for': ip + ', 10.0.0.2', 'user-agent': ua, 'cf-ipcountry': country } });
   await gate.handleHttp(req, res, '/verify/' + token, async () => ({ ok: true, rawBody: JSON.stringify(signals) }));
@@ -132,7 +134,7 @@ test('new accounts, Tor and automated browsers are held', async () => {
   const pool = fakePool(); const d = discordFake();
   const gate = createVerifyGate({ pool, botToken: 't', secret: 's', fetchImpl: d.fetchImpl, now: () => NOW });
   await gate.handleCommand(setupCmd());
-  await visit(gate, tokenFrom(await gate.handleComponent(verifyTap(memberOf(NEW_USER)))), { ip: '198.51.100.1', country: 'T1', ua: 'Mozilla/5.0 HeadlessChrome/120', signals: { deviceId: 'dev-new', webdriver: true } });
+  await visit(gate, tokenFrom(await gate.handleComponent(verifyTap(memberOf(NEW_USER)))), { ip: '198.51.100.1', country: 'T1', ua: 'Mozilla/5.0 HeadlessChrome/120', signals: { answers: RIGHT, deviceId: 'dev-new', webdriver: true } });
   assert.deepEqual(pool.rows[0].flags, ['account_new', 'tor', 'automation']);
   assert.equal(pool.rows[0].status, 'held');
 });
@@ -185,4 +187,41 @@ test('withVerifyGate routes its commands and buttons and passes the rest through
   const own = await combined.handleComponent(verifyTap(memberOf(OLD_USER)));
   assert.match(own.response.data.content, /not set up/);
   assert.deepEqual(seen, ['track-link', 'sml_link:c:1']);
+});
+
+test('the page asks five yes/no rules questions and still shows the full notice', async () => {
+  const gate = createVerifyGate({ pool: fakePool(), now: () => NOW });
+  const html = gate.pageHtml({ state: 'form', token: 't' });
+  assert.equal((html.match(/type="radio"/g) || []).length, 10);
+  assert.match(html, /your IP address, to spot repeat or anonymised accounts/);
+  assert.match(html, /scrambled fingerprint/);
+});
+
+test('wrong answers get two more tries without using up the link; the third miss is held for a moderator', async () => {
+  const pool = fakePool(); const d = discordFake();
+  const gate = createVerifyGate({ pool, botToken: 't', secret: 's', fetchImpl: d.fetchImpl, now: () => NOW });
+  await gate.handleCommand(setupCmd());
+  const token = tokenFrom(await gate.handleComponent(verifyTap(memberOf(OLD_USER))));
+  const wrong = { answers: ['no', 'yes', 'no', 'yes', 'no'], deviceId: 'dev-q' };
+  const first = JSON.parse((await visit(gate, token, { signals: wrong })).body);
+  assert.equal(first.ok, false);
+  assert.match(first.message, /2 tries left/);
+  assert.equal(pool.rows[0].status, 'pending');
+  const second = JSON.parse((await visit(gate, token, { signals: wrong })).body);
+  assert.match(second.message, /1 try left/);
+  const third = JSON.parse((await visit(gate, token, { signals: wrong })).body);
+  assert.equal(third.status, 'held');
+  assert.deepEqual(pool.rows[0].flags, ['quiz_failed']);
+  assert.equal(d.calls.filter((c) => c.method === 'PUT').length, 0, 'no role after failing the rules questions');
+});
+
+test('a missing answer counts as wrong; right answers after a miss still pass', async () => {
+  const pool = fakePool(); const d = discordFake();
+  const gate = createVerifyGate({ pool, botToken: 't', secret: 's', fetchImpl: d.fetchImpl, now: () => NOW });
+  await gate.handleCommand(setupCmd());
+  const token = tokenFrom(await gate.handleComponent(verifyTap(memberOf(OLD_USER))));
+  const miss = JSON.parse((await visit(gate, token, { signals: { answers: RIGHT.slice(0, 4), deviceId: 'dev-m' } })).body);
+  assert.equal(miss.ok, false);
+  const ok = JSON.parse((await visit(gate, token, { signals: { answers: RIGHT, deviceId: 'dev-m' } })).body);
+  assert.equal(ok.status, 'passed');
 });

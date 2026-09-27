@@ -38,7 +38,16 @@ const SNOWFLAKE = /^[0-9]{5,24}$/;
 const DISCORD_EPOCH = 1420070400000n;
 const TOKEN_TTL_MS = 20 * 60 * 1000;
 const RETENTION_DAYS = 180;
-const HOLD_FLAGS = new Set(['account_new', 'shared_device', 'shared_ip', 'tor', 'automation']);
+const HOLD_FLAGS = new Set(['account_new', 'shared_device', 'shared_ip', 'tor', 'automation', 'quiz_failed']);
+const MAX_QUIZ_ATTEMPTS = 3;
+/* Five yes/no questions about the server rules. `a` is the answer that follows the rules. */
+const RULES_QUIZ = Object.freeze([
+  { q: 'Will you keep promotions, referral links and self-advertising out of the server unless a moderator allows it?', a: 'yes' },
+  { q: 'Is it OK to DM members asking for money, crypto or account details?', a: 'no' },
+  { q: 'Is anything posted here financial advice you must follow?', a: 'no' },
+  { q: 'Will you treat other members with respect: no harassment, hate or spam?', a: 'yes' },
+  { q: 'Can you repost or sell the server\'s paid alerts and content somewhere else?', a: 'no' }
+]);
 const FLAG_TEXT = {
   account_new: 'Discord account is newer than the server minimum',
   shared_device: 'Same browser already verified another account here',
@@ -46,6 +55,7 @@ const FLAG_TEXT = {
   shared_network: 'Same network as another account (info only)',
   tor: 'Visit came through Tor',
   automation: 'Browser reports automation / headless',
+  quiz_failed: 'Answered the rules questions wrong three times',
   role_grant_failed: 'Bot could not give the role (move the bot role above it and give it Manage Roles)'
 };
 
@@ -110,7 +120,9 @@ function esc(value) { return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&
 function pageHtml({ state, token, guildName }) {
   const body = state === 'form'
     ? `<h1>Verify to post${guildName ? ' in ' + esc(guildName) : ''}</h1>
-<p>This one-time check keeps bots and duplicate accounts out of the community. When you press the button, StockMarketLoop checks:</p>
+<p>Answer these five questions about the server rules.</p>
+<ol class="quiz">${RULES_QUIZ.map((item, i) => `<li><p>${esc(item.q)}</p><label><input type="radio" name="q${i}" value="yes"> Yes</label><label><input type="radio" name="q${i}" value="no"> No</label></li>`).join('')}</ol>
+<p>This one-time check also keeps bots and duplicate accounts out of the community. When you press the button, StockMarketLoop checks:</p>
 <ul><li>your IP address, to spot repeat or anonymised accounts. It is kept only as a scrambled fingerprint, never the address itself;</li>
 <li>the approximate country your connection comes from;</li>
 <li>your browser and device type, time zone and language;</li>
@@ -123,12 +135,13 @@ function pageHtml({ state, token, guildName }) {
   const script = state === 'form' ? `<script>
 (function(){var b=document.getElementById('go'),m=document.getElementById('msg');
 function did(){try{var k='sml_device_id',v=localStorage.getItem(k);if(!v){v=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());localStorage.setItem(k,v)}return v}catch(e){return''}}
-b.onclick=function(){b.disabled=true;m.textContent='Checking…';
-var d={deviceId:did(),timezone:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),languages:(navigator.languages||[navigator.language]).join(','),screen:screen.width+'x'+screen.height+'@'+(window.devicePixelRatio||1),webdriver:!!navigator.webdriver,touch:('ontouchstart' in window)};
+b.onclick=function(){var answers=[];for(var i=0;i<${RULES_QUIZ.length};i++){var c=document.querySelector('input[name="q'+i+'"]:checked');if(!c){m.textContent='Answer all five questions first.';return}answers.push(c.value)}
+b.disabled=true;m.textContent='Checking…';
+var d={answers:answers,deviceId:did(),timezone:(Intl.DateTimeFormat().resolvedOptions().timeZone||''),languages:(navigator.languages||[navigator.language]).join(','),screen:screen.width+'x'+screen.height+'@'+(window.devicePixelRatio||1),webdriver:!!navigator.webdriver,touch:('ontouchstart' in window)};
 fetch(location.pathname,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(j){
 if(j&&j.status==='passed'){document.querySelector('main').innerHTML='<h1>You are verified ✓</h1><p>Go back to Discord. You can post now.</p>'}
 else if(j&&j.status==='held'){document.querySelector('main').innerHTML='<h1>Almost there</h1><p>A moderator will review your verification shortly. You can close this page.</p>'}
-else{m.textContent=(j&&j.message)||'Something went wrong. Go back to Discord and press Verify again.';b.disabled=false}
+else{m.textContent=(j&&j.message)||'Something went wrong. Go back to Discord and press Verify again.';b.disabled=!!(j&&j.expired)}
 }).catch(function(){m.textContent='Could not reach the server. Try again.';b.disabled=false})}})();
 </script>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
@@ -136,7 +149,7 @@ else{m.textContent=(j&&j.message)||'Something went wrong. Go back to Discord and
 :root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#070b10;color:#e6edf3;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;padding:16px;box-sizing:border-box}
 main{box-sizing:border-box;width:min(520px,100%);background:#0d1720;border:1px solid #1f3942;border-radius:14px;padding:22px}h1{font-size:1.3rem;margin:0 0 10px}ul{padding-left:20px}li{margin:6px 0;color:#c7d5dc}
 p{color:#c7d5dc}.small{font-size:.85rem;color:#8fa5b1}button{width:100%;margin-top:10px;padding:13px;border:0;border-radius:10px;background:#19c37d;color:#04160d;font-weight:800;font-size:1rem;cursor:pointer}button:disabled{opacity:.6}
-#msg{min-height:1.4em;color:#ffce7a}</style></head><body><main data-token="${esc(token || '')}">${body}</main>${script}</body></html>`;
+#msg{min-height:1.4em;color:#ffce7a}.quiz{padding-left:22px}.quiz li{margin:12px 0}.quiz p{margin:0 0 6px;color:#e6edf3}.quiz label{display:inline-flex;align-items:center;gap:6px;margin-right:18px;padding:6px 0;color:#c7d5dc;cursor:pointer}.quiz input{width:18px;height:18px}</style></head><body><main data-token="${esc(token || '')}">${body}</main>${script}</body></html>`;
 }
 
 function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https://sml-platform-api.onrender.com', fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
@@ -342,6 +355,7 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
     else if (await other('net_hash', netHash, 30)) flags.push('shared_network');
     if (countryRaw === 'T1') flags.push('tor');
     if ((signals && signals.webdriver === true) || /HeadlessChrome|PhantomJS|puppeteer|playwright/i.test(ua)) flags.push('automation');
+    if (signals && signals.__quizFailed) flags.push('quiz_failed');
 
     let status = (cfg && cfg.mode === 'review') || flags.some((f) => HOLD_FLAGS.has(f)) ? 'held' : 'passed';
     if (status === 'passed' && cfg) {
@@ -376,10 +390,23 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
       return true;
     }
     if (request.method === 'POST') {
-      if (!live) { send(410, 'application/json', JSON.stringify({ ok: false, status: row ? row.status : 'expired', message: 'This link has expired. Go back to Discord and press Verify again.' })); return true; }
+      if (!live) { send(410, 'application/json', JSON.stringify({ ok: false, expired: true, status: row ? row.status : 'expired', message: 'This link has expired. Go back to Discord and press Verify again.' })); return true; }
       const body = await readBody(request);
       let signals = {};
       try { signals = body && body.ok ? JSON.parse(body.rawBody || '{}') : {}; } catch (_) { signals = {}; }
+      if (!signals || typeof signals !== 'object') signals = {};
+      const answers = Array.isArray(signals.answers) ? signals.answers.map((a) => String(a).toLowerCase()) : [];
+      const correct = answers.length === RULES_QUIZ.length && RULES_QUIZ.every((item, i) => answers[i] === item.a);
+      signals.__quizFailed = false;
+      if (!correct) {
+        const attempts = Number(row.quiz_attempts || 0) + 1;
+        await pool.query('UPDATE discord_verifications SET quiz_attempts=$2 WHERE id=$1', [row.id, attempts]);
+        if (attempts < MAX_QUIZ_ATTEMPTS) {
+          send(200, 'application/json', JSON.stringify({ ok: false, quiz: true, message: `Some answers don't match the server rules. Read the rules channel and try again (${MAX_QUIZ_ATTEMPTS - attempts} ${MAX_QUIZ_ATTEMPTS - attempts === 1 ? 'try' : 'tries'} left).` }));
+          return true;
+        }
+        signals.__quizFailed = true;
+      }
       try {
         const status = await submit(row, request, signals && typeof signals === 'object' ? signals : {});
         send(200, 'application/json', JSON.stringify({ ok: true, status }));
@@ -426,4 +453,4 @@ function withVerifyGate(commands, gate) {
   };
 }
 
-module.exports = { createVerifyGate, withVerifyGate, VERIFY_COMMAND_DEFINITIONS, VERIFY_COMMAND_NAMES, accountCreatedAt, networkOf, clientIp };
+module.exports = { RULES_QUIZ, createVerifyGate, withVerifyGate, VERIFY_COMMAND_DEFINITIONS, VERIFY_COMMAND_NAMES, accountCreatedAt, networkOf, clientIp };
