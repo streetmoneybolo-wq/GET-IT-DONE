@@ -12,103 +12,106 @@ export const approvedRecruitmentSubreddits = [
   'torontoJobs',
 ];
 
-export const DEFAULT_APPLY_URL = 'https://discord.gg/cxMvYdm4a2';
-export const DEFAULT_MAX_DAILY_USD = 50;
+export const DEFAULT_APPLY_URL = 'https://stockmarketloop.com/go/dsp-jmuy/';
 export const REPOST_DAYS = 7;
 
 export const cleanSubreddit = (name) => String(name || '').replace(/^\s*(https?:\/\/)?(www\.)?(reddit\.com\/)?r\//i, '').replace(/[/\s].*$/, '').replace(/[^A-Za-z0-9_]/g, '');
 
+/* job boards that expect the [HIRING] tag at the start of the title */
+const TAGGED = /^(hiring|forhire|freelance_forhire|ForHireFreelance|HireaWriter|B2BForHire|hiring_recruiting|RedditJobBoard|RecruitmentHub|HiringPH|hiringPhilippinesPH|HiringAustralia|HiringPAK|VAjobsPH|chatterjobs|RemoteJobs|torontoJobs)$/i;
+
 const TITLES = [
-  (pay) => `[HIRING] Remote Social Media Assistant / Content Clipper — up to $${pay}/day (PayPal)`,
-  (pay) => `[HIRING] Content Clippers & Social Media Assistants — Remote, Flexible Hours, up to $${pay}/day`,
-  (pay) => `[HIRING] Part-Time Remote Content Clipper — Paid per Approved Task, up to $${pay}/day via PayPal`,
-  (pay) => `[HIRING] Social Media Assistant (Remote, Phone-Friendly) — up to $${pay}/day`,
-  (pay) => `[HIRING] Short-Form Video Clippers Wanted — Remote, Paid Daily Tasks, up to $${pay}/day`,
-  (pay) => `[HIRING] Remote Social Media Assistants — Clip, Post & Report, up to $${pay}/day (PayPal)`,
+  ['🚀', 'Hiring Remote Social Media Assistants — Part-Time, Flexible, Paid Per Task 💰'],
+  ['💼', 'Now Hiring: Social Media Assistants & Content Clippers — Remote, Paid Per Task via PayPal'],
+  ['📱', 'Remote Social Media Assistant Needed — Flexible Hours, Per-Task PayPal Pay'],
+  ['✂️', 'Hiring Content Clippers & Post Sharers — Work From Your Phone, Paid Per Task'],
+  ['🔥', 'Part-Time Remote Work: Share Posts & Clip Short Content — Paid Per Task'],
+  ['💵', 'Hiring Social Media Helpers — Remote, No Experience Needed, PayPal Per Task'],
+  ['⚡', 'Flexible Remote Gig: Social Media Assistant (Share, Clip, Distribute) — Paid Per Task'],
+  ['🌎', 'Remote Social Media Assistants Wanted — Part-Time, Paid Per Task via PayPal'],
 ];
 
 const OPENERS = [
-  'Daily Social Payouts is hiring remote social media assistants and content clippers to help approved creators and brands reach more people.',
-  'We are growing our remote team and looking for reliable people who are already comfortable on social media.',
-  'Looking for flexible side work you can do from your phone? We are hiring social media assistants and short-form content clippers.',
-  'Daily Social Payouts runs structured, paid social media tasks, and we are adding new assistants and clippers to the team.',
-  'If you know your way around TikTok, Reels, Shorts or X, this is paid remote work that fits around your schedule.',
+  (p) => `We’re looking for people who can help share posts and clip short content across platforms like ${p}.`,
+  (p) => `We need a few more helpers to share posts and clip short content on ${p}.`,
+  (p) => `Our team is growing and we’re adding people who can share posts and clip short content across ${p}.`,
+  (p) => `Looking for reliable people to help share posts and cut short clips for ${p}.`,
+  (p) => `We’re hiring remote helpers to share posts and clip short content across ${p}.`,
+];
+const PLATFORMS = ['Reddit', 'X', 'Stocktwits', 'Threads', 'Facebook', 'Bluesky'];
+
+const EASY = [
+  'If you’re already active on social media, this is extremely simple work.',
+  'If you already spend time on social media, you already know how to do this.',
+  'If you use social media every day, this is easy work that fits around your day.',
+  'No special skills needed. If you can post and copy a link, you can do this.',
 ];
 
+const DO_HEADS = ['What you’ll do', 'The work', 'Your tasks', 'What the job looks like'];
 const DUTIES = [
-  'Clip short videos (15–60s) from approved long-form content',
-  'Post approved clips and posts on your own accounts (TikTok, YouTube Shorts, Instagram Reels, X, Threads, Facebook and more)',
-  'Write short captions and hooks for approved clips',
-  'Follow each platform’s rules and label paid posts (e.g. #ad) where required',
-  'Send the public link back so your task can be reviewed and credited',
-  'Pick up new tasks each day from the team channel',
+  ['📌 Share posts', '📌 Share ready-made posts', '📌 Post approved updates'],
+  ['✂️ Clip short content', '✂️ Cut short clips from longer content', '✂️ Clip short videos and highlights'],
+  ['🔄 Help distribute updates across multiple platforms', '🔄 Spread updates across several platforms', '🔄 Help get updates out on multiple platforms'],
 ];
 
-const PAY = [
-  (pay) => `Up to **$${pay}/day**, based on approved, completed tasks. Paid through **PayPal**.`,
-  (pay) => `Paid per approved task, **up to $${pay}/day**. Payouts go out through **PayPal**.`,
-  (pay) => `Earn **up to $${pay}/day** for approved work, paid via **PayPal**. More platforms you cover = more tasks available.`,
-];
-
-const PAY_NOTES = [
-  'Income is not guaranteed: it depends on the tasks available and on each task being approved.',
-  'No guaranteed income. Pay depends on task availability and approved proof of each task.',
-];
-
-const REQUIREMENTS = [
-  'A phone or computer',
-  'A PayPal account',
-  'At least one active social media account (more platforms = more tasks)',
-  'About 30–60 minutes a day, on your own schedule',
-  'Basic English and the ability to follow simple instructions',
+const GET_HEADS = ['What you get', 'Why join', 'The perks', 'What’s in it for you'];
+const BENEFITS = [
+  ['💵 Per-task pay via PayPal', '💵 Paid per task through PayPal', '💵 PayPal payouts for every approved task'],
+  ['⏱️ Verified within 72 hours', '⏱️ Tasks verified within 72 hours', '⏱️ Work checked and verified within 72 hours'],
+  ['📱 No experience needed — just a phone and a few minutes a day', '📱 Just a phone and a few minutes a day, no experience needed', '📱 Beginner-friendly — all you need is a phone'],
+  ['⚡ Active helpers can earn consistent daily payouts depending on task volume', '⚡ The more active you are, the more you can earn (depends on task volume)', '⚡ Steady daily payouts for active helpers, depending on how many tasks are available'],
+  ['🕒 Work on your own schedule', '🕒 Flexible hours — pick up tasks when it suits you'],
 ];
 
 const CTAS = [
-  (url) => `**How to apply:** join our onboarding server and submit the social accounts you can work on: ${url}`,
-  (url) => `**Apply here:** ${url} — join, open the application channel, and send your platform links for review.`,
-  (url) => `**Interested?** Apply through our onboarding server: ${url} (applications are reviewed by the team).`,
+  (u) => `If you want to check out the details or get onboarded, everything is explained in the server:\n👉 ${u} 👈`,
+  (u) => `Full details and onboarding are in the server:\n👉 ${u} 👈`,
+  (u) => `Want in? Everything you need to get started is in the server:\n👉 ${u} 👈`,
+  (u) => `Check the details and get set up here:\n👉 ${u} 👈`,
 ];
 
 function regionLine(sub) {
-  if (/PH|Philippines|BusinessPH/i.test(sub)) return 'Open to applicants in the Philippines — fully remote, PayPal payouts.';
-  if (/Japan/i.test(sub)) return 'Fully remote; applicants in Japan are welcome (tasks and communication in English).';
-  if (/PAK/i.test(sub)) return 'Open to applicants in Pakistan — fully remote, PayPal payouts where PayPal is available to you.';
-  if (/Australia/i.test(sub)) return 'Open to applicants in Australia — fully remote, flexible hours.';
-  if (/toronto/i.test(sub)) return 'Remote role; Toronto and Canada-based applicants are welcome.';
-  if (/Writer/i.test(sub)) return 'Good fit for writers: a big part of the role is short captions and hooks.';
-  if (/forhire|freelance|B2B/i.test(sub)) return 'Independent contractor role — freelancers welcome.';
-  if (/Young/i.test(sub)) return 'Open to applicants 18+ only.';
-  if (/side/i.test(sub)) return 'Flexible side work, not a full-time job.';
-  return 'Fully remote, flexible hours.';
+  if (/PH|Philippines|BusinessPH/i.test(sub)) return '🇵🇭 Open to applicants in the Philippines — fully remote.';
+  if (/Japan/i.test(sub)) return '🇯🇵 Remote; applicants in Japan welcome (tasks in English).';
+  if (/PAK/i.test(sub)) return '🇵🇰 Open to applicants in Pakistan — fully remote.';
+  if (/Australia/i.test(sub)) return '🇦🇺 Open to applicants in Australia — fully remote.';
+  if (/toronto/i.test(sub)) return '🇨🇦 Remote — Toronto and Canada applicants welcome.';
+  if (/Young/i.test(sub)) return '18+ only.';
+  return '';
 }
 
-/* A small seeded generator, so the same variant number always gives the same post (tests, re-generation). */
-function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+/* A small seeded generator, so a variant number always gives the same post (tests, the duplicate check). */
+function rng(seed) {
+  // mix the seed first (murmur3 finaliser), so neighbouring variant numbers give unrelated posts
+  let s = seed >>> 0; s ^= s >>> 16; s = Math.imul(s, 0x85ebca6b) >>> 0; s ^= s >>> 13; s = Math.imul(s, 0xc2b2ae35) >>> 0; s ^= s >>> 16; s = s || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+const seedOf = (sub, variant) => { let h = 2166136261 ^ Number(variant); for (const ch of sub) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return Math.imul(h ^ (Number(variant) * 2654435761 >>> 0), 2246822519) >>> 0; };
 const pickOne = (list, r) => list[Math.floor(r() * list.length)];
-function pickSome(list, n, r) { const a = list.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); }
+function shuffle(list, r) { const a = list.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-export function generateRecruitmentPost(subreddit, variant = 0, { applyUrl = DEFAULT_APPLY_URL, maxDailyUsd = DEFAULT_MAX_DAILY_USD } = {}) {
+export function generateRecruitmentPost(subreddit, variant = 0, { applyUrl = DEFAULT_APPLY_URL } = {}) {
   const sub = cleanSubreddit(subreddit);
-  const r = rng(Number(variant) * 2654435761 + sub.length * 97 + 17);
-  const pay = Number(maxDailyUsd) > 0 ? Math.round(Number(maxDailyUsd)) : DEFAULT_MAX_DAILY_USD;
-  const title = pickOne(TITLES, r)(pay).slice(0, 300);
-  // the "label paid posts" and "send the link back" duties are always in; one of the optional ones rotates
-  const duties = [DUTIES[0], DUTIES[1], ...pickSome([DUTIES[2], DUTIES[5]], 1, r), DUTIES[3], DUTIES[4]];
+  const r = rng(seedOf(sub, variant));
+  const [emoji, text] = pickOne(TITLES, r);
+  const title = (TAGGED.test(sub) ? `[HIRING] ${text}` : `${emoji} ${text}`).slice(0, 300);
+  const platforms = shuffle(PLATFORMS, r);
+  const platformText = platforms.slice(0, -1).join(', ') + ', and ' + platforms[platforms.length - 1];
+  const benefits = shuffle(BENEFITS.slice(0, 3), r).concat(shuffle(BENEFITS.slice(3), r).slice(0, 1 + Math.floor(r() * 2)));
+  const region = regionLine(sub);
   const body = [
-    pickOne(OPENERS, r),
+    pickOne(OPENERS, r)(platformText),
     '',
-    '**Role:** Social Media Assistant / Content Clipper · Remote · Part-time',
-    `**Where:** ${regionLine(sub)}`,
+    pickOne(EASY, r),
+    ...(region ? ['', region] : []),
     '',
-    '**What you will do**',
-    ...duties.map((d) => `- ${d}`),
+    `**${pickOne(DO_HEADS, r)}**`,
     '',
-    '**Pay**',
-    pickOne(PAY, r)(pay),
-    pickOne(PAY_NOTES, r),
+    ...shuffle(DUTIES, r).map((d) => `* ${pickOne(d, r)}`),
     '',
-    '**You will need**',
-    ...pickSome(REQUIREMENTS, 4, r).map((d) => `- ${d}`),
+    `**${pickOne(GET_HEADS, r)}**`,
+    '',
+    ...benefits.map((b) => `* ${pickOne(b, r)}`),
     '',
     pickOne(CTAS, r)(applyUrl),
   ].join('\n');
@@ -117,15 +120,21 @@ export function generateRecruitmentPost(subreddit, variant = 0, { applyUrl = DEF
     title,
     body,
     rulesUrl: `https://www.reddit.com/r/${encodeURIComponent(sub)}/about/rules/`,
-    composerUrl: recruitmentComposerTitleOnlyUrl(sub, title),
+    composerUrl: redditComposerUrl(sub, title, body),
   };
 }
 
-/* Discord link buttons take at most 512 characters, so the composer opens with the subreddit and title filled and a paste reminder as the body. */
-export function recruitmentComposerTitleOnlyUrl(subreddit, title) {
-  const sub = cleanSubreddit(subreddit);
-  const url = `https://www.reddit.com/r/${encodeURIComponent(sub)}/submit?type=TEXT&title=${encodeURIComponent(title)}&text=${encodeURIComponent('PASTE THE POST BODY YOU COPIED FROM DISCORD HERE')}`;
-  return url.length <= 512 ? url : `https://www.reddit.com/r/${encodeURIComponent(sub)}/submit?type=TEXT`;
+/* Reddit's composer with the subreddit, title AND body filled in. */
+export function redditComposerUrl(subreddit, title, body) {
+  const sub = encodeURIComponent(cleanSubreddit(subreddit));
+  return `https://www.reddit.com/r/${sub}/submit?selftext=true&title=${encodeURIComponent(title)}&text=${encodeURIComponent(body)}`;
+}
+
+/* A short fingerprint of a post, so the bot can make sure it never hands out the same text twice. */
+export function postFingerprint(post) {
+  let h = 2166136261;
+  for (const ch of `${post.title}\n${post.body}`) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return h.toString(36);
 }
 
 /* The subreddit for this click: never one this member used in the last REPOST_DAYS, and among the rest the one the team used longest ago.

@@ -4,9 +4,11 @@
 import path from 'node:path';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { mutateJson, paths, readSettings } from './storage.js';
-import { approvedRecruitmentSubreddits, cleanSubreddit, DEFAULT_APPLY_URL, DEFAULT_MAX_DAILY_USD, generateRecruitmentPost, nextOpenAt, pickSubreddit, REPOST_DAYS } from './recruitmentPosts.js';
+import { approvedRecruitmentSubreddits, cleanSubreddit, DEFAULT_APPLY_URL, generateRecruitmentPost, nextOpenAt, pickSubreddit, postFingerprint, REPOST_DAYS } from './recruitmentPosts.js';
 
 export const RECRUIT_BUTTON_ID = 'dsp-recruit-random';
+export const COPY_BUTTON_PREFIX = 'dsp-recruit-copy:';
+const SEEN_MAX = 5000;
 export const DEFAULT_RECRUITMENT_CHANNEL_ID = '1551968149132279908';
 const rotationFile = path.join(path.dirname(paths.settingsOverrides), 'recruitment-rotation.json');
 
@@ -19,7 +21,6 @@ export function recruitmentConfig(settings = {}) {
     channelId: String(process.env.RECRUITMENT_CHANNEL_ID || cfg.channelId || DEFAULT_RECRUITMENT_CHANNEL_ID).trim(),
     subreddits: list.filter((s) => (seen.has(s.toLowerCase()) ? false : seen.add(s.toLowerCase()))),
     applyUrl: /^https:\/\//.test(String(cfg.applyUrl || '')) ? String(cfg.applyUrl) : DEFAULT_APPLY_URL,
-    maxDailyUsd: Number(cfg.maxDailyUsd) > 0 ? Number(cfg.maxDailyUsd) : DEFAULT_MAX_DAILY_USD,
   };
 }
 
@@ -30,10 +31,11 @@ export function panelMessage(cfg) {
     .setDescription([
       'Help the team grow and get the post written for you.',
       '',
-      '**1.** Tap **Generate Recruitment Post**. You get a fresh hiring post and the subreddit it is for.',
-      '**2.** Copy the post body (long-press the grey box on mobile).',
-      '**3.** Tap **Open Reddit Composer**. The subreddit and title are already filled in.',
-      '**4.** Paste the body over the placeholder, check the subreddit rules and flair, then post.',
+      '**1.** Tap **Generate Recruitment Post**. You get your own hiring post and a random subreddit from the list.',
+      '**2.** Tap the **Open r/… on Reddit** link. The subreddit, title and body are already filled in.',
+      '**3.** Check the subreddit rules and any required flair, then post.',
+      '',
+      'If Reddit opens without the text (some phone apps drop it), tap **Copy Text** and paste it in.',
       '',
       `Each post is worded differently, and you get a different subreddit each time. You can post to each subreddit once every ${REPOST_DAYS} days.`,
       '',
@@ -70,8 +72,8 @@ export async function ensureRecruitmentPanel(client) {
 /* Picks the subreddit and records the choice in one locked write, so two quick clicks never get the same subreddit. */
 export async function claimSubreddit(cfg, userId, now = Date.now()) {
   let result = null;
-  await mutateJson(rotationFile, { lastBySub: {}, byUser: {}, count: 0 }, (state) => {
-    state.lastBySub = state.lastBySub || {}; state.byUser = state.byUser || {}; state.count = Number(state.count) || 0;
+  await mutateJson(rotationFile, { lastBySub: {}, byUser: {}, count: 0, seen: [] }, (state) => {
+    state.lastBySub = state.lastBySub || {}; state.byUser = state.byUser || {}; state.count = Number(state.count) || 0; state.seen = Array.isArray(state.seen) ? state.seen : [];
     const sub = pickSubreddit(cfg.subreddits, state, userId, now);
     if (!sub) { result = { sub: null, retryAt: nextOpenAt(state, userId) }; return state; }
     const key = sub.toLowerCase();
@@ -81,30 +83,51 @@ export async function claimSubreddit(cfg, userId, now = Date.now()) {
     state.byUser[userId][key] = now;
     // forget week-old entries so the file stays small
     for (const [u, subs] of Object.entries(state.byUser)) { for (const [k, t] of Object.entries(subs)) if (now - Number(t) > REPOST_DAYS * 86_400_000) delete subs[k]; if (!Object.keys(subs).length) delete state.byUser[u]; }
-    result = { sub, variant: state.count };
+    // every post handed out is different: skip any wording already given to someone
+    const seen = new Set(state.seen);
+    let variant = state.count, post = generateRecruitmentPost(sub, variant, cfg);
+    for (let tries = 0; seen.has(postFingerprint(post)) && tries < 50; tries++) { variant += 7919; post = generateRecruitmentPost(sub, variant, cfg); }
+    state.seen.push(postFingerprint(post)); if (state.seen.length > SEEN_MAX) state.seen.splice(0, state.seen.length - SEEN_MAX);
+    result = { sub, variant, post };
     return state;
   });
   return result;
 }
 
-export function postReply(post) {
-  const head = [`# 📝 Your hiring post for r/${post.subreddit}`, `**Title (already filled in on Reddit):** ${post.title}`, '', '**Copy this body:**'];
-  const tail = ['', `Then tap **Open r/${post.subreddit} Composer**, paste the body, check the rules and any required flair, and post.`];
-  const content = [...head, '```text', post.body, '```', ...tail].join('\n');
+/* The private reply: a link that opens Reddit with the subreddit, title and body filled in, the post itself as a preview, and buttons for the
+   subreddit rules and a copy-ready version. The link sits in the message text because Discord buttons only hold 512-character links. */
+export function postReply(post, variant = 0) {
+  const link = `## 👉 [Open r/${post.subreddit} on Reddit — title and body filled in](${post.composerUrl})`;
+  const content = [`# 📝 Your recruitment post is ready: r/${post.subreddit}`, link, 'Check the subreddit rules and flair before you post.'].join('\n');
+  const embed = new EmbedBuilder().setColor(0x00c47d).setTitle(post.title.slice(0, 256)).setDescription(post.body.slice(0, 4000)).setFooter({ text: `Preview · r/${post.subreddit}` });
   return {
-    content: content.length <= 2000 ? content : [...head, '```text', post.body.slice(0, 2000 - head.join('\n').length - 40), '```'].join('\n'),
+    content: content.length <= 2000 ? content : `# 📝 Your recruitment post is ready: r/${post.subreddit}\nTap **Copy Text**, then open Reddit and paste it in.`,
+    embeds: [embed],
     components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setLabel(`Open r/${post.subreddit} Composer`).setStyle(ButtonStyle.Link).setURL(post.composerUrl),
-      new ButtonBuilder().setLabel('Subreddit Rules').setStyle(ButtonStyle.Link).setURL(post.rulesUrl),
+      new ButtonBuilder().setCustomId(`${COPY_BUTTON_PREFIX}${post.subreddit}:${variant}`).setLabel('Copy Text').setEmoji('📋').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setLabel(`r/${post.subreddit} Rules`).setStyle(ButtonStyle.Link).setURL(post.rulesUrl),
     )],
     ephemeral: true,
     allowedMentions: { parse: [] },
   };
 }
 
+/* Copy-ready title and body, for when a phone's Reddit app opens without the filled-in text. */
+export function copyReply(post) {
+  const content = ['**Title:**', '```text', post.title, '```', '**Body:**', '```text', post.body, '```'].join('\n');
+  return { content: content.slice(0, 2000), ephemeral: true, allowedMentions: { parse: [] } };
+}
+
 /* The button handler. Returns false when the interaction is not the recruitment button. */
 export async function handleRecruitmentButton(interaction) {
-  if (!(interaction.isButton() && interaction.customId === RECRUIT_BUTTON_ID)) return false;
+  if (!interaction.isButton()) return false;
+  if (interaction.customId.startsWith(COPY_BUTTON_PREFIX)) {
+    const [sub, variant] = interaction.customId.slice(COPY_BUTTON_PREFIX.length).split(':');
+    const cfg = recruitmentConfig(await readSettings());
+    await interaction.reply(copyReply(generateRecruitmentPost(sub, Number(variant) || 0, cfg)));
+    return true;
+  }
+  if (interaction.customId !== RECRUIT_BUTTON_ID) return false;
   const cfg = recruitmentConfig(await readSettings());
   if (!cfg.enabled || !cfg.subreddits.length) { await interaction.reply({ content: 'Recruitment posts are switched off right now.', ephemeral: true }); return true; }
   const claim = await claimSubreddit(cfg, interaction.user.id);
@@ -113,6 +136,6 @@ export async function handleRecruitmentButton(interaction) {
     await interaction.reply({ content: `You have posted to all ${cfg.subreddits.length} subreddits in the last ${REPOST_DAYS} days — nice work. Your next one opens ${when}.`, ephemeral: true });
     return true;
   }
-  await interaction.reply(postReply(generateRecruitmentPost(claim.sub, claim.variant, cfg)));
+  await interaction.reply(postReply(claim.post, claim.variant));
   return true;
 }
