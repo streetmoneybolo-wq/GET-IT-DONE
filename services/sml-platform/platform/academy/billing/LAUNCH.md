@@ -199,7 +199,8 @@ Placeholders below: `<STUDENT>` is the `Academy Student` role id,
 - [ ] Create a restricted key (`rk_live_` and a `rk_test_` twin).
   - Write: Customers, Checkout Sessions, Customer portal, **Subscriptions**
     (needed for the daily 3-charge cap, the 3-day stop of Free Trial Access
-    and for cancelling a plan when Lifetime is bought), PaymentIntents.
+    and for cancelling a plan when Lifetime is bought), PaymentIntents,
+    **Coupons** (the win-back offer's $1 first month).
   - Read: Invoices, Charges, Disputes, Prices, Products.
   - Optional read: Account, Webhook Endpoints.
   - Test key only: Test clocks write.
@@ -643,3 +644,31 @@ Academy)" with their Stripe product names:
      (`connect-adapter.js`), and add a `billingDead` counter in `worker.js`.
    - Deliver the Lifetime roles in the new server `1547568823920623658` if the
      terms name it.
+
+
+## Win-back offer (former $10 monthly members, 2026-09-27)
+
+Former "Get Your Easy Monthly Seat" members get, once per Discord account:
+the membership at $1 for the first month, then $15/month (plus 7 days of
+MEM Academy free), or the membership + Academy at $1 for the first month,
+then $25/month. Both stay at $15 / $25 while they keep the plan (owner
+decision: no increase after the first year).
+
+- [ ] In MEM Stripe create two monthly prices on products with metadata
+      `sml_kind=mem_academy`: "Welcome Back Membership" $15.00/month and
+      "Welcome Back Membership + Academy" $25.00/month.
+- [ ] Add them to `SML_ACADEMY_BILLING_PRICES_JSON` (Premium role shown; use
+      the role the $10 seat gave):
+      `"price_WBMEM":{"package":"monthly","academy":false,"roles":["939031140679970867"],"winback":true,"introCents":100,"bonusAcademyDays":7}`
+      `"price_WBBOTH":{"package":"monthly","roles":["939031140679970867"],"winback":true,"introCents":100}`
+- [ ] `SML_ACADEMY_BILLING_WINBACK_IDS`: the Discord ids of the former
+      members (commas, spaces or new lines). Only they see the "Welcome back"
+      section on /buy; checkout refuses everyone else.
+- [ ] The restricted key needs Coupons write. The engine creates one coupon
+      per price (`mem_winback_<price>_<amount>_<intro>`, amount off once).
+- [ ] Link for email (Substack, Loop Letter):
+      `https://making-easy-money-academy.onrender.com/v1/academy/billing/start?purpose=buy`
+      Buyers sign in with Discord; eligibility is by Discord id, not email.
+
+Discord-wide 7-day Academy free trial: add `"trialDays":7` to the Academy
+monthly price entry (one free trial per Discord account).

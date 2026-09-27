@@ -118,7 +118,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * this member (null: none); cancelAfterDays = the price's auto-stop (default
  * 3 on a daily price).
  */
-function renewalLine(pkg, amount, currency, { delayed = false, label = null, academy = true, trial = null, cancelAfterDays } = {}) {
+function renewalLine(pkg, amount, currency, { delayed = false, label = null, academy = true, trial = null, cancelAfterDays, intro = null } = {}) {
+  if (intro && isRecurring(pkg) && Number.isInteger(intro.cents)) {
+    const bonus = Number.isInteger(intro.bonusAcademyDays) ? ` Includes ${intro.bonusAcademyDays} days of MEM Academy at no extra charge.` : '';
+    return `${formatAmount(intro.cents, currency)} today for your first ${intervalPhrase(pkg)}, then renews every ${intervalPhrase(pkg)} at ${formatAmount(amount, currency)} until you cancel.${bonus} Welcome-back price, once per Discord account. Cancel any time in Manage billing.`;
+  }
   if (!isRecurring(pkg)) {
     const base = academy
       ? 'One-time payment for MEM Lifetime. Final sale as described in the MEM Academy Terms.'
@@ -143,7 +147,7 @@ function renewalLine(pkg, amount, currency, { delayed = false, label = null, aca
 /** PURE and exact; see the header for every rule it encodes. trial =
  *  { days, noCard } when this member is offered the price's free trial. */
 function buildCheckoutParams({ pkg, priceId, amount, currency = 'usd', customerId, discordId, intent, urls, flags, nowMs, label = null, academy = true,
-  trial = null, cancelAfterDays }) {
+  trial = null, cancelAfterDays, winback = null }) {
   const metadata = {
     sml_kind: shapes.ACADEMY_KIND,
     mem_academy_v: '1',
@@ -169,6 +173,17 @@ function buildCheckoutParams({ pkg, priceId, amount, currency = 'usd', customerI
     throw Object.assign(new Error(`trial_not_allowed: ${pkg}`), { code: 'trial_not_allowed' });
   }
   if (trial) metadata.mem_academy_trial_days = String(trial.days);
+  /* winback = { couponId, cents, bonusAcademyDays } (couponId/cents null
+     without an intro price): marks the subscription as this account's one
+     win-back (checked on every later offer) and carries the bonus days. */
+  if (winback) {
+    if (!isRecurring(pkg) || trial) throw Object.assign(new Error(`winback_not_allowed: ${pkg}`), { code: 'winback_not_allowed' });
+    metadata.mem_academy_winback = '1';
+    if (Number.isInteger(winback.cents)) metadata.mem_academy_intro_cents = String(winback.cents);
+    if (Number.isInteger(winback.bonusAcademyDays)) metadata.mem_academy_bonus_days = String(winback.bonusAcademyDays);
+  }
+  const intro = winback && winback.couponId && Number.isInteger(winback.cents)
+    ? { cents: winback.cents, bonusAcademyDays: winback.bonusAcademyDays } : null;
   const params = {
     mode: isRecurring(pkg) ? 'subscription' : 'payment',
     customer: customerId,
@@ -177,11 +192,17 @@ function buildCheckoutParams({ pkg, priceId, amount, currency = 'usd', customerI
     metadata: { ...metadata },
     payment_method_types: [...flags.paymentMethods],
     allow_promotion_codes: false,
-    custom_text: { submit: { message: renewalLine(pkg, amount, currency, { delayed, label, academy, trial, cancelAfterDays }).slice(0, 1200) } },
+    custom_text: { submit: { message: renewalLine(pkg, amount, currency, { delayed, label, academy, trial, cancelAfterDays, intro }).slice(0, 1200) } },
     expires_at: Math.floor(nowMs / 1000) + SESSION_TTL_SECONDS,
     success_url: `${urls.publicUrl}/v1/academy/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${urls.publicUrl}/v1/academy/billing/buy?package=${encodeURIComponent(pkg)}`
   };
+  /* The intro month is a one-time coupon on the price's product. Stripe
+     refuses allow_promotion_codes next to discounts, and none are allowed. */
+  if (intro) {
+    delete params.allow_promotion_codes;
+    params.discounts = [{ coupon: winback.couponId }];
+  }
   if (isRecurring(pkg)) {
     params.subscription_data = { metadata: { ...metadata } };
     if (trial) {
@@ -314,8 +335,12 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
       trialUsed = history !== 'none';
       trialUnknown = history === 'failed';
     }
+    /* Win-back: a listed former member whose Customer never had a win-back
+       subscription (any status). */
+    const winbackUsed = Boolean(snapshot.winbackUsed);
+    const winbackEligible = Boolean(config.winbackIds && config.winbackIds.has(String(discordId))) && !winbackUsed;
     return { member, snapshot, access, lifetime, lifetimeSuspended, lifetimePending, ownedExternal, blockingLines, trialUsed, trialUnknown,
-      recurring: blockingLines.has('academy'), entitled: access.roles.size > 0 };
+      winbackUsed, winbackEligible, recurring: blockingLines.has('academy'), entitled: access.roles.size > 0 };
   }
 
   async function transitionIntent(client, { id = null, sessionId = null, status, actor }) {
@@ -372,6 +397,30 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
   }
 
   /**
+   * The one-time coupon that makes a win-back price's first period cost
+   * introCents. Its id carries the price and both amounts, so a repriced
+   * Stripe Price gets a new coupon instead of a wrong discount.
+   */
+  async function ensureIntroCoupon(desc) {
+    const off = desc.amount - desc.introCents;
+    if (!Number.isInteger(off) || off <= 0 || !desc.productId) throw Object.assign(new Error('intro_invalid'), { code: 'intro_invalid' });
+    const id = `mem_winback_${String(desc.priceId).replace(/^price_/, '')}_${desc.amount}_${desc.introCents}`.slice(0, 200);
+    const existing = await stripeApi.retrieveCoupon(id);
+    if (existing) {
+      if (existing.valid === false || existing.amount_off !== off || existing.duration !== 'once') {
+        throw Object.assign(new Error('intro_coupon_mismatch'), { code: 'intro_coupon_mismatch' });
+      }
+      return id;
+    }
+    await stripeApi.createCoupon({
+      id, amount_off: off, currency: desc.currency || 'usd', duration: 'once', name: 'Welcome back: first month',
+      applies_to: { products: [desc.productId] },
+      metadata: { sml_kind: shapes.ACADEMY_KIND, mem_academy_winback: '1', mem_academy_price: desc.priceId }
+    }, `mem-academy-coupon-v1-${id}`);
+    return id;
+  }
+
+  /**
    * POST /checkout. Returns one of
    *   { status, error }            plain refusal
    *   { status, page, data }       render a page (routes.js)
@@ -390,9 +439,11 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
        check below and is shown the plans again. */
     const priceParam = String(form.price || '');
     const catalogState = await catalog.get();
-    const desc = (priceParam && catalogState.memberships && catalogState.memberships.get(priceParam))
+    const desc = (priceParam && catalogState.winback && catalogState.winback.get(priceParam))
+      || (priceParam && catalogState.memberships && catalogState.memberships.get(priceParam))
       || catalogState.sellable.get(String(form.package || '')) || null;
     if (!desc) return { status: 400, error: 'package_unavailable' };
+    if (desc.winback && !(config.winbackIds && config.winbackIds.has(String(bind.userId)))) return { status: 403, error: 'winback_not_eligible' };
     const pkg = desc.key;
     const recurring = isRecurring(pkg);
     const consented = recurring ? form.consent_renewal === '1' : form.consent_final === '1';
@@ -418,6 +469,7 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
     /* The consent text depends on whether this account can still use the
        price's free trial (fresh snapshot + ledger): a trial used meanwhile
        (another tab) changes the text, so the buyer sees the plans again. */
+    if (desc.winback && view.winbackUsed) return { status: 409, error: 'winback_used' };
     const terms = offerTerms(desc, { trialUsed: view.trialUsed });
     /* A free-only offer (Free Trial Access) is only ever a free trial: never
        sold as the paid daily plan to an account whose trial is used. */
@@ -456,7 +508,8 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
       await audit.append(client, { actor: 'checkout', livemode: config.livemode, discordUserId: bind.userId, action: 'intent_created',
         outcome: 'applied', reason: pkg, stripeRefs: [customerId, desc.priceId],
         details: { intent: intent.id, package: pkg, consentKind: disclosure.kind, consentVersion: config.consentVersion, consentSha256: sha,
-          trialDays: trial ? trial.days : null, trialNoCard: Boolean(trial && trial.noCard), trialUsed: terms.trialUsed } }, { now });
+          trialDays: trial ? trial.days : null, trialNoCard: Boolean(trial && trial.noCard), trialUsed: terms.trialUsed,
+          winback: Boolean(desc.winback), introCents: terms.introCents } }, { now });
       return true;
     });
     if (!inserted) return { status: 429, error: 'checkout_in_progress' };
@@ -464,7 +517,12 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
     try {
       /* Built (and so checked) before anything in Stripe is touched. */
       const paymentMethods = Array.isArray(desc.paymentMethods) && desc.paymentMethods.length ? desc.paymentMethods : config.paymentMethods;
-      const params = buildCheckoutParams({
+      const winback = desc.winback ? {
+        couponId: terms.introCents !== null ? await ensureIntroCoupon(desc) : null,
+        cents: terms.introCents,
+        bonusAcademyDays: terms.bonusAcademyDays
+      } : null;
+      const params = buildCheckoutParams({ winback,
         pkg, priceId: desc.priceId, amount: desc.amount, currency: desc.currency, customerId, discordId: bind.userId, intent,
         urls: { publicUrl: config.publicUrl }, nowMs: now(), label: desc.label, academy: academyOffer, trial, cancelAfterDays: terms.cancelAfterDays,
         flags: { paymentMethods, tosConsent: config.tosConsent, automaticTax: config.automaticTax }
@@ -606,7 +664,7 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
     }
   }
 
-  return { start, settle, portal, status, readAccess, ensureCustomer, transitionIntent, recheckMember, banState };
+  return { start, settle, portal, status, readAccess, ensureCustomer, transitionIntent, recheckMember, banState, ensureIntroCoupon };
 }
 
 module.exports = { buildCheckoutParams, createCheckout, createRateLimiter, renewalLine, grantsForDisclosure, SESSION_TTL_SECONDS, DUPLICATE_STATUSES, LABELS,

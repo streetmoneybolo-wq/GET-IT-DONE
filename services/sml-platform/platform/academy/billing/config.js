@@ -225,7 +225,23 @@ function hasDelayedMethod(methods) {
    typo such as "payment_methods" can never silently drop the bank debit (or a
    graceHours) while the owner believes it is on. */
 const PRICE_ENTRY_KEYS = Object.freeze(['package', 'sell', 'graceHours', 'paymentMethods', 'roles', 'academy',
-  'trialDays', 'trialNoCard', 'cancelAfterDays']);
+  'trialDays', 'trialNoCard', 'cancelAfterDays', 'winback', 'introCents', 'bonusAcademyDays']);
+
+/* WIN-BACK offers (owner decision 2026-09-27): a price with "winback": true is
+   sold ONLY to the Discord accounts listed in SML_ACADEMY_BILLING_WINBACK_IDS
+   (former $10 monthly members), only on /buy's "Welcome back" section, and
+   only once per account (a Customer that ever had a win-back subscription,
+   whatever its status, is not offered it again). "introCents" (optional)
+   makes the first month cost that much through a one-time Stripe coupon; the
+   price then renews at its own amount. "bonusAcademyDays" (optional, a
+   membership price only) adds that many days of MEM Academy through a comp
+   when the subscription starts. Win-back prices never compete with the
+   regular sell:true price of their package. */
+const INTRO_CENTS_MIN = 0;
+const INTRO_CENTS_MAX = 100000;
+const BONUS_ACADEMY_DAYS_MIN = 1;
+const BONUS_ACADEMY_DAYS_MAX = 30;
+const MAX_WINBACK_IDS = 20000;
 
 /** An optional integer key of a price entry; undefined -> null, bad -> false. */
 function entryInt(priceId, entry, key, min, max, errors) {
@@ -331,8 +347,34 @@ function parsePrices(raw, errors, defaultMethods = Object.freeze(['card', 'link'
       errors.push(`${priceId}: academy:false with no "roles" grants nothing; list the membership role(s) or drop academy:false`);
       continue;
     }
+    if (entry.winback !== undefined && typeof entry.winback !== 'boolean') { errors.push(`${priceId}: winback must be true or false`); continue; }
+    const winback = entry.winback === true;
+    const introCents = entryInt(priceId, entry, 'introCents', INTRO_CENTS_MIN, INTRO_CENTS_MAX, errors);
+    if (introCents === false) continue;
+    const bonusAcademyDays = entryInt(priceId, entry, 'bonusAcademyDays', BONUS_ACADEMY_DAYS_MIN, BONUS_ACADEMY_DAYS_MAX, errors);
+    if (bonusAcademyDays === false) continue;
+    if ((introCents !== null || bonusAcademyDays !== null) && !winback) {
+      errors.push(`${priceId}: introCents and bonusAcademyDays are only allowed on a "winback": true price`);
+      continue;
+    }
+    if (winback && pkg === 'lifetime') { errors.push(`${priceId}: a win-back price must be recurring, not lifetime`); continue; }
+    if (winback && (trialDays !== null || ownCancelAfter !== null)) {
+      errors.push(`${priceId}: a win-back price cannot also have trialDays or cancelAfterDays`);
+      continue;
+    }
+    if (bonusAcademyDays !== null && academy) {
+      errors.push(`${priceId}: bonusAcademyDays is only for a membership (academy:false) win-back price; an Academy price already includes the Academy`);
+      continue;
+    }
     const line = lineFor(academy, roles);
-    if (sell) {
+    if (sell && winback) {
+      const key = `winback|${line}|${pkg}`;
+      if (sellingPerPackage.has(key)) {
+        errors.push(`two sell:true win-back prices for package ${pkg} in the same line (${sellingPerPackage.get(key)}, ${priceId}); retire one with sell:false`);
+        continue;
+      }
+      sellingPerPackage.set(key, priceId);
+    } else if (sell) {
       const key = `${line}|${pkg}`;
       if (sellingPerPackage.has(key)) {
         const where = academy ? '' : ` in the membership line ${roles.join('+')}`;
@@ -342,7 +384,8 @@ function parsePrices(raw, errors, defaultMethods = Object.freeze(['card', 'link'
       sellingPerPackage.set(key, priceId);
     }
     prices.set(priceId, Object.freeze({ priceId, package: pkg, sell, graceHours, paymentMethods,
-      ownPaymentMethods: entry.paymentMethods !== undefined, academy, roles, line, trialDays, trialNoCard, cancelAfterDays }));
+      ownPaymentMethods: entry.paymentMethods !== undefined, academy, roles, line, trialDays, trialNoCard, cancelAfterDays,
+      winback, introCents, bonusAcademyDays }));
   }
   return prices;
 }
@@ -550,6 +593,17 @@ function parseBillingConfig(env = process.env, { throwOnInvalid = true } = {}) {
      is phase 2. This engine never reads it; it is reported by `status`. */
   const monarchAccess = text(env.SML_ACADEMY_MONARCH_ACCESS == null ? '1' : env.SML_ACADEMY_MONARCH_ACCESS) !== '0';
 
+  /* Who may see and buy the win-back prices: Discord ids separated by commas,
+     spaces or new lines. */
+  const winbackIds = new Set();
+  const winbackRaw = text(env.SML_ACADEMY_BILLING_WINBACK_IDS).split(/[\s,;]+/).map((item) => item.replace(/^'+|'+$/g, '')).filter(Boolean);
+  const badWinback = winbackRaw.filter((id) => !SNOWFLAKE.test(id));
+  if (badWinback.length) errors.push(`SML_ACADEMY_BILLING_WINBACK_IDS has ${badWinback.length} entr${badWinback.length === 1 ? 'y' : 'ies'} that are not Discord ids`);
+  else if (winbackRaw.length > MAX_WINBACK_IDS) errors.push(`SML_ACADEMY_BILLING_WINBACK_IDS lists more than ${MAX_WINBACK_IDS} ids`);
+  else for (const id of winbackRaw) winbackIds.add(id);
+  const winbackOnSale = [...prices.values()].some((entry) => entry.winback && entry.sell);
+  if (winbackOnSale && !winbackIds.size) warnings.push('a win-back price is on sale but SML_ACADEMY_BILLING_WINBACK_IDS is empty: nobody is offered it');
+
   const botToken = text(env.SML_ACADEMY_BOT_TOKEN);
   const appId = text(env.SML_ACADEMY_APP_ID);
   const clientSecret = text(env.SML_ACADEMY_CLIENT_SECRET);
@@ -564,7 +618,7 @@ function parseBillingConfig(env = process.env, { throwOnInvalid = true } = {}) {
     if (!SNOWFLAKE.test(appId)) errors.push('SML_ACADEMY_APP_ID is required');
     if (!clientSecret) errors.push('SML_ACADEMY_CLIENT_SECRET is required');
     if (checkoutEnabled && !consentVersion) errors.push('SML_ACADEMY_BILLING_CONSENT_VERSION is required before checkout can open');
-    if (checkoutEnabled && ![...prices.values()].some((entry) => entry.sell)) errors.push('checkout needs at least one sell:true price');
+    if (checkoutEnabled && ![...prices.values()].some((entry) => entry.sell && !entry.winback) && !winbackOnSale) errors.push('checkout needs at least one sell:true price');
   }
 
   let enabled = false;
@@ -602,6 +656,7 @@ function parseBillingConfig(env = process.env, { throwOnInvalid = true } = {}) {
     stripeAccountId,
     livemode,
     prices,
+    winbackIds,
     academyRoleId,
     lifetimeRoleId,
     engineRoleIds: Object.freeze({ academy: academyRoleId, mem_lifetime: lifetimeRoleId }),
@@ -664,7 +719,8 @@ function describeConfig(config) {
     lifetimeRoleId: config.lifetimeRoleId || null,
     prices: [...config.prices.values()].map((entry) => ({ priceId: entry.priceId, package: entry.package, sell: entry.sell, graceHours: entry.graceHours,
       paymentMethods: entry.paymentMethods, academy: entry.academy, roles: entry.roles, trialDays: entry.trialDays, trialNoCard: entry.trialNoCard,
-      cancelAfterDays: entry.cancelAfterDays })),
+      cancelAfterDays: entry.cancelAfterDays, winback: entry.winback, introCents: entry.introCents, bonusAcademyDays: entry.bonusAcademyDays })),
+    winbackIdCount: config.winbackIds ? config.winbackIds.size : 0,
     externalRoleIds: config.externalRoleIds,
     ucConfigured: config.ucConfigured,
     ucMatch: config.ucMatch,
@@ -709,6 +765,7 @@ module.exports = {
   INSTANT_PAYMENT_METHODS,
   PRICE_PAYMENT_METHODS,
   PRICE_ENTRY_KEYS,
+  BONUS_ACADEMY_DAYS_MAX,
   DELAYED_PAYMENT_METHODS,
   US_BANK_VERIFICATION_METHOD,
   hasDelayedMethod,

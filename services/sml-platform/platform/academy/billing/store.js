@@ -213,6 +213,15 @@ function createStore({ pool, livemode, guildId }) {
     return result.rows[0];
   }
 
+  /** Any comp (revoked or not) with this exact reason, e.g. winback_bonus:<sub>. */
+  async function compByReason(q, discordId, reason) {
+    const result = await q.query(
+      'SELECT id FROM academy_billing_comps WHERE discord_user_id = $1 AND livemode = $2 AND reason = $3 LIMIT 1',
+      [String(discordId), lm, String(reason)]
+    );
+    return result.rows[0] || null;
+  }
+
   async function revokeComp(q, { id, revokedBy, reason }) {
     const result = await q.query(
       `UPDATE academy_billing_comps SET revoked_at = now(), revoked_by = $3, revoke_reason = $4
@@ -779,6 +788,7 @@ function createStore({ pool, livemode, guildId }) {
     setNextCheck,
     moveBinding,
     compsFor,
+    compByReason,
     compHolderIds,
     insertComp,
     revokeComp,

@@ -88,6 +88,13 @@ function createStripeApi({ key, stripe = null, fetchImpl = null, maxPages = DEFA
     retrieveInvoice: (id) => client.invoices.retrieve(id),
     retrievePrice: (id) => client.prices.retrieve(id, { expand: ['product'] }),
     retrieveCheckoutSession: (id) => client.checkout.sessions.retrieve(id),
+    /* null when the coupon does not exist (win-back intro coupons) */
+    async retrieveCoupon(id) {
+      try { return await client.coupons.retrieve(id); } catch (error) {
+        if (isStripeMissing(error)) return null;
+        throw error;
+      }
+    },
     listOpenCheckoutSessions: (customer) => pageList(client.checkout.sessions, { customer, status: 'open' }, 2),
     listSubscriptionsByPrice: (price, status) => pageList(client.subscriptions, { price, status }),
     searchAcademySubscriptions: () => pageSearch(client.subscriptions, "metadata['sml_kind']:'mem_academy'"),
@@ -104,6 +111,7 @@ function createStripeApi({ key, stripe = null, fetchImpl = null, maxPages = DEFA
     /* ---------------- writes (always with an Idempotency-Key) ---------------- */
     createCustomer: (params, idempotencyKey) => client.customers.create(params, { idempotencyKey }),
     updateCustomer: (id, params, idempotencyKey) => client.customers.update(id, params, { idempotencyKey }),
+    createCoupon: (params, idempotencyKey) => client.coupons.create(params, { idempotencyKey }),
     createCheckoutSession: (params, idempotencyKey) => client.checkout.sessions.create(params, { idempotencyKey }),
     expireCheckoutSession: (id, idempotencyKey) => client.checkout.sessions.expire(id, {}, { idempotencyKey }),
     createPortalSession: (params, idempotencyKey) => client.billingPortal.sessions.create(params, { idempotencyKey }),

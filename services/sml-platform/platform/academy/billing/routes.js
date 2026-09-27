@@ -123,7 +123,9 @@ const ERROR_TEXT = Object.freeze({
   stripe_checkout_failed: 'We could not start checkout. Please try again shortly.',
   portal_unconfigured: 'Manage billing is not available yet. Please contact support.',
   discord_unavailable: 'We could not check your Discord account. Nothing was charged. Please try again shortly.',
-  free_trial_used: pages.FREE_TRIAL_USED_NOTE
+  free_trial_used: pages.FREE_TRIAL_USED_NOTE,
+  winback_not_eligible: 'This welcome-back price is only for former Making Easy Money monthly members.',
+  winback_used: 'This Discord account already used its welcome-back price.'
 });
 
 const BANNED_TITLE = 'This Discord account cannot join the server';
@@ -270,16 +272,18 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
     const packages = PACKAGES.filter((key) => catalogState.sellable.has(key)).map((key) => catalogState.sellable.get(key));
     const memberships = catalogState.memberships ? [...catalogState.memberships.values()]
       .sort((a, b) => a.line.localeCompare(b.line) || PACKAGES.indexOf(a.key) - PACKAGES.indexOf(b.key)) : [];
+    const winback = catalogState.winback ? [...catalogState.winback.values()]
+      .sort((a, b) => Number(a.academy) - Number(b.academy) || a.amount - b.amount) : [];
     let view;
     try { view = await checkout.readAccess(bind.userId); } catch (_) {
       message(response, 503, 'Payments are busy', 'We could not reach the payment provider. Please try again shortly.', []);
       return;
     }
-    page(response, 200, (nonce) => pages.buyPage({ config, nonce, userId: bind.userId, user, packages, memberships, csrf: tokens.csrfFor(bind),
+    page(response, 200, (nonce) => pages.buyPage({ config, nonce, userId: bind.userId, user, packages, memberships, winback, csrf: tokens.csrfFor(bind),
       inGuild: observed.inGuild, pkg,
       state: { entitled: view.entitled, recurring: view.recurring, lifetime: view.lifetime, lifetimeSuspended: view.lifetimeSuspended,
         lifetimePending: view.lifetimePending, blockingLines: [...(view.blockingLines || [])], ownedExternal: [...(view.ownedExternal || [])],
-        trialUsed: Boolean(view.trialUsed), trialUnknown: Boolean(view.trialUnknown) } }));
+        trialUsed: Boolean(view.trialUsed), trialUnknown: Boolean(view.trialUnknown), winbackEligible: Boolean(view.winbackEligible) } }));
   }
 
   async function postCheckout(request, response) {

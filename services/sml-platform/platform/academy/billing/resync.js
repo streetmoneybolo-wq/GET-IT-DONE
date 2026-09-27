@@ -88,6 +88,7 @@ const { computeAccess, planRoleDiff, planExternalDiff, grantOf, ROLE_KEYS } = re
 const { ucRecheckDue, ucAnswerStale, ucKeptRecheckable, UC_RECHECK_MS, UC_KEPT_RECHECK_MS } = require('./external');
 const shapes = require('./stripe-shapes');
 const audit = require('./audit');
+const { BONUS_ACADEMY_DAYS_MAX } = require('./config');
 
 const SNOWFLAKE = /^[0-9]{15,24}$/;
 const LIVE_SUB_STATUSES = Object.freeze(['active', 'trialing', 'past_due']);
@@ -278,7 +279,8 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
     };
     const snap = {
       complete: true, issues, customerId: null, customerMissing: false, bindingConflict: null,
-      subscriptions: [], lifetime: [], charges: new Map(), disputes: [], lifetimeMeta: new Map(), trials: []
+      subscriptions: [], lifetime: [], charges: new Map(), disputes: [], lifetimeMeta: new Map(), trials: [],
+      winbackUsed: false, winbackBonus: []
     };
     const customerId = member && member.stripe_customer_id ? member.stripe_customer_id : null;
     snap.customerId = customerId;
@@ -303,6 +305,20 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
       rawSubs = subs ? subs.data : [];
       rawPis = pis ? pis.data : [];
       for (const charge of charges ? charges.data : []) snap.charges.set(charge.id, normalizeCharge(charge));
+    }
+
+    /* Win-back (checkout.js): any subscription that was one, whatever its
+       status, uses up the account's offer; a live one with bonus days gets
+       its Academy comp (see the transaction below). */
+    for (const sub of rawSubs) {
+      const meta = sub.metadata || {};
+      if (meta.mem_academy_winback !== '1') continue;
+      snap.winbackUsed = true;
+      const days = Number(meta.mem_academy_bonus_days);
+      const startedAt = Number(sub.start_date || sub.created) || null;
+      if (Number.isInteger(days) && days > 0 && days <= BONUS_ACADEMY_DAYS_MAX && startedAt && ['active', 'trialing'].includes(String(sub.status))) {
+        snap.winbackBonus.push({ subscriptionId: String(sub.id), startedAt, days });
+      }
     }
 
     /* Every subscription of this engine-dedicated Customer that ever had a
@@ -711,10 +727,24 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
       const current = await store.getMember(client, id, { forUpdate: true });
       if (current && current.last_synced_at && new Date(current.last_synced_at).getTime() > startedAt) return { stale: true };
       if ((current && current.stripe_customer_id) !== (member && member.stripe_customer_id)) return { stale: true };
+      /* Win-back bonus Academy days: one comp per win-back subscription,
+         ending startedAt + days. Never re-granted once it exists (a comp
+         staff revoked stays revoked). */
+      const bonusRows = [];
+      if (cacheWrites && snap.complete && !snap.bindingConflict) {
+        for (const bonus of snap.winbackBonus || []) {
+          const reason = `winback_bonus:${bonus.subscriptionId}`;
+          const expiresAt = bonus.startedAt * 1000 + bonus.days * 86_400_000;
+          if (expiresAt <= now() || await store.compByReason(client, id, reason)) continue;
+          const comp = await store.insertComp(client, { discordId: id, includeLifetimeRole: false, reason, grantedBy: 'winback', expiresAt, grantsAcademy: true });
+          bonusRows.push({ actor, livemode: config.livemode, discordUserId: id, eventId, runId, action: 'comp_granted', outcome: 'applied', reason: 'winback_bonus',
+            stripeRefs: [bonus.subscriptionId], details: { comp: comp && comp.id, days: bonus.days, expiresAt: new Date(expiresAt).toISOString() } });
+        }
+      }
       const comps = await store.compsFor(client, id);
       const access = computeAccess({ snapshot: { ...snap, comps }, now: now(), ...accessOptions });
       const desired = access.roles;
-      const rows = [];
+      const rows = [...bonusRows];
       const refs = access.refs.slice(0, 20);
       const base = { actor, livemode: config.livemode, discordUserId: id, eventId, runId };
       const previous = new Set(current && current.last_access && Array.isArray(current.last_access.roles) ? current.last_access.roles : []);

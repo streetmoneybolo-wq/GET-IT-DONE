@@ -180,7 +180,7 @@ function describePrice(price, pkg, entry = null, { lifetimeRole = true } = {}) {
   const productName = product && typeof product.name === 'string' ? plainName(product.name).slice(0, 80) : '';
   /* A membership (academy:false) is labelled by its Stripe product name, else
      by its role names. */
-  const label = academy ? LABELS[pkg] : (productName || `${roleNames(roles).join(' + ')} ${pkg === 'lifetime' ? 'Lifetime' : LABELS[pkg]}`);
+  const label = academy && !(entry && entry.winback) ? LABELS[pkg] : (productName || `${roleNames(roles).join(' + ')} ${pkg === 'lifetime' ? 'Lifetime' : LABELS[pkg]}`);
   return {
     key: pkg,
     label,
@@ -200,7 +200,12 @@ function describePrice(price, pkg, entry = null, { lifetimeRole = true } = {}) {
        (checkout.js decides per member), and its auto-stop */
     trialDays: entry && Number.isInteger(entry.trialDays) ? entry.trialDays : null,
     trialNoCard: Boolean(entry && entry.trialNoCard && Number.isInteger(entry.trialDays)),
-    cancelAfterDays: cancelAfterFor(pkg, entry)
+    cancelAfterDays: cancelAfterFor(pkg, entry),
+    productId: product ? product.id : idOf(price.product),
+    /* win-back offers (config.js): sold only to the listed former members */
+    winback: Boolean(entry && entry.winback),
+    introCents: entry && Number.isInteger(entry.introCents) ? entry.introCents : null,
+    bonusAcademyDays: entry && Number.isInteger(entry.bonusAcademyDays) ? entry.bonusAcademyDays : null
   };
 }
 
@@ -225,6 +230,8 @@ function createCatalog({ config, stripeApi, now = Date.now, ttlMs = PRICE_TTL_MS
        memberships: every academy:false line, keyed by price id. */
     const sellable = new Map();
     const memberships = new Map();
+    /* winback: every sell:true win-back price, keyed by price id */
+    const winback = new Map();
     const invalid = [];
     let complete = true;
     for (const entry of config.prices.values()) {
@@ -238,11 +245,15 @@ function createCatalog({ config, stripeApi, now = Date.now, ttlMs = PRICE_TTL_MS
         continue;
       }
       const problems = validatePrice(price, entry, { livemode: config.livemode, automaticTax: config.automaticTax });
+      if (!problems.length && entry.winback && Number.isInteger(entry.introCents) && entry.introCents >= price.unit_amount) {
+        problems.push('intro_not_below_price');
+      }
       if (problems.length) invalid.push({ priceId: entry.priceId, package: entry.package, problems });
+      else if (entry.winback) winback.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false }));
       else if (entry.academy === false) memberships.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false }));
       else sellable.set(entry.package, describePrice(price, entry.package, entry, { lifetimeRole: Boolean(config.lifetimeRoleId) }));
     }
-    cached = { at: now(), sellable, memberships, invalid, complete };
+    cached = { at: now(), sellable, memberships, winback, invalid, complete };
     if (invalid.length && typeof onInvalid === 'function') {
       try { await onInvalid(invalid); } catch (_) { /* reporting must not break the catalog */ }
     }
@@ -271,7 +282,8 @@ function createCatalog({ config, stripeApi, now = Date.now, ttlMs = PRICE_TTL_MS
       return { priceId, package: entry.package, academy: true, known: true, sell: entry.sell,
         graceHours: graceHoursFor(entry.package, entry), unmapped: false,
         grantsAcademy: entry.academy !== false, externalRoles: [...(entry.roles || [])], line: entry.line || 'academy',
-        cancelAfterDays: cancelAfterFor(entry.package, entry), trialDays: Number.isInteger(entry.trialDays) ? entry.trialDays : null };
+        cancelAfterDays: cancelAfterFor(entry.package, entry), trialDays: Number.isInteger(entry.trialDays) ? entry.trialDays : null,
+        winback: Boolean(entry.winback), bonusAcademyDays: Number.isInteger(entry.bonusAcademyDays) ? entry.bonusAcademyDays : null };
     }
     const hit = unknownCache.get(priceId);
     if (hit && now() - hit.at < ttlMs) return hit.info;

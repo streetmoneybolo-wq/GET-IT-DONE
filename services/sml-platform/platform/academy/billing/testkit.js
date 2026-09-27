@@ -47,7 +47,10 @@ const MEMBERSHIP_PRICES = {
   price_eliteyear: { package: 'yearly', interval: 'year', count: 1, amount: 84990, product: 'prod_elite_year', name: 'Elite Yearly Access' },
   price_elitemonth: { package: 'monthly', interval: 'month', count: 1, amount: 8990, product: 'prod_elite_month', name: 'Elite Monthly Access' },
   price_eliteweek: { package: 'weekly', interval: 'week', count: 1, amount: 3490, product: 'prod_elite_week', name: 'Elite Week Seat' },
-  price_freetrial: { package: 'daily', interval: 'day', count: 1, amount: 790, product: 'prod_free_trial', name: 'Free Trial Access' }
+  price_freetrial: { package: 'daily', interval: 'day', count: 1, amount: 790, product: 'prod_free_trial', name: 'Free Trial Access' },
+  /* Win-back offers (2026-09-27), used by winback.test.js. */
+  price_wbmem: { package: 'monthly', interval: 'month', count: 1, amount: 1500, product: 'prod_wb_mem', name: 'Welcome Back Membership' },
+  price_wbboth: { package: 'monthly', interval: 'month', count: 1, amount: 2500, product: 'prod_wb_both', name: 'Welcome Back Membership + Academy' }
 };
 
 /** PRICES_JSON for PRICE_TABLE; `extra` merges fields into entries by price id,
@@ -192,6 +195,7 @@ function createFakeStripe(fixtures = {}) {
     disputes: [...(fixtures.disputes || [])],
     sessions: { ...(fixtures.sessions || {}) },
     prices: { ...(fixtures.prices || {}) },
+    coupons: { ...(fixtures.coupons || {}) },
     endpoints: fixtures.endpoints || [],
     account: fixtures.account === undefined ? { id: ACCOUNT } : fixtures.account,
     /* 'classic' (what the engine's pinned 2022-11-15 Checkout creates) or
@@ -250,6 +254,15 @@ function createFakeStripe(fixtures = {}) {
     async retrieveInvoice(id) { call('retrieveInvoice', [id]); const i = data.invoices.find((x) => x.id === id); if (!i) throw Object.assign(new Error('missing'), { code: 'resource_missing' }); return i; },
     async retrievePrice(id) { call('retrievePrice', [id]); const p = data.prices[id]; if (!p) throw Object.assign(new Error('missing'), { code: 'resource_missing' }); return p; },
     async retrieveCheckoutSession(id) { call('retrieveCheckoutSession', [id]); const s = data.sessions[id]; if (!s) throw Object.assign(new Error('missing'), { code: 'resource_missing' }); return s; },
+    async retrieveCoupon(id) { call('retrieveCoupon', [id]); return data.coupons[id] || null; },
+    async createCoupon(params, key) {
+      call('createCoupon', [params, key]);
+      if (idem.has(key)) return idem.get(key);
+      const coupon = { object: 'coupon', valid: true, ...params };
+      data.coupons[params.id] = coupon;
+      idem.set(key, coupon);
+      return coupon;
+    },
     async listOpenCheckoutSessions(customer) { call('listOpenCheckoutSessions', [customer]); return list('listOpenCheckoutSessions', Object.values(data.sessions).filter((s) => s.customer === customer && s.status === 'open')); },
     async listSubscriptionsByPrice(price, status) {
       call('listSubscriptionsByPrice', [price, status]);
@@ -548,6 +561,7 @@ function createFakeStore({ livemode = false, guildId = GUILD, now = Date.now } =
       for (const row of db.lifetime.values()) if (row.discord_user_id === fromId && row.stripe_customer_id === customerId) row.discord_user_id = toId;
     },
     async compsFor(q, id) { return db.comps.filter((c) => c.discord_user_id === id && c.livemode === lm && !c.revoked_at).map((c) => ({ ...c })); },
+    async compByReason(q, id, reason) { const c = db.comps.find((x) => x.discord_user_id === id && x.livemode === lm && x.reason === reason); return c ? { id: c.id } : null; },
     async compHolderIds() {
       return [...new Set(db.comps.filter((c) => c.livemode === lm && !c.revoked_at && (!c.expires_at || c.expires_at.getTime() > now())).map((c) => c.discord_user_id))];
     },

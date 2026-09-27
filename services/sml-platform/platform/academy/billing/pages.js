@@ -132,7 +132,43 @@ function offerTerms(desc, { trialUsed = false } = {}) {
     cancelAfterDays: Number.isInteger(cancelAfterDays) ? cancelAfterDays : null,
     trialUsed: own !== null && Boolean(trialUsed),
     trialOnly,
-    charges: isRecurring(pkg) ? maxCharges({ pkg, trialDays, cancelAfterDays }) : null
+    charges: isRecurring(pkg) ? maxCharges({ pkg, trialDays, cancelAfterDays }) : null,
+    /* a win-back price: the first month's amount (null: none) and the
+       Academy days it adds (membership win-back only) */
+    introCents: desc && desc.winback && Number.isInteger(desc.introCents) && isRecurring(pkg) ? desc.introCents : null,
+    bonusAcademyDays: desc && desc.winback && Number.isInteger(desc.bonusAcademyDays) ? desc.bonusAcademyDays : null,
+    winback: Boolean(desc && desc.winback)
+  };
+}
+
+const WINBACK_ONCE = 'This welcome-back price is only for former Making Easy Money monthly members and can be used once per Discord account.';
+
+/**
+ * A win-back price (config.js "winback"): optional first-month amount, then
+ * the price's own amount every period until cancelled, with the optional
+ * bonus Academy days on a membership.
+ */
+function winbackDisclosure({ pkg, price, intro, name, gives, academy, terms, links }) {
+  const every = intervalPhrase(pkg);
+  const bonus = terms.bonusAcademyDays
+    ? ` It also includes ${plural(terms.bonusAcademyDays, 'day')} of MEM Academy (the Academy Student role) from the day it starts, at no extra charge; those days end by themselves.`
+    : '';
+  const lead = intro !== null
+    ? `Intro price, then automatic renewal: ${name} costs ${intro} (plus any applicable tax) for the first ${every}, then ${price} (plus any applicable tax) every ${every}, and renews automatically at ${price} until you cancel.`
+    : `Automatic renewal: ${name} costs ${price} (plus any applicable tax) and renews automatically every ${every} at ${price} until you cancel.`;
+  return {
+    kind: 'auto_renewal',
+    checkbox: intro !== null
+      ? `I agree that after the first ${every} at ${intro}, ${name} renews automatically every ${every} at ${price} until I cancel.`
+      : `I agree that ${name} renews automatically every ${every} at ${price} until I cancel.`,
+    text: [
+      lead,
+      WINBACK_ONCE,
+      `While it is active it gives this Discord account ${gives}.${academy ? '' : ' It does not include MEM Academy except for any bonus days named here.'}${bonus}`,
+      `You can cancel online at any time in Manage billing. Access continues until the end of the period you already paid for${academy ? '; an open Academy Activity can take up to about 15 minutes to update' : ''}.`,
+      `Payments are not refunded except where the ${academy ? 'MEM Academy ' : ''}Terms or the law require it. A refunded or charged-back payment ends the access it paid for.`,
+      links
+    ].join(' ')
   };
 }
 
@@ -190,6 +226,14 @@ function disclosureFor({ pkg, amount, currency = 'usd', termsUrl, privacyUrl, gr
   const roleList = roleNames.map((name) => `the ${name} role`);
   const links = `Terms: ${termsUrl} Privacy: ${privacyUrl}`;
   const t = terms || offerTerms({ key: pkg });
+  if (t.winback && isRecurring(pkg)) {
+    const intro = t.introCents !== null ? formatAmount(t.introCents, currency) : null;
+    const gives = academy
+      ? listPhrase([ACADEMY_ROLE_PHRASE, ...roleList])
+      : `${listPhrase(roleList) || 'its membership role'} in the Making Easy Money Discord server`;
+    const name = grants.label ? `the ${grants.label} plan` : (academy ? 'the MEM Academy plan' : 'the membership');
+    return winbackDisclosure({ pkg, price, intro, name, gives, academy, terms: t, links });
+  }
   if (!academy) return membershipDisclosure({ pkg, price, amount, currency, label: grants.label || listPhrase(roleNames), roleList, roleNames, links, terms: t });
   const label = LABELS[pkg] || pkg;
   if (!isRecurring(pkg)) {
@@ -390,7 +434,11 @@ function packageCard({ pkg, desc, config, csrf, disabled, trialUsed = false, tri
 <p class="muted">${esc(unknown ? TRIAL_UNKNOWN_NOTE : FREE_TRIAL_USED_NOTE)}</p></section>`;
   }
   const priceText = terms.charges === 0 ? 'Free' : `${formatAmount(desc.amount, desc.currency)}${every}`;
-  const trial = trialLine(pkg, desc.amount, desc.currency, terms);
+  let trial = trialLine(pkg, desc.amount, desc.currency, terms);
+  if (terms.introCents !== null) {
+    trial = `${formatAmount(terms.introCents, desc.currency)} for your first ${intervalPhrase(pkg)}, then ${perInterval(pkg, formatAmount(desc.amount, desc.currency))}`
+      + `${terms.bonusAcademyDays ? `, plus ${plural(terms.bonusAcademyDays, 'day')} of MEM Academy free` : ''}`;
+  }
   return `<section class="card"><h2>${esc(title)}</h2>
 <div class="price">${esc(priceText)}</div>
 ${trial ? `<p class="notice">${esc(trial)}</p>` : ''}
@@ -435,7 +483,7 @@ function joinCard({ config, pkg = '', inGuild = false, id = '', hidden = false, 
 ${joinLinks(config, pkg)}</section>`;
 }
 
-function buyPage({ config, nonce, userId, user, packages, memberships = [], csrf, state, notice = '', inGuild = true, pkg = '' }) {
+function buyPage({ config, nonce, userId, user, packages, memberships = [], winback = [], csrf, state, notice = '', inGuild = true, pkg = '' }) {
   const parts = [`<h1>MEM Academy</h1>`, whoLine(user, userId)];
   if (notice) parts.push(`<p class="notice">${esc(notice)}</p>`);
   /* Only reached for a non-member with SML_ACADEMY_BILLING_ALLOW_NON_MEMBER=1. */
@@ -457,6 +505,17 @@ function buyPage({ config, nonce, userId, user, packages, memberships = [], csrf
 <p><a class="button secondary" href="/v1/academy/billing/start?purpose=manage">Manage billing</a></p></section>`);
   } else if (state.entitled) {
     parts.push('<section class="card"><h2>Access active</h2><p>Your Academy access is active. Open the Academy in Discord.</p></section>');
+  }
+  /* WELCOME BACK: the win-back prices, only for a listed former member who
+     never used one (checkout.js checks the same), with the same per-line
+     guard as the other offers. */
+  if (winback.length && state.winbackEligible && !state.lifetimePending) {
+    const blocking = new Set(state.blockingLines || []);
+    const cards = winback.filter((desc) => !blocking.has(desc.line) && !(desc.academy && state.lifetime))
+      .map((desc) => packageCard({ pkg: desc.key, desc, config, csrf, disabled: !config.checkoutEnabled }));
+    if (cards.length) {
+      parts.push('<h2>Welcome back</h2><p class="muted">A thank-you for former Making Easy Money monthly members. Pick one; it can be used once per Discord account.</p>', ...cards);
+    }
   }
   /* Nothing is sold while a lifetime bank payment clears (checkout.js refuses
      it too), so a second debit is never started next to the first. */
@@ -599,5 +658,6 @@ module.exports = {
   joinCard,
   LIFETIME_DEFINITION,
   BANK_PAYMENT_NOTE,
-  AWAITING_TEXT
+  AWAITING_TEXT,
+  WINBACK_ONCE
 };
