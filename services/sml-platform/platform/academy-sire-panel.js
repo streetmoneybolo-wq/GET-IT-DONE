@@ -1,7 +1,7 @@
 /* S.I.R.E. live momentum panel for the Academy Live Chart Lab.
    A SIRE button beside SMC opens a panel on the right of the chart; the chart shifts left to make room.
    Columns: TICKER · S.I.R.E. (3-minute %) · 1M % (the last minute's burst) · RVOL (volume vs normal) · DAY %.
-   Every cell flashes neon green when its value rises and bright red when it falls. Tapping a column header
+   Cells stay the plain panel colour; a cell only flashes, neon green when its value rises or bright red when it falls, at the moment it changes. Tapping a column header
    ranks by that column (tap again to flip the order); tapping a row loads that ticker on the chart.
    Data: the Academy scanner feed (/academy-activity/scanner), refreshed every 2 s while the panel is open. */
 (() => {
@@ -36,7 +36,6 @@
     + '#sire-panel th.on{color:#39ff14}#sire-panel th.on:after{content:" ▼";font-size:.5rem}#sire-panel th.on.asc:after{content:" ▲"}'
     + '#sire-panel td{padding:4px 3px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:clip;border-bottom:1px solid rgba(29,74,55,.45);transition:background-color .6s ease,color .6s ease}'
     + '#sire-panel tr{cursor:pointer}#sire-panel tr:hover td{background:rgba(57,255,20,.06)}#sire-panel tr.cur td:first-child{color:#39ff14}'
-    + '#sire-panel td.pos{color:#39ff14}#sire-panel td.neg{color:#ff1744}'
     + '#sire-panel td.flash-up{background:#39ff14!important;color:#021a02!important;transition:none}#sire-panel td.flash-down{background:#ff1744!important;color:#fff!important;transition:none}'
     + '#sire-panel .sire-empty{padding:14px 8px;color:#8fb8a4;font-weight:600;line-height:1.45;text-align:center}'
     + '@media(max-width:720px){body.sire-open{--sire-w:176px}#sire-panel{font-size:.58rem;margin-left:3px}#sire-panel th{font-size:.46rem;padding:4px 1px;top:25px;letter-spacing:-.02em}#sire-panel th.on:after{content:""}#sire-panel td{padding:3px 2px}#sire-panel header{padding:4px 5px}#sire-panel header small{display:none}'
@@ -120,8 +119,6 @@
           now[k] = v;
           td.textContent = fmt(k, v);
           if (k === 'symbol') return;
-          td.classList.toggle('pos', v != null && (k === 'rvol' ? v >= 2 : v > 0));
-          td.classList.toggle('neg', v != null && k !== 'rvol' && v < 0);
           const was = before[k];
           if (v != null && was != null && v !== was) {
             td.classList.remove('flash-up', 'flash-down'); void td.offsetWidth;
