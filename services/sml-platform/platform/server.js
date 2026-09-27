@@ -1413,7 +1413,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
-  memberEmail = null, siteExportSink = null, linkTracker = null,
+  memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -1483,6 +1483,21 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
+
+    /* Discord verification page (one-time links handed out by the Verify button). */
+    if (path.startsWith('/verify/') && verifyGate) {
+      try {
+        if (await verifyGate.handleHttp(request, response, path, (req) => readRequestBody(req, 16_384))) return;
+      } catch (error) {
+        logger('error', 'verify_page_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+        return;
+      }
+    }
+    if (request.method === 'POST' && path === '/v1/verify/report') {
+      await handleLinkReport(request, response, { ...billingOptions, linkTracker: verifyGate ? { report: (input) => verifyGate.report(input) } : null });
+      return;
+    }
 
     /* Public chart relay. It is read-only, narrowly CORS-scoped and disabled
        until the site owner confirms a Massive Business redistribution plan. */
@@ -2412,6 +2427,7 @@ async function main() {
     upgradeChatWebhook: disputes.upgradeChatWebhook,
     discordInteractions: connectInteractions,
     linkTracker: disputes.linkTracker,
+    verifyGate: disputes.verifyGate,
     disputeDiscordInteractions: disputes.disputeDiscordInteractions,
     dailySocialPayoutsInteractions,
     disputeService: disputes.disputeService,

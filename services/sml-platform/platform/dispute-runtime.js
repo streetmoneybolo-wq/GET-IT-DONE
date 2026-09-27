@@ -30,7 +30,8 @@ const { createUpgradeChatWebhookHandler } = require('./upgrade-chat-webhook');
 const { createUpgradeChatReconciler } = require('./upgrade-chat-reconcile');
 const { createDiscordInteractions } = require('./discord-interactions');
 const { createConnectCommands, scopeCommands, CONNECT_COMMAND_NAMES, DISPUTE_COMMAND_NAMES } = require('./connect-commands');
-const { createLinkTracker, withLinkTracker } = require('./link-tracker');
+const { createLinkTracker, withLinkTracker, LINK_COMMAND_DEFINITIONS } = require('./link-tracker');
+const { createVerifyGate, withVerifyGate, VERIFY_COMMAND_DEFINITIONS } = require('./verify-gate');
 const {
   createConnectAuthorizer, createConnectDisputeService, createConnectRoleTools, createConnectRoleHandlers
 } = require('./connect-adapter');
@@ -84,6 +85,7 @@ function disabledRuntime(reason) {
     disputeService: null,
     discordInteractions: null,
     linkTracker: null,
+    verifyGate: null,
     disputeDiscordInteractions: null,
     notifier: null,
     usageConsumer: null,
@@ -140,8 +142,12 @@ function createDisputeRuntime({
     reconciler: roleTools, now, reviewUrlBase: config.connectReviewUrlBase
   });
   const linkTracker = config.connectBotEnabled ? createLinkTracker({ pool, now }) : null;
+  const verifyGate = config.connectBotEnabled
+    ? createVerifyGate({ pool, botToken: config.discordConnectBotToken, secret: config.connectReviewUrlSecret || config.billingApiSecret, fetchImpl, now, logger })
+    : null;
   if (linkTracker && config.discordConnectAppId && config.discordConnectBotToken) {
-    linkTracker.registerCommands({ appId: config.discordConnectAppId, botToken: config.discordConnectBotToken, fetchImpl, logger })
+    linkTracker.registerCommands({ appId: config.discordConnectAppId, botToken: config.discordConnectBotToken, fetchImpl, logger,
+      definitions: [...LINK_COMMAND_DEFINITIONS, ...VERIFY_COMMAND_DEFINITIONS] })
       .catch((error) => logger('warn', 'link_tracker_register_failed', { error }));
   }
   const discordInteractions = config.connectBotEnabled
@@ -156,7 +162,7 @@ function createDisputeRuntime({
         pool, graph, store, authorize,
         // Strict identity boundary: Connect never mounts Academy handlers.
         // Academy commands are served only by the dedicated Academy process.
-        commands: withLinkTracker(scopeCommands(commandBase, CONNECT_COMMAND_NAMES), linkTracker),
+        commands: withVerifyGate(withLinkTracker(scopeCommands(commandBase, CONNECT_COMMAND_NAMES), linkTracker), verifyGate),
         fetchImpl, now
       })
     : null;
@@ -369,6 +375,7 @@ function createDisputeRuntime({
     disputeService,
     discordInteractions,
     linkTracker,
+    verifyGate,
     disputeDiscordInteractions,
     notifier,
     usageConsumer,

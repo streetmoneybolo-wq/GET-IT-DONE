@@ -206,7 +206,7 @@ function createLinkTracker({ pool, now = Date.now } = {}) {
 
   /* Create-or-update the two commands globally. POST upserts by name and
      leaves every other command of the application in place. */
-  async function registerCommands({ appId, botToken, fetchImpl = fetch, logger = () => {} } = {}) {
+  async function registerCommands({ appId, botToken, fetchImpl = fetch, logger = () => {}, definitions = LINK_COMMAND_DEFINITIONS } = {}) {
     if (!/^[0-9]{15,24}$/.test(String(appId || '')) || !botToken) return { ok: false, reason: 'unconfigured' };
     const base = `https://discord.com/api/v10/applications/${appId}/commands`;
     const headers = { authorization: `Bot ${botToken}`, 'content-type': 'application/json' };
@@ -215,7 +215,7 @@ function createLinkTracker({ pool, now = Date.now } = {}) {
     try { const res = await fetchImpl(base, { headers }); if (res.ok) existing = await res.json(); } catch (_) { existing = []; }
     const same = (a, b) => a && a.description === b.description && JSON.stringify((a.options || []).map((o) => [o.name, o.type, !!o.required])) === JSON.stringify((b.options || []).map((o) => [o.name, o.type, !!o.required]));
     const results = [];
-    for (const def of LINK_COMMAND_DEFINITIONS) {
+    for (const def of definitions) {
       if (same(Array.isArray(existing) ? existing.find((c) => c && c.name === def.name) : null, def)) { results.push({ name: def.name, status: 200, unchanged: true }); continue; }
       try {
         const res = await fetchImpl(base, { method: 'POST', headers, body: JSON.stringify(def) });
