@@ -122,20 +122,22 @@ export function copyReply(post) {
 export async function handleRecruitmentButton(interaction) {
   if (!interaction.isButton()) return false;
   if (interaction.customId.startsWith(COPY_BUTTON_PREFIX)) {
+    await interaction.deferReply({ ephemeral: true });
     const [sub, variant] = interaction.customId.slice(COPY_BUTTON_PREFIX.length).split(':');
     const cfg = recruitmentConfig(await readSettings());
-    await interaction.reply(copyReply(generateRecruitmentPost(sub, Number(variant) || 0, cfg)));
+    await interaction.editReply(copyReply(generateRecruitmentPost(sub, Number(variant) || 0, cfg)));
     return true;
   }
   if (interaction.customId !== RECRUIT_BUTTON_ID) return false;
+  await interaction.deferReply({ ephemeral: true });
   const cfg = recruitmentConfig(await readSettings());
-  if (!cfg.enabled || !cfg.subreddits.length) { await interaction.reply({ content: 'Recruitment posts are switched off right now.', ephemeral: true }); return true; }
+  if (!cfg.enabled || !cfg.subreddits.length) { await interaction.editReply({ content: 'Recruitment posts are switched off right now.', allowedMentions: { parse: [] } }); return true; }
   const claim = await claimSubreddit(cfg, interaction.user.id);
   if (!claim.sub) {
     const when = claim.retryAt ? `<t:${Math.ceil(claim.retryAt / 1000)}:R>` : 'in a few days';
-    await interaction.reply({ content: `You have posted to all ${cfg.subreddits.length} subreddits in the last ${REPOST_DAYS} days — nice work. Your next one opens ${when}.`, ephemeral: true });
+    await interaction.editReply({ content: `You have posted to all ${cfg.subreddits.length} subreddits in the last ${REPOST_DAYS} days — nice work. Your next one opens ${when}.`, allowedMentions: { parse: [] } });
     return true;
   }
-  await interaction.reply(postReply(claim.post, claim.variant));
+  await interaction.editReply(postReply(claim.post, claim.variant));
   return true;
 }
