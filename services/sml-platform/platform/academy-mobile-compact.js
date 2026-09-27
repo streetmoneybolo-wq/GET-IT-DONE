@@ -20,19 +20,31 @@
   const MQ = '(max-width:720px)';
   /* scanner columns that fit a phone, by the header's data-sort key */
   const SCAN_KEEP = ['symbol', 'price', 'changePct', 'volume'];
+  /* Inside the Discord mobile app the top strip of the Activity sits under
+     Discord's own sheet controls and never receives taps. Discord tells us the
+     platform in the launch URL (platform=mobile); the header gets that strip as
+     padding so its buttons land below it. */
+  const params = new URLSearchParams(location.search);
+  const discordMobile = params.get('platform') === 'mobile' || (params.has('frame_id') && window.matchMedia('(max-width:720px)').matches && ('ontouchstart' in window));
+  if (discordMobile) document.documentElement.classList.add('academy-discord-mobile');
   const style = document.createElement('style');
   style.id = 'academy-mobile-compact';
-  style.textContent = '@media ' + MQ + '{'
+  style.textContent = 'html.academy-discord-mobile body main .bar{padding-top:calc(48px + env(safe-area-inset-top,0px))}'
+    + 'html.academy-discord-mobile body main{height:calc(100dvh - 78px - 48px - env(safe-area-inset-top,0px))}'
+    + '@media ' + MQ + '{'
+    /* the chart canvas must not swallow vertical swipes: pan-y lets a finger scroll the page past the chart while horizontal drags, taps and pinches still reach the chart */
+    + 'body main .chart canvas#chart,body main .chart .academy-chart-stage,body main .chart .academy-chart-stage canvas{touch-action:pan-y!important}'
+    + 'body main{overscroll-behavior:auto}'
     /* header: one tight row of controls; the title shrinks instead of the buttons wrapping */
     + 'body main .bar{gap:5px 6px;padding:6px 8px;flex-wrap:wrap}'
-    + 'body main .bar strong{flex:1 1 auto;min-width:0;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + 'body main .bar strong{flex:1 1 auto;min-width:0;font-size:.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
     + 'body main .bar .lesson-toggle{margin-left:0;padding:5px 8px;font-size:.66rem}body main .bar #lesson-toggle{margin-left:auto}'
     + 'body main .bar .status{font-size:.6rem}'
     + 'body main .bar #academy-lk-btn{padding:5px 8px;font-size:.66rem}'
     + 'body main .bar #academy-alerts-fab{position:static;padding:5px 8px;font-size:.66rem;border-radius:6px;box-shadow:none;gap:5px}body main .bar #academy-alerts-fab i{width:7px;height:7px}'
     + 'body main .bar #academy-auth-notice{order:99;padding:.15rem 0 0;font-size:.66rem;line-height:1.3;gap:.4rem}'
     /* the chart stage: every pixel saved above goes to the candles */
-    + 'body main{height:calc(100dvh - 64px)}body main .chart{padding:4px}body main .chart canvas#chart{min-height:300px}'
+    + 'body main{height:calc(100dvh - 64px)}body main .chart{padding:4px}body main .chart canvas#chart{min-height:260px}'
     + 'body main .toolbar{gap:4px 5px;padding:5px 6px}body main .toolbar input#symbol{width:66px;padding:5px 6px;font-size:.78rem}body main .toolbar #load{padding:5px 8px;font-size:.72rem}'
     + 'body main .toolbar .quote-chip{font-size:.6rem}body main .toolbar #company{display:none}'
     + 'body main .toolbar .intervals{order:1;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;gap:3px;margin:0;padding-bottom:1px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body main .toolbar .intervals::-webkit-scrollbar{display:none}'
@@ -49,6 +61,10 @@
     + 'body .academy-below .options-chain{margin-top:10px;padding:10px}body .academy-below .options-chain h2{font-size:.82rem;margin:0 0 3px}body .academy-below .options-chain p{font-size:.66rem;line-height:1.4}'
     + 'body .academy-below .options-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:end}body .academy-below .options-actions label{flex:1 1 45%;font-size:.6rem}body .academy-below .options-chain button{margin-top:6px;padding:7px 10px;font-size:.7rem}'
     + 'body .academy-below .options-glossary{margin-top:8px;padding:8px;font-size:.62rem;line-height:1.45}'
+    + 'body .academy-below .options-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}body .academy-below .options-table{font-size:.6rem;min-width:0}body .academy-below .options-table th,body .academy-below .options-table td{padding:5px 4px;white-space:nowrap}'
+    + 'body .academy-below .options-table th:nth-child(-n+7),body .academy-below .options-table td:nth-child(-n+7),body .academy-below .options-table th:nth-child(n+15),body .academy-below .options-table td:nth-child(n+15){display:none}'
+    + 'body .academy-below .options-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}body .academy-below .options-summary span{font-size:.58rem}body .academy-below .options-summary b{font-size:.72rem}'
+    + 'body .academy-below .options-contract{grid-template-columns:1fr}body .academy-below .options-contract article{padding:8px}body .academy-below .options-contract h3{font-size:.66rem}body .academy-below .options-contract p{font-size:.62rem}'
     + 'body .academy-mobile-glossary{margin-top:10px}body .academy-mobile-glossary summary{cursor:pointer;color:#ffca55;font:800 .66rem system-ui;list-style:none}body .academy-mobile-glossary summary::-webkit-details-marker{display:none}'
     + 'body .academy-mobile-glossary summary:before{content:"▸ ";color:#ffca55}body .academy-mobile-glossary[open] summary:before{content:"▾ "}'
     + 'body .academy-below .opt-calc{padding:10px}body .academy-below .opt-calc h2{font-size:.72rem;margin-bottom:6px}body .academy-below .opt-calc .oc-grid{gap:6px}body .academy-below .opt-calc input{padding:6px 7px;font-size:.74rem}'
