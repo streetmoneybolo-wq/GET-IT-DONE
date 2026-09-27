@@ -270,3 +270,164 @@ test('alerts posted in Discord bold, with the long analysis under them, still pa
   const b = parseAlertMessage('@everyone **$P entry 126 pt 155 plus**', '2026-09-25T15:00:00Z');
   assert.equal(b.symbol, 'P'); assert.equal(b.entryPrice, 126);
 });
+
+/* ---------- closed-alert case studies (SML_ACADEMY_ALERTS_TIERING) ---------- */
+const { closedReason, postAlertRange, WINDOW_DAYS } = require('./academy-alerts');
+
+test('an alert is closed by its original target, a stop below entry, or its window; anything unknown stays open', () => {
+  const NOW = Date.parse('2026-09-24T15:00:00Z');
+  /* `after` is the post-alert range (postAlertRange); closedReason never reads `since`. */
+  const ev = (alert, after, plan) => ({ alert: Object.assign({ channel: 'swings', entry: 10, target: 12, at: NOW - DAY }, alert), after: after ? { bars: 1, ...after } : after, plan });
+  assert.deepEqual(WINDOW_DAYS, { swings: 7, longterm: 150 });
+  assert.equal(closedReason(ev({}, { high: 12, low: 9.8 }, { stop: 9 }), NOW), 'target_hit');
+  assert.equal(closedReason(ev({}, { high: 11, low: 8.9 }, { stop: 9 }), NOW), 'stop_hit');
+  assert.equal(closedReason(ev({}, { high: 11.9, low: 9.1 }, { stop: 9 }), NOW), null, 'still open');
+  assert.equal(closedReason(ev({}, { high: 11, low: 9.9 }, { stop: 10 }), NOW), null, 'a stop raised to break-even is not an exit of the original trade');
+  assert.equal(closedReason(ev({ at: NOW - 7 * DAY }), NOW), 'window_elapsed');
+  assert.equal(closedReason(ev({ at: NOW - 6 * DAY }), NOW), null, 'a missing price never closes an alert');
+  assert.equal(closedReason(ev({ channel: 'longterm', at: NOW - 100 * DAY }, null, null), NOW), null);
+  assert.equal(closedReason(ev({ channel: 'longterm', at: NOW - 150 * DAY }, null, null), NOW), 'window_elapsed');
+  assert.equal(closedReason(ev({ target: 9 }, { high: 10, low: 10 }, { stop: 8 }), NOW), null, 'a target below entry cannot close by target');
+  assert.equal(closedReason(ev({ closed: { reason: 'stop_hit', at: 1 } }, { high: 10, low: 10 }, null), NOW), 'stop_hit', 'a latched closure stands');
+  assert.equal(closedReason(null, NOW), null);
+  const sinceOnly = { alert: { channel: 'swings', entry: 10, target: 12, at: NOW - DAY }, since: { high: 12.5, low: 8 }, plan: { stop: 9 } };
+  assert.equal(closedReason(sinceOnly, NOW), null, 'sinceAlert() high/low (daily fallback, live quote) never closes an alert');
+  assert.equal(closedReason({ ...sinceOnly, after: { high: 12.5, low: 8, bars: 0 } }, NOW), null, 'an empty post-alert range is unknown, so the alert stays open');
+});
+
+function deskWith(now) {
+  const svc = createAlertsService({ channels: [{ key: 'swings', id: '1' }, { key: 'longterm', id: '2' }], now: () => now,
+    fetchImpl: async () => new Response('{}', { status: 404 }) });
+  const at = (hoursAgo) => new Date(now - hoursAgo * 3_600_000).toISOString();
+  svc.ingest('swings', { id: '501', content: '@everyone HIT entry 10 pt 12 plus', timestamp: at(30), author: { username: 'x' } });
+  svc.ingest('swings', { id: '502', content: '@everyone STOP entry 10 pt 12 plus', timestamp: at(20), author: { username: 'x' } });
+  svc.ingest('swings', { id: '503', content: '@everyone OPEN entry 10 pt 12 plus', timestamp: at(10), author: { username: 'x' } });
+  const risk = { score: 40, band: 'MODERATE', label: 'Moderate', top: [], flags: [], coverage: 80, factors: [] };
+  const fake = (id, since, stop) => { const alert = svc.alerts.get(id); svc.evaluated.set(id, { alert, quote: null, risk, plan: { action: 'HOLD', target: 12, stop, reasons: ['r'], progress: 0.1 }, since, after: { high: since.high, low: since.low, bars: 3 }, checklist: null, sector: null, flow: null, algo: null, options: null }); };
+  fake('501', { high: 12.4, low: 9.9, pct: 0.2 }, 9);
+  fake('502', { high: 10.5, low: 8.8, pct: -0.1 }, 9);
+  fake('503', { high: 11, low: 9.6, pct: 0.05 }, 9);
+  return svc;
+}
+
+test('the live view is unchanged; the closed view shows only closed alerts with their reason; the teaser shows none', () => {
+  const NOW = Date.parse('2026-09-24T15:00:00Z');
+  const svc = deskWith(NOW);
+  const live = svc.snapshot();
+  assert.deepEqual(live.alerts.map((a) => a.symbol).sort(), ['HIT', 'OPEN', 'STOP']);
+  assert.equal(live.alerts.some((a) => 'closed' in a), false, 'members see the desk exactly as before');
+  assert.deepEqual(Object.keys(live), ['ok', 'asOf', 'feed', 'alerts', 'pending', 'disclaimer']);
+  const closed = svc.snapshot({ view: 'closed' });
+  assert.equal(closed.view, 'closed');
+  assert.deepEqual(closed.alerts.map((a) => [a.symbol, a.closed.reason]).sort(), [['HIT', 'target_hit'], ['STOP', 'stop_hit']]);
+  assert.equal(closed.open, 1);
+  assert.equal(closed.alerts.some((a) => a.symbol === 'OPEN'), false, 'a live alert never reaches a paid-plan desk');
+  const teaser = svc.snapshot({ view: 'teaser' });
+  assert.deepEqual(teaser.alerts, []);
+  assert.equal(teaser.locked, true);
+  assert.deepEqual(teaser.teaser, { count: 3, closed: 2 });
+  assert.equal('feed' in teaser, false);
+  assert.match(teaser.disclaimer, /Not advice/);
+});
+
+test('closure is latched, and a closed-only detail refuses an open alert', async () => {
+  const NOW = Date.parse('2026-09-24T15:00:00Z');
+  const svc = deskWith(NOW);
+  svc.snapshot({ view: 'closed' });
+  svc.evaluated.get('501').after = null; // a feed gap after the target was hit
+  assert.ok(svc.snapshot({ view: 'closed' }).alerts.some((a) => a.symbol === 'HIT'), 'a closed alert does not reopen');
+  assert.equal(await svc.detail('503', { closedOnly: true }), null, 'an open alert is not found in the closed view');
+  const hit = await svc.detail('501', { closedOnly: true });
+  assert.equal(hit.symbol, 'HIT');
+  assert.equal(hit.closed.reason, 'target_hit');
+  const member = await svc.detail('503');
+  assert.equal(member.symbol, 'OPEN', 'members still open any alert');
+  assert.equal('closed' in member, false);
+});
+
+/* Moved from the part review (review-gate.test.js): price action from BEFORE
+   the post must never close a live alert, so the closed-only desk of the
+   'academy' tier cannot list it. */
+test('alerts tiering: the prior day\'s range never closes a live alert (the daily-bar fallback of sinceAlert)', () => {
+  const NOW = Date.parse('2026-09-25T15:00:00Z');
+  /* (a) a swing alert 4 days old: evaluate() skips 5m bars for alerts >= 3 days
+     old, and sinceAlert() then starts the daily bars at the PREVIOUS UTC day. */
+  const old = { channel: 'swings', symbol: 'ABC', entry: 10, target: 12, at: Date.parse('2026-09-21T15:00:00Z') };
+  const oldDaily = [
+    { t: Date.parse('2026-09-20T04:00:00Z'), o: 11.8, h: 12.5, l: 9.9, c: 10.1 }, // the day BEFORE the post: ran to 12.5 and sold off
+    { t: Date.parse('2026-09-21T04:00:00Z'), o: 10.1, h: 10.4, l: 9.8, c: 10.0 }, // alert day (starts before the post)
+    { t: Date.parse('2026-09-22T04:00:00Z'), o: 10.0, h: 10.9, l: 9.8, c: 10.6 },
+    { t: Date.parse('2026-09-24T04:00:00Z'), o: 10.6, h: 11.2, l: 10.3, c: 10.9 }
+  ];
+  const oldSince = R.sinceAlert(old, null, oldDaily, 10.9);
+  assert.equal(oldSince.high, 12.5, 'precondition: sinceAlert() still reports the pre-alert high');
+  const oldAfter = postAlertRange(old, null, oldDaily);
+  assert.deepEqual(oldAfter, { high: 11.2, low: 9.8, bars: 2 }, 'only candles that start after the post count');
+  assert.equal(closedReason({ alert: old, since: oldSince, plan: { stop: 9 } }, NOW), null);
+  assert.equal(closedReason({ alert: old, since: oldSince, after: oldAfter, plan: { stop: 9 } }, NOW), null,
+    'price never reached the 12 target after the alert was posted');
+
+  /* (b) a ONE-HOUR-old alert whose 5m candles failed to load takes the same
+     daily fallback: a feed gap must hide an alert, never reveal a live one. */
+  const fresh = { channel: 'swings', symbol: 'ABC', entry: 10, target: 12, at: NOW - 3_600_000 };
+  const freshDaily = [
+    { t: Date.parse('2026-09-24T04:00:00Z'), o: 11.8, h: 12.5, l: 9.9, c: 10.1 },
+    { t: Date.parse('2026-09-25T04:00:00Z'), o: 10.1, h: 10.4, l: 9.8, c: 10.0 }
+  ];
+  const freshSince = R.sinceAlert(fresh, null, freshDaily, 10.2);
+  assert.equal(postAlertRange(fresh, null, freshDaily), null, 'no candle starts after the post');
+  assert.equal(closedReason({ alert: fresh, since: freshSince, after: postAlertRange(fresh, null, freshDaily), plan: { stop: 9 } }, NOW), null);
+
+  /* (c) the 5m candle that holds the post can include pre-alert prices, so it is left out too. */
+  const straddle = [{ t: fresh.at - 120_000, o: 10, h: 12.6, l: 9.9, c: 10 }, { t: fresh.at + 180_000, o: 10, h: 10.3, l: 9.95, c: 10.1 }];
+  assert.deepEqual(postAlertRange(fresh, straddle, freshDaily), { high: 10.3, low: 9.95, bars: 1 });
+  assert.equal(postAlertRange(null, straddle, freshDaily), null);
+  assert.equal(postAlertRange({ at: 0 }, straddle, freshDaily), null);
+});
+
+test('alerts tiering: the closed desk (academy tier) never lists a live alert because of pre-alert daily bars', () => {
+  const NOW = Date.parse('2026-09-25T15:00:00Z');
+  const svc = createAlertsService({ channels: [{ key: 'swings', id: '1' }, { key: 'longterm', id: '2' }], now: () => NOW,
+    fetchImpl: async () => new Response('{}', { status: 404 }) });
+  svc.ingest('swings', { id: '601', content: '@everyone LIVE entry 10 pt 12 plus', timestamp: new Date(NOW - 4 * DAY).toISOString(), author: { username: 'x' } });
+  const alert = svc.alerts.get('601');
+  const daily = [
+    { t: NOW - 5 * DAY, o: 11.8, h: 12.5, l: 9.9, c: 10.1 },
+    { t: NOW - 4 * DAY - 3_600_000, o: 10.1, h: 10.4, l: 9.8, c: 10.0 },
+    { t: NOW - 1 * DAY, o: 10.6, h: 11.2, l: 10.3, c: 10.9 }
+  ];
+  const since = R.sinceAlert(alert, null, daily, 10.9);
+  const riskGrade = { score: 40, band: 'MODERATE', label: 'Moderate', top: [], flags: [], coverage: 80, factors: [] };
+  svc.evaluated.set('601', { alert, quote: null, risk: riskGrade, plan: { action: 'HOLD', target: 12, stop: 9, reasons: ['r'], progress: 0.4 }, since, after: postAlertRange(alert, null, daily), checklist: null, sector: null, flow: null, algo: null, options: null });
+  const closed = svc.snapshot({ view: 'closed' });
+  assert.equal(closed.alerts.some((entry) => entry.symbol === 'LIVE'), false, 'a still-open alert reached the paid-plan (closed-only) desk');
+  assert.equal(closed.open, 1);
+  assert.equal(alert.closed, undefined, 'nothing was latched');
+});
+
+test('alerts tiering: evaluate() judges closure from candles that start after the post only', async () => {
+  const at = Date.parse('2026-09-24T13:00:00Z'); // GDC entry 2 pt 2.33, posted 2 hours before "now"
+  const history = series(198, { start: 2, end: 2.05 }).map((bar, i, all) => ({ ...bar, t: Date.parse('2026-09-23T04:00:00Z') - (all.length - i) * DAY }));
+  const daily = [...history,
+    { t: Date.parse('2026-09-23T04:00:00Z'), o: 2.3, h: 2.5, l: 2.0, c: 2.05, v: 1e6 }, // pre-alert spike through the 2.33 target
+    { t: Date.parse('2026-09-24T04:00:00Z'), o: 2.05, h: 2.5, l: 1.95, c: 2.1, v: 1e6 }]; // alert day: its high may be pre-alert
+  const run = async (intraday) => {
+    const svc = createAlertsService({ tokens: [{ label: 'b', token: 'tok-b' }], channels: [{ key: 'swings', id: '111' }, { key: 'longterm', id: '222' }], origin: 'https://wp.test',
+      candles: async (_symbol, tf) => ({ bars: tf === '1D' ? daily : intraday }), fetchImpl: makeFetch({ discord: good(), quotes: { GDC: 2.1, ZEO: 0.4, INTC: 120 } }),
+      now: () => Date.parse('2026-09-24T15:00:00Z') });
+    await svc.poll(); await svc.refresh();
+    const id = [...svc.alerts.values()].find((a) => a.symbol === 'GDC').id;
+    return { svc, ev: svc.evaluated.get(id) };
+  };
+  const gap = await run(null); // candlesFor() yields null when the 5m fetch fails
+  assert.equal(gap.ev.after, null, '5m feed gap: nothing after the post is known');
+  assert.ok(gap.ev.since.high >= 2.33, 'precondition: sinceAlert() still sees the pre-alert spike');
+  assert.equal(gap.svc.snapshot({ view: 'closed' }).alerts.some((a) => a.symbol === 'GDC'), false, 'a feed gap never reveals a live alert');
+  const straddle = await run([{ t: at - 60_000, o: 2.1, h: 2.6, l: 2.05, c: 2.1, v: 1e4 }, { t: at + 240_000, o: 2.1, h: 2.2, l: 2.0, c: 2.15, v: 1e4 }]);
+  assert.deepEqual(straddle.ev.after, { high: 2.2, low: 2.0, bars: 1 });
+  assert.equal(straddle.svc.snapshot({ view: 'closed' }).alerts.some((a) => a.symbol === 'GDC'), false, 'the candle holding the post is not post-alert');
+  const hit = await run([{ t: at + 300_000, o: 2.1, h: 2.2, l: 2.05, c: 2.15, v: 1e4 }, { t: at + 600_000, o: 2.15, h: 2.4, l: 2.1, c: 2.35, v: 1e4 }]);
+  const closedHit = hit.svc.snapshot({ view: 'closed' }).alerts.find((a) => a.symbol === 'GDC');
+  assert.ok(closedHit, 'a real post-alert target hit closes the alert');
+  assert.equal(closedHit.closed.reason, 'target_hit');
+});

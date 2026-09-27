@@ -98,3 +98,45 @@ and uncanceled renewals all fail closed.
 - Stripe must approve the platform's stored-value/virtual-credit use case and
   the payment methods offered for it.
 - Tax classification and registrations must be approved before live sales.
+
+## Rowless-subscription noise and the outbox cap (off by default)
+
+Every subscription event on the MEM Stripe account also reaches the two
+platform endpoints, including MEM Academy plans that have no `subscriptions`
+row here. Two flags, both unset (legacy behaviour) by default:
+
+- `SML_LIFECYCLE_SKIP_ROWLESS=1` on **sml-platform-api**: an event whose
+  subscription has no row no longer queues `sync_roles`, `notify` or
+  `clear_failure_state`; each suppressed event logs
+  `lifecycle_rowless_intents_suppressed`.
+- `SML_BILLING_OUTBOX_MAX_ATTEMPTS=20` on **sml-platform-worker**: an outbox
+  row that can never succeed (no handler registered, no subscription row, or a
+  notify without a recipient) is parked after 20 attempts as
+  `status='failed'`, `available_at='infinity'`, `last_error LIKE 'dead_letter%'`
+  and logs `billing_outbox_dead`. Rows for real subscriptions and the
+  money-moving intents (`loop_bucks_credit`, `seller_recovery`,
+  `seller_restore`, `cancel_external_subscription`) keep the hourly retry.
+  Revive a row with
+  `UPDATE billing_outbox SET available_at=now(), attempts=0, last_error=NULL WHERE id=...`.
+
+Both must be set before MEM Academy checkout opens
+(`platform/academy/billing/LAUNCH.md`). Record the baseline first:
+
+```sql
+SELECT count(*) FROM billing_outbox o
+ WHERE o.intent_type='subscription_access_reconcile' AND o.status IN ('pending','failed')
+   AND o.payload->>'subscriptionId' IS NULL
+   AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.stripe_subscription_id =
+       COALESCE(o.payload->>'stripeSubscriptionId', o.payload->>'stripe_subscription_id'));
+SELECT count(*) FROM billing_outbox
+ WHERE intent_type='subscription_notify' AND status IN ('pending','failed') AND payload->>'user_id' IS NULL;
+```
+
+When the cap is first turned on, backlog rows of those three kinds that are
+already past it get one last attempt and are then parked (expect a one-time
+burst of `billing_outbox_dead` warnings).
+
+**Stripe API version:** the platform webhook endpoints (`sml-platform-api.onrender.com`)
+stay pinned to `2022-11-15`. The lifecycle also reads the newer invoice shape
+(`parent.subscription_details.subscription`), but do not raise the pin without
+re-running the lifecycle and stripe-event-store tests against the new shapes.

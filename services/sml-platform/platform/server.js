@@ -19,9 +19,9 @@ const paypalWebhookModule = require('./paypal-webhook');
 const discordInteractionsModule = require('./discord-interactions');
 const dailySocialPayoutsModule = require('./dsp-interactions');
 const connectMigration = require('./connect-migration');
-const { createAcademyAccess, createIdentityAccess } = require('./academy-access');
+const { createAcademyAccess, createIdentityAccess, createAcademyContentGate } = require('./academy-access');
 const { createLoopKickBridge } = require('./loop-kick-bridge');
-const { createAcademyOAuth } = require('./academy-oauth');
+const { createAcademyOAuth, createBillingHandoff } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript, academyCurriculumVersion } = require('./academy-activity-curriculum');
 const { academyVisualLabScript } = require('./academy-visual-lab');
@@ -537,7 +537,32 @@ async function getAcademyDepth(symbol) {
 /* Chart guard: a CSS floor + watchdog appended to the Activity page (see ACADEMY_CHART_GUARD). */
 const ACADEMY_CHART_GUARD = "<style>main{min-height:560px}.chart{min-height:320px}.chart canvas{min-height:240px}#academy-back-to-chart{display:none}.academy-live-deck .academy-slide-visual:not(:has(svg)){display:none}.academy-live-deck:not(:has(.wb-svg)) .academy-slide-callout{display:none}body.academy-lesson-open #mem-algo-panel,body.academy-lesson-open .academy-pro-panel,body.academy-lesson-open .academy-pro-palette{display:none!important}.academy-live-deck .academy-slide-title{font-size:1.05rem}.academy-live-deck .academy-caption{font-size:.85rem;font-weight:600;line-height:1.55}body:not(.academy-lesson-open) .academy-guide{display:none!important}@media(max-width:900px){.academy-guide{display:none!important}}@media(max-width:900px){body.academy-lesson-open #academy-back-to-chart{display:block;position:fixed;top:6px;right:6px;z-index:2147483601;padding:8px 12px;border:0;border-radius:999px;background:#00c47d;color:#042217;font:800 12px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.5);cursor:pointer}}</style><script>(()=>{if(window.__smlChartGuard)return;window.__smlChartGuard=1;\nconst q=new URLSearchParams(location.search),SYM=()=>(q.get('symbol')||'SPY').toUpperCase(),TF=()=>q.get('tf')||'5m',status=document.getElementById('status'),canvas=document.getElementById('chart');\nconst bars=()=>{try{return window.smlAcademyChartState().bars}catch(_){return[]}},key=()=>'sml-academy-bars:'+SYM()+':'+TF();\nwindow.addEventListener('sml-academy-market',e=>{const b=e.detail&&e.detail.bars;if(b&&b.length>20){try{sessionStorage.setItem(key(),JSON.stringify({t:Date.now(),symbol:e.detail.symbol,bars:b.slice(-250)}))}catch(_){}}});\nconst restore=()=>{if(bars().length)return false;try{const c=JSON.parse(sessionStorage.getItem(key())||'null');if(c&&Array.isArray(c.bars)&&c.bars.length&&Date.now()-c.t<216e5){window.smlAcademyApplyMarket({symbol:c.symbol,bars:c.bars});if(status)status.textContent='STALE';return true}}catch(_){}return false};\nlet misses=0,reported=false,delay=1500;const started=Date.now();\nconst fix=async()=>{if(document.hidden&&bars().length)return;if(canvas&&(!canvas.clientWidth||!canvas.clientHeight))window.dispatchEvent(new Event('resize'));if(bars().length){misses=0;return}misses++;\ntry{const r=await fetch('/academy-activity/market?symbol='+encodeURIComponent(SYM())+'&tf='+encodeURIComponent(TF()),{cache:'no-store'}),p=await r.json();if(r.ok&&p&&Array.isArray(p.bars)&&p.bars.length){window.smlAcademyApplyMarket(p);if(status)status.textContent='LIVE';return}}catch(_){}\nrestore();if(!reported&&Date.now()-started>8000&&!bars().length){reported=true;try{navigator.sendBeacon('/academy-activity/report',new Blob([JSON.stringify({kind:'chart_blank',w:canvas?canvas.clientWidth:-1,h:canvas?canvas.clientHeight:-1,symbol:SYM(),tf:TF(),misses,hidden:document.hidden,ua:navigator.userAgent.slice(0,120)})],{type:'text/plain'}))}catch(_){}}};\nsetTimeout(restore,400);(function loop(){fix().finally(()=>setTimeout(loop,bars().length?10000:(delay=Math.min(8000,Math.round(delay*1.4)))))})();\ndocument.addEventListener('visibilitychange',()=>{if(!document.hidden)fix()});\n/* On a phone the lesson fills the screen and its Back to Chart button sits at the very bottom, so members never found the chart. Keep a Back to Chart button pinned on screen while a lesson is open. */\nconst backBtn=document.createElement('button');backBtn.id='academy-back-to-chart';backBtn.type='button';backBtn.textContent='\\u25A6 Back to Chart';backBtn.onclick=()=>{const c=document.getElementById('close-lesson');if(c)c.click()};document.body.appendChild(backBtn);\n/* The Indicator Engine is inserted inside the chart grid and takes the 1fr row, leaving the candles a 0px stage. Move it out, above the scanner. */\nconst lift=()=>{const box=document.querySelector('.chart > .academy-intelligence'),sc=document.querySelector('.academy-scanner');if(box&&sc&&sc.parentNode)sc.parentNode.insertBefore(box,sc);if(canvas&&(!canvas.clientHeight))window.dispatchEvent(new Event('resize'))};\nlift();const liftTimer=setInterval(lift,500);setTimeout(()=>clearInterval(liftTimer),20000);})();</script>";
 /* MEM ALGO (Day & Swing trading model) — engine + chart panel, inlined so the Activity stays a single document behind Discord's proxy. */
-const ACADEMY_MEM_ALGO = (() => {
+/* The free-session MEM ALGO teaser (content gate): the engine SOURCE with its
+   STRATEGIES registry cut down to the Day strategy, so the paid strategies are
+   neither sent nor runnable (resolveParams/analyze fall back to Day for any
+   other mode). Built once at startup and checked in a sandbox; if the engine
+   file ever changes shape the teaser is '' and a free session gets no model
+   (fail closed), never the full one. */
+function academyMemAlgoDayOnlyModel(engine) {
+  try {
+    const registry = require('./academy-mem-algo').STRATEGIES;
+    const start = engine.indexOf('const STRATEGIES = {');
+    const end = start < 0 ? -1 : engine.indexOf('\n};', start);
+    if (!registry || !registry.day || start < 0 || end < 0) return '';
+    const source = engine.slice(0, start) + 'const STRATEGIES = { day: ' + JSON.stringify(registry.day) + ' };' + engine.slice(end + 3);
+    const model = '(function(){var module={exports:{}},exports=module.exports;' + source + '\nwindow.MemAlgoEngine=module.exports;})();';
+    const sandbox = { window: {} };
+    require('node:vm').runInNewContext(model, sandbox, { timeout: 1_000 });
+    const teaser = sandbox.window.MemAlgoEngine;
+    const others = Object.keys(registry).filter((key) => key !== 'day').map((key) => registry[key]);
+    const ok = teaser && JSON.stringify(Object.keys(teaser.STRATEGIES || {})) === '["day"]'
+      && typeof teaser.analyze === 'function' && others.length > 0
+      && others.every((strategy) => !source.includes(strategy.label) && !source.includes(strategy.blurb)
+        && teaser.resolveParams(strategy.key, {}, '').fast === registry.day.params.fast);
+    return ok ? model : '';
+  } catch (_) { return ''; }
+}
+const ACADEMY_MEM_ALGO_PARTS = (() => {
   try {
     const engine = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo.js'), 'utf8');
     const ui = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8');
@@ -551,9 +576,25 @@ const ACADEMY_MEM_ALGO = (() => {
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
-    return patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script><script>(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();</script><script>' + ui + '</script>';
-  } catch (_) { return ''; } // the chart must load even if the model files are missing
+    return {
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script>',
+      model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();',
+      teaserModel: academyMemAlgoDayOnlyModel(engine),
+      ui
+    };
+  } catch (_) { return null; } // the chart must load even if the model files are missing
 })();
+const ACADEMY_MEM_ALGO = ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + '<script>' + ACADEMY_MEM_ALGO_PARTS.model + '</script><script>' + ACADEMY_MEM_ALGO_PARTS.ui + '</script>' : '';
+/* Content gate (SML_ACADEMY_CONTENT_GATE_ENABLED): the model and its panel leave
+   the page and are served by /academy-activity/mem-algo.js to a signed-in
+   session only, loaded once the session exists. Paid tiers get all five
+   strategies; a free session gets the Day strategy alone, and the data routes
+   serve it only the free symbols. */
+const ACADEMY_MEM_ALGO_SOURCE = ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.model + '\n' + ACADEMY_MEM_ALGO_PARTS.ui : '';
+const ACADEMY_MEM_ALGO_TEASER_SOURCE = ACADEMY_MEM_ALGO_PARTS && ACADEMY_MEM_ALGO_PARTS.teaserModel
+  ? ACADEMY_MEM_ALGO_PARTS.teaserModel + '\n' + ACADEMY_MEM_ALGO_PARTS.ui
+  : '';
+const ACADEMY_MEM_ALGO_LOADER = "<script>(()=>{if(window.__smlMemAlgoLoader)return;window.__smlMemAlgoLoader=1;let loaded=false,busy=false;const load=async()=>{const token=window.smlAcademySessionToken;if(loaded||busy||!token)return;busy=true;try{const response=await fetch('/academy-activity/mem-algo.js',{headers:{authorization:'Bearer '+token},cache:'no-store'});if(response.ok){const code=await response.text();loaded=true;const script=document.createElement('script');script.textContent=code;document.body.appendChild(script)}}catch(_){}finally{busy=false}};window.addEventListener('sml-academy-session',()=>{void load()});void load()})();</script>";
 
 const ACADEMY_MOOMOO_BUY = `<style>#academy-moomoo-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}#academy-moomoo-buy:hover{background:#1a3157;color:#c4d9ff}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
 const toolbar=document.querySelector('.toolbar');if(!toolbar)return;
@@ -687,8 +728,33 @@ ${ACADEMY_LOOP_KICK}
 </body></html>`;
 }
 
+/* Activity client for the Academy gate flags, placed in <head> only when a flag
+   is on so it runs before every other script. (1) Content gate: curriculum and
+   live-data requests carry the signed session (the curriculum waits up to 8 s
+   for sign-in, 20 s right after a gate reload) and a 401 renews the session
+   once. If the curriculum had to load as the free preview (no session yet, a
+   transient sign-in error, a slow first consent, or a free session) and a
+   paid session arrives later, the page reloads once so the full lessons load
+   (at most one reload per 30 s, remembered in sessionStorage, else
+   window.name). (2) Buy link (SML_ACADEMY_BILLING_IN_DISCORD_LINKS): a refused
+   or free sign-in carries a signed buy ticket; 'Get Academy access' posts it
+   to /academy-activity/buy, which mints the one-time handoff URL only then,
+   opens it through Discord and shows it as copyable text in case nothing
+   opened. (3) While access is missing, returning to the Activity re-checks the
+   role, and an upgrade reloads the page. A plain string: no template syntax,
+   backticks or backslashes. */
+const ACADEMY_GATE_CLIENT = "(()=>{\nif(window.__smlAcademyGate)return;window.__smlAcademyGate=1;\nconst cfg=window.SML_ACADEMY_GATE||{};\nconst base=window.fetch.bind(window);\nconst gated=['/academy-activity/curriculum','/academy-activity/market','/academy-activity/scanner','/academy-activity/orderflow','/academy-activity/live'];\nconst pathOf=input=>{try{return new URL(typeof input==='string'?input:(input&&input.url)||'',location.href).pathname}catch(_){return ''}};\nconst authState=()=>(document.body&&document.body.dataset.academyAuth)||'';\nconst paid=tier=>tier==='member'||tier==='academy';\nconst RELOAD_KEY='sml-academy-gate-reload';\nconst lastReload=()=>{try{const saved=sessionStorage.getItem(RELOAD_KEY);if(saved!==null)return Number(saved)||0}catch(_){}const name=String(window.name||'');return name.indexOf('smlgr:')===0?(Number(name.slice(6))||0):0};\nconst reloadedRecently=Date.now()-lastReload()<60000;\nlet reloading=false;\nconst reloadOnce=()=>{if(reloading||Date.now()-lastReload()<30000)return;reloading=true;const at=String(Date.now());try{sessionStorage.setItem(RELOAD_KEY,at)}catch(_){}try{const name=String(window.name||'');if(!name||name.indexOf('smlgr:')===0)window.name='smlgr:'+at}catch(_){}location.reload()};\nconst waitSession=ms=>new Promise(resolve=>{const started=Date.now();const tick=()=>{const token=window.smlAcademySessionToken||'';const state=authState();if(token||(state&&state!=='ready')||Date.now()-started>=ms){resolve(token);return}setTimeout(tick,150)};tick()});\nlet renewing=null;\nconst renew=()=>{if(!renewing){renewing=Promise.resolve(typeof window.smlAcademyReauth==='function'?window.smlAcademyReauth():'').catch(()=>'');renewing.then(()=>{renewing=null})}return renewing};\nconst withAuth=(init,token)=>{const options=Object.assign({},init||{});const headers=new Headers(options.headers||{});if(token){headers.set('authorization','Bearer '+token);options.cache='no-store'}options.headers=headers;return options};\nlet preview=false;\nconst upgradeIfPreview=()=>{if(cfg.gate&&preview&&paid(window.smlAcademyTier||''))setTimeout(reloadOnce,300)};\nconst mintBuy=ticket=>base('/academy-activity/buy',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket}),cache:'no-store'}).then(response=>response.json().then(payload=>response.ok&&payload&&payload.ok&&typeof payload.url==='string'?payload.url:'')).catch(()=>'');\nconst buyButton=ticket=>{const wrap=document.createElement('span');wrap.className='academy-buy';wrap.style.cssText='display:inline-flex;gap:.4rem;align-items:center;flex-wrap:wrap';const button=document.createElement('button');button.type='button';button.textContent='Get Academy access';button.style.cssText='border:1px solid #75f5bf;background:#00c47d;color:#042217;border-radius:6px;padding:.25rem .6rem;font:inherit;font-weight:800;cursor:pointer';button.onclick=()=>{if(button.disabled)return;button.disabled=true;mintBuy(window.smlAcademyBuyTicket||ticket).then(url=>{button.disabled=false;wrap.querySelectorAll('input,.academy-buy-error').forEach(node=>node.remove());if(!url){const note=document.createElement('span');note.className='academy-buy-error';note.textContent='Could not start checkout. Try again in a moment.';wrap.appendChild(note);return}const open=window.smlAcademyOpenExternal;Promise.resolve(open?open(url):false).catch(()=>false).then(()=>{const field=document.createElement('input');field.readOnly=true;field.value=url;field.setAttribute('aria-label','Academy access link (one use, expires in a few minutes)');field.style.cssText='min-width:14rem;max-width:100%;background:#0b1620;color:#dffbee;border:1px solid #294554;border-radius:6px;padding:.2rem .4rem;font:inherit';field.onfocus=()=>field.select();wrap.appendChild(field)})})};wrap.appendChild(button);return wrap};\nconst paint=()=>{const bar=document.querySelector('main .bar');if(!bar)return;const ticket=cfg.links?(window.smlAcademyBuyTicket||''):'';const state=authState(),tier=window.smlAcademyTier||'';if(state==='academy_role_required'&&ticket){const notice=document.getElementById('academy-auth-notice');if(notice&&!notice.querySelector('.academy-buy'))notice.appendChild(buyButton(ticket))}if(state==='ready'&&tier==='free'){setTimeout(()=>{const status=document.getElementById('status');if(status&&authState()==='ready'&&(window.smlAcademyTier||'')==='free')status.textContent='FREE PREVIEW'},0);if(ticket&&!bar.querySelector(':scope > .academy-buy'))bar.appendChild(buyButton(ticket))}if(state==='ready'&&tier!=='free'){const stale=bar.querySelector(':scope > .academy-buy');if(stale)stale.remove()}};\nwindow.fetch=async(input,init)=>{const path=pathOf(input);\nif(path==='/academy-activity/token'){const response=await base(input,init);try{response.clone().json().then(payload=>{if(!payload||typeof payload!=='object')return;window.smlAcademyTier=payload.ok?(payload.tier||'member'):'';window.smlAcademyBuyTicket=payload.buy&&typeof payload.buy.ticket==='string'?payload.buy.ticket:'';paint();upgradeIfPreview()}).catch(()=>{})}catch(_){}return response}\nif(!cfg.gate||typeof input!=='string'||gated.indexOf(path)<0)return base(input,init);\nif(new Headers((init&&init.headers)||{}).has('authorization'))return base(input,init);\nconst lessons=path==='/academy-activity/curriculum';\nconst token=lessons?await waitSession(reloadedRecently?20000:8000):(window.smlAcademySessionToken||'');\nif(!token){if(lessons)preview=true;return base(input,init)}\nif(lessons&&(window.smlAcademyTier||'member')==='free')preview=true;\nconst response=await base(input,withAuth(init,token));\nif(response.status!==401)return response;\nconst fresh=await renew();\nif(lessons&&(!fresh||(window.smlAcademyTier||'member')==='free'))preview=true;\nreturn base(input,withAuth(init,fresh||''))};\nlet lastCheck=0;\nconst recheck=()=>{if(document.hidden||typeof window.smlAcademyReauth!=='function')return;const state=authState(),tier=window.smlAcademyTier||'';if(state!=='academy_role_required'&&!(state==='ready'&&tier==='free'))return;if(Date.now()-lastCheck<15000)return;lastCheck=Date.now();Promise.resolve(window.smlAcademyReauth()).then(()=>{setTimeout(()=>{if(cfg.gate&&authState()==='ready'&&paid(window.smlAcademyTier||''))reloadOnce()},300)}).catch(()=>{})};\ndocument.addEventListener('visibilitychange',recheck);window.addEventListener('focus',recheck);\ndocument.addEventListener('DOMContentLoaded',()=>{new MutationObserver(paint).observe(document.body,{attributes:true,attributeFilter:['data-academy-auth']});paint()});\n})();";
+function academyGateClientScript(gate) {
+  return '<script>window.SML_ACADEMY_GATE=' + JSON.stringify({ gate: Boolean(gate.contentGate), links: Boolean(gate.links) }) + ';' + ACADEMY_GATE_CLIENT + '</script>';
+}
+
 function academyActivityHtml(initialMarket = {}, options = {}) {
-  return academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + ACADEMY_MEM_ALGO + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + '</body></html>');
+  /* options.gate is passed only while an Academy gate flag is on; without it
+     the page is byte-for-byte the ungated one. */
+  const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
+  const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + '</body></html>');
+  return gate ? html.replace('</head>', () => academyGateClientScript(gate) + '</head>') : html;
 }
 
 function academyActivityHtmlBase(initialMarket = {}, options = {}) {
@@ -1320,7 +1386,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyMassive = null,
   marketHistory = null, publicMarketDataEnabled = false,
   academyDiscipline = null,
-  academySlideDesigner = null, academyAppId = '',
+  academySlideDesigner = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
   memberEmail = null, siteExportSink = null,
   logger = log, now = Date.now }) {
@@ -1339,6 +1405,54 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     response.writeHead(status, { ...corsHeaders(origin), 'content-type': 'application/json; charset=utf-8',
       'content-length': Buffer.byteLength(payload), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
     response.end(payload);
+  };
+  /* Academy gate. academyGate is null while every gate flag is off, and then
+     nothing below changes a response. With SML_ACADEMY_CONTENT_GATE_ENABLED a
+     free or anonymous caller gets the free preview lessons and the free
+     symbols only. A caller's tier is its Activity session's tier, 'anonymous'
+     without an Authorization header, or null for a header that is not a live
+     session (the client renews and retries). */
+  const contentGateOn = Boolean(academyGate && academyGate.enabled);
+  const callerTier = (request) => {
+    const authorization = String(request.headers.authorization || '').trim();
+    if (!authorization) return 'anonymous';
+    const session = academyOAuth && typeof academyOAuth.verifySession === 'function' ? academyOAuth.verifySession(authorization) : null;
+    return session && session.ok ? (session.tier || 'member') : null;
+  };
+  const tierEntitled = (tier) => tier === 'member' || tier === 'academy';
+  /* True when a live-data request may continue; otherwise the refusal is sent. */
+  const allowGatedSymbol = (request, response, symbol) => {
+    if (!contentGateOn) return true;
+    const tier = callerTier(request);
+    if (tier === null) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return false; }
+    if (tierEntitled(tier) || academyGate.isFreeSymbol(symbol)) return true;
+    sendJson(response, 403, { ok: false, error: 'academy_access_required', freeSymbols: academyGate.freeSymbols });
+    return false;
+  };
+  const lessonOpenTo = (tier, moduleId, lessonId) => !contentGateOn || tierEntitled(tier) || academyGate.isFreeLesson(moduleId, lessonId);
+  const gatedScanner = (payload) => ({ ...payload, rows: (Array.isArray(payload && payload.rows) ? payload.rows : []).filter((row) => academyGate.isFreeSymbol(row && row.symbol)), locked: true });
+  let previewCurriculumGzip = null;
+  const previewCurriculum = () => {
+    if (!previewCurriculumGzip) {
+      const full = JSON.parse(academyCurriculumPayload);
+      previewCurriculumGzip = zlib.gzipSync(Buffer.from(JSON.stringify({ version: full.version, gated: true, lessons: academyGate.previewLessons(full.lessons) })), { level: zlib.constants.Z_BEST_SPEED });
+    }
+    return previewCurriculumGzip;
+  };
+  /* SML_ACADEMY_BILLING_IN_DISCORD_LINKS with a configured handoff minter. */
+  const buyLinksOn = Boolean(academyGate && academyGate.inDiscordLinks && academyGate.handoff
+    && typeof academyGate.handoff.mint === 'function' && academyGate.handoff.configured !== false && academyOAuth);
+  const gateClientOptions = academyGate ? { contentGate: contentGateOn, links: buyLinksOn } : null;
+  /* At most 5 handoff codes per Discord id per 10 minutes from /academy-activity/buy. */
+  const buyMints = new Map();
+  const allowBuyMint = (userId) => {
+    const at = now();
+    if (buyMints.size > 5_000) for (const [key, entry] of buyMints) if (at - entry.start >= 600_000) buyMints.delete(key);
+    const entry = buyMints.get(userId);
+    if (!entry || at - entry.start >= 600_000) { buyMints.set(userId, { start: at, count: 1 }); return true; }
+    if (entry.count >= 5) return false;
+    entry.count += 1;
+    return true;
   };
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
@@ -1641,6 +1755,23 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     if (request.method === 'GET' && path === '/academy-activity/curriculum') {
+      if (contentGateOn) {
+        const tier = callerTier(request);
+        if (tier === null) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
+        const full = tierEntitled(tier);
+        const gatedBody = full ? academyCurriculumPayloadGzip : previewCurriculum();
+        response.writeHead(200, {
+          'content-type': 'application/json; charset=utf-8',
+          'content-length': gatedBody.length,
+          'content-encoding': 'gzip',
+          'cache-control': 'private, no-store',
+          vary: 'Authorization',
+          'x-academy-access': full ? 'full' : 'preview',
+          'x-content-type-options': 'nosniff'
+        });
+        response.end(gatedBody);
+        return;
+      }
       response.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
         'content-length': academyCurriculumPayloadGzip.length,
@@ -1658,7 +1789,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
        root so Discord never receives the API's JSON 404 page. */
     if (request.method === 'GET' && (path === '/' || path === '/academy-activity/')) {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
-      const symbol = params.get('symbol') || 'SPY';
+      const requestedSymbol = params.get('symbol') || 'SPY';
+      /* The page loads before sign-in, so with the content gate on it opens on a free symbol. */
+      const symbol = contentGateOn && !academyGate.isFreeSymbol(requestedSymbol) ? (academyGate.freeSymbols[0] || 'SPY') : requestedSymbol;
       const timeframe = params.get('tf') || '5m';
       const [market, scanner, depth] = await Promise.all([
         settleWithin(getAcademyCandles(symbol, timeframe), 1_800),
@@ -1670,8 +1803,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (depth.status !== 'fulfilled') logger('warn', 'academy_activity_depth_failed', { error: depth.reason });
       const activity = market.status === 'fulfilled' ? market.value : { symbol, tf: timeframe, bars: [] };
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
+      if (contentGateOn) activity.scanner = gatedScanner(activity.scanner);
       activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
-      sendHtml(response, 200, academyActivityHtml(activity, { appId: academyAppId }));
+      sendHtml(response, 200, academyActivityHtml(activity, gateClientOptions ? { appId: academyAppId, gate: gateClientOptions } : { appId: academyAppId }));
+      return;
+    }
+
+    if (contentGateOn && request.method === 'GET' && path === '/academy-activity/mem-algo.js') {
+      const tier = callerTier(request);
+      if (tier === null || tier === 'anonymous') { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
+      const source = tierEntitled(tier) ? ACADEMY_MEM_ALGO_SOURCE : ACADEMY_MEM_ALGO_TEASER_SOURCE;
+      if (!source) { sendJson(response, 503, { ok: false, error: 'model_unavailable' }); return; }
+      response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'content-length': Buffer.byteLength(source),
+        'cache-control': 'private, no-store', vary: 'Authorization', 'x-content-type-options': 'nosniff' });
+      response.end(source);
       return;
     }
 
@@ -1679,6 +1824,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
       if (!loopKickBridge || !loopKickBridge.configured) { sendJson(response, 503, { ok: false, error: 'loop_kick_unconfigured' }); return; }
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
@@ -1732,6 +1878,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = params.get('symbol');
       const timeframe = params.get('tf') || '5m';
+      if (!allowGatedSymbol(request, response, symbol)) return;
       try {
         const massive = marketHistory?.enabled ? await marketHistory.get(symbol, timeframe) : null;
         sendJson(response, 200, massive?.ok ? massive.data : await getAcademyCandles(symbol, timeframe));
@@ -1778,12 +1925,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       if (!academyAlerts) { sendJson(response, 503, { ok: false, error: 'alerts_disabled' }); return; }
       const id = new URL(request.url || '/', 'http://localhost').searchParams.get('detail');
+      /* A 'free' session sees how many alerts there are, never the alerts. With
+         SML_ACADEMY_ALERTS_TIERING an 'academy' session sees closed alerts only
+         (case studies). Members see the live desk, as before. */
+      const alertView = session.tier === 'free' ? 'teaser' : (session.tier === 'academy' && academyGate && academyGate.alertsTiering ? 'closed' : 'live');
       try {
         if (id) {
-          const one = await academyAlerts.detail(String(id).replace(/[^0-9]/g, '').slice(0, 24));
+          if (alertView === 'teaser') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+          const alertId = String(id).replace(/[^0-9]/g, '').slice(0, 24);
+          const one = alertView === 'closed' ? await academyAlerts.detail(alertId, { closedOnly: true }) : await academyAlerts.detail(alertId);
           if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
           sendJson(response, 200, { ok: true, alert: one });
-        } else sendJson(response, 200, academyAlerts.snapshot());
+        } else sendJson(response, 200, alertView === 'live' ? academyAlerts.snapshot() : academyAlerts.snapshot({ view: alertView }));
       } catch (error) { logger('error', 'academy_alerts_request_failed', { error }); sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' }); }
       return;
     }
@@ -1792,6 +1945,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     if (request.method === 'GET' && path === '/academy-activity/live') {
       if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!allowGatedSymbol(request, response, params.get('symbol'))) return;
       try { sendJson(response, 200, mergeLive(academyOrderFlow.live(params.get('symbol')), academyMassive, params.get('symbol'))); }
       catch (error) { sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' }); }
       return;
@@ -1802,6 +1956,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
       if (!academyMassive || !academyMassive.status().enabled) { sendJson(response, 503, { ok: false, error: 'stream_disabled' }); return; }
       if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      /* EventSource cannot send the session header, so with the content gate on
+         the stream carries the free symbols only; members fall back to the
+         authenticated /live poll (the client's existing fallback). */
+      if (!allowGatedSymbol(request, response, symbol)) return;
       if (streamClients >= 400) { sendJson(response, 503, { ok: false, error: 'stream_busy' }); return; }
       streamClients += 1;
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
@@ -1822,14 +1980,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     if (request.method === 'GET' && path === '/academy-activity/orderflow') {
       if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!allowGatedSymbol(request, response, params.get('symbol'))) return;
       try { sendJson(response, 200, academyOrderFlow.get(params.get('symbol'))); }
       catch (error) { sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' }); }
       return;
     }
 
     if (request.method === 'GET' && path === '/academy-activity/scanner') {
+      const scannerTier = contentGateOn ? callerTier(request) : 'member';
+      if (scannerTier === null) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
       try {
-        sendJson(response, 200, await getAcademyScanner());
+        const scannerPayload = await getAcademyScanner();
+        sendJson(response, 200, tierEntitled(scannerTier) ? scannerPayload : gatedScanner(scannerPayload));
       } catch (error) {
         logger('error', 'academy_scanner_request_failed', { error });
         sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
@@ -1889,13 +2051,48 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         logger(result.ok ? 'info' : 'warn', result.ok ? 'academy_activity_oauth_completed' : 'academy_activity_oauth_refused', {
           ...(result.ok ? {} : { code: result.code, status: result.status })
         });
+        /* SML_ACADEMY_BILLING_IN_DISCORD_LINKS: a refused or free-tier member gets
+           a signed buy ticket (this Discord id, 15 minutes; not a session). The
+           one-time handoff code is minted by POST /academy-activity/buy only
+           when the member presses 'Get Academy access', so sign-in and the
+           15-minute renewals never wait on it or write a row. */
+        let buy = null;
+        if (buyLinksOn && result.userId && typeof academyOAuth.issueBuyTicket === 'function'
+          && ((!result.ok && result.code === 'academy_role_required') || (result.ok && result.tier === 'free'))) {
+          const ticket = academyOAuth.issueBuyTicket(result.userId);
+          if (ticket) buy = { ticket };
+        }
         sendJson(response, result.ok ? 200 : (result.status || 401), result.ok
-          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken }
-          : { ok: false, error: result.code });
+          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken, ...(academyGate && result.tier ? { tier: result.tier } : {}), ...(buy ? { buy } : {}) }
+          : { ok: false, error: result.code, ...(buy ? { buy } : {}) });
       } catch (error) {
         logger('error', 'academy_activity_oauth_failed', { error });
         sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
       }
+      return;
+    }
+
+    /* SML_ACADEMY_BILLING_IN_DISCORD_LINKS: a buy ticket from the token
+       exchange becomes a one-time handoff URL (academy_billing_handoffs: five
+       minutes, single use). The route does not exist while the flag is off. */
+    if (buyLinksOn && request.method === 'POST' && path === '/academy-activity/buy') {
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 4096);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input;
+      try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      const holder = typeof academyOAuth.verifyBuyTicket === 'function' ? academyOAuth.verifyBuyTicket(input && input.ticket) : null;
+      if (!holder) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
+      if (!allowBuyMint(holder.userId)) { sendJson(response, 429, { ok: false, error: 'rate_limited' }); return; }
+      let minted;
+      try { minted = await academyGate.handoff.mint({ discordUserId: holder.userId, guildId: academyGate.guildId, source: 'activity' }); }
+      catch (_) { minted = { ok: false, code: 'handoff_unavailable' }; }
+      if (!minted || !minted.ok) {
+        logger('warn', 'academy_billing_handoff_failed', { code: (minted && minted.code) || 'handoff_unavailable' });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+        return;
+      }
+      sendJson(response, 200, { ok: true, url: minted.url });
       return;
     }
 
@@ -1916,6 +2113,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
         const lessonExists = SEED_LESSONS.some((lesson) => lesson.moduleId === Number(input.moduleId) && lesson.lessonId === Number(input.lessonId));
         if (!lessonExists) { sendJson(response, 400, { ok: false, error: 'invalid_lesson' }); return; }
+        if (!lessonOpenTo(session.tier || 'member', input.moduleId, input.lessonId)) { sendJson(response, 403, { ok: false, error: 'lesson_locked' }); return; }
         sendJson(response, 200, { ok: true, progress: await academyProgress.save(session.userId, input) });
       } catch (error) {
         const invalid = error instanceof TypeError;
@@ -1950,7 +2148,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         return;
       }
       const authorization = String(request.headers.authorization || '').trim();
-      let voiceUserId;
+      let voiceUserId, voiceTier = 'anonymous';
       if (authorization) {
         const session = academyOAuth && academyOAuth.verifySession(authorization);
         if (!session || !session.ok) {
@@ -1958,12 +2156,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           return;
         }
         voiceUserId = session.userId;
+        voiceTier = session.tier || 'member';
       } else {
         const forwarded = String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
         const userAgent = String(request.headers['user-agent'] || '').slice(0, 160);
         voiceUserId = `anonymous:${crypto.createHash('sha256').update(`${forwarded}\0${userAgent}`).digest('hex').slice(0, 24)}`;
       }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!lessonOpenTo(voiceTier, params.get('moduleId'), params.get('lessonId'))) { sendJson(response, 403, { ok: false, error: 'lesson_locked' }); return; }
       try {
         const result = await academyVoice.getLessonAudio({
           moduleId: params.get('moduleId'), lessonId: params.get('lessonId'), userId: voiceUserId
@@ -2002,6 +2202,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       const designUserId = session.userId;
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!lessonOpenTo(session.tier || 'member', params.get('moduleId'), params.get('lessonId'))) { sendJson(response, 403, { ok: false, error: 'lesson_locked' }); return; }
       try {
         const result = await academySlideDesigner.getLessonDesign({
           moduleId: params.get('moduleId'), lessonId: params.get('lessonId'), userId: designUserId
@@ -2024,6 +2225,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!academyOAuth || !academyDataBridge) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
       const kind = path.endsWith('/options') ? 'options' : 'earnings';
       const dataParams = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = dataParams.get('symbol');
@@ -2085,9 +2287,34 @@ async function main() {
   const connectInteractions = disputes.discordInteractions;
   const dailySocialPayoutsInteractions = config.dailySocialPayoutsEnabled
     ? dailySocialPayoutsModule.createDailySocialPayoutsInteractions({ config, pool: database.pool }) : null;
-  const academyAccess = createAcademyAccess({ guildId: config.academyGuildId, allowedRoleIds: [config.academyManagerRoleId, config.academyMonarchRoleId] });
+  /* Activity gate. With every Academy flag unset this is exactly manager +
+     Monarch, all tier 'member'. SML_ACADEMY_MONARCH_ACCESS=0 drops Monarch;
+     SML_ACADEMY_MEMBER_ROLE_IDS and the engine's lifetime role are member tier;
+     SML_ACADEMY_ACCESS_ROLE_IDS adds the 'academy' tier ('Academy Student'). */
+  const academyMemberRoleIds = [config.academyManagerRoleId, ...(config.academyMonarchAccess ? [config.academyMonarchRoleId] : []),
+    ...config.academyMemberRoleIds, config.academyLifetimeRoleId].filter(Boolean);
+  const academyGateFlags = config.academyContentGateEnabled || config.academyFreeSessions || config.academyAlertsTiering || config.academyBillingInDiscordLinks;
+  const academyAccess = createAcademyAccess({ guildId: config.academyGuildId,
+    allowedRoleIds: [...academyMemberRoleIds, ...config.academyAccessRoleIds], memberRoleIds: academyMemberRoleIds,
+    retryRateLimited: academyGateFlags || config.academyAccessRoleIds.length > 0,
+    identityAccess: config.academyBillingInDiscordLinks ? createIdentityAccess({}) : null });
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
-    redirectUri: config.discordRedirectUri, academyAccess });
+    redirectUri: config.discordRedirectUri, academyAccess, freeSessions: config.academyFreeSessions });
+  const academyGate = academyGateFlags ? Object.freeze({
+    ...createAcademyContentGate({ enabled: config.academyContentGateEnabled, freePreview: config.academyFreePreview,
+      freeSymbols: config.academyFreeSymbols, alertsTiering: config.academyAlertsTiering }),
+    freeSessions: config.academyFreeSessions,
+    inDiscordLinks: config.academyBillingInDiscordLinks,
+    guildId: config.academyGuildId,
+    // In process over the shared database (the engine's issueHandoff); see createBillingHandoff.
+    handoff: config.academyBillingInDiscordLinks
+      ? createBillingHandoff({ pool: database.pool, publicUrl: config.academyBillingPublicUrl }) : null
+  }) : null;
+  // The API's Academy guild is otherwise never logged; the billing engine's preflight compares it with its own.
+  log('info', 'academy_gate_runtime', { guildId: config.academyGuildId || null, contentGate: config.academyContentGateEnabled,
+    freeSessions: config.academyFreeSessions, alertsTiering: config.academyAlertsTiering, inDiscordLinks: config.academyBillingInDiscordLinks,
+    monarchAccess: config.academyMonarchAccess, accessRoles: config.academyAccessRoleIds.length, memberRoles: academyMemberRoleIds.length,
+    handoff: Boolean(academyGate && academyGate.handoff && academyGate.handoff.configured) });
   const loopKickBridge = createLoopKickBridge({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret, appUrl: config.loopKickAppUrl });
   const connectOAuth = config.discordConnectAppId && config.discordConnectClientSecret
     ? createAcademyOAuth({ clientId: config.discordConnectAppId, clientSecret: config.discordConnectClientSecret, academyAccess: createIdentityAccess({}) })
@@ -2175,6 +2402,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     academyDiscipline,
     academyAppId: config.academyAppId,
+    academyGate,
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
     memberEmail
   });

@@ -122,6 +122,33 @@ services:
         sync: false
       - key: SML_ACADEMY_MONARCH_ROLE_ID
         value: "1260433215189946420"
+      # --- MEM Academy gate, free tier and content gate: all off while unset.
+      # Values and stages: services/sml-platform/platform/academy/billing/LAUNCH.md
+      - key: SML_ACADEMY_ACCESS_ROLE_IDS
+        sync: false
+      - key: SML_ACADEMY_MEMBER_ROLE_IDS
+        sync: false
+      - key: SML_ACADEMY_MONARCH_ACCESS
+        sync: false
+      - key: SML_ACADEMY_BILLING_LIFETIME_ROLE_ID
+        sync: false
+      - key: SML_ACADEMY_FREE_SESSIONS
+        sync: false
+      - key: SML_ACADEMY_CONTENT_GATE_ENABLED
+        sync: false
+      - key: SML_ACADEMY_FREE_PREVIEW
+        sync: false
+      - key: SML_ACADEMY_FREE_SYMBOLS
+        sync: false
+      - key: SML_ACADEMY_ALERTS_TIERING
+        sync: false
+      - key: SML_ACADEMY_BILLING_IN_DISCORD_LINKS
+        sync: false
+      - key: SML_ACADEMY_BILLING_PUBLIC_URL
+        sync: false
+      # Platform lifecycle: drop row-scoped intents for subscriptions with no row (set "1" before Academy checkout).
+      - key: SML_LIFECYCLE_SKIP_ROWLESS
+        sync: false
       - key: SML_DISPUTE_BOT_TOKEN
         sync: false
       - key: SML_CONNECT_REVIEW_URL_SECRET
@@ -168,6 +195,100 @@ services:
         sync: false
       - key: SML_ACADEMY_MONARCH_ROLE_ID
         sync: false
+      # --- MEM Academy billing engine + hub gate: every switch off while unset.
+      # Values and stages: services/sml-platform/platform/academy/billing/LAUNCH.md
+      - key: SML_ACADEMY_BILLING_ENABLED
+        sync: false
+      - key: SML_ACADEMY_BILLING_CHECKOUT_ENABLED
+        sync: false
+      - key: SML_ACADEMY_BILLING_ROLE_MODE
+        sync: false
+      - key: SML_ACADEMY_BILLING_REVOKES_ENABLED
+        sync: false
+      - key: SML_ACADEMY_BILLING_RECONCILE_MODE
+        sync: false
+      - key: SML_ACADEMY_BILLING_RECONCILE_INTERVAL_MS
+        sync: false
+      - key: SML_ACADEMY_BILLING_RECONCILE_SCAN
+        sync: false
+      - key: SML_ACADEMY_BILLING_MAX_REVOKES_PER_RUN
+        sync: false
+      - key: SML_ACADEMY_BILLING_PROXY_HOPS
+        sync: false
+      - key: SML_ACADEMY_BILLING_WEBHOOK_SECRET
+        sync: false
+      - key: SML_ACADEMY_BILLING_STRIPE_KEY
+        sync: false
+      - key: SML_ACADEMY_BILLING_STRIPE_ACCOUNT_ID
+        sync: false
+      - key: SML_ACADEMY_BILLING_LIVEMODE
+        sync: false
+      - key: SML_ACADEMY_BILLING_PRICES_JSON
+        sync: false
+      - key: SML_ACADEMY_BILLING_ACADEMY_ROLE_ID
+        sync: false
+      - key: SML_ACADEMY_BILLING_LIFETIME_ROLE_ID
+        sync: false
+      - key: SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS
+        sync: false
+      # External roles a price may grant (default Monarch, Elite, Premium) and
+      # the Upgrade.Chat check that must pass before the engine removes one.
+      # UC_MATCH: unset = any (any active Upgrade.Chat upgrade keeps the role;
+      # no product map needed) | mapped (only UC_ROLE_PRODUCTS_JSON products).
+      - key: SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS
+        sync: false
+      - key: SML_ACADEMY_BILLING_UC_MATCH
+        sync: false
+      - key: SML_ACADEMY_BILLING_UC_ROLE_PRODUCTS_JSON
+        sync: false
+      - key: UPGRADE_CHAT_CLIENT_ID
+        sync: false
+      - key: UPGRADE_CHAT_CLIENT_SECRET
+        sync: false
+      - key: SML_ACADEMY_BILLING_GUILD_ID
+        sync: false
+      - key: SML_ACADEMY_BILLING_PORTAL_CONFIG_ID
+        sync: false
+      - key: SML_ACADEMY_BILLING_PUBLIC_URL
+        sync: false
+      - key: SML_ACADEMY_BILLING_INVITE_URL
+        sync: false
+      - key: SML_ACADEMY_BILLING_TERMS_URL
+        sync: false
+      - key: SML_ACADEMY_BILLING_PRIVACY_URL
+        sync: false
+      - key: SML_ACADEMY_BILLING_CONSENT_VERSION
+        sync: false
+      - key: SML_ACADEMY_BILLING_PAYMENT_METHODS
+        sync: false
+      - key: SML_ACADEMY_BILLING_TOS_CONSENT
+        sync: false
+      - key: SML_ACADEMY_BILLING_AUTOMATIC_TAX
+        sync: false
+      - key: SML_ACADEMY_BILLING_ALLOW_NON_MEMBER
+        sync: false
+      - key: SML_ACADEMY_BILLING_AUTO_JOIN
+        sync: false
+      - key: SML_ACADEMY_BILLING_PARTIAL_REFUND_REVOKES
+        sync: false
+      - key: SML_ACADEMY_BILLING_CANCEL_ON_REFUND
+        sync: false
+      - key: SML_ACADEMY_BILLING_IN_DISCORD_LINKS
+        sync: false
+      - key: SML_ACADEMY_BILLING_SEEN_NOTIFY
+        sync: false
+      - key: SML_ACADEMY_BILLING_TEST_CLOCK
+        sync: false
+      - key: SML_ACADEMY_ACCESS_ROLE_IDS
+        sync: false
+      - key: SML_ACADEMY_MEMBER_ROLE_IDS
+        sync: false
+      - key: SML_ACADEMY_MONARCH_ACCESS
+        sync: false
+      - key: SML_ACADEMY_HUB_ROLE_GATE
+        sync: false
+      - key: SML_ACADEMY_FREE_PREVIEW
+        sync: false
 
   - type: worker
     name: sml-platform-worker
@@ -192,6 +313,9 @@ services:
       - key: SML_WORDPRESS_BILLING_BRIDGE_URL
         sync: false
       - key: SML_WORDPRESS_BILLING_BRIDGE_SECRET
+        sync: false
+      # Outbox dead-letter cap for rows that can never succeed; unset = retry forever (set "20" before Academy checkout).
+      - key: SML_BILLING_OUTBOX_MAX_ATTEMPTS
         sync: false
       - key: DISCORD_BOT_TOKEN
         sync: false

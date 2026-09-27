@@ -1,6 +1,8 @@
 'use strict';
 
 const { SEED_LESSONS } = require('./curriculum');
+const { createAcademyContentGate } = require('../academy-access');
+const { createBillingHandoff } = require('../academy-oauth');
 /* Counted from the curriculum, never typed in. Module 0 ("Start Here") made
  * every hand-written "101 lessons across 28 modules" wrong at once, so the
  * channel topics, the module picker bounds and the error copy all read these. */
@@ -89,6 +91,7 @@ function button(label, id, style = 2) { return { type: 2, style, label, custom_i
 const LAUNCH_ACTIVITY = Object.freeze({ type: 12 });
 const LAUNCH_ID = 'academy:launch';
 const TEXT_LESSON_ID = 'academy:text:lesson';
+const BUY_ID = 'academy:buy';
 function launchButton(label = 'Open Live Chart Lab') { return button(label, LAUNCH_ID, 1); }
 function lessonFor(moduleId, lessonId) { return SEED_LESSONS.find((lesson) => lesson.moduleId === moduleId && lesson.lessonId === lessonId) || null; }
 function normalized(value) { return text(value, 160).toLowerCase().replace(/[^a-z0-9$%+.-]+/g, ' ').trim(); }
@@ -158,8 +161,69 @@ function nextLessonFor(lesson) {
   return index >= 0 ? ordered[index + 1] || null : null;
 }
 
+/* The Academy gate options from getConfig(), for runtime.js to spread into
+   createAcademyCommands:
+     createAcademyCommands({ pool, ..., ...academyHubGateOptions(config, { pool }) })
+   Every value is off or empty by default, which keeps today's hub exactly.
+   With SML_ACADEMY_BILLING_IN_DISCORD_LINKS and a `pool`, buy links are
+   minted in process (createBillingHandoff over the billing engine's
+   issueHandoff and SML_ACADEMY_BILLING_PUBLIC_URL); an explicit `handoff`
+   ({ mint }) wins. `onMemberSeen` is the engine's re-check hook. All
+   optional. */
+function academyHubGateOptions(config = {}, { handoff = null, onMemberSeen = null, pool = null } = {}) {
+  const inDiscordLinks = config.academyBillingInDiscordLinks === true;
+  return {
+    accessRoleIds: Array.isArray(config.academyAccessRoleIds) ? config.academyAccessRoleIds : [],
+    memberRoleIds: [...(Array.isArray(config.academyMemberRoleIds) ? config.academyMemberRoleIds : []), config.academyLifetimeRoleId].filter(Boolean),
+    monarchAccess: config.academyMonarchAccess !== false,
+    hubRoleGate: config.academyHubRoleGate === true,
+    freePreview: config.academyFreePreview || 'M0,M29:1-10',
+    inDiscordLinks,
+    handoff: handoff || (inDiscordLinks && pool ? createBillingHandoff({ pool, publicUrl: config.academyBillingPublicUrl }) : null),
+    onMemberSeen
+  };
+}
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), ms); if (timer.unref) timer.unref(); });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
+}
+
 function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now,
-  disciplineAudio = null } = {}) {
+  disciplineAudio = null, accessRoleIds = [], memberRoleIds = [], monarchAccess = true, hubRoleGate = false,
+  freePreview = 'M0,M29:1-10', inDiscordLinks = false, handoff = null, onMemberSeen = null } = {}) {
+  /* Roles the hub admits besides Administrator: Monarch (unless
+     SML_ACADEMY_MONARCH_ACCESS=0), SML_ACADEMY_ACCESS_ROLE_IDS and the
+     member-tier roles. With the defaults that is Monarch alone, as before. */
+  const accessRoles = new Set([...(monarchAccess && monarchRoleId ? [String(monarchRoleId)] : []),
+    ...accessRoleIds.map(String), ...memberRoleIds.map(String)].filter(Boolean));
+  const freeLessons = createAcademyContentGate({ freePreview });
+  function hasAccess(interaction) {
+    const roleIds = Array.isArray(interaction?.member?.roles) ? interaction.member.roles.map(String) : [];
+    const permissions = BigInt(String(interaction?.member?.permissions || '0'));
+    return (permissions & 8n) === 8n || roleIds.some((role) => accessRoles.has(role));
+  }
+  /* SML_ACADEMY_HUB_ROLE_GATE: a member without an Academy role can still open
+     the free preview lessons from the hub; any other lesson gets a private
+     unlock note, with a buy link only when SML_ACADEMY_BILLING_IN_DISCORD_LINKS
+     is on. The link is a one-time handoff URL, never a token. */
+  const LOCKED_NOTE = 'This lesson is part of the paid Making Easy Money Academy. The free lessons stay open to everyone in the server; get Academy access to unlock the rest.';
+  async function unlockResponse(interaction, content = LOCKED_NOTE) {
+    if (inDiscordLinks && handoff && typeof handoff.mint === 'function') {
+      try {
+        const minted = await withTimeout(handoff.mint({ discordUserId: userId(interaction), guildId: String(guildId || ''), source: 'hub' }), 1_500);
+        if (minted && minted.ok && /^https:\/\//.test(String(minted.url))) {
+          return { response: response(content, [], [{ type: 1, components: [{ type: 2, style: 5, label: 'Get Academy access', url: String(minted.url) }] }]), locked: true };
+        }
+      } catch (_) { /* no link; the note still explains */ }
+    }
+    return { response: response(content), locked: true };
+  }
+  async function lockFor(interaction, lesson) {
+    if (!hubRoleGate || hasAccess(interaction) || freeLessons.isFreeLesson(lesson.moduleId, lesson.lessonId)) return null;
+    return unlockResponse(interaction);
+  }
   function canHandle(interaction) {
     const name = String(interaction?.data?.name || '').toLowerCase();
     const customId = String(interaction?.data?.custom_id || '');
@@ -171,10 +235,7 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     // member is permitted to see. This opens the private launchers and their
     // follow-up controls to students without exposing the slash-command suite.
     if (interaction?.__academyHub || (interaction?.type === 3 && String(interaction?.data?.custom_id || '').startsWith('academy:'))) return true;
-    const roleIds = Array.isArray(interaction?.member?.roles) ? interaction.member.roles.map(String) : [];
-    const permissions = BigInt(String(interaction?.member?.permissions || '0'));
-    const administrator = (permissions & 8n) === 8n;
-    return administrator || (!!monarchRoleId && roleIds.includes(String(monarchRoleId)));
+    return hasAccess(interaction);
   }
   async function student(interaction) {
     const id = userId(interaction); if (!/^\d{15,24}$/.test(id)) throw new TypeError('invalid Discord user');
@@ -219,11 +280,16 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
   }
   async function handle(interaction) {
     if (!allowed(interaction)) return { response: response('The Academy is not available in this server yet.') };
+    if (interaction.type === 3 && typeof onMemberSeen === 'function') {
+      try { Promise.resolve(onMemberSeen(userId(interaction))).catch(() => {}); } catch (_) { /* never delays the reply */ }
+    }
     if (interaction.type === 3) {
       const customId = String(interaction.data.custom_id || '');
+      if (customId === BUY_ID && inDiscordLinks) return unlockResponse(interaction, 'Get Academy access for the full Making Easy Money Academy. The button opens a secure checkout for your own Discord account; the link expires in a few minutes.');
       if (customId === LAUNCH_ID || customId === 'academy:hub:lesson') return { response: LAUNCH_ACTIVITY };
       if (customId === TEXT_LESSON_ID) {
         const fallback = await handle({ ...interaction, type: 2, data: { name: 'lesson', options: [] }, __academyHub: true });
+        if (fallback.locked) return fallback; // SML_ACADEMY_HUB_ROLE_GATE: the member's next lesson is locked
         const data = fallback.response.data;
         return { response: { ...fallback.response, data: { ...data,
           content: 'Text version of your next lesson. If the Live Chart Lab did not open, update Discord or use the desktop app, then press Try Live Chart Lab Again. Your progress is the same in both.',
@@ -243,6 +309,8 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       if ((parts.length !== 4 && parts.length !== 5) || !['start','continue','answer','flash'].includes(parts[1]) || !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3]) || (parts[1] === 'answer' && !/^[A-D]$/.test(parts[4] || ''))) return { response: response('This Academy control is no longer valid.') };
       const lesson = lessonFor(Number(parts[2]), Number(parts[3]));
       if (!lesson) return { response: response('This lesson is not available yet.') };
+      const locked = await lockFor(interaction, lesson);
+      if (locked) return locked;
       const row = await student(interaction);
       if (parts[1] === 'flash') {
         return { response: response('', [lessonEmbed(lesson, `**Answer**\n${lesson.description}\n\n**Key principle**\n${lesson.steps[0]}\n\n**Apply it**\n${lesson.steps[2]}`)], [{ type: 1, components: [button('Start Full Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
@@ -269,7 +337,7 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     const name = String(interaction.data.name || '').toLowerCase();
     if (name === 'academy') return { response: response(`Welcome to Making Easy Money Academy: ${SEED_LESSONS.length} interactive, college-level market lessons across ${new Set(SEED_LESSONS.map((entry) => entry.moduleId)).size} modules—plus quizzes, flashcards, challenges, private progress, badges, discipline lessons, replays, a glossary, and an anonymized learning leaderboard. Use the dedicated Academy channels; every launcher opens a view only you can see.`, [], [{ type: 1, components: [launchButton(), button(`Begin Lesson ${FIRST_LESSON.moduleId}.${FIRST_LESSON.lessonId}`, `academy:start:${FIRST_LESSON.moduleId}:${FIRST_LESSON.lessonId}`, 2)] }]) };
     if (name === 'enroll') { const row = await student(interaction); return { response: response(`You are enrolled. Your private Academy profile started ${new Date(row.enrolled_at || now()).toISOString().slice(0, 10)}. Open the Lesson Launchpad to begin—no slash command required.`) }; }
-    if (name === 'lesson') { const row = await student(interaction); const moduleId = Number(option(interaction, 'module', row.current_module ?? FIRST_LESSON.moduleId)); const lessonId = Number(option(interaction, 'lesson', row.current_lesson || FIRST_LESSON.lessonId)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response(`That lesson does not exist. The Academy currently contains ${LESSON_COUNT} lessons across modules ${FIRST_MODULE}–${LAST_MODULE}.`) }; return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1), launchButton()] }]) }; }
+    if (name === 'lesson') { const row = await student(interaction); const moduleId = Number(option(interaction, 'module', row.current_module ?? FIRST_LESSON.moduleId)); const lessonId = Number(option(interaction, 'lesson', row.current_lesson || FIRST_LESSON.lessonId)); const lesson = lessonFor(moduleId, lessonId); if (!lesson) return { response: response(`That lesson does not exist. The Academy currently contains ${LESSON_COUNT} lessons across modules ${FIRST_MODULE}–${LAST_MODULE}.`) }; const lockedLesson = await lockFor(interaction, lesson); if (lockedLesson) return lockedLesson; return { response: response('', [lessonEmbed(lesson)], [{ type: 1, components: [button('Start Lesson', `academy:start:${moduleId}:${lessonId}`, 1), launchButton()] }]) }; }
     if (name === 'progress') { const row = await student(interaction); const counts = await pool.query('SELECT count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed FROM academy_progress WHERE student_id=$1', [row.id]); const completed = counts.rows[0]?.completed || 0; const percent = Math.round((completed / SEED_LESSONS.length) * 100); return { response: response(`Private progress: ${completed}/${SEED_LESSONS.length} lessons (${percent}%) · ${row.xp || 0} XP · ${row.streak_days || 0}-day streak · Next: Module ${row.current_module ?? FIRST_LESSON.moduleId}, Lesson ${row.current_lesson || FIRST_LESSON.lessonId}.`) }; }
     if (name === 'badges') { const row = await student(interaction); const badges = await pool.query('SELECT badge_key FROM academy_badges WHERE student_id=$1 ORDER BY earned_at ASC', [row.id]); const earned = badges.rows.map((entry) => entry.badge_key === 'first_lesson' ? 'First Lesson' : text(entry.badge_key, 40)); return { response: response(earned.length ? `Your badges: ${earned.join(' · ')}` : 'No badges yet. Complete your first lesson to earn First Lesson.') }; }
     if (name === 'glossary') {
@@ -284,6 +352,8 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       const topic = option(interaction, 'topic');
       const lesson = lessonSearch(topic);
       if (!lesson) return { response: response(`No flashcard matched “${text(topic)}”. Try a lesson title or a specific topic such as VWAP, options, tape reading, risk, or valuation.`) };
+      const lockedCard = await lockFor(interaction, lesson);
+      if (lockedCard) return lockedCard;
       return { response: response(`**Flashcard · ${lesson.title}**\n\nBefore revealing the answer, explain this in your own words:\n${lesson.question.prompt}`, [], [{ type: 1, components: [button('Reveal Answer', `academy:flash:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
     }
     if (name === 'quiz') {
@@ -292,11 +362,15 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       if (!candidates.length) return { response: response(`Module ${moduleId} does not exist. Choose a module from ${FIRST_MODULE} to ${LAST_MODULE}.`) };
       const seed = [...userId(interaction)].reduce((total, digit) => total + Number(digit || 0), Math.floor(Number(now()) / 86_400_000));
       const lesson = candidates[seed % candidates.length];
+      const lockedQuiz = await lockFor(interaction, lesson);
+      if (lockedQuiz) return lockedQuiz;
       await student(interaction);
       return { response: response(`**Module ${moduleId} Knowledge Check**\n${lesson.question.prompt}`, [lessonEmbed(lesson, 'Choose the strongest evidence-based answer. Your result is private.')], [{ type: 1, components: Object.entries(lesson.question.options).map(([key, label]) => button(`${key}. ${label}`.slice(0, 80), `academy:answer:${lesson.moduleId}:${lesson.lessonId}:${key}`, 2)) }]) };
     }
     if (name === 'challenge') {
       const lesson = dailyLesson(SEED_LESSONS.filter((entry) => /chart|tape|replay|technical|momentum|pattern|risk/i.test(`${entry.title} ${entry.description}`)), now);
+      const lockedChallenge = await lockFor(interaction, lesson);
+      if (lockedChallenge) return lockedChallenge;
       await student(interaction);
       return { response: response(`**Today’s Chart Challenge**\n${lesson.steps[2]}\n\nWrite your context, trigger, invalidation, maximum risk, and no-trade condition before revealing later bars. Grade the process—not the outcome.`, [lessonEmbed(lesson)], [{ type: 1, components: [button('Study the Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
     }
@@ -331,6 +405,8 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       const scenario = option(interaction, 'scenario');
       const lesson = lessonSearch(scenario, SEED_LESSONS.filter((entry) => /replay|tape|auction|break|squeeze|halt|earnings|options|momentum/i.test(`${entry.title} ${entry.description} ${entry.steps.join(' ')}`)));
       if (!lesson) return { response: response(`No replay matched “${text(scenario)}”. Try tape, breakout, squeeze, halt, earnings, options, or momentum.`) };
+      const lockedReplay = await lockFor(interaction, lesson);
+      if (lockedReplay) return lockedReplay;
       const rounds = lesson.simulation?.rounds || [];
       const preview = rounds.slice(0, 3).map((round, index) => `**Pause ${index + 1}:** ${round.prompt}\n${round.display}`).join('\n\n');
       return { response: response(`**Educational Replay · ${lesson.title}**\nPause before each decision, declare your hypothesis and risk, then compare with the explanation.`, [lessonEmbed(lesson, preview || lesson.steps.join('\n\n'))], [{ type: 1, components: [button('Open Full Lesson', `academy:start:${lesson.moduleId}:${lesson.lessonId}`, 1)] }]) };
@@ -348,5 +424,5 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
   return Object.freeze({ canHandle, handle, definitions: COMMAND_DEFINITIONS });
 }
 
-module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, ENTRY_POINT_COMMAND, LAUNCH_ACTIVITY, LAUNCH_ID, TEXT_LESSON_ID,
-  LESSON_COUNT, MODULE_IDS, MODULE_COUNT, FIRST_MODULE, LAST_MODULE, FIRST_LESSON, createAcademyCommands };
+module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, ENTRY_POINT_COMMAND, LAUNCH_ACTIVITY, LAUNCH_ID, TEXT_LESSON_ID, BUY_ID,
+  LESSON_COUNT, MODULE_IDS, MODULE_COUNT, FIRST_MODULE, LAST_MODULE, FIRST_LESSON, createAcademyCommands, academyHubGateOptions };

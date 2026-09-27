@@ -82,3 +82,142 @@ test('an unconfigured Academy never accepts a session token', () => {
   const oauth = createAcademyOAuth();
   assert.equal(oauth.verifySession('Bearer v1.e30.AAAA').ok, false);
 });
+
+/* ---------- access tiers, free sessions and the buy-link handoff ---------- */
+const crypto = require('node:crypto');
+const MEMBER_ID = '420000000000000042';
+function tierOAuth(verifyResult, extra = {}) {
+  return createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => verifyResult },
+    fetchImpl: async () => response(200, { access_token: 'activity-token' }),
+    ...extra
+  });
+}
+const claimsOf = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+
+test('member sessions keep the original claims; academy sessions carry their tier', async () => {
+  const member = await tierOAuth({ ok: true, userId: MEMBER_ID, tier: 'member' }).completeActivity({ code: 'c' });
+  assert.equal(member.tier, 'member');
+  assert.deepEqual(Object.keys(claimsOf(member.sessionToken)).sort(), ['e', 'n', 'u'], 'no tier claim for members, exactly as before');
+  const legacy = await tierOAuth({ ok: true, userId: MEMBER_ID }).completeActivity({ code: 'c' });
+  assert.equal(legacy.tier, 'member', 'an access check without a tier is a member');
+  const oauth = tierOAuth({ ok: true, userId: MEMBER_ID, tier: 'academy' });
+  const academy = await oauth.completeActivity({ code: 'c' });
+  assert.equal(academy.tier, 'academy');
+  assert.equal(claimsOf(academy.sessionToken).t, 'academy');
+  assert.deepEqual(oauth.verifySession(`Bearer ${academy.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'academy' });
+  assert.deepEqual(oauth.verifySession(`Bearer ${member.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'member' });
+});
+
+test('a tier claim cannot be forged or promoted', async () => {
+  const oauth = tierOAuth({ ok: true, userId: MEMBER_ID, tier: 'academy' });
+  const { sessionToken } = await oauth.completeActivity({ code: 'c' });
+  const [version, body, signature] = sessionToken.split('.');
+  const promoted = { ...JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) };
+  delete promoted.t;
+  const forged = `${version}.${Buffer.from(JSON.stringify(promoted)).toString('base64url')}.${signature}`;
+  assert.equal(oauth.verifySession(`Bearer ${forged}`).ok, false, 'dropping the academy tier breaks the signature');
+  const key = Buffer.from(crypto.hkdfSync('sha256', 'academy-secret', 'sml-academy-activity', 'session-v1', 32));
+  const weird = `v1.${Buffer.from(JSON.stringify({ u: MEMBER_ID, e: Date.now() + 60_000, n: 'x', t: 'owner' })).toString('base64url')}`;
+  const signedWeird = `${weird}.${crypto.createHmac('sha256', key).update(weird).digest('base64url')}`;
+  assert.equal(oauth.verifySession(`Bearer ${signedWeird}`).ok, false, 'an unknown tier is refused even when signed');
+});
+
+test('SML_ACADEMY_FREE_SESSIONS off: a role miss stays a 403 with no session or Discord token, but names the member', async () => {
+  const oauth = tierOAuth({ ok: false, status: 403, code: 'academy_role_required', inGuild: true, userId: MEMBER_ID });
+  const refused = await oauth.completeActivity({ code: 'c' });
+  assert.deepEqual(refused, { ok: false, status: 403, code: 'academy_role_required', userId: MEMBER_ID, inGuild: true });
+  assert.equal('sessionToken' in refused, false);
+  assert.equal('accessToken' in refused, false);
+});
+
+test('SML_ACADEMY_FREE_SESSIONS on: a guild member without a role gets a free session; outsiders are still refused', async () => {
+  const free = tierOAuth({ ok: false, status: 403, code: 'academy_role_required', inGuild: true, userId: MEMBER_ID }, { freeSessions: true });
+  const result = await free.completeActivity({ code: 'c' });
+  assert.equal(result.ok, true);
+  assert.equal(result.tier, 'free');
+  assert.equal(result.accessToken, 'activity-token');
+  assert.deepEqual(free.verifySession(`Bearer ${result.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'free' });
+  const outsider = await tierOAuth({ ok: false, status: 403, code: 'academy_role_required', inGuild: false, userId: MEMBER_ID }, { freeSessions: true }).completeActivity({ code: 'c' });
+  assert.equal(outsider.ok, false);
+  assert.equal('sessionToken' in outsider, false);
+  const unnamed = await tierOAuth({ ok: false, status: 403, code: 'academy_role_required', inGuild: true }, { freeSessions: true }).completeActivity({ code: 'c' });
+  assert.equal(unnamed.ok, false, 'no free session without a verified Discord id');
+  const signedOut = await tierOAuth({ ok: false, status: 401, code: 'authorization_required' }, { freeSessions: true }).completeActivity({ code: 'c' });
+  assert.equal(signedOut.status, 401);
+  const paid = await tierOAuth({ ok: true, userId: MEMBER_ID, tier: 'free' }, { freeSessions: true }).completeActivity({ code: 'c' });
+  assert.equal(paid.tier, 'member', 'the access check can never itself hand out the free tier');
+});
+
+const { createBillingHandoff } = require('./academy-oauth');
+const { hashCode } = require('./academy/billing/handoff');
+const GUILD_ID = '938894329076940820';
+const PUBLIC_URL = 'https://making-easy-money-academy.onrender.com';
+function recordingPool() {
+  const queries = [];
+  return { queries, query: async (sql, params) => { queries.push({ sql, params }); return { rows: [], rowCount: 1 }; } };
+}
+
+/* The API mints the one-time code in process with the billing engine's
+   issueHandoff() over the shared database (see handoff.js), so no signed HTTP
+   hop, second secret or unsigned-timestamp replay window exists. */
+test('the billing handoff mints the one-time code in process: one row, only its hash stored, the URL on the academy origin', async () => {
+  const pool = recordingPool();
+  const handoff = createBillingHandoff({ pool, publicUrl: `${PUBLIC_URL}/` });
+  assert.equal(handoff.configured, true);
+  const minted = await handoff.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID, source: 'activity' });
+  assert.equal(minted.ok, true);
+  const url = new URL(minted.url);
+  assert.equal(url.origin, PUBLIC_URL);
+  assert.equal(url.pathname, '/v1/academy/billing/start');
+  const code = url.searchParams.get('h');
+  assert.match(code, /^[A-Za-z0-9_-]{40,64}$/);
+  assert.equal(pool.queries.length, 1);
+  assert.match(pool.queries[0].sql, /INSERT INTO academy_billing_handoffs/);
+  assert.deepEqual(pool.queries[0].params, [hashCode(code), MEMBER_ID, GUILD_ID, 'activity']);
+  assert.equal(JSON.stringify(pool.queries).includes(code), false, 'the code itself is never stored');
+  assert.doesNotMatch(minted.url, /Bearer|v1\.|b1\./, 'no session or ticket travels in the URL');
+  assert.equal((await handoff.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID, source: 'hub' })).ok, true);
+  assert.equal(pool.queries[1].params[3], 'hub');
+});
+
+test('the billing handoff fails closed: unconfigured, bad input, a missing table, a slow database or a URL on another origin', async () => {
+  const pool = recordingPool();
+  assert.equal((await createBillingHandoff({ pool, publicUrl: '' }).mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID })).code, 'handoff_unconfigured');
+  assert.equal(createBillingHandoff({ pool, publicUrl: 'http://making-easy-money-academy.onrender.com' }).configured, false, 'https only');
+  assert.equal(createBillingHandoff({ pool: null, publicUrl: PUBLIC_URL }).configured, false);
+  const good = createBillingHandoff({ pool, publicUrl: PUBLIC_URL });
+  assert.equal((await good.mint({ discordUserId: 'nope', guildId: GUILD_ID })).code, 'handoff_invalid_request');
+  assert.equal((await good.mint({ discordUserId: MEMBER_ID, guildId: 'x' })).code, 'handoff_invalid_request');
+  assert.equal((await good.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID, source: 'email' })).code, 'handoff_invalid_request');
+  assert.equal(pool.queries.length, 0, 'invalid requests never reach the database');
+  const missing = createBillingHandoff({ pool: { query: async () => { throw new Error('relation "academy_billing_handoffs" does not exist'); } }, publicUrl: PUBLIC_URL });
+  assert.equal((await missing.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID })).code, 'handoff_unavailable', 'schema 028 absent: no link, no throw');
+  const slow = createBillingHandoff({ pool: { query: () => new Promise(() => {}) }, publicUrl: PUBLIC_URL, timeoutMs: 20 });
+  assert.equal((await slow.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID })).code, 'handoff_timeout');
+  const foreign = createBillingHandoff({ pool, publicUrl: PUBLIC_URL, issue: async () => ({ url: 'https://evil.example/v1/academy/billing/start?h=x' }) });
+  assert.equal((await foreign.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID })).code, 'handoff_invalid_url');
+  const plain = createBillingHandoff({ pool, publicUrl: PUBLIC_URL, issue: async () => ({ url: 'http://making-easy-money-academy.onrender.com/x' }) });
+  assert.equal((await plain.mint({ discordUserId: MEMBER_ID, guildId: GUILD_ID })).ok, false);
+});
+
+test('buy tickets: one Discord id for 15 minutes, never a session, never forgeable', async () => {
+  let clock = 1_800_000_000_000;
+  const oauth = tierOAuth({ ok: true, userId: MEMBER_ID }, { now: () => clock });
+  const ticket = oauth.issueBuyTicket(MEMBER_ID);
+  assert.match(ticket, /^b1\./);
+  assert.deepEqual(oauth.verifyBuyTicket(ticket), { userId: MEMBER_ID });
+  assert.equal(oauth.verifySession(`Bearer ${ticket}`).ok, false, 'a ticket is not a session');
+  const { sessionToken } = await oauth.completeActivity({ code: 'c' });
+  assert.equal(oauth.verifyBuyTicket(sessionToken), null, 'a session is not a ticket');
+  const [prefix, body, signature] = ticket.split('.');
+  const swapped = { ...JSON.parse(Buffer.from(body, 'base64url').toString('utf8')), u: '420000000000000099' };
+  assert.equal(oauth.verifyBuyTicket(`${prefix}.${Buffer.from(JSON.stringify(swapped)).toString('base64url')}.${signature}`), null, 'the id cannot be swapped');
+  assert.equal(tierOAuth({ ok: true }, { clientSecret: 'another-secret' }).verifyBuyTicket(ticket), null);
+  assert.equal(oauth.verifyBuyTicket(''), null);
+  assert.equal(oauth.issueBuyTicket('not-a-snowflake'), '');
+  assert.equal(createAcademyOAuth().issueBuyTicket(MEMBER_ID), '', 'no secret, no tickets');
+  clock += 15 * 60_000;
+  assert.equal(oauth.verifyBuyTicket(ticket), null, 'expired');
+});

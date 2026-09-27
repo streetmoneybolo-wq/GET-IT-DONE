@@ -2,6 +2,30 @@
 
 const lifecycle = require('../group-subs/src/lifecycle');
 const { applyMarketplaceEvent } = require('./marketplace-events');
+const { log: defaultLog } = require('./logger');
+
+/* SML_LIFECYCLE_SKIP_ROWLESS=1: lifecycle stops queueing sync_roles, notify
+   and clear_failure_state for Stripe subscriptions that have no subscriptions
+   row (Academy, Upgrade.Chat, Substack on the MEM account). Default off, which
+   keeps the legacy behaviour. Read once, when the store is built at boot. */
+function skipRowlessEnabled(env = process.env) {
+  return String((env && env.SML_LIFECYCLE_SKIP_ROWLESS) || '').trim() === '1';
+}
+
+/* The dropped intents are counted and logged instead of queued, so the noise
+   that used to become outbox rows stays visible. Never throws: the event is
+   already committed when this runs. */
+function logRowless(logger, event, result, total) {
+  try {
+    logger('info', 'lifecycle_rowless_intents_suppressed', {
+      eventId: event.id,
+      eventType: event.type,
+      stripeSubscriptionId: stripeSubscriptionId(event),
+      suppressed: result.suppressed,
+      rowlessSuppressedTotal: total
+    });
+  } catch (_) { /* a log line must never fail a committed webhook */ }
+}
 
 function stripeSubscriptionId(event) {
   const object = event && event.data && event.data.object;
@@ -10,6 +34,13 @@ function stripeSubscriptionId(event) {
   if (object.subscription && typeof object.subscription === 'object' &&
       typeof object.subscription.id === 'string') return object.subscription.id;
   if (typeof object.id === 'string' && object.id.startsWith('sub_')) return object.id;
+  /* Stripe API 2025-03-31.basil and later: an invoice names its subscription
+     here instead. Checked last, so every shape the legacy checks resolve is
+     unchanged; the platform endpoints are pinned to 2022-11-15 today. */
+  const details = object.parent && object.parent.subscription_details;
+  const nested = details && details.subscription;
+  if (typeof nested === 'string' && nested) return nested;
+  if (nested && typeof nested === 'object' && typeof nested.id === 'string' && nested.id) return nested.id;
   return null;
 }
 
@@ -147,6 +178,10 @@ function createStripeEventStore(pool, options = {}) {
   const handleEvent = options.handleEvent || lifecycle.handleEvent;
   const handleMarketplaceEvent = options.applyMarketplaceEvent || applyMarketplaceEvent;
   const now = options.now || Date.now;
+  const suppressRowless = options.suppressRowless != null
+    ? !!options.suppressRowless : skipRowlessEnabled(process.env);
+  const logger = typeof options.logger === 'function' ? options.logger : defaultLog;
+  let rowlessSuppressed = 0;
 
   return async function acceptStripeEvent(event) {
     const client = await pool.connect();
@@ -178,7 +213,8 @@ function createStripeEventStore(pool, options = {}) {
         seenEventIds: new Set(),
         subscription: context.subscription,
         plan: context.plan,
-        now: now()
+        now: now(),
+        suppressRowless
       });
       if (!result || !result.ok) {
         throw new Error(result && result.error ? result.error : 'lifecycle rejected event');
@@ -197,6 +233,10 @@ function createStripeEventStore(pool, options = {}) {
         [event.id, status]
       );
       await client.query('COMMIT');
+      if (result.rowless && Array.isArray(result.suppressed) && result.suppressed.length) {
+        rowlessSuppressed += 1;
+        logRowless(logger, event, result, rowlessSuppressed);
+      }
       return status;
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
@@ -212,6 +252,7 @@ module.exports = {
   createStripeEventStore,
   loadContext,
   resultStatus,
+  skipRowlessEnabled,
   stripeSubscriptionId,
   updateSubscription
 };

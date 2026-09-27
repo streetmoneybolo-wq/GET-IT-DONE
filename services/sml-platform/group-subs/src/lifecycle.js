@@ -26,6 +26,18 @@ const HANDLED = new Set([
   'invoice.payment_failed'
 ]);
 
+/* Side effects that only mean something for a subscription this platform holds
+ * a row for. The MEM Stripe account also carries subscriptions the platform
+ * never sold (the Academy billing engine, Upgrade.Chat, Substack). For those
+ * the caller finds no row, so a sync_roles or notify intent reaches the worker
+ * as a bare payload (notify with user_id null) that nothing can act on, and
+ * the outbox retries it. With ctx.suppressRowless these intents are dropped
+ * for rowless events and named in result.suppressed so the caller can count
+ * them. The state intents stay: they match no row and change nothing.
+ * Off unless the caller asks (SML_LIFECYCLE_SKIP_ROWLESS=1 in the event store),
+ * so the legacy output is unchanged until the owner flips it. */
+const ROW_SCOPED_INTENTS = new Set(['sync_roles', 'notify', 'clear_failure_state']);
+
 /* -------------------------------------------------------------------------- */
 /* The access rule — one implementation, referenced everywhere                 */
 /* -------------------------------------------------------------------------- */
@@ -60,6 +72,32 @@ function toMs(v) {
 
 function intent(type, payload) { return Object.assign({ type }, payload); }
 
+/* Stripe API 2025-03-31.basil moved invoice.subscription to
+ * invoice.parent.subscription_details.subscription, and a subscription's
+ * current_period_end onto its items. The platform endpoints are pinned to
+ * 2022-11-15, where the legacy fields are always present, so for that shape
+ * both helpers return exactly the legacy field. The fallbacks only matter if
+ * an endpoint's API version is ever raised: without them every invoice for a
+ * real platform membership would look rowless. */
+function invoiceSubscriptionId(obj) {
+  if (obj.subscription != null) return obj.subscription;
+  const details = obj.parent && obj.parent.subscription_details;
+  const nested = details && details.subscription;
+  if (typeof nested === 'string' && nested) return nested;
+  if (nested && typeof nested === 'object' && typeof nested.id === 'string' && nested.id) return nested.id;
+  return obj.subscription;
+}
+
+function subscriptionPeriodEnd(obj) {
+  if (obj.current_period_end) return obj.current_period_end;
+  const items = obj.items && Array.isArray(obj.items.data) ? obj.items.data : [];
+  for (const item of items) {
+    const end = Number(item && item.current_period_end);
+    if (Number.isFinite(end) && end > 0) return end;
+  }
+  return obj.current_period_end;
+}
+
 /**
  * Turn one Stripe event into intents.
  *
@@ -68,6 +106,8 @@ function intent(type, payload) { return Object.assign({ type }, payload); }
  *   subscription   the local row this event refers to, or null
  *   plan           the plan row, for grace_days and fee
  *   now            epoch ms
+ *   suppressRowless  when true and subscription is null, emit no
+ *                  ROW_SCOPED_INTENTS (result.rowless + result.suppressed)
  *
  * Two guards matter more than the routing:
  *
@@ -115,10 +155,11 @@ function handleEvent(event, ctx = {}) {
     case 'customer.subscription.created':
     case 'customer.subscription.updated': {
       const status = String(obj.status || 'active');
+      const periodEnd = subscriptionPeriodEnd(obj);
       intents.push(intent('update_subscription', {
         stripe_subscription_id: obj.id,
         status,
-        current_period_end: obj.current_period_end ? obj.current_period_end * 1000 : null,
+        current_period_end: periodEnd ? periodEnd * 1000 : null,
         cancel_at_period_end: !!obj.cancel_at_period_end,
         last_event_at: eventMs
       }));
@@ -144,12 +185,13 @@ function handleEvent(event, ctx = {}) {
 
     case 'invoice.paid':
     case 'invoice.payment_succeeded': {
+      const subscriptionId = invoiceSubscriptionId(obj);
       intents.push(intent('update_subscription', {
-        stripe_subscription_id: obj.subscription,
+        stripe_subscription_id: subscriptionId,
         status: 'active',
         last_event_at: eventMs
       }));
-      intents.push(intent('clear_failure_state', { stripe_subscription_id: obj.subscription }));
+      intents.push(intent('clear_failure_state', { stripe_subscription_id: subscriptionId }));
 
       /* Fee ledger. Only ever recorded for subscriptions this platform
          originated — an imported row cannot carry a fee, and writing a ledger
@@ -176,7 +218,7 @@ function handleEvent(event, ctx = {}) {
           new_subscription_id: sub.id
         }));
       }
-      intents.push(intent('sync_roles', { reason: 'paid', stripe_subscription_id: obj.subscription }));
+      intents.push(intent('sync_roles', { reason: 'paid', stripe_subscription_id: subscriptionId }));
       break;
     }
 
@@ -186,7 +228,7 @@ function handleEvent(event, ctx = {}) {
          ones, or a member could sit in grace indefinitely by failing weekly. */
       const firstFailed = sub && sub.first_failed_at ? toMs(sub.first_failed_at) : eventMs;
       intents.push(intent('update_subscription', {
-        stripe_subscription_id: obj.subscription,
+        stripe_subscription_id: invoiceSubscriptionId(obj),
         status: 'grace',
         first_failed_at: firstFailed,
         access_until: firstFailed + graceDays * DAY_MS,
@@ -213,6 +255,18 @@ function handleEvent(event, ctx = {}) {
       }));
       intents.push(intent('sync_roles', { reason: 'canceled', stripe_subscription_id: obj.id }));
       break;
+    }
+  }
+
+  if (ctx.suppressRowless && !sub) {
+    const suppressed = intents.filter((i) => ROW_SCOPED_INTENTS.has(i.type)).map((i) => i.type);
+    if (suppressed.length) {
+      return {
+        ok: true,
+        rowless: true,
+        suppressed,
+        intents: intents.filter((i) => !ROW_SCOPED_INTENTS.has(i.type))
+      };
     }
   }
 
@@ -333,6 +387,9 @@ module.exports = {
   desiredRoles,
   reconcile,
   expiredGrace,
+  invoiceSubscriptionId,
+  subscriptionPeriodEnd,
   HANDLED,
+  ROW_SCOPED_INTENTS,
   DAY_MS
 };

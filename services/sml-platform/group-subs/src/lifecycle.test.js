@@ -262,3 +262,147 @@ test('reconcile is deterministic', () => {
   const args = { subs: [sub()], planGrantsById, actualBySub: {}, guild: healthyGuild, identities: linked, now: T0 };
   assert.deepEqual(L.reconcile(args), L.reconcile(args));
 });
+
+/* ---------- rowless subscriptions (PR-D, SML_LIFECYCLE_SKIP_ROWLESS) ---------- */
+
+/* A MEM-account subscription the platform never sold: an Academy package, an
+   Upgrade.Chat or a Substack plan. The event store finds no subscriptions row. */
+const ROWLESS_EVENTS = [
+  ['customer.subscription.created', { id: 'sub_academy', status: 'active', metadata: { sml_kind: 'mem_academy' } }],
+  ['customer.subscription.updated', { id: 'sub_academy', status: 'trialing' }],
+  ['invoice.paid', { id: 'in_a', subscription: 'sub_academy', amount_paid: 299, currency: 'usd' }],
+  ['invoice.payment_succeeded', { id: 'in_b', subscription: 'sub_academy', amount_paid: 299 }],
+  ['invoice.payment_failed', { id: 'in_c', subscription: 'sub_academy' }],
+  ['customer.subscription.deleted', { id: 'sub_academy' }]
+];
+
+const types = (r) => r.intents.map((i) => i.type);
+
+test('legacy default: a rowless event still emits row-scoped intents (flag off changes nothing)', () => {
+  for (const [type, object] of ROWLESS_EVENTS) {
+    const legacy = L.handleEvent(evt(type, object), { subscription: null, plan, now: T0 });
+    const explicitOff = L.handleEvent(evt(type, object), { subscription: null, plan, now: T0, suppressRowless: false });
+    assert.deepEqual(explicitOff, legacy, type + ': an explicit false must equal the legacy output');
+    assert.equal(legacy.rowless, undefined, type);
+    assert.ok(types(legacy).some((t) => L.ROW_SCOPED_INTENTS.has(t)), type + ': legacy path emitted no side effect');
+  }
+  const failed = L.handleEvent(evt('invoice.payment_failed', { subscription: 'sub_academy' }), { subscription: null, plan, now: T0 });
+  assert.equal(find(failed, 'notify').user_id, null, 'this is the null-user notify the fix removes');
+});
+
+test('suppressRowless: a rowless event emits NO sync_roles, notify or clear_failure_state', () => {
+  for (const [type, object] of ROWLESS_EVENTS) {
+    const r = L.handleEvent(evt(type, object), { subscription: null, plan, now: T0, suppressRowless: true });
+    assert.equal(r.ok, true, type);
+    assert.equal(r.rowless, true, type);
+    for (const t of types(r)) assert.equal(L.ROW_SCOPED_INTENTS.has(t), false, type + ' still emitted ' + t);
+    assert.ok(r.suppressed.length >= 1, type + ': suppression must be reported so the caller can count it');
+    assert.ok(find(r, 'record_event'), type + ': the event is still recorded');
+  }
+});
+
+test('suppressRowless: the suppressed list names exactly what was dropped', () => {
+  const paid = L.handleEvent(evt('invoice.paid', { id: 'in_a', subscription: 'sub_academy', amount_paid: 299 }),
+    { subscription: null, plan, now: T0, suppressRowless: true });
+  assert.deepEqual(paid.suppressed, ['clear_failure_state', 'sync_roles']);
+  assert.deepEqual(types(paid), ['record_event', 'update_subscription']);
+  assert.equal(find(paid, 'record_fee'), undefined, 'no fee without a row');
+
+  const failed = L.handleEvent(evt('invoice.payment_failed', { subscription: 'sub_academy' }),
+    { subscription: null, plan, now: T0, suppressRowless: true });
+  assert.deepEqual(failed.suppressed, ['notify']);
+  assert.equal(find(failed, 'notify'), undefined, 'a notify with user_id null must never be queued');
+});
+
+test('suppressRowless: an invoice with no subscription at all is treated as rowless too', () => {
+  const r = L.handleEvent(evt('invoice.paid', { id: 'in_one_time', subscription: null, amount_paid: 129999 }),
+    { subscription: null, plan, now: T0, suppressRowless: true });
+  assert.equal(r.rowless, true);
+  assert.equal(find(r, 'sync_roles'), undefined);
+});
+
+test('suppressRowless: a rowless event with no side effects returns the plain shape', () => {
+  const r = L.handleEvent(evt('customer.subscription.updated', { id: 'sub_academy', status: 'past_due' }),
+    { subscription: null, plan, now: T0, suppressRowless: true });
+  assert.equal(r.rowless, undefined);
+  assert.deepEqual(types(r), ['record_event', 'update_subscription']);
+});
+
+test('suppressRowless never changes the output for a subscription that HAS a row (Connect regression)', () => {
+  const rowful = [
+    ['customer.subscription.created', { id: 'sub_123', status: 'active' }, sub({ last_event_at: null })],
+    ['customer.subscription.updated', { id: 'sub_123', status: 'active' }, sub()],
+    ['invoice.paid', { id: 'in_1', subscription: 'sub_123', amount_paid: 9999, currency: 'usd' }, sub()],
+    ['invoice.payment_failed', { id: 'in_2', subscription: 'sub_123' }, sub()],
+    ['customer.subscription.deleted', { id: 'sub_123' }, sub()],
+    ['customer.subscription.created', { id: 'sub_123', status: 'trialing' }, sub({ id: 22, origin: 'migrated',
+      migration_from_subscription_id: 11, migration_external_platform: 'upgrade_chat',
+      migration_external_reference: 'ext_1', migration_external_renewal_at: new Date(T0 + DAY).toISOString() })]
+  ];
+  for (const [type, object, row] of rowful) {
+    const off = L.handleEvent(evt(type, object), { subscription: row, plan, now: T0 });
+    const on = L.handleEvent(evt(type, object), { subscription: row, plan, now: T0, suppressRowless: true });
+    assert.deepEqual(on, off, type + ': a platform subscription must be untouched by the flag');
+  }
+});
+
+test('suppressRowless leaves the idempotent, stale, unhandled and malformed paths alone', () => {
+  const e = evt('invoice.paid', { subscription: 'sub_academy' });
+  assert.equal(L.handleEvent(e, { seenEventIds: new Set([e.id]), suppressRowless: true }).idempotent, true);
+  assert.equal(L.handleEvent(evt('customer.created', {}), { now: T0, suppressRowless: true }).ignored, true);
+  assert.equal(L.handleEvent(null, { suppressRowless: true }).ok, false);
+  const late = evt('invoice.payment_failed', { subscription: 'sub_123' }, T0 - DAY);
+  assert.equal(L.handleEvent(late, { subscription: sub({ last_event_at: T0 }), plan, now: T0, suppressRowless: true }).stale, true);
+});
+
+/* ---------- Stripe API shape (2025-03-31.basil and later) ---------- */
+
+/* The platform endpoints are pinned to 2022-11-15. If one is ever raised,
+   an invoice names its subscription under parent.subscription_details and a
+   subscription carries current_period_end on its items. */
+const basilParent = { type: 'subscription_details', subscription_details: { subscription: 'sub_platform_1' } };
+
+test('invoice subscription id: the legacy field wins; parent.subscription_details is the fallback', () => {
+  assert.equal(L.invoiceSubscriptionId({ subscription: 'sub_legacy', parent: basilParent }), 'sub_legacy');
+  assert.equal(L.invoiceSubscriptionId({ parent: basilParent }), 'sub_platform_1');
+  assert.equal(L.invoiceSubscriptionId({ subscription: null,
+    parent: { subscription_details: { subscription: { id: 'sub_expanded' } } } }), 'sub_expanded');
+  assert.equal(L.invoiceSubscriptionId({ subscription: null }), null, 'a one-off invoice keeps its legacy null');
+  assert.equal(L.invoiceSubscriptionId({}), undefined, 'a missing field keeps its legacy undefined');
+  assert.equal(L.invoiceSubscriptionId({ parent: { type: 'quote_details', quote_details: { quote: 'qt_1' } } }), undefined);
+});
+
+test('LOW (review): a current-shape invoice resolves its subscription id in every invoice intent', () => {
+  const invoice = { object: 'invoice', id: 'in_basil', amount_paid: 2999, currency: 'usd', parent: basilParent };
+  /* The review's case: before the fix update_subscription carried undefined,
+     a 0-row UPDATE for a real platform membership. */
+  const bare = L.handleEvent({ id: 'evt_basil', type: 'invoice.paid', created: 1_790_000_000, data: { object: invoice } },
+    { subscription: null, now: 1_790_000_000_000 });
+  assert.equal(find(bare, 'update_subscription').stripe_subscription_id, 'sub_platform_1');
+
+  const paid = L.handleEvent(evt('invoice.paid', invoice),
+    { subscription: sub({ stripe_subscription_id: 'sub_platform_1' }), plan, now: T0 });
+  for (const t of ['update_subscription', 'clear_failure_state', 'sync_roles']) {
+    assert.equal(find(paid, t).stripe_subscription_id, 'sub_platform_1', t);
+  }
+  assert.equal(find(paid, 'record_fee').stripe_invoice_id, 'in_basil');
+
+  const failed = L.handleEvent(evt('invoice.payment_failed', { id: 'in_f', parent: basilParent }),
+    { subscription: sub({ stripe_subscription_id: 'sub_platform_1' }), plan, now: T0 });
+  assert.equal(find(failed, 'update_subscription').stripe_subscription_id, 'sub_platform_1');
+  assert.equal(find(failed, 'notify').user_id, 100);
+});
+
+test('subscription period end: the top-level field wins; items are the fallback; the legacy null is kept', () => {
+  const end = Math.floor((T0 + 30 * DAY) / 1000);
+  const legacy = L.handleEvent(evt('customer.subscription.updated', { id: 'sub_123', status: 'active',
+    current_period_end: end, items: { data: [{ current_period_end: end + 99 }] } }), { subscription: sub(), plan, now: T0 });
+  assert.equal(find(legacy, 'update_subscription').current_period_end, end * 1000);
+  const basil = L.handleEvent(evt('customer.subscription.updated', { id: 'sub_123', status: 'active',
+    items: { object: 'list', data: [{ id: 'si_0' }, { id: 'si_1', current_period_end: end }] } }), { subscription: sub(), plan, now: T0 });
+  assert.equal(find(basil, 'update_subscription').current_period_end, end * 1000);
+  const none = L.handleEvent(evt('customer.subscription.updated', { id: 'sub_123', status: 'active' }),
+    { subscription: sub(), plan, now: T0 });
+  assert.equal(find(none, 'update_subscription').current_period_end, null);
+  assert.equal(L.subscriptionPeriodEnd({ items: { data: [{ current_period_end: 'junk' }] } }), undefined);
+});

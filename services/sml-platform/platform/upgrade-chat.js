@@ -47,15 +47,29 @@ function pathId(value, label) {
   return encodeURIComponent(id);
 }
 
-function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, now = Date.now }) {
+/* timeoutMs (optional, off by default): every request is aborted after this
+   many milliseconds, so a caller that must not wait on Upgrade.Chat (the
+   Academy billing engine) gets an error instead of a hung promise. */
+function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, now = Date.now, timeoutMs = null }) {
   if (!clientId || !clientSecret) throw new Error('Upgrade.Chat API credentials are not configured');
   let cachedToken = null;
   let tokenExpiresAt = 0;
+  const limit = Number(timeoutMs) > 0 ? Number(timeoutMs) : null;
+  async function call(url, init) {
+    if (!limit) return fetchImpl(url, init);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`Upgrade.Chat request timed out after ${limit} ms`)), limit);
+    try {
+      return await fetchImpl(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   async function token() {
     if (cachedToken && tokenExpiresAt > now() + 60_000) return cachedToken;
     const body = new URLSearchParams({ grant_type: 'client_credentials' });
-    const response = await fetchImpl(TOKEN_URL, {
+    const response = await call(TOKEN_URL, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
@@ -73,7 +87,7 @@ function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, no
 
   async function apiGet(path) {
     const accessToken = await token();
-    const response = await fetchImpl(`${API}${path}`, {
+    const response = await call(`${API}${path}`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     if (!response.ok) throw new Error(`Upgrade.Chat request failed (${response.status})`);
@@ -103,7 +117,7 @@ function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, no
     url.searchParams.set('offset', '0');
     url.searchParams.set('userDiscordId', String(discordUserId));
     url.searchParams.set('type', 'UPGRADE');
-    const response = await fetchImpl(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const response = await call(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!response.ok) throw new Error(`Upgrade.Chat orders request failed (${response.status})`);
     const payload = await response.json();
     const matches = (payload.data || []).map((order) => orderRenewal(order, productUuid, now())).filter(Boolean);
@@ -112,7 +126,33 @@ function createUpgradeChatClient({ clientId, clientSecret, fetchImpl = fetch, no
     return matches[0];
   }
 
-  return { findMembership, validateWebhookEvent, getWebhookEvent, getOrder };
+  /* Every UPGRADE order of one Discord account, paged 100 at a time up to
+     maxPages. findMembership reads only the first page and only
+     subscriptions; this is for callers that must also see one-time
+     (lifetime) products and older pages. complete=false when the page cap
+     was hit: a caller that needs a conclusive "no membership" must then
+     treat the answer as unknown. */
+  async function listOrders({ discordUserId, maxPages = 10 }) {
+    if (!/^[0-9]{15,24}$/.test(String(discordUserId))) throw new TypeError('invalid Discord user id');
+    const accessToken = await token();
+    const orders = [];
+    for (let page = 0; page < maxPages; page += 1) {
+      const url = new URL(`${API}/orders`);
+      url.searchParams.set('limit', '100');
+      url.searchParams.set('offset', String(page * 100));
+      url.searchParams.set('userDiscordId', String(discordUserId));
+      url.searchParams.set('type', 'UPGRADE');
+      const response = await call(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!response.ok) throw new Error(`Upgrade.Chat orders request failed (${response.status})`);
+      const payload = await response.json();
+      if (!payload || !Array.isArray(payload.data)) throw new Error('Upgrade.Chat orders response has no data list');
+      orders.push(...payload.data);
+      if (payload.data.length < 100 && payload.has_more !== true) return { data: orders, complete: true };
+    }
+    return { data: orders, complete: false };
+  }
+
+  return { findMembership, listOrders, validateWebhookEvent, getWebhookEvent, getOrder };
 }
 
 module.exports = { createUpgradeChatClient, orderRenewal, addUtc, API, TOKEN_URL };

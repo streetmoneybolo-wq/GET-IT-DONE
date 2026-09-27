@@ -8,6 +8,7 @@ const { MAX_BODY_BYTES } = require('../discord-interactions');
 const { createAcademyInteractions } = require('./runtime');
 const { publishAcademyHubs } = require('./hub-publisher');
 const { scheduleAcademyActivityInviteGuard } = require('./activity-invite-guard');
+const { createAcademyBilling } = require('./billing');
 
 async function readBody(request, maxBytes = MAX_BODY_BYTES) {
   const chunks = [];
@@ -26,7 +27,7 @@ function sendJson(response, status, payload) {
   response.end(body);
 }
 
-function createAcademyServer({ interactions, checkDatabase }) {
+function createAcademyServer({ interactions, checkDatabase, academyBilling = null }) {
   return http.createServer(async (request, response) => {
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     if (request.method === 'GET' && path === '/health') {
@@ -51,6 +52,19 @@ function createAcademyServer({ interactions, checkDatabase }) {
       await interactions.handleRequest(request, response, body.rawBody);
       return;
     }
+    // MEM Academy billing (flag-gated; every path 404s until the engine is
+    // enabled, except the Stripe webhook). A throw here must never become an
+    // unhandled rejection that takes the hub interactions down with it.
+    if (academyBilling && path.startsWith('/v1/academy/billing/')) {
+      try {
+        if (await academyBilling.handle(request, response, path)) return;
+      } catch (error) {
+        log('error', 'academy_billing_unhandled', { error });
+        if (!response.headersSent) sendJson(response, 500, { ok: false, error: 'internal_error' });
+        else response.destroy();
+        return;
+      }
+    }
     sendJson(response, 404, { ok: false, error: 'not_found' });
   });
 }
@@ -58,13 +72,28 @@ function createAcademyServer({ interactions, checkDatabase }) {
 async function main() {
   const config = getConfig();
   const database = createDatabase(config);
-  const interactions = createAcademyInteractions({ config, pool: database.pool });
-  const server = createAcademyServer({ interactions, checkDatabase: database.health });
+  // Built before the interactions so the hub can use its one-time buy links
+  // (billing.handoff.mint) and re-kick waiting grants (billing.onMemberSeen).
+  // With every SML_ACADEMY_BILLING_* flag off it is inert.
+  let academyBilling = null;
+  try {
+    academyBilling = createAcademyBilling({
+      env: process.env,
+      databaseUrl: config.databaseUrl,
+      databaseSsl: config.databaseSsl,
+      logger: log
+    });
+  } catch (error) {
+    log('error', 'academy_billing_init_failed', { error });
+  }
+  const interactions = createAcademyInteractions({ config, pool: database.pool, billing: academyBilling });
+  const server = createAcademyServer({ interactions, checkDatabase: database.health, academyBilling });
   let shuttingDown = false;
   async function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
     server.close(async () => {
+      if (academyBilling) await academyBilling.stop().catch(() => {});
       await database.close();
       log('info', 'academy_shutdown_complete', { signal });
       process.exit(0);
@@ -99,6 +128,11 @@ async function main() {
           applicationId: config.academyAppId
         }, { logger: log });
       }
+    }
+    // Billing jobs start only when SML_ACADEMY_BILLING_ENABLED=1 and schema 028
+    // is present; otherwise start() only logs why it is idle.
+    if (academyBilling) {
+      void academyBilling.start().catch((error) => log('error', 'academy_billing_start_failed', { error }));
     }
   });
 }

@@ -10,6 +10,27 @@ function decimal(value, fallback, minimum = 0) {
   return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
 }
 
+/* Comma-separated Discord snowflakes. Anything else is dropped, so a typo can
+   only ever admit fewer roles, never a wrong one. */
+function snowflakeList(value) {
+  return Object.freeze([...new Set(String(value || '').split(',').map((entry) => entry.trim()).filter((entry) => /^\d{15,24}$/.test(entry)))]);
+}
+
+/* Upper-case ticker list for the Academy free tier. An empty or fully invalid
+   value falls back to the default rather than to "no symbols". */
+function symbolList(value, fallback) {
+  const list = [...new Set(String(value || '').split(',').map((entry) => entry.trim().toUpperCase()).filter((entry) => /^[A-Z][A-Z0-9.-]{0,9}$/.test(entry)))];
+  return Object.freeze(list.length ? list : fallback);
+}
+
+/* An https origin (scheme + host) or '' when unset or not https. */
+function httpsOrigin(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' ? url.origin : '';
+  } catch (_) { return ''; }
+}
+
 function jsonObject(value, name) {
   if (!String(value || '').trim()) return Object.freeze({});
   let parsed;
@@ -123,6 +144,37 @@ function getConfig(env = process.env) {
     // Making Easy Money's existing Monarch role. Render may override this for
     // a future Academy installation without changing the codebase.
     academyMonarchRoleId: String(env.SML_ACADEMY_MONARCH_ROLE_ID || '1260433215189946420').trim(),
+    // --- Academy access tiers, free tier and content gate. Every switch is
+    // off (or empty) by default, which keeps today's gate exactly: manager +
+    // Monarch get a session, nobody else does, and all content stays public.
+    // Extra roles the Activity gate and the hub admit ('Academy Student' at
+    // launch; Lifetime buyers get Monarch). Default empty.
+    academyAccessRoleIds: snowflakeList(env.SML_ACADEMY_ACCESS_ROLE_IDS),
+    // Roles that count as the full 'member' tier (live alerts), for example
+    // Premium and Elite. They are admitted by the gate too. Default empty.
+    academyMemberRoleIds: snowflakeList(env.SML_ACADEMY_MEMBER_ROLE_IDS),
+    // The engine's optional lifetime role, when this service is told about
+    // it, is a member-tier role as well. The owner leaves it unset: Lifetime
+    // grants Monarch, which is member tier already.
+    academyLifetimeRoleId: snowflakeList(env.SML_ACADEMY_BILLING_LIFETIME_ROLE_ID)[0] || '',
+    // Monarch stays admitted unless this is exactly '0'. `??` rather than `||`
+    // so an explicit '0' is honoured (academyMonarchRoleId above cannot be
+    // emptied through env because of its `||` default).
+    academyMonarchAccess: String(env.SML_ACADEMY_MONARCH_ACCESS ?? '1').trim() !== '0',
+    // Guild members without a paid role get a signed 'free' session instead of 403.
+    academyFreeSessions: String(env.SML_ACADEMY_FREE_SESSIONS || '').trim() === '1',
+    // Server-side lesson + live-data gate for free and anonymous callers.
+    academyContentGateEnabled: String(env.SML_ACADEMY_CONTENT_GATE_ENABLED || '').trim() === '1',
+    // Free preview lessons: 'M<module>' or 'M<module>:<from>-<to>', comma separated; 'none' = no lessons.
+    academyFreePreview: String(env.SML_ACADEMY_FREE_PREVIEW || '').trim() || 'M0,M29:1-10',
+    academyFreeSymbols: symbolList(env.SML_ACADEMY_FREE_SYMBOLS, ['SPY', 'QQQ']),
+    // 'academy' tier sessions see only closed alerts (case studies).
+    academyAlertsTiering: String(env.SML_ACADEMY_ALERTS_TIERING || '').trim() === '1',
+    // Hub lesson buttons refuse roleless members (free preview lessons stay open).
+    academyHubRoleGate: String(env.SML_ACADEMY_HUB_ROLE_GATE || '').trim() === '1',
+    // Buy links inside Discord (Activity 403 + hub unlock). Off until Premium Apps parity is settled.
+    academyBillingInDiscordLinks: String(env.SML_ACADEMY_BILLING_IN_DISCORD_LINKS || '').trim() === '1',
+    academyBillingPublicUrl: httpsOrigin(env.SML_ACADEMY_BILLING_PUBLIC_URL),
     academyBridgeUrl: String(env.SML_ACADEMY_BRIDGE_URL || '').trim(),
     academyBridgeSecret: String(env.SML_ACADEMY_BRIDGE_SECRET || '').trim(),
     elevenLabsApiKey: String(env.ELEVENLABS_API_KEY || '').trim(),

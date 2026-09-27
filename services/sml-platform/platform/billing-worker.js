@@ -1,9 +1,116 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { log: defaultLog } = require('./logger');
 
 function retryDelaySeconds(attempts) {
   return Math.min(3600, 30 * (2 ** Math.min(Number(attempts || 0), 7)));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dead-letter cap (PR-D)                                                      */
+/* -------------------------------------------------------------------------- */
+
+/* Without a cap a row that can never succeed (a bare payload for a Stripe
+ * subscription with no subscriptions row, an intent with no handler) retries
+ * every hour forever: retryDelaySeconds tops out at 3600 s and nothing else
+ * stops it. SML_BILLING_OUTBOX_MAX_ATTEMPTS=N (20 recommended, roughly 14 hours
+ * of retries) dead-letters such a row when its Nth attempt fails. Unset, 0 or
+ * invalid means no cap, which is the legacy behaviour, so merging changes
+ * nothing.
+ *
+ * The cap applies ONLY to rows that are unroutable (see unroutableReason):
+ *   no_handler_registered  the worker registers no handler key for the intent
+ *                          type. A key that is present but unconfigured (the
+ *                          WordPress bridge or Stripe unset) is a transient
+ *                          configuration gap and keeps retrying.
+ *   no_subscription_row    a subscription_access_reconcile row whose payload
+ *                          matched no subscriptions row when it was claimed
+ *                          (Academy, Upgrade.Chat or Substack subscriptions on
+ *                          the MEM account).
+ *   no_recipient           a subscription_notify row with no user id (the
+ *                          payment_failed notice for a rowless subscription).
+ * Every other row keeps the legacy hourly retry however many attempts it has.
+ * Each producer queues its row once under a unique source_key with ON CONFLICT
+ * DO NOTHING (promoteSubscriptionIntents, expireGrace, the Connect reconcile),
+ * so nothing would ever re-queue a dead grant or revoke: after an outage
+ * longer than the cap a paying member would never get the role and a
+ * canceled member would keep it. Real work therefore never dead-letters.
+ *
+ * billing_outbox_status_check (migration 008) allows only pending, processing,
+ * processed and failed, and PR-D adds no migration. So a dead row keeps
+ * status 'failed' and is parked with available_at = 'infinity': the claim
+ * query (available_at <= now()) never selects it again. last_error starts
+ * with 'dead_letter' and carries the reason. To find them:
+ *   SELECT * FROM billing_outbox WHERE status = 'failed' AND available_at = 'infinity';
+ * To retry one by hand, reset attempts too or it dies on its next failure:
+ *   UPDATE billing_outbox SET available_at = now(), attempts = 0 WHERE id = ...;
+ */
+const MAX_ATTEMPTS_CEILING = 10000;
+const RECOMMENDED_MAX_ATTEMPTS = 20;
+const DEAD_LETTER_PREFIX = 'dead_letter';
+const UNROUTABLE_REASONS = Object.freeze(['no_handler_registered', 'no_subscription_row', 'no_recipient']);
+
+/* Intents whose permanent loss would lose money or keep charging a member:
+ * a paid Loop Bucks credit, a seller debit or payout, and the cancellation of
+ * the old external subscription after a migration. They keep the legacy
+ * hourly retry whatever the cap says. */
+const DEAD_LETTER_EXEMPT = new Set([
+  'loop_bucks_credit',
+  'seller_recovery',
+  'seller_restore',
+  'cancel_external_subscription'
+]);
+
+function parseMaxAttempts(value) {
+  if (value == null) return 0;
+  const text = String(value).trim();
+  if (!text) return 0;
+  const n = Number(text);
+  if (!Number.isFinite(n) || n < 1) return 0;
+  return Math.min(MAX_ATTEMPTS_CEILING, Math.floor(n));
+}
+
+function resolveMaxAttempts(options = {}) {
+  return parseMaxAttempts(options.maxAttempts !== undefined
+    ? options.maxAttempts : process.env.SML_BILLING_OUTBOX_MAX_ATTEMPTS);
+}
+
+/* The attempt half of the rule: the cap is set, reached, and the intent is not
+ * money-moving. finish() also requires the row to be unroutable. */
+function isDeadLetter(intentType, attempts, maxAttempts) {
+  return maxAttempts > 0 && !DEAD_LETTER_EXEMPT.has(intentType) &&
+    Number(attempts || 0) >= maxAttempts;
+}
+
+function hasRecipient(payload) {
+  const p = payload || {};
+  return [p.user_id, p.userId].some((v) => v != null && String(v).trim() !== '');
+}
+
+/**
+ * Why a claimed row can never succeed however long it retries, or null when it
+ * is real work. handlers is the worker's handler map; omit it (a direct
+ * finish() call) and the no-handler rule is skipped. An access row counts as
+ * rowless only when enrichAccessPayload looked and found nothing
+ * (subscriptionRowFound === false); a row that was never enriched is treated as
+ * real work.
+ */
+function unroutableReason(row, handlers) {
+  const type = row && row.intent_type;
+  if (!type || DEAD_LETTER_EXEMPT.has(type)) return null;
+  if (handlers && typeof handlers === 'object' &&
+      !Object.prototype.hasOwnProperty.call(handlers, type)) return 'no_handler_registered';
+  if (type === 'subscription_access_reconcile') {
+    return row.subscriptionRowFound === false ? 'no_subscription_row' : null;
+  }
+  if (type === 'subscription_notify') return hasRecipient(row.payload) ? null : 'no_recipient';
+  return null;
+}
+
+function safeLog(logger, level, event, fields) {
+  try { (typeof logger === 'function' ? logger : defaultLog)(level, event, fields); }
+  catch (_) { /* logging must never change an outbox outcome */ }
 }
 
 async function expireGrace(pool) {
@@ -157,7 +264,9 @@ async function enrichAccessPayload(client, row, options = {}) {
       LIMIT 1`,
     [payload.subscriptionId || null, payload.stripeSubscriptionId || payload.stripe_subscription_id || null]
   );
-  if (!result.rows[0]) return row;
+  /* subscriptionRowFound tells the dead-letter cap whether this row is real
+     work (see unroutableReason). It is not a column and never reaches SQL. */
+  if (!result.rows[0]) return { ...row, subscriptionRowFound: false };
   const sub = result.rows[0];
   const active = sub.status === 'active' || sub.status === 'trialing' ||
     (['grace', 'past_due', 'unpaid'].includes(sub.status) && sub.access_until && new Date(sub.access_until) > new Date());
@@ -175,6 +284,7 @@ async function enrichAccessPayload(client, row, options = {}) {
   }
   return {
     ...row,
+    subscriptionRowFound: true,
     payload: {
       ...payload,
       subscriptionId: sub.id,
@@ -223,7 +333,16 @@ async function claimOne(pool, options = {}) {
   }
 }
 
-async function finish(pool, row, error) {
+/**
+ * Settle a claimed row. Returns 'processed', 'failed' (retried after backoff)
+ * or 'dead' (the row is unroutable and the attempt cap was reached; see the
+ * dead-letter note above). options.maxAttempts overrides
+ * SML_BILLING_OUTBOX_MAX_ATTEMPTS; options.unroutable is the worker's
+ * classification (null = real work), and when it is absent the row is
+ * classified without the handler map; options.logger receives the
+ * billing_outbox_dead line.
+ */
+async function finish(pool, row, error, options = {}) {
   if (!error) {
     const client = await pool.connect();
     try {
@@ -250,9 +369,13 @@ async function finish(pool, row, error) {
     } finally {
       client.release();
     }
-    return;
+    return 'processed';
   }
   const message = String(error && error.message || error).slice(0, 1000);
+  const maxAttempts = resolveMaxAttempts(options);
+  const unroutable = Object.prototype.hasOwnProperty.call(options, 'unroutable')
+    ? options.unroutable : unroutableReason(row, null);
+  let dead = null;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -272,13 +395,28 @@ async function finish(pool, row, error) {
         debt += delta;
       }
     }
-    await client.query(
-      `UPDATE billing_outbox
-          SET status = 'failed', last_error = $2, debt_recorded_cents = $4,
-              available_at = now() + ($3 * interval '1 second')
-        WHERE id = $1`,
-      [row.id, message, retryDelaySeconds(row.attempts), debt]
-    );
+    const attempts = Number(current && current.attempts != null ? current.attempts : row.attempts) || 0;
+    const intentType = (current && current.intent_type) || row.intent_type;
+    if (unroutable && isDeadLetter(intentType, attempts, maxAttempts)) {
+      dead = { attempts, intentType };
+      await client.query(
+        `UPDATE billing_outbox
+            SET status = 'failed', last_error = $2, debt_recorded_cents = $3,
+                available_at = 'infinity'::timestamptz
+          WHERE id = $1`,
+        [row.id,
+          `${DEAD_LETTER_PREFIX} (${unroutable}): gave up after ${attempts} attempts (cap ${maxAttempts}); last error: ${message}`.slice(0, 1000),
+          debt]
+      );
+    } else {
+      await client.query(
+        `UPDATE billing_outbox
+            SET status = 'failed', last_error = $2, debt_recorded_cents = $4,
+                available_at = now() + ($3 * interval '1 second')
+          WHERE id = $1`,
+        [row.id, message, retryDelaySeconds(row.attempts), debt]
+      );
+    }
     await client.query('COMMIT');
   } catch (finishError) {
     try { await client.query('ROLLBACK'); } catch (_) { /* original error wins */ }
@@ -286,24 +424,47 @@ async function finish(pool, row, error) {
   } finally {
     client.release();
   }
+  if (!dead) return 'failed';
+  safeLog(options.logger, 'warn', 'billing_outbox_dead', {
+    outboxId: row.id,
+    sourceKey: row.source_key,
+    intentType: dead.intentType,
+    attempts: dead.attempts,
+    maxAttempts,
+    unroutable,
+    reason: message
+  });
+  return 'dead';
 }
 
+/**
+ * One outbox step: 'empty', 'processed', 'failed' or, only when a dead-letter
+ * cap is configured and the row is unroutable, 'dead'. The cap is read once
+ * here, from options.maxAttempts or SML_BILLING_OUTBOX_MAX_ATTEMPTS.
+ */
 function createOutboxWorker(pool, handlers, options = {}) {
+  const settle = { maxAttempts: resolveMaxAttempts(options), logger: options.logger };
+  if (settle.maxAttempts > 0) {
+    safeLog(settle.logger, 'info', 'billing_outbox_dead_letter_cap', {
+      maxAttempts: settle.maxAttempts, appliesTo: [...UNROUTABLE_REASONS], exempt: [...DEAD_LETTER_EXEMPT]
+    });
+  }
+  const failed = async (row, error) => (await finish(pool, row, error, {
+    ...settle, unroutable: unroutableReason(row, handlers)
+  })) === 'dead' ? 'dead' : 'failed';
   return async function processOne() {
     const row = await claimOne(pool, options);
     if (!row) return 'empty';
     const handler = handlers[row.intent_type];
     if (typeof handler !== 'function') {
-      await finish(pool, row, new Error(`no handler for ${row.intent_type}`));
-      return 'failed';
+      return failed(row, new Error(`no handler for ${row.intent_type}`));
     }
     try {
       await handler(row.payload, row);
-      await finish(pool, row, null);
+      await finish(pool, row, null, settle);
       return 'processed';
     } catch (error) {
-      await finish(pool, row, error);
-      return 'failed';
+      return failed(row, error);
     }
   };
 }
@@ -394,6 +555,14 @@ function createStripeRestoreHandler(stripe) {
 
 module.exports = {
   retryDelaySeconds,
+  parseMaxAttempts,
+  resolveMaxAttempts,
+  isDeadLetter,
+  unroutableReason,
+  DEAD_LETTER_EXEMPT,
+  DEAD_LETTER_PREFIX,
+  UNROUTABLE_REASONS,
+  RECOMMENDED_MAX_ATTEMPTS,
   expireGrace,
   promoteSubscriptionIntents,
   claimOne,

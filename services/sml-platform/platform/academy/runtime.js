@@ -4,13 +4,13 @@
  * evidence feature flag is off.  The fallback command handler intentionally
  * exposes no billing or dispute surface. */
 const { createDiscordInteractions } = require('../discord-interactions');
-const { createAcademyCommands } = require('./commands');
+const { createAcademyCommands, academyHubGateOptions } = require('./commands');
 const { createAcademyVoice } = require('../academy-voice');
 const { SEED_LESSONS } = require('./curriculum');
 const { episodeFor, splitNarration } = require('./discipline-content');
 const crypto = require('node:crypto');
 
-function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
+function createAcademyInteractions({ config, pool, fetchImpl, now, billing = null } = {}) {
   if (!config?.academyEnabled || !config?.academyGuildId ||
       !config?.academyPublicKey || !config?.academyAppId) return null;
   const academyVoice = createAcademyVoice({
@@ -47,7 +47,16 @@ function createAcademyInteractions({ config, pool, fetchImpl, now } = {}) {
     now,
     disciplineAudio: ({ episodeId, userId, studentId }) => academyVoice.configured
       ? academyVoice.getDisciplineEpisodeAudio({ episodeId, userId })
-      : remoteDisciplineAudio({ episodeId, userId, studentId })
+      : remoteDisciplineAudio({ episodeId, userId, studentId }),
+    /* Academy gate + billing hooks. Every SML_ACADEMY_* gate flag is off by
+     * default, which keeps the hub exactly as before (Monarch + Administrator).
+     * The billing engine's in-process minter is used for buy links; an inert
+     * engine mints nothing. */
+    ...academyHubGateOptions(config, {
+      pool,
+      handoff: billing ? billing.handoff : null,
+      onMemberSeen: billing && typeof billing.onMemberSeen === 'function' ? billing.onMemberSeen : null
+    })
   });
   return createDiscordInteractions({
     config: { discordConnectPublicKey: config.academyPublicKey, discordConnectAppId: config.academyAppId },

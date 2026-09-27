@@ -34,6 +34,53 @@ const START = parseStart(process.env.ACADEMY_ALERTS_START);
 const ENV_MAX = Math.max(1, Math.min(40, Number(process.env.ACADEMY_ALERTS_MAX) || 25));
 const MAX_ACTIVE = { swings: ENV_MAX, longterm: ENV_MAX };
 
+/* Closed-alert case studies (SML_ACADEMY_ALERTS_TIERING). A paid Academy plan
+   sees an alert only once it is CLOSED: its original target was reached, its
+   stop was hit, or its window ran out (WINDOW_DAYS: swings 7, long-term 150).
+   Anything unknown counts as still open, so a missing price can only hide an
+   alert, never reveal a live one. The stop test uses a stop below the entry
+   only; a stop that was raised to break-even or trailed after a partial is
+   not an exit of the original trade.
+   Target and stop are judged ONLY from ev.after (postAlertRange below), never
+   from ev.since: sinceAlert() falls back to daily bars that start the day
+   BEFORE the alert and adds the live quote, so its high/low can hold price
+   action from before the post. */
+function closedReason(ev, nowMs) {
+  const a = ev && ev.alert;
+  if (!a) return null;
+  if (a.closed && a.closed.reason) return a.closed.reason;
+  const windowDays = WINDOW_DAYS[a.channel];
+  if (windowDays && Number.isFinite(a.at) && nowMs - a.at >= windowDays * 86_400_000) return 'window_elapsed';
+  const after = ev.after && Number(ev.after.bars) > 0 ? ev.after : null;
+  if (after && Number.isFinite(a.target) && Number.isFinite(a.entry) && a.target > a.entry && Number.isFinite(after.high) && after.high >= a.target) return 'target_hit';
+  const stop = ev.plan && Number(ev.plan.stop);
+  if (after && Number.isFinite(stop) && Number.isFinite(a.entry) && stop < a.entry && Number.isFinite(after.low) && after.low <= stop) return 'stop_hit';
+  return null;
+}
+
+/* The high and low traded strictly AFTER the alert was posted, for
+   closedReason() only. A candle counts only when it STARTS at or after the
+   post (bar times are period starts), so the 5m bar holding the post and the
+   daily bar of the alert day are left out: they can contain pre-alert prices.
+   No live quote either (after hours it can be a pre-alert print). Missing or
+   failed candles give null, which keeps the alert open. */
+function postAlertRange(alert, intraday, daily) {
+  const at = Number(alert && alert.at);
+  if (!Number.isFinite(at) || at <= 0) return null;
+  let high = -Infinity, low = Infinity, bars = 0;
+  for (const list of [intraday, daily]) {
+    for (const bar of Array.isArray(list) ? list : []) {
+      if (!bar || !(Number(bar.t) >= at)) continue;
+      const h = Number(bar.h), l = Number(bar.l);
+      if (!Number.isFinite(h) || !Number.isFinite(l)) continue;
+      if (h > high) high = h;
+      if (l < low) low = l;
+      bars += 1;
+    }
+  }
+  return bars ? { high, low, bars } : null;
+}
+
 function createAlertsService({
   tokens = [], channels = [], origin = '', fetchImpl = globalThis.fetch, candles = null, orderFlow = null, patterns = null,
   optionsChain = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
@@ -194,7 +241,7 @@ function createAlertsService({
     let opt = null;
     if (chain && chain.length) { try { opt = optionsCalc.considerOptions({ alert, price: q ? Number(q.last) : null, atrPct: g.atrPct || (daily && risk.dailyStats(daily) ? risk.dailyStats(daily).atrPct : null), plan, algoView: view, flow, rows: chain, riskBand: g.band, now: now() }); } catch (_) { opt = null; } }
     else if (chain) opt = { verdict: 'NONE', available: false, reason: 'No listed options were found for this stock.', channel: alert.channel };
-    return { options: opt, alert, quote: q, risk: g, plan, since, checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
+    return { options: opt, alert, quote: q, risk: g, plan, since, after: postAlertRange(alert, intraday, daily), checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
   }
 
   const evaluated = new Map();
@@ -239,12 +286,30 @@ function createAlertsService({
     }
     return out;
   }
-  function snapshot({ detailId = null } = {}) {
+  /* Latches the first closing reason on the alert record, so a later
+     re-evaluation (a trailed stop, a price feed gap) can never reopen it. */
+  function closure(ev) {
+    const reason = closedReason(ev, now());
+    if (reason && !ev.alert.closed) ev.alert.closed = { reason, at: now() };
+    return reason ? ev.alert.closed : null;
+  }
+  const DISCLAIMER = 'Educational analysis of posted alerts. Not advice; nothing here places a trade.';
+  /* view: 'live' (default; every alert on the desk, as members see it),
+     'closed' (only closed alerts, each with its closing reason), or 'teaser'
+     (no alerts, just how many are on the desk). */
+  function snapshot({ detailId = null, view = 'live' } = {}) {
+    if (view === 'closed' || view === 'teaser') {
+      const evs = active().map((a) => evaluated.get(a.id)).filter(Boolean);
+      const closed = evs.map((ev) => [ev, closure(ev)]).filter(([, state]) => state);
+      if (view === 'teaser') return { ok: true, asOf: now(), alerts: [], pending: 0, locked: true, teaser: { count: active().length, closed: closed.length }, disclaimer: DISCLAIMER };
+      return { ok: true, asOf: now(), feed, view: 'closed', alerts: closed.map(([ev, state]) => Object.assign(publicAlert(ev, ev.alert.id === detailId), { closed: { reason: state.reason, at: state.at } })), pending: 0, open: active().length - closed.length, disclaimer: DISCLAIMER };
+    }
     const list = active().map((a) => evaluated.get(a.id)).filter(Boolean).map((ev) => publicAlert(ev, ev.alert.id === detailId));
     const pending = active().length - list.length;
-    return { ok: true, asOf: now(), feed, alerts: list, pending, disclaimer: 'Educational analysis of posted alerts. Not advice; nothing here places a trade.' };
+    return { ok: true, asOf: now(), feed, alerts: list, pending, disclaimer: DISCLAIMER };
   }
-  async function detail(id) { const a = alerts.get(String(id)); if (!a) return null; if (!evaluated.has(a.id)) await refresh(); const ev = evaluated.get(a.id); if (!ev) return null; const quotes = await loadQuotes([a.symbol]); const fresh = await evaluate(a, quotes, lastContext.market, lastContext.sectorQuotes, true).catch(() => ev); evaluated.set(a.id, fresh); return publicAlert(fresh, true); }
+  /* closedOnly: an alert that is still open is reported as not found. */
+  async function detail(id, { closedOnly = false } = {}) { const a = alerts.get(String(id)); if (!a) return null; if (!evaluated.has(a.id)) await refresh(); const ev = evaluated.get(a.id); if (!ev) return null; if (closedOnly && !closure(ev)) return null; const quotes = await loadQuotes([a.symbol]); const fresh = await evaluate(a, quotes, lastContext.market, lastContext.sectorQuotes, true).catch(() => ev); evaluated.set(a.id, fresh); if (!closedOnly) return publicAlert(fresh, true); const state = closure(fresh) || a.closed; return Object.assign(publicAlert(fresh, true), { closed: { reason: state.reason, at: state.at } }); }
 
   const avatarCache = new Map();
   /* the Activity's CSP blocks images from other hosts, so the poster's Discord avatar is fetched here and served from our own origin */
@@ -287,4 +352,4 @@ function defaultChannels(env = process.env) {
   ];
 }
 
-module.exports = { createAlertsService, defaultChannels, sectorFor, SECTORS };
+module.exports = { createAlertsService, defaultChannels, sectorFor, SECTORS, closedReason, postAlertRange, WINDOW_DAYS };
