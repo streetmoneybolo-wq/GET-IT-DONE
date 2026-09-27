@@ -67,6 +67,16 @@ function parseAlertMessage(content, timestamp = new Date().toISOString(), timeZo
     if (!(entryPrice > 0) || !(targetPrice > 0)) return null;
     return { kind: 'equity', symbol: equity[1].toUpperCase(), entryPrice, targetPrice, targetIsMinimum: Boolean(equity[4]), needsReview: false, riskFlag, raw: text };
   }
+  /* Other analysts' layouts, for the channels members add themselves. Only a $CASHTAG counts here, so ordinary chat is never read as an alert:
+     "BUY $AAPL @ 180.5 PT 195", "$NVDA in at 120, tp 135, sl 115", "$AMD Entry: 150 Target: 170", "$SOFI long 7.10 targets 8 / 9" */
+  const loose = normalized.match(new RegExp(String.raw`\$([A-Z]{1,6})\b[^$]{0,40}?(?:\b(?:entry|entries|buy|bought|in at|in|at|long|starter)\b|@)\s*:?\s*@?\s*\$?(${price})\b(?!\s*(?:shares?|sh|contracts?)\b)[^$]{0,60}?\b(?:pt|pts|price target|targets?|tp1?|tgt|take profit)\s*:?\s*\$?(${price})(?:\s*(plus|\+))?`, 'i'));
+  if (loose) {
+    const entryPrice = Number(loose[2]);
+    const targetPrice = Number(loose[3]);
+    // a target that is not near the entry is a misread (a date, a strike, a share count), not an alert
+    if (!(entryPrice > 0) || !(targetPrice > 0) || targetPrice / entryPrice > 10 || targetPrice / entryPrice < 0.2) return null;
+    return { kind: 'equity', symbol: loose[1].toUpperCase(), entryPrice, targetPrice, targetIsMinimum: Boolean(loose[4]), needsReview: false, riskFlag, raw: text };
+  }
   return null;
 }
 

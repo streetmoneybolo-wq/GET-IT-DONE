@@ -1,7 +1,9 @@
 /* Alerts desk for the Academy Live Chart Lab: the trader's alerts in a window beside the chart at all times.
    Each alert shows a low-to-high risk grade, its progress to target, and a plan that updates itself (hold / raise target / take partial profits / sell).
    Long-term alerts add a compact yes/no company checklist. Click an alert and the chart switches to it; open it for the full reasoning.
-   Members only: it uses the same Academy session as the options chain. Educational analysis, not advice. */
+   Members only: it uses the same Academy session as the options chain. Educational analysis, not advice.
+   The desk starts empty: each member adds their own sources with the Sources button: a server first, then a channel in it (or chosen posters in
+   that channel), then Follow. Any server the member shares with an Academy bot works; the owner's own streams are offered as presets. */
 (function boot(tries) {
   const shell = document.querySelector('.shell');
   const side = document.querySelector('.shell > .side');
@@ -17,7 +19,7 @@
   const BAND = { LOW: '#19c37d', MODERATE: '#9bd93c', ELEVATED: '#ffb020', HIGH: '#ff6a3d', EXTREME: '#ff2d55' };
   const ACT = { HOLD: ['HOLD', '#7fa6bf', '#0c1a24'], RAISE_TARGET: ['RAISE TARGET', '#19e36b', '#03150c'], PARTIAL: ['TAKE PARTIAL', '#ffb020', '#221500'], SELL: ['SELL', '#ff5470', '#2a0509'] };
 
-  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false };
+  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false, perMember: false, sourceCount: 0, teaser: null, pick: null };
   const KEY = 'sml-alerts-desk-v1';
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; if (saved && saved.hidden === true) S.hidden = true; } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, hidden: S.hidden })); } catch (_) { /* ignore */ } };
@@ -41,6 +43,14 @@
     + '#academy-alerts .aa-swap{margin-left:4px;padding:3px 7px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#a9bfcb;font:800 .58rem system-ui;cursor:pointer}'
     + '#academy-alerts .aa-av{width:22px;height:22px;border-radius:50%;object-fit:cover;background:#17303c;flex:none;border:1px solid #2b5362}#academy-alerts .aa-av.none{display:none}#academy-alerts .aa-who{color:#8fa6b3;font:600 .58rem system-ui;max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
     + '#academy-alerts .aa-opt{padding:2px 7px;border-radius:5px;font:800 .58rem ui-monospace,monospace;white-space:nowrap;border:1px solid}#academy-alerts .aa-oc{margin:0 0 6px;padding:7px 8px;border:1px solid #23495a;border-radius:8px;background:#0b1a24;line-height:1.4;font-weight:500;font-size:.62rem;color:#c5d3db}#academy-alerts .aa-oc b{color:#fff}#academy-alerts .aa-og{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:6px 0}#academy-alerts .aa-og div{background:#10232f;border-radius:6px;padding:4px 6px;font:700 .62rem ui-monospace,monospace;color:#fff}#academy-alerts .aa-og small{display:block;color:#7f97a4;font:600 .5rem system-ui;letter-spacing:.05em}'
+    + '#academy-alerts .aa-src{margin-left:4px;padding:3px 8px;border:1px solid #00d084;border-radius:6px;background:#0b2a1f;color:#5df0b0;font:800 .58rem system-ui;cursor:pointer}'
+    + '#academy-alerts .pk h6{margin:10px 2px 5px;font:800 .56rem ui-monospace,monospace;color:#86a2b0;letter-spacing:.08em}#academy-alerts .pk-i{display:flex;align-items:center;gap:6px;width:100%;margin:0 0 5px;padding:8px 9px;border:1px solid #1b3540;border-radius:8px;background:#0c1620;color:#dcebf4;font:700 .66rem system-ui;text-align:left;cursor:pointer}#academy-alerts .pk-i:hover{border-color:#2f6a7f}#academy-alerts .pk-i small{color:#7f97a4;font-weight:600}#academy-alerts .pk-i .go{margin-left:auto;color:#5df0b0;font-weight:800}'
+    + '#academy-alerts .pk-i.cur{border-color:#42f5b3}#academy-alerts .pk-gi{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:7px;background:#17303c;color:#bfe;font:800 .6rem system-ui;flex:none}'
+    + '#academy-alerts .pk-f{margin-left:auto;padding:4px 9px;border:0;border-radius:6px;background:#00c47d;color:#042217;font:800 .6rem system-ui;cursor:pointer;flex:none}#academy-alerts .pk-f.on{background:#17303c;color:#8fa6b3}#academy-alerts .pk-x{margin-left:auto;padding:3px 8px;border:1px solid #6a2330;border-radius:6px;background:#200a0f;color:#ff8ea1;font:800 .6rem system-ui;cursor:pointer;flex:none}'
+    + '#academy-alerts .pk-back{padding:4px 9px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#a9bfcb;font:800 .6rem system-ui;cursor:pointer}#academy-alerts .pk-bar{display:flex;align-items:center;gap:6px;margin:2px 0 6px}#academy-alerts .pk-bar b{font:800 .72rem system-ui;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    + '#academy-alerts .pk-seg{display:flex;gap:4px;margin:6px 0}#academy-alerts .pk-seg button{flex:1;padding:5px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#a9bfcb;font:800 .6rem system-ui;cursor:pointer}#academy-alerts .pk-seg button.on{background:#12362b;border-color:#00d084;color:#fff}'
+    + '#academy-alerts .pk-big{width:100%;margin:4px 0 8px;padding:9px;border:0;border-radius:8px;background:#00c47d;color:#042217;font:800 .7rem system-ui;cursor:pointer}#academy-alerts .pk-big.on{background:#17303c;color:#8fa6b3}#academy-alerts .pk-id{display:flex;gap:5px;margin:4px 0 8px}#academy-alerts .pk-id input{flex:1;min-width:0;padding:7px 8px;border:1px solid #23495a;border-radius:7px;background:#08121a;color:#fff;font:700 .66rem ui-monospace,monospace}'
+    + '#academy-alerts .pk-msg{padding:6px 8px;margin:4px 0;border-radius:7px;background:#0b1a24;color:#a9bfcb;font-weight:600;font-size:.6rem;line-height:1.4}#academy-alerts .pk-msg.bad{background:#2a0c12;color:#ff9fb0}#academy-alerts .pk-tag{padding:1px 5px;border-radius:4px;background:#17303c;color:#8fa6b3;font:800 .5rem ui-monospace,monospace}'
     + '#academy-alerts .aa-close{margin-left:auto;padding:3px 9px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#eaf5f8;font:800 .7rem system-ui;cursor:pointer}'
     + '#academy-alerts-fab{display:none;position:fixed;left:10px;bottom:14px;z-index:2147481000;align-items:center;gap:6px;padding:9px 13px;border:1px solid #2b5362;border-radius:999px;background:#0b1620;color:#eaf5f8;font:800 .72rem system-ui;box-shadow:0 6px 20px rgba(0,0,0,.5);cursor:pointer}#academy-alerts-fab i{width:9px;height:9px;border-radius:50%;background:#19c37d}'
     // wide: a third column between the chart and the quote panel
@@ -133,23 +143,98 @@
     fab.innerHTML = '<i style="background:' + (S.alerts.length ? BAND[bandOfWorst] : '#6f8794') + '"></i>Alerts' + (S.alerts.length ? ' · ' + S.alerts.length : '');
     const swapBtn = '<button type="button" class="aa-swap" data-act="swap" title="Show the quote and order book instead">Quote</button>';
     const closeBtn = '<button type="button" class="aa-close" data-act="close" aria-label="Close alerts">✕</button>';
-    let head = '<header><b>ALERTS DESK</b>' + swapBtn + closeBtn + '<small>' + (S.asOf ? 'updated ' + ago(S.asOf) + ' ago' : '') + '</small></header>'
+    const srcBtn = S.session && S.perMember ? '<button type="button" class="aa-src" data-act="sources" title="Pick which servers, channels and traders your desk follows">' + (S.pick ? 'Done' : '＋ Sources' + (S.sourceCount ? ' · ' + S.sourceCount : '')) + '</button>' : '';
+    let head = '<header><b>ALERTS DESK</b>' + srcBtn + swapBtn + closeBtn + '<small>' + (S.asOf ? 'updated ' + ago(S.asOf) + ' ago' : '') + '</small></header>'
       + '<div class="aa-tabs">' + [['all', 'All'], ['swings', 'Swings'], ['longterm', 'Long-Term']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
     let body;
-    if (!S.session) body = '<div class="aa-empty">The alerts desk is for verified Academy members.<br><button type="button" data-act="unlock">Unlock Academy Tools</button></div>';
+    if (S.session && S.pick) body = pickerHtml();
+    else if (S.session && S.perMember && !S.sourceCount && !S.loading) body = '<div class="aa-empty">Your alerts desk is empty.<br>Pick a server, then a channel or a trader, and their alerts show up here with a live risk grade and plan.<br><button type="button" data-act="sources">＋ Add alert sources</button></div>';
+    else if (S.session && S.teaser && !S.alerts.length) body = '<div class="aa-empty">' + S.teaser.count + ' alert' + (S.teaser.count === 1 ? '' : 's') + ' on the desk from Making Easy Money streams.<br>Unlock the Academy to follow them live.</div>';
+    else if (!S.session) body = '<div class="aa-empty">The alerts desk is for verified Academy members.<br><button type="button" data-act="unlock">Unlock Academy Tools</button></div>';
     else if (S.error && !S.alerts.length) body = '<div class="aa-empty">' + esc(S.error) + '</div>';
     else if (!list.length) body = '<div class="aa-empty">' + (S.loading ? 'Loading the alerts…' : S.alerts.length ? 'No alerts in this list right now.' : 'No recent alerts yet. New ones appear here the moment they are posted.') + '</div>';
     else body = list.map(rowHtml).join('');
-    const warn = ['swings', 'longterm'].filter((k) => S.feed[k] && S.feed[k].ok === false && (S.tab === 'all' || S.tab === k)).map((k) => '<div class="aa-warn">' + (k === 'swings' ? 'Swings' : 'Long-Term') + ' feed is reconnecting' + (S.feed[k].error ? ' (' + esc(S.feed[k].error) + ')' : '') + '. What is shown may be behind.</div>').join('');
+    const warn = S.pick ? '' : Object.keys(S.feed).filter((k) => S.feed[k] && S.feed[k].ok === false && S.feed[k].lastPollAt && (S.perMember || S.tab === 'all' || S.tab === k)).map((k) => '<div class="aa-warn">' + esc(S.feed[k].label || (k === 'swings' ? 'Swings' : k === 'longterm' ? 'Long-Term' : 'A source')) + ' feed is reconnecting' + (S.feed[k].error ? ' (' + esc(S.feed[k].error) + ')' : '') + '. What is shown may be behind.</div>').join('');
     const scrollTop = (panel.querySelector('.aa-list') || {}).scrollTop || 0;
-    panel.innerHTML = head + warn + '<div class="aa-list">' + body + '</div><div class="aa-note">Educational analysis of posted alerts: risk grade, plan and checklist come from public data, MEM ALGO, order-book pressure and chatter. Not advice; nothing here places a trade.</div>';
+    if (S.pick) head = head.replace(/<div class="aa-tabs">[\s\S]*?<\/div>$/, '');
+    panel.innerHTML = head + warn + '<div class="aa-list' + (S.pick ? ' pk' : '') + '">' + body + '</div><div class="aa-note">Educational analysis of posted alerts: risk grade, plan and checklist come from public data, MEM ALGO, order-book pressure and chatter. Not advice; nothing here places a trade.</div>';
     const l = panel.querySelector('.aa-list'); if (l) l.scrollTop = scrollTop;
   }
 
-  async function api(path) {
-    const res = await fetch(path, { headers: { authorization: 'Bearer ' + S.session }, cache: 'no-store' });
-    if (res.status === 401 && window.smlAcademyReauth) { const fresh = await window.smlAcademyReauth(); if (fresh) { S.session = fresh; return fetch(path, { headers: { authorization: 'Bearer ' + S.session }, cache: 'no-store' }); } }
+  async function api(path, method, body) {
+    const opts = () => ({ method: method || 'GET', headers: Object.assign({ authorization: 'Bearer ' + S.session }, body ? { 'content-type': 'application/json' } : {}), cache: 'no-store', body: body ? JSON.stringify(body) : undefined });
+    const res = await fetch(path, opts());
+    if (res.status === 401 && window.smlAcademyReauth) { const fresh = await window.smlAcademyReauth(); if (fresh) { S.session = fresh; return fetch(path, opts()); } }
     return res;
+  }
+
+  /* ---------- the source picker: server -> channel -> follow the channel or chosen posters ---------- */
+  const initials = (n) => esc(String(n || '?').replace(/[^A-Za-z0-9 ]/g, '').split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '#');
+  const following = (ch, au) => (S.pick && S.pick.mine || []).some((x) => x.channelId === ch && (x.authorId || '') === (au || ''));
+  const ERR = { no_access: 'You can not read that channel in Discord, so it can not be added.', too_many_sources: 'That is the most sources one desk can follow. Remove one first.', invalid_source: 'That is not a valid Discord ID.', alert_sources_disabled: 'Picking sources is switched off right now.' };
+  function pickerHtml() {
+    const P = S.pick;
+    const msg = P.msg ? '<div class="pk-msg' + (P.bad ? ' bad' : '') + '">' + esc(P.msg) + '</div>' : '';
+    if (P.step === 'channels') {
+      let h = '<div class="pk-bar"><button type="button" class="pk-back" data-pk="home">← Servers</button><b>' + esc(P.guild.name) + '</b></div>' + msg + '<h6>1 · PICK A CHANNEL</h6>';
+      if (!P.channels) return h + '<div class="aa-empty">Loading the channels you can read…</div>';
+      if (!P.channels.length) return h + '<div class="aa-empty">No channels here that both you and the Academy bot can read.</div>';
+      let cat = null;
+      for (const c of P.channels) { if (c.category !== cat) { cat = c.category; if (cat) h += '<h6>' + esc(cat.toUpperCase()) + '</h6>'; } h += '<button type="button" class="pk-i" data-ch="' + esc(c.id) + '"># ' + esc(c.name) + (following(c.id, '') ? ' <span class="pk-tag">FOLLOWING</span>' : '') + '<span class="go">›</span></button>'; }
+      return h;
+    }
+    if (P.step === 'channel') {
+      const c = P.channel, d = P.preview;
+      let h = '<div class="pk-bar"><button type="button" class="pk-back" data-pk="channels">← Channels</button><b># ' + esc(c.name) + '</b></div>' + msg;
+      h += '<div class="pk-seg"><button type="button" data-style="swings" class="' + (P.style === 'swings' ? 'on' : '') + '">Swing trades</button><button type="button" data-style="longterm" class="' + (P.style === 'longterm' ? 'on' : '') + '">Long-term</button></div>';
+      const all = following(c.id, '');
+      h += '<button type="button" class="pk-big' + (all ? ' on' : '') + '" data-act="' + (all ? 'unfollow' : 'follow') + '" data-ch="' + esc(c.id) + '">' + (all ? '✓ Following every alert in #' + esc(c.name) + ' · tap to stop' : 'Follow every alert in #' + esc(c.name)) + '</button>';
+      if (!d) return h + '<div class="aa-empty">Reading the channel…</div>';
+      h += '<h6>RECENT ALERTS HERE · ' + d.alerts.length + ' found in the last ' + d.read + ' posts</h6>';
+      h += d.alerts.length ? d.alerts.map((a) => '<div class="pk-i" style="cursor:default"><b style="font-family:ui-monospace,monospace">' + esc(a.symbol) + '</b><small>entry ' + px(a.entry) + ' → ' + px(a.target) + '</small><small style="margin-left:auto">' + esc(a.author) + ' · ' + ago(a.at) + '</small></div>').join('')
+        : '<div class="pk-msg">No posts here read as alerts yet (the desk looks for a $TICKER with an entry and a target, e.g. "$AAPL entry 180 pt 195"). You can still follow it; new alerts show up as they are posted.</div>';
+      h += '<h6>2 · OR FOLLOW ONLY CHOSEN TRADERS</h6>';
+      h += d.posters.map((p) => { const on = following(c.id, p.id); return '<div class="pk-i" style="cursor:default"><span class="pk-gi">' + initials(p.name) + '</span><span>' + esc(p.name) + '<br><small>' + p.alerts + ' alert' + (p.alerts === 1 ? '' : 's') + ' · ' + p.posts + ' posts</small></span><button type="button" class="pk-f' + (on ? ' on' : '') + '" data-act="' + (on ? 'unfollow' : 'follow') + '" data-ch="' + esc(c.id) + '" data-au="' + esc(p.id) + '" data-name="' + esc(p.name) + '">' + (on ? 'Following' : 'Follow') + '</button></div>'; }).join('');
+      h += '<div class="pk-id"><input id="pk-uid" inputmode="numeric" maxlength="25" placeholder="or paste a Discord user ID"><button type="button" class="pk-f" data-act="follow-id" data-ch="' + esc(c.id) + '">Follow</button></div>';
+      return h;
+    }
+    // home: my sources, the owner's streams, then servers
+    let h = msg + '<h6>YOUR SOURCES · ' + (P.mine || []).length + ' of ' + (P.max || 12) + '</h6>';
+    h += (P.mine || []).length ? P.mine.map((x) => '<div class="pk-i" style="cursor:default"><span class="pk-gi">' + initials(x.guildName || x.label) + '</span><span>' + esc(x.label || x.channelId) + (x.authorId ? ' · ' + esc(x.authorName || x.authorId) : '') + '<br><small>' + esc(x.guildName || '') + ' · ' + (x.style === 'longterm' ? 'long-term' : 'swing') + (x.access ? '' : ' · no access now') + '</small></span><button type="button" class="pk-x" data-act="unfollow" data-ch="' + esc(x.channelId) + '" data-au="' + esc(x.authorId || '') + '">Remove</button></div>').join('')
+      : '<div class="pk-msg">Nothing yet. Follow a stream below, or pick a server.</div>';
+    if ((P.presets || []).length) h += '<h6>MAKING EASY MONEY ALERTS</h6>' + P.presets.map((x) => { const on = following(x.channelId, ''); return '<div class="pk-i" style="cursor:default"><span class="pk-gi">ME</span><span>' + esc(x.label) + '<br><small>' + (x.style === 'longterm' ? 'long-term' : 'swing') + ' alerts</small></span><button type="button" class="pk-f' + (on ? ' on' : '') + '" data-act="' + (on ? 'unfollow' : 'follow') + '" data-ch="' + esc(x.channelId) + '">' + (on ? 'Following' : 'Follow') + '</button></div>'; }).join('');
+    h += '<h6>ADD FROM A SERVER</h6>';
+    if (!P.guilds) h += '<div class="aa-empty">Finding your servers…</div>';
+    else if (!P.guilds.length) h += '<div class="pk-msg">No servers found that you share with the Academy app. A server admin can add the Academy app to their server, then it shows up here.</div>';
+    else h += P.guilds.map((g) => '<button type="button" class="pk-i' + (g.current ? ' cur' : '') + '" data-guild="' + esc(g.id) + '"><span class="pk-gi">' + initials(g.name) + '</span>' + esc(g.name) + (g.current ? ' <small>this server</small>' : '') + '<span class="go">›</span></button>').join('');
+    return h;
+  }
+  async function getJson(path) { const res = await api(path); const j = await res.json().catch(() => ({})); if (!res.ok || !j.ok) { const e = new Error(j.error || 'unavailable'); throw e; } return j; }
+  function fail(e) { if (!S.pick) return; S.pick.msg = ERR[e && e.message] || 'That did not work. Try again in a moment.'; S.pick.bad = true; paint(); }
+  async function openPicker() {
+    S.pick = { step: 'home', mine: null, guilds: null, presets: [], style: 'swings' }; paint();
+    try { const j = await getJson('/academy-activity/alerts/sources'); Object.assign(S.pick, { mine: j.sources, presets: j.presets, max: j.max }); paint(); } catch (e) { fail(e); }
+    try { const g = new URLSearchParams(location.search).get('guild_id') || ''; const j = await getJson('/academy-activity/alerts/guilds?current=' + encodeURIComponent(g)); if (S.pick) { S.pick.guilds = j.guilds; paint(); } } catch (e) { if (S.pick) { S.pick.guilds = []; fail(e); } }
+  }
+  async function openGuild(id) {
+    const guild = (S.pick.guilds || []).find((g) => g.id === id) || { id, name: 'Server' };
+    Object.assign(S.pick, { step: 'channels', guild, channels: null, msg: '', bad: false }); paint();
+    try { const j = await getJson('/academy-activity/alerts/channels?guild=' + encodeURIComponent(id)); if (S.pick && S.pick.guild.id === id) { S.pick.channels = j.channels; paint(); } } catch (e) { if (S.pick) { S.pick.channels = []; fail(e); } }
+  }
+  async function openChannel(id) {
+    const channel = (S.pick.channels || []).find((c) => c.id === id) || { id, name: 'channel' };
+    Object.assign(S.pick, { step: 'channel', channel, preview: null, msg: '', bad: false }); paint();
+    try { const j = await getJson('/academy-activity/alerts/channel?channel=' + encodeURIComponent(id)); if (S.pick && S.pick.channel.id === id) { S.pick.preview = j; paint(); } } catch (e) { fail(e); }
+  }
+  async function follow(ch, au, name, on) {
+    try {
+      const res = await api('/academy-activity/alerts/sources', on ? 'POST' : 'DELETE', { channel: ch, author: au || undefined, authorName: name || undefined, style: S.pick.style });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) throw new Error(j.error || 'unavailable');
+      S.pick.mine = j.sources; S.sourceCount = j.sources.length; S.pick.bad = false;
+      S.pick.msg = on ? 'Added. Its alerts appear on your desk within about 20 seconds.' : 'Removed.';
+      paint(); load();
+    } catch (e) { fail(e); }
   }
   async function load() {
     if (!S.session || S.loading || document.hidden) return;
@@ -158,9 +243,10 @@
       const res = await api('/academy-activity/alerts'); const j = await res.json();
       if (!res.ok || !j.ok) throw new Error(j && j.error || 'alerts_unavailable');
       S.alerts = j.alerts || []; S.feed = j.feed || {}; S.asOf = j.asOf; S.error = '';
+      S.perMember = j.perMember === true; S.sourceCount = Number(j.sources) || 0; S.teaser = j.teaser || null;
       if (S.open && !S.alerts.some((a) => a.id === S.open)) { S.open = null; S.detail = null; }
     } catch (e) { S.error = e && e.message === 'alerts_disabled' ? 'The alerts desk is switched off right now.' : 'The alerts desk is reconnecting…'; }
-    S.loading = false; paint();
+    S.loading = false; if (!S.pick) paint();
     if (S.open) refreshDetail();
   }
   async function refreshDetail() {
@@ -171,10 +257,23 @@
   // a poster with no picture, or a blocked one, just loses the round image
   panel.addEventListener('error', (e) => { if (e.target && e.target.classList && e.target.classList.contains('aa-av')) e.target.classList.add('none'); }, true);
   panel.addEventListener('click', (e) => {
+    if (S.pick) {
+      const t = e.target.closest('[data-pk],[data-guild],[data-ch],[data-style],[data-act]'); if (!t) return;
+      if (t.dataset.act === 'sources') { S.pick = null; paint(); load(); return; }
+      if (t.dataset.act === 'close') { S.pick = null; }
+      else if (t.dataset.pk === 'home') { Object.assign(S.pick, { step: 'home', msg: '', bad: false }); paint(); return; }
+      else if (t.dataset.pk === 'channels') { Object.assign(S.pick, { step: 'channels', msg: '', bad: false }); paint(); return; }
+      else if (t.dataset.style) { S.pick.style = t.dataset.style; paint(); return; }
+      else if (t.dataset.guild) { openGuild(t.dataset.guild); return; }
+      else if (t.dataset.act === 'follow' || t.dataset.act === 'unfollow') { follow(t.dataset.ch, t.dataset.au, t.dataset.name, t.dataset.act === 'follow'); return; }
+      else if (t.dataset.act === 'follow-id') { const v = String(($('#pk-uid', panel) || {}).value || '').trim(); if (!/^\d{15,25}$/.test(v)) { S.pick.msg = 'Paste a Discord user ID (right-click the user → Copy User ID).'; S.pick.bad = true; paint(); return; } follow(t.dataset.ch, v, '', true); return; }
+      else if (t.dataset.ch && !t.dataset.act) { openChannel(t.dataset.ch); return; }
+    }
     const tab = e.target.closest('[data-tab]'); if (tab) { S.tab = tab.dataset.tab; save(); paint(); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       if (act.dataset.act === 'unlock') { const u = document.getElementById('academy-unlock'); if (u) u.click(); }
+      if (act.dataset.act === 'sources') { openPicker(); return; }
       if (act.dataset.act === 'swap') { document.body.classList.add('alerts-quote'); }
       if (act.dataset.act === 'close') { if (window.matchMedia('(max-width:720px)').matches) { S.sheet = false; panel.classList.remove('sheet'); } else setHidden(true); }
       return;
@@ -198,7 +297,7 @@
   window.addEventListener('sml-academy-session', (e) => { const t = String((e.detail && e.detail.sessionToken) || ''); if (t) { S.session = t; load(); } });
   window.addEventListener('popstate', paint);
   setInterval(() => { if (window.smlChartGesture) return; load(); }, 15000);
-  setInterval(() => { if (!window.smlChartGesture) paint(); }, 30000); // keeps the "ago" labels honest and the highlighted row on the chart symbol
+  setInterval(() => { if (!window.smlChartGesture && !S.pick) paint(); }, 30000); // keeps the "ago" labels honest and the highlighted row on the chart symbol
   paint();
   window.smlAlertsDesk = { state: S, reload: load };
 })(0);
