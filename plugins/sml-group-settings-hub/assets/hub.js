@@ -59,12 +59,67 @@
     return '';
   }
 
+  /* ---------- overlays that paint above a dialog ----------
+   * The site's fixed header (search, ticker tape) sits at the top of the stacking
+   * order and used to cover the top of every panel. While a dialog is open, find
+   * whatever paints above it (elementsFromPoint, top-first) and hide that fixed or
+   * sticky ancestor; put it back when the dialog closes. Applied to the hub and to
+   * the panels it opens (billing, Discord Connect, onboarding). */
+  var covered = [];
+  function restoreOverlays() { covered.forEach(function (c) { c.el.style.visibility = c.vis; }); covered = []; }
+  function suppressOverlays(modal) {
+    if (!modal || !document.body.contains(modal) || !document.elementsFromPoint) return;
+    restoreOverlays();
+    var xs = [8, innerWidth * 0.25, innerWidth * 0.5, innerWidth * 0.75, innerWidth - 8];
+    var ys = [6, 40, 90, 140, 200, innerHeight / 2, innerHeight - 10];
+    var seen = [];
+    xs.forEach(function (x) { ys.forEach(function (y) {
+      var stack = document.elementsFromPoint(x, y);
+      for (var i = 0; i < stack.length; i++) {
+        var el = stack[i];
+        if (el === modal || modal.contains(el)) break;
+        var root = el;
+        while (root && root !== document.body) { var pos = getComputedStyle(root).position; if (pos === 'fixed' || pos === 'sticky') break; root = root.parentElement; }
+        if (!root || root === document.body || root === document.documentElement || root.contains(modal) || seen.indexOf(root) >= 0) continue;
+        seen.push(root);
+        covered.push({ el: root, vis: root.style.visibility });
+        root.style.setProperty('visibility', 'hidden', 'important');
+      }
+    }); });
+  }
+  var OTHER_DIALOGS = '.sml-dgc-modal,#sml-ob-config,.sml-billing-modal';
+  /* Headers that re-render or animate in later: while any dialog is open, re-check once a second. */
+  var guardTimer = null;
+  function overlayGuard() {
+    if (guardTimer) return;
+    guardTimer = setInterval(function () {
+      var dlg = document.querySelector('.sml-hub,' + OTHER_DIALOGS);
+      if (!dlg) { clearInterval(guardTimer); guardTimer = null; restoreOverlays(); return; }
+      var probe = [[innerWidth / 2, 12], [innerWidth / 2, 60], [innerWidth - 40, 12], [40, 12]];
+      for (var i = 0; i < probe.length; i++) {
+        var top = document.elementFromPoint(probe[i][0], probe[i][1]);
+        if (top && !dlg.contains(top) && top !== dlg) { suppressOverlays(dlg); return; }
+      }
+    }, 1000);
+  }
+  function watchOtherDialogs() {
+    if (!window.MutationObserver) return;
+    new MutationObserver(function (muts) {
+      muts.forEach(function (m) {
+        Array.prototype.forEach.call(m.addedNodes, function (n) { if (n.nodeType === 1 && n.matches && n.matches(OTHER_DIALOGS)) { requestAnimationFrame(function () { suppressOverlays(n); }); setTimeout(function () { if (document.body.contains(n)) suppressOverlays(n); }, 350); overlayGuard(); } });
+        Array.prototype.forEach.call(m.removedNodes, function (n) { if (n.nodeType === 1 && n.matches && n.matches(OTHER_DIALOGS) && !document.querySelector(OTHER_DIALOGS + ',.sml-hub')) restoreOverlays(); });
+      });
+    }).observe(document.body, { childList: true });
+  }
+  watchOtherDialogs();
+
   /* ---------- window ---------- */
   var win = null;
   function closeHub() {
     if (win) { win.remove(); win = null; }
     document.body.classList.remove('sml-hub-lock');
     document.removeEventListener('keydown', onKey);
+    if (!document.querySelector(OTHER_DIALOGS)) restoreOverlays();
   }
   function onKey(e) { if (e.key === 'Escape') closeHub(); }
   function openHub(section, memberOnly) {
@@ -84,6 +139,10 @@
     document.body.classList.add('sml-hub-lock');
     document.addEventListener('keydown', onKey);
     go(S.section);
+    var w = win;
+    requestAnimationFrame(function () { suppressOverlays(w); });
+    setTimeout(function () { if (win === w) suppressOverlays(w); }, 350);
+    overlayGuard();
   }
   function go(section) {
     if (!win) return;

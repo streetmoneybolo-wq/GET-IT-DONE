@@ -65,7 +65,7 @@ function bootstrap(st) {
 
 function pageHtml() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#04070d;color:#dfe7f2;font-family:sans-serif}.sml-gshell__main-head{display:flex;gap:8px;padding:12px;border-bottom:1px solid #223}.sml-gshell__edit{padding:6px 10px}[data-smlgs-owner-menu]{display:flex;flex-direction:column;gap:4px;padding:12px;width:200px}.sml-gshell__main{padding:12px}${CSS}</style></head>
-  <body><div id="sml-group-root" data-group-id="12"><div id="sml-group-shell" data-smlgs-stage="active">
+  <body><header id="site-head" style="position:fixed;top:0;left:0;right:0;height:120px;background:#0b1f14;z-index:2147483647;display:flex;align-items:center;padding:0 20px;color:#fff">SEARCH · Q&amp;A · MONITOR · LOOP-KICK<div style="position:absolute;left:0;right:0;bottom:0;height:30px;background:#061a10">$TSLA $372 · $SOFI $16</div></header><div style="height:130px"></div><div id="sml-group-root" data-group-id="12"><div id="sml-group-shell" data-smlgs-stage="active">
   <div class="sml-gshell__main-head"><b>Making Easy Money</b><button class="sml-gshell__edit" data-smlgs-edit onclick="window.__clicks.push('edit')">Edit</button><button class="sml-gshell__edit sml-dgc-owner" data-sml-dgc-owner="1" onclick="window.__clicks.push('dgc-owner')">Discord Access</button></div>
   <div class="sml-gshell__owner-menu" data-smlgs-owner-menu><button class="sml-billing-setup" onclick="window.__clicks.push('stripe')">⚙ Membership Billing · 6%</button><button data-sml-products="1" onclick="window.__clicks.push('products')">🛍 Membership products</button><button data-sml-ob-open onclick="window.__clicks.push('onboarding')">Onboarding</button></div>
   <div class="sml-manage-mini"><button data-sml-dgc-channel-sync="1" onclick="window.__clicks.push('dgc-sync')">Discord Server Channel Sync</button><button id="sml-gcat-gear" onclick="window.__clicks.push('gear')">⚙</button></div>
@@ -127,7 +127,10 @@ async function ownerFlow(browser, viewport, tag) {
   r.legacyHidden = await page.evaluate(() => ['[data-sml-dgc-owner]', '[data-sml-products]', '.sml-billing-setup', '[data-sml-dgc-channel-sync]', '[data-sml-ob-open]'].map((s) => { const el = document.querySelector(s); const cs = getComputedStyle(el); const b = el.getBoundingClientRect(); return cs.opacity === '0' && cs.pointerEvents === 'none' && b.width <= 2 && b.height <= 2; }));
   await shot('page');
   await page.click('[data-sml-hub-open]');
-  await page.waitForTimeout(500);
+  await page.evaluate(() => document.body.appendChild(document.getElementById('site-head')));
+  await page.waitForTimeout(1400);
+  r.headerHiddenWhileOpen = await page.evaluate(() => getComputedStyle(document.getElementById('site-head')).visibility === 'hidden');
+  r.topElementAtHeader = await page.evaluate(() => { const el = document.elementFromPoint(innerWidth / 2, 30); return !!el.closest('.sml-hub'); });
   r.overflow = {};
   for (const s of SECTIONS) { await page.click(`[data-go="${s}"]`); await page.waitForTimeout(350); await shot(s); r.overflow[s] = await page.evaluate(() => { const w = document.querySelector('.sml-hub__win'), c = document.querySelector('.sml-hub__content'); return [document.documentElement.scrollWidth - document.documentElement.clientWidth, w.getBoundingClientRect().right - innerWidth, c.scrollWidth - c.clientWidth].map(Math.round).join('/'); }); }
   r.builtinChips = await page.evaluate(() => { document.querySelector('[data-go="roles"]').click(); return document.querySelectorAll('.sml-hub__chip.base').length; });
@@ -195,6 +198,15 @@ async function ownerFlow(browser, viewport, tag) {
   await page.click('[data-go="overview"]'); await page.waitForTimeout(300);
   await page.click('[data-hide]'); await page.waitForTimeout(300);
   r.dedupeAfterToggle = await page.evaluate(() => document.body.classList.contains('sml-hub-dedupe'));
+  await page.evaluate(() => document.querySelector('.sml-hub [data-close]').click());
+  await page.waitForTimeout(200);
+  r.headerBackAfterClose = await page.evaluate(() => getComputedStyle(document.getElementById('site-head')).visibility === 'visible');
+  await page.evaluate(() => { const m = document.createElement('div'); m.className = 'sml-billing-modal'; m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5)'; document.body.appendChild(m); document.body.appendChild(document.getElementById('site-head')); });
+  await page.waitForTimeout(1400);
+  r.headerHiddenForBillingModal = await page.evaluate(() => getComputedStyle(document.getElementById('site-head')).visibility === 'hidden');
+  await page.evaluate(() => document.querySelector('.sml-billing-modal').remove());
+  await page.waitForTimeout(200);
+  r.headerBackAfterBillingModal = await page.evaluate(() => getComputedStyle(document.getElementById('site-head')).visibility === 'visible');
   await page.close();
   return r;
 }

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Group Settings Hub
  * Description: One Discord-style settings hub per group: custom roles with permissions, per-channel role overrides, member management, and one place that reaches the existing Memberships, Discord, Onboarding and Channel tools. Adds "follow my socials → get a role" (verifiable platforms only) and an admin export of the site's WPCode snippets and plugins. Companion layer: it never rewrites the groups engine.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Requires PHP: 7.4
  * Author: StockMarketLoop
  *
@@ -35,7 +35,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SML_HUB_VERSION', '1.0.0' );
+define( 'SML_HUB_VERSION', '1.0.1' );
 define( 'SML_HUB_FILE', __FILE__ );
 define( 'SML_HUB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_HUB_URL', plugin_dir_url( __FILE__ ) );
