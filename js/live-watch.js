@@ -2089,7 +2089,16 @@
   function loadBoost() {
     if (SIM || document.hidden) return;
     api('/sml-lw/v1/boost?handle=' + HANDLE).then(function (res) {
-      if (res.j) { BOOST.d = res.j; renderBoostReal(); }
+      if (!res.j) return;
+      BOOST.d = res.j;
+      /* The boost/link-tracker panel polls while it is open.  Replacing
+         pane.innerHTML during a keystroke destroys the focused input and
+         makes typing appear to stop (the next poll used to do exactly that).
+         Keep the fresh payload, but defer the repaint until editing ends. */
+      var pane = el('#slw-pane-3');
+      var active = pane && pane.contains(document.activeElement) &&
+        document.activeElement.matches('input, textarea, select, [contenteditable="true"]');
+      if (!active) renderBoostReal();
     }).catch(function () {});
   }
   function boostClock() {
@@ -2197,6 +2206,17 @@
   function initBoostReal() {
     loadBoost();
     setInterval(loadBoost, 10000);
+    /* Repaint once an editor is released so deferred analytics are visible
+       without ever interrupting the user's typing session. */
+    var boostPane = el('#slw-pane-3');
+    if (boostPane) boostPane.addEventListener('focusout', function (event) {
+      var target = event.target;
+      if (target && target.matches && target.matches('input, textarea, select, [contenteditable="true"]')) {
+        setTimeout(function () {
+          if (!boostPane.contains(document.activeElement)) renderBoostReal();
+        }, 0);
+      }
+    });
     Array.prototype.forEach.call(root.querySelectorAll('.slw-tab'), function (b) {
       b.addEventListener('click', function () { if (+b.getAttribute('data-tab') === 3) loadBoost(); });
     });

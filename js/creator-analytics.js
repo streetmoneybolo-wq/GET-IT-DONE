@@ -380,8 +380,16 @@
       setInterval(refreshPresence, 20000);
     });
   });
-  function refreshRealtime() { api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderMain(); } }); }
-  function refreshPresence() { api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); if (S.view === 'main') renderMain(); } }); }
+  function analyticsEditorFocused() {
+    var active = document.activeElement;
+    return !!(active && active.matches && active.matches('input, textarea, select, [contenteditable="true"]'));
+  }
+  function renderAfterEditing() {
+    if (S.view !== 'main' || analyticsEditorFocused()) return;
+    renderMain();
+  }
+  function refreshRealtime() { api('/sml-members/v1/creator-studio/realtime').then(function (r) { if (r.ok && r.j && S.view === 'main') { S.rt = r.j; renderAfterEditing(); } }); }
+  function refreshPresence() { api('/sml-creator-analytics/v1/presence').then(function (r) { if (r.ok && r.j) { S.presence = r.j; rememberPresence(S.presence); renderAfterEditing(); } }); }
 
   function loadGroups() {
     // the site has no "my groups" route; the Groups page marks membership on each tile
