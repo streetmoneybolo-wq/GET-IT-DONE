@@ -48,7 +48,8 @@ import { recordApprovedProofPayout } from './utils/payoutLedger.js';
 import { startDailyPayoutScheduler } from './utils/dailyPayoutCycle.js';
 import { startArticleFeed } from './utils/articleFeed.js';
 import { runAutoShareSetup } from './utils/autoShareSetup.js';
-import { generateRecruitmentPost, recruitmentComposerTitleOnlyUrl } from './utils/recruitmentPosts.js';
+import { generateRecruitmentPost } from './utils/recruitmentPosts.js';
+import { ensureRecruitmentPanel, handleRecruitmentButton, postReply, recruitmentConfig } from './utils/recruitmentPanel.js';
 import * as earnings from './commands/earnings.js';
 import * as connectPayPal from './commands/connectPayPal.js';
 import * as paypal from './commands/paypal.js';
@@ -720,6 +721,7 @@ async function enforceMakingEasyMoneyRaidSpam(message) {
 client.once('clientReady', async () => {
   if (dailySocialMode) {
     await runAutoShareSetup(client).catch((error) => console.warn(`Share auto-setup failed safely: ${error.message || error}`));
+    await ensureRecruitmentPanel(client).catch((error) => console.warn(`Recruitment panel setup failed safely: ${error.message || error}`));
     startDailyPayoutScheduler(client);
     console.log('Daily payout scheduler started (holds, payable notifications, and the gated payment step).');
     startArticleFeed(client);
@@ -929,69 +931,15 @@ client.on('guildMemberRemove', async (member) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton() && interaction.customId === 'dsp-recruit-random') {
-    const settings = await readSettings();
-    const subreddits = [...new Set((settings.recruitmentPosts?.approvedSubreddits || [])
-      .map((name) => String(name || '').replace(/^r\//i, '').trim())
-      .filter(Boolean))];
-    if (!subreddits.length) {
-      return interaction.reply({ content: 'No approved recruitment subreddits are configured yet.', ephemeral: true });
-    }
-    const index = Math.floor(Math.random() * subreddits.length);
-    const subreddit = subreddits[index];
-    const post = generateRecruitmentPost(subreddit, index);
-    const redditUrl = recruitmentComposerTitleOnlyUrl(subreddit, index);
-    const rulesUrl = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/about/rules/`;
-    const content = [
-      `# 🎯 Random recruitment post generated for r/${subreddit}`,
-      '## COPY THIS BODY FIRST',
-      `**Title already loaded in Reddit:** ${post.title}`,
-      '',
-      '```text',
-      post.body,
-      '```',
-      '',
-      'After copying the body above, click **Open Reddit Composer**. Reddit opens with the subreddit and title already filled. Paste the copied body over the placeholder text, review the subreddit rules, then post.',
-    ].join('\n');
-    return interaction.reply({
-      content: content.length <= 2000 ? content : content.slice(0, 1990),
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel(`Open r/${subreddit} Composer`).setStyle(ButtonStyle.Link).setURL(redditUrl),
-        new ButtonBuilder().setLabel(`Review r/${subreddit} Rules`).setStyle(ButtonStyle.Link).setURL(rulesUrl),
-      )],
-      ephemeral: true,
-      allowedMentions: { parse: [] },
-    });
-  }
+  if (await handleRecruitmentButton(interaction)) return;
+  // older panels carried per-subreddit buttons; they now open a fresh post for that subreddit when it is still approved
   if (interaction.isButton() && /^sml-recruit:[A-Za-z0-9_-]+:[0-9]+$/i.test(interaction.customId)) {
     const [, subreddit, indexText] = interaction.customId.split(':');
-    const settings = await readSettings();
-    const allowed = new Set((settings.recruitmentPosts?.approvedSubreddits || []).map((name) => String(name).toLowerCase()));
-    if (!allowed.has(subreddit.toLowerCase())) {
-      return interaction.reply({ content: 'That subreddit is not approved for Daily Social Payouts recruitment posts.', ephemeral: true });
+    const cfg = recruitmentConfig(await readSettings());
+    if (!cfg.subreddits.some((s) => s.toLowerCase() === subreddit.toLowerCase())) {
+      return interaction.reply({ content: 'That subreddit is not approved for recruitment posts any more. Use the Generate Recruitment Post button instead.', ephemeral: true });
     }
-    const post = generateRecruitmentPost(subreddit, Number(indexText || 0));
-    return interaction.reply({
-      content: [
-        `# Reddit recruitment post ready: r/${post.subreddit}`,
-        '',
-        `**Title prefilled:** ${post.title}`,
-        '',
-        '**Before you hit Post:**',
-        `- Review r/${post.subreddit} rules first: ${post.rulesUrl}`,
-        '- Do not post if the subreddit does not allow hiring, paid promotion work, external applications, or Discord/application links.',
-        '- Do not promise guaranteed income.',
-        '- If the subreddit requires flair or a special title format, fix that before posting.',
-        '',
-        '**Click the button below to open the filled-out Reddit composer.**',
-      ].join('\n'),
-      components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel(`Open r/${post.subreddit} Composer`).setStyle(ButtonStyle.Link).setURL(post.composerUrl),
-        new ButtonBuilder().setLabel(`Review r/${post.subreddit} Rules`).setStyle(ButtonStyle.Link).setURL(post.rulesUrl),
-      )],
-      ephemeral: true,
-      allowedMentions: { parse: [] },
-    });
+    return interaction.reply(postReply(generateRecruitmentPost(subreddit, Number(indexText || 0), cfg)));
   }
   if (interaction.isButton() && /^sml-proof-review:[0-9a-f-]{36}:(approve|reject)$/i.test(interaction.customId)) {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {

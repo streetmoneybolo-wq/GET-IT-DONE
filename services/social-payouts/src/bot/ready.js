@@ -6,6 +6,7 @@ import { startDailyPayoutScheduler } from '../../utils/dailyPayoutCycle.js';
 import { startArticleFeed } from '../../utils/articleFeed.js';
 import { registerCommandsEverywhere } from './commands.js';
 import { resumePendingApplicationReviews } from '../features/socialApplications.js';
+import { ensureRecruitmentPanel } from '../../utils/recruitmentPanel.js';
 
 async function checkChannel(client, channelId, label, required) {
   if (!channelId) return;
@@ -43,6 +44,7 @@ export async function onReady(client) {
     for (const target of targets) await checkChannel(client, target.channelId, 'Work-report', [...WORK_PERMISSIONS, ['EmbedLinks', PermissionFlagsBits.EmbedLinks]]);
   }
 
+  await ensureRecruitmentPanel(client).catch((error) => console.warn(`Recruitment panel setup failed safely: ${error.message || error}`));
   const resumed = await resumePendingApplicationReviews(client);
   if (resumed) console.log(`Resumed ${resumed} pending application review(s).`);
   stops.push(startDailyPayoutScheduler(client));
