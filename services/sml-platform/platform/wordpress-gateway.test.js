@@ -63,3 +63,13 @@ test('gateway accepts only UUID source event keys for retry-safe producers', () 
   assert.equal(parseEvent(retryable).event.sourceEventKey, 'bd30f4d9-6e48-46c5-9f0f-b565b8202b6d');
   assert.equal(parseEvent(retryable.replace('bd30f4d9-6e48-46c5-9f0f-b565b8202b6d', 'not-a-uuid')).error, 'invalid_event');
 });
+
+test('gateway accepts the bare hex digest the WordPress billing bridge sends', () => {
+  const secret = 'bridge-secret';
+  const timestamp = '1700000000';
+  const rawBody = '{"name":"facts","seq":1,"total":1,"data":"QQ=="}';
+  const bare = hmac(secret, timestamp, rawBody);
+  assert.deepEqual(verifySignature({ secret, timestamp, signature: bare, rawBody, now: 1_700_000_000_000 }), { ok: true });
+  assert.deepEqual(verifySignature({ secret, timestamp, signature: `sha256=${bare}`, rawBody, now: 1_700_000_000_000 }), { ok: true });
+  assert.equal(verifySignature({ secret, timestamp, signature: bare.replace(/^./, 'f'), rawBody, now: 1_700_000_000_000 }).ok, false);
+});

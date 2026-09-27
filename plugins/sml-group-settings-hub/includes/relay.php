@@ -201,7 +201,15 @@ function sml_hub_relay_send( $reason = 'manual' ) {
 }
 
 add_action( 'sml_hub_relay_run', static function () {
-	sml_hub_relay_send( 'cron' );
+	$r = sml_hub_relay_send( 'cron' );
+	// Retry every 10 minutes (up to 12 times) when the platform was unreachable or refused the request.
+	$tries = (int) get_option( 'sml_hub_relay_tries', 0 );
+	if ( empty( $r['ok'] ) && $tries < 12 ) {
+		update_option( 'sml_hub_relay_tries', $tries + 1, false );
+		wp_schedule_single_event( time() + 10 * MINUTE_IN_SECONDS, 'sml_hub_relay_run' );
+	} elseif ( ! empty( $r['ok'] ) ) {
+		delete_option( 'sml_hub_relay_tries' );
+	}
 } );
 
 add_action( 'rest_api_init', static function () {

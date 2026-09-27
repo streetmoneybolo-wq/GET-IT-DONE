@@ -36,6 +36,8 @@ function secureEqual(left, right) {
 function verifySignature({ secret, timestamp, signature, rawBody, now = Date.now() }) {
   if (!secret) return fail(503, 'integration_unconfigured');
   if (!/^[0-9]{10}$/.test(String(timestamp || ''))) return fail(400, 'invalid_timestamp');
+  // The WordPress billing bridge sends the bare hex digest; the webhook sender prefixes it. Accept both.
+  if (/^[a-f0-9]{64}$/i.test(String(signature || ''))) signature = `sha256=${signature}`;
   if (!/^sha256=[a-f0-9]{64}$/i.test(String(signature || ''))) return fail(401, 'invalid_signature');
 
   const timestampSeconds = Number(timestamp);

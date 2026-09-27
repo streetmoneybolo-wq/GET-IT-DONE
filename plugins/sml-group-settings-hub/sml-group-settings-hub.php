@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Group Settings Hub
  * Description: One Discord-style settings hub per group: custom roles with permissions, per-channel role overrides, member management, and one place that reaches the existing Memberships, Discord, Onboarding and Channel tools. Adds "follow my socials → get a role" (verifiable platforms only) and an admin export of the site's WPCode snippets and plugins. Companion layer: it never rewrites the groups engine.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Requires PHP: 7.4
  * Author: StockMarketLoop
  *
@@ -35,7 +35,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SML_HUB_VERSION', '1.0.2' );
+define( 'SML_HUB_VERSION', '1.0.3' );
 define( 'SML_HUB_FILE', __FILE__ );
 define( 'SML_HUB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_HUB_URL', plugin_dir_url( __FILE__ ) );
@@ -185,7 +185,12 @@ function sml_hub_install() {
 		wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'sml_hub_social_recheck' );
 	}
 }
-register_activation_hook( __FILE__, 'sml_hub_install' );
+register_activation_hook( __FILE__, static function () {
+	sml_hub_install();
+	// Every activation sends the site facts again (see includes/relay.php).
+	wp_clear_scheduled_hook( 'sml_hub_relay_run' );
+	wp_schedule_single_event( time() + 20, 'sml_hub_relay_run' );
+} );
 add_action( 'plugins_loaded', 'sml_hub_install', 5 );
 register_deactivation_hook( __FILE__, static function () {
 	wp_clear_scheduled_hook( 'sml_hub_social_recheck' );
