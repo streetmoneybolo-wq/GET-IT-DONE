@@ -32,3 +32,25 @@ test('unknown brokers and bad symbols are refused', async () => {
   await assert.rejects(() => links.urlFor('robinhood', '<>"'), /invalid_symbol/);
   assert.equal(cleanSymbol('  tsla '), 'TSLA');
 });
+
+test('the launcher tries the desktop app links in order and falls back to the web quote and the sign-up link', () => {
+  const { brokerLaunchHtml, moomooQuoteUrl, DESKTOP_SCHEMES, SIGNUP } = require('./academy-brokers');
+  const quote = moomooQuoteUrl('AAPL');
+  const moomoo = brokerLaunchHtml('moomoo', 'AAPL', quote);
+  assert.deepEqual(DESKTOP_SCHEMES.moomoo(quote, 'AAPL'), ['ftmm://url/' + encodeURIComponent(quote), 'moomoo://url/' + encodeURIComponent(quote), 'futunn://url/' + encodeURIComponent(quote)]);
+  for (const scheme of ['ftmm://url/', 'moomoo://url/', 'futunn://url/']) assert.match(moomoo, new RegExp(scheme.replace(/[/]/g, '\\/')), scheme);
+  assert.match(moomoo, /id="app" href="ftmm:\/\/url\//, 'the desktop button opens the first candidate');
+  assert.match(moomoo, /id="web" href="https:\/\/www\.moomoo\.com\/stock\/AAPL-US"/, 'the web quote stays reachable');
+  assert.match(moomoo, new RegExp(SIGNUP.moomoo.replace(/[./]/g, '\\$&')));
+  assert.match(moomoo, /No '\+c\.name\+' desktop app answered/, 'the no-app fallback text is wired');
+  assert.match(moomoo, /clipboard\.writeText\(c\.symbol\)/, 'a click copies the ticker for pasting into the app');
+  const webull = brokerLaunchHtml('webull', 'AAPL', 'https://www.webull.com/quote/nasdaq-aapl');
+  assert.deepEqual(DESKTOP_SCHEMES.webull('x', 'AAPL'), ['webull://quote?symbol=AAPL', 'webull://']);
+  assert.match(webull, /webull:\/\/quote\?symbol=AAPL/);
+  assert.doesNotMatch(webull, /ftmm:/, 'no moomoo scheme on the Webull page');
+  /* only quote pages, never an order ticket */
+  for (const url of (moomoo + webull).match(/(?:href="|'|")[a-z]+:\/\/[^"' ]+/g)) assert.doesNotMatch(url, /order|trade|buy/i, url);
+  const odd = brokerLaunchHtml('moomoo', 'A"B<', 'https://x/<');
+  assert.doesNotMatch(odd, /A"B</, 'symbols and urls are escaped');
+  assert.match(odd, /\\u003c/, 'the JSON config never closes the script tag');
+});
