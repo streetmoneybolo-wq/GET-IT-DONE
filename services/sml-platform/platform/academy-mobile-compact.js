@@ -55,8 +55,9 @@
     + 'body main .chart>.intervals button{flex:none;padding:4px 8px;font-size:.66rem}'
     + 'body main .toolbar .depth-toggle,body main .toolbar #mem-algo-toggle,body main .toolbar #smc-toggle{order:2;padding:4px 8px;font-size:.62rem}'
     /* the three broker links share their own row, evenly (a ~30% basis each forces the shared line break) */
-    + 'body main .toolbar .academy-brokers{order:3;flex:1 1 100%;display:flex;gap:5px;min-width:0}'
-    + 'body main .toolbar button.academy-broker-buy{flex:1 1 0;justify-content:center;min-width:0;padding:4px 6px;font-size:.62rem}'
+    + 'body main .toolbar .academy-brokers{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px;min-width:0}'
+    + 'body main .toolbar button.academy-broker-buy{flex:1 1 30%;justify-content:center;min-width:0;padding:4px 6px;font-size:.62rem}'
+    + 'body main .toolbar button.academy-broker-join{flex:1 1 45%}'
     /* the chart stage gets a fixed share of the screen so it can never spill over the intervals row beneath it */
     + 'body main{height:auto!important;min-height:0}body main .shell{overflow:visible}body main .chart .academy-chart-stage{height:clamp(240px,50dvh,470px);min-height:0}body main .chart>canvas#chart{height:clamp(240px,50dvh,470px);min-height:0}'
     + 'body main .chart .academy-chart-tools{flex-wrap:nowrap;overflow-x:auto;gap:4px;padding:4px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body main .chart .academy-chart-tools::-webkit-scrollbar{display:none}'

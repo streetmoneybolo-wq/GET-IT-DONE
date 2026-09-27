@@ -1067,6 +1067,9 @@ test('Academy offers moomoo, Webull and Robinhood quote links, and the broker ro
     for (const id of ['academy-moomoo-buy', 'academy-webull-buy', 'academy-robinhood-buy']) assert.match(html, new RegExp(`'academy-'\\+key\\+'-buy'|${id}`));
     assert.match(html, /\['webull','Webull'/);
     assert.match(html, /robinhood\.com\/stocks\//);
+    assert.match(html, /https:\/\/j\.moomoo\.com\/00isCK/, 'Join moomoo uses the owner referral link');
+    assert.match(html, /https:\/\/a\.webull\.com\/gsHkJGq3lyekBxLcvC/, 'Join Webull uses the owner referral link');
+    assert.match(html, /referral link/, 'the Join buttons disclose that they are referral links');
     assert.match(html, /\[\?&\]perf=1/, 'the drag performance readout only shows with ?perf=1');
     const webull = await fetch(`${base}/academy-activity/broker?b=webull&symbol=aapl`, { redirect: 'manual' });
     assert.equal(webull.status, 302);
