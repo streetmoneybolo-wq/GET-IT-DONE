@@ -10,6 +10,8 @@ export const RECRUIT_BUTTON_ID = 'dsp-recruit-random';
 export const COPY_BUTTON_PREFIX = 'dsp-recruit-copy:';
 const SEEN_MAX = 5000;
 export const DEFAULT_RECRUITMENT_CHANNEL_ID = '1551968149132279908';
+export const DEFAULT_RETURN_LINKS_CHANNEL_ID = '1553180056338301020';
+export const DEFAULT_ENGAGEMENT_CHANNEL_ID = '1553180055541129378';
 const rotationFile = path.join(path.dirname(paths.settingsOverrides), 'recruitment-rotation.json');
 
 export function recruitmentConfig(settings = {}) {
@@ -19,6 +21,8 @@ export function recruitmentConfig(settings = {}) {
   return {
     enabled: cfg.enabled !== false,
     channelId: String(process.env.RECRUITMENT_CHANNEL_ID || cfg.channelId || DEFAULT_RECRUITMENT_CHANNEL_ID).trim(),
+    returnLinksChannelId: String(process.env.RECRUITMENT_RETURN_LINKS_CHANNEL_ID || cfg.returnLinksChannelId || DEFAULT_RETURN_LINKS_CHANNEL_ID).trim(),
+    engagementChannelId: String(process.env.RECRUITMENT_ENGAGEMENT_CHANNEL_ID || cfg.engagementChannelId || DEFAULT_ENGAGEMENT_CHANNEL_ID).trim(),
     subreddits: list.filter((s) => (seen.has(s.toLowerCase()) ? false : seen.add(s.toLowerCase()))),
     applyUrl: /^https:\/\//.test(String(cfg.applyUrl || '')) ? String(cfg.applyUrl) : DEFAULT_APPLY_URL,
   };
@@ -98,7 +102,14 @@ export async function claimSubreddit(cfg, userId, now = Date.now()) {
    subreddit rules and a copy-ready version. The link sits in the message text because Discord buttons only hold 512-character links. */
 export function postReply(post, variant = 0) {
   const link = `## 👉 [Open r/${post.subreddit} on Reddit — title and body filled in](${post.composerUrl})`;
-  const content = [`# 📝 Your recruitment post is ready: r/${post.subreddit}`, link, 'Check the subreddit rules and flair before you post.'].join('\n');
+  const content = [
+    `# 📝 Your recruitment post is ready: r/${post.subreddit}`,
+    link,
+    'Check the subreddit rules and flair before you post.',
+    '',
+    `## AFTER POSTING`,
+    `Return to <#${DEFAULT_RETURN_LINKS_CHANNEL_ID}> and paste the full public Reddit link. The bot records your submission for verification and sends the link to <#${DEFAULT_ENGAGEMENT_CHANNEL_ID}> so other members can engage with it.`,
+  ].join('\n');
   const embed = new EmbedBuilder().setColor(0x00c47d).setTitle(post.title.slice(0, 256)).setDescription(post.body.slice(0, 4000)).setFooter({ text: `Preview · r/${post.subreddit}` });
   return {
     content: content.length <= 2000 ? content : `# 📝 Your recruitment post is ready: r/${post.subreddit}\nTap **Copy Text**, then open Reddit and paste it in.`,
