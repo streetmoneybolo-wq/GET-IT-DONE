@@ -137,14 +137,15 @@
       }
     });
 
+    function fitHeight() {
+      var avail = window.innerHeight - root.getBoundingClientRect().top - 16;
+      if (avail > 200) root.style.maxHeight = avail + 'px';
+    }
     function mount() {
       var t = document.querySelector('.sml-gshell__main');
       if (t) {
         t.appendChild(root);
-        requestAnimationFrame(function () {
-          var avail = window.innerHeight - root.getBoundingClientRect().top - 16;
-          if (avail > 200) root.style.maxHeight = avail + 'px';
-        });
+        setTimeout(fitHeight, 600);
         return true;
       }
       return false;
