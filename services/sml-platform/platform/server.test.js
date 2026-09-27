@@ -1056,3 +1056,22 @@ test('site export ingest verifies the server signature and writes one SMLX log l
   });
   assert.deepEqual(lines, ['SMLX ' + JSON.stringify({ name: 'facts.json.gz', seq: 2, total: 3, data: 'SGVsbG8=' })]);
 });
+
+test('Academy offers moomoo, Webull and Robinhood quote links, and the broker route only redirects to quote pages', async () => {
+  const { createBrokerLinks } = require('./academy-brokers');
+  const brokerLinks = createBrokerLinks({ apiKey: 'k', fetchImpl: async () => ({ ok: true, json: async () => ({ results: { primary_exchange: 'XNAS' } }) }) });
+  await withServer({ academyAppId: '1551336038713139370', brokerLinks }, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    for (const id of ['academy-moomoo-buy', 'academy-webull-buy', 'academy-robinhood-buy']) assert.match(html, new RegExp(`'academy-'\\+key\\+'-buy'|${id}`));
+    assert.match(html, /\['webull','Webull'/);
+    assert.match(html, /robinhood\.com\/stocks\//);
+    assert.match(html, /\[\?&\]perf=1/, 'the drag performance readout only shows with ?perf=1');
+    const webull = await fetch(`${base}/academy-activity/broker?b=webull&symbol=aapl`, { redirect: 'manual' });
+    assert.equal(webull.status, 302);
+    assert.equal(webull.headers.get('location'), 'https://www.webull.com/quote/nasdaq-aapl');
+    const bad = await fetch(`${base}/academy-activity/broker?b=webull&symbol=%3C%3E`, { redirect: 'manual' });
+    assert.equal(bad.status, 400);
+    const other = await fetch(`${base}/academy-activity/broker?b=https://evil.example&symbol=AAPL`, { redirect: 'manual' });
+    assert.equal(other.status, 400);
+  });
+});

@@ -32,6 +32,7 @@ const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
 const { createMassiveStream } = require('./academy-massive-stream');
+const { createBrokerLinks } = require('./academy-brokers');
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAcademyVoice } = require('./academy-voice');
@@ -596,7 +597,7 @@ const ACADEMY_MEM_ALGO_TEASER_SOURCE = ACADEMY_MEM_ALGO_PARTS && ACADEMY_MEM_ALG
   : '';
 const ACADEMY_MEM_ALGO_LOADER = "<script>(()=>{if(window.__smlMemAlgoLoader)return;window.__smlMemAlgoLoader=1;let loaded=false,busy=false;const load=async()=>{const token=window.smlAcademySessionToken;if(loaded||busy||!token)return;busy=true;try{const response=await fetch('/academy-activity/mem-algo.js',{headers:{authorization:'Bearer '+token},cache:'no-store'});if(response.ok){const code=await response.text();loaded=true;const script=document.createElement('script');script.textContent=code;document.body.appendChild(script)}}catch(_){}finally{busy=false}};window.addEventListener('sml-academy-session',()=>{void load()});void load()})();</script>";
 
-const ACADEMY_MOOMOO_BUY = `<style>#academy-moomoo-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}#academy-moomoo-buy:hover{background:#1a3157;color:#c4d9ff}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
+const ACADEMY_MOOMOO_BUY = `<style>.toolbar .academy-brokers{display:contents}.toolbar button.academy-broker-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}.toolbar button.academy-broker-buy:hover{background:#1a3157;color:#c4d9ff}.toolbar #academy-webull-buy{border-color:#1f8fff;background:#0d2238;color:#8fc8ff}.toolbar #academy-robinhood-buy{border-color:#2fbf4f;background:#0f2a17;color:#9ff0b0}.toolbar #academy-robinhood-buy:hover{background:#163a20;color:#c8ffd4}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
 const toolbar=document.querySelector('.toolbar');if(!toolbar)return;
 const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbol'),typed=document.getElementById('symbol')?.value;return String(q||typed||'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g,'').slice(0,10)||'SPY'};
 /* moomoo's /stock/ URLs are NOT iOS universal links (absent from their AASA), so on phones we route
@@ -604,11 +605,15 @@ const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbo
    on that exact stock (double-encoding required - the page unescapes twice). Only ftmm://url/ targets,
    never ftmm://trade/ - the button must always land on the quote page, not an order ticket. */
 const moomooUrl=(s)=>{const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(s)+'-US';const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);return mobile?'https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl)):'https://sml-platform-api.onrender.com/academy-activity/moomoo?symbol='+encodeURIComponent(s)};
-const btn=document.createElement('button');btn.id='academy-moomoo-buy';btn.type='button';
-const paint=()=>{btn.textContent='Buy '+currentSymbol()+' on moomoo ↗';btn.title='Opens '+currentSymbol()+' in your moomoo app. Any order is reviewed and placed by you in moomoo — nothing is traded from the Academy.'};paint();
-btn.setAttribute('aria-label','Open this stock in the moomoo app');
-btn.onclick=()=>{const s=currentSymbol();const url=moomooUrl(s);if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
-const buyChip=toolbar.querySelector('.quote-chip.buy');(buyChip&&buyChip.nextSibling)?toolbar.insertBefore(btn,buyChip.nextSibling):toolbar.appendChild(btn);
+/* Webull quote URLs need the listing exchange, so they go through the server, which looks it up. Robinhood's
+   robinhood.com/stocks/ links open the installed app on phones. Every link is a quote page, never an order ticket. */
+const BROKER_REDIRECT='https://sml-platform-api.onrender.com/academy-activity/broker';
+const brokers=[['moomoo','moomoo',moomooUrl],['webull','Webull',(s)=>BROKER_REDIRECT+'?b=webull&symbol='+encodeURIComponent(s)],['robinhood','Robinhood',(s)=>'https://robinhood.com/stocks/'+encodeURIComponent(s)]];
+const open=(url)=>{if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
+const buttons=brokers.map(([key,name,urlOf])=>{const b=document.createElement('button');b.id='academy-'+key+'-buy';b.type='button';b.className='academy-broker-buy';b.dataset.broker=key;b.dataset.short=name+' ↗';b.setAttribute('aria-label','Open this stock in '+name);b.onclick=()=>open(urlOf(currentSymbol()));return b});
+const paint=()=>{const s=currentSymbol();buttons.forEach((b,i)=>{const name=brokers[i][1];b.dataset.full='Buy '+s+' on '+name+' ↗';if(!b.classList.contains('academy-broker-short'))b.textContent=b.dataset.full;b.title='Opens '+s+' in '+name+'. Any order is reviewed and placed by you in '+name+' — nothing is traded from the Academy.'})};paint();
+const group=document.createElement('span');group.className='academy-brokers';buttons.forEach((b)=>group.appendChild(b));
+const buyChip=toolbar.querySelector('.quote-chip.buy');const anchor=buyChip&&buyChip.nextSibling;anchor?toolbar.insertBefore(group,anchor):toolbar.appendChild(group);
 new MutationObserver(paint).observe(document.getElementById('label')||document.body,{childList:true,characterData:true,subtree:true});
 window.addEventListener('popstate',paint)})();</script>`;
 
@@ -1409,7 +1414,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyMassive = null,
-  marketHistory = null, publicMarketDataEnabled = false,
+  marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
@@ -1908,6 +1913,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
       sendJson(response, status || (minted.ok ? 200 : 503), body);
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/broker') {
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        const location = await brokerLinks.urlFor(String(params.get('b') || ''), params.get('symbol'));
+        response.writeHead(302, { location, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+        response.end();
+      } catch (error) {
+        sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? error.message : 'temporary_unavailable' });
+      }
       return;
     }
 
@@ -2446,6 +2463,7 @@ async function main() {
     corporateConflictCodes: CONFLICT_CODES,
     academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyMassive,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
+    brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
     academyAppId: config.academyAppId,
     academyGate,

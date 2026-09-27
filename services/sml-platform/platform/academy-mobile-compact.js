@@ -45,13 +45,20 @@
     + 'body main .bar #academy-auth-notice{order:99;padding:.15rem 0 0;font-size:.66rem;line-height:1.3;gap:.4rem}'
     /* the chart stage: every pixel saved above goes to the candles */
     + 'body main{height:calc(100dvh - 64px)}body main .chart{padding:4px}body main .chart canvas#chart{min-height:260px}'
-    + 'body main .toolbar{gap:4px 5px;padding:5px 6px}body main .toolbar input#symbol{width:66px;padding:5px 6px;font-size:.78rem}body main .toolbar #load{padding:5px 8px;font-size:.72rem}'
+    /* no Load button on a phone: Enter / Go on the keyboard, or leaving the ticker box, loads the symbol */
+    + 'body main .toolbar{gap:4px 5px;padding:5px 6px}body main .toolbar input#symbol{width:74px;padding:5px 6px;font-size:.78rem}body main .toolbar #load{display:none}'
     + 'body main .toolbar .quote-chip{font-size:.6rem}body main .toolbar #company{display:none}'
-    + 'body main .toolbar .intervals{order:1;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;gap:3px;margin:0;padding-bottom:1px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body main .toolbar .intervals::-webkit-scrollbar{display:none}'
-    + 'body main .toolbar .intervals button{flex:none;padding:4px 7px;font-size:.66rem}'
+    /* the intervals live under the chart's date axis; the quote statistics take their place above the chart as one scrolling row */
+    + 'body main .shell{grid-template-columns:minmax(0,1fr)!important}body main .shell>*{min-width:0}'
+    + 'body main .chart{min-width:0;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto auto minmax(0,1fr) auto!important}body main .chart>*{min-width:0}body main .toolbar{min-width:0;max-width:100%}'
+    + 'body main .chart>.intervals{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:3px;margin:4px 0 0;padding:0 2px 1px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body main .chart>.intervals::-webkit-scrollbar{display:none}'
+    + 'body main .chart>.intervals button{flex:none;padding:4px 8px;font-size:.66rem}'
     + 'body main .toolbar .depth-toggle,body main .toolbar #mem-algo-toggle,body main .toolbar #smc-toggle{order:2;padding:4px 8px;font-size:.62rem}'
-    /* the moomoo link rides the toggles row instead of taking a row of its own */
-    + 'body main .toolbar #academy-moomoo-buy{order:3;margin-left:auto;padding:4px 7px;font-size:.6rem}'
+    /* the three broker links share their own row, evenly (a ~30% basis each forces the shared line break) */
+    + 'body main .toolbar .academy-brokers{order:3;flex:1 1 100%;display:flex;gap:5px;min-width:0}'
+    + 'body main .toolbar button.academy-broker-buy{flex:1 1 0;justify-content:center;min-width:0;padding:4px 6px;font-size:.62rem}'
+    /* the chart stage gets a fixed share of the screen so it can never spill over the intervals row beneath it */
+    + 'body main{height:auto!important;min-height:0}body main .shell{overflow:visible}body main .chart .academy-chart-stage{height:clamp(240px,50dvh,470px);min-height:0}body main .chart>canvas#chart{height:clamp(240px,50dvh,470px);min-height:0}'
     + 'body main .chart .academy-chart-tools{flex-wrap:nowrap;overflow-x:auto;gap:4px;padding:4px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body main .chart .academy-chart-tools::-webkit-scrollbar{display:none}'
     + 'body main .chart .academy-chart-tools label,body main .chart .academy-chart-tools span{display:none}'
     + 'body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{flex:none;height:26px;padding:2px 7px;font-size:.6rem;white-space:nowrap}'
@@ -110,15 +117,37 @@
       if (phone && title.textContent !== short) title.textContent = short;
       else if (!phone && title.textContent !== title.dataset.full) title.textContent = title.dataset.full;
     }
-    /* "Buy INTC on moomoo ↗" is too wide to share the toggles row; the short label fits beside SMC */
-    const moomoo = document.getElementById('academy-moomoo-buy');
-    if (moomoo) {
-      const full = moomoo.textContent;
-      if (phone) {
-        if (!/^moomoo/.test(full)) { moomoo.dataset.full = full; moomoo.title = full; moomoo.textContent = 'moomoo ↗'; }
-      } else if (/^moomoo/.test(full) && moomoo.dataset.full) {
-        moomoo.textContent = moomoo.dataset.full;
+    /* "Buy INTC on Robinhood ↗" ×3 cannot share a phone row; the short broker names can */
+    for (const b of document.querySelectorAll('.academy-broker-buy')) {
+      b.classList.toggle('academy-broker-short', phone);
+      const want = phone ? b.dataset.short : b.dataset.full;
+      if (want && b.textContent !== want) b.textContent = want;
+    }
+    /* intervals: under the chart on a phone, back in the toolbar on a wide screen */
+    const intervals = document.querySelector('main .intervals');
+    const chart = document.querySelector('main .chart');
+    const stage = chart && (chart.querySelector(':scope > .academy-chart-stage') || chart.querySelector(':scope > canvas#chart'));
+    const toolbar = document.querySelector('main .toolbar');
+    if (intervals && chart && stage && toolbar) {
+      if (phone && intervals.parentElement !== chart) stage.insertAdjacentElement('afterend', intervals);
+      else if (!phone && intervals.parentElement !== toolbar) {
+        const company = toolbar.querySelector('#company');
+        if (company) company.insertAdjacentElement('afterend', intervals); else toolbar.appendChild(intervals);
       }
+    }
+    /* with the Load button hidden, leaving the ticker box loads what was typed (Enter already does) */
+    const symbolInput = document.getElementById('symbol');
+    if (symbolInput && !symbolInput.dataset.mobileLoad) {
+      symbolInput.dataset.mobileLoad = '1';
+      symbolInput.setAttribute('enterkeyhint', 'go');
+      symbolInput.setAttribute('autocapitalize', 'characters');
+      symbolInput.addEventListener('change', () => {
+        if (!mq.matches) return;
+        const typed = symbolInput.value.trim().toUpperCase();
+        const current = String(new URLSearchParams(location.search).get('symbol') || '').toUpperCase();
+        const load = document.getElementById('load');
+        if (typed && typed !== current && load) load.click();
+      });
     }
     /* the Alerts button: in the header on a phone, floating on a desktop */
     const fab = document.getElementById('academy-alerts-fab');
