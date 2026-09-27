@@ -1144,6 +1144,53 @@ async function handleBillingRequest(request, response, options, action) {
   }
 }
 
+/* Site facts relay: the WordPress plugin (SML Group Settings Hub) posts a compact,
+   gzip+base64 export of site facts in signed chunks; each chunk is written to the
+   service log as one "SMLX" line so it can be read back from Render logs without
+   database or site access. Nothing is stored. */
+const SITE_EXPORT_CHUNK_LIMIT = 6000;
+async function handleSiteExportIngest(request, response, options) {
+  if (!contentTypeIsJson(request)) {
+    sendJson(response, 415, { ok: false, error: 'content_type_required' });
+    return;
+  }
+  const body = await readRequestBody(request);
+  if (!body.ok) {
+    sendJson(response, body.status, { ok: false, error: body.error });
+    return;
+  }
+  const verified = verifySignature({
+    secret: options.billingApiSecret,
+    timestamp: request.headers['x-sml-timestamp'],
+    signature: request.headers['x-sml-signature'],
+    rawBody: body.rawBody,
+    now: options.now()
+  });
+  if (!verified.ok) {
+    sendJson(response, verified.status, { ok: false, error: verified.error });
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(body.rawBody);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('invalid');
+  } catch (_) {
+    sendJson(response, 400, { ok: false, error: 'invalid_json' });
+    return;
+  }
+  const name = String(input.name || '');
+  const seq = Number(input.seq);
+  const total = Number(input.total);
+  const data = String(input.data || '');
+  if (!/^[a-z0-9._-]{1,60}$/.test(name) || !Number.isInteger(seq) || !Number.isInteger(total) || seq < 1 || total < 1 || seq > total || total > 5000
+    || data.length > SITE_EXPORT_CHUNK_LIMIT || !/^[A-Za-z0-9+/=]*$/.test(data)) {
+    sendJson(response, 400, { ok: false, error: 'invalid_request' });
+    return;
+  }
+  (options.siteExportSink || ((line) => console.log(line)))('SMLX ' + JSON.stringify({ name, seq, total, data }));
+  sendJson(response, 201, { ok: true, name, seq, total });
+}
+
 async function handleConnectRequest(request, response, options, action) {
   if (!contentTypeIsJson(request)) {
     sendJson(response, 415, { ok: false, error: 'content_type_required' });
@@ -1275,7 +1322,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '',
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
-  memberEmail = null,
+  memberEmail = null, siteExportSink = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -1492,6 +1539,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'POST' && path === '/v1/billing/migrations/upgrade-chat') {
       await handleBillingRequest(request, response, billingOptions, billingService.prepareUpgradeChatMigration);
+      return;
+    }
+    if (request.method === 'POST' && path === '/v1/site-export/ingest') {
+      await handleSiteExportIngest(request, response, { ...billingOptions, siteExportSink });
       return;
     }
     if (request.method === 'POST' && path === '/v1/connect/migration/campaign') {

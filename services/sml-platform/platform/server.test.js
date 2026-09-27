@@ -1038,3 +1038,19 @@ test('the alerts desk route is members-only, serves the snapshot and one alert i
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
   assert.match(html, /__smlAlertsUi/); assert.match(html, /ALERTS DESK/); assert.match(html, /academy-alerts-fab/);
 });
+
+test('site export ingest verifies the server signature and writes one SMLX log line per chunk', async () => {
+  const lines = [];
+  const body = JSON.stringify({ name: 'facts.json.gz', seq: 2, total: 3, data: 'SGVsbG8=' });
+  await withServer({ billingApiSecret: 'billing-test-secret', siteExportSink: (line) => lines.push(line) }, async (base) => {
+    const denied = await fetch(`${base}/v1/site-export/ingest`, { method: 'POST', body, headers: signedHeaders('wrong-secret', body) });
+    assert.equal(denied.status, 401);
+    const bad = JSON.stringify({ name: '../etc', seq: 1, total: 1, data: 'x' });
+    const rejected = await fetch(`${base}/v1/site-export/ingest`, { method: 'POST', body: bad, headers: signedHeaders('billing-test-secret', bad) });
+    assert.equal(rejected.status, 400);
+    const ok = await fetch(`${base}/v1/site-export/ingest`, { method: 'POST', body, headers: signedHeaders('billing-test-secret', body) });
+    assert.equal(ok.status, 201);
+    assert.deepEqual(await ok.json(), { ok: true, name: 'facts.json.gz', seq: 2, total: 3 });
+  });
+  assert.deepEqual(lines, ['SMLX ' + JSON.stringify({ name: 'facts.json.gz', seq: 2, total: 3, data: 'SGVsbG8=' })]);
+});
