@@ -138,18 +138,8 @@
       }
     });
 
-    // insert before the group's sidebar/channels area or at the end of main content
-    var target = document.querySelector('.sml-group-sidebar, .sml-group-channels, [data-sml-group-body]');
-    if (target) {
-      target.parentNode.insertBefore(root, target);
-    } else {
-      var main = document.querySelector('#root, .site-content, main, .entry-content');
-      if (main) {
-        main.appendChild(root);
-      } else {
-        document.body.appendChild(root);
-      }
-    }
+    var main = document.querySelector('.sml-gshell__main') || document.querySelector('main:not(#sml-group-root main)') || document.body;
+    main.appendChild(root);
 
     // owners edit from the group's ⋮ menu
     if (data.can_manage) {
