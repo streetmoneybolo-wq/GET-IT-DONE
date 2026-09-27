@@ -138,8 +138,15 @@
       }
     });
 
-    var main = document.querySelector('.sml-gshell__main') || document.querySelector('main:not(#sml-group-root main)') || document.body;
-    main.appendChild(root);
+    function mount() {
+      var t = document.querySelector('.sml-gshell__main');
+      if (t) { t.appendChild(root); return true; }
+      return false;
+    }
+    if (!mount()) {
+      var tries = 0;
+      var tid = setInterval(function () { if (mount() || ++tries > 30) clearInterval(tid); }, 200);
+    }
 
     // owners edit from the group's ⋮ menu
     if (data.can_manage) {
