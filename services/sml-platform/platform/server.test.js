@@ -1043,6 +1043,48 @@ test('the alerts desk route is members-only, serves the snapshot and one alert i
   assert.match(html, /__smlAlertsUi/); assert.match(html, /ALERTS DESK/); assert.match(html, /academy-alerts-fab/);
 });
 
+test('per-member alert sources: the desk shows only the member own sources, and the picker routes are members-only', async () => {
+  const seen = [];
+  const academyAlerts = {
+    snapshot: (opts) => { seen.push(opts); return { ok: true, asOf: 1, feed: {}, alerts: [{ id: '9', symbol: 'NVDA' }], pending: 0 }; },
+    allows: (id, sources) => (id === '9' ? sources[0] : null),
+    detail: async (id, opts) => (id === '9' ? { id: '9', symbol: 'NVDA', closedOnly: opts.closedOnly } : null)
+  };
+  const added = [];
+  const academyAlertSources = {
+    viewFor: async (userId, view) => [{ key: '500000000000000005', view: 'live', access: true }, { key: '938944129348558848', view, access: true, premium: true }, { key: '500000000000000006', view: 'live', access: false }],
+    list: async () => ({ sources: added, presets: [{ channelId: '938944129348558848', label: 'GrandMaster Swings', style: 'swings' }], max: 12 }),
+    guilds: async (u, current) => [{ id: '100000000000000001', name: 'House of Traders', current: current === '100000000000000001' }],
+    channels: async (u, g) => (g === '100000000000000001' ? [{ id: '500000000000000005', name: 'swing-alerts', category: '' }] : null),
+    preview: async (u, ch) => (ch === '500000000000000005' ? { channel: { id: ch }, read: 3, posters: [], alerts: [] } : null),
+    add: async (u, input) => { if (input.channel === '500000000000000006') { const e = new Error('no'); e.code = 'no_access'; throw e; } added.push({ channelId: input.channel }); return { sources: added }; },
+    remove: async () => ({ sources: [] })
+  };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer member' ? { ok: true, userId: 'u1', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const auth = { authorization: 'Bearer member' };
+  const json = { ...auth, 'content-type': 'application/json' };
+  await withServer({ academyAlerts, academyAlertSources, academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/alerts/sources`)).status, 401);
+    const desk = await (await fetch(`${base}/academy-activity/alerts`, { headers: auth })).json();
+    assert.equal(desk.perMember, true); assert.equal(desk.sources, 2, 'a source the member lost access to is left out');
+    assert.deepEqual(seen[0].sources.map((s) => [s.key, s.view]), [['500000000000000005', 'live'], ['938944129348558848', 'teaser']], 'free: owner stream as a teaser, own channel live');
+    assert.equal((await (await fetch(`${base}/academy-activity/alerts?detail=9`, { headers: auth })).json()).alert.symbol, 'NVDA');
+    assert.equal((await fetch(`${base}/academy-activity/alerts?detail=10`, { headers: auth })).status, 404, 'an alert outside the member sources is not found');
+    assert.equal((await (await fetch(`${base}/academy-activity/alerts/guilds?current=100000000000000001`, { headers: auth })).json()).guilds[0].current, true);
+    assert.equal((await fetch(`${base}/academy-activity/alerts/channels?guild=1`, { headers: auth })).status, 404);
+    assert.equal((await fetch(`${base}/academy-activity/alerts/channel?channel=500000000000000005`, { headers: auth })).status, 200);
+    const ok = await fetch(`${base}/academy-activity/alerts/sources`, { method: 'POST', headers: json, body: JSON.stringify({ channel: '500000000000000005' }) });
+    assert.equal(ok.status, 200); assert.equal((await ok.json()).sources.length, 1);
+    const denied = await fetch(`${base}/academy-activity/alerts/sources`, { method: 'POST', headers: json, body: JSON.stringify({ channel: '500000000000000006' }) });
+    assert.equal(denied.status, 403); assert.equal((await denied.json()).error, 'no_access');
+    assert.equal((await fetch(`${base}/academy-activity/alerts/sources`, { method: 'POST', headers: auth, body: '{}' })).status, 415);
+    assert.equal((await fetch(`${base}/academy-activity/alerts/sources`, { method: 'DELETE', headers: json, body: JSON.stringify({ channel: '500000000000000005' }) })).status, 200);
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /＋ Sources/); assert.match(html, /Your alerts desk is empty/);
+});
+
 test('site export ingest verifies the server signature and writes one SMLX log line per chunk', async () => {
   const lines = [];
   const body = JSON.stringify({ name: 'facts.json.gz', seq: 2, total: 3, data: 'SGVsbG8=' });
@@ -1067,9 +1109,18 @@ test('Academy offers moomoo, Webull and Robinhood quote links, and the broker ro
     for (const id of ['academy-moomoo-buy', 'academy-webull-buy', 'academy-robinhood-buy']) assert.match(html, new RegExp(`'academy-'\\+key\\+'-buy'|${id}`));
     assert.match(html, /\['webull','Webull'/);
     assert.match(html, /robinhood\.com\/stocks\//);
-    assert.match(html, /https:\/\/j\.moomoo\.com\/00isCK/, 'Join moomoo uses the owner referral link');
-    assert.match(html, /https:\/\/a\.webull\.com\/gsHkJGq3lyekBxLcvC/, 'Join Webull uses the owner referral link');
-    assert.match(html, /referral link/, 'the Join buttons disclose that they are referral links');
+    assert.doesNotMatch(html, /academy-broker-join/, 'no separate Join buttons on the chart');
+    assert.match(html, /\/academy-activity\/open/, 'moomoo and Webull Buy buttons go through the app-or-sign-up launcher');
+    assert.match(html, /id="sire-toggle"|btn\.id = 'sire-toggle'/, 'the SIRE panel ships with the page');
+    const moomoo = await (await fetch(`${base}/academy-activity/open?b=moomoo&symbol=spy`)).text();
+    assert.match(moomoo, /ftmm:\/\/url\//, 'moomoo tries the app on the quote first');
+    assert.match(moomoo, /https:\/\/j\.moomoo\.com\/00isCK/, 'moomoo falls back to the owner referral link');
+    assert.match(moomoo, /referral link/, 'the launcher discloses the referral link');
+    const wb = await (await fetch(`${base}/academy-activity/open?b=webull&symbol=aapl`)).text();
+    assert.match(wb, /https:\/\/www\.webull\.com\/quote\/nasdaq-aapl/);
+    assert.match(wb, /https:\/\/a\.webull\.com\/gsHkJGq3lyekBxLcvC/);
+    assert.equal((await fetch(`${base}/academy-activity/open?b=evil&symbol=AAPL`)).status, 400);
+    assert.equal((await fetch(`${base}/academy-activity/open?b=moomoo&symbol=%3C%3E`)).status, 400);
     assert.match(html, /\[\?&\]perf=1/, 'the drag performance readout only shows with ?perf=1');
     const webull = await fetch(`${base}/academy-activity/broker?b=webull&symbol=aapl`, { redirect: 'manual' });
     assert.equal(webull.status, 302);

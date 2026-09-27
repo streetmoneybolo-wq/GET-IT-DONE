@@ -32,9 +32,10 @@ const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
 const { createMassiveStream } = require('./academy-massive-stream');
-const { createBrokerLinks } = require('./academy-brokers');
+const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSymbol: cleanBrokerSymbol } = require('./academy-brokers');
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
+const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -576,9 +577,10 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const smartMoney = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money.js'), 'utf8');
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
+    const sirePanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sire-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script>' + (sirePanel ? '<script>' + sirePanel + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();',
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -597,24 +599,17 @@ const ACADEMY_MEM_ALGO_TEASER_SOURCE = ACADEMY_MEM_ALGO_PARTS && ACADEMY_MEM_ALG
   : '';
 const ACADEMY_MEM_ALGO_LOADER = "<script>(()=>{if(window.__smlMemAlgoLoader)return;window.__smlMemAlgoLoader=1;let loaded=false,busy=false;const load=async()=>{const token=window.smlAcademySessionToken;if(loaded||busy||!token)return;busy=true;try{const response=await fetch('/academy-activity/mem-algo.js',{headers:{authorization:'Bearer '+token},cache:'no-store'});if(response.ok){const code=await response.text();loaded=true;const script=document.createElement('script');script.textContent=code;document.body.appendChild(script)}}catch(_){}finally{busy=false}};window.addEventListener('sml-academy-session',()=>{void load()});void load()})();</script>";
 
-const ACADEMY_MOOMOO_BUY = `<style>.toolbar .academy-brokers{display:contents}.toolbar button.academy-broker-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}.toolbar button.academy-broker-buy:hover{background:#1a3157;color:#c4d9ff}.toolbar #academy-webull-buy{border-color:#1f8fff;background:#0d2238;color:#8fc8ff}.toolbar #academy-robinhood-buy{border-color:#2fbf4f;background:#0f2a17;color:#9ff0b0}.toolbar #academy-robinhood-buy:hover{background:#163a20;color:#c8ffd4}.toolbar button.academy-broker-join{border-style:dashed;background:#1a1606;border-color:#e0b43a;color:#ffd86b}.toolbar button.academy-broker-join:hover{background:#2a2209;color:#ffe9a3}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
+const ACADEMY_MOOMOO_BUY = `<style>.toolbar .academy-brokers{display:contents}.toolbar button.academy-broker-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}.toolbar button.academy-broker-buy:hover{background:#1a3157;color:#c4d9ff}.toolbar #academy-webull-buy{border-color:#1f8fff;background:#0d2238;color:#8fc8ff}.toolbar #academy-robinhood-buy{border-color:#2fbf4f;background:#0f2a17;color:#9ff0b0}.toolbar #academy-robinhood-buy:hover{background:#163a20;color:#c8ffd4}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
 const toolbar=document.querySelector('.toolbar');if(!toolbar)return;
 const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbol'),typed=document.getElementById('symbol')?.value;return String(q||typed||'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g,'').slice(0,10)||'SPY'};
-/* moomoo's /stock/ URLs are NOT iOS universal links (absent from their AASA), so on phones we route
-   through moomoo's own first-party /deeplink/ bridge, which IS allowlisted and opens the installed app
-   on that exact stock (double-encoding required - the page unescapes twice). Only ftmm://url/ targets,
-   never ftmm://trade/ - the button must always land on the quote page, not an order ticket. */
-const moomooUrl=(s)=>{const stockUrl='https://www.moomoo.com/stock/'+encodeURIComponent(s)+'-US';const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);return mobile?'https://www.moomoo.com/deeplink/?target='+encodeURIComponent('ftmm://url/'+encodeURIComponent(stockUrl)):'https://sml-platform-api.onrender.com/academy-activity/moomoo?symbol='+encodeURIComponent(s)};
-/* Webull quote URLs need the listing exchange, so they go through the server, which looks it up. Robinhood's
-   robinhood.com/stocks/ links open the installed app on phones. Every link is a quote page, never an order ticket. */
-const BROKER_REDIRECT='https://sml-platform-api.onrender.com/academy-activity/broker';
-const brokers=[['moomoo','moomoo',moomooUrl],['webull','Webull',(s)=>BROKER_REDIRECT+'?b=webull&symbol='+encodeURIComponent(s)],['robinhood','Robinhood',(s)=>'https://robinhood.com/stocks/'+encodeURIComponent(s)]];
+/* moomoo and Webull open a launcher in the phone's browser: it opens the app on this ticker when installed, and otherwise sends
+   the member to the owner's sign-up link. Robinhood's robinhood.com/stocks/ links open its app directly. Quote pages only, never an order ticket. */
+const LAUNCH='https://sml-platform-api.onrender.com/academy-activity/open';
+const brokers=[['moomoo','moomoo',(s)=>LAUNCH+'?b=moomoo&symbol='+encodeURIComponent(s)],['webull','Webull',(s)=>LAUNCH+'?b=webull&symbol='+encodeURIComponent(s)],['robinhood','Robinhood',(s)=>'https://robinhood.com/stocks/'+encodeURIComponent(s)]];
 const open=(url)=>{if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
 const buttons=brokers.map(([key,name,urlOf])=>{const b=document.createElement('button');b.id='academy-'+key+'-buy';b.type='button';b.className='academy-broker-buy';b.dataset.broker=key;b.dataset.short=name+' ↗';b.setAttribute('aria-label','Open this stock in '+name);b.onclick=()=>open(urlOf(currentSymbol()));return b});
 const paint=()=>{const s=currentSymbol();buttons.forEach((b,i)=>{const name=brokers[i][1];b.dataset.full='Buy '+s+' on '+name+' ↗';if(!b.classList.contains('academy-broker-short'))b.textContent=b.dataset.full;b.title='Opens '+s+' in '+name+'. Any order is reviewed and placed by you in '+name+' — nothing is traded from the Academy.'})};paint();
-/* Owner's referral sign-up links. Labelled as referral links in the tooltip; the owner may earn a reward when a member opens an account. */
-const joins=[['moomoo','moomoo','https://j.moomoo.com/00isCK'],['webull','Webull','https://a.webull.com/gsHkJGq3lyekBxLcvC']].map(([key,name,url])=>{const b=document.createElement('button');b.id='academy-'+key+'-join';b.type='button';b.className='academy-broker-buy academy-broker-join';b.dataset.full='Join '+name+' ↗';b.dataset.short='Join '+name;b.textContent=b.dataset.full;b.title='Open a '+name+' account (referral link — Making Easy Money may earn a reward if you sign up).';b.setAttribute('aria-label','Sign up for '+name+' (referral link)');b.onclick=()=>open(url);return b});
-const group=document.createElement('span');group.className='academy-brokers';buttons.concat(joins).forEach((b)=>group.appendChild(b));
+const group=document.createElement('span');group.className='academy-brokers';buttons.forEach((b)=>group.appendChild(b));
 const buyChip=toolbar.querySelector('.quote-chip.buy');const anchor=buyChip&&buyChip.nextSibling;anchor?toolbar.insertBefore(group,anchor):toolbar.appendChild(group);
 new MutationObserver(paint).observe(document.getElementById('label')||document.body,{childList:true,characterData:true,subtree:true});
 window.addEventListener('popstate',paint)})();</script>`;
@@ -1415,7 +1410,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyMassive = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyMassive = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -1918,6 +1913,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && path === '/academy-activity/open') {
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      const broker = String(params.get('b') || '');
+      const symbol = cleanBrokerSymbol(params.get('symbol'));
+      if (!symbol || !['moomoo', 'webull'].includes(broker)) { sendJson(response, 400, { ok: false, error: symbol ? 'invalid_broker' : 'invalid_symbol' }); return; }
+      const quoteUrl = broker === 'moomoo' ? moomooQuoteUrl(symbol) : await brokerLinks.urlFor('webull', symbol).catch(() => webullUrl(symbol, ''));
+      sendHtml(response, 200, brokerLaunchHtml(broker, symbol, quoteUrl));
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/broker') {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       try {
@@ -1981,6 +1986,45 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Each member's own alert sources: pick a server, then a channel (or chosen posters in it), then follow. Members only; a member only ever sees
+       servers they share with an Academy bot and channels they can already read in Discord. */
+    if (path.startsWith('/academy-activity/alerts/') && ['/academy-activity/alerts/sources', '/academy-activity/alerts/guilds', '/academy-activity/alerts/channels', '/academy-activity/alerts/channel'].includes(path)) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academyAlertSources) { sendJson(response, 503, { ok: false, error: 'alert_sources_disabled' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        if (request.method === 'GET' && path === '/academy-activity/alerts/sources') { sendJson(response, 200, { ok: true, ...(await academyAlertSources.list(session.userId)) }); return; }
+        if (request.method === 'GET' && path === '/academy-activity/alerts/guilds') { sendJson(response, 200, { ok: true, guilds: await academyAlertSources.guilds(session.userId, params.get('current')) }); return; }
+        if (request.method === 'GET' && path === '/academy-activity/alerts/channels') {
+          const channels = await academyAlertSources.channels(session.userId, params.get('guild'));
+          if (!channels) { sendJson(response, 404, { ok: false, error: 'guild_not_found' }); return; }
+          sendJson(response, 200, { ok: true, channels }); return;
+        }
+        if (request.method === 'GET' && path === '/academy-activity/alerts/channel') {
+          const id = String(params.get('channel') || '').replace(/[^0-9]/g, '').slice(0, 25);
+          const one = id ? await academyAlertSources.preview(session.userId, id) : null;
+          if (!one) { sendJson(response, 404, { ok: false, error: 'channel_not_found' }); return; }
+          sendJson(response, 200, { ok: true, ...one }); return;
+        }
+        if ((request.method === 'POST' || request.method === 'DELETE') && path === '/academy-activity/alerts/sources') {
+          if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+          const body = await readRequestBody(request, 2048);
+          if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+          let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          const result = request.method === 'POST' ? await academyAlertSources.add(session.userId, input) : await academyAlertSources.remove(session.userId, input);
+          sendJson(response, 200, { ok: true, ...result }); return;
+        }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      } catch (error) {
+        const code = error instanceof TypeError ? [400, 'invalid_source'] : error instanceof RangeError ? [409, 'too_many_sources'] : error && error.code === 'no_access' ? [403, 'no_access'] : null;
+        if (!code) logger('error', 'academy_alert_sources_failed', { error });
+        sendJson(response, code ? code[0] : 503, { ok: false, error: code ? code[1] : 'temporarily_unavailable' });
+      }
+      return;
+    }
+
     /* The alerts desk: the trader's posted alerts with risk grade, checklist and plan. Members only (the same Academy session as the options chain). */
     if (request.method === 'GET' && path === '/academy-activity/alerts') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -1992,6 +2036,22 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
          SML_ACADEMY_ALERTS_TIERING an 'academy' session sees closed alerts only
          (case studies). Members see the live desk, as before. */
       const alertView = session.tier === 'free' ? 'teaser' : (session.tier === 'academy' && academyGate && academyGate.alertsTiering ? 'closed' : 'live');
+      /* Per-member desk: only the member's own sources. The owner's streams keep the tiering above; any other channel shows live because the
+         member can already read it in Discord (checked again here), and a channel they lost access to shows nothing. */
+      if (academyAlertSources) {
+        try {
+          const sources = (await academyAlertSources.viewFor(session.userId, alertView)).filter((s) => s.access);
+          if (id) {
+            const alertId = String(id).replace(/[^0-9]/g, '').slice(0, 24);
+            const src = academyAlerts.allows(alertId, sources);
+            if (!src || src.view === 'teaser') { sendJson(response, src ? 403 : 404, { ok: false, error: src ? 'academy_access_required' : 'alert_not_found' }); return; }
+            const one = await academyAlerts.detail(alertId, { closedOnly: src.view === 'closed' });
+            if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
+            sendJson(response, 200, { ok: true, alert: one });
+          } else sendJson(response, 200, { ...academyAlerts.snapshot({ sources }), sources: sources.length, perMember: true });
+        } catch (error) { logger('error', 'academy_alerts_request_failed', { error }); sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' }); }
+        return;
+      }
       try {
         if (id) {
           if (alertView === 'teaser') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
@@ -2408,11 +2468,17 @@ async function main() {
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
   const academyMassive = process.env.ACADEMY_MASSIVE_STREAM === 'off' ? null : createMassiveStream({ apiKey: config.massiveApiKey, logger: log });
   const marketHistory = createMassiveHistory({ apiKey: config.massiveApiKey });
+  /* Each member picks their own alert sources (servers -> channels or posters); SML_ACADEMY_ALERT_SOURCES=off brings back the fixed two-stream desk. */
+  const perMemberAlerts = process.env.SML_ACADEMY_ALERT_SOURCES !== 'off';
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
-    tokens: alertTokens, channels: defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
+    tokens: alertTokens, channels: perMemberAlerts ? [] : defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
     orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
     patterns: (() => { try { return require('./academy-patterns').detect; } catch (_) { return null; } })()
   });
+  const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
+    store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    alerts: academyAlerts, presets: defaultChannels(), logger: log
+  }) : null;
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
@@ -2463,7 +2529,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyMassive,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyMassive,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
@@ -2480,6 +2546,7 @@ async function main() {
     log('info', 'shutdown_started', { signal });
     if (academyOrderFlow) academyOrderFlow.stop();
     if (academyAlerts) academyAlerts.stop();
+    if (academyAlertSources) academyAlertSources.stop();
     if (academyMassive) academyMassive.stop();
     server.close(async () => {
       await database.close();
@@ -2498,6 +2565,7 @@ async function main() {
       academyOrderFlow.start();
     }
     if (academyAlerts) academyAlerts.start();
+    if (academyAlertSources) academyAlertSources.start();
     if (academyMassive) academyMassive.start();
     if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);

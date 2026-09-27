@@ -5,8 +5,10 @@
  * Reads the trader's alert channels from Discord, parses each alert, and keeps a live picture of every recent alert: price, risk grade, company checklist (long term),
  * MEM ALGO view, order-book pressure, chatter, and an auto-updating plan (hold / raise target / take partial profits / sell).
  *
- * Two channels: "swings" (GrandMaster Swings) and "longterm" (GrandMaster LongTerm). Discord is polled with a bot token that can read them; if the
- * main channel is unreadable the mirror copy in the new server is tried. Every outside call is cached, rate-limited and failure-tolerant: an alert always
+ * Channels: each member picks their own sources (academy-alert-sources.js) and setChannels() keeps the polled set to the channels someone follows.
+ * A channel record is { key, id, mirrorId, style: 'swings' | 'longterm', premium, label }; an alert keeps its channel's style in alert.channel (the
+ * risk and options models read it) and the channel key in alert.source. The older fixed setup ("swings" / "longterm" keys) still works as before.
+ * Discord is polled with a bot token that can read the channel; if the main channel is unreadable the mirror copy is tried. Every outside call is cached, rate-limited and failure-tolerant: an alert always
  * shows what is known, and says what is missing. Read-only: nothing here trades and nothing is posted back to Discord. */
 
 const { parseAlertMessage } = require('./academy-alerts-parse');
@@ -33,6 +35,8 @@ const parseStart = (raw) => { const out = {}; for (const part of String(raw == n
 const START = parseStart(process.env.ACADEMY_ALERTS_START);
 const ENV_MAX = Math.max(1, Math.min(40, Number(process.env.ACADEMY_ALERTS_MAX) || 25));
 const MAX_ACTIVE = { swings: ENV_MAX, longterm: ENV_MAX };
+/* a member-added channel shows its newest alerts only, so a busy server cannot crowd the desk (or the refresh loop) */
+const MAX_PER_SOURCE = Math.max(1, Math.min(25, Number(process.env.ACADEMY_ALERTS_MAX_PER_SOURCE) || 12));
 
 /* Closed-alert case studies (SML_ACADEMY_ALERTS_TIERING). A paid Academy plan
    sees an alert only once it is CLOSED: its original target was reached, its
@@ -86,7 +90,10 @@ function createAlertsService({
   optionsChain = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
 } = {}) {
   const alerts = new Map(); // discord message id -> alert record
-  const feed = {}; for (const c of channels) feed[c.key] = { ok: false, error: 'not polled yet', lastPollAt: 0, tokenLabel: '', via: 'channel' };
+  const styleOf = (c) => (c.style === 'longterm' || (!c.style && c.key === 'longterm') ? 'longterm' : 'swings');
+  const feedFor = (c) => ({ ok: false, error: 'not polled yet', lastPollAt: 0, tokenLabel: '', via: 'channel', label: c.label || '' });
+  const feed = {}; for (const c of channels) feed[c.key] = feedFor(c);
+  let polling = false;
   const cacheStore = new Map(), inflight = new Map();
   const patternCache = new Map();
   let running = false, pollTimer = null, refreshTimer = null, refreshing = false, loggedAt = 0;
@@ -124,6 +131,8 @@ function createAlertsService({
   }
 
   function ingest(channelKey, message) {
+    const rec = channels.find((c) => c.key === channelKey);
+    const style = rec ? styleOf(rec) : (channelKey === 'longterm' ? 'longterm' : 'swings');
     const parsed = parseAlertMessage(message.content, message.timestamp);
     if (!parsed || parsed.kind !== 'equity') return false;
     const at = Date.parse(message.timestamp);
@@ -131,7 +140,7 @@ function createAlertsService({
     const id = String(message.id);
     const existing = alerts.get(id);
     alerts.set(id, Object.assign(existing || { planLog: [], addedAt: now() }, {
-      id, channel: channelKey, symbol: parsed.symbol, kind: 'equity', entry: parsed.entryPrice, target: parsed.targetPrice, targetIsMinimum: parsed.targetIsMinimum,
+      id, channel: style, source: channelKey, symbol: parsed.symbol, kind: 'equity', entry: parsed.entryPrice, target: parsed.targetPrice, targetIsMinimum: parsed.targetIsMinimum,
       riskFlag: parsed.riskFlag, raw: parsed.raw, at, author: (message.author && (message.author.global_name || message.author.username)) || 'trader', edited: Boolean(message.edited_timestamp),
       authorId: message.author && /^\d{5,25}$/.test(String(message.author.id)) ? String(message.author.id) : '', avatarHash: message.author && /^(a_)?[0-9a-f]{6,64}$/i.test(String(message.author.avatar || '')) ? String(message.author.avatar) : ''
     }));
@@ -139,8 +148,12 @@ function createAlertsService({
   }
 
   async function poll() {
-    for (const c of channels) {
-      const state = feed[c.key];
+    if (polling) return; polling = true;
+    try { await pollAll(); } finally { polling = false; }
+  }
+  async function pollAll() {
+    for (const c of channels.slice()) {
+      const state = feed[c.key] || (feed[c.key] = feedFor(c));
       const last = c.lastId;
       let got = await readChannel(c.id, last);
       state.via = 'channel';
@@ -161,11 +174,14 @@ function createAlertsService({
   const active = () => {
     const out = [];
     for (const c of channels) {
-      const cutoff = now() - WINDOW_DAYS[c.key] * 86_400_000;
-      const all = [...alerts.values()].filter((a) => a.channel === c.key).sort((a, b) => b.at - a.at);
-      const anchor = START[c.key] ? all.findIndex((a) => a.symbol === START[c.key]) : -1;
+      const style = styleOf(c);
+      const cutoff = now() - WINDOW_DAYS[style] * 86_400_000;
+      const all = [...alerts.values()].filter((a) => a.source === c.key).sort((a, b) => b.at - a.at);
+      // the starting alert applies to the owner's own streams only (the fixed keys, or a premium channel record)
+      const startSym = c.key === 'swings' || c.key === 'longterm' ? START[c.key] : (c.premium ? START[style] : '');
+      const anchor = startSym ? all.findIndex((a) => a.symbol === startSym) : -1;
       // from the starting alert up to the newest; when that alert is not in the feed (yet), fall back to the normal recent window
-      const list = (anchor >= 0 ? all.slice(0, anchor + 1) : all.filter((a) => a.at >= cutoff)).slice(0, MAX_ACTIVE[c.key]);
+      const list = (anchor >= 0 ? all.slice(0, anchor + 1) : all.filter((a) => a.at >= cutoff)).slice(0, c.premium || c.key === style ? MAX_ACTIVE[style] : MAX_PER_SOURCE);
       out.push(...list);
     }
     return out;
@@ -269,7 +285,7 @@ function createAlertsService({
   function publicAlert(ev, full) {
     const a = ev.alert, q = ev.quote;
     const out = {
-      id: a.id, channel: a.channel, symbol: a.symbol, entry: a.entry, target0: a.target, at: a.at, raw: a.raw, author: a.author, avatar: a.authorId ? `/academy-activity/alerts/avatar?a=${a.id}` : '', authorId: a.authorId || '', riskFlag: a.riskFlag,
+      id: a.id, channel: a.channel, source: a.source || a.channel, symbol: a.symbol, entry: a.entry, target0: a.target, at: a.at, raw: a.raw, author: a.author, avatar: a.authorId ? `/academy-activity/alerts/avatar?a=${a.id}` : '', authorId: a.authorId || '', riskFlag: a.riskFlag,
       price: q ? r4(Number(q.last)) : null, chgPct: q ? r4(Number(q.chgPct)) : null, sincePct: ev.since && ev.since.pct != null ? r4(ev.since.pct) : null, high: r4(ev.since && ev.since.high), low: r4(ev.since && ev.since.low),
       risk: { score: ev.risk.score, band: ev.risk.band, label: ev.risk.label, top: ev.risk.top, flags: ev.risk.flags, coverage: ev.risk.coverage },
       plan: { action: ev.plan.action, target: ev.plan.target, stop: ev.plan.stop, reasons: full ? ev.plan.reasons : ev.plan.reasons.slice(0, 2), progress: r4(ev.plan.progress) },
@@ -297,7 +313,8 @@ function createAlertsService({
   /* view: 'live' (default; every alert on the desk, as members see it),
      'closed' (only closed alerts, each with its closing reason), or 'teaser'
      (no alerts, just how many are on the desk). */
-  function snapshot({ detailId = null, view = 'live' } = {}) {
+  function snapshot({ detailId = null, view = 'live', sources = null } = {}) {
+    if (Array.isArray(sources)) return sourcedSnapshot(sources, detailId);
     if (view === 'closed' || view === 'teaser') {
       const evs = active().map((a) => evaluated.get(a.id)).filter(Boolean);
       const closed = evs.map((ev) => [ev, closure(ev)]).filter(([, state]) => state);
@@ -308,6 +325,42 @@ function createAlertsService({
     const pending = active().length - list.length;
     return { ok: true, asOf: now(), feed, alerts: list, pending, disclaimer: DISCLAIMER };
   }
+  /* One member's desk: only alerts from the sources they follow. Each source says how it is shown: 'live', 'closed' (case studies only) or 'teaser'
+     (a count, never the alert), so the owner's paid streams keep their tiering while a channel the member can already read in Discord shows live.
+     A source with an authorId shows that poster's alerts only. */
+  const matchSource = (a, sources) => sources.find((s) => s.key === a.source && (!s.authorId || s.authorId === a.authorId));
+  function sourcedSnapshot(sources, detailId) {
+    const keys = new Set(sources.map((s) => s.key));
+    const out = [], teaser = { count: 0, closed: 0 };
+    let pending = 0;
+    for (const a of active()) {
+      if (!keys.has(a.source)) continue;
+      const src = matchSource(a, sources); if (!src) continue;
+      const ev = evaluated.get(a.id);
+      if (src.view === 'teaser') { teaser.count += 1; if (ev && closure(ev)) teaser.closed += 1; continue; }
+      if (!ev) { pending += 1; continue; }
+      if (src.view === 'closed') { const state = closure(ev); if (state) out.push(Object.assign(publicAlert(ev, ev.alert.id === detailId), { closed: { reason: state.reason, at: state.at } })); continue; }
+      out.push(publicAlert(ev, ev.alert.id === detailId));
+    }
+    const myFeed = {}; for (const k of keys) if (feed[k]) myFeed[k] = feed[k];
+    out.sort((x, y) => y.at - x.at);
+    return { ok: true, asOf: now(), feed: myFeed, alerts: out, pending, ...(teaser.count ? { teaser } : {}), disclaimer: DISCLAIMER };
+  }
+  /* which source an alert came from, so a detail request can be checked against the member's own sources */
+  function sourceOf(id) { const a = alerts.get(String(id)); return a ? { key: a.source, authorId: a.authorId } : null; }
+  function allows(id, sources) { const a = alerts.get(String(id)); return a ? matchSource(a, sources) || null : null; }
+  /* Replaces the polled channel set, keeping where each kept channel had read up to. Alerts from a channel nobody follows any more are dropped. */
+  function setChannels(list) {
+    const prev = new Map(channels.map((c) => [c.key, c]));
+    const next = (Array.isArray(list) ? list : []).filter((c) => c && c.key && c.id).map((c) => Object.assign(prev.get(c.key) || {}, c, prev.get(c.key) ? { lastId: prev.get(c.key).lastId, lastMirrorId: prev.get(c.key).lastMirrorId } : {}));
+    channels.length = 0; channels.push(...next);
+    const keep = new Set(next.map((c) => c.key));
+    for (const k of Object.keys(feed)) if (!keep.has(k)) delete feed[k];
+    for (const c of next) { if (!feed[c.key]) feed[c.key] = feedFor(c); else feed[c.key].label = c.label || feed[c.key].label; }
+    for (const [id, a] of alerts) if (!keep.has(a.source)) { alerts.delete(id); evaluated.delete(id); }
+    return next.length;
+  }
+
   /* closedOnly: an alert that is still open is reported as not found. */
   async function detail(id, { closedOnly = false } = {}) { const a = alerts.get(String(id)); if (!a) return null; if (!evaluated.has(a.id)) await refresh(); const ev = evaluated.get(a.id); if (!ev) return null; if (closedOnly && !closure(ev)) return null; const quotes = await loadQuotes([a.symbol]); const fresh = await evaluate(a, quotes, lastContext.market, lastContext.sectorQuotes, true).catch(() => ev); evaluated.set(a.id, fresh); if (!closedOnly) return publicAlert(fresh, true); const state = closure(fresh) || a.closed; return Object.assign(publicAlert(fresh, true), { closed: { reason: state.reason, at: state.at } }); }
 
@@ -339,7 +392,7 @@ function createAlertsService({
   }
   function stop() { running = false; if (pollTimer) timers.clearInterval(pollTimer); if (refreshTimer) timers.clearInterval(refreshTimer); }
 
-  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor };
+  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */
