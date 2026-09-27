@@ -63,6 +63,18 @@
     + 'body main .chart .academy-chart-tools label,body main .chart .academy-chart-tools span{display:none}'
     + 'body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{flex:none;height:26px;padding:2px 7px;font-size:.6rem;white-space:nowrap}'
     + 'body main .chart .academy-pro-palette{left:6px;right:6px;top:auto;bottom:8px}'
+    /* compact pass: every control row is ~22px tall so the candles get the screen */
+    + 'body main .bar{gap:3px 4px;padding:4px 6px;flex-wrap:nowrap}body main .bar strong{font-size:.66rem;flex:0 1 auto}body main .bar .dot{width:.4rem;height:.4rem}'
+    + 'body main .bar .lesson-toggle,body main .bar #academy-lk-btn,body main .bar #academy-alerts-fab{flex:none;height:24px;padding:0 7px;font-size:.58rem;line-height:22px;border-width:1px;box-shadow:none}'
+    + 'body main .bar #lesson-toggle{margin-left:auto}body main .bar .status{font-size:.5rem;flex:none}'
+    + 'html.academy-discord-mobile body main .bar{flex-wrap:wrap}'
+    + 'body main .bar #academy-auth-notice{flex:1 1 100%;font-size:.58rem;padding:0}'
+    + 'body main .toolbar{gap:3px 4px;padding:3px 5px}body main .toolbar input#symbol{height:24px;padding:0 6px;font-size:.72rem}body main .toolbar .quote-chip{font-size:.56rem}'
+    + 'body main .toolbar .depth-toggle,body main .toolbar #mem-algo-toggle,body main .toolbar #smc-toggle{height:20px;padding:0 7px;font-size:.54rem;line-height:18px}'
+    + 'body main .toolbar button.academy-broker-buy{height:20px;padding:0 5px;font-size:.56rem;border-width:1px}'
+    + 'body main .chart .academy-chart-tools{padding:3px 5px;gap:3px}body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{height:22px;padding:0 6px;font-size:.54rem}'
+    + 'body main .chart>.intervals{margin:3px 0 0;gap:2px}body main .chart>.intervals button{padding:3px 7px;font-size:.6rem}'
+    + 'body main .chart{padding:3px}'
     /* below the chart */
     + 'body .academy-below{padding:10px 8px;min-height:0}body .academy-below .below-title{margin:0 0 8px;font-size:.66rem}'
     + 'body .academy-below .options-chain{margin-top:10px;padding:10px}body .academy-below .options-chain h2{font-size:.82rem;margin:0 0 3px}body .academy-below .options-chain p{font-size:.66rem;line-height:1.4}'
@@ -113,9 +125,16 @@
     const title = bar && bar.querySelector('strong');
     if (title) {
       if (!title.dataset.full) title.dataset.full = title.textContent;
-      const short = 'MEM Academy';
+      const short = 'MEM';
       if (phone && title.textContent !== short) title.textContent = short;
       else if (!phone && title.textContent !== title.dataset.full) title.textContent = title.dataset.full;
+    }
+    /* "Unlock Academy Tools" / "Close Academy Tools" are shortened on a phone so the header fits one row */
+    const unlock = document.getElementById('academy-unlock');
+    if (unlock) {
+      const t = unlock.textContent;
+      if (phone && /Academy Tools/.test(t)) unlock.textContent = t.replace('Academy Tools', 'Tools');
+      else if (!phone && /^(Unlock|Close) Tools$/.test(t)) unlock.textContent = t.replace('Tools', 'Academy Tools');
     }
     /* "Buy INTC on Robinhood ↗" ×3 cannot share a phone row; the short broker names can */
     for (const b of document.querySelectorAll('.academy-broker-buy')) {

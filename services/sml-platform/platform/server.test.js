@@ -244,7 +244,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /LIVE INTERACTIVE ACADEMY/);
     assert.match(html, /academy-tools-open/);
     assert.match(html, /body\.academy-tools-open \.lesson\{z-index:2147483600\}/);
-    assert.match(html, /body.academy-tools-open main{[^}]*overflow-y:auto/); // the unlocked tools stay scrollable down to the options chain
+    // unlocking the tools never locks the page: it scrolls down to the options chain and scanner either way
+    assert.doesNotMatch(html, /body\.academy-tools-open\{overflow:hidden\}/);
+    assert.doesNotMatch(html, /body\.academy-tools-open main\{position:fixed/);
     assert.match(html, /id="academy-intro-video"/);
     assert.match(html, /making-easy-money-academy-intro\.mp4/);
     assert.match(html, /smlAcademyWarmPromise/);
