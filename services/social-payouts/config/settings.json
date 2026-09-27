@@ -89,7 +89,7 @@
   },
   "recruitmentPosts": {
     "enabled": true,
-    "channelId": "1418915180062052477",
+    "channelId": "1551968149132279908",
     "approvedSubreddits": [
       "sidehustle",
       "thesidehustle",
@@ -103,17 +103,23 @@
       "JapanJobs",
       "RemoteJobseekers",
       "YoungJobs",
-      "WFHJobs",
-      "IndiaJobsOpenings",
-      "Germany_Jobs",
-      "onlinejobsforall",
-      "freelancing",
-      "hiringpakistan",
-      "RecruitingHiringPH",
       "ForHireFreelance",
+      "chatterjobs",
+      "VAjobsPH",
+      "hiring_recruiting",
+      "B2BForHire",
       "hiringPhilippinesPH",
-      "LookingforJob"
-    ]
+      "RemoteJobs",
+      "RecruitmentHub",
+      "RedditJobBoard",
+      "remotejobsfinders",
+      "HireaWriter",
+      "onlinejobsforall",
+      "HiringAustralia",
+      "HiringPAK",
+      "torontoJobs"
+    ],
+    "applyUrl": "https://stockmarketloop.com/go/dsp-jmuy/"
   },
   "linkWorkflows": [
     {
