@@ -634,7 +634,11 @@ ${joinLinks(config, pkg)}
 
 function signInPage({ config, nonce, pkg = '', purpose = 'buy' }) {
   const href = `/v1/academy/billing/start?purpose=${encodeURIComponent(purpose)}${pkg ? `&package=${encodeURIComponent(pkg)}` : ''}`;
-  return layout({ title: 'Sign in with Discord', nonce, body: `<h2>Lifetime access to the Academy, the trading tools and the Making Easy Money Discord</h2>
+  return layout({ title: 'Sign in with Discord', nonce, og: {
+    title: 'Making Easy Money — Lifetime Academy Access',
+    description: 'Real-Time Alerts · Options Alerts · Day Traders · Swing Traders · Short Sale Alerts',
+    image: 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@17e4c96/img/mem-academy-link-card.gif'
+  }, body: `<h2>Lifetime access to the Academy, the trading tools and the Making Easy Money Discord</h2>
 <p>Sign in with Discord so your purchase is attached to the right account.</p>
 <p><a class="button" href="${esc(href)}">Sign in with Discord</a></p>
 <img class="showcase" src="${assets.assetUrl('academy-poster.webp')}" alt="Making Easy Money Academy: learn, practice, strategize, execute, grow">${footerLinks(config)}` });
