@@ -1223,14 +1223,17 @@ client.on('messageCreate', async (message) => {
   }
   const botSettings = safetySettings;
   if (message.author.bot) {
-    if (!dailySocialMode) await forwardAlertToTelegram(message, botSettings).catch((error) => console.error('Telegram bridged alert forward failed safely:', error.message || error));
+    // Daily Social Payouts still owns the configured Discord -> Telegram
+    // bridge.  `daily-social` disables the legacy moderation/mirroring jobs,
+    // but must not disable this independent delivery path.
+    await forwardAlertToTelegram(message, botSettings).catch((error) => console.error('Telegram bridged alert forward failed safely:', error.message || error));
     return;
   }
   if (await handlePaypalInfoMessage(message, botSettings)) return;
   if (await handleSocialApplicationMessage(message, botSettings)) return;
   if (!dailySocialMode && await moderateBlockedInviteMessage(message, botSettings)) return;
   if (!dailySocialMode) await mirrorAlertToDiscord(message, botSettings).catch((error) => console.error('Discord alert mirror failed safely:', error.message || error));
-  if (!dailySocialMode) await forwardAlertToTelegram(message, botSettings).catch((error) => console.error('Telegram alert forward failed safely:', error.message || error));
+  await forwardAlertToTelegram(message, botSettings).catch((error) => console.error('Telegram alert forward failed safely:', error.message || error));
   if (!dailySocialMode && await processAlertMessage(message)) return;
   const returnWorkflow = linkWorkflowForReturn(botSettings, message);
   if (returnWorkflow) {
@@ -1322,13 +1325,13 @@ client.on('messageCreate', async (message) => {
 
 client.on('messageUpdate', async (_oldMessage, newMessage) => {
   try {
-    if (dailySocialMode) return;
     if (newMessage.partial) await newMessage.fetch();
     const settings = await readSettings();
     if (newMessage.author?.bot) {
       await forwardAlertToTelegram(newMessage, settings, 'updated').catch((error) => console.error('Telegram bridged alert update forward failed safely:', error.message || error));
       return;
     }
+    if (dailySocialMode) return;
     await mirrorAlertToDiscord(newMessage, settings, 'updated').catch((error) => console.error('Discord alert mirror update failed safely:', error.message || error));
     await forwardAlertToTelegram(newMessage, settings, 'updated').catch((error) => console.error('Telegram alert update forward failed safely:', error.message || error));
     await processAlertMessage(newMessage, 'updated');
