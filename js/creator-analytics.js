@@ -945,7 +945,19 @@
   function modWhen(iso) { var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
   var MOD_TYPES = { chat: 'Live chat', chat_reply: 'Chat reply', group_msg: 'Group chat', group_post: 'Group post', comment: 'Comment / answer', qa: 'Q&A question', letter: 'Loop Letter' };
   function modTypeLabel(t) { return MOD_TYPES[t] || t; }
-  function modUserChip(u) { return '<a href="#" class="ca-adm-chip" data-mod-user="' + n(u.id) + '">' + esc(u.name) + '</a>'; }
+  function modUserChip(u) { return '<a href="#" class="ca-adm-chip" data-mod-user="' + n(u.id) + '"' + (u.discord && u.discord.id ? ' title="Discord ID ' + esc(u.discord.id) + '"' : '') + '>' + esc(u.name) + (u.discord && u.discord.id ? ' <span class="ca-sub">· Discord</span>' : '') + '</a>'; }
+  /* The Discord account a member linked with /link-sml. Admin-only, like the rest of this tab. */
+  function modDiscordLine(u) {
+    var d = u && u.discord;
+    if (!d || !d.id) return '<div class="ca-sub">Discord: not linked</div>';
+    return '<div class="ca-sub">Discord ID <code>' + esc(d.id) + '</code>' + (d.tag ? ' · ' + esc(d.tag) : '') + (d.linked_at ? ' · linked ' + esc(String(d.linked_at).slice(0, 10)) : '') + ' <button type="button" class="ca-pill" data-copy-discord="' + esc(d.id) + '">Copy</button></div>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('[data-copy-discord]');
+    if (!b) return;
+    var id = b.getAttribute('data-copy-discord');
+    try { navigator.clipboard.writeText(id).then(function () { b.textContent = 'Copied'; }); } catch (_) { b.textContent = id; }
+  });
   function modTabs() {
     var tabs = [['overview', 'Overview'], ['accounts', 'Accounts'], ['clusters', 'Shared IPs & devices'], ['feed', 'Live feed'], ['links', 'Link clicks']];
     return '<div class="ca-row" style="margin-bottom:14px;gap:8px;flex-wrap:wrap">' + tabs.map(function (t) { return '<button class="ca-pill' + (MOD.tab === t[0] && !MOD.user ? ' ca-pill-primary' : '') + '" type="button" data-mod-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('')
@@ -977,7 +989,7 @@
     var sharedIps = Object.keys(d.shared_ips || {}).map(function (ip) { return '<div style="margin:6px 0"><code>' + esc(ip) + '</code> also used by ' + d.shared_ips[ip].map(modUserChip).join(' ') + '</div>'; }).join('');
     var sharedDevs = Object.keys(d.shared_devices || {}).map(function (fp) { return '<div style="margin:6px 0"><code>' + esc(fp.slice(0, 16)) + '</code> also used by ' + d.shared_devices[fp].map(modUserChip).join(' ') + '</div>'; }).join('');
     var tl = (d.timeline || []).map(function (e) { return '<div class="ca-adm-msg' + (e.link ? ' link' : '') + '"><b>' + esc(modTypeLabel(e.type)) + '</b> · ' + esc(modWhen(e.at)) + '<br>' + esc(e.text) + '</div>'; }).join('') || '<div class="ca-sub">No activity in this window.</div>';
-    modShell('<div class="ca-card"><div class="ca-row" style="align-items:center;gap:14px"><img src="' + esc(u.avatar) + '" alt="" style="width:56px;height:56px;border-radius:50%"><div><div class="ca-big" style="font-size:22px">' + esc(u.name) + '</div><div class="ca-sub">@' + esc(u.handle) + ' · #' + n(u.id) + ' · joined ' + esc((u.registered || '').slice(0, 10)) + '</div></div><button class="ca-pill" type="button" style="margin-left:auto" data-mod-tab="accounts">← Accounts</button></div>'
+    modShell('<div class="ca-card"><div class="ca-row" style="align-items:center;gap:14px"><img src="' + esc(u.avatar) + '" alt="" style="width:56px;height:56px;border-radius:50%"><div><div class="ca-big" style="font-size:22px">' + esc(u.name) + '</div><div class="ca-sub">@' + esc(u.handle) + ' · #' + n(u.id) + ' · joined ' + esc((u.registered || '').slice(0, 10)) + '</div>' + modDiscordLine(u) + '</div><button class="ca-pill" type="button" style="margin-left:auto" data-mod-tab="accounts">← Accounts</button></div>'
       + '<div style="margin-top:12px">Risk ' + modRisk(st.risk) + ' ' + modFlags(st.flags) + '</div></div>'
       + '<div class="ca-grid ca-kpi-grid">' + admChip('Posts', fmt(st.posts), Object.keys(st.types || {}).map(function (t) { return fmt(st.types[t]) + ' ' + modTypeLabel(t).toLowerCase(); }).join(' · ')) + admChip('Burst', fmt(st.burst60 || 0) + '<span class="ca-fresh"> /min</span>', fmt(st.burst5m || 0) + ' in 5 min') + admChip('Repeated text', Math.round(n(st.dup_ratio) * 100) + '%', fmt(st.links || 0) + ' with links') + admChip('Rhythm', st.cadence_cv == null ? '–' : st.cadence_cv, st.cadence_cv != null && st.cadence_cv < 0.15 ? 'machine-regular' : 'human-like variation') + '</div>'
       + '<div class="ca-card"><h3>Shared with other accounts</h3>' + ((sharedIps || sharedDevs) ? sharedIps + sharedDevs : '<div class="ca-sub">No other account uses this account’s IPs or devices in the window.</div>') + '</div>'
