@@ -36,13 +36,15 @@ test('the store pages carry the brand hero, allow only their own media, and keep
   const signin = pages.signInPage({ config, nonce: 'n', pkg: 'lifetime' });
   assert.match(signin, /<video autoplay muted loop playsinline/); assert.match(signin, /assets\/academy-hero\.mp4/); assert.match(signin, /assets\/me-crown\.webp/);
   assert.match(signin, /Discipline protects the dream\. Consistency builds the freedom\./); assert.match(signin, /assets\/academy-poster\.webp/);
-  assert.doesNotMatch(signin, /academy-intro\.mp3/, 'no sound button until an intro audio file exists');
+  assert.match(signin, /🎵 Music on/); assert.match(signin, /assets\/store-music\.mp3/);
   assert.doesNotMatch(signin, /https?:\/\/(?!x\.test)/, 'every image and clip comes from our own origin');
   const desc = { key: 'lifetime', amount: 145090, currency: 'usd', academy: true, roleNames: ['Monarch'], priceId: 'price_x', label: 'MEM Lifetime', line: 'academy', roles: ['1260433215189946420'] };
   const buy = pages.buyPage({ config, nonce: 'n', userId: '1', user: { username: 'mike' }, packages: [desc], memberships: [], csrf: 'c', state: {} });
   assert.match(buy, /<section class="card"><span class="ribbon">ONE PAYMENT · LIFETIME<\/span><h2>MEM Lifetime<\/h2>/);
   assert.match(buy, /\$1,450\.90 once/); assert.match(buy, /grandmaster-obi-chibi\.gif/);
   const thanks = pages.successPage({ config, nonce: 'n', sessionId: 'cs_1', paid: true, inGuild: true });
-  assert.doesNotMatch(thanks, /<video/, 'the thank-you page uses the slim hero');
-  assert.match(thanks, /assets\/me-crown\.webp/);
+  assert.match(thanks, /id="thanks-clip" autoplay muted playsinline/); assert.match(thanks, /assets\/thank-you\.mp4/); assert.match(thanks, /Play with sound/);
+  assert.match(thanks, /assets\/me-crown\.webp/); assert.doesNotMatch(thanks, /academy-hero\.mp4/, 'the thank-you page uses the slim hero');
+  const failed = pages.successPage({ config, nonce: 'n', sessionId: 'cs_2', paid: false, failed: true });
+  assert.doesNotMatch(failed, /thank-you\.mp4/, 'no celebration clip on a failed payment');
 });

@@ -3,8 +3,8 @@
 /* Brand assets for the billing pages (logo, hero video, mascots, optional intro audio), served from this folder at
    /v1/academy/billing/assets/<name>. Only the names listed here are served, straight from disk, long-cached and with
    byte-range support so the hero video and the audio can seek. The pages' CSP allows 'self' only, so these are the
-   only images and media the store can show. Drop a file named academy-intro.mp3 into assets/ and the pages grow a
-   "Sound on" button by themselves. */
+   only images and media the store can show. store-music.mp3 gives the store pages a "Music on" button, and thank-you.mp4
+   plays on the thank-you page after a purchase (browsers start it muted; a tap turns the sound on). */
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -19,7 +19,10 @@ const TYPES = Object.freeze({
   'grandmaster-obi.webp': 'image/webp',
   'grandmaster-obi-chibi.gif': 'image/gif',
   'me-crown.webp': 'image/webp',
-  'academy-intro.mp3': 'audio/mpeg'
+  'store-music.mp3': 'audio/mpeg',
+  'thank-you.mp4': 'video/mp4',
+  'thank-you.webm': 'video/webm',
+  'thank-you-poster.webp': 'image/webp'
 });
 const PREFIX = '/v1/academy/billing/assets/';
 

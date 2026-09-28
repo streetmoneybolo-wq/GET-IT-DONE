@@ -407,6 +407,7 @@ h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:0}
 .card h2{font-size:1.2rem;font-weight:800;letter-spacing:.01em}
 .card:has(>.ribbon){border-color:rgba(242,201,76,.55);background:linear-gradient(180deg,#141708,#0d1a12);box-shadow:0 0 0 1px rgba(242,201,76,.15),0 0 34px rgba(0,227,92,.12)}
 .ribbon{position:absolute;top:-11px;left:16px;background:var(--gold);color:#1a1400;font-size:.66rem;font-weight:900;letter-spacing:.12em;padding:3px 9px;border-radius:999px}
+.thanks{position:relative;margin:14px auto 18px;max-width:420px;border-radius:16px;overflow:hidden;border:1px solid rgba(242,201,76,.45);box-shadow:0 0 40px rgba(0,227,92,.2);background:#000}.thanks video{display:block;width:100%;max-height:520px;object-fit:contain;cursor:pointer}.thanks .sound{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(0,0,0,.65);border:1px solid var(--neon);color:#fff;border-radius:999px;padding:9px 16px;font-size:.85rem;font-weight:800;cursor:pointer}
 .showcase{display:block;width:100%;max-width:520px;margin:18px auto 6px;border-radius:16px;border:1px solid var(--line);box-shadow:0 0 40px rgba(0,227,92,.18)}
 .perks{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;padding:0;list-style:none}.perks li{font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#bff5cf;background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:999px;padding:4px 9px}
 .price{font-size:1.7rem;font-weight:900;margin:6px 0;color:var(--neon);text-shadow:0 0 14px rgba(57,255,20,.35)}
@@ -424,23 +425,31 @@ a{color:#7fe3a9}
 const TAGLINE = 'Discipline protects the dream. Consistency builds the freedom.';
 
 /* The branded top of the store: the ME crown, the name, the tagline, the looping clip behind them (muted; it is decoration) and
-   GrandMaster-OBI. A "Sound on" button appears only when assets/academy-intro.mp3 exists, because browsers only play sound after
+   GrandMaster-OBI. A "Music on" button appears only when assets/store-music.mp3 exists, because browsers only play sound after
    a tap. Pages that are plain messages (errors, thank-you) show a slimmer version without the clip. */
 function hero({ full = true } = {}) {
-  const audio = full && assets.hasAsset('academy-intro.mp3');
+  const audio = full && assets.hasAsset('store-music.mp3');
   return `<header class="hero">
 ${full && assets.hasAsset('academy-hero.mp4') ? `<video autoplay muted loop playsinline preload="metadata" poster="${assets.assetUrl('academy-hero-poster.webp')}" aria-hidden="true"><source src="${assets.assetUrl('academy-hero.mp4')}" type="video/mp4">${assets.hasAsset('academy-hero.webm') ? `<source src="${assets.assetUrl('academy-hero.webm')}" type="video/webm">` : ''}</video>` : ''}
 <div class="shade"></div>
-${audio ? `<button type="button" class="sound" id="sound" aria-pressed="false">🔊 Sound on</button><audio id="intro" preload="none" src="${assets.assetUrl('academy-intro.mp3')}"></audio>` : ''}
+${audio ? `<button type="button" class="sound" id="sound" aria-pressed="false">🎵 Music on</button><audio id="intro" preload="none" loop src="${assets.assetUrl('store-music.mp3')}"></audio>` : ''}
 <div class="inner"><div class="txt"><img class="crown" src="${assets.assetUrl('me-crown.webp')}" alt="Making Easy Money"><h1>Making Easy Money <b>Academy</b></h1><p class="tag">${esc(TAGLINE)}</p><ul class="perks"><li>Academy</li><li>Trading tools</li><li>Discord membership</li></ul></div>
 ${full ? `<img class="obi" src="${assets.assetUrl('grandmaster-obi.webp')}" alt="GrandMaster-OBI">` : ''}</div></header>`;
 }
 
-const SOUND_SCRIPT = "(function(){var b=document.getElementById('sound'),a=document.getElementById('intro');if(!b||!a)return;b.addEventListener('click',function(){if(a.paused){a.play().then(function(){b.className='sound on';b.textContent='🔇 Sound off';b.setAttribute('aria-pressed','true');}).catch(function(){});}else{a.pause();b.className='sound';b.textContent='🔊 Sound on';b.setAttribute('aria-pressed','false');}});a.addEventListener('ended',function(){b.className='sound';b.textContent='🔊 Sound on';b.setAttribute('aria-pressed','false');});})();";
+const SOUND_SCRIPT = "(function(){var b=document.getElementById('sound'),a=document.getElementById('intro');if(!b||!a)return;a.volume=0.6;var on=false;b.addEventListener('click',function(){if(!on){a.play().then(function(){on=true;b.className='sound on';b.textContent='🔇 Music off';b.setAttribute('aria-pressed','true');}).catch(function(){});}else{a.pause();on=false;b.className='sound';b.textContent='🎵 Music on';b.setAttribute('aria-pressed','false');}});})();";
+
+/* After a purchase: the owner's thank-you clip, full width, starts by itself without sound (browsers allow that) and a tap on it
+   or on the button turns the sound on and plays it from the top. */
+const THANKS_SCRIPT = "(function(){var v=document.getElementById('thanks-clip'),b=document.getElementById('thanks-sound');if(!v||!b||typeof v.play!=='function'||typeof b.addEventListener!=='function')return;function on(){v.muted=false;v.currentTime=0;v.play().then(function(){b.hidden=true;}).catch(function(){});}b.addEventListener('click',on);v.addEventListener('click',function(){if(v.muted)on();});v.addEventListener('ended',function(){if(!v.muted)return;b.hidden=false;});})();";
+function thanksClip() {
+  if (!assets.hasAsset('thank-you.mp4')) return '';
+  return `<div class="thanks"><video id="thanks-clip" autoplay muted playsinline preload="auto" poster="${assets.assetUrl('thank-you-poster.webp')}"><source src="${assets.assetUrl('thank-you.mp4')}" type="video/mp4">${assets.hasAsset('thank-you.webm') ? `<source src="${assets.assetUrl('thank-you.webm')}" type="video/webm">` : ''}</video><button type="button" id="thanks-sound" class="sound">🔊 Play with sound</button></div>`;
+}
 
 function layout({ title, body, nonce, script = '', brand = 'full' }) {
   const top = brand === 'none' ? '' : hero({ full: brand === 'full' });
-  const scripts = [brand === 'full' && assets.hasAsset('academy-intro.mp3') ? SOUND_SCRIPT : '', script].filter(Boolean).join('\n');
+  const scripts = [brand === 'full' && assets.hasAsset('store-music.mp3') ? SOUND_SCRIPT : '', script].filter(Boolean).join('\n');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>${esc(title)}</title><link rel="icon" href="${assets.assetUrl('grandmaster-obi-chibi.gif')}"><style nonce="${esc(nonce)}">${STYLE}</style></head>
@@ -681,7 +690,8 @@ function successPage({ config, nonce, sessionId, paid, processing = false, faile
     ? '<p><a class="button secondary" href="/v1/academy/billing/buy">Back to plans</a></p>'
     : '<p class="muted">Stripe emails your receipt. Manage or cancel a plan any time at <a href="/v1/academy/billing/start?purpose=manage">Manage billing</a>.</p>';
   const joinBlock = failed && !paid ? '' : joinCard({ config, inGuild, id: 'join', hidden: inGuild === true, paid: true });
-  return layout({ title: 'MEM Academy: thank you', nonce, brand: 'slim', script: POLL_SCRIPT, body: `<h1>${esc(heading)}</h1>
+  const clip = paid && !failed ? thanksClip() : '';
+  return layout({ title: 'MEM Academy: thank you', nonce, brand: 'slim', script: clip ? `${THANKS_SCRIPT}\n${POLL_SCRIPT}` : POLL_SCRIPT, body: `<h1>${esc(heading)}</h1>${clip}
 <p id="status" data-session="${esc(sessionId)}"${processing && !paid ? ' data-delayed="1"' : ''}${paid && trial ? ' data-trial="1"' : ''}>${esc(lead)}</p>${extra}${note}
 ${joinBlock}
 ${after}${footerLinks(config)}` });
