@@ -196,6 +196,7 @@ function createFakeStripe(fixtures = {}) {
     sessions: { ...(fixtures.sessions || {}) },
     prices: { ...(fixtures.prices || {}) },
     coupons: { ...(fixtures.coupons || {}) },
+    promotionCodes: { ...(fixtures.promotionCodes || {}) },
     endpoints: fixtures.endpoints || [],
     account: fixtures.account === undefined ? { id: ACCOUNT } : fixtures.account,
     /* 'classic' (what the engine's pinned 2022-11-15 Checkout creates) or
@@ -255,6 +256,7 @@ function createFakeStripe(fixtures = {}) {
     async retrievePrice(id) { call('retrievePrice', [id]); const p = data.prices[id]; if (!p) throw Object.assign(new Error('missing'), { code: 'resource_missing' }); return p; },
     async retrieveCheckoutSession(id) { call('retrieveCheckoutSession', [id]); const s = data.sessions[id]; if (!s) throw Object.assign(new Error('missing'), { code: 'resource_missing' }); return s; },
     async retrieveCoupon(id) { call('retrieveCoupon', [id]); return data.coupons[id] || null; },
+    async retrievePromotionCode(id) { call('retrievePromotionCode', [id]); return data.promotionCodes[id] || null; },
     async createCoupon(params, key) {
       call('createCoupon', [params, key]);
       if (idem.has(key)) return idem.get(key);

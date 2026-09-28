@@ -180,3 +180,121 @@ test('the bonus: an active win-back membership adds 7 days of the Academy once, 
   await t.core.resync(USER, { actor: 'resync' });
   assert.equal(t.store.db.comps.filter((c) => c.discord_user_id === USER).length, 1);
 });
+
+/* ---------------------------------------------------------------------------
+ * The owner's own Stripe Promotion Code behind a win-back price
+ * ("promotionCode" in the entry): applied as the Checkout discount instead of
+ * a coupon the engine mints, and checked against the live price first.
+ * ------------------------------------------------------------------------ */
+
+const PROMO = 'promo_1BackHome';
+const PROMO_ENTRY = { package: 'monthly', academy: false, roles: [PREMIUM_ROLE_ID], winback: true, introCents: 100, bonusAcademyDays: 7, promotionCode: PROMO };
+
+function promoFixtures({ amountOff = 1400, currency = 'usd', timesRedeemed = 0, expiresAt = null, firstTime = false, active = true,
+  duration = 'once', couponId = 'PJsxkmAP', products = null, couponValid = true } = {}) {
+  return {
+    promotionCodes: { [PROMO]: { id: PROMO, object: 'promotion_code', active, code: 'BackHome', coupon: couponId, max_redemptions: 600,
+      times_redeemed: timesRedeemed, expires_at: expiresAt, customer: null, restrictions: { first_time_transaction: firstTime, minimum_amount: null } } },
+    coupons: { [couponId]: { id: couponId, object: 'coupon', valid: couponValid, duration, amount_off: amountOff, currency,
+      ...(products ? { applies_to: { products } } : {}) } }
+  };
+}
+
+test('config: promotionCode is a promo_ id on a win-back price with introCents, nothing else', () => {
+  const config = parseBillingConfig(k.env(winbackEnv({ SML_ACADEMY_BILLING_PRICES_JSON: winbackPrices({ price_wbmem: PROMO_ENTRY }) })));
+  assert.equal(config.prices.get('price_wbmem').promotionCode, PROMO);
+  assert.equal(config.prices.get('price_wbboth').promotionCode, null);
+  const bad = (extra, pattern) => assert.throws(() => parseBillingConfig(k.env({ ...winbackEnv(), SML_ACADEMY_BILLING_PRICES_JSON: winbackPrices(extra) })), pattern);
+  bad({ price_wbmem: { ...PROMO_ENTRY, promotionCode: 'PJsxkmAP' } }, /promotionCode must be a Stripe promotion code id/);
+  bad({ price_wbmem: { ...PROMO_ENTRY, promotionCode: 'BackHome' } }, /promotionCode must be a Stripe promotion code id/);
+  bad({ price_monthly1: { package: 'monthly', promotionCode: PROMO } }, /only allowed on a "winback": true price/);
+  bad({ price_wbboth: { package: 'monthly', roles: [PREMIUM_ROLE_ID], winback: true, promotionCode: PROMO } }, /promotionCode needs introCents/);
+});
+
+test('buildCheckoutParams: the promotion code is the discount, no coupon, and the subscription records it', () => {
+  const base = { pkg: 'monthly', priceId: 'price_wbmem', amount: 1500, customerId: 'cus_1', discordId: USER,
+    intent: { id: '0b9f1f64-6a3c-4d7b-9a44-1f0a2b3c4d5e', consentVersion: 'v', consentSha256: 'a'.repeat(64) },
+    urls: { publicUrl: 'https://x' }, flags: { paymentMethods: ['card', 'link'] }, nowMs: T0, academy: false };
+  const params = buildCheckoutParams({ ...base, winback: { couponId: null, promotionCodeId: PROMO, cents: 100, bonusAcademyDays: 7 } });
+  assert.deepEqual(params.discounts, [{ promotion_code: PROMO }]);
+  assert.equal('allow_promotion_codes' in params, false);
+  assert.equal(params.subscription_data.metadata.mem_academy_promotion_code, PROMO);
+  assert.equal(params.subscription_data.metadata.mem_academy_winback, '1');
+  assert.equal(params.subscription_data.metadata.mem_academy_intro_cents, '100');
+  assert.match(params.custom_text.submit.message, /^\$1\.00 today for your first month, then renews every month at \$15\.00/);
+  /* the owner's code wins over a minted coupon when both are handed in */
+  const both = buildCheckoutParams({ ...base, winback: { couponId: 'mem_winback_x', promotionCodeId: PROMO, cents: 100, bonusAcademyDays: 7 } });
+  assert.deepEqual(both.discounts, [{ promotion_code: PROMO }]);
+  /* no intro price: nothing to discount, the regular renewal line */
+  const plain = buildCheckoutParams({ ...base, winback: { couponId: null, promotionCodeId: null, cents: null, bonusAcademyDays: null } });
+  assert.equal('discounts' in plain, false);
+  assert.equal(plain.allow_promotion_codes, false);
+  assert.equal('mem_academy_promotion_code' in plain.subscription_data.metadata, false);
+});
+
+test('an eligible former member with the owner\'s code: Checkout applies promo_..., nothing is minted', async () => {
+  const env = { SML_ACADEMY_BILLING_PRICES_JSON: winbackPrices({ price_wbmem: PROMO_ENTRY }) };
+  const t = setup({ env, fixtures: promoFixtures() });
+  const cat = await t.catalog.get();
+  assert.deepEqual(cat.invalid, []);
+  assert.equal(cat.winback.get('price_wbmem').promotionCode, PROMO);
+  assert.equal(cat.winback.get('price_wbboth').promotionCode, null);
+  assert.deepEqual(t.stripe.callsOf('retrievePromotionCode').map((c) => c.args[0]), [PROMO]);
+
+  const result = await t.checkout.start({ bind: t.bind, form: await t.form('price_wbmem'), ipKey: 'ip' });
+  assert.match(result.redirect || '', /checkout\.stripe\.com/, JSON.stringify(result));
+  assert.equal(t.stripe.callsOf('createCoupon').length, 0, 'the owner\'s code replaces the minted coupon');
+  const [sessionCall] = t.stripe.callsOf('createCheckoutSession');
+  assert.deepEqual(sessionCall.args[0].discounts, [{ promotion_code: PROMO }]);
+  assert.equal('allow_promotion_codes' in sessionCall.args[0], false);
+  assert.equal(sessionCall.args[0].line_items[0].price, 'price_wbmem');
+  assert.equal(sessionCall.args[0].subscription_data.metadata.mem_academy_promotion_code, PROMO);
+  assert.equal(sessionCall.args[0].subscription_data.metadata.mem_academy_intro_cents, '100');
+  assert.equal(sessionCall.args[0].subscription_data.metadata.mem_academy_bonus_days, '7');
+  assert.match(sessionCall.args[0].custom_text.submit.message, /^\$1\.00 today for your first month, then renews every month at \$15\.00/);
+
+  /* the other win-back price still mints its own coupon */
+  t.now.advance(60_000);
+  await t.checkout.start({ bind: t.bind, form: await t.form('price_wbboth'), ipKey: 'ip' });
+  assert.equal(t.stripe.callsOf('createCoupon').length, 1);
+  assert.deepEqual(t.stripe.callsOf('createCheckoutSession')[1].args[0].discounts, [{ coupon: 'mem_winback_wbboth_2500_100' }]);
+
+  /* the buy page copy is unchanged: the code is invisible to the buyer */
+  const html = buyPage({ config: t.config, nonce: 'n', userId: USER, user: null, packages: [], memberships: [], winback: [...cat.winback.values()],
+    csrf: 'c', state: { winbackEligible: true } });
+  assert.match(html, /\$1\.00 for your first month, then \$15\.00\/month, plus 7 days of MEM Academy free/);
+  assert.doesNotMatch(html, /BackHome|promo_/);
+});
+
+test('a promotion code that no longer matches the price is not sold, and nothing is written', async () => {
+  const env = { SML_ACADEMY_BILLING_PRICES_JSON: winbackPrices({ price_wbmem: PROMO_ENTRY }) };
+  const cases = [
+    [promoFixtures({ amountOff: 1000 }), 'promo_amount_mismatch'],
+    [promoFixtures({ currency: 'eur' }), 'promo_amount_mismatch'],
+    [promoFixtures({ duration: 'forever' }), 'promo_not_once'],
+    [promoFixtures({ timesRedeemed: 600 }), 'promo_exhausted'],
+    [promoFixtures({ expiresAt: 1 }), 'promo_expired'],
+    [promoFixtures({ active: false }), 'promo_inactive'],
+    [promoFixtures({ firstTime: true }), 'promo_first_time_only'],
+    [promoFixtures({ couponValid: false }), 'promo_coupon_invalid'],
+    [promoFixtures({ products: ['prod_other'] }), 'promo_wrong_product'],
+    [{ promotionCodes: {}, coupons: {} }, 'promo_missing'],
+    [{ ...promoFixtures(), coupons: {} }, 'promo_coupon_missing']
+  ];
+  for (const [fixtures, problem] of cases) {
+    const t = setup({ env, fixtures });
+    const cat = await t.catalog.get();
+    assert.equal(cat.winback.has('price_wbmem'), false, problem);
+    assert.equal(cat.winback.has('price_wbboth'), true, problem);
+    const bad = cat.invalid.find((i) => i.priceId === 'price_wbmem');
+    assert.ok(bad && bad.problems.includes(problem), `${problem}: ${JSON.stringify(cat.invalid)}`);
+    assert.equal(t.stripe.writes().length, 0, problem);
+  }
+  /* a matching code on the right product passes; percent_off is accepted when it lands on introCents */
+  const okProduct = setup({ env, fixtures: promoFixtures({ products: ['prod_wb_mem'] }) });
+  assert.equal((await okProduct.catalog.get()).winback.has('price_wbmem'), true);
+  const pct = promoFixtures(); delete pct.coupons.PJsxkmAP.amount_off; delete pct.coupons.PJsxkmAP.currency;
+  pct.coupons.PJsxkmAP.percent_off = 93.3333;
+  const okPct = setup({ env, fixtures: pct });
+  assert.equal((await okPct.catalog.get()).winback.has('price_wbmem'), true);
+});

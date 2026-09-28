@@ -318,7 +318,7 @@ test('the lifetime role is optional (owner decision: Lifetime grants Monarch ins
 
 test('"roles" and "academy" (plus the trial and auto-stop keys) are the only new PRICES_JSON keys; defaults are academy:true and no roles', () => {
   assert.deepEqual(PRICE_ENTRY_KEYS, ['package', 'sell', 'graceHours', 'paymentMethods', 'roles', 'academy', 'trialDays', 'trialNoCard', 'cancelAfterDays',
-    'winback', 'introCents', 'bonusAcademyDays']);
+    'winback', 'introCents', 'bonusAcademyDays', 'promotionCode']);
   const config = parseBillingConfig(env());
   for (const entry of config.prices.values()) {
     assert.equal(entry.academy, true, entry.priceId);

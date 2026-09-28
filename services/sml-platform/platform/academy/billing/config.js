@@ -225,7 +225,7 @@ function hasDelayedMethod(methods) {
    typo such as "payment_methods" can never silently drop the bank debit (or a
    graceHours) while the owner believes it is on. */
 const PRICE_ENTRY_KEYS = Object.freeze(['package', 'sell', 'graceHours', 'paymentMethods', 'roles', 'academy',
-  'trialDays', 'trialNoCard', 'cancelAfterDays', 'winback', 'introCents', 'bonusAcademyDays']);
+  'trialDays', 'trialNoCard', 'cancelAfterDays', 'winback', 'introCents', 'bonusAcademyDays', 'promotionCode']);
 
 /* WIN-BACK offers (owner decision 2026-09-27): a price with "winback": true is
    sold ONLY to the Discord accounts listed in SML_ACADEMY_BILLING_WINBACK_IDS
@@ -236,7 +236,14 @@ const PRICE_ENTRY_KEYS = Object.freeze(['package', 'sell', 'graceHours', 'paymen
    price then renews at its own amount. "bonusAcademyDays" (optional, a
    membership price only) adds that many days of MEM Academy through a comp
    when the subscription starts. Win-back prices never compete with the
-   regular sell:true price of their package. */
+   regular sell:true price of their package. "promotionCode" (optional, a
+   win-back price with introCents) names the owner's own Stripe Promotion
+   Code (promo_...) whose coupon takes this price down to introCents for the
+   first period. Checkout then applies that code instead of a coupon the
+   engine mints, so Stripe counts the redemptions and the expiry the owner
+   set on it; the catalog refuses to sell the price whenever the code or its
+   coupon no longer matches (see catalog.js validatePromotionCode). */
+const PROMOTION_CODE_ID = /^promo_[A-Za-z0-9]+$/;
 const INTRO_CENTS_MIN = 0;
 const INTRO_CENTS_MAX = 100000;
 const BONUS_ACADEMY_DAYS_MIN = 1;
@@ -366,6 +373,16 @@ function parsePrices(raw, errors, defaultMethods = Object.freeze(['card', 'link'
       errors.push(`${priceId}: bonusAcademyDays is only for a membership (academy:false) win-back price; an Academy price already includes the Academy`);
       continue;
     }
+    let promotionCode = null;
+    if (entry.promotionCode !== undefined) {
+      if (typeof entry.promotionCode !== 'string' || !PROMOTION_CODE_ID.test(entry.promotionCode.trim())) {
+        errors.push(`${priceId}: promotionCode must be a Stripe promotion code id such as "promo_1AbCdEf..." (not the coupon id or the customer-facing code)`);
+        continue;
+      }
+      if (!winback) { errors.push(`${priceId}: promotionCode is only allowed on a "winback": true price`); continue; }
+      if (introCents === null) { errors.push(`${priceId}: promotionCode needs introCents (the first-period amount the code brings this price down to)`); continue; }
+      promotionCode = entry.promotionCode.trim();
+    }
     const line = lineFor(academy, roles);
     if (sell && winback) {
       const key = `winback|${line}|${pkg}`;
@@ -385,7 +402,7 @@ function parsePrices(raw, errors, defaultMethods = Object.freeze(['card', 'link'
     }
     prices.set(priceId, Object.freeze({ priceId, package: pkg, sell, graceHours, paymentMethods,
       ownPaymentMethods: entry.paymentMethods !== undefined, academy, roles, line, trialDays, trialNoCard, cancelAfterDays,
-      winback, introCents, bonusAcademyDays }));
+      winback, introCents, bonusAcademyDays, promotionCode }));
   }
   return prices;
 }

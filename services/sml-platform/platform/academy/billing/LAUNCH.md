@@ -664,8 +664,30 @@ decision: no increase after the first year).
 - [ ] `SML_ACADEMY_BILLING_WINBACK_IDS`: the Discord ids of the former
       members (commas, spaces or new lines). Only they see the "Welcome back"
       section on /buy; checkout refuses everyone else.
-- [ ] The restricted key needs Coupons write. The engine creates one coupon
-      per price (`mem_winback_<price>_<amount>_<intro>`, amount off once).
+- [ ] The intro discount, one of two ways per price:
+      - default: the engine mints one coupon per price
+        (`mem_winback_<price>_<amount>_<intro>`, amount off once; the
+        restricted key needs Coupons write), or
+      - `"promotionCode":"promo_..."` on the entry: Checkout applies the
+        owner's own Stripe Promotion Code (its id, not the customer-facing
+        code or the coupon id), so Stripe counts the redemptions and the
+        expiry set on it and nothing is minted. The catalog re-checks the
+        code against the live price every refresh and stops selling the price
+        (config_invalid_price `promo_*`) when the code is inactive, expired,
+        used up, limited to first purchases, bound to one customer, or its
+        coupon is not exactly "price minus introCents off, once".
+- [x] 2026-09-28 live ids (MEM Stripe): membership
+      `price_1UKN44BpqyUyWsXeAY14JsTE` = $15.00/month on
+      `prod_VL3AfP3gwbTLrR` "Welcome Back Membership" (sml_kind=mem_academy);
+      promotion code `promo_1UKYCyBpqyUyWsXeMYNrxVxn` (code BackHome, coupon
+      `PJsxkmAP`: $14.00 off once, 600 redemptions, expires 2026-10-22).
+      Membership + Academy `price_1UKN63BpqyUyWsXeMFSmOC0v` = $25.00/month on
+      `prod_VL3CPJ9rZrNt3V` (no promotion code yet: the engine mints its coupon).
+      Entries (Premium role shown; use the role the $10 seat gave):
+      `"price_1UKN44BpqyUyWsXeAY14JsTE":{"package":"monthly","academy":false,"roles":["939031140679970867"],"winback":true,"introCents":100,"bonusAcademyDays":7,"promotionCode":"promo_1UKYCyBpqyUyWsXeMYNrxVxn"}`
+      `"price_1UKN63BpqyUyWsXeMFSmOC0v":{"package":"monthly","roles":["939031140679970867"],"winback":true,"introCents":100}`
+      After 600 redemptions or 2026-10-22 the $15 offer disappears from /buy
+      until the code is extended in Stripe or `promotionCode` is removed.
 - [ ] Link for email (Substack, Loop Letter):
       `https://making-easy-money-academy.onrender.com/v1/academy/billing/start?purpose=buy`
       Buyers sign in with Discord; eligibility is by Discord id, not email.

@@ -95,6 +95,14 @@ function createStripeApi({ key, stripe = null, fetchImpl = null, maxPages = DEFA
         throw error;
       }
     },
+    /* null when the promotion code does not exist (win-back "promotionCode");
+       no expand: the coupon is fetched by id so any API version works */
+    async retrievePromotionCode(id) {
+      try { return await client.promotionCodes.retrieve(id); } catch (error) {
+        if (isStripeMissing(error)) return null;
+        throw error;
+      }
+    },
     listOpenCheckoutSessions: (customer) => pageList(client.checkout.sessions, { customer, status: 'open' }, 2),
     listSubscriptionsByPrice: (price, status) => pageList(client.subscriptions, { price, status }),
     searchAcademySubscriptions: () => pageSearch(client.subscriptions, "metadata['sml_kind']:'mem_academy'"),
