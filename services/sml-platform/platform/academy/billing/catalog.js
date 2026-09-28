@@ -205,8 +205,54 @@ function describePrice(price, pkg, entry = null, { lifetimeRole = true } = {}) {
     /* win-back offers (config.js): sold only to the listed former members */
     winback: Boolean(entry && entry.winback),
     introCents: entry && Number.isInteger(entry.introCents) ? entry.introCents : null,
-    bonusAcademyDays: entry && Number.isInteger(entry.bonusAcademyDays) ? entry.bonusAcademyDays : null
+    bonusAcademyDays: entry && Number.isInteger(entry.bonusAcademyDays) ? entry.bonusAcademyDays : null,
+    /* the owner's Stripe promotion code that carries the intro price, else
+       null and checkout.js mints the engine's own coupon */
+    promotionCode: entry && typeof entry.promotionCode === 'string' ? entry.promotionCode : null
   };
+}
+
+/** The coupon id behind a Promotion Code, whatever the API version exposes
+ *  (top-level `coupon`, or `promotion.coupon` on newer versions). */
+function promoCouponId(promo) {
+  if (!promo) return null;
+  const raw = promo.coupon != null ? promo.coupon : (promo.promotion && promo.promotion.coupon);
+  return raw && typeof raw === 'object' ? (raw.id || null) : (typeof raw === 'string' && raw ? raw : null);
+}
+
+/**
+ * The owner's Stripe Promotion Code behind a win-back price ("promotionCode"
+ * in config.js). It must be live, open to returning customers, and its coupon
+ * must take exactly this price down to introCents for ONE period, or the
+ * offer is not sold: the consent text promises that first-period amount.
+ * Returns catalog "invalid" problem codes (empty when the code is usable).
+ */
+function validatePromotionCode(promo, coupon, price, entry, nowMs = Date.now()) {
+  if (!promo || promo.deleted) return ['promo_missing'];
+  const problems = [];
+  if (promo.active !== true) problems.push('promo_inactive');
+  if (Number.isInteger(promo.expires_at) && promo.expires_at * 1000 <= nowMs) problems.push('promo_expired');
+  if (Number.isInteger(promo.max_redemptions) && Number(promo.times_redeemed || 0) >= promo.max_redemptions) problems.push('promo_exhausted');
+  if (promo.customer) problems.push('promo_customer_bound');
+  const restrictions = promo.restrictions || {};
+  /* every win-back buyer is a returning customer */
+  if (restrictions.first_time_transaction === true) problems.push('promo_first_time_only');
+  if (Number.isInteger(restrictions.minimum_amount) && restrictions.minimum_amount > price.unit_amount) problems.push('promo_minimum_amount');
+  if (!coupon || coupon.deleted) return problems.concat('promo_coupon_missing');
+  if (coupon.valid === false) problems.push('promo_coupon_invalid');
+  if (coupon.duration !== 'once') problems.push('promo_not_once');
+  const currency = String(price.currency || 'usd').toLowerCase();
+  const expectedOff = price.unit_amount - entry.introCents;
+  if (Number.isInteger(coupon.amount_off)) {
+    if (coupon.amount_off !== expectedOff || String(coupon.currency || '').toLowerCase() !== currency) problems.push('promo_amount_mismatch');
+  } else if (typeof coupon.percent_off === 'number') {
+    if (Math.round(price.unit_amount * (1 - coupon.percent_off / 100)) !== entry.introCents) problems.push('promo_amount_mismatch');
+  } else {
+    problems.push('promo_amount_mismatch');
+  }
+  const products = coupon.applies_to && Array.isArray(coupon.applies_to.products) ? coupon.applies_to.products : null;
+  if (products && !products.includes(idOf(price.product))) problems.push('promo_wrong_product');
+  return problems;
 }
 
 function formatAmount(amount, currency = 'usd') {
@@ -247,6 +293,22 @@ function createCatalog({ config, stripeApi, now = Date.now, ttlMs = PRICE_TTL_MS
       const problems = validatePrice(price, entry, { livemode: config.livemode, automaticTax: config.automaticTax });
       if (!problems.length && entry.winback && Number.isInteger(entry.introCents) && entry.introCents >= price.unit_amount) {
         problems.push('intro_not_below_price');
+      }
+      if (!problems.length && entry.winback && entry.promotionCode) {
+        /* The owner's promotion code is checked against the live price on
+           every refresh, so an edited or exhausted code stops the sale
+           instead of charging a first month the consent text did not name. */
+        let promo = null;
+        let coupon = null;
+        try {
+          promo = await stripeApi.retrievePromotionCode(entry.promotionCode);
+          const couponId = promoCouponId(promo);
+          coupon = couponId ? await stripeApi.retrieveCoupon(couponId) : null;
+        } catch (error) {
+          complete = false;
+          problems.push('promo_fetch_failed');
+        }
+        if (!problems.length) problems.push(...validatePromotionCode(promo, coupon, price, entry, now()));
       }
       if (problems.length) invalid.push({ priceId: entry.priceId, package: entry.package, problems });
       else if (entry.winback) winback.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false }));

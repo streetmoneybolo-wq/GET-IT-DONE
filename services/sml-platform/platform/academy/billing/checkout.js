@@ -28,7 +28,10 @@
  *     'automatic': instant verification through Financial Connections, with
  *     manual entry + microdeposits as the fallback. Such a Checkout completes
  *     with payment_status 'unpaid'; the role waits for the debit to clear;
- *   - allow_promotion_codes false (Discord price parity);
+ *   - allow_promotion_codes false (Discord price parity); a win-back price
+ *     carries its intro discount as `discounts` instead (the engine's own
+ *     once-off coupon, or the owner's promotion code named by the entry's
+ *     "promotionCode"), never both;
  *   - consent_collection only behind SML_ACADEMY_BILLING_TOS_CONSENT;
  *   - expires_at = now + 35 min (Stripe's minimum is 30).
  *
@@ -173,16 +176,20 @@ function buildCheckoutParams({ pkg, priceId, amount, currency = 'usd', customerI
     throw Object.assign(new Error(`trial_not_allowed: ${pkg}`), { code: 'trial_not_allowed' });
   }
   if (trial) metadata.mem_academy_trial_days = String(trial.days);
-  /* winback = { couponId, cents, bonusAcademyDays } (couponId/cents null
-     without an intro price): marks the subscription as this account's one
-     win-back (checked on every later offer) and carries the bonus days. */
+  /* winback = { couponId, promotionCodeId, cents, bonusAcademyDays } (the
+     discount ids and cents null without an intro price): marks the
+     subscription as this account's one win-back (checked on every later
+     offer) and carries the bonus days. The intro discount is EITHER the
+     engine's coupon (couponId) OR the owner's promotion code
+     (promotionCodeId), which wins when both are given. */
   if (winback) {
     if (!isRecurring(pkg) || trial) throw Object.assign(new Error(`winback_not_allowed: ${pkg}`), { code: 'winback_not_allowed' });
     metadata.mem_academy_winback = '1';
     if (Number.isInteger(winback.cents)) metadata.mem_academy_intro_cents = String(winback.cents);
     if (Number.isInteger(winback.bonusAcademyDays)) metadata.mem_academy_bonus_days = String(winback.bonusAcademyDays);
+    if (winback.promotionCodeId) metadata.mem_academy_promotion_code = String(winback.promotionCodeId);
   }
-  const intro = winback && winback.couponId && Number.isInteger(winback.cents)
+  const intro = winback && (winback.couponId || winback.promotionCodeId) && Number.isInteger(winback.cents)
     ? { cents: winback.cents, bonusAcademyDays: winback.bonusAcademyDays } : null;
   const params = {
     mode: isRecurring(pkg) ? 'subscription' : 'payment',
@@ -197,11 +204,15 @@ function buildCheckoutParams({ pkg, priceId, amount, currency = 'usd', customerI
     success_url: `${urls.publicUrl}/v1/academy/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${urls.publicUrl}/v1/academy/billing/buy?package=${encodeURIComponent(pkg)}`
   };
-  /* The intro month is a one-time coupon on the price's product. Stripe
-     refuses allow_promotion_codes next to discounts, and none are allowed. */
+  /* The intro month is a one-time discount: the owner's promotion code when
+     the entry names one, else the engine's coupon on the price's product.
+     Stripe refuses allow_promotion_codes next to discounts, and no code typed
+     by the buyer is allowed either way. */
   if (intro) {
     delete params.allow_promotion_codes;
-    params.discounts = [{ coupon: winback.couponId }];
+    params.discounts = winback.promotionCodeId
+      ? [{ promotion_code: String(winback.promotionCodeId) }]
+      : [{ coupon: winback.couponId }];
   }
   if (isRecurring(pkg)) {
     params.subscription_data = { metadata: { ...metadata } };
@@ -518,7 +529,10 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
       /* Built (and so checked) before anything in Stripe is touched. */
       const paymentMethods = Array.isArray(desc.paymentMethods) && desc.paymentMethods.length ? desc.paymentMethods : config.paymentMethods;
       const winback = desc.winback ? {
-        couponId: terms.introCents !== null ? await ensureIntroCoupon(desc) : null,
+        /* the catalog only lists a promotionCode price after checking the
+           code against the live price, so it is applied as-is here */
+        promotionCodeId: desc.promotionCode || null,
+        couponId: terms.introCents !== null && !desc.promotionCode ? await ensureIntroCoupon(desc) : null,
         cents: terms.introCents,
         bonusAcademyDays: terms.bonusAcademyDays
       } : null;
