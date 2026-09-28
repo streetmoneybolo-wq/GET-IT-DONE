@@ -17,6 +17,7 @@
  *   GET  success          idempotent settle -> status page
  *   GET  status           JSON for the success page poll (no PII)
  *   GET  manage           Billing Portal (dedicated configuration) -> 303
+ *   GET  assets/<name>    the pages' own images, hero video and intro audio (assets.js)
  *
  * Everything except the webhook answers 404 unless SML_ACADEMY_BILLING_ENABLED=1
  * and schema 028 is present. Cookies: HttpOnly; Secure; SameSite=Lax;
@@ -37,6 +38,7 @@ const { redeemHandoff } = require('./handoff');
 const { createRateLimiter } = require('./checkout');
 const { PACKAGES } = require('./config');
 const pages = require('./pages');
+const assets = require('./assets');
 const audit = require('./audit');
 
 const PREFIX = '/v1/academy/billing/';
@@ -396,6 +398,7 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
     if (!current.enabled || !current.schemaReady) { sendJson(response, 404, { ok: false, error: 'not_found' }); return true; }
     const url = new URL(request.url || '/', 'http://localhost');
     const method = request.method;
+    if ((method === 'GET' || method === 'HEAD') && route.startsWith('assets/')) { assets.sendAsset(request, response, route.slice('assets/'.length)); return true; }
     try {
       if (route === 'checkout') { await postCheckout(request, response); return true; }
       if (method !== 'GET') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return true; }
