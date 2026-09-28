@@ -29,6 +29,7 @@ function telegramConfig(settings) {
     chatId: process.env.TELEGRAM_CHAT_ID || process.env.TG_CHAT_ID || cfg.chatId || '',
     channelIds: configuredChannelIds(settings),
     allowBotChannelIds: new Set((cfg.allowBotChannelIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
+    topicByChannel: cfg.topicByChannel && typeof cfg.topicByChannel === 'object' ? cfg.topicByChannel : {},
   };
 }
 
@@ -53,15 +54,13 @@ function buildTelegramText(message) {
   return text.length > MAX_TELEGRAM_TEXT ? `${text.slice(0, MAX_TELEGRAM_TEXT - 1)}…` : text;
 }
 
-async function sendTelegramMessage({ botToken, chatId, text }) {
+async function sendTelegramMessage({ botToken, chatId, text, messageThreadId }) {
+  const payload = { chat_id: chatId, text, disable_web_page_preview: true };
+  if (Number.isSafeInteger(messageThreadId) && messageThreadId > 0) payload.message_thread_id = messageThreadId;
   const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      disable_web_page_preview: true,
-    }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
@@ -104,6 +103,7 @@ export async function forwardAlertToTelegram(message, settings, eventType = 'cre
       botToken: config.botToken,
       chatId: config.chatId,
       text: buildTelegramText(message),
+      messageThreadId: Number.parseInt(config.topicByChannel[String(message.channelId)], 10),
     });
     await mutateJson(paths.telegramForwardLog, { sent: {} }, (log) => {
       log.sent ||= {};
