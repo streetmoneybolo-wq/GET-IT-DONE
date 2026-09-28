@@ -5,7 +5,7 @@
  * Massive connection, pushed to every open SIRE panel over Server-Sent Events.
  *
  * Every refresh (4 s) takes the scanner rows as the baseline: price, day %,
- * 1-minute % and 3-minute %. Each of those rates implies the price the symbol
+ * 1-minute %, 3-minute % and the top of book. Each of those rates implies the price the symbol
  * had at the start of its window, so a live trade moves the rate the same way
  * the scanner would have: rate = (trade − start) / start. The strongest movers
  * (largest 3-minute swing) are the ones watched on Massive, a modest number
@@ -34,7 +34,8 @@ function createSireFeed({ scanner, massive = null, now = Date.now, timers = { se
   const viewers = new Set();  // { write, filter }
   let refreshTimer = null, tickTimer = null, refreshing = false, asOf = 0, lastError = null, order = [];
 
-  const compact = (r) => ({ s: r.s, n: r.n, p: round(r.p, 4), c: round(r.c, 3), r1: round(r.r1, 3), r3: round(r.r3, 3), rv: round(r.rv, 2), v: r.v, t: r.t });
+  const DELTA_KEYS = ['p', 'ch', 'c', 'r1', 'r3', 'rv', 'v', 'b', 'a', 'bs', 'as', 'n'];
+  const compact = (r) => ({ s: r.s, n: r.n, p: round(r.p, 4), ch: round(r.ch, 4), c: round(r.c, 3), r1: round(r.r1, 3), r3: round(r.r3, 3), rv: round(r.rv, 2), v: r.v, b: round(r.b, 4), a: round(r.a, 4), bs: r.bs, as: r.as, t: r.t });
 
   function applyScanner(list) {
     const seen = new Set();
@@ -49,7 +50,9 @@ function createSireFeed({ scanner, massive = null, now = Date.now, timers = { se
       /* A live trade newer than this scanner sample keeps its price; the baselines still move to the new window. */
       const keepLive = r.live && r.t > asOf && price != null && Math.abs(r.p - price) / price < 0.05;
       Object.assign(r, { n: String(src.name || '').slice(0, 60), rv: num(src.rvol) != null ? num(src.rvol) : num(src.volumeRatio), v: num(src.volume), pc, b1: baseFrom(price, r1), b3: baseFrom(price, r3) });
-      if (!keepLive) { r.p = price; r.c = c; r.r1 = r1; r.r3 = r3; r.t = asOf; r.live = false; }
+      /* Bid/ask sizes are kept in round lots, as the scanner shows them; a live quote newer than this sample keeps its book. */
+      if (!(r.qt > asOf)) { r.b = num(src.bid); r.a = num(src.ask); r.bs = num(src.bidSize); r.as = num(src.askSize); }
+      if (!keepLive) { r.p = price; r.ch = num(src.change); r.c = c; r.r1 = r1; r.r3 = r3; r.t = asOf; r.live = false; }
       else recompute(r);
       rows.set(s, r);
       dirty.add(s);
@@ -59,7 +62,7 @@ function createSireFeed({ scanner, massive = null, now = Date.now, timers = { se
 
   function recompute(r) {
     if (r.p == null) return;
-    if (r.pc > 0) r.c = (r.p - r.pc) / r.pc * 100;
+    if (r.pc > 0) { r.c = (r.p - r.pc) / r.pc * 100; r.ch = r.p - r.pc; }
     if (r.b1 > 0) r.r1 = (r.p - r.b1) / r.b1 * 100;
     if (r.b3 > 0) r.r3 = (r.p - r.b3) / r.b3 * 100;
   }
@@ -68,6 +71,12 @@ function createSireFeed({ scanner, massive = null, now = Date.now, timers = { se
     const r = rows.get(s); if (!r || !(trade && trade.price > 0)) return;
     r.p = trade.price; r.t = num(trade.t) || now(); r.live = true;
     recompute(r);
+    dirty.add(s);
+  }
+
+  function onQuote(s, quote) {
+    const r = rows.get(s); if (!r || !(quote && quote.bid > 0 && quote.ask > 0)) return;
+    r.b = quote.bid; r.a = quote.ask; r.bs = Math.round((num(quote.bs) || 0) / 100); r.as = Math.round((num(quote.as) || 0) / 100); r.qt = num(quote.t) || now();
     dirty.add(s);
   }
 
@@ -80,7 +89,7 @@ function createSireFeed({ scanner, massive = null, now = Date.now, timers = { se
     const wanted = new Set(want);
     for (const [s, off] of watched) if (!wanted.has(s)) { off(); watched.delete(s); }
     for (const s of want) if (!watched.has(s)) {
-      const off = massive.on(s, (evt) => { if (evt && evt.type === 'trade') onTrade(s, evt.trade); });
+      const off = massive.on(s, (evt) => { if (!evt) return; if (evt.type === 'trade') onTrade(s, evt.trade); else if (evt.type === 'quote') onQuote(s, evt.quote); });
       watched.set(s, off);
     }
   }
@@ -111,7 +120,7 @@ function createSireFeed({ scanner, massive = null, now = Date.now, timers = { se
       if (!prev) { changes.push(next); sent.set(s, next); continue; }
       const delta = { s };
       let changed = false;
-      for (const k of ['p', 'c', 'r1', 'r3', 'rv', 'v', 'n']) if (next[k] !== prev[k]) { delta[k] = next[k]; changed = true; }
+      for (const k of DELTA_KEYS) if (next[k] !== prev[k]) { delta[k] = next[k]; changed = true; }
       if (changed) { delta.t = next.t; changes.push(delta); sent.set(s, next); }
     }
     dirty.clear();

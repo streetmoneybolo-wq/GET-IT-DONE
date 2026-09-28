@@ -34,7 +34,7 @@ test('a viewer gets a snapshot then a tick with the compact rows; a second viewe
   await settle();
   assert.equal(a.events[1][0], 'tick');
   assert.deepEqual(a.events[1][1].rows.map((r) => r.s), ['AAA', 'BBB', 'CCC']);
-  assert.deepEqual(a.events[1][1].rows[0], { s: 'AAA', n: 'Alpha', p: 100, c: 5, r1: 1, r3: 2, rv: 3.2, v: 1000, t: t });
+  assert.deepEqual(a.events[1][1].rows[0], { s: 'AAA', n: 'Alpha', p: 100, ch: null, c: 5, r1: 1, r3: 2, rv: 3.2, v: 1000, b: null, a: null, bs: null, as: null, t: t });
   const b = viewer();
   const offB = feed.subscribe(b.write);
   assert.equal(b.events[0][0], 'snapshot');
@@ -62,6 +62,7 @@ test('a live trade moves price, day %, 1-minute % and S.I.R.E. from the scanner 
   assert.ok(Math.abs(u.c - 6.05) < 0.01, 'day % from the previous close');
   assert.ok(Math.abs(u.r1 - 2.01) < 0.01, '1-minute % from the price implied one minute ago');
   assert.ok(Math.abs(u.r3 - 3.02) < 0.01, 'S.I.R.E. from the price implied three minutes ago');
+  assert.ok(Math.abs(u.ch - 5.762) < 0.01, 'dollar change from the previous close');
   assert.equal('rv' in u, false, 'relative volume did not change, so it is not resent');
   assert.equal('n' in u, false);
   const before = v.events.length;
@@ -146,4 +147,24 @@ test('a failing scanner is reported in the snapshot and does not stop the feed; 
   assert.equal(feed.snapshot().live, false, 'no Massive means scanner cadence only');
   off();
   assert.ok(timers.intervals.every((h) => h.cleared));
+});
+
+test('a live quote updates the top of book, with sizes in round lots like the scanner; a later scanner sample does not step it back', async () => {
+  let t = 1_000_000, rows = [{ ...ROWS[0], bid: 99.9, ask: 100.1, bidSize: 3, askSize: 4 }], sampledAt = () => t;
+  const massive = fakeMassive();
+  massive.fire = (sym, evt) => { const fn = massive.listeners.get(sym); if (fn) fn(evt); };
+  const feed = createSireFeed({ scanner: async () => ({ rows, asOf: sampledAt() }), massive, now: () => t, timers: fakeTimers() });
+  const v = viewer(); const off = feed.subscribe(v.write);
+  await settle();
+  assert.deepEqual(v.events.at(-1)[1].rows[0].b, 99.9); assert.equal(v.events.at(-1)[1].rows[0].bs, 3);
+  t += 200;
+  massive.fire('AAA', { type: 'quote', quote: { bid: 99.95, ask: 100.05, bs: 1200, as: 700, t } });
+  feed.flush();
+  const q = v.events.at(-1)[1].rows[0];
+  assert.deepEqual(q, { s: 'AAA', b: 99.95, a: 100.05, bs: 12, as: 7, t: 1_000_000 }, 'only the book changed; sizes are lots');
+  t += 100;
+  sampledAt = () => t - 500; // the hub sampled its book before the live quote arrived
+  await feed.refresh();
+  assert.equal(feed.snapshot().rows[0].b, 99.95, 'the live quote is newer than the scanner sample and stays');
+  off();
 });
