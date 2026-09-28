@@ -447,11 +447,18 @@ function thanksClip() {
   return `<div class="thanks"><video id="thanks-clip" autoplay muted playsinline preload="auto" poster="${assets.assetUrl('thank-you-poster.webp')}"><source src="${assets.assetUrl('thank-you.mp4')}" type="video/mp4">${assets.hasAsset('thank-you.webm') ? `<source src="${assets.assetUrl('thank-you.webm')}" type="video/webm">` : ''}</video><button type="button" id="thanks-sound" class="sound">🔊 Play with sound</button></div>`;
 }
 
-function layout({ title, body, nonce, script = '', brand = 'full' }) {
+function layout({ title, body, nonce, script = '', brand = 'full', og }) {
   const top = brand === 'none' ? '' : hero({ full: brand === 'full' });
   const scripts = [brand === 'full' && assets.hasAsset('store-music.mp3') ? SOUND_SCRIPT : '', script].filter(Boolean).join('\n');
+  const ogMeta = og ? `<meta property="og:title" content="${esc(og.title || title)}">
+<meta property="og:description" content="${esc(og.description || '')}">
+<meta property="og:image" content="${esc(og.image || '')}">
+<meta property="og:image:type" content="image/gif">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:type" content="website">` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width,initial-scale=1">${og ? '' : '<meta name="robots" content="noindex,nofollow">'}${ogMeta}
 <title>${esc(title)}</title><link rel="icon" href="${assets.assetUrl('grandmaster-obi-chibi.gif')}"><style nonce="${esc(nonce)}">${STYLE}</style></head>
 <body><main>${top}${body}</main>${scripts ? `<script nonce="${esc(nonce)}">${scripts}</script>` : ''}</body></html>`;
 }
@@ -611,7 +618,11 @@ function buyPage({ config, nonce, userId, user, packages, memberships = [], winb
   }
   parts.push('<p class="muted">Payments are processed by Stripe. Stripe emails your receipt. You can cancel a plan online at any time.</p>');
   parts.push(footerLinks(config));
-  return layout({ title: 'MEM Academy plans', body: parts.join('\n'), nonce });
+  return layout({ title: 'MEM Academy plans', body: parts.join('\n'), nonce, og: {
+    title: 'Making Easy Money — Lifetime Academy Access',
+    description: 'Real-Time Alerts · Options Alerts · Day Traders · Swing Traders · Short Sale Alerts',
+    image: 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@17e4c96/img/mem-academy-link-card.gif'
+  } });
 }
 
 function nonMemberPage({ config, nonce, userId, user, pkg = '' }) {
