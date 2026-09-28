@@ -141,9 +141,10 @@ function createDisputeRuntime({
     pool, graph, store, authorize, disputeService: connectService,
     reconciler: roleTools, now, reviewUrlBase: config.connectReviewUrlBase
   });
-  const linkTracker = config.connectBotEnabled ? createLinkTracker({ pool, now }) : null;
+  const signalSecret = config.connectReviewUrlSecret || config.billingApiSecret;
+  const linkTracker = config.connectBotEnabled ? createLinkTracker({ pool, now, secret: signalSecret, logger }) : null;
   const verifyGate = config.connectBotEnabled
-    ? createVerifyGate({ pool, botToken: config.discordConnectBotToken, secret: config.connectReviewUrlSecret || config.billingApiSecret, fetchImpl, now, logger })
+    ? createVerifyGate({ pool, botToken: config.discordConnectBotToken, secret: signalSecret, fetchImpl, now, logger })
     : null;
   if (linkTracker && config.discordConnectAppId && config.discordConnectBotToken) {
     linkTracker.registerCommands({ appId: config.discordConnectAppId, botToken: config.discordConnectBotToken, fetchImpl, logger,

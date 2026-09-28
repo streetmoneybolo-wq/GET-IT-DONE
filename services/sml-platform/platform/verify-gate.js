@@ -117,6 +117,33 @@ function networkOf(ip) {
 function clip(value, max) { return String(value == null ? '' : value).replace(/[\u0000-\u001f]/g, ' ').slice(0, max); }
 function esc(value) { return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+/**
+ * The keyed hashes behind every stored signal. The link tracker uses the same
+ * hasher (same secret), so a device or address seen when a member opens a
+ * tracked link matches the one seen when they verified, and the other way
+ * round. Raw addresses and device markers are never stored anywhere.
+ */
+function createSignalHasher(secret) {
+  const key = crypto.createHash('sha256').update('sml-verify-gate:' + String(secret || '')).digest();
+  const keyed = (label, value) => crypto.createHmac('sha256', key).update(label + ':' + value).digest('hex');
+  return {
+    keyed,
+    ipHash: (ip) => (ip ? keyed('ip', ip) : null),
+    netHash: (ip) => { const net = networkOf(ip); return net ? keyed('net', net) : null; },
+    deviceHash: (deviceId) => { const raw = clip(deviceId, 80); return raw ? keyed('dev', raw) : null; }
+  };
+}
+
+/** What the network side of a request tells us: client IP, user agent and the
+ *  edge-reported country ('T1' when the edge saw a Tor exit). */
+function requestSignals(request) {
+  const ip = clientIp(request);
+  const ua = clip(request.headers && request.headers['user-agent'], 300);
+  const countryRaw = String((request.headers && request.headers['cf-ipcountry']) || '').toUpperCase();
+  const country = /^[A-Z][A-Z0-9]$/.test(countryRaw) && countryRaw !== 'XX' ? countryRaw : null;
+  return { ip, ua, country, countryRaw };
+}
+
 function pageHtml({ state, token, guildName }) {
   const body = state === 'form'
     ? `<h1>Verify to post${guildName ? ' in ' + esc(guildName) : ''}</h1>
@@ -154,8 +181,8 @@ p{color:#c7d5dc}.small{font-size:.85rem;color:#8fa5b1}button{width:100%;margin-t
 
 function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https://sml-platform-api.onrender.com', fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
   if (!pool) throw new TypeError('pool is required');
-  const key = crypto.createHash('sha256').update('sml-verify-gate:' + String(secret || '')).digest();
-  const keyed = (label, value) => crypto.createHmac('sha256', key).update(label + ':' + value).digest('hex');
+  const hasher = createSignalHasher(secret);
+  const keyed = hasher.keyed;
   const root = String(baseUrl).replace(/\/+$/, '');
 
   async function discord(method, path, body, reason) {
@@ -453,4 +480,4 @@ function withVerifyGate(commands, gate) {
   };
 }
 
-module.exports = { RULES_QUIZ, createVerifyGate, withVerifyGate, VERIFY_COMMAND_DEFINITIONS, VERIFY_COMMAND_NAMES, accountCreatedAt, networkOf, clientIp };
+module.exports = { RULES_QUIZ, createVerifyGate, withVerifyGate, VERIFY_COMMAND_DEFINITIONS, VERIFY_COMMAND_NAMES, accountCreatedAt, networkOf, clientIp, createSignalHasher, requestSignals, RETENTION_DAYS };

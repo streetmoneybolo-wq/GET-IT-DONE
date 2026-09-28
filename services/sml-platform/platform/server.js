@@ -1496,6 +1496,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         return;
       }
     }
+    /* Tracked-link hand-off page (one-time /l/<token> links behind the Open button). */
+    if (path.startsWith('/l/') && linkTracker && typeof linkTracker.handleHttp === 'function') {
+      try {
+        if (await linkTracker.handleHttp(request, response, path, (req) => readRequestBody(req, 4_096))) return;
+      } catch (error) {
+        logger('error', 'link_page_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+        return;
+      }
+    }
     if (request.method === 'POST' && path === '/v1/verify/report') {
       await handleLinkReport(request, response, { ...billingOptions, linkTracker: verifyGate ? { report: (input) => verifyGate.report(input) } : null });
       return;
