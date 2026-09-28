@@ -1101,6 +1101,37 @@ test('site export ingest verifies the server signature and writes one SMLX log l
   assert.deepEqual(lines, ['SMLX ' + JSON.stringify({ name: 'facts.json.gz', seq: 2, total: 3, data: 'SGVsbG8=' })]);
 });
 
+test('the SIRE stream is Server-Sent Events: a snapshot, then ticks, and the viewer is released on disconnect', async () => {
+  const http = require('node:http');
+  const viewers = [];
+  const academySireFeed = { subscribe(write, opts) { const v = { write, opts, off: false }; viewers.push(v); write('snapshot', { rows: [{ s: 'SPY', p: 500, c: 1, r1: 0.1, r3: 0.3, rv: 1.2 }], asOf: 1, live: true }); return () => { v.off = true; }; } };
+  await withServer({ academySireFeed }, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    assert.match(html, /academy-activity\/sire-stream/, 'the SIRE panel connects to the stream');
+    const events = [];
+    await new Promise((resolve, reject) => {
+      const req = http.get(`${base}/academy-activity/sire-stream`, (res) => {
+        assert.match(res.headers['content-type'], /text\/event-stream/);
+        assert.equal(res.headers['cache-control'], 'no-cache, no-transform');
+        let buf = '';
+        res.on('data', (d) => {
+          buf += d; const parts = buf.split('\n\n'); buf = parts.pop();
+          for (const p of parts) { const m = /event: (\w+)\ndata: (.*)/.exec(p); if (m) events.push([m[1], JSON.parse(m[2])]); }
+          if (events.some((e) => e[0] === 'tick')) { req.destroy(); resolve(); }
+        });
+        setTimeout(() => viewers[0].write('tick', { at: 2, rows: [{ s: 'SPY', p: 500.5, t: 2 }] }), 30);
+      });
+      req.on('error', (e) => { if (e.code !== 'ECONNRESET') reject(e); });
+      setTimeout(() => reject(new Error('no tick event')), 3000);
+    });
+    assert.deepEqual(events[0], ['snapshot', { rows: [{ s: 'SPY', p: 500, c: 1, r1: 0.1, r3: 0.3, rv: 1.2 }], asOf: 1, live: true }]);
+    assert.deepEqual(events[1], ['tick', { at: 2, rows: [{ s: 'SPY', p: 500.5, t: 2 }] }]);
+    assert.equal(viewers[0].opts.filter, null, 'with the gate off every symbol streams');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(viewers[0].off, true, 'closing the connection unsubscribes the viewer');
+  });
+});
+
 test('Academy offers moomoo, Webull and Robinhood quote links, and the broker route only redirects to quote pages', async () => {
   const { createBrokerLinks } = require('./academy-brokers');
   const brokerLinks = createBrokerLinks({ apiKey: 'k', fetchImpl: async () => ({ ok: true, json: async () => ({ results: { primary_exchange: 'XNAS' } }) }) });

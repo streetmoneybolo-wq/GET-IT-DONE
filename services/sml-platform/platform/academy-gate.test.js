@@ -93,6 +93,41 @@ test('content gate off: the curriculum, lesson audio and every symbol stay publi
   });
 });
 
+async function sseSnapshot(base, token) {
+  const res = await realFetch(`${base}/academy-activity/sire-stream`, token ? { headers: { authorization: token } } : {});
+  if (!res.ok) return { status: res.status };
+  const reader = res.body.getReader(), decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const m = /event: snapshot\ndata: (.*)\n\n/.exec(buf);
+    if (m) { await reader.cancel(); return { status: res.status, snapshot: JSON.parse(m[1]) }; }
+  }
+  return { status: res.status };
+}
+
+test('content gate on: the SIRE stream serves free symbols to anonymous and free viewers, everything to paid sessions, 401 to dead sessions', async () => {
+  const s = stubs();
+  assert.match(gateClientSource({ contentGate: true, links: false }), /gated=\[[^\]]*'\/academy-activity\/sire-stream'/, 'the gate client sends the session header on the stream');
+  await withServer({ ...s, academyOAuth: oauth(), academyGate: gate() }, async (base) => {
+    const anonymous = await sseSnapshot(base);
+    assert.equal(anonymous.status, 200);
+    const free = await sseSnapshot(base, 'Bearer free');
+    assert.equal(free.status, 200);
+    assert.equal((await sseSnapshot(base, 'Bearer expired')).status, 401);
+    const member = await sseSnapshot(base, 'Bearer member');
+    assert.equal(member.status, 200);
+    /* The feed loads the scanner asynchronously after its first viewer; wait for it, then compare what each tier is allowed to see. */
+    for (let i = 0; i < 20 && !(await sseSnapshot(base, 'Bearer member')).snapshot.rows.length; i++) await new Promise((r) => setTimeout(r, 25));
+    assert.deepEqual((await sseSnapshot(base, 'Bearer member')).snapshot.rows.map((r) => r.s), ['SPY', 'AAPL', 'QQQ']);
+    assert.deepEqual((await sseSnapshot(base, 'Bearer academy')).snapshot.rows.map((r) => r.s), ['SPY', 'AAPL', 'QQQ']);
+    assert.deepEqual((await sseSnapshot(base)).snapshot.rows.map((r) => r.s), ['SPY', 'QQQ'], 'anonymous viewers only see the free symbols');
+    assert.deepEqual((await sseSnapshot(base, 'Bearer free')).snapshot.rows.map((r) => r.s), ['SPY', 'QQQ']);
+  });
+});
+
 test('content gate on: anonymous and free callers get the free preview; paid sessions get every lesson, never from a shared cache', async () => {
   await withServer({ academyOAuth: oauth(), academyGate: gate() }, async (base) => {
     const anonymous = await get(base, '/academy-activity/curriculum');
