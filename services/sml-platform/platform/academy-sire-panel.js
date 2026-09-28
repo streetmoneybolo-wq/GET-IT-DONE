@@ -1,28 +1,28 @@
 /* S.I.R.E. live momentum panel for the Academy Live Chart Lab.
    A SIRE button beside SMC opens a panel on the right of the chart; the chart shifts left to make room.
    Columns: TICKER · LAST · S.I.R.E. (3-minute %) · 1M % (the last minute's burst) · RVOL (volume vs normal) · DAY %.
-   Cells stay the plain panel colour; a cell only flashes, neon green when its value rises or bright red when it falls, at the moment it changes.
-   Tapping a column header ranks by that column (tap again to flip the order); tapping a row loads that ticker on the chart.
-   Data: the live feed at /academy-activity/sire-stream (Server-Sent Events read through fetch, so the session header rides along):
-   one snapshot, then only the cells that moved, trade by trade for the strongest movers. Cells are patched in place — never rebuilt —
-   so each flash lands on exactly the cell that changed, and rows glide to their new rank instead of jumping. If the stream is not
-   available the panel polls /academy-activity/scanner every 2 s, as before. */
+   Cells behave like moomoo's Markets list (see academy-live-cells.js): a cell that ticks gets a tinted box in the
+   direction colour and its text takes that colour; the box stays while the cell keeps ticking, flips the moment a tick
+   goes the other way, and clears about two seconds after the last change. Cells flash on their own, never a whole row
+   or column. Tapping a column header ranks by that column (tap again to flip the order); tapping a row loads that
+   ticker on the chart. Rows glide to a new rank at most once a second instead of jumping.
+   Data: the shared live feed (window.smlLiveCells), one snapshot then only the cells that moved, trade by trade for
+   the strongest movers. If the stream is not available the panel polls /academy-activity/scanner every 2 s. */
 (() => {
   if (window.__smlSirePanel) return;
   window.__smlSirePanel = 1;
   const KEY = 'sml-sire-open';
-  const STREAM_URL = '/academy-activity/sire-stream';
   const POLL_URL = '/academy-activity/scanner';
   const TOP = 40;
   const COLS = [
-    ['symbol', 'TICKER', (r) => r.symbol],
-    ['last', 'LAST', (r) => num(r.price)],
-    ['sire', 'S.I.R.E', (r) => num(r.changeRate3min)],
-    ['m1', '1M %', (r) => num(r.changeRate1min)],
-    ['rvol', 'RVOL', (r) => num(r.rvol) != null ? num(r.rvol) : num(r.volumeRatio)],
-    ['day', 'DAY %', (r) => num(r.changePct)]
+    ['symbol', 'TICKER', (r) => r.symbol, false],
+    ['last', 'LAST', (r) => num(r.price), false],
+    ['sire', 'S.I.R.E', (r) => num(r.changeRate3min), true],
+    ['m1', '1M %', (r) => num(r.changeRate1min), true],
+    ['rvol', 'RVOL', (r) => num(r.rvol) != null ? num(r.rvol) : num(r.volumeRatio), false],
+    ['day', 'DAY %', (r) => num(r.changePct), true]
   ];
-  const S = { open: false, sort: 'sire', dir: -1, rows: new Map(), shown: new Map(), timer: 0, busy: false, mode: 'idle', okAt: 0, stream: null, retryAt: 0, fails: 0, sortAt: 0, sortTimer: 0, frame: 0, dirty: new Set() };
+  const S = { open: false, sort: 'sire', dir: -1, rows: new Map(), shown: new Map(), timer: 0, busy: false, mode: 'idle', unsubscribe: null, sortAt: 0, sortTimer: 0, frame: 0, dirty: new Set() };
   try { S.open = localStorage.getItem(KEY) === '1'; } catch (_) { /* storage can be blocked inside Discord */ }
   function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
   const fmt = (key, v) => {
@@ -32,7 +32,7 @@
     if (key === 'rvol') return v.toFixed(v >= 10 ? 0 : 1) + '×';
     return (v > 0 ? '+' : '') + v.toFixed(Math.abs(v) >= 10 ? 1 : 2);
   };
-  /* A feed row (compact keys) or a scanner row, normalised to one shape. */
+  /* A feed row or a scanner row, normalised to one shape. */
   const norm = (r) => r && (r.s || r.symbol) ? {
     symbol: String(r.s || r.symbol).toUpperCase(),
     price: num(r.p != null ? r.p : r.price), changePct: num(r.c != null ? r.c : r.changePct),
@@ -51,9 +51,8 @@
     + '@keyframes sire-pulse{0%,100%{opacity:1}50%{opacity:.45}}'
     + '#sire-panel table{width:100%;border-collapse:collapse;table-layout:fixed}#sire-panel th{position:sticky;top:29px;z-index:1;padding:5px 3px;background:#07130d;color:#8fb8a4;font-size:.56rem;text-align:right;cursor:pointer;white-space:nowrap;border-bottom:1px solid #1d4a37;user-select:none}#sire-panel th:first-child,#sire-panel td:first-child{text-align:left;padding-left:6px}'
     + '#sire-panel th.on{color:#39ff14}#sire-panel th.on:after{content:" ▼";font-size:.5rem}#sire-panel th.on.asc:after{content:" ▲"}'
-    + '#sire-panel td{padding:4px 3px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:clip;border-bottom:1px solid rgba(29,74,55,.45);transition:background-color .7s ease-out,color .7s ease-out}'
+    + '#sire-panel td{padding:4px 4px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:clip;border-bottom:1px solid rgba(29,74,55,.45)}#sire-panel td.pos{color:#5dffb0}#sire-panel td.neg{color:#ff778b}'
     + '#sire-panel tr{cursor:pointer;will-change:transform}#sire-panel tr.move{transition:transform .45s cubic-bezier(.2,.7,.2,1)}#sire-panel tr:hover td{background:rgba(57,255,20,.06)}#sire-panel tr.cur td:first-child{color:#39ff14}'
-    + '#sire-panel td.flash-up{background:#39ff14!important;color:#021a02!important;transition:none}#sire-panel td.flash-down{background:#ff1744!important;color:#fff!important;transition:none}'
     + '#sire-panel .sire-empty{padding:14px 8px;color:#8fb8a4;font-weight:600;line-height:1.45;text-align:center}'
     + '@media(max-width:720px){body.sire-open{--sire-w:176px}#sire-panel{font-size:.58rem;margin-left:3px}#sire-panel th{font-size:.46rem;padding:4px 1px;top:25px;letter-spacing:-.02em}#sire-panel th.on:after{content:""}#sire-panel td{padding:3px 2px}#sire-panel header{padding:4px 5px}#sire-panel header small{display:none}'
     + '#sire-panel .c-last{display:none}main .toolbar #sire-toggle{order:2;height:20px;padding:0 7px;font-size:.54rem;line-height:18px}}';
@@ -75,6 +74,7 @@
       + COLS.map(([k, label]) => '<th class="c-' + k + '" data-k="' + k + '">' + label + '</th>').join('') + '</tr></thead><tbody></tbody></table><div class="sire-empty" hidden>Waiting for the live scanner…</div>';
     chart.appendChild(panel);
     const tbody = panel.querySelector('tbody'), empty = panel.querySelector('.sire-empty'), note = panel.querySelector('header small');
+    const cells = () => window.smlLiveCells || null;
 
     /* The panel sits beside the candle stage (and the interval row under it on a phone), never beside the toolbar. */
     function placeRows() {
@@ -99,7 +99,7 @@
       try { localStorage.setItem(KEY, open ? '1' : '0'); } catch (_) { /* ignore */ }
       btn.classList.toggle('on', open);
       document.body.classList.toggle('sire-open', open);
-      if (open) { placeRows(); render(true); connect(); tick(); } else { clearRows(); closeStream(); }
+      if (open) { placeRows(); render(true); listen(); tick(); } else { clearRows(); if (S.unsubscribe) { S.unsubscribe(); S.unsubscribe = null; } }
       window.dispatchEvent(new Event('resize')); // the chart re-measures its narrower column
     }
     btn.addEventListener('click', () => setOpen(!S.open));
@@ -128,23 +128,20 @@
       return list.slice(0, TOP);
     }
 
-    function flash(td, up) {
-      td.classList.remove('flash-up', 'flash-down'); void td.offsetWidth;
-      td.classList.add(up ? 'flash-up' : 'flash-down');
-      clearTimeout(td._t); td._t = setTimeout(() => td.classList.remove('flash-up', 'flash-down'), 700);
-    }
-
-    /* Writes one row's cells, flashing only a cell whose value moved. `was` is what the cells show now. */
+    /* Writes one row's cells; a cell whose value moved is boxed in its direction colour (moomoo model). `was` is what the cells show now. */
     function paint(tr, r, was, quiet) {
-      const now = {};
-      COLS.forEach(([k, , get], i) => {
+      const now = {}, lc = cells();
+      COLS.forEach(([k, , get, signed], i) => {
         const td = tr.children[i], v = get(r);
         now[k] = v;
         const text = fmt(k, v);
         if (td.textContent !== text) td.textContent = text;
-        if (k === 'symbol' || quiet) return;
+        if (signed) { td.classList.toggle('pos', v != null && v > 0); td.classList.toggle('neg', v != null && v < 0); }
+        if (k === 'symbol') return;
+        const key = r.symbol + ':' + k;
         const old = was ? was[k] : undefined;
-        if (v != null && old != null && v !== old) flash(td, v > old);
+        if (!quiet && v != null && old != null && v !== old && lc) lc.mark(td, v > old ? 1 : -1, key);
+        else if (quiet && lc) lc.restore(td, key);
       });
       S.shown.set(r.symbol, now);
     }
@@ -183,7 +180,7 @@
       requestAnimationFrame(() => { moved.forEach((tr) => { tr.classList.add('move'); tr.style.transform = ''; }); setTimeout(() => moved.forEach((tr) => tr.classList.remove('move')), 500); });
     }
 
-    /* Cheap pass between rankings: only the rows that ticked are touched, in place, so the flash lands on the moved cell. */
+    /* Cheap pass between rankings: only the rows that ticked are touched, in place, so the box lands on the moved cell. */
     function patchFrame() {
       S.frame = 0;
       if (!S.open) { S.dirty.clear(); return; }
@@ -211,83 +208,47 @@
       next.forEach((r, s) => { if (S.shown.has(s)) S.dirty.add(s); });
       render(!tbody.children.length);
     }
-    function applyTicks(list) {
-      for (const u of list) {
-        if (!u || !u.s) continue;
-        const s = String(u.s).toUpperCase();
-        if (u.gone) { S.rows.delete(s); S.dirty.add(s); continue; }
-        const r = S.rows.get(s) || { symbol: s, price: null, changePct: null, changeRate3min: null, changeRate1min: null, rvol: null, t: 0 };
-        if (u.p !== undefined) r.price = num(u.p);
-        if (u.c !== undefined) r.changePct = num(u.c);
-        if (u.r3 !== undefined) r.changeRate3min = num(u.r3);
-        if (u.r1 !== undefined) r.changeRate1min = num(u.r1);
-        if (u.rv !== undefined) r.rvol = num(u.rv);
-        if (u.t !== undefined) r.t = num(u.t) || r.t;
-        S.rows.set(s, r); S.dirty.add(s);
-      }
-      schedule();
-    }
 
-    /* ---- the stream: SSE over fetch, so the Academy session header (added by the gate) rides along ---- */
-    function closeStream() { if (S.stream) { try { S.stream.abort(); } catch (_) { /* closing */ } S.stream = null; } }
-    async function connect() {
-      if (!S.open || S.stream || document.hidden || !window.fetch || !window.ReadableStream || !window.AbortController) return;
-      if (Date.now() < S.retryAt) return;
-      const ctl = new AbortController(); S.stream = ctl;
-      let res;
-      try { res = await fetch(STREAM_URL, { cache: 'no-store', headers: { accept: 'text/event-stream' }, signal: ctl.signal }); }
-      catch (_) { res = null; }
-      if (!res || !res.ok || !res.body || !/text\/event-stream/.test(res.headers.get('content-type') || '')) {
-        if (S.stream === ctl) S.stream = null;
-        S.fails += 1; S.retryAt = Date.now() + (res && (res.status === 503 || res.status === 403) ? 60000 : Math.min(30000, 1000 * 2 ** Math.min(S.fails, 5)));
-        setMode('poll'); tick();
-        return;
-      }
-      setMode('live'); S.fails = 0; S.okAt = Date.now();
-      const reader = res.body.getReader(), decoder = new TextDecoder();
-      let buf = '';
-      try {
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const parts = buf.split('\n\n'); buf = parts.pop();
-          for (const part of parts) {
-            let event = 'message', data = '';
-            for (const line of part.split('\n')) { if (line.startsWith('event:')) event = line.slice(6).trim(); else if (line.startsWith('data:')) data += line.slice(5).trim(); }
-            S.okAt = Date.now();
-            if (!data) continue;
-            let body; try { body = JSON.parse(data); } catch (_) { continue; }
-            if (event === 'snapshot' && body && Array.isArray(body.rows)) { replaceAll(body.rows); setMode('live', body.live ? 'streaming · tap a column to rank' : 'live scanner · tap a column to rank'); }
-            else if (event === 'tick' && body && Array.isArray(body.rows)) applyTicks(body.rows);
-            else if (event === 'error') break;
-          }
+    /* ---- the shared live feed ---- */
+    function onFeed(kind, payload) {
+      if (kind === 'mode') { setMode(payload === 'live' ? 'live' : payload === 'down' ? 'down' : 'poll'); if (payload !== 'live') tick(); return; }
+      if (kind === 'snapshot') { replaceAll(payload); setMode('live', cells().feed.trades() ? 'streaming · tap a column to rank' : 'live scanner · tap a column to rank'); return; }
+      if (kind === 'tick') {
+        for (const u of payload) {
+          if (u.gone) { S.rows.delete(u.symbol); S.dirty.add(u.symbol); continue; }
+          S.rows.set(u.symbol, norm(u.row)); S.dirty.add(u.symbol);
         }
-      } catch (_) { /* aborted or dropped: the loop below reconnects */ }
-      if (S.stream === ctl) S.stream = null;
-      if (S.open && !ctl.signal.aborted) { setMode('down'); S.retryAt = Date.now() + 1500; }
+        schedule();
+      }
+    }
+    function listen(tries) {
+      if (S.unsubscribe || !S.open) return;
+      const lc = cells();
+      if (!lc) { if ((tries || 0) < 100) setTimeout(() => listen((tries || 0) + 1), 200); return; }
+      S.unsubscribe = lc.feed.subscribe(onFeed);
+      if (lc.feed.mode() === 'live') setMode('live');
     }
 
     /* ---- the fallback poll (also the first paint while the stream connects) ---- */
     function take(rows) { if (Array.isArray(rows) && rows.length) replaceAll(rows); }
     async function tick() {
       if (!S.open || S.busy || document.hidden) return;
-      if (S.mode === 'live' && Date.now() - S.okAt < 8000) return;
+      const lc = cells();
+      if (lc && lc.feed.streaming()) return;
       S.busy = true;
       try {
         const res = await fetch(POLL_URL, { cache: 'no-store' });
         const body = await res.json();
         /* A stream that came up while this poll was in flight owns the rows now. */
-        const streaming = S.mode === 'live' && Date.now() - S.okAt < 8000;
-        if (res.ok && body && Array.isArray(body.rows) && !streaming) { take(body.rows); if (S.mode !== 'live') setMode('poll'); }
+        if (res.ok && body && Array.isArray(body.rows) && !(lc && lc.feed.streaming())) { take(body.rows); if (S.mode !== 'live') setMode('poll'); }
       } catch (_) { /* the next tick retries */ }
       S.busy = false;
     }
-    window.addEventListener('sml-academy-scanner-update', () => { if (S.mode !== 'live' && window.smlAcademyScannerRows) take(window.smlAcademyScannerRows()); });
+    window.addEventListener('sml-academy-scanner-update', () => { const lc = cells(); if (!(lc && lc.feed.streaming()) && window.smlAcademyScannerRows) take(window.smlAcademyScannerRows()); });
     window.addEventListener('popstate', () => render(true));
     window.addEventListener('resize', () => { if (S.open) placeRows(); });
-    S.timer = setInterval(() => { if (!S.open || document.hidden) return; connect(); tick(); }, 2000);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) closeStream(); else { S.retryAt = 0; connect(); tick(); } });
+    S.timer = setInterval(() => { if (!S.open || document.hidden) return; listen(); tick(); }, 2000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
     if (window.smlAcademyScannerRows) take(window.smlAcademyScannerRows());
     if (S.open) setOpen(true);
     window.smlSirePanel = { state: S, open: () => setOpen(true), close: () => setOpen(false) };
