@@ -3,6 +3,8 @@ import { readSettings, writeSettingsOverride } from './storage.js';
 
 /**
  * Boot-time share-workflow wiring for the guild named in SHARE_AUTOSETUP_GUILD.
+ * The owner's Daily Social server names its channels #article-intake, #links-to-post (sharing), #like-comment-share
+ * (engagement), #submit-your-posts and #work-reports; emoji and punctuation are ignored when matching.
  * The bot gets moved between servers and /share-setup then has to be re-run by
  * an admin before articles flow again; this closes that gap. /share-setup stays
  * the override: any deliberate admin config - wired to ANY guild, or explicitly
@@ -16,9 +18,9 @@ import { readSettings, writeSettingsOverride } from './storage.js';
  */
 
 const SPECS = [
-	{ key: 'source', names: ['article-intake', 'articles-intake', 'links-to-post', 'article-feed', 'site-articles'], create: 'article-intake', priv: true, topic: 'New StockMarketLoop articles land here automatically and become share packages. Admins can also paste article links.' },
-	{ key: 'sharing', names: ['share-articles', 'platform-sharing', 'share-to-earn', 'sharing'], create: 'share-articles', priv: false, topic: 'Pick a platform button to share the latest article and start earning.' },
-	{ key: 'engagement', names: ['engagement-ideas', 'engagement-posts', 'comment-ideas', 'engagement'], create: 'engagement-ideas', priv: false, topic: 'Comment ideas and article discussion for the sharing crew.' },
+	{ key: 'source', names: ['article-intake', 'articles-intake', 'article-feed', 'site-articles'], create: 'article-intake', priv: true, topic: 'New StockMarketLoop articles land here automatically and become share packages. Admins can also paste article links.' },
+	{ key: 'sharing', names: ['share-articles', 'links-to-post', 'platform-sharing', 'share-to-earn', 'sharing'], create: 'share-articles', priv: false, topic: 'Pick a platform button to share the latest article and start earning.' },
+	{ key: 'engagement', names: ['engagement-ideas', 'engagement-posts', 'comment-ideas', 'like-comment-share', 'comment-share', 'engagement'], create: 'engagement-ideas', priv: false, topic: 'Comment ideas and article discussion for the sharing crew.' },
 	{ key: 'returnLinks', names: ['submit-your-posts', 'submit-posts', 'return-links', 'returned-links', 'post-links', 'submissions'], create: 'submit-your-posts', priv: false, topic: 'Paste the public link of your finished post here so it can be verified and paid.' },
 	{ key: 'workReport', names: ['work-reports', 'work-report', 'audit-log'], create: 'work-reports', priv: true, topic: 'Automatic audit trail: shares, verified posts, and payout summaries.' },
 ];
