@@ -122,15 +122,33 @@
       const levels = [].concat((L.book.bids || []).map((l) => ({ kind: 'bid', price: Number(l.price), size: Number(l.size) })), (L.book.asks || []).map((l) => ({ kind: 'ask', price: Number(l.price), size: Number(l.size) })));
       const maxSize = Math.max(...levels.map((l) => l.size), 1), maxW = pw * 0.2, right = pad.l + pw;
       for (const l of levels) { if (l.price < lo || l.price > hi) continue; const bw = Math.max(3, (l.size / maxSize) * maxW), yy = y(l.price); lctx.fillStyle = l.kind === 'bid' ? 'rgba(0,208,132,.55)' : 'rgba(255,84,112,.55)'; lctx.fillRect(right - bw, yy - 2.5, bw, 5); }
-      const ws = walls(L.book).filter((wl) => wl.price >= lo && wl.price <= hi).sort((a, b) => y(a.price) - y(b.price));
-      let lastY = -99; const spot = Number.isFinite(L.last) ? L.last : null;
-      ws.forEach((wl) => {
-        const yy = y(wl.price), col = wl.kind === 'bid' ? '0,208,132' : '255,84,112', hex = wl.kind === 'bid' ? '#00d084' : '#ff5470';
-        lctx.fillStyle = 'rgba(' + col + ',.18)'; lctx.fillRect(pad.l, yy - 6, pw, 12);
-        lctx.strokeStyle = hex; lctx.lineWidth = 1.6; lctx.beginPath(); lctx.moveTo(pad.l, yy); lctx.lineTo(right, yy); lctx.stroke();
-        let ly = yy; if (Math.abs(ly - lastY) < 20) ly = lastY + 20; lastY = ly;
-        const dist = spot ? ((wl.price / spot - 1) * 100) : null;
-        pill(lctx, (wl.kind === 'bid' ? 'BID WALL ' : 'ASK WALL ') + whole(wl.size) + ' sh @ $' + num(wl.price) + (dist != null ? '  ' + (dist >= 0 ? '+' : '') + dist.toFixed(2) + '%' : ''), right - (maxW + 8), ly, '#04140d', hex, 'right');
+      const ws = walls(L.book).filter((wl) => wl.price >= lo && wl.price <= hi);
+      const spot = Number.isFinite(L.last) ? L.last : null;
+      const layout = window.SmlChartLayout;
+      // Walls whose price lands within a band's own height of each other blend into one another
+      // on screen either way, so they are combined into a single band and label rather than left
+      // to overlap — same-kind only, since a bid wall and an ask wall at the same price is not a
+      // real "merge", it is spot straddling a thin book.
+      const combine = (members, yy) => {
+        const size = members.reduce((s, m) => s + m.size, 0);
+        const price = members.reduce((s, m) => s + m.price * m.size, 0) / size;
+        return { kind: members[0].kind, price, size, count: members.length, yy };
+      };
+      const groups = layout
+        ? [...layout.mergeByPixel(ws.filter((w) => w.kind === 'bid'), (w) => y(w.price), 14, combine),
+            ...layout.mergeByPixel(ws.filter((w) => w.kind === 'ask'), (w) => y(w.price), 14, combine)].sort((a, b) => a.yy - b.yy)
+        : ws.map((w) => ({ kind: w.kind, price: w.price, size: w.size, count: 1, yy: y(w.price) }));
+      const placed = layout ? layout.stackLabels(groups, (g) => g.yy, 20) : groups.map((g) => ({ item: g, naturalPos: g.yy, pos: g.yy }));
+      placed.forEach(({ item: g, naturalPos, pos }) => {
+        const col = g.kind === 'bid' ? '0,208,132' : '255,84,112', hex = g.kind === 'bid' ? '#00d084' : '#ff5470';
+        lctx.fillStyle = 'rgba(' + col + ',.18)'; lctx.fillRect(pad.l, g.yy - 6, pw, 12);
+        lctx.strokeStyle = hex; lctx.lineWidth = 1.6; lctx.beginPath(); lctx.moveTo(pad.l, g.yy); lctx.lineTo(right, g.yy); lctx.stroke();
+        // When a label had to be pushed away from its band to clear another one, a short leader
+        // makes it unambiguous which label belongs to which band.
+        if (Math.abs(pos - naturalPos) > 1) { lctx.save(); lctx.globalAlpha = 0.6; lctx.strokeStyle = hex; lctx.lineWidth = 1; lctx.beginPath(); lctx.moveTo(right - 3, naturalPos); lctx.lineTo(right - 3, pos); lctx.stroke(); lctx.restore(); }
+        const dist = spot ? ((g.price / spot - 1) * 100) : null;
+        const label = (g.kind === 'bid' ? 'BID WALL ' : 'ASK WALL ') + (g.count > 1 ? g.count + '× ' : '') + whole(g.size) + ' sh @ $' + num(g.price) + (dist != null ? '  ' + (dist >= 0 ? '+' : '') + dist.toFixed(2) + '%' : '');
+        pill(lctx, label, right - (maxW + 8), pos, '#04140d', hex, 'right');
       });
     }
     lctx.restore();
