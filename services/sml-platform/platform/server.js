@@ -681,6 +681,11 @@ const ACADEMY_MOBILE_COMPACT = (() => {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-mobile-compact.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
+const ACADEMY_CHAT_PANEL = (() => {
+  try {
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-chat-panel.js'), 'utf8') + '</script>';
+  } catch (_) { return ''; }
+})();
 
 function loopKickActivityHtml(options = {}) {
   const appId = JSON.stringify(String(options.appId || ''));
@@ -762,7 +767,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + '</body></html>');
   return gate ? html.replace('</head>', () => academyGateClientScript(gate) + '</head>') : html;
 }
 

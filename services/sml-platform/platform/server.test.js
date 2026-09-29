@@ -220,6 +220,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /refreshScanner/);
     assert.match(html, /academy-activity\/scanner/);
     assert.match(html, /id="academy-scanner-host"/);
+    assert.match(html, /academy-activity\/chat/, 'the trading-desk chat panel connects to the chat WebSocket');
+    assert.match(html, /Day Trade.*Swing Trade.*Short Sale.*Options Trading/s, 'all four switchable chat channels are offered');
     assert.match(html, /College Options Chain Lab/);
     assert.match(html, /academy-lesson-open/);
     assert.match(html, /width:calc\(100% - var\(--academy-lesson-rail\)\)/);
