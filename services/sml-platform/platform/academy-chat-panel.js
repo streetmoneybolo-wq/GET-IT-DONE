@@ -22,7 +22,8 @@
     + '.academy-chat-msg b{color:#7ef0bd;margin-right:6px}'
     + '.academy-chat-msg time{color:#5d7085;font-size:.6rem;margin-left:6px}'
     + '.academy-chat-msg .del{background:none;border:0;color:#5d7085;cursor:pointer;margin-left:6px;font-size:.62rem;padding:0}'
-    + '.academy-chat-msg .del:hover{color:#ff778b}'
+    + '.academy-chat-msg .del:hover{color:#ff778b}.academy-chat-msg .rep{background:none;border:0;color:#5d7085;cursor:pointer;margin-left:6px;font-size:.62rem;padding:0}.academy-chat-msg .rep:hover{color:#ffd166}.academy-chat-msg .rep:disabled{color:#3a4a56;cursor:default}'
+    + '.academy-chat-muted{color:#5d7085;font:.62rem system-ui;padding:4px 12px;border-top:1px solid #16303e}.academy-chat-muted button{background:none;border:0;color:#7ef0bd;cursor:pointer;font:inherit;text-decoration:underline;margin-left:4px}'
     + '.academy-chat-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #1b3540}'
     + '.academy-chat-form input{flex:1;background:#0d1720;border:1px solid #294554;border-radius:6px;color:#eaf5f8;padding:8px 10px;font:.72rem system-ui;min-width:0}'
     + '.academy-chat-form button{border:0;border-radius:6px;background:#00c47d;color:#042217;font-weight:900;padding:8px 14px;cursor:pointer}'
@@ -34,6 +35,7 @@
   section.innerHTML = '<div class="academy-chat-tabs"></div><div class="academy-chat-log"><p class="academy-chat-empty">Connecting…</p></div>'
     + '<form class="academy-chat-form"><input maxlength="500" placeholder="Message the desk…" autocomplete="off"><button type="submit">Send</button></form>';
   const tabsEl = section.querySelector('.academy-chat-tabs');
+  const mutedEl = document.createElement('div'); mutedEl.className = 'academy-chat-muted'; mutedEl.style.display = 'none'; section.insertBefore(mutedEl, section.querySelector('form'));
   const status = document.createElement('span'); status.className = 'academy-chat-status'; status.textContent = 'CONNECTING';
   const logEl = section.querySelector('.academy-chat-log');
   const form = section.querySelector('form');
@@ -86,11 +88,22 @@
     } catch (_) { return ''; }
   }
 
+  /* Muting is a per-viewer choice kept in this browser: it hides a member's messages from you and tells the server nothing. */
+  const MUTE_KEY = 'sml-academy-chat-muted';
+  let muted = {}; try { muted = JSON.parse(localStorage.getItem(MUTE_KEY) || '{}') || {}; } catch (_) { muted = {}; }
+  const saveMuted = () => { try { localStorage.setItem(MUTE_KEY, JSON.stringify(muted)); } catch (_) { /* ignore */ } };
+  function paintMuted() {
+    const ids = Object.keys(muted);
+    mutedEl.style.display = ids.length ? '' : 'none';
+    mutedEl.innerHTML = ids.length ? 'Muted: ' + ids.map((id) => escapeHtml(muted[id]) + '<button type="button" data-unmute="' + escapeHtml(id) + '">unmute</button>').join(' · ') : '';
+  }
+  mutedEl.onclick = (e) => { const id = e.target && e.target.dataset && e.target.dataset.unmute; if (id) { delete muted[id]; saveMuted(); paintMuted(); if (current) join(current); } };
   let ws = null, current = null, queue = [], selfId = '';
   const escapeHtml = (s) => { const d = document.createElement('div'); d.textContent = String(s || ''); return d.innerHTML; };
   const timeOf = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } };
 
   function renderMessage(m) {
+    if (muted[String(m.discordId)]) return;
     const empty = logEl.querySelector('.academy-chat-empty'); if (empty) empty.remove();
     const row = document.createElement('div'); row.className = 'academy-chat-msg'; row.dataset.id = m.id;
     row.innerHTML = '<b>' + escapeHtml(m.authorName || 'Member') + '</b><span>' + escapeHtml(m.body) + '</span><time>' + timeOf(m.createdAt) + '</time>';
@@ -99,6 +112,14 @@
       del.type = 'button'; del.className = 'del'; del.textContent = 'delete';
       del.onclick = () => send({ type: 'delete', id: m.id });
       row.appendChild(del);
+    } else if (selfId) {
+      const rep = document.createElement('button');
+      rep.type = 'button'; rep.className = 'rep'; rep.textContent = 'report'; rep.title = 'Send this message to the moderators';
+      rep.onclick = () => { send({ type: 'report', id: m.id }); rep.disabled = true; rep.textContent = 'reporting…'; };
+      const mute = document.createElement('button');
+      mute.type = 'button'; mute.className = 'rep'; mute.textContent = 'mute'; mute.title = 'Hide this member\'s messages from you';
+      mute.onclick = () => { muted[String(m.discordId)] = String(m.authorName || 'Member').slice(0, 40); saveMuted(); paintMuted(); if (current) join(current); };
+      row.append(rep, mute);
     }
     logEl.appendChild(row);
     logEl.scrollTop = logEl.scrollHeight;
@@ -130,6 +151,7 @@
       if (msg.type === 'history' && msg.channel === current) { logEl.innerHTML = ''; if (!msg.messages.length) logEl.innerHTML = '<p class="academy-chat-empty">No messages yet — be the first.</p>'; msg.messages.forEach(renderMessage); }
       else if (msg.type === 'message' && msg.channel === current) renderMessage(msg.message);
       else if (msg.type === 'deleted' && msg.channel === current) { const row = logEl.querySelector('[data-id="' + msg.id + '"]'); if (row) row.remove(); }
+      else if (msg.type === 'reported') { const row = logEl.querySelector('[data-id="' + msg.id + '"] .rep'); if (row) row.textContent = 'reported'; }
       else if (msg.type === 'error') status.textContent = String(msg.error || 'error').toUpperCase().replace(/_/g, ' ');
     };
   }
@@ -142,6 +164,7 @@
     input.value = '';
   };
 
+  paintMuted();
   window.addEventListener('sml-academy-session', connect);
   if (window.smlAcademySessionToken) connect();
 })();

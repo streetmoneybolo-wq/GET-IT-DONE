@@ -44,6 +44,9 @@
     return lo;
   }
 
+  // The server keeps its own list of recent off-exchange prints (deeper than the shared tape); older servers only have the tape.
+  const offPrints = (L) => (L.stats && Array.isArray(L.stats.offTape) && L.stats.offTape.length ? L.stats.offTape : (L.tape || []).filter((t) => t.off));
+
   function marker(x, y, color) {
     ctx.save(); ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath();
     ctx.fillStyle = color; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = '#f0e6ff'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
@@ -56,11 +59,11 @@
     if (layer.width !== Math.round(w * dpr) || layer.height !== Math.round(h * dpr)) { layer.width = Math.round(w * dpr); layer.height = Math.round(h * dpr); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
     if (!S.on || !w || !h) return;
-    const L = window.smlLive; if (!L || L.symbol !== sym() || !Array.isArray(L.tape) || !L.tape.length) return;
+    const L = window.smlLive; if (!L || L.symbol !== sym() || !offPrints(L).length) return;
     const M = window.smlChartModel && window.smlChartModel(); if (!M) return;
     const pad = M.pad, y = (v) => M.y(v), x = (i) => M.x(i), lo = M.lo, hi = M.hi;
     ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, M.pw, M.priceH || M.ph); ctx.clip(); // price pane only: never through the volume bars
-    const off = L.tape.filter((t) => t.off && t.price >= lo && t.price <= hi);
+    const off = offPrints(L).filter((t) => t.price >= lo && t.price <= hi);
     for (const t of off) {
       const i = barIndexForTime(M.bars, t.t); if (i < 0 || i < M.start - 1 || i > M.end + 1) continue;
       marker(x(i), y(t.price), t.size >= 500 ? '#e05dff' : '#a06bd0');
@@ -77,7 +80,7 @@
     const L = window.smlLive, st = L && L.symbol === sym() ? L.stats : null;
     if (!st || !st.count) { box.innerHTML = '<h4>DARK POOL</h4><small>Collecting trades. Off-exchange prints fill in as they arrive.</small>'; return; }
     const pct = st.vol > 0 ? (st.offVol / st.vol * 100) : 0;
-    const recent = (L.tape || []).filter((t) => t.off).slice(0, 6);
+    const recent = offPrints(L).slice(0, 6);
     const big = (st.big || []).filter((b) => b.off).slice(0, 3);
     box.innerHTML = '<h4>DARK POOL · ' + pct.toFixed(0) + '% OF VOLUME</h4>'
       + '<div class="kv"><span>Off-exchange volume</span><span>' + whole(st.offVol) + ' sh · ' + whole(st.offN) + ' prints</span>'

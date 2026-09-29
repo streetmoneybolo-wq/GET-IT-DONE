@@ -141,3 +141,24 @@ test('the store keeps history per channel and only its author can remove a messa
   assert.equal(await store.remove({ id: two.id, discordId: U1 }), 'day');
   assert.deepEqual((await store.history('day')).map((m) => m.body), ['one']);
 });
+
+test('a member can report someone else\'s message once; own, missing and repeat reports are refused or ignored', async () => {
+  const logged = [];
+  const store = createChatStore();
+  const hub = createChatHub({ store, verifySession: fakeVerify({ t1: { userId: U1 }, t2: { userId: U2 } }), logger: (level, event) => logged.push(event) });
+  const c1 = fakeConn(), c2 = fakeConn();
+  const h1 = hub.open(c1, hub.authenticate('t1')), h2 = hub.open(c2, hub.authenticate('t2'));
+  await h1.receive(JSON.stringify({ type: 'join', channel: 'global' }));
+  await h2.receive(JSON.stringify({ type: 'join', channel: 'global' }));
+  await h1.receive(JSON.stringify({ type: 'message', body: 'buy my course' }));
+  const id = c2.sent.find((m) => m.type === 'message').message.id;
+  await h2.receive(JSON.stringify({ type: 'report', id }));
+  assert.deepEqual(c2.sent.filter((m) => m.type === 'reported'), [{ type: 'reported', id }]);
+  await h2.receive(JSON.stringify({ type: 'report', id }));
+  assert.equal(c2.sent.filter((m) => m.type === 'reported').length, 2, 'a repeat is acknowledged again');
+  assert.equal(logged.filter((e) => e === 'academy_chat_message_reported').length, 1, 'but only the first is recorded for moderators');
+  await h1.receive(JSON.stringify({ type: 'report', id }));
+  assert.equal(c1.sent.filter((m) => m.type === 'error').at(-1).error, 'not_found', 'you cannot report your own message');
+  await h2.receive(JSON.stringify({ type: 'report', id: 999999 }));
+  assert.equal(c2.sent.filter((m) => m.type === 'error').at(-1).error, 'not_found');
+});

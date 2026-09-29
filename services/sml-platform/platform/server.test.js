@@ -623,6 +623,31 @@ test('the screener option suggestion is session-gated, validates its inputs, and
   });
 });
 
+test('with Massive on, timeframes it does not serve (1h, 15m, 1Q, 1Y) fall back to the WordPress history feed instead of returning a 400', async () => {
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/wp-json/sml/v1/history')) { asked.push(new URL(u).searchParams.get('tf')); return new Response(JSON.stringify({ bars: [{ t: 1, o: 1, h: 2, l: 1, c: 2, v: 5 }] }), { status: 200 }); }
+    return realFetch(url, init);
+  };
+  const massiveCalls = [];
+  const marketHistory = { enabled: true, get: async (symbol, tf) => { massiveCalls.push(tf); if (tf !== '1D') throw new TypeError('invalid_timeframe'); return { ok: true, data: { symbol, tf, bars: [{ t: 1, o: 1, h: 2, l: 1, c: 2, v: 5 }], source: 'massive' } }; } };
+  try {
+    await withServer({ marketHistory }, async (base) => {
+      for (const tf of ['1h', '15m', '1Q', '1Y']) {
+        const res = await fetch(`${base}/academy-activity/market?symbol=ZZTEST${tf.replace(/\W/g, '')}&tf=${tf}`);
+        assert.equal(res.status, 200, tf + ' must not be a 400');
+        assert.equal((await res.json()).tf, tf);
+      }
+      const daily = await fetch(`${base}/academy-activity/market?symbol=ZZTESTD&tf=1D`);
+      assert.equal((await daily.json()).source, 'massive', 'a timeframe Massive does serve still uses Massive');
+    });
+  } finally { globalThis.fetch = realFetch; }
+  assert.deepEqual(asked.sort(), ['15m', '1Q', '1Y', '1h'].sort());
+  assert.deepEqual(massiveCalls, ['1D'], 'Massive is only asked for the timeframes it serves');
+});
+
 function signedHeaders(secret, body, timestamp = '1700000000') {
   return {
     'content-type': 'application/json',

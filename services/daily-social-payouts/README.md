@@ -4,7 +4,7 @@ A neutral-brand `discord.js` v14 bot for posting assignments, returned-link trac
 
 Run the separated production identity with `BOT_RUNTIME_MODE=daily-social`. In this mode the bot registers only social-reward commands and does not start article monitoring, site account linking, role synchronization, membership security, branded onboarding, or community moderation jobs.
 
-Discord → Telegram alert forwarding (`telegramForward` in settings) runs in **both** modes. Its duplicate check is a JSON log under `DATA_DIR`, not shared between processes, so run the forwarder from only one identity per Telegram chat — two identities watching the same channels deliver every alert twice.
+Discord → Telegram alert forwarding (`telegramForward` in settings) runs in **both** modes. Its duplicate check is a JSON log under `DATA_DIR`, not shared between processes, so run the forwarder from only one identity per Telegram chat — two identities watching the same channels deliver every alert twice. Set `TELEGRAM_FORWARD_OWNER=daily-social` (or `legacy`) on both services to make only that identity forward; leave it unset and every running identity forwards.
 
 ## What it tracks
 

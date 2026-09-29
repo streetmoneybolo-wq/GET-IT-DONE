@@ -91,6 +91,10 @@ export async function forwardAlertToTelegram(message, settings, eventType = 'cre
   if (!message?.guildId) return false;
   const config = telegramConfig(settings);
   if (!config.enabled || !config.channelIds.has(message.channelId)) return false;
+  // Two identities (legacy and daily-social) watching the same channels would each send every alert, and their dedup logs are per process.
+  // TELEGRAM_FORWARD_OWNER=daily-social|legacy makes only that identity forward; unset keeps the old behaviour (every identity that runs forwards).
+  const owner = String(process.env.TELEGRAM_FORWARD_OWNER || '').trim().toLowerCase();
+  if (owner && owner !== (process.env.BOT_RUNTIME_MODE === 'daily-social' ? 'daily-social' : 'legacy')) return false;
   if (message.author?.bot && !config.allowBotChannelIds.has(message.channelId)) return false;
   if (!message.content && !message.attachments?.size) return true;
   if (!config.botToken || !config.chatId) {

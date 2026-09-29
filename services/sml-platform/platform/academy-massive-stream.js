@@ -31,12 +31,13 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   }
 
   /* Session tape statistics since the symbol was first watched: lift the offer / hit the bid / neutral split, VWAP, price-by-volume, off-exchange share and the biggest prints. */
-  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, pv: new Map(), big: [], times: [], recent: [] }; }
+  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, pv: new Map(), big: [], times: [], recent: [], offTape: [] }; }
   const pvKey = (price) => { const step = price >= 100 ? 0.5 : price >= 20 ? 0.1 : price >= 5 ? 0.05 : 0.01; return (Math.round(price / step) * step).toFixed(step < 0.05 ? 2 : step < 0.5 ? 2 : 2); };
   function record(e, trade, off) {
     const st = e.stats; st.count += 1; st.vol += trade.size; st.notional += trade.size * trade.price;
     if (trade.dir === 'B') { st.buy += trade.size; st.buyN += 1; } else if (trade.dir === 'S') { st.sell += trade.size; st.sellN += 1; } else { st.neu += trade.size; st.neuN += 1; }
-    if (off) { st.offVol += trade.size; st.offN += 1; trade.off = true; }
+    // Off-exchange prints are kept in their own short list: on a busy symbol the shared 60-print tape turns over in seconds, and dark-pool prints are the rare ones worth keeping.
+    if (off) { st.offVol += trade.size; st.offN += 1; trade.off = true; st.offTape.push({ t: trade.t, price: trade.price, size: trade.size, dir: trade.dir }); if (st.offTape.length > 60) st.offTape.shift(); }
     const k = pvKey(trade.price); st.pv.set(k, (st.pv.get(k) || 0) + trade.size);
     if (st.pv.size > 400) { const small = [...st.pv.entries()].sort((a, b) => a[1] - b[1])[0]; st.pv.delete(small[0]); }
     const notional = trade.size * trade.price;
@@ -63,6 +64,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     const t = now(); const rate60 = st.times.filter((x) => t - x < 60_000).length;
     const w60 = recentWindow(st, t, 60_000), w300 = recentWindow(st, t, 300_000);
     return { since: st.since, count: st.count, vol: st.vol, vwap: st.vol > 0 ? st.notional / st.vol : null, buy: st.buy, sell: st.sell, neu: st.neu, buyN: st.buyN, sellN: st.sellN, neuN: st.neuN, offVol: st.offVol, offN: st.offN, rate60,
+      offTape: st.offTape.slice(-40).reverse(),
       buy60: w60.buy, sell60: w60.sell, neu60: w60.neu, buy300: w300.buy, sell300: w300.sell, neu300: w300.neu,
       pv: [...st.pv.entries()].map(([price, vol]) => ({ price: Number(price), vol })).sort((a, b) => b.vol - a.vol).slice(0, 8), big: st.big.slice() };
   }
