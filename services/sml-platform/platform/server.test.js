@@ -545,6 +545,37 @@ test('Academy private data is role-session gated before the WordPress bridge is 
   });
 });
 
+test('Academy short-sale data is role-session gated and comes from the alerts desk short-data lookup, not the options/earnings bridge', async () => {
+  const calls = [];
+  await withServer({
+    academyOAuth: { verifySession: (authorization) => authorization === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' } },
+    academyAlerts: { shortData: async (symbol) => { calls.push(symbol); return { summary: { avg_ratio: 42 }, interest: [{ days_to_cover: 2.1 }] }; } }
+  }, async (base) => {
+    const denied = await fetch(`${base}/academy-activity/data/short?symbol=SPY`);
+    assert.equal(denied.status, 401);
+    assert.equal(calls.length, 0);
+    const allowed = await fetch(`${base}/academy-activity/data/short?symbol=SPY`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), { ok: true, data: { summary: { avg_ratio: 42 }, interest: [{ days_to_cover: 2.1 }] } });
+    assert.deepEqual(calls, ['SPY']);
+  });
+});
+
+test('Academy short-sale data returns 503 when the alerts desk is not configured, and free-tier sessions are refused', async () => {
+  await withServer({ academyOAuth: { verifySession: () => ({ ok: true, userId: '1' }) } }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/data/short?symbol=SPY`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { ok: false, error: 'integration_unconfigured' });
+  });
+  await withServer({
+    academyOAuth: { verifySession: () => ({ ok: true, userId: '1', tier: 'free' }) },
+    academyAlerts: { shortData: async () => ({}) }
+  }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/data/short?symbol=SPY`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(res.status, 403);
+  });
+});
+
 function signedHeaders(secret, body, timestamp = '1700000000') {
   return {
     'content-type': 'application/json',

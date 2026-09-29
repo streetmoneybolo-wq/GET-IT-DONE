@@ -580,9 +580,13 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const sirePanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sire-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const liveCells = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-live-cells.js'), 'utf8'); } catch (_) { return ''; } })();
+    const buySellPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-buy-sell-panel.js'), 'utf8');
+    const darkPool = fs.readFileSync(pathModule.join(__dirname, 'academy-dark-pool.js'), 'utf8');
+    const shortSale = fs.readFileSync(pathModule.join(__dirname, 'academy-short-sale.js'), 'utf8');
+    const earningsPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-panel.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + earningsPanel + '</script><script>' + shortSale + '</script><script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : ''),
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();',
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -2394,6 +2398,23 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_data_request_failed', { kind, error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'academy_data_unavailable' });
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/data/short') {
+      if (!academyOAuth || !academyAlerts) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const dataParams = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = dataParams.get('symbol');
+      try {
+        const data = await academyAlerts.shortData(symbol);
+        sendJson(response, 200, { ok: true, data });
+      } catch (error) {
+        logger(error instanceof TypeError ? 'warn' : 'error', 'academy_short_data_request_failed', { error });
+        sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'short_data_unavailable' });
       }
       return;
     }
