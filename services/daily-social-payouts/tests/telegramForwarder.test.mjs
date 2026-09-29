@@ -79,3 +79,21 @@ test('messages outside the configured channels, and bot messages from channels t
   assert.equal(await forwardAlertToTelegram({ ...message('m5'), author: { bot: true } }, settings), false);
   assert.equal(calls.length, 0);
 });
+
+test('TELEGRAM_FORWARD_OWNER makes only the named identity forward; unset lets every identity forward', async () => {
+  calls = []; succeed();
+  try {
+    process.env.BOT_RUNTIME_MODE = 'daily-social';
+    process.env.TELEGRAM_FORWARD_OWNER = 'legacy';
+    assert.equal(await forwardAlertToTelegram(message('own1'), settings), false, 'the daily-social identity stands down when legacy owns forwarding');
+    assert.equal(calls.length, 0);
+    process.env.TELEGRAM_FORWARD_OWNER = 'daily-social';
+    await forwardAlertToTelegram(message('own2'), settings);
+    assert.equal(calls.length, 1, 'and forwards when it is the owner');
+    delete process.env.BOT_RUNTIME_MODE;
+    assert.equal(await forwardAlertToTelegram(message('own3'), settings), false, 'the legacy identity stands down when daily-social owns it');
+    delete process.env.TELEGRAM_FORWARD_OWNER;
+    await forwardAlertToTelegram(message('own4'), settings);
+    assert.equal(calls.length, 2, 'unset: any identity forwards, as before');
+  } finally { delete process.env.BOT_RUNTIME_MODE; delete process.env.TELEGRAM_FORWARD_OWNER; }
+});

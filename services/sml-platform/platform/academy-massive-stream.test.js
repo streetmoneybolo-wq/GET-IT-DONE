@@ -197,6 +197,18 @@ test('the rolling windows are trimmed by age, not by a print count: a liquid sym
   assert.equal(d.stats.rate60, 1800, 'rate60 is not silently capped either');
 });
 
+test('off-exchange prints are kept in their own list, so a busy lit tape cannot push them out of the dark-pool view', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  svc.watch('SPY');
+  svc.onMessage(JSON.stringify([trade('SPY', clock.now(), 100, 900, { x: 4 }), trade('SPY', clock.now() + 1, 101, 700, { trfi: 2 })]));
+  // 200 lit prints afterwards: the shared 60-print tape no longer holds either off-exchange print.
+  svc.onMessage(JSON.stringify(Array.from({ length: 200 }, (_, i) => trade('SPY', clock.now() + 10 + i, 100.5, 10))));
+  const d = svc.peek('SPY');
+  assert.equal(d.tape.filter((t) => t.off).length, 0, 'the shared tape has turned over');
+  assert.deepEqual(d.stats.offTape.map((t) => [t.price, t.size]), [[101, 700], [100, 900]], 'newest first, still there');
+});
+
 test('peek returns null for a symbol nobody is watching, and for one watched but with no data yet', () => {
   const clock = makeClock(1_700_000_000_000);
   const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });

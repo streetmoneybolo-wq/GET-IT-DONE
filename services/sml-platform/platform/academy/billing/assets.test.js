@@ -37,7 +37,10 @@ test('the store pages carry the brand hero, allow only their own media, and keep
   assert.match(signin, /<video autoplay muted loop playsinline/); assert.match(signin, /assets\/academy-hero\.mp4/); assert.match(signin, /assets\/me-crown\.webp/);
   assert.match(signin, /Discipline protects the dream\. Consistency builds the freedom\./); assert.match(signin, /assets\/academy-poster\.webp/);
   assert.match(signin, /🎵 Music on/); assert.match(signin, /assets\/store-music\.mp3/);
-  assert.doesNotMatch(signin, /https?:\/\/(?!x\.test)/, 'every image and clip comes from our own origin');
+  // OpenGraph tags are read by Discord/social link cards, not loaded by the page, and must be absolute URLs; everything the page itself loads stays on our origin.
+  const ogTags = signin.match(/<meta property="og:[^>]*>/g) || [];
+  assert.ok(ogTags.some((tag) => /og:image"/.test(tag)), 'the link card still has its image');
+  assert.doesNotMatch(signin.replace(/<meta property="og:[^>]*>/g, ''), /https?:\/\/(?!x\.test)/, 'every image and clip the page loads comes from our own origin');
   const desc = { key: 'lifetime', amount: 145090, currency: 'usd', academy: true, roleNames: ['Monarch'], priceId: 'price_x', label: 'MEM Lifetime', line: 'academy', roles: ['1260433215189946420'] };
   const buy = pages.buyPage({ config, nonce: 'n', userId: '1', user: { username: 'mike' }, packages: [desc], memberships: [], csrf: 'c', state: {} });
   assert.match(buy, /<section class="card"><span class="ribbon">ONE PAYMENT · LIFETIME<\/span><h2>MEM Lifetime<\/h2>/);

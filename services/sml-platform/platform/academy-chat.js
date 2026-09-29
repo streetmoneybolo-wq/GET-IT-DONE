@@ -6,8 +6,9 @@
  * sent right after a join, so a fresh connection or a channel switch never opens on an empty
  * screen. Messages persist to Postgres (memory in tests/local runs).
  *
- * First-version moderation minimum: a message length cap, a per-member rate limit, and a member
- * may delete their own message. Reporting and muting are a fast-follow, not built here.
+ * Moderation: a message length cap, a per-member rate limit, a member may delete their own message,
+ * and may report someone else's (stored in academy_chat_reports for moderators; muting a member is
+ * a per-viewer client setting, not a server decision).
  *
  * The real-time transport is a WebSocket (attachChatServer, thin glue over the "ws" package).
  * Everything that matters is in createChatHub, which only needs a { send(json) } connection object
@@ -66,7 +67,22 @@ function createChatStore({ pool = null } = {}) {
     mem.splice(idx, 1);
     return channel;
   }
-  return { history, add, remove };
+  const reports = []; // memory mode: [{ messageId, reporterId }]
+  /* Records a report of someone else's message; returns 'reported', 'duplicate' or null (no such message, or it is the reporter's own). */
+  async function report({ id, reporterId }) {
+    if (db) {
+      const msg = (await db.query('SELECT id, channel, discord_id, body FROM academy_chat_messages WHERE id=$1', [id])).rows[0];
+      if (!msg || String(msg.discord_id) === String(reporterId)) return null;
+      const res = await db.query('INSERT INTO academy_chat_reports (message_id, channel, reporter_id, author_id, body) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (message_id, reporter_id) DO NOTHING RETURNING id', [msg.id, msg.channel, reporterId, msg.discord_id, msg.body]);
+      return res.rows.length ? 'reported' : 'duplicate';
+    }
+    const msg = mem.find((m) => String(m.id) === String(id));
+    if (!msg || msg.discordId === reporterId) return null;
+    if (reports.some((r) => r.messageId === msg.id && r.reporterId === reporterId)) return 'duplicate';
+    reports.push({ messageId: msg.id, reporterId });
+    return 'reported';
+  }
+  return { history, add, remove, report };
 }
 
 /* verifySession: the same shape as academyOAuth.verifySession — (authorizationHeaderString) => { ok, userId, tier } | { ok:false, ... } */
@@ -126,6 +142,13 @@ function createChatHub({ store, verifySession, logger = () => {}, now = Date.now
       if (removedChannel) broadcast(removedChannel, { type: 'deleted', channel: removedChannel, id: String(id) });
       else conn.send(JSON.stringify({ type: 'error', error: 'not_found' }));
     }
+    async function report(id) {
+      if (!store.report) { conn.send(JSON.stringify({ type: 'error', error: 'unknown_type' })); return; }
+      const result = await store.report({ id, reporterId: identity.userId }).catch(() => null);
+      if (!result) { conn.send(JSON.stringify({ type: 'error', error: 'not_found' })); return; }
+      if (result === 'reported') logger('warn', 'academy_chat_message_reported', { messageId: String(id), reporterId: identity.userId });
+      conn.send(JSON.stringify({ type: 'reported', id: String(id) }));
+    }
     /* Returns the in-flight promise so a caller that wants to know when a frame has been fully
        handled (tests; anything awaiting delivery) can await it. The real ws transport ignores the
        return value — a WebSocket 'message' handler is fire-and-forget either way. */
@@ -134,6 +157,7 @@ function createChatHub({ store, verifySession, logger = () => {}, now = Date.now
       if (msg && msg.type === 'join') return join(String(msg.channel || ''));
       if (msg && msg.type === 'message') return post(msg.body);
       if (msg && msg.type === 'delete') return remove(msg.id);
+      if (msg && msg.type === 'report') return report(msg.id);
       conn.send(JSON.stringify({ type: 'error', error: 'unknown_type' }));
       return null;
     }

@@ -11,8 +11,7 @@
     "start": "node index.js",
     "start:daily-social": "node index.js",
     "start:spotlight": "node spotlight.js",
-    "check": "node --check index.js && node --check spotlight.js && node --check scripts/provision-daily-social-payouts-server.mjs && node tests/smoke.mjs",
-    "provision:daily-social": "node scripts/provision-daily-social-payouts-server.mjs",
+    "check": "node --check index.js && node --check spotlight.js && node --test",
     "test:payouts": "node --test tests/payouts.test.mjs",
     "test:telegram": "node --test tests/telegramForwarder.test.mjs",
     "test:recruitment": "node --test tests/recruitment.test.mjs"

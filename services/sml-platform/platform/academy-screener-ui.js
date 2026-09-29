@@ -104,8 +104,8 @@
       const reads = d.symbols.map((s) => ({ s, h: s.horizons && s.horizons[S.horizon] })).filter((x) => x.h);
       const side = (dir) => reads.filter((x) => x.h.dir === dir).sort((a, b) => b.h.strength - a.h.strength).map((x) => hrow(x.s, x.h, dir)).join('') || '<li class="scr-empty">none right now</li>';
       body = '<div class="scr-pills">' + hs + '</div><div class="scr-cols"><div><h4 class="up">GO LONG · MEM ALGO leans up</h4><ul>' + side(1) + '</ul></div><div><h4 class="dn">SHORT · MEM ALGO leans down</h4><ul>' + side(-1) + '</ul></div></div>'
-        + (S.busy ? '<div class="scr-suggest" id="academy-screener-suggest"><b>' + esc(S.busy.symbol) + ' ' + esc(String(S.busy.side).toUpperCase()) + (S.busy.verdict ? ' · ' + esc(S.busy.verdict) : '') + '</b>' + esc(S.busy.text) + '</div>' : '')
-        + '<p class="scr-note">Ranked by MEM ALGO signal grade, how recent the signal is, and whether the latest chart formation agrees. CALL / PUT asks the options lab for the most liquid, best-priced contract that fits that lean. Educational only: nothing here places a trade.</p>';
+        + (S.busy ? '<div class="scr-suggest" id="academy-screener-suggest"><b>' + esc(S.busy.symbol) + ' ' + esc(String(S.busy.side).toUpperCase()) + (S.busy.verdict ? ' · ' + esc(S.busy.verdict) : '') + '</b>' + esc(S.busy.text) + '<br><em>Educational analysis, not investment advice or a recommendation to trade. Options can lose their entire value.</em></div>' : '')
+        + '<p class="scr-note"><strong>Educational only, not investment advice.</strong> These lists describe what price has already done; they are not recommendations to buy, sell or short. Ranked by MEM ALGO signal grade, how recent the signal is, and whether the latest chart formation agrees. CALL / PUT asks the options lab for the most liquid, best-priced contract that fits that lean. Educational only: nothing here places a trade.</p>';
     }
     panel.innerHTML = tabs + body;
   }
