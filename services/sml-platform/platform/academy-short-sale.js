@@ -48,13 +48,16 @@
   async function load() {
     if (S.loading) return;
     const symbol = clean(sym());
-    if (S.symbol === symbol && S.data) return;
-    S.loading = true; S.error = '';
+    // One attempt per symbol: a failed or empty lookup is remembered as such, otherwise every
+    // repaint would re-fetch (paint -> load -> paint) and hammer the gated route in a loop.
+    if (S.symbol === symbol && (S.data || S.error)) return;
+    S.loading = true; S.error = ''; S.symbol = symbol;
     try {
       const res = await fetch('/academy-activity/data/short?symbol=' + encodeURIComponent(symbol), { headers: { authorization: 'Bearer ' + S.session }, cache: 'no-store' });
       const payload = await res.json();
       if (!res.ok || !payload.ok) throw new Error(payload.error || 'unavailable');
-      S.data = payload.data; S.symbol = symbol;
+      S.data = payload.data;
+      if (!S.data) S.error = 'No short-sale data was returned for this ticker.';
     } catch (_) { S.error = 'Short-sale data is temporarily unavailable.'; S.data = null; }
     S.loading = false; paint();
   }
@@ -65,7 +68,7 @@
     if (!box) { box = document.createElement('div'); box.className = 'academy-shortsale'; const anchor = document.querySelector('.academy-darkpool') || document.querySelector('.academy-buysell') || document.querySelector('.academy-stats') || document.querySelector('.academy-tape') || panel; anchor.after(box); }
     if (!S.on) { box.style.display = 'none'; return; }
     box.style.display = '';
-    if (S.symbol !== clean(sym())) { S.data = null; }
+    if (S.symbol !== clean(sym())) { S.data = null; S.error = ''; }
     if (!S.session) { box.innerHTML = '<h4>SHORT SALE</h4><small>Unlock Academy Tools first so Discord can verify private Academy access.</small>'; return; }
     if (S.loading) { box.innerHTML = '<h4>SHORT SALE</h4><small>Loading…</small>'; return; }
     if (S.error) { box.innerHTML = '<h4>SHORT SALE</h4><small>' + S.error + '</small>'; return; }
@@ -95,7 +98,7 @@
   }
 
   function sync() { btn.classList.toggle('on', S.on); }
-  btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); if (S.on && S.session) void load(); paint(); });
+  btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); if (S.on) { S.data = null; S.error = ''; S.symbol = ''; if (S.session) void load(); } paint(); }); // turning the panel on is the one deliberate retry
   window.addEventListener('sml-live-data', () => { if (S.on && S.symbol !== clean(sym())) void load(); });
   sync(); paint();
 })();

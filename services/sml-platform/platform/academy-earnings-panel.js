@@ -65,16 +65,18 @@
   async function load() {
     if (S.loading) return;
     const symbol = sym();
+    // One attempt per symbol: rows stays an (empty) array after a failure so paint() shows the
+    // error instead of treating "nothing loaded" as a reason to fetch again on every repaint.
     if (S.symbol === symbol && S.rows) return;
-    S.loading = true; S.error = '';
+    S.loading = true; S.error = ''; S.symbol = symbol;
     try {
       const res = await fetch('/academy-activity/data/earnings?symbol=' + encodeURIComponent(symbol), { headers: { authorization: 'Bearer ' + S.session }, cache: 'no-store' });
       const payload = await res.json();
       if (!res.ok || !payload.ok) throw new Error(payload.error || 'unavailable');
       const rows = collectRows(payload.data).map(normalize).sort((a, b) => a.date.localeCompare(b.date));
-      S.rows = rows; S.symbol = symbol;
+      S.rows = rows;
       if (!rows.length) S.error = 'The provider returned no recognized earnings records for this ticker.';
-    } catch (_) { S.error = 'Earnings data is temporarily unavailable.'; S.rows = null; }
+    } catch (_) { S.error = 'Earnings data is temporarily unavailable.'; S.rows = []; }
     S.loading = false; paint();
   }
 
@@ -101,7 +103,7 @@
     if (title && !S.prevTitle) { S.prevTitle = title.textContent; title.textContent = 'EARNINGS · CALENDAR + HISTORY'; }
     const el = panel(); el.style.display = '';
     if (!S.session) { el.innerHTML = '<h2>EARNINGS</h2><p class="note">Unlock Academy Tools first so Discord can verify private Academy access.</p>'; return; }
-    if (S.symbol !== sym()) { S.rows = null; }
+    if (S.symbol !== sym()) { S.rows = null; S.error = ''; }
     if (S.loading) { el.innerHTML = '<h2>EARNINGS</h2><p class="note">Loading…</p>'; return; }
     if (!S.rows) { void load(); el.innerHTML = '<h2>EARNINGS</h2><p class="note">Loading…</p>'; return; }
     if (S.error && !S.rows.length) { el.innerHTML = '<h2>EARNINGS</h2><p class="note">' + S.error + '</p>'; return; }
@@ -114,7 +116,7 @@
   }
 
   function sync() { btn.classList.toggle('on', S.on); }
-  btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); if (S.on && S.session) void load(); paint(); });
+  btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); if (S.on) { S.rows = null; S.error = ''; S.symbol = ''; if (S.session) void load(); } paint(); }); // turning the panel on is the one deliberate retry
   window.addEventListener('sml-live-data', () => { if (S.on && S.symbol !== sym()) void load(); });
   sync();
   // the options dock boots asynchronously; wait for it to exist (or give up and show the panel where it would have been) before doing the first paint
