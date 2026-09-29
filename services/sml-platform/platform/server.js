@@ -37,6 +37,8 @@ const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSym
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
+const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
+const { WebSocketServer } = require('ws');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -2459,6 +2461,12 @@ async function main() {
     identityAccess: config.academyBillingInDiscordLinks ? createIdentityAccess({}) : null });
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess, freeSessions: config.academyFreeSessions });
+  /* The Academy in-app chat (switchable Day Trade / Swing Trade / Short Sale / Options Trading
+     channels), over a real WebSocket at /academy-activity/chat. Reuses the same session tokens
+     the Activity's HTTP routes verify with, so a chat connection is just as authenticated. */
+  const academyChatHub = process.env.ACADEMY_CHAT === 'off' ? null : createChatHub({
+    store: createChatStore({ pool: database.pool }), verifySession: (auth) => academyOAuth.verifySession(auth), logger: log
+  });
   const academyGate = academyGateFlags ? Object.freeze({
     ...createAcademyContentGate({ enabled: config.academyContentGateEnabled, freePreview: config.academyFreePreview,
       freeSymbols: config.academyFreeSymbols, alertsTiering: config.academyAlertsTiering }),
@@ -2574,6 +2582,7 @@ async function main() {
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
     memberEmail
   });
+  const academyChatWss = academyChatHub ? attachChatServer(server, academyChatHub, { WebSocketServer }) : null;
   let shuttingDown = false;
 
   async function shutdown(signal) {
@@ -2584,6 +2593,7 @@ async function main() {
     if (academyAlerts) academyAlerts.stop();
     if (academyAlertSources) academyAlertSources.stop();
     if (academyMassive) academyMassive.stop();
+    if (academyChatWss) academyChatWss.close();
     server.close(async () => {
       await database.close();
       log('info', 'shutdown_complete', { signal });
