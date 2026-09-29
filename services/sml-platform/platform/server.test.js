@@ -594,6 +594,35 @@ test('Academy short-sale data rejects a malformed symbol before any lookup, and 
   });
 });
 
+test('the screener snapshot route serves the service snapshot, and is 503 when the screener is off', async () => {
+  await withServer({ academyScreener: { snapshot: () => ({ ok: true, updatedAt: 7, symbols: [{ symbol: 'AAA' }] }) } }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/screener`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, updatedAt: 7, symbols: [{ symbol: 'AAA' }] });
+  });
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/screener`)).status, 503); });
+});
+
+test('the screener option suggestion is session-gated, validates its inputs, and runs the picker over the bridge chain and the swept daily bars', async () => {
+  const calls = [];
+  await withServer({
+    academyOAuth: { verifySession: (a) => (a === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' }) },
+    academyDataBridge: { get: async (kind, symbol) => { calls.push(kind + ':' + symbol); return { ok: true, status: 200, data: { rows: [] } }; } },
+    academyScreener: { snapshot: () => ({ ok: true }), barsFor: (s) => (s === 'AAA' ? [{ t: 1, o: 1, h: 1, l: 1, c: 1 }] : []), optionFor: ({ symbol, side, horizon, rows, bars }) => ({ verdict: 'CALL', echo: { symbol, side, horizon, rows: rows.length, bars: bars.length } }) }
+  }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/screener/option?symbol=AAA`)).status, 401);
+    assert.equal(calls.length, 0);
+    const bad = await fetch(`${base}/academy-activity/screener/option?symbol=${encodeURIComponent('<x>')}`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(bad.status, 400);
+    const ok = await fetch(`${base}/academy-activity/screener/option?symbol=aaa&side=put&horizon=long`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.equal(body.suggestion.verdict, 'CALL');
+    assert.deepEqual(body.suggestion.echo, { symbol: 'AAA', side: 'put', horizon: 'long', rows: 0, bars: 1 });
+    assert.deepEqual(calls, ['options:AAA']);
+  });
+});
+
 function signedHeaders(secret, body, timestamp = '1700000000') {
   return {
     'content-type': 'application/json',

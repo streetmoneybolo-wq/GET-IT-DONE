@@ -38,6 +38,7 @@ const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, clea
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
+const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
@@ -1426,7 +1427,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyMassive = null, academySireFeed = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyMassive = null, academySireFeed = null, academyScreener = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2172,6 +2173,37 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Indicator Engine screener: the last sweep's readings for every tracked symbol (same gate as the scanner it is built from). */
+    if (request.method === 'GET' && path === '/academy-activity/screener') {
+      if (!academyScreener) { sendJson(response, 503, { ok: false, error: 'screener_disabled' }); return; }
+      const screenerTier = contentGateOn ? callerTier(request) : 'member';
+      if (screenerTier === null) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
+      sendJson(response, 200, academyScreener.snapshot());
+      return;
+    }
+    /* A call or put for a screened lean, from the same verified options chain (and the same gate) as the options lab. */
+    if (request.method === 'GET' && path === '/academy-activity/screener/option') {
+      if (!academyOAuth || !academyDataBridge || !academyScreener) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const optParams = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(optParams.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const side = optParams.get('side') === 'put' ? 'put' : 'call';
+      const horizon = SCREENER_HORIZONS[optParams.get('horizon')] ? optParams.get('horizon') : 'swing';
+      try {
+        const chain = await academyDataBridge.get('options', symbol, {});
+        if (!chain.ok) { sendJson(response, chain.status || 503, { ok: false, error: chain.code }); return; }
+        const rows = require('./academy-alert-options').normalizeChain(chain.data);
+        sendJson(response, 200, { ok: true, symbol, side, horizon, suggestion: academyScreener.optionFor({ symbol, side, horizon, rows, bars: academyScreener.barsFor(symbol) }) });
+      } catch (error) {
+        logger('error', 'academy_screener_option_failed', { symbol, error });
+        sendJson(response, 503, { ok: false, error: 'option_suggestion_unavailable' });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/access') {
       if (!academyAccess) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       try {
@@ -2543,6 +2575,11 @@ async function main() {
   const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
   const academyMassive = process.env.ACADEMY_MASSIVE_STREAM === 'off' ? null : createMassiveStream({ apiKey: config.massiveApiKey, logger: log });
+  /* The Indicator Engine screener sweeps the scanner's symbols (ACADEMY_SCREENER_SYMBOLS, default 40) every ten minutes, reading each from the same cached candles the chart uses. */
+  const academyScreener = process.env.ACADEMY_SCREENER === 'off' ? null : createScreenerService({
+    candles: getAcademyCandles, logger: log, maxSymbols: Math.max(5, Math.min(100, Number(process.env.ACADEMY_SCREENER_SYMBOLS) || 40)),
+    universe: async () => { const s = await getAcademyScanner(); return Array.isArray(s && s.rows) ? s.rows : []; }
+  });
   const marketHistory = createMassiveHistory({ apiKey: config.massiveApiKey });
   /* Each member picks their own alert sources (servers -> channels or posters); SML_ACADEMY_ALERT_SOURCES=off brings back the fixed two-stream desk. */
   const perMemberAlerts = process.env.SML_ACADEMY_ALERT_SOURCES !== 'off';
@@ -2605,7 +2642,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyMassive,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyMassive, academyScreener,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
@@ -2625,6 +2662,7 @@ async function main() {
     if (academyAlerts) academyAlerts.stop();
     if (academyAlertSources) academyAlertSources.stop();
     if (academyMassive) academyMassive.stop();
+    if (academyScreener) academyScreener.stop();
     if (academyChatWss) academyChatWss.close();
     server.close(async () => {
       await database.close();
@@ -2645,6 +2683,7 @@ async function main() {
     if (academyAlerts) academyAlerts.start();
     if (academyAlertSources) academyAlertSources.start();
     if (academyMassive) academyMassive.start();
+    if (academyScreener) academyScreener.start();
     if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
       if (pruneTimer.unref) pruneTimer.unref();
