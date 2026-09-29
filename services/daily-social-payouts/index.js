@@ -1331,9 +1331,10 @@ client.on('messageUpdate', async (_oldMessage, newMessage) => {
       await forwardAlertToTelegram(newMessage, settings, 'updated').catch((error) => console.error('Telegram bridged alert update forward failed safely:', error.message || error));
       return;
     }
+    // Telegram forwarding runs in both modes (as it does for messageCreate above); only the legacy mirror/monitor jobs are mode-gated.
+    await forwardAlertToTelegram(newMessage, settings, 'updated').catch((error) => console.error('Telegram alert update forward failed safely:', error.message || error));
     if (dailySocialMode) return;
     await mirrorAlertToDiscord(newMessage, settings, 'updated').catch((error) => console.error('Discord alert mirror update failed safely:', error.message || error));
-    await forwardAlertToTelegram(newMessage, settings, 'updated').catch((error) => console.error('Telegram alert update forward failed safely:', error.message || error));
     await processAlertMessage(newMessage, 'updated');
   } catch (error) {
     console.error('Alert update processing failed:', error);

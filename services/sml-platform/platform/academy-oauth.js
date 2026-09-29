@@ -35,9 +35,12 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
      session and a session is never a ticket. */
   const buyKey = clientSecret ? Buffer.from(crypto.hkdfSync('sha256', String(clientSecret), 'sml-academy-activity', 'buy-ticket-v1', 32)) : null;
   const signBuy = (body) => crypto.createHmac('sha256', buyKey).update(body).digest('base64url');
-  function issueSession(userId, tier = 'member') {
+  function issueSession(userId, tier = 'member', displayName = '') {
     const claims = { u: String(userId), e: now() + SESSION_TTL_MS, n: randomBytes(16).toString('base64url') };
     if (tier && tier !== 'member') claims.t = tier;
+    // The verified Discord display name rides inside the signed token, so anything that trusts the
+    // session (the chat) can label the member without taking a name from the client.
+    if (displayName) claims.d = String(displayName).slice(0, 80);
     const body = `v1.${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
     return `${body}.${sign(body)}`;
   }
@@ -52,7 +55,8 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     if (!claims || !/^\d{15,24}$/.test(String(claims.u)) || !(Number(claims.e) > now())) return null;
     const tier = claims.t === undefined ? 'member' : String(claims.t);
     if (!SESSION_TIERS.has(tier)) return null;
-    return { userId: String(claims.u), tier };
+    const displayName = String(claims.d || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80);
+    return { userId: String(claims.u), tier, displayName };
   }
   const activityConfigured = Boolean(clientId && clientSecret && academyAccess && typeof academyAccess.verify === 'function');
   const configured = Boolean(activityConfigured && redirectUri);
@@ -66,6 +70,17 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     const query = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'identify guilds.members.read', state, prompt: 'none' });
     return { ok: true, url: `${DISCORD_AUTHORIZE}?${query.toString()}` };
   }
+  /* The member's own Discord display name (global_name, falling back to username), fetched with
+     their own OAuth token — never the bot's. Used only to label their chat messages with a real
+     name instead of a self-chosen one; a failure here never blocks sign-in. */
+  async function fetchDisplayName(accessToken) {
+    try {
+      const res = await fetchImpl('https://discord.com/api/v10/users/@me', { headers: { authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(5_000) });
+      if (!res.ok) return '';
+      const user = await res.json();
+      return String((user && (user.global_name || user.username)) || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80);
+    } catch (_) { return ''; }
+  }
   async function exchangeCode(code, exchangeRedirectUri = '') {
     if (!activityConfigured) return { ok: false, status: 503, code: 'integration_unconfigured' };
     if (!String(code)) return { ok: false, status: 400, code: 'authorization_denied' };
@@ -76,11 +91,11 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     if (!response.ok) return { ok: false, status: 401, code: 'authorization_failed' };
     const token = await response.json();
     if (!token || typeof token.access_token !== 'string') return { ok: false, status: 401, code: 'authorization_failed' };
-    const access = await academyAccess.verify(`Bearer ${token.access_token}`);
+    const [access, displayName] = await Promise.all([academyAccess.verify(`Bearer ${token.access_token}`), fetchDisplayName(token.access_token)]);
     if (!access.ok) {
       const userId = SNOWFLAKE.test(String(access.userId || '')) ? String(access.userId) : '';
       if (freeSessions && access.code === 'academy_role_required' && access.inGuild === true && userId) {
-        return { ok: true, accessToken: token.access_token, sessionToken: issueSession(userId, 'free'), userId, tier: 'free' };
+        return { ok: true, accessToken: token.access_token, sessionToken: issueSession(userId, 'free', displayName), userId, tier: 'free', displayName };
       }
       /* A refusal never carries a session or the Discord access token. The id
          and guild membership only let the caller offer a way in. */
@@ -88,8 +103,8 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
         ...(userId ? { userId } : {}), ...(typeof access.inGuild === 'boolean' ? { inGuild: access.inGuild } : {}) };
     }
     const tier = SESSION_TIERS.has(access.tier) && access.tier !== 'free' ? access.tier : 'member';
-    const sessionToken = issueSession(access.userId || '', tier);
-    return { ok: true, accessToken: token.access_token, sessionToken, userId: String(access.userId || ''), tier };
+    const sessionToken = issueSession(access.userId || '', tier, displayName);
+    return { ok: true, accessToken: token.access_token, sessionToken, userId: String(access.userId || ''), tier, displayName };
   }
   async function complete({ code = '', state = '' } = {}) {
     if (!configured) return { ok: false, status: 503, code: 'integration_unconfigured' };
@@ -99,7 +114,7 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     return exchangeCode(code, redirectUri);
   }
   const completeActivity = ({ code = '' } = {}) => exchangeCode(code);
-  function verifySession(authorization) { const match = /^Bearer\s+(\S+)$/i.exec(String(authorization || '')); const session = match && readSession(match[1]); return session ? { ok: true, userId: session.userId, tier: session.tier } : { ok: false, status: 401, code: 'authorization_required' }; }
+  function verifySession(authorization) { const match = /^Bearer\s+(\S+)$/i.exec(String(authorization || '')); const session = match && readSession(match[1]); return session ? { ok: true, userId: session.userId, tier: session.tier, displayName: session.displayName || '' } : { ok: false, status: 401, code: 'authorization_required' }; }
   /* Buy ticket (SML_ACADEMY_BILLING_IN_DISCORD_LINKS): proof, for 15 minutes,
      that the token exchange just verified this Discord id. It goes back to the
      Activity in the token response BODY and is posted to /academy-activity/buy

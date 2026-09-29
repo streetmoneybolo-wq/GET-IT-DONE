@@ -31,7 +31,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   }
 
   /* Session tape statistics since the symbol was first watched: lift the offer / hit the bid / neutral split, VWAP, price-by-volume, off-exchange share and the biggest prints. */
-  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, pv: new Map(), big: [], times: [] }; }
+  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, pv: new Map(), big: [], times: [], recent: [] }; }
   const pvKey = (price) => { const step = price >= 100 ? 0.5 : price >= 20 ? 0.1 : price >= 5 ? 0.05 : 0.01; return (Math.round(price / step) * step).toFixed(step < 0.05 ? 2 : step < 0.5 ? 2 : 2); };
   function record(e, trade, off) {
     const st = e.stats; st.count += 1; st.vol += trade.size; st.notional += trade.size * trade.price;
@@ -41,12 +41,29 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     if (st.pv.size > 400) { const small = [...st.pv.entries()].sort((a, b) => a[1] - b[1])[0]; st.pv.delete(small[0]); }
     const notional = trade.size * trade.price;
     if (trade.size >= 500 && notional >= 50_000) { st.big.push({ t: trade.t, price: trade.price, size: trade.size, dir: trade.dir, off: Boolean(off) }); st.big.sort((a, b) => b.size * b.price - a.size * a.price); if (st.big.length > 5) st.big.length = 5; }
-    st.times.push(trade.t); if (st.times.length > 600) st.times.shift();
+    // Both rolling lists are trimmed by AGE, not by a fixed count: a liquid symbol prints 10-50
+    // times a second, and a count cap would quietly shrink "the last five minutes" to less than one.
+    // The count caps are only a memory guard against a pathological burst.
+    st.times.push(trade.t); while (st.times.length && (trade.t - st.times[0] > 60_000 || st.times.length > 20_000)) st.times.shift();
+    // A short rolling window of direction+size, kept separately from the times-only list above, so
+    // the "active buy/sell" gauge can show recent pressure (the last minute or five) rather than the
+    // whole, ever-growing session total, which barely moves once a stock has traded for hours.
+    st.recent.push({ t: trade.t, dir: trade.dir, size: trade.size }); while (st.recent.length && (trade.t - st.recent[0].t > 300_000 || st.recent.length > 60_000)) st.recent.shift();
+  }
+  /* Sums recent volume by direction within windowMs of `t`. Non-destructive (summarize() is called
+     with several different window sizes, so trimming to one window here would starve the others);
+     `record()` already trims `recent` to the widest window by age, so this scan stays bounded. */
+  function recentWindow(st, t, windowMs) {
+    let buy = 0, sell = 0, neu = 0;
+    for (const r of st.recent) { if (t - r.t > windowMs) continue; if (r.dir === 'B') buy += r.size; else if (r.dir === 'S') sell += r.size; else neu += r.size; }
+    return { buy, sell, neu };
   }
   function summarize(e) {
     const st = e.stats; if (!st || !st.count) return null;
     const t = now(); const rate60 = st.times.filter((x) => t - x < 60_000).length;
+    const w60 = recentWindow(st, t, 60_000), w300 = recentWindow(st, t, 300_000);
     return { since: st.since, count: st.count, vol: st.vol, vwap: st.vol > 0 ? st.notional / st.vol : null, buy: st.buy, sell: st.sell, neu: st.neu, buyN: st.buyN, sellN: st.sellN, neuN: st.neuN, offVol: st.offVol, offN: st.offN, rate60,
+      buy60: w60.buy, sell60: w60.sell, neu60: w60.neu, buy300: w300.buy, sell300: w300.sell, neu300: w300.neu,
       pv: [...st.pv.entries()].map(([price, vol]) => ({ price: Number(price), vol })).sort((a, b) => b.vol - a.vol).slice(0, 8), big: st.big.slice() };
   }
 

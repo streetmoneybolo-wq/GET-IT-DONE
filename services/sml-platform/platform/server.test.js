@@ -220,6 +220,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /refreshScanner/);
     assert.match(html, /academy-activity\/scanner/);
     assert.match(html, /id="academy-scanner-host"/);
+    assert.match(html, /academy-activity\/chat/, 'the trading-desk chat panel connects to the chat WebSocket');
+    assert.match(html, /Global Chat.*Day Trade.*Swing Trade.*Short Sale.*Options Trading/s, 'the global room and all four switchable chat channels are offered');
     assert.match(html, /College Options Chain Lab/);
     assert.match(html, /academy-lesson-open/);
     assert.match(html, /width:calc\(100% - var\(--academy-lesson-rail\)\)/);
@@ -542,6 +544,82 @@ test('Academy private data is role-session gated before the WordPress bridge is 
     assert.equal(allowed.status, 200);
     assert.deepEqual(await allowed.json(), { ok: true, data: { kind: 'earnings', symbol: 'NVDA' } });
     assert.equal(calls, 1);
+  });
+});
+
+test('Academy short-sale data is role-session gated and comes from the alerts desk short-data lookup, not the options/earnings bridge', async () => {
+  const calls = [];
+  await withServer({
+    academyOAuth: { verifySession: (authorization) => authorization === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' } },
+    academyAlerts: { shortData: async (symbol) => { calls.push(symbol); return { summary: { avg_ratio: 42 }, interest: [{ days_to_cover: 2.1 }] }; } }
+  }, async (base) => {
+    const denied = await fetch(`${base}/academy-activity/data/short?symbol=SPY`);
+    assert.equal(denied.status, 401);
+    assert.equal(calls.length, 0);
+    const allowed = await fetch(`${base}/academy-activity/data/short?symbol=SPY`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), { ok: true, data: { summary: { avg_ratio: 42 }, interest: [{ days_to_cover: 2.1 }] } });
+    assert.deepEqual(calls, ['SPY']);
+  });
+});
+
+test('Academy short-sale data returns 503 when the alerts desk is not configured, and free-tier sessions are refused', async () => {
+  await withServer({ academyOAuth: { verifySession: () => ({ ok: true, userId: '1' }) } }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/data/short?symbol=SPY`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { ok: false, error: 'integration_unconfigured' });
+  });
+  await withServer({
+    academyOAuth: { verifySession: () => ({ ok: true, userId: '1', tier: 'free' }) },
+    academyAlerts: { shortData: async () => ({}) }
+  }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/data/short?symbol=SPY`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(res.status, 403);
+  });
+});
+
+test('Academy short-sale data rejects a malformed symbol before any lookup, and reports the desk lookup returning null as an outage, not as an empty answer', async () => {
+  const calls = [];
+  await withServer({
+    academyOAuth: { verifySession: () => ({ ok: true, userId: '1' }) },
+    academyAlerts: { shortData: async (symbol) => { calls.push(symbol); return null; } }
+  }, async (base) => {
+    const bad = await fetch(`${base}/academy-activity/data/short?symbol=${encodeURIComponent('<script>')}`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(calls, []);
+    const outage = await fetch(`${base}/academy-activity/data/short?symbol=spy`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(outage.status, 503);
+    assert.deepEqual(await outage.json(), { ok: false, error: 'short_data_unavailable' });
+    assert.deepEqual(calls, ['SPY'], 'the symbol is upper-cased before the lookup');
+  });
+});
+
+test('the screener snapshot route serves the service snapshot, and is 503 when the screener is off', async () => {
+  await withServer({ academyScreener: { snapshot: () => ({ ok: true, updatedAt: 7, symbols: [{ symbol: 'AAA' }] }) } }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/screener`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, updatedAt: 7, symbols: [{ symbol: 'AAA' }] });
+  });
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/screener`)).status, 503); });
+});
+
+test('the screener option suggestion is session-gated, validates its inputs, and runs the picker over the bridge chain and the swept daily bars', async () => {
+  const calls = [];
+  await withServer({
+    academyOAuth: { verifySession: (a) => (a === 'Bearer academy-session' ? { ok: true, userId: '1' } : { ok: false, status: 401, code: 'authorization_required' }) },
+    academyDataBridge: { get: async (kind, symbol) => { calls.push(kind + ':' + symbol); return { ok: true, status: 200, data: { rows: [] } }; } },
+    academyScreener: { snapshot: () => ({ ok: true }), barsFor: (s) => (s === 'AAA' ? [{ t: 1, o: 1, h: 1, l: 1, c: 1 }] : []), optionFor: ({ symbol, side, horizon, rows, bars }) => ({ verdict: 'CALL', echo: { symbol, side, horizon, rows: rows.length, bars: bars.length } }) }
+  }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/screener/option?symbol=AAA`)).status, 401);
+    assert.equal(calls.length, 0);
+    const bad = await fetch(`${base}/academy-activity/screener/option?symbol=${encodeURIComponent('<x>')}`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(bad.status, 400);
+    const ok = await fetch(`${base}/academy-activity/screener/option?symbol=aaa&side=put&horizon=long`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.equal(body.suggestion.verdict, 'CALL');
+    assert.deepEqual(body.suggestion.echo, { symbol: 'AAA', side: 'put', horizon: 'long', rows: 0, bars: 1 });
+    assert.deepEqual(calls, ['options:AAA']);
   });
 });
 

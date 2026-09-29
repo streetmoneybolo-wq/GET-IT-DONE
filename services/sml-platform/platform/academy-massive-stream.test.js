@@ -116,3 +116,91 @@ test('public market routes are license-gated, CORS-scoped and serve cached candl
   assert.equal(blocked.status, 403);
   enabled.close();
 });
+
+/* ---------- off-exchange flagging and the rolling buy/sell windows added for the dark-pool and
+   active buy/sell panels below don't need a real (fake or otherwise) socket: onMessage/watch/peek
+   work directly, since only connect()/start() care about `enabled`. ---------- */
+function makeClock(startMs) {
+  let t = startMs;
+  return { now: () => t, advance: (ms) => { t += ms; } };
+}
+function trade(sym, t, p, s, extra = {}) { return { ev: 'T', sym, t, p, s, ...extra }; }
+function quote(sym, t, bp, ap) { return { ev: 'Q', sym, t, bp, ap, bs: 1, as: 1 }; }
+const noTimers = { setTimeout: () => {}, clearTimeout: () => {}, setInterval: () => {}, clearInterval: () => {} };
+
+test('classify: a trade at/above the ask is a lift (buy), at/below the bid is a hit (sell), otherwise neutral', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  svc.watch('SPY');
+  svc.onMessage(JSON.stringify([quote('SPY', clock.now(), 100, 100.1)]));
+  svc.onMessage(JSON.stringify([trade('SPY', clock.now(), 100.1, 10), trade('SPY', clock.now(), 100, 20), trade('SPY', clock.now(), 100.05, 30)]));
+  const d = svc.peek('SPY');
+  const dirs = d.tape.slice().reverse().map((t) => t.dir); // tape is newest-first; put back in send order
+  assert.deepEqual(dirs, ['B', 'S', 'N']);
+});
+
+test('an off-exchange trade (exchange code 4, or a TRF indicator) is flagged and counted separately from lit volume', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  svc.watch('SPY');
+  svc.onMessage(JSON.stringify([
+    trade('SPY', clock.now(), 100, 100, { x: 4 }), // off-exchange via exchange code 4
+    trade('SPY', clock.now(), 100, 50, { trfi: 1 }), // off-exchange via a TRF indicator
+    trade('SPY', clock.now(), 100, 25), // lit
+  ]));
+  const d = svc.peek('SPY');
+  assert.equal(d.stats.offVol, 150);
+  assert.equal(d.stats.offN, 2);
+  assert.equal(d.stats.vol, 175);
+  const off = d.tape.filter((t) => t.off);
+  assert.equal(off.length, 2, 'each off-exchange trade in the tape carries its own off:true flag');
+});
+
+test('summarize exposes buy/sell/neutral rolling windows (60s and 300s) alongside the session totals, and the windows narrow correctly as trades age past 60s but stay within 300s', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  svc.watch('SPY');
+  svc.onMessage(JSON.stringify([quote('SPY', clock.now(), 100, 100.1)]));
+  // A buy 4 minutes ago (inside the 300s window, outside the 60s one), then a fresh buy and a fresh sell.
+  svc.onMessage(JSON.stringify([trade('SPY', clock.now(), 100.1, 200)]));
+  clock.advance(4 * 60_000);
+  svc.onMessage(JSON.stringify([trade('SPY', clock.now(), 100.1, 40), trade('SPY', clock.now(), 100, 15)]));
+
+  let d = svc.peek('SPY');
+  assert.equal(d.stats.buy, 240, 'session total buy volume includes all three trades');
+  assert.equal(d.stats.buy60, 40, 'the 60s window only sees the two fresh trades');
+  assert.equal(d.stats.sell60, 15);
+  assert.equal(d.stats.buy300, 240, 'the 300s window still sees the trade from 4 minutes ago');
+
+  // Six more minutes pass: everything so far is now older than even the 300s window.
+  clock.advance(6 * 60_000);
+  svc.onMessage(JSON.stringify([quote('SPY', clock.now(), 100, 100.1)]));
+  d = svc.peek('SPY');
+  assert.equal(d.stats.buy60, 0);
+  assert.equal(d.stats.buy300, 0, 'trades older than 300s drop out of even the wider window');
+  assert.equal(d.stats.buy, 240, 'the session total is never affected by the rolling windows');
+});
+
+test('the rolling windows are trimmed by age, not by a print count: a liquid symbol with thousands of prints in five minutes keeps every one of them', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  svc.watch('SPY');
+  svc.onMessage(JSON.stringify([quote('SPY', clock.now(), 100, 100.1)]));
+  // 3000 lifts over 100 seconds (30 prints/s): far more than any fixed count cap, all inside 300s.
+  for (let i = 0; i < 30; i++) {
+    svc.onMessage(JSON.stringify(Array.from({ length: 100 }, () => trade('SPY', clock.now(), 100.1, 1))));
+    clock.advance(3_333);
+  }
+  const d = svc.peek('SPY');
+  assert.equal(d.stats.buy300, 3000, 'every print from the last five minutes is still in the 300s window');
+  assert.equal(d.stats.buy60, 1800, 'the 60s window holds only the last minute (18 batches of 100)');
+  assert.equal(d.stats.rate60, 1800, 'rate60 is not silently capped either');
+});
+
+test('peek returns null for a symbol nobody is watching, and for one watched but with no data yet', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  assert.equal(svc.peek('SPY'), null);
+  svc.watch('SPY');
+  assert.equal(svc.peek('SPY'), null, 'watched but still silent: no quote and no tape yet');
+});

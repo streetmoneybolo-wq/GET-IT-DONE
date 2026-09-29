@@ -2,7 +2,9 @@
 
 A neutral-brand `discord.js` v14 bot for posting assignments, returned-link tracking, engagement proof, payout records, XP, and leaderboards. Its public Discord identity must not use StockMarketLoop or Making Easy Money names, logos, descriptions, status text, or onboarding copy.
 
-Run the separated production identity with `BOT_RUNTIME_MODE=daily-social`. In this mode the bot registers only social-reward commands and does not start article monitoring, site account linking, role synchronization, membership security, branded onboarding, Telegram forwarding, or community moderation jobs.
+Run the separated production identity with `BOT_RUNTIME_MODE=daily-social`. In this mode the bot registers only social-reward commands and does not start article monitoring, site account linking, role synchronization, membership security, branded onboarding, or community moderation jobs.
+
+Discord → Telegram alert forwarding (`telegramForward` in settings) runs in **both** modes. Its duplicate check is a JSON log under `DATA_DIR`, not shared between processes, so run the forwarder from only one identity per Telegram chat — two identities watching the same channels deliver every alert twice.
 
 ## What it tracks
 

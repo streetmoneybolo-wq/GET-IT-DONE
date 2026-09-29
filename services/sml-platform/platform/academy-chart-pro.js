@@ -80,11 +80,17 @@
     if (hi === lo) { hi += 1; lo -= 1; }
     const autoLo = lo, autoHi = hi, mg = (hi - lo) * 0.06;
     lo -= mg; hi += mg;
-    if (!V.manual && V.volPane !== false) lo -= (hi - lo) * 0.13; // keep the candles clear of the volume bars along the bottom
+    // The volume bars share this canvas and take the bottom VOL_FRAC of the plot. Candles are kept
+    // clear of them by extending the price range downward; overlays (EMAs, VWAP, walls, zones)
+    // must instead clip to priceH so a price-derived line that sits below the visible candles is
+    // cut off at the pane edge rather than drawn straight through the volume bars.
+    const VOL_FRAC = 0.13;
+    if (!V.manual && V.volPane !== false) lo -= (hi - lo) * VOL_FRAC;
     if (V.manual) { lo = V.manual.lo; hi = V.manual.hi; }
     const pw = w - PAD.l - PAD.r, ph = h - PAD.t - PAD.b, step = pw / n, dt = dtOf(bars);
+    const volH = V.volPane !== false ? ph * VOL_FRAC : 0, priceH = ph - volH;
     const m = {
-      bars, N, start, end, slots: n, view, lo, hi, autoLo, autoHi, manual: !!V.manual, pad: PAD, w, h, pw, ph, step, dt, tf: tfNow(), symbol: symNow(),
+      bars, N, start, end, slots: n, view, lo, hi, autoLo, autoHi, manual: !!V.manual, pad: PAD, w, h, pw, ph, volH, priceH, priceBottom: PAD.t + priceH, step, dt, tf: tfNow(), symbol: symNow(),
       x: (i) => PAD.l + (i - start + 0.5) * step,
       y: (p) => PAD.t + (hi - p) / (hi - lo) * ph,
       idxAt: (px) => (px - PAD.l) / step + start - 0.5,

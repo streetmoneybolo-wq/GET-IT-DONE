@@ -2,6 +2,13 @@ import { mutateJson, paths } from './storage.js';
 
 const DEFAULT_CHANNEL_IDS = ['938944129348558848', '1509325055849529455'];
 const MAX_TELEGRAM_TEXT = 3900;
+// A send that failed (Telegram 429/5xx, network) or that never finished (the process died while
+// the record was 'pending') is retried the next time the same message is seen — an edit, or a
+// restart replaying it — up to MAX_ATTEMPTS, so one bad moment does not drop an alert for good
+// while a permanently rejected message cannot be retried forever.
+const MAX_ATTEMPTS = 3;
+const STALE_PENDING_MS = 10 * 60_000;
+const warnedNoTopic = new Set();
 
 function clean(text) {
   return String(text || '')
@@ -23,13 +30,22 @@ function configuredChannelIds(settings) {
 
 function telegramConfig(settings) {
   const cfg = settings.telegramForward || {};
+  const channelIds = configuredChannelIds(settings);
+  const topicByChannel = cfg.topicByChannel && typeof cfg.topicByChannel === 'object' ? cfg.topicByChannel : {};
+  // The channel list and the topic map are kept by hand as separate lists: say so once when they
+  // disagree, instead of silently routing that channel's alerts to the forum's General topic.
+  if (Object.keys(topicByChannel).length) {
+    for (const id of channelIds) {
+      if (!(id in topicByChannel) && !warnedNoTopic.has(id)) { warnedNoTopic.add(id); console.warn(`Telegram forward: channel ${id} has no topicByChannel entry; its alerts will land in the forum's General topic.`); }
+    }
+  }
   return {
     enabled: cfg.enabled !== false,
     botToken: process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN || cfg.botToken || '',
     chatId: process.env.TELEGRAM_CHAT_ID || process.env.TG_CHAT_ID || cfg.chatId || '',
-    channelIds: configuredChannelIds(settings),
+    channelIds,
     allowBotChannelIds: new Set((cfg.allowBotChannelIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
-    topicByChannel: cfg.topicByChannel && typeof cfg.topicByChannel === 'object' ? cfg.topicByChannel : {},
+    topicByChannel,
   };
 }
 
@@ -56,7 +72,9 @@ function buildTelegramText(message) {
 
 async function sendTelegramMessage({ botToken, chatId, text, messageThreadId }) {
   const payload = { chat_id: chatId, text, disable_web_page_preview: true };
-  if (Number.isSafeInteger(messageThreadId) && messageThreadId > 0) payload.message_thread_id = messageThreadId;
+  // Topic 1 is a forum's General topic, which the Bot API addresses by OMITTING message_thread_id
+  // (passing 1 is rejected with "message thread not found"); a plain message lands there anyway.
+  if (Number.isSafeInteger(messageThreadId) && messageThreadId > 1) payload.message_thread_id = messageThreadId;
   const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -84,15 +102,21 @@ export async function forwardAlertToTelegram(message, settings, eventType = 'cre
   let shouldSend = false;
   await mutateJson(paths.telegramForwardLog, { sent: {} }, (log) => {
     log.sent ||= {};
-    if (!log.sent[key]) {
+    const prior = log.sent[key];
+    const attempts = prior?.attempts || (prior ? 1 : 0);
+    const stalePending = prior?.status === 'pending' && Date.now() - (Date.parse(prior.observedAt || '') || 0) > STALE_PENDING_MS;
+    const retryable = (prior?.status === 'failed' || stalePending) && attempts < MAX_ATTEMPTS;
+    if (!prior || retryable) {
       shouldSend = true;
       log.sent[key] = {
+        ...(prior || {}),
         status: 'pending',
         eventType,
         guildId: message.guildId,
         channelId: message.channelId,
         messageId: message.id,
         observedAt: new Date().toISOString(),
+        attempts: attempts + 1,
       };
     }
   });

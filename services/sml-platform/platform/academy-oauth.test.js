@@ -36,6 +36,44 @@ test('Academy OAuth exchanges a Discord Activity code without a popup redirect',
   assert.doesNotMatch(requests[0].options.body, /redirect_uri=/);
 });
 
+test('the session carries the member own Discord display name, fetched with their own token, never the bot', async () => {
+  const requests = [];
+  const respondTo = (url) => {
+    if (String(url).includes('/oauth2/token')) return response(200, { access_token: 'member-token' });
+    if (String(url).includes('/users/@me')) return response(200, { username: 'ace123', global_name: 'Ace Trader' });
+    return response(404, {});
+  };
+  const oauth = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => ({ ok: true, userId: '420000000000000042' }) },
+    fetchImpl: async (url, options) => { requests.push({ url, options }); return respondTo(url); }
+  });
+  const result = await oauth.completeActivity({ code: 'c' });
+  assert.equal(result.ok, true);
+  assert.equal(result.displayName, 'Ace Trader', 'global_name wins over username');
+  assert.equal(oauth.verifySession('Bearer ' + result.sessionToken).displayName, 'Ace Trader', 'the signed session token itself carries the verified name');
+  const nameRequest = requests.find((r) => String(r.url).includes('/users/@me'));
+  assert.equal(nameRequest.options.headers.authorization, 'Bearer member-token', 'the member own token, never a bot token');
+});
+
+test('no global_name falls back to username; a failed name lookup never blocks sign-in', async () => {
+  const withUsernameOnly = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => ({ ok: true, userId: '420000000000000042' }) },
+    fetchImpl: async (url) => (String(url).includes('/users/@me') ? response(200, { username: 'ace123' }) : response(200, { access_token: 'member-token' }))
+  });
+  assert.equal((await withUsernameOnly.completeActivity({ code: 'c' })).displayName, 'ace123');
+
+  const nameLookupFails = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => ({ ok: true, userId: '420000000000000042' }) },
+    fetchImpl: async (url) => (String(url).includes('/users/@me') ? response(500, {}) : response(200, { access_token: 'member-token' }))
+  });
+  const failed = await nameLookupFails.completeActivity({ code: 'c' });
+  assert.equal(failed.ok, true, 'sign-in still succeeds');
+  assert.equal(failed.displayName, '');
+});
+
 test('two Discord members receive distinct Activity sessions bound to their own IDs', async () => {
   let counter = 0;
   const tokens = { 'code-a': 'token-a', 'code-b': 'token-b' };
@@ -106,8 +144,8 @@ test('member sessions keep the original claims; academy sessions carry their tie
   const academy = await oauth.completeActivity({ code: 'c' });
   assert.equal(academy.tier, 'academy');
   assert.equal(claimsOf(academy.sessionToken).t, 'academy');
-  assert.deepEqual(oauth.verifySession(`Bearer ${academy.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'academy' });
-  assert.deepEqual(oauth.verifySession(`Bearer ${member.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'member' });
+  assert.deepEqual(oauth.verifySession(`Bearer ${academy.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'academy', displayName: '' });
+  assert.deepEqual(oauth.verifySession(`Bearer ${member.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'member', displayName: '' });
 });
 
 test('a tier claim cannot be forged or promoted', async () => {
@@ -138,7 +176,7 @@ test('SML_ACADEMY_FREE_SESSIONS on: a guild member without a role gets a free se
   assert.equal(result.ok, true);
   assert.equal(result.tier, 'free');
   assert.equal(result.accessToken, 'activity-token');
-  assert.deepEqual(free.verifySession(`Bearer ${result.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'free' });
+  assert.deepEqual(free.verifySession(`Bearer ${result.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'free', displayName: '' });
   const outsider = await tierOAuth({ ok: false, status: 403, code: 'academy_role_required', inGuild: false, userId: MEMBER_ID }, { freeSessions: true }).completeActivity({ code: 'c' });
   assert.equal(outsider.ok, false);
   assert.equal('sessionToken' in outsider, false);
