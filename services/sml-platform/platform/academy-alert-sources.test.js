@@ -101,6 +101,25 @@ test('members follow their own sources; the desk only shows those, and the owner
   assert.equal([...alerts.alerts.values()].filter((a) => a.source === CH_OPEN).length, 0);
 });
 
+test('a member can follow a channel cross-server, in a server they are not in, as long as an Academy bot can read it', async () => {
+  const STRANGER = '200000000000000999'; // no /guilds/{G}/members/{STRANGER} route: never in that server
+  const discord = fakeDiscord();
+  const directory = createDiscordDirectory({ tokens: [{ label: 'academy', token: 't' }], fetchImpl: discord.fetchImpl });
+  assert.equal(await directory.canRead(STRANGER, CH_OPEN), false, 'the stranger cannot read it themselves');
+  assert.equal(await directory.channelReadableByBot(CH_OPEN), true, 'but an Academy bot can');
+
+  const alerts = createAlertsService({ channels: [] });
+  const store = createAlertSourceStore();
+  const sources = createAlertSources({ store, directory, alerts });
+
+  await assert.rejects(sources.add(STRANGER, { channel: CH_OPEN }), (e) => e.code === 'no_access', 'the normal path still requires the member\'s own access');
+  const after = await sources.addCrossServer(STRANGER, { channel: CH_OPEN });
+  assert.equal(after.sources[0].crossServer, true);
+  assert.equal(after.sources[0].access, true, 'access is judged by the bot, not the stranger\'s own membership');
+
+  await assert.rejects(sources.addCrossServer(STRANGER, { channel: CH_VOICE }), (e) => e.code === 'no_access', 'a voice channel is never followable');
+});
+
 test('one desk follows at most 12 sources', async () => {
   const alerts = createAlertsService({ channels: [] });
   const directory = { canRead: async () => true, channelInfo: async (id) => ({ id, guildId: G, name: 'c' + id.slice(-2), type: 0 }), guild: async () => ({ name: 'S' }), recent: async () => [] };

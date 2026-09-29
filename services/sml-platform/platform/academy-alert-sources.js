@@ -128,29 +128,40 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
       return canReadWith(await permsIn(info.guildId, userId, c.permission_overwrites || []));
     }).catch(() => false);
   }
+  /* can an Academy bot read this channel right now, regardless of whether the requesting member
+     is currently in that server. Backs cross-server following: a member never has to share a
+     server with the channel to add it, only an Academy bot does. */
+  async function channelReadableByBot(channelId) {
+    return cached(`rb:${channelId}`, 300_000, async () => {
+      const info = await channelInfo(channelId); if (!info || !TEXT_TYPES.has(info.type)) return false;
+      const list = await guildChannels(info.guildId);
+      const c = list.find((x) => String(x.id) === channelId); if (!c) return false;
+      return botCanRead(info.guildId, c.permission_overwrites || []);
+    }).catch(() => false);
+  }
   const recent = (channelId) => cached(`msg:${channelId}`, 60_000, async () => {
     const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) return [];
     const r = await call(t, `/channels/${channelId}/messages?limit=100`); return Array.isArray(r.data) ? r.data : [];
   });
-  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds };
+  return { guildsFor, readableChannels, canRead, channelReadableByBot, channelInfo, guild, recent, botGuilds };
 }
 
 /* Where each member's sources are kept: Postgres (academy_alert_sources) when there is a database, memory otherwise (local runs, tests). */
 function createAlertSourceStore({ pool = null } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const mem = new Map(); // userId -> Map(channelId:authorId -> row)
-  const rowOut = (r) => ({ guildId: String(r.guild_id), channelId: String(r.channel_id), authorId: String(r.author_id || ''), style: cleanStyle(r.style), label: String(r.label || ''), guildName: String(r.guild_name || ''), authorName: String(r.author_name || '') });
+  const rowOut = (r) => ({ guildId: String(r.guild_id), channelId: String(r.channel_id), authorId: String(r.author_id || ''), style: cleanStyle(r.style), label: String(r.label || ''), guildName: String(r.guild_name || ''), authorName: String(r.author_name || ''), crossServer: !!r.cross_server });
   async function list(userId) {
     if (db) return (await db.query('SELECT * FROM academy_alert_sources WHERE discord_id=$1 ORDER BY created_at', [userId])).rows.map(rowOut);
     return [...(mem.get(userId) || new Map()).values()].map(rowOut);
   }
   async function add(userId, src) {
-    const row = { discord_id: userId, guild_id: src.guildId, channel_id: src.channelId, author_id: src.authorId || '', style: cleanStyle(src.style), label: cleanLabel(src.label), guild_name: cleanLabel(src.guildName), author_name: cleanLabel(src.authorName) };
+    const row = { discord_id: userId, guild_id: src.guildId, channel_id: src.channelId, author_id: src.authorId || '', style: cleanStyle(src.style), label: cleanLabel(src.label), guild_name: cleanLabel(src.guildName), author_name: cleanLabel(src.authorName), cross_server: !!src.crossServer };
     if (db) {
-      await db.query(`INSERT INTO academy_alert_sources (discord_id, guild_id, channel_id, author_id, style, label, guild_name, author_name)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (discord_id, channel_id, author_id)
-        DO UPDATE SET style=EXCLUDED.style, label=EXCLUDED.label, guild_name=EXCLUDED.guild_name, author_name=EXCLUDED.author_name`,
-      [row.discord_id, row.guild_id, row.channel_id, row.author_id, row.style, row.label, row.guild_name, row.author_name]);
+      await db.query(`INSERT INTO academy_alert_sources (discord_id, guild_id, channel_id, author_id, style, label, guild_name, author_name, cross_server)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (discord_id, channel_id, author_id)
+        DO UPDATE SET style=EXCLUDED.style, label=EXCLUDED.label, guild_name=EXCLUDED.guild_name, author_name=EXCLUDED.author_name, cross_server=EXCLUDED.cross_server`,
+      [row.discord_id, row.guild_id, row.channel_id, row.author_id, row.style, row.label, row.guild_name, row.author_name, row.cross_server]);
       return;
     }
     if (!mem.has(userId)) mem.set(userId, new Map());
@@ -196,12 +207,14 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
     const out = [];
     for (const s of mine) {
       const preset = presetOf(s.channelId);
-      const ok = preset ? true : await directory.canRead(userId, s.channelId);
+      // a cross-server row was never gated on the member's own Discord access, so it is re-checked
+      // against whether an Academy bot can still read the channel, never against the member's own membership.
+      const ok = preset ? true : s.crossServer ? await directory.channelReadableByBot(s.channelId) : await directory.canRead(userId, s.channelId);
       out.push({ ...s, key: s.channelId, view: preset ? premiumView : 'live', premium: !!preset, access: ok });
     }
     return out;
   }
-  const publicSource = (s) => ({ guildId: s.guildId, guildName: s.guildName, channelId: s.channelId, label: s.label, authorId: s.authorId, authorName: s.authorName, style: s.style, premium: !!s.premium, access: s.access !== false });
+  const publicSource = (s) => ({ guildId: s.guildId, guildName: s.guildName, channelId: s.channelId, label: s.label, authorId: s.authorId, authorName: s.authorName, style: s.style, premium: !!s.premium, access: s.access !== false, crossServer: !!s.crossServer });
 
   async function add(userId, input) {
     const channelId = cleanId(input && input.channel);
@@ -224,6 +237,30 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
       authorName = seen ? cleanLabel(seen.author.global_name || seen.author.username) : '';
     }
     await store.add(userId, { guildId: guildId || (preset ? 'preset' : ''), channelId, authorId, style: preset ? preset.style : input && input.style, label, guildName, authorName });
+    await sync().catch(() => {});
+    return list(userId);
+  }
+  /* Follow a channel in a server the member is not currently in, as long as an Academy bot is in
+     that server and can read the channel — the whole point being that a member never has to join
+     a server to get its alerts once someone has surfaced the bot's access to it. Presets (the
+     owner's own streams) are followed the normal way; they are not "another server's" channel. */
+  async function addCrossServer(userId, input) {
+    const channelId = cleanId(input && input.channel);
+    const authorId = input && input.author ? cleanId(input.author) : '';
+    if (!channelId || (input && input.author && !authorId)) throw new TypeError('invalid_source');
+    if (presetOf(channelId)) throw new TypeError('invalid_source');
+    const mine = await store.list(userId);
+    if (mine.length >= MAX_SOURCES && !mine.some((s) => s.channelId === channelId && s.authorId === authorId)) throw new RangeError('too_many_sources');
+    if (!(await directory.channelReadableByBot(channelId))) { const e = new Error('no_access'); e.code = 'no_access'; throw e; }
+    const info = await directory.channelInfo(channelId);
+    const g = info && await directory.guild(info.guildId);
+    const guildId = info ? info.guildId : '', label = info ? '#' + info.name : '', guildName = g ? g.name : '';
+    let authorName = cleanLabel(input && input.authorName);
+    if (authorId && !authorName) {
+      const seen = (await directory.recent(channelId).catch(() => [])).find((m) => m.author && String(m.author.id) === authorId);
+      authorName = seen ? cleanLabel(seen.author.global_name || seen.author.username) : '';
+    }
+    await store.add(userId, { guildId, channelId, authorId, style: input && input.style, label, guildName, authorName, crossServer: true });
     await sync().catch(() => {});
     return list(userId);
   }
@@ -256,7 +293,7 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
       posters: [...posters.values()].sort((x, y) => y.alerts - x.alerts || y.posts - x.posts).slice(0, 15), alerts: alertsFound };
   }
 
-  return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, MAX_SOURCES };
+  return { sync, start, stop, viewFor, add, addCrossServer, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, MAX_SOURCES };
 }
 
 module.exports = { createAlertSources, createAlertSourceStore, createDiscordDirectory, channelPermissions, canReadWith, MAX_SOURCES };

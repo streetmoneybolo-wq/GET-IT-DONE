@@ -2001,8 +2001,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Each member's own alert sources: pick a server, then a channel (or chosen posters in it), then follow. Members only; a member only ever sees
-       servers they share with an Academy bot and channels they can already read in Discord. */
-    if (path.startsWith('/academy-activity/alerts/') && ['/academy-activity/alerts/sources', '/academy-activity/alerts/guilds', '/academy-activity/alerts/channels', '/academy-activity/alerts/channel'].includes(path)) {
+       servers they share with an Academy bot and channels they can already read in Discord — except through
+       /academy-activity/alerts/sources/cross-server, which follows a channel in a server an Academy bot is in without
+       requiring the member to be in that server too, so members who were never in it can still get its alerts. */
+    if (path.startsWith('/academy-activity/alerts/') && ['/academy-activity/alerts/sources', '/academy-activity/alerts/sources/cross-server', '/academy-activity/alerts/guilds', '/academy-activity/alerts/channels', '/academy-activity/alerts/channel'].includes(path)) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
@@ -2028,6 +2030,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
           let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
           const result = request.method === 'POST' ? await academyAlertSources.add(session.userId, input) : await academyAlertSources.remove(session.userId, input);
+          sendJson(response, 200, { ok: true, ...result }); return;
+        }
+        if (request.method === 'POST' && path === '/academy-activity/alerts/sources/cross-server') {
+          if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+          const body = await readRequestBody(request, 2048);
+          if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+          let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          const result = await academyAlertSources.addCrossServer(session.userId, input);
           sendJson(response, 200, { ok: true, ...result }); return;
         }
         sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
