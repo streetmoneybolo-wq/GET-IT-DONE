@@ -11,9 +11,10 @@
    - the floating "Alerts" pill sat over the headings of whatever was scrolled
      beneath it — it now lives in the header next to LOOP-KICK;
    - the sections below the chart stacked every stat one per row (4+ screens of
-     scrolling) — stat boxes go three-across, the options glossary folds into a
-     details block, and the scanner shows the columns that fit instead of a
-     940px-wide table that needs sideways scrolling. */
+     scrolling) — stat boxes go three-across, and the scanner shows the columns
+     that fit instead of a 940px-wide table that needs sideways scrolling.
+     (The options glossary is a native <details>, collapsed by default at
+     every width — see the options-glossary markup/CSS in server.js.) */
 (() => {
   if (window.__smlAcademyMobileCompact) return;
   window.__smlAcademyMobileCompact = 1;
@@ -84,8 +85,6 @@
     + 'body .academy-below .options-table th:nth-child(-n+7),body .academy-below .options-table td:nth-child(-n+7),body .academy-below .options-table th:nth-child(n+15),body .academy-below .options-table td:nth-child(n+15){display:none}'
     + 'body .academy-below .options-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}body .academy-below .options-summary span{font-size:.58rem}body .academy-below .options-summary b{font-size:.72rem}'
     + 'body .academy-below .options-contract{grid-template-columns:1fr}body .academy-below .options-contract article{padding:8px}body .academy-below .options-contract h3{font-size:.66rem}body .academy-below .options-contract p{font-size:.62rem}'
-    + 'body .academy-mobile-glossary{margin-top:10px}body .academy-mobile-glossary summary{cursor:pointer;color:#ffca55;font:800 .66rem system-ui;list-style:none}body .academy-mobile-glossary summary::-webkit-details-marker{display:none}'
-    + 'body .academy-mobile-glossary summary:before{content:"▸ ";color:#ffca55}body .academy-mobile-glossary[open] summary:before{content:"▾ "}'
     + 'body .academy-below .opt-calc{padding:10px}body .academy-below .opt-calc h2{font-size:.72rem;margin-bottom:6px}body .academy-below .opt-calc .oc-grid{gap:6px}body .academy-below .opt-calc input{padding:6px 7px;font-size:.74rem}'
     + 'body .academy-below .opt-calc .oc-out{margin-top:8px;padding:8px}body .academy-below .opt-calc .oc-big b{font-size:1.25rem}body .academy-below .opt-calc .oc-note{font-size:.56rem}'
     + 'body .academy-below .academy-mobile-stats{padding:8px;margin:0 0 10px}body .academy-below .academy-mobile-stats .academy-quote-stats-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:0 6px}body .academy-below .academy-quote-stat{padding:2px 1px}'
@@ -177,23 +176,6 @@
       } else if (!phone && fab.parentElement === bar) {
         document.body.appendChild(fab);
       }
-    }
-    /* the options glossary folds shut on a phone; it opens again on a wide screen */
-    const glossary = document.querySelector('.options-glossary');
-    if (glossary) {
-      let details = glossary.closest('details.academy-mobile-glossary');
-      if (phone && !details) {
-        details = document.createElement('details');
-        details.className = 'academy-mobile-glossary';
-        const summary = document.createElement('summary');
-        summary.textContent = 'How to read this lab';
-        glossary.parentNode.insertBefore(details, glossary);
-        details.appendChild(summary);
-        details.appendChild(glossary);
-        const lead = glossary.querySelector('strong');
-        if (lead && /how to read/i.test(lead.textContent)) lead.remove();
-      }
-      if (details && !phone) details.open = true;
     }
     trimScanner(phone);
   }
