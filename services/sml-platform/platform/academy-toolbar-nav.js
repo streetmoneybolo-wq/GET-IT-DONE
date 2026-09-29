@@ -20,7 +20,7 @@
 
   const style = document.createElement('style');
   style.textContent = '#tools-nav-toggle{margin-left:6px;padding:5px 9px;border:1px solid #3a4a56;border-radius:7px;background:#0d1a24;color:#cfe0e8;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}#tools-nav-toggle.on{background:#1c3444;border-color:#6fb8e0;color:#fff}'
-    + '#tools-nav-menu{position:absolute;z-index:20;margin-top:6px;padding:8px;border:1px solid #2b5362;border-radius:9px;background:rgba(8,16,24,.98);box-shadow:0 12px 30px rgba(0,0,0,.5);display:none;min-width:200px}'
+    + '#tools-nav-menu{position:absolute;z-index:2147483500;margin-top:6px;padding:8px;border:1px solid #2b5362;border-radius:9px;background:rgba(8,16,24,.98);box-shadow:0 12px 30px rgba(0,0,0,.5);display:none;min-width:200px}'
     + '#tools-nav-menu.open{display:block}#tools-nav-menu .tool-group{margin:0 0 8px}#tools-nav-menu .tool-group:last-child{margin-bottom:0}'
     + '#tools-nav-menu .tool-group b{display:block;margin:0 0 4px;font:800 .56rem ui-monospace,monospace;color:#6f8794;letter-spacing:.08em}'
     + '#tools-nav-menu .tool-group .row{display:flex;flex-wrap:wrap;gap:4px}'
@@ -57,6 +57,8 @@
       if (next) place();
     }
     trigger.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+    // choosing a tool closes the menu, so the panel it opens never has to sit on top of (or under) an open menu
+    menu.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('button')) setTimeout(() => toggleMenu(false), 0); });
     document.addEventListener('click', (e) => { if (menu.classList.contains('open') && !menu.contains(e.target) && e.target !== trigger) toggleMenu(false); });
     window.addEventListener('resize', () => { if (menu.classList.contains('open')) place(); });
 

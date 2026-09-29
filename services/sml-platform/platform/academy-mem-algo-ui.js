@@ -315,8 +315,15 @@
   // ---- events ----
   toggle.addEventListener('click', () => { if (S.on && S.open) { S.on = false; S.open = false; } else { S.on = true; S.open = true; } save(); paint(); draw(); if (S.on) { refresh(true); pollOF(); } });
   panel.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-mem],[data-mem-mode]'); if (!t) return;
-    if (t.dataset.memTf) { const sy = symbol(); if (window.smlAcademyNavigateMarket) window.smlAcademyNavigateMarket(sy, t.dataset.memTf); return; }
+    // the "Switch chart to <interval>" button carries data-mem-tf only, so the selector must name it or the click matches nothing
+    const t = e.target.closest('[data-mem],[data-mem-mode],[data-mem-tf]'); if (!t) return;
+    if (t.dataset.memTf) {
+      const sy = symbol(), target = t.dataset.memTf;
+      t.disabled = true; t.textContent = 'Switching to ' + target + '…';
+      const done = () => { S.sigKey = ''; paint(); draw(); refresh(true); };
+      if (window.smlAcademyNavigateMarket) Promise.resolve(window.smlAcademyNavigateMarket(sy, target)).then(done, done); else done();
+      return;
+    }
     if (t.dataset.mem === 'close') { S.open = false; paint(); return; }
     if (t.dataset.mem === 'reset') { S.params[S.mode] = {}; save(); recompute(); paint(); draw(); return; }
     if (t.dataset.memMode) { S.mode = t.dataset.memMode; save(); recompute(); loadCtx(); paint(); draw(); }
