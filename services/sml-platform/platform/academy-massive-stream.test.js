@@ -181,6 +181,22 @@ test('summarize exposes buy/sell/neutral rolling windows (60s and 300s) alongsid
   assert.equal(d.stats.buy, 240, 'the session total is never affected by the rolling windows');
 });
 
+test('the rolling windows are trimmed by age, not by a print count: a liquid symbol with thousands of prints in five minutes keeps every one of them', () => {
+  const clock = makeClock(1_700_000_000_000);
+  const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });
+  svc.watch('SPY');
+  svc.onMessage(JSON.stringify([quote('SPY', clock.now(), 100, 100.1)]));
+  // 3000 lifts over 100 seconds (30 prints/s): far more than any fixed count cap, all inside 300s.
+  for (let i = 0; i < 30; i++) {
+    svc.onMessage(JSON.stringify(Array.from({ length: 100 }, () => trade('SPY', clock.now(), 100.1, 1))));
+    clock.advance(3_333);
+  }
+  const d = svc.peek('SPY');
+  assert.equal(d.stats.buy300, 3000, 'every print from the last five minutes is still in the 300s window');
+  assert.equal(d.stats.buy60, 1800, 'the 60s window holds only the last minute (18 batches of 100)');
+  assert.equal(d.stats.rate60, 1800, 'rate60 is not silently capped either');
+});
+
 test('peek returns null for a symbol nobody is watching, and for one watched but with no data yet', () => {
   const clock = makeClock(1_700_000_000_000);
   const svc = createMassiveStream({ apiKey: '', now: clock.now, timers: noTimers });

@@ -9,6 +9,7 @@
   if (window.__smlShortSale) return;
   window.__smlShortSale = true;
   const num = (v, d = 1) => (Number.isFinite(v) ? Number(v).toFixed(d) : '–');
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const whole = (v) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '–');
   const sym = () => String(new URLSearchParams(location.search).get('symbol') || 'SPY').toUpperCase();
   const clean = (v) => String(v || 'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g, '').slice(0, 10) || 'SPY';
@@ -31,7 +32,8 @@
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'shortsale-toggle'; btn.className = 'shortsale-toggle'; btn.textContent = 'SHORT SALE'; btn.title = 'Daily short-sale volume and short-interest analysis'; toolbar.appendChild(btn);
 
-  window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); if (S.session && S.on) load(); });
+  // The session arrives well after live polling starts; forget any earlier attempt so the first authenticated lookup actually runs and repaints.
+  window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); S.symbol = ''; S.data = null; S.error = ''; if (S.on) { void load(); paint(); } });
 
   function pickDays(volumeRows) {
     return volumeRows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 10)
@@ -46,7 +48,7 @@
   }
 
   async function load() {
-    if (S.loading) return;
+    if (S.loading || !S.session) return; // without a session the route can only answer 401: nothing to remember yet
     const symbol = clean(sym());
     // One attempt per symbol: a failed or empty lookup is remembered as such, otherwise every
     // repaint would re-fetch (paint -> load -> paint) and hammer the gated route in a loop.
@@ -79,7 +81,7 @@
     if (volumeRows.length) {
       const days = pickDays(volumeRows);
       const maxRatio = Math.max(...days.map((x) => x.ratio || 0), 1);
-      parts.push('<h4>DAILY SHORT VOLUME</h4>' + days.map((x) => '<div class="day"><span>' + x.date + '</span><b style="width:' + Math.max(4, (x.ratio || 0) / maxRatio * 100).toFixed(0) + '%"></b><span class="' + (x.ratio >= 45 ? 'warn' : 'lo') + '">' + num(x.ratio, 0) + '%</span></div>').join(''));
+      parts.push('<h4>DAILY SHORT VOLUME</h4>' + days.map((x) => '<div class="day"><span>' + esc(x.date) + '</span><b style="width:' + Math.max(4, (x.ratio || 0) / maxRatio * 100).toFixed(0) + '%"></b><span class="' + (x.ratio >= 45 ? 'warn' : 'lo') + '">' + num(x.ratio, 0) + '%</span></div>').join(''));
       const note = trendNote(days); if (note) parts.push('<small>' + note + '</small>');
     }
     const summary = d.summary, interest = Array.isArray(d.interest) ? d.interest : [];

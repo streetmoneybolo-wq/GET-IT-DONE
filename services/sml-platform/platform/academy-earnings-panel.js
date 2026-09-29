@@ -12,6 +12,7 @@
   const num = (v) => { if (v == null || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
   const clean = (v) => String(v || 'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g, '').slice(0, 10) || 'SPY';
   const sym = () => clean(new URLSearchParams(location.search).get('symbol'));
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pick = (object, keys) => { for (const key of keys) { const value = object && object[key]; if (value !== undefined && value !== null && value !== '') return value; } return null; };
   const money = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : '$' + Number(v).toFixed(2));
   const pct = (v) => (v == null || !Number.isFinite(Number(v)) ? '—' : (Number(v) >= 0 ? '+' : '') + Number(v).toFixed(1) + '%');
@@ -33,7 +34,8 @@
   document.head.appendChild(style);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'earnings-toggle'; btn.className = 'earnings-toggle'; btn.textContent = 'EARNINGS'; btn.title = 'Swap the options chain for the earnings calendar and history'; toolbar.appendChild(btn);
-  window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); if (S.on) void load(); });
+  // The session arrives well after live polling starts; forget any earlier attempt so the first authenticated lookup actually runs and repaints.
+  window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); S.symbol = ''; S.rows = null; S.error = ''; if (S.on) { void load(); paint(); } });
 
   function collectRows(value) {
     const found = [];
@@ -63,7 +65,7 @@
   }
 
   async function load() {
-    if (S.loading) return;
+    if (S.loading || !S.session) return; // without a session the route can only answer 401: nothing to remember yet
     const symbol = sym();
     // One attempt per symbol: rows stays an (empty) array after a failure so paint() shows the
     // error instead of treating "nothing loaded" as a reason to fetch again on every repaint.
@@ -96,7 +98,7 @@
     if (!S.on) {
       const el = document.getElementById('earnings-panel'); if (el) el.style.display = 'none';
       if (dock) dock.style.display = '';
-      if (title && S.prevTitle) title.textContent = S.prevTitle;
+      if (title && S.prevTitle) { title.textContent = S.prevTitle; S.prevTitle = ''; }
       return;
     }
     if (dock) dock.style.display = 'none';
@@ -110,7 +112,7 @@
     const today = new Date().toISOString().slice(0, 10);
     const nextIdx = S.rows.findIndex((r) => r.date >= today);
     el.innerHTML = '<h2>EARNINGS · ' + sym() + '</h2><table><thead><tr><th>Date</th><th>When</th><th>EPS est.</th><th>EPS actual</th><th>Surprise</th><th>Revenue est.</th><th>Revenue actual</th></tr></thead><tbody>'
-      + S.rows.map((r, i) => '<tr' + (i === nextIdx ? ' class="next"' : '') + '><td>' + r.date + '</td><td>' + r.time + '</td><td>' + money(r.epsEstimate) + '</td><td>' + money(r.epsActual) + '</td>'
+      + S.rows.map((r, i) => '<tr' + (i === nextIdx ? ' class="next"' : '') + '><td>' + esc(r.date) + '</td><td>' + r.time + '</td><td>' + money(r.epsEstimate) + '</td><td>' + money(r.epsActual) + '</td>'
         + '<td class="' + (r.surprisePct > 0 ? 'pos' : r.surprisePct < 0 ? 'neg' : '') + '">' + pct(r.surprisePct) + '</td><td>' + (r.revEstimate == null ? '—' : '$' + (r.revEstimate / 1e9).toFixed(2) + 'B') + '</td><td>' + (r.revActual == null ? '—' : '$' + (r.revActual / 1e9).toFixed(2) + 'B') + '</td></tr>').join('')
       + '</tbody></table><p class="note">' + (nextIdx >= 0 ? 'Highlighted row is the next scheduled report on or after today.' : 'No upcoming report date was returned; rows below are historical.') + ' Estimates and actuals come from the verified Academy data provider. A beat or miss on EPS is not, by itself, a signal to trade the underlying. Educational only.</p>';
   }

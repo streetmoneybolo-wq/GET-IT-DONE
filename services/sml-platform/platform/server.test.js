@@ -576,6 +576,22 @@ test('Academy short-sale data returns 503 when the alerts desk is not configured
   });
 });
 
+test('Academy short-sale data rejects a malformed symbol before any lookup, and reports the desk lookup returning null as an outage, not as an empty answer', async () => {
+  const calls = [];
+  await withServer({
+    academyOAuth: { verifySession: () => ({ ok: true, userId: '1' }) },
+    academyAlerts: { shortData: async (symbol) => { calls.push(symbol); return null; } }
+  }, async (base) => {
+    const bad = await fetch(`${base}/academy-activity/data/short?symbol=${encodeURIComponent('<script>')}`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(calls, []);
+    const outage = await fetch(`${base}/academy-activity/data/short?symbol=spy`, { headers: { authorization: 'Bearer academy-session' } });
+    assert.equal(outage.status, 503);
+    assert.deepEqual(await outage.json(), { ok: false, error: 'short_data_unavailable' });
+    assert.deepEqual(calls, ['SPY'], 'the symbol is upper-cased before the lookup');
+  });
+});
+
 function signedHeaders(secret, body, timestamp = '1700000000') {
   return {
     'content-type': 'application/json',

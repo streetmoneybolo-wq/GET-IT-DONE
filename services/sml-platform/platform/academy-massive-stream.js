@@ -41,15 +41,18 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     if (st.pv.size > 400) { const small = [...st.pv.entries()].sort((a, b) => a[1] - b[1])[0]; st.pv.delete(small[0]); }
     const notional = trade.size * trade.price;
     if (trade.size >= 500 && notional >= 50_000) { st.big.push({ t: trade.t, price: trade.price, size: trade.size, dir: trade.dir, off: Boolean(off) }); st.big.sort((a, b) => b.size * b.price - a.size * a.price); if (st.big.length > 5) st.big.length = 5; }
-    st.times.push(trade.t); if (st.times.length > 600) st.times.shift();
+    // Both rolling lists are trimmed by AGE, not by a fixed count: a liquid symbol prints 10-50
+    // times a second, and a count cap would quietly shrink "the last five minutes" to less than one.
+    // The count caps are only a memory guard against a pathological burst.
+    st.times.push(trade.t); while (st.times.length && (trade.t - st.times[0] > 60_000 || st.times.length > 20_000)) st.times.shift();
     // A short rolling window of direction+size, kept separately from the times-only list above, so
     // the "active buy/sell" gauge can show recent pressure (the last minute or five) rather than the
     // whole, ever-growing session total, which barely moves once a stock has traded for hours.
-    st.recent.push({ t: trade.t, dir: trade.dir, size: trade.size }); if (st.recent.length > 1200) st.recent.shift();
+    st.recent.push({ t: trade.t, dir: trade.dir, size: trade.size }); while (st.recent.length && (trade.t - st.recent[0].t > 300_000 || st.recent.length > 60_000)) st.recent.shift();
   }
   /* Sums recent volume by direction within windowMs of `t`. Non-destructive (summarize() is called
      with several different window sizes, so trimming to one window here would starve the others);
-     `record()` already bounds `recent`'s length, so this filter never scans more than 1200 trades. */
+     `record()` already trims `recent` to the widest window by age, so this scan stays bounded. */
   function recentWindow(st, t, windowMs) {
     let buy = 0, sell = 0, neu = 0;
     for (const r of st.recent) { if (t - r.t > windowMs) continue; if (r.dir === 'B') buy += r.size; else if (r.dir === 'S') sell += r.size; else neu += r.size; }

@@ -2410,9 +2410,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
       const dataParams = new URL(request.url || '/', 'http://localhost').searchParams;
-      const symbol = dataParams.get('symbol');
+      const symbol = String(dataParams.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
       try {
+        // The alerts desk's lookup swallows provider failures and returns null, so null is an outage (or an unreachable feed), not an empty answer.
         const data = await academyAlerts.shortData(symbol);
+        if (data == null) { sendJson(response, 503, { ok: false, error: 'short_data_unavailable' }); return; }
         sendJson(response, 200, { ok: true, data });
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_short_data_request_failed', { error });
