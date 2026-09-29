@@ -96,7 +96,7 @@ for(let k=Math.ceil(lo/ts);k*ts<=hi+ts*1e-9;k++){const v=k*ts,yy=Math.round(y(v)
 ctx.textBaseline='alphabetic';
 if(M&&M.dt<72e6){ctx.save();ctx.setLineDash([2,4]);ctx.strokeStyle='rgba(140,170,190,.24)';ctx.beginPath();for(let i=1;i<view.length;i++){if(dayKey(+view[i].t)!==dayKey(+view[i-1].t)){const xx=Math.round(pad.l+i*step)+0.5;ctx.moveTo(xx,pad.t);ctx.lineTo(xx,h-pad.b)}}ctx.stroke();ctx.restore()}
 return{pad,y,step,lo,hi,ph,pw}}
-function drawVolume(ctx,view,g){const P=window.smlChartPro;if(!P||!P.view||P.view.volPane===false)return;const vols=view.map(b=>+b.v||0),mx=Math.max(1,...vols);if(mx<=1)return;const d=dprNow(),base=g.pad.t+g.ph,maxH=g.ph*0.13;let sum=0;
+function drawVolume(ctx,view,g){const P=window.smlChartPro;if(!P||!P.view||P.view.volPane===false)return;const vols=view.map(b=>+b.v||0),mx=Math.max(1,...vols);if(mx<=1)return;const d=dprNow(),base=g.pad.t+g.ph,M=window.smlChartModel?.(),maxH=M&&M.volH>0?M.volH:g.ph*0.13;let sum=0;
 view.forEach((b,i)=>{sum+=vols[i];if(i>=20)sum-=vols[i-20];const avg=sum/Math.min(i+1,20),spike=i>=5&&vols[i]>=avg*2.5,x=g.pad.l+(i+.5)*g.step,hh=Math.max(1,Math.round(vols[i]/mx*maxH)),up=+b.c>=+b.o,geo=bodyGeom(x,g.step,d);ctx.fillStyle=up?(spike?'rgba(0,208,132,.72)':'rgba(0,208,132,.30)'):(spike?'rgba(255,84,112,.72)':'rgba(255,84,112,.30)');ctx.fillRect(geo.left,base-hh,geo.width,hh)});
 ctx.fillStyle='#6f8794';ctx.font='700 9px ui-monospace,monospace';ctx.textAlign='left';ctx.fillText('VOL '+Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(vols[vols.length-1]),g.pad.l+4,base-maxH-3)}
 function drawOhlc(ctx,view,g,body=true,ticks=true){const d=dprNow();ctx.lineCap='butt';ctx.lineJoin='miter';

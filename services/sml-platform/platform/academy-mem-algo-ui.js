@@ -273,11 +273,15 @@
     const d = S.data, ind = d.ind, ai = (j) => S.idx.get(Number(view[j].t));
     lctx.save(); lctx.beginPath(); lctx.rect(pad.l, pad.t, pw, ph); lctx.clip();
     if (S.overlays.ema) {
+      // Price-derived lines stay inside the price pane: a long EMA sitting far under a rally must
+      // stop at the pane edge, not run on through the volume bars below it.
+      lctx.save(); lctx.beginPath(); lctx.rect(pad.l, pad.t, pw, M.priceH || ph); lctx.clip();
       [['fast', '#4dd8ff', 1.4], ['slow', '#ffa94d', 1.4], ['trend', 'rgba(170,185,195,.75)', 2]].forEach(([k, color, lw]) => {
         lctx.beginPath(); let started = false;
         for (let j = 0; j < view.length; j++) { const a = ai(j); const v = a == null ? NaN : ind[k][a]; if (!Number.isFinite(v)) { started = false; continue; } if (started) lctx.lineTo(x(j), y(v)); else { lctx.moveTo(x(j), y(v)); started = true; } }
         lctx.strokeStyle = color; lctx.lineWidth = lw; lctx.stroke();
       });
+      lctx.restore();
     }
     if (S.overlays.signals) {
       lctx.font = '800 9px ui-monospace,monospace'; lctx.textAlign = 'center';

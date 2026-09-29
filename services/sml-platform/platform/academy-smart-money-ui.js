@@ -79,7 +79,7 @@
     const a = analysis(M); if (!a) return;
     const pad = M.pad, right = pad.l + M.pw, y = (p) => M.y(p), x = (i) => M.x(i), half = M.step / 2, lo = M.lo, hi = M.hi;
     const inY = (p) => p >= lo && p <= hi, visI = (i) => i >= M.start - 1 && i <= M.end + 1;
-    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, M.pw, M.ph); ctx.clip();
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, M.pw, M.priceH || M.ph); ctx.clip(); // price pane only: never through the volume bars
 
     if (S.o.pd && a.range) {
       const x0 = Math.max(pad.l, x(a.range.fromIdx) - half), yh = y(a.range.hi), ye = y(a.range.eq), yl = y(a.range.lo);

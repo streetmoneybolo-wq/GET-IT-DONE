@@ -96,7 +96,7 @@
     if (!w || !h || !(S.walls || S.cost)) return;
     const M = window.smlChartModel && window.smlChartModel(); if (!M) return;
     const pad = M.pad, pw = M.pw, ph = M.ph, lo = M.lo, hi = M.hi, y = (v) => M.y(v);
-    lctx.save(); lctx.beginPath(); lctx.rect(pad.l, pad.t, pw, ph); lctx.clip();
+    lctx.save(); lctx.beginPath(); lctx.rect(pad.l, pad.t, pw, M.priceH || ph); lctx.clip(); // price pane only: never through the volume bars
 
     // position cost distribution: horizontal bars growing from the left edge, green where holders are in profit, red where they are under water
     if (S.cost && S.cx && S.cxSym === sym()) {
@@ -139,6 +139,9 @@
             ...layout.mergeByPixel(ws.filter((w) => w.kind === 'ask'), (w) => y(w.price), 14, combine)].sort((a, b) => a.yy - b.yy)
         : ws.map((w) => ({ kind: w.kind, price: w.price, size: w.size, count: 1, yy: y(w.price) }));
       const placed = layout ? layout.stackLabels(groups, (g) => g.yy, 20) : groups.map((g) => ({ item: g, naturalPos: g.yy, pos: g.yy }));
+      // Stacking only ever pushes labels down; a label pushed past the price pane would be clipped, so hold it at the pane edge.
+      const floor = (M.priceBottom || pad.t + ph) - 10;
+      for (const p of placed) if (p.pos > floor) p.pos = floor;
       placed.forEach(({ item: g, naturalPos, pos }) => {
         const col = g.kind === 'bid' ? '0,208,132' : '255,84,112', hex = g.kind === 'bid' ? '#00d084' : '#ff5470';
         lctx.fillStyle = 'rgba(' + col + ',.18)'; lctx.fillRect(pad.l, g.yy - 6, pw, 12);

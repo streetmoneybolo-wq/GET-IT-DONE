@@ -59,7 +59,7 @@
     const L = window.smlLive; if (!L || L.symbol !== sym() || !Array.isArray(L.tape) || !L.tape.length) return;
     const M = window.smlChartModel && window.smlChartModel(); if (!M) return;
     const pad = M.pad, y = (v) => M.y(v), x = (i) => M.x(i), lo = M.lo, hi = M.hi;
-    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, M.pw, M.ph); ctx.clip();
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, M.pw, M.priceH || M.ph); ctx.clip(); // price pane only: never through the volume bars
     const off = L.tape.filter((t) => t.off && t.price >= lo && t.price <= hi);
     for (const t of off) {
       const i = barIndexForTime(M.bars, t.t); if (i < 0 || i < M.start - 1 || i > M.end + 1) continue;
