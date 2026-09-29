@@ -230,7 +230,8 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /window\.SmlOptionsChain\.normalize\(data\)/, 'the chain renderer uses the shared normalizer');
     assert.match(html, /root\.SmlOptionsChain = factory\(\)/, 'the shared normalizer module is inlined');
     assert.match(html, /&expiration='\+encodeURIComponent\(value\)/, 'changing the expiration fetches that expiration');
-    assert.match(html, /Select any strike for derived economics and risk interpretation/);
+    assert.doesNotMatch(html, /Select any strike for derived economics and risk interpretation/);
+    assert.match(html, /<details class="options-glossary"><summary>How to read this lab<\/summary>/);
     assert.match(html, /height:calc\(100dvh - 86px\)/);
     assert.match(html, /canvas\.addEventListener\('wheel',\(\)=>\{\},\{passive:true\}\)/);
     assert.match(html, /LEVEL 2 DEPTH/);
