@@ -37,6 +37,8 @@ const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSym
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
+const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
+const { WebSocketServer } = require('ws');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
@@ -685,6 +687,11 @@ const ACADEMY_MOBILE_COMPACT = (() => {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-mobile-compact.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
+const ACADEMY_CHAT_PANEL = (() => {
+  try {
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-chat-panel.js'), 'utf8') + '</script>';
+  } catch (_) { return ''; }
+})();
 
 function loopKickActivityHtml(options = {}) {
   const appId = JSON.stringify(String(options.appId || ''));
@@ -766,7 +773,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + '</body></html>');
   return gate ? html.replace('</head>', () => academyGateClientScript(gate) + '</head>') : html;
 }
 
@@ -846,7 +853,7 @@ async function academySignIn(){
   let payload={};try{payload=await response.json()}catch(_){}
   if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken){const code=payload.error||(response.status>=500?'temporary_unavailable':'authorization_failed');throw Object.assign(new Error(code),{academyCode:code})}
   await academySdk.commands.authenticate({access_token:payload.access_token});
-  return payload.sessionToken;
+  return {sessionToken:payload.sessionToken,displayName:String(payload.displayName||'')};
 }
 function authenticateAcademyActivity(){
   if(academyAuthInflight)return academyAuthInflight;
@@ -854,11 +861,12 @@ function authenticateAcademyActivity(){
     if(!academyAppId){if(academyStatus)academyStatus.textContent='AUTH UNAVAILABLE';return ''}
     try{
       if(academyStatus)academyStatus.textContent='VERIFYING';
-      const sessionToken=await academySignIn();
+      const {sessionToken,displayName}=await academySignIn();
       window.smlAcademySessionToken=sessionToken;
+      if(displayName)window.smlAcademyDisplayName=displayName;
       document.body.dataset.academyAuth='ready';
       academyNotice('');
-      window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken}}));
+      window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken,displayName}}));
       if(academyStatus)academyStatus.textContent='LIVE';
       return sessionToken;
     }catch(error){
@@ -2228,7 +2236,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (ticket) buy = { ticket };
         }
         sendJson(response, result.ok ? 200 : (result.status || 401), result.ok
-          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken, ...(academyGate && result.tier ? { tier: result.tier } : {}), ...(buy ? { buy } : {}) }
+          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken, ...(academyGate && result.tier ? { tier: result.tier } : {}), ...(result.displayName ? { displayName: result.displayName } : {}), ...(buy ? { buy } : {}) }
           : { ok: false, error: result.code, ...(buy ? { buy } : {}) });
       } catch (error) {
         logger('error', 'academy_activity_oauth_failed', { error });
@@ -2485,6 +2493,12 @@ async function main() {
     identityAccess: config.academyBillingInDiscordLinks ? createIdentityAccess({}) : null });
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess, freeSessions: config.academyFreeSessions });
+  /* The Academy in-app chat (switchable Day Trade / Swing Trade / Short Sale / Options Trading
+     channels), over a real WebSocket at /academy-activity/chat. Reuses the same session tokens
+     the Activity's HTTP routes verify with, so a chat connection is just as authenticated. */
+  const academyChatHub = process.env.ACADEMY_CHAT === 'off' ? null : createChatHub({
+    store: createChatStore({ pool: database.pool }), verifySession: (auth) => academyOAuth.verifySession(auth), logger: log
+  });
   const academyGate = academyGateFlags ? Object.freeze({
     ...createAcademyContentGate({ enabled: config.academyContentGateEnabled, freePreview: config.academyFreePreview,
       freeSymbols: config.academyFreeSymbols, alertsTiering: config.academyAlertsTiering }),
@@ -2600,6 +2614,7 @@ async function main() {
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
     memberEmail
   });
+  const academyChatWss = academyChatHub ? attachChatServer(server, academyChatHub, { WebSocketServer }) : null;
   let shuttingDown = false;
 
   async function shutdown(signal) {
@@ -2610,6 +2625,7 @@ async function main() {
     if (academyAlerts) academyAlerts.stop();
     if (academyAlertSources) academyAlertSources.stop();
     if (academyMassive) academyMassive.stop();
+    if (academyChatWss) academyChatWss.close();
     server.close(async () => {
       await database.close();
       log('info', 'shutdown_complete', { signal });
