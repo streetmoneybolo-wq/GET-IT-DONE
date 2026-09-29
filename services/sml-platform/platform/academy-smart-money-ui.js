@@ -87,19 +87,42 @@
       ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = 'rgba(190,215,228,.55)'; ctx.beginPath(); ctx.moveTo(x0, ye); ctx.lineTo(right, ye); ctx.stroke(); ctx.restore();
       text('EQ 50%', x0 + 4, ye - 7, '#b9c8d1'); text('PREMIUM', x0 + 4, yh + 9, 'rgba(255,140,160,.8)'); text('DISCOUNT', x0 + 4, yl - 8, 'rgba(90,240,176,.8)');
     }
+    // Gaps, FVGs and order blocks all describe price zones and commonly land in the same area at
+    // once, so their labels are collected here and placed together with shared collision
+    // avoidance instead of each category writing text with no idea another one is in the same
+    // spot. Their boxes are also capped to MAX_ZONE_BARS ahead of their origin bar (never past the
+    // chart's own end either way) so one zone can never balloon into something that, at a high
+    // zoom, dwarfs the handful of candles it is meant to annotate.
+    const MAX_ZONE_BARS = 30;
+    const layout = window.SmlChartLayout;
+    const boundEnd = (originI, naturalEndI) => (layout ? layout.boundZoneEndBar(originI, naturalEndI, MAX_ZONE_BARS) : naturalEndI);
+    const zoneLabels = [];
     if (S.o.gaps) for (const g of a.gaps.slice(-6)) {
-      const endI = g.filledAt != null ? g.filledAt : M.end, x1 = Math.max(pad.l, x(g.i) - half), x2 = Math.min(right, x(endI));
+      const endI = g.filledAt != null ? g.filledAt : boundEnd(g.i, M.end), x1 = Math.max(pad.l, x(g.i) - half), x2 = Math.min(right, x(endI));
       if (x2 <= pad.l || !(inY(g.top) || inY(g.bottom))) continue;
       const open = g.filledAt == null; rect(x1, y(g.top), x2, y(g.bottom), open ? 'rgba(255,209,102,.13)' : 'rgba(255,209,102,.05)', open ? 'rgba(255,209,102,.7)' : null, [3, 3]);
-      text('GAP ' + (g.pct >= 0 ? '+' : '') + (g.pct * 100).toFixed(1) + '%' + (open ? '' : ' filled'), x1 + 4, y(g.top) + 8, open ? '#ffd166' : 'rgba(255,209,102,.55)');
+      zoneLabels.push({ x: x1 + 4, y: y(g.top) + 8, size: 10, text: 'GAP ' + (g.pct >= 0 ? '+' : '') + (g.pct * 100).toFixed(1) + '%' + (open ? '' : ' filled'), color: open ? '#ffd166' : 'rgba(255,209,102,.55)' });
     }
     if (S.o.fvg) {
       const list = a.fvg.filter((g) => g.filledAt == null && visI(g.i) && (inY(g.top) || inY(g.bottom))).sort((p, q) => Math.abs((p.top + p.bottom) / 2 - a.last) - Math.abs((q.top + q.bottom) / 2 - a.last)).slice(0, 8);
-      for (const g of list) { const x1 = Math.max(pad.l, x(g.i - 1) - half); const col = g.dir > 0 ? '0,208,132' : '255,84,112'; rect(x1, y(g.top), right, y(g.bottom), 'rgba(' + col + ',.11)', 'rgba(' + col + ',.55)', [2, 3]); text('FVG', Math.min(right - 30, x1 + 3), y(g.top) + 7, 'rgb(' + col + ')', 'left', 9); }
+      for (const g of list) {
+        const x1 = Math.max(pad.l, x(g.i - 1) - half), x2 = Math.min(right, x(boundEnd(g.i, M.end))), col = g.dir > 0 ? '0,208,132' : '255,84,112';
+        rect(x1, y(g.top), x2, y(g.bottom), 'rgba(' + col + ',.11)', 'rgba(' + col + ',.55)', [2, 3]);
+        zoneLabels.push({ x: Math.min(x2 - 30, x1 + 3), y: y(g.top) + 7, size: 9, text: 'FVG', color: 'rgb(' + col + ')' });
+      }
     }
     if (S.o.ob) {
       const list = a.structure.orderBlocks.filter((o) => o.invalidAt == null && (inY(o.top) || inY(o.bottom))).slice(-4);
-      for (const o of list) { const x1 = Math.max(pad.l, x(o.i) - half), col = o.dir > 0 ? '77,195,255' : '255,170,60'; rect(x1, y(o.top), right, y(o.bottom), 'rgba(' + col + ',.14)', 'rgba(' + col + ',.7)'); text(o.dir > 0 ? 'DEMAND' : 'SUPPLY', Math.min(right - 52, x1 + 3), y(o.top) + 8, 'rgb(' + col + ')', 'left', 9); }
+      for (const o of list) {
+        const x1 = Math.max(pad.l, x(o.i) - half), x2 = Math.min(right, x(boundEnd(o.i, M.end))), col = o.dir > 0 ? '77,195,255' : '255,170,60';
+        rect(x1, y(o.top), x2, y(o.bottom), 'rgba(' + col + ',.14)', 'rgba(' + col + ',.7)');
+        zoneLabels.push({ x: Math.min(x2 - 52, x1 + 3), y: y(o.top) + 8, size: 9, text: o.dir > 0 ? 'DEMAND' : 'SUPPLY', color: 'rgb(' + col + ')' });
+      }
+    }
+    if (zoneLabels.length) {
+      const boxes = zoneLabels.map((l) => { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; return { x: l.x, y: l.y - l.size, w: ctx.measureText(l.text).width + 4, h: l.size + 4, label: l }; });
+      const placed = layout ? layout.avoidOverlap(boxes) : boxes;
+      placed.forEach((b) => text(b.label.text, b.x, b.y + b.label.size, b.label.color, 'left', b.label.size));
     }
     if (S.o.liq) for (const l of a.liquidity) {
       if (l.takenAt != null || !inY(l.level)) continue;
