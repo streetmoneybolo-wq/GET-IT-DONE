@@ -51,6 +51,7 @@ test('the session carries the member own Discord display name, fetched with thei
   const result = await oauth.completeActivity({ code: 'c' });
   assert.equal(result.ok, true);
   assert.equal(result.displayName, 'Ace Trader', 'global_name wins over username');
+  assert.equal(oauth.verifySession('Bearer ' + result.sessionToken).displayName, 'Ace Trader', 'the signed session token itself carries the verified name');
   const nameRequest = requests.find((r) => String(r.url).includes('/users/@me'));
   assert.equal(nameRequest.options.headers.authorization, 'Bearer member-token', 'the member own token, never a bot token');
 });
@@ -143,8 +144,8 @@ test('member sessions keep the original claims; academy sessions carry their tie
   const academy = await oauth.completeActivity({ code: 'c' });
   assert.equal(academy.tier, 'academy');
   assert.equal(claimsOf(academy.sessionToken).t, 'academy');
-  assert.deepEqual(oauth.verifySession(`Bearer ${academy.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'academy' });
-  assert.deepEqual(oauth.verifySession(`Bearer ${member.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'member' });
+  assert.deepEqual(oauth.verifySession(`Bearer ${academy.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'academy', displayName: '' });
+  assert.deepEqual(oauth.verifySession(`Bearer ${member.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'member', displayName: '' });
 });
 
 test('a tier claim cannot be forged or promoted', async () => {
@@ -175,7 +176,7 @@ test('SML_ACADEMY_FREE_SESSIONS on: a guild member without a role gets a free se
   assert.equal(result.ok, true);
   assert.equal(result.tier, 'free');
   assert.equal(result.accessToken, 'activity-token');
-  assert.deepEqual(free.verifySession(`Bearer ${result.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'free' });
+  assert.deepEqual(free.verifySession(`Bearer ${result.sessionToken}`), { ok: true, userId: MEMBER_ID, tier: 'free', displayName: '' });
   const outsider = await tierOAuth({ ok: false, status: 403, code: 'academy_role_required', inGuild: false, userId: MEMBER_ID }, { freeSessions: true }).completeActivity({ code: 'c' });
   assert.equal(outsider.ok, false);
   assert.equal('sessionToken' in outsider, false);

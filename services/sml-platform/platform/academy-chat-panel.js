@@ -1,13 +1,14 @@
 /* The Academy trading-desk chat panel: injected into the Activity page below the options chain
- * lab, next to the scanner. Four switchable channels (Day Trade, Swing Trade, Short Sale, Options
- * Trading) over the WebSocket at /academy-activity/chat (see academy-chat.js on the server). This
+ * lab, next to the scanner. A Global room (the default) plus four switchable topic channels (Day
+ * Trade, Swing Trade, Short Sale, Options Trading) over the WebSocket at /academy-activity/chat
+ * (see academy-chat.js on the server). This
  * file only renders and wires the socket — every rule (length cap, rate limit, who can delete
  * what) is enforced server-side; this is trust-but-verify UI, not the source of truth. */
 (() => {
   if (window.__smlAcademyChatPanel) return;
   window.__smlAcademyChatPanel = 1;
 
-  const CHANNELS = [['day', 'Day Trade'], ['swing', 'Swing Trade'], ['short', 'Short Sale'], ['options', 'Options Trading']];
+  const CHANNELS = [['global', 'Global Chat'], ['day', 'Day Trade'], ['swing', 'Swing Trade'], ['short', 'Short Sale'], ['options', 'Options Trading']];
 
   const style = document.createElement('style');
   style.textContent = '.academy-chat{border:1px solid #1b3540;border-radius:10px;background:#0a1118;margin-top:18px;overflow:hidden}'
@@ -121,7 +122,7 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const url = proto + '://' + location.host + '/academy-activity/chat?token=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(displayName());
     try { ws = new WebSocket(url); } catch (_) { status.textContent = 'OFFLINE'; return; }
-    ws.onopen = () => { status.textContent = 'LIVE'; while (queue.length) ws.send(queue.shift()); join(current || 'day'); };
+    ws.onopen = () => { status.textContent = 'LIVE'; while (queue.length) ws.send(queue.shift()); join(current || 'global'); };
     ws.onclose = () => { status.textContent = 'RECONNECTING'; setTimeout(connect, 3000); };
     ws.onerror = () => {};
     ws.onmessage = (event) => {

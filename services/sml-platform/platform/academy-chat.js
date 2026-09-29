@@ -1,8 +1,8 @@
 'use strict';
 
-/* The Academy in-app chat: switchable topic channels (Day Trade, Swing Trade, Short Sale, Options
- * Trading), not one room per Discord server and not one global room. A connection sits in exactly
- * one channel at a time and switches by joining another. History (the most recent messages) is
+/* The Academy in-app chat: one Global room every member lands in, plus switchable topic channels
+ * (Day Trade, Swing Trade, Short Sale, Options Trading) — never one room per Discord server. A
+ * connection sits in exactly one channel at a time and switches by joining another. History (the most recent messages) is
  * sent right after a join, so a fresh connection or a channel switch never opens on an empty
  * screen. Messages persist to Postgres (memory in tests/local runs).
  *
@@ -14,6 +14,7 @@
  * and is tested with fakes — it never touches a real socket. */
 
 const CHANNELS = [
+  { key: 'global', label: 'Global Chat' },
   { key: 'day', label: 'Day Trade' },
   { key: 'swing', label: 'Swing Trade' },
   { key: 'short', label: 'Short Sale' },
@@ -91,16 +92,18 @@ function createChatHub({ store, verifySession, logger = () => {}, now = Date.now
      token does not verify — the caller should refuse the connection. */
   function authenticate(token) {
     const session = verifySession(`Bearer ${token}`);
-    return session.ok ? { userId: session.userId, tier: session.tier } : null;
+    return session.ok ? { userId: session.userId, tier: session.tier, displayName: session.displayName || '' } : null;
   }
 
-  /* conn: { send(jsonString) }. identity: { userId, tier, authorName? } from authenticate(), with
-     a display name attached by the caller. Returns { receive(rawFrame), onClose() } for the
-     transport layer to feed inbound frames and the close event into — nothing here touches a real
-     socket, which is what makes it testable with a fake conn. */
+  /* conn: { send(jsonString) }. identity: { userId, tier, displayName, authorName? } from
+     authenticate(), optionally with a client-supplied authorName. The verified displayName (from
+     the signed session) always wins; authorName only fills in for an older session that carries no
+     name. Returns { receive(rawFrame), onClose() } for the transport layer to feed inbound frames
+     and the close event into — nothing here touches a real socket, which is what makes it testable
+     with a fake conn. */
   function open(conn, identity) {
     let channel = null;
-    const authorName = cleanName(identity.authorName);
+    const authorName = cleanName(identity.displayName || identity.authorName);
 
     async function join(next) {
       if (!CHANNEL_KEYS.has(next)) { conn.send(JSON.stringify({ type: 'error', error: 'unknown_channel' })); return; }
@@ -150,7 +153,7 @@ function attachChatServer(httpServer, hub, { path = '/academy-activity/chat', We
     if (url.pathname !== path) return; // not ours: leave the socket for another upgrade listener, if any
     const identity = hub.authenticate(url.searchParams.get('token') || '');
     if (!identity) { socket.destroy(); return; }
-    identity.authorName = url.searchParams.get('name') || '';
+    identity.authorName = url.searchParams.get('name') || ''; // fallback only: hub.open prefers the session's verified displayName
     wss.handleUpgrade(request, socket, head, (ws) => {
       const conn = { send: (s) => ws.send(s) };
       const handlers = hub.open(conn, identity);

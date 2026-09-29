@@ -19,15 +19,28 @@ function fakeVerify(map) {
   };
 }
 
-test('the four trading-style channels are fixed and named', () => {
-  assert.deepEqual(CHANNELS.map((c) => c.key), ['day', 'swing', 'short', 'options']);
+test('the global room comes first, then the four fixed trading-style channels', () => {
+  assert.deepEqual(CHANNELS.map((c) => c.key), ['global', 'day', 'swing', 'short', 'options']);
   assert.ok(CHANNELS.every((c) => c.label));
 });
 
 test('a bad token is refused; a good one authenticates to that member', () => {
   const hub = createChatHub({ store: createChatStore(), verifySession: fakeVerify({ good: { userId: U1, tier: 'member' } }) });
   assert.equal(hub.authenticate('bad'), null);
-  assert.deepEqual(hub.authenticate('good'), { userId: U1, tier: 'member' });
+  assert.deepEqual(hub.authenticate('good'), { userId: U1, tier: 'member', displayName: '' });
+});
+
+test('a message is labelled with the verified session name; a name the client sends only fills in when the session has none', async () => {
+  const store = createChatStore();
+  const hub = createChatHub({ store, verifySession: fakeVerify({ t1: { userId: U1, displayName: 'Ace Trader' }, t2: { userId: U2 } }) });
+  const c1 = fakeConn(), c2 = fakeConn();
+  const h1 = hub.open(c1, { ...hub.authenticate('t1'), authorName: 'Not Me' });
+  const h2 = hub.open(c2, { ...hub.authenticate('t2'), authorName: 'Chosen Nick' });
+  await h1.receive(JSON.stringify({ type: 'join', channel: 'global' }));
+  await h2.receive(JSON.stringify({ type: 'join', channel: 'global' }));
+  await h1.receive(JSON.stringify({ type: 'message', body: 'hi' }));
+  await h2.receive(JSON.stringify({ type: 'message', body: 'yo' }));
+  assert.deepEqual(c1.sent.filter((m) => m.type === 'message').map((m) => m.message.authorName), ['Ace Trader', 'Chosen Nick']);
 });
 
 test('joining sends channel history, and posting broadcasts only to members currently in that channel', async () => {
