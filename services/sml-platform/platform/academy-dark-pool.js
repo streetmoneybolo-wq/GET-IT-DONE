@@ -90,7 +90,8 @@
   function sync() { btn.classList.toggle('on', S.on); }
   btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); draw(); paintPanel(); });
   window.addEventListener('sml-live-data', () => { if (!window.smlChartGesture) draw(); paintPanel(); });
-  window.addEventListener('sml-chart-view', () => { if (S.on) draw(); });
+  // The chart is wrapped into its stage by a script that loads after this one, so the layer must follow it there even while the tool is off (draw() re-parents first).
+  window.addEventListener('sml-chart-view', () => draw());
   window.addEventListener('resize', draw);
   sync(); draw(); paintPanel();
 })();
