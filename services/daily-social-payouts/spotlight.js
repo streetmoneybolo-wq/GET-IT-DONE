@@ -3,6 +3,7 @@ import { Client, GatewayIntentBits, Partials, PermissionFlagsBits } from 'discor
 import { readSettings } from './utils/storage.js';
 import { backfillAlertHistory, monitoredChannelRefs, processAlertMessage } from './utils/alertMonitor.js';
 import { startArticleAutomation } from './utils/articleAutomation.js';
+import { ensureMessageContentIntent } from './utils/ensureMessageContentIntent.js';
 
 if (!process.env.SPOTLIGHT_DISCORD_TOKEN) throw new Error('SPOTLIGHT_DISCORD_TOKEN is required');
 
@@ -55,4 +56,8 @@ client.on('messageUpdate', async (_oldMessage, message) => {
   }
 });
 
+/* The monitor reads alert text, which needs the Message Content privileged intent.
+   Switch it on for this application before connecting so a new app does not die
+   with "Used disallowed intents"; a refusal is logged with the portal link. */
+await ensureMessageContentIntent(process.env.SPOTLIGHT_DISCORD_TOKEN);
 client.login(process.env.SPOTLIGHT_DISCORD_TOKEN);
