@@ -847,7 +847,7 @@ async function academySignIn(){
   let payload={};try{payload=await response.json()}catch(_){}
   if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken){const code=payload.error||(response.status>=500?'temporary_unavailable':'authorization_failed');throw Object.assign(new Error(code),{academyCode:code})}
   await academySdk.commands.authenticate({access_token:payload.access_token});
-  return payload.sessionToken;
+  return {sessionToken:payload.sessionToken,displayName:String(payload.displayName||'')};
 }
 function authenticateAcademyActivity(){
   if(academyAuthInflight)return academyAuthInflight;
@@ -855,11 +855,12 @@ function authenticateAcademyActivity(){
     if(!academyAppId){if(academyStatus)academyStatus.textContent='AUTH UNAVAILABLE';return ''}
     try{
       if(academyStatus)academyStatus.textContent='VERIFYING';
-      const sessionToken=await academySignIn();
+      const {sessionToken,displayName}=await academySignIn();
       window.smlAcademySessionToken=sessionToken;
+      if(displayName)window.smlAcademyDisplayName=displayName;
       document.body.dataset.academyAuth='ready';
       academyNotice('');
-      window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken}}));
+      window.dispatchEvent(new CustomEvent('sml-academy-session',{detail:{sessionToken,displayName}}));
       if(academyStatus)academyStatus.textContent='LIVE';
       return sessionToken;
     }catch(error){
@@ -2229,7 +2230,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (ticket) buy = { ticket };
         }
         sendJson(response, result.ok ? 200 : (result.status || 401), result.ok
-          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken, ...(academyGate && result.tier ? { tier: result.tier } : {}), ...(buy ? { buy } : {}) }
+          ? { ok: true, access_token: result.accessToken, sessionToken: result.sessionToken, ...(academyGate && result.tier ? { tier: result.tier } : {}), ...(result.displayName ? { displayName: result.displayName } : {}), ...(buy ? { buy } : {}) }
           : { ok: false, error: result.code, ...(buy ? { buy } : {}) });
       } catch (error) {
         logger('error', 'academy_activity_oauth_failed', { error });

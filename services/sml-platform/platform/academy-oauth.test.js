@@ -36,6 +36,43 @@ test('Academy OAuth exchanges a Discord Activity code without a popup redirect',
   assert.doesNotMatch(requests[0].options.body, /redirect_uri=/);
 });
 
+test('the session carries the member own Discord display name, fetched with their own token, never the bot', async () => {
+  const requests = [];
+  const respondTo = (url) => {
+    if (String(url).includes('/oauth2/token')) return response(200, { access_token: 'member-token' });
+    if (String(url).includes('/users/@me')) return response(200, { username: 'ace123', global_name: 'Ace Trader' });
+    return response(404, {});
+  };
+  const oauth = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => ({ ok: true, userId: '420000000000000042' }) },
+    fetchImpl: async (url, options) => { requests.push({ url, options }); return respondTo(url); }
+  });
+  const result = await oauth.completeActivity({ code: 'c' });
+  assert.equal(result.ok, true);
+  assert.equal(result.displayName, 'Ace Trader', 'global_name wins over username');
+  const nameRequest = requests.find((r) => String(r.url).includes('/users/@me'));
+  assert.equal(nameRequest.options.headers.authorization, 'Bearer member-token', 'the member own token, never a bot token');
+});
+
+test('no global_name falls back to username; a failed name lookup never blocks sign-in', async () => {
+  const withUsernameOnly = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => ({ ok: true, userId: '420000000000000042' }) },
+    fetchImpl: async (url) => (String(url).includes('/users/@me') ? response(200, { username: 'ace123' }) : response(200, { access_token: 'member-token' }))
+  });
+  assert.equal((await withUsernameOnly.completeActivity({ code: 'c' })).displayName, 'ace123');
+
+  const nameLookupFails = createAcademyOAuth({
+    clientId: 'academy-client', clientSecret: 'academy-secret',
+    academyAccess: { verify: async () => ({ ok: true, userId: '420000000000000042' }) },
+    fetchImpl: async (url) => (String(url).includes('/users/@me') ? response(500, {}) : response(200, { access_token: 'member-token' }))
+  });
+  const failed = await nameLookupFails.completeActivity({ code: 'c' });
+  assert.equal(failed.ok, true, 'sign-in still succeeds');
+  assert.equal(failed.displayName, '');
+});
+
 test('two Discord members receive distinct Activity sessions bound to their own IDs', async () => {
   let counter = 0;
   const tokens = { 'code-a': 'token-a', 'code-b': 'token-b' };

@@ -60,7 +60,12 @@
   }
 
   const NAME_KEY = 'sml-academy-chat-name';
+  /* Prefers the member's real Discord display name (fetched server-side during sign-in, see
+     academy-oauth.js's fetchDisplayName); only asks for a self-chosen nickname when that is
+     unavailable (the name lookup failed, or this session predates the feature). */
   function displayName() {
+    const real = String(window.smlAcademyDisplayName || '').trim();
+    if (real) return real.slice(0, 40);
     let name = ''; try { name = localStorage.getItem(NAME_KEY) || ''; } catch (_) { /* private mode etc. */ }
     if (!name) {
       try { name = (window.prompt('Pick a display name for the trading-desk chat (other members will see it):', '') || '').trim().slice(0, 40); } catch (_) { /* ignore */ }

@@ -66,6 +66,17 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     const query = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'identify guilds.members.read', state, prompt: 'none' });
     return { ok: true, url: `${DISCORD_AUTHORIZE}?${query.toString()}` };
   }
+  /* The member's own Discord display name (global_name, falling back to username), fetched with
+     their own OAuth token — never the bot's. Used only to label their chat messages with a real
+     name instead of a self-chosen one; a failure here never blocks sign-in. */
+  async function fetchDisplayName(accessToken) {
+    try {
+      const res = await fetchImpl('https://discord.com/api/v10/users/@me', { headers: { authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(5_000) });
+      if (!res.ok) return '';
+      const user = await res.json();
+      return String((user && (user.global_name || user.username)) || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80);
+    } catch (_) { return ''; }
+  }
   async function exchangeCode(code, exchangeRedirectUri = '') {
     if (!activityConfigured) return { ok: false, status: 503, code: 'integration_unconfigured' };
     if (!String(code)) return { ok: false, status: 400, code: 'authorization_denied' };
@@ -76,11 +87,11 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     if (!response.ok) return { ok: false, status: 401, code: 'authorization_failed' };
     const token = await response.json();
     if (!token || typeof token.access_token !== 'string') return { ok: false, status: 401, code: 'authorization_failed' };
-    const access = await academyAccess.verify(`Bearer ${token.access_token}`);
+    const [access, displayName] = await Promise.all([academyAccess.verify(`Bearer ${token.access_token}`), fetchDisplayName(token.access_token)]);
     if (!access.ok) {
       const userId = SNOWFLAKE.test(String(access.userId || '')) ? String(access.userId) : '';
       if (freeSessions && access.code === 'academy_role_required' && access.inGuild === true && userId) {
-        return { ok: true, accessToken: token.access_token, sessionToken: issueSession(userId, 'free'), userId, tier: 'free' };
+        return { ok: true, accessToken: token.access_token, sessionToken: issueSession(userId, 'free'), userId, tier: 'free', displayName };
       }
       /* A refusal never carries a session or the Discord access token. The id
          and guild membership only let the caller offer a way in. */
@@ -89,7 +100,7 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     }
     const tier = SESSION_TIERS.has(access.tier) && access.tier !== 'free' ? access.tier : 'member';
     const sessionToken = issueSession(access.userId || '', tier);
-    return { ok: true, accessToken: token.access_token, sessionToken, userId: String(access.userId || ''), tier };
+    return { ok: true, accessToken: token.access_token, sessionToken, userId: String(access.userId || ''), tier, displayName };
   }
   async function complete({ code = '', state = '' } = {}) {
     if (!configured) return { ok: false, status: 503, code: 'integration_unconfigured' };
