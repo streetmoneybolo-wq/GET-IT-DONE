@@ -1235,6 +1235,52 @@ test('the SIRE stream is Server-Sent Events: a snapshot, then ticks, and the vie
   });
 });
 
+test('the options chain stream is members-only Server-Sent Events, one subscribe per connection, released on disconnect', async () => {
+  const http = require('node:http');
+  const subs = [];
+  const academyOptionsStream = {
+    subscribe(symbol, write) {
+      if (symbol === 'BADSYM') return null;
+      const sub = { symbol, write, off: false };
+      subs.push(sub);
+      write('snapshot', { symbol, spot: 500, rows: [], error: null, at: 1 });
+      return () => { sub.off = true; };
+    }
+  };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer member' ? { ok: true, userId: 'u1', tier: 'member' } : a === 'Bearer free' ? { ok: true, userId: 'u2', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyOptionsStream, academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/options-stream?symbol=SPY`)).status, 401, 'no session');
+    const freeResp = await fetch(`${base}/academy-activity/options-stream?symbol=SPY`, { headers: { authorization: 'Bearer free' } });
+    assert.equal(freeResp.status, 403);
+    assert.equal((await freeResp.json()).error, 'academy_access_required');
+
+    const events = [];
+    await new Promise((resolve, reject) => {
+      const req = http.get(`${base}/academy-activity/options-stream?symbol=SPY`, { headers: { authorization: 'Bearer member' } }, (res) => {
+        assert.match(res.headers['content-type'], /text\/event-stream/);
+        let buf = '';
+        res.on('data', (d) => {
+          buf += d; const parts = buf.split('\n\n'); buf = parts.pop();
+          for (const p of parts) { const m = /event: (\w+)\ndata: (.*)/.exec(p); if (m) events.push([m[1], JSON.parse(m[2])]); }
+          if (events.length) { req.destroy(); resolve(); }
+        });
+      });
+      req.on('error', (e) => { if (e.code !== 'ECONNRESET') reject(e); });
+      setTimeout(() => reject(new Error('no snapshot event')), 3000);
+    });
+    assert.deepEqual(events[0], ['snapshot', { symbol: 'SPY', spot: 500, rows: [], error: null, at: 1 }]);
+    assert.equal(subs[0].symbol, 'SPY');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(subs[0].off, true, 'disconnecting unsubscribes');
+
+    const refused = await fetch(`${base}/academy-activity/options-stream?symbol=BADSYM`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(refused.status, 200, 'the SSE headers already went out; the refusal arrives as an error event, not an HTTP error status');
+    const text = await refused.text();
+    assert.match(text, /event: error/);
+    assert.match(text, /invalid_symbol/);
+  });
+});
+
 test('Academy offers moomoo, Webull and Robinhood quote links, and the broker route only redirects to quote pages', async () => {
   const { createBrokerLinks } = require('./academy-brokers');
   const brokerLinks = createBrokerLinks({ apiKey: 'k', fetchImpl: async () => ({ ok: true, json: async () => ({ results: { primary_exchange: 'XNAS' } }) }) });
