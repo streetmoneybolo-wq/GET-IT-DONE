@@ -18,7 +18,7 @@ client.once('clientReady', async () => {
   let accessibleChannels = 0;
   for (const { guildId, channelId } of monitoredChannelRefs(settings)) {
     const channel = await client.channels.fetch(channelId).catch(() => null);
-    if (!channel?.isTextBased() || channel.guildId !== guildId) {
+    if (!channel?.isTextBased() || (guildId && channel.guildId !== guildId)) {
       console.warn(`Skipping unavailable alert channel ${channelId} in guild ${guildId}.`);
       continue;
     }

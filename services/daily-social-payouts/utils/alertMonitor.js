@@ -6,7 +6,11 @@ export function monitoredChannelRefs(settings) {
   const monitor = settings.alertMonitor || {};
   const refs = [];
   for (const ref of monitor.sources || []) {
-    if (ref.guildId && ref.channelId) refs.push({ guildId: ref.guildId, channelId: ref.channelId });
+    /* A channel ID is globally unique in Discord.  Keep a configured source
+       usable when the bot can see the channel but its guild was not known at
+       setup time (for example, a newly created alert room).  A supplied guild
+       ID remains an exact safety check. */
+    if (ref.channelId) refs.push({ guildId: ref.guildId || '', channelId: ref.channelId });
   }
   if (monitor.guildId) {
     for (const channelId of monitor.channelIds || []) refs.push({ guildId: monitor.guildId, channelId });
@@ -17,7 +21,7 @@ export function monitoredChannelRefs(settings) {
   }
   const seen = new Set();
   return refs.filter((ref) => {
-    const key = `${ref.guildId}:${ref.channelId}`;
+    const key = ref.channelId;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -26,7 +30,7 @@ export function monitoredChannelRefs(settings) {
 
 function monitorsMessage(settings, message) {
   const refs = monitoredChannelRefs(settings);
-  return refs.some((ref) => ref.guildId === message.guildId && ref.channelId === message.channelId);
+  return refs.some((ref) => ref.channelId === message.channelId && (!ref.guildId || ref.guildId === message.guildId));
 }
 
 export async function processAlertMessage(message, eventType = 'created') {
@@ -35,7 +39,7 @@ export async function processAlertMessage(message, eventType = 'created') {
   if (!monitor.enabled || !monitorsMessage(settings, message)) return false;
   // Bridges/webhooks are copies, not new original alerts.
   if (message.author?.bot || message.webhookId) return true;
-  const source = (monitor.sources || []).find((row) => row.channelId === message.channelId && row.guildId === message.guildId);
+  const source = (monitor.sources || []).find((row) => row.channelId === message.channelId && (!row.guildId || row.guildId === message.guildId));
   if (source?.authorIds?.length && !source.authorIds.includes(message.author?.id)) return true;
   if (!message.content) return true;
   const timestamp = message.createdAt?.toISOString?.() || new Date(message.createdTimestamp || Date.now()).toISOString();
