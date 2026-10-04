@@ -201,16 +201,18 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
   const byRole = !!(SNOWFLAKE.test(String(academyGuildId)) && roles.size), byPass = !!(passes && passes.configured);
-  const configured = byRole || byPass;
+  const free = freeUserIds instanceof Set ? freeUserIds : new Set(freeUserIds || []);
+  const configured = byRole || byPass || free.size > 0;
 
   /* Is this member subscribed to the add-on right now? Asked of Discord live (no cache). */
   async function entitlement(userId) {
     if (!configured) return { configured: false, entitled: false };
+    if (free.has(String(userId))) return { configured: true, entitled: true, via: 'owner' };
     /* a live Loop Bucks pass is as good as the subscription role */
     if (byPass && await passes.hasActive(userId).catch(() => false)) return { configured: true, entitled: true, via: 'loopbucks' };
     if (!byRole) return { configured: true, entitled: false };

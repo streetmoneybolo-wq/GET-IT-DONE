@@ -42,6 +42,7 @@ const { createProfileService } = require('./academy-profile');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
 const { parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars');
+const { freeUserIds: loadFreeUserIds, withFreeUsers } = require('./academy-free-users');
 const { parsePrices: parsePassPrices, createPassStore, createPassService, createWalletClient, withPasses } = require('./academy-passes');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
@@ -2769,7 +2770,8 @@ async function main() {
     allowedRoleIds: [...academyMemberRoleIds, ...config.academyAccessRoleIds], memberRoleIds: academyMemberRoleIds,
     retryRateLimited: academyGateFlags || config.academyAccessRoleIds.length > 0,
     identityAccess: config.academyBillingInDiscordLinks || (academyPasses && academyPasses.configured) ? createIdentityAccess({}) : null });
-  const academyAccess = academyPasses && academyPasses.configured ? withPasses(academyAccessBase, academyPasses) : academyAccessBase;
+  const freeUsers = loadFreeUserIds();
+  const academyAccess = withFreeUsers(academyPasses && academyPasses.configured ? withPasses(academyAccessBase, academyPasses) : academyAccessBase, freeUsers, createIdentityAccess({}));
   const academyOAuth = createAcademyOAuth({ clientId: config.academyAppId, clientSecret: config.academyClientSecret,
     redirectUri: config.discordRedirectUri, academyAccess, freeSessions: config.academyFreeSessions });
   /* The Academy in-app chat (switchable Day Trade / Swing Trade / Short Sale / Options Trading
@@ -2858,7 +2860,7 @@ async function main() {
   /* Click-to-Alert is off until SML_ACADEMY_CLICK_ALERT_ROLE_IDS names the role the separate subscription grants. ACADEMY_CLICK_ALERT=off disables it outright. */
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
-    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses,
+    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses, freeUserIds: freeUsers,
     roleIds: String(process.env.SML_ACADEMY_CLICK_ALERT_ROLE_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
     footer: process.env.SML_ACADEMY_CLICK_ALERT_FOOTER !== 'off', logger: log
   });

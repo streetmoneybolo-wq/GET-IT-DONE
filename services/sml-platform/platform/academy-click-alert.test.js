@@ -200,3 +200,10 @@ test('a live Loop Bucks pass unlocks Click-to-Alert even with no subscription ro
   assert.deepEqual(await svc.entitlement('300000000000000001'), { configured: true, entitled: true, via: 'loopbucks' });
   assert.equal(svc.configured, true);
 });
+
+test('a free user (the owner) is entitled to Click-to-Alert with nothing else configured', async () => {
+  const { createClickAlertService } = require('./academy-click-alert.js');
+  const svc = createClickAlertService({ getBars: async () => [], directory: null, freeUserIds: new Set(['1087769175453339648']) });
+  assert.deepEqual(await svc.entitlement('1087769175453339648'), { configured: true, entitled: true, via: 'owner' });
+  assert.equal((await svc.entitlement('300000000000000001')).entitled, false);
+});
