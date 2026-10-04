@@ -25,8 +25,11 @@ if ( ! function_exists( 'sml_adsense_thin_paths' ) ) {
 		return apply_filters( 'sml_adsense_thin_paths', array(
 			'academy-chart-lab', 'stock-chart', 'advertise', 'two-step',
 			'connect-migrate', 'connect-dashboard', 'connect', 'moomoo',
-			'login', 'register', 'my-account', 'cart', 'checkout',
-			'create-channel',
+			'login', 'register', 'my-account', 'cart', 'checkout', 'checkout-2',
+			'create-channel', 'wallet', 'settings', 'loop-messages', 'customize-profile',
+			'upload-video', 'creator-wallet', 'creator-wallet-2', 'creator-wallet-3', 'creator-wallet-4',
+			'advertiser-dashboard', 'go-live', 'referral-center', 'customer-dashboard',
+			'my-profile', 'group-analytics', 'search-analytics', 'search-earnings', 'n', 'watchlist',
 		) );
 	}
 
