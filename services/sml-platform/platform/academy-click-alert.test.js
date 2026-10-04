@@ -94,7 +94,7 @@ test('the alert text is Obi\'s layout with the click as the target', () => {
 /* ---------- the service: entitlement, permissions, limits ---------- */
 const GUILD = '111111111111111111', ROLE = '222222222222222222', USER = '333333333333333333', CHAN = '444444444444444444';
 const FIX = { m5: null, m15: null };
-function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false } = {}) {
+function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false, personas = null } = {}) {
   const posts = [];
   const directory = {
     memberRolesLive: async () => roles,
@@ -106,7 +106,7 @@ function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEv
   };
   const svc = CA.createClickAlertService({
     getBars: async (sym, tf) => { FIX.m5 = FIX.m5 || intraday(200, lastClose); FIX.m15 = FIX.m15 || intraday(200, lastClose, 9e5); return { bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? FIX.m15 : FIX.m5 }; },
-    directory, academyGuildId: GUILD, roleIds: [ROLE], limits: { userHour: 3, channelHour: 10, userDay: 10 }
+    directory, personas, academyGuildId: GUILD, roleIds: [ROLE], limits: { userHour: 3, channelHour: 10, userDay: 10 }
   });
   return { svc, posts };
 }
@@ -223,4 +223,17 @@ test('the alert posts under the member\'s own name and picture when the app can 
   const d = fake({ botCanWebhook: true, webhookFails: true });
   const fell = await d.svc.send({ userId: USER, displayName: 'Ana' }, body());
   assert.equal(fell.ok, true); assert.equal(fell.postedAs, 'app'); assert.ok(/Sent by Ana/.test(d.posts[0].body.content), 'falls back honestly');
+});
+
+test('a member with their own bot posts through it when it is in the server; otherwise the normal path', async () => {
+  const mk = (can) => ({ posts: [], postingIn: async () => (can ? { botCanSend: true, botCanAttach: true } : null), post: async function (c, b, f) { this.posts.push({ b, f }); return { id: '666666666666666666', channelId: c }; } });
+  const own = mk(true);
+  const a = fake({ botCanWebhook: true, personas: { [USER]: own } });
+  const out = await a.svc.send({ userId: USER, displayName: 'Ana' }, body());
+  assert.equal(out.ok, true); assert.equal(out.postedAs, 'persona');
+  assert.equal(own.posts.length, 1); assert.equal(a.posts.length, 0, 'the shared app did not post');
+  assert.ok(!/Sent by/.test(own.posts[0].b.content));
+  const away = mk(false);
+  const b = fake({ botCanWebhook: true, personas: { [USER]: away } });
+  assert.equal((await b.svc.send({ userId: USER, displayName: 'Ana' }, body())).postedAs, 'member', 'their bot is not in this server: falls back to the webhook');
 });

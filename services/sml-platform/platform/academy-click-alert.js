@@ -201,7 +201,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
@@ -289,24 +289,32 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     const ping = !!mention && where.mentionEveryone;
     let content = format.formatEntryAlert({ ...analysis.alert, mention: ping });
     // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
-    const viaWebhook = asMe !== false && !!where.botCanWebhook && typeof directory.postAsMember === 'function';
-    if (footer && !viaWebhook) content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
+    // a member can have their own bot (their name and picture): used when that bot is in the server and may post in the channel
+    let persona = null, personaWhere = null;
+    const pd = personas && personas[userId];
+    if (asMe !== false && pd) { const pw = await pd.postingIn(userId, String(channelId)).catch(() => null); if (pw && pw.botCanSend) { persona = pd; personaWhere = pw; } }
+    const viaWebhook = !persona && asMe !== false && !!where.botCanWebhook && typeof directory.postAsMember === 'function';
+    if (footer && !viaWebhook && !persona) content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
     // the two scenario charts ride along when asked for, when the member and the app may attach files there, and when the picture engine is available
     let files = [], skipped = '';
     if (wantImages === false) skipped = 'declined';
-    else if (!where.userCanAttach || !where.botCanAttach) skipped = 'no_permission';
+    else if (!where.userCanAttach || !(persona ? personaWhere.botCanAttach : where.botCanAttach)) skipped = 'no_permission';
     else {
       files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
       if (files.length < 2) { files = []; skipped = 'unavailable'; }
     }
     const msgBody = { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } };
     let posted, postedAs = 'app';
-    if (viaWebhook) {
+    if (persona) {
+      try { posted = await persona.post(String(channelId), msgBody, files); postedAs = 'persona'; }
+      catch (error) { logger('warn', 'click_alert_persona_failed', { error: String(error.message || error) }); }
+    }
+    if (!posted && viaWebhook) {
       try { posted = await directory.postAsMember(String(channelId), msgBody, files, { userId, displayName: user.displayName }); postedAs = 'member'; }
       catch (error) { logger('warn', 'click_alert_webhook_failed', { error: String(error.message || error) }); }
     }
     if (!posted) {
-      if (footer && viaWebhook) msgBody.content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
+      if (footer && (viaWebhook || persona)) msgBody.content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
       posted = await directory.post(String(channelId), msgBody, files);
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
