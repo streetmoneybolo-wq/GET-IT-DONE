@@ -94,13 +94,14 @@ test('the alert text is Obi\'s layout with the click as the target', () => {
 /* ---------- the service: entitlement, permissions, limits ---------- */
 const GUILD = '111111111111111111', ROLE = '222222222222222222', USER = '333333333333333333', CHAN = '444444444444444444';
 const FIX = { m5: null, m15: null };
-function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true } = {}) {
+function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false } = {}) {
   const posts = [];
   const directory = {
     memberRolesLive: async () => roles,
     guildsFor: async () => [{ id: GUILD, name: 'Server', current: true }],
     sendableChannels: async () => [{ id: CHAN, name: 'alerts', category: '', mentionEveryone }],
-    postingIn: async () => (channelFound ? { guildId: GUILD, name: 'alerts', userCanSend, botCanSend, mentionEveryone } : null),
+    postingIn: async () => (channelFound ? { guildId: GUILD, name: 'alerts', userCanSend, botCanSend, mentionEveryone, botCanWebhook } : null),
+    postAsMember: async (channelId, body, files, who) => { if (webhookFails) throw new Error('boom'); posts.push({ channelId, body, who, asMember: true }); return { id: '555555555555555555', channelId }; },
     post: async (channelId, body) => { posts.push({ channelId, body }); return { id: '555555555555555555', channelId }; }
   };
   const svc = CA.createClickAlertService({
@@ -206,4 +207,20 @@ test('a free user (the owner) is entitled to Click-to-Alert with nothing else co
   const svc = createClickAlertService({ getBars: async () => [], directory: null, freeUserIds: new Set(['1087769175453339648']) });
   assert.deepEqual(await svc.entitlement('1087769175453339648'), { configured: true, entitled: true, via: 'owner' });
   assert.equal((await svc.entitlement('300000000000000001')).entitled, false);
+});
+
+test('the alert posts under the member\'s own name and picture when the app can make a webhook there, otherwise as the app with a Sent-by line', async () => {
+  const a = fake({ botCanWebhook: true });
+  const out = await a.svc.send({ userId: USER, displayName: 'Ana' }, body());
+  assert.equal(out.ok, true); assert.equal(out.postedAs, 'member');
+  assert.equal(a.posts[0].asMember, true); assert.deepEqual(a.posts[0].who, { userId: USER, displayName: 'Ana' });
+  assert.ok(!/Sent by/.test(a.posts[0].body.content), 'no Sent-by line when it already shows their name');
+  const b = fake({ botCanWebhook: true });
+  const asApp = await b.svc.send({ userId: USER, displayName: 'Ana' }, body({ asMe: false }));
+  assert.equal(asApp.postedAs, 'app'); assert.ok(/Sent by Ana/.test(b.posts[0].body.content) && !b.posts[0].asMember);
+  const c = fake({ botCanWebhook: false });
+  assert.equal((await c.svc.send({ userId: USER, displayName: 'Ana' }, body())).postedAs, 'app');
+  const d = fake({ botCanWebhook: true, webhookFails: true });
+  const fell = await d.svc.send({ userId: USER, displayName: 'Ana' }, body());
+  assert.equal(fell.ok, true); assert.equal(fell.postedAs, 'app'); assert.ok(/Sent by Ana/.test(d.posts[0].body.content), 'falls back honestly');
 });

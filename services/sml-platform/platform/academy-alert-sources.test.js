@@ -109,3 +109,26 @@ test('one desk follows at most 12 sources', async () => {
   await assert.rejects(sources.add(U, { channel: '500000000000000099' }), RangeError);
   await assert.rejects(sources.add(U, { channel: 'nope' }), TypeError);
 });
+
+test('posting under a member: one webhook is made and reused, and the post carries their name and avatar (a name Discord forbids is cleaned)', async () => {
+  const d = fakeDiscord(), seen = [];
+  const base = d.fetchImpl;
+  const fetchImpl = async (url, init = {}) => {
+    const path = url.replace('https://discord.com/api/v10', '');
+    if (path === `/channels/${CH_OPEN}/webhooks` && !init.method) return { ok: true, status: 200, json: async () => [] };
+    if (path === `/channels/${CH_OPEN}/webhooks` && init.method === 'POST') { seen.push(['make', JSON.parse(init.body)]); return { ok: true, status: 200, json: async () => ({ id: '700000000000000007', token: 'tok-abc' }) }; }
+    if (path.startsWith('/webhooks/700000000000000007/tok-abc')) { seen.push(['post', JSON.parse(init.body)]); return { ok: true, status: 200, json: async () => ({ id: '800000000000000008', channel_id: CH_OPEN }) }; }
+    if (path === `/users/${U}`) return { ok: true, status: 200, json: async () => ({ id: U, username: 'ace', global_name: 'Ace', avatar: 'abc123' }) };
+    return base(url, init);
+  };
+  const dir = createDiscordDirectory({ tokens: [{ label: 'academy', token: 't' }], fetchImpl });
+  const first = await dir.postAsMember(CH_OPEN, { content: 'hi' }, [], { userId: U, displayName: 'Ace Discord #1' });
+  await dir.postAsMember(CH_OPEN, { content: 'again' }, [], { userId: U, displayName: 'Ace' });
+  assert.equal(first.id, '800000000000000008');
+  assert.equal(seen.filter((s) => s[0] === 'make').length, 1, 'the webhook is created once');
+  const posts = seen.filter((s) => s[0] === 'post').map((s) => s[1]);
+  assert.equal(posts[0].username, 'Ace 1');
+  assert.ok(!/discord/i.test(posts[0].username), 'Discord forbids that word in a webhook name');
+  assert.equal(posts[0].avatar_url, `https://cdn.discordapp.com/avatars/${U}/abc123.png?size=128`);
+  assert.equal(posts[1].username, 'Ace');
+});

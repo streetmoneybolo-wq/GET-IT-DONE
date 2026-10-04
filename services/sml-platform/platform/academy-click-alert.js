@@ -272,7 +272,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     return directory.sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, channelId, mention = false, images: wantImages = true } = {}) {
+  async function send(user, { symbol, target, channelId, mention = false, images: wantImages = true, asMe = true } = {}) {
     const userId = String(user.userId || '');
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
     const ent = await entitlement(userId);
@@ -288,7 +288,9 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     if (await store.count({ userId, symbol: analysis.symbol, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     const ping = !!mention && where.mentionEveryone;
     let content = format.formatEntryAlert({ ...analysis.alert, mention: ping });
-    if (footer) content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
+    // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
+    const viaWebhook = asMe !== false && !!where.botCanWebhook && typeof directory.postAsMember === 'function';
+    if (footer && !viaWebhook) content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
     // the two scenario charts ride along when asked for, when the member and the app may attach files there, and when the picture engine is available
     let files = [], skipped = '';
     if (wantImages === false) skipped = 'declined';
@@ -297,10 +299,19 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
       files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
       if (files.length < 2) { files = []; skipped = 'unavailable'; }
     }
-    const posted = await directory.post(String(channelId), { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } }, files);
+    const msgBody = { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } };
+    let posted, postedAs = 'app';
+    if (viaWebhook) {
+      try { posted = await directory.postAsMember(String(channelId), msgBody, files, { userId, displayName: user.displayName }); postedAs = 'member'; }
+      catch (error) { logger('warn', 'click_alert_webhook_failed', { error: String(error.message || error) }); }
+    }
+    if (!posted) {
+      if (footer && viaWebhook) msgBody.content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
+      posted = await directory.post(String(channelId), msgBody, files);
+    }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
   }
 
   return { entitlement, preview, send, destinations, channels, configured };

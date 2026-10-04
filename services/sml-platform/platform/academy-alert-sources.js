@@ -15,7 +15,7 @@ const { parseAlertMessage } = require('./academy-alerts-parse');
 
 const DISCORD = 'https://discord.com/api/v10';
 const SNOWFLAKE = /^\d{15,25}$/;
-const VIEW = 1n << 10n, SEND = 1n << 11n, ATTACH = 1n << 15n, MENTION_EVERYONE = 1n << 17n, HISTORY = 1n << 16n, ADMIN = 1n << 3n, ALL = (1n << 53n) - 1n;
+const VIEW = 1n << 10n, SEND = 1n << 11n, ATTACH = 1n << 15n, MENTION_EVERYONE = 1n << 17n, MANAGE_WEBHOOKS = 1n << 29n, HISTORY = 1n << 16n, ADMIN = 1n << 3n, ALL = (1n << 53n) - 1n;
 const TEXT_TYPES = new Set([0, 5]); // text and announcement channels
 const MAX_SOURCES = 12;
 const MAX_CHANNELS = Math.max(1, Math.min(80, Number(process.env.ACADEMY_ALERTS_MAX_CHANNELS) || 30));
@@ -46,7 +46,7 @@ function channelPermissions({ guildId, ownerId, roles, memberRoles, userId, over
 }
 const canReadWith = (perms) => (perms & VIEW) === VIEW && (perms & HISTORY) === HISTORY;
 /* what a member (or the bot) may do when posting in a channel: see it, send in it, and ping @everyone there */
-const postingWith = (perms) => ({ send: (perms & VIEW) === VIEW && (perms & SEND) === SEND, attach: (perms & ATTACH) === ATTACH, mentionEveryone: (perms & MENTION_EVERYONE) === MENTION_EVERYONE });
+const postingWith = (perms) => ({ send: (perms & VIEW) === VIEW && (perms & SEND) === SEND, attach: (perms & ATTACH) === ATTACH, mentionEveryone: (perms & MENTION_EVERYONE) === MENTION_EVERYONE, webhooks: (perms & MANAGE_WEBHOOKS) === MANAGE_WEBHOOKS });
 
 /* Discord lookups through the Academy's bot tokens, every one cached. A server is reachable through whichever bot is in it. */
 function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
@@ -165,7 +165,7 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
       const ow = c.permission_overwrites || [];
       const mine = postingWith(await permsIn(guildId, userId, ow)); if (!mine.send) continue;
       const bot = await botPosting(guildId, ow); if (!bot.send) continue;
-      out.push({ id: String(c.id), name: cleanLabel(c.name), category: categories.get(String(c.parent_id)) || '', position: Number(c.position) || 0, catPos: Number((list.find((x) => String(x.id) === String(c.parent_id)) || {}).position) || 0, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone });
+      out.push({ id: String(c.id), name: cleanLabel(c.name), asMe: !!bot.webhooks, category: categories.get(String(c.parent_id)) || '', position: Number(c.position) || 0, catPos: Number((list.find((x) => String(x.id) === String(c.parent_id)) || {}).position) || 0, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone });
     }
     return out.sort((a, b) => a.catPos - b.catPos || a.position - b.position).map(({ catPos, position, ...c }) => c);
   }
@@ -178,7 +178,7 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     const ow = chan.data.permission_overwrites || [];
     const mine = postingWith(channelPermissions({ guildId: info.guildId, ownerId: String(g.data.owner_id || ''), roles: g.data.roles || [], memberRoles: m.data.roles || [], userId, overwrites: ow }));
     const bot = await botPosting(info.guildId, ow);
-    return { guildId: info.guildId, name: info.name, userCanSend: mine.send, botCanSend: bot.send, userCanAttach: mine.attach, botCanAttach: bot.attach, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone };
+    return { guildId: info.guildId, name: info.name, botCanWebhook: !!bot.webhooks, userCanSend: mine.send, botCanSend: bot.send, userCanAttach: mine.attach, botCanAttach: bot.attach, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone };
   }
   /* files: [{ name, bytes (Buffer), contentType, alt }] are sent as attachments on the same message (multipart), each with its alt text */
   async function post(channelId, body, files = []) {
@@ -194,7 +194,42 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     if (!res.ok) { const e = new Error(`discord_post_${res.status}`); e.status = res.status; throw e; }
     const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
   }
-  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, userProfile, memberRoles, memberRolesLive, sendableChannels, postingIn, post };
+  /* Post under the member's own name and picture. Discord does not let any app post as a user account, so this uses a channel webhook (made once by the
+     Academy app, which needs Manage Webhooks there) with the member's display name and avatar; Discord still marks such a message APP. */
+  const hooks = new Map(); // channelId -> { id, token }
+  async function webhookFor(channelId, t, botId) {
+    const hit = hooks.get(channelId); if (hit) return hit;
+    const headers = { authorization: `Bot ${t.token}`, 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' };
+    const list = await fetchImpl(`${DISCORD}/channels/${channelId}/webhooks`, { headers, signal: AbortSignal.timeout(10_000) });
+    if (list.ok) { const found = (await list.json()).find((w) => w && w.token && String(w.user && w.user.id) === botId && w.name === 'Academy Alerts'); if (found) { const h = { id: String(found.id), token: String(found.token) }; hooks.set(channelId, h); return h; } }
+    const made = await fetchImpl(`${DISCORD}/channels/${channelId}/webhooks`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Academy Alerts' }), signal: AbortSignal.timeout(10_000) });
+    if (!made.ok) { const e = new Error(`discord_webhook_${made.status}`); e.status = made.status; throw e; }
+    const w = await made.json(); const h = { id: String(w.id), token: String(w.token) }; hooks.set(channelId, h); return h;
+  }
+  const avatarUrl = (profile, userId) => (profile && profile.avatar ? `https://cdn.discordapp.com/avatars/${userId}/${profile.avatar}.png?size=128` : '');
+  const cleanName = (v) => String(v || '').replace(/[\u0000-\u001f<>@`*_~|#:]/g, '').replace(/discord|clyde/gi, '').replace(/[ ]+/g, ' ').trim().slice(0, 80);
+  async function postAsMember(channelId, body, files = [], { userId, displayName } = {}) {
+    const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) { const e = new Error('discord_bot_not_in_server'); e.status = 404; throw e; }
+    const botId = await botUser(t);
+    const profile = await userProfile(String(userId)).catch(() => null);
+    const username = cleanName(displayName || (profile && (profile.globalName || profile.username))) || 'Academy member';
+    const avatar_url = avatarUrl(profile, String(userId));
+    const send = async (hook) => {
+      const meta = { ...body, username, ...(avatar_url ? { avatar_url } : {}) };
+      let payload; const headers = { 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' };
+      if (files && files.length) {
+        payload = new FormData();
+        payload.append('payload_json', JSON.stringify({ ...meta, attachments: files.map((f, i) => ({ id: i, filename: f.name, description: String(f.alt || '').slice(0, 1000) })) }));
+        files.forEach((f, i) => payload.append(`files[${i}]`, new Blob([f.bytes], { type: f.contentType || 'image/png' }), f.name));
+      } else { payload = JSON.stringify(meta); headers['content-type'] = 'application/json'; }
+      return fetchImpl(`${DISCORD}/webhooks/${hook.id}/${hook.token}?wait=true`, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(files && files.length ? 20_000 : 10_000) });
+    };
+    let hook = await webhookFor(String(channelId), t, botId), res = await send(hook);
+    if (res.status === 404) { hooks.delete(String(channelId)); hook = await webhookFor(String(channelId), t, botId); res = await send(hook); } // the webhook was deleted: make a new one once
+    if (!res.ok) { const e = new Error(`discord_webhook_post_${res.status}`); e.status = res.status; throw e; }
+    const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
+  }
+  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, userProfile, memberRoles, memberRolesLive, sendableChannels, postingIn, post, postAsMember };
 }
 
 /* Where each member's sources are kept: Postgres (academy_alert_sources) when there is a database, memory otherwise (local runs, tests). */
