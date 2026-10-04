@@ -1529,3 +1529,11 @@ test('Click-to-Alert shows a Discord-style preview of the exact post and destina
   assert.ok(src.indexOf('data-ca="channel"') < src.indexOf('THIS IS WHAT WILL BE POSTED') && src.indexOf('THIS IS WHAT WILL BE POSTED') < src.indexOf('data-ca="send"'), 'destination, then preview, then send');
   assert.ok(!/[`\\]|\$\{/.test(src), 'inlined script: no backtick, backslash or ${');
 });
+
+test('The options lab reads the Academy session when it is used, not only from the sign-in event, and the scanner OPTIONS tab loads the chain', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'server.js'), 'utf8');
+  assert.ok(!src.includes("let session='',chain=[]"), 'the options lab no longer starts with an empty session');
+  assert.ok(src.includes("session=String(window.smlAcademySessionToken||'')"));
+  assert.ok(src.includes("if(!session)session=String(window.smlAcademySessionToken||'');if(!session){status.classList.add('options-error')"));
+  assert.ok(src.includes("const lb=document.getElementById('load-options');if(lb&&!lb.disabled&&window.smlAcademySessionToken"));
+});
