@@ -1522,3 +1522,10 @@ test('Pass routes pick the Click-to-Alert add-on with product=click_alert', asyn
     assert.deepEqual(seen, [['click_alert', 'weekly']]);
   });
 });
+
+test('Click-to-Alert shows a Discord-style preview of the exact post and destination before it can be sent', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
+  for (const marker of ['THIS IS WHAT WILL BE POSTED', 'Posting to', "'Send to #'", 'dpics']) assert.ok(src.includes(marker), marker);
+  assert.ok(src.indexOf('data-ca="channel"') < src.indexOf('THIS IS WHAT WILL BE POSTED') && src.indexOf('THIS IS WHAT WILL BE POSTED') < src.indexOf('data-ca="send"'), 'destination, then preview, then send');
+  assert.ok(!/[`\\]|\$\{/.test(src), 'inlined script: no backtick, backslash or ${');
+});
