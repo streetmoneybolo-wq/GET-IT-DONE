@@ -40,6 +40,7 @@ const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = r
 const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
 const { createProfileService } = require('./academy-profile');
 const { createSnapshotService } = require('./academy-snapshot');
+const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -1456,7 +1457,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMassive = null, academySireFeed = null, academyScreener = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyMassive = null, academySireFeed = null, academyScreener = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2108,6 +2109,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
     }
 
+    /* MEM LAB operator routes (champion/challenger state). Needs ACADEMY_MEM_LAB_TOKEN as a Bearer token; promoting a challenger is always an explicit POST. */
+    if (path.startsWith('/academy-activity/mem-lab/') && ['/academy-activity/mem-lab/report', '/academy-activity/mem-lab/approve', '/academy-activity/mem-lab/run'].includes(path)) {
+      const want = String(process.env.ACADEMY_MEM_LAB_TOKEN || ''), got = String(request.headers.authorization || '').replace(/^Bearer /, '');
+      const okToken = want.length >= 16 && got.length === want.length && require('crypto').timingSafeEqual(Buffer.from(got), Buffer.from(want));
+      if (!okToken) { sendJson(response, 401, { ok: false, error: 'unauthorized' }); return; }
+      if (!academyMemLab) { sendJson(response, 503, { ok: false, error: 'mem_lab_disabled' }); return; }
+      try {
+        if (request.method === 'GET' && path.endsWith('/report')) { sendJson(response, 200, { ok: true, ...(await academyMemLab.report()) }); return; }
+        if (request.method === 'POST' && path.endsWith('/approve')) { const c = await academyMemLab.approve(); sendJson(response, c ? 200 : 404, { ok: !!c, champion: c }); return; }
+        if (request.method === 'POST' && path.endsWith('/run')) { sendJson(response, 200, { ok: true, run: await academyMemLab.cycle() }); return; }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return;
+      } catch (error) { logger('error', 'academy_mem_lab_failed', { error }); sendJson(response, 503, { ok: false, error: 'temporarily_unavailable' }); return; }
+    }
+
     /* Quick Snapshot: post the chart as the member sees it to a channel they (and the Academy app) can post and attach in. */
     if (path.startsWith('/academy-activity/snapshot/') && ['/academy-activity/snapshot/status', '/academy-activity/snapshot/channels', '/academy-activity/snapshot/send'].includes(path)) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -2750,6 +2765,12 @@ async function main() {
   }) : null;
   /* Quick Snapshot (chart picture to a Discord channel). ACADEMY_SNAPSHOT=off removes it. */
   const academySnapshot = process.env.ACADEMY_SNAPSHOT === 'off' ? null : createSnapshotService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), logger: log });
+  /* MEM LAB: opt-in (ACADEMY_MEM_LAB=on). Reads the scanner's daily candles, proposes gated improvements; a human approves via the operator route. */
+  const academyMemLab = process.env.ACADEMY_MEM_LAB === 'on' ? createMemLab({
+    sources: [{ name: 'academy-scanner-1D', load: async () => { const rows = ((await getAcademyScanner()) || {}).rows || []; const out = []; for (const r of rows.slice(0, 60)) { try { out.push({ symbol: String(r.symbol).toUpperCase(), bars: (await getAcademyCandles(String(r.symbol).toUpperCase(), '1D')).bars }); } catch (_) {} } return out; } }],
+    store: memLabFileStore(process.env.ACADEMY_MEM_LAB_FILE || '/tmp/sml-mem-lab.json'), autoPromote: process.env.ACADEMY_MEM_LAB_AUTOPROMOTE === 'on', log
+  }) : null;
+  if (academyMemLab) academyMemLab.schedule();
   /* Chat profile cards (avatar, Discord profile, linked StockMarketLoop profile). ACADEMY_PROFILE_CARDS=off removes them. */
   const academyProfiles = process.env.ACADEMY_PROFILE_CARDS === 'off' ? null : createProfileService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), bridge: loopKickBridge, logger: log });
   /* Click-to-Alert is off until SML_ACADEMY_CLICK_ALERT_ROLE_IDS names the role the separate subscription grants. ACADEMY_CLICK_ALERT=off disables it outright. */
@@ -2809,7 +2830,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMassive, academyScreener,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyMassive, academyScreener,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
