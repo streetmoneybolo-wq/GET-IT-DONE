@@ -56,7 +56,16 @@ function createAcademyInteractions({ config, pool, fetchImpl, now, billing = nul
       pool,
       handoff: billing ? billing.handoff : null,
       onMemberSeen: billing && typeof billing.onMemberSeen === 'function' ? billing.onMemberSeen : null
-    })
+    }),
+    /* Personal Discord installs have no reliable guild-role context. The
+       billing outbox is the server-side entitlement record, updated by Stripe
+       and revocations, so this check keeps subscription enforcement intact. */
+    userInstallEntitled: billing?.enabled && billing?.store && billing?.config
+      ? async ({ discordUserId }) => {
+        const states = await billing.store.roleStatusFor(pool, String(discordUserId));
+        return states.some((state) => state.key === 'academy' && state.desired === true);
+      }
+      : null
   });
   return createDiscordInteractions({
     config: { discordConnectPublicKey: config.academyPublicKey, discordConnectAppId: config.academyAppId },

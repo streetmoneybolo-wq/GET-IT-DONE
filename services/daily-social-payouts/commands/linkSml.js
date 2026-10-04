@@ -33,6 +33,10 @@ export async function execute(interaction) {
         : 'Your Discord account is connected. No mapped role access was added at this time.';
     return interaction.editReply(`✅ **StockMarketLoop connected.**\n${access}\n\nReturn to the group page to see your updated access.`);
   } catch (error) {
-    return interaction.editReply(`Could not connect your account: ${String(error?.message || error).slice(0, 400)}`);
+    const message = String(error?.message || error);
+    if (/expired|invalid|one-time|code/i.test(message)) {
+      return interaction.editReply('That link code is expired or invalid. Return to https://stockmarketloop.com/connect-discord/ to generate a fresh code, then type `/link-sml`, choose it from Discord’s menu, and paste only the new code into the **code** box.');
+    }
+    return interaction.editReply(`Could not connect your account: ${message.slice(0, 400)}`);
   }
 }

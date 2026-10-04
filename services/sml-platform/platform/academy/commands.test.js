@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, LAUNCH_ID, TEXT_LESSON_ID, createAcademyCommands } = require('./commands');
+const { ACADEMY_HUBS, ENTRY_POINT_COMMAND, LAUNCH_ID, TEXT_LESSON_ID, USER_INSTALL_COMMAND_DEFINITIONS, createAcademyCommands } = require('./commands');
 const { SEED_LESSONS } = require('./curriculum');
 const TOTAL_LESSONS = 121 + require('./street-smarts').STREET_LESSONS.length; // the original 29 modules plus the Street Smarts track
 const TOTAL_MODULES = 30; // modules 0 to 29
@@ -77,9 +77,34 @@ test('Academy exposes a Discord-managed Activity entry point', () => {
     description: 'Open the interactive Making Easy Money Academy workspace',
     type: 4,
     handler: 2,
-    integration_types: [0],
-    contexts: [0]
+    integration_types: [0, 1],
+    contexts: [0, 1, 2]
   });
+});
+
+test('personal Discord installs register only the safe Academy command set without guild permissions', () => {
+  assert.deepEqual(USER_INSTALL_COMMAND_DEFINITIONS.map((command) => command.name),
+    ['academy', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'briefing', 'discipline', 'replay', 'leaderboard']);
+  for (const command of USER_INSTALL_COMMAND_DEFINITIONS) {
+    assert.equal(command.default_member_permissions, undefined);
+    assert.deepEqual(command.integration_types, [1]);
+    assert.deepEqual(command.contexts, [0, 1, 2]);
+  }
+});
+
+test('personal Discord install uses the server-side paid entitlement, not a guild role', async () => {
+  const personal = {
+    type: 2,
+    user: { id: USER },
+    authorizing_integration_owners: { 1: USER },
+    data: { name: 'academy' }
+  };
+  const entitled = createAcademyCommands({ pool: pool(), guildId: GUILD, enabled: true,
+    userInstallEntitled: async ({ discordUserId }) => discordUserId === USER });
+  assert.match((await entitled.handle(personal)).response.data.content, /Welcome to Making Easy Money Academy/);
+  const locked = createAcademyCommands({ pool: pool(), guildId: GUILD, enabled: true,
+    userInstallEntitled: async () => false });
+  assert.match((await locked.handle(personal)).response.data.content, /personal Academy install is ready/);
 });
 
 test('member cannot use restricted slash command just because channel launchers are enabled', async () => {

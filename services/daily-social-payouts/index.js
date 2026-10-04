@@ -31,6 +31,7 @@ import * as syncSml from './commands/syncSml.js';
 import * as connectSmlGroup from './commands/connectSmlGroup.js';
 import * as connectDashboard from './commands/connectDashboard.js';
 import * as syncSmlChannels from './commands/syncSmlChannels.js';
+import * as reregisterSmlCommands from './commands/reregisterSmlCommands.js';
 import { sendOnboarding } from './utils/onboarding.js';
 import { dynamicRoleSyncGuildIds, isRoleSyncGuild, memberRoleIdsChanged, pushGuildCatalog, refreshDynamicRoleSyncGuilds, revokeMemberRoles, roleSyncEnabled, roleSyncGuildIds, syncMemberRoles } from './utils/siteRoleSync.js';
 import { recordPremiumVerificationDm } from './utils/premiumVerification.js';
@@ -80,7 +81,7 @@ const client = new Client({
 
 client.commands = new Collection();
 const dailySocialCommands = [share, news, leaderboard, boost, tracking, earnings, connectPayPal, paypal, payoutAdmin, shareSetup];
-const legacyCommands = [...dailySocialCommands, linkSml, syncSml, connectSmlGroup, connectDashboard, syncSmlChannels];
+const legacyCommands = [...dailySocialCommands, linkSml, syncSml, connectSmlGroup, connectDashboard, syncSmlChannels, reregisterSmlCommands];
 for (const command of dailySocialMode ? dailySocialCommands : legacyCommands) client.commands.set(command.data.name, command);
 
 const platformInfo = {
@@ -735,7 +736,10 @@ client.once('clientReady', async () => {
     : [];
   /* The bot gets moved between servers; commands must exist wherever it
      lives, or admin tools like /share-setup cannot be run in a new group. */
-  const joinedGuildIds = dailySocialMode ? [...client.guilds.cache.keys()] : [];
+  // Commands must be present in every server where this bot is a member. A
+  // group may be paired after the bot joined, so role-sync configuration alone
+  // is not an authoritative command-registration list.
+  const joinedGuildIds = [...client.guilds.cache.keys()];
   const commandGuildIds = [...new Set([process.env.GUILD_ID, ...joinedGuildIds, ...(!dailySocialMode && roleSyncEnabled() ? roleSyncGuildIds() : []), ...dynamicGuilds].filter(Boolean))];
   for (const guildId of commandGuildIds) {
     const guild = await client.guilds.fetch(guildId).catch(() => null);
