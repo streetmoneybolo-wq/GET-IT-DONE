@@ -37,6 +37,7 @@ const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSym
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin, TIMEFRAMES: MASSIVE_TIMEFRAMES } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
+const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -581,7 +582,9 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const chartLayout = fs.readFileSync(pathModule.join(__dirname, 'academy-chart-layout.js'), 'utf8');
     const depthTools = fs.readFileSync(pathModule.join(__dirname, 'academy-depth-tools.js'), 'utf8');
     const smartMoney = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money.js'), 'utf8');
+    const smcExplain = fs.readFileSync(pathModule.join(__dirname, 'academy-smc-explain.js'), 'utf8');
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
+    const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const sirePanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sire-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const liveCells = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-live-cells.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -594,7 +597,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const belowCycle = fs.readFileSync(pathModule.join(__dirname, 'academy-below-cycle.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + earningsPanel + '</script><script>' + shortSale + '</script><script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + earningsPanel + '</script><script>' + shortSale + '</script><script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + clickAlertUi + '</script><script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();',
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1448,7 +1451,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyMassive = null, academySireFeed = null, academyScreener = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyMassive = null, academySireFeed = null, academyScreener = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2076,6 +2079,46 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Click-to-Alert (a separate paid add-on, checked live against a Discord role): the member clicks a price on the chart, the Academy's data picks the horizon
+       (day / swing / mid / long), and the alert is posted to a channel the member can post in, in GrandMaster-Obi's layout. */
+    if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academyClickAlert) { sendJson(response, 503, { ok: false, error: 'click_alert_disabled' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      const fail = (out) => sendJson(response, out.status || 400, { ok: false, error: out.code, ...(out.detail ? { detail: out.detail } : {}), ...(out.entitlement ? { entitlement: out.entitlement } : {}) });
+      try {
+        if (request.method === 'GET' && path === '/academy-activity/click-alert/status') {
+          const entitlement = await academyClickAlert.entitlement(session.userId);
+          const guilds = entitlement.entitled ? await academyClickAlert.destinations(session.userId, params.get('current') || '') : [];
+          sendJson(response, 200, { ok: true, ...entitlement, guilds }); return;
+        }
+        if (request.method === 'GET' && path === '/academy-activity/click-alert/channels') {
+          const entitlement = await academyClickAlert.entitlement(session.userId);
+          if (!entitlement.entitled) { sendJson(response, 402, { ok: false, error: 'click_alert_subscription_required' }); return; }
+          const channels = await academyClickAlert.channels(session.userId, params.get('guild'));
+          if (!channels) { sendJson(response, 404, { ok: false, error: 'server_unavailable' }); return; }
+          sendJson(response, 200, { ok: true, channels }); return;
+        }
+        if (request.method === 'POST') {
+          if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+          const body = await readRequestBody(request, 2048);
+          if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+          let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          const out = path.endsWith('/preview') ? await academyClickAlert.preview(session.userId, input) : await academyClickAlert.send({ userId: session.userId, displayName: session.displayName }, input);
+          if (!out.ok) { fail(out); return; }
+          sendJson(response, 200, out); return;
+        }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      } catch (error) {
+        logger('error', 'academy_click_alert_failed', { error });
+        sendJson(response, error && error.status === 429 ? 429 : 503, { ok: false, error: 'temporarily_unavailable' });
+      }
+      return;
+    }
+
     /* The alerts desk: the trader's posted alerts with risk grade, checklist and plan. Members only (the same Academy session as the options chain). */
     if (request.method === 'GET' && path === '/academy-activity/alerts') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -2643,6 +2686,13 @@ async function main() {
     store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     alerts: academyAlerts, presets: defaultChannels(), logger: log
   }) : null;
+  /* Click-to-Alert is off until SML_ACADEMY_CLICK_ALERT_ROLE_IDS names the role the separate subscription grants. ACADEMY_CLICK_ALERT=off disables it outright. */
+  const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
+    getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId,
+    roleIds: String(process.env.SML_ACADEMY_CLICK_ALERT_ROLE_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
+    footer: process.env.SML_ACADEMY_CLICK_ALERT_FOOTER !== 'off', logger: log
+  });
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
@@ -2693,7 +2743,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyMassive, academyScreener,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyMassive, academyScreener,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

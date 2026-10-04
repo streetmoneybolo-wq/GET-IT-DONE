@@ -112,7 +112,7 @@
     else if (touches === 0) evidence.push(ev(1, 'Untouched since the move that created it: the orders there have likely not been used up.'));
     else if (touches >= 3) evidence.push(ev(-1.5, 'Re-tested ' + touches + ' times: each test uses up some of the resting orders.'));
     else if (touches >= 1 && !mitigated) evidence.push(ev(1, 'Price came back into it and held the ' + (demand ? 'lower' : 'upper') + ' half, a sign it was defended.'));
-    if (mitigated) evidence.push(ev(-1.5, 'The last test closed past the block\'s midpoint, a weak defence.'));
+    if (mitigated) evidence.push(ev(-1.5, 'The last test closed past the block’s midpoint, a weak defence.'));
     if (originVol != null && originVol >= 1.3) evidence.push(ev(1, 'The origin candle traded ' + originVol.toFixed(1) + 'x its usual volume: real size was involved.'));
     else if (originVol != null && originVol < 0.7) evidence.push(ev(-0.5, 'The origin candle traded on thin volume (' + originVol.toFixed(1) + 'x usual).'));
     if (disp >= 1) evidence.push(ev(1, 'The break that confirmed it was a strong ' + disp.toFixed(1) + ' ATR candle: an aggressive, one-sided move.'));
@@ -160,7 +160,7 @@
     const l = a.liquidity[idx]; if (!l) return null;
     const c = context(a, bars, ctx), n = a.n, atr = a.atr, high = l.kind === 'EQH';
     const swept = l.sweptAt != null, taken = l.takenAt != null;
-    const resting = high ? 'buy stops (short sellers\' stops and breakout buyers)' : 'sell stops (long holders\' stops and breakdown sellers)';
+    const resting = high ? 'buy stops (short sellers’ stops and breakout buyers)' : 'sell stops (long holders’ stops and breakdown sellers)';
     if (!swept && !taken) {
       const dist = (l.level - c.px) / c.px;
       const dir = high ? 1 : -1;

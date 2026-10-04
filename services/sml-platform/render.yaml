@@ -128,6 +128,9 @@ services:
         sync: false
       - key: SML_ACADEMY_MEMBER_ROLE_IDS
         sync: false
+      # --- Click-to-Alert: the separate paid add-on. Off until the role its subscription grants is named here (comma-separated Discord role ids).
+      - key: SML_ACADEMY_CLICK_ALERT_ROLE_IDS
+        sync: false
       - key: SML_ACADEMY_MONARCH_ACCESS
         sync: false
       - key: SML_ACADEMY_BILLING_LIFETIME_ROLE_ID

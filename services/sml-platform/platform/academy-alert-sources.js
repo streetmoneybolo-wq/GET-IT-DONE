@@ -15,7 +15,7 @@ const { parseAlertMessage } = require('./academy-alerts-parse');
 
 const DISCORD = 'https://discord.com/api/v10';
 const SNOWFLAKE = /^\d{15,25}$/;
-const VIEW = 1n << 10n, HISTORY = 1n << 16n, ADMIN = 1n << 3n, ALL = (1n << 53n) - 1n;
+const VIEW = 1n << 10n, SEND = 1n << 11n, MENTION_EVERYONE = 1n << 17n, HISTORY = 1n << 16n, ADMIN = 1n << 3n, ALL = (1n << 53n) - 1n;
 const TEXT_TYPES = new Set([0, 5]); // text and announcement channels
 const MAX_SOURCES = 12;
 const MAX_CHANNELS = Math.max(1, Math.min(80, Number(process.env.ACADEMY_ALERTS_MAX_CHANNELS) || 30));
@@ -45,6 +45,8 @@ function channelPermissions({ guildId, ownerId, roles, memberRoles, userId, over
   return perms;
 }
 const canReadWith = (perms) => (perms & VIEW) === VIEW && (perms & HISTORY) === HISTORY;
+/* what a member (or the bot) may do when posting in a channel: see it, send in it, and ping @everyone there */
+const postingWith = (perms) => ({ send: (perms & VIEW) === VIEW && (perms & SEND) === SEND, mentionEveryone: (perms & MENTION_EVERYONE) === MENTION_EVERYONE });
 
 /* Discord lookups through the Academy's bot tokens, every one cached. A server is reachable through whichever bot is in it. */
 function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
@@ -132,7 +134,48 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) return [];
     const r = await call(t, `/channels/${channelId}/messages?limit=100`); return Array.isArray(r.data) ? r.data : [];
   });
-  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds };
+  /* ---------- posting (the Click-to-Alert feature): who may post where, and the post itself ---------- */
+  const memberRoles = async (guildId, userId) => { const m = await member(guildId, userId); return m && Array.isArray(m.roles) ? m.roles.map(String) : null; };
+  /* uncached: a subscription that just ended (or just started) is honoured on the very next click */
+  const memberRolesLive = async (guildId, userId) => { const t = await tokenFor(guildId); if (!t) return null; const r = await call(t, `/guilds/${guildId}/members/${userId}`); return r.data && Array.isArray(r.data.roles) ? r.data.roles.map(String) : null; };
+  async function botPosting(guildId, overwrites) {
+    const t = await tokenFor(guildId); if (!t) return { send: false, mentionEveryone: false };
+    const id = await botUser(t); if (!id) return { send: false, mentionEveryone: false };
+    return postingWith(await permsIn(guildId, id, overwrites));
+  }
+  /* text channels in a server the member can post in AND the Academy bot can post in */
+  async function sendableChannels(guildId, userId) {
+    if (!(await member(guildId, userId))) return null;
+    const list = await guildChannels(guildId);
+    const categories = new Map(list.filter((c) => Number(c.type) === 4).map((c) => [String(c.id), cleanLabel(c.name)]));
+    const out = [];
+    for (const c of list) {
+      if (!TEXT_TYPES.has(Number(c.type))) continue;
+      const ow = c.permission_overwrites || [];
+      const mine = postingWith(await permsIn(guildId, userId, ow)); if (!mine.send) continue;
+      const bot = await botPosting(guildId, ow); if (!bot.send) continue;
+      out.push({ id: String(c.id), name: cleanLabel(c.name), category: categories.get(String(c.parent_id)) || '', position: Number(c.position) || 0, catPos: Number((list.find((x) => String(x.id) === String(c.parent_id)) || {}).position) || 0, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone });
+    }
+    return out.sort((a, b) => a.catPos - b.catPos || a.position - b.position).map(({ catPos, position, ...c }) => c);
+  }
+  /* the exact answer for one channel, never cached (a send is checked against the live permissions of that moment) */
+  async function postingIn(userId, channelId) {
+    const info = await channelInfo(channelId); if (!info || !TEXT_TYPES.has(info.type)) return null;
+    const t = await tokenFor(info.guildId); if (!t) return null;
+    const [g, m, chan] = await Promise.all([call(t, `/guilds/${info.guildId}`), call(t, `/guilds/${info.guildId}/members/${userId}`), call(t, `/channels/${channelId}`)]);
+    if (!g.data || !m.data || !chan.data) return null;
+    const ow = chan.data.permission_overwrites || [];
+    const mine = postingWith(channelPermissions({ guildId: info.guildId, ownerId: String(g.data.owner_id || ''), roles: g.data.roles || [], memberRoles: m.data.roles || [], userId, overwrites: ow }));
+    const bot = await botPosting(info.guildId, ow);
+    return { guildId: info.guildId, name: info.name, userCanSend: mine.send, botCanSend: bot.send, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone };
+  }
+  async function post(channelId, body) {
+    const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) { const e = new Error('discord_bot_not_in_server'); e.status = 404; throw e; }
+    const res = await fetchImpl(`${DISCORD}/channels/${channelId}/messages`, { method: 'POST', headers: { authorization: `Bot ${t.token}`, 'content-type': 'application/json', 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) { const e = new Error(`discord_post_${res.status}`); e.status = res.status; throw e; }
+    const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
+  }
+  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, memberRoles, memberRolesLive, sendableChannels, postingIn, post };
 }
 
 /* Where each member's sources are kept: Postgres (academy_alert_sources) when there is a database, memory otherwise (local runs, tests). */
@@ -259,4 +302,4 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
   return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, MAX_SOURCES };
 }
 
-module.exports = { createAlertSources, createAlertSourceStore, createDiscordDirectory, channelPermissions, canReadWith, MAX_SOURCES };
+module.exports = { createAlertSources, createAlertSourceStore, createDiscordDirectory, channelPermissions, canReadWith, postingWith, MAX_SOURCES };

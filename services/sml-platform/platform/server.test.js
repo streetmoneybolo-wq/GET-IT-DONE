@@ -1311,3 +1311,51 @@ test('Academy offers moomoo, Webull and Robinhood quote links, and the broker ro
     assert.equal(other.status, 400);
   });
 });
+
+test('Click-to-Alert routes need a session, a subscription, and answer with the service\'s reasons', async () => {
+  const calls = [];
+  const academyClickAlert = {
+    entitlement: async (u) => (u === 'sub' ? { configured: true, entitled: true } : { configured: true, entitled: false }),
+    destinations: async () => [{ id: '100000000000000001', name: 'House of Traders', current: true }],
+    channels: async (u, g) => (g === '100000000000000001' ? [{ id: '500000000000000005', name: 'alerts', category: '', mentionEveryone: false }] : null),
+    preview: async (u, body) => (u === 'sub' ? { ok: true, entitlement: { entitled: true }, analysis: { horizon: 'swing', symbol: body.symbol } } : { ok: false, status: 402, code: 'click_alert_subscription_required' }),
+    send: async (user, body) => { calls.push({ user, body }); return body.symbol === 'LIMIT' ? { ok: false, status: 429, code: 'rate_limited', detail: 'slow down' } : { ok: true, messageId: '1', channelId: body.channelId, mentioned: false }; }
+  };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer sub' ? { ok: true, userId: 'sub', tier: 'academy', displayName: 'Ana' } : a === 'Bearer plain' ? { ok: true, userId: 'plain', tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const sub = { authorization: 'Bearer sub' }, plain = { authorization: 'Bearer plain' };
+  const json = (h) => ({ ...h, 'content-type': 'application/json' });
+  await withServer({ academyClickAlert, academyOAuth }, async (base) => {
+    const u = (p) => `${base}/academy-activity/click-alert/${p}`;
+    assert.equal((await fetch(u('status'))).status, 401);
+    assert.deepEqual(await (await fetch(u('status'), { headers: plain })).json(), { ok: true, configured: true, entitled: false, guilds: [] }, 'a non-subscriber learns only that the add-on is locked');
+    const status = await (await fetch(u('status?current=100000000000000001'), { headers: sub })).json();
+    assert.equal(status.entitled, true); assert.equal(status.guilds[0].name, 'House of Traders');
+    assert.equal((await fetch(u('channels?guild=100000000000000001'), { headers: plain })).status, 402);
+    assert.equal((await (await fetch(u('channels?guild=100000000000000001'), { headers: sub })).json()).channels[0].name, 'alerts');
+    assert.equal((await fetch(u('channels?guild=1'), { headers: sub })).status, 404);
+    assert.equal((await fetch(u('preview'), { method: 'POST', headers: plain, body: '{}' })).status, 415);
+    assert.equal((await fetch(u('preview'), { method: 'POST', headers: json(sub), body: 'nope' })).status, 400);
+    const denied = await fetch(u('preview'), { method: 'POST', headers: json(plain), body: JSON.stringify({ symbol: 'AAPL', target: 200 }) });
+    assert.equal(denied.status, 402); assert.equal((await denied.json()).error, 'click_alert_subscription_required');
+    const preview = await (await fetch(u('preview'), { method: 'POST', headers: json(sub), body: JSON.stringify({ symbol: 'AAPL', target: 200 }) })).json();
+    assert.equal(preview.analysis.horizon, 'swing');
+    const sent = await fetch(u('send'), { method: 'POST', headers: json(sub), body: JSON.stringify({ symbol: 'AAPL', target: 200, channelId: '500000000000000005' }) });
+    assert.equal(sent.status, 200);
+    assert.deepEqual(calls[0].user, { userId: 'sub', displayName: 'Ana' }, 'the service is told who is sending, from the session and not from the body');
+    const limited = await fetch(u('send'), { method: 'POST', headers: json(sub), body: JSON.stringify({ symbol: 'LIMIT', target: 2, channelId: '500000000000000005' }) });
+    assert.equal(limited.status, 429); assert.equal((await limited.json()).detail, 'slow down');
+    assert.equal((await fetch(u('status'), { method: 'DELETE', headers: sub })).status, 405);
+  });
+  await withServer({ academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/click-alert/status`, { headers: sub })).status, 503, 'off when the service is not built');
+  });
+});
+
+test('The Academy page carries the smart-money hover explainer and the Click-to-Alert panel as plain inline scripts', async () => {
+  await withServer({}, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    for (const marker of ['SmlSmcExplain', 'smc-tip', 'CONCLUSION:', 'click-alert-toggle', 'academy-activity/click-alert/', 'data-ca="send"', 'MAP READ']) assert.ok(html.includes(marker), marker + ' is on the page');
+    // the page is one template literal: an inlined script must have no backslash escapes or template placeholders that would be rewritten
+    assert.ok(!/\\u[0-9a-f]{4}/i.test(html.slice(html.indexOf('SmlSmcExplain'), html.indexOf('SmlSmcExplain') + 200)), 'no stray escapes');
+  });
+});
