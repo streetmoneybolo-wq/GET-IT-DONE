@@ -1509,3 +1509,16 @@ test('The tick picker ships with the page and the chart folds live prints into t
   assert.ok(pro.includes('tick chart: a candle holds N trades'));
   assert.ok(p('server.js').includes('ACADEMY_TICK_UI + '));
 });
+
+test('Pass routes pick the Click-to-Alert add-on with product=click_alert', async () => {
+  const U = '300000000000000001', seen = [];
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer m' ? { ok: true, userId: U, tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const mk = (name) => ({ configured: true, catalog: () => [], status: async () => ({ ok: true, name }), buy: async (o) => { seen.push([name, o.plan]); return { ok: true, pass: { plan: o.plan }, balance: 1 }; } });
+  await withServer({ academyOAuth, academyPasses: mk('academy'), academyClickAlertPasses: mk('click_alert') }, async (base) => {
+    const h = { authorization: 'Bearer m', 'content-type': 'application/json' };
+    assert.equal((await (await fetch(`${base}/academy-activity/passes/status`, { headers: h })).json()).name, 'academy');
+    assert.equal((await (await fetch(`${base}/academy-activity/passes/status?product=click_alert`, { headers: h })).json()).name, 'click_alert');
+    await fetch(`${base}/academy-activity/passes/buy?product=click_alert`, { method: 'POST', headers: h, body: JSON.stringify({ plan: 'weekly', orderKey: 'order-0001' }) });
+    assert.deepEqual(seen, [['click_alert', 'weekly']]);
+  });
+});

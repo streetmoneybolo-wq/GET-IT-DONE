@@ -201,15 +201,19 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
-  const configured = !!(SNOWFLAKE.test(String(academyGuildId)) && roles.size);
+  const byRole = !!(SNOWFLAKE.test(String(academyGuildId)) && roles.size), byPass = !!(passes && passes.configured);
+  const configured = byRole || byPass;
 
   /* Is this member subscribed to the add-on right now? Asked of Discord live (no cache). */
   async function entitlement(userId) {
     if (!configured) return { configured: false, entitled: false };
+    /* a live Loop Bucks pass is as good as the subscription role */
+    if (byPass && await passes.hasActive(userId).catch(() => false)) return { configured: true, entitled: true, via: 'loopbucks' };
+    if (!byRole) return { configured: true, entitled: false };
     if (!directory || typeof directory.memberRolesLive !== 'function') return { configured: true, entitled: false, reason: 'directory_unavailable' };
     let held; try { held = await directory.memberRolesLive(String(academyGuildId), String(userId)); } catch (error) { logger('warn', 'click_alert_entitlement_failed', { error: String(error.message || error) }); return { configured: true, entitled: false, reason: 'lookup_failed' }; }
     return { configured: true, entitled: !!(held && held.some((id) => roles.has(id))) };

@@ -47,7 +47,7 @@
   const price = (v) => (Number.isFinite(+v) ? (+v >= 1 ? (+v).toFixed(2) : (+v).toFixed(4)) : '-');
   const WHY = {
     authorization_required: 'Sign in with Discord (Unlock Academy Tools) to use Click-to-Alert.',
-    click_alert_subscription_required: 'Click-to-Alert is a separate subscription from the Academy plan. Subscribe to the Click-to-Alert add-on to unlock it.',
+    click_alert_subscription_required: 'Click-to-Alert is an add-on. Unlock it below in one tap.',
     click_alert_not_configured: 'Click-to-Alert is not switched on yet.',
     click_alert_disabled: 'Click-to-Alert is not available right now.',
     target_too_close: 'That target is too close to the live price. Click further away.',
@@ -89,6 +89,42 @@
 
   /* ---------- the panel ---------- */
   const row = (k, v) => '<div class="row"><span>' + esc(k) + '</span><b>' + v + '</b></div>';
+  /* Unlock without leaving the chart: spend Loop Bucks on a plan, or subscribe with a card. */
+  const TOPUP = window.SML_LB_TOPUP_URL || 'https://stockmarketloop.com/';
+  const openOut = (url) => { if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } };
+  const BLOCK = { not_linked: 'Link your StockMarketLoop account to this Discord account first.', not_verified: 'Verify your StockMarketLoop email first.', profile_incomplete: 'Finish your StockMarketLoop profile first.', two_step_required: 'Turn on two-step sign-in on StockMarketLoop first.' };
+  async function loadPass() {
+    const t = token(); if (!t) return;
+    try { const res = await fetch('/academy-activity/passes/status?product=click_alert', { headers: { authorization: 'Bearer ' + t }, cache: 'no-store' }); S.pass = res.ok ? await res.json() : { error: true }; } catch (_) { S.pass = { error: true }; }
+    render();
+  }
+  function unlockHtml() {
+    let h = '';
+    const p = S.pass;
+    if (p && p.ok && (p.catalog || []).length) {
+      if (p.balance != null) h += '<div class="row"><span>Your Loop Bucks</span><b>' + esc(p.balance) + '</b></div>';
+      if (p.blocked && BLOCK[p.blocked]) h += '<div class="msg err">' + esc(BLOCK[p.blocked]) + '</div><button type="button" class="act" data-ca="out" data-url="' + esc(p.url || TOPUP) + '">Fix it on StockMarketLoop</button>';
+      else h += p.catalog.map((c) => '<button type="button" class="act" data-ca="buy" data-plan="' + esc(c.plan) + '"' + (S.buying ? ' disabled' : '') + '>' + esc(c.label) + ' · ' + esc(c.price) + ' Loop Bucks</button>').join('') + '<button type="button" class="act" data-ca="out" data-url="' + esc(TOPUP) + '">Add Loop Bucks</button>';
+    }
+    if (p && p.subscribeUrl) h += '<button type="button" class="act" data-ca="out" data-url="' + esc(p.subscribeUrl) + '">Subscribe with a card</button>';
+    if (!h) return '<div class="msg info">Click-to-Alert is a separate add-on from the Academy plan. Subscribe to it to unlock.</div>' + (S.pass ? '' : '<div class="msg info">Checking your options…</div>');
+    h = '<div class="msg info"><b>Unlock Click-to-Alert</b><br>It is an add-on to your Academy plan. Pick one:</div>' + h;
+    if (S.passMsg) h += '<div class="msg ' + (/^Unlocked/.test(S.passMsg) ? 'ok' : 'err') + '">' + esc(S.passMsg) + '</div>';
+    return h;
+  }
+  async function buyPass(plan) {
+    if (S.buying) return; S.buying = true; S.passMsg = ''; render();
+    S.orderKeys = S.orderKeys || {}; S.orderKeys[plan] = S.orderKeys[plan] || Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b + 256).toString(16).slice(-2)).join('');
+    try {
+      const res = await fetch('/academy-activity/passes/buy?product=click_alert', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token() }, body: JSON.stringify({ plan, orderKey: S.orderKeys[plan] }) });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.ok) { delete S.orderKeys[plan]; S.passMsg = 'Unlocked. Click a price on the chart to start.'; S.buying = false; await loadStatus(); await loadPass(); return; }
+      delete S.orderKeys[plan];
+      S.passMsg = j.error === 'insufficient_funds' ? 'You need ' + j.needed + ' Loop Bucks and have ' + j.balance + '. Add Loop Bucks and try again.' : (BLOCK[j.error] || 'That did not go through. Try again in a minute; you are never charged twice.');
+    } catch (_) { S.passMsg = 'Connection problem. Try again; a retry will not charge you twice.'; }
+    S.buying = false; await loadPass();
+  }
+
   function render() {
     if (!S.on) { panel.style.display = 'none'; return; }
     panel.style.display = 'block';
@@ -96,7 +132,7 @@
     if (!token()) html += '<div class="msg info">' + esc(WHY.authorization_required) + '</div>';
     else if (S.status && S.status.ok === false) html += '<div class="msg err">' + esc(explainErr(S.status)) + '</div>';
     else if (S.status && !S.status.configured) html += '<div class="msg info">' + esc(WHY.click_alert_not_configured) + '</div>';
-    else if (S.status && !S.status.entitled) html += '<div class="msg info">' + esc(WHY.click_alert_subscription_required) + '</div>';
+    else if (S.status && !S.status.entitled) html += unlockHtml();
     else if (S.target == null) html += '<div class="msg info">Click a price on the chart. The entry locks to the live price and your click becomes the target.</div>';
     else if (S.busy && !S.data) html += '<div class="msg info">Reading ' + esc(S.symbol) + ' across the Academy data…</div>';
     const d = S.data;
@@ -116,7 +152,7 @@
       html += '<label class="chk"><input type="checkbox" data-ca="ping"' + (S.ping ? ' checked' : '') + (ch && ch.mentionEveryone ? '' : ' disabled') + '> Ping @everyone' + (ch && !ch.mentionEveryone ? ' (not allowed in this channel)' : '') + '</label>';
       html += '<button type="button" class="act" data-ca="send"' + (S.busy || !S.channelId || S.sent ? ' disabled' : '') + '>' + (S.sent ? 'Alert sent' : S.busy ? 'Working…' : 'Send alert to Discord') + '</button>';
     }
-    if (S.msg) html += '<div class="msg ' + esc(S.msgTone || 'info') + '">' + esc(S.msg) + '</div>';
+    if (S.msg && !(S.status && S.status.ok !== false && !S.status.entitled)) html += '<div class="msg ' + esc(S.msgTone || 'info') + '">' + esc(S.msg) + '</div>';
     html += '<small>Educational estimate from the Academy’s data. It is not a prediction, financial advice, or a trade instruction. The alert is posted by the Academy app and shows your name.</small></div>';
     panel.innerHTML = html;
   }
@@ -128,6 +164,7 @@
     if (!S.guilds.some((g) => g.id === S.guildId)) { const cur = S.guilds.find((g) => g.current) || S.guilds[0]; S.guildId = cur ? cur.id : ''; S.channelId = ''; }
     if (S.guildId) await loadChannels();
     render();
+    if (S.status && S.status.ok !== false && !S.status.entitled && S.status.configured !== false && !S.pass) void loadPass();
   }
   async function loadChannels() {
     S.channels = [];
@@ -163,6 +200,8 @@
   panel.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-ca]'); if (!a) return; const k = a.dataset.ca;
     if (k === 'close') { setOn(false); return; }
+    if (k === 'out') { if (a.dataset.url) openOut(a.dataset.url); return; }
+    if (k === 'buy') { void buyPass(a.dataset.plan); return; }
     if (k === 'send') {
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();

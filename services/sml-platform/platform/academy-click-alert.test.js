@@ -189,3 +189,14 @@ test('the horizon read is part of the paid add-on: an unsubscribed member gets n
   assert.equal(out.ok, false); assert.equal(out.status, 402); assert.equal(out.code, 'click_alert_subscription_required');
   assert.ok(!out.analysis, 'no analysis leaks');
 });
+
+test('a live Loop Bucks pass unlocks Click-to-Alert even with no subscription role configured', async () => {
+  const { createClickAlertService } = require('./academy-click-alert.js');
+  let active = false;
+  const passes = { configured: true, hasActive: async () => active };
+  const svc = createClickAlertService({ getBars: async () => [], directory: null, passes, academyGuildId: '' });
+  assert.deepEqual(await svc.entitlement('300000000000000001'), { configured: true, entitled: false });
+  active = true;
+  assert.deepEqual(await svc.entitlement('300000000000000001'), { configured: true, entitled: true, via: 'loopbucks' });
+  assert.equal(svc.configured, true);
+});

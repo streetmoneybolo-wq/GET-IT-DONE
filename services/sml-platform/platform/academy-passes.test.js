@@ -103,3 +103,16 @@ test('the wallet client signs each request the way the site verifies it and maps
   assert.equal(init.headers['x-sml-lk-signature'], 'sha256=' + want);
   assert.equal((await createWalletClient({ baseUrl: 'http://insecure', secret }).status(U)).error, 'wallet_unconfigured');
 });
+
+test('Click-to-Alert passes are their own product: separate prices, separate access, same wallet', async () => {
+  const store = createPassStore(), wallet = fakeWallet({ balance: 100000 });
+  const academy = createPassService({ store, wallet, prices: PRICES });
+  const alerts = createPassService({ store, wallet, prices: { monthly: 300 }, product: 'click_alert', subscribeUrl: 'https://x.test/sub' });
+  await alerts.buy({ discordId: U, plan: 'monthly', orderKey: 'order-0001' });
+  assert.equal(await alerts.hasActive(U), true); assert.equal(await academy.hasActive(U), false, 'the add-on does not grant Academy access');
+  await academy.buy({ discordId: U, plan: 'daily', orderKey: 'order-0001' });
+  assert.equal(await academy.hasActive(U), true);
+  assert.deepEqual(alerts.catalog().map((c) => c.plan), ['monthly']);
+  const st = await alerts.status(U); assert.equal(st.product, 'click_alert'); assert.equal(st.subscribeUrl, 'https://x.test/sub');
+  assert.ok([...wallet.charges.keys()].some((k) => k.startsWith('ca-lb:')) && [...wallet.charges.keys()].some((k) => k.startsWith('acad-lb:')));
+});

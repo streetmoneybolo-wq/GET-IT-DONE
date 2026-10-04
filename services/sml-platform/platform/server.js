@@ -1474,7 +1474,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2159,7 +2159,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     /* Loop Bucks passes. The caller is a signed-in session, or (a member the role check turned away) the buy ticket from the refused sign-in in the x-academy-ticket header. */
     if (path.startsWith('/academy-activity/passes/') && ['/academy-activity/passes/status', '/academy-activity/passes/buy'].includes(path)) {
-      if (!academyPasses || !academyPasses.configured) { sendJson(response, 503, { ok: false, error: 'passes_not_configured' }); return; }
+      const wantsAlert = new URL(request.url || '/', 'http://localhost').searchParams.get('product') === 'click_alert';
+      const passSvc = wantsAlert ? academyClickAlertPasses : academyPasses;
+      if (!passSvc || !passSvc.configured) { sendJson(response, 503, { ok: false, error: 'passes_not_configured' }); return; }
       let holder = null;
       if (academyOAuth) {
         const s = academyOAuth.verifySession(request.headers.authorization);
@@ -2169,7 +2171,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!holder) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
       try {
         if (request.method === 'GET' && path.endsWith('/status')) {
-          const r = await academyPasses.status(holder.userId);
+          const r = await passSvc.status(holder.userId);
           sendJson(response, r.ok ? 200 : (r.status || 503), r.ok ? r : { ok: false, error: r.code }); return;
         }
         if (request.method === 'POST' && path.endsWith('/buy')) {
@@ -2177,7 +2179,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const body = await readRequestBody(request, 2048);
           if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
           let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
-          const r = await academyPasses.buy({ discordId: holder.userId, plan: String((input && input.plan) || ''), orderKey: String((input && input.orderKey) || '') });
+          const r = await passSvc.buy({ discordId: holder.userId, plan: String((input && input.plan) || ''), orderKey: String((input && input.orderKey) || '') });
           if (!r.ok) { sendJson(response, r.status || 400, { ok: false, error: r.code, ...(r.url ? { url: r.url } : {}), ...(r.balance != null ? { balance: r.balance, needed: r.needed } : {}) }); return; }
           sendJson(response, 200, { ok: true, pass: r.pass, balance: r.balance, duplicate: !!r.duplicate }); return;
         }
@@ -2758,6 +2760,11 @@ async function main() {
     store: createPassStore({ pool: database.pool }), wallet: createWalletClient({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret }),
     prices: parsePassPrices(process.env.SML_ACADEMY_LB_PRICES), logger: log
   });
+  /* Click-to-Alert paid with Loop Bucks: its own prices (SML_CLICK_ALERT_LB_PRICES), the same wallet. SML_CLICK_ALERT_SUBSCRIBE_URL adds a "subscribe with a card" button. */
+  const academyClickAlertPasses = process.env.ACADEMY_LB_PASSES === 'off' ? null : createPassService({
+    store: createPassStore({ pool: database.pool }), wallet: createWalletClient({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret }),
+    prices: parsePassPrices(process.env.SML_CLICK_ALERT_LB_PRICES), product: 'click_alert', subscribeUrl: process.env.SML_CLICK_ALERT_SUBSCRIBE_URL || '', logger: log
+  });
   const academyAccessBase = createAcademyAccess({ guildId: config.academyGuildId,
     allowedRoleIds: [...academyMemberRoleIds, ...config.academyAccessRoleIds], memberRoleIds: academyMemberRoleIds,
     retryRateLimited: academyGateFlags || config.academyAccessRoleIds.length > 0,
@@ -2851,7 +2858,7 @@ async function main() {
   /* Click-to-Alert is off until SML_ACADEMY_CLICK_ALERT_ROLE_IDS names the role the separate subscription grants. ACADEMY_CLICK_ALERT=off disables it outright. */
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
-    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId,
+    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses,
     roleIds: String(process.env.SML_ACADEMY_CLICK_ALERT_ROLE_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
     footer: process.env.SML_ACADEMY_CLICK_ALERT_FOOTER !== 'off', logger: log
   });
@@ -2905,7 +2912,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyMassive, academyScreener,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

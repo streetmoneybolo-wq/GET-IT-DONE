@@ -30,14 +30,14 @@ function parsePrices(raw) {
 function createPassStore({ pool = null } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const mem = [];
-  const out = (r) => ({ id: String(r.id), discordId: String(r.discord_id), wpUserId: r.wp_user_id == null ? null : Number(r.wp_user_id), plan: String(r.plan), amount: Number(r.amount), ref: String(r.ref), status: String(r.status), startsAt: new Date(r.starts_at).toISOString(), expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null });
+  const out = (r) => ({ id: String(r.id), product: String(r.product || 'academy'), discordId: String(r.discord_id), wpUserId: r.wp_user_id == null ? null : Number(r.wp_user_id), plan: String(r.plan), amount: Number(r.amount), ref: String(r.ref), status: String(r.status), startsAt: new Date(r.starts_at).toISOString(), expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null });
   /* the pass that grants access right now, preferring lifetime then the latest expiry */
-  async function active(discordId, at = new Date()) {
+  async function active(discordId, at = new Date(), product = 'academy') {
     if (db) {
-      const r = (await db.query("SELECT * FROM academy_lb_passes WHERE discord_id=$1 AND status='active' AND starts_at <= $2 AND (expires_at IS NULL OR expires_at > $2) ORDER BY expires_at DESC NULLS FIRST LIMIT 1", [discordId, at])).rows[0];
+      const r = (await db.query("SELECT * FROM academy_lb_passes WHERE discord_id=$1 AND product=$3 AND status='active' AND starts_at <= $2 AND (expires_at IS NULL OR expires_at > $2) ORDER BY expires_at DESC NULLS FIRST LIMIT 1", [discordId, at, product])).rows[0];
       return r ? out(r) : null;
     }
-    const live = mem.filter((p) => p.discord_id === discordId && p.status === 'active' && new Date(p.starts_at) <= at && (!p.expires_at || new Date(p.expires_at) > at));
+    const live = mem.filter((p) => p.discord_id === discordId && (p.product || 'academy') === product && p.status === 'active' && new Date(p.starts_at) <= at && (!p.expires_at || new Date(p.expires_at) > at));
     live.sort((a, b) => (a.expires_at ? new Date(a.expires_at).getTime() : Infinity) - (b.expires_at ? new Date(b.expires_at).getTime() : Infinity)).reverse();
     return live[0] ? out(live[0]) : null;
   }
@@ -45,13 +45,13 @@ function createPassStore({ pool = null } = {}) {
     if (db) { const r = (await db.query('SELECT * FROM academy_lb_passes WHERE ref=$1', [ref])).rows[0]; return r ? out(r) : null; }
     const r = mem.find((p) => p.ref === ref); return r ? out(r) : null;
   }
-  async function add({ discordId, wpUserId = null, plan, amount, ref, startsAt, expiresAt }) {
+  async function add({ discordId, wpUserId = null, plan, amount, ref, startsAt, expiresAt, product = 'academy' }) {
     if (db) {
-      const r = (await db.query('INSERT INTO academy_lb_passes (discord_id, wp_user_id, plan, amount, ref, starts_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [discordId, wpUserId, plan, amount, ref, startsAt, expiresAt])).rows[0];
+      const r = (await db.query('INSERT INTO academy_lb_passes (discord_id, wp_user_id, plan, amount, ref, starts_at, expires_at, product) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [discordId, wpUserId, plan, amount, ref, startsAt, expiresAt, product])).rows[0];
       return out(r);
     }
     if (mem.some((p) => p.ref === ref)) throw new Error('duplicate_ref');
-    const row = { id: mem.length + 1, discord_id: discordId, wp_user_id: wpUserId, plan, amount, ref, status: 'active', starts_at: startsAt, expires_at: expiresAt };
+    const row = { id: mem.length + 1, product, discord_id: discordId, wp_user_id: wpUserId, plan, amount, ref, status: 'active', starts_at: startsAt, expires_at: expiresAt };
     mem.push(row); return out(row);
   }
   async function markRefunded(ref) {
@@ -61,20 +61,22 @@ function createPassStore({ pool = null } = {}) {
   return { active, byRef, add, markRefunded };
 }
 
-function createPassService({ store = createPassStore(), wallet, prices = null, now = () => new Date(), logger = () => {} } = {}) {
+/* product: 'academy' (Academy access) or 'click_alert' (the Click-to-Alert add-on). Each has its own prices and its own passes. */
+function createPassService({ store = createPassStore(), wallet, prices = null, product = 'academy', subscribeUrl = '', now = () => new Date(), logger = () => {} } = {}) {
+  const refPrefix = product === 'click_alert' ? 'ca-lb' : 'acad-lb';
   const configured = !!(prices && wallet);
   const catalog = () => Object.keys(PLANS).filter((k) => prices && prices[k]).map((k) => ({ plan: k, label: PLANS[k].label, days: PLANS[k].days, price: prices[k] }));
   const clean = (id) => (SNOWFLAKE.test(String(id || '')) ? String(id) : '');
 
-  async function hasActive(discordId) { const id = clean(discordId); return id ? !!(await store.active(id, now()).catch(() => null)) : false; }
+  async function hasActive(discordId) { const id = clean(discordId); return id ? !!(await store.active(id, now(), product).catch(() => null)) : false; }
 
   async function status(discordId) {
     const id = clean(discordId);
     if (!configured) return { ok: false, status: 503, code: 'passes_not_configured' };
     if (!id) return { ok: false, status: 400, code: 'invalid_user' };
-    const [w, pass] = await Promise.all([wallet.status(id), store.active(id, now()).catch(() => null)]);
+    const [w, pass] = await Promise.all([wallet.status(id), store.active(id, now(), product).catch(() => null)]);
     if (!w.ok) return { ok: false, status: w.status || 503, code: w.error || 'wallet_unavailable' };
-    return { ok: true, catalog: catalog(), pass, linked: !!w.linked, eligible: !!w.eligible, blocked: w.blocked || '', url: w.url || '', balance: Number.isFinite(w.balance) ? w.balance : null };
+    return { ok: true, product, subscribeUrl: String(subscribeUrl || ''), catalog: catalog(), pass, linked: !!w.linked, eligible: !!w.eligible, blocked: w.blocked || '', url: w.url || '', balance: Number.isFinite(w.balance) ? w.balance : null };
   }
 
   /* orderKey makes a double click or a retry safe: the same key never charges twice. */
@@ -84,10 +86,10 @@ function createPassService({ store = createPassStore(), wallet, prices = null, n
     if (!id) return { ok: false, status: 400, code: 'invalid_user' };
     if (!PLANS[plan] || !prices[plan]) return { ok: false, status: 400, code: 'unknown_plan' };
     if (!/^[A-Za-z0-9_-]{8,40}$/.test(String(orderKey || ''))) return { ok: false, status: 400, code: 'order_key_required' };
-    const ref = `acad-lb:${id}:${orderKey}`;
+    const ref = `${refPrefix}:${id}:${orderKey}`;
     const again = await store.byRef(ref);
     if (again) return { ok: true, pass: again, duplicate: true };
-    const current = await store.active(id, now());
+    const current = await store.active(id, now(), product);
     if (current && !current.expiresAt) return { ok: false, status: 409, code: 'already_lifetime' };
 
     const amount = prices[plan];
@@ -99,7 +101,7 @@ function createPassService({ store = createPassStore(), wallet, prices = null, n
     const days = PLANS[plan].days;
     const expiresAt = days == null ? null : new Date(start.getTime() + days * DAY_MS);
     try {
-      const pass = await store.add({ discordId: id, plan, amount, ref, startsAt: new Date(Math.min(start.getTime(), now().getTime())), expiresAt });
+      const pass = await store.add({ discordId: id, product, plan, amount, ref, startsAt: new Date(Math.min(start.getTime(), now().getTime())), expiresAt });
       logger('info', 'academy_pass_bought', { plan });
       return { ok: true, pass, balance: charge.balance };
     } catch (error) {
@@ -118,7 +120,7 @@ function createPassService({ store = createPassStore(), wallet, prices = null, n
     await store.markRefunded(ref);
     return { ok: true };
   }
-  return { configured, catalog, status, buy, refund, hasActive };
+  return { configured, product, catalog, status, buy, refund, hasActive };
 }
 
 /* Wraps the Discord-role access check: a member without the Academy role who holds a live Loop Bucks pass gets in as tier 'academy'.

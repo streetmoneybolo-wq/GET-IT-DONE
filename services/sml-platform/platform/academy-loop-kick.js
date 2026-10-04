@@ -76,6 +76,12 @@
     S.frame.contentWindow.postMessage({ type: 'sml-loop-kick:auth', version: 1, token: S.token, expires_at: S.expiresAt }, origin);
   }
 
+  /* give the freshly loaded phone its session and ask it to unfold; a few repeats cover a slow start */
+  function kick() {
+    if (!S.open || !S.token) return;
+    [0, 400, 1500, 3500].forEach(function (ms) { setTimeout(function () { if (S.open && S.token) { sendAuth(); tellFrame('open'); } }, ms); });
+  }
+
   function tellFrame(kind) {
     if (!S.frame || !S.frame.contentWindow) return;
     var origin = frameOrigin();
@@ -87,6 +93,7 @@
     if (!S.frame || event.source !== S.frame.contentWindow) return;
     if (event.origin !== frameOrigin()) return;
     var d = event.data || {};
+    if (d && typeof d.type === 'string' && d.type.indexOf('sml-loop-kick:') === 0) S.heard = true;
     if (d.type === 'sml-loop-kick:ready' || d.type === 'sml-loop-kick:auth-needed') {
       S.frameReady = true;
       var stale = !S.token || (S.expiresAt && S.expiresAt * 1000 <= Date.now() + 5000);
@@ -102,6 +109,12 @@
         sendAuth();
       }
       if (S.open) tellFrame('open');
+    } else if (d.type === 'sml-loop-kick:surface') {
+      /* the phone starts folded and only unfolds on 'open'. It never sends a ready message, so the first surface report is the
+         cue: if the member opened the panel and the phone is still folded, hand it the session and tell it to open. */
+      S.frameReady = true;
+      if (S.open && d.surface !== 'expanded' && S.token && (S.unfoldTries || 0) < 6) { S.unfoldTries = (S.unfoldTries || 0) + 1; sendAuth(); tellFrame('open'); }
+      if (d.surface === 'expanded') S.unfoldTries = 0;
     } else if (d.type === 'sml-loop-kick:notifications') {
       paintBadge(Number(d.unread) || 0);
     } else if (d.type === 'sml-loop-kick:external') {
@@ -181,8 +194,17 @@
       frame.id = 'academy-lk-frame';
       frame.setAttribute('allow', 'microphone; camera; autoplay');
       frame.setAttribute('src', FRAME_PATH);
+      frame.addEventListener('load', function () { kick(); });
       panel.appendChild(frame);
       S.frame = frame;
+      S.heard = false;
+      /* if the phone never answers, the Discord URL mapping for /loop-kick is probably missing or wrong: say so instead of showing whatever loaded */
+      setTimeout(function () {
+        if (S.open && S.frame === frame && !S.heard) {
+          frame.style.display = 'none';
+          showCard('LOOP-KICK did not load here', 'The phone could not be reached from inside the Academy. You can open LOOP-KICK on stockmarketloop.com instead.', 'Open on stockmarketloop.com', 'https://stockmarketloop.com/');
+        }
+      }, 12000);
     }
     S.frame.style.display = '';
     if (S.frameReady && S.token) { sendAuth(); tellFrame('open'); }
