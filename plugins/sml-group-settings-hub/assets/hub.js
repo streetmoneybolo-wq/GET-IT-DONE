@@ -20,8 +20,24 @@
   /* ---------- utils ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function h(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
-  function api(path, opt) {
-    opt = opt || {};
+  /* The REST nonce is baked into the page when it loads and WordPress retires it after 12-24 hours, so a hub left open
+     "timed out" with a raw 403. Ask core for a fresh nonce (admin-ajax rest-nonce) and retry the request once; only when
+     that also fails is the member truly signed out, and then say so plainly. */
+  var nonceRefresh = null;
+  function freshNonce() {
+    if (!nonceRefresh) {
+      var ajax = (CFG.ajax || '/wp-admin/admin-ajax.php');
+      nonceRefresh = fetch(ajax + '?action=rest-nonce', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.text() : ''; })
+        .then(function (t) { t = String(t || '').trim(); if (/^[a-f0-9]{8,12}$/i.test(t)) { CFG.nonce = t; return true; } return false; })
+        .catch(function () { return false; })
+        .then(function (ok) { setTimeout(function () { nonceRefresh = null; }, 2000); return ok; });
+    }
+    return nonceRefresh;
+  }
+  setInterval(function () { freshNonce(); }, 10 * 60 * 1000);
+  function api(path, opt, retried) {
+    opt = Object.assign({}, opt || {});
     opt.credentials = 'same-origin';
     opt.headers = Object.assign({ 'X-WP-Nonce': CFG.nonce }, opt.headers || {});
     if (opt.body && typeof opt.body !== 'string') { opt.body = JSON.stringify(opt.body); }
@@ -29,7 +45,17 @@
     var url = /^https?:/.test(path) ? path : CFG.api + path;
     return fetch(url, opt).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
-        if (!r.ok) throw new Error(j && j.message ? j.message : ('Request failed (' + r.status + ')'));
+        if (!r.ok) {
+          var stale = r.status === 403 && j && (j.code === 'rest_cookie_invalid_nonce' || /cookie check failed|nonce/i.test(String(j.message || '')));
+          if (stale && !retried) {
+            return freshNonce().then(function (ok) {
+              if (ok) { opt.headers['X-WP-Nonce'] = CFG.nonce; return api(path, opt, true); }
+              throw new Error('Your session ended. Please log in again and reopen Group Settings.');
+            });
+          }
+          if (stale || r.status === 401) throw new Error('Your session ended. Please log in again and reopen Group Settings.');
+          throw new Error(j && j.message ? j.message : ('Request failed (' + r.status + ')'));
+        }
         return j;
       });
     });

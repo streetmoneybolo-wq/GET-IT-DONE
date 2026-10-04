@@ -29,6 +29,7 @@ add_action( 'wp_footer', static function () {
 	$cfg   = array(
 		'api'     => esc_url_raw( rest_url( 'sml-hub/v1/' ) ),
 		'nonce'   => wp_create_nonce( 'wp_rest' ),
+		'ajax'    => esc_url_raw( admin_url( 'admin-ajax.php' ) ),
 		'slug'    => $slug,
 		'groupId' => $group ? (int) $group['id'] : 0,
 		'version' => SML_HUB_VERSION,
