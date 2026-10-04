@@ -4,7 +4,7 @@
  * Description: Lets sml-platform-api publish a Click-to-Alert as a StockMarketLoop group alert under the member's own site account (for example Grandmaster-Obi): the typed alert text, the exact price and time, and the two scenario pictures. The existing SML Alert Router then hands it to the Alert Bot, which posts it in Discord. HMAC-guarded with the LOOP-KICK bridge secret. Only a linked, email-verified member who manages the group may publish into it.
  * Version: 1.0.0
  *
- * Depends on sml-loop-kick-discord.php (signature check, link table) and the sml_alert post type. Fails closed (503) if either is missing.
+ * Depends on the mu-plugin sml-loop-kick-discord.php (signature check, link table), the sml_alert post type and, for the Discord hand-off, the SML Alert Router. Fails closed (503) if either is missing.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -78,9 +78,22 @@ function sml_ap_rest( WP_REST_Request $request ) {
 	}
 	update_post_meta( $post_id, 'sml_alert_image_ids', $ids );
 	if ( $ids ) { set_post_thumbnail( $post_id, $ids[0] ); }
-	wp_update_post( array( 'ID' => $post_id, 'post_status' => 'publish' ) ); // fires save_post_sml_alert: the SML Alert Router sends it on to Discord
+	// Hand it to the SML Alert Router ourselves so the picture links go with it (the router's own hook sends text only); then publish without it sending twice.
+	$handed = false;
+	if ( function_exists( 'sml_ar_call' ) ) {
+		$urls = array();
+		foreach ( $ids as $aid ) { $u = wp_get_attachment_url( $aid ); if ( $u && 0 === strpos( $u, 'https://' ) ) { $urls[] = $u; } }
+		$post = get_post( $post_id );
+		$sent = sml_ar_call( '/v1/alerts/ingest', array(
+			'groupId' => $gid, 'sourceProvider' => 'sml', 'sourceTargetId' => (string) $gid, 'sourceMessageId' => (string) $post_id,
+			'body' => $text, 'authorExternalId' => (string) $uid, 'authorName' => get_the_author_meta( 'display_name', $uid ),
+			'occurredAt' => $post ? get_post_time( DATE_ATOM, true, $post ) : gmdate( DATE_ATOM ), 'attachments' => $urls,
+		) );
+		if ( ! is_wp_error( $sent ) ) { update_post_meta( $post_id, '_sml_alert_router_sent', current_time( 'mysql', true ) ); $handed = true; }
+	}
+	wp_update_post( array( 'ID' => $post_id, 'post_status' => 'publish' ) ); // shows on the group feed; if the hand-off above failed the router's own hook still sends the text
 	do_action( 'sml_alert_published', $post_id, $gid );
-	return rest_ensure_response( array( 'ok' => true, 'status' => 'published', 'postId' => (int) $post_id, 'images' => count( $ids ), 'url' => get_permalink( $post_id ) ) );
+	return rest_ensure_response( array( 'ok' => true, 'status' => 'published', 'postId' => (int) $post_id, 'images' => count( $ids ), 'toDiscordQueue' => $handed, 'url' => get_permalink( $post_id ) ) );
 }
 
 add_action( 'rest_api_init', static function () {
