@@ -104,7 +104,10 @@ if ( ! function_exists( 'sml_adsense_thin_paths' ) ) {
 		return null === $out ? $html : $out;
 	}
 
-	add_action( 'template_redirect', static function () {
+	// send_headers fires before template_redirect, so a plugin that prints its own
+	// page and exits during template_redirect (as /stock-chart/ appears to) is
+	// still captured by this buffer.
+	add_action( 'send_headers', static function () {
 		if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return; }
 		if ( sml_adsense_path_is_thin( sml_adsense_request_path() ) ) { ob_start( 'sml_adsense_force_noindex_html' ); }
 	}, 0 );
