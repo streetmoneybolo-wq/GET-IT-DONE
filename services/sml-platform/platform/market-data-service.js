@@ -75,7 +75,30 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
     return pending;
   }
 
-  return { enabled, get, cache };
+  /* Recent individual trades as [t, price, size] oldest first, for tick charts. Best effort: a plan without trade history just returns nothing and the live record is used alone. */
+  const tradeCache = new Map();
+  async function trades(symbolRaw, limit = 20_000) {
+    if (!enabled) return [];
+    const symbol = cleanSymbol(symbolRaw), current = now(), hit = tradeCache.get(symbol);
+    if (hit && hit.until > current) return hit.rows;
+    try {
+      const url = `${String(baseUrl).replace(/\/$/, '')}/v3/trades/${encodeURIComponent(symbol)}?order=desc&sort=timestamp&limit=${Math.min(50_000, limit)}`;
+      const response = await fetchImpl(url, { headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8_000) });
+      if (!response.ok) throw new Error(`massive_trades_${response.status}`);
+      const body = await response.json();
+      const rows = (Array.isArray(body?.results) ? body.results : []).map((r) => {
+        const ns = Number(r.participant_timestamp ?? r.sip_timestamp), price = Number(r.price), size = Number(r.size);
+        return [Math.floor(ns / 1e6), price, Number.isFinite(size) ? size : 0];
+      }).filter((r) => Number.isFinite(r[0]) && r[1] > 0).reverse();
+      tradeCache.set(symbol, { until: current + 20_000, rows });
+      return rows;
+    } catch (_) {
+      tradeCache.set(symbol, { until: current + 60_000, rows: [] });
+      return [];
+    }
+  }
+
+  return { enabled, get, trades, cache };
 }
 
 /* Optional provider adapter. It remains disabled until both the feature flag

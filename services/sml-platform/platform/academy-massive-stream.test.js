@@ -216,3 +216,14 @@ test('peek returns null for a symbol nobody is watching, and for one watched but
   svc.watch('SPY');
   assert.equal(svc.peek('SPY'), null, 'watched but still silent: no quote and no tape yet');
 });
+
+test('the stream keeps a compact record of every print for tick charts', async () => {
+  const { createMassiveStream } = require('./academy-massive-stream.js');
+  const s = createMassiveStream({ apiKey: 'k', WebSocketImpl: class { constructor() { this.readyState = 1; } send() {} close() {} }, logger: () => {} });
+  s.watch('SPY');
+  for (let i = 0; i < 5; i++) s.onMessage(JSON.stringify([{ ev: 'T', sym: 'SPY', p: 100 + i, s: 10, t: 1_700_000_000_000 + i }]));
+  const ticks = s.ticks('SPY');
+  assert.deepEqual(ticks.map((r) => r[1]), [100, 101, 102, 103, 104]);
+  assert.deepEqual(s.ticks('NOPE'), []);
+  assert.equal(s.ticks('SPY', 2).length, 2);
+});

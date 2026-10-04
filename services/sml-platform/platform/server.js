@@ -41,6 +41,7 @@ const { createClickAlertService, createClickAlertStore } = require('./academy-cl
 const { createProfileService } = require('./academy-profile');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
+const { parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars');
 const { parsePrices: parsePassPrices, createPassStore, createPassService, createWalletClient, withPasses } = require('./academy-passes');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
@@ -711,6 +712,11 @@ const ACADEMY_LB_UI = (() => {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-lb-ui.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
+const ACADEMY_TICK_UI = (() => {
+  try {
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-tick-ui.js'), 'utf8') + '</script>';
+  } catch (_) { return ''; }
+})();
 const ACADEMY_CHAT_PANEL = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-chat-panel.js'), 'utf8') + '</script>';
@@ -797,7 +803,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + '</body></html>');
   return gate ? html.replace('</head>', () => academyGateClientScript(gate) + '</head>') : html;
 }
 
@@ -2017,6 +2023,23 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = params.get('symbol');
       const timeframe = params.get('tf') || '5m';
       if (!allowGatedSymbol(request, response, symbol)) return;
+      const tickSize = parseTick(timeframe);
+      if (tickSize) {
+        /* Tick charts: a candle every N trades, built from the Massive trade record (and recent trade history when the plan has it). */
+        const sym = String(symbol || '').toUpperCase();
+        if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym) || !academyMassive?.status().enabled) { sendJson(response, 503, { ok: false, error: 'ticks_unavailable' }); return; }
+        academyMassive.watch(sym);
+        try {
+          const history = marketHistory?.enabled ? await marketHistory.trades(sym) : [];
+          const bars = buildTickBars(mergeTrades(history, academyMassive.ticks(sym)), tickSize).slice(-1500);
+          if (!bars.length) { sendJson(response, 503, { ok: false, error: 'ticks_warming', detail: 'Collecting trades for this symbol. Tick candles appear as they print.' }); return; }
+          sendJson(response, 200, { symbol: sym, tf: timeframe, bars, asOf: Date.now(), source: 'massive-ticks', quality: 'built-from-trades' });
+        } catch (error) {
+          logger('error', 'academy_tick_request_failed', { error });
+          sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+        }
+        return;
+      }
       try {
         // Massive serves only the timeframes in TIMEFRAMES; every other one (3m, 15m, 1h, 1Q, 1Y...) comes from the WordPress history feed, not a 400.
         const massive = marketHistory?.enabled && Object.prototype.hasOwnProperty.call(MASSIVE_TIMEFRAMES, timeframe) ? await marketHistory.get(symbol, timeframe) : null;

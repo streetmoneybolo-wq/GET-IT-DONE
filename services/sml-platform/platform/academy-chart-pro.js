@@ -39,7 +39,13 @@
   const TF_MS = { '1m': 6e4, '3m': 18e4, '5m': 3e5, '10m': 6e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '2h': 72e5, '4h': 144e5 };
   function liveTick(price, size, ts) {
     const base = baseBars(); price = Number(price); if (!base.length || !fin(price)) return;
-    const last = base[base.length - 1], ms = TF_MS[tfNow()];
+    const last = base[base.length - 1], ms = TF_MS[tfNow()], tk = /^([0-9]{1,4})T$/.exec(tfNow());
+    if (tk) { // tick chart: a candle holds N trades, so a print joins the forming candle until it is full, then starts the next one
+      const cap = Number(tk[1]), cur = V.live && V.live.t >= last.t ? V.live : Object.assign({}, last, { n: Number(last.n) || cap });
+      if (cur.n >= cap) V.live = { t: Math.max(Number(ts) || Date.now(), last.t + 1, cur.t + 1), o: price, h: price, l: price, c: price, v: Number(size) || 0, n: 1 };
+      else { cur.c = price; if (price > cur.h) cur.h = price; if (price < cur.l) cur.l = price; cur.v = (+cur.v || 0) + (Number(size) || 0); cur.n += 1; V.live = cur; }
+      emit(); return;
+    }
     let t = last.t;
     if (ms) { if (ts < last.t) return; t = last.t + Math.floor((ts - last.t) / ms) * ms; }
     if (!V.live || V.live.t !== t) V.live = t === last.t ? { t, o: +last.o, h: +last.h, l: +last.l, c: +last.c, v: +last.v || 0 } : { t, o: price, h: price, l: price, c: price, v: 0 };
@@ -396,6 +402,7 @@
     const d = new Date(t);
     if (/^(1W|1M|1Q|1Y)$/.test(tf)) return tf === '1Y' ? String(d.getFullYear()) : d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
     if (tf === '1D') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (/^[0-9]+T$/.test(tf)) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false });
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
   };
   const fullTime = (t, tf) => { const d = new Date(t); return /^(1D|1W|1M|1Q|1Y)$/.test(tf) ? d.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: false }); };

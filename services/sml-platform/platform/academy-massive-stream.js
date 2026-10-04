@@ -10,6 +10,7 @@ const URL_DEFAULT = 'wss://socket.massive.com/stocks';
 const MAX_SYMBOLS = 60;
 const IDLE_MS = 10 * 60_000;
 const TAPE_MAX = 60;
+const TICKS_MAX = 20_000; // compact [t, price, size] prints kept per watched symbol, for tick-bar charts
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
 function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = globalThis.WebSocket, logger = () => {}, now = Date.now, timers = { setTimeout, clearTimeout, setInterval, clearInterval } } = {}) {
@@ -19,7 +20,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   const enabled = Boolean(apiKey && WebSocketImpl);
 
   const send = (obj) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch (_) { /* reconnect handles it */ } };
-  const entry = (sym) => { let e = symbols.get(sym); if (!e) { e = { tape: [], quote: null, last: null, lastAt: 0, wantedAt: now(), subscribed: false, stats: newStats() }; symbols.set(sym, e); } return e; };
+  const entry = (sym) => { let e = symbols.get(sym); if (!e) { e = { tape: [], ticks: [], quote: null, last: null, lastAt: 0, wantedAt: now(), subscribed: false, stats: newStats() }; symbols.set(sym, e); } return e; };
   const fire = (sym, evt) => { const set = listeners.get(sym); if (!set) return; for (const fn of set) { try { fn(evt); } catch (_) { /* a broken listener must not stop the feed */ } } };
 
   function subscribeAll() {
@@ -100,6 +101,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
         const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: classify(price, e.quote) };
         record(e, trade, m.x === 4 || m.trfi != null);
         e.tape.push(trade); if (e.tape.length > TAPE_MAX) e.tape.shift();
+        e.ticks.push([t, price, trade.size]); if (e.ticks.length > TICKS_MAX * 1.1) e.ticks.splice(0, e.ticks.length - TICKS_MAX);
         e.last = price; e.lastAt = t;
         fire(sym, { type: 'trade', trade });
       }
@@ -169,8 +171,14 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     return () => { set.delete(fn); if (!set.size) listeners.delete(sym); };
   }
 
+  /** The trades seen since this symbol was first watched, oldest first, as [t, price, size]. */
+  function ticks(symbolRaw, limit = TICKS_MAX) {
+    const e = symbols.get(String(symbolRaw || '').toUpperCase());
+    return e ? e.ticks.slice(-Math.max(1, Math.min(TICKS_MAX, limit))) : [];
+  }
+
   const status = () => ({ enabled, connected: Boolean(ws && ws.readyState === 1), authed, symbols: symbols.size, lastMessageAt, failedAuth });
-  return { start, stop, watch, peek, on, status, onMessage, symbols };
+  return { start, stop, watch, peek, on, ticks, status, onMessage, symbols };
 }
 
 module.exports = { createMassiveStream, SYMBOL_RE };

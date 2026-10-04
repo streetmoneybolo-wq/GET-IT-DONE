@@ -1479,3 +1479,33 @@ test('Loop Bucks pass routes take a session or a buy ticket, report what blocks 
     assert.equal((await fetch(`${base}/academy-activity/passes/status`, { headers: { authorization: 'Bearer m' } })).status, 503, 'off when not configured');
   });
 });
+
+test('Tick charts: tf=100T builds a candle per 100 trades from the Massive record, warms up honestly, and rejects odd sizes', async () => {
+  const trades = Array.from({ length: 250 }, (_, i) => [1_700_000_000_000 + i * 50, 100 + (i % 7) * 0.01, 10]);
+  const watched = [];
+  const academyMassive = { status: () => ({ enabled: true }), watch: (s) => { watched.push(s); return true; }, ticks: (s) => (s === 'SPY' ? trades : []), peek: () => null, on: () => () => {} };
+  const marketHistory = { enabled: true, trades: async () => [], get: async () => ({ ok: false }) };
+  await withServer({ academyMassive, marketHistory }, async (base) => {
+    const m = (q) => fetch(`${base}/academy-activity/market?${q}`);
+    const ok = await m('symbol=SPY&tf=100T');
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.deepEqual(body.bars.map((b) => b.n), [100, 100, 50]);
+    assert.equal(body.tf, '100T'); assert.equal(body.source, 'massive-ticks'); assert.ok(watched.includes('SPY'));
+    const cold = await m('symbol=QQQ&tf=100T');
+    assert.equal(cold.status, 503); assert.equal((await cold.json()).error, 'ticks_warming');
+    assert.notEqual((await m('symbol=SPY&tf=7T')).status, 200, '7T is not an offered size');
+  });
+  await withServer({}, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/market?symbol=SPY&tf=100T`)).status, 503, 'no stream, no ticks');
+  });
+});
+
+test('The tick picker ships with the page and the chart folds live prints into tick candles', () => {
+  const fs = require('node:fs'), p = (f) => fs.readFileSync(require('node:path').join(__dirname, f), 'utf8');
+  const ui = p('academy-tick-ui.js'), pro = p('academy-chart-pro.js');
+  assert.ok(ui.includes('Tick interval') && ui.includes('100T') === false && ui.includes('SIZES'));
+  assert.ok(!/[`\\]|\$\{/.test(ui), 'inlined script: no backtick, backslash or ${');
+  assert.ok(pro.includes('tick chart: a candle holds N trades'));
+  assert.ok(p('server.js').includes('ACADEMY_TICK_UI + '));
+});
