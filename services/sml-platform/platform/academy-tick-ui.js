@@ -5,7 +5,7 @@
 (() => {
   if (window.__smlAcademyTicks) return;
   window.__smlAcademyTicks = 1;
-  const SIZES = [10, 25, 50, 100, 250, 500, 1000];
+  const SIZES = [1, 10, 25, 50, 100, 250, 500, 1000];
   const tfNow = () => new URLSearchParams(location.search).get('tf') || '5m';
   const isTick = (tf) => /^[0-9]{1,4}T$/.test(tf);
 
@@ -16,7 +16,7 @@
 
   const sel = document.createElement('select');
   sel.id = 'academy-tick'; sel.setAttribute('aria-label', 'Tick interval (a candle every N trades)'); sel.title = 'Tick interval: a new candle every N trades';
-  sel.innerHTML = '<option value="">Ticks</option>' + SIZES.map((n) => '<option value="' + n + 'T">' + n + ' tick</option>').join('');
+  sel.innerHTML = '<option value="">Ticks</option>' + SIZES.map((n) => '<option value="' + n + 'T">' + n + (n === 1 ? ' tick' : ' ticks') + '</option>').join('');
   const note = document.createElement('p'); note.id = 'academy-tick-note';
 
   function sync() {

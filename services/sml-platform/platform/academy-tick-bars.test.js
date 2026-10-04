@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const { TICK_SIZES, parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars.js');
 
 test('only the offered tick sizes parse', () => {
-  assert.deepEqual(TICK_SIZES, [10, 25, 50, 100, 250, 500, 1000]);
-  assert.equal(parseTick('100T'), 100); assert.equal(parseTick('7T'), 0); assert.equal(parseTick('5m'), 0); assert.equal(parseTick('100t'), 0); assert.equal(parseTick(''), 0);
+  assert.deepEqual(TICK_SIZES, [1, 10, 25, 50, 100, 250, 500, 1000]);
+  assert.equal(parseTick('1T'), 1); assert.equal(parseTick('100T'), 100); assert.equal(parseTick('7T'), 0); assert.equal(parseTick('5m'), 0); assert.equal(parseTick('100t'), 0); assert.equal(parseTick(''), 0);
 });
 
 test('every N trades make one candle and the last may still be forming', () => {
@@ -32,4 +32,9 @@ test('trades are ordered by time, bad rows dropped, and bar times strictly incre
 test('merging history and live prints counts a print once', () => {
   const m = mergeTrades([[1, 10, 5], [2, 11, 5]], [[2, 11, 5], [3, 12, 5]]);
   assert.equal(m.length, 3);
+});
+
+test('a 1 tick chart is one candle per trade', () => {
+  const bars = buildTickBars([[1, 10, 5], [2, 11, 6], [3, 9, 7]], 1);
+  assert.deepEqual(bars.map((b) => [b.o, b.h, b.l, b.c, b.n]), [[10, 10, 10, 10, 1], [11, 11, 11, 11, 1], [9, 9, 9, 9, 1]]);
 });

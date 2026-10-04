@@ -32,9 +32,11 @@
     const b = baseBars(), L = V.live;
     if (!L || !b.length) return b;
     const last = b[b.length - 1];
-    if (L.t < last.t) { V.live = null; return b; }
-    if (L.t === last.t) { const out = b.slice(0, -1); out.push(Object.assign({}, last, { h: Math.max(+last.h, L.h), l: Math.min(+last.l, L.l), c: L.c, v: Math.max(+last.v || 0, L.v) })); return out; }
-    return b.concat([Object.assign({}, L)]);
+    if (V.liveDone && V.liveDone.length) { V.liveDone = V.liveDone.filter((x) => x.t > last.t); } // tick charts: candles that filled since the last refresh
+    const done = V.liveDone && V.liveDone.length ? V.liveDone : null;
+    if (L.t < last.t) { V.live = null; V.liveDone = null; return b; }
+    if (L.t === last.t && !done) { const out = b.slice(0, -1); out.push(Object.assign({}, last, { h: Math.max(+last.h, L.h), l: Math.min(+last.l, L.l), c: L.c, v: Math.max(+last.v || 0, L.v) })); return out; }
+    return b.concat(done || [], L.t > last.t ? [Object.assign({}, L)] : []);
   };
   const TF_MS = { '1m': 6e4, '3m': 18e4, '5m': 3e5, '10m': 6e5, '15m': 9e5, '30m': 18e5, '1h': 36e5, '2h': 72e5, '4h': 144e5 };
   function liveTick(price, size, ts) {
@@ -42,7 +44,7 @@
     const last = base[base.length - 1], ms = TF_MS[tfNow()], tk = /^([0-9]{1,4})T$/.exec(tfNow());
     if (tk) { // tick chart: a candle holds N trades, so a print joins the forming candle until it is full, then starts the next one
       const cap = Number(tk[1]), cur = V.live && V.live.t >= last.t ? V.live : Object.assign({}, last, { n: Number(last.n) || cap });
-      if (cur.n >= cap) V.live = { t: Math.max(Number(ts) || Date.now(), last.t + 1, cur.t + 1), o: price, h: price, l: price, c: price, v: Number(size) || 0, n: 1 };
+      if (cur.n >= cap) { if (cur.t > last.t) { V.liveDone = (V.liveDone || []).concat([cur]).slice(-1000); } V.live = { t: Math.max(Number(ts) || Date.now(), last.t + 1, cur.t + 1), o: price, h: price, l: price, c: price, v: Number(size) || 0, n: 1 }; }
       else { cur.c = price; if (price > cur.h) cur.h = price; if (price < cur.l) cur.l = price; cur.v = (+cur.v || 0) + (Number(size) || 0); cur.n += 1; V.live = cur; }
       emit(); return;
     }
@@ -60,7 +62,7 @@
   function dtOf(bars) { const n = bars.length; if (n < 2) return 60000; const d = []; for (let i = Math.max(1, n - 60); i < n; i++) { const x = bars[i].t - bars[i - 1].t; if (x > 0) d.push(x); } d.sort((a, b) => a - b); return d.length ? d[Math.floor(d.length / 2)] : 60000; }
   function syncKey(bars) {
     const key = symNow() + ':' + tfNow();
-    if (key !== V.key) { V.key = key; V.live = null; V.n = defaultN(); V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
+    if (key !== V.key) { V.key = key; V.live = null; V.liveDone = null; V.n = defaultN(); V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
     if (bars.length !== V.lastN) { // live update: stay glued to the live edge if the trader was there
       if (V.end != null && V.lastN && V.end >= V.lastN) V.end += bars.length - V.lastN;
       V.lastN = bars.length;

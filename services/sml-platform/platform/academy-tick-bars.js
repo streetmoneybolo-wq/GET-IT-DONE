@@ -3,7 +3,7 @@
 /* Tick bars: a new candle every N trades instead of every N minutes. Built from the trades the Academy's Massive stream saw
  * (plus recent history when the plan allows it), so a symbol's tick chart only reaches back as far as that trade record. */
 
-const TICK_SIZES = Object.freeze([10, 25, 50, 100, 250, 500, 1000]);
+const TICK_SIZES = Object.freeze([1, 10, 25, 50, 100, 250, 500, 1000]);
 
 /* '100T' -> 100 when it is one of the offered sizes, else 0 */
 function parseTick(tf) {
