@@ -15,7 +15,7 @@ const { parseAlertMessage } = require('./academy-alerts-parse');
 
 const DISCORD = 'https://discord.com/api/v10';
 const SNOWFLAKE = /^\d{15,25}$/;
-const VIEW = 1n << 10n, SEND = 1n << 11n, MENTION_EVERYONE = 1n << 17n, HISTORY = 1n << 16n, ADMIN = 1n << 3n, ALL = (1n << 53n) - 1n;
+const VIEW = 1n << 10n, SEND = 1n << 11n, ATTACH = 1n << 15n, MENTION_EVERYONE = 1n << 17n, HISTORY = 1n << 16n, ADMIN = 1n << 3n, ALL = (1n << 53n) - 1n;
 const TEXT_TYPES = new Set([0, 5]); // text and announcement channels
 const MAX_SOURCES = 12;
 const MAX_CHANNELS = Math.max(1, Math.min(80, Number(process.env.ACADEMY_ALERTS_MAX_CHANNELS) || 30));
@@ -46,7 +46,7 @@ function channelPermissions({ guildId, ownerId, roles, memberRoles, userId, over
 }
 const canReadWith = (perms) => (perms & VIEW) === VIEW && (perms & HISTORY) === HISTORY;
 /* what a member (or the bot) may do when posting in a channel: see it, send in it, and ping @everyone there */
-const postingWith = (perms) => ({ send: (perms & VIEW) === VIEW && (perms & SEND) === SEND, mentionEveryone: (perms & MENTION_EVERYONE) === MENTION_EVERYONE });
+const postingWith = (perms) => ({ send: (perms & VIEW) === VIEW && (perms & SEND) === SEND, attach: (perms & ATTACH) === ATTACH, mentionEveryone: (perms & MENTION_EVERYONE) === MENTION_EVERYONE });
 
 /* Discord lookups through the Academy's bot tokens, every one cached. A server is reachable through whichever bot is in it. */
 function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
@@ -150,8 +150,8 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
   /* uncached: a subscription that just ended (or just started) is honoured on the very next click */
   const memberRolesLive = async (guildId, userId) => { const t = await tokenFor(guildId); if (!t) return null; const r = await call(t, `/guilds/${guildId}/members/${userId}`); return r.data && Array.isArray(r.data.roles) ? r.data.roles.map(String) : null; };
   async function botPosting(guildId, overwrites) {
-    const t = await tokenFor(guildId); if (!t) return { send: false, mentionEveryone: false };
-    const id = await botUser(t); if (!id) return { send: false, mentionEveryone: false };
+    const t = await tokenFor(guildId); if (!t) return { send: false, attach: false, mentionEveryone: false };
+    const id = await botUser(t); if (!id) return { send: false, attach: false, mentionEveryone: false };
     return postingWith(await permsIn(guildId, id, overwrites));
   }
   /* text channels in a server the member can post in AND the Academy bot can post in */
@@ -178,11 +178,19 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     const ow = chan.data.permission_overwrites || [];
     const mine = postingWith(channelPermissions({ guildId: info.guildId, ownerId: String(g.data.owner_id || ''), roles: g.data.roles || [], memberRoles: m.data.roles || [], userId, overwrites: ow }));
     const bot = await botPosting(info.guildId, ow);
-    return { guildId: info.guildId, name: info.name, userCanSend: mine.send, botCanSend: bot.send, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone };
+    return { guildId: info.guildId, name: info.name, userCanSend: mine.send, botCanSend: bot.send, userCanAttach: mine.attach, botCanAttach: bot.attach, mentionEveryone: mine.mentionEveryone && bot.mentionEveryone };
   }
-  async function post(channelId, body) {
+  /* files: [{ name, bytes (Buffer), contentType, alt }] are sent as attachments on the same message (multipart), each with its alt text */
+  async function post(channelId, body, files = []) {
     const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) { const e = new Error('discord_bot_not_in_server'); e.status = 404; throw e; }
-    const res = await fetchImpl(`${DISCORD}/channels/${channelId}/messages`, { method: 'POST', headers: { authorization: `Bot ${t.token}`, 'content-type': 'application/json', 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+    const headers = { authorization: `Bot ${t.token}`, 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' };
+    let payload;
+    if (files && files.length) {
+      payload = new FormData();
+      payload.append('payload_json', JSON.stringify({ ...body, attachments: files.map((f, i) => ({ id: i, filename: f.name, description: String(f.alt || '').slice(0, 1000) })) }));
+      files.forEach((f, i) => payload.append(`files[${i}]`, new Blob([f.bytes], { type: f.contentType || 'image/png' }), f.name));
+    } else { payload = JSON.stringify(body); headers['content-type'] = 'application/json'; }
+    const res = await fetchImpl(`${DISCORD}/channels/${channelId}/messages`, { method: 'POST', headers, body: payload, signal: AbortSignal.timeout(files && files.length ? 20_000 : 10_000) });
     if (!res.ok) { const e = new Error(`discord_post_${res.status}`); e.status = res.status; throw e; }
     const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
   }
