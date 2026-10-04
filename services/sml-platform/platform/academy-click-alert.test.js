@@ -225,17 +225,20 @@ test('the alert posts under the member\'s own name and picture when the app can 
   assert.equal(fell.ok, true); assert.equal(fell.postedAs, 'app'); assert.ok(/Sent by Ana/.test(d.posts[0].body.content), 'falls back honestly');
 });
 
-test('a member with their own bot posts through it when it is in the server; otherwise the normal path', async () => {
-  const mk = (can) => ({ posts: [], postingIn: async () => (can ? { botCanSend: true, botCanAttach: true } : null), post: async function (c, b, f) { this.posts.push({ b, f }); return { id: '666666666666666666', channelId: c }; } });
+test('a member with their own bot uses it for everything: listing, checks and the post; if it is not in that server the alert is not sent as the shared app', async () => {
+  const mk = (can) => ({ posts: [], guildsFor: async () => [{ id: GUILD, name: 'Own server' }], sendableChannels: async () => [{ id: CHAN, name: 'obi-alerts', mentionEveryone: true }], postingIn: async () => (can ? { guildId: GUILD, userCanSend: true, userCanAttach: true, botCanSend: true, botCanAttach: true, mentionEveryone: true } : null), post: async function (c, b, f) { this.posts.push({ b, f }); return { id: '666666666666666666', channelId: c }; } });
   const own = mk(true);
   const a = fake({ botCanWebhook: true, personas: { [USER]: own } });
+  assert.deepEqual((await a.svc.destinations(USER)).map((g) => g.name), ['Own server'], 'servers come from their own bot');
+  assert.equal((await a.svc.channels(USER, GUILD))[0].name, 'obi-alerts');
   const out = await a.svc.send({ userId: USER, displayName: 'Ana' }, body());
   assert.equal(out.ok, true); assert.equal(out.postedAs, 'persona');
   assert.equal(own.posts.length, 1); assert.equal(a.posts.length, 0, 'the shared app did not post');
   assert.ok(!/Sent by/.test(own.posts[0].b.content));
   const away = mk(false);
   const b = fake({ botCanWebhook: true, personas: { [USER]: away } });
-  assert.equal((await b.svc.send({ userId: USER, displayName: 'Ana' }, body())).postedAs, 'member', 'their bot is not in this server: falls back to the webhook');
+  const nope = await b.svc.send({ userId: USER, displayName: 'Ana' }, body());
+  assert.equal(nope.ok, false); assert.equal(nope.code, 'channel_unavailable'); assert.equal(b.posts.length, 0);
 });
 
 test('the owner sends through StockMarketLoop: published to the group under their account with the typed text, time, price and the two pictures; others cannot', async () => {

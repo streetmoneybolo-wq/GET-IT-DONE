@@ -265,12 +265,13 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
 
   /* guilds the member shares with an Academy bot, and the channels in one of them where both can post */
   async function destinations(userId, guildId = '') {
-    const guilds = directory ? await directory.guildsFor(String(userId), SNOWFLAKE.test(String(guildId)) ? String(guildId) : '') : [];
+    const dir = (personas && personas[String(userId)]) || directory;
+    const guilds = dir ? await dir.guildsFor(String(userId), SNOWFLAKE.test(String(guildId)) ? String(guildId) : '') : [];
     return guilds;
   }
   async function channels(userId, guildId) {
     if (!SNOWFLAKE.test(String(guildId))) return null;
-    return directory.sendableChannels(String(guildId), String(userId));
+    return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
   }
 
   /* Members listed in publishUsers (the owner) can send an alert through StockMarketLoop: it is published to their group under their own site account,
@@ -306,8 +307,10 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     const ent = await entitlement(userId);
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
-    const where = await directory.postingIn(userId, String(channelId)).catch(() => null);
-    if (!where) return { ok: false, status: 404, code: 'channel_unavailable', detail: 'The Academy app is not installed in that server, or the channel could not be found.' };
+    // a member with their own bot (their name and picture) uses it for everything: which servers and channels are listed, the checks, and the post
+    const pd = personas && personas[userId];
+    const where = await (pd || directory).postingIn(userId, String(channelId)).catch(() => null);
+    if (!where) return { ok: false, status: 404, code: 'channel_unavailable', detail: pd ? 'Your Grandmaster-Obi bot is not in that server, or the channel could not be found.' : 'The Academy app is not installed in that server, or the channel could not be found.' };
     if (!where.userCanSend) return { ok: false, status: 403, code: 'you_cannot_post_there', detail: 'You do not have permission to send messages in that channel.' };
     if (!where.botCanSend) return { ok: false, status: 403, code: 'app_cannot_post_there', detail: 'The Academy app cannot send messages in that channel. Ask a server admin to allow it.' };
     const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
@@ -318,9 +321,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     let content = format.formatEntryAlert({ ...analysis.alert, mention: ping });
     // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
     // a member can have their own bot (their name and picture): used when that bot is in the server and may post in the channel
-    let persona = null, personaWhere = null;
-    const pd = personas && personas[userId];
-    if (asMe !== false && pd) { const pw = await pd.postingIn(userId, String(channelId)).catch(() => null); if (pw && pw.botCanSend) { persona = pd; personaWhere = pw; } }
+    const persona = pd || null, personaWhere = where;
     const viaWebhook = !persona && asMe !== false && !!where.botCanWebhook && typeof directory.postAsMember === 'function';
     if (footer && !viaWebhook && !persona) content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
     // the two scenario charts ride along when asked for, when the member and the app may attach files there, and when the picture engine is available
