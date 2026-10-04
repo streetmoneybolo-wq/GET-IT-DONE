@@ -250,6 +250,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.doesNotMatch(html, /body\.academy-tools-open\{overflow:hidden\}/);
     assert.doesNotMatch(html, /body\.academy-tools-open main\{position:fixed/);
     assert.match(html, /id="academy-intro-video"/);
+    // the intro can never trap members behind a stalled video: hard time cap and an auto-dismissing tap-to-play fallback
+    assert.match(html, /armCap/);
+    assert.match(html, /fbSince/);
     assert.match(html, /making-easy-money-academy-intro\.mp4/);
     assert.match(html, /smlAcademyWarmPromise/);
     assert.match(html, /Preparing live chart, scanner, lessons, and Academy tools/);
