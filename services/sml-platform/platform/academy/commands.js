@@ -56,8 +56,8 @@ const ENTRY_POINT_COMMAND = Object.freeze({
   description: 'Open the interactive Making Easy Money Academy workspace',
   type: 4,
   handler: 2,
-  integration_types: [0],
-  contexts: [0]
+  integration_types: [0, 1],
+  contexts: [0, 1, 2]
 });
 const COMMAND_DEFINITIONS = [
   { type: 1, name: 'academy', description: 'Open Making Easy Money Academy', contexts: [0] },

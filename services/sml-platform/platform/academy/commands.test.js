@@ -77,8 +77,8 @@ test('Academy exposes a Discord-managed Activity entry point', () => {
     description: 'Open the interactive Making Easy Money Academy workspace',
     type: 4,
     handler: 2,
-    integration_types: [0],
-    contexts: [0]
+    integration_types: [0, 1],
+    contexts: [0, 1, 2]
   });
 });
 
