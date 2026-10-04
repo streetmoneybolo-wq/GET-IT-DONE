@@ -30,6 +30,7 @@ if ( ! function_exists( 'sml_adsense_thin_paths' ) ) {
 			'upload-video', 'creator-wallet', 'creator-wallet-2', 'creator-wallet-3', 'creator-wallet-4',
 			'advertiser-dashboard', 'go-live', 'referral-center', 'customer-dashboard',
 			'my-profile', 'group-analytics', 'search-analytics', 'search-earnings', 'n', 'watchlist',
+			'watch',
 		) );
 	}
 
