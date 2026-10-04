@@ -33,6 +33,15 @@ const DISCLAIMER = 'Educational estimate from the Academy\'s data. It is not a p
 const fin = Number.isFinite;
 const round2 = (v) => Math.round(v * 100) / 100;
 
+/* Keep the timestamp and executable price identical across every alert route.
+   The clicked chart price is the target; the entry is the live price captured
+   when the alert analysis is created. */
+function alertTimeAndPrice(analysis, at) {
+  const et = at.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) + ' ET';
+  const entry = Number(analysis.entry);
+  return '⏱ ' + et + ' · price at alert $' + entry.toFixed(entry >= 1 ? 2 : 4);
+}
+
 const horizonForDays = (days) => (days <= 2 ? 'day' : days <= 10 ? 'swing' : days <= 126 ? 'mid' : 'long');
 
 const cleanBars = (payload) => (payload && Array.isArray(payload.bars) ? payload.bars : []).map((b) => ({ t: +b.t, o: +b.o, h: +b.h, l: +b.l, c: +b.c, v: +b.v || 0 })).filter((b) => [b.t, b.o, b.h, b.l, b.c].every(fin));
@@ -287,8 +296,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
     if (await store.count({ userId, symbol: analysis.symbol, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     const at = new Date(now());
-    const et = at.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) + ' ET';
-    const text = format.formatEntryAlert({ ...analysis.alert, mention: false }) + '\n\n⏱ ' + et + ' · price at alert $' + Number(analysis.entry).toFixed(analysis.entry >= 1 ? 2 : 4);
+    const text = format.formatEntryAlert({ ...analysis.alert, mention: false }) + '\n\n' + alertTimeAndPrice(analysis, at);
     let files = [];
     if (wantImages !== false) files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, alt: im.alt }));
     if (files.length < 2) files = [];
@@ -318,7 +326,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
     if (await store.count({ userId, symbol: analysis.symbol, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     const ping = !!mention && where.mentionEveryone;
-    let content = format.formatEntryAlert({ ...analysis.alert, mention: ping });
+    let content = format.formatEntryAlert({ ...analysis.alert, mention: ping }) + '\n\n' + alertTimeAndPrice(analysis, new Date(now()));
     // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
     // a member can have their own bot (their name and picture): used when that bot is in the server and may post in the channel
     const persona = pd || null, personaWhere = where;
@@ -354,4 +362,4 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
   return { entitlement, preview, send, destinations, channels, configured, canPublish };
 }
 
-module.exports = { createClickAlertService, createClickAlertStore, classify, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER };
+module.exports = { createClickAlertService, createClickAlertStore, classify, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

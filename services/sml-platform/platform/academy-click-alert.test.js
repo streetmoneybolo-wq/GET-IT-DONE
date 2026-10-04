@@ -235,6 +235,7 @@ test('a member with their own bot uses it for everything: listing, checks and th
   assert.equal(out.ok, true); assert.equal(out.postedAs, 'persona');
   assert.equal(own.posts.length, 1); assert.equal(a.posts.length, 0, 'the shared app did not post');
   assert.ok(!/Sent by/.test(own.posts[0].b.content));
+  assert.match(own.posts[0].b.content, /⏱ .* ET · price at alert \$/);
   const away = mk(false);
   const b = fake({ botCanWebhook: true, personas: { [USER]: away } });
   const nope = await b.svc.send({ userId: USER, displayName: 'Ana' }, body());
