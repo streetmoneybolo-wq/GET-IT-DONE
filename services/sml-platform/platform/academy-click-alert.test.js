@@ -242,21 +242,11 @@ test('a member with their own bot uses it for everything: listing, checks and th
   assert.equal(nope.ok, false); assert.equal(nope.code, 'channel_unavailable'); assert.equal(b.posts.length, 0);
 });
 
-test('the owner sends through StockMarketLoop: published to the group under their account with the typed text, time, price and the two pictures; others cannot', async () => {
+test('the unavailable StockMarketLoop publishing route is refused without publishing', async () => {
   const calls = [];
   const publisher = { configured: true, groupId: 77, publish: async (o) => { calls.push(o); return { ok: true, postId: 901, images: o.images.length }; } };
   const a = fake({ publisher, publishUsers: new Set([USER]), botCanWebhook: true });
-  assert.equal(a.svc.canPublish(USER), true); assert.equal(a.svc.canPublish('999999999999999999'), false);
   const out = await a.svc.send({ userId: USER, displayName: 'Obi' }, body({ via: 'site', channelId: '' }));
-  assert.equal(out.ok, true); assert.equal(out.postedAs, 'site'); assert.equal(out.postId, 901);
-  assert.equal(a.posts.length, 0, 'nothing posted straight to Discord');
-  assert.equal(calls.length, 1); assert.equal(calls[0].discordUserId, USER);
-  assert.match(calls[0].body, /⏱ .* ET · price at alert \$/); assert.equal(calls[0].meta.symbol, 'TEST');
-  assert.equal(calls[0].images.length, 2); assert.ok(calls[0].images.every((i) => Buffer.isBuffer(i.bytes)));
-  const other = fake({ publisher, publishUsers: new Set(['999999999999999999']) });
-  const viaDiscord = await other.svc.send({ userId: USER, displayName: 'Ana' }, body({ via: 'site' }));
-  assert.equal(viaDiscord.postedAs, 'app', 'not on the list: the normal Discord path');
-  const refused = fake({ publisher: { configured: true, groupId: 77, publish: async () => ({ ok: false, status: 403, error: 'not_group_manager' }) }, publishUsers: new Set([USER]) });
-  const r = await refused.svc.send({ userId: USER, displayName: 'Obi' }, body({ via: 'site' }));
-  assert.equal(r.ok, false); assert.equal(r.code, 'not_group_manager');
+  assert.equal(out.ok, false); assert.equal(out.status, 410); assert.equal(out.code, 'site_publishing_unavailable');
+  assert.equal(a.posts.length, 0); assert.equal(calls.length, 0);
 });
