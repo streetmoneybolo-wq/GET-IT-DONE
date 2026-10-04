@@ -2242,7 +2242,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (request.method === 'GET' && path === '/academy-activity/click-alert/status') {
           const entitlement = await academyClickAlert.entitlement(session.userId);
           const guilds = entitlement.entitled ? await academyClickAlert.destinations(session.userId, params.get('current') || '') : [];
-          sendJson(response, 200, { ok: true, ...entitlement, guilds, site: typeof academyClickAlert.canPublish === 'function' && academyClickAlert.canPublish(session.userId) }); return;
+          sendJson(response, 200, { ok: true, ...entitlement, guilds, ...(typeof academyClickAlert.canPublish === 'function' && academyClickAlert.canPublish(session.userId) ? { site: true } : {}) }); return;
         }
         if (request.method === 'GET' && path === '/academy-activity/click-alert/channels') {
           const entitlement = await academyClickAlert.entitlement(session.userId);
