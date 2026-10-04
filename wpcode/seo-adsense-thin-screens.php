@@ -27,10 +27,10 @@ if ( ! function_exists( 'sml_adsense_thin_paths' ) ) {
 			'connect-migrate', 'connect-dashboard', 'connect', 'moomoo',
 			'login', 'register', 'my-account', 'cart', 'checkout', 'checkout-2',
 			'create-channel', 'wallet', 'settings', 'loop-messages', 'customize-profile',
-			'upload-video', 'creator-wallet', 'creator-wallet-2', 'creator-wallet-3', 'creator-wallet-4',
+			'upload-video', 'creator-wallet*',
 			'advertiser-dashboard', 'go-live', 'referral-center', 'customer-dashboard',
 			'my-profile', 'group-analytics', 'search-analytics', 'search-earnings', 'n', 'watchlist',
-			'watch',
+			'watch', 'tradingfloor',
 		) );
 	}
 
@@ -44,6 +44,10 @@ if ( ! function_exists( 'sml_adsense_thin_paths' ) ) {
 		$path = trim( strtolower( (string) $path ), '/' );
 		if ( '' === $path ) { return false; }
 		foreach ( sml_adsense_thin_paths() as $slug ) {
+			if ( '*' === substr( $slug, -1 ) ) {
+				if ( 0 === strpos( $path, rtrim( $slug, '*' ) ) ) { return true; }
+				continue;
+			}
 			if ( $path === $slug || 0 === strpos( $path, $slug . '/' ) ) { return true; }
 		}
 		return false;
@@ -83,4 +87,25 @@ if ( ! function_exists( 'sml_adsense_thin_paths' ) ) {
 		if ( '' !== $loc && sml_adsense_path_is_thin( wp_parse_url( $loc, PHP_URL_PATH ) ) ) { return false; }
 		return $url;
 	}, 9999, 3 );
+
+	/**
+	 * Backstop: another snippet/plugin can emit its own robots meta after the
+	 * filters above run (seen on /stock-chart/, which still printed
+	 * "index, follow"). On thin paths, rewrite or inject the robots meta in the
+	 * final HTML so nothing downstream can override it.
+	 */
+	function sml_adsense_force_noindex_html( $html ) {
+		if ( ! is_string( $html ) || false === stripos( $html, '<head' ) ) { return $html; }
+		$tag = '<meta name="robots" content="noindex, nofollow" />';
+		$n   = 0;
+		$out = preg_replace( '#<meta\s+name=["\']robots["\'][^>]*>#i', $tag, $html, -1, $n );
+		if ( null === $out ) { return $html; }
+		if ( 0 === $n ) { $out = preg_replace( '#</head>#i', $tag . '</head>', $out, 1 ); }
+		return null === $out ? $html : $out;
+	}
+
+	add_action( 'template_redirect', static function () {
+		if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return; }
+		if ( sml_adsense_path_is_thin( sml_adsense_request_path() ) ) { ob_start( 'sml_adsense_force_noindex_html' ); }
+	}, 0 );
 }
