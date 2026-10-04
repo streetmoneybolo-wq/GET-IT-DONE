@@ -28,6 +28,10 @@ export async function execute(interaction) {
     });
     return interaction.editReply(`✅ This Discord server is now securely connected to StockMarketLoop group #${result.group_id}. Return to that group’s **Discord Access** panel and map the Discord roles that should receive website access.`);
   } catch (error) {
-    return interaction.editReply(`Could not connect this Discord server: ${String(error?.message || error).slice(0, 400)}`);
+    const message = String(error?.message || error);
+    if (/expired|invalid|one-time|code/i.test(message)) {
+      return interaction.editReply('That setup code is expired or invalid. Generate a fresh one in the group’s **Discord Access** panel, then type `/connect-sml-group`, choose it from Discord’s menu, and paste only the new code into the **code** box.');
+    }
+    return interaction.editReply(`Could not connect this Discord server: ${message.slice(0, 400)}`);
   }
 }

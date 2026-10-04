@@ -57,10 +57,11 @@ export function onboardingMessage(guild) {
       'Thanks for adding the bot. Three steps and your community is on Stock Market Loop:\n\n' +
       '**1. Create your Stock Market Loop group** — the button below opens the site with this server\'s name already filled in. ' +
       'Your group gets a public page, a Portal chat, a live chart, a market scanner, the analyst dashboard and per-ticker voice rooms.\n\n' +
-      '**2. Connect this server to that group** — in the group\'s **Edit Group → Discord Access** panel generate a one-time code, then run ' +
-      '`/connect-sml-group code:…` here. Your channels, roles and permissions mirror to the site; run `/sync-sml-channels` after changes.\n\n' +
+      '**2. Connect this server to that group** — in the group\'s **Edit Group → Discord Access** panel generate a one-time code. ' +
+      'Then type `/connect-sml-group`, choose it from Discord\'s command menu, and paste only the code into the **code** box. ' +
+      'Do not paste a full slash command as a normal message. Your channels, roles and permissions mirror to the site; run `/sync-sml-channels` after changes.\n\n' +
       '**3. Move your members** — each paid member confirms their move on the migration page (their Upgrade.Chat renewal date is kept, no double charge). ' +
-      'Every member links their account with `/link-sml` using the code from ' + SITE + '/connect-discord/.\n\n' +
+      'Every member links their account by typing `/link-sml`, choosing it from the menu, and pasting only their code from ' + SITE + '/connect-discord/ into the **code** box.\n\n' +
       'Already have a group? Skip to step 2.\n\n' +
       'Commands available right now: `/share` `/news` `/share-setup` `/leaderboard` `/boost` `/tracking` `/link-sml` `/refresh-sml-access` `/connect-sml-group` `/sync-sml-channels`'
     )
