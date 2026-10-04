@@ -77,6 +77,10 @@ const COMMAND_DEFINITIONS = [
   { type: 1, name: 'replay', description: 'Open an educational market replay', contexts: [0], options: [{ type: 3, name: 'scenario', description: 'Scenario name', required: true, max_length: 80 }] },
   { type: 1, name: 'leaderboard', description: 'View Academy learning milestones', contexts: [0] }
 ].map(privatePreview);
+const USER_INSTALL_COMMAND_NAMES = new Set(['academy', 'lesson', 'progress', 'badges', 'glossary', 'flashcard', 'quiz', 'challenge', 'briefing', 'discipline', 'replay', 'leaderboard']);
+const USER_INSTALL_COMMAND_DEFINITIONS = Object.freeze(COMMAND_DEFINITIONS
+  .filter((command) => USER_INSTALL_COMMAND_NAMES.has(command.name))
+  .map(({ default_member_permissions, ...command }) => ({ ...command, integration_types: [1], contexts: [0, 1, 2] })));
 
 function text(value, max = 120) { return String(value || '').replace(/[\r\n`]/g, ' ').trim().slice(0, max); }
 function response(content, embeds = [], components = []) { return { type: 4, data: { content, embeds, components, flags: EPHEMERAL } }; }
@@ -192,7 +196,8 @@ function withTimeout(promise, ms) {
 
 function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = false, now = Date.now,
   disciplineAudio = null, accessRoleIds = [], memberRoleIds = [], monarchAccess = true, hubRoleGate = false,
-  freePreview = 'M0,M29:1-10', inDiscordLinks = false, handoff = null, onMemberSeen = null } = {}) {
+  freePreview = 'M0,M29:1-10', inDiscordLinks = false, handoff = null, onMemberSeen = null,
+  userInstallEntitled = null } = {}) {
   /* Roles the hub admits besides Administrator: Monarch (unless
      SML_ACADEMY_MONARCH_ACCESS=0), SML_ACADEMY_ACCESS_ROLE_IDS and the
      member-tier roles. With the defaults that is Monarch alone, as before. */
@@ -203,6 +208,19 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     const roleIds = Array.isArray(interaction?.member?.roles) ? interaction.member.roles.map(String) : [];
     const permissions = BigInt(String(interaction?.member?.permissions || '0'));
     return (permissions & 8n) === 8n || roleIds.some((role) => accessRoles.has(role));
+  }
+  /* A Discord User Install may be used in a DM or in any server, where this
+     app cannot safely infer access from a guild role. Discord includes the
+     installation owner on the interaction; only that signed-in user's paid
+     Academy entitlement can unlock the personal command set. */
+  function isUserInstall(interaction) {
+    const owner = String(interaction?.authorizing_integration_owners?.['1'] || '');
+    return interaction?.type === 2 && USER_INSTALL_COMMAND_NAMES.has(String(interaction?.data?.name || '').toLowerCase())
+      && Boolean(owner) && owner === userId(interaction);
+  }
+  async function hasUserInstallAccess(interaction) {
+    if (!isUserInstall(interaction) || typeof userInstallEntitled !== 'function') return false;
+    try { return (await userInstallEntitled({ discordUserId: userId(interaction) })) === true; } catch (_) { return false; }
   }
   /* SML_ACADEMY_HUB_ROLE_GATE: a member without an Academy role can still open
      the free preview lessons from the hub; any other lesson gets a private
@@ -229,8 +247,10 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     const customId = String(interaction?.data?.custom_id || '');
     return (interaction?.type === 2 && ACADEMY_COMMANDS.has(name)) || (interaction?.type === 3 && customId.startsWith('academy:'));
   }
-  function allowed(interaction) {
-    if (!enabled || String(interaction?.guild_id || '') !== String(guildId || '')) return false;
+  async function allowed(interaction) {
+    if (!enabled) return false;
+    if (isUserInstall(interaction)) return hasUserInstallAccess(interaction);
+    if (String(interaction?.guild_id || '') !== String(guildId || '')) return false;
     // Component interactions can only be produced from an Academy message the
     // member is permitted to see. This opens the private launchers and their
     // follow-up controls to students without exposing the slash-command suite.
@@ -279,7 +299,11 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       footer: { text: 'Educational content · Not financial advice' } };
   }
   async function handle(interaction) {
-    if (!allowed(interaction)) return { response: response('The Academy is not available in this server yet.') };
+    if (!(await allowed(interaction))) {
+      if (isUserInstall(interaction)) return unlockResponse(interaction,
+        'Your personal Academy install is ready. Link it to an active Making Easy Money Academy membership to unlock your private lessons, progress, quizzes, and tools.');
+      return { response: response('The Academy is not available in this server yet.') };
+    }
     if (interaction.type === 3 && typeof onMemberSeen === 'function') {
       try { Promise.resolve(onMemberSeen(userId(interaction))).catch(() => {}); } catch (_) { /* never delays the reply */ }
     }
@@ -424,5 +448,5 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
   return Object.freeze({ canHandle, handle, definitions: COMMAND_DEFINITIONS });
 }
 
-module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, ENTRY_POINT_COMMAND, LAUNCH_ACTIVITY, LAUNCH_ID, TEXT_LESSON_ID, BUY_ID,
+module.exports = { ACADEMY_COMMANDS, ACADEMY_HUBS, COMMAND_DEFINITIONS, USER_INSTALL_COMMAND_DEFINITIONS, ENTRY_POINT_COMMAND, LAUNCH_ACTIVITY, LAUNCH_ID, TEXT_LESSON_ID, BUY_ID,
   LESSON_COUNT, MODULE_IDS, MODULE_COUNT, FIRST_MODULE, LAST_MODULE, FIRST_LESSON, createAcademyCommands, academyHubGateOptions };
