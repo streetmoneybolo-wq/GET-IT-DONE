@@ -134,6 +134,17 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) return [];
     const r = await call(t, `/channels/${channelId}/messages?limit=100`); return Array.isArray(r.data) ? r.data : [];
   });
+  /* A Discord user's public profile through whichever Academy bot can fetch it (cached half an hour). Null when no bot can see the user. */
+  const userProfile = (userId) => cached(`u:${userId}`, 1_800_000, async () => {
+    for (const t of tokens) {
+      try {
+        const r = await call(t, `/users/${userId}`);
+        if (r.data && r.data.id) return { id: String(r.data.id), username: cleanLabel(r.data.username), globalName: cleanLabel(r.data.global_name), avatar: /^[a-z0-9_]{1,64}$/i.test(String(r.data.avatar || '')) ? String(r.data.avatar) : '', banner: /^[a-z0-9_]{1,64}$/i.test(String(r.data.banner || '')) ? String(r.data.banner) : '', accentColor: Number.isInteger(r.data.accent_color) ? r.data.accent_color : null };
+      } catch (_) { /* next bot */ }
+    }
+    return null;
+  });
+
   /* ---------- posting (the Click-to-Alert feature): who may post where, and the post itself ---------- */
   const memberRoles = async (guildId, userId) => { const m = await member(guildId, userId); return m && Array.isArray(m.roles) ? m.roles.map(String) : null; };
   /* uncached: a subscription that just ended (or just started) is honoured on the very next click */
@@ -175,7 +186,7 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     if (!res.ok) { const e = new Error(`discord_post_${res.status}`); e.status = res.status; throw e; }
     const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
   }
-  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, memberRoles, memberRolesLive, sendableChannels, postingIn, post };
+  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, userProfile, memberRoles, memberRolesLive, sendableChannels, postingIn, post };
 }
 
 /* Where each member's sources are kept: Postgres (academy_alert_sources) when there is a database, memory otherwise (local runs, tests). */

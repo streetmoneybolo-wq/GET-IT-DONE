@@ -1362,3 +1362,35 @@ test('The Academy page carries the smart-money hover explainer and the Click-to-
     assert.ok(!/\\u[0-9a-f]{4}/i.test(html.slice(html.indexOf('SmlSmcExplain'), html.indexOf('SmlSmcExplain') + 200)), 'no stray escapes');
   });
 });
+
+test('Chat profile routes need a session and return a card and an avatar as bytes', async () => {
+  const img = Buffer.from('89504e470d0a1a0a', 'hex');
+  const academyProfiles = {
+    profile: async (id) => (id === '420000000000000001' ? { discordId: id, discord: { name: 'Ana' }, site: { linked: false } } : null),
+    avatar: async (id) => (id === '420000000000000001' ? { contentType: 'image/png', bytes: img } : null)
+  };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer m' ? { ok: true, userId: 'u', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const auth = { authorization: 'Bearer m' };
+  await withServer({ academyProfiles, academyOAuth }, async (base) => {
+    const u = (p) => `${base}/academy-activity/${p}`;
+    assert.equal((await fetch(u('profile?user=420000000000000001'))).status, 401);
+    assert.equal((await fetch(u('avatar?user=420000000000000001'))).status, 401, 'an avatar is never served without a session');
+    const card = await (await fetch(u('profile?user=420000000000000001'), { headers: auth })).json();
+    assert.equal(card.ok, true); assert.equal(card.card.discord.name, 'Ana');
+    assert.equal((await fetch(u('profile?user=1'), { headers: auth })).status, 404);
+    const res = await fetch(u('avatar?user=420000000000000001'), { headers: auth });
+    assert.equal(res.status, 200); assert.equal(res.headers.get('content-type'), 'image/png'); assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.deepEqual([...Buffer.from(await res.arrayBuffer())], [...img]);
+    assert.equal((await fetch(u('avatar?user=1'), { headers: auth })).status, 404);
+  });
+  await withServer({ academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/profile?user=1`, { headers: auth })).status, 503, 'off when the service is not built');
+  });
+});
+
+test('The chat panel shows the avatar before the name and opens a profile card on hover', async () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(require('node:path').join(__dirname, 'academy-chat-panel.js'), 'utf8');
+  for (const marker of ['class="ava"', "'/academy-activity/avatar?user='", "'/academy-activity/profile?user='", 'mouseover', 'Add on Discord', 'Follow profile', 'Follow channel', 'smlAcademyOpenExternal']) assert.ok(src.includes(marker), marker);
+  assert.ok(src.indexOf('class="ava"') < src.indexOf('class="nm"'), 'avatar comes before the username');
+});

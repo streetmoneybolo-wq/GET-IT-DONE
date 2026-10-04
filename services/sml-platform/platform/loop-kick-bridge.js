@@ -65,7 +65,26 @@ function createLoopKickBridge({ baseUrl = '', secret = '', appUrl = '', fetchImp
     };
   }
 
-  return { configured, session };
+  /* A linked, verified member's PUBLIC card (handle, name, avatar, profile / channel / group links), by Discord id. Same signed channel as session(). */
+  async function profile(discordUserId) {
+    if (!configured) return { ok: false, status: 503, error: 'loop_kick_unconfigured' };
+    const cleanId = String(discordUserId || '').replace(/\D/g, '');
+    if (!/^\d{15,24}$/.test(cleanId)) return { ok: false, status: 400, error: 'invalid_discord_user' };
+    const path = '/wp-json/sml-loop-kick/v1/discord-profile';
+    const body = JSON.stringify({ discord_user_id: cleanId });
+    const timestamp = String(Math.floor(now() / 1000));
+    const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
+    const signature = crypto.createHmac('sha256', String(secret)).update(`${timestamp}.${path}.${bodyHash}`).digest('hex');
+    let response;
+    try {
+      response = await fetchImpl(`${root}${path}`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'x-sml-lk-timestamp': timestamp, 'x-sml-lk-signature': `sha256=${signature}` }, body, signal: AbortSignal.timeout(6_000) });
+    } catch (error) { return { ok: false, status: 503, error: 'loop_kick_unavailable' }; }
+    let payload = null; try { payload = await response.json(); } catch (error) { payload = null; }
+    if (!response.ok || !payload || payload.ok !== true) return { ok: false, status: 503, error: 'loop_kick_unavailable' };
+    return { ok: true, linked: payload.linked === true, card: payload.linked === true && payload.card && typeof payload.card === 'object' ? payload.card : null };
+  }
+
+  return { configured, session, profile };
 }
 
 module.exports = { createLoopKickBridge };
