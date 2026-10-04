@@ -10,7 +10,7 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toolbar = document.querySelector('.toolbar'), canvas = $('chart'), stage = document.querySelector('.academy-chart-stage');
   const KEY = 'sml-click-alert-dest';
-  const S = { viaSite: true, asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '' };
+  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '' };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.guildId = String(v.guildId || ''); S.channelId = String(v.channelId || ''); } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ guildId: S.guildId, channelId: S.channelId })); } catch (_) { /* ignore */ } };
 
@@ -51,7 +51,7 @@
     not_linked: 'Link your StockMarketLoop account to Discord first.',
     not_verified: 'Verify your StockMarketLoop email first.',
     not_group_manager: 'Your StockMarketLoop account is not a manager of the alert group.',
-    site_unavailable: 'StockMarketLoop could not be reached right now. Try again in a minute.',
+    site_publishing_unavailable: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.',
     click_alert_not_configured: 'Click-to-Alert is not switched on yet.',
     click_alert_disabled: 'Click-to-Alert is not available right now.',
     target_too_close: 'That target is too close to the live price. Click further away.',
@@ -146,25 +146,22 @@
       html += row('Stop (suggested)', '$' + price(d.stop) + ' · ' + esc(d.stopBasis)) + row('Risk', esc(String(d.risk).toUpperCase()));
       html += '<ul>' + d.rationale.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
       const ch = S.channels.find((c) => c.id === S.channelId);
-      const site = !!(S.status && S.status.site) && S.viaSite, canAsMe = !!(ch && ch.asMe);
-      if (S.status && S.status.site) html += '<label class="chk"><input type="checkbox" data-ca="site"' + (S.viaSite ? ' checked' : '') + '> Send through StockMarketLoop (your group, then the Alert Bot posts it in Discord)</label>';
-      if (!site) {
+      const canAsMe = !!(ch && ch.asMe);
       html += '<select data-ca="guild"><option value="">Choose a server…</option>' + S.guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === S.guildId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select>';
       html += '<select data-ca="channel"' + (S.guildId ? '' : ' disabled') + '><option value="">' + (S.guildId ? (S.channels.length ? 'Choose a channel…' : 'No channel where you and the app can post') : 'Pick a server first') + '</option>' + S.channels.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === S.channelId ? ' selected' : '') + '>#' + esc(c.name) + (c.category ? ' · ' + esc(c.category) : '') + '</option>').join('') + '</select>';
       html += '<label class="chk"><input type="checkbox" data-ca="ping"' + (S.ping ? ' checked' : '') + (ch && ch.mentionEveryone ? '' : ' disabled') + '> Ping @everyone' + (ch && !ch.mentionEveryone ? ' (not allowed in this channel)' : '') + '</label>';
       if (S.scn) html += '<label class="chk"><input type="checkbox" data-ca="images"' + (S.images ? ' checked' : '') + (S.scn.pngAvailable ? '' : ' disabled') + '> Attach the two scenario charts' + (S.scn.pngAvailable ? '' : ' (picture engine unavailable)') + '</label>';
       html += '<label class="chk"><input type="checkbox" data-ca="asme"' + (S.asMe && canAsMe ? ' checked' : '') + (canAsMe ? '' : ' disabled') + '> Post under my name and picture' + (ch && !canAsMe ? ' (this channel only lets the app post as itself)' : '') + '</label>';
-      } else if (S.scn) html += '<label class="chk"><input type="checkbox" data-ca="images"' + (S.images ? ' checked' : '') + (S.scn.pngAvailable ? '' : ' disabled') + '> Attach the two scenario charts' + (S.scn.pngAvailable ? '' : ' (picture engine unavailable)') + '</label>';
       /* what Discord will show: the message as posted by the app, the two charts when attached, and where it is going */
       const gname = (S.guilds.find((g) => g.id === S.guildId) || {}).name, cname = ch ? ch.name : '';
-      const asMeNow = !site && S.asMe && canAsMe, who = site ? 'Alert Bot' : asMeNow ? (window.smlAcademyDisplayName || 'You') : 'Academy';
-      const shown = site ? d.alertText + String.fromCharCode(10, 10) + '⏱ ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET · price at alert $' + price(d.entry) : (S.ping ? d.alertTextWithMention : d.alertText) + (asMeNow ? '' : String.fromCharCode(10) + '-# Sent by ' + (window.smlAcademyDisplayName || 'an Academy member') + ' with Click-to-Alert');
+      const asMeNow = S.asMe && canAsMe, who = asMeNow ? (window.smlAcademyDisplayName || 'You') : 'Academy';
+      const shown = (S.ping ? d.alertTextWithMention : d.alertText) + String.fromCharCode(10, 10) + '⏱ ' + new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET · price at alert $' + price(d.entry) + (asMeNow ? '' : String.fromCharCode(10) + '-# Sent by ' + (window.smlAcademyDisplayName || 'an Academy member') + ' with Click-to-Alert');
       const body = esc(shown).replace(/@everyone/g, '<span class="mn">@everyone</span>');
       const pics = S.scn && S.images && S.scn.pngAvailable ? '<div class="dpics">' + S.scn.images.map((im, i) => '<figure><img alt="' + esc(im.alt) + '" src="data:image/svg+xml;charset=utf-8,' + encodeURIComponent(im.svg) + '"><figcaption>scenario-' + (i + 1) + '.png</figcaption></figure>').join('') + '</div>' : '';
       html += '<div class="prevhead">PREVIEW · THIS IS WHAT WILL BE POSTED</div><div class="dprev"><div class="dwho"><span class="dav">' + esc(String(who).slice(0, 1).toUpperCase()) + '</span><b>' + esc(who) + '</b><i>APP</i><time>Today</time></div><div class="dbody">' + body + '</div>' + pics + '</div>';
-      html += '<div class="prevto">' + (site ? 'Publishes to your StockMarketLoop group as you, then the Alert Bot posts it in Discord with the typed text' + (S.scn && S.images && S.scn.pngAvailable ? ' and the two charts.' : '.') : cname ? 'Posting to <b>#' + esc(cname) + '</b>' + (gname ? ' in <b>' + esc(gname) + '</b>' : '') : 'Choose a server and channel above to send it.') + (S.ping && ch && ch.mentionEveryone ? ' · pings @everyone' : '') + (asMeNow ? '<br>Shows your name and picture. Discord adds a small APP tag to posts like this; only you typing it yourself avoids that.' : '') + '</div>';
-      html += '<button type="button" class="act" data-ca="send"' + (S.busy || (!site && !S.channelId) || S.sent ? ' disabled' : '') + '>' + (S.sent ? 'Alert sent' : S.busy ? 'Working…' : site ? 'Publish and send via StockMarketLoop' : (ch ? 'Send to #' + esc(ch.name) : 'Send alert to Discord')) + '</button>';
-      if (!site) html += '<button type="button" class="act ghost" data-ca="self"' + (S.channelId ? '' : ' disabled') + '>Or post it myself (copy text, open the channel)</button>';
+      html += '<div class="prevto">' + (cname ? 'Posting to <b>#' + esc(cname) + '</b>' + (gname ? ' in <b>' + esc(gname) + '</b>' : '') : 'Choose a server and channel above to send it.') + (S.ping && ch && ch.mentionEveryone ? ' · pings @everyone' : '') + (asMeNow ? '<br>Shows your name and picture. Discord adds a small APP tag to posts like this; only you typing it yourself avoids that.' : '') + '</div>';
+      html += '<button type="button" class="act" data-ca="send"' + (S.busy || !S.channelId || S.sent ? ' disabled' : '') + '>' + (S.sent ? 'Alert sent' : S.busy ? 'Working…' : (ch ? 'Send to #' + esc(ch.name) : 'Send alert to Discord')) + '</button>';
+      html += '<button type="button" class="act ghost" data-ca="self"' + (S.channelId ? '' : ' disabled') + '>Or post it myself (copy text, open the channel)</button>';
     }
     if (S.msg && !(S.status && S.status.ok !== false && !S.status.entitled)) html += '<div class="msg ' + esc(S.msgTone || 'info') + '">' + esc(S.msg) + '</div>';
     html += '<small>Educational estimate from the Academy’s data. It is not a prediction, financial advice, or a trade instruction. The alert is posted by the Academy app and shows your name.</small></div>';
@@ -224,11 +221,11 @@
     if (k === 'out') { if (a.dataset.url) openOut(a.dataset.url); return; }
     if (k === 'buy') { void buyPass(a.dataset.plan); return; }
     if (k === 'send') {
-      const viaSite = !!(S.status && S.status.site) && S.viaSite; if (S.busy || (!viaSite && !S.channelId) || !S.data) return;
+      if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
-      const r = await api('send', { symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping, images: !!S.images, asMe: !!S.asMe, via: viaSite ? 'site' : '' });
+      const r = await api('send', { symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping, images: !!S.images, asMe: !!S.asMe });
       S.busy = false;
-      if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'site' ? 'Published to your StockMarketLoop group. The Alert Bot posts it in Discord shortly' : r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
+      if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }
       render();
     }
@@ -240,7 +237,6 @@
     else if (k === 'ping') { S.ping = !!e.target.checked; render(); }
     else if (k === 'images') { S.images = !!e.target.checked; render(); }
     else if (k === 'asme') { S.asMe = !!e.target.checked; render(); }
-    else if (k === 'site') { S.viaSite = !!e.target.checked; S.sent = false; render(); }
   });
 
   function setOn(on) {
