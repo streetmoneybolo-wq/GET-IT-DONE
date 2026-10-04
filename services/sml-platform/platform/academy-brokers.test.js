@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createBrokerLinks, cleanSymbol } = require('./academy-brokers');
+const { createBrokerLinks, cleanSymbol, etoroUrl } = require('./academy-brokers');
 
 const referenceFetch = (mic) => async (url) => ({ ok: true, json: async () => ({ results: { ticker: url.split('/').pop(), primary_exchange: mic } }) });
 
@@ -53,4 +53,11 @@ test('the launcher tries the desktop app links in order and falls back to the we
   const odd = brokerLaunchHtml('moomoo', 'A"B<', 'https://x/<');
   assert.doesNotMatch(odd, /A"B</, 'symbols and urls are escaped');
   assert.match(odd, /\\u003c/, 'the JSON config never closes the script tag');
+});
+
+test('eToro links go to the lower-case market page', async () => {
+  const links = createBrokerLinks();
+  assert.equal(await links.urlFor('etoro', 'NVDA'), 'https://www.etoro.com/markets/nvda');
+  assert.equal(etoroUrl('BRK.B'), 'https://www.etoro.com/markets/brk.b');
+  await assert.rejects(() => links.urlFor('etoro', '<>"'), /invalid_symbol/);
 });

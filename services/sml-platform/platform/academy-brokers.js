@@ -14,10 +14,12 @@ function cleanSymbol(value) {
 
 /* The owner's referral sign-up links: where a Buy button sends a member who does not have that broker's app yet. */
 const SIGNUP = Object.freeze({ moomoo: 'https://j.moomoo.com/00isCK', webull: 'https://a.webull.com/gsHkJGq3lyekBxLcvC' });
-const NAMES = Object.freeze({ moomoo: 'moomoo', webull: 'Webull', robinhood: 'Robinhood' });
+const NAMES = Object.freeze({ moomoo: 'moomoo', webull: 'Webull', robinhood: 'Robinhood', etoro: 'eToro' });
 
 function moomooQuoteUrl(symbol) { return 'https://www.moomoo.com/stock/' + encodeURIComponent(symbol) + '-US'; }
 function robinhoodUrl(symbol) { return 'https://robinhood.com/stocks/' + encodeURIComponent(symbol); }
+/* eToro's market pages are lower-case tickers: etoro.com/markets/aapl. A quote page only, never an order ticket. */
+function etoroUrl(symbol) { return 'https://www.etoro.com/markets/' + encodeURIComponent(symbol.toLowerCase()); }
 function webullUrl(symbol, mic) { return 'https://www.webull.com/quote/' + (WEBULL_PREFIX[mic] || 'nasdaq') + '-' + encodeURIComponent(symbol.toLowerCase().replace(/\./g, '')); }
 
 function createBrokerLinks({ apiKey = '', fetchImpl = fetch, now = Date.now } = {}) {
@@ -40,6 +42,7 @@ function createBrokerLinks({ apiKey = '', fetchImpl = fetch, now = Date.now } = 
     const symbol = cleanSymbol(rawSymbol);
     if (!symbol) throw new TypeError('invalid_symbol');
     if (broker === 'robinhood') return robinhoodUrl(symbol);
+    if (broker === 'etoro') return etoroUrl(symbol);
     if (broker === 'webull') return webullUrl(symbol, await exchangeOf(symbol));
     throw new TypeError('invalid_broker');
   }
@@ -93,4 +96,4 @@ $('app').addEventListener('click',(e)=>{e.preventDefault();if(navigator.clipboar
 tryAll()})();</script></body></html>`;
 }
 
-module.exports = { createBrokerLinks, cleanSymbol, robinhoodUrl, webullUrl, moomooQuoteUrl, brokerLaunchHtml, SIGNUP, WEBULL_PREFIX, DESKTOP_SCHEMES };
+module.exports = { createBrokerLinks, cleanSymbol, robinhoodUrl, etoroUrl, webullUrl, moomooQuoteUrl, brokerLaunchHtml, SIGNUP, WEBULL_PREFIX, DESKTOP_SCHEMES };

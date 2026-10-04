@@ -39,6 +39,7 @@ const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
 const { createProfileService } = require('./academy-profile');
+const { createSnapshotService } = require('./academy-snapshot');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -586,6 +587,9 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const smcExplain = fs.readFileSync(pathModule.join(__dirname, 'academy-smc-explain.js'), 'utf8');
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
+    const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
+    const optionContract = fs.readFileSync(pathModule.join(__dirname, 'academy-option-contract.js'), 'utf8');
+    const optionsBrokers = fs.readFileSync(pathModule.join(__dirname, 'academy-options-brokers.js'), 'utf8');
     const alertsUi = fs.readFileSync(pathModule.join(__dirname, 'academy-alerts-ui.js'), 'utf8');
     const sirePanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sire-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const liveCells = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-live-cells.js'), 'utf8'); } catch (_) { return ''; } })();
@@ -598,7 +602,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const belowCycle = fs.readFileSync(pathModule.join(__dirname, 'academy-below-cycle.js'), 'utf8');
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionsDock + '</script><script>' + earningsPanel + '</script><script>' + shortSale + '</script><script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + clickAlertUi + '</script><script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script><script>' + shortSale + '</script><script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();',
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -617,13 +621,13 @@ const ACADEMY_MEM_ALGO_TEASER_SOURCE = ACADEMY_MEM_ALGO_PARTS && ACADEMY_MEM_ALG
   : '';
 const ACADEMY_MEM_ALGO_LOADER = "<script>(()=>{if(window.__smlMemAlgoLoader)return;window.__smlMemAlgoLoader=1;let loaded=false,busy=false;const load=async()=>{const token=window.smlAcademySessionToken;if(loaded||busy||!token)return;busy=true;try{const response=await fetch('/academy-activity/mem-algo.js',{headers:{authorization:'Bearer '+token},cache:'no-store'});if(response.ok){const code=await response.text();loaded=true;const script=document.createElement('script');script.textContent=code;document.body.appendChild(script)}}catch(_){}finally{busy=false}};window.addEventListener('sml-academy-session',()=>{void load()});void load()})();</script>";
 
-const ACADEMY_MOOMOO_BUY = `<style>.toolbar .academy-brokers{display:contents}.toolbar button.academy-broker-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}.toolbar button.academy-broker-buy:hover{background:#1a3157;color:#c4d9ff}.toolbar #academy-webull-buy{border-color:#1f8fff;background:#0d2238;color:#8fc8ff}.toolbar #academy-robinhood-buy{border-color:#2fbf4f;background:#0f2a17;color:#9ff0b0}.toolbar #academy-robinhood-buy:hover{background:#163a20;color:#c8ffd4}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
+const ACADEMY_MOOMOO_BUY = `<style>.toolbar .academy-brokers{display:contents}.toolbar button.academy-broker-buy{display:inline-flex;align-items:center;gap:5px;border:1px solid #2f6cf5;border-radius:5px;background:#12233f;color:#9cc0ff;font:800 .68rem system-ui;padding:5px 8px;cursor:pointer;white-space:nowrap}.toolbar button.academy-broker-buy:hover{background:#1a3157;color:#c4d9ff}.toolbar #academy-webull-buy{border-color:#1f8fff;background:#0d2238;color:#8fc8ff}.toolbar #academy-robinhood-buy{border-color:#2fbf4f;background:#0f2a17;color:#9ff0b0}.toolbar #academy-robinhood-buy:hover{background:#163a20;color:#c8ffd4}.toolbar #academy-moomoo-buy{border-color:#ff7a1a;background:#2e1707;color:#ffb877}.toolbar #academy-moomoo-buy:hover{background:#432209;color:#ffd2a6}.toolbar #academy-etoro-buy{border-color:#13c636;background:#0c2a14;color:#8ff0a6}.toolbar #academy-etoro-buy:hover{background:#12381c;color:#c4ffd2}</style><script>(()=>{if(document.getElementById('academy-moomoo-buy'))return;
 const toolbar=document.querySelector('.toolbar');if(!toolbar)return;
 const currentSymbol=()=>{const q=new URLSearchParams(location.search).get('symbol'),typed=document.getElementById('symbol')?.value;return String(q||typed||'SPY').toUpperCase().replace(/[^A-Z0-9.\-]/g,'').slice(0,10)||'SPY'};
 /* moomoo and Webull open a launcher in the phone's browser: it opens the app on this ticker when installed, and otherwise sends
-   the member to the owner's sign-up link. Robinhood's robinhood.com/stocks/ links open its app directly. Quote pages only, never an order ticket. */
+   the member to the owner's sign-up link. Robinhood's robinhood.com/stocks/ and eToro's etoro.com/markets/ links open their pages directly. Quote pages only, never an order ticket. */
 const LAUNCH='https://sml-platform-api.onrender.com/academy-activity/open';
-const brokers=[['moomoo','moomoo',(s)=>LAUNCH+'?b=moomoo&symbol='+encodeURIComponent(s)],['webull','Webull',(s)=>LAUNCH+'?b=webull&symbol='+encodeURIComponent(s)],['robinhood','Robinhood',(s)=>'https://robinhood.com/stocks/'+encodeURIComponent(s)]];
+const brokers=[['moomoo','moomoo',(s)=>LAUNCH+'?b=moomoo&symbol='+encodeURIComponent(s)],['webull','Webull',(s)=>LAUNCH+'?b=webull&symbol='+encodeURIComponent(s)],['robinhood','Robinhood',(s)=>'https://robinhood.com/stocks/'+encodeURIComponent(s)],['etoro','eToro',(s)=>'https://www.etoro.com/markets/'+encodeURIComponent(String(s).toLowerCase())]];
 const open=(url)=>{if(window.smlAcademyOpenExternal)void window.smlAcademyOpenExternal(url);else try{window.open(url,'_blank','noopener')}catch(_){}};
 const buttons=brokers.map(([key,name,urlOf])=>{const b=document.createElement('button');b.id='academy-'+key+'-buy';b.type='button';b.className='academy-broker-buy';b.dataset.broker=key;b.dataset.short=name+' ↗';b.setAttribute('aria-label','Open this stock in '+name);b.onclick=()=>open(urlOf(currentSymbol()));return b});
 const paint=()=>{const s=currentSymbol();buttons.forEach((b,i)=>{const name=brokers[i][1];b.dataset.full='Buy '+s+' on '+name+' ↗';if(!b.classList.contains('academy-broker-short'))b.textContent=b.dataset.full;b.title='Opens '+s+' in '+name+'. Any order is reviewed and placed by you in '+name+' — nothing is traded from the Academy.'})};paint();
@@ -1452,7 +1456,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academyMassive = null, academySireFeed = null, academyScreener = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMassive = null, academySireFeed = null, academyScreener = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2104,6 +2108,39 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
     }
 
+    /* Quick Snapshot: post the chart as the member sees it to a channel they (and the Academy app) can post and attach in. */
+    if (path.startsWith('/academy-activity/snapshot/') && ['/academy-activity/snapshot/status', '/academy-activity/snapshot/channels', '/academy-activity/snapshot/send'].includes(path)) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academySnapshot) { sendJson(response, 503, { ok: false, error: 'snapshot_disabled' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        if (request.method === 'GET' && path === '/academy-activity/snapshot/status') { sendJson(response, 200, { ok: true, guilds: await academySnapshot.destinations(session.userId, params.get('current') || '') }); return; }
+        if (request.method === 'GET' && path === '/academy-activity/snapshot/channels') {
+          const channels = await academySnapshot.channels(session.userId, params.get('guild'));
+          if (!channels) { sendJson(response, 404, { ok: false, error: 'server_unavailable' }); return; }
+          sendJson(response, 200, { ok: true, channels }); return;
+        }
+        if (request.method === 'POST' && path === '/academy-activity/snapshot/send') {
+          if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+          const body = await readRequestBody(request, 3_600_000);
+          if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+          let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+          const m = input && typeof input.image === 'string' ? /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(input.image) : null;
+          if (!m) { sendJson(response, 422, { ok: false, error: 'invalid_image', detail: 'The snapshot must be a PNG chart image under 2.5 MB.' }); return; }
+          const out = await academySnapshot.send({ userId: session.userId, displayName: session.displayName }, { channelId: input.channelId, png: Buffer.from(m[1], 'base64'), symbol: input.symbol, tf: input.tf, note: input.note });
+          if (!out.ok) { sendJson(response, out.status || 400, { ok: false, error: out.code, ...(out.detail ? { detail: out.detail } : {}) }); return; }
+          sendJson(response, 200, out); return;
+        }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      } catch (error) {
+        logger('error', 'academy_snapshot_failed', { error });
+        sendJson(response, 503, { ok: false, error: 'temporarily_unavailable' });
+      }
+      return;
+    }
+
     /* Click-to-Alert (a separate paid add-on, checked live against a Discord role): the member clicks a price on the chart, the Academy's data picks the horizon
        (day / swing / mid / long), and the alert is posted to a channel the member can post in, in GrandMaster-Obi's layout. */
     if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
@@ -2711,6 +2748,8 @@ async function main() {
     store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     alerts: academyAlerts, presets: defaultChannels(), logger: log
   }) : null;
+  /* Quick Snapshot (chart picture to a Discord channel). ACADEMY_SNAPSHOT=off removes it. */
+  const academySnapshot = process.env.ACADEMY_SNAPSHOT === 'off' ? null : createSnapshotService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), logger: log });
   /* Chat profile cards (avatar, Discord profile, linked StockMarketLoop profile). ACADEMY_PROFILE_CARDS=off removes them. */
   const academyProfiles = process.env.ACADEMY_PROFILE_CARDS === 'off' ? null : createProfileService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), bridge: loopKickBridge, logger: log });
   /* Click-to-Alert is off until SML_ACADEMY_CLICK_ALERT_ROLE_IDS names the role the separate subscription grants. ACADEMY_CLICK_ALERT=off disables it outright. */
@@ -2770,7 +2809,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academyMassive, academyScreener,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMassive, academyScreener,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

@@ -1292,6 +1292,8 @@ test('Academy offers moomoo, Webull and Robinhood quote links, and the broker ro
     for (const id of ['academy-moomoo-buy', 'academy-webull-buy', 'academy-robinhood-buy']) assert.match(html, new RegExp(`'academy-'\\+key\\+'-buy'|${id}`));
     assert.match(html, /\['webull','Webull'/);
     assert.match(html, /robinhood\.com\/stocks\//);
+    assert.match(html, /\['etoro','eToro'/); assert.match(html, /etoro\.com\/markets\//);
+    assert.match(html, /#academy-moomoo-buy\{border-color:#ff7a1a/, 'the moomoo button is orange');
     assert.doesNotMatch(html, /academy-broker-join/, 'no separate Join buttons on the chart');
     assert.match(html, /\/academy-activity\/open/, 'moomoo and Webull Buy buttons go through the app-or-sign-up launcher');
     assert.match(html, /id="sire-toggle"|btn\.id = 'sire-toggle'/, 'the SIRE panel ships with the page');
@@ -1393,4 +1395,54 @@ test('The chat panel shows the avatar before the name and opens a profile card o
   const src = fs.readFileSync(require('node:path').join(__dirname, 'academy-chat-panel.js'), 'utf8');
   for (const marker of ['class="ava"', "'/academy-activity/avatar?user='", "'/academy-activity/profile?user='", 'mouseover', 'Add on Discord', 'Follow profile', 'Follow channel', 'smlAcademyOpenExternal']) assert.ok(src.includes(marker), marker);
   assert.ok(src.indexOf('class="ava"') < src.indexOf('class="nm"'), 'avatar comes before the username');
+});
+
+test('Quick Snapshot routes need a session, take a PNG data URL, and pass the member and the channel to the service', async () => {
+  const zlib = require('node:zlib');
+  const crc = (buf) => { let x = 0xffffffff; for (const v of buf) { x ^= v; for (let k = 0; k < 8; k++) x = x & 1 ? 0xedb88320 ^ (x >>> 1) : x >>> 1; } return (x ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(640, 0); ihdr.writeUInt32BE(360, 4); ihdr[8] = 8;
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.alloc(641 * 360, 5))), chunk('IEND', Buffer.alloc(0))]);
+  const seen = [];
+  const academySnapshot = {
+    destinations: async () => [{ id: '100000000000000001', name: 'House', current: true }],
+    channels: async (u, g) => (g === '100000000000000001' ? [{ id: '500000000000000005', name: 'charts', category: '' }] : null),
+    send: async (user, body) => { seen.push({ user, body }); return body.channelId === '500000000000000009' ? { ok: false, status: 403, code: 'you_cannot_attach_there', detail: 'no files' } : { ok: true, messageId: '1', channelId: body.channelId, channelName: 'charts' }; }
+  };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer m' ? { ok: true, userId: 'u1', tier: 'free', displayName: 'Ana' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const auth = { authorization: 'Bearer m' }, json = { ...auth, 'content-type': 'application/json' };
+  await withServer({ academySnapshot, academyOAuth }, async (base) => {
+    const u = (p) => `${base}/academy-activity/snapshot/${p}`;
+    assert.equal((await fetch(u('status'))).status, 401);
+    assert.equal((await (await fetch(u('status'), { headers: auth })).json()).guilds[0].name, 'House');
+    assert.equal((await (await fetch(u('channels?guild=100000000000000001'), { headers: auth })).json()).channels[0].name, 'charts');
+    assert.equal((await fetch(u('channels?guild=1'), { headers: auth })).status, 404);
+    const image = 'data:image/png;base64,' + png.toString('base64');
+    assert.equal((await fetch(u('send'), { method: 'POST', headers: auth, body: '{}' })).status, 415);
+    assert.equal((await fetch(u('send'), { method: 'POST', headers: json, body: 'nope' })).status, 400);
+    assert.equal((await fetch(u('send'), { method: 'POST', headers: json, body: JSON.stringify({ channelId: '500000000000000005', image: 'data:image/jpeg;base64,AAAA' }) })).status, 422, 'only PNG data URLs');
+    const ok = await fetch(u('send'), { method: 'POST', headers: json, body: JSON.stringify({ channelId: '500000000000000005', image, symbol: 'SPY', tf: '1D', note: 'look' }) });
+    assert.equal(ok.status, 200); assert.equal((await ok.json()).channelName, 'charts');
+    assert.deepEqual(seen[0].user, { userId: 'u1', displayName: 'Ana' }, 'the sender comes from the session');
+    assert.ok(Buffer.isBuffer(seen[0].body.png) && seen[0].body.png.equals(png)); assert.equal(seen[0].body.symbol, 'SPY');
+    const denied = await fetch(u('send'), { method: 'POST', headers: json, body: JSON.stringify({ channelId: '500000000000000009', image }) });
+    assert.equal(denied.status, 403); assert.equal((await denied.json()).error, 'you_cannot_attach_there');
+    assert.equal((await fetch(u('status'), { method: 'DELETE', headers: auth })).status, 405);
+  });
+  await withServer({ academyOAuth }, async (base) => { assert.equal((await fetch(`${base}/academy-activity/snapshot/status`, { headers: auth })).status, 503); });
+});
+
+test('The Academy page has the SNAP button and the buy buttons (eToro too, moomoo orange)', async () => {
+  await withServer({}, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    for (const marker of ['snap-toggle', 'academy-activity/snapshot/', 'SNAPSHOT TO DISCORD', 'academy-etoro-buy']) assert.ok(html.includes(marker), marker);
+  });
+});
+
+test('The options chain gets the broker buy bar, wired to the clicked contract', async () => {
+  await withServer({}, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    for (const marker of ['SmlOptionContract', 'BUY THIS CONTRACT ON YOUR BROKER', 'opt-buy', 'options/chains/', 'data-b=moomoo']) assert.ok(html.includes(marker), marker);
+    assert.ok(html.indexOf('SmlOptionContract = api') < html.indexOf('BUY THIS CONTRACT ON YOUR BROKER'), 'the contract module loads before the bar');
+  });
 });
