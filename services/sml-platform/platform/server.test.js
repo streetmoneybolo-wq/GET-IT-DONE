@@ -1449,9 +1449,33 @@ test('The options chain gets the broker buy bar, wired to the clicked contract',
 
 test('The chat panel threads replies with votes and pins the busiest threads; the appearance panel ships with the page', () => {
   const fs = require('node:fs'), p = (f) => fs.readFileSync(require('node:path').join(__dirname, f), 'utf8');
-  const chat = p('academy-chat-panel.js'), look = p('academy-appearance-ui.js');
+  const chat = p('academy-chat-panel.js'), look = p('academy-appearance-ui.js'), lb = p('academy-lb-ui.js');
   for (const marker of ["type: 'vote'", 'parentId', 'HOT THREAD', 'data-reply', 'data-fold']) assert.ok(chat.includes(marker), marker);
   for (const marker of ['Customize your Academy', 'COLOR SCHEME', 'TEXT SIZE', 'localStorage']) assert.ok(look.includes(marker), marker);
-  for (const [name, src] of [['chat', chat], ['appearance', look]]) assert.ok(!/[`\\]|\$\{/.test(src), name + ' is inlined into a template literal and must hold no backtick, backslash or ${');
-  assert.ok(p('server.js').includes('ACADEMY_APPEARANCE + '), 'injected into the page');
+  for (const [name, src] of [['chat', chat], ['appearance', look], ['loop bucks', lb]]) assert.ok(!/[`\\]|\$\{/.test(src), name + ' is inlined into a template literal and must hold no backtick, backslash or ${');
+  assert.ok(p('server.js').includes('ACADEMY_APPEARANCE + ') && p('server.js').includes('ACADEMY_LB_UI + '), 'injected into the page');
+});
+
+test('Loop Bucks pass routes take a session or a buy ticket, report what blocks a purchase, and charge through the service', async () => {
+  const U = '300000000000000001', calls = [];
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer m' ? { ok: true, userId: U, tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }), verifyBuyTicket: (t) => (t === 'tick' ? { userId: U } : null) };
+  const academyPasses = {
+    configured: true, catalog: () => [{ plan: 'daily', label: 'Daily', days: 1, price: 50 }],
+    status: async (id) => ({ ok: true, catalog: [], pass: null, linked: true, eligible: false, blocked: 'two_step_required', url: 'https://x.test/', balance: 10, id }),
+    buy: async (o) => { calls.push(o); return o.plan === 'weekly' ? { ok: false, status: 402, code: 'insufficient_funds', balance: 10, needed: 250 } : { ok: true, pass: { plan: o.plan }, balance: 5 }; }
+  };
+  await withServer({ academyPasses, academyOAuth }, async (base) => {
+    const u = (p) => `${base}/academy-activity/passes/${p}`, json = { 'content-type': 'application/json' };
+    assert.equal((await fetch(u('catalog'))).status, 200);
+    assert.equal((await fetch(u('status'))).status, 401, 'no session or ticket');
+    const st = await (await fetch(u('status'), { headers: { 'x-academy-ticket': 'tick' } })).json();
+    assert.equal(st.blocked, 'two_step_required');
+    const bought = await fetch(u('buy'), { method: 'POST', headers: { ...json, authorization: 'Bearer m' }, body: JSON.stringify({ plan: 'daily', orderKey: 'order-0001' }) });
+    assert.equal(bought.status, 200); assert.deepEqual(calls[0], { discordId: U, plan: 'daily', orderKey: 'order-0001' });
+    const poor = await fetch(u('buy'), { method: 'POST', headers: { ...json, 'x-academy-ticket': 'tick' }, body: JSON.stringify({ plan: 'weekly', orderKey: 'order-0002' }) });
+    assert.equal(poor.status, 402); assert.equal((await poor.json()).needed, 250);
+  });
+  await withServer({ academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/passes/status`, { headers: { authorization: 'Bearer m' } })).status, 503, 'off when not configured');
+  });
 });
