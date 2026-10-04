@@ -17,6 +17,8 @@
 const SM = require('./academy-smart-money');
 const { horizonRead } = require('./academy-screener');
 const format = require('./academy-alert-format');
+const { buildScenarios } = require('./academy-scenarios');
+const images = require('./academy-scenario-image');
 
 const SNOWFLAKE = /^\d{15,25}$/;
 const HORIZONS = ['day', 'swing', 'mid', 'long'];
@@ -171,7 +173,7 @@ function classify({ symbol, target, price, bars }) {
   };
   return {
     ok: true, symbol: sym, side, entry, target: tgt, movePct: round2(move * 100), stop: stopPick.stop, stopBasis: stopPick.basis, risk,
-    horizon, horizonLabel: T.label, horizonSpan: T.span, counterTrend, alsoFits, expectedDays: { low: round2(low), mid: round2(days), high: round2(high) }, confidence,
+    atr: atrH, horizon, horizonLabel: T.label, horizonSpan: T.span, counterTrend, alsoFits, expectedDays: { low: round2(low), mid: round2(days), high: round2(high) }, confidence,
     alignment: Math.round(alignment * 100) / 100, reads, levels, rationale, alert, disclaimer: DISCLAIMER
   };
 }
@@ -218,7 +220,20 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     const get = async (tf) => { try { return cleanBars(await getBars(sym, tf)); } catch (_) { return []; } };
     const [m5, m15, daily, weekly] = await Promise.all([get('5m'), get('15m'), get('1D'), get('1W')]);
     const last = m5.length ? m5[m5.length - 1] : daily.length ? daily[daily.length - 1] : null;
-    return classify({ symbol: sym, target, price: last ? last.c : null, bars: { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) } });
+    const set = { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) };
+    const analysis = classify({ symbol: sym, target, price: last ? last.c : null, bars: set });
+    analysis.__bars = set;
+    return analysis;
+  }
+
+  /* the two scenarios (base case, and what to watch) drawn on the chart of the alert's own horizon */
+  function scenariosFor(analysis, { png = false } = {}) {
+    try {
+      const key = { day: 'm15', swing: 'daily', mid: 'weekly', long: 'weekly' }[analysis.horizon] || 'daily';
+      const series = (analysis.__bars && analysis.__bars[key] && analysis.__bars[key].length >= 40) ? analysis.__bars[key] : analysis.__bars.daily;
+      const scn = buildScenarios({ symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: series === analysis.__bars.daily && key !== 'daily' ? 'swing' : analysis.horizon, expectedDays: analysis.expectedDays, levels: analysis.levels, series, atr: analysis.atr });
+      return scn ? images.renderPair(scn, { horizonLabel: analysis.horizonLabel }, { withPng: png }) : [];
+    } catch (error) { logger('warn', 'click_alert_scenarios_failed', { error: String(error.message || error) }); return []; }
   }
 
   async function preview(userId, { symbol, target } = {}) {
@@ -228,7 +243,9 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required', entitlement: ent };
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '', entitlement: ent };
-    return { ok: true, entitlement: ent, analysis: { ...analysis, alertText: format.formatEntryAlert({ ...analysis.alert, mention: false }), alertTextWithMention: format.formatEntryAlert({ ...analysis.alert, mention: true }) } };
+    const pics = scenariosFor(analysis).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
+    delete analysis.__bars;
+    return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, analysis: { ...analysis, alertText: format.formatEntryAlert({ ...analysis.alert, mention: false }), alertTextWithMention: format.formatEntryAlert({ ...analysis.alert, mention: true }) } };
   }
 
   async function overLimit(userId, channelId) {
@@ -249,7 +266,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     return directory.sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, channelId, mention = false } = {}) {
+  async function send(user, { symbol, target, channelId, mention = false, images: wantImages = true } = {}) {
     const userId = String(user.userId || '');
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
     const ent = await entitlement(userId);
@@ -266,10 +283,18 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     const ping = !!mention && where.mentionEveryone;
     let content = format.formatEntryAlert({ ...analysis.alert, mention: ping });
     if (footer) content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
-    const posted = await directory.post(String(channelId), { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } });
+    // the two scenario charts ride along when asked for, when the member and the app may attach files there, and when the picture engine is available
+    let files = [], skipped = '';
+    if (wantImages === false) skipped = 'declined';
+    else if (!where.userCanAttach || !where.botCanAttach) skipped = 'no_permission';
+    else {
+      files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
+      if (files.length < 2) { files = []; skipped = 'unavailable'; }
+    }
+    const posted = await directory.post(String(channelId), { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } }, files);
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, messageId: posted.id, channelId: posted.channelId, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
+    return { ok: true, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
   }
 
   return { entitlement, preview, send, destinations, channels, configured };

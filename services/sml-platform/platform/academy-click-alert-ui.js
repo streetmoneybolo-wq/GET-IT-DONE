@@ -10,7 +10,7 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toolbar = document.querySelector('.toolbar'), canvas = $('chart'), stage = document.querySelector('.academy-chart-stage');
   const KEY = 'sml-click-alert-dest';
-  const S = { on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, msg: '', msgTone: '', sent: false, symbol: '' };
+  const S = { on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '' };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.guildId = String(v.guildId || ''); S.channelId = String(v.channelId || ''); } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ guildId: S.guildId, channelId: S.channelId })); } catch (_) { /* ignore */ } };
 
@@ -27,6 +27,7 @@
     + '#ca-panel pre{margin:6px 0;padding:8px;border-radius:8px;background:#05090e;border:1px solid #1b2a35;color:#dfe9ee;font:500 .62rem/1.45 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;max-height:190px;overflow:auto}'
     + '#ca-panel select,#ca-panel button.act{width:100%;margin:3px 0;padding:7px 8px;border-radius:8px;border:1px solid #2a4a58;background:#0d1a24;color:#e6eef2;font:700 .68rem system-ui,sans-serif}#ca-panel button.act{background:#00c47d;border-color:#7dffc4;color:#032318;font-weight:900;cursor:pointer}#ca-panel button.act:disabled{opacity:.5;cursor:not-allowed}'
     + '#ca-panel label.chk{display:flex;gap:6px;align-items:center;margin:4px 0;color:#b9c8d1}#ca-panel .msg{margin:6px 0;padding:7px 9px;border-radius:8px;font-weight:700}#ca-panel .msg.err{background:#2a1118;border:1px solid #6b2234;color:#ffb3c0}#ca-panel .msg.ok{background:#0d2a20;border:1px solid #1f8a5f;color:#a8ffd8}#ca-panel .msg.info{background:#101c28;border:1px solid #2a4a58;color:#c1d5e0}'
+    + '#ca-panel .scn{margin:8px 0}#ca-panel .scn img{display:block;width:100%;border-radius:8px;border:1px solid #1b2a35;margin:0 0 6px;background:#070d14}#ca-panel .scn h6{margin:0 0 4px;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em;color:#7dffc4}'
     + '#ca-panel small{display:block;margin-top:6px;color:#6f8794;font-weight:500;font-size:.56rem}@media(max-width:700px){#ca-panel{left:8px;right:8px;bottom:8px;width:auto;max-height:78vh}}';
   document.head.appendChild(css);
 
@@ -104,6 +105,10 @@
       html += '<div class="hz"><b>' + esc(d.horizonLabel.toUpperCase()) + '</b><span>' + esc(d.horizonSpan) + ' · ' + esc(d.confidence) + ' confidence · about ' + (d.expectedDays.mid < 1 ? 'under a day' : (d.expectedDays.mid < 10 ? d.expectedDays.mid.toFixed(1) : Math.round(d.expectedDays.mid)) + ' trading days') + '</span></div>';
       html += row('Stop (suggested)', '$' + price(d.stop) + ' · ' + esc(d.stopBasis)) + row('Risk', esc(String(d.risk).toUpperCase()));
       html += '<ul>' + d.rationale.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+      if (S.scn) {
+        html += '<div class="scn"><h6>SCENARIO CHARTS · POSTED WITH THE ALERT</h6>' + S.scn.images.map((im) => '<img alt="' + esc(im.alt) + '" src="data:image/svg+xml;charset=utf-8,' + encodeURIComponent(im.svg) + '">').join('') + '</div>';
+        html += '<label class="chk"><input type="checkbox" data-ca="images"' + (S.images ? ' checked' : '') + (S.scn.pngAvailable ? '' : ' disabled') + '> Attach the two scenario charts' + (S.scn.pngAvailable ? '' : ' (picture engine unavailable)') + '</label>';
+      }
       html += '<div style="color:#7f95a1;font-weight:700;margin-top:6px">ALERT PREVIEW</div><pre>' + esc(S.ping ? d.alertTextWithMention : d.alertText) + '</pre>';
       html += '<select data-ca="guild"><option value="">Choose a server…</option>' + S.guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === S.guildId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select>';
       html += '<select data-ca="channel"' + (S.guildId ? '' : ' disabled') + '><option value="">' + (S.guildId ? (S.channels.length ? 'Choose a channel…' : 'No channel where you and the app can post') : 'Pick a server first') + '</option>' + S.channels.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === S.channelId ? ' selected' : '') + '>#' + esc(c.name) + (c.category ? ' · ' + esc(c.category) : '') + '</option>').join('') + '</select>';
@@ -132,11 +137,11 @@
     if (!S.channels.some((c) => c.id === S.channelId)) S.channelId = '';
   }
   async function reading() {
-    S.busy = true; S.data = null; S.msg = ''; S.sent = false; render();
+    S.busy = true; S.data = null; S.scn = null; S.msg = ''; S.sent = false; render();
     const r = await api('preview', { symbol: S.symbol, target: S.target });
     S.busy = false;
     if (!r.ok) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
-    S.data = r.analysis; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = ''; render(); draw();
+    S.data = r.analysis; S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = ''; render(); draw();
   }
 
   /* a click (not a drag or a pinch) on the plot sets the target */
@@ -161,9 +166,9 @@
     if (k === 'send') {
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
-      const r = await api('send', { symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping });
+      const r = await api('send', { symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping, images: !!S.images });
       S.busy = false;
-      if (r.ok) { S.sent = true; S.msg = 'Posted to Discord' + (r.mentioned ? ' with @everyone.' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel).' : '.'); S.msgTone = 'ok'; save(); }
+      if (r.ok) { S.sent = true; S.msg = 'Posted to Discord' + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }
       render();
     }
@@ -173,6 +178,7 @@
     if (k === 'guild') { S.guildId = e.target.value; S.channelId = ''; S.channels = []; S.sent = false; render(); await loadChannels(); save(); render(); }
     else if (k === 'channel') { S.channelId = e.target.value; S.sent = false; save(); const ch = S.channels.find((c) => c.id === S.channelId); if (!ch || !ch.mentionEveryone) S.ping = false; render(); }
     else if (k === 'ping') { S.ping = !!e.target.checked; render(); }
+    else if (k === 'images') { S.images = !!e.target.checked; render(); }
   });
 
   function setOn(on) {
