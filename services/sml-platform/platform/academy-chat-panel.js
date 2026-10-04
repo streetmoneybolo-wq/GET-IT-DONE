@@ -16,7 +16,13 @@
     + '.academy-chat-tabs button{border:1px solid #294554;border-radius:5px;background:#101e27;color:#9eb2bc;padding:6px 10px;font:800 .68rem ui-monospace;cursor:pointer}'
     + '.academy-chat-tabs button.on{border-color:#00c47d;background:#0b3b2e;color:#7ef0bd}'
     + '.academy-chat-status{margin-left:auto;color:#8fa5b1;font:700 .6rem ui-monospace}'
-    + '.academy-chat-log{height:280px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}'
+    + '.academy-chat-log{height:340px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}'
+    + '.th{border-left:2px solid #1b3540;padding-left:8px}.th .th{margin-top:6px}.th.hot{border-left-color:#ffb020;background:linear-gradient(90deg,rgba(255,176,32,.10),transparent 60%);border-radius:6px;padding:6px 8px}'
+    + '.hotlbl{display:inline-block;font:900 .54rem ui-monospace;letter-spacing:.08em;color:#1a1200;background:#ffb020;border-radius:3px;padding:1px 5px;margin-right:6px}'
+    + '.vt{display:inline-flex;align-items:center;gap:2px;margin-right:8px;vertical-align:middle}.vt button{background:none;border:0;color:#5d7085;cursor:pointer;padding:0 2px;font-size:.7rem;line-height:1}.vt button:hover{color:#e6eef2}.vt button.up.on{color:#00c47d}.vt button.dn.on{color:#ff778b}.vt i{font:800 .66rem ui-monospace;font-style:normal;color:#c5d3da;min-width:16px;text-align:center}'
+    + '.academy-chat-msg .act{background:none;border:0;color:#5d7085;cursor:pointer;margin-left:6px;font-size:.62rem;padding:0}.academy-chat-msg .act:hover{color:#7ef0bd}'
+    + '.rbox{display:flex;gap:6px;margin:5px 0 0}.rbox input{flex:1;min-width:0;background:#0d1720;border:1px solid #294554;border-radius:5px;color:#eaf5f8;padding:5px 8px;font:.7rem system-ui}.rbox button{border:0;border-radius:5px;background:#00c47d;color:#042217;font-weight:900;padding:5px 10px;cursor:pointer;font-size:.66rem}'
+    + '.gone{color:#5d7085;font-style:italic}'
     + '.academy-chat-empty{color:#5d7085;font:.68rem system-ui;padding:8px 0}'
     + '.academy-chat-msg{font:.72rem/1.4 system-ui;color:#dfe9ee;word-break:break-word}'
     + '.academy-chat-msg b{color:#7ef0bd;margin-right:6px}'
@@ -35,7 +41,7 @@
     + '#academy-profile-card .sec{margin:10px 12px 0;padding-top:8px;border-top:1px solid #16303e}#academy-profile-card .sec h6{margin:0 0 5px;font:800 .56rem ui-monospace,monospace;letter-spacing:.08em;color:#7ef0bd}'
     + '#academy-profile-card .btns{display:flex;flex-wrap:wrap;gap:6px}#academy-profile-card button{border:1px solid #2a4a58;border-radius:7px;background:#0d1a24;color:#e6eef2;padding:6px 9px;font:800 .64rem system-ui;cursor:pointer}#academy-profile-card button.go{background:#00c47d;border-color:#7dffc4;color:#032318}#academy-profile-card button.dc{background:#5865f2;border-color:#8e98ff;color:#fff}#academy-profile-card button:hover{filter:brightness(1.12)}'
     + '#academy-profile-card .note{color:#7f95a1;font-weight:500;margin:4px 0 0}#academy-profile-card .ft{margin:10px 12px 12px;color:#6f8794;font-weight:500;font-size:.54rem}'
-    + '@media(max-width:720px){.academy-chat-log{height:220px}}';
+    + '@media(max-width:720px){.academy-chat-log{height:260px}}';
   document.head.appendChild(style);
 
   const section = document.createElement('section');
@@ -105,7 +111,7 @@
     mutedEl.style.display = ids.length ? '' : 'none';
     mutedEl.innerHTML = ids.length ? 'Muted: ' + ids.map((id) => escapeHtml(muted[id]) + '<button type="button" data-unmute="' + escapeHtml(id) + '">unmute</button>').join(' · ') : '';
   }
-  mutedEl.onclick = (e) => { const id = e.target && e.target.dataset && e.target.dataset.unmute; if (id) { delete muted[id]; saveMuted(); paintMuted(); if (current) join(current); } };
+  mutedEl.onclick = (e) => { const id = e.target && e.target.dataset && e.target.dataset.unmute; if (id) { delete muted[id]; saveMuted(); paintMuted(); renderAll(); } };
   let ws = null, current = null, queue = [], selfId = '';
   const escapeHtml = (s) => { const d = document.createElement('div'); d.textContent = String(s || ''); return d.innerHTML; };
   const timeOf = (iso) => { try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } };
@@ -171,29 +177,64 @@
   cardEl.addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b && b.dataset.open) openUrl(b.dataset.open); });
   logEl.addEventListener('scroll', hideCard, { passive: true });
 
-  function renderMessage(m) {
-    if (muted[String(m.discordId)]) return;
-    const empty = logEl.querySelector('.academy-chat-empty'); if (empty) empty.remove();
-    const row = document.createElement('div'); row.className = 'academy-chat-msg'; row.dataset.id = m.id;
-    row.innerHTML = '<span class="ava" data-uid="' + escapeHtml(String(m.discordId)) + '">' + escapeHtml(String(m.authorName || 'M').slice(0, 1).toUpperCase()) + '</span><b class="nm" data-uid="' + escapeHtml(String(m.discordId)) + '">' + escapeHtml(m.authorName || 'Member') + '</b><span>' + escapeHtml(m.body) + '</span><time>' + timeOf(m.createdAt) + '</time>';
-    paintAvatar(row.querySelector('.ava'), String(m.discordId));
-    if (String(m.discordId) === selfId) {
-      const del = document.createElement('button');
-      del.type = 'button'; del.className = 'del'; del.textContent = 'delete';
-      del.onclick = () => send({ type: 'delete', id: m.id });
-      row.appendChild(del);
-    } else if (selfId) {
-      const rep = document.createElement('button');
-      rep.type = 'button'; rep.className = 'rep'; rep.textContent = 'report'; rep.title = 'Send this message to the moderators';
-      rep.onclick = () => { send({ type: 'report', id: m.id }); rep.disabled = true; rep.textContent = 'reporting…'; };
-      const mute = document.createElement('button');
-      mute.type = 'button'; mute.className = 'rep'; mute.textContent = 'mute'; mute.title = 'Hide this member\'s messages from you';
-      mute.onclick = () => { muted[String(m.discordId)] = String(m.authorName || 'Member').slice(0, 40); saveMuted(); paintMuted(); if (current) join(current); };
-      row.append(rep, mute);
-    }
-    logEl.appendChild(row);
-    logEl.scrollTop = logEl.scrollHeight;
+  /* ---------- threads: each room keeps its own messages; replies hang under their parent, voted up or down ---------- */
+  let msgs = new Map(), openReply = '', collapsed = new Set();
+  const HOT_MIN = 2; // a thread needs at least this many replies to be pinned and highlighted
+  function buildThreads() {
+    const kids = new Map(); const roots = [];
+    for (const m of msgs.values()) { if (m.parentId && msgs.has(m.parentId)) { if (!kids.has(m.parentId)) kids.set(m.parentId, []); kids.get(m.parentId).push(m); } else roots.push(m); }
+    const size = new Map();
+    const count = (m) => { if (size.has(m.id)) return size.get(m.id); let n = 0; for (const k of kids.get(m.id) || []) n += 1 + count(k); size.set(m.id, n); return n; };
+    for (const m of msgs.values()) count(m);
+    for (const list of kids.values()) list.sort((x, y) => (y.score - x.score) || (Number(x.id) - Number(y.id)));
+    const visible = (m) => !muted[String(m.discordId)];
+    const hot = roots.filter((m) => size.get(m.id) >= HOT_MIN && visible(m)).sort((x, y) => (size.get(y.id) - size.get(x.id)) || (y.score - x.score) || (Number(y.id) - Number(x.id))).slice(0, 3);
+    const hotIds = new Set(hot.map((m) => m.id));
+    const rest = roots.filter((m) => !hotIds.has(m.id) && visible(m)).sort((x, y) => Number(x.id) - Number(y.id));
+    return { kids, size, hot, rest };
   }
+  function threadHtml(m, t, hotRoot) {
+    const id = escapeHtml(m.id), uid = escapeHtml(String(m.discordId)), n = t.size.get(m.id) || 0, kids = t.kids.get(m.id) || [];
+    const mine = String(m.discordId) === selfId;
+    let h = '<div class="th' + (hotRoot ? ' hot' : '') + '" data-th="' + id + '"><div class="academy-chat-msg" data-id="' + id + '">';
+    h += '<span class="vt"><button type="button" class="up' + (m.myVote === 1 ? ' on' : '') + '" data-vote="1" data-mid="' + id + '" title="Upvote">&#9650;</button><i>' + escapeHtml(m.score) + '</i><button type="button" class="dn' + (m.myVote === -1 ? ' on' : '') + '" data-vote="-1" data-mid="' + id + '" title="Downvote">&#9660;</button></span>';
+    if (hotRoot) h += '<span class="hotlbl">HOT THREAD &middot; ' + n + ' ' + (n === 1 ? 'reply' : 'replies') + '</span>';
+    if (m.deleted) h += '<span class="gone">[deleted]</span>';
+    else h += '<span class="ava" data-uid="' + uid + '">' + escapeHtml(String(m.authorName || 'M').slice(0, 1).toUpperCase()) + '</span><b class="nm" data-uid="' + uid + '">' + escapeHtml(m.authorName || 'Member') + '</b><span>' + escapeHtml(m.body) + '</span>';
+    h += '<time>' + timeOf(m.createdAt) + '</time>';
+    if (!m.deleted) h += '<button type="button" class="act" data-reply="' + id + '">reply</button>';
+    if (n) h += '<button type="button" class="act" data-fold="' + id + '">' + (collapsed.has(m.id) ? '[+' + n + ']' : '[&minus;]') + '</button>';
+    if (mine && !m.deleted) h += '<button type="button" class="del" data-del="' + id + '">delete</button>';
+    else if (selfId && !m.deleted) h += '<button type="button" class="rep" data-report="' + id + '" title="Send this message to the moderators">report</button><button type="button" class="rep" data-mute="' + uid + '" data-mname="' + escapeHtml(String(m.authorName || 'Member').slice(0, 40)) + '">mute</button>';
+    h += '</div>';
+    if (openReply === m.id) h += '<form class="rbox" data-rform="' + id + '"><input maxlength="500" placeholder="Reply…" autocomplete="off"><button type="submit">Reply</button></form>';
+    if (!collapsed.has(m.id)) for (const k of kids) if (!muted[String(k.discordId)]) h += threadHtml(k, t, false);
+    return h + '</div>';
+  }
+  function renderAll() {
+    const keepFocus = openReply ? logEl.querySelector('[data-rform="' + openReply + '"] input') : null, draft = keepFocus ? keepFocus.value : '';
+    const near = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 60;
+    const t = buildThreads();
+    if (!msgs.size) { logEl.innerHTML = '<p class="academy-chat-empty">No messages yet — be the first.</p>'; return; }
+    logEl.innerHTML = t.hot.map((m) => threadHtml(m, t, true)).join('') + t.rest.map((m) => threadHtml(m, t, false)).join('');
+    logEl.querySelectorAll('.ava').forEach((el) => paintAvatar(el, el.dataset.uid));
+    if (openReply) { const inp = logEl.querySelector('[data-rform="' + openReply + '"] input'); if (inp) { inp.value = draft; if (keepFocus || draft === '') inp.focus(); } }
+    if (near) logEl.scrollTop = logEl.scrollHeight;
+  }
+  logEl.addEventListener('click', (e) => {
+    const t = e.target.closest ? e.target.closest('button') : null; if (!t) return;
+    if (t.dataset.vote) { const m = msgs.get(t.dataset.mid); const v = Number(t.dataset.vote); send({ type: 'vote', id: t.dataset.mid, value: m && m.myVote === v ? 0 : v }); }
+    else if (t.dataset.reply) { openReply = openReply === t.dataset.reply ? '' : t.dataset.reply; renderAll(); }
+    else if (t.dataset.fold) { if (collapsed.has(t.dataset.fold)) collapsed.delete(t.dataset.fold); else collapsed.add(t.dataset.fold); renderAll(); }
+    else if (t.dataset.del) send({ type: 'delete', id: t.dataset.del });
+    else if (t.dataset.report) { send({ type: 'report', id: t.dataset.report }); t.disabled = true; t.textContent = 'reporting…'; }
+    else if (t.dataset.mute) { muted[t.dataset.mute] = t.dataset.mname; saveMuted(); paintMuted(); renderAll(); }
+  });
+  logEl.addEventListener('submit', (e) => {
+    const f = e.target.closest ? e.target.closest('[data-rform]') : null; if (!f) return;
+    e.preventDefault(); const inp = f.querySelector('input'), body = inp.value.trim(); if (!body) return;
+    send({ type: 'message', body, parentId: f.dataset.rform }); inp.value = ''; openReply = '';
+  });
   function send(payload) {
     const json = JSON.stringify(payload);
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(json); else queue.push(json);
@@ -201,6 +242,7 @@
   function join(key) {
     current = key;
     for (const [k, b] of buttons) b.classList.toggle('on', k === key);
+    msgs = new Map(); openReply = ''; collapsed = new Set();
     logEl.innerHTML = '<p class="academy-chat-empty">Loading…</p>';
     send({ type: 'join', channel: key });
   }
@@ -218,9 +260,11 @@
     ws.onerror = () => {};
     ws.onmessage = (event) => {
       let msg; try { msg = JSON.parse(event.data); } catch (_) { return; }
-      if (msg.type === 'history' && msg.channel === current) { logEl.innerHTML = ''; if (!msg.messages.length) logEl.innerHTML = '<p class="academy-chat-empty">No messages yet — be the first.</p>'; msg.messages.forEach(renderMessage); }
-      else if (msg.type === 'message' && msg.channel === current) renderMessage(msg.message);
-      else if (msg.type === 'deleted' && msg.channel === current) { const row = logEl.querySelector('[data-id="' + msg.id + '"]'); if (row) row.remove(); }
+      if (msg.type === 'history' && msg.channel === current) { msgs = new Map(msg.messages.map((m) => [m.id, m])); renderAll(); }
+      else if (msg.type === 'message' && msg.channel === current) { msgs.set(msg.message.id, msg.message); renderAll(); }
+      else if (msg.type === 'deleted' && msg.channel === current) { if (msg.soft && msgs.has(msg.id)) { Object.assign(msgs.get(msg.id), { deleted: true, body: '', authorName: '' }); } else msgs.delete(msg.id); renderAll(); }
+      else if (msg.type === 'vote' && msg.channel === current) { const m = msgs.get(msg.id); if (m) { m.score = msg.score; renderAll(); } }
+      else if (msg.type === 'voted') { const m = msgs.get(msg.id); if (m) { m.myVote = msg.myVote; m.score = msg.score; renderAll(); } }
       else if (msg.type === 'reported') { const row = logEl.querySelector('[data-id="' + msg.id + '"] .rep'); if (row) row.textContent = 'reported'; }
       else if (msg.type === 'error') status.textContent = String(msg.error || 'error').toUpperCase().replace(/_/g, ' ');
     };

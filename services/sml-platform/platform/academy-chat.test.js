@@ -114,8 +114,8 @@ test('a member can delete only their own message, and the deletion is broadcast'
   assert.deepEqual(b.sent.at(-1), { type: 'error', error: 'not_found' }, 'bo did not author it');
 
   await ha.receive(JSON.stringify({ type: 'delete', id }));
-  assert.deepEqual(a.sent.at(-1), { type: 'deleted', channel: 'options', id: String(id) });
-  assert.deepEqual(b.sent.at(-1), { type: 'deleted', channel: 'options', id: String(id) }, 'broadcast to everyone in the channel, not just the author');
+  assert.deepEqual(a.sent.at(-1), { type: 'deleted', channel: 'options', id: String(id), soft: false });
+  assert.deepEqual(b.sent.at(-1), { type: 'deleted', channel: 'options', id: String(id), soft: false }, 'broadcast to everyone in the channel, not just the author');
 });
 
 test('closing a connection drops it from its channel so it stops receiving broadcasts', async () => {
@@ -138,7 +138,7 @@ test('the store keeps history per channel and only its author can remove a messa
   await store.add({ channel: 'swing', discordId: U2, authorName: 'Bo', body: 'unrelated' });
   assert.deepEqual((await store.history('day')).map((m) => m.body), ['one', 'two']);
   assert.equal(await store.remove({ id: two.id, discordId: U2 }), null, 'wrong author');
-  assert.equal(await store.remove({ id: two.id, discordId: U1 }), 'day');
+  assert.deepEqual(await store.remove({ id: two.id, discordId: U1 }), { channel: 'day', soft: false });
   assert.deepEqual((await store.history('day')).map((m) => m.body), ['one']);
 });
 
@@ -161,4 +161,41 @@ test('a member can report someone else\'s message once; own, missing and repeat 
   assert.equal(c1.sent.filter((m) => m.type === 'error').at(-1).error, 'not_found', 'you cannot report your own message');
   await h2.receive(JSON.stringify({ type: 'report', id: 999999 }));
   assert.equal(c2.sent.filter((m) => m.type === 'error').at(-1).error, 'not_found');
+});
+
+test('replies thread under a parent, votes count once per member, and a deleted parent keeps its replies', async () => {
+  const store = createChatStore();
+  const hub = createChatHub({ store, verifySession: fakeVerify({ t1: { userId: U1 }, t2: { userId: U2 } }) });
+  const a = fakeConn(), b = fakeConn();
+  const ha = hub.open(a, hub.authenticate('t1')), hb = hub.open(b, hub.authenticate('t2'));
+  await ha.receive(JSON.stringify({ type: 'join', channel: 'day' })); await hb.receive(JSON.stringify({ type: 'join', channel: 'day' }));
+  await ha.receive(JSON.stringify({ type: 'message', body: 'root' }));
+  const root = a.sent.at(-1).message;
+  await hb.receive(JSON.stringify({ type: 'message', body: 'reply', parentId: root.id }));
+  assert.equal(b.sent.at(-1).message.parentId, root.id);
+  await hb.receive(JSON.stringify({ type: 'message', body: 'orphan', parentId: '999' }));
+  assert.equal(b.sent.at(-1).error, 'reply_target_missing');
+  await hb.receive(JSON.stringify({ type: 'vote', id: root.id, value: 1 })); await hb.receive(JSON.stringify({ type: 'vote', id: root.id, value: 1 }));
+  assert.deepEqual(a.sent.filter((m) => m.type === 'vote').at(-1), { type: 'vote', channel: 'day', id: root.id, score: 1 });
+  await ha.receive(JSON.stringify({ type: 'vote', id: root.id, value: 1 }));
+  assert.equal(a.sent.at(-1).error, 'cannot_vote', 'no voting on your own message');
+  await hb.receive(JSON.stringify({ type: 'vote', id: root.id, value: -1 }));
+  assert.equal(b.sent.at(-1).score, -1);
+  await ha.receive(JSON.stringify({ type: 'delete', id: root.id }));
+  assert.equal(a.sent.at(-1).soft, true);
+  const hist = await store.history('day', 50, U2);
+  assert.equal(hist.length, 2); assert.equal(hist[0].deleted, true); assert.equal(hist[0].body, '');
+  assert.equal(hist[0].myVote, -1);
+});
+
+test('replies nest at most five levels deep', async () => {
+  const store = createChatStore();
+  const hub = createChatHub({ store, verifySession: fakeVerify({ t1: { userId: U1 } }) });
+  const a = fakeConn(); const h = hub.open(a, hub.authenticate('t1'));
+  await h.receive(JSON.stringify({ type: 'join', channel: 'day' }));
+  let parent = null;
+  for (let i = 0; i < 7; i++) { await h.receive(JSON.stringify({ type: 'message', body: 'm' + i, parentId: parent })); parent = a.sent.at(-1).message.id; }
+  const all = await store.history('day', 50, U1), byId = new Map(all.map((m) => [m.id, m]));
+  const depth = (m) => { let d = 0; while (m.parentId) { m = byId.get(m.parentId); d++; } return d; };
+  assert.ok(Math.max(...all.map(depth)) <= 4);
 });
