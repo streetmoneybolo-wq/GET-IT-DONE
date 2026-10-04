@@ -15,8 +15,8 @@
  *  - Latest {SYMBOL} coverage: the site's own recent articles (internal links).
  *  - How to read this page + disclaimer.
  *
- * Depends on wpcode/seo-ege-core.php (load AFTER it). Fails closed: adds nothing
- * if the engine is missing or the symbol has no confirmed market data.
+ * Self-contained: reads the site's own /sml/v1 REST routes (quote, company2,
+ * market-position). Fails closed: adds nothing if the symbol has no live quote.
  *
  * WPCode setup: PHP snippet, Auto Insert / Run Everywhere.
  * ROLLBACK: deactivate this snippet — pages return to the 2-sentence summary.
@@ -24,6 +24,39 @@
  * function-name patterns (the site is at the limit).
  */
 if ( ! function_exists( 'sml_stc_render' ) ) {
+
+	function sml_stc_symbol_from_path() {
+		$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
+		if ( preg_match( '#^/stocks/([a-zA-Z0-9.\-]+)/?$#', $path, $m ) ) { return strtoupper( $m[1] ); }
+		return '';
+	}
+
+	function sml_stc_rest( $route, $symbol ) {
+		$req = new WP_REST_Request( 'GET', $route );
+		$req->set_param( 'symbol', $symbol );
+		$res = rest_do_request( $req );
+		if ( is_wp_error( $res ) || $res->get_status() >= 400 ) { return null; }
+		return (array) $res->get_data();
+	}
+
+	/** Same data the page's own widgets use; cached 10 minutes. Null when the symbol has no live quote. */
+	function sml_stc_data( $symbol ) {
+		$key = 'sml_stc_data_' . $symbol;
+		$hit = get_transient( $key );
+		if ( is_array( $hit ) ) { return empty( $hit['valid'] ) ? null : $hit; }
+		$quote = sml_stc_rest( '/sml/v1/quote', $symbol );
+		$valid = is_array( $quote ) && isset( $quote['current'] ) && is_numeric( $quote['current'] )
+			&& isset( $quote['source'] ) && 'none' !== $quote['source'];
+		$out = array( 'valid' => $valid, 'symbol' => $symbol );
+		if ( $valid ) {
+			$out['quote']    = $quote;
+			$out['company']  = sml_stc_rest( '/sml/v1/company2', $symbol );
+			$out['position'] = sml_stc_rest( '/sml/v1/market-position', $symbol );
+		}
+		set_transient( $key, $out, $valid ? 10 * MINUTE_IN_SECONDS : 60 );
+		return $valid ? $out : null;
+	}
 
 	function sml_stc_num( $v, $d = 2 ) {
 		return ( is_numeric( $v ) ) ? number_format_i18n( (float) $v, $d ) : '';
@@ -178,9 +211,9 @@ if ( ! function_exists( 'sml_stc_render' ) ) {
 
 	function sml_stc_ob( $html ) {
 		if ( ! is_string( $html ) || false === stripos( $html, '<body' ) || false !== strpos( $html, 'id="sml-stc"' ) ) { return $html; }
-		if ( ! function_exists( 'sml_sta_current_stocks_ticker_score' ) ) { return $html; }
-		$s = sml_sta_current_stocks_ticker_score();
-		if ( null === $s || empty( $s['valid'] ) ) { return $html; }
+		$symbol = sml_stc_symbol_from_path();
+		$s      = '' === $symbol ? null : sml_stc_data( $symbol );
+		if ( null === $s ) { return $html; }
 		if ( ! preg_match( '/<body\b[^>]*>/i', $html, $m, PREG_OFFSET_CAPTURE ) ) { return $html; }
 		$block = sml_stc_render( $s );
 		if ( '' === $block ) { return $html; }
@@ -188,8 +221,8 @@ if ( ! function_exists( 'sml_stc_render' ) ) {
 		return substr( $html, 0, $at ) . $block . substr( $html, $at );
 	}
 
-	add_action( 'init', static function () {
-		if ( ! function_exists( 'sml_sta_symbol_from_stocks_path' ) || '' === sml_sta_symbol_from_stocks_path() ) { return; }
+	add_action( 'send_headers', static function () {
+		if ( '' === sml_stc_symbol_from_path() ) { return; }
 		if ( is_admin() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return; }
 		ob_start( 'sml_stc_ob' );
 	}, 1 );
