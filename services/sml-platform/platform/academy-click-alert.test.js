@@ -94,7 +94,7 @@ test('the alert text is Obi\'s layout with the click as the target', () => {
 /* ---------- the service: entitlement, permissions, limits ---------- */
 const GUILD = '111111111111111111', ROLE = '222222222222222222', USER = '333333333333333333', CHAN = '444444444444444444';
 const FIX = { m5: null, m15: null };
-function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false, personas = null } = {}) {
+function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false, personas = null, publisher = null, publishUsers = null } = {}) {
   const posts = [];
   const directory = {
     memberRolesLive: async () => roles,
@@ -106,7 +106,7 @@ function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEv
   };
   const svc = CA.createClickAlertService({
     getBars: async (sym, tf) => { FIX.m5 = FIX.m5 || intraday(200, lastClose); FIX.m15 = FIX.m15 || intraday(200, lastClose, 9e5); return { bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? FIX.m15 : FIX.m5 }; },
-    directory, personas, academyGuildId: GUILD, roleIds: [ROLE], limits: { userHour: 3, channelHour: 10, userDay: 10 }
+    directory, personas, publisher, publishUsers, academyGuildId: GUILD, roleIds: [ROLE], limits: { userHour: 3, channelHour: 10, userDay: 10 }
   });
   return { svc, posts };
 }
@@ -236,4 +236,23 @@ test('a member with their own bot posts through it when it is in the server; oth
   const away = mk(false);
   const b = fake({ botCanWebhook: true, personas: { [USER]: away } });
   assert.equal((await b.svc.send({ userId: USER, displayName: 'Ana' }, body())).postedAs, 'member', 'their bot is not in this server: falls back to the webhook');
+});
+
+test('the owner sends through StockMarketLoop: published to the group under their account with the typed text, time, price and the two pictures; others cannot', async () => {
+  const calls = [];
+  const publisher = { configured: true, groupId: 77, publish: async (o) => { calls.push(o); return { ok: true, postId: 901, images: o.images.length }; } };
+  const a = fake({ publisher, publishUsers: new Set([USER]), botCanWebhook: true });
+  assert.equal(a.svc.canPublish(USER), true); assert.equal(a.svc.canPublish('999999999999999999'), false);
+  const out = await a.svc.send({ userId: USER, displayName: 'Obi' }, body({ via: 'site', channelId: '' }));
+  assert.equal(out.ok, true); assert.equal(out.postedAs, 'site'); assert.equal(out.postId, 901);
+  assert.equal(a.posts.length, 0, 'nothing posted straight to Discord');
+  assert.equal(calls.length, 1); assert.equal(calls[0].discordUserId, USER);
+  assert.match(calls[0].body, /⏱ .* ET · price at alert \$/); assert.equal(calls[0].meta.symbol, 'TEST');
+  assert.equal(calls[0].images.length, 2); assert.ok(calls[0].images.every((i) => Buffer.isBuffer(i.bytes)));
+  const other = fake({ publisher, publishUsers: new Set(['999999999999999999']) });
+  const viaDiscord = await other.svc.send({ userId: USER, displayName: 'Ana' }, body({ via: 'site' }));
+  assert.equal(viaDiscord.postedAs, 'app', 'not on the list: the normal Discord path');
+  const refused = fake({ publisher: { configured: true, groupId: 77, publish: async () => ({ ok: false, status: 403, error: 'not_group_manager' }) }, publishUsers: new Set([USER]) });
+  const r = await refused.svc.send({ userId: USER, displayName: 'Obi' }, body({ via: 'site' }));
+  assert.equal(r.ok, false); assert.equal(r.code, 'not_group_manager');
 });

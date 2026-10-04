@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { cleanRoute, cleanAlert, formatAlert, createDiscordClient, createTelegramClient } = require('./alert-router');
+const { discordMessage, cleanRoute, cleanAlert, formatAlert, createDiscordClient, createTelegramClient } = require('./alert-router');
 
 test('route validation supports every direction and rejects duplicate destinations', () => {
   const route = cleanRoute({ groupId: 7, ownerUserId: 42, sourceProvider: 'discord', sourceTargetId: '123456789012345678',
@@ -96,4 +96,12 @@ test('Telegram polling routes only matching chats and advances all route offsets
   assert.equal(result.ingested, 1);
   assert.equal(pool.ingested.length, 1);
   assert.deepEqual(pool.cursors.map((row) => row[1]), ['21', '21']);
+});
+
+test('the Alert Bot posts the typed text with each picture shown as an image, other links as text', () => {
+  const m = discordMessage({ body: '$SPY entry $500', author_name: 'Grandmaster-Obi', attachments: ['https://x.test/a/bull.png', 'https://x.test/a/bear.png?v=2', 'https://x.test/page'] });
+  assert.match(m.content, /^🚨 \$SPY entry \$500 — Grandmaster-Obi/); assert.match(m.content, /https:\/\/x\.test\/page/);
+  assert.deepEqual(m.embeds, [{ image: { url: 'https://x.test/a/bull.png' } }, { image: { url: 'https://x.test/a/bear.png?v=2' } }]);
+  assert.deepEqual(m.allowed_mentions, { parse: [] });
+  assert.equal(discordMessage({ body: 'plain' }).embeds, undefined);
 });

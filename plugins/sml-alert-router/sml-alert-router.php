@@ -149,6 +149,17 @@ add_action( 'rest_api_init', function () {
 	) );
 } );
 
+/** Pictures attached to an alert post (the two scenario charts): public https URLs the Alert Bot shows as images. */
+function sml_ar_image_urls( $post_id ) {
+	$ids = array_filter( array_map( 'absint', (array) get_post_meta( $post_id, 'sml_alert_image_ids', true ) ) );
+	$urls = array();
+	foreach ( array_slice( $ids, 0, 4 ) as $id ) {
+		$url = wp_get_attachment_url( $id );
+		if ( $url && 0 === strpos( $url, 'https://' ) ) $urls[] = $url;
+	}
+	return $urls;
+}
+
 /** Existing alert publishers can call this action with post ID and group ID. */
 function sml_ar_publish_post( $post_id, $group_id = 0 ) {
 	$post = get_post( $post_id );
@@ -160,6 +171,7 @@ function sml_ar_publish_post( $post_id, $group_id = 0 ) {
 		'sourceMessageId' => (string) $post_id, 'body' => wp_strip_all_tags( $post->post_content ),
 		'authorExternalId' => (string) $post->post_author, 'authorName' => get_the_author_meta( 'display_name', $post->post_author ),
 		'occurredAt' => get_post_time( DATE_ATOM, true, $post ),
+		'attachments' => sml_ar_image_urls( $post_id ),
 	) );
 	if ( ! is_wp_error( $result ) ) update_post_meta( $post_id, '_sml_alert_router_sent', current_time( 'mysql', true ) );
 }

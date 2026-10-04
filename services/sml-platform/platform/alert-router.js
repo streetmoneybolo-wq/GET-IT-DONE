@@ -73,6 +73,16 @@ function formatAlert(event) {
   return `🚨 ${event.body}${byline}${links.length ? `\n\n${links.join('\n')}` : ''}`.slice(0, 4000);
 }
 
+/* The Alert Bot's Discord message: the typed alert text, and each picture attached to the alert shown as an image (up to four). Other links stay as text. */
+const IMAGE_URL = /^https:\/\/[^\s]+\.(?:png|jpe?g|gif|webp)(?:\?[^\s]*)?$/i;
+function discordMessage(event) {
+  const all = Array.isArray(event.attachments) ? event.attachments : [];
+  const images = all.filter((u) => IMAGE_URL.test(u)).slice(0, 4), others = all.filter((u) => !IMAGE_URL.test(u));
+  const byline = event.author_name ? ` — ${event.author_name}` : '';
+  const content = `🚨 ${event.body}${byline}${others.length ? `\n\n${others.join('\n')}` : ''}`.slice(0, 2000);
+  return { content, allowed_mentions: { parse: [] }, ...(images.length ? { embeds: images.map((url) => ({ image: { url } })) } : {}) };
+}
+
 function createDiscordClient(token, fetchImpl = fetch) {
   const auth = String(token || '').trim();
   if (!auth) return null;
@@ -92,7 +102,7 @@ function createDiscordClient(token, fetchImpl = fetch) {
     },
     async send(channelId, event) {
       const result = await request(`/channels/${encodeURIComponent(channelId)}/messages`, {
-        method: 'POST', body: JSON.stringify({ content: formatAlert(event), allowed_mentions: { parse: [] } })
+        method: 'POST', body: JSON.stringify(discordMessage(event))
       });
       return String(result.id);
     }
@@ -348,7 +358,7 @@ function createAlertRouter(pool, { discord = null, telegram = null, wordpress = 
   return { replaceRoutes, listRoutes, ingest, processOne, sourceRoutes, setCursor, pollDiscordOnce, pollTelegramOnce };
 }
 
-module.exports = {
+module.exports = { discordMessage,
   cleanProvider, cleanTarget, cleanRoute, cleanAlert, formatAlert,
   createDiscordClient, createTelegramClient, createWordPressClient, createAlertRouter
 };

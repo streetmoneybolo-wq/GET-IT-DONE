@@ -1,4 +1,5 @@
 'use strict';
+const crypto = require('node:crypto');
 
 /* Click-to-Alert for the Academy Live Chart Lab: a separate paid add-on.
  *
@@ -201,7 +202,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, publisher = null, publishUsers = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
@@ -272,8 +273,35 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     return directory.sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, channelId, mention = false, images: wantImages = true, asMe = true } = {}) {
+  /* Members listed in publishUsers (the owner) can send an alert through StockMarketLoop: it is published to their group under their own site account,
+     and the Alert Bot posts it in Discord with the typed text and the two scenario pictures. */
+  const canPublish = (userId) => !!(publisher && publisher.configured && publishUsers && (publishUsers instanceof Set ? publishUsers.has(String(userId)) : publishUsers.includes(String(userId))));
+  async function sendViaSite(user, { symbol, target, images: wantImages = true } = {}) {
     const userId = String(user.userId || '');
+    const ent = await entitlement(userId);
+    if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
+    if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
+    const limited = await overLimit(userId, 'site:' + publisher.groupId); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
+    const analysis = await gather(symbol, Number(target));
+    if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
+    if (await store.count({ userId, symbol: analysis.symbol, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
+    const at = new Date(now());
+    const et = at.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) + ' ET';
+    const text = format.formatEntryAlert({ ...analysis.alert, mention: false }) + '\n\n⏱ ' + et + ' · price at alert $' + Number(analysis.entry).toFixed(analysis.entry >= 1 ? 2 : 4);
+    let files = [];
+    if (wantImages !== false) files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, alt: im.alt }));
+    if (files.length < 2) files = [];
+    const ref = 'ca-site:' + userId + ':' + crypto.createHash('sha256').update([userId, analysis.symbol, analysis.target, Math.floor(now() / 60_000)].join('|')).digest('hex').slice(0, 24);
+    const out = await publisher.publish({ discordUserId: userId, ref, body: text, meta: { symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, price: analysis.entry, at: at.toISOString() }, images: files });
+    if (!out.ok) return { ok: false, status: out.status || 503, code: out.error === 'not_linked' || out.error === 'not_verified' || out.error === 'not_group_manager' ? out.error : 'site_unavailable', detail: out.error === 'not_group_manager' ? 'Your StockMarketLoop account is not a manager of the alert group.' : '' };
+    await store.record({ userId, guildId: 'site', channelId: 'group:' + publisher.groupId, messageId: String(out.postId || ''), symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch(() => {});
+    logger('info', 'click_alert_published_to_site', { symbol: analysis.symbol, horizon: analysis.horizon });
+    return { ok: true, postedAs: 'site', postId: out.postId, imagesAttached: out.images || 0, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target } };
+  }
+
+  async function send(user, { symbol, target, channelId, mention = false, images: wantImages = true, asMe = true, via = '' } = {}) {
+    const userId = String(user.userId || '');
+    if (via === 'site' && canPublish(userId)) return sendViaSite(user, { symbol, target, images: wantImages });
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
     const ent = await entitlement(userId);
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
@@ -322,7 +350,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
   }
 
-  return { entitlement, preview, send, destinations, channels, configured };
+  return { entitlement, preview, send, destinations, channels, configured, canPublish };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER };

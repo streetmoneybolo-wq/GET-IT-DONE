@@ -42,6 +42,7 @@ const { createProfileService } = require('./academy-profile');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
 const { parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars');
+const { createSmlPublisher } = require('./academy-sml-publish');
 const { freeUserIds: loadFreeUserIds, withFreeUsers, OWNER_IDS } = require('./academy-free-users');
 const { parsePrices: parsePassPrices, createPassStore, createPassService, createWalletClient, withPasses } = require('./academy-passes');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
@@ -2241,7 +2242,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (request.method === 'GET' && path === '/academy-activity/click-alert/status') {
           const entitlement = await academyClickAlert.entitlement(session.userId);
           const guilds = entitlement.entitled ? await academyClickAlert.destinations(session.userId, params.get('current') || '') : [];
-          sendJson(response, 200, { ok: true, ...entitlement, guilds }); return;
+          sendJson(response, 200, { ok: true, ...entitlement, guilds, site: typeof academyClickAlert.canPublish === 'function' && academyClickAlert.canPublish(session.userId) }); return;
         }
         if (request.method === 'GET' && path === '/academy-activity/click-alert/channels') {
           const entitlement = await academyClickAlert.entitlement(session.userId);
@@ -2861,9 +2862,11 @@ async function main() {
   /* A member's own bot (their name and picture): SML_OBI_BOT_TOKEN is the owner's second bot. It posts the owner's alerts where it is in the server. */
   const personaBots = {};
   if (process.env.SML_OBI_BOT_TOKEN) for (const id of OWNER_IDS) personaBots[id] = createDiscordDirectory({ tokens: [{ label: 'persona', token: process.env.SML_OBI_BOT_TOKEN }], logger: log });
+  /* Alerts sent through StockMarketLoop: SML_ALERT_PUBLISH_GROUP_ID is the Making Easy Money trading group's id on the site. The owner's alerts publish there as them, and the Alert Bot posts them in Discord. */
+  const smlPublisher = createSmlPublisher({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret, groupId: process.env.SML_ALERT_PUBLISH_GROUP_ID });
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
-    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses, freeUserIds: freeUsers, personas: personaBots,
+    store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses, freeUserIds: freeUsers, personas: personaBots, publisher: smlPublisher, publishUsers: new Set(OWNER_IDS),
     roleIds: String(process.env.SML_ACADEMY_CLICK_ALERT_ROLE_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
     footer: process.env.SML_ACADEMY_CLICK_ALERT_FOOTER !== 'off', logger: log
   });
