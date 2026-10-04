@@ -8,9 +8,14 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-function sml_ap_ready() {
-	return function_exists( 'sml_lkd_verify_signed' ) && function_exists( 'sml_lkd_signed_json' ) && function_exists( 'sml_lkd_bridge_secret' ) && post_type_exists( 'sml_alert' );
+/** What is missing, by name (empty when ready). Shown in the 503 so the owner can see what to fix. */
+function sml_ap_missing() {
+	$m = array();
+	foreach ( array( 'sml_lkd_verify_signed', 'sml_lkd_signed_json', 'sml_lkd_bridge_secret' ) as $fn ) { if ( ! function_exists( $fn ) ) { $m[] = $fn; } }
+	if ( ! post_type_exists( 'sml_alert' ) ) { $m[] = 'post_type:sml_alert'; }
+	return $m;
 }
+function sml_ap_ready() { return ! sml_ap_missing(); }
 
 /** May this site user publish alerts into this group? Group managers and site admins only. */
 function sml_ap_can_post( $user_id, $group_id ) {
@@ -37,7 +42,7 @@ function sml_ap_store_image( $post_id, $name, $b64, $alt ) {
 }
 
 function sml_ap_rest( WP_REST_Request $request ) {
-	if ( ! sml_ap_ready() ) { return new WP_Error( 'sml_ap_unavailable', 'Alert publishing is unavailable.', array( 'status' => 503 ) ); }
+	if ( ! sml_ap_ready() ) { return new WP_Error( 'sml_ap_unavailable', 'Alert publishing is unavailable. Missing: ' . implode( ', ', sml_ap_missing() ), array( 'status' => 503 ) ); }
 	$ok = sml_lkd_verify_signed( $request, sml_lkd_bridge_secret(), 'x-sml-lk-timestamp', 'x-sml-lk-signature' );
 	if ( is_wp_error( $ok ) ) { return $ok; }
 	global $wpdb;
