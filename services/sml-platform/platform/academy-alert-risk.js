@@ -1,4 +1,5 @@
 'use strict';
+const { earningsRisk: earningsRiskFn } = require('./academy-earnings-date');
 
 /* Risk grading, company checklist and the auto-updating plan for the Academy alerts desk.
  *
@@ -99,13 +100,13 @@ function checklist({ fin: f, company, daily, quote }) {
 }
 
 /* ---------- risk ---------- */
-const SWING_WEIGHTS = { price: 10, volatility: 14, liquidity: 14, extension: 10, target: 10, trend: 12, company: 8, squeeze: 4, chatter: 8, market: 5, offerings: 5 };
-const LONG_WEIGHTS = { company: 22, valuation: 10, balance: 10, drawdown: 8, trend: 14, size: 6, market: 6, extension: 6, chatter: 6, offerings: 4, liquidity: 4, squeeze: 2, target: 2 };
+const SWING_WEIGHTS = { earnings: 9, price: 10, volatility: 14, liquidity: 14, extension: 10, target: 10, trend: 12, company: 8, squeeze: 4, chatter: 8, market: 5, offerings: 5 };
+const LONG_WEIGHTS = { earnings: 3, company: 22, valuation: 10, balance: 10, drawdown: 8, trend: 14, size: 6, market: 6, extension: 6, chatter: 6, offerings: 4, liquidity: 4, squeeze: 2, target: 2 };
 const CHATTER_ALARM = /\b(offering|dilution|dilutive|bankrupt\w*|delist\w*|halt\w*|going concern|reverse split|pump|scam|fraud|sec investigation|lawsuit|short report)\b/i;
 const OFFERING_FORMS = /^(?:424B\d?|S-1|S-1\/A|S-3|S-3\/A|F-1|F-3|F-1\/A|F-3\/A|S-8|424H)$/i;
 
 function gradeRisk(input) {
-  const { alert, quote, daily, fin: f, company, short, sentiment, filings, market, sector, algoView, spreadPct } = input;
+  const { alert, quote, daily, fin: f, company, short, sentiment, filings, market, sector, algoView, spreadPct, earnings } = input;
   const news = Array.isArray(input.news) ? input.news.filter((n) => Date.parse(n.date) >= (input.now || Date.now()) - 7 * 86400000) : null;
   const channel = alert.channel === 'longterm' ? 'longterm' : 'swings';
   const W = channel === 'longterm' ? LONG_WEIGHTS : SWING_WEIGHTS;
@@ -209,6 +210,10 @@ function gradeRisk(input) {
     if (sector && sector.chgPct != null) { if (sector.chgPct < -1.5) { r += 0.25; bits.push(`the ${sector.name || 'sector'} is falling`); } else if (sector.chgPct < -0.5) { r += 0.1; bits.push(`the ${sector.name || 'sector'} is weak`); } else if (sector.chgPct > 1) { r -= 0.1; bits.push(`the ${sector.name || 'sector'} is strong`); } }
     add('market', 'Market & sector', r, bits.join(', ') || 'no read');
   } else add('market', 'Market & sector', 0, 'no market read', false);
+
+  // earnings date: a scheduled report is the biggest known gap risk. Unknown stays unavailable (the grade rescales) instead of reading as safe.
+  const er = earningsRiskFn(earnings);
+  if (er) add('earnings', 'Earnings date', er.r, er.detail); else add('earnings', 'Earnings date', 0, 'no earnings date found', false);
 
   // offerings / filings
   if (Array.isArray(filings)) {

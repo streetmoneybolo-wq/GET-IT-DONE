@@ -20,7 +20,13 @@
   chip.type = 'button'; chip.className = 'data-chip'; chip.setAttribute('aria-label', 'Market data status');
   chip.innerHTML = '<i></i><span class="lbl">DATA</span><div class="data-chip-pop" role="status"></div>';
   toolbar.appendChild(chip);
-  chip.addEventListener('click', (e) => { if (e.target.closest('.data-chip-pop')) return; chip.classList.toggle('open'); });
+  const place = () => {
+    const pop = chip.querySelector('.data-chip-pop'); pop.style.left = ''; pop.style.right = '';
+    const r = chip.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 16);
+    pop.style.width = w + 'px';
+    if (r.right - w < 8) { pop.style.left = '0'; pop.style.right = 'auto'; if (r.left + w > window.innerWidth - 8) pop.style.left = (-(r.left - 8)) + 'px'; } else { pop.style.right = '0'; pop.style.left = 'auto'; }
+  };
+  chip.addEventListener('click', (e) => { if (e.target.closest('.data-chip-pop')) return; chip.classList.toggle('open'); if (chip.classList.contains('open')) place(); });
   document.addEventListener('click', (e) => { if (!chip.contains(e.target)) chip.classList.remove('open'); });
 
   const S = { status: null, chart: null, failed: false };
@@ -49,7 +55,7 @@
       if (ch.stale) bits.push('STALE copy');
       if (ch.liveness === 'live') bits.push('live'); else if (ch.liveness === 'lagging') bits.push('last bar is behind'); else if (ch.liveness === 'closed') bits.push('market closed');
       if (ch.repairedBars) bits.push(ch.repairedBars + ' bad bar' + (ch.repairedBars === 1 ? '' : 's') + ' repaired');
-      h += '<small><b>Chart on screen:</b> ' + esc(bits.join(' · ')) + '</small>';
+      h += '<small><b>Chart on screen:</b> ' + esc(bits.join(' \u00b7 ')) + '</small>';
     }
     h += '<small>Prices come from licensed vendors and can differ from your broker. This panel reports what the system can verify; it does not state whether a feed is real-time or delayed.</small>';
     pop.innerHTML = h;

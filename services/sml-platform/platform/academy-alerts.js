@@ -1,4 +1,5 @@
 'use strict';
+const { extractNextEarnings } = require('./academy-earnings-date');
 
 /* The Academy alerts desk service.
  *
@@ -87,7 +88,7 @@ function postAlertRange(alert, intraday, daily) {
 
 function createAlertsService({
   tokens = [], channels = [], origin = '', fetchImpl = globalThis.fetch, candles = null, orderFlow = null, patterns = null,
-  optionsChain = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
+  optionsChain = null, earnings = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
 } = {}) {
   const alerts = new Map(); // discord message id -> alert record
   const styleOf = (c) => (c.style === 'longterm' || (!c.style && c.key === 'longterm') ? 'longterm' : 'swings');
@@ -204,6 +205,7 @@ function createAlertsService({
   const sentiment = (s) => cached(`st:${s}`, TTL.sentiment, async () => wp(`/wp-json/sml-stocktwits/v1/feed?symbol=${encodeURIComponent(s)}`));
   const news = (s) => cached(`n:${s}`, 900_000, async () => { const d = await wp(`/wp-json/sml-ticker-news/v1/feed?symbol=${encodeURIComponent(s)}`); return d && Array.isArray(d.articles) ? d.articles : null; });
   const chainFor = (s) => (optionsChain ? cached(`oc:${s}`, 600_000, async () => { const d = await optionsChain(s); const rows = d ? optionsCalc.normalizeChain(d) : []; return rows; }) : Promise.resolve(null));
+  const nextEarnings = (s) => (earnings ? cached(`er:${s}`, 6 * 3_600_000, async () => { const d = await earnings(s); return d ? extractNextEarnings(d, now()) : null; }) : Promise.resolve(null));
   const filings = (s) => cached(`fi:${s}`, TTL.filings, async () => { const d = await wp(`/wp-json/sml-massive/v1/market-data/filings?symbol=${encodeURIComponent(s)}&limit=30`); return d && d.filings ? d.filings : null; });
 
   const algoMemo = new Map();
@@ -241,15 +243,16 @@ function createAlertsService({
     const symbol = alert.symbol;
     const q = quotes.get(symbol) || null;
     const young = now() - alert.at < 3 * 86_400_000;
-    const [daily, intraday, fin, co, sh, sent, fil, nws, chain] = await Promise.all([
-      candlesFor(symbol, '1D'), young ? candlesFor(symbol, '5m') : Promise.resolve(null), fundamentals(symbol), company(symbol), shortData(symbol), sentiment(symbol), filings(symbol), news(symbol), q && Number(q.last) >= 1 ? chainFor(symbol) : Promise.resolve(null)
+    const [daily, intraday, fin, co, sh, sent, fil, nws, chain, nextEr] = await Promise.all([
+      candlesFor(symbol, '1D'), young ? candlesFor(symbol, '5m') : Promise.resolve(null), fundamentals(symbol), company(symbol), shortData(symbol), sentiment(symbol), filings(symbol), news(symbol), q && Number(q.last) >= 1 ? chainFor(symbol) : Promise.resolve(null),
+      nextEarnings(symbol)
     ]);
     const spreadPct = q && q.bid > 0 && q.ask > 0 ? (q.ask - q.bid) / ((q.ask + q.bid) / 2) : null;
     const sector = sectorFor(co); const sq = sector && sectorQuotes.get(sector.etf) ? { name: sector.name, etf: sector.etf, chgPct: sectorQuotes.get(sector.etf).chgPct } : (sector ? { name: sector.name, etf: sector.etf, chgPct: null } : null);
     const view = algoView(alert, daily, intraday);
     const flow = flowFor(q, symbol);
     const chk = alert.channel === 'longterm' || detail ? risk.checklist({ fin, company: co, daily, quote: q }) : null;
-    const g = risk.gradeRisk({ alert, quote: q, daily, fin, company: co, short: sh, sentiment: sent, news: nws, filings: fil, market, sector: sq, algoView: view, spreadPct, now: now() });
+    const g = risk.gradeRisk({ alert, quote: q, daily, fin, company: co, short: sh, sentiment: sent, news: nws, filings: fil, market, sector: sq, algoView: view, spreadPct, earnings: nextEr, now: now() });
     const since = risk.sinceAlert(alert, intraday, daily, q ? Number(q.last) : null);
     const plan = risk.planFor({ alert, quote: q, daily, since, risk: g, algoView: view, flow, sentiment: sent, news: nws, checklist: chk, now: now() });
     const last = alert.planLog[alert.planLog.length - 1];
@@ -392,7 +395,7 @@ function createAlertsService({
   }
   function stop() { running = false; if (pollTimer) timers.clearInterval(pollTimer); if (refreshTimer) timers.clearInterval(refreshTimer); }
 
-  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes };
+  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */

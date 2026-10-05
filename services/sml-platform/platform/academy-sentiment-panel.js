@@ -59,9 +59,9 @@
     const s = c.score, w = Math.min(50, Math.abs(s) * 50);
     const bar = '<div class="mini"><b style="' + (s >= 0 ? 'left:50%;background:#37e08f;' : 'right:50%;background:#ff5d6c;') + 'width:' + w + '%"></b></div>';
     let detail = '';
-    if (key === 'news') detail = c.n + ' headlines (' + c.bull + ' up, ' + c.bear + ' down)' + (c.drivers && c.drivers[0] ? ' · top: ' + (c.drivers[0].url ? '<a href="' + esc(c.drivers[0].url) + '" target="_blank" rel="noopener noreferrer">' + esc(c.drivers[0].title) + '</a>' : esc(c.drivers[0].title)) : '');
-    if (key === 'social') detail = c.bull + ' bullish / ' + c.bear + ' bearish of ' + c.n + ' posts' + (c.postsPerHour != null ? ' · ' + c.postsPerHour + '/hr' : '') + (c.velocityRatio != null ? ' · ' + c.velocityRatio + 'x normal' : '');
-    if (key === 'options') detail = (c.putCall && c.putCall.volume != null ? 'put/call vol ' + c.putCall.volume : '') + (c.putCall && c.putCall.openInterest != null ? ' · OI ' + c.putCall.openInterest : '') + (c.maxPain != null ? ' · max pain ' + c.maxPain : '') + (c.gex && c.gex.flipStrike != null ? ' · gamma flip ' + c.gex.flipStrike : '') + (c.unusual && c.unusual.length ? ' · ' + c.unusual.length + ' unusual' : '');
+    if (key === 'news') detail = c.n + ' headlines (' + c.bull + ' up, ' + c.bear + ' down)' + (c.drivers && c.drivers[0] ? ' \u00b7 top: ' + (c.drivers[0].url ? '<a href="' + esc(c.drivers[0].url) + '" target="_blank" rel="noopener noreferrer">' + esc(c.drivers[0].title) + '</a>' : esc(c.drivers[0].title)) : '');
+    if (key === 'social') detail = c.bull + ' bullish / ' + c.bear + ' bearish of ' + c.n + ' posts' + (c.postsPerHour != null ? ' \u00b7 ' + c.postsPerHour + '/hr' : '') + (c.velocityRatio != null ? ' \u00b7 ' + c.velocityRatio + 'x normal' : '');
+    if (key === 'options') detail = (c.putCall && c.putCall.volume != null ? 'put/call vol ' + c.putCall.volume : '') + (c.putCall && c.putCall.openInterest != null ? ' \u00b7 OI ' + c.putCall.openInterest : '') + (c.maxPain != null ? ' \u00b7 max pain ' + c.maxPain : '') + (c.gex && c.gex.flipStrike != null ? ' \u00b7 gamma flip ' + c.gex.flipStrike : '') + (c.unusual && c.unusual.length ? ' \u00b7 ' + c.unusual.length + ' unusual' : '');
     if (key === 'market') detail = c.detail || '';
     return '<div class="comp"><span>' + NAMES[key] + '</span>' + bar + '<span class="' + (s >= 0.12 ? 'pos' : s <= -0.12 ? 'neg' : '') + '">' + pct(s) + '</span><small>' + detail + '</small></div>';
   }
@@ -74,17 +74,17 @@
     box.style.display = '';
     if (S.symbol !== sym()) { S.data = null; S.error = ''; }
     if (!S.session) { box.innerHTML = '<h4>SENTIMENT</h4><small>Unlock Academy Tools first so Discord can verify private Academy access.</small>'; return; }
-    if (S.loading) { box.innerHTML = '<h4>SENTIMENT</h4><small>Reading the news, chatter and options…</small>'; return; }
+    if (S.loading) { box.innerHTML = '<h4>SENTIMENT</h4><small>Reading the news, chatter and options\u2026</small>'; return; }
     if (S.error) { box.innerHTML = '<h4>SENTIMENT</h4><small>' + esc(S.error) + '</small>'; return; }
-    if (!S.data) { void load(); box.innerHTML = '<h4>SENTIMENT</h4><small>Loading…</small>'; return; }
+    if (!S.data) { void load(); box.innerHTML = '<h4>SENTIMENT</h4><small>Loading\u2026</small>'; return; }
     const d = S.data;
     if (!d.available) {
-      box.innerHTML = '<h4>SENTIMENT · ' + esc(d.symbol) + '</h4><small>Not enough sources are answering to give an honest reading (' + esc(d.coverage) + '% coverage). ' + (d.notes || []).map(esc).join(' ') + '</small>'
+      box.innerHTML = '<h4>SENTIMENT \u00b7 ' + esc(d.symbol) + '</h4><small>Not enough sources are answering to give an honest reading (' + esc(d.coverage) + '% coverage). ' + (d.notes || []).map(esc).join(' ') + '</small>'
         + Object.keys(NAMES).map((k) => comp(k, d.components && d.components[k])).join('');
       return;
     }
     const col = d.score >= 0.12 ? 'pos' : d.score <= -0.12 ? 'neg' : '';
-    let h = '<h4>SENTIMENT · ' + esc(d.symbol) + '</h4><div class="big"><b class="' + col + '">' + (d.scorePct >= 0 ? '+' : '') + d.scorePct + '</b><span class="' + col + '">' + esc(String(d.label).toUpperCase()) + '</span><span class="na">' + esc(d.coverage) + '% of sources</span></div>'
+    let h = '<h4>SENTIMENT \u00b7 ' + esc(d.symbol) + '</h4><div class="big"><b class="' + col + '">' + (d.scorePct >= 0 ? '+' : '') + d.scorePct + '</b><span class="' + col + '">' + esc(String(d.label).toUpperCase()) + '</span><span class="na">' + esc(d.coverage) + '% of sources</span></div>'
       + '<div class="bar"><i style="left:' + Math.max(1, Math.min(99, 50 + d.score * 50)).toFixed(1) + '%"></i></div>';
     h += Object.keys(NAMES).map((k) => comp(k, d.components[k])).join('');
     (d.notes || []).forEach((n) => { h += '<div class="note">' + esc(n) + '</div>'; });

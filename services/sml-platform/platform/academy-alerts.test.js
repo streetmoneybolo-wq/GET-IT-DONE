@@ -57,7 +57,19 @@ test('risk is scaled over the data that exists, and says how much that was', () 
   assert.ok(thin.score >= 0 && thin.score <= 100);
   const full = R.gradeRisk({ alert: swing(), quote: quote(2), daily: series(200, { start: 2 }), fin: fin(), company: { market_cap: 4e8, sic_description: 'SEMICONDUCTORS' }, short: { summary: { avg_ratio: 50 }, interest: [{ days_to_cover: 2 }] }, sentiment: { posts: [{ sentiment: 'Bullish', comment: 'up' }, { sentiment: 'Bullish', comment: 'ok' }, { sentiment: 'Bearish', comment: 'hmm' }] }, filings: [], market: { spyChgPct: 0.2 }, now: Date.now() });
   assert.ok(full.coverage > thin.coverage);
-  assert.equal(full.factors.length, 11);
+  assert.equal(full.factors.length, 12);
+  assert.equal(full.factors.find((f) => f.key === 'earnings').available, false, 'unknown earnings date is left out of the grade, not scored as safe');
+});
+
+test('a scheduled earnings report raises the swing grade; the closer, the higher; long-term barely moves', () => {
+  const base = { alert: swing(), quote: quote(2), daily: series(120, { start: 2 }), now: Date.now() };
+  const none = R.gradeRisk(base).score;
+  const soon = R.gradeRisk({ ...base, earnings: { date: 'x', daysAway: 1 } });
+  const later = R.gradeRisk({ ...base, earnings: { date: 'x', daysAway: 20 } });
+  assert.ok(soon.score > later.score && later.score <= none + 1);
+  assert.match(soon.factors.find((f) => f.key === 'earnings').detail, /tomorrow/);
+  const lt = R.gradeRisk({ ...base, alert: swing({ channel: 'longterm' }), earnings: { date: 'x', daysAway: 1 } });
+  assert.ok(lt.factors.find((f) => f.key === 'earnings').weight < soon.factors.find((f) => f.key === 'earnings').weight);
 });
 
 test('the author\'s own high-risk flag and share offerings raise the grade', () => {

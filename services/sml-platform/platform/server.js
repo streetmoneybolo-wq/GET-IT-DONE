@@ -2918,7 +2918,7 @@ async function main() {
   /* Each member picks their own alert sources (servers -> channels or posters); SML_ACADEMY_ALERT_SOURCES=off brings back the fixed two-stream desk. */
   const perMemberAlerts = process.env.SML_ACADEMY_ALERT_SOURCES !== 'off';
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
-    tokens: alertTokens, channels: perMemberAlerts ? [] : defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
+    tokens: alertTokens, channels: perMemberAlerts ? [] : defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, earnings: async (symbol) => { const r = await academyDataBridge.get('earnings', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
     orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
     patterns: (() => { try { return require('./academy-patterns').detect; } catch (_) { return null; } })()
   });
@@ -3069,7 +3069,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  createServer,
+  getAcademyCandles, getAcademyScanner, getAcademyDepth, dataHealth, createServer,
   sendJson,
   sendHtml,
   academyActivityHtml,
