@@ -392,7 +392,7 @@ function createAlertsService({
   }
   function stop() { running = false; if (pollTimer) timers.clearInterval(pollTimer); if (refreshTimer) timers.clearInterval(refreshTimer); }
 
-  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData };
+  return { start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */

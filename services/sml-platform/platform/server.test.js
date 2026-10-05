@@ -1553,3 +1553,21 @@ test('The options lab reads the Academy session when it is used, not only from t
   assert.ok(src.includes("if(!session)session=String(window.smlAcademySessionToken||'');if(!session){status.classList.add('options-error')"));
   assert.ok(src.includes("const lb=document.getElementById('load-options');if(lb&&!lb.disabled&&window.smlAcademySessionToken"));
 });
+
+test('Academy sentiment route is session and tier gated, validates the symbol and surfaces provider failure as 503', async () => {
+  const calls = [];
+  const oauth = { verifySession: (a) => a === 'Bearer member' ? { ok: true, userId: '1', tier: 'member' } : a === 'Bearer free' ? { ok: true, userId: '2', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' } };
+  await withServer({ academyOAuth: oauth, academySentiment: { get: async (s) => { calls.push(s); if (s === 'BOOM') throw new Error('x'); return { ok: true, symbol: s, available: true, scorePct: 12, label: 'leaning bullish', coverage: 100, components: {}, notes: [] }; } } }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/sentiment?symbol=SPY`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/sentiment?symbol=SPY`, { headers: { authorization: 'Bearer free' } })).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/sentiment?symbol=bad%20sym`, { headers: { authorization: 'Bearer member' } })).status, 400);
+    const ok = await fetch(`${base}/academy-activity/sentiment?symbol=spy`, { headers: { authorization: 'Bearer member' } });
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).label, 'leaning bullish');
+    assert.equal((await fetch(`${base}/academy-activity/sentiment?symbol=BOOM`, { headers: { authorization: 'Bearer member' } })).status, 503);
+    assert.deepEqual(calls, ['SPY', 'BOOM']);
+  });
+  await withServer({ academyOAuth: oauth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/sentiment?symbol=SPY`, { headers: { authorization: 'Bearer member' } })).status, 503);
+  });
+});
