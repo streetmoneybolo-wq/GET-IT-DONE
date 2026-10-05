@@ -108,7 +108,7 @@
       '<div class="sml-cbanner-head"><h2>Channel Banner</h2><button type="button" data-sml-cbanner-close aria-label="Close">×</button></div>' +
       '<div class="sml-cbanner-preview"><img data-sml-cbanner-preview-image alt="Banner preview"></div>' +
       '<label>Banner image<small>Animated GIF up to 50 MB · JPG, PNG, or WebP up to 5 MB</small><input type="file" name="banner" accept="image/jpeg,image/png,image/gif,image/webp"></label>' +
-      '<label>Zoom<div class="sml-cbanner-range"><input type="range" name="zoom" min="100" max="300" value="100"><output data-sml-cbanner-zoom-output>100%</output></div></label>' +
+      '<label>Zoom<div class="sml-cbanner-range"><input type="range" name="zoom" min="25" max="300" value="100"><output data-sml-cbanner-zoom-output>100%</output></div></label>' +
       '<label>Horizontal position<div class="sml-cbanner-range"><input type="range" name="pos_x" min="0" max="100" value="50"><output data-sml-cbanner-x-output>50%</output></div></label>' +
       '<label>Vertical position<div class="sml-cbanner-range"><input type="range" name="pos_y" min="0" max="100" value="50"><output data-sml-cbanner-y-output>50%</output></div></label>' +
       '<p class="sml-cbanner-status" data-sml-cbanner-status role="status" aria-live="polite"></p>' +

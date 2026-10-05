@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.6
+ * Version: 1.0.7
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.6' );
+define( 'SML_CBANNER_VERSION', '1.0.7' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -83,7 +83,7 @@ function sml_cbanner_public_map( int $group_id ): array {
 		if ( ! is_array( $entry ) || empty( $entry['url'] ) ) { continue; }
 		$map[ (string) absint( $channel_id ) ] = array(
 			'url'   => esc_url_raw( (string) $entry['url'] ),
-			'zoom'  => max( 100, min( 300, (int) ( $entry['zoom'] ?? 100 ) ) ),
+			'zoom'  => max( 25, min( 300, (int) ( $entry['zoom'] ?? 100 ) ) ),
 			'pos_x' => max( 0, min( 100, (int) ( $entry['pos_x'] ?? 50 ) ) ),
 			'pos_y' => max( 0, min( 100, (int) ( $entry['pos_y'] ?? 50 ) ) ),
 		);
@@ -166,7 +166,7 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 		if ( empty( $current['url'] ) ) {
 			return new WP_Error( 'sml_cbanner_missing_file', 'Choose a banner image first.', array( 'status' => 400 ) );
 		}
-		$current['zoom'] = max( 100, min( 300, (int) ( $request->get_param( 'zoom' ) ?: 100 ) ) );
+		$current['zoom'] = max( 25, min( 300, (int) ( $request->get_param( 'zoom' ) ?: 100 ) ) );
 		$current['pos_x'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_x' ) ?? 50 ) ) );
 		$current['pos_y'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_y' ) ?? 50 ) ) );
 		$current['updated_by'] = get_current_user_id();
