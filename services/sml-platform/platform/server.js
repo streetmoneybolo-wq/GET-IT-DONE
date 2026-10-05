@@ -37,6 +37,8 @@ const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSym
 const { createDataHealth } = require('./data-health');
 const { isMarketOpen, marketState } = require('./market-clock');
 const { sanitizeBars, annotateCandles } = require('./data-quality');
+const { sseWrite, sseEvent } = require('./sse-safe');
+const { createPgStateStore } = require('./academy-state-store');
 const dataHealth = createDataHealth();
 const { createDataRateLimit } = require('./data-rate-limit');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
@@ -1627,7 +1629,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         publicStreamByIp.set(ip, active + 1); publicStreamTotal += 1;
         response.writeHead(200, { ...corsHeaders(origin), 'content-type': 'text/event-stream; charset=utf-8',
           'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-        const write = (event, data) => { try { response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { /* close handler cleans up */ } };
+        const write = (event, data) => { sseEvent(response, event, data); };
         academyMassive.watch(symbol);
         write('snapshot', { ok: true, source: 'massive', ...(academyMassive.peek(symbol) || { symbol, pending: true }) });
         let pendingQuote = null, quoteTimer = null, closed = false;
@@ -1635,7 +1637,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (event.type === 'trade') write('trade', event.trade);
           else { pendingQuote = event.quote; if (!quoteTimer) quoteTimer = setTimeout(() => { quoteTimer = null; if (pendingQuote) { write('quote', pendingQuote); pendingQuote = null; } }, 100); }
         });
-        const beat = setInterval(() => { try { response.write(': keep-alive\n\n'); } catch (_) { /* close follows */ } }, 15_000);
+        const beat = setInterval(() => { sseWrite(response, ': keep-alive\n\n'); }, 15_000);
         const done = () => { if (closed) return; closed = true; clearInterval(beat); if (quoteTimer) clearTimeout(quoteTimer); off(); publicStreamTotal = Math.max(0, publicStreamTotal - 1); const left = Math.max(0, (publicStreamByIp.get(ip) || 1) - 1); if (left) publicStreamByIp.set(ip, left); else publicStreamByIp.delete(ip); };
         request.on('close', done); response.on('close', done);
         return;
@@ -2354,14 +2356,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (streamClients >= 400) { sendJson(response, 503, { ok: false, error: 'stream_busy' }); return; }
       streamClients += 1;
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-      const write = (event, data) => { try { response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { /* closed */ } };
+      const write = (event, data) => { sseEvent(response, event, data); };
       write('snapshot', mergeLive(academyOrderFlow ? academyOrderFlow.live(symbol) : { symbol, ready: false }, academyMassive, symbol));
       let pendingQuote = null, quoteTimer = null;
       const off = academyMassive.on(symbol, (evt) => {
         if (evt.type === 'trade') write('trade', evt.trade);
         else { pendingQuote = evt.quote; if (!quoteTimer) quoteTimer = setTimeout(() => { quoteTimer = null; if (pendingQuote) { write('quote', pendingQuote); pendingQuote = null; } }, 100); }
       });
-      const beat = setInterval(() => { try { response.write(': keep-alive\n\n'); } catch (_) { /* closed */ } }, 15_000);
+      const beat = setInterval(() => { sseWrite(response, ': keep-alive\n\n'); }, 15_000);
       const done = () => { clearInterval(beat); if (quoteTimer) clearTimeout(quoteTimer); off(); streamClients -= 1; };
       request.on('close', done);
       return;
@@ -2377,12 +2379,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (streamClients >= 400) { sendJson(response, 503, { ok: false, error: 'stream_busy' }); return; }
       streamClients += 1;
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-      const write = (event, data) => { try { response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { /* closed */ } };
+      const write = (event, data) => { sseEvent(response, event, data); };
       const filter = tierEntitled(tier) ? null : (symbol) => academyGate.isFreeSymbol(symbol);
       let off = () => {};
       try { off = sireFeed.subscribe(write, { filter }); }
       catch (error) { logger('error', 'sire_stream_failed', { error }); write('error', { ok: false, error: 'temporary_unavailable' }); }
-      const beat = setInterval(() => { try { response.write(': keep-alive\n\n'); } catch (_) { /* closed */ } }, 15_000);
+      const beat = setInterval(() => { sseWrite(response, ': keep-alive\n\n'); }, 15_000);
       let closed = false;
       const done = () => { if (closed) return; closed = true; clearInterval(beat); off(); streamClients -= 1; };
       request.on('close', done); response.on('close', done);
@@ -2677,11 +2679,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = new URL(request.url || '/', 'http://localhost').searchParams.get('symbol');
       if (streamClients >= 400) { sendJson(response, 503, { ok: false, error: 'stream_busy' }); return; }
       response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-      const write = (event, data) => { try { response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (_) { /* closed */ } };
+      const write = (event, data) => { sseEvent(response, event, data); };
       const off = academyOptionsStream.subscribe(symbol, write);
       if (!off) { write('error', { ok: false, error: 'invalid_symbol' }); response.end(); return; }
       streamClients += 1;
-      const beat = setInterval(() => { try { response.write(': keep-alive\n\n'); } catch (_) { /* closed */ } }, 15_000);
+      const beat = setInterval(() => { sseWrite(response, ': keep-alive\n\n'); }, 15_000);
       let closed = false;
       const done = () => { if (closed) return; closed = true; clearInterval(beat); off(); streamClients -= 1; };
       request.on('close', done); response.on('close', done);
@@ -2911,7 +2913,7 @@ async function main() {
   /* MEM LAB: opt-in (ACADEMY_MEM_LAB=on). Reads the scanner's daily candles, proposes gated improvements; a human approves via the operator route. */
   const academyMemLab = process.env.ACADEMY_MEM_LAB === 'on' ? createMemLab({
     sources: [{ name: 'academy-scanner-1D', load: async () => { const rows = ((await getAcademyScanner()) || {}).rows || []; const out = []; for (const r of rows.slice(0, 60)) { try { out.push({ symbol: String(r.symbol).toUpperCase(), bars: (await getAcademyCandles(String(r.symbol).toUpperCase(), '1D')).bars }); } catch (_) {} } return out; } }],
-    store: memLabFileStore(process.env.ACADEMY_MEM_LAB_FILE || '/tmp/sml-mem-lab.json'), autoPromote: process.env.ACADEMY_MEM_LAB_AUTOPROMOTE === 'on', log
+    store: createPgStateStore({ pool: database.pool, key: 'mem-lab', fallback: memLabFileStore(process.env.ACADEMY_MEM_LAB_FILE || '/tmp/sml-mem-lab.json'), defaultValue: () => ({ champion: null, pending: null, runs: [] }), logger: log }), autoPromote: process.env.ACADEMY_MEM_LAB_AUTOPROMOTE === 'on', log
   }) : null;
   if (academyMemLab) academyMemLab.schedule();
   /* Chat profile cards (avatar, Discord profile, linked StockMarketLoop profile). ACADEMY_PROFILE_CARDS=off removes them. */
