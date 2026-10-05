@@ -89,11 +89,27 @@ test('health returns 200 only when the database check passes', async () => {
   await withServer({ checkDatabase: async () => true }, async (base) => {
     const response = await fetch(`${base}/health`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
+    const { data, ...rest } = await response.json();
+    assert.deepEqual(rest, {
       ok: true,
       service: 'sml-platform-api',
       database: 'connected'
     });
+    assert.ok(data && ['ok', 'unknown', 'degraded', 'down', 'rate_limited'].includes(data.overall));
+    assert.equal(typeof data.marketOpen, 'boolean');
+  });
+});
+
+test('data-status reports provider health and the ET market session without credentials', async () => {
+  await withServer({ checkDatabase: async () => true }, async (base) => {
+    const response = await fetch(`${base}/academy-activity/data-status`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.ok, true);
+    assert.ok(['pre', 'regular', 'post', 'closed'].includes(body.session));
+    assert.match(body.et, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    assert.equal(typeof body.providers, 'object');
+    assert.doesNotMatch(JSON.stringify(body), /api[_-]?key|secret|bearer/i);
   });
 });
 

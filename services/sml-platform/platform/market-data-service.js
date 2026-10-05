@@ -32,7 +32,7 @@ function normalizeBars(results) {
   })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite));
 }
 
-function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, baseUrl = 'https://api.massive.com' } = {}) {
+function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, baseUrl = 'https://api.massive.com', sanitize = null } = {}) {
   const cache = new Map();
   const inflight = new Map();
   const enabled = Boolean(String(apiKey).trim());
@@ -59,9 +59,11 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
         });
         if (!response.ok) throw new Error(`massive_history_${response.status}`);
         const body = await response.json();
-        const bars = normalizeBars(body?.results);
+        let bars = normalizeBars(body?.results), repaired = 0;
+        if (sanitize) { const r = sanitize(bars, timeframe); bars = r.bars; repaired = r.repaired; }
         if (!bars.length) throw new Error('massive_history_empty');
-        const data = { symbol, tf: timeframe, bars: bars.slice(-5000), asOf: current, source: 'massive-rest', quality: 'authoritative' };
+        const lastBarAt = bars[bars.length - 1].t;
+        const data = { symbol, tf: timeframe, bars: bars.slice(-5000), asOf: current, lastBarAt, adjusted: true, source: 'massive-rest', quality: 'authoritative', ...(repaired ? { repairedBars: repaired } : {}) };
         cache.set(key, { freshUntil: current + config.ttlMs, staleUntil: current + 6 * 3600_000, data });
         return { ok: true, status: 200, data, cached: false };
       } catch (_) {
@@ -104,7 +106,7 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
 /* Optional provider adapter. It remains disabled until both the feature flag
  * and an entitled Massive Options plan are present. The raw provider payload
  * is preserved; missing quotes/Greeks are never synthesized. */
-function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch, baseUrl = 'https://api.massive.com' } = {}) {
+function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch, baseUrl = 'https://api.massive.com', maxPages = 4 } = {}) {
   const configured = Boolean(enabled && String(apiKey).trim());
   async function get(kind, symbolRaw, params = {}) {
     if (kind !== 'options') return { ok: false, status: 404, code: 'not_found' };
@@ -112,14 +114,33 @@ function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch,
     const symbol = cleanSymbol(symbolRaw);
     const query = new URLSearchParams({ limit: '250' });
     if (params.expiration) query.set('expiration_date', String(params.expiration));
+    const root = String(baseUrl).replace(/\/$/, '');
+    const headers = { accept: 'application/json', authorization: `Bearer ${apiKey}` };
     try {
-      const response = await fetchImpl(`${String(baseUrl).replace(/\/$/, '')}/v3/snapshot/options/${encodeURIComponent(symbol)}?${query}`, {
-        headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8_000)
-      });
-      if (!response.ok) return { ok: false, status: response.status, code: 'massive_options_unavailable' };
-      const data = await response.json();
-      if (!Array.isArray(data?.results) || !data.results.length) return { ok: false, status: 503, code: 'massive_options_empty' };
-      return { ok: true, status: 200, data: { ok: true, symbol, provider: 'massive', data } };
+      /* The snapshot is paged (250 contracts per page). Follow next_url - only on the provider's own host - so chain-wide
+         numbers (put/call, GEX, max pain) are computed from the whole chain, not the first page. */
+      let url = `${root}/v3/snapshot/options/${encodeURIComponent(symbol)}?${query}`;
+      const results = []; let first = null, pages = 0, truncated = false;
+      while (url && pages < maxPages) {
+        const response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(8_000) });
+        if (!response.ok) {
+          if (!pages) return { ok: false, status: response.status, code: 'massive_options_unavailable' };
+          truncated = true; break; // keep what we already have
+        }
+        const page = await response.json();
+        if (!first) first = page;
+        if (Array.isArray(page?.results)) results.push(...page.results);
+        pages += 1;
+        const next = typeof page?.next_url === 'string' ? page.next_url : '';
+        let ok = false;
+        try { ok = next && new URL(next).host === new URL(root).host; } catch (_) { ok = false; }
+        url = ok ? next : '';
+        if (next && !ok) truncated = true;
+      }
+      if (url) truncated = true;
+      if (!results.length) return { ok: false, status: 503, code: 'massive_options_empty' };
+      const data = { ...first, results, next_url: undefined };
+      return { ok: true, status: 200, data: { ok: true, symbol, provider: 'massive', pages, contracts: results.length, complete: !truncated, data } };
     } catch (_) { return { ok: false, status: 503, code: 'massive_options_unavailable' }; }
   }
   return { configured, get };

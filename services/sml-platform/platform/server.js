@@ -34,6 +34,14 @@ const { createOrderFlowStore } = require('./academy-order-flow-store');
 const { createMassiveStream } = require('./academy-massive-stream');
 const { createSireFeed } = require('./academy-sire-feed');
 const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSymbol: cleanBrokerSymbol } = require('./academy-brokers');
+const { createDataHealth } = require('./data-health');
+const { isMarketOpen, marketState } = require('./market-clock');
+const { sanitizeBars, annotateCandles } = require('./data-quality');
+const dataHealth = createDataHealth();
+const { createDataRateLimit } = require('./data-rate-limit');
+const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
+const ACADEMY_LIMITED_PATHS = new Set(['/academy-activity/market', '/academy-activity/scanner', '/academy-activity/orderflow', '/academy-activity/live', '/academy-activity/data/short', '/academy-activity/data/earnings']);
+let dataStatusExtras = () => ({});
 const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin, TIMEFRAMES: MASSIVE_TIMEFRAMES } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
@@ -136,7 +144,7 @@ function asHubNumber(value) {
 }
 
 async function fetchRedditHubJson(path) {
-  const response = await fetch(`${REDDIT_HUB_ORIGIN}${path}`, {
+  const response = await dataHealth.guardedFetch('wordpress-hub', `${REDDIT_HUB_ORIGIN}${path}`, {
     headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Reddit-HUB/1.0' },
     signal: AbortSignal.timeout(12_000)
   });
@@ -421,7 +429,7 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
   if (academyMarketInflight.has(cacheKey)) return academyMarketInflight.get(cacheKey);
   const request = (async () => {
     try {
-      const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=${encodeURIComponent(safeTimeframe)}`, {
+      const upstream = await dataHealth.guardedFetch('wordpress-history', `${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=${encodeURIComponent(safeTimeframe)}`, {
         headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
         signal: AbortSignal.timeout(7_000)
       });
@@ -433,13 +441,16 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
         t: Number(bar?.t), o: Number(bar?.o), h: Number(bar?.h), l: Number(bar?.l), c: Number(bar?.c), v: Number(bar?.v)
       })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite)) : [];
       if (!bars.length) throw new Error('academy_market_empty');
-      const payload = { symbol: safeSymbol, tf: safeTimeframe, bars, asOf: Number(source?.asOf) || Date.now() };
+      const clean = sanitizeBars(bars, safeTimeframe);
+      if (!clean.bars.length) throw new Error('academy_market_empty');
+      /* adjusted is unknown for this feed, so it is reported as null rather than guessed */
+      const payload = annotateCandles({ symbol: safeSymbol, tf: safeTimeframe, bars: clean.bars, asOf: Number(source?.asOf) || Date.now() }, { source: 'wordpress-history', adjusted: null, repaired: clean.repaired });
       academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 1_800_000, payload });
       return payload;
     } catch (error) {
       /* A brief upstream slowdown should not blank or freeze an active lesson.
        * Stale prices are better than no chart, and expire after five minutes. */
-      if (cached && cached.staleUntil > Date.now()) return { ...cached.payload, stale: true };
+      if (cached && cached.staleUntil > Date.now()) return annotateCandles({ ...cached.payload, stale: true }, { source: cached.payload.source, adjusted: cached.payload.adjusted });
       throw error;
     } finally {
       academyMarketInflight.delete(cacheKey);
@@ -474,7 +485,7 @@ async function getAcademyScanner() {
   if (academyScannerCache.inflight) return academyScannerCache.inflight;
   academyScannerCache.inflight = (async () => {
     try {
-      const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/live`, {
+      const upstream = await dataHealth.guardedFetch('wordpress-scanner', `${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/live`, {
         headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
         signal: AbortSignal.timeout(7_000)
       });
@@ -496,7 +507,7 @@ async function getAcademyScanner() {
         if (!history.length || history.at(-1).t < sampledAt - 3_900_000) academySirePriceHistory.delete(symbol);
       }
       if (!rows.length) throw new Error('academy_scanner_empty');
-      const payload = { rows, asOf: Date.now() };
+      const payload = { rows, asOf: Date.now(), session: marketState().session, marketOpen: isMarketOpen(), source: 'wordpress-scanner' };
       academyScannerCache = { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 300_000, payload, inflight: null };
       return payload;
     } catch (error) {
@@ -517,7 +528,7 @@ async function getAcademyDepth(symbol) {
   if (academyDepthInflight.has(safeSymbol)) return academyDepthInflight.get(safeSymbol);
   const request = (async () => {
     try {
-      const upstream = await fetch(`${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(safeSymbol)}&depth=10&ticks=0`, {
+      const upstream = await dataHealth.guardedFetch('wordpress-depth', `${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(safeSymbol)}&depth=10&ticks=0`, {
         headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
         signal: AbortSignal.timeout(7_000)
       });
@@ -2019,6 +2030,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    if (request.method === 'GET' && ACADEMY_LIMITED_PATHS.has(path)) {
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) {
+        response.setHeader('retry-after', String(gate.retryAfterSec));
+        sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec });
+        return;
+      }
+    }
+
+    if (request.method === 'GET' && path === '/academy-activity/data-status') {
+      sendJson(response, 200, { ok: true, ...dataStatusSummary() });
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/market') {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = params.get('symbol');
@@ -2717,13 +2742,31 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       sendJson(response, 200, {
         ok: true, service: 'sml-platform-api', database: 'connected',
         ...(process.env.RENDER_GIT_COMMIT ? { release: process.env.RENDER_GIT_COMMIT } : {}),
-        ...(schema !== undefined ? { schema } : {})
+        ...(schema !== undefined ? { schema } : {}),
+        /* provider health never fails the probe (the database does); it makes a dead vendor visible to monitors */
+        data: dataStatusSummary()
       });
     } catch (error) {
       logger('error', 'health_database_unavailable', { error });
       sendJson(response, 503, { ok: false, service: 'sml-platform-api', database: 'unavailable' });
     }
   });
+}
+
+function dataStatusSummary() {
+  try {
+    const snap = dataHealth.snapshot(dataStatusExtras());
+    const providers = {};
+    for (const [name, v] of Object.entries(snap.providers)) providers[name] = { state: v.state, ...(v.lastError ? { lastError: v.lastError } : {}), ...(v.retryInMs ? { retryInMs: v.retryInMs } : {}) };
+    const st = marketState();
+    return { overall: snap.overall, session: st.session, marketOpen: st.open, et: st.et, providers };
+  } catch (_) { return { overall: 'unknown' }; }
+}
+
+/* The UI is told which vendor answered (the two have different shapes and depth) and whether the preferred one was skipped. */
+function tagOptionsSource(result, source, fellBack) {
+  if (!result || !result.ok || !result.data || typeof result.data !== 'object') return result;
+  return { ...result, data: { ...result.data, source, ...(fellBack ? { fallback: true } : {}), session: marketState().session, asOf: result.data.asOf || Date.now() } };
 }
 
 async function main() {
@@ -2800,23 +2843,25 @@ async function main() {
     ? createAcademyOAuth({ clientId: config.discordConnectAppId, clientSecret: config.discordConnectClientSecret, academyAccess: createIdentityAccess({}) })
     : null;
   const { createAcademyDataBridge } = require('./academy-data-bridge');
-  const rawAcademyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret });
+  const rawAcademyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret, fetchImpl: (u, o) => dataHealth.guardedFetch('moomoo-bridge', u, o) });
   const queuedMoomooBridge = createQueuedDataSource({
     source: rawAcademyDataBridge,
     // Five cold options calls per minute is the safe ceiling; cached and
     // identical in-flight requests never enter this queue.
     minimumIntervalMs: 12_100,
-    marketOpen: (timestamp) => { const date = new Date(timestamp); const day = date.getUTCDay(); if (day === 0 || day === 6) return false; const minutes = date.getUTCHours() * 60 + date.getUTCMinutes(); return minutes >= 13 * 60 + 30 && minutes < 20 * 60; }
+    marketOpen: (timestamp) => isMarketOpen(timestamp)
   });
-  const massiveOptions = createMassiveOptions({ apiKey: config.massiveApiKey, enabled: config.massiveOptionsEnabled });
+  const massiveOptions = createMassiveOptions({ apiKey: config.massiveApiKey, enabled: config.massiveOptionsEnabled, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-options', u, o), maxPages: Math.max(1, Math.min(8, Number(process.env.MASSIVE_OPTIONS_MAX_PAGES) || 4)) });
   const academyDataBridge = {
     configured: queuedMoomooBridge.configured || massiveOptions.configured,
     async get(kind, symbol, params = {}) {
+      let fellBack = false;
       if (kind === 'options' && massiveOptions.configured) {
         const preferred = await massiveOptions.get(kind, symbol, params);
-        if (preferred.ok) return preferred;
+        if (preferred.ok) return tagOptionsSource(preferred, 'massive', false);
+        fellBack = true;
       }
-      return queuedMoomooBridge.get(kind, symbol, params);
+      return tagOptionsSource(await queuedMoomooBridge.get(kind, symbol, params), 'moomoo', fellBack);
     }
   };
   /* Live push for whatever options chain is currently loaded, the same shared-poll-per-symbol
@@ -2827,7 +2872,7 @@ async function main() {
   }) : null;
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
   const orderFlowStore = createOrderFlowStore({ pool: database.pool });
-  const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log });
+  const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log, fetchImpl: (u, o) => dataHealth.guardedFetch('wordpress-orderflow', u, o) });
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
   const academyMassive = process.env.ACADEMY_MASSIVE_STREAM === 'off' ? null : createMassiveStream({ apiKey: config.massiveApiKey, logger: log });
   /* The Indicator Engine screener sweeps the scanner's symbols (ACADEMY_SCREENER_SYMBOLS, default 40) every ten minutes, reading each from the same cached candles the chart uses. */
@@ -2835,7 +2880,21 @@ async function main() {
     candles: getAcademyCandles, logger: log, maxSymbols: Math.max(5, Math.min(100, Number(process.env.ACADEMY_SCREENER_SYMBOLS) || 40)),
     universe: async () => { const s = await getAcademyScanner(); return Array.isArray(s && s.rows) ? s.rows : []; }
   });
-  const marketHistory = createMassiveHistory({ apiKey: config.massiveApiKey });
+  dataStatusExtras = () => {
+    const out = {};
+    if (!config.massiveApiKey) out['massive-rest'] = { state: 'unconfigured' };
+    if (academyMassive) {
+      const w = academyMassive.status(), open = isMarketOpen();
+      let state = 'ok', detail = '';
+      if (!w.enabled) { state = 'unconfigured'; }
+      else if (w.failedAuth) { state = 'down'; detail = 'websocket login rejected'; }
+      else if (open && w.symbols > 0 && !w.connected) { state = 'degraded'; detail = 'reconnecting'; }
+      else if (open && w.symbols > 0 && w.lastMessageAt && Date.now() - w.lastMessageAt > 120_000) { state = 'degraded'; detail = 'no data for over 2 minutes'; }
+      out.websocket = { state, ...(detail ? { detail } : {}), connected: w.connected, symbols: w.symbols, filtered: w.filtered };
+    }
+    return out;
+  };
+  const marketHistory = createMassiveHistory({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o), sanitize: (bars, tf) => sanitizeBars(bars, tf) });
   /* Each member picks their own alert sources (servers -> channels or posters); SML_ACADEMY_ALERT_SOURCES=off brings back the fixed two-stream desk. */
   const perMemberAlerts = process.env.SML_ACADEMY_ALERT_SOURCES !== 'off';
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
