@@ -265,7 +265,7 @@
         body: JSON.stringify({ plans: out })
       }).then(function () {
         overlay.remove();
-        location.reload();
+        data.plans = out;
       });
     });
 
@@ -295,8 +295,12 @@
 
   api('/plans?slug=' + encodeURIComponent(s))
     .then(function (data) {
-      if (data && data.plans && data.plans.length) {
-        render(data);
+      /* The cards live only in the onboarding overlay on locked paid channels and in Group Settings.
+         They are no longer drawn into the page; owners still reach the editor from Group Settings or the menu. */
+      if (data && data.can_manage) {
+        data.plans = data.plans || [];
+        window.smlStorefrontOpenEditor = function () { openEditor(data); };
+        installMenu(data);
       }
     })
     .catch(function () {});
