@@ -40,6 +40,7 @@ const { sanitizeBars, annotateCandles } = require('./data-quality');
 const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPgStateStore } = require('./academy-state-store');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
+const { createGroupTools } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const dataHealth = createDataHealth();
 const { createDataRateLimit } = require('./data-rate-limit');
@@ -1345,6 +1346,33 @@ async function handleSiteExportIngest(request, response, options) {
   sendJson(response, 201, { ok: true, name, seq, total });
 }
 
+/* Group Pro Tools: the StockMarketLoop group plugin asks for one tool at a time, signed with the same secret as every other site-to-platform call.
+   WordPress has already decided who may use the group and whether the member gets the full tool or a preview. */
+const groupToolsLimit = createDataRateLimit({ limit: Math.max(60, Number(process.env.GROUP_TOOLS_RATE_PER_MIN) || 600), windowMs: 60_000 });
+async function handleGroupTools(request, response, options) {
+  if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+  const body = await readRequestBody(request);
+  if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+  const verified = verifySignature({ secret: options.billingApiSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: options.now() });
+  if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
+  if (!options.groupTools) { sendJson(response, 503, { ok: false, error: 'group_tools_disabled' }); return; }
+  let input;
+  try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+  if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+  const gid = String(Number(input.groupId) || 'none');
+  const gate = groupToolsLimit.take({ headers: { 'x-forwarded-for': 'group:' + gid }, socket: {} });
+  if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+  try {
+    const params = input.params && typeof input.params === 'object' ? input.params : {};
+    const data = await options.groupTools.run(String(input.tool || ''), { symbol: input.symbol, symbols: input.symbols, params, preview: input.preview === true });
+    sendJson(response, 200, data && typeof data === 'object' && 'ok' in data ? data : { ok: true, ...data });
+  } catch (error) {
+    if (error instanceof TypeError) { sendJson(response, 400, { ok: false, error: String(error.message) }); return; }
+    options.logger('error', 'group_tools_failed', { error });
+    sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+  }
+}
+
 /* Discord tracked links: who tapped which link, for the site dashboard. Signed
    with the billing bridge secret like every other site-to-platform call. */
 async function handleLinkReport(request, response, options) {
@@ -1492,7 +1520,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -1589,6 +1617,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
         return;
       }
+    }
+    if (request.method === 'POST' && path === '/v1/group-tools/run') {
+      await handleGroupTools(request, response, { ...billingOptions, groupTools });
+      return;
     }
     if (request.method === 'POST' && path === '/v1/verify/report') {
       await handleLinkReport(request, response, { ...billingOptions, linkTracker: verifyGate ? { report: (input) => verifyGate.report(input) } : null });
@@ -2934,6 +2966,11 @@ async function main() {
     memory: createSentimentMemory({ store: createPgStateStore({ pool: database.pool, key: 'sentiment', defaultValue: () => ({ baselines: {}, history: {} }), logger: log }), logger: log }),
     logger: log
   }) : null;
+  /* Group Pro Tools for StockMarketLoop groups (setups, absorption, dark pool, options strategies, dashboard). */
+  const groupTools = process.env.GROUP_TOOLS === 'off' ? null : createGroupTools({
+    candles: sentimentCandles, stream: academyMassive, orderFlow: academyOrderFlow, orderFlowStore,
+    alerts: academyAlerts, sentiment: academySentiment, logger: log
+  });
   const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
     store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     alerts: academyAlerts, presets: defaultChannels(), logger: log
@@ -3008,7 +3045,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

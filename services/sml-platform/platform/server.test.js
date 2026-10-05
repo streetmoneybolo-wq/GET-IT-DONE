@@ -1571,3 +1571,34 @@ test('Academy sentiment route is session and tier gated, validates the symbol an
     assert.equal((await fetch(`${base}/academy-activity/sentiment?symbol=SPY`, { headers: { authorization: 'Bearer member' } })).status, 503);
   });
 });
+
+test('group pro tools route is signature-checked, validates input, passes preview through and hides internals on failure', async () => {
+  const crypto = require('node:crypto');
+  const secret = 'billing-test-secret';
+  const post = (base, payload, { sign = true, ts = 1_700_000_000, secretUsed = secret } = {}) => {
+    const raw = JSON.stringify(payload);
+    const headers = { 'content-type': 'application/json', 'x-sml-timestamp': String(ts) };
+    if (sign) headers['x-sml-signature'] = crypto.createHmac('sha256', secretUsed).update(`${ts}.${raw}`, 'utf8').digest('hex');
+    return fetch(`${base}/v1/group-tools/run`, { method: 'POST', headers, body: raw });
+  };
+  const calls = [];
+  const groupTools = { run: async (tool, input) => { calls.push([tool, input.symbol, input.preview]); if (tool === 'boom') throw new Error('secret internals'); if (tool === 'bad') throw new TypeError('invalid_symbol'); return { ok: true, tool, symbol: input.symbol, preview: !!input.preview }; } };
+  await withServer({ billingApiSecret: secret, groupTools }, async (base) => {
+    assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' }, { sign: false })).status, 401);
+    assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' }, { secretUsed: 'wrong-secret' })).status, 401);
+    assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' }, { ts: 1_700_000_000 - 7200 })).status, 401, 'stale timestamp');
+    const ok = await post(base, { tool: 'setups', symbol: 'SPY', groupId: 7, preview: true });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, tool: 'setups', symbol: 'SPY', preview: true });
+    assert.deepEqual(calls, [['setups', 'SPY', true]]);
+    assert.equal((await post(base, { tool: 'bad', symbol: 'x' })).status, 400);
+    const boom = await post(base, { tool: 'boom', symbol: 'SPY' });
+    assert.equal(boom.status, 503);
+    assert.doesNotMatch(JSON.stringify(await boom.json()), /secret internals/);
+    const nonJson = await fetch(`${base}/v1/group-tools/run`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' });
+    assert.equal(nonJson.status, 415);
+  });
+  await withServer({ billingApiSecret: secret }, async (base) => {
+    assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' })).status, 503, 'disabled without the service');
+  });
+});
