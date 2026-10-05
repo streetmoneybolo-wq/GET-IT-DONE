@@ -523,6 +523,30 @@
     var createdAny = false;
     var revisionRefresh = Promise.resolve(true);
     var CH_TYPES = ['text', 'alerts', 'education', 'voice', 'live'];
+    // Adopt the server's current revision just before saving. Channel creates, deletes and
+    // earlier saves from this very panel legitimately move the revision, so only refuse when
+    // someone else changed the categories or assignments we last synced.
+    function syncRevision() {
+      return fetch(API, { credentials: 'same-origin', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || !d.layout_revision) return false;
+          if (S.layoutRevision && String(d.layout_revision) !== S.layoutRevision) {
+            var fp = function (obj) {
+              return Object.keys(obj || {}).sort(function (a, b) { return Number(a) - Number(b); })
+                .map(function (k) { return k + ':' + obj[k]; }).join('|');
+            };
+            // assignments of channels this panel deleted are pruned server-side; tolerate that
+            var live = {}; (chans || []).forEach(function (c) { live[c.id] = 1; });
+            var mine = {}; Object.keys(S.assignments || {}).forEach(function (k) { if (live[k]) mine[k] = S.assignments[k]; });
+            var theirs = {}; Object.keys(d.assignments || {}).forEach(function (k) { if (live[k]) theirs[k] = d.assignments[k]; });
+            if (JSON.stringify(d.categories || []) !== JSON.stringify(S.categories) || fp(mine) !== fp(theirs)) return false;
+          }
+          S.layoutRevision = String(d.layout_revision);
+          return true;
+        })
+        .catch(function () { return false; });
+    }
     function refreshLayoutSnapshot() {
       revisionRefresh = fetch(API, { credentials: 'same-origin', headers: NONCE ? { 'X-WP-Nonce': NONCE } : {} })
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -936,7 +960,7 @@
           if (label) label.textContent = norm(c.name);
         });
         if (!layoutChanged) return finish(true, 'All changes saved ✓');
-        return revisionRefresh.then(function (revisionOk) {
+        return syncRevision().then(function (revisionOk) {
           if (!revisionOk || !S.layoutRevision) return finish(false, 'Could not confirm the current layout — it will try again on your next edit.');
           return fetch(LAYOUT_API, {
             method: 'POST', credentials: 'same-origin',
