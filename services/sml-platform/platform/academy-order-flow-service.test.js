@@ -107,3 +107,23 @@ test('live view: fast polling for a watched symbol, de-duplicated prints, model 
   assert.throws(() => h.svc.live('../x'), /invalid_symbol/);
   h.svc.stop();
 });
+
+test('a slow origin is polled less often: the next poll waits at least 1.5x the last answer time', async () => {
+  const h = harness(); h.svc.start();
+  h.setResponder(() => { h.advance(9000); return { ok: true, json: async () => bookJson(h.now(), { ticks: [] }) }; });
+  await h.svc.tick();
+  const e = h.svc.engines.get('SPY');
+  assert.ok(e.nextAt - h.now() >= 13_000, 'waits about 13.5 s after a 9 s answer, got ' + (e.nextAt - h.now()));
+  const before = h.calls.length;
+  h.advance(5000); await h.svc.tick();
+  assert.equal(h.calls.length, before, 'no new poll while the slow-origin spacing is in force');
+  h.svc.stop();
+});
+
+test('a fast origin keeps the normal cadence', async () => {
+  const h = harness(); h.svc.start();
+  await h.svc.tick();
+  const e = h.svc.engines.get('SPY');
+  assert.ok(e.nextAt - h.now() <= 2600);
+  h.svc.stop();
+});

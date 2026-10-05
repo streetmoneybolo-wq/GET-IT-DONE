@@ -10,7 +10,7 @@ const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
  * WordPress sees a steady trickle instead of a burst. Symbols nobody looks at for two minutes are dropped; SPY and QQQ stay warm.
  * Every event is stored with its price so a job can record the 5-minute outcome, which is how the signals get measured before anyone leans on them.
  */
-function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timers = { setTimeout, clearTimeout } } = {}) {
+function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timeoutMs = 15000, timers = { setTimeout, clearTimeout } } = {}) {
   const engines = new Map();   // symbol -> { flow, lastTouch, nextAt, failures, closed, lastError, lastOk }
   const pending = [];          // { id, symbol, price0, side, dueAt }
   let running = false, timer = null, warnedAt = 0;
@@ -35,7 +35,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
 
   async function fetchOne(symbol) {
     const url = `${origin}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(symbol)}&depth=10&ticks=40`;
-    const res = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' }, signal: AbortSignal.timeout(6000) });
+    const res = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' }, signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) throw new Error(`orderflow_${res.status}`);
     const j = await res.json();
     const bids = j && j.book && j.book.bids, asks = j && j.book && j.book.asks;
@@ -45,13 +45,16 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
   }
 
   async function pollSymbol(symbol, e) {
+    const startedAt = now();
     try {
       const data = await fetchOne(symbol);
-      if (data.closed) { e.closed = true; e.nextAt = now() + closedPollMs; return; }
+      /* A slow origin must not be hammered: wait at least 1.5x as long as the last answer took before asking again. */
+      e.slowMs = Math.round((now() - startedAt) * 1.5);
+      if (data.closed) { e.closed = true; e.nextAt = now() + Math.max(closedPollMs, e.slowMs || 0); return; }
       e.closed = false; e.failures = 0; e.lastOk = now();
       /* Poll fast for whoever is watching (live view), but feed the order-flow model at its calibrated ~2.5 s cadence so its windows keep their meaning. */
       const cadence = now() - e.lastTouch < fastWindowMs ? fastPollMs : pollMs;
-      e.nextAt = now() + cadence;
+      e.nextAt = now() + Math.max(cadence, e.slowMs || 0);
       absorbLive(e, data);
       if (now() - e.lastPush < pollMs - 150) return;
       e.lastPush = now();

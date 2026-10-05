@@ -436,7 +436,7 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
     try {
       const upstream = await dataHealth.guardedFetch('wordpress-history', `${REDDIT_HUB_ORIGIN}/wp-json/sml/v1/history?symbol=${encodeURIComponent(safeSymbol)}&tf=${encodeURIComponent(safeTimeframe)}`, {
         headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
-        signal: AbortSignal.timeout(7_000)
+        signal: AbortSignal.timeout(12_000)
       });
       if (!upstream.ok) throw new Error(`academy_market_${upstream.status}`);
       const source = await upstream.json();
@@ -471,6 +471,7 @@ const ACADEMY_WARM = [['SPY', '5m'], ['QQQ', '5m'], ['SPY', '1D']];
 let academyWarmFailLogged = 0;
 function startAcademyChartWarmers(log = logger) {
   const tick = async () => {
+    try { await getAcademyScanner(); } catch (error) { if (Date.now() - academyWarmFailLogged > 300_000) { academyWarmFailLogged = Date.now(); log('warn', 'academy_scanner_warm_failed', { error }); } }
     for (const [symbol, tf] of ACADEMY_WARM) {
       try { await getAcademyCandles(symbol, tf); }
       catch (error) {
@@ -484,15 +485,25 @@ function startAcademyChartWarmers(log = logger) {
   return timer;
 }
 
+/* The site's scanner can take 15-20 s when it is busy. Members must never wait on that: once a copy exists it is served at once (marked stale) and
+   refreshed in the background, and the warmer below keeps it fresh. Only the very first request after a restart waits for the origin. */
 async function getAcademyScanner() {
   const now = Date.now();
   if (academyScannerCache.payload && academyScannerCache.freshUntil > now) return academyScannerCache.payload;
+  if (academyScannerCache.payload && academyScannerCache.staleUntil > now) {
+    if (!academyScannerCache.inflight) refreshAcademyScanner().catch(() => {});
+    return { ...academyScannerCache.payload, stale: true };
+  }
+  return refreshAcademyScanner();
+}
+
+function refreshAcademyScanner() {
   if (academyScannerCache.inflight) return academyScannerCache.inflight;
   academyScannerCache.inflight = (async () => {
     try {
       const upstream = await dataHealth.guardedFetch('wordpress-scanner', `${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/live`, {
         headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
-        signal: AbortSignal.timeout(7_000)
+        signal: AbortSignal.timeout(25_000)
       });
       if (!upstream.ok) throw new Error(`academy_scanner_${upstream.status}`);
       const sampledAt = Date.now();
@@ -535,7 +546,7 @@ async function getAcademyDepth(symbol) {
     try {
       const upstream = await dataHealth.guardedFetch('wordpress-depth', `${REDDIT_HUB_ORIGIN}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(safeSymbol)}&depth=10&ticks=0`, {
         headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' },
-        signal: AbortSignal.timeout(7_000)
+        signal: AbortSignal.timeout(15_000)
       });
       if (!upstream.ok) throw new Error(`academy_depth_${upstream.status}`);
       const source = await upstream.json();

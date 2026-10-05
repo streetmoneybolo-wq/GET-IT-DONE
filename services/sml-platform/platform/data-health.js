@@ -15,7 +15,7 @@ function parseRetryAfter(value, now = Date.now()) {
   return Number.isFinite(t) ? Math.max(0, Math.min(10 * 60_000, t - now)) : 0;
 }
 
-function createDataHealth({ now = Date.now, failThreshold = 5, openMs = 20_000, maxOpenMs = 5 * 60_000, degradedWindowMs = 5 * 60_000 } = {}) {
+function createDataHealth({ now = Date.now, failThreshold = 5, openMs = 15_000, maxOpenMs = 60_000, degradedWindowMs = 5 * 60_000 } = {}) {
   const provs = new Map();
   function rec(name) {
     if (!provs.has(name)) {

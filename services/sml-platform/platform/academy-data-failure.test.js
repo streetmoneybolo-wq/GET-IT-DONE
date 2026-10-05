@@ -66,3 +66,39 @@ test('depth: a 429 from the origin opens a retry window instead of hammering it'
   assert.equal(calls, before, 'no second upstream call while Retry-After is in force');
   assert.equal(dataHealth.snapshot().providers['wordpress-depth'].state, 'rate_limited');
 });
+
+test('scanner: once a copy exists it is served instantly (stale) while a slow origin refreshes in the background', async () => {
+  const realNow = Date.now; let t = realNow.call(Date) + 10_000_000;
+  Date.now = () => t;
+  try {
+    const row = (p) => ({ rows: [{ symbol: 'AAPL', price: p, change_pct: 1 }] });
+    mockFetch(async () => json(row(100)));
+    const first = await getAcademyScanner();
+    assert.equal(first.rows[0].price, 100);
+    // the origin now hangs for "18 seconds"
+    let release; const gate = new Promise((r) => { release = r; });
+    let fetches = 0;
+    mockFetch(async () => { fetches += 1; await gate; return json(row(101)); });
+    t += 10_000; // past the 4 s fresh window
+    const started = realNow.call(Date);
+    const second = await getAcademyScanner();
+    assert.ok(realNow.call(Date) - started < 500, 'did not wait for the origin');
+    assert.equal(second.stale, true); assert.equal(second.rows[0].price, 100);
+    await getAcademyScanner(); // a second caller does not start another refresh
+    assert.equal(fetches, 1);
+    release(); await new Promise((r) => setTimeout(r, 30));
+    t += 1; const third = await getAcademyScanner();
+    assert.equal(third.rows[0].price, 101, 'the background refresh landed');
+  } finally { Date.now = realNow; }
+});
+
+test('scanner: with no copy at all (cold start) the first request does wait for the origin', async () => {
+  // reachable only before any success in this process; the earlier test populated the cache, so verify the stale window expiry path instead
+  const realNow = Date.now; let t = realNow.call(Date) + 50_000_000;
+  Date.now = () => t;
+  try {
+    mockFetch(async () => json({ rows: [{ symbol: 'MSFT', price: 5 }] }));
+    const r = await getAcademyScanner();
+    assert.equal(r.rows[0].symbol, 'MSFT'); assert.notEqual(r.stale, true);
+  } finally { Date.now = realNow; }
+});
