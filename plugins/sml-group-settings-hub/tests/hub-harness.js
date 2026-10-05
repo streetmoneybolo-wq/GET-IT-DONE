@@ -81,6 +81,8 @@ function stub(page, st, log) {
     log.push({ method, p, body });
     const json = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
     st.profile = st.profile || { id: 12, name: 'Making Easy Money', type: 'creator', description: 'old', ticker_symbol: '', sector_name: '', creator_url: '', paid_pitch: '', icon_url: 'i', banner_url: 'b' };
+    if (p.endsWith('/sml-storefront/v1/plans')) return json({ plans: [{ slug: 'vip', name: 'VIP Card', price_display: '$20', cta_url: 'https://x.test' }], can_manage: true });
+    if (p.endsWith('/sml/v1/group/watermark') || p.endsWith('/sml/v1/group/header-banner')) { st.visuals = (st.visuals || []).concat([[p.split('/').pop(), body]]); return json({ ok: true }); }
     if (p.endsWith('/sml/v1/group/editor')) return json({ group: st.profile });
     if (p.endsWith('/sml/v1/group/update')) { st.profile = Object.assign({}, st.profile, body); return json({ group: st.profile }); }
     const m = p.match(/\/sml-hub\/v1\/group\/12(\/.*)?$/); if (!m) return json({ message: 'unexpected ' + p }, 404);
@@ -142,7 +144,14 @@ async function ownerFlow(browser, viewport, tag) {
   await page.click('[data-go="overview"]'); await page.waitForTimeout(300);
   await page.fill('[data-profile] [name=name]', 'MEM Renamed'); await page.waitForTimeout(1200);
   r.profileName = st.profile && st.profile.name; r.profileKeepsIcon = st.profile && st.profile.icon_url;
+  await page.evaluate(() => { const i = document.querySelector('[data-visuals] [name=wm_opacity]'); i.value = '40'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(1200);
+  r.visuals = JSON.stringify(st.visuals || []);
   r.profileState = await page.evaluate(() => document.querySelector('[data-profile] [data-state]').textContent);
+
+  await page.click('[data-go="memberships"]'); await page.waitForTimeout(500);
+  r.cardRows = await page.evaluate(() => Array.from(document.querySelectorAll('[data-cards] .sml-hub__item b')).map((b) => b.textContent));
+  await page.click('[data-go="overview"]'); await page.waitForTimeout(200);
 
   // Roles: create, edit, delete
   await page.click('[data-go="roles"]'); await page.waitForTimeout(200);

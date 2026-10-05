@@ -5,7 +5,8 @@ body.sml-hub-dedupe [data-sml-products],
 body.sml-hub-dedupe .sml-billing-setup,
 body.sml-hub-dedupe [data-sml-dgc-channel-sync],
 body.sml-hub-dedupe [data-sml-ob-open],
-body.sml-hub-dedupe .sml-gshell__edit:not(.sml-dgc-owner):not(.sml-hub-open-btn){position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;opacity:0!important;pointer-events:none!important;margin:0!important;padding:0!important;border:0!important}
+body.sml-hub-noedit .sml-gshell__edit:not(.sml-dgc-owner):not(.sml-hub-open-btn),
+body.sml-hub-noedit [data-sml-goe-edit]{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;opacity:0!important;pointer-events:none!important;margin:0!important;padding:0!important;border:0!important}
 body.sml-hub-lock{overflow:hidden}
 
 /* Top of the stack, and lift the panels the hub opens above the site's fixed header too. */

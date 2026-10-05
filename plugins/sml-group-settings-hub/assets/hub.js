@@ -40,8 +40,9 @@
     opt = Object.assign({}, opt || {});
     opt.credentials = 'same-origin';
     opt.headers = Object.assign({ 'X-WP-Nonce': CFG.nonce }, opt.headers || {});
-    if (opt.body && typeof opt.body !== 'string') { opt.body = JSON.stringify(opt.body); }
-    if (opt.body && !opt.headers['Content-Type']) opt.headers['Content-Type'] = 'application/json';
+    var isForm = typeof FormData !== 'undefined' && opt.body instanceof FormData;
+    if (opt.body && !isForm && typeof opt.body !== 'string') { opt.body = JSON.stringify(opt.body); }
+    if (opt.body && !isForm && !opt.headers['Content-Type']) opt.headers['Content-Type'] = 'application/json';
     var url = /^https?:/.test(path) ? path : CFG.api + path;
     return fetch(url, opt).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
@@ -193,8 +194,8 @@
         '<label>Ticker symbol<input name="ticker_symbol" placeholder="NVDA, SPY"></label>' +
         '<label>Sector name<input name="sector_name" placeholder="AI, Energy"></label>' +
         '<label class="wide">Paid group pitch<textarea name="paid_pitch" rows="2"></textarea></label>' +
-        '<p class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</p>';
-      ['name', 'creator_url', 'description', 'ticker_symbol', 'sector_name', 'paid_pitch'].forEach(function (k) { form.elements[k].value = g[k] == null ? '' : g[k]; });
+        '<input type="hidden" name="icon_url"><input type="hidden" name="banner_url"><p class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</p>';
+      ['icon_url', 'banner_url', 'name', 'creator_url', 'description', 'ticker_symbol', 'sector_name', 'paid_pitch'].forEach(function (k) { form.elements[k].value = g[k] == null ? '' : g[k]; });
       var st = form.querySelector('[data-state]');
       function save() {
         if (busy) { again = true; return; }
@@ -208,6 +209,53 @@
           if (again) { again = false; save(); }
         }).catch(function (e) { busy = false; again = false; st.textContent = 'Not saved: ' + e.message; });
       }
+      /* images: icon, header banner, chat watermark - uploads and strength sliders save live */
+      var hb = g.header_banner || {}, wm = g.watermark || {};
+      var wmAtt = parseInt(wm.attachment_id, 10) || 0;
+      var vis = h('<div class="sml-hub__form" data-visuals><h3 class="wide" style="grid-column:1/-1">Images</h3>' +
+        '<label>Icon<span class="sml-hub__row"><img data-prev="icon" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;background:#0b1626"><button type="button" class="sml-hub__btn sml-hub__btn--sm" data-up="icon">Upload icon</button></span></label>' +
+        '<label>Header banner<span class="sml-hub__row"><img data-prev="banner" alt="" style="width:110px;height:44px;border-radius:8px;object-fit:cover;background:#0b1626"><button type="button" class="sml-hub__btn sml-hub__btn--sm" data-up="banner">Upload banner</button></span></label>' +
+        '<label>Banner strength<input type="range" name="hb_opacity" min="0" max="100" step="1"></label>' +
+        '<label>Banner height<input type="range" name="hb_height" min="40" max="160" step="1"></label>' +
+        '<label class="wide">Chat watermark<span class="sml-hub__row"><img data-prev="watermark" alt="" style="width:80px;height:44px;border-radius:8px;object-fit:cover;background:#0b1626"><button type="button" class="sml-hub__btn sml-hub__btn--sm" data-up="watermark">Upload watermark</button><button type="button" class="sml-hub__btn sml-hub__btn--sm" data-rm-wm>Remove</button></span></label>' +
+        '<label class="wide">Watermark strength<input type="range" name="wm_opacity" min="0" max="100" step="1"></label>' +
+        '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-file hidden>' +
+        '<p class="note wide" data-vstate style="color:#8ea0bd;font-size:13px;grid-column:1/-1">Changes save automatically.</p></div>');
+      form.parentNode.appendChild(vis);
+      var vst = vis.querySelector('[data-vstate]'), fileIn = vis.querySelector('[data-file]'), upKind = '';
+      function setPrev(k, url) { var im = vis.querySelector('[data-prev="' + k + '"]'); if (im) { if (url) im.src = url; else im.removeAttribute('src'); } }
+      setPrev('icon', g.icon_url); setPrev('banner', g.banner_url); setPrev('watermark', wm.url);
+      vis.elements = { hb_opacity: vis.querySelector('[name=hb_opacity]'), hb_height: vis.querySelector('[name=hb_height]'), wm_opacity: vis.querySelector('[name=wm_opacity]') };
+      vis.elements.hb_opacity.value = hb.opacity == null ? 70 : hb.opacity;
+      vis.elements.hb_height.value = hb.height == null ? 61 : hb.height;
+      vis.elements.wm_opacity.value = wm.opacity == null ? 15 : wm.opacity;
+      var vchain = Promise.resolve();
+      function saveVisuals() {
+        vchain = vchain.then(function () {
+          vst.textContent = 'Saving...';
+          return api(site + 'group/watermark', { method: 'POST', body: { group_id: Number(CFG.groupId), attachment_id: wmAtt, opacity: parseInt(vis.elements.wm_opacity.value, 10) || 0 } })
+            .then(function () { return api(site + 'group/header-banner', { method: 'POST', body: { group_id: Number(CFG.groupId), opacity: parseInt(vis.elements.hb_opacity.value, 10) || 0, height: parseInt(vis.elements.hb_height.value, 10) || 61 } }); })
+            .then(function () { vst.textContent = 'All changes saved \u2713'; })
+            .catch(function (e) { vst.textContent = 'Not saved: ' + e.message; });
+        });
+      }
+      autosave(vis, saveVisuals, 600);
+      vis.addEventListener('click', function (e) {
+        var u = e.target.closest('[data-up]'); if (u) { upKind = u.getAttribute('data-up'); fileIn.value = ''; fileIn.click(); return; }
+        if (e.target.closest('[data-rm-wm]')) { wmAtt = 0; setPrev('watermark', ''); saveVisuals(); }
+      });
+      fileIn.onchange = function () {
+        var f = fileIn.files && fileIn.files[0]; if (!f || !upKind) return;
+        var kind = upKind, fd = new FormData();
+        fd.append('kind', kind === 'watermark' ? 'icon' : kind);
+        fd.append('image', f, f.name);
+        vst.textContent = 'Uploading ' + kind + '...';
+        api(site + 'group/image-upload', { method: 'POST', body: fd }).then(function (r) {
+          setPrev(kind, r.url);
+          if (kind === 'watermark') { wmAtt = parseInt(r.attachment_id, 10) || 0; saveVisuals(); }
+          else { form.elements[kind + '_url'].value = r.url || ''; save(); vst.textContent = 'Uploaded - saving...'; }
+        }).catch(function (e) { vst.textContent = 'Upload failed: ' + e.message; });
+      };
       autosave(form, save, 700);
       form.addEventListener('input', function () { st.textContent = 'Typing...'; });
       form.onsubmit = function (e) { e.preventDefault(); save(); };
@@ -230,7 +278,6 @@
       renderProfile(prof.querySelector('form'));
     }
     var cards = h('<div class="sml-hub__cards"></div>');
-    cards.appendChild(card('Group profile & visuals', 'Icon, header banner and background image (name, description and links are editable above and save live).', 'Open image editor', function () { return delegate('[data-smlgs-edit],.sml-gshell__edit:not(.sml-dgc-owner):not(.sml-hub-open-btn)', 'The group editor button is not on this page.'); }));
     cards.appendChild(card('Channel layout', 'Rename, reorder and group channels under categories.', 'Open layout', function () { return f.categories ? delegate('#sml-gcat-gear', 'The categories gear is not on this page (open the sidebar first).') : 'The Group Categories snippet is not installed.'; }));
     cards.appendChild(card('Membership products', 'Paid tiers, Stripe payouts.', 'Go to Memberships', function () { go('memberships'); return ''; }));
     cards.appendChild(card('Discord', 'Pair a server, map roles, sync channels.', 'Go to Discord', function () { go('discord'); return ''; }));
@@ -424,15 +471,34 @@
   };
 
   /* ---------- Memberships ---------- */
+  function renderCards(c) {
+    var box = h('<div><h3>Membership cards</h3><p class="note">These are the cards people see on a locked paid channel they cannot enter yet. They never show anywhere else.</p><div class="sml-hub__list" data-cards><p class="note">Loading...</p></div><div class="sml-hub__row"><button type="button" class="sml-hub__btn sml-hub__btn--primary" data-edit-cards>Edit membership cards</button></div></div>');
+    c.appendChild(box);
+    var list = box.querySelector('[data-cards]');
+    box.querySelector('[data-edit-cards]').onclick = function () {
+      if (typeof window.smlStorefrontOpenEditor !== 'function') { msg(c, 'The membership cards editor is not loaded on this page yet. Reload and try again.', false); return; }
+      closeHub();
+      setTimeout(window.smlStorefrontOpenEditor, 30);
+    };
+    api(location.origin + '/wp-json/sml-storefront/v1/plans?slug=' + encodeURIComponent(CFG.slug || '')).then(function (r) {
+      var plans = (r && r.plans) || [];
+      list.innerHTML = '';
+      if (!plans.length) { list.appendChild(h('<p class="note">No cards yet. Use Edit membership cards to add one.</p>')); return; }
+      plans.forEach(function (p) {
+        list.appendChild(h('<div class="sml-hub__item"><div class="grow"><b>' + esc(p.name) + '</b><small>' + esc(p.price_display || '') + (p.badge ? ' · ' + esc(p.badge) : '') + (p.cta_url ? ' · button goes to ' + esc(p.cta_url) : ' · no button link') + '</small></div></div>'));
+      });
+    }).catch(function (e) { list.innerHTML = '<p class="note">Could not load the cards: ' + esc(e.message) + '</p>'; });
+  }
   RENDER.memberships = function (c) {
     var d = S.data, f = d.features || {};
+    if (can('manage_memberships')) renderCards(c);
     if (!f.billing) { c.appendChild(h('<p class="note">The StockMarketLoop billing plugin is not installed on this site, so there are no membership products here.</p>')); return; }
     c.appendChild(h('<p>Paid tiers are Stripe subscriptions. Members pay through Stripe Checkout; the payout lands in your connected Stripe account after the disclosed 6% platform fee. A product grants a website level for as long as the subscription is active.</p>'));
     var row = h('<div class="sml-hub__row"><button type="button" class="sml-hub__btn sml-hub__btn--primary" data-products>Manage products</button><button type="button" class="sml-hub__btn" data-stripe>Stripe payout setup</button></div>');
     row.querySelector('[data-products]').onclick = function () { var err = can('manage_memberships') ? openProducts() : 'You do not have the Manage memberships permission.'; if (err) msg(c, err, false); };
     row.querySelector('[data-stripe]').onclick = function () { var err = delegate('.sml-billing-setup', 'Stripe payout setup is already complete, or the billing plugin is not loaded on this page.'); if (err) msg(c, err, false); };
     c.appendChild(row);
-    c.appendChild(h('<h3>Products</h3>'));
+    c.appendChild(h('<h3>Stripe subscription products</h3>'));
     var list = h('<div class="sml-hub__list"></div>');
     if (!(d.plans || []).length) list.appendChild(h('<p class="note">No products yet. Use “Manage products” to create one; the Stripe product and price are created for you.</p>'));
     (d.plans || []).forEach(function (p) {
@@ -569,7 +635,7 @@
   }
 
   /* ---------- mounting on the group page ---------- */
-  function applyDedupe() { document.body.classList.toggle('sml-hub-dedupe', !!(S.data && S.data.prefs && S.data.prefs.hide_legacy && S.data.viewer.can_open_hub)); }
+  function applyDedupe() { document.body.classList.toggle('sml-hub-noedit', !!(S.data && S.data.viewer && S.data.viewer.can_open_hub)); document.body.classList.toggle('sml-hub-dedupe', !!(S.data && S.data.prefs && S.data.prefs.hide_legacy && S.data.viewer.can_open_hub)); }
   function installButtons() {
     if (!S.data || !S.data.viewer.can_open_hub) return;
     var head = document.querySelector('.sml-gshell__main-head,.sml-group-head,.sml-group-header');
