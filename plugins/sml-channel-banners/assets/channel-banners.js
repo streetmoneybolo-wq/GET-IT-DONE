@@ -91,7 +91,7 @@
     state.saveTimer = window.setTimeout(function () {
       var data = new FormData();
       data.append('group_id', String(groupId)); data.append('channel_id', String(channelId));
-      ['zoom', 'pos_x', 'pos_y', 'off_x', 'off_y', 'height'].forEach(function (k) { data.append(k, String(entry[k] == null ? (k === 'height' ? DEFAULT_H : k === 'zoom' ? 100 : k.indexOf('pos') === 0 ? 50 : 0) : entry[k])); });
+      ['zoom', 'pos_x', 'pos_y', 'off_x', 'off_y', 'height'].forEach(function (k) { data.append(k, String(entry[k] == null ? (k === 'height' ? 0 : k === 'zoom' ? 100 : k.indexOf('pos') === 0 ? 50 : 0) : entry[k])); });
       request('visual', { method: 'POST', body: data }).then(function () { setBar('Saved'); }).catch(function (error) { setBar(error.message || 'Could not save', true); });
     }, 450);
   }
@@ -109,7 +109,7 @@
     layer = document.createElement('div');
     layer.className = 'sml-cbanner-edit';
     layer.innerHTML = '<div class="sml-cbanner-handle h-tl" data-h="zoom"></div><div class="sml-cbanner-handle h-tr" data-h="zoom"></div><div class="sml-cbanner-handle h-bl" data-h="zoom"></div><div class="sml-cbanner-handle h-br" data-h="zoom"></div><div class="sml-cbanner-edge" data-h="height" title="Drag up or down to change the banner height"></div>'
-      + '<div class="sml-cbanner-bar" data-sml-cbanner-bar><span>Drag to move · corners resize the picture · bottom edge changes height · scroll to zoom</span><output></output><button type="button" data-sml-cbanner-reset>Reset</button><button type="button" data-sml-cbanner-done>Done</button></div>';
+      + '<div class="sml-cbanner-bar" data-sml-cbanner-bar><span>Drag to move · corners resize the picture · bottom edge changes height · scroll to zoom</span><output></output><button type="button" data-sml-cbanner-fit>Fit whole image</button><button type="button" data-sml-cbanner-reset>Reset</button><button type="button" data-sml-cbanner-done>Done</button></div>';
     head.appendChild(layer);
     var drag = null;
     layer.addEventListener('pointerdown', function (e) {
@@ -140,7 +140,8 @@
     }, { passive: false });
     layer.addEventListener('click', function (e) {
       if (e.target.closest('[data-sml-cbanner-done]')) { state.edit = false; editLayer(); }
-      if (e.target.closest('[data-sml-cbanner-reset]')) { var entry = entryNow(); if (entry) { entry.zoom = 100; entry.pos_x = 50; entry.pos_y = 50; entry.off_x = 0; entry.off_y = 0; entry.height = DEFAULT_H; render(); queueSave(); } }
+      if (e.target.closest('[data-sml-cbanner-fit]')) { var f = entryNow(); if (f) { f.zoom = 100; f.pos_x = 50; f.pos_y = 50; f.off_x = 0; f.off_y = 0; delete f.height; render(); queueSave(true); } }
+      if (e.target.closest('[data-sml-cbanner-reset]')) { var entry = entryNow(); if (entry) { entry.zoom = 100; entry.pos_x = 50; entry.pos_y = 50; entry.off_x = 0; entry.off_y = 0; delete entry.height; render(); queueSave(); } }
     });
     return layer;
   }

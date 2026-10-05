@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.9
+ * Version: 1.0.10
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.9' );
+define( 'SML_CBANNER_VERSION', '1.0.10' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -175,7 +175,7 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 		$current['pos_y'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_y' ) ?? 50 ) ) );
 		if ( null !== $request->get_param( 'off_x' ) ) { $current['off_x'] = max( -300, min( 300, round( (float) $request->get_param( 'off_x' ), 1 ) ) ); }
 		if ( null !== $request->get_param( 'off_y' ) ) { $current['off_y'] = max( -300, min( 300, round( (float) $request->get_param( 'off_y' ), 1 ) ) ); }
-		if ( null !== $request->get_param( 'height' ) ) { $current['height'] = max( 100, min( 500, (int) $request->get_param( 'height' ) ) ); }
+		if ( null !== $request->get_param( 'height' ) ) { $h = (int) $request->get_param( 'height' ); if ( $h > 0 ) { $current['height'] = max( 100, min( 500, $h ) ); } else { unset( $current['height'] ); } }
 		$current['updated_by'] = get_current_user_id();
 		$current['updated_at'] = current_time( 'mysql', true );
 		$all[ $key ] = $current;
@@ -305,3 +305,23 @@ add_action( 'wp_enqueue_scripts', static function () {
 		'nonce' => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 	) );
 }, 99 );
+
+/* One-time (1.0.10): earlier versions cropped banners, so owners zoomed or moved them to compensate. Show every saved banner whole again:
+ * zoom 100%, centred, height from the picture's own proportions. Owners can still zoom, move and resize afterwards. */
+add_action( 'init', static function () {
+	if ( get_option( 'sml_cbanner_fit_migrated' ) === '1.0.10' ) { return; }
+	global $wpdb;
+	$names = $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'sml\\_channel\\_banners\\_%'" );
+	foreach ( (array) $names as $name ) {
+		$all = get_option( $name, array() );
+		if ( ! is_array( $all ) ) { continue; }
+		foreach ( $all as $key => $entry ) {
+			if ( ! is_array( $entry ) ) { continue; }
+			$entry['zoom'] = 100; $entry['pos_x'] = 50; $entry['pos_y'] = 50;
+			unset( $entry['off_x'], $entry['off_y'], $entry['height'] );
+			$all[ $key ] = $entry;
+		}
+		update_option( $name, $all, false );
+	}
+	update_option( 'sml_cbanner_fit_migrated', '1.0.10', false );
+} );
