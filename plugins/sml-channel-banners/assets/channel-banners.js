@@ -6,7 +6,8 @@
   var config = window.SMLChannelBanners || {};
   var root = document.getElementById('sml-group-shell');
   var shellConfig = {};
-  var state = { banners: {}, canManage: false, channelId: 0, modal: null, queued: false };
+  var state = { banners: {}, canManage: false, channelId: 0, modal: null, queued: false, edit: false, saveTimer: 0 };
+  var DEFAULT_H = 152;
   if (!root || !config.api) return;
   root.setAttribute('data-sml-cbanner-state', 'booting');
   try { shellConfig = JSON.parse(root.getAttribute('data-config') || '{}'); } catch (error) {}
@@ -60,7 +61,74 @@
     }
     if (image.src !== entry.url) image.src = entry.url;
     image.style.objectPosition = entry.pos_x + '% ' + entry.pos_y + '%';
-    image.style.transform = 'scale(' + (entry.zoom / 100) + ')';
+    image.style.transform = 'translate(' + (entry.off_x || 0) + '%,' + (entry.off_y || 0) + '%) scale(' + (entry.zoom / 100) + ')';
+    var h = entry.height || DEFAULT_H;
+    head.style.setProperty('min-height', h + 'px', 'important');
+    head.style.setProperty('height', h + 'px', 'important');
+  }
+
+  /* ---- direct editing on the banner: drag the picture, drag a corner to resize it, drag the bottom edge to make the banner taller or shorter ---- */
+  function entryNow() { return state.banners[String(activeChannelId())]; }
+  function queueSave() {
+    var channelId = activeChannelId(), entry = state.banners[String(channelId)];
+    if (!entry) return;
+    window.clearTimeout(state.saveTimer);
+    setBar('Saving…');
+    state.saveTimer = window.setTimeout(function () {
+      var data = new FormData();
+      data.append('group_id', String(groupId)); data.append('channel_id', String(channelId));
+      ['zoom', 'pos_x', 'pos_y', 'off_x', 'off_y', 'height'].forEach(function (k) { data.append(k, String(entry[k] == null ? (k === 'height' ? DEFAULT_H : k === 'zoom' ? 100 : k.indexOf('pos') === 0 ? 50 : 0) : entry[k])); });
+      request('visual', { method: 'POST', body: data }).then(function () { setBar('Saved'); }).catch(function (error) { setBar(error.message || 'Could not save', true); });
+    }, 450);
+  }
+  function setBar(text, bad) {
+    var bar = root.querySelector('[data-sml-cbanner-bar] output'); if (!bar) return;
+    bar.textContent = text; bar.style.color = bad ? '#ff9aa8' : '';
+  }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function editLayer() {
+    var head = header(); if (!head) return null;
+    var layer = head.querySelector('.sml-cbanner-edit');
+    var show = state.edit && state.canManage && !!entryNow();
+    if (!show) { if (layer) layer.remove(); return null; }
+    if (layer) return layer;
+    layer = document.createElement('div');
+    layer.className = 'sml-cbanner-edit';
+    layer.innerHTML = '<div class="sml-cbanner-handle h-tl" data-h="zoom"></div><div class="sml-cbanner-handle h-tr" data-h="zoom"></div><div class="sml-cbanner-handle h-bl" data-h="zoom"></div><div class="sml-cbanner-handle h-br" data-h="zoom"></div><div class="sml-cbanner-edge" data-h="height" title="Drag up or down to change the banner height"></div>'
+      + '<div class="sml-cbanner-bar" data-sml-cbanner-bar><span>Drag to move · corners resize the picture · bottom edge changes height · scroll to zoom</span><output></output><button type="button" data-sml-cbanner-reset>Reset</button><button type="button" data-sml-cbanner-done>Done</button></div>';
+    head.appendChild(layer);
+    var drag = null;
+    layer.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('.sml-cbanner-bar')) return;
+      var entry = entryNow(), r = head.getBoundingClientRect(); if (!entry) return;
+      var kind = (e.target.closest('[data-h]') || {}).dataset ? e.target.closest('[data-h]').dataset.h : 'move';
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      drag = { kind: kind, x: e.clientX, y: e.clientY, off_x: entry.off_x || 0, off_y: entry.off_y || 0, zoom: entry.zoom, height: entry.height || r.height, dist: Math.hypot(e.clientX - cx, e.clientY - cy) || 1, cx: cx, cy: cy, w: r.width, h: r.height };
+      layer.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    layer.addEventListener('pointermove', function (e) {
+      if (!drag) return; var entry = entryNow(); if (!entry) return;
+      if (drag.kind === 'move') {
+        entry.off_x = Math.round(clamp(drag.off_x + (e.clientX - drag.x) / drag.w * 100, -300, 300) * 10) / 10;
+        entry.off_y = Math.round(clamp(drag.off_y + (e.clientY - drag.y) / drag.h * 100, -300, 300) * 10) / 10;
+      } else if (drag.kind === 'zoom') {
+        entry.zoom = Math.round(clamp(drag.zoom * Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) / drag.dist, 25, 400));
+      } else if (drag.kind === 'height') {
+        entry.height = Math.round(clamp(drag.height + (e.clientY - drag.y), 100, 500));
+      }
+      render();
+    });
+    function end() { if (!drag) return; drag = null; queueSave(); }
+    layer.addEventListener('pointerup', end); layer.addEventListener('pointercancel', end);
+    layer.addEventListener('wheel', function (e) {
+      var entry = entryNow(); if (!entry) return; e.preventDefault();
+      entry.zoom = Math.round(clamp(entry.zoom * (e.deltaY < 0 ? 1.06 : 1 / 1.06), 25, 400)); render(); queueSave();
+    }, { passive: false });
+    layer.addEventListener('click', function (e) {
+      if (e.target.closest('[data-sml-cbanner-done]')) { state.edit = false; editLayer(); }
+      if (e.target.closest('[data-sml-cbanner-reset]')) { var entry = entryNow(); if (entry) { entry.zoom = 100; entry.pos_x = 50; entry.pos_y = 50; entry.off_x = 0; entry.off_y = 0; entry.height = DEFAULT_H; render(); queueSave(); } }
+    });
+    return layer;
   }
 
   function menu() {
@@ -69,12 +137,17 @@
     var menuNode = root.querySelector('.sml-gshell__owner-menu') || root.querySelector('.sml-ghx-menu');
     if (!menuNode) return;
     if (!channelId) {
-      Array.prototype.forEach.call(menuNode.querySelectorAll('[data-sml-cbanner-open]'), function (button) { button.remove(); });
+      Array.prototype.forEach.call(menuNode.querySelectorAll('[data-sml-cbanner-open],[data-sml-cbanner-adjust]'), function (button) { button.remove(); });
       return;
     }
     Array.prototype.forEach.call(menuNode.querySelectorAll('button'), function (button) {
       if (/^channel title$/i.test(String(button.textContent || '').trim())) button.remove();
     });
+    if (!menuNode.querySelector('[data-sml-cbanner-adjust]')) {
+      var adj = document.createElement('button');
+      adj.type = 'button'; adj.setAttribute('data-sml-cbanner-adjust', '1'); adj.textContent = 'Adjust banner';
+      menuNode.appendChild(adj);
+    }
     if (!menuNode.querySelector('[data-sml-cbanner-open]')) {
       var button = document.createElement('button');
       button.type = 'button';
@@ -108,7 +181,7 @@
       '<div class="sml-cbanner-head"><h2>Channel Banner</h2><button type="button" data-sml-cbanner-close aria-label="Close">×</button></div>' +
       '<div class="sml-cbanner-preview"><img data-sml-cbanner-preview-image alt="Banner preview"></div>' +
       '<label>Banner image<small>Animated GIF up to 50 MB · JPG, PNG, or WebP up to 5 MB</small><input type="file" name="banner" accept="image/jpeg,image/png,image/gif,image/webp"></label>' +
-      '<label>Zoom<div class="sml-cbanner-range"><input type="range" name="zoom" min="25" max="300" value="100"><output data-sml-cbanner-zoom-output>100%</output></div></label>' +
+      '<label>Zoom<div class="sml-cbanner-range"><input type="range" name="zoom" min="25" max="400" value="100"><output data-sml-cbanner-zoom-output>100%</output></div></label>' +
       '<label>Horizontal position<div class="sml-cbanner-range"><input type="range" name="pos_x" min="0" max="100" value="50"><output data-sml-cbanner-x-output>50%</output></div></label>' +
       '<label>Vertical position<div class="sml-cbanner-range"><input type="range" name="pos_y" min="0" max="100" value="50"><output data-sml-cbanner-y-output>50%</output></div></label>' +
       '<p class="sml-cbanner-status" data-sml-cbanner-status role="status" aria-live="polite"></p>' +
@@ -174,6 +247,8 @@
     data.append('zoom', form.elements.zoom.value);
     data.append('pos_x', form.elements.pos_x.value);
     data.append('pos_y', form.elements.pos_y.value);
+    var cur = state.banners[String(state.channelId)] || {};
+    ['off_x', 'off_y', 'height'].forEach(function (k) { if (cur[k] != null) data.append(k, String(cur[k])); });
     if (remove) data.append('remove', '1');
     if (!remove && form.elements.banner.files[0]) data.append('banner', form.elements.banner.files[0], form.elements.banner.files[0].name);
     status.textContent = remove ? 'Removing banner…' : 'Saving banner…';
@@ -195,6 +270,7 @@
     state.queued = false;
     render();
     menu();
+    editLayer();
   }
 
   document.addEventListener('click', function (event) {
@@ -207,6 +283,11 @@
         }, delay);
       });
       return;
+    }
+    if (event.target.closest('[data-sml-cbanner-adjust]')) {
+      event.preventDefault();
+      if (!entryNow()) { openEditor(); return; }
+      state.edit = true; editLayer(); return;
     }
     if (event.target.closest('[data-sml-cbanner-open]')) {
       event.preventDefault();

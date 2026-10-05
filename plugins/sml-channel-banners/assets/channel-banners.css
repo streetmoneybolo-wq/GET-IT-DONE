@@ -100,3 +100,16 @@
 .sml-cbanner-status { min-height: 22px; margin: 10px 0; color: #9ab1a5; }
 .sml-cbanner-status.is-error { color: #ff8f9d; }
 .sml-cbanner-remove { color: #ff9aa6 !important; border-color: rgba(255,90,110,.35) !important; background: #35151d !important; }
+
+.sml-cbanner-edit { position: absolute; inset: 0; z-index: 6; cursor: move; touch-action: none; outline: 2px dashed rgba(66, 245, 179, .9); outline-offset: -2px; user-select: none; }
+.sml-cbanner-handle { position: absolute; width: 16px; height: 16px; background: #42f5b3; border: 2px solid #031a12; border-radius: 4px; z-index: 2; }
+.sml-cbanner-handle.h-tl { left: 6px; top: 6px; cursor: nwse-resize; }
+.sml-cbanner-handle.h-tr { right: 6px; top: 6px; cursor: nesw-resize; }
+.sml-cbanner-handle.h-bl { left: 6px; bottom: 16px; cursor: nesw-resize; }
+.sml-cbanner-handle.h-br { right: 6px; bottom: 16px; cursor: nwse-resize; }
+.sml-cbanner-edge { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; cursor: ns-resize; background: linear-gradient(transparent, rgba(66, 245, 179, .55)); z-index: 2; }
+.sml-cbanner-edge::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 56px; height: 4px; margin-left: -28px; border-radius: 2px; background: #42f5b3; }
+.sml-cbanner-bar { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 999px; background: rgba(3, 26, 18, .92); border: 1px solid #1f8a5f; color: #a8ffd8; font: 700 11px system-ui, sans-serif; cursor: default; z-index: 3; max-width: calc(100% - 24px); }
+.sml-cbanner-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sml-cbanner-bar output { min-width: 48px; color: #fff; }
+.sml-cbanner-bar button { border: 1px solid #1f8a5f; border-radius: 999px; background: #0b2219; color: #7dffc4; font: 800 11px system-ui, sans-serif; padding: 3px 10px; cursor: pointer; }

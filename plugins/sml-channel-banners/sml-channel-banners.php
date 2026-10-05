@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.7
+ * Version: 1.0.8
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.7' );
+define( 'SML_CBANNER_VERSION', '1.0.8' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -83,9 +83,12 @@ function sml_cbanner_public_map( int $group_id ): array {
 		if ( ! is_array( $entry ) || empty( $entry['url'] ) ) { continue; }
 		$map[ (string) absint( $channel_id ) ] = array(
 			'url'   => esc_url_raw( (string) $entry['url'] ),
-			'zoom'  => max( 25, min( 300, (int) ( $entry['zoom'] ?? 100 ) ) ),
+			'zoom'  => max( 25, min( 400, (int) ( $entry['zoom'] ?? 100 ) ) ),
 			'pos_x' => max( 0, min( 100, (int) ( $entry['pos_x'] ?? 50 ) ) ),
 			'pos_y' => max( 0, min( 100, (int) ( $entry['pos_y'] ?? 50 ) ) ),
+			'off_x' => max( -300, min( 300, round( (float) ( $entry['off_x'] ?? 0 ), 1 ) ) ),
+			'off_y' => max( -300, min( 300, round( (float) ( $entry['off_y'] ?? 0 ), 1 ) ) ),
+			'height' => max( 100, min( 500, (int) ( $entry['height'] ?? 152 ) ) ),
 		);
 	}
 	return $map;
@@ -166,9 +169,12 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 		if ( empty( $current['url'] ) ) {
 			return new WP_Error( 'sml_cbanner_missing_file', 'Choose a banner image first.', array( 'status' => 400 ) );
 		}
-		$current['zoom'] = max( 25, min( 300, (int) ( $request->get_param( 'zoom' ) ?: 100 ) ) );
+		$current['zoom'] = max( 25, min( 400, (int) ( $request->get_param( 'zoom' ) ?: 100 ) ) );
 		$current['pos_x'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_x' ) ?? 50 ) ) );
 		$current['pos_y'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_y' ) ?? 50 ) ) );
+		if ( null !== $request->get_param( 'off_x' ) ) { $current['off_x'] = max( -300, min( 300, round( (float) $request->get_param( 'off_x' ), 1 ) ) ); }
+		if ( null !== $request->get_param( 'off_y' ) ) { $current['off_y'] = max( -300, min( 300, round( (float) $request->get_param( 'off_y' ), 1 ) ) ); }
+		if ( null !== $request->get_param( 'height' ) ) { $current['height'] = max( 100, min( 500, (int) $request->get_param( 'height' ) ) ); }
 		$current['updated_by'] = get_current_user_id();
 		$current['updated_at'] = current_time( 'mysql', true );
 		$all[ $key ] = $current;
