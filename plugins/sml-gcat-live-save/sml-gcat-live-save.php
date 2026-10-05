@@ -1,36 +1,19 @@
 <?php
 /**
  * Plugin Name: SML Group Editor Live Save
- * Description: Serves the group channel editor script (js/group-categories.js) from a specific revision that saves every edit live and never reloads the page when a channel is created, renamed, reordered or deleted. Touches only the group-categories.js and group-onboarding.js script tags on /groups/{slug}/ pages; every other asset keeps the site-wide CDN pin. Deactivate to go back to the pinned version.
+ * Description: Pins group-categories.js and group-onboarding.js on /groups/{slug}/ to newer revisions. Deactivate to revert.
  * Version: 1.0.2
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-
-if ( ! defined( 'SML_GCAT_LIVE_SAVE_REF' ) ) {
-	define( 'SML_GCAT_LIVE_SAVE_REF', '9192c494ed470cb789657d7be986c690fd9d769c' );
-}
-if ( ! defined( 'SML_GCAT_ONBOARDING_REF' ) ) {
-	define( 'SML_GCAT_ONBOARDING_REF', 'f1c7e9f65f6d8df0b70d3d7761a283fcf03f766e' );
-}
-
-/** Point the group-categories.js script tag at the live-save revision. Pure string work, safe to unit test. */
-function sml_gcat_live_save_rewrite( $html, $ref = SML_GCAT_LIVE_SAVE_REF ) {
-	if ( ! is_string( $html ) || '' === $html || ! preg_match( '/^[a-f0-9]{7,40}$/', (string) $ref ) ) { return $html; }
-	if ( preg_match( '/^[a-f0-9]{7,40}$/', (string) SML_GCAT_ONBOARDING_REF ) ) {
-		$html = preg_replace( '#(https://cdn\.jsdelivr\.net/gh/streetmoneybolo-wq/GET-IT-DONE@)[A-Za-z0-9._-]+(/js/group-onboarding\.js)#', '${1}' . SML_GCAT_ONBOARDING_REF . '${2}', $html );
+function sml_gcat_live_save_rewrite( $h ) {
+	$p = array( 'js/group-categories' => '9192c494ed470cb789657d7be986c690fd9d769c', 'js/group-onboarding' => 'f1c7e9f65f6d8df0b70d3d7761a283fcf03f766e' );
+	foreach ( $p as $f => $r ) {
+		$h = preg_replace( '#(https://cdn\.jsdelivr\.net/gh/streetmoneybolo-wq/GET-IT-DONE@)[A-Za-z0-9._-]+(/' . $f . '\.js)#', '${1}' . $r . '${2}', $h );
 	}
-	return preg_replace(
-		'#(https://cdn\.jsdelivr\.net/gh/streetmoneybolo-wq/GET-IT-DONE@)[A-Za-z0-9._-]+(/js/group-categories\.js)#',
-		'${1}' . $ref . '${2}',
-		$html
-	);
+	return $h;
 }
-
-// Start before the loader's own buffer (priority 0) so this one is outermost and sees the finished page.
 add_action( 'init', static function () {
-	if ( is_admin() || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) { return; }
-	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
-	$path = (string) wp_parse_url( $uri, PHP_URL_PATH );
-	if ( false !== strpos( $uri, '/wp-json/' ) || ! preg_match( '#^/groups/[^/]+/?$#', $path ) ) { return; }
-	ob_start( static function ( $html ) { return sml_gcat_live_save_rewrite( $html ); } );
+	$u = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+	if ( is_admin() || false !== strpos( $u, '/wp-json/' ) || ! preg_match( '#^/groups/[^/?]+/?(\?|$)#', $u ) ) { return; }
+	ob_start( 'sml_gcat_live_save_rewrite' );
 }, -10 );
