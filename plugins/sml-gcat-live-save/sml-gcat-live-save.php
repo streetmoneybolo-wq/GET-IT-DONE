@@ -1,18 +1,24 @@
 <?php
 /**
  * Plugin Name: SML Group Editor Live Save
- * Description: Serves the group channel editor script (js/group-categories.js) from a specific revision that saves every edit live and never reloads the page when a channel is created, renamed, reordered or deleted. Touches only that one script tag on /groups/{slug}/ pages; every other asset keeps the site-wide CDN pin. Deactivate to go back to the pinned version.
- * Version: 1.0.1
+ * Description: Serves the group channel editor script (js/group-categories.js) from a specific revision that saves every edit live and never reloads the page when a channel is created, renamed, reordered or deleted. Touches only the group-categories.js and group-onboarding.js script tags on /groups/{slug}/ pages; every other asset keeps the site-wide CDN pin. Deactivate to go back to the pinned version.
+ * Version: 1.0.2
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 if ( ! defined( 'SML_GCAT_LIVE_SAVE_REF' ) ) {
 	define( 'SML_GCAT_LIVE_SAVE_REF', '9192c494ed470cb789657d7be986c690fd9d769c' );
 }
+if ( ! defined( 'SML_GCAT_ONBOARDING_REF' ) ) {
+	define( 'SML_GCAT_ONBOARDING_REF', 'f1c7e9f65f6d8df0b70d3d7761a283fcf03f766e' );
+}
 
 /** Point the group-categories.js script tag at the live-save revision. Pure string work, safe to unit test. */
 function sml_gcat_live_save_rewrite( $html, $ref = SML_GCAT_LIVE_SAVE_REF ) {
 	if ( ! is_string( $html ) || '' === $html || ! preg_match( '/^[a-f0-9]{7,40}$/', (string) $ref ) ) { return $html; }
+	if ( preg_match( '/^[a-f0-9]{7,40}$/', (string) SML_GCAT_ONBOARDING_REF ) ) {
+		$html = preg_replace( '#(https://cdn\.jsdelivr\.net/gh/streetmoneybolo-wq/GET-IT-DONE@)[A-Za-z0-9._-]+(/js/group-onboarding\.js)#', '${1}' . SML_GCAT_ONBOARDING_REF . '${2}', $html );
+	}
 	return preg_replace(
 		'#(https://cdn\.jsdelivr\.net/gh/streetmoneybolo-wq/GET-IT-DONE@)[A-Za-z0-9._-]+(/js/group-categories\.js)#',
 		'${1}' . $ref . '${2}',
