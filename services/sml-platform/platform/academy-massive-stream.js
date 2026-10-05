@@ -12,10 +12,12 @@ const IDLE_MS = 10 * 60_000;
 const TAPE_MAX = 60;
 const TICKS_MAX = 20_000; // compact [t, price, size] prints kept per watched symbol, for tick-bar charts
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+const { createTickFilter, classifyTrade } = require('./data-quality');
 
-function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = globalThis.WebSocket, logger = () => {}, now = Date.now, timers = { setTimeout, clearTimeout, setInterval, clearInterval } } = {}) {
+function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = globalThis.WebSocket, logger = () => {}, now = Date.now, timers = { setTimeout, clearTimeout, setInterval, clearInterval }, tickFilter = createTickFilter({ excludeConditions: String(process.env.ACADEMY_TRADE_EXCLUDE_CONDITIONS || '').split(',').map((x) => x.trim()).filter(Boolean) }) } = {}) {
   const symbols = new Map(); // SYM -> { tape, quote, last, lastAt, wantedAt, subscribed }
   const listeners = new Map(); // SYM -> Set<fn>
+  let badQuotes = 0;
   let ws = null, authed = false, stopped = true, retry = 0, reconnectTimer = null, sweepTimer = null, connectedAt = 0, lastMessageAt = 0, failedAuth = false;
   const enabled = Boolean(apiKey && WebSocketImpl);
 
@@ -93,12 +95,17 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
       const sym = String(m.sym || '').toUpperCase(); const e = symbols.get(sym); if (!e) continue;
       if (m.ev === 'Q') {
         const bid = Number(m.bp), ask = Number(m.ap); if (!(bid > 0 && ask > 0)) continue;
+        if (bid > ask) { badQuotes += 1; continue; } // crossed quote: never trust it for the mid or for classifying prints
         e.quote = { bid, ask, bs: Number(m.bs) * 100 || 0, as: Number(m.as) * 100 || 0, t: Number(m.t) || now() };
         fire(sym, { type: 'quote', quote: e.quote });
       } else if (m.ev === 'T') {
         const price = Number(m.p), size = Number(m.s) > 0 ? Number(m.s) : Number(m.ds) || 0; if (!(price > 0)) continue;
         const t = Number(m.t) || now();
-        const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: classify(price, e.quote) };
+        const verdict = tickFilter.check(sym, { price, size: Number.isFinite(size) ? size : 0, conditions: m.c, quote: e.quote, t, now: now() });
+        if (!verdict.ok) continue; // bad print: it must not move last, candles, VWAP or the tape
+        const cls = classifyTrade(price, { quote: e.quote, tradeT: t, lastPrice: e.last || 0, lastDir: e.lastDir || 'N' });
+        e.lastDir = cls.dir;
+        const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: cls.dir, rule: cls.rule };
         record(e, trade, m.x === 4 || m.trfi != null);
         e.tape.push(trade); if (e.tape.length > TAPE_MAX) e.tape.shift();
         e.ticks.push([t, price, trade.size]); if (e.ticks.length > TICKS_MAX * 1.1) e.ticks.splice(0, e.ticks.length - TICKS_MAX);
@@ -177,7 +184,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     return e ? e.ticks.slice(-Math.max(1, Math.min(TICKS_MAX, limit))) : [];
   }
 
-  const status = () => ({ enabled, connected: Boolean(ws && ws.readyState === 1), authed, symbols: symbols.size, lastMessageAt, failedAuth });
+  const status = () => ({ enabled, connected: Boolean(ws && ws.readyState === 1), authed, symbols: symbols.size, lastMessageAt, failedAuth, filtered: { accepted: tickFilter.stats.accepted, rejected: tickFilter.stats.rejected, byReason: { ...tickFilter.stats.byReason }, crossedQuotes: badQuotes } });
   return { start, stop, watch, peek, on, ticks, status, onMessage, symbols };
 }
 

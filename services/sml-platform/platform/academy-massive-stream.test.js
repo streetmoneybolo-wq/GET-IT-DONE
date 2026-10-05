@@ -227,3 +227,32 @@ test('the stream keeps a compact record of every print for tick charts', async (
   assert.deepEqual(s.ticks('NOPE'), []);
   assert.equal(s.ticks('SPY', 2).length, 2);
 });
+
+test('a lone bad print and a crossed quote never reach the tape, last price or VWAP', async () => {
+  const svc = createMassiveStream({ apiKey: 'k', WebSocketImpl: FakeWS });
+  svc.start(); await tick(); svc.watch('SPY');
+  const ws = FakeWS.last, now = Date.now();
+  ws.push([{ ev: 'Q', sym: 'SPY', bp: 500, ap: 500.02, t: now }]);
+  const prints = []; for (let i = 0; i < 8; i++) prints.push({ ev: 'T', sym: 'SPY', p: 500.01, s: 10, t: now + i });
+  ws.push(prints);
+  ws.push([{ ev: 'T', sym: 'SPY', p: 640, s: 100000, t: now + 20 }]); // fat-finger print
+  ws.push([{ ev: 'Q', sym: 'SPY', bp: 505, ap: 500, t: now + 21 }]); // crossed
+  const p = svc.peek('SPY');
+  assert.equal(p.last, 500.01);
+  assert.equal(p.quote.bid, 500);
+  const st = svc.status();
+  assert.equal(st.filtered.rejected, 1); assert.equal(st.filtered.byReason.spike, 1); assert.equal(st.filtered.crossedQuotes, 1);
+  assert.ok(p.stats.vwap > 500 && p.stats.vwap < 501);
+  svc.stop();
+});
+
+test('without a current quote the tick rule classifies prints instead of calling everything neutral', async () => {
+  const svc = createMassiveStream({ apiKey: 'k', WebSocketImpl: FakeWS });
+  svc.start(); await tick(); svc.watch('QQQ');
+  const ws = FakeWS.last, now = Date.now();
+  ws.push([{ ev: 'T', sym: 'QQQ', p: 400, s: 1, t: now }, { ev: 'T', sym: 'QQQ', p: 400.02, s: 1, t: now + 1 }, { ev: 'T', sym: 'QQQ', p: 400.01, s: 1, t: now + 2 }]);
+  const tape = svc.peek('QQQ').tape.slice().reverse(); // peek is newest first
+  assert.deepEqual(tape.map((t) => t.dir), ['N', 'B', 'S']);
+  assert.deepEqual(tape.map((t) => t.rule), ['none', 'tick', 'tick']);
+  svc.stop();
+});
