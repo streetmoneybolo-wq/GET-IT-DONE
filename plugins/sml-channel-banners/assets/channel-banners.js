@@ -62,9 +62,23 @@
     if (image.src !== entry.url) image.src = entry.url;
     image.style.objectPosition = entry.pos_x + '% ' + entry.pos_y + '%';
     image.style.transform = 'translate(' + (entry.off_x || 0) + '%,' + (entry.off_y || 0) + '%) scale(' + (entry.zoom / 100) + ')';
-    var h = entry.height || DEFAULT_H;
-    head.style.setProperty('min-height', h + 'px', 'important');
-    head.style.setProperty('height', h + 'px', 'important');
+    applyHeight(head, image, entry);
+  }
+
+  /* Without a saved height the banner takes the picture's own proportions, so the whole image shows (nothing cut off). A height the owner set wins. */
+  function applyHeight(head, image, entry) {
+    function set() {
+      var h = entry.height;
+      if (!h) {
+        var nw = image.naturalWidth, nh = image.naturalHeight, w = head.clientWidth;
+        h = nw && nh && w ? Math.round(Math.max(100, Math.min(500, w * nh / nw))) : DEFAULT_H;
+      }
+      head.style.setProperty('min-height', h + 'px', 'important');
+      head.style.setProperty('height', h + 'px', 'important');
+    }
+    set();
+    if (!entry.height && !image.complete) image.addEventListener('load', set, { once: true });
+    if (!entry.height && !image.__smlFit) { image.__smlFit = true; window.addEventListener('resize', function () { var e = entryNow(); if (e && !e.height) set(); }); }
   }
 
   /* ---- direct editing on the banner: drag the picture, drag a corner to resize it, drag the bottom edge to make the banner taller or shorter ---- */
@@ -207,6 +221,7 @@
         this.value = '';
         return;
       }
+      form_reset_for_new(modal);
       status.textContent = '';
       status.classList.remove('is-error');
       modal.querySelector('[data-sml-cbanner-preview-image]').src = URL.createObjectURL(file);
@@ -217,6 +232,10 @@
     });
     state.modal = modal;
     return modal;
+  }
+
+  function form_reset_for_new(modal) {
+    var f = modal.querySelector('form'); f.elements.zoom.value = 100; f.elements.pos_x.value = 50; f.elements.pos_y.value = 50; updatePreview(modal);
   }
 
   function openEditor() {
@@ -248,7 +267,7 @@
     data.append('pos_x', form.elements.pos_x.value);
     data.append('pos_y', form.elements.pos_y.value);
     var cur = state.banners[String(state.channelId)] || {};
-    ['off_x', 'off_y', 'height'].forEach(function (k) { if (cur[k] != null) data.append(k, String(cur[k])); });
+    if (!form.elements.banner.files[0]) ['off_x', 'off_y', 'height'].forEach(function (k) { if (cur[k] != null) data.append(k, String(cur[k])); });
     if (remove) data.append('remove', '1');
     if (!remove && form.elements.banner.files[0]) data.append('banner', form.elements.banner.files[0], form.elements.banner.files[0].name);
     status.textContent = remove ? 'Removing banner…' : 'Saving banner…';

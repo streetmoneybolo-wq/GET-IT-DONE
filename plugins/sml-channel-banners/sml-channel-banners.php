@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.8
+ * Version: 1.0.9
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.8' );
+define( 'SML_CBANNER_VERSION', '1.0.9' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -165,6 +165,7 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 			$current['attachment_id'] = $uploaded['attachment_id'];
 			$current['url'] = $uploaded['url'];
 			$new_attachment = (int) $uploaded['attachment_id'];
+			if ( null === $request->get_param( 'height' ) ) { unset( $current['height'], $current['off_x'], $current['off_y'] ); }
 		}
 		if ( empty( $current['url'] ) ) {
 			return new WP_Error( 'sml_cbanner_missing_file', 'Choose a banner image first.', array( 'status' => 400 ) );

@@ -21,7 +21,7 @@
   z-index: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   pointer-events: none;
   transform-origin: center;
   will-change: transform;
@@ -88,7 +88,7 @@
 .sml-cbanner-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   transform-origin: center;
 }
 .sml-cbanner-card label { display: block; margin: 12px 0; font-weight: 700; }
