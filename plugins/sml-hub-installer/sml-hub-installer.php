@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: SML Hub Installer
- * Description: One-shot: installs Group Settings Hub 1.0.5 from the project repo on activation, then deactivates itself.
+ * Description: One-shot: installs Group Settings Hub 1.0.6 from the project repo on activation, then deactivates itself.
  * Version: 1.0.0
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
-define( 'SML_HUB_INSTALL_URL', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@f5d59232fdca82f6167f2ff390c31ba6082c78b9/plugins/dist/sml-group-settings-hub-1.0.5.zip' );
+define( 'SML_HUB_INSTALL_URL', 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@fc6f08e24bb80ea5c69136c8e90c06111488c4d7/plugins/dist/sml-group-settings-hub-1.0.6.zip' );
 function sml_hub_installer_run() {
 	require_once ABSPATH . 'wp-admin/includes/file.php';
 	require_once ABSPATH . 'wp-admin/includes/plugin.php';
