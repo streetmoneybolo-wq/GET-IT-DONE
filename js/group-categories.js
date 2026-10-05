@@ -618,6 +618,7 @@
           var next = capPoints(inp.value); // code-point cap, surrogate-safe
           if (next !== inp.value) inp.value = next;
           cats[i] = next;
+          scheduleSave();
         });
         inp.addEventListener('change', drawAssign);
         [['↑', -1], ['↓', 1]].forEach(function (mv) {
@@ -630,7 +631,7 @@
             Object.keys(asgn).forEach(function (k) {
               if (asgn[k] === i) asgn[k] = j; else if (asgn[k] === j) asgn[k] = i;
             });
-            drawCats(); drawAssign();
+            drawCats(); drawAssign(); scheduleSave();
           });
         });
         var del = el('button', 'background:#1a1012;border:1px solid #3a2428;border-radius:7px;color:#ff8a96;padding:6px 9px;cursor:pointer;', row, '✕');
@@ -640,12 +641,12 @@
           Object.keys(asgn).forEach(function (k) {
             if (asgn[k] === i) delete asgn[k]; else if (asgn[k] > i) asgn[k]--;
           });
-          drawCats(); drawAssign();
+          drawCats(); drawAssign(); scheduleSave();
         });
       });
       var add = el('button', 'align-self:flex-start;background:transparent;border:1px dashed #2a3a32;border-radius:8px;color:#38F58A;padding:6px 12px;cursor:pointer;font:600 12px inherit;', catBox, '+ Add category');
       add.type = 'button';
-      add.addEventListener('click', function () { if (cats.length < 30) { cats.push(''); drawCats(); drawAssign(); } });
+      add.addEventListener('click', function () { if (cats.length < 30) { cats.push(''); drawCats(); drawAssign(); } }); // an empty name is not saved until it is named
     }
 
     el('div', 'font:700 12px inherit;letter-spacing:1px;color:#8fa89b;margin:4px 0 6px;', card, 'CHANNELS — rename, reorder (↑↓) and pick a category');
@@ -667,6 +668,7 @@
       sel.addEventListener('change', function () {
         if (sel.value !== '') asgn[id] = parseInt(sel.value, 10); else delete asgn[id];
         sel.title = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+        scheduleSave();
       });
       return sel;
     }
@@ -702,7 +704,7 @@
               var j = idx + mv[1];
               if (j < 0 || j >= chans.length) return;
               var t = chans[idx]; chans[idx] = chans[j]; chans[j] = t;
-              drawAssign();
+              drawAssign(); scheduleSave();
             });
           });
         }
@@ -710,7 +712,7 @@
         var nm = el('input', 'flex:1 1 130px;min-width:110px;background:#0f1a15;border:1px solid #24382e;border-radius:7px;color:#e6f2ea;padding:5px 8px;font:13px inherit;', row);
         nm.type = 'text'; nm.value = c.name; nm.maxLength = 120;
         if (c.ro) { nm.readOnly = true; nm.style.opacity = '0.6'; nm.title = 'Renaming unavailable — channel list could not be loaded.'; }
-        else { nm.addEventListener('input', function () { c.name = nm.value; }); }
+        else { nm.addEventListener('input', function () { c.name = nm.value; scheduleSave(); }); }
         if (c.type) el('span', 'flex:0 0 auto;font-size:10px;letter-spacing:1px;color:#5f7a6c;text-transform:uppercase;', row, c.type);
         catSelect(row, c.id);
         if (!c.ro) {
@@ -738,6 +740,27 @@
     // and layout revision all re-sync from scratch — the delete response
     // carries no fresh layout_revision, so a reload (not an in-place splice) is
     // the only way to keep the next Save's base_revision valid.
+    // The channel is gone for everyone. Update this panel, the sidebar and the saved layout in place: the page is never reloaded or redirected.
+    function afterDelete(c) {
+      var wasOpen = false;
+      var box = channelsBox();
+      if (box) {
+        var btn = box.querySelector('.sml-gshell__channel[data-smlgs-channel="' + c.id + '"]');
+        if (btn) {
+          wasOpen = btn.classList.contains('is-active') || btn.classList.contains('active') || btn.classList.contains('is-selected') || btn.getAttribute('aria-current') === 'true' || btn.getAttribute('aria-selected') === 'true';
+          btn.remove();
+        }
+        if (wasOpen) { var next = channelButtons(box)[0]; if (next) next.click(); } // the open channel went away: show another one in place
+      }
+      chans = (chans || []).filter(function (x) { return x.id !== c.id; });
+      S.channelOrder = S.channelOrder.filter(function (id) { return id !== c.id; });
+      delete asgn[c.id]; delete S.assignments[c.id]; delete orig[c.id];
+      origSeq = origSeq.split(',').filter(function (x) { return x && x !== String(c.id); }).join(',');
+      apply();
+      drawAssign();
+      note.textContent = '#' + norm(c.name) + ' deleted.';
+      refreshLayoutSnapshot(); // the next save needs the layout revision as it is now
+    }
     function confirmDeleteChannel(c) {
       var ov = el('div', 'position:fixed;inset:0;z-index:2147480001;display:flex;align-items:center;justify-content:center;background:rgba(3,8,6,0.6);', PANEL);
       var box = el('div', 'width:min(400px,90vw);background:#12100f;border:1px solid #3a2428;border-radius:12px;padding:18px 20px;color:#ffdfe2;font:14px/1.5 inherit;box-shadow:0 20px 60px rgba(0,0,0,.7);', ov);
@@ -746,7 +769,7 @@
       if ((chans || []).filter(function (x) { return !x.ro; }).length <= 1) {
         el('div', 'font-size:11.5px;color:#ffce7a;margin-bottom:8px;', box, 'This is the group’s only channel — the group will have no channels until you add one.');
       }
-      el('div', 'font-size:11.5px;color:#9c8f86;margin-bottom:14px;', box, 'Deleting takes effect immediately and reloads the panel, so Save any unsaved category or name changes first.');
+      el('div', 'font-size:11.5px;color:#9c8f86;margin-bottom:14px;', box, 'Deleting takes effect immediately. You stay on this page.');
       var msg = el('div', 'font-size:12px;color:#c9b7ba;min-height:16px;margin-bottom:10px;', box, '');
       var btns = el('div', 'display:flex;gap:10px;justify-content:flex-end;', box);
       var keep = el('button', 'background:#101c16;border:1px solid #24382e;border-radius:8px;color:#cfe0d7;padding:7px 16px;cursor:pointer;font:600 12px inherit;', btns, 'Keep');
@@ -766,8 +789,8 @@
             // 404 = the channel is already gone (deleted in another tab) — the
             // manager's goal is met, so re-sync rather than showing an error.
             if (res.ok || res.status === 404) {
-              msg.textContent = '#' + norm(c.name) + ' deleted — reloading…';
-              location.reload();
+              ov.remove();
+              afterDelete(c);
               return;
             }
             del.disabled = false; keep.disabled = false;
@@ -798,7 +821,7 @@
     var addBtn = el('button', 'background:#101c16;border:1px solid #2a3a32;border-radius:7px;color:#38F58A;padding:6px 12px;cursor:pointer;font:600 12px inherit;', addWrap, '+ Add channel');
     addBtn.type = 'button';
     var addNote = el('div', 'font-size:11px;color:#8fa89b;margin-bottom:14px;', card, gid
-      ? 'New channels appear for everyone after saving. Channels with "alert" in the name (or the alerts type) only allow group admins to post.'
+      ? 'New channels go live for everyone right away. Channels with "alert" in the name (or the alerts type) only allow group admins to post.'
       : 'Adding channels is unavailable on this page load.');
     if (!gid) { addBtn.disabled = true; addBtn.style.opacity = '0.5'; }
     addBtn.addEventListener('click', function () {
@@ -827,7 +850,7 @@
           drawAssign();
           refreshLayoutSnapshot().then(function (ok) {
             addNote.textContent = ok
-              ? '#' + ch.name + ' created — assign it a category, then Save.'
+              ? '#' + ch.name + ' created and live — pick a category for it if you want one.'
               : '#' + ch.name + ' was created, but the layout changed. Reload before editing its position.';
           });
         })
@@ -838,12 +861,28 @@
 
     var foot = el('div', 'display:flex;gap:10px;justify-content:flex-end;align-items:center;', card);
     var note = el('span', 'margin-right:auto;font-size:12px;color:#8fa89b;', foot, '');
-    var cancel = el('button', 'background:transparent;border:1px solid #24382e;border-radius:8px;color:#8fa89b;padding:8px 16px;cursor:pointer;font:600 12px inherit;', foot, 'Cancel');
-    cancel.type = 'button';
-    cancel.addEventListener('click', close);
-    var save = el('button', 'background:#38F58A;border:0;border-radius:8px;color:#04120a;padding:8px 18px;cursor:pointer;font:700 12px inherit;', foot, 'Save');
-    save.type = 'button';
-    save.addEventListener('click', function () {
+    var done = el('button', 'background:#38F58A;border:0;border-radius:8px;color:#04120a;padding:8px 18px;cursor:pointer;font:700 12px inherit;', foot, 'Done');
+    done.type = 'button';
+    note.textContent = 'Changes save automatically.';
+
+    // ---- live saving: every edit is saved a moment after it is made, and nothing waits for a Save click or reloads the page ----
+    var saving = false, again = false, saveTimer = 0;
+    var sortedJson = function (o) { return JSON.stringify(Object.keys(o || {}).sort().map(function (k) { return [k, o[k]]; })); };
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      note.textContent = 'Saving…';
+      saveTimer = setTimeout(function () { void persist(); }, 700);
+    }
+    function finish(ok, text) {
+      saving = false;
+      note.textContent = text;
+      if (again) { again = false; scheduleSave(); }
+      return ok;
+    }
+    // resolves true when everything is saved (or there was nothing to save)
+    function persist() {
+      clearTimeout(saveTimer);
+      if (saving) { again = true; return Promise.resolve(false); }
       // null-prototype map: a category literally named "constructor" or
       // "__proto__" must not trip the duplicate check (review #12)
       var clean = [], seen = Object.create(null), dup = null;
@@ -854,15 +893,12 @@
         if (seen[key]) { dup = name; return; }
         seen[key] = 1; clean.push(name);
       });
-      if (dup) { note.textContent = 'Duplicate category name: "' + dup + '" — make names unique.'; return; }
+      if (dup) { note.textContent = 'Duplicate category name: "' + dup + '" — make names unique and it saves by itself.'; return Promise.resolve(false); }
       var outAsgn = {};
       Object.keys(asgn).forEach(function (k) {
         var name = norm(cats[asgn[k]]);
         if (name && clean.indexOf(name) !== -1) outAsgn[k] = name;
       });
-      // Channel renames are independent of layout. Category membership and
-      // the complete sequence then save together through /layout; there is
-      // no intermediate state where one changed and the other did not.
       var renames = (chans || []).filter(function (c) {
         return !c.ro && norm(c.name) !== '' && norm(c.name) !== orig[c.id];
       });
@@ -871,12 +907,13 @@
       var orderChanged = !anyRo && chans !== null && seq !== origSeq;
       if (chans === null || anyRo) {
         note.textContent = chans === null
-          ? 'Channel list is still loading — try Save again in a moment.'
-          : 'Channel list couldn’t load — use the Retry button above the channel list, then Save again.';
-        return;
+          ? 'Channel list is still loading — your change saves as soon as it is ready.'
+          : 'Channel list couldn’t load — use the Retry button above the channel list.';
+        return Promise.resolve(false);
       }
-      note.textContent = 'Saving…';
-      save.disabled = true;
+      var layoutChanged = orderChanged || JSON.stringify(clean) !== JSON.stringify(S.categories) || sortedJson(outAsgn) !== sortedJson(S.assignments);
+      if (!renames.length && !layoutChanged) { note.textContent = 'All changes saved ✓'; return Promise.resolve(true); }
+      saving = true; note.textContent = 'Saving…';
       var chain = Promise.resolve(true);
       renames.forEach(function (c) {
         chain = chain.then(function (okSoFar) {
@@ -889,15 +926,19 @@
             .catch(function () { return false; });
         });
       });
-      chain.then(function (renamesOk) {
-        if (!renamesOk) { save.disabled = false; note.textContent = 'A channel rename failed — nothing else was saved.'; return; }
-        revisionRefresh.then(function (revisionOk) {
-          if (!revisionOk || !S.layoutRevision) {
-            save.disabled = false;
-            note.textContent = 'Could not confirm the current layout — reload before saving.';
-            return;
-          }
-          fetch(LAYOUT_API, {
+      return chain.then(function (renamesOk) {
+        if (!renamesOk) return finish(false, 'A channel rename didn’t save — it will try again on your next edit.');
+        // the sidebar shows the new names straight away
+        renames.forEach(function (c) {
+          orig[c.id] = norm(c.name);
+          var bx = channelsBox();
+          var label = bx && bx.querySelector('.sml-gshell__channel[data-smlgs-channel="' + c.id + '"] .sml-gshell__channel-name');
+          if (label) label.textContent = norm(c.name);
+        });
+        if (!layoutChanged) return finish(true, 'All changes saved ✓');
+        return revisionRefresh.then(function (revisionOk) {
+          if (!revisionOk || !S.layoutRevision) return finish(false, 'Could not confirm the current layout — it will try again on your next edit.');
+          return fetch(LAYOUT_API, {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
             body: JSON.stringify({
@@ -908,12 +949,10 @@
             })
           }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
             .then(function (res) {
-              save.disabled = false;
               if (!res.ok || !res.j || res.j.saved !== true) {
-                note.textContent = res.j && res.j.code === 'sml_gcat_layout_conflict'
-                  ? 'This layout changed in another tab. Reload, then make your changes again.'
-                  : (res.j && res.j.message) || 'Could not save.';
-                return;
+                return finish(false, res.j && res.j.code === 'sml_gcat_layout_conflict'
+                  ? 'This layout was changed somewhere else. Close and reopen this panel to see the latest.'
+                  : (res.j && res.j.message) || 'Could not save — it will try again on your next edit.');
               }
               S.categories = res.j.categories || [];
               S.assignments = res.j.assignments || {};
@@ -922,12 +961,17 @@
                 : (chans || []).map(function (c) { return c.id; });
               S.layoutRevision = String(res.j.layout_revision || S.layoutRevision);
               intersectAssignments();
-              if (renames.length || createdAny || orderChanged) { note.textContent = 'Saved — reloading…'; location.reload(); return; }
-              close(); apply();
+              origSeq = seq; createdAny = false;
+              apply(); // the sidebar re-groups and re-orders in place
+              return finish(true, 'All changes saved ✓');
             })
-            .catch(function () { save.disabled = false; note.textContent = 'Could not save.'; });
+            .catch(function () { return finish(false, 'Could not save — it will try again on your next edit.'); });
         });
       });
+    }
+    done.addEventListener('click', function () {
+      clearTimeout(saveTimer);
+      persist().then(function (ok) { if (ok) close(); });
     });
 
     function close() { if (PANEL) { PANEL.remove(); PANEL = null; } document.removeEventListener('keydown', esc, true); }
