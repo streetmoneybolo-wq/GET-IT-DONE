@@ -30,3 +30,9 @@ test('risk rises as the report approaches and is null when unknown', () => {
   assert.ok(r(0) > r(2) && r(2) > r(5) && r(5) > r(10) && r(10) > r(25) && r(25) > r(60));
   assert.match(earningsRisk({ daysAway: 1 }).detail, /tomorrow/);
 });
+
+test('"today" is the New York date, not the UTC date', () => {
+  const lateEvening = Date.parse('2026-10-06T01:00:00Z'); // 9 pm EDT on 5 Oct
+  assert.equal(extractNextEarnings({ date: '2026-10-06', epsEstimate: 1 }, lateEvening).daysAway, 1);
+  assert.equal(extractNextEarnings({ date: '2026-10-05', epsEstimate: 1 }, lateEvening).daysAway, 0);
+});

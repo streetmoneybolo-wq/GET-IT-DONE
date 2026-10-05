@@ -133,7 +133,7 @@ function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch,
         pages += 1;
         const next = typeof page?.next_url === 'string' ? page.next_url : '';
         let ok = false;
-        try { ok = next && new URL(next).host === new URL(root).host; } catch (_) { ok = false; }
+        try { const n = new URL(next), r = new URL(root); ok = Boolean(next) && n.protocol === r.protocol && n.host === r.host; } catch (_) { ok = false; }
         url = ok ? next : '';
         if (next && !ok) truncated = true;
       }

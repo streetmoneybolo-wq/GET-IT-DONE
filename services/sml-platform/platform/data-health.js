@@ -15,12 +15,14 @@ function parseRetryAfter(value, now = Date.now()) {
   return Number.isFinite(t) ? Math.max(0, Math.min(10 * 60_000, t - now)) : 0;
 }
 
-function createDataHealth({ now = Date.now, failThreshold = 5, openMs = 15_000, maxOpenMs = 60_000, degradedWindowMs = 5 * 60_000 } = {}) {
+function createDataHealth({ now = Date.now, failThreshold = 5, openMs = 15_000, maxOpenMs = 60_000, degradedWindowMs = 5 * 60_000, soft = {} } = {}) {
+  /* soft: { provider: [statuses] } - answers that are expected for that provider (a plan without an entitlement, a delisted symbol) and must not trip the breaker */
+  const softSets = new Map(Object.entries(soft).map(([k, v]) => [k, new Set(v)]));
   const provs = new Map();
   function rec(name) {
     if (!provs.has(name)) {
       provs.set(name, { name, calls: 0, ok: 0, failed: 0, consecutive: 0, lastOkAt: 0, lastErrorAt: 0, lastError: '', lastStatus: 0,
-        totalMs: 0, lastMs: 0, openUntil: 0, backoffMs: openMs, trial: false, blockedUntil: 0, opened: 0 });
+        totalMs: 0, lastMs: 0, openUntil: 0, backoffMs: openMs, trial: false, trialAt: 0, blockedUntil: 0, opened: 0 });
     }
     return provs.get(name);
   }
@@ -30,8 +32,8 @@ function createDataHealth({ now = Date.now, failThreshold = 5, openMs = 15_000, 
     if (r.blockedUntil > t) return false;
     if (r.openUntil > t) return false;
     if (r.openUntil && r.openUntil <= t) { // half-open: one trial at a time
-      if (r.trial) return false;
-      r.trial = true;
+      if (r.trial && t - r.trialAt < maxOpenMs) return false; // a trial that never reported back expires, so a hung call cannot block the provider forever
+      r.trial = true; r.trialAt = t;
     }
     return true;
   }
@@ -63,7 +65,9 @@ function createDataHealth({ now = Date.now, failThreshold = 5, openMs = 15_000, 
     try {
       const response = await fetchImpl(url, options);
       const ms = now() - t0, status = Number(response.status) || 0;
-      if (status === 429) {
+      const softHit = softSets.get(name) && softSets.get(name).has(status);
+      if (softHit) success(name, ms, status);
+      else if (status === 429) {
         failure(name, 'rate_limited_429', { status, ms, retryAfterMs: parseRetryAfter(response.headers && response.headers.get && response.headers.get('retry-after'), now()) || 5_000 });
       } else if (status >= 500) failure(name, `http_${status}`, { status, ms });
       else if (status === 401 || status === 403) failure(name, `auth_${status}`, { status, ms });

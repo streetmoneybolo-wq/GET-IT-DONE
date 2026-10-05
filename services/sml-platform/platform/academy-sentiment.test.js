@@ -132,3 +132,25 @@ test('memory: baseline updates are rate limited and history is spaced and capped
   assert.equal(m.history('A').length, 3);
   m.record('A', 0.9); m.record('A', 0.1); // too soon: only the first counts
 });
+
+test('lexicon matches whole words only: no hits inside Missouri, mission, wonder; beat and beats are one hit', () => {
+  assert.equal(S.scoreHeadline('Missouri utility signs mission statement').score, 0);
+  assert.ok(S.scoreHeadline('Company wins NASA mission contract').score > 0, 'wins counts, mission does not');
+  assert.equal(S.scoreHeadline('Analysts wonder what comes next').score, 0);
+  const one = S.scoreHeadline('Acme beats estimates'), two = S.scoreHeadline('Acme beat estimates');
+  assert.equal(one.hits.length, 1); assert.equal(two.hits.length, 1);
+  assert.ok(Math.abs(one.score - two.score) < 1e-9);
+  assert.ok(S.scoreHeadline('Acme misses estimates').score < 0);
+  assert.ok(S.scoreHeadline('Acme did not miss estimates').score > 0, 'negation still works');
+});
+
+test('memory load is shared: a concurrent observation is not lost when the stored state arrives', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const store = { async read() { await gate; return { baselines: { OLD: { ema: 1, n: 3, t: 5 } }, history: {} }; }, async write() {} };
+  const m = S.createSentimentMemory({ store, now: () => 1e12 });
+  const a = m.load(), b = m.load();
+  assert.equal(a, b, 'one shared promise');
+  release(); await a;
+  m.observeRate('NEW', 5);
+  assert.ok(m.baseline('OLD') && m.baseline('NEW'));
+});

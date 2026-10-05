@@ -60,10 +60,10 @@ ok( count( sml_gpro_clean_symbols( array_map( function ( $i ) { return 'T' . chr
 ok( sml_gpro_signature( '1700000000', '{"a":1}', 'k' ) === hash_hmac( 'sha256', '1700000000.{"a":1}', 'k' ), 'signature format' );
 
 /* payload whitelist */
-$p = sml_gpro_payload( 'strategies', 7, 5, 'SPY', array(), array( 'view' => 'bullish', 'shares' => '200', 'cost' => 'abc', 'evil' => 'x', 'horizonDays' => -5 ), true );
+$p = sml_gpro_payload( 'strategies', 7, 'SPY', array(), array( 'view' => 'bullish', 'shares' => '200', 'cost' => 'abc', 'evil' => 'x', 'horizonDays' => -5 ), true );
 ok( $p['params'] === array( 'view' => 'bullish', 'shares' => 200.0 ), 'params whitelisted: ' . json_encode( $p['params'] ) );
 ok( $p['preview'] === true && $p['symbol'] === 'SPY', 'payload basics' );
-ok( json_encode( sml_gpro_payload( 'setups', 7, 5, 'SPY', array(), array(), false )['params'] ) === '{}', 'empty params serialise as an object' );
+ok( json_encode( sml_gpro_payload( 'setups', 7, 'SPY', array(), array(), false )['params'] ) === '{}', 'empty params serialise as an object' );
 
 /* rest flow */
 $GLOBALS['role'] = null;
@@ -103,6 +103,15 @@ ok( $sent['symbols'] === array( 'NVDA', 'AMD' ), 'dashboard defaults to the grou
 update_option( 'sml_gpro_watch_7', array() );
 $none = sml_gpro_rest_run( new WP_REST_Request( array( 'group_id' => 7, 'tool' => 'dashboard' ) ) );
 ok( ! empty( $none['empty'] ), 'empty watchlist handled' );
+
+/* preview members cannot choose the dashboard's tickers; identical requests share one cache entry across members */
+$GLOBALS['role'] = 'member'; $GLOBALS['trans'] = array();
+sml_gpro_save_watchlist( 7, array( 'AAA', 'BBB', 'CCC', 'DDD' ) );
+sml_gpro_rest_run( new WP_REST_Request( array( 'group_id' => 7, 'tool' => 'dashboard', 'symbols' => array( 'ZZZ', 'YYY' ) ) ) );
+$sent = json_decode( end( $GLOBALS['remote'] )[1]['body'], true );
+ok( $sent['symbols'] === array( 'AAA', 'BBB', 'CCC' ), 'preview dashboard ignores client symbols and is capped at 3: ' . json_encode( $sent['symbols'] ) );
+ok( ! array_key_exists( 'userId', $sent ), 'the payload carries no user id, so members share cache entries' );
+$GLOBALS['role'] = 'premium';
 
 /* failure mapping never leaks internals */
 $GLOBALS['trans'] = array();

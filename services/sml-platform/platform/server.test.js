@@ -1582,7 +1582,9 @@ test('group pro tools route is signature-checked, validates input, passes previe
     return fetch(`${base}/v1/group-tools/run`, { method: 'POST', headers, body: raw });
   };
   const calls = [];
-  const groupTools = { run: async (tool, input) => { calls.push([tool, input.symbol, input.preview]); if (tool === 'boom') throw new Error('secret internals'); if (tool === 'bad') throw new TypeError('invalid_symbol'); return { ok: true, tool, symbol: input.symbol, preview: !!input.preview }; } };
+  const { GroupToolsInputError } = require('./academy-group-tools');
+  const logged = [];
+  const groupTools = { run: async (tool, input) => { calls.push([tool, input.symbol, input.preview]); if (tool === 'boom') throw new Error('secret internals'); if (tool === 'bug') throw new TypeError('Cannot read properties of undefined'); if (tool === 'bad') throw new GroupToolsInputError('invalid_symbol'); return { ok: true, tool, symbol: input.symbol, preview: !!input.preview }; } };
   await withServer({ billingApiSecret: secret, groupTools }, async (base) => {
     assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' }, { sign: false })).status, 401);
     assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' }, { secretUsed: 'wrong-secret' })).status, 401);
@@ -1592,6 +1594,9 @@ test('group pro tools route is signature-checked, validates input, passes previe
     assert.deepEqual(await ok.json(), { ok: true, tool: 'setups', symbol: 'SPY', preview: true });
     assert.deepEqual(calls, [['setups', 'SPY', true]]);
     assert.equal((await post(base, { tool: 'bad', symbol: 'x' })).status, 400);
+    const bug = await post(base, { tool: 'bug', symbol: 'SPY' });
+    assert.equal(bug.status, 503, 'an internal TypeError is a bug, not a bad request');
+    assert.doesNotMatch(JSON.stringify(await bug.json()), /Cannot read/);
     const boom = await post(base, { tool: 'boom', symbol: 'SPY' });
     assert.equal(boom.status, 503);
     assert.doesNotMatch(JSON.stringify(await boom.json()), /secret internals/);

@@ -14,44 +14,43 @@ const clamp = (x, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, x));
 const num = (v, d = null) => { if (v == null || v === '') return d; const x = Number(v); return Number.isFinite(x) ? x : d; };
 
 /* ------------------------------------------------------------------ news */
+/* Lexicon entries are whole-word patterns (regex source) so that "miss" cannot fire inside "Missouri" or "mission" and "beat" and "beats" are one hit. */
 const POS = [
-  ['beat', 1.2], ['beats', 1.2], ['tops', 1.1], ['surge', 1.4], ['soar', 1.5], ['jump', 1.1], ['rall', 1.0], ['upgrad', 1.4], ['raises', 1.1], ['raised', 1.0],
-  ['record', 1.1], ['strong', 0.8], ['growth', 0.7], ['profit', 0.7], ['wins', 0.9], ['won', 0.7], ['approv', 1.2], ['partnership', 0.8], ['buyback', 1.0], ['repurchase', 0.9],
-  ['dividend hike', 1.0], ['outperform', 1.2], ['bullish', 1.1], ['breakout', 1.0], ['upside', 0.8], ['expand', 0.6], ['accelerat', 0.8], ['rebound', 0.8], ['gain', 0.7],
-  ['boost', 0.8], ['optimis', 0.7], ['contract', 0.5], ['awarded', 0.9], ['launch', 0.4], ['breakthrough', 1.2], ['exceed', 1.0]
+  ['beats?|tops?', 1.2], ['surg(?:e|es|ed|ing)', 1.4], ['soar(?:s|ed|ing)?', 1.5], ['jump(?:s|ed|ing)?', 1.1], ['rall(?:y|ies|ied|ying)', 1.0], ['upgrad(?:e|es|ed|ing)', 1.4],
+  ['raises|raised|raising', 1.1], ['records?', 1.1], ['strong(?:er)?', 0.8], ['growth', 0.7], ['profit(?:s|able)?', 0.7], ['wins|winning', 0.9], ['approv(?:al|als|e|es|ed)', 1.2],
+  ['partnership', 0.8], ['buybacks?', 1.0], ['repurchases?', 0.9], ['dividend hike', 1.0], ['outperform(?:s|ed|ing)?', 1.2], ['bullish', 1.1], ['breakouts?', 1.0], ['upside', 0.8],
+  ['expands?|expanding|expansion', 0.6], ['accelerat(?:e|es|ed|ing)', 0.8], ['rebound(?:s|ed|ing)?', 0.8], ['gains?|gained', 0.7], ['boosts?|boosted', 0.8], ['optimis(?:m|tic)', 0.7],
+  ['awarded', 0.9], ['breakthrough', 1.2], ['exceed(?:s|ed|ing)?', 1.0]
 ];
 const NEG = [
-  ['miss', 1.3], ['plunge', 1.5], ['tumble', 1.3], ['slump', 1.2], ['sink', 1.1], ['drop', 0.9], ['fall', 0.8], ['downgrad', 1.4], ['cuts', 1.0], ['slash', 1.1],
-  ['lawsuit', 1.1], ['sued', 1.1], ['probe', 1.1], ['investigat', 1.2], ['subpoena', 1.3], ['recall', 1.2], ['bankrupt', 2.0], ['fraud', 1.8], ['offering', 1.0], ['dilut', 1.2],
-  ['halt', 1.0], ['delist', 1.7], ['layoff', 1.1], ['warning', 1.0], ['weak', 0.9], ['loss', 0.8], ['decline', 0.8], ['bearish', 1.1], ['short report', 1.5],
-  ['default', 1.6], ['resign', 0.9], ['crash', 1.5], ['concern', 0.6], ['risk', 0.4], ['fear', 0.6], ['selloff', 1.2], ['sell-off', 1.2], ['underperform', 1.2], ['guidance cut', 1.4]
+  ['miss(?:es|ed)?', 1.3], ['plunge(?:s|d)?|plunging', 1.5], ['tumbl(?:e|es|ed|ing)', 1.3], ['slump(?:s|ed|ing)?', 1.2], ['sinks?|sank|sinking', 1.1], ['drops?|dropped|dropping', 0.9],
+  ['falls?|fell|falling', 0.8], ['downgrad(?:e|es|ed|ing)', 1.4], ['cuts?|cutting', 1.0], ['slash(?:es|ed|ing)?', 1.1], ['lawsuits?', 1.1], ['sued', 1.1], ['probe(?:s|d)?', 1.1],
+  ['investigat(?:e|es|ed|ing|ion|ions)', 1.2], ['subpoenas?', 1.3], ['recalls?|recalled', 1.2], ['bankrupt(?:cy)?', 2.0], ['fraud', 1.8], ['offering|offerings', 1.0], ['dilut(?:e|es|ed|ion|ive)', 1.2],
+  ['halts?|halted', 1.0], ['delist(?:s|ed|ing)?', 1.7], ['layoffs?', 1.1], ['warning|warns|warned', 1.0], ['weak(?:er|ness)?', 0.9], ['loss(?:es)?', 0.8], ['declin(?:e|es|ed|ing)', 0.8],
+  ['bearish', 1.1], ['short report', 1.5], ['default(?:s|ed)?', 1.6], ['resign(?:s|ed|ation)?', 0.9], ['crash(?:es|ed|ing)?', 1.5], ['concerns?', 0.6], ['fears?', 0.6], ['sell-?off', 1.2],
+  ['underperform(?:s|ed|ing)?', 1.2], ['guidance cut', 1.4]
 ];
+const POS_RE = POS.map(([src, w]) => [new RegExp('(?:^|[^a-z0-9])(?:' + src + ')(?![a-z0-9])'), w]);
+const NEG_RE = NEG.map(([src, w]) => [new RegExp('(?:^|[^a-z0-9])(?:' + src + ')(?![a-z0-9])'), w]);
 const NEGATORS = /\b(no|not|never|without|fails?|failed|unlikely|despite|denies|denied|avoid(?:s|ed)?)\b/;
 const INTENSIFY = /\b(sharply|massive|huge|record|significantly|plummets?|skyrockets?)\b/;
 
 function scoreHeadline(text) {
   const t = String(text || '').toLowerCase().replace(/[^a-z0-9$%.\- ]+/g, ' ');
   if (!t.trim()) return { score: 0, hits: [] };
-  const tokens = t.split(/\s+/).filter(Boolean);
   let sum = 0; const hits = [];
-  const test = (stem, w, sign) => {
-    let idx = t.indexOf(stem);
-    while (idx !== -1) {
-      const before = idx === 0 || /[^a-z]/.test(t[idx - 1]);
-      if (before) {
-        const lead = t.slice(Math.max(0, idx - 28), idx);
-        const negated = NEGATORS.test(lead);
-        const boost = INTENSIFY.test(lead) ? 1.25 : 1;
-        sum += (negated ? -sign : sign) * w * boost;
-        hits.push({ term: stem, dir: negated ? -sign : sign });
-        break; // one hit per stem per headline
-      }
-      idx = t.indexOf(stem, idx + 1);
-    }
+  const test = (re, w, sign) => {
+    const m = re.exec(t);
+    if (!m) return;
+    const idx = m.index + (m[0].length - m[0].replace(/^[^a-z0-9]/, '').length > 0 ? 1 : 0);
+    const lead = t.slice(Math.max(0, idx - 28), idx);
+    const negated = NEGATORS.test(lead);
+    const boost = INTENSIFY.test(lead) ? 1.25 : 1;
+    sum += (negated ? -sign : sign) * w * boost;
+    hits.push({ term: m[0].trim(), dir: negated ? -sign : sign });
   };
-  for (const [s, w] of POS) test(s, w, 1);
-  for (const [s, w] of NEG) test(s, w, -1);
-  void tokens;
+  for (const [re, w] of POS_RE) test(re, w, 1);
+  for (const [re, w] of NEG_RE) test(re, w, -1);
   return { score: Math.tanh(sum / 2), hits };
 }
 
@@ -188,17 +187,23 @@ function composite(parts, { priceChangePct = null } = {}) {
 
 /* ------------------------------------------------------------------ baselines + history (durable via the state store) */
 function createSentimentMemory({ store = null, now = Date.now, logger = () => {}, flushMs = 60_000, historyPoints = 96, historySpacingMs = 30 * 60_000 } = {}) {
-  let state = { baselines: {}, history: {} }, loaded = false, dirty = false, lastFlush = 0;
-  async function load() {
-    if (loaded) return; loaded = true;
-    if (!store) return;
-    try { const v = await store.read(); if (v && typeof v === 'object') state = { baselines: v.baselines || {}, history: v.history || {} }; } catch (error) { logger('warn', 'sentiment_memory_load_failed', { error }); }
+  let state = { baselines: {}, history: {} }, loading = null, dirty = false, lastFlush = 0;
+  /* one shared load: callers that arrive while it is in flight wait for it instead of writing into the default state that the load then replaces */
+  function load() {
+    if (loading) return loading;
+    loading = (async () => {
+      if (!store) return;
+      try { const v = await store.read(); if (v && typeof v === 'object') state = { baselines: v.baselines || {}, history: v.history || {} }; } catch (error) { logger('warn', 'sentiment_memory_load_failed', { error }); }
+    })();
+    return loading;
   }
   async function flush(force = false) {
     if (!store || !dirty || (!force && now() - lastFlush < flushMs)) return;
     lastFlush = now(); dirty = false;
     const keep = Object.entries(state.history).sort((a, b) => (b[1].at(-1)?.t || 0) - (a[1].at(-1)?.t || 0)).slice(0, 300);
     state.history = Object.fromEntries(keep);
+    const bl = Object.entries(state.baselines).sort((a, b) => (b[1].t || 0) - (a[1].t || 0)).slice(0, 500);
+    state.baselines = Object.fromEntries(bl);
     try { await store.write(state); } catch (error) { dirty = true; logger('warn', 'sentiment_memory_write_failed', { error }); }
   }
   function baseline(symbol) { return state.baselines[symbol] || null; }

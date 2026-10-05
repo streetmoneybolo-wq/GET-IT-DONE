@@ -102,3 +102,27 @@ test('never labels a far-away strike as a hedge: no strike near the needed level
   const r = S.buildStrategies({ spot, rows, view: 'neutral', horizonDays: 30, shares: 100, cost: 100, now: NOW });
   assert.ok(!r.strategies || !r.strategies.some((s) => s.id === 'protective_put' || s.id === 'collar'));
 });
+
+test('fewer than 100 shares: no covered call, collar or protective put (they would be uncovered), and the user is told why', () => {
+  const r = S.buildStrategies({ spot, rows: chain(), view: 'neutral', horizonDays: 30, shares: 50, cost: 90, now: NOW });
+  assert.ok(!r.holdsShares);
+  assert.ok(!r.strategies.some((s) => ['covered_call', 'collar', 'protective_put'].includes(s.id)));
+  assert.match(r.notes.join(' '), /fewer than 100 shares/);
+  assert.equal(r.reason, 'needs_100_shares');
+  const bull = S.buildStrategies({ spot, rows: chain(), view: 'bullish', horizonDays: 30, shares: 50, now: NOW });
+  assert.ok(bull.available && !bull.strategies.some((s) => /protective|collar|covered/.test(s.id)));
+});
+
+test('shares are rounded down to whole contracts and the uncovered remainder is reported', () => {
+  const r = S.buildStrategies({ spot, rows: chain(), view: 'neutral', horizonDays: 30, shares: 250, cost: 90, now: NOW });
+  const pp = r.strategies.find((s) => s.id === 'protective_put');
+  assert.equal(pp.legs[0].qty, 2); assert.equal(pp.stock.shares, 200);
+  assert.equal(r.sharesUncovered, 50);
+});
+
+test('an uncovered short call is flagged as unlimited loss from the payoff, whatever the strategy is called', () => {
+  const legs = [{ type: 'call', strike: 100, qty: -1, price: 5 }];
+  const ids = S.buildStrategies({ spot, rows: chain(), view: 'bullish', horizonDays: 30, now: NOW }).strategies; // none of the built ones is naked
+  assert.ok(ids.every((s) => !s.unlimitedLoss));
+  assert.ok(S.expiryValue(legs, 1000, null) < S.expiryValue(legs, 500, null), 'payoff keeps falling');
+});

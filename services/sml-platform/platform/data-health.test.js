@@ -87,3 +87,25 @@ test('snapshot merges out-of-band providers and overall is the worst state', () 
   assert.equal(s.overall, 'down');
   assert.equal(s.providers.websocket.detail, 'auth failed');
 });
+
+test('expected statuses for a provider (no index entitlement, a delisted symbol) never trip the breaker or show as an outage', async () => {
+  const c = clock(), h = createDataHealth({ now: c.now, failThreshold: 2, soft: { 'massive-indices': [401, 403], history: [500] } });
+  for (let i = 0; i < 6; i++) await h.guardedFetch('massive-indices', 'u', {}, async () => res(403));
+  for (let i = 0; i < 6; i++) await h.guardedFetch('history', 'u', {}, async () => res(500));
+  const s = h.snapshot();
+  assert.equal(s.providers['massive-indices'].state, 'ok'); assert.equal(s.providers.history.state, 'ok'); assert.equal(s.overall, 'ok');
+  // a real failure on a soft provider still counts
+  await h.guardedFetch('history', 'u', {}, async () => res(503)); await h.guardedFetch('history', 'u', {}, async () => res(503));
+  assert.equal(h.snapshot().providers.history.state, 'down');
+});
+
+test('a half-open trial that never reports back expires, so one hung call cannot block a provider forever', async () => {
+  const c = clock(), h = createDataHealth({ now: c.now, failThreshold: 1, openMs: 1000, maxOpenMs: 4000 });
+  await assert.rejects(h.guardedFetch('p', 'u', {}, async () => { throw new Error('x'); }));
+  c.tick(1001);
+  h.guardedFetch('p', 'u', {}, () => new Promise(() => {})); // hangs: never resolves
+  await assert.rejects(h.guardedFetch('p', 'u', {}, async () => res(200)), (e) => e.code === 'circuit_open');
+  c.tick(4001);
+  const r = await h.guardedFetch('p', 'u', {}, async () => res(200));
+  assert.equal(r.status, 200);
+});

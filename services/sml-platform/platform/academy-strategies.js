@@ -113,7 +113,7 @@ function extremes(legs, spot, stock) {
   const up = expiryValue(legs, pts[pts.length - 1] * 2, stock) - vals[vals.length - 1];
   return {
     maxLoss: Math.round(Math.min(...vals)), maxProfit: Math.round(Math.max(...vals)),
-    unlimitedUp: up > 1, unlimitedDown: false
+    unlimitedUp: up > 1, unlimitedLoss: up < -1 // a payoff that keeps falling as the stock rises (uncovered short calls) has no floor
   };
 }
 
@@ -123,14 +123,14 @@ function netGreeks(legs, stock) {
   return { delta: r2(g.delta), gamma: Math.round(g.gamma * 1000) / 1000, thetaPerDay: r2(g.theta), vegaPer1pct: r2(g.vega) };
 }
 
-function warningsFor(legs, name) {
+function warningsFor(legs, name, unlimitedLoss) {
   const w = [];
   const worst = Math.max(0, ...legs.map((l) => (l.spreadPct == null ? 0 : l.spreadPct)));
   if (worst > 0.2) w.push(`Wide bid/ask (${Math.round(worst * 100)}% of the price on one leg): expect to give up a lot to get filled. Use limit orders at the mid.`);
   else if (worst > 0.1) w.push(`Bid/ask is ${Math.round(worst * 100)}% wide on one leg, so fills can cost noticeably more than the mid.`);
   const thin = legs.filter((l) => (l.oi != null && l.oi < 100) || (l.volume != null && l.volume === 0 && (l.oi == null || l.oi < 500)));
   if (thin.length) w.push('A leg has low open interest or no trades today, so it may be hard to exit.');
-  if (legs.some((l) => l.qty < 0 && l.type === 'call') && !/Covered|Collar|spread/i.test(name)) w.push('Short calls carry unlimited risk when not covered.');
+  if (unlimitedLoss) w.push('Loss is unlimited: this structure has short calls that nothing covers. Do not trade it without understanding assignment risk.');
   return w;
 }
 
@@ -168,10 +168,10 @@ function describe({ id, name, kind, why, legs, stock, spot, T, r, q, expiry, day
   const out = {
     id, name, kind, why, expiry, days: Math.round(days), legs: legs.map((l) => ({ ...l })),
     netCost: Math.round(net), costType: net >= 0 ? 'debit' : 'credit',
-    maxProfit: ext.unlimitedUp ? null : ext.maxProfit, maxLoss: ext.maxLoss, unlimitedProfit: !!ext.unlimitedUp,
+    maxProfit: ext.unlimitedUp ? null : ext.maxProfit, maxLoss: ext.unlimitedLoss ? null : ext.maxLoss, unlimitedProfit: !!ext.unlimitedUp, unlimitedLoss: !!ext.unlimitedLoss,
     breakevens: be, greeks, payoff: curve(legs, spot, stock),
     chanceOfProfit: sigma ? probabilityOfProfit(legs, spot, stock, T, r, q, sigma) : null,
-    warnings: warningsFor(legs, name)
+    warnings: warningsFor(legs, name, ext.unlimitedLoss)
   };
   if (stock) {
     out.stock = { shares: stock.shares, cost: stock.cost };
@@ -191,9 +191,13 @@ function buildStrategies(opts = {}) {
   const ex = pickExpiry(list, Math.max(7, Number(opts.horizonDays) || 30) * 1.15);
   if (!ex) return { available: false, reason: 'no_usable_expiry', strategies: [] };
   const r = fin(opts.rate) ? opts.rate : 0.043, q = fin(opts.divYield) ? opts.divYield : 0, T = ex.days / 365, view = opts.view || 'bullish';
-  const holds = Number(opts.shares) > 0, shares = holds ? Math.floor(Number(opts.shares) / 100) * 100 || Number(opts.shares) : 0;
-  const stock = holds ? { shares: Number(opts.shares), cost: Number(opts.cost) > 0 ? Number(opts.cost) : spot } : null;
-  const contracts = holds ? Math.max(1, Math.floor(shares / 100)) : 1;
+  const held = Number(opts.shares) > 0 ? Math.floor(Number(opts.shares)) : 0;
+  const lots = Math.floor(held / 100);
+  const holds = lots >= 1; // an option contract covers 100 shares; fewer than that cannot be hedged or written against with listed options
+  const coveredShares = lots * 100;
+  const stock = holds ? { shares: coveredShares, cost: Number(opts.cost) > 0 ? Number(opts.cost) : spot } : null;
+  const contracts = Math.max(1, lots);
+  const notes = held > 0 && !holds ? ['You entered fewer than 100 shares. One option contract covers 100 shares, so hedges and covered calls are not shown.'] : [];
   const out = [];
   const L = (strike, type, qty) => mkLeg(rows, ex.expiry, strike, type, qty, spot, T, r, q);
   const add = (spec) => { if (spec.legs.every(Boolean)) out.push(describe({ ...spec, spot, T, r, q, expiry: ex.expiry, days: ex.days })); };
@@ -219,13 +223,13 @@ function buildStrategies(opts = {}) {
     if (kpHedge) add({ id: 'protective_put', name: 'Protective put', kind: 'hedge', why: `Insurance on ${stock.shares} shares: below the put strike, extra losses on the shares are offset.`, legs: sizeLegs([L(kpHedge.strike, 'put', 1)], contracts), stock });
     if (kcOut) add({ id: 'covered_call', name: 'Covered call', kind: 'income', why: 'Sells upside above the strike for premium now. Lowers cost and exposure, but caps the gain on the shares.', legs: sizeLegs([L(kcOut.strike, 'call', -1)], contracts), stock });
     if (kpHedge && kcOut) add({ id: 'collar', name: 'Collar', kind: 'hedge', why: 'Buys downside protection and pays for it by selling upside. Often near zero net cost; gain and loss are both bounded.', legs: sizeLegs([L(kpHedge.strike, 'put', 1), L(kcOut.strike, 'call', -1)], contracts), stock });
-  } else if (view !== 'neutral' && atmP && atmC) {
+  } else if (held === 0 && view !== 'neutral' && atmP && atmC) {
     // no shares held: show what a hedge would look like per 100 shares so the idea is visible
     const kpHedge = nearestStrike(rows, ex.expiry, spot * 0.95, 'put');
     if (kpHedge) add({ id: 'protective_put_100', name: 'Protective put (per 100 shares)', kind: 'hedge', why: 'If you own 100 shares, this put insures them below the strike. Shown for a position of 100 shares bought at the current price.', legs: [L(kpHedge.strike, 'put', 1)], stock: { shares: 100, cost: spot } });
   }
-  if (!out.length) return { available: false, reason: 'no_priced_contracts', strategies: [] };
-  return { available: true, symbol: opts.symbol || '', spot: r2(spot), expiry: ex.expiry, days: Math.round(ex.days), view, holdsShares: holds, strategies: out, disclaimer: 'Educational illustration from live option mids. Not advice, and not an order. Fills differ from mids; options can expire worthless.' };
+  if (!out.length) return { available: false, reason: notes.length ? 'needs_100_shares' : 'no_priced_contracts', notes, holdsShares: holds, strategies: [] };
+  return { available: true, symbol: opts.symbol || '', spot: r2(spot), expiry: ex.expiry, days: Math.round(ex.days), view, holdsShares: holds, ...(holds && held !== coveredShares ? { sharesCovered: coveredShares, sharesUncovered: held - coveredShares } : {}), notes, strategies: out, disclaimer: 'Educational illustration from live option mids. Not advice, and not an order. Fills differ from mids; options can expire worthless.' };
 }
 
 module.exports = { buildStrategies, expiryValue, breakevens, mid, daysTo, invNorm };

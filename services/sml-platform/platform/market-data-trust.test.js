@@ -77,3 +77,11 @@ test('a later options page failing keeps the pages already fetched and flags the
   const r = await opt.get('options', 'SPY');
   assert.equal(r.ok, true); assert.equal(r.data.complete, false); assert.equal(r.data.contracts, 1);
 });
+
+test('options paging never follows a downgraded (http) next_url on the provider host', async () => {
+  const calls = [];
+  const opt = createMassiveOptions({ apiKey: 'k', enabled: true, maxPages: 4, fetchImpl: async (u) => { calls.push(u); return json({ results: [{ id: 1 }], next_url: 'http://api.massive.com/v3/snapshot/options/SPY?cursor=x' }); } });
+  const r = await opt.get('options', 'SPY');
+  assert.equal(r.data.pages, 1); assert.equal(r.data.complete, false);
+  assert.ok(calls.every((u) => u.startsWith('https://')));
+});

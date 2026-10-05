@@ -41,6 +41,10 @@ function sml_gpro_rest_run( WP_REST_Request $request ) {
 		$symbols = sml_gpro_watchlist( $group_id ); // the dashboard defaults to the group's list
 	}
 	$symbols = is_array( $symbols ) ? sml_gpro_clean_symbols( $symbols ) : array();
+	// A preview member may not choose which tickers the group-wide tools look at: they see the group's own list, trimmed, so repeated calls cannot extract more.
+	if ( 'preview' === $viewer['level'] && in_array( $tool, array( 'dashboard', 'leaders' ), true ) ) {
+		$symbols = array_slice( sml_gpro_watchlist( $group_id ), 0, 3 );
+	}
 	if ( in_array( $tool, array( 'dashboard', 'leaders' ), true ) ) {
 		if ( ! $symbols ) {
 			return array( 'ok' => true, 'rows' => array(), 'empty' => true, 'note' => 'No tickers on this group\'s list yet.', 'level' => $viewer['level'], 'can_curate' => $viewer['can_curate'] );
@@ -50,7 +54,7 @@ function sml_gpro_rest_run( WP_REST_Request $request ) {
 	}
 	$params  = $request->get_param( 'params' );
 	$preview = 'preview' === $viewer['level'];
-	$payload = sml_gpro_payload( $tool, $group_id, get_current_user_id(), $symbol, $symbols, is_array( $params ) ? $params : array(), $preview );
+	$payload = sml_gpro_payload( $tool, $group_id, $symbol, $symbols, is_array( $params ) ? $params : array(), $preview );
 
 	// A short shared cache keeps a busy group from sending one platform call per member per refresh.
 	$key = 'sml_gpro_' . md5( wp_json_encode( $payload ) );

@@ -5,7 +5,8 @@
   if (window.__smlSentimentPanel) return;
   window.__smlSentimentPanel = true;
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const clean = (v) => String(v || 'SPY').toUpperCase().replace(/[^A-Z0-9.:-]/g, '').slice(0, 10) || 'SPY';
+  const clean = (v) => String(v || 'SPY').toUpperCase().replace(/[^A-Z0-9.-]/g, '').slice(0, 10) || 'SPY';
+  const safeUrl = (u) => (/^https?:\/\//i.test(String(u || '')) ? String(u) : '');
   const sym = () => clean(new URLSearchParams(location.search).get('symbol'));
   const KEY = 'sml-sentiment-v1';
   const S = { on: false, session: '', symbol: '', data: null, loading: false, error: '' };
@@ -59,7 +60,7 @@
     const s = c.score, w = Math.min(50, Math.abs(s) * 50);
     const bar = '<div class="mini"><b style="' + (s >= 0 ? 'left:50%;background:#37e08f;' : 'right:50%;background:#ff5d6c;') + 'width:' + w + '%"></b></div>';
     let detail = '';
-    if (key === 'news') detail = c.n + ' headlines (' + c.bull + ' up, ' + c.bear + ' down)' + (c.drivers && c.drivers[0] ? ' \u00b7 top: ' + (c.drivers[0].url ? '<a href="' + esc(c.drivers[0].url) + '" target="_blank" rel="noopener noreferrer">' + esc(c.drivers[0].title) + '</a>' : esc(c.drivers[0].title)) : '');
+    if (key === 'news') detail = c.n + ' headlines (' + c.bull + ' up, ' + c.bear + ' down)' + (c.drivers && c.drivers[0] ? ' \u00b7 top: ' + (safeUrl(c.drivers[0].url) ? '<a href="' + esc(safeUrl(c.drivers[0].url)) + '" target="_blank" rel="noopener noreferrer">' + esc(c.drivers[0].title) + '</a>' : esc(c.drivers[0].title)) : '');
     if (key === 'social') detail = c.bull + ' bullish / ' + c.bear + ' bearish of ' + c.n + ' posts' + (c.postsPerHour != null ? ' \u00b7 ' + c.postsPerHour + '/hr' : '') + (c.velocityRatio != null ? ' \u00b7 ' + c.velocityRatio + 'x normal' : '');
     if (key === 'options') detail = (c.putCall && c.putCall.volume != null ? 'put/call vol ' + c.putCall.volume : '') + (c.putCall && c.putCall.openInterest != null ? ' \u00b7 OI ' + c.putCall.openInterest : '') + (c.maxPain != null ? ' \u00b7 max pain ' + c.maxPain : '') + (c.gex && c.gex.flipStrike != null ? ' \u00b7 gamma flip ' + c.gex.flipStrike : '') + (c.unusual && c.unusual.length ? ' \u00b7 ' + c.unusual.length + ' unusual' : '');
     if (key === 'market') detail = c.detail || '';

@@ -40,9 +40,9 @@ const { sanitizeBars, annotateCandles } = require('./data-quality');
 const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPgStateStore } = require('./academy-state-store');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
-const { createGroupTools } = require('./academy-group-tools');
+const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
-const dataHealth = createDataHealth();
+const dataHealth = createDataHealth({ soft: { 'massive-indices': [401, 403], 'wordpress-history': [500] } });
 const { createDataRateLimit } = require('./data-rate-limit');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
 const ACADEMY_LIMITED_PATHS = new Set(['/academy-activity/market', '/academy-activity/scanner', '/academy-activity/orderflow', '/academy-activity/live', '/academy-activity/data/short', '/academy-activity/data/earnings']);
@@ -450,6 +450,7 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
       if (!clean.bars.length) throw new Error('academy_market_empty');
       /* adjusted is unknown for this feed, so it is reported as null rather than guessed */
       const payload = annotateCandles({ symbol: safeSymbol, tf: safeTimeframe, bars: clean.bars, asOf: Number(source?.asOf) || Date.now() }, { source: 'wordpress-history', adjusted: null, repaired: clean.repaired });
+      if (academyMarketCache.size >= 400) academyMarketCache.delete(academyMarketCache.keys().next().value);
       academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 1_800_000, payload });
       return payload;
     } catch (error) {
@@ -1378,7 +1379,7 @@ async function handleGroupTools(request, response, options) {
     const data = await options.groupTools.run(String(input.tool || ''), { symbol: input.symbol, symbols: input.symbols, params, preview: input.preview === true });
     sendJson(response, 200, data && typeof data === 'object' && 'ok' in data ? data : { ok: true, ...data });
   } catch (error) {
-    if (error instanceof TypeError) { sendJson(response, 400, { ok: false, error: String(error.message) }); return; }
+    if (error instanceof GroupToolsInputError) { sendJson(response, 400, { ok: false, error: error.code }); return; }
     options.logger('error', 'group_tools_failed', { error });
     sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
   }
@@ -2820,7 +2821,8 @@ function dataStatusSummary() {
   try {
     const snap = dataHealth.snapshot(dataStatusExtras());
     const providers = {};
-    for (const [name, v] of Object.entries(snap.providers)) providers[name] = { state: v.state, ...(v.lastError ? { lastError: v.lastError } : {}), ...(v.retryInMs ? { retryInMs: v.retryInMs } : {}) };
+    /* public: state only. Error text (auth codes, upstream messages) stays in the logs. */
+    for (const [name, v] of Object.entries(snap.providers)) providers[name] = { state: v.state, ...(v.detail ? { detail: v.detail } : {}), ...(v.retryInMs ? { retryInMs: v.retryInMs } : {}) };
     const st = marketState();
     return { overall: snap.overall, session: st.session, marketOpen: st.open, et: st.et, providers };
   } catch (_) { return { overall: 'unknown' }; }

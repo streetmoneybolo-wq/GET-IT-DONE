@@ -1,4 +1,5 @@
 'use strict';
+const { etParts } = require('./market-clock');
 
 /* Finds the next scheduled earnings date in whatever shape the data bridge returns (the field names are not pinned, which the
  * earnings panel already admits), by walking the payload for objects that carry a date-like field. Returns null when nothing
@@ -23,7 +24,8 @@ function walk(node, out, depth = 0) {
 function extractNextEarnings(payload, now = Date.now()) {
   const found = []; walk(payload, found);
   if (!found.length) return null;
-  const today = new Date(now).toISOString().slice(0, 10);
+  const et = etParts(now); // "today" is the New York date: at 9 pm Eastern the UTC date is already tomorrow
+  const today = `${et.y}-${String(et.m).padStart(2, '0')}-${String(et.d).padStart(2, '0')}`;
   const todayMs = Date.parse(today + 'T00:00:00Z');
   const upcoming = found.filter((r) => r.date >= today && !r.hasActual && r.key !== 'fiscalDateEnding')
     .sort((a, b) => a.date.localeCompare(b.date));

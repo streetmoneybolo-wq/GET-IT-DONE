@@ -98,7 +98,15 @@ test('preview trims what non-premium members receive', async () => {
   const sp = await svc.run('strategies', { symbol: 'UP', preview: true });
   assert.ok(sp.strategies.every((s) => s.legs === undefined && s.payoff === undefined));
   const dp = await svc.run('darkpool', { symbol: 'UP', preview: true });
-  assert.deepEqual(dp.largest, []);
+  assert.deepEqual(dp.largest, []); assert.equal(dp.lean, null);
+  const se = await svc.run('sentiment', { symbol: 'UP', preview: true });
+  assert.equal(se.label, 'leaning bullish'); assert.deepEqual(se.components, {}); assert.deepEqual(se.notes, []);
+  const lead = await svc.run('leaders', { symbols: ['UP', 'DOWN'], preview: true });
+  assert.deepEqual(lead.rows, []);
+  const ab = await svc.run('absorption', { symbol: 'UP', preview: true });
+  assert.equal(ab.explain, undefined); assert.equal(ab.level, null); assert.equal(ab.tape, null);
+  const db = await svc.run('dashboard', { symbols: ['UP', 'DOWN', 'SPY', 'QQQ'], preview: true });
+  assert.ok(db.rows.length <= 3); assert.ok(db.rows.every((r) => r.sentiment === undefined && r.absorption === undefined && r.darkPool === undefined));
 });
 
 test('degrades when inputs are missing and rejects bad requests', async () => {
@@ -113,5 +121,11 @@ test('degrades when inputs are missing and rejects bad requests', async () => {
   assert.equal(se.reason, 'not_configured');
   await assert.rejects(svc.run('setups', { symbol: 'bad symbol' }), TypeError);
   await assert.rejects(svc.run('nope', { symbol: 'UP' }), /unknown_tool/);
+  const { GroupToolsInputError } = require('./academy-group-tools');
+  await assert.rejects(svc.run('nope', { symbol: 'UP' }), GroupToolsInputError);
+  // an internal bug is NOT an input error: it must surface as a plain error so the route logs it and answers 503
+  const buggy = createGroupTools({ candles: async () => { throw new TypeError('Cannot read properties of undefined'); }, now: () => NOW });
+  const r2 = await buggy.run('setups', { symbol: 'UP' });
+  assert.equal(r2.available, false); // soft-failed inputs degrade, never a 400
   assert.throws(() => createGroupTools({}), /candles_required/);
 });

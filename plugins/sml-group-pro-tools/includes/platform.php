@@ -28,11 +28,10 @@ function sml_gpro_signature( $timestamp, $body, $secret ) {
 }
 
 /** Pure: shapes the request body, whitelisting what is sent. */
-function sml_gpro_payload( $tool, $group_id, $user_id, $symbol, $symbols, $params, $preview ) {
+function sml_gpro_payload( $tool, $group_id, $symbol, $symbols, $params, $preview ) {
 	$payload = array(
 		'tool'    => sanitize_key( $tool ),
 		'groupId' => absint( $group_id ),
-		'userId'  => absint( $user_id ),
 		'preview' => (bool) $preview,
 		'params'  => new stdClass(),
 	);

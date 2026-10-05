@@ -11,9 +11,14 @@ const { darkPoolSummary } = require('./academy-dark-pool-summary');
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 const fin = Number.isFinite;
 
+/* Only this class means "the caller sent something invalid" (HTTP 400). Any other error is a bug or an outage and must be logged and reported as 503. */
+class GroupToolsInputError extends TypeError {
+  constructor(code) { super(code); this.name = 'GroupToolsInputError'; this.code = code; }
+}
+
 function cleanSymbol(v) {
   const s = String(v || '').trim().toUpperCase();
-  if (!SYMBOL_RE.test(s)) throw new TypeError('invalid_symbol');
+  if (!SYMBOL_RE.test(s)) throw new GroupToolsInputError('invalid_symbol');
   return s;
 }
 
@@ -140,7 +145,7 @@ function createGroupTools({ candles, stream = null, orderFlow = null, orderFlowS
 
   async function dashboard(symbolsRaw) {
     const list = [...new Set((Array.isArray(symbolsRaw) ? symbolsRaw : []).map((s) => { try { return cleanSymbol(s); } catch (_) { return null; } }).filter(Boolean))].slice(0, 12);
-    if (!list.length) throw new TypeError('symbols_required');
+    if (!list.length) throw new GroupToolsInputError('symbols_required');
     const rows = []; const lanes = 3;
     for (let i = 0; i < list.length; i += lanes) rows.push(...await Promise.all(list.slice(i, i + lanes).map((s) => row(s).catch(() => ({ symbol: s, error: 'unavailable' })))));
     return { ok: true, asOf: now(), rows, disclaimer: 'Educational context from live data, not a trade signal.' };
@@ -157,11 +162,13 @@ function createGroupTools({ candles, stream = null, orderFlow = null, orderFlowS
   function preview(tool, data) {
     if (!data || data.ok === false) return data;
     const note = 'Preview: join the group Premium tier for the full breakdown.';
-    if (tool === 'setups') return { ...data, preview: true, note, cards: (data.cards || []).map((c) => (c.available && c.side !== 'neutral' ? { horizon: c.horizon, label: c.label, span: c.span, available: true, side: c.side, scoreGrade: c.scoreGrade, summary: c.summary.split('. ')[0] + '.' } : c)) };
+    if (tool === 'setups') return { ...data, preview: true, note, cards: (data.cards || []).map((c) => (c.available && c.side !== 'neutral' ? { horizon: c.horizon, label: c.label, span: c.span, available: true, side: c.side, scoreGrade: c.scoreGrade, summary: String(c.summary || '').split('. ')[0] + '.' } : { horizon: c.horizon, label: c.label, span: c.span, available: c.available, side: c.side, reason: c.reason, summary: c.summary })) };
     if (tool === 'strategies') return { ...data, preview: true, note, strategies: (data.strategies || []).map((s) => ({ id: s.id, name: s.name, kind: s.kind, why: s.why })) };
-    if (tool === 'darkpool') return { ...data, preview: true, note, levels: [], largest: [] };
-    if (tool === 'absorption') return { ...data, preview: true, note, tape: null, orderBook: null, history: undefined };
-    if (tool === 'dashboard') return { ...data, preview: true, note, rows: (data.rows || []).slice(0, 3) };
+    if (tool === 'darkpool') return { ...data, preview: true, note, levels: [], largest: [], lean: null, levelsNote: undefined };
+    if (tool === 'absorption') return { ...data, preview: true, note, tape: null, orderBook: null, history: undefined, explain: undefined, level: null, persistedWindows: undefined };
+    if (tool === 'sentiment') return { ok: data.ok, symbol: data.symbol, available: data.available, preview: true, note, label: data.label, scorePct: data.scorePct, score: data.score, coverage: data.coverage, components: {}, notes: [] };
+    if (tool === 'leaders') return { ok: true, preview: true, note, rows: [], asOf: data.asOf, caveat: data.caveat };
+    if (tool === 'dashboard') return { ...data, preview: true, note, rows: (data.rows || []).slice(0, 3).map((r) => ({ symbol: r.symbol, price: r.price, changePct: r.changePct, setup: r.setup ? { side: r.setup.side, grade: r.setup.grade } : null })) };
     return { ...data, preview: true, note };
   }
 
@@ -171,7 +178,7 @@ function createGroupTools({ candles, stream = null, orderFlow = null, orderFlowS
       setups: () => setups(input.symbol), absorption: () => absorption(input.symbol), darkpool: () => darkPool(input.symbol), strategies: () => strategies(input.symbol, p),
       sentiment: () => sentimentFor(input.symbol), dashboard: () => dashboard(input.symbols), leaders: () => leaders(input.symbols)
     };
-    if (!map[tool]) throw new TypeError('unknown_tool');
+    if (!map[tool]) throw new GroupToolsInputError('unknown_tool');
     const data = await map[tool]();
     return input.preview ? preview(tool, data) : data;
   }
@@ -179,4 +186,4 @@ function createGroupTools({ candles, stream = null, orderFlow = null, orderFlowS
   return { run, setups, absorption, darkPool, strategies, dashboard, leaders, row, TOOLS: ['setups', 'absorption', 'darkpool', 'strategies', 'sentiment', 'dashboard', 'leaders'] };
 }
 
-module.exports = { createGroupTools, cleanSymbol };
+module.exports = { createGroupTools, cleanSymbol, GroupToolsInputError };

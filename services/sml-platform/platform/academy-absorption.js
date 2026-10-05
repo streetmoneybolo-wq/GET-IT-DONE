@@ -4,8 +4,8 @@
  * the offer hard and price stalls (sellers are absorbing). Two independent reads are combined:
  *   - the tape: aggressor volume classified by the tick rule (up-tick = buy, down-tick = sell) against how far price actually moved in the window
  *   - the order book: the Level 2 reader's own absorption state, when it is tracking the symbol
- * Output is -100 (sellers absorbing a push up) .. +100 (buyers absorbing selling), with how long it has persisted, where it is happening (the volume-weighted
- * price of the absorbed volume) and, when recorded, how often this order-flow signal was followed by a move in its direction five minutes later.
+ * Output is -100 (sellers absorbing a push up) .. +100 (buyers absorbing selling), with how long it has persisted, the volume-weighted price of the window, and, when recorded,
+ * how often this order-flow signal was followed by a move in its direction five minutes later.
  * Needs live prints; with too few it says so instead of showing a number. Educational context, not a signal to trade. */
 
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
