@@ -1759,6 +1759,48 @@
     if (restore && L) { L.style.backgroundSize = ''; L.style.backgroundPosition = ''; apply(); }
   }
 
+  /* "Apply to" picker: this channel, any mix of channels, or all of them (used by background position and zoom) */
+  function groupChannelList() {
+    var out = [];
+    document.querySelectorAll('.sml-gshell__channels .sml-gshell__channel[data-smlgs-channel]').forEach(function (b) {
+      var id = Number(b.getAttribute('data-smlgs-channel')); if (!id) return;
+      var nm = b.querySelector('.sml-gshell__channel-name');
+      out.push({ id: id, name: ((nm ? nm.textContent : b.textContent) || '').replace(/\s+/g, ' ').replace(/^#\s*/, '').trim() || ('channel ' + id) });
+    });
+    return out;
+  }
+  function applyPickerHtml() {
+    var list = groupChannelList(), cur = Number(cid());
+    if (list.length < 2) return '';
+    return '<details class="sml-cbg-apply" style="flex:1 1 100%;margin:4px 0"><summary style="cursor:pointer;font-weight:600">Apply to: <span data-cbg-sum>this channel</span></summary>' +
+      '<div style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap"><button type="button" data-cbg-pick="cur">Just this one</button><button type="button" data-cbg-pick="all">Select all</button><button type="button" data-cbg-pick="none">Clear</button></div>' +
+      '<div style="max-height:150px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px">' +
+      list.map(function (c) { return '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-cbg-ch="' + c.id + '"' + (c.id === cur ? ' checked' : '') + '> #' + String(c.name).replace(/[<>&"]/g, '') + '</label>'; }).join('') +
+      '</div></details>';
+  }
+  function bindApplyPicker(bar, st) {
+    var boxes = bar.querySelectorAll('[data-cbg-ch]');
+    st.targets = [Number(cid())]; st.everyChannel = false;
+    if (!boxes.length) return;
+    var sum = bar.querySelector('[data-cbg-sum]');
+    function sync() {
+      var on = [].filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return Number(b.getAttribute('data-cbg-ch')); });
+      st.targets = on.length ? on : [Number(cid())];
+      st.everyChannel = on.length === boxes.length;
+      if (sum) sum.textContent = !on.length ? 'this channel' : st.everyChannel ? 'all ' + boxes.length + ' channels' : on.length === 1 ? '1 channel' : on.length + ' channels';
+    }
+    boxes.forEach(function (b) { b.addEventListener('change', sync); });
+    bar.querySelectorAll('[data-cbg-pick]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var k = btn.getAttribute('data-cbg-pick');
+        boxes.forEach(function (b) { b.checked = k === 'all' ? true : k === 'none' ? false : Number(b.getAttribute('data-cbg-ch')) === Number(cid()); });
+        sync();
+      });
+    });
+    sync();
+  }
+
   function openEditor(opts) {
     var L = layer(), C = conv(); if (!L || !C) return;
     var portal = isPortal();
@@ -1784,7 +1826,7 @@
         '<label>Zoom <input type="range" min="20" max="400" step="1" data-cbg-zoom value="' + Math.round(st.scale * 100) + '"><span data-cbg-zoom-out>' + Math.round(st.scale * 100) + '%</span></label>' +
         '<button type="button" data-cbg="cover">Fill</button><button type="button" data-cbg="width">Fit width</button><button type="button" data-cbg="center">Center</button>' +
         (portal ? '<label>Opacity <input type="range" min="5" max="100" step="1" data-cbg-op value="' + st.opacity + '"><span data-cbg-op-out>' + st.opacity + '%</span></label><label><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-cbg-file hidden><button type="button" data-cbg="upload">Upload new image</button></label>' :
-                  '<label><input type="checkbox" data-cbg-all> Use for every channel in this group</label>') +
+                  applyPickerHtml()) +
         '<button type="button" class="warn" data-cbg="reset">Reset</button><button type="button" data-cbg="cancel">Cancel</button><button type="button" class="pri" data-cbg="save">Save</button>' +
         '<div class="st"></div>';
       C.appendChild(drag); C.appendChild(bar); F.ui = bar;
@@ -1821,8 +1863,7 @@
         var fl = fileIn.files && fileIn.files[0]; if (!fl) return; st.file = fl;
         var fr = new FileReader(); fr.onload = function () { st.url = fr.result; L.style.backgroundImage = 'url("' + fr.result + '")'; natural(fr.result, function (n) { st.nat = n; st.scale = n ? coverScale(n, L.getBoundingClientRect()) : 1; st.x = 50; st.y = 50; paint(st, L); say('New image loaded — place it, then Save.'); }); }; fr.readAsDataURL(fl);
       });
-      var allIn = bar.querySelector('[data-cbg-all]');
-      if (allIn) allIn.addEventListener('change', function () { st.all = !!allIn.checked; });
+      bindApplyPicker(bar, st);
 
       bar.addEventListener('click', function (e) {
         var b = e.target.closest('button[data-cbg]'); if (!b) return; e.preventDefault(); e.stopPropagation();
@@ -1849,9 +1890,21 @@
       if (st.file) fd.append('file', st.file);
       p = fetch('/wp-json/sml-portal-bg/v1/background', { method: 'POST', credentials: 'same-origin', headers: hdr(), body: fd });
     } else {
-      var body = { group_id: Number(gid()), channel_id: st.all ? 0 : Number(cid()) };
-      if (reset) body.reset = true; else { body.x = Number(st.x.toFixed(2)); body.y = Number(st.y.toFixed(2)); body.scale = Number(st.scale.toFixed(3)); }
-      p = fetch('/wp-json/sml-cbg/v1/fit', { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify(body) });
+      var targets = (st.targets && st.targets.length) ? st.targets.slice() : [Number(cid())];
+      var everyOne = st.everyChannel && targets.length > 1;
+      var ids = everyOne ? [0].concat(targets) : targets;
+      var postFit = function (channelId) {
+        var body = { group_id: Number(gid()), channel_id: channelId };
+        if (reset) body.reset = true; else { body.x = Number(st.x.toFixed(2)); body.y = Number(st.y.toFixed(2)); body.scale = Number(st.scale.toFixed(3)); }
+        return fetch('/wp-json/sml-cbg/v1/fit', { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify(body) });
+      };
+      /* one request per picked channel, in order; the last response drives the success/error handling below */
+      p = ids.reduce(function (chain, id) {
+        return chain.then(function (prev) {
+          if (prev && !prev.ok) return prev;
+          return postFit(id);
+        });
+      }, Promise.resolve(null));
     }
     p.then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { j = null; }
       if (!j && /Checking your browser|Javascript required/i.test(t)) throw new Error('WordPress.com is verifying your browser. Reload this page once, then save again.');
