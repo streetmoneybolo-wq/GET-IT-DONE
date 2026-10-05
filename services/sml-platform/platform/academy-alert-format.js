@@ -135,6 +135,53 @@ function formatOptionsAlert(a) {
   ].join('\n');
 }
 
+/* ---------- options contract, from a Click-to-Alert double-click on the chain ----------
+ * The stock entry layout (setup, momentum, target zone, risk, stop) plus what the contract itself adds: its price, the cost of one contract, breakeven,
+ * what it is estimated to be worth at the target and at the stop, the Greeks and how easy it is to trade. Every number comes from buildOptionsAlert. */
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const expiryText = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso)); return m ? MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) : String(iso); };
+const signed = (n) => (n == null || !Number.isFinite(Number(n)) ? 'n/a' : (Number(n) >= 0 ? '+' : '−') + Math.abs(Number(n)).toFixed(0) + '%');
+const money = (n) => (n == null || !Number.isFinite(Number(n)) ? 'n/a' : (Number(n) < 0 ? '−$' : '$') + Math.abs(Number(n)).toFixed(Math.abs(Number(n)) >= 1 ? 2 : 3));
+
+function formatOptionsContractAlert(a) {
+  const c = a.contract, e = a.estimates;
+  if (!a.ticker || !c || !e || !(Number(c.mid) > 0)) throw new TypeError('options_contract_alert_needs_contract');
+  const side = a.side === 'short' ? 'short' : 'long';
+  const type = tradeType(a.type), puts = c.type === 'put';
+  const pt = Number(a.pt), up = side === 'long';
+  const tick = bold(String(a.ticker).toUpperCase().replace(/[^A-Z0-9.]/g, ''));
+  const stopPx = Number(a.stop) > 0 ? Number(a.stop) : autoStop({ entry: a.entry, side, type: a.type });
+  const plus = !!a.plus;
+  const t = e.atTarget, d = t.days || {};
+  const spread = c.bid != null && c.ask != null ? money(c.bid) + ' × ' + money(c.ask) : null;
+  const lines = [
+    ...everyone(a.mention),
+    '🔥 ' + tick + ' ' + bold(puts ? 'PUTS' : 'CALLS') + ' | ' + bold('STRIKE') + ' ' + priceText(c.strike).replace(/^\$/, '') + ' | ' + bold(expiryText(c.expiry)) + ' | ' + bold('ENTRY') + ' ' + priceText(c.mid) + ' | ' + bold('PT') + ' ' + priceText(pt, { plus }) + ' (' + bold(type.label) + ') 🔥',
+    '📈 ' + bold('SETUP') + ': ' + sentence(a.setup, tick + ' showing steady ' + (up ? 'momentum' : 'selling pressure') + '.'),
+    '',
+    '⚡ ' + bold('MOMENTUM') + ': ' + sentence(a.momentum, up ? 'Strong upside pressure — watching for continuation.' : 'Strong downside pressure — watching for continuation.'),
+    '',
+    '👉 🎯 ' + bold('TARGET ZONE') + ' — stock ' + priceText(pt, { plus }) + ' 👈',
+    sentence(a.targetNote, 'Target zone in play if momentum holds.'),
+    '',
+    '📋 ' + bold('CONTRACT') + ': ' + clean(c.name, 60) + ' · ' + c.dte + ' days left',
+    '💵 ' + bold('PRICE') + ' ' + money(c.mid) + ' (' + (spread ? 'bid × ask ' + spread : 'mid') + ') · ' + bold('COST') + ' $' + c.perContract + ' per contract',
+    '⚖️ ' + bold('BREAKEVEN') + ' ' + money(e.breakeven) + ' at expiry (' + signed(e.breakevenMovePct) + ' move in the stock)',
+    '🎯 ' + bold('AT TARGET') + ': about ' + money(t.base) + ' (' + signed(t.basePct) + ') in ~' + Math.round(d.base || 0) + ' days · fast ' + signed(t.fastPct) + ' · slow ' + signed(t.slowPct),
+    '🛑 ' + bold('AT STOP') + ': about ' + money(e.atStop.value) + ' (' + signed(e.atStop.pct) + ') · worst case −$' + c.perContract,
+    '🧮 ' + bold('GREEKS') + ': Δ ' + (c.delta == null ? 'n/a' : c.delta) + ' · Θ ' + (c.thetaPerDay == null ? 'n/a' : money(c.thetaPerDay) + '/day') + ' · Vega ' + (c.vegaPer1pct == null ? 'n/a' : money(c.vegaPer1pct)) + ' · IV ' + (c.iv == null ? 'n/a' : c.iv + '%') + ' · ' + (c.probITMPct == null ? 'n/a' : c.probITMPct + '%') + ' chance in the money',
+    '🔎 ' + bold('LIQUIDITY') + ': ' + String(c.liquidity || 'unknown').toUpperCase() + ' · OI ' + (c.oi == null ? 'n/a' : c.oi) + ' · vol ' + (c.volume == null ? 'n/a' : c.volume) + (c.spreadPct == null ? '' : ' · spread ' + c.spreadPct + '%'),
+    '',
+    '⚠️ ' + bold(riskLabel(a.risk)) + ' — ' + bold(type.style) + '  ',
+    sentence(a.riskNote, 'Partial profits recommended on strength.'),
+    '',
+    '🚨 ' + bold('STOP LOSS') + ': Stock ' + (up ? 'below ' : 'above ') + plainPrice(stopPx) + ' — ' + sentence(a.stopNote, up ? 'trend weakens.' : 'downtrend fails.')
+  ];
+  let text = lines.join('\n');
+  if (text.length > 1700) text = lines.filter((l) => !/^(🧮|🔎)/u.test(l)).join('\n');
+  return text;
+}
+
 function formatOptionsPtSmashed(a) {
   const puts = /^put/i.test(String(a.contract || ''));
   const pt = clean(a.newPt, 40);
@@ -151,4 +198,4 @@ function formatOptionsPtSmashed(a) {
   ].join('\n');
 }
 
-module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatOptionsAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };
+module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };

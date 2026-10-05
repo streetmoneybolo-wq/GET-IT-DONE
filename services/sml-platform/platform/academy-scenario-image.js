@@ -61,6 +61,7 @@ function svgFor(scn, which, meta = {}) {
   const side = scn.side === 'short' ? 'SHORT' : 'LONG';
   add('<text x="' + (W - 22) + '" y="26" font-size="20" font-weight="bold" fill="#ffffff" text-anchor="end">' + esc(scn.symbol) + ' · ' + side + (meta.horizonLabel ? ' · ' + esc(String(meta.horizonLabel).toUpperCase()) : '') + '</text>');
   add('<text x="' + (W - 22) + '" y="46" font-size="13" fill="#9fb3be" text-anchor="end">' + esc(scn.tf) + ' chart · entry $' + price(scn.entry) + ' → target $' + price(scn.target) + ' · stop $' + price(scn.stop) + '</text>');
+  if (meta.contract) { const c = meta.contract; add('<text x="22" y="72" font-size="12.5" font-weight="bold" fill="#ffffff">' + esc(c.line1) + '</text><text x="' + (W - 22) + '" y="72" font-size="12" fill="#9fb3be" text-anchor="end">' + esc(c.line2) + '</text>'); }
   // plot
   add('<rect x="' + px0 + '" y="' + py0 + '" width="' + plotW + '" height="' + plotH + '" fill="#0a1118"/>');
   const ticks = 6;
@@ -110,7 +111,7 @@ function svgFor(scn, which, meta = {}) {
   add('<rect x="' + px0 + '" y="472" width="' + plotW + '" height="' + (H - 472 - 34) + '" fill="#0b1520" rx="6"/>');
   add('<text x="' + (px0 + 14) + '" y="494" font-size="12" font-weight="bold" fill="' + th.accent + '">' + (which === 'risk' ? 'WHAT TO WATCH' : 'WHY THIS PATH') + '</text>');
   let y = 514;
-  for (const b of sc.bullets.slice(0, 5)) {
+  for (const b of (meta.contract && meta.contract.bullets ? meta.contract.bullets[which] || [] : []).concat(sc.bullets).slice(0, 5)) {
     const lines = wrap(b, 138).slice(0, 2);
     add('<circle cx="' + (px0 + 18) + '" cy="' + (y - 4) + '" r="3" fill="' + th.accent + '"/>');
     lines.forEach((ln, q) => add('<text x="' + (px0 + 30) + '" y="' + (y + q * 15) + '" font-size="12.5" fill="#d3e0e7">' + esc(ln) + '</text>'));

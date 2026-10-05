@@ -109,6 +109,14 @@
     render();
   });
 
+  // double-click a contract -> Click-to-Alert turns it into an options alert when an alert is armed
+  if (grid) grid.addEventListener('dblclick', (e) => {
+    const td = e.target.closest && e.target.closest('td'), tr = td && td.parentElement; if (!tr || !tr.cells || tr.cells.length < 21) return;
+    const strike = num(tr.cells[10].textContent); if (strike == null) return;
+    const exp = $('options-expiry'), m = /\d{4}-\d{2}-\d{2}/.exec(exp ? (exp.value || (exp.selectedOptions[0] || {}).textContent || '') : ''); if (!m) return;
+    window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: td.cellIndex > 10 ? 'put' : 'call', strike, expiry: m[0] } }));
+  });
+
   // load the chain for the chart's symbol as soon as Academy access is verified, and again when the symbol changes
   let session = '', shownSymbol = '';
   const symbolNow = () => String(new URLSearchParams(location.search).get('symbol') || 'SPY').toUpperCase();

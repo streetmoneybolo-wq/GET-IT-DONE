@@ -10,7 +10,7 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toolbar = document.querySelector('.toolbar'), canvas = $('chart'), stage = document.querySelector('.academy-chart-stage');
   const KEY = 'sml-click-alert-dest';
-  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '' };
+  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '', contract: null, opt: null };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.guildId = String(v.guildId || ''); S.channelId = String(v.channelId || ''); } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ guildId: S.guildId, channelId: S.channelId })); } catch (_) { /* ignore */ } };
 
@@ -129,6 +129,27 @@
     S.buying = false; await loadPass();
   }
 
+  const usd = (v) => (Number.isFinite(+v) ? (+v < 0 ? '-$' : '$') + Math.abs(+v).toFixed(2) : 'n/a');
+  const pct = (v) => (Number.isFinite(+v) ? (+v >= 0 ? '+' : '-') + Math.abs(+v).toFixed(0) + '%' : 'n/a');
+  function optionsHtml() {
+    const o = S.opt;
+    if (!o) return '<div class="msg info">Want it as an options alert? Double-click a call or put in the options chain.</div>';
+    const c = o.contract, e = o.estimates, t = e.atTarget;
+    return '<div class="hz"><b>' + esc(c.name) + '</b><span>' + usd(c.mid) + ' per share · $' + esc(c.perContract) + ' per contract · ' + esc(c.dte) + ' days left</span></div>'
+      + row('Bid × ask', usd(c.bid) + ' × ' + usd(c.ask)) + row('Breakeven at expiry', usd(e.breakeven) + ' (' + pct(e.breakevenMovePct) + ' stock move)')
+      + row('Worth at your target', usd(t.base) + ' (' + pct(t.basePct) + ') · fast ' + pct(t.fastPct) + ' · slow ' + pct(t.slowPct)) + row('Worth at the stop', usd(e.atStop.value) + ' (' + pct(e.atStop.pct) + ')')
+      + row('Delta · theta/day · vega', esc(c.delta) + ' · ' + usd(c.thetaPerDay) + ' · ' + usd(c.vegaPer1pct)) + row('IV · chance in the money', esc(c.iv) + '% · ' + esc(c.probITMPct) + '%')
+      + row('Liquidity', esc(c.liquidity) + ' · OI ' + esc(c.oi == null ? 'n/a' : c.oi) + ' · vol ' + esc(c.volume == null ? 'n/a' : c.volume))
+      + '<ul>' + (o.warnings || []).map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul><button type="button" class="act ghost" data-ca="nocontract">Use the stock alert instead</button>';
+  }
+  window.addEventListener('sml-click-alert-contract', (e) => {
+    const d = e.detail || {};
+    if (!S.on) { S.msg = ''; setOn(true); }
+    if (S.target == null || !S.data) { S.msg = 'First click a price on the chart to set the stock target, then double-click the contract.'; S.msgTone = 'info'; render(); return; }
+    if (S.busy) return;
+    S.contract = { type: d.type, strike: d.strike, expiry: d.expiry }; void reading();
+  });
+
   function render() {
     if (!S.on) { panel.style.display = 'none'; return; }
     panel.style.display = 'block';
@@ -145,6 +166,7 @@
       html += '<div class="hz"><b>' + esc(d.horizonLabel.toUpperCase()) + '</b><span>' + esc(d.horizonSpan) + ' · ' + esc(d.confidence) + ' confidence · about ' + (d.expectedDays.mid < 1 ? 'under a day' : (d.expectedDays.mid < 10 ? d.expectedDays.mid.toFixed(1) : Math.round(d.expectedDays.mid)) + ' trading days') + '</span></div>';
       html += row('Stop (suggested)', '$' + price(d.stop) + ' · ' + esc(d.stopBasis)) + row('Risk', esc(String(d.risk).toUpperCase()));
       html += '<ul>' + d.rationale.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+      html += optionsHtml();
       const ch = S.channels.find((c) => c.id === S.channelId);
       const canAsMe = !!(ch && ch.asMe);
       html += '<select data-ca="guild"><option value="">Choose a server…</option>' + S.guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === S.guildId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select>';
@@ -186,8 +208,9 @@
   }
   async function reading() {
     S.busy = true; S.data = null; S.scn = null; S.msg = ''; S.sent = false; render();
-    const r = await api('preview', { symbol: S.symbol, target: S.target });
-    S.busy = false;
+    const r = await api('preview', Object.assign({ symbol: S.symbol, target: S.target }, S.contract ? { contract: S.contract } : {}));
+    S.busy = false; S.opt = r.ok ? (r.options || null) : null;
+    if (!r.ok && S.contract && /^(contract_|options_)/.test(String(r.error || r.code || ''))) { const why = explainErr(r); S.contract = null; await reading(); S.msg = why; S.msgTone = 'err'; render(); return; }
     if (!r.ok) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
     S.data = r.analysis; S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = ''; render(); draw();
   }
@@ -203,7 +226,7 @@
     const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     if (x < M.pad.l || x > M.pad.l + M.pw || y < M.pad.t || y > M.pad.t + (M.priceH || M.ph)) return;
     const p = M.hi - (y - M.pad.t) / M.ph * (M.hi - M.lo); if (!(p > 0)) return;
-    S.symbol = M.symbol; S.target = Math.round(p * (p >= 1 ? 100 : 10000)) / (p >= 1 ? 100 : 10000);
+    S.contract = null; S.opt = null; S.symbol = M.symbol; S.target = Math.round(p * (p >= 1 ? 100 : 10000)) / (p >= 1 ? 100 : 10000);
     if (S.status && S.status.ok && S.status.entitled) { void reading(); } else { void loadStatus().then(() => { if (S.status && S.status.entitled) void reading(); }); }
     render(); draw();
   }, { passive: true });
@@ -218,12 +241,13 @@
       if (S.guildId && S.channelId) openOut('https://discord.com/channels/' + S.guildId + '/' + S.channelId);
       return;
     }
+    if (k === 'nocontract') { S.contract = null; void reading(); return; }
     if (k === 'out') { if (a.dataset.url) openOut(a.dataset.url); return; }
     if (k === 'buy') { void buyPass(a.dataset.plan); return; }
     if (k === 'send') {
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
-      const r = await api('send', { symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping, images: !!S.images, asMe: !!S.asMe });
+      const r = await api('send', Object.assign({ symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping, images: !!S.images, asMe: !!S.asMe }, S.contract ? { contract: S.contract } : {}));
       S.busy = false;
       if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }

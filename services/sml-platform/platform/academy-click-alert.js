@@ -19,6 +19,7 @@ const { horizonRead } = require('./academy-screener');
 const format = require('./academy-alert-format');
 const { buildScenarios } = require('./academy-scenarios');
 const images = require('./academy-scenario-image');
+const optionsAlert = require('./academy-options-alert');
 
 const SNOWFLAKE = /^\d{15,25}$/;
 const HORIZONS = ['day', 'swing', 'mid', 'long'];
@@ -210,7 +211,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, chain = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
@@ -242,25 +243,56 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
   }
 
   /* the two scenarios (base case, and what to watch) drawn on the chart of the alert's own horizon */
-  function scenariosFor(analysis, { png = false } = {}) {
+  function scenariosFor(analysis, { png = false, options = null } = {}) {
     try {
       const key = { day: 'm15', swing: 'daily', mid: 'weekly', long: 'weekly' }[analysis.horizon] || 'daily';
       const series = (analysis.__bars && analysis.__bars[key] && analysis.__bars[key].length >= 40) ? analysis.__bars[key] : analysis.__bars.daily;
       const scn = buildScenarios({ symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: series === analysis.__bars.daily && key !== 'daily' ? 'swing' : analysis.horizon, expectedDays: analysis.expectedDays, levels: analysis.levels, series, atr: analysis.atr });
-      return scn ? images.renderPair(scn, { horizonLabel: analysis.horizonLabel }, { withPng: png }) : [];
+      return scn ? images.renderPair(scn, { horizonLabel: analysis.horizonLabel, contract: options ? contractMeta(options) : null }, { withPng: png }) : [];
     } catch (error) { logger('warn', 'click_alert_scenarios_failed', { error: String(error.message || error) }); return []; }
   }
 
-  async function preview(userId, { symbol, target } = {}) {
+
+  /* the contract picked on the chain: priced from the live chain rows and tied to the stock idea */
+  async function optionsFor(analysis, contract) {
+    if (!contract) return null;
+    if (!chain) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
+    let rows = null; try { rows = await chain(analysis.symbol); } catch (_) { rows = null; }
+    if (!rows || !rows.length) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
+    try { return { oa: optionsAlert.buildOptionsAlert({ analysis, rows, contract, now: now() }) }; }
+    catch (error) {
+      if (error instanceof optionsAlert.OptionsAlertError) return { error: { ok: false, status: error.code === 'contract_not_found' ? 404 : 422, code: error.code, detail: error.detail } };
+      throw error;
+    }
+  }
+  const contractMeta = (oa) => {
+    const c = oa.contract, e = oa.estimates, t = e.atTarget;
+    const pc = (n) => (n == null ? 'n/a' : (n >= 0 ? '+' : '-') + Math.abs(n).toFixed(0) + '%');
+    const usd = (n) => (n == null ? 'n/a' : '$' + Number(n).toFixed(2));
+    return {
+      line1: c.name + ' · ' + usd(c.mid) + ' (' + '$' + c.perContract + ' per contract) · ' + c.dte + ' days left',
+      line2: 'breakeven ' + usd(e.breakeven) + ' · IV ' + (c.iv == null ? 'n/a' : c.iv + '%') + ' · delta ' + (c.delta == null ? 'n/a' : c.delta) + ' · ' + c.liquidity + ' liquidity',
+      bullets: {
+        base: ['The contract: about ' + usd(t.base) + ' at the target (' + pc(t.basePct) + ') after ~' + Math.round(t.days.base) + ' days; ' + usd(t.fast) + ' if it is fast, ' + usd(t.slow) + ' if it is slow.'],
+        risk: ['The contract: about ' + usd(e.atStop.value) + ' at the stop (' + pc(e.atStop.pct) + '). The most you can lose is the $' + c.perContract + ' paid; time decay costs about ' + usd(c.thetaPerDay) + ' a day.']
+      }
+    };
+  };
+
+  const textFor = (analysis, opt, mention) => (opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
+
+  async function preview(userId, { symbol, target, contract = null } = {}) {
     const ent = await entitlement(userId);
     // the horizon read is part of the paid add-on, so an unsubscribed member never receives it
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured', entitlement: ent };
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required', entitlement: ent };
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '', entitlement: ent };
-    const pics = scenariosFor(analysis).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
+    const opt = await optionsFor(analysis, contract);
+    if (opt && opt.error) return { ...opt.error, entitlement: ent };
+    const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
-    return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, analysis: { ...analysis, alertText: format.formatEntryAlert({ ...analysis.alert, mention: false }), alertTextWithMention: format.formatEntryAlert({ ...analysis.alert, mention: true }) } };
+    return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
   }
 
   async function overLimit(userId, channelId) {
@@ -282,7 +314,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, channelId, mention = false, images: wantImages = true, asMe = true, via = '' } = {}) {
+  async function send(user, { symbol, target, contract = null, channelId, mention = false, images: wantImages = true, asMe = true, via = '' } = {}) {
     const userId = String(user.userId || '');
     if (via === 'site') return { ok: false, status: 410, code: 'site_publishing_unavailable', detail: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.' };
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
@@ -298,9 +330,12 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
-    if (await store.count({ userId, symbol: analysis.symbol, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
+    const opt = await optionsFor(analysis, contract);
+    if (opt && opt.error) return opt.error;
+    const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
+    if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     const ping = !!mention && where.mentionEveryone;
-    let content = format.formatEntryAlert({ ...analysis.alert, mention: ping }) + '\n\n' + alertTimeAndPrice(analysis, new Date(now()));
+    let content = textFor(analysis, opt, ping) + '\n\n' + alertTimeAndPrice(analysis, new Date(now()));
     // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
     // a member can have their own bot (their name and picture): used when that bot is in the server and may post in the channel
     const persona = pd || null, personaWhere = where;
@@ -311,7 +346,7 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
     if (wantImages === false) skipped = 'declined';
     else if (!where.userCanAttach || !(persona ? personaWhere.botCanAttach : where.botCanAttach)) skipped = 'no_permission';
     else {
-      files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
+      files = scenariosFor(analysis, { png: true, options: opt && opt.oa }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
       if (files.length < 2) { files = []; skipped = 'unavailable'; }
     }
     const msgBody = { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } };
@@ -328,9 +363,9 @@ function createClickAlertService({ getBars, directory, store = createClickAlertS
       if (footer && (viaWebhook || persona)) msgBody.content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
       posted = await directory.post(String(channelId), msgBody, files);
     }
-    await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
+    await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
   }
 
   return { entitlement, preview, send, destinations, channels, configured };
