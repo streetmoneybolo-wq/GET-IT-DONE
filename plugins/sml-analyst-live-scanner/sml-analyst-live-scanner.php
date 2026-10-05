@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Analyst Live Scanner
  * Description: Full-market directory search and animated live feed for the Analyst Dashboard scanner.
- * Version: 2.0.1
+ * Version: 2.0.2
  * Author: StockMarketLoop
  */
 
@@ -303,6 +303,18 @@ function sml_als_moomoo_market( WP_REST_Request $request ) {
 		}
 	}
 
+	/* Circuit breaker: after a slow or failed bridge call, answer instantly for a few seconds (last-good hold or "reconnecting") instead of making
+	 * every poller wait out another timeout. Slow bridge calls used to hold PHP workers for 8-11s and starve the rest of the page. */
+	$down_key = 'down_' . md5( $symbol . '|' . $depth . '|' . $ticks );
+	if ( wp_cache_get( $down_key, $cache_group ) ) {
+		$held = wp_cache_get( $last_key, $cache_group );
+		$held_age = is_array( $held ) ? round( microtime( true ) * 1000 - (float) ( $held['asof'] ?? 0 ) ) : PHP_INT_MAX;
+		if ( is_array( $held ) && $held_age >= 0 && $held_age <= 30000 ) {
+			$held['health']['mode'] = 'holding'; $held['health']['age_ms'] = $held_age; $held['health']['shared'] = true;
+			return $held;
+		}
+		return array( 'available' => false, 'symbol' => $symbol, 'source' => 'moomoo_opend', 'reason' => 'The live-data bridge is reconnecting.', 'retry_after_ms' => 3000 );
+	}
 	$has_lock = wp_cache_add( $lock_key, 1, $cache_group, 12 );
 	if ( ! $has_lock ) {
 		/* A concurrent request is already refreshing this symbol. Wait briefly
@@ -339,7 +351,7 @@ function sml_als_moomoo_market( WP_REST_Request $request ) {
 	$response = wp_remote_get(
 		$url,
 		array(
-			'timeout' => 8,
+			'timeout' => 3,
 			'headers' => array(
 				'Accept'        => 'application/json',
 				'Cache-Control' => 'no-cache, no-store, max-age=0',
@@ -350,12 +362,14 @@ function sml_als_moomoo_market( WP_REST_Request $request ) {
 	);
 	if ( is_wp_error( $response ) ) {
 		wp_cache_delete( $lock_key, $cache_group );
+		wp_cache_set( $down_key, 1, $cache_group, 4 );
 		return array( 'available' => false, 'symbol' => $symbol, 'source' => 'moomoo_opend', 'reason' => 'The live-data bridge is reconnecting.' );
 	}
 	$status = wp_remote_retrieve_response_code( $response );
 	$data   = json_decode( wp_remote_retrieve_body( $response ), true );
 	if ( $status >= 400 || ! is_array( $data ) ) {
 		wp_cache_delete( $lock_key, $cache_group );
+		wp_cache_set( $down_key, 1, $cache_group, 4 );
 		return array( 'available' => false, 'symbol' => $symbol, 'source' => 'moomoo_opend', 'reason' => 'The live-data bridge returned an invalid response.' );
 	}
 	$verified = sml_als_validate_moomoo_payload( $data, $symbol );
