@@ -222,6 +222,12 @@
   }
 
   /* ---------- Roles ---------- */
+  function autosave(root, fn, ms) {
+    var t = null;
+    function fire() { t = null; fn(); }
+    root.addEventListener('change', function () { clearTimeout(t); t = setTimeout(fire, ms || 500); });
+    return function now() { clearTimeout(t); fire(); };
+  }
   function permsHtml(perms) {
     var cat = S.data.catalog || {};
     return '<div class="sml-hub__perms">' + Object.keys(cat).map(function (k) {
@@ -235,14 +241,20 @@
       '<label>Color<input type="color" name="color" value="' + esc(role ? role.color : '#38f58a') + '"></label>' +
       '<label class="wide">Base level (what the groups engine enforces)<select name="base_level">' + baseOptions(role ? role.base_level : 'member', max) + '</select></label>' +
       permsHtml(role ? role.permissions : {}) +
-      '<div class="sml-hub__actions"><button type="submit" class="sml-hub__btn sml-hub__btn--primary">' + (role ? 'Save role' : 'Create role') + '</button>' + (role ? '<button type="button" class="sml-hub__btn" data-cancel>Cancel</button>' : '') + '</div></form>');
+      '<div class="sml-hub__actions">' + (role ? '<span class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</span>' : '<button type="submit" class="sml-hub__btn sml-hub__btn--primary">Create role</button>') + (role ? '<button type="button" class="sml-hub__btn" data-cancel>Done</button>' : '') + '</div></form>');
     f.onsubmit = function (e) {
       e.preventDefault();
       var body = { name: f.name.value, color: f.color.value, base_level: f.base_level.value, permissions: {} };
       Object.keys(S.data.catalog || {}).forEach(function (k) { body.permissions[k] = f['perm_' + k].checked; });
+      if (role) {
+        var stt = f.querySelector('[data-state]'); stt.textContent = 'Saving...';
+        api(G() + '/roles/' + role.id, { method: 'POST', body: body }).then(function (r) { S.data.roles = r.roles; stt.textContent = 'All changes saved \u2713'; }).catch(function (err) { stt.textContent = 'Not saved: ' + err.message; });
+        return;
+      }
       var btn = f.querySelector('[type=submit]'); btn.disabled = true;
       api(G() + '/roles' + (role ? '/' + role.id : ''), { method: 'POST', body: body }).then(function (r) { S.data.roles = r.roles; S.editingRole = null; go('roles'); }).catch(function (err) { btn.disabled = false; msg(f.parentNode, err.message, false); });
     };
+    if (role) autosave(f, function () { f.onsubmit({ preventDefault: function () {} }); }, 600);
     if (role) f.querySelector('[data-cancel]').onclick = function () { S.editingRole = null; go('roles'); };
     return f;
   }
@@ -356,14 +368,17 @@
       table.querySelectorAll('select').forEach(function (s) { s.onchange = function () { s.className = s.value; }; });
       body.appendChild(table);
       if (can('manage_channels')) {
-        var save = h('<div class="sml-hub__row"><button type="button" class="sml-hub__btn sml-hub__btn--primary sml-hub__btn--sm">Save channel permissions</button><button type="button" class="sml-hub__btn sml-hub__btn--sm" data-clear>Clear all</button></div>');
-        save.querySelector('.sml-hub__btn--primary').onclick = function () {
+        var save = h('<div class="sml-hub__row"><span class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</span><button type="button" class="sml-hub__btn sml-hub__btn--sm" data-clear>Clear all</button></div>');
+        var state = save.querySelector('[data-state]'), busy = false, again = false;
+        function saveOv() {
+          if (busy) { again = true; return; }
           var out = {};
           table.querySelectorAll('tr[data-key]').forEach(function (tr) { var set = {}; tr.querySelectorAll('select').forEach(function (s) { if (s.value !== 'inherit') set[s.getAttribute('data-w')] = s.value; }); if (Object.keys(set).length) out[tr.getAttribute('data-key')] = set; });
-          var b = this; b.disabled = true;
-          api(G() + '/channels/' + ch.id + '/overrides', { method: 'POST', body: { overrides: out } }).then(function (r) { S.data.overrides = r.all; b.disabled = false; msg(body, 'Saved.', true); var chip = det.querySelector('summary .sml-hub__chip'); if (Object.keys(r.overrides).length && !chip) det.querySelector('summary').appendChild(h('<span class="sml-hub__chip">custom permissions</span>')); else if (!Object.keys(r.overrides).length && chip) chip.remove(); }).catch(function (e) { b.disabled = false; msg(body, e.message, false); });
-        };
-        save.querySelector('[data-clear]').onclick = function () { table.querySelectorAll('select').forEach(function (s) { s.value = 'inherit'; s.className = 'inherit'; }); };
+          busy = true; state.textContent = 'Saving...';
+          api(G() + '/channels/' + ch.id + '/overrides', { method: 'POST', body: { overrides: out } }).then(function (r) { S.data.overrides = r.all; busy = false; state.textContent = 'All changes saved \u2713'; var chip = det.querySelector('summary .sml-hub__chip'); if (Object.keys(r.overrides).length && !chip) det.querySelector('summary').appendChild(h('<span class="sml-hub__chip">custom permissions</span>')); else if (!Object.keys(r.overrides).length && chip) chip.remove(); if (again) { again = false; saveOv(); } }).catch(function (e) { busy = false; again = false; state.textContent = 'Not saved: ' + e.message; });
+        }
+        var queue = autosave(table, saveOv, 400);
+        save.querySelector('[data-clear]').onclick = function () { table.querySelectorAll('select').forEach(function (s) { s.value = 'inherit'; s.className = 'inherit'; }); queue(); };
         body.appendChild(save);
       }
       c.appendChild(det);
@@ -436,14 +451,16 @@
       '<label>Rule<select name="rule">' + options([['any', 'Follow any one target'], ['all', 'Follow every target']], cfg.rule) + '</select></label>' +
       '<label class="wide">Reward<select name="reward">' + options([['base:premium', 'Premium level']].concat(['member', 'analyst'].map(function (k) { return ['base:' + k, baseLabel(k) + ' level']; })).concat(roles.map(function (r) { return ['role:' + r.id, 'Role: ' + r.name]; })), cfg.grant_role_id ? 'role:' + cfg.grant_role_id : 'base:' + cfg.grant_engine_role) + '</select></label>' +
       '<label class="wide">Message shown to members<textarea name="message" maxlength="300" rows="2" placeholder="Follow me and unlock the Premium channels for free.">' + esc(cfg.message) + '</textarea></label>' +
-      '<div class="sml-hub__actions"><button type="submit" class="sml-hub__btn sml-hub__btn--primary">Save</button><button type="button" class="sml-hub__btn" data-recheck>Re-check everyone now</button></div></form>');
+      '<div class="sml-hub__actions"><span class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</span><button type="button" class="sml-hub__btn" data-recheck>Re-check everyone now</button></div></form>');
     form.onsubmit = function (e) {
       e.preventDefault();
       var reward = form.reward.value.split(':');
       var body = { enabled: form.enabled.value === '1', rule: form.rule.value, message: form.message.value, grant_role_id: reward[0] === 'role' ? Number(reward[1]) : 0 };
       if (reward[0] === 'base') body.grant_engine_role = reward[1];
-      api(G() + '/socials/config', { method: 'POST', body: body }).then(function (r) { S.data.socials = r.socials; msg(c, 'Saved.', true); }).catch(function (err) { msg(c, err.message, false); });
+      var st2 = form.querySelector('[data-state]'); st2.textContent = 'Saving...';
+      api(G() + '/socials/config', { method: 'POST', body: body }).then(function (r) { S.data.socials = r.socials; st2.textContent = 'All changes saved \u2713'; }).catch(function (err) { st2.textContent = 'Not saved: ' + err.message; });
     };
+    var sq = autosave(form, function () { form.onsubmit({ preventDefault: function () {} }); }, 600);
     form.querySelector('[data-recheck]').onclick = function () { var b = this; b.disabled = true; api(G() + '/socials/recheck', { method: 'POST', body: {} }).then(function (r) { b.disabled = false; S.data.socials = r.socials; go('socials'); msg(c, 'Checked ' + r.checked + ' member' + (r.checked === 1 ? '' : 's') + ', revoked ' + r.revoked + '.', true); }).catch(function (e) { b.disabled = false; msg(c, e.message, false); }); };
     c.appendChild(form);
     c.appendChild(h('<h3>Targets (what members must follow)</h3>'));

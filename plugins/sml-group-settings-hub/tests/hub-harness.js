@@ -143,9 +143,11 @@ async function ownerFlow(browser, viewport, tag) {
   r.rolesAfterCreate = st.roles.map((x) => x.name + ':' + x.base_level);
   await page.click('[data-edit]'); await page.waitForTimeout(200);
   await page.fill('[data-role-form] [name=name]', 'VIP Gold');
-  await page.click('[data-role-form] [type=submit]'); await page.waitForTimeout(400);
+  await page.dispatchEvent('[data-role-form] [name=name]', 'change'); await page.waitForTimeout(1000);
+  r.stayedOnEdit = await page.evaluate(() => !!document.querySelector('[data-role-form] [data-state]'));
   r.rolesAfterEdit = st.roles.map((x) => x.name);
   await shot('roles-after-edit');
+  await page.click('[data-role-form] [data-cancel]'); await page.waitForTimeout(300);
   const delBtns = await page.$$('[data-del]'); await delBtns[1].click(); await page.waitForTimeout(400);
   r.rolesAfterDelete = st.roles.map((x) => x.name);
 
@@ -167,14 +169,14 @@ async function ownerFlow(browser, viewport, tag) {
   await page.click('[data-go="channels"]'); await page.waitForTimeout(300);
   const dets = await page.$$('details.sml-hub__channel'); await dets[0].click(); await page.waitForTimeout(200);
   await page.selectOption('details.sml-hub__channel:first-of-type tr[data-key="role:1"] select[data-w="post"]', 'deny');
-  await page.click('details.sml-hub__channel:first-of-type .sml-hub__btn--primary'); await page.waitForTimeout(400);
+  await page.waitForTimeout(900);
   r.overrides100 = JSON.stringify(st.overrides[100]);
   await shot('channels-after');
 
   // Socials owner: config + add target + recheck
   await page.click('[data-go="socials"]'); await page.waitForTimeout(300);
   await page.selectOption('[data-cfg] [name=rule]', 'all');
-  await page.click('[data-cfg] [type=submit]'); await page.waitForTimeout(300);
+  await page.waitForTimeout(1000);
   r.socialsRule = st.socialsOwner.config.rule;
   await page.fill('[data-add] [name=handle]', '@second.bsky.social');
   await page.fill('[data-add] [name=label]', 'Second');
