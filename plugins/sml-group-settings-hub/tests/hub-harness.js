@@ -80,6 +80,9 @@ function stub(page, st, log) {
     const body = ['POST', 'DELETE'].includes(method) && req.postData() ? JSON.parse(req.postData()) : {};
     log.push({ method, p, body });
     const json = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+    st.profile = st.profile || { id: 12, name: 'Making Easy Money', type: 'creator', description: 'old', ticker_symbol: '', sector_name: '', creator_url: '', paid_pitch: '', icon_url: 'i', banner_url: 'b' };
+    if (p.endsWith('/sml/v1/group/editor')) return json({ group: st.profile });
+    if (p.endsWith('/sml/v1/group/update')) { st.profile = Object.assign({}, st.profile, body); return json({ group: st.profile }); }
     const m = p.match(/\/sml-hub\/v1\/group\/12(\/.*)?$/); if (!m) return json({ message: 'unexpected ' + p }, 404);
     const rest = m[1] || '';
     if (rest === '' && method === 'GET') return json(bootstrap(st));
@@ -134,6 +137,12 @@ async function ownerFlow(browser, viewport, tag) {
   r.overflow = {};
   for (const s of SECTIONS) { await page.click(`[data-go="${s}"]`); await page.waitForTimeout(350); await shot(s); r.overflow[s] = await page.evaluate(() => { const w = document.querySelector('.sml-hub__win'), c = document.querySelector('.sml-hub__content'); return [document.documentElement.scrollWidth - document.documentElement.clientWidth, w.getBoundingClientRect().right - innerWidth, c.scrollWidth - c.clientWidth].map(Math.round).join('/'); }); }
   r.builtinChips = await page.evaluate(() => { document.querySelector('[data-go="roles"]').click(); return document.querySelectorAll('.sml-hub__chip.base').length; });
+
+  // Profile autosave
+  await page.click('[data-go="overview"]'); await page.waitForTimeout(300);
+  await page.fill('[data-profile] [name=name]', 'MEM Renamed'); await page.waitForTimeout(1200);
+  r.profileName = st.profile && st.profile.name; r.profileKeepsIcon = st.profile && st.profile.icon_url;
+  r.profileState = await page.evaluate(() => document.querySelector('[data-profile] [data-state]').textContent);
 
   // Roles: create, edit, delete
   await page.click('[data-go="roles"]'); await page.waitForTimeout(200);

@@ -182,6 +182,37 @@
     (RENDER[section] || RENDER.overview)(c);
   }
 
+  var PROFILE_KEYS = ['name', 'type', 'description', 'ticker_symbol', 'sector_name', 'creator_url', 'paid_pitch', 'icon_url', 'banner_url'];
+  function renderProfile(form) {
+    var site = location.origin + '/wp-json/sml/v1/';
+    api(site + 'group/editor?group_id=' + encodeURIComponent(CFG.groupId)).then(function (r) {
+      var g = r.group || {}, busy = false, again = false;
+      form.innerHTML = '<label>Group name<input name="name" maxlength="190" required></label>' +
+        '<label>Group link<input name="creator_url" placeholder="Discord, YouTube, website"></label>' +
+        '<label class="wide">Description<textarea name="description" rows="3"></textarea></label>' +
+        '<label>Ticker symbol<input name="ticker_symbol" placeholder="NVDA, SPY"></label>' +
+        '<label>Sector name<input name="sector_name" placeholder="AI, Energy"></label>' +
+        '<label class="wide">Paid group pitch<textarea name="paid_pitch" rows="2"></textarea></label>' +
+        '<p class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</p>';
+      ['name', 'creator_url', 'description', 'ticker_symbol', 'sector_name', 'paid_pitch'].forEach(function (k) { form.elements[k].value = g[k] == null ? '' : g[k]; });
+      var st = form.querySelector('[data-state]');
+      function save() {
+        if (busy) { again = true; return; }
+        if (!form.elements.name.value.trim()) { st.textContent = 'Name cannot be empty.'; return; }
+        var body = { group_id: Number(CFG.groupId) };
+        PROFILE_KEYS.forEach(function (k) { body[k] = form.elements[k] ? form.elements[k].value : (g[k] == null ? '' : g[k]); });
+        busy = true; st.textContent = 'Saving...';
+        api(site + 'group/update', { method: 'POST', body: body }).then(function (res) {
+          g = res.group || g; busy = false; st.textContent = 'All changes saved \u2713';
+          var t = document.querySelector('.sml-gshell__title,.sml-gshell__name'); if (t && body.name) t.textContent = body.name;
+          if (again) { again = false; save(); }
+        }).catch(function (e) { busy = false; again = false; st.textContent = 'Not saved: ' + e.message; });
+      }
+      autosave(form, save, 700);
+      form.addEventListener('input', function () { st.textContent = 'Typing...'; });
+      form.onsubmit = function (e) { e.preventDefault(); save(); };
+    }).catch(function (e) { form.innerHTML = '<p class="note">Could not load the profile: ' + esc(e.message) + '</p>'; });
+  }
   var RENDER = {};
 
   /* ---------- Overview ---------- */
@@ -193,8 +224,13 @@
       '<div><b>' + esc((d.channels || []).length) + '</b><small>channels</small></div>' +
       '<div><b>' + esc((d.plans || []).filter(function (p) { return p.active; }).length) + '</b><small>products</small></div></div>'));
     c.appendChild(h('<p>Owner: <b>' + esc(d.group.owner_name || ('user #' + d.group.owner_id)) + '</b> · <code>/groups/' + esc(d.group.slug) + '/</code></p>'));
+    if (d.viewer.is_manager) {
+      var prof = h('<div><h3>Group profile</h3><form class="sml-hub__form" data-profile><p class="note" data-state style="color:#8ea0bd;font-size:13px">Loading...</p></form></div>');
+      c.appendChild(prof);
+      renderProfile(prof.querySelector('form'));
+    }
     var cards = h('<div class="sml-hub__cards"></div>');
-    cards.appendChild(card('Group profile & visuals', 'Name, description, banner, watermark, category — the group editor.', 'Open editor', function () { return delegate('[data-smlgs-edit],.sml-gshell__edit:not(.sml-dgc-owner):not(.sml-hub-open-btn)', 'The group editor button is not on this page.'); }));
+    cards.appendChild(card('Group profile & visuals', 'Icon, header banner and background image (name, description and links are editable above and save live).', 'Open image editor', function () { return delegate('[data-smlgs-edit],.sml-gshell__edit:not(.sml-dgc-owner):not(.sml-hub-open-btn)', 'The group editor button is not on this page.'); }));
     cards.appendChild(card('Channel layout', 'Rename, reorder and group channels under categories.', 'Open layout', function () { return f.categories ? delegate('#sml-gcat-gear', 'The categories gear is not on this page (open the sidebar first).') : 'The Group Categories snippet is not installed.'; }));
     cards.appendChild(card('Membership products', 'Paid tiers, Stripe payouts.', 'Go to Memberships', function () { go('memberships'); return ''; }));
     cards.appendChild(card('Discord', 'Pair a server, map roles, sync channels.', 'Go to Discord', function () { go('discord'); return ''; }));
@@ -225,7 +261,9 @@
   function autosave(root, fn, ms) {
     var t = null;
     function fire() { t = null; fn(); }
-    root.addEventListener('change', function () { clearTimeout(t); t = setTimeout(fire, ms || 500); });
+    function arm() { clearTimeout(t); t = setTimeout(fire, ms || 500); }
+    root.addEventListener('change', arm);
+    root.addEventListener('input', arm);
     return function now() { clearTimeout(t); fire(); };
   }
   function permsHtml(perms) {
