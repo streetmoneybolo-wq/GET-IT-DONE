@@ -414,7 +414,7 @@
       channels.map(chanRow).join('') + '</div>' +
       '<label class="row"><input type="checkbox" data-enabled' + (cfg.premium_onboarding ? ' checked' : '') + '> Show the onboarding over Premium channels</label>' +
       '<div><h3>Welcome message</h3><textarea rows="3" maxlength="400" data-welcome placeholder="What members get, and why it is worth it.">' + esc(cfg.welcome_message) + '</textarea></div>' +
-      '<p class="note">Tick <b>Feature</b> on up to 5 Premium channels to show them off in the onboarding. Membership cards come from ⋮ → Membership cards &amp; store.</p>' +
+      '<p class="note">Tick <b>Feature</b> on up to 9 Premium channels to show them off in the onboarding. Membership cards come from ⋮ → Membership cards &amp; store.</p>' +
       '<div><h3>Rules</h3><div data-rules>' + rules.map(ruleRow).join('') + '</div><button type="button" class="ghost" data-add-rule style="margin-top:8px">Add rule</button></div>' +
       '<div class="actions"><span class="status" data-status role="status" aria-live="polite"></span><button type="button" class="ghost" data-close>Cancel</button><button type="button" class="primary" data-save>Save onboarding</button></div>';
 
@@ -442,9 +442,9 @@
 
     panel.addEventListener('change', function (e) {
       if (!e.target.matches('[data-feat]') || !e.target.checked) return;
-      if (panel.querySelectorAll('[data-feat]:checked').length > 5) {
+      if (panel.querySelectorAll('[data-feat]:checked').length > 9) {
         e.target.checked = false;
-        panel.querySelector('[data-status]').textContent = 'You can feature up to 5 Premium channels.';
+        panel.querySelector('[data-status]').textContent = 'You can feature up to 9 Premium channels.';
       }
     });
 
