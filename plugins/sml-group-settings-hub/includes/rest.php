@@ -311,6 +311,27 @@ add_action( 'rest_api_init', static function () {
 		},
 	) );
 
+	/* Names and icons for the group page: every member who holds a custom role with a colour or an icon, with the style of their top role (first in the list). */
+	register_rest_route( $ns, $g . '/role-styles', array(
+		'methods'             => 'GET',
+		'permission_callback' => static function ( $request ) {
+			$gid = absint( $request->get_param( 'group_id' ) );
+			return $gid && is_user_logged_in() && ( sml_hub_is_manager( $gid ) || null !== sml_hub_engine_role( $gid, get_current_user_id() ) );
+		},
+		'callback'            => static function ( $request ) {
+			$gid   = absint( $request->get_param( 'group_id' ) );
+			$cache = 'sml_hub_rs_' . $gid;
+			$out   = get_transient( $cache );
+			if ( false === $out ) {
+				$out = sml_hub_role_styles( $gid );
+				set_transient( $cache, $out, 15 );
+			}
+			$response = rest_ensure_response( array( 'styles' => $out ) );
+			$response->header( 'Cache-Control', 'private, max-age=20' );
+			return $response;
+		},
+	) );
+
 	register_rest_route( $ns, $g . '/roles', array(
 		'methods'             => 'POST',
 		'permission_callback' => sml_hub_perm( 'manage_roles' ),
@@ -334,13 +355,14 @@ add_action( 'rest_api_init', static function () {
 				'group_id'           => $gid,
 				'name'               => $in['name'],
 				'color'              => $in['color'],
+				'icon'               => $in['icon'],
 				'base_level'         => $in['base_level'],
 				'permissions'        => wp_json_encode( $in['permissions'] ),
 				'position'           => $pos,
 				'created_by_user_id' => get_current_user_id(),
 				'created_at'         => sml_hub_now(),
 				'updated_at'         => sml_hub_now(),
-			), array( '%d', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s' ) );
+			), array( '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s' ) );
 			if ( ! $ok ) {
 				return sml_hub_rest_error( 'sml_hub_role_exists', 'A role with that name already exists.', 409 );
 			}
@@ -389,10 +411,11 @@ add_action( 'rest_api_init', static function () {
 				$ok = $wpdb->update( $t['roles'], array(
 					'name'        => $in['name'],
 					'color'       => $in['color'],
+					'icon'        => $in['icon'],
 					'base_level'  => $in['base_level'],
 					'permissions' => wp_json_encode( $in['permissions'] ),
 					'updated_at'  => sml_hub_now(),
-				), array( 'id' => $role['id'] ), array( '%s', '%s', '%s', '%s', '%s' ), array( '%d' ) );
+				), array( 'id' => $role['id'] ), array( '%s', '%s', '%s', '%s', '%s', '%s' ), array( '%d' ) );
 				if ( false === $ok ) {
 					return sml_hub_rest_error( 'sml_hub_role_exists', 'A role with that name already exists.', 409 );
 				}

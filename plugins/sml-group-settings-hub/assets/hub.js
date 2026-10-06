@@ -323,13 +323,34 @@
     var max = S.data.viewer.is_manager ? null : 'analyst';
     var f = h('<form class="sml-hub__form" data-role-form>' +
       '<label>Name<input name="name" maxlength="40" required value="' + esc(role ? role.name : '') + '" placeholder="VIP"></label>' +
-      '<label>Color<input type="color" name="color" value="' + esc(role ? role.color : '#38f58a') + '"></label>' +
+      '<label>Name color<input type="color" name="color" value="' + esc(role ? role.color : '#38f58a') + '"></label>' +
+      '<div class="wide sml-hub__icon-field"><span class="lbl">Icon next to the name</span><span class="sml-hub__icon-prev" data-icon-prev></span>' +
+        '<input name="icon" maxlength="255" placeholder="Emoji, e.g. 👑" value="' + esc(role ? role.icon || '' : '') + '" style="max-width:150px">' +
+        '<button type="button" class="sml-hub__btn sml-hub__btn--sm" data-icon-up>Upload image</button><button type="button" class="sml-hub__btn sml-hub__btn--sm sml-hub__btn--ghost" data-icon-clear>Clear</button><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-icon-file hidden>' +
+        '<small class="note">Members with this role show the icon and the colour on their name in the group (chat and member lists).</small></div>' +
       '<label class="wide">Base level (what the groups engine enforces)<select name="base_level">' + baseOptions(role ? role.base_level : 'member', max) + '</select></label>' +
       permsHtml(role ? role.permissions : {}) +
       '<div class="sml-hub__actions">' + (role ? '<span class="note" data-state style="color:#8ea0bd;font-size:13px">Changes save automatically.</span>' : '<button type="submit" class="sml-hub__btn sml-hub__btn--primary">Create role</button>') + (role ? '<button type="button" class="sml-hub__btn" data-cancel>Done</button>' : '') + '</div></form>');
+    function iconPreview() {
+      var v = f.icon.value.trim(), box = f.querySelector('[data-icon-prev]');
+      box.innerHTML = /^https:/i.test(v) ? '<img alt="" src="' + esc(v) + '">' : esc(v);
+      box.style.color = f.color.value;
+    }
+    iconPreview();
+    f.addEventListener('input', iconPreview);
+    var iconFile = f.querySelector('[data-icon-file]');
+    f.querySelector('[data-icon-up]').onclick = function () { iconFile.value = ''; iconFile.click(); };
+    f.querySelector('[data-icon-clear]').onclick = function () { f.icon.value = ''; iconPreview(); f.dispatchEvent(new Event('change', { bubbles: true })); };
+    iconFile.onchange = function () {
+      var file = iconFile.files && iconFile.files[0]; if (!file) return;
+      var fd = new FormData(); fd.append('kind', 'icon'); fd.append('image', file, file.name);
+      api(location.origin + '/wp-json/sml/v1/group/image-upload', { method: 'POST', body: fd }).then(function (r) {
+        f.icon.value = r.url || ''; iconPreview(); f.dispatchEvent(new Event('change', { bubbles: true }));
+      }).catch(function (err) { msg(f.parentNode, 'Icon upload failed: ' + err.message, false); });
+    };
     f.onsubmit = function (e) {
       e.preventDefault();
-      var body = { name: f.name.value, color: f.color.value, base_level: f.base_level.value, permissions: {} };
+      var body = { name: f.name.value, color: f.color.value, icon: f.icon.value.trim(), base_level: f.base_level.value, permissions: {} };
       Object.keys(S.data.catalog || {}).forEach(function (k) { body.permissions[k] = f['perm_' + k].checked; });
       if (role) {
         var stt = f.querySelector('[data-state]'); stt.textContent = 'Saving...';
@@ -355,7 +376,7 @@
     (d.roles || []).forEach(function (r) {
       if (S.editingRole === r.id) { var w = h('<div class="sml-hub__item" style="display:block"></div>'); w.appendChild(roleForm(r)); list.appendChild(w); return; }
       var on = Object.keys(r.permissions || {}).filter(function (k) { return r.permissions[k]; }).length;
-      var it = h('<div class="sml-hub__item"><span class="sml-hub__dot" style="background:' + esc(r.color) + '"></span><div class="grow"><b>' + esc(r.name) + '</b><small>' + esc(baseLabel(r.base_level)) + ' level · ' + esc(counts[r.id] || 0) + ' member' + ((counts[r.id] || 0) === 1 ? '' : 's') + ' · ' + on + ' permission' + (on === 1 ? '' : 's') + '</small></div>' +
+      var it = h('<div class="sml-hub__item"><span class="sml-hub__dot" style="background:' + esc(r.color) + '"></span><div class="grow"><b style="color:' + esc(r.color) + '">' + (r.icon ? (/^https:/i.test(r.icon) ? '<img class="sml-hub__ricon" alt="" src="' + esc(r.icon) + '"> ' : esc(r.icon) + ' ') : '') + esc(r.name) + '</b><small>' + esc(baseLabel(r.base_level)) + ' level · ' + esc(counts[r.id] || 0) + ' member' + ((counts[r.id] || 0) === 1 ? '' : 's') + ' · ' + on + ' permission' + (on === 1 ? '' : 's') + '</small></div>' +
         (can('manage_roles') ? '<button type="button" class="sml-hub__btn sml-hub__btn--sm" data-edit>Edit</button><button type="button" class="sml-hub__btn sml-hub__btn--sm sml-hub__btn--danger" data-del>Delete</button>' : '') + '</div>');
       if (can('manage_roles')) {
         it.querySelector('[data-edit]').onclick = function () { S.editingRole = r.id; go('roles'); };

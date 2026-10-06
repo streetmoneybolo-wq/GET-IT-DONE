@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Group Settings Hub
  * Description: One Discord-style settings hub per group: custom roles with permissions, per-channel role overrides, member management, and one place that reaches the existing Memberships, Discord, Onboarding and Channel tools. Adds "follow my socials → get a role" (verifiable platforms only) and an admin export of the site's WPCode snippets and plugins. Companion layer: it never rewrites the groups engine.
- * Version: 1.0.7
+ * Version: 1.1.0
  * Requires PHP: 7.4
  * Author: StockMarketLoop
  *
@@ -35,7 +35,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SML_HUB_VERSION', '1.0.7' );
+define( 'SML_HUB_VERSION', '1.1.0' );
 define( 'SML_HUB_FILE', __FILE__ );
 define( 'SML_HUB_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SML_HUB_URL', plugin_dir_url( __FILE__ ) );
@@ -95,6 +95,7 @@ function sml_hub_install() {
 		group_id BIGINT UNSIGNED NOT NULL,
 		name VARCHAR(40) NOT NULL,
 		color VARCHAR(7) NOT NULL DEFAULT '#8fa89b',
+		icon VARCHAR(255) NOT NULL DEFAULT '',
 		base_level VARCHAR(20) NOT NULL DEFAULT 'member',
 		permissions LONGTEXT NULL,
 		position INT NOT NULL DEFAULT 0,
@@ -290,6 +291,7 @@ function sml_hub_role_row( $row ) {
 		'group_id'   => (int) $row['group_id'],
 		'name'       => (string) $row['name'],
 		'color'      => (string) $row['color'],
+		'icon'       => (string) ( $row['icon'] ?? '' ),
 		'base_level' => (string) $row['base_level'],
 		'permissions'=> sml_hub_clean_permissions( is_array( $perms ) ? $perms : array() ),
 		'position'   => (int) $row['position'],
@@ -329,6 +331,33 @@ function sml_hub_user_role_ids( $group_id, $user_id ) {
 	return array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare( "SELECT role_id FROM {$t['member_roles']} WHERE group_id=%d AND user_id=%d", absint( $group_id ), absint( $user_id ) ) ) );
 }
 
+/**
+ * A role icon is either a short emoji/text mark (at most 8 characters, no markup) or an https image from this site's own uploads.
+ * Anything else is dropped, so an icon can never point at another site or carry markup.
+ */
+function sml_hub_clean_icon( $value ) {
+	$v = is_string( $value ) ? trim( $value ) : '';
+	if ( '' === $v ) {
+		return '';
+	}
+	if ( 0 === strpos( strtolower( $v ), 'http' ) ) {
+		$url  = esc_url_raw( $v, array( 'https' ) );
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		$ok   = array( strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) ) );
+		if ( function_exists( 'wp_get_upload_dir' ) ) {
+			$up   = wp_get_upload_dir();
+			$ok[] = strtolower( (string) wp_parse_url( (string) ( $up['baseurl'] ?? '' ), PHP_URL_HOST ) );
+		}
+		if ( '' === $url || strlen( $url ) > 255 || ! in_array( $host, array_filter( $ok ), true ) ) {
+			return '';
+		}
+		return $url;
+	}
+	$v = preg_replace( '/[\x00-\x1F\x7F<>"\'`&]/u', '', wp_strip_all_tags( $v ) );
+	$v = function_exists( 'mb_substr' ) ? mb_substr( (string) $v, 0, 8 ) : substr( (string) $v, 0, 8 );
+	return trim( (string) $v );
+}
+
 function sml_hub_clean_role_input( $body, $existing = null ) {
 	$name = isset( $body['name'] ) ? trim( wp_strip_all_tags( (string) $body['name'] ) ) : ( $existing['name'] ?? '' );
 	$name = function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 40 ) : substr( $name, 0, 40 );
@@ -352,7 +381,8 @@ function sml_hub_clean_role_input( $body, $existing = null ) {
 	if ( $perms['post_alerts'] && sml_hub_base_levels()[ $base ] < sml_hub_base_levels()['analyst'] ) {
 		$base = 'analyst';
 	}
-	return array( 'name' => $name, 'color' => $color, 'base_level' => $base, 'permissions' => $perms );
+	$icon = array_key_exists( 'icon', is_array( $body ) ? $body : array() ) ? sml_hub_clean_icon( $body['icon'] ) : (string) ( $existing['icon'] ?? '' );
+	return array( 'name' => $name, 'color' => $color, 'icon' => $icon, 'base_level' => $base, 'permissions' => $perms );
 }
 
 /* -------------------------------------------------------------------------
@@ -598,3 +628,28 @@ require_once SML_HUB_DIR . 'includes/socials.php';
 require_once SML_HUB_DIR . 'includes/export.php';
 require_once SML_HUB_DIR . 'includes/loader.php';
 require_once SML_HUB_DIR . 'includes/relay.php';
+
+/** Role colours/icons to show on names: [{ names:[...], color, icon, role }], one entry per member, their top custom role (smallest position). */
+function sml_hub_role_styles( $group_id ) {
+	global $wpdb;
+	$t   = sml_hub_tables();
+	$gid = absint( $group_id );
+	$rows = $wpdb->get_results( $wpdb->prepare(
+		"SELECT mr.user_id, r.name, r.color, r.icon, r.position FROM {$t['member_roles']} mr JOIN {$t['roles']} r ON r.id = mr.role_id WHERE mr.group_id=%d ORDER BY r.position ASC, r.id ASC LIMIT 4000",
+		$gid
+	), ARRAY_A );
+	$top = array();
+	foreach ( (array) $rows as $r ) {
+		$uid = (int) $r['user_id'];
+		$styled = ( '' !== (string) $r['icon'] ) || strtolower( (string) $r['color'] ) !== '#8fa89b';
+		if ( $styled && ! isset( $top[ $uid ] ) ) { $top[ $uid ] = $r; }
+	}
+	$out = array();
+	foreach ( array_slice( $top, 0, 1000, true ) as $uid => $r ) {
+		$u = get_userdata( $uid );
+		if ( ! $u ) { continue; }
+		$names = array_values( array_unique( array_filter( array( strtolower( (string) $u->display_name ), strtolower( (string) $u->user_login ), strtolower( (string) $u->user_nicename ) ) ) ) );
+		$out[] = array( 'names' => $names, 'color' => (string) $r['color'], 'icon' => (string) $r['icon'], 'role' => (string) $r['name'] );
+	}
+	return $out;
+}

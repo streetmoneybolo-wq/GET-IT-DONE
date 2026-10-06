@@ -128,3 +128,12 @@ body .sml-dgc-modal,body #sml-ob-config,body .sml-billing-modal{z-index:21474836
   .sml-hub__social-target{grid-template-columns:auto minmax(0,1fr)}
   .sml-hub__social-target > :last-child{grid-column:1/-1}
 }
+
+.sml-hub__icon-field{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sml-hub__icon-field .lbl{flex:1 1 100%;font-weight:700;color:#b7c3d8}
+.sml-hub__icon-prev{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;padding:0 6px;border:1px dashed #2a3a5c;border-radius:8px;font-size:18px}
+.sml-hub__icon-prev img,.sml-hub__ricon{width:20px;height:20px;border-radius:5px;object-fit:cover;vertical-align:-4px}
+
+.sml-rn-icon{display:inline-block;vertical-align:-3px;margin-right:2px}
+img.sml-rn-icon{width:16px;height:16px;border-radius:4px;object-fit:cover}
+.sml-rn-emoji{font-style:normal;line-height:1}

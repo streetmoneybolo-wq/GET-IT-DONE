@@ -38,6 +38,8 @@ add_action( 'wp_footer', static function () {
 	echo '<link id="sml-hub-css" rel="stylesheet" href="' . esc_url( SML_HUB_URL . 'assets/hub.css?v=' . rawurlencode( $ver ) ) . '">' . "\n";
 	echo '<script id="sml-hub-cfg">window.SML_HUB=' . wp_json_encode( $cfg ) . ';</script>' . "\n";
 	echo '<script id="sml-hub-js" defer src="' . esc_url( SML_HUB_URL . 'assets/hub.js?v=' . rawurlencode( $ver ) ) . '"></script>' . "\n";
+	$nver = SML_HUB_VERSION . '.' . (string) @filemtime( SML_HUB_DIR . 'assets/names.js' );
+	echo '<script id="sml-hub-names-js" defer src="' . esc_url( SML_HUB_URL . 'assets/names.js?v=' . rawurlencode( $nver ) ) . '"></script>' . "\n";
 }, 110 );
 
 /* ---------- Settings → SML Group Hub ---------- */
