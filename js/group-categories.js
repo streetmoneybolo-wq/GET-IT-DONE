@@ -2243,7 +2243,8 @@
     '.sml-gshell__main-head.sml-banner-transparent::after{display:none!important}' +
     '.sml-gshell__main-head.sml-banner-transparent > .sml-gshell__header-banner{background-color:transparent!important}' +
     '.sml-gshell__main-head.sml-banner-transparent-own > .sml-gshell__header-banner{visibility:hidden!important}' +
-    '.sml-bg-over{display:none!important}' +
+    /* the channel background continues BEHIND the banner (z 0); the banner picture sits in front of it (z 1) */
+    '.sml-bg-over{position:absolute;inset:0;z-index:0;pointer-events:none;background-repeat:no-repeat}' +
     '.sml-gshell__main-head{position:relative;z-index:3}';
   function ensureCss() { if (document.getElementById('sml-transparent-layers-css')) return; var st = document.createElement('style'); st.id = 'sml-transparent-layers-css'; st.textContent = css; (document.head || document.documentElement).appendChild(st); }
   function urlOf(bgi) { var m = /url\(["']?(.*?)["']?\)/.exec(bgi || ''); return m ? m[1] : ''; }
@@ -2294,7 +2295,6 @@
     var over = H.querySelector('.sml-bg-over');
     var rec = url ? probe(url) : null;
     var want = !!(rec && rec.alpha && rec.nw > 0 && rec.nh > 0) && String(L.style.opacity || getComputedStyle(L).opacity) !== '0';
-    want = false; /* the banner always sits in front of the channel background; the background is never continued over it */
     if (!want) { if (over) over.remove(); return; }
     if (!over) { over = document.createElement('div'); over.className = 'sml-bg-over'; var img = H.querySelector('.sml-cbanner-image'); if (img && img.nextSibling) H.insertBefore(over, img.nextSibling); else H.appendChild(over); }
     var Lr = L.getBoundingClientRect(), Hr = H.getBoundingClientRect(), lcs = getComputedStyle(L);
