@@ -250,3 +250,49 @@ test('the unavailable StockMarketLoop publishing route is refused without publis
   assert.equal(out.ok, false); assert.equal(out.status, 410); assert.equal(out.code, 'site_publishing_unavailable');
   assert.equal(a.posts.length, 0); assert.equal(calls.length, 0);
 });
+
+/* ---------- PT SMASHED: a higher target after the earlier alert's target was reached ---------- */
+function smashService(store, posts) {
+  const directory = { guildsFor: async () => [], sendableChannels: async () => [], postingIn: async () => ({ guildId: GUILD, name: 'a', userCanSend: true, botCanSend: true, mentionEveryone: true, userCanAttach: true, botCanAttach: true }), post: async (c, body, files) => { posts.push({ body, files }); return { id: '555555555555555555', channelId: c }; } };
+  return CA.createClickAlertService({
+    getBars: async (s, tf) => ({ bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? intraday(200, lastClose, 9e5) : intraday(200, lastClose) }),
+    directory, store, freeUserIds: [USER]
+  });
+}
+const prior = (store, extra = {}) => store.record({ userId: USER, guildId: GUILD, channelId: CHAN, messageId: '1', symbol: 'TEST', side: 'long', entry: lastClose * 0.9, target: lastClose * 0.95, stop: lastClose * 0.85, horizon: 'swing', confidence: 'medium', ...extra });
+
+test('a higher target after the earlier target was hit posts as PT SMASHED to everyone with the wide stop and both images', async () => {
+  const store = CA.createClickAlertStore(), posts = [];
+  await prior(store);
+  const svc = smashService(store, posts);
+  const p = await svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 });
+  assert.equal(p.ok, true); assert.ok(p.analysis.smashed, 'detected');
+  assert.match(p.analysis.alertText, /𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃/); assert.match(p.analysis.alertText, /𝐖𝐈𝐃𝐄 𝐒𝐓𝐎𝐏 𝐋𝐎𝐒𝐒: Below \$/);
+  assert.match(p.analysis.alertTextWithMention, /^@everyone\n/);
+  const out = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', target: lastClose * 1.08, channelId: CHAN });
+  assert.equal(out.ok, true); assert.equal(out.smashed, true); assert.equal(out.mentioned, true, 'everyone by default');
+  assert.match(posts[0].body.content, /^@everyone\n🔥 𝐓𝐄𝐒𝐓 𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃/);
+  assert.deepEqual(posts[0].body.allowed_mentions, { parse: ['everyone'] });
+  assert.equal(out.imagesAttached, 2);
+});
+
+test('PT SMASHED needs the earlier target reached and a further target; the member can force either way', async () => {
+  const store = CA.createClickAlertStore(), posts = [];
+  const svc = smashService(store, posts);
+  assert.equal((await svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 })).analysis.smashed, null, 'no earlier alert');
+  await prior(store, { target: lastClose * 1.5 });
+  assert.equal((await svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 })).analysis.smashed, null, 'earlier target not reached');
+  const s2 = CA.createClickAlertStore(); await prior(s2); const svc2 = smashService(s2, posts);
+  const s3 = CA.createClickAlertStore(); await prior(s3, { side: 'short' });
+  assert.equal((await smashService(s3, posts).preview(USER, { symbol: 'TEST', target: lastClose * 1.08 })).analysis.smashed, null, 'an earlier short is not a long update');
+  assert.equal((await svc2.preview(USER, { symbol: 'TEST', target: lastClose * 1.08, mode: 'new' })).analysis.smashed, null, 'always a new alert');
+  const forced = await svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08, mode: 'smashed' });
+  assert.ok(forced.analysis.smashed.forced); assert.match(forced.analysis.alertText, /𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃/);
+});
+
+test('the wide-stop layout matches the member\'s template and a short flips Above/Below', () => {
+  const F = require('./academy-alert-format');
+  const t = F.formatPtSmashed({ ticker: 'QTEX', newPt: 2.44, plus: true, mention: true, stopLow: 1.98, stopHigh: 2.05, side: 'long' });
+  assert.equal(t, ['@everyone', '🔥 𝐐𝐓𝐄𝐗 𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃 — 𝐍𝐄𝐖 𝐏𝐓 𝐒𝐄𝐓 $𝟐.𝟒𝟒+ 🔥', '🎯 Previous PT smashed — momentum still pushing upward.', '', '👉 🆕 𝐍𝐄𝐖 𝐓𝐀𝐑𝐆𝐄𝐓 𝐙𝐎𝐍𝐄 — $2.44+  ', 'Continuation valid — strong extension forming.', '', '⚠️ 𝐇𝐈𝐆𝐇‑𝐑𝐈𝐒𝐊 𝐙𝐎𝐍𝐄  ', 'Volatility elevated — consider majority profits as we push deeper into extended territory.', '', '🚨 𝐖𝐈𝐃𝐄 𝐒𝐓𝐎𝐏 𝐋𝐎𝐒𝐒: Below $1.98–$2.05 (wide buffer for QTEX volatility)'].join('\n'));
+  assert.match(F.formatPtSmashed({ ticker: 'X', newPt: 5, plus: true, stopLow: 5.4, stopHigh: 5.6, side: 'short' }), /Above \$5\.40–\$5\.60/);
+});

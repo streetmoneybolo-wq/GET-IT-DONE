@@ -10,7 +10,7 @@
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const toolbar = document.querySelector('.toolbar'), canvas = $('chart'), stage = document.querySelector('.academy-chart-stage');
   const KEY = 'sml-click-alert-dest';
-  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '', contract: null, opt: null };
+  const S = { asMe: true, on: false, busy: false, target: null, entry: null, side: null, data: null, status: null, guilds: [], channels: [], guildId: '', channelId: '', ping: false, images: true, scn: null, msg: '', msgTone: '', sent: false, symbol: '', contract: null, opt: null, mode: 'auto', smashedFor: '' };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.guildId = String(v.guildId || ''); S.channelId = String(v.channelId || ''); } } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ guildId: S.guildId, channelId: S.channelId })); } catch (_) { /* ignore */ } };
 
@@ -171,6 +171,8 @@
       const canAsMe = !!(ch && ch.asMe);
       html += '<select data-ca="guild"><option value="">Choose a server…</option>' + S.guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === S.guildId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select>';
       html += '<select data-ca="channel"' + (S.guildId ? '' : ' disabled') + '><option value="">' + (S.guildId ? (S.channels.length ? 'Choose a channel…' : 'No channel where you and the app can post') : 'Pick a server first') + '</option>' + S.channels.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === S.channelId ? ' selected' : '') + '>#' + esc(c.name) + (c.category ? ' · ' + esc(c.category) : '') + '</option>').join('') + '</select>';
+      html += '<div class="msg ' + (d.smashed ? 'ok' : 'info') + '">' + (d.smashed ? (d.smashed.prevTarget ? 'Your earlier alert on ' + esc(d.symbol) + ' hit its $' + price(d.smashed.prevTarget) + ' target. This posts as PT SMASHED with the new target.' : 'This posts as PT SMASHED.') : 'Posts as a new alert.') + '</div>'
+        + '<select data-ca="mode" aria-label="Alert type"><option value="auto"' + (S.mode === 'auto' ? ' selected' : '') + '>Alert type: automatic</option><option value="new"' + (S.mode === 'new' ? ' selected' : '') + '>Always a new alert</option><option value="smashed"' + (S.mode === 'smashed' ? ' selected' : '') + '>PT SMASHED update</option></select>';
       html += '<label class="chk"><input type="checkbox" data-ca="ping"' + (S.ping ? ' checked' : '') + (ch && ch.mentionEveryone ? '' : ' disabled') + '> Ping @everyone' + (ch && !ch.mentionEveryone ? ' (not allowed in this channel)' : '') + '</label>';
       if (S.scn) html += '<label class="chk"><input type="checkbox" data-ca="images"' + (S.images ? ' checked' : '') + (S.scn.pngAvailable ? '' : ' disabled') + '> Attach the two scenario charts' + (S.scn.pngAvailable ? '' : ' (picture engine unavailable)') + '</label>';
       html += '<label class="chk"><input type="checkbox" data-ca="asme"' + (S.asMe && canAsMe ? ' checked' : '') + (canAsMe ? '' : ' disabled') + '> Post under my name and picture' + (ch && !canAsMe ? ' (this channel only lets the app post as itself)' : '') + '</label>';
@@ -208,11 +210,11 @@
   }
   async function reading() {
     S.busy = true; S.data = null; S.scn = null; S.msg = ''; S.sent = false; render();
-    const r = await api('preview', Object.assign({ symbol: S.symbol, target: S.target }, S.contract ? { contract: S.contract } : {}));
+    const r = await api('preview', Object.assign({ symbol: S.symbol, target: S.target, mode: S.mode }, S.contract ? { contract: S.contract } : {}));
     S.busy = false; S.opt = r.ok ? (r.options || null) : null;
     if (!r.ok && S.contract && /^(contract_|options_)/.test(String(r.error || r.code || ''))) { const why = explainErr(r); S.contract = null; await reading(); S.msg = why; S.msgTone = 'err'; render(); return; }
     if (!r.ok) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
-    S.data = r.analysis; S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = ''; render(); draw();
+    S.data = r.analysis; if (r.analysis.smashed && S.smashedFor !== S.symbol + ':' + S.target) { S.smashedFor = S.symbol + ':' + S.target; S.ping = true; } S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = ''; render(); draw();
   }
 
   /* a click (not a drag or a pinch) on the plot sets the target */
@@ -247,7 +249,7 @@
     if (k === 'send') {
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
-      const r = await api('send', Object.assign({ symbol: S.symbol, target: S.target, channelId: S.channelId, mention: !!S.ping, images: !!S.images, asMe: !!S.asMe }, S.contract ? { contract: S.contract } : {}));
+      const r = await api('send', Object.assign({ symbol: S.symbol, target: S.target, mode: S.mode, channelId: S.channelId, mention: !!S.ping, images: !!S.images, asMe: !!S.asMe }, S.contract ? { contract: S.contract } : {}));
       S.busy = false;
       if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }
@@ -258,6 +260,7 @@
     const k = e.target && e.target.dataset && e.target.dataset.ca; if (!k) return;
     if (k === 'guild') { S.guildId = e.target.value; S.channelId = ''; S.channels = []; S.sent = false; render(); await loadChannels(); save(); render(); }
     else if (k === 'channel') { S.channelId = e.target.value; S.sent = false; save(); const ch = S.channels.find((c) => c.id === S.channelId); if (!ch || !ch.mentionEveryone) S.ping = false; render(); }
+    else if (k === 'mode') { S.mode = e.target.value; void reading(); }
     else if (k === 'ping') { S.ping = !!e.target.checked; render(); }
     else if (k === 'images') { S.images = !!e.target.checked; render(); }
     else if (k === 'asme') { S.asMe = !!e.target.checked; render(); }

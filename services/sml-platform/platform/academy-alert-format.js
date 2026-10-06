@@ -95,6 +95,24 @@ function formatPtSmashed(a) {
   const pt = Number(a.newPt);
   if (!a.ticker || !(pt > 0)) throw new TypeError('pt_smashed_needs_ticker_and_new_pt');
   const plus = !!a.plus;
+  /* the wide-buffer layout: a stop given as a range (Below $1.98–$2.05, or Above for a short) */
+  if (Number(a.stopLow) > 0 && Number(a.stopHigh) > 0) {
+    const tk = String(a.ticker).toUpperCase().replace(/[^A-Z0-9.]/g, ''), short = a.side === 'short';
+    const lo = Math.min(Number(a.stopLow), Number(a.stopHigh)), hi = Math.max(Number(a.stopLow), Number(a.stopHigh));
+    return [
+      ...everyone(a.mention),
+      '🔥 ' + bold(tk) + ' ' + bold('PT SMASHED') + ' — ' + bold('NEW PT SET') + ' ' + priceText(pt, { plus }) + ' 🔥',
+      '🎯 Previous PT smashed — ' + sentence(a.status, short ? 'momentum still pushing downward.' : 'momentum still pushing upward.'),
+      '',
+      '👉 🆕 ' + bold('NEW TARGET ZONE') + ' — ' + plainPrice(pt) + (plus ? '+' : '') + '  ',
+      sentence(a.targetNote, 'Continuation valid — strong extension forming.'),
+      '',
+      '⚠️ ' + bold('HIGH' + NBH + 'RISK ZONE') + '  ',
+      sentence(a.riskNote, 'Volatility elevated — consider majority profits as we push deeper into extended territory.'),
+      '',
+      '🚨 ' + bold('WIDE STOP LOSS') + ': ' + (short ? 'Above ' : 'Below ') + plainPrice(lo) + '–' + plainPrice(hi).replace(/^\$/, '$') + ' (wide buffer for ' + tk + ' volatility)'
+    ].join('\n');
+  }
   return [
     ...everyone(a.mention),
     '🔥 ' + bold(String(a.ticker).toUpperCase().replace(/[^A-Z0-9.]/g, '')) + ' ' + bold('PT SMASHED') + ' — ' + bold('NEW PT SET') + ' ' + priceText(pt, { plus }) + ' 🔥',

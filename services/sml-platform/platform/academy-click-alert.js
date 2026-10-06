@@ -208,7 +208,17 @@ function createClickAlertStore({ pool = null } = {}) {
     const cut = Date.now() - sinceMs;
     return mem.filter((r) => r.at > cut && (!userId || r.userId === userId) && (!channelId || r.channelId === channelId) && (!symbol || r.symbol === symbol) && (target == null || r.target === target)).length;
   }
-  return { record, count, persistent: !!db };
+  /* this member's newest alert on a symbol (to know if its target has since been hit) */
+  async function last({ userId, symbol, sinceMs }) {
+    if (db) {
+      const r = await db.query('SELECT side, entry, target, created_at FROM academy_click_alerts WHERE discord_id = $1 AND symbol = $2 AND created_at > now() - ($3 || \' milliseconds\')::interval ORDER BY created_at DESC LIMIT 1', [userId, symbol, String(sinceMs)]);
+      const row = r.rows[0]; return row ? { side: row.side, entry: Number(row.entry), target: Number(row.target), at: new Date(row.created_at).getTime() } : null;
+    }
+    const cut = Date.now() - sinceMs; let hit = null;
+    for (const r of mem) if (r.userId === userId && r.symbol === symbol && r.at > cut && (!hit || r.at >= hit.at)) hit = { side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at };
+    return hit;
+  }
+  return { record, count, last, persistent: !!db };
 }
 
 function createClickAlertService({ getBars, chain = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
@@ -279,15 +289,37 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     };
   };
 
-  const textFor = (analysis, opt, mention) => (opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
+  /* Did this member already alert this ticker, and has price since reached that alert's target? Then a higher target is a PT SMASHED update. */
+  const SMASH_WINDOW_MS = 21 * 86_400_000;
+  async function detectSmashed(userId, analysis, mode, contract) {
+    if (contract || mode === 'new') return null;
+    const prev = store.last ? await store.last({ userId, symbol: analysis.symbol, sinceMs: SMASH_WINDOW_MS }).catch(() => null) : null;
+    const long = analysis.side === 'long';
+    if (prev && prev.side === analysis.side && Number.isFinite(prev.target)) {
+      const further = long ? analysis.target > prev.target : analysis.target < prev.target;
+      const bars = (analysis.__bars && ((analysis.__bars.m5 && analysis.__bars.m5.length ? analysis.__bars.m5 : analysis.__bars.daily) || [])) || [];
+      const after = bars.filter((b) => b.t >= prev.at - 300_000);
+      const touched = after.some((b) => (long ? b.h >= prev.target : b.l <= prev.target)) || (long ? analysis.entry >= prev.target : analysis.entry <= prev.target);
+      if (further && touched) return { prevTarget: prev.target, prevAt: prev.at };
+    }
+    return mode === 'smashed' ? { prevTarget: prev ? prev.target : null, prevAt: prev ? prev.at : null, forced: true } : null;
+  }
+  /* a stop with a wide buffer for fast movers: 7% to 10% away from the live price */
+  function wideStop(analysis) {
+    const e = Number(analysis.entry); if (!(e > 0)) return {};
+    const long = analysis.side === 'long', r = (v) => (e >= 1 ? Math.round(v * 100) / 100 : Math.round(v * 10000) / 10000);
+    return long ? { stopLow: r(e * 0.90), stopHigh: r(e * 0.93) } : { stopLow: r(e * 1.07), stopHigh: r(e * 1.10) };
+  }
+  const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
-  async function preview(userId, { symbol, target, contract = null } = {}) {
+  async function preview(userId, { symbol, target, contract = null, mode = 'auto' } = {}) {
     const ent = await entitlement(userId);
     // the horizon read is part of the paid add-on, so an unsubscribed member never receives it
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured', entitlement: ent };
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required', entitlement: ent };
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '', entitlement: ent };
+    analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
     const opt = await optionsFor(analysis, contract);
     if (opt && opt.error) return { ...opt.error, entitlement: ent };
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
@@ -314,7 +346,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, contract = null, channelId, mention = false, images: wantImages = true, asMe = true, via = '' } = {}) {
+  async function send(user, { symbol, target, contract = null, mode = 'auto', channelId, mention, images: wantImages = true, asMe = true, via = '' } = {}) {
     const userId = String(user.userId || '');
     if (via === 'site') return { ok: false, status: 410, code: 'site_publishing_unavailable', detail: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.' };
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
@@ -330,11 +362,14 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
+    analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
     const opt = await optionsFor(analysis, contract);
     if (opt && opt.error) return opt.error;
     const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
     if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
-    const ping = !!mention && where.mentionEveryone;
+    /* a PT SMASHED update goes to everyone unless the member said otherwise */
+    const wantPing = mention === undefined ? !!analysis.smashed : !!mention;
+    const ping = wantPing && where.mentionEveryone;
     let content = textFor(analysis, opt, ping) + '\n\n' + alertTimeAndPrice(analysis, new Date(now()));
     // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
     // a member can have their own bot (their name and picture): used when that bot is in the server and may post in the channel
@@ -365,7 +400,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: !!mention && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
   }
 
   return { entitlement, preview, send, destinations, channels, configured };
