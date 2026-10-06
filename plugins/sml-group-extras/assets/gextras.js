@@ -214,7 +214,23 @@
     if (e.target.closest && e.target.closest('[data-gex-desc-open]')) { e.preventDefault(); e.stopPropagation(); var d = document.getElementById('sml-ghx-menu'); if (d) d.classList.remove('open'); openModal(); }
   }, true);
 
-  function sweep() { S.queued = false; renderDescription(); tooltips(); menu(); sweepFormatting(); }
+  /* The Retail Trader Spotlight button (and its Discord-alerts button) are added by their plugin to the parent of the Edit Group button, which is the banner. Move them
+     to the right-hand sidebar, under the watchlist, where nothing else lives; if there is no sidebar, into the left action stack beside Pro Tools. */
+  function relocateSpotlight() {
+    var head = root.querySelector('.sml-gshell__main-head'); if (!head) return;
+    var found = head.querySelectorAll('[data-sml-rts-open],[data-sml-rts-dm],.sml-rts-open,.sml-rts-dm'); if (!found.length) return;
+    var aside = root.querySelector('.sml-gshell__aside'), stack = root.querySelector('.sml-gshell__side-actions');
+    var target = null;
+    if (aside) { target = aside.querySelector('.sml-gex-rts'); if (!target) { target = document.createElement('section'); target.className = 'sml-gex-rts'; aside.appendChild(target); } }
+    else if (stack) target = stack;
+    Array.prototype.forEach.call(found, function (b) {
+      var key = b.hasAttribute('data-sml-rts-dm') || b.classList.contains('sml-rts-dm') ? '[data-sml-rts-dm]' : '[data-sml-rts-open]';
+      if (!target || target.querySelector(key)) { b.remove(); return; }   // already moved once: drop the copy the plugin re-adds
+      target.appendChild(b);
+    });
+  }
+
+  function sweep() { S.queued = false; renderDescription(); tooltips(); menu(); relocateSpotlight(); sweepFormatting(); }
   new MutationObserver(function () { if (S.queued) return; S.queued = true; window.requestAnimationFrame(sweep); }).observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   request('groups/' + groupId + '/descriptions').then(function (p) { S.descriptions = p.descriptions || {}; S.canManage = !!p.can_manage; S.loaded = true; sweep(); }).catch(function () { sweep(); });
   sweep();

@@ -2,12 +2,12 @@
 /**
  * Plugin Name: SML Group Extras
  * Description: Channel descriptions (180 characters, for discovery), rich message formatting (bold, headers, sizes, colours) and a tidier owner menu on group pages.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Requires PHP: 7.4
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_GEX_VERSION', '1.0.0' );
+define( 'SML_GEX_VERSION', '1.1.0' );
 define( 'SML_GEX_DESC_MAX', 180 );
 
 /** One clean description: no tags, one line of spaces, at most 180 characters. */

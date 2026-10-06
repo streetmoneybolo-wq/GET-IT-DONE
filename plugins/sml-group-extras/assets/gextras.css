@@ -32,3 +32,8 @@ form[data-smlgs-composer] .smlfmt-preview { flex: 1 1 100%; order: -1; max-heigh
 .sml-gex-card .actions { display: flex; gap: 8px; justify-content: flex-end; }
 .sml-gex-card .actions button { padding: 8px 14px; border-radius: 8px; border: 1px solid #2a4a38; background: #101923; color: #e6eef2; font: 700 13px system-ui, sans-serif; cursor: pointer; }
 .sml-gex-card .actions button.pri { background: #00c47d; border-color: #7dffc4; color: #021810; }
+
+.sml-gshell__main-head .sml-rts-open, .sml-gshell__main-head .sml-rts-dm, .sml-gshell__header-banner .sml-rts-open { display: none !important; }
+.sml-gex-rts { margin: 12px 0 0; padding: 0 2px; display: flex; flex-direction: column; gap: 6px; }
+.sml-gex-rts .sml-rts-open { margin-top: 0 !important; }
+.sml-gex-rts .sml-rts-open, .sml-gex-rts .sml-rts-dm { display: flex !important; width: 100%; box-sizing: border-box; }
