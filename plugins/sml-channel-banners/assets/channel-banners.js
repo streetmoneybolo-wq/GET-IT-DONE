@@ -50,8 +50,15 @@
     head.setAttribute('data-sml-cbanner-channel', channelId ? String(channelId) : 'portal');
     if (!entry || !entry.url) {
       if (image) image.remove();
+      /* no banner: no banner window either (only once the saved banners have loaded, so a banner never flashes away) */
+      if (state.loaded && channelId) {
+        head.classList.add('sml-cbanner-none');
+        head.style.removeProperty('height');
+        head.style.removeProperty('min-height');
+      }
       return;
     }
+    head.classList.remove('sml-cbanner-none');
     if (!image) {
       image = document.createElement('img');
       image.className = 'sml-cbanner-image';
@@ -326,6 +333,7 @@
   }).observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 
   request('groups/' + groupId + '/visuals').then(function (payload) {
+    state.loaded = true;
     state.banners = payload.banners || {};
     state.canManage = !!payload.can_manage;
     root.setAttribute('data-sml-cbanner-state', state.canManage ? 'ready-owner' : 'ready-viewer');

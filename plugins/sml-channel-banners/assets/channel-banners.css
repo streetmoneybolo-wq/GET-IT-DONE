@@ -113,3 +113,18 @@
 .sml-cbanner-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sml-cbanner-bar output { min-width: 48px; color: #fff; }
 .sml-cbanner-bar button { border: 1px solid #1f8a5f; border-radius: 999px; background: #0b2219; color: #7dffc4; font: 800 11px system-ui, sans-serif; padding: 3px 10px; cursor: pointer; }
+
+.sml-gshell__main-head.sml-cbanner-none {
+  min-height: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.sml-gshell__main-head.sml-cbanner-none::before,
+.sml-gshell__main-head.sml-cbanner-none::after,
+.sml-gshell__main-head.sml-cbanner-none > .sml-gshell__header-banner,
+.sml-gshell__main-head.sml-cbanner-none .sml-bg-over {
+  display: none !important;
+}

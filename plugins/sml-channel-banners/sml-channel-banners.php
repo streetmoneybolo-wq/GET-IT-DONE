@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.11
+ * Version: 1.0.12
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.11' );
+define( 'SML_CBANNER_VERSION', '1.0.12' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
