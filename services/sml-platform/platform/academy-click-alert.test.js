@@ -143,8 +143,8 @@ test('@everyone is dropped when either the member or the app may not ping it', a
   assert.equal(out.ok, true); assert.equal(out.mentioned, false); assert.equal(out.mentionRequestedButNotAllowed, true);
   assert.ok(!posts[0].body.content.includes('@everyone'));
   assert.deepEqual(posts[0].body.allowed_mentions, { parse: [] });
-  const none = await fake().svc.send({ userId: USER, displayName: 'Ana' }, body({ target: lastClose * 1.09 }));
-  assert.equal(none.mentioned, false, 'no ping unless asked for');
+  const dflt = await fake().svc.send({ userId: USER, displayName: 'Ana' }, body({ target: lastClose * 1.09 }));
+  assert.equal(dflt.mentioned, true, 'everyone by default when nothing was said');
 });
 
 test('the member must be able to post in the channel, and so must the app', async () => {
@@ -295,4 +295,18 @@ test('the wide-stop layout matches the member\'s template and a short flips Abov
   const t = F.formatPtSmashed({ ticker: 'QTEX', newPt: 2.44, plus: true, mention: true, stopLow: 1.98, stopHigh: 2.05, side: 'long' });
   assert.equal(t, ['@everyone', '🔥 𝐐𝐓𝐄𝐗 𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃 — 𝐍𝐄𝐖 𝐏𝐓 𝐒𝐄𝐓 $𝟐.𝟒𝟒+ 🔥', '🎯 Previous PT smashed — momentum still pushing upward.', '', '👉 🆕 𝐍𝐄𝐖 𝐓𝐀𝐑𝐆𝐄𝐓 𝐙𝐎𝐍𝐄 — $2.44+  ', 'Continuation valid — strong extension forming.', '', '⚠️ 𝐇𝐈𝐆𝐇‑𝐑𝐈𝐒𝐊 𝐙𝐎𝐍𝐄  ', 'Volatility elevated — consider majority profits as we push deeper into extended territory.', '', '🚨 𝐖𝐈𝐃𝐄 𝐒𝐓𝐎𝐏 𝐋𝐎𝐒𝐒: Below $1.98–$2.05 (wide buffer for QTEX volatility)'].join('\n'));
   assert.match(F.formatPtSmashed({ ticker: 'X', newPt: 5, plus: true, stopLow: 5.4, stopHigh: 5.6, side: 'short' }), /Above \$5\.40–\$5\.60/);
+});
+
+test('an alert goes to @everyone by default, and only a deliberate "no" or a channel that does not allow it leaves it out', async () => {
+  const a = fake(); // the member and the app may ping here
+  const out = await a.svc.send({ userId: USER, displayName: 'Ana' }, body({ target: lastClose * 1.11 }));
+  assert.equal(out.ok, true); assert.equal(out.mentioned, true);
+  assert.match(a.posts[0].body.content, /^@everyone\n/); assert.deepEqual(a.posts[0].body.allowed_mentions, { parse: ['everyone'] });
+  const off = fake();
+  const no = await off.svc.send({ userId: USER, displayName: 'Ana' }, body({ target: lastClose * 1.12, mention: false }));
+  assert.equal(no.mentioned, false); assert.ok(!off.posts[0].body.content.includes('@everyone'));
+  const blocked = fake({ mentionEveryone: false });
+  const b = await blocked.svc.send({ userId: USER, displayName: 'Ana' }, body({ target: lastClose * 1.13 }));
+  assert.equal(b.mentioned, false); assert.equal(b.mentionRequestedButNotAllowed, true);
+  assert.ok(!blocked.posts[0].body.content.includes('@everyone'));
 });

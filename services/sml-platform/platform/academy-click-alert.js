@@ -381,7 +381,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
     if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     /* a PT SMASHED update goes to everyone unless the member said otherwise */
-    const wantPing = mention === undefined ? !!analysis.smashed : !!mention;
+    const wantPing = mention === undefined ? true : !!mention;
     const ping = wantPing && where.mentionEveryone;
     let content = textFor(analysis, opt, ping) + '\n\n' + alertTimeAndPrice(analysis, new Date(now()));
     // posted under the member's own name when asked and possible, so the 'Sent by' line is only for posts made as the app
