@@ -84,9 +84,13 @@
   function buildBar(form) {
     var ta = form.querySelector('textarea'); if (!ta || form.hasAttribute('data-smlfmt-bar')) return;
     form.setAttribute('data-smlfmt-bar', '1');
-    var bar = document.createElement('div'); bar.className = 'smlfmt-bar'; bar.innerHTML = BAR_HTML;
+    var bar = document.createElement('div'); bar.className = 'smlfmt-bar'; bar.innerHTML = BAR_HTML; bar.hidden = true;
+    /* a thin handle above the message box: the writing tools stay closed until the member opens them */
+    var toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'smlfmt-toggle'; toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = '<span class="ic">Aa</span><span class="tx">Writing tools</span><span class="ch" aria-hidden="true">▾</span>';
+    toggle.addEventListener('click', function () { var open = bar.hidden; bar.hidden = !open; toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); toggle.classList.toggle('open', open); });
     var prev = document.createElement('div'); prev.className = 'smlfmt-preview'; prev.hidden = true;
-    form.insertBefore(prev, form.firstChild); form.insertBefore(bar, form.firstChild);
+    form.insertBefore(prev, form.firstChild); form.insertBefore(bar, form.firstChild); form.insertBefore(toggle, form.firstChild);
     function refresh() { var h = render(ta.value); prev.hidden = !h; prev.innerHTML = h; }
     ta.addEventListener('input', refresh);
     ta.addEventListener('keydown', function (e) {

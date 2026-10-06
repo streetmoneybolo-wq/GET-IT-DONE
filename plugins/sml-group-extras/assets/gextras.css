@@ -13,6 +13,7 @@
 .smlfmt-right { text-align: right; }
 .smlfmt-spoiler { background: #0c1612; color: transparent; border-radius: 4px; padding: 0 3px; cursor: pointer; text-shadow: none; user-select: none; }
 .smlfmt-spoiler.open { color: inherit; background: rgba(255, 255, 255, .1); user-select: text; }
+form[data-smlgs-composer] .smlfmt-bar[hidden] { display: none !important; }
 form[data-smlgs-composer] .smlfmt-bar { flex: 1 1 100%; order: -2; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, .08); overflow-x: auto; }
 form[data-smlgs-composer] .smlfmt-bar button { min-width: 28px; height: 26px; padding: 0 7px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 7px; background: #101923; color: #e6eef2; font: 700 12px system-ui, sans-serif; cursor: pointer; }
 form[data-smlgs-composer] .smlfmt-bar button:hover { border-color: #00ff66; color: #7dffc4; }
@@ -37,3 +38,9 @@ form[data-smlgs-composer] .smlfmt-preview { flex: 1 1 100%; order: -1; max-heigh
 .sml-gex-rts { margin: 12px 0 0; padding: 0 2px; display: flex; flex-direction: column; gap: 6px; }
 .sml-gex-rts .sml-rts-open { margin-top: 0 !important; }
 .sml-gex-rts .sml-rts-open, .sml-gex-rts .sml-rts-dm { display: flex !important; width: 100%; box-sizing: border-box; }
+
+form[data-smlgs-composer] .smlfmt-toggle { flex: 1 1 100%; order: -3; display: flex; align-items: center; gap: 6px; height: 20px; margin: -2px 0 0; padding: 0 2px; border: 0; background: none; color: #7f9a8d; font: 700 10.5px system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+form[data-smlgs-composer] .smlfmt-toggle:hover { color: #7dffc4; }
+form[data-smlgs-composer] .smlfmt-toggle .ic { font: 800 11px Georgia, serif; text-transform: none; padding: 0 4px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 4px; }
+form[data-smlgs-composer] .smlfmt-toggle .ch { margin-left: auto; transition: transform .15s ease; }
+form[data-smlgs-composer] .smlfmt-toggle.open .ch { transform: rotate(180deg); }
