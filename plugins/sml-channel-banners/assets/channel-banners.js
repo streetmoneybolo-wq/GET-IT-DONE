@@ -6,7 +6,7 @@
   var config = window.SMLChannelBanners || {};
   var root = document.getElementById('sml-group-shell');
   var shellConfig = {};
-  var state = { banners: {}, canManage: false, channelId: 0, modal: null, queued: false, edit: false, saveTimer: 0 };
+  var state = { banners: {}, canManage: false, channelId: 0, modal: null, queued: false, edit: false, saveTimer: 0, targets: [], targetsFor: 0 };
   var DEFAULT_H = 152;
   if (!root || !config.api) return;
   root.setAttribute('data-sml-cbanner-state', 'booting');
@@ -89,6 +89,53 @@
   }
 
   /* ---- direct editing on the banner: drag the picture, drag a corner to resize it, drag the bottom edge to make the banner taller or shorter ---- */
+  /* ---- "Apply to": the same banner (picture, size, position, height), hide or remove on any mix of channels ---- */
+  function channelList() {
+    var out = [];
+    root.querySelectorAll('.sml-gshell__channels .sml-gshell__channel[data-smlgs-channel]').forEach(function (b) {
+      var id = parseInt(b.getAttribute('data-smlgs-channel'), 10); if (!id) return;
+      var nm = b.querySelector('.sml-gshell__channel-name');
+      out.push({ id: id, name: ((nm ? nm.textContent : b.textContent) || '').replace(/\s+/g, ' ').replace(/^#\s*/, '').trim() || ('channel ' + id) });
+    });
+    return out;
+  }
+  function currentTargets() {
+    var cur = activeChannelId();
+    if (state.targetsFor !== cur) { state.targets = []; state.targetsFor = cur; }
+    return state.targets.filter(function (id) { return id !== cur; });
+  }
+  function pickerHtml() {
+    var list = channelList(), cur = activeChannelId();
+    if (list.length < 2) return '';
+    var on = currentTargets();
+    return '<details class="sml-cbanner-apply"><summary>Apply to: <span data-sml-cbanner-sum>' + (on.length ? (on.length + 1) + ' channels' : 'this channel') + '</span></summary>' +
+      '<div class="sml-cbanner-apply-actions"><button type="button" data-sml-cbanner-pick="all">Select all</button><button type="button" data-sml-cbanner-pick="none">Just this one</button></div>' +
+      '<div class="sml-cbanner-apply-list">' + list.map(function (c) { return '<label><input type="checkbox" data-sml-cbanner-ch="' + c.id + '"' + (c.id === cur || on.indexOf(c.id) >= 0 ? ' checked' : '') + (c.id === cur ? ' disabled' : '') + '> #' + String(c.name).replace(/[<>&"]/g, '') + '</label>'; }).join('') + '</div></details>';
+  }
+  function bindPicker(scope) {
+    scope.addEventListener('change', function (e) {
+      var box = e.target.closest && e.target.closest('[data-sml-cbanner-ch]'); if (!box) return;
+      var id = parseInt(box.getAttribute('data-sml-cbanner-ch'), 10), cur = activeChannelId(); currentTargets();
+      var i = state.targets.indexOf(id);
+      if (box.checked && i < 0) state.targets.push(id); else if (!box.checked && i >= 0) state.targets.splice(i, 1);
+      sumUpdate(scope);
+    });
+    scope.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-sml-cbanner-pick]'); if (!b) return;
+      e.preventDefault(); var cur = activeChannelId(); currentTargets();
+      state.targets = b.getAttribute('data-sml-cbanner-pick') === 'all' ? channelList().map(function (c) { return c.id; }).filter(function (id) { return id !== cur; }) : [];
+      scope.querySelectorAll('[data-sml-cbanner-ch]').forEach(function (x) { x.checked = x.disabled || state.targets.indexOf(parseInt(x.getAttribute('data-sml-cbanner-ch'), 10)) >= 0; });
+      sumUpdate(scope);
+    });
+  }
+  function sumUpdate(scope) { var n = currentTargets().length, el = scope.querySelector('[data-sml-cbanner-sum]'); if (el) el.textContent = n ? (n + 1) + ' channels' : 'this channel'; }
+  function copyToTargets(channelId) {
+    var to = currentTargets(); if (!to.length) return Promise.resolve();
+    return request('copy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group_id: groupId, kind: 'banner', from_channel_id: channelId, to_channel_ids: to }) }).then(function () {
+      return request('groups/' + groupId + '/visuals').then(function (p) { state.banners = p.banners || state.banners; render(); });
+    });
+  }
+
   function entryNow() { return state.banners[String(activeChannelId())]; }
   function queueSave() {
     var channelId = activeChannelId(), entry = state.banners[String(channelId)];
@@ -99,7 +146,7 @@
       var data = new FormData();
       data.append('group_id', String(groupId)); data.append('channel_id', String(channelId));
       ['zoom', 'pos_x', 'pos_y', 'off_x', 'off_y', 'height'].forEach(function (k) { data.append(k, String(entry[k] == null ? (k === 'height' ? 0 : k === 'zoom' ? 100 : k.indexOf('pos') === 0 ? 50 : 0) : entry[k])); });
-      request('visual', { method: 'POST', body: data }).then(function () { setBar('Saved'); }).catch(function (error) { setBar(error.message || 'Could not save', true); });
+      request('visual', { method: 'POST', body: data }).then(function () { return copyToTargets(channelId); }).then(function () { setBar('Saved'); }).catch(function (error) { setBar(error.message || 'Could not save', true); });
     }, 450);
   }
   function setBar(text, bad) {
@@ -116,11 +163,12 @@
     layer = document.createElement('div');
     layer.className = 'sml-cbanner-edit';
     layer.innerHTML = '<div class="sml-cbanner-handle h-tl" data-h="zoom"></div><div class="sml-cbanner-handle h-tr" data-h="zoom"></div><div class="sml-cbanner-handle h-bl" data-h="zoom"></div><div class="sml-cbanner-handle h-br" data-h="zoom"></div><div class="sml-cbanner-edge" data-h="height" title="Drag up or down to change the banner height"></div>'
-      + '<div class="sml-cbanner-bar" data-sml-cbanner-bar><span>Drag to move · corners resize the picture · bottom edge changes height · scroll to zoom</span><output></output><button type="button" data-sml-cbanner-fit>Fit whole image</button><button type="button" data-sml-cbanner-reset>Reset</button><button type="button" data-sml-cbanner-done>Done</button></div>';
+      + '<div class="sml-cbanner-bar" data-sml-cbanner-bar><span>Drag to move · corners resize the picture · bottom edge changes height · scroll to zoom</span><output></output><button type="button" data-sml-cbanner-fit>Fit whole image</button><button type="button" data-sml-cbanner-reset>Reset</button><button type="button" data-sml-cbanner-done>Done</button></div><div class="sml-cbanner-applybox" data-sml-cbanner-applybox>' + pickerHtml() + '</div>';
     head.appendChild(layer);
+    var ab = layer.querySelector('[data-sml-cbanner-applybox]'); if (ab) { bindPicker(ab); ab.addEventListener('pointerdown', function (e) { e.stopPropagation(); }); }
     var drag = null;
     layer.addEventListener('pointerdown', function (e) {
-      if (e.target.closest('.sml-cbanner-bar')) return;
+      if (e.target.closest('.sml-cbanner-bar') || e.target.closest('[data-sml-cbanner-applybox]')) return;
       var entry = entryNow(), r = head.getBoundingClientRect(); if (!entry) return;
       var kind = (e.target.closest('[data-h]') || {}).dataset ? e.target.closest('[data-h]').dataset.h : 'move';
       var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -206,6 +254,7 @@
       '<label>Zoom<div class="sml-cbanner-range"><input type="range" name="zoom" min="25" max="400" value="100"><output data-sml-cbanner-zoom-output>100%</output></div></label>' +
       '<label>Horizontal position<div class="sml-cbanner-range"><input type="range" name="pos_x" min="0" max="100" value="50"><output data-sml-cbanner-x-output>50%</output></div></label>' +
       '<label>Vertical position<div class="sml-cbanner-range"><input type="range" name="pos_y" min="0" max="100" value="50"><output data-sml-cbanner-y-output>50%</output></div></label>' +
+      '<div data-sml-cbanner-applybox-modal></div>' +
       '<p class="sml-cbanner-status" data-sml-cbanner-status role="status" aria-live="polite"></p>' +
       '<div class="sml-cbanner-actions"><button type="button" class="sml-cbanner-remove" data-sml-cbanner-remove>Remove banner</button><span><button type="button" data-sml-cbanner-close>Cancel</button> <button type="submit">Save Banner</button></span></div>' +
       '</form>';
@@ -214,6 +263,7 @@
       if (event.target === modal || event.target.closest('[data-sml-cbanner-close]')) modal.hidden = true;
       if (event.target.closest('[data-sml-cbanner-remove]')) save(modal, true);
     });
+    bindPicker(modal.querySelector('[data-sml-cbanner-applybox-modal]'));
     modal.querySelectorAll('input[type="range"]').forEach(function (input) {
       input.addEventListener('input', function () { updatePreview(modal); });
     });
@@ -260,6 +310,7 @@
     modal.querySelector('[data-sml-cbanner-preview-image]').src = entry.url || '';
     modal.querySelector('[data-sml-cbanner-status]').textContent = '';
     modal.querySelector('[data-sml-cbanner-status]').classList.remove('is-error');
+    modal.querySelector('[data-sml-cbanner-applybox-modal]').innerHTML = pickerHtml();
     updatePreview(modal);
     modal.hidden = false;
   }
@@ -281,10 +332,18 @@
     status.textContent = remove ? 'Removing banner…' : 'Saving banner…';
     status.classList.remove('is-error');
     submit.disabled = true;
+    var chId = state.channelId;
     request('visual', { method: 'POST', body: data }).then(function (payload) {
-      if (payload.banner) state.banners[String(state.channelId)] = payload.banner;
-      else delete state.banners[String(state.channelId)];
+      if (payload.banner) state.banners[String(chId)] = payload.banner;
+      else delete state.banners[String(chId)];
       render();
+      var to = currentTargets();
+      if (!to.length) return payload;
+      if (remove) {
+        return Promise.all(to.map(function (id) { var d = new FormData(); d.append('group_id', String(groupId)); d.append('channel_id', String(id)); d.append('remove', '1'); return request('visual', { method: 'POST', body: d }).then(function () { delete state.banners[String(id)]; }); })).then(function () { render(); return payload; });
+      }
+      return copyToTargets(chId).then(function () { return payload; });
+    }).then(function (payload) {
       status.textContent = remove ? 'Banner removed.' : 'Banner saved.';
       window.setTimeout(function () { modal.hidden = true; }, 450);
     }).catch(function (error) {

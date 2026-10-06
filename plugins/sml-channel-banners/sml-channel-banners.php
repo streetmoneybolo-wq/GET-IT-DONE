@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.13
+ * Version: 1.1.0
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.13' );
+define( 'SML_CBANNER_VERSION', '1.1.0' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -185,7 +185,7 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 		if ( $new_attachment ) { wp_delete_attachment( $new_attachment, true ); }
 		return new WP_Error( 'sml_cbanner_store', 'The banner could not be saved.', array( 'status' => 500 ) );
 	}
-	if ( $old_attachment && $old_attachment !== $new_attachment ) { wp_delete_attachment( $old_attachment, true ); }
+	if ( $old_attachment && $old_attachment !== $new_attachment && ! sml_cbanner_url_in_use( $group_id, (string) ( $current['url'] ?? '' ), $key, $old_attachment ) ) { wp_delete_attachment( $old_attachment, true ); }
 	return rest_ensure_response( array(
 		'ok' => true,
 		'channel_id' => $channel_id,
@@ -235,6 +235,54 @@ function sml_cbanner_rest_save_conversation_background( WP_REST_Request $request
 	return rest_ensure_response( array( 'ok' => true, 'watermark' => $current ) );
 }
 
+
+/* A picture copied to other channels is shared by URL. The file is only deleted when no channel in the group still shows it. */
+function sml_cbanner_url_in_use( int $group_id, string $new_url, string $except_key, int $attachment_id ): bool {
+	$old_url = (string) wp_get_attachment_url( $attachment_id );
+	if ( '' === $old_url ) { return false; }
+	foreach ( array( 'sml_channel_banners_' . $group_id, 'sml_channel_watermarks_' . $group_id ) as $opt ) {
+		$all = get_option( $opt, array() );
+		if ( ! is_array( $all ) ) { continue; }
+		foreach ( $all as $k => $entry ) {
+			if ( (string) $k === $except_key && 'sml_channel_banners_' . $group_id === $opt ) { continue; }
+			if ( is_array( $entry ) && ! empty( $entry['url'] ) && (string) $entry['url'] === $old_url ) { return true; }
+		}
+	}
+	return false;
+}
+
+/* Copy one channel's banner or background (picture and settings) to other channels of the same group. */
+function sml_cbanner_rest_copy( WP_REST_Request $request ) {
+	$group_id = absint( $request->get_param( 'group_id' ) );
+	$from     = absint( $request->get_param( 'from_channel_id' ) );
+	$kind     = 'background' === $request->get_param( 'kind' ) ? 'background' : 'banner';
+	$to       = array_values( array_unique( array_filter( array_map( 'absint', (array) $request->get_param( 'to_channel_ids' ) ) ) ) );
+	if ( ! $group_id || ! $from || ! $to || count( $to ) > 100 ) { return new WP_Error( 'sml_cbanner_copy_args', 'Pick the channels to copy to.', array( 'status' => 400 ) ); }
+	if ( ! sml_cbanner_can_manage( $group_id ) ) { return new WP_Error( 'sml_cbanner_forbidden', 'Only this group’s owner or admin can change channels.', array( 'status' => 403 ) ); }
+	if ( ! sml_cbanner_channel( $from, $group_id ) ) { return new WP_Error( 'sml_cbanner_channel', 'That channel does not belong to this group.', array( 'status' => 400 ) ); }
+	$option = ( 'banner' === $kind ? 'sml_channel_banners_' : 'sml_channel_watermarks_' ) . $group_id;
+	$all    = get_option( $option, array() );
+	$all    = is_array( $all ) ? $all : array();
+	$src    = isset( $all[ (string) $from ] ) && is_array( $all[ (string) $from ] ) ? $all[ (string) $from ] : array();
+	if ( empty( $src['url'] ) ) { return new WP_Error( 'sml_cbanner_copy_source', 'This channel has no picture to copy yet.', array( 'status' => 409 ) ); }
+	$keys = 'banner' === $kind ? array( 'url', 'zoom', 'pos_x', 'pos_y', 'off_x', 'off_y', 'height' ) : array( 'url', 'opacity' );
+	$done = 0;
+	foreach ( $to as $channel_id ) {
+		if ( $channel_id === $from || ! sml_cbanner_channel( $channel_id, $group_id ) ) { continue; }
+		$key  = (string) $channel_id;
+		$cur  = isset( $all[ $key ] ) && is_array( $all[ $key ] ) ? $all[ $key ] : array();
+		unset( $cur['attachment_id'], $cur['height'], $cur['off_x'], $cur['off_y'] );
+		foreach ( $keys as $k ) { if ( isset( $src[ $k ] ) ) { $cur[ $k ] = $src[ $k ]; } }
+		$cur['attachment_id'] = 0;
+		$cur['updated_by']    = get_current_user_id();
+		$cur['updated_at']    = current_time( 'mysql', true );
+		$all[ $key ] = $cur;
+		$done++;
+	}
+	update_option( $option, $all, false );
+	return rest_ensure_response( array( 'ok' => true, 'copied' => $done ) );
+}
+
 function sml_cbanner_rest_upload_group_background( WP_REST_Request $request ) {
 	$group_id = absint( $request->get_param( 'group_id' ) );
 	if ( ! $group_id ) {
@@ -253,6 +301,11 @@ add_action( 'rest_api_init', static function () {
 		'methods' => 'GET',
 		'callback' => 'sml_cbanner_rest_get',
 		'permission_callback' => '__return_true',
+	) );
+	register_rest_route( 'sml-channel-visuals/v1', '/copy', array(
+		'methods' => 'POST',
+		'callback' => 'sml_cbanner_rest_copy',
+		'permission_callback' => static function () { return is_user_logged_in(); },
 	) );
 	register_rest_route( 'sml-channel-visuals/v1', '/visual', array(
 		'methods' => 'POST',

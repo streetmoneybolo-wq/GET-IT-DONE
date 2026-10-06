@@ -128,3 +128,12 @@
 .sml-gshell__main-head.sml-cbanner-none .sml-bg-over {
   display: none !important;
 }
+
+.sml-cbanner-applybox { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); width: min(420px, calc(100% - 24px)); z-index: 3; cursor: default; }
+.sml-cbanner-apply { background: rgba(3, 26, 18, .96); border: 1px solid #1f8a5f; border-radius: 10px; padding: 7px 10px; color: #a8ffd8; font: 700 11px system-ui, sans-serif; }
+.sml-cbanner-apply summary { cursor: pointer; }
+.sml-cbanner-apply-actions { display: flex; gap: 6px; margin: 6px 0; }
+.sml-cbanner-apply-actions button { border: 1px solid #1f8a5f; border-radius: 999px; background: #0b2219; color: #7dffc4; font: 800 11px system-ui, sans-serif; padding: 3px 10px; cursor: pointer; }
+.sml-cbanner-apply-list { max-height: 150px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; }
+.sml-cbanner-apply-list label { display: flex; gap: 6px; align-items: center; margin: 0; font-weight: 600; color: #cfe; }
+.sml-cbanner-card .sml-cbanner-apply { margin: 12px 0; background: #0b1812; }

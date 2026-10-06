@@ -1772,7 +1772,7 @@
   function applyPickerHtml() {
     var list = groupChannelList(), cur = Number(cid());
     if (list.length < 2) return '';
-    return '<details class="sml-cbg-apply" style="flex:1 1 100%;margin:4px 0"><summary style="cursor:pointer;font-weight:600">Apply to: <span data-cbg-sum>this channel</span></summary>' +
+    return '<details class="sml-cbg-apply" style="flex:1 1 100%;margin:4px 0"><summary style="cursor:pointer;font-weight:600">Apply to (picture and size): <span data-cbg-sum>this channel</span></summary>' +
       '<div style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap"><button type="button" data-cbg-pick="cur">Just this one</button><button type="button" data-cbg-pick="all">Select all</button><button type="button" data-cbg-pick="none">Clear</button></div>' +
       '<div style="max-height:150px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px">' +
       list.map(function (c) { return '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-cbg-ch="' + c.id + '"' + (c.id === cur ? ' checked' : '') + '> #' + String(c.name).replace(/[<>&"]/g, '') + '</label>'; }).join('') +
@@ -1899,12 +1899,18 @@
         return fetch('/wp-json/sml-cbg/v1/fit', { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify(body) });
       };
       /* one request per picked channel, in order; the last response drives the success/error handling below */
-      p = ids.reduce(function (chain, id) {
+      /* picking other channels means THEIR background becomes this picture too (not just this picture's size laid over their own old photos) */
+      var others = targets.filter(function (t) { return t !== Number(cid()); });
+      var pre = (!reset && others.length)
+        ? fetch('/wp-json/sml-channel-visuals/v1/copy', { method: 'POST', credentials: 'same-origin', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()), body: JSON.stringify({ group_id: Number(gid()), kind: 'background', from_channel_id: Number(cid()), to_channel_ids: others }) })
+            .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Could not copy the background to the other channels.'); st.copied = true; }); })
+        : Promise.resolve();
+      p = pre.then(function () { return ids.reduce(function (chain, id) {
         return chain.then(function (prev) {
           if (prev && !prev.ok) return prev;
           return postFit(id);
         });
-      }, Promise.resolve(null));
+      }, Promise.resolve(null)); });
     }
     p.then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) { j = null; }
       if (!j && /Checking your browser|Javascript required/i.test(t)) throw new Error('WordPress.com is verifying your browser. Reload this page once, then save again.');
@@ -1913,7 +1919,7 @@
       if (!res) return;
       if (!res.ok) throw new Error((res.j && res.j.message) || 'Could not save (HTTP error).');
       say('Saved.');
-      setTimeout(function () { closeEditor(false); load(true); if (st.portal && st.file) location.reload(); }, 400);
+      setTimeout(function () { closeEditor(false); load(true); if ((st.portal && st.file) || st.copied) location.reload(); }, 400);
     }).catch(function (e) { say(e.message || 'Could not save.', true); });
   }
 
