@@ -19,7 +19,7 @@
   function load(force) {
     if (loading || (!force && Date.now() - loadedAt < 45000)) return;
     loading = true;
-    fetch(CFG.api + 'groups/' + CFG.groupId + '/role-styles', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': CFG.nonce || '' } })
+    fetch(CFG.api + 'group/' + CFG.groupId + '/role-styles', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-WP-Nonce': CFG.nonce || '' } })
       .then(function (r) { return r.ok ? r.json() : { styles: [] }; })
       .then(function (j) {
         var m = {};
