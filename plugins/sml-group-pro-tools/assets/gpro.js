@@ -7,7 +7,7 @@
   window.__smlGpro = true;
 
   var preview = CFG.level === 'preview';
-  var S = { open: false, tab: 'dashboard', symbol: (CFG.ticker || (CFG.watchlist && CFG.watchlist[0]) || 'SPY'), data: {}, loading: false, timer: null, opt: { view: '', horizonDays: 30, shares: '', cost: '' }, list: (CFG.watchlist || []).slice() };
+  var S = { link: true, dock: false, open: false, tab: 'dashboard', symbol: (CFG.ticker || (CFG.watchlist && CFG.watchlist[0]) || 'SPY'), data: {}, loading: false, timer: null, opt: { view: '', horizonDays: 30, shares: '', cost: '' }, list: (CFG.watchlist || []).slice() };
   var TABS = [['dashboard', 'Dashboard'], ['setups', 'Setups'], ['absorption', 'Absorption'], ['options', 'Options'], ['darkpool', 'Dark pool'], ['sentiment', 'Sentiment']];
 
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -35,25 +35,75 @@
   function build() {
     root = el('<div id="sml-gpro" role="dialog" aria-modal="true" aria-label="Group pro tools"><div class="gp-win">' +
       '<div class="gp-head"><div class="gp-title">Pro Tools<small>Live Academy data for this group</small></div>' +
-      '<input class="sym" maxlength="10" placeholder="Ticker" aria-label="Ticker"><button type="button" class="gp-go">Load</button><button type="button" class="gp-x" aria-label="Close">Close</button></div>' +
+      '<input class="sym" maxlength="10" placeholder="Ticker" aria-label="Ticker"><button type="button" class="gp-go">Load</button><button type="button" class="gp-tochart" title="Show this ticker on the live chart">To chart</button><label class="gp-link" title="Keep Pro Tools and the live chart on the same ticker"><input type="checkbox" class="gp-linkbox" checked> <span>Link chart</span></label><button type="button" class="gp-dock" title="Dock beside the page so the chart stays usable">Dock</button><button type="button" class="gp-x" aria-label="Close">Close</button></div>' +
       '<div class="gp-tabs" role="tablist"></div><div class="gp-body"></div></div></div>');
     document.body.appendChild(root);
     bodyEl = root.querySelector('.gp-body'); tabsEl = root.querySelector('.gp-tabs'); symEl = root.querySelector('input.sym'); titleEl = root.querySelector('.gp-title');
     TABS.forEach(function (t) { var b = document.createElement('button'); b.type = 'button'; b.className = 'gp-tab'; b.setAttribute('data-tab', t[0]); b.textContent = t[1]; tabsEl.appendChild(b); });
     tabsEl.addEventListener('click', function (e) { var b = e.target.closest('[data-tab]'); if (b) go(b.getAttribute('data-tab')); });
     root.querySelector('.gp-x').addEventListener('click', close);
-    root.addEventListener('click', function (e) { if (e.target === root) close(); });
+    root.querySelector('.gp-tochart').addEventListener('click', function () { pushToChart(cleanSym(symEl.value) || S.symbol, true); });
+    root.querySelector('.gp-linkbox').addEventListener('change', function () { S.link = !!this.checked; try { localStorage.setItem('sml-gpro-link', S.link ? '1' : '0'); } catch (e) {} if (S.link) syncFromChart(true); });
+    root.querySelector('.gp-dock').addEventListener('click', function () { setDock(!S.dock); });
+    root.addEventListener('click', function (e) { if (e.target === root && !S.dock) close(); });
     root.querySelector('.gp-go').addEventListener('click', loadSymbol);
     symEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') loadSymbol(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.open) close(); });
     bodyEl.addEventListener('click', onBodyClick);
     bodyEl.addEventListener('change', onBodyChange);
   }
-  function open(tab) { if (!root) build(); S.open = true; root.classList.add('open'); symEl.value = S.symbol; go(tab || S.tab); }
+  function open(tab) {
+    if (!root) build(); S.open = true; root.classList.add('open');
+    try { if (localStorage.getItem('sml-gpro-link') === '0') { S.link = false; root.querySelector('.gp-linkbox').checked = false; } if (localStorage.getItem('sml-gpro-dock') === '1' || (localStorage.getItem('sml-gpro-dock') == null && chartFrames().length)) setDock(true, true); } catch (e) {}
+    if (S.link) { var cs = chartSymbol(); if (cs) S.symbol = cs; }
+    symEl.value = S.symbol; go(tab || S.tab);
+  }
+  function setDock(on, quiet) { S.dock = !!on; if (root) { root.classList.toggle('docked', S.dock); root.querySelector('.gp-dock').textContent = S.dock ? 'Float' : 'Dock'; } if (!quiet) { try { localStorage.setItem('sml-gpro-dock', S.dock ? '1' : '0'); } catch (e) {} } }
+
+  /* ------------------------------------------------------------------ live chart / analyst dashboard link
+     The group's Live Chart and Analyst Dashboard load inside same-origin frames and have their own ticker box (#csym, #csym-go). Pro Tools follows the
+     ticker charted there, can send its own ticker back, and every such frame gets a Pro Tools button so the tools are one click from the chart. */
+  function chartFrames() {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll('iframe'), function (f) {
+      try { var d = f.contentDocument; if (d && d.getElementById && d.getElementById('csym')) out.push({ frame: f, doc: d, win: f.contentWindow }); } catch (e) { /* cross-origin frame: not ours */ }
+    });
+    return out;
+  }
+  function chartSymbol() { var fr = chartFrames()[0]; return fr ? cleanSym(fr.doc.getElementById('csym').value) : ''; }
+  function pushToChart(sym, flash) {
+    sym = cleanSym(sym); if (!sym) return false;
+    var fr = chartFrames(); if (!fr.length) { if (flash) note('No live chart is open on this page. Open the Live Chart or Analyst Dashboard tool first.'); return false; }
+    fr.forEach(function (f) {
+      var inp = f.doc.getElementById('csym'); if (!inp || cleanSym(inp.value) === sym) return;
+      inp.value = sym; ['input', 'change'].forEach(function (t) { inp.dispatchEvent(new f.win.Event(t, { bubbles: true })); });
+      var go = f.doc.getElementById('csym-go'); if (go) go.click();
+    });
+    S.chartSym = sym; return true;
+  }
+  function note(t) { if (!bodyEl) return; var n = root.querySelector('.gp-flash'); if (!n) { n = document.createElement('div'); n.className = 'gp-note gp-flash'; bodyEl.parentNode.insertBefore(n, bodyEl); } n.textContent = t; setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 4000); }
+  function syncFromChart(force) {
+    if (!S.link || !root) return;
+    var cs = chartSymbol(); if (!cs) return;
+    if (!force && cs === S.chartSym) return;
+    S.chartSym = cs;
+    if (cs !== S.symbol) { S.symbol = cs; S.data = {}; if (symEl) symEl.value = cs; if (S.open) { if (S.tab === 'dashboard') S.tab = 'setups'; go(S.tab); } }
+    var chip = root.querySelector('.gp-title small'); if (chip) chip.textContent = 'Following the chart: ' + cs;
+  }
+  function decorateFrames() {
+    chartFrames().forEach(function (f) {
+      var d = f.doc; if (d.getElementById('sml-gpro-frame-btn') || !d.body) return;
+      var b = d.createElement('button'); b.type = 'button'; b.id = 'sml-gpro-frame-btn'; b.textContent = 'Pro Tools';
+      b.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483000;padding:7px 12px;border:1px solid #2b5a6e;border-radius:9px;background:#08202c;color:#bfeaff;font:800 12px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;box-shadow:0 8px 30px #000a');
+      b.addEventListener('click', function () { open(); });
+      d.body.appendChild(b);
+    });
+  }
+  setInterval(function () { if (document.hidden) return; decorateFrames(); if (S.open) syncFromChart(false); }, 1500);
   function close() { S.open = false; if (root) root.classList.remove('open'); stopTimer(); }
   function stopTimer() { if (S.timer) { clearInterval(S.timer); S.timer = null; } }
   function cleanSym(v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 10); }
-  function loadSymbol() { var s = cleanSym(symEl.value); if (!s) return; S.symbol = s; S.data = {}; if (S.tab === 'dashboard') S.tab = 'setups'; go(S.tab); }
+  function loadSymbol() { var s = cleanSym(symEl.value); if (!s) return; S.symbol = s; S.data = {}; if (S.link) { pushToChart(s); var c1 = root.querySelector('.gp-title small'); if (c1) c1.textContent = 'Following the chart: ' + s; } if (S.tab === 'dashboard') S.tab = 'setups'; go(S.tab); }
   function go(tab) {
     S.tab = tab; stopTimer();
     Array.prototype.forEach.call(tabsEl.children, function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tab); });
@@ -232,7 +282,7 @@
   /* ------------------------------------------------------------------ events */
   function onBodyClick(e) {
     var row = e.target.closest('tr[data-sym]');
-    if (row) { S.symbol = row.getAttribute('data-sym'); S.data = {}; symEl.value = S.symbol; go('setups'); return; }
+    if (row) { S.symbol = row.getAttribute('data-sym'); S.data = {}; symEl.value = S.symbol; if (S.link) pushToChart(S.symbol); go('setups'); return; }
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.getAttribute('data-act');
     if (act === 'savelist') {
@@ -260,5 +310,5 @@
   }
   var tries = 0, t0 = setInterval(function () { tries += 1; if (mountButton() || tries > 12) { clearInterval(t0); if (!document.getElementById('sml-gpro-btn')) { var f = document.createElement('button'); f.type = 'button'; f.id = 'sml-gpro-btn'; f.className = 'floating'; f.textContent = 'Pro Tools'; f.addEventListener('click', function () { open(); }); document.body.appendChild(f); } } }, 500);
   if (window.MutationObserver) new MutationObserver(function () { if (!document.getElementById('sml-gpro-btn') && document.querySelector('.sml-gshell__side-actions')) mountButton(); }).observe(document.body, { childList: true, subtree: true });
-  window.smlGroupProTools = { open: open };
+  window.smlGroupProTools = { open: open, pushToChart: pushToChart, chartSymbol: chartSymbol };
 })();

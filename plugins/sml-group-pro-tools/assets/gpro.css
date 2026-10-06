@@ -55,3 +55,10 @@
 #sml-gpro .gp-wl{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 #sml-gpro .gp-disc{margin-top:14px;color:#6f8794;font-size:11px;line-height:1.4}
 @media (max-width:640px){#sml-gpro.open{padding:0}#sml-gpro .gp-win{max-height:100vh;height:100vh;border-radius:0}#sml-gpro .gp-grid{grid-template-columns:1fr}}
+
+#sml-gpro .gp-link{display:inline-flex;align-items:center;gap:5px;color:#9fb4c2;font:700 12px system-ui;cursor:pointer}#sml-gpro .gp-link input{min-width:0;padding:0;margin:0}
+#sml-gpro .gp-tochart,#sml-gpro .gp-dock{padding:6px 10px;border-radius:8px;border:1px solid #2b5a6e;background:#0b2a3a;color:#d9f2ff}
+#sml-gpro.docked{background:none;backdrop-filter:none;pointer-events:none;align-items:stretch;justify-content:flex-end;padding:0}
+#sml-gpro.docked.open{display:flex;align-items:stretch;justify-content:flex-end;padding:0}
+#sml-gpro.docked .gp-win{pointer-events:auto;width:min(460px,100vw);max-height:none;height:100vh;border-radius:0;border-width:0 0 0 1px}
+@media (max-width:700px){#sml-gpro.docked .gp-win{width:100vw}}
