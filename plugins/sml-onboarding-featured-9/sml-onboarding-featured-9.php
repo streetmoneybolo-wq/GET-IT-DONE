@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Onboarding - Up To 9 Featured Channels
  * Description: Lets group owners feature up to 9 channels in the onboarding flow. The onboarding service keeps only the first 5, so this keeps the owner's full list (up to 9) beside it and puts it back into the editor and the member flow. Works with the existing onboarding service without changing it. Deactivate to return to 5.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Requires PHP: 7.4
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -38,6 +38,23 @@ function sml_of9_partition( $featured, $other, array $ids ): ?array {
 	foreach ( $ids as $id ) { if ( isset( $all[ $id ] ) ) { $c = $all[ $id ]; if ( array_key_exists( 'featured', $c ) ) { $c['featured'] = true; } $feat[] = $c; unset( $all[ $id ] ); } }
 	foreach ( $all as $c ) { if ( array_key_exists( 'featured', $c ) ) { $c['featured'] = false; } $rest[] = $c; }
 	return array( $feat, $rest );
+}
+
+/**
+ * The locked-channel overlay lists overlay.featured as [{id,name}]. Make it exactly $ids (in that order, never an open channel), reusing the names it
+ * already has and taking the rest from $names (id => name). Returns null when the list does not look like that.
+ */
+function sml_of9_overlay_featured( $featured, array $ids, array $open_ids, array $names ): ?array {
+	if ( ! is_array( $featured ) ) { return null; }
+	$have = array();
+	foreach ( $featured as $c ) { if ( ! is_array( $c ) || ! isset( $c['id'] ) ) { return null; } $have[ (int) $c['id'] ] = $c; }
+	$out = array();
+	foreach ( $ids as $id ) {
+		if ( in_array( $id, $open_ids, true ) ) { continue; }
+		if ( isset( $have[ $id ] ) ) { $out[] = $have[ $id ]; }
+		elseif ( isset( $names[ $id ] ) ) { $out[] = array( 'id' => $id, 'name' => $names[ $id ] ); }
+	}
+	return $out;
 }
 
 /* ---------- WordPress side ---------- */
@@ -86,6 +103,16 @@ add_filter( 'rest_post_dispatch', static function ( $response, $server, $request
 		return $response;
 	}
 	/* member flow / access: featured_channels and other_channels, at the top level or inside 'flow' */
+	if ( isset( $data['overlay'] ) && is_array( $data['overlay'] ) && array_key_exists( 'featured', $data['overlay'] ) ) {
+		global $wpdb;
+		$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT id, name FROM {$wpdb->prefix}sml_group_channels WHERE group_id = %d", $group_id ), ARRAY_A );
+		$names = array();
+		foreach ( (array) $rows as $r ) { $names[ (int) $r['id'] ] = (string) $r['name']; }
+		$open  = array_map( 'intval', (array) ( $data['open_channels'] ?? array() ) );
+		$f = sml_of9_overlay_featured( $data['overlay']['featured'], $ids, $open, $names );
+		if ( null !== $f ) { $data['overlay']['featured'] = $f; $response->set_data( $data ); }
+		return $response;
+	}
 	$apply = static function ( array $h ) use ( $ids ) {
 		if ( ! array_key_exists( 'featured_channels', $h ) || ! array_key_exists( 'other_channels', $h ) ) { return $h; }
 		$p = sml_of9_partition( $h['featured_channels'], $h['other_channels'], $ids );
