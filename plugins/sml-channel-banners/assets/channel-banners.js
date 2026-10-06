@@ -71,7 +71,7 @@
       var h = entry.height;
       if (!h) {
         var nw = image.naturalWidth, nh = image.naturalHeight, w = head.clientWidth;
-        h = nw && nh && w ? Math.round(Math.max(100, Math.min(500, w * nh / nw))) : DEFAULT_H;
+        h = nw && nh && w ? Math.round(Math.max(40, Math.min(500, w * nh / nw))) : DEFAULT_H;
       }
       head.style.setProperty('min-height', h + 'px', 'important');
       head.style.setProperty('height', h + 'px', 'important');
@@ -128,7 +128,7 @@
       } else if (drag.kind === 'zoom') {
         entry.zoom = Math.round(clamp(drag.zoom * Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) / drag.dist, 25, 400));
       } else if (drag.kind === 'height') {
-        entry.height = Math.round(clamp(drag.height + (e.clientY - drag.y), 100, 500));
+        entry.height = Math.round(clamp(drag.height + (e.clientY - drag.y), 30, 500));
       }
       render();
     });

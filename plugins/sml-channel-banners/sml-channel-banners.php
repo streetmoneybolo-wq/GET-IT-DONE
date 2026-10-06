@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.10
+ * Version: 1.0.11
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.10' );
+define( 'SML_CBANNER_VERSION', '1.0.11' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -88,7 +88,7 @@ function sml_cbanner_public_map( int $group_id ): array {
 			'pos_y' => max( 0, min( 100, (int) ( $entry['pos_y'] ?? 50 ) ) ),
 			'off_x' => max( -300, min( 300, round( (float) ( $entry['off_x'] ?? 0 ), 1 ) ) ),
 			'off_y' => max( -300, min( 300, round( (float) ( $entry['off_y'] ?? 0 ), 1 ) ) ),
-			'height' => max( 100, min( 500, (int) ( $entry['height'] ?? 152 ) ) ),
+			'height' => max( 30, min( 500, (int) ( $entry['height'] ?? 152 ) ) ),
 		);
 	}
 	return $map;
@@ -175,7 +175,7 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 		$current['pos_y'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_y' ) ?? 50 ) ) );
 		if ( null !== $request->get_param( 'off_x' ) ) { $current['off_x'] = max( -300, min( 300, round( (float) $request->get_param( 'off_x' ), 1 ) ) ); }
 		if ( null !== $request->get_param( 'off_y' ) ) { $current['off_y'] = max( -300, min( 300, round( (float) $request->get_param( 'off_y' ), 1 ) ) ); }
-		if ( null !== $request->get_param( 'height' ) ) { $h = (int) $request->get_param( 'height' ); if ( $h > 0 ) { $current['height'] = max( 100, min( 500, $h ) ); } else { unset( $current['height'] ); } }
+		if ( null !== $request->get_param( 'height' ) ) { $h = (int) $request->get_param( 'height' ); if ( $h > 0 ) { $current['height'] = max( 30, min( 500, $h ) ); } else { unset( $current['height'] ); } }
 		$current['updated_by'] = get_current_user_id();
 		$current['updated_at'] = current_time( 'mysql', true );
 		$all[ $key ] = $current;
