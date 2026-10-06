@@ -20,6 +20,7 @@ const format = require('./academy-alert-format');
 const { buildScenarios } = require('./academy-scenarios');
 const images = require('./academy-scenario-image');
 const optionsAlert = require('./academy-options-alert');
+const { postAlertRange } = require('./academy-alerts');
 
 const SNOWFLAKE = /^\d{15,25}$/;
 const HORIZONS = ['day', 'swing', 'mid', 'long'];
@@ -218,7 +219,16 @@ function createClickAlertStore({ pool = null } = {}) {
     for (const r of mem) if (r.userId === userId && r.symbol === symbol && r.at > cut && (!hit || r.at >= hit.at)) hit = { side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at };
     return hit;
   }
-  return { record, count, last, persistent: !!db };
+  /* every plain-stock alert sent since a moment ago (options contracts have a space in their key and are left out) */
+  async function recent({ sinceMs }) {
+    if (db) {
+      const r = await db.query("SELECT channel_id, message_id, symbol, side, entry, target, created_at FROM academy_click_alerts WHERE created_at > now() - ($1 || ' milliseconds')::interval AND position(' ' in symbol) = 0 AND discord_id <> 'auto' ORDER BY created_at DESC LIMIT 500", [String(sinceMs)]);
+      return r.rows.map((x) => ({ channelId: String(x.channel_id), messageId: String(x.message_id), symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), at: new Date(x.created_at).getTime() }));
+    }
+    const cut = Date.now() - sinceMs;
+    return mem.filter((x) => x.at > cut && x.userId !== 'auto' && !String(x.symbol).includes(' ')).map((x) => ({ channelId: x.channelId, messageId: x.messageId, symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), at: x.at }));
+  }
+  return { record, count, last, recent, persistent: !!db };
 }
 
 function createClickAlertService({ getBars, chain = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
@@ -241,12 +251,15 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return { configured: true, entitled: !!(held && held.some((id) => roles.has(id))) };
   }
 
-  async function gather(symbol, target) {
+  async function loadBars(symbol) {
     const sym = String(symbol || '').toUpperCase();
     const get = async (tf) => { try { return cleanBars(await getBars(sym, tf)); } catch (_) { return []; } };
     const [m5, m15, daily, weekly] = await Promise.all([get('5m'), get('15m'), get('1D'), get('1W')]);
     const last = m5.length ? m5[m5.length - 1] : daily.length ? daily[daily.length - 1] : null;
-    const set = { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) };
+    return { sym, last, set: { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) } };
+  }
+  async function gather(symbol, target) {
+    const { sym, last, set } = await loadBars(symbol);
     const analysis = classify({ symbol: sym, target, price: last ? last.c : null, bars: set });
     analysis.__bars = set;
     return analysis;
@@ -403,7 +416,38 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
   }
 
-  return { entitlement, preview, send, destinations, channels, configured };
+  /* ---------- the automatic price-target update (academy-auto-pt.js) ---------- */
+  async function rangeSince(symbol, atMs) {
+    const { set } = await loadBars(symbol);
+    return postAlertRange({ at: atMs }, set.m5, set.daily);
+  }
+  /* what the Academy knows about the stock right now, for the decision: live price, MEM ALGO alignment, the levels in the way up to 40%, how far it moves in a day */
+  async function evidenceFor(symbol, side) {
+    const { sym, last, set } = await loadBars(symbol);
+    const price = last ? last.c : null; if (!(price > 0)) return null;
+    const dir = side === 'short' ? -1 : 1;
+    const mid = classify({ symbol: sym, target: price * (1 + dir * 0.2), price, bars: set });
+    const wide = classify({ symbol: sym, target: price * (1 + dir * 0.4), price, bars: set });
+    if (!mid.ok) return null;
+    return { price, alignment: mid.alignment, levels: wide.ok ? wide.levels : mid.levels, volPct: (dailyVolatility(set.daily) || 0.03) * 100 };
+  }
+  /* post the update as the Academy app, to the channel the alert was posted in: PT SMASHED layout, @everyone, both scenario charts */
+  async function postAutoUpdate({ symbol, channelId, target, previousTarget }) {
+    if (!SNOWFLAKE.test(String(channelId))) throw new Error('invalid_channel');
+    const analysis = await gather(symbol, Number(target));
+    if (!analysis.ok) throw new Error('analysis_' + analysis.code);
+    analysis.smashed = { auto: true, prevTarget: previousTarget || null, forced: true };
+    let content = textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())) + '\n-# Automatic price-target update · Making Easy Money Academy · educational, not financial advice';
+    const files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
+    const body = { content, allowed_mentions: { parse: ['everyone'] } };
+    let posted;
+    try { posted = await directory.post(String(channelId), body, files.length === 2 ? files : []); }
+    catch (error) { if (files.length === 2) posted = await directory.post(String(channelId), body, []); else throw error; }
+    await store.record({ userId: 'auto', guildId: '', channelId: String(channelId), messageId: posted.id, symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch(() => {});
+    return { messageId: posted.id, images: files.length === 2 };
+  }
+
+  return { entitlement, preview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, store };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

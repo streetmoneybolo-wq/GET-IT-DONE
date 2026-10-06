@@ -38,12 +38,39 @@
 
   const token = () => String(window.smlAcademySessionToken || '');
   const sym = () => { const M = window.smlChartModel && window.smlChartModel(); return M ? M.symbol : String(($('symbol') || {}).value || 'SPY').toUpperCase(); };
-  async function api(path, body) {
-    const t = token(); if (!t) return { ok: false, status: 401, error: 'authorization_required' };
+  /* The Academy session lasts 15 minutes and browsers pause a hidden window, so it is often expired when you come back. Renew it quietly (the same Discord sign-in the
+     Activity already did, no prompt) instead of telling the member to sign in again, and retry the request once. */
+  let renewing = null, lastSessionAt = Date.now();
+  window.addEventListener('sml-academy-session', () => { lastSessionAt = Date.now(); });
+  function renew() {
+    if (!renewing) {
+      renewing = Promise.resolve(typeof window.smlAcademyReauth === 'function' ? window.smlAcademyReauth() : '').catch(() => '').then((t) => { renewing = null; return t; });
+    }
+    return renewing;
+  }
+  async function raw(path, body) {
+    const t = token();
     const res = await fetch('/academy-activity/click-alert/' + path, { method: body ? 'POST' : 'GET', headers: Object.assign({ authorization: 'Bearer ' + t }, body ? { 'content-type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
     let json = null; try { json = await res.json(); } catch (_) { json = null; }
     return Object.assign({ status: res.status }, json || { ok: false, error: 'bad_response' });
   }
+  async function api(path, body) {
+    if (!token()) { await renew(); if (!token()) return { ok: false, status: 401, error: 'authorization_required' }; }
+    let r = await raw(path, body);
+    if (r.status === 401) {
+      const fresh = await renew();
+      if (fresh || token()) r = await raw(path, body);
+    }
+    return r;
+  }
+  /* coming back to the window: renew an old session before anything is asked of it */
+  async function wake() {
+    if (!S.on || document.hidden) return;
+    if (!token() || Date.now() - lastSessionAt > 8 * 60_000) await renew();
+    if (S.on && token()) { await loadStatus(); if (S.target != null && S.data && !S.busy && !S.sent) void reading(); }
+  }
+  document.addEventListener('visibilitychange', () => { void wake(); });
+  window.addEventListener('focus', () => { void wake(); });
   const price = (v) => (Number.isFinite(+v) ? (+v >= 1 ? (+v).toFixed(2) : (+v).toFixed(4)) : '-');
   const WHY = {
     authorization_required: 'Sign in with Discord (Unlock Academy Tools) to use Click-to-Alert.',
