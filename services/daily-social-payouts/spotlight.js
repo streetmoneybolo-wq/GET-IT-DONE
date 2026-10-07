@@ -4,6 +4,7 @@ import { readSettings } from './utils/storage.js';
 import { backfillAlertHistory, monitoredChannelRefs, processAlertMessage } from './utils/alertMonitor.js';
 import { startArticleAutomation } from './utils/articleAutomation.js';
 import { ensureMessageContentIntent } from './utils/ensureMessageContentIntent.js';
+import { forwardAlertToTelegram } from './utils/telegramForwarder.js';
 
 if (!process.env.SPOTLIGHT_DISCORD_TOKEN) throw new Error('SPOTLIGHT_DISCORD_TOKEN is required');
 
@@ -42,6 +43,13 @@ client.once('clientReady', async () => {
 });
 
 client.on('messageCreate', async (message) => {
+  // Telegram needs the original alert even when it was posted by the approved
+  // alert bot/webhook. The forwarder itself restricts bot messages to the
+  // configured alert channels; Spotlight does not analyse them as articles.
+  const settings = await readSettings();
+  await forwardAlertToTelegram(message, settings).catch((error) => {
+    console.error('Telegram alert forward failed safely:', error.message || error);
+  });
   if (message.author?.bot) return;
   await processAlertMessage(message);
 });
@@ -49,8 +57,11 @@ client.on('messageCreate', async (message) => {
 client.on('messageUpdate', async (_oldMessage, message) => {
   try {
     if (message.partial) await message.fetch();
-    if (message.author?.bot) return;
-    await processAlertMessage(message, 'updated');
+    const settings = await readSettings();
+    await forwardAlertToTelegram(message, settings, 'updated').catch((error) => {
+      console.error('Telegram alert update forward failed safely:', error.message || error);
+    });
+    if (!message.author?.bot) await processAlertMessage(message, 'updated');
   } catch (error) {
     console.error('Spotlight alert update failed safely:', error.message || error);
   }

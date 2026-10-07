@@ -73,6 +73,17 @@ test('the forum General topic (1) is addressed by omitting message_thread_id', a
   assert.equal('message_thread_id' in calls[0].body, false);
 });
 
+test('uses the configured SML News forum when an alert-specific chat ID is absent', async () => {
+  calls = []; succeed();
+  const fallbackSettings = {
+    telegramForward: { enabled: true, botToken: 'bot-token', channelIds: ['111'], allowBotChannelIds: ['111'], topicByChannel: { 111: 11 } },
+    telegramNewsForward: { chatId: '-100-forum' },
+  };
+  await forwardAlertToTelegram({ ...message('m3b'), author: { bot: true } }, fallbackSettings);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.chat_id, '-100-forum');
+});
+
 test('messages outside the configured channels, and bot messages from channels that do not allow them, are ignored', async () => {
   calls = []; succeed();
   assert.equal(await forwardAlertToTelegram(message('m4', '333'), settings), false);

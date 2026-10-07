@@ -42,7 +42,10 @@ function telegramConfig(settings) {
   return {
     enabled: cfg.enabled !== false,
     botToken: process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN || cfg.botToken || '',
-    chatId: process.env.TELEGRAM_CHAT_ID || process.env.TG_CHAT_ID || cfg.chatId || '',
+    // Alert topics and SML News live in the same Telegram forum. Reuse the existing
+    // forum ID when the alert-specific variable has not been set on a worker yet.
+    // The bot token remains required and is never stored in this settings file.
+    chatId: process.env.TELEGRAM_CHAT_ID || process.env.TG_CHAT_ID || cfg.chatId || settings.telegramNewsForward?.chatId || '',
     channelIds,
     allowBotChannelIds: new Set((cfg.allowBotChannelIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
     topicByChannel,
