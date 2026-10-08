@@ -20,6 +20,7 @@ const format = require('./academy-alert-format');
 const { buildScenarios } = require('./academy-scenarios');
 const images = require('./academy-scenario-image');
 const optionsAlert = require('./academy-options-alert');
+const optionsCalc = require('./academy-options-calc');
 const { postAlertRange } = require('./academy-alerts');
 
 const SNOWFLAKE = /^\d{15,25}$/;
@@ -94,7 +95,7 @@ function dailyVolatility(daily) {
 }
 
 /* Levels between the entry and the target that price has to work through, from the smart-money map: swing points, equal highs / lows, order blocks, open gaps. */
-function levelsInTheWay(a, entry, target) {
+function levelsInTheWay(a, entry, target, limit = 6) {
   if (!a) return [];
   const lo = Math.min(entry, target), hi = Math.max(entry, target), up = target > entry, out = [];
   const add = (price, text) => { if (fin(price) && price > lo && price < hi) out.push({ price: round2(price), text }); };
@@ -105,7 +106,7 @@ function levelsInTheWay(a, entry, target) {
   for (const g of a.fvg) if (g.filledAt == null) add(up ? g.bottom : g.top, (g.dir > 0 ? 'bullish' : 'bearish') + ' gap');
   const seen = new Set(), unique = [];
   for (const l of out.sort((x, y) => (up ? x.price - y.price : y.price - x.price))) { const k = l.price.toFixed(2); if (!seen.has(k)) { seen.add(k); unique.push(l); } }
-  return unique.slice(0, 6);
+  return unique.slice(0, limit);
 }
 
 /* A structure-based stop: just beyond the nearest protective level on the far side of the entry, else a percentage stop by trade type. */
@@ -135,6 +136,47 @@ const riskFor = (atrPct, price) => {
   if (price < 1) i = Math.min(4, i + 1);
   return order[i];
 };
+
+/* Options ALERT mode: a member double-clicks a contract in the chain without clicking the chart first, so the stock target comes from the contract.
+ * Call: the nearest level above both the live price and the breakeven (strike + premium) that is reachable before expiry, meaning within 1.5 expected moves
+ * of the live price (expected move = price x IV x sqrt(days to expiry / 365)). With no such level: breakeven + one expected move (live price + one expected
+ * move when the call is already past breakeven), capped at +250% so the analysis can still run. Put: the mirror image (support below the live price and the
+ * breakeven strike - premium; breakeven - one expected move, floored at 5% of the price). Pure, so it can be tested on its own. */
+const AUTO_REACH_EM = 1.5;
+function autoTargetForContract({ type, side, price, strike, premium, iv, dte, levels = [] } = {}) {
+  const t = String(type || side || '').toLowerCase();
+  const call = t.startsWith('c') || t === 'long', put = t.startsWith('p') || t === 'short';
+  if (!call && !put) return { ok: false, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
+  const S = Number(price), K = Number(strike), prem = Number(premium), days = Number(dte);
+  let vol = Number(iv); if (fin(vol) && vol > 3) vol /= 100; // some feeds give percent
+  if (!(S > 0)) return { ok: false, code: 'no_live_price' };
+  if (!(K > 0) || !(prem >= 0)) return { ok: false, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
+  if (!(days > 0)) return { ok: false, code: 'contract_expired', detail: 'That contract expires today or has expired.' };
+  if (!(vol > 0 && vol < 6)) return { ok: false, code: 'contract_not_priced', detail: 'The volatility for that contract could not be read, so no target could be set from it. Click a price on the chart instead.' };
+  const px = (v) => (S >= 1 ? round2(v) : Math.round(v * 10000) / 10000);
+  const money = (v) => '$' + (S >= 1 ? v.toFixed(2) : v.toFixed(4));
+  const em = S * vol * Math.sqrt(days / 365);
+  const breakeven = call ? K + prem : K - prem;
+  const floor = call ? Math.max(S, breakeven) : Math.min(S, breakeven);
+  const minGap = S * 0.003; // classify refuses targets within 0.2% of the price
+  const base = { breakeven: px(breakeven), expectedMove: px(em), floor: px(floor), reach: px(call ? S + AUTO_REACH_EM * em : Math.max(0, S - AUTO_REACH_EM * em)) };
+  const cands = (Array.isArray(levels) ? levels : []).map((l) => ({ price: Number(l && l.price), text: String((l && l.text) || 'level') }))
+    .filter((l) => fin(l.price) && l.price > 0)
+    .filter((l) => (call ? l.price > floor && l.price >= S + minGap && l.price <= S + AUTO_REACH_EM * em : l.price < floor && l.price <= S - minGap && l.price >= S - AUTO_REACH_EM * em))
+    .sort((a, b) => (call ? a.price - b.price : b.price - a.price));
+  if (cands.length) {
+    const l = cands[0];
+    return { ok: true, target: px(l.price), basis: 'level', level: { price: px(l.price), text: l.text }, targetBasis: (call ? 'next resistance' : 'next support') + ' at ' + money(l.price) + ' (' + l.text + ')', ...base };
+  }
+  const pastBe = call ? S >= breakeven : S <= breakeven;
+  let target = call ? floor + em : floor - em, capped = false;
+  if (call && target > S * 3.5) { target = S * 3.5; capped = true; }
+  if (put && target < S * 0.05) { target = S * 0.05; capped = true; }
+  if (call) target = Math.max(target, S + minGap); else target = Math.min(target, S - minGap);
+  const from = pastBe ? 'live price ' + money(S) : 'breakeven ' + money(breakeven);
+  return { ok: true, target: px(target), basis: 'expected_move', level: null, capped,
+    targetBasis: from + (call ? ' + ' : ' - ') + '1 expected move (' + money(em) + ' over ' + Math.round(days) + ' days)' + (capped ? ', capped' : ''), ...base };
+}
 
 /* The pure heart: everything it needs is passed in, so it can be tested and re-run exactly. */
 function classify({ symbol, target, price, bars }) {
@@ -303,6 +345,56 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return analysis;
   }
 
+  /* The stock analysis behind an alert. With a contract and no chart target (or autoTarget), the target is derived from the contract
+     (autoTargetForContract) and everything after that runs exactly as for a clicked target. Returns { analysis, rows } or { error }. */
+  async function analysisFor({ symbol, target, contract, autoTarget }) {
+    const auto = !!contract && (autoTarget === true || !(Number(target) > 0));
+    if (!auto) return { analysis: await gather(symbol, Number(target)) };
+    const err = (status, code, detail = '') => ({ error: { ok: false, status, code, ...(detail ? { detail } : {}) } });
+    const sym = String(symbol || '').toUpperCase();
+    if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return err(422, 'invalid_symbol');
+    const c = contract || {};
+    const type = String(c.type || '').toLowerCase().startsWith('p') ? 'put' : String(c.type || '').toLowerCase().startsWith('c') ? 'call' : '';
+    const strike = Number(c.strike), expiry = String(c.expiry || '').slice(0, 10);
+    if (!type || !(strike > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return err(422, 'invalid_contract', 'Pick a call or put from the options chain.');
+    if (!chain) return err(503, 'options_unavailable', 'The options chain is not available right now.');
+    const loaded = await loadBars(sym);
+    const price = loaded.last ? loaded.last.c : null;
+    if (!(price > 0)) return err(422, 'no_live_price');
+    let rows = null; try { rows = await chain(sym); } catch (_) { rows = null; }
+    if (!rows || !rows.length) return err(503, 'options_unavailable', 'The options chain is not available right now.');
+    const found = optionsAlert.findContract(rows, { type, strike, expiry });
+    if (!found) return err(404, 'contract_not_found', 'That contract is not in the live options chain right now. Reload the chain and pick it again.');
+    const premium = optionsAlert.mid(found.leg);
+    if (!(premium > 0)) return err(422, 'contract_not_priced', 'That contract has no current quote.');
+    const dte = optionsAlert.daysTo(expiry, now());
+    if (dte == null || dte < 0.5) return err(422, 'contract_expired', 'That contract expires today or has expired.');
+    let iv = Number(found.leg.iv); if (fin(iv) && iv > 3) iv /= 100;
+    if (!(iv > 0 && iv < 6)) iv = optionsCalc.impliedVol(type, price, strike, dte / 365, 0.043, 0, premium);
+    if (!(iv > 0 && iv < 6)) { const dv = dailyVolatility(loaded.set.daily); iv = dv ? dv * Math.sqrt(252) : null; }
+    // the Academy's levels: the daily map always, the 15-minute map for contracts that expire within a week, the weekly map for ones more than 60 days out
+    const maps = [loaded.set.daily];
+    if (dte <= 7 && (loaded.set.m15 || []).length >= 60) maps.unshift(loaded.set.m15);
+    if (dte > 60 && (loaded.set.weekly || []).length >= 40) maps.push(loaded.set.weekly);
+    const levels = [];
+    for (const bars of maps) {
+      let a = null; try { a = bars && bars.length >= 30 ? SM.analyze(bars) : null; } catch (_) { a = null; }
+      if (a) levels.push(...levelsInTheWay(a, price, type === 'call' ? price * 4 : price * 0.01, 40));
+    }
+    const pick = autoTargetForContract({ type, price, strike, premium, iv, dte, levels });
+    if (!pick.ok) return err(422, pick.code, pick.detail || '');
+    const analysis = classify({ symbol: sym, target: pick.target, price, bars: loaded.set });
+    analysis.__bars = loaded.set;
+    if (analysis.ok) {
+      analysis.autoTarget = true;
+      analysis.targetBasis = pick.targetBasis;
+      analysis.targetPick = { basis: pick.basis, level: pick.level, breakeven: pick.breakeven, expectedMove: pick.expectedMove, capped: !!pick.capped };
+      analysis.rationale.unshift('Target set from the ' + expiry + ' ' + strike + ' ' + type + ': ' + pick.targetBasis + ', past its $' + Number(pick.breakeven).toFixed(pick.breakeven >= 1 ? 2 : 4) + ' breakeven and reachable before expiry.');
+      analysis.alert.targetNote = 'Target from the contract: ' + pick.targetBasis + '.';
+    }
+    return { analysis, rows };
+  }
+
   /* the two scenarios (base case, and what to watch) drawn on the chart of the alert's own horizon */
   function scenariosFor(analysis, { png = false, options = null } = {}) {
     try {
@@ -315,10 +407,10 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
 
 
   /* the contract picked on the chain: priced from the live chain rows and tied to the stock idea */
-  async function optionsFor(analysis, contract) {
+  async function optionsFor(analysis, contract, given = null) {
     if (!contract) return null;
-    if (!chain) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
-    let rows = null; try { rows = await chain(analysis.symbol); } catch (_) { rows = null; }
+    if (!chain && !given) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
+    let rows = given; if (!rows) { try { rows = await chain(analysis.symbol); } catch (_) { rows = null; } }
     if (!rows || !rows.length) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
     try { return { oa: optionsAlert.buildOptionsAlert({ analysis, rows, contract, now: now() }) }; }
     catch (error) {
@@ -363,15 +455,17 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
   }
   const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...Object.fromEntries(Object.entries(analysis.insight || {}).filter(([, v]) => v != null && v !== '')) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
-  async function preview(userId, { symbol, target, contract = null, mode = 'auto' } = {}) {
+  async function preview(userId, { symbol, target, contract = null, mode = 'auto', autoTarget = false } = {}) {
     const ent = await entitlement(userId);
     // the horizon read is part of the paid add-on, so an unsubscribed member never receives it
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured', entitlement: ent };
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required', entitlement: ent };
-    const analysis = await gather(symbol, Number(target));
+    const got = await analysisFor({ symbol, target, contract, autoTarget });
+    if (got.error) return { ...got.error, entitlement: ent };
+    const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '', entitlement: ent };
     analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
-    const opt = await optionsFor(analysis, contract);
+    const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return { ...opt.error, entitlement: ent };
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
@@ -397,7 +491,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, contract = null, mode = 'auto', channelId, mention, images: wantImages = true, asMe = true, via = '' } = {}) {
+  async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, channelId, mention, images: wantImages = true, asMe = true, via = '' } = {}) {
     const userId = String(user.userId || '');
     if (via === 'site') return { ok: false, status: 410, code: 'site_publishing_unavailable', detail: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.' };
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
@@ -411,10 +505,12 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     if (!where.userCanSend) return { ok: false, status: 403, code: 'you_cannot_post_there', detail: 'You do not have permission to send messages in that channel.' };
     if (!where.botCanSend) return { ok: false, status: 403, code: 'app_cannot_post_there', detail: 'The Academy app cannot send messages in that channel. Ask a server admin to allow it.' };
     const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
-    const analysis = await gather(symbol, Number(target));
+    const got = await analysisFor({ symbol, target, contract, autoTarget });
+    if (got.error) return got.error;
+    const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
     analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
-    const opt = await optionsFor(analysis, contract);
+    const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return opt.error;
     const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
     if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
@@ -451,7 +547,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
   }
 
   /* ---------- the automatic price-target update (academy-auto-pt.js) ---------- */
@@ -499,4 +595,4 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
   return { entitlement, preview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
 }
 
-module.exports = { createClickAlertService, createClickAlertStore, classify, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
+module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

@@ -21,6 +21,47 @@
   const tf = () => q().get('tf') || '5m';
   const symbol = () => { try { return String(window.smlAcademyChartState().symbol || q().get('symbol') || 'SPY').toUpperCase(); } catch (_) { return 'SPY'; } };
   const fmtTime = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const preferredTf = (mode) => (E.preferredTf ? E.preferredTf(mode) : ((E.STRATEGIES[mode] || {}).bestTf || ((E.STRATEGIES[mode] || {}).tfHint || ['5m'])[0]));
+
+  /* Turning MEM ALGO on, or picking a mode, puts the chart on the interval that mode is built for. Only ever called from those two clicks
+     (never on load, never from a repaint), so it cannot loop; when the chart is already there nothing happens. Uses the same path as a
+     member clicking the interval button, so every listener on those buttons (tick bars, pop-outs) sees a normal interval change. */
+  function autoTf() {
+    const target = preferredTf(S.mode);
+    if (!target || tf() === target) { S.tfNote = null; return; }
+    const btn = Array.from(document.querySelectorAll('.intervals [data-tf]')).find((b) => b.dataset.tf === target);
+    S.tfNote = { tf: target, mode: S.mode };
+    if (btn) btn.click();
+    else if (window.smlAcademyNavigateMarket) window.smlAcademyNavigateMarket(symbol(), target);
+    else { S.tfNote = null; return; }
+    S.sigKey = ''; // the 500 ms watcher reloads candles for the new interval
+  }
+
+  /* What other panels (Hedge & Income) need from MEM ALGO: the mode and a simple read of direction and conviction. */
+  function readState() {
+    const d = S.data, st = E.STRATEGIES[S.mode] || {};
+    let dir = 'neutral', strength = 50, levels = null;
+    if (d) {
+      const b = d.bias;
+      dir = b === 'long' ? 'bull' : b === 'short' ? 'bear' : 'neutral';
+      strength = b === 'long' || b === 'short' ? 65 : b === 'warming' ? 40 : 35;
+      const open = d.open, sig = open && d.signals.length ? d.signals.filter((x) => x.i <= open.entryIdx).pop() : d.latest;
+      if (sig && sig.conf && Number.isFinite(sig.conf.score)) strength = sig.conf.score;
+      if (open && ((open.dir > 0 && dir === 'bear') || (open.dir < 0 && dir === 'bull'))) strength = Math.min(strength, 40);
+      if (d.confluence && d.confluence.exitWatch && d.confluence.exitWatch.level === 'exit') strength = Math.min(strength, 30);
+      if (open) levels = { dir: open.dir, entry: open.entry, stop: open.stop, target: open.target };
+      else if (d.latest && d.bars - 1 - d.latest.i <= 30) levels = { dir: d.latest.dir, entry: d.latest.price, stop: d.latest.stop, target: d.latest.target };
+    }
+    return { on: S.on, open: S.open, mode: S.mode, label: st.label || S.mode, preferredTf: preferredTf(S.mode), chartTf: tf(), symbol: symbol(), bias: d ? d.bias : null, dir, strength: Math.round(strength), levels };
+  }
+  window.smlMemAlgoState = readState;
+  let lastStateKey = '';
+  function announce() {
+    const s = readState(), key = [s.on, s.mode, s.symbol, s.dir, s.strength, s.levels ? s.levels.stop : ''].join('|');
+    if (key === lastStateKey) return;
+    lastStateKey = key;
+    try { window.dispatchEvent(new CustomEvent('sml-mem-algo-state', { detail: s })); } catch (_) { /* old browsers */ }
+  }
 
   const css = document.createElement('style');
   css.textContent = `
@@ -56,6 +97,8 @@
 #mem-algo-panel details summary{cursor:pointer;color:#8fd3ff;font-size:.74rem}
 #mem-algo-panel ul{margin:6px 0 0;padding-left:18px;color:#9fb3be;font-size:.72rem}
 .mem-foot{padding:9px 12px;color:#7f98a6;font-size:.64rem}
+.mem-tfnote{margin:0 0 8px;padding:6px 9px;border:1px solid #1f6a4e;border-radius:8px;background:#0b2219;color:#7ef0bd;font:700 .7rem/1.4 system-ui}
+.mem-hedge-btn{border-color:#2b5c4c;color:#52e6ad}
 .mem-btn{margin-top:6px;padding:5px 10px;border:1px solid #23495a;border-radius:7px;background:#0a1118;color:#b8c9d3;font:700 .68rem system-ui;cursor:pointer}
 .mem-of-chip{display:inline-block;padding:3px 9px;border-radius:999px;font:800 .68rem ui-monospace,monospace;letter-spacing:.05em}
 .mem-of-chip.bull{background:#0d3a2a;color:#3ef0a8}.mem-of-chip.bear{background:#421a24;color:#ff7a92}.mem-of-chip.flat{background:#1c2b33;color:#9db4c0}
@@ -135,12 +178,16 @@
     toggle.classList.toggle('on', S.on);
     panel.classList.toggle('open', S.on && S.open);
     place();
+    announce();
     if (!(S.on && S.open)) return;
     const st = E.STRATEGIES[S.mode], d = S.data, p = E.resolveParams(S.mode, S.params[S.mode] || {}, tf());
     const tfNow = tf(), fitTf = st.tfHint.indexOf(tfNow) >= 0;
     let html = '<header><b>MEM ALGO</b><small>Educational simulation · no orders are placed</small><button type="button" data-mem="close" aria-label="Close">×</button></header>';
     html += '<div class="mem-tabs">' + Object.keys(E.STRATEGIES).map((k) => '<button type="button" data-mem-mode="' + k + '" class="' + (S.mode === k ? 'on' : '') + '">' + esc(E.STRATEGIES[k].label) + '</button>').join('') + '</div>';
-    html += '<div class="mem-sec"><p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide. <button type="button" class="mem-btn" data-mem-tf="' + esc(st.bestTf || st.tfHint[0]) + '" style="margin-top:6px">Switch chart to ' + esc(st.bestTf || st.tfHint[0]) + '</button></div>') + '</div>';
+    if (S.tfNote && S.tfNote.seen && S.tfNote.tf !== tfNow) S.tfNote = null; // the member has since picked another interval
+    if (S.tfNote && S.tfNote.tf === tfNow) S.tfNote.seen = true;
+    const note = S.tfNote && S.tfNote.mode === S.mode && S.tfNote.tf === tfNow ?'<div class="mem-tfnote">Chart set to ' + esc(tfNow) + ' — the interval ' + esc(st.label) + ' is built for.</div>' : '';
+    html += '<div class="mem-sec">' + note + '<p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p><button type="button" class="mem-btn mem-hedge-btn" data-mem="hedge" title="Ways to protect this position or earn income on it with options">Hedge &amp; income ideas →</button>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide. <button type="button" class="mem-btn" data-mem-tf="' + esc(st.bestTf || st.tfHint[0]) + '" style="margin-top:6px">Switch chart to ' + esc(st.bestTf || st.tfHint[0]) + '</button></div>') + '</div>';
     html += '<div class="mem-sec" id="mem-of"></div>';
     if (S.error) html += '<div class="mem-sec"><div class="mem-warn">' + esc(S.error) + '</div></div>';
     if (!d) { html += '<div class="mem-sec">Loading candles for $' + esc(symbol()) + '…</div>'; }
@@ -313,7 +360,12 @@
   }
 
   // ---- events ----
-  toggle.addEventListener('click', () => { if (S.on && S.open) { S.on = false; S.open = false; } else { S.on = true; S.open = true; } save(); paint(); draw(); if (S.on) { refresh(true); pollOF(); } });
+  toggle.addEventListener('click', () => {
+    const wasOn = S.on;
+    if (S.on && S.open) { S.on = false; S.open = false; S.tfNote = null; } else { S.on = true; S.open = true; }
+    if (S.on && !wasOn) autoTf(); // switching MEM ALGO on puts the chart on the mode's interval (re-opening a closed panel does not)
+    save(); paint(); draw(); if (S.on) { refresh(true); pollOF(); }
+  });
   panel.addEventListener('click', (e) => {
     // the "Switch chart to <interval>" button carries data-mem-tf only, so the selector must name it or the click matches nothing
     const t = e.target.closest('[data-mem],[data-mem-mode],[data-mem-tf]'); if (!t) return;
@@ -325,8 +377,9 @@
       return;
     }
     if (t.dataset.mem === 'close') { S.open = false; paint(); return; }
+    if (t.dataset.mem === 'hedge') { if (window.smlHedgePanel && window.smlHedgePanel.open) window.smlHedgePanel.open(readState()); return; }
     if (t.dataset.mem === 'reset') { S.params[S.mode] = {}; save(); recompute(); paint(); draw(); return; }
-    if (t.dataset.memMode) { S.mode = t.dataset.memMode; save(); recompute(); loadCtx(); paint(); draw(); }
+    if (t.dataset.memMode) { S.mode = t.dataset.memMode; autoTf(); save(); recompute(); loadCtx(); paint(); draw(); }
   });
   panel.addEventListener('change', (e) => {
     const ov = e.target.closest('[data-mem-ov]'), pr = e.target.closest('[data-mem-p]');

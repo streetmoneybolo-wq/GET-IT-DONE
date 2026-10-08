@@ -109,13 +109,54 @@
     render();
   });
 
+  /* Options ALERT mode (the 🔔 ALERT button in the chain's header, off by default). When it is on, double-clicking a call or put opens Click-to-Alert for that
+     contract straight away: the server derives the stock target from the contract (next level past breakeven, else breakeven + one expected move), so no chart
+     click is needed. When it is off, a double-click does exactly what it always did. The chain's own symbol is tracked so the alert is for what the chain shows. */
+  const cleanSym = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9.:-]/g, '').slice(0, 10);
+  let chainSymbol = '', pendingSymbol = '', alertMode = false;
+  const loadBtn = $('load-options');
+  if (loadBtn) loadBtn.addEventListener('click', () => { pendingSymbol = cleanSym(($('symbol') || {}).value) || 'SPY'; }, true);
+  if (grid) new MutationObserver(() => { if (pendingSymbol && grid.querySelector('tr td')) chainSymbol = pendingSymbol; }).observe(grid, { childList: true });
+  const alertCss = document.createElement('style');
+  alertCss.textContent = '#options-alert-toggle{padding:7px 10px;border:1px solid #1f8a5f;border-radius:7px;background:#0b2219;color:#7dffc4;font:800 .66rem ui-monospace,monospace;letter-spacing:.05em;cursor:pointer}#options-alert-toggle.on{background:#00c47d;border-color:#7dffc4;color:#032318}'
+    + '#options-alert-hint{margin:8px 0 2px;padding:7px 11px;border:1px solid #1f8a5f;border-radius:8px;background:rgba(3,34,24,.94);color:#a8ffd8;font:700 .68rem system-ui,sans-serif}#options-alert-hint.warn{border-color:#6b2234;background:#2a1118;color:#ffb3c0}'
+    + '#options-chain.options-alert-on #options-grid{user-select:none;-webkit-user-select:none}#options-chain.options-alert-on #options-grid td:not(.strike){cursor:pointer}'
+    + '#options-chain.options-alert-on #options-grid td:not(.strike):hover{outline:2px solid #00c47d;outline-offset:-2px;background:rgba(0,196,125,.12)}'
+    + '#options-chain.options-alert-on #options-grid td.oa-picked{outline:2px solid #7dffc4;outline-offset:-2px;background:rgba(0,196,125,.28)}';
+  document.head.appendChild(alertCss);
+  const alertBtn = document.createElement('button'); alertBtn.type = 'button'; alertBtn.id = 'options-alert-toggle'; alertBtn.textContent = '🔔 ALERT';
+  alertBtn.setAttribute('aria-pressed', 'false'); alertBtn.title = 'Click-to-Alert for options: when on, double-click any contract to alert it';
+  if (loadBtn && loadBtn.parentElement) loadBtn.after(alertBtn); else { const head = chain.querySelector('.options-head'); if (head) head.appendChild(alertBtn); }
+  const alertHint = document.createElement('div'); alertHint.id = 'options-alert-hint'; alertHint.setAttribute('role', 'status'); alertHint.hidden = true;
+  const head = chain.querySelector('.options-head'); if (head) head.after(alertHint); else chain.prepend(alertHint);
+  const hintText = (text, warn) => { alertHint.textContent = text; alertHint.classList.toggle('warn', !!warn); alertHint.hidden = false; };
+  function setAlertMode(on) {
+    alertMode = !!on;
+    alertBtn.classList.toggle('on', alertMode); alertBtn.setAttribute('aria-pressed', String(alertMode)); chain.classList.toggle('options-alert-on', alertMode);
+    if (!alertMode) { alertHint.hidden = true; grid && grid.querySelectorAll('td.oa-picked').forEach((x) => x.classList.remove('oa-picked')); }
+    else if (!window.__smlClickAlertUi) hintText('Click-to-Alert is not available in this window right now. Reload the Academy and try again.', true);
+    else hintText('🔔 Double-click any contract to alert it. The target comes from the contract; you can still click the chart to change it.');
+    // the Click-to-Alert panel opens with it, so a member without the add-on sees how to unlock it right away
+    window.dispatchEvent(new CustomEvent('sml-options-alert-mode', { detail: { on: alertMode } }));
+  }
+  alertBtn.addEventListener('click', () => setAlertMode(!alertMode));
+
   // double-click a contract -> Click-to-Alert turns it into an options alert when an alert is armed
   if (grid) grid.addEventListener('dblclick', (e) => {
     const td = e.target.closest && e.target.closest('td'), tr = td && td.parentElement; if (!tr || !tr.cells || tr.cells.length < 21) return;
     const strike = num(tr.cells[10].textContent); if (strike == null) return;
     const exp = $('options-expiry'), m = /\d{4}-\d{2}-\d{2}/.exec(exp ? (exp.value || (exp.selectedOptions[0] || {}).textContent || '') : ''); if (!m) return;
-    window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: td.cellIndex > 10 ? 'put' : 'call', strike, expiry: m[0] } }));
+    if (!alertMode) { window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: td.cellIndex > 10 ? 'put' : 'call', strike, expiry: m[0] } })); return; }
+    if (td.cellIndex === 10) { hintText('Double-click the call side (left) or the put side (right) of a strike to alert that contract.'); return; }
+    const type = td.cellIndex > 10 ? 'put' : 'call';
+    const symbol = chainSymbol || cleanSym(($('symbol') || {}).value) || symbolNow();
+    grid.querySelectorAll('td.oa-picked').forEach((x) => x.classList.remove('oa-picked')); td.classList.add('oa-picked');
+    if (!window.__smlClickAlertUi) { hintText('Click-to-Alert is not available in this window right now. Reload the Academy and try again.', true); return; }
+    hintText('🔔 Alerting the ' + symbol + ' ' + m[0] + ' ' + strike.toFixed(2) + ' ' + type + '. Double-click another contract to switch.');
+    window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type, strike, expiry: m[0], symbol, autoTarget: true } }));
   });
+  // the Click-to-Alert panel can report back (for example when it is closed) so the button never shows a state the panel does not have
+  window.addEventListener('sml-options-alert-mode-set', (e) => { const on = !!(e.detail && e.detail.on); if (on !== alertMode) setAlertMode(on); });
 
   // load the chain for the chart's symbol as soon as Academy access is verified, and again when the symbol changes
   let session = '', shownSymbol = '';

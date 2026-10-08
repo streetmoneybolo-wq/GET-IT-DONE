@@ -58,6 +58,7 @@ const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
 const { createAutoPtService } = require('./academy-auto-pt');
+const { createHedgeService } = require('./academy-hedge');
 const { createProfileService } = require('./academy-profile');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
@@ -760,7 +761,7 @@ const ACADEMY_POPOUT_HEAD = (() => {
 })();
 /* Market Direction panel (shared display file) + its Academy mount. */
 const ACADEMY_DIRECTION = (() => {
-  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-pt-notify.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-pt-notify.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-hedge-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
@@ -1633,7 +1634,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyPush = null, academyWideScanner = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2594,6 +2595,31 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       } catch (error) { logger('warn', 'pt_updates_failed', { error }); sendJson(response, 503, { ok: false, error: 'temporarily_unavailable' }); }
       return;
     }
+    /* Hedge & Income (academy-hedge.js): option ideas that protect or earn on a position, ranked by MEM ALGO's read. Academy members;
+       entry/target/stop default to the member's own newest live alert on the symbol, else ATR levels. Educational only. */
+    if (request.method === 'GET' && path === '/academy-activity/hedge') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required', message: 'Hedge & income ideas are part of the full Academy. Unlock the Academy to see them.' }); return; }
+      if (!academyHedge) { sendJson(response, 503, { ok: false, error: 'hedge_unavailable', message: 'The live options feed is not connected right now.' }); return; }
+      const hq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(hq.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const level = (k) => { const v = Number(hq.get(k)); return Number.isFinite(v) && v > 0 && v < 1e7 ? v : null; };
+      const strength = Number(hq.get('strength'));
+      const hedgeView = session.tier === 'academy' && academyGate && academyGate.alertsTiering ? 'closed' : 'live';
+      try {
+        const out = await academyHedge.plan({
+          symbol, shares: Math.min(1_000_000, Math.max(1, Math.round(Number(hq.get('shares')) || 100))), entry: level('entry'), target: level('target'), stop: level('stop'),
+          horizon: ['day', 'swing', 'mid', 'long', 'short'].includes(hq.get('horizon')) ? hq.get('horizon') : 'swing', side: hq.get('side') === 'short' ? 'short' : 'long',
+          dir: ['bull', 'bear', 'neutral'].includes(hq.get('dir')) ? hq.get('dir') : null, strength: Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : null,
+          userId: session.userId, view: hedgeView
+        });
+        sendJson(response, out.ok ? 200 : (out.status || 503), out);
+      } catch (error) { logger('error', 'academy_hedge_failed', { symbol, error }); sendJson(response, 503, { ok: false, error: 'hedge_unavailable', message: 'Hedge ideas are not available right now.' }); }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/unusual-volume') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -3413,6 +3439,16 @@ async function main() {
     void academyAutoPt.load().catch(() => {});
     if (academyAlerts && typeof academyAlerts.setPtLadder === 'function') academyAlerts.setPtLadder((key) => academyAutoPt.forKey(key));
   }
+  /* Hedge & Income: the live chain (up to 3 expirations per request, cached 60 s), daily candles for ATR levels, and the member's own alert desk */
+  const academyHedge = academyDataBridge.configured ? createHedgeService({
+    chain: (symbol, expiration) => academyDataBridge.get('options', symbol, expiration ? { expiration } : {}),
+    candles: getAcademyCandles, logger: log,
+    alertsFor: academyAlerts ? async (userId, view) => {
+      if (academyAlertSources) { const sources = (await academyAlertSources.viewFor(userId, view)).filter((s) => s.access); return academyAlerts.snapshot({ sources }).alerts || []; }
+      return academyAlerts.snapshot().alerts || [];
+    } : null,
+    ptLadder: academyAutoPt ? (key) => academyAutoPt.forKey(key) : null
+  }) : null;
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
     modelId: config.academyVoiceModel, lessons: SEED_LESSONS
@@ -3463,7 +3499,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyWideScanner, academyPush,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

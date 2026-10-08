@@ -1745,3 +1745,24 @@ test('SML VIX (Academy): needs a session; returns the level, history and change 
     assert.equal((await fetch(base + '/academy-activity/vix', { headers: { authorization: 'Bearer ' + token } })).status, 503);
   });
 });
+
+test('Hedge & Income (Academy): session required, free tier refused, members get ideas with cleaned inputs', async () => {
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer member' ? { ok: true, userId: 'u1', tier: 'member' } : a === 'Bearer free' ? { ok: true, userId: 'u2', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const asked = [];
+  const academyHedge = { plan: async (q) => { asked.push(q); return { ok: true, symbol: q.symbol, ideas: [{ kind: 'protective_put' }], disclaimer: 'Educational' }; } };
+  await withServer({ academyOAuth, academyHedge }, async (base) => {
+    assert.equal((await fetch(base + '/academy-activity/hedge?symbol=AAPL')).status, 401);
+    const free = await fetch(base + '/academy-activity/hedge?symbol=AAPL', { headers: { authorization: 'Bearer free' } });
+    assert.equal(free.status, 403); assert.match((await free.json()).message, /Academy/);
+    assert.equal((await fetch(base + '/academy-activity/hedge?symbol=%3Cx%3E', { headers: { authorization: 'Bearer member' } })).status, 400);
+    const r = await fetch(base + '/academy-activity/hedge?symbol=aapl&shares=250&entry=180&stop=-4&horizon=long&dir=bear&strength=900&side=short', { headers: { authorization: 'Bearer member' } });
+    assert.equal(r.status, 200);
+    const j = await r.json(); assert.equal(j.ideas[0].kind, 'protective_put');
+    const q = asked[0];
+    assert.equal(q.symbol, 'AAPL'); assert.equal(q.shares, 250); assert.equal(q.entry, 180); assert.equal(q.stop, null); assert.equal(q.target, null);
+    assert.equal(q.horizon, 'long'); assert.equal(q.dir, 'bear'); assert.equal(q.strength, 100); assert.equal(q.side, 'short'); assert.equal(q.userId, 'u1'); assert.equal(q.view, 'live');
+  });
+  await withServer({ academyOAuth }, async (base) => {
+    assert.equal((await fetch(base + '/academy-activity/hedge?symbol=AAPL', { headers: { authorization: 'Bearer member' } })).status, 503);
+  });
+});

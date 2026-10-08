@@ -31,6 +31,7 @@
     ['sentiment', 'Sentiment', '.academy-sentiment'],
     ['sire', 'S.I.R.E.', '#sire-panel'],
     ['mem-algo', 'MEM ALGO', '#mem-algo-panel'],
+    ['hedge', 'Hedge & income', '#academy-hedge'],
     ['indicators', 'Indicator engine', 'section.academy-intelligence'],
     ['screener', 'Screener', '#academy-screener'],
     ['earnings', 'Earnings', '#earnings-panel'],

@@ -310,3 +310,49 @@ test('an alert goes to @everyone by default, and only a deliberate "no" or a cha
   assert.equal(b.mentioned, false); assert.equal(b.mentionRequestedButNotAllowed, true);
   assert.ok(!blocked.posts[0].body.content.includes('@everyone'));
 });
+
+/* ---------- options ALERT mode: the stock target derived from a double-clicked contract ---------- */
+test('autoTargetForContract: a call targets the next resistance above price and breakeven that is reachable before expiry', () => {
+  // price 100, IV 30%, 30 days: one expected move is about 8.6, reach is about 12.9
+  const levels = [{ price: 101, text: 'swing high' }, { price: 104, text: 'supply block' }, { price: 106, text: 'equal highs x2' }, { price: 130, text: 'swing high' }, { price: 95, text: 'swing low' }];
+  const r = CA.autoTargetForContract({ type: 'call', price: 100, strike: 100, premium: 3, iv: 0.3, dte: 30, levels });
+  assert.equal(r.ok, true); assert.equal(r.basis, 'level');
+  assert.equal(r.breakeven, 103);
+  assert.equal(r.target, 104, 'the first level above max(price, breakeven 103)');
+  assert.match(r.targetBasis, /^next resistance at \$104\.00 \(supply block\)$/);
+  // IV given in percent is read the same way
+  assert.equal(CA.autoTargetForContract({ type: 'C', price: 100, strike: 100, premium: 3, iv: 30, dte: 30, levels }).target, 104);
+});
+
+test('autoTargetForContract: with no reachable level a call targets breakeven + one expected move', () => {
+  const r = CA.autoTargetForContract({ type: 'call', price: 100, strike: 105, premium: 2, iv: 0.3, dte: 30, levels: [{ price: 130, text: 'swing high' }, { price: 106, text: 'gap' }] });
+  const em = 100 * 0.3 * Math.sqrt(30 / 365);
+  assert.equal(r.ok, true); assert.equal(r.basis, 'expected_move');
+  assert.equal(r.target, Math.round((107 + em) * 100) / 100);
+  assert.match(r.targetBasis, /^breakeven \$107\.00 \+ 1 expected move \(\$8\.60 over 30 days\)$/);
+  // a deep in-the-money call (already past breakeven) measures from the live price, so the target stays above it
+  const itm = CA.autoTargetForContract({ type: 'call', price: 100, strike: 80, premium: 19, iv: 0.3, dte: 30, levels: [] });
+  assert.ok(itm.target > 100); assert.match(itm.targetBasis, /^live price \$100\.00 \+ 1 expected move/);
+  // a far lottery call is capped so the analysis can still run
+  const far = CA.autoTargetForContract({ type: 'call', price: 10, strike: 60, premium: 0.05, iv: 2, dte: 300, levels: [] });
+  assert.equal(far.capped, true); assert.equal(far.target, 35);
+});
+
+test('autoTargetForContract: a put mirrors it (support below price and strike - premium, else breakeven - one expected move)', () => {
+  const levels = [{ price: 99, text: 'swing low' }, { price: 96, text: 'demand block' }, { price: 93, text: 'equal lows x3' }, { price: 70, text: 'swing low' }, { price: 104, text: 'swing high' }];
+  const r = CA.autoTargetForContract({ type: 'put', price: 100, strike: 100, premium: 3, iv: 0.3, dte: 30, levels });
+  assert.equal(r.ok, true); assert.equal(r.breakeven, 97);
+  assert.equal(r.target, 96); assert.match(r.targetBasis, /^next support at \$96\.00 \(demand block\)$/);
+  const none = CA.autoTargetForContract({ type: 'put', price: 100, strike: 95, premium: 2, iv: 0.3, dte: 30, levels: [{ price: 70, text: 'swing low' }] });
+  const em = 100 * 0.3 * Math.sqrt(30 / 365);
+  assert.equal(none.basis, 'expected_move'); assert.equal(none.target, Math.round((93 - em) * 100) / 100);
+  assert.match(none.targetBasis, /^breakeven \$93\.00 - 1 expected move/);
+  assert.ok(none.target > 0);
+});
+
+test('autoTargetForContract: refuses what it cannot price', () => {
+  assert.equal(CA.autoTargetForContract({ type: 'call', price: 0, strike: 100, premium: 1, iv: 0.3, dte: 10 }).code, 'no_live_price');
+  assert.equal(CA.autoTargetForContract({ type: 'x', price: 100, strike: 100, premium: 1, iv: 0.3, dte: 10 }).code, 'invalid_contract');
+  assert.equal(CA.autoTargetForContract({ type: 'call', price: 100, strike: 100, premium: 1, iv: 0.3, dte: 0 }).code, 'contract_expired');
+  assert.equal(CA.autoTargetForContract({ type: 'call', price: 100, strike: 100, premium: 1, iv: null, dte: 10 }).code, 'contract_not_priced');
+});

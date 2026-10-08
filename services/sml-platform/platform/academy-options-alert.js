@@ -125,4 +125,4 @@ function buildOptionsAlert({ analysis, rows, contract, now = Date.now(), rate = 
   };
 }
 
-module.exports = { buildOptionsAlert, findContract, liquidity, OptionsAlertError, calendarDays, mid };
+module.exports = { buildOptionsAlert, findContract, liquidity, OptionsAlertError, calendarDays, mid, daysTo };

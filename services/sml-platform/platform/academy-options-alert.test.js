@@ -88,3 +88,51 @@ test('contract errors map to 4xx and no chain gives 503', async () => {
   const stock = await a.svc.preview(a.USER, { symbol: 'TEST', target: spot * 1.08 });
   assert.equal(stock.ok, true); assert.equal(stock.options, null);
 });
+
+test('options ALERT mode: a contract with no chart target gets its target from the contract and runs the same analysis, scenarios and layout', async () => {
+  const posts = [], r = rows(), k = strikeNear(r);
+  const { svc, USER, CHAN } = service(async () => r, posts);
+  const contract = { type: 'call', strike: k, expiry: EXPIRY };
+  const p = await svc.preview(USER, { symbol: 'TEST', contract, autoTarget: true });
+  assert.equal(p.ok, true, JSON.stringify(p));
+  assert.equal(p.analysis.autoTarget, true);
+  assert.equal(p.analysis.side, 'long');
+  assert.ok(p.analysis.target > spot, 'a call targets above the live price');
+  assert.ok(p.analysis.target > p.options.estimates.breakeven - 0.01, 'and past the breakeven');
+  assert.match(p.analysis.targetBasis, /^(next resistance at \$|breakeven \$|live price \$)/);
+  assert.ok(p.analysis.rationale[0].startsWith('Target set from the ' + EXPIRY));
+  assert.equal(p.scenarios.images.length, 2);
+  assert.match(p.analysis.alertText, /\u{1D402}\u{1D400}\u{1D40B}\u{1D40B}\u{1D412}/u);
+  assert.ok(p.analysis.alertText.includes('Target from the contract: '));
+  // a missing target with a contract means the same thing
+  const q = await svc.preview(USER, { symbol: 'TEST', contract });
+  assert.equal(q.ok, true); assert.equal(q.analysis.target, p.analysis.target);
+  // a put is mirrored
+  const put = await svc.preview(USER, { symbol: 'TEST', contract: { type: 'put', strike: k, expiry: EXPIRY }, autoTarget: true });
+  assert.equal(put.ok, true, JSON.stringify(put)); assert.equal(put.analysis.side, 'short'); assert.ok(put.analysis.target < spot);
+  // the post and the record are the same as a clicked target
+  const s = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', contract, autoTarget: true, channelId: CHAN });
+  assert.equal(s.ok, true, JSON.stringify(s)); assert.equal(s.analysis.autoTarget, true); assert.equal(s.analysis.target, p.analysis.target);
+  assert.ok(posts[0].body.content.includes('Target from the contract: '));
+  assert.equal(posts[0].files.length, 2, 'both scenario charts ride along');
+  const again = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', contract, autoTarget: true, channelId: CHAN });
+  assert.equal(again.code, 'duplicate_alert');
+  // a clicked target still wins when autoTarget is not asked for
+  const clicked = await svc.preview(USER, { symbol: 'TEST', target: spot * 1.08, contract });
+  assert.equal(clicked.ok, true); assert.ok(!clicked.analysis.autoTarget); assert.equal(clicked.analysis.target, spot * 1.08);
+});
+
+test('options ALERT mode refuses an unknown contract, a missing chain and an unsubscribed member', async () => {
+  const r = rows();
+  const a = service(async () => r, []);
+  const missing = await a.svc.preview(a.USER, { symbol: 'TEST', contract: { type: 'call', strike: 99999, expiry: EXPIRY }, autoTarget: true });
+  assert.equal(missing.status, 404); assert.equal(missing.code, 'contract_not_found');
+  const none = service(async () => null, []);
+  const off = await none.svc.preview(none.USER, { symbol: 'TEST', contract: { type: 'call', strike: strikeNear(r), expiry: EXPIRY }, autoTarget: true });
+  assert.equal(off.status, 503); assert.equal(off.code, 'options_unavailable');
+  const bad = await a.svc.preview(a.USER, { symbol: 'TEST', contract: { type: 'call', strike: 'x', expiry: EXPIRY }, autoTarget: true });
+  assert.equal(bad.code, 'invalid_contract');
+  const unsub = CA.createClickAlertService({ getBars: async () => ({ bars: D }), chain: async () => r, directory: { memberRolesLive: async () => [] }, academyGuildId: '111111111111111111', roleIds: ['222222222222222222'] });
+  const u = await unsub.preview('333333333333333333', { symbol: 'TEST', contract: { type: 'call', strike: strikeNear(r), expiry: EXPIRY }, autoTarget: true });
+  assert.equal(u.status, 402); assert.equal(u.code, 'click_alert_subscription_required');
+});

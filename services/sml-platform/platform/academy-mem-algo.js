@@ -21,6 +21,7 @@
  *  - dirs: 'both' (default), 'long' or 'short'. A one-direction strategy only opens that side; the opposite crossover becomes an EXIT signal.
  *  - trail: an ATR trailing stop that only ever moves in the trade's favour (hold strategies). targetAtr: null means "no fixed target".
  *  - byTf: parameter overrides for a specific candle size, so one strategy can sensibly run on 1D, 1W and 1M candles.
+ *  - bestTf: the chart interval the strategy is designed for; turning MEM ALGO on or picking a mode switches the chart to it (preferredTf).
  *  - maxSep: skip entries where price is already stretched more than this many ATR from the slow EMA (guards shorts against chasing a drop into a squeeze).
  */
 
@@ -32,6 +33,7 @@ const STRATEGIES = {
     label: 'Day Trading',
     blurb: 'Fast EMA(9) vs slow EMA(21) inside the EMA(100) trend, on intraday candles. Skips the first 10 minutes and last 15 minutes of the regular session.',
     tfHint: INTRADAY,
+    bestTf: '5m', // chart interval this mode switches to: EMA(100) spans ~1.5 sessions of 5m candles and the 10/15-minute session skips stay meaningful
     params: { fast: 9, slow: 21, trend: 100, atr: 14, minSep: 0.35, confirm: 2, stopAtr: 1.2, targetAtr: 2.4, maxHold: 40, costBps: 2, session: { open: 570, close: 960, skipOpen: 10, skipClose: 15 } }
   },
   swing: {
@@ -39,6 +41,7 @@ const STRATEGIES = {
     label: 'Swing Trading',
     blurb: 'Fast EMA(20) vs slow EMA(50) inside the EMA(200) trend, on hourly or daily candles. Wider ATR stops, held for days to weeks.',
     tfHint: ['1h', '2h', '4h', '1D'],
+    bestTf: '1D', // held days to weeks: on daily candles maxHold 40 is about two months and EMA(200) is the classic trend filter (on 1h a trade would be capped at ~6 sessions)
     params: { fast: 20, slow: 50, trend: 200, atr: 14, minSep: 0.5, confirm: 2, stopAtr: 2.0, targetAtr: 4.0, maxHold: 40, costBps: 2, session: null }
   },
   mid: {
@@ -71,6 +74,9 @@ const STRATEGIES = {
     params: { fast: 12, slow: 26, trend: 100, atr: 14, minSep: 0.5, maxSep: 3.5, confirm: 2, stopAtr: 1.6, targetAtr: 3.2, trail: null, maxHold: 30, costBps: 4, session: null }
   }
 };
+
+/** The chart interval a strategy is built for (what the chart switches to when the member picks that mode). */
+function preferredTf(mode) { const st = STRATEGIES[mode] || STRATEGIES.day; return st.bestTf || st.tfHint[0]; }
 
 function clampInt(v, lo, hi, dflt) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; }
 function clampNum(v, lo, hi, dflt) { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; }
@@ -424,4 +430,4 @@ function analyze(rawBars, mode = 'day', overrides = {}, tf = '', ctx = {}) {
   };
 }
 
-module.exports = { rsi, macdHist, sma, gradeOf, buildConfluence, STRATEGIES, INTRADAY, resolveParams, ema, atr, computeSignals, backtest, summarize, analyze, sessionAllows, minutesET };
+module.exports = { preferredTf, rsi, macdHist, sma, gradeOf, buildConfluence, STRATEGIES, INTRADAY, resolveParams, ema, atr, computeSignals, backtest, summarize, analyze, sessionAllows, minutesET };

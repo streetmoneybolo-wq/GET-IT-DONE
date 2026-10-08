@@ -261,3 +261,15 @@ test('indicator helpers behave: RSI stays in 0-100, a steady rise pins it near 1
   assert.ok(algo.macdHist(up).filter(Number.isFinite).length > 30);
   assert.equal(algo.gradeOf(80), 'A'); assert.equal(algo.gradeOf(60), 'B'); assert.equal(algo.gradeOf(45), 'C'); assert.equal(algo.gradeOf(44), 'D');
 });
+
+test('every strategy names the chart interval it is built for, and that interval is one of its own hints and a chart button', () => {
+  const chartButtons = ['1m', '3m', '5m', '15m', '1h', '1D', '1W', '1M', '1Q', '1Y'];
+  const want = { day: '5m', swing: '1D', mid: '1D', long: '1W', short: '1h' };
+  for (const k of Object.keys(algo.STRATEGIES)) {
+    const tf = algo.preferredTf(k);
+    assert.ok(algo.STRATEGIES[k].tfHint.includes(tf), k + ' ' + tf);
+    assert.ok(chartButtons.includes(tf), k + ' ' + tf + ' must be a chart interval button');
+    if (want[k]) assert.equal(tf, want[k], k);
+  }
+  assert.equal(algo.preferredTf('nope'), '5m');
+});
