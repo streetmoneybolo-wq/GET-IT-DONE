@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Chart Academy Tools
  * Description: Adds the Academy chart tools the site chart did not have (smart-money map, MEM ALGO strategies, named candlesticks, bar-close countdown, options calculator, order-book walls, cost distribution, tape stats) to the LoopCharts chart on the analyst dashboard. Group pages embed that same dashboard, so they get the tools too.
- * Version: 1.1.1
+ * Version: 1.2.0
  *
  * The scripts are inlined before </body> on /analyst-dashboard/ only (one injection covers the dashboard and every group's embedded copy).
  * Script ids start with "sml-dashboard-chart-" because the dashboard strips other sml-* script tags.
@@ -10,6 +10,8 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+require_once __DIR__ . '/includes/alerts.php';
 
 function sml_cat_scripts() {
 	$dir = __DIR__ . '/assets/';
@@ -26,6 +28,11 @@ function sml_cat_scripts() {
 		'adapter'         => @file_get_contents( $dir . 'adapter.js' ),
 		'depth'           => @file_get_contents( $dir . 'depth.js' ),        // walls, cost distribution, tape stats
 	);
+	// alerts desk: only inside a group embed that has it, and only for viewers allowed to see it
+	$alerts_cfg = function_exists( 'sml_cat_alerts_config' ) ? sml_cat_alerts_config() : null;
+	if ( $alerts_cfg ) {
+		$parts['alerts'] = 'window.SMLCAT_ALERTS=' . wp_json_encode( $alerts_cfg ) . ';' . @file_get_contents( $dir . 'alerts.js' );
+	}
 	$out = '';
 	foreach ( $parts as $id => $js ) {
 		if ( ! $js ) { continue; }
