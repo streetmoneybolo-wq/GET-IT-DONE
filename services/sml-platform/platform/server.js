@@ -41,6 +41,7 @@ const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPopoutService, validModule: validPopoutModule, validSymbol: validPopoutSymbol } = require('./academy-popout');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
+const { createPushService } = require('./academy-push');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
@@ -746,6 +747,13 @@ const ACADEMY_APPEARANCE = (() => {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-appearance-ui.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
+/* Push notifications: the service worker, the app icon (drawn once, no text so no fonts are needed) and the web app manifest
+   (iPhone and iPad only deliver web push to an Academy added to the Home Screen). */
+const ACADEMY_PUSH_SW = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-push-sw.js'), 'utf8'); } catch (_) { return ''; } })();
+const ACADEMY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#06110d"/><circle cx="256" cy="256" r="178" fill="none" stroke="#19e36b" stroke-width="22" opacity=".35"/><circle cx="256" cy="256" r="112" fill="none" stroke="#19e36b" stroke-width="22" opacity=".6"/><circle cx="256" cy="256" r="44" fill="#19e36b"/><path d="M96 392 L208 280 L270 334 L408 160" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/><path d="M340 152 L414 152 L414 226" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const academyIconPng = (() => { const memo = new Map(); return (size) => { if (memo.has(size)) return memo.get(size); let png = null; try { const { Resvg } = require('@resvg/resvg-js'); png = new Resvg(ACADEMY_ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng(); } catch (_) { png = null; } memo.set(size, png); return png; }; })();
+const ACADEMY_MANIFEST = JSON.stringify({ name: 'Making Easy Money Academy', short_name: 'MEM Academy', start_url: '/academy-activity/', scope: '/academy-activity/', display: 'standalone', background_color: '#05090d', theme_color: '#06110d', icons: [{ src: '/academy-activity/push-icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/academy-activity/push-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }] });
+const ACADEMY_MANIFEST_HEAD = '<link rel="manifest" href="/academy-activity/manifest.webmanifest"><meta name="theme-color" content="#06110d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="MEM Academy"><link rel="apple-touch-icon" href="/academy-activity/push-icon-192.png">';
 /* Pop-out modules: the sign-in shim runs in <head> (only acts in a ?popout window), the UI after the page. */
 const ACADEMY_POPOUT_HEAD = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-head.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
@@ -854,7 +862,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
   const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_POPOUT_UI + '</body></html>');
-  const withPopout = html.replace('</head>', () => ACADEMY_POPOUT_HEAD + '</head>');
+  const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
 
@@ -1625,7 +1633,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyWideScanner = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyPush = null, academyWideScanner = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2532,6 +2540,42 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
     /* Unusual volume across the whole market (any signed-in Academy session). */
+    /* Push notifications: the public key, subscribe / unsubscribe (Academy session), a test message to the member's own devices,
+       and the service worker, icon and manifest (public, no member data). */
+    if (request.method === 'GET' && path === '/academy-activity/push-sw.js') {
+      response.writeHead(ACADEMY_PUSH_SW ? 200 : 404, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/academy-activity/' });
+      response.end(ACADEMY_PUSH_SW); return;
+    }
+    if (request.method === 'GET' && (path === '/academy-activity/push-icon-192.png' || path === '/academy-activity/push-icon-512.png')) {
+      const png = academyIconPng(path.includes('512') ? 512 : 192);
+      if (!png) { response.writeHead(404); response.end(); return; }
+      response.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }); response.end(png); return;
+    }
+    if (request.method === 'GET' && path === '/academy-activity/manifest.webmanifest') {
+      response.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' }); response.end(ACADEMY_MANIFEST); return;
+    }
+    if (path.startsWith('/academy-activity/push/')) {
+      if (!academyOAuth || !academyPush) { sendJson(response, 503, { ok: false, error: 'push_unavailable' }); return; }
+      if (request.method === 'GET' && path === '/academy-activity/push/key') {
+        const key = await academyPush.publicKey().catch(() => null);
+        sendJson(response, key ? 200 : 503, key ? { ok: true, publicKey: key } : { ok: false, error: 'push_unavailable' }); return;
+      }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (request.method === 'GET' && path === '/academy-activity/push/status') { sendJson(response, 200, { ok: true, devices: await academyPush.count(session.userId) }); return; }
+      if (request.method !== 'POST') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 4096);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input = {}; try { input = JSON.parse(body.rawBody) || {}; } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      if (path === '/academy-activity/push/subscribe') { const r = await academyPush.subscribe(session.userId, input.subscription || {}, { ua: request.headers['user-agent'] }); sendJson(response, r.ok ? 200 : 400, r); return; }
+      if (path === '/academy-activity/push/unsubscribe') { sendJson(response, 200, await academyPush.unsubscribe(session.userId, String(input.endpoint || ''))); return; }
+      if (path === '/academy-activity/push/test') {
+        const r = await academyPush.sendTo(async (u) => u === String(session.userId), { kind: 'test', title: '🔔 Push alerts are on', body: 'You will get a notification here every time a new price target is set on an alert you follow.', tag: 'sml-push-test', url: '/academy-activity/' }, { urgency: 'normal', ttl: 600 });
+        sendJson(response, 200, { ok: true, sent: r.sent }); return;
+      }
+      sendJson(response, 404, { ok: false, error: 'not_found' }); return;
+    }
     /* New price targets the engine set since ?since= (ms), for the Academy's pop-up notification. Only alerts the member can see live. */
     if (request.method === 'GET' && path === '/academy-activity/pt-updates') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3321,8 +3365,36 @@ async function main() {
   const AUTO_PT_MODE = ['on', 'dry', 'desk', 'off'].includes(String(process.env.ACADEMY_AUTO_PT || '').toLowerCase()) ? String(process.env.ACADEMY_AUTO_PT).toLowerCase() : 'desk';
   // only the owner's own alert channels are ever posted to; alerts from channels members follow elsewhere stay on the desk
   const ownAlertChannels = new Set(defaultChannels().flatMap((c) => [String(c.id || ''), String(c.mirrorId || '')]).filter(Boolean));
+  /* Web Push (phones and desktops, Academy closed): keys and subscriptions in academy_state_kv. ACADEMY_PUSH=off removes it. */
+  const academyPush = process.env.ACADEMY_PUSH === 'off' ? null : createPushService({ pool: database.pool, subStore: createPgStateStore({ pool: database.pool, key: 'push-subs', defaultValue: () => ({ subs: {} }), logger: log }), logger: log });
+  /* would this member see this desk alert live right now? (their Academy level, read live from their roles, and the sources they follow) */
+  const memberSeesAlertLive = async (userId, alertId) => {
+    if (!academyAlerts) return false;
+    const tier = await academyTierLive(String(userId)).catch(() => 'none');
+    if (tier !== 'member' && tier !== 'academy') return false;
+    const view = tier === 'academy' && academyGate && academyGate.alertsTiering ? 'closed' : 'live';
+    if (!academyAlertSources) return view === 'live';
+    const sources = (await academyAlertSources.viewFor(String(userId), view)).filter((x) => x.access);
+    const src = academyAlerts.allows(String(alertId), sources);
+    return !!(src && src.view === 'live');
+  };
+  const pushNewTarget = (u) => {
+    if (!academyPush || !u || !String(u.key || '').startsWith('d:')) return;
+    const up = u.side !== 'short', px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
+    const id = String(u.key).slice(2);
+    const msg = {
+      kind: 'pt', id, symbol: u.symbol, tag: 'sml-pt-' + id, sticky: true,
+      title: '🎯 ' + u.symbol + ' new price target $' + px(u.target) + ' (' + (up ? '+' : '−') + u.pct + '%)',
+      body: 'PT ' + u.n + ' $' + px(u.previous) + ' smashed.' + (u.stopRange ? ' Stop ' + (up ? 'raised to below $' : 'lowered to above $') + px(u.stopRange.low) + '–$' + px(u.stopRange.high) + '.' : '') + (u.why && u.why[0] ? ' ' + u.why.slice(0, 2).join('. ') + '.' : ''),
+      url: '/academy-activity/?symbol=' + encodeURIComponent(u.symbol) + '&ptalert=' + encodeURIComponent(id),
+      update: { key: u.key, id, symbol: u.symbol, n: u.n, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, entry: u.entry, side: u.side, stop: u.stop, stopRange: u.stopRange, stopWas: u.stopWas, signals: u.signals, story: u.story }
+    };
+    academyPush.sendTo((userId) => memberSeesAlertLive(userId, id), msg, { topic: 'pt' + id })
+      .then((r) => log('info', 'push_new_target', { symbol: u.symbol, ...r }))
+      .catch((error) => log('warn', 'push_new_target_failed', { error }));
+  };
   const academyAutoPt = academyClickAlert && AUTO_PT_MODE !== 'off' ? createAutoPtService({
-    mode: AUTO_PT_MODE, logger: log,
+    mode: AUTO_PT_MODE, logger: log, onUpdate: pushNewTarget,
     listAlerts: async () => {
       const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))), price: (() => { const ev = academyAlerts.evaluated.get(a.id); return ev && ev.quote && Number(ev.quote.last) > 0 ? Number(ev.quote.last) : null; })() })) : [];
       const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, stop: Number(r.stop) > 0 ? Number(r.stop) : undefined, at: r.at, channelId: r.channelId, postable: ownAlertChannels.has(String(r.channelId)) }));
@@ -3391,7 +3463,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyWideScanner,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyWideScanner, academyPush,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

@@ -155,10 +155,10 @@ function targetReached({ side, target, range }) {
   return side === 'short' ? Number(range.low) <= Number(target) : Number(range.high) >= Number(target);
 }
 
-function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
+function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, onUpdate = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
   const enabled = mode === 'dry' || mode === 'on' || mode === 'desk';
   const winOf = (s) => (fin(s && s.windowMs) ? Number(s.windowMs) : windowMs);
-  let state = null, running = false;
+  let state = null, running = false, view = null;
   async function load() {
     if (!state) {
       try { state = (await store.read()) || { alerts: {} }; } catch (_) { state = { alerts: {} }; }
@@ -237,6 +237,7 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
           s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 3, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: stopRange ? (s.side === 'short' ? stopRange.low : stopRange.high) : (written && written.stop || null), stopRange, stopWas: insight.stopWas, why: insight.why, signals: insight.signals, story: insight.story, tech: ev && ev.tech || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
           out.posted++;
           s.note = (willPost ? 'posted ' : 'set on the desk ') + prop.target; delete s.hitAt;
+          if (typeof onUpdate === 'function') { try { onUpdate({ key, symbol: s.symbol, ...view(s, s.updates[s.updates.length - 1], s.updates.length - 1) }); } catch (error) { logger('warn', 'auto_pt_notify_failed', { error }); } }
           logger('info', willPost ? 'auto_pt_posted' : 'auto_pt_desk', { key, symbol: s.symbol, target: prop.target, pct: prop.pct, updates: s.updates.length });
         } catch (error) { out.errors++; s.note = 'error: ' + String(error && error.message || error).slice(0, 80); logger('warn', 'auto_pt_failed', { symbol: s.symbol, error }); }
       }
@@ -246,7 +247,7 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
   }
   const status = async () => { await load(); return { mode, watching: Object.values(state.alerts).filter((s) => s.status === 'watching').length, updates: Object.values(state.alerts).reduce((n, s) => n + s.updates.length, 0) }; };
   /* the target ladder for one alert (key 'd:<alert id>'): the latest target and every update, for the alerts desk */
-  const view = (s, u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange || null, stopWas: u.stopWas || null, why: u.why || [], signals: u.signals || [], story: u.story || '', entry: s.entry, side: s.side, text: u.text, posted: !!u.posted });
+  view = (s, u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange || null, stopWas: u.stopWas || null, why: u.why || [], signals: u.signals || [], story: u.story || '', entry: s.entry, side: s.side, text: u.text, posted: !!u.posted });
   const forKey = (key) => { const s = state && state.alerts[key]; return s && s.updates.length ? { target: s.updates[s.updates.length - 1].target, stop: s.updates[s.updates.length - 1].stop || null, side: s.side, updates: s.updates.map((u, i) => view(s, u, i)) } : null; };
   /* every new target set after `since` (desk alerts only: 'd:<id>'), newest first, for the Academy's new-target notification */
   const recent = (since = 0, limit = 20) => {
