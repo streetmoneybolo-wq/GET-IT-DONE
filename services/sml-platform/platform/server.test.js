@@ -1637,4 +1637,18 @@ test('site alerts desk is signature-checked and serves the view WordPress chose 
   await withServer({ billingApiSecret: secret }, async (base) => {
     assert.equal((await post(base, { groupId: 7, view: 'live' })).status, 503);
   });
+  // a linked member: their own desk, whatever view WordPress asked for
+  const desks = [];
+  const academyAlertSources = { presetSources: () => [], siteDesk: async (id, granted) => { desks.push([id, granted]); return { view: 'closed', tier: 'academy', sources: [{ key: 'c1', channelId: 'c1', view: 'closed' }] }; } };
+  const memberAlerts = { ...academyAlerts, snapshot: (opts) => ({ ok: true, alerts: opts.sources.map((x) => ({ id: '1', source: x.channelId })) }), allows: (id, list) => (id === '1' ? list[0] : null) };
+  await withServer({ billingApiSecret: secret, academyAlerts: memberAlerts, academyAlertSources }, async (base) => {
+    const mine = await (await post(base, { discordUserId: '1087769175453339648', view: 'live' })).json();
+    assert.equal(mine.perMember, true); assert.equal(mine.view, 'closed'); assert.equal(mine.sources, 1); assert.equal(mine.alerts[0].source, 'c1');
+    await post(base, { groupId: 7, discordUserId: '1087769175453339648', view: 'live' });
+    assert.deepEqual(desks, [['1087769175453339648', ''], ['1087769175453339648', 'live']], 'a group grant is passed only inside a group');
+    seen.length = 0;
+    assert.equal((await post(base, { discordUserId: '1087769175453339648', detail: '1' })).status, 200);
+    assert.deepEqual(seen, [['detail', '1', true]], 'a closed source opens closed alerts only');
+    assert.equal((await post(base, { discordUserId: '1087769175453339648', detail: '2' })).status, 404, 'an alert outside the member desk is not found');
+  });
 });

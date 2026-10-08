@@ -101,6 +101,28 @@ test('members follow their own sources; the desk only shows those, and the owner
   assert.equal([...alerts.alerts.values()].filter((a) => a.source === CH_OPEN).length, 0);
 });
 
+test('a linked site member gets their own desk at their Academy level; a group can raise it, never lower it', async () => {
+  const OWNER_STREAM = '938944129348558848';
+  const alerts = createAlertsService({ channels: [] });
+  const directory = { canRead: async (u, c) => c !== '500000000000000077', channelInfo: async (id) => ({ id, guildId: G, name: 'c', type: 0 }), guild: async () => ({ name: 'S' }), recent: async () => [] };
+  const tiers = { [U]: 'academy', '400000000000000002': 'free' };
+  const sources = createAlertSources({ store: createAlertSourceStore(), directory, alerts, alertsTiering: true, tierFor: async (id) => tiers[id] || 'none',
+    presets: [{ key: 'swings', id: OWNER_STREAM, mirrorId: '' }] });
+  await sources.add(U, { channel: OWNER_STREAM });
+  await sources.add(U, { channel: '500000000000000010' });
+  const mine = await sources.siteDesk(U);
+  assert.equal(mine.view, 'closed', 'an academy-tier member sees the owner stream as case studies');
+  assert.deepEqual(mine.sources.map((s) => [s.channelId, s.view]), [[OWNER_STREAM, 'closed'], ['500000000000000010', 'live']]);
+  const inGroup = await sources.siteDesk(U, 'live');
+  assert.equal(inGroup.view, 'live', 'a premium group grant raises the owner stream to live');
+  assert.equal((await sources.siteDesk(U, 'teaser')).view, 'closed', 'a group never lowers the Academy level');
+  const stranger = await sources.siteDesk('400000000000000003');
+  assert.deepEqual(stranger.sources, [], 'someone who follows nothing gets an empty desk, not the global one');
+  const groupOnly = await sources.siteDesk('400000000000000002', 'live');
+  assert.deepEqual(groupOnly.sources.map((s) => [s.channelId, s.view]), [[OWNER_STREAM, 'live']], 'inside a group the owner streams are always on the desk');
+  assert.deepEqual((await sources.siteDesk('nope')).sources, []);
+});
+
 test('one desk follows at most 12 sources', async () => {
   const alerts = createAlertsService({ channels: [] });
   const directory = { canRead: async () => true, channelInfo: async (id) => ({ id, guildId: G, name: 'c' + id.slice(-2), type: 0 }), guild: async () => ({ name: 'S' }), recent: async () => [] };

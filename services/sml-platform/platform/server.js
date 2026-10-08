@@ -1376,8 +1376,30 @@ async function handleSiteAlerts(request, response, options) {
   try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
   if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
   const view = ['live', 'closed', 'teaser'].includes(input.view) ? input.view : 'teaser';
-  const gate = groupToolsLimit.take({ headers: { 'x-forwarded-for': 'site-alerts:' + String(Number(input.groupId) || 'none') }, socket: {} });
+  const gate = groupToolsLimit.take({ headers: { 'x-forwarded-for': 'site-alerts:' + String(Number(input.groupId) || String(input.discordUserId || '').replace(/[^0-9]/g, '').slice(0, 25) || 'none') }, socket: {} });
   if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+  /* A signed-in member whose stockmarketloop.com account is linked to Discord gets their own Academy desk: the sources they follow,
+     at their Academy level (or the group's, whichever is better). Never anyone else's sources. */
+  const memberId = /^\d{15,25}$/.test(String(input.discordUserId || '')) ? String(input.discordUserId) : '';
+  if (memberId && options.academyAlertSources && options.academyAlertSources.siteDesk) {
+    try {
+      const desk = await options.academyAlertSources.siteDesk(memberId, input.groupId ? view : '');
+      if (input.detail) {
+        const alertId = String(input.detail).replace(/[^0-9]/g, '').slice(0, 24);
+        const src = options.academyAlerts.allows(alertId, desk.sources);
+        if (!src || src.view === 'teaser') { sendJson(response, src ? 403 : 404, { ok: false, error: src ? 'membership_required' : 'alert_not_found' }); return; }
+        const one = await options.academyAlerts.detail(alertId, { closedOnly: src.view === 'closed' });
+        if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
+        sendJson(response, 200, { ok: true, view: desk.view, alert: one });
+        return;
+      }
+      sendJson(response, 200, { ...options.academyAlerts.snapshot({ sources: desk.sources }), view: desk.view, tier: desk.tier, sources: desk.sources.length, perMember: true });
+    } catch (error) {
+      options.logger('error', 'site_alerts_failed', { error });
+      sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' });
+    }
+    return;
+  }
   try {
     // per-member desks: the site reads the owner's streams (the presets), all shown the way WordPress chose
     const sources = options.academyAlertSources && options.academyAlertSources.presetSources ? options.academyAlertSources.presetSources(view) : null;
@@ -3025,9 +3047,20 @@ async function main() {
     candles: sentimentCandles, stream: academyMassive, orderFlow: academyOrderFlow, orderFlowStore,
     alerts: academyAlerts, sentiment: academySentiment, logger: log
   });
+  const siteTierDirectory = createDiscordDirectory({ tokens: alertTokens, logger: log });
   const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
     store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
-    alerts: academyAlerts, presets: defaultChannels(), logger: log
+    alerts: academyAlerts, presets: defaultChannels(), logger: log,
+    alertsTiering: !!(academyGate && academyGate.alertsTiering),
+    /* a linked stockmarketloop.com member's Academy level, read from their roles in the Academy server (no Discord login needed) */
+    tierFor: async (userId) => {
+      if (freeUsers.has(userId)) return 'member';
+      const held = await siteTierDirectory.memberRoles(config.academyGuildId, userId).catch(() => null);
+      if (!held) return 'none';
+      const memberRoles = academyMemberRoleIds.map(String).filter(Boolean);
+      if (!held.some((r) => memberRoles.includes(r) || config.academyAccessRoleIds.map(String).includes(r))) return 'free';
+      return held.some((r) => memberRoles.includes(r)) ? 'member' : 'academy';
+    }
   }) : null;
   /* Quick Snapshot (chart picture to a Discord channel). ACADEMY_SNAPSHOT=off removes it. */
   const academySnapshot = process.env.ACADEMY_SNAPSHOT === 'off' ? null : createSnapshotService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), logger: log });

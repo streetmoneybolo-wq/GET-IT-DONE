@@ -270,7 +270,7 @@ function createAlertSourceStore({ pool = null } = {}) {
 }
 
 /* Ties the store, the Discord directory and the alerts service together, and answers the desk's routes. */
-function createAlertSources({ store, directory, alerts, presets = [], logger = () => {}, timers = { setInterval, clearInterval } } = {}) {
+function createAlertSources({ store, directory, alerts, presets = [], tierFor = null, alertsTiering = false, logger = () => {}, timers = { setInterval, clearInterval } } = {}) {
   /* presets: the owner's streams [{ key, id, mirrorId }] from defaultChannels(); shown to every Academy session */
   const PRESETS = presets.filter((p) => p && cleanId(p.id)).map((p) => ({ channelId: String(p.id), mirrorId: cleanId(p.mirrorId), style: cleanStyle(p.key), label: PRESET_LABELS[p.key] || cleanLabel(p.key) }));
   const presetOf = (channelId) => PRESETS.find((p) => p.channelId === channelId) || null;
@@ -303,6 +303,21 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
   /* The owner's streams as desk sources, all shown the same way ('live' | 'closed' | 'teaser'). Used by the stockmarketloop.com group desk. */
   function presetSources(view = 'live') {
     return PRESETS.map((p) => ({ key: p.channelId, channelId: p.channelId, guildId: 'preset', label: p.label, style: p.style, view, premium: true, access: true }));
+  }
+  /* One member's desk for stockmarketloop.com (linked by Discord id): the sources they follow in the Academy, with the owner's streams
+     shown the way their Academy roles allow. grantedView is what a stockmarketloop.com group already grants them ('' outside a group);
+     the better of the two wins, and inside a group the owner's streams are always on the desk. */
+  const VIEW_RANK = { '': 0, teaser: 1, closed: 2, live: 3 };
+  async function siteDesk(userId, grantedView = '') {
+    const id = cleanId(userId);
+    if (!id) return { view: '', tier: 'none', sources: [] };
+    const tier = tierFor ? await tierFor(id).catch(() => 'none') : 'none';
+    const academyView = tier === 'member' ? 'live' : tier === 'academy' ? (alertsTiering ? 'closed' : 'live') : tier === 'free' ? 'teaser' : '';
+    const granted = VIEW_RANK[grantedView] ? grantedView : '';
+    const view = VIEW_RANK[granted] > VIEW_RANK[academyView] ? granted : academyView;
+    const sources = (await viewFor(id, view || 'teaser')).filter((s) => s.access);
+    if (granted) for (const p of presetSources(view)) if (!sources.some((s) => s.channelId === p.channelId)) sources.push(p);
+    return { view: view || 'teaser', tier, sources };
   }
   const publicSource = (s) => ({ guildId: s.guildId, guildName: s.guildName, channelId: s.channelId, label: s.label, authorId: s.authorId, authorName: s.authorName, style: s.style, premium: !!s.premium, access: s.access !== false });
 
@@ -359,7 +374,7 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
       posters: [...posters.values()].sort((x, y) => y.alerts - x.alerts || y.posts - x.posts).slice(0, 15), alerts: alertsFound };
   }
 
-  return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, presetSources, MAX_SOURCES };
+  return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, presetSources, siteDesk, MAX_SOURCES };
 }
 
 module.exports = { createAlertSources, createAlertSourceStore, createDiscordDirectory, channelPermissions, canReadWith, postingWith, MAX_SOURCES };
