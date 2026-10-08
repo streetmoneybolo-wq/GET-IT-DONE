@@ -1,0 +1,23 @@
+# StockMarketLoop Connect bot (Discord <-> stockmarketloop.com: /link-sml, role sync, group channel sync, alerts capture).
+# Background worker with a disk; start waits idle until BOT_ENABLED=1 (so it never runs alongside the PC copy).
+services:
+  - type: worker
+    name: sml-connect-bot
+    runtime: node
+    region: ohio
+    plan: starter
+    rootDir: services/sml-connect-bot
+    branch: deploy/node-platform
+    buildCommand: npm ci
+    startCommand: sh scripts/render-start.sh
+    disk:
+      name: sml-connect-bot-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WP_SSH_FALLBACK
+        value: "false"
+      - key: BOT_ENABLED
+        value: "0"
