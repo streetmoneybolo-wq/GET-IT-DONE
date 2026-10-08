@@ -3481,7 +3481,13 @@ async function main() {
   }
   /* Hedge & Income: the live chain (up to 3 expirations per request, cached 60 s), daily candles for ATR levels, and the member's own alert desk */
   const academyHedge = academyDataBridge.configured ? createHedgeService({
-    chain: (symbol, expiration) => academyDataBridge.get('options', symbol, expiration ? { expiration } : {}),
+    /* straight to the site's moomoo chain (served from its own cache in about a second); the shared path pages the whole Massive
+       chain and then waits in the rate-limited moomoo queue, which took up to 45 s for a cold ticker. That path stays as the fallback. */
+    chain: async (symbol, expiration) => {
+      const params = expiration ? { expiration } : {};
+      if (rawAcademyDataBridge.configured) { const fast = await rawAcademyDataBridge.get('options', symbol, params).catch(() => null); if (fast && fast.ok) return fast; }
+      return academyDataBridge.get('options', symbol, params);
+    },
     candles: getAcademyCandles, logger: log,
     alertsFor: academyAlerts ? async (userId, view) => {
       if (academyAlertSources) { const sources = (await academyAlertSources.viewFor(userId, view)).filter((s) => s.access); return academyAlerts.snapshot({ sources }).alerts || []; }
