@@ -5,7 +5,7 @@
   if (window.SmlMarketDirectionUI) return;
   var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var css = '.smd{border:1px solid #1b3540;border-radius:10px;background:#0a1118;color:#dbe7ec;font:500 12px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden;margin:10px 0}'
-    + '.smd-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid #1b3540}.smd-title{font:900 12px ui-monospace,monospace;letter-spacing:.06em;color:#eaf5f8}'
+    + '.smd-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 40px 9px 12px;border-bottom:1px solid #1b3540}.smd-title{font:900 12px ui-monospace,monospace;letter-spacing:.06em;color:#eaf5f8}'
     + '.smd-tabs{display:flex;gap:4px}.smd-tabs button{border:1px solid #284654;border-radius:7px;background:#0d1a22;color:#9fb6c1;padding:4px 10px;font:800 11px system-ui;cursor:pointer}.smd-tabs button.on{border-color:#00c47d;color:#7ef0bd;background:#0b2a20}'
     + '.smd-meta{margin-left:auto;color:#7b93a0;font:700 10px ui-monospace,monospace}.smd-body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:0}@media(max-width:900px){.smd-body{grid-template-columns:1fr}}'
     + '.smd-col{padding:10px 12px;min-width:0}.smd-col+.smd-col{border-left:1px solid #13262f}@media(max-width:900px){.smd-col+.smd-col{border-left:0;border-top:1px solid #13262f}}'
