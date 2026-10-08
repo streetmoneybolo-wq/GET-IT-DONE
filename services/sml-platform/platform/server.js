@@ -3170,7 +3170,9 @@ async function main() {
     normalizeChain: require('./academy-alert-options').normalizeChain,
     logger: log
   }) : null;
-  const marketGauges = createMarketGauges({ candles: sentimentCandles, vix: createVixFetcher({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-indices', u, o) }) });
+  /* the sentiment panel's VIX gauge: the vendor index when the plan has it, else the SML VIX (CBOE method on SPY options) */
+  const vendorVix = createVixFetcher({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-indices', u, o) });
+  const marketGauges = createMarketGauges({ candles: sentimentCandles, vix: async () => { const v = await vendorVix().catch(() => null); if (v) return v; if (!smlVix) return null; const s = await smlVix.get().catch(() => null); return s && s.ok ? { level: s.level, source: 'sml-vix' } : null; } });
   const academySentiment = academyAlerts ? createSentimentService({
     news: (s) => academyAlerts.newsFor(s), social: (s) => academyAlerts.socialFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(),
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars),
