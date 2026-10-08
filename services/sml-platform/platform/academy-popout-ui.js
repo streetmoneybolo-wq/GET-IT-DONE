@@ -17,6 +17,7 @@
     ['chart', 'Chart', 'section.chart'],
     ['direction', 'Market direction', '#academy-direction'],
     ['unusual-volume', 'Unusual volume', '#academy-unusual-volume'],
+    ['sml-vix', 'SML VIX', '#academy-sml-vix'],
     ['alerts', 'Alerts desk', '#academy-alerts'],
     ['quote', 'Quote & order book', 'aside.side'],
     ['quote-stats', 'Quote statistics', '.academy-quote-stats'],

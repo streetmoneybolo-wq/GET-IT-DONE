@@ -750,7 +750,7 @@ const ACADEMY_POPOUT_HEAD = (() => {
 })();
 /* Market Direction panel (shared display file) + its Academy mount. */
 const ACADEMY_DIRECTION = (() => {
-  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
@@ -1610,7 +1610,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2500,6 +2500,22 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       catch (error) { logger('error', 'market_direction_failed', { error }); sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' }); }
       return;
     }
+    /* SML VIX (any signed-in Academy session): the level, its move since today's 9:30 open and the readings this server has taken today. */
+    if (request.method === 'GET' && path === '/academy-activity/vix') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academySmlVix) { sendJson(response, 503, { ok: false, error: 'vix_unavailable' }); return; }
+      try {
+        const v = await academySmlVix.get();
+        const et = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+        const mins = (Number(et.find((p) => p.type === 'hour').value) % 24) * 60 + Number(et.find((p) => p.type === 'minute').value);
+        const openMs = Date.now() - (mins - 570) * 60_000;
+        const hist = academySmlVix.history().filter((h) => Date.now() - h.t < 18 * 3600_000);
+        sendJson(response, v && v.ok ? 200 : 503, { ...(v || { ok: false }), change: mins >= 570 ? academySmlVix.changeSince(openMs) : null, history: hist.slice(-240) });
+      } catch (error) { logger('error', 'sml_vix_failed', { error }); sendJson(response, 503, { ok: false, error: 'vix_unavailable' }); }
+      return;
+    }
     /* Unusual volume across the whole market (any signed-in Academy session). */
     if (request.method === 'GET' && path === '/academy-activity/unusual-volume') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3304,7 +3320,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

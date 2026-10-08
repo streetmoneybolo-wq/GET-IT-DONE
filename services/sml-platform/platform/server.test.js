@@ -1729,3 +1729,19 @@ test('unusual volume (Academy): needs a session and returns the whole-market lis
     assert.equal(j.rows[0].sym, 'MEDS');
   });
 });
+
+test('SML VIX (Academy): needs a session; returns the level, history and change since the open', async () => {
+  const { createAcademyOAuth } = require('./academy-oauth');
+  const oauth = createAcademyOAuth({ clientId: 'c', clientSecret: 's', academyAccess: { verify: async () => ({ ok: true }) } });
+  const academySmlVix = { get: async () => ({ ok: true, level: 15.14, asOf: 1, terms: [] }), history: () => [{ t: Date.now(), level: 15.14 }], changeSince: () => ({ from: 15, to: 15.14, change: 0.14, pct: 0.93 }) };
+  await withServer({ academyOAuth: oauth, academySmlVix }, async (base) => {
+    assert.equal((await fetch(base + '/academy-activity/vix')).status, 401);
+    const token = oauth.issuePopoutSession('420000000000000042', 'free');
+    const j = await (await fetch(base + '/academy-activity/vix', { headers: { authorization: 'Bearer ' + token } })).json();
+    assert.equal(j.level, 15.14); assert.equal(j.history.length, 1);
+  });
+  await withServer({ academyOAuth: oauth }, async (base) => {
+    const token = oauth.issuePopoutSession('420000000000000042', 'free');
+    assert.equal((await fetch(base + '/academy-activity/vix', { headers: { authorization: 'Bearer ' + token } })).status, 503);
+  });
+});
