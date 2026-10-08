@@ -17,6 +17,7 @@ const chainLib = require('./academy-options-chain');
 
 const RATE = 0.043;
 const MULT = 100;
+const CANDLE_WAIT_MS = 6_000;
 const DISCLAIMER = 'Educational analysis, not financial advice. Options can lose 100% of what you pay for them, selling options carries obligations (you can be assigned), and nothing here places a trade. Prices are mid-market estimates; real fills can be worse.';
 
 /* expiry windows (days to expiry) per MEM ALGO mode: protect = hedges, income = premium selling, dir = the single directional contract */
@@ -384,7 +385,8 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
     if (!chain) return { ok: false, status: 503, error: 'options_unconfigured', message: 'The live options feed is not connected right now.' };
     const [ch, daily, alert] = await Promise.all([
       loadChain(symbol, horizon).catch((error) => { logger('warn', 'hedge_chain_failed', { symbol, error }); return { ok: false }; }),
-      candles ? Promise.resolve(candles(symbol, '1D')).catch(() => null) : null,
+      // daily candles only refine the levels: never let a slow or rate-limited candle source hold the answer back
+      candles ? Promise.race([Promise.resolve(candles(symbol, '1D')).catch(() => null), new Promise((r) => { const t = setTimeout(() => r(null), CANDLE_WAIT_MS); if (t.unref) t.unref(); })]) : null,
       // noAlerts: the stockmarketloop.com dashboard (signed /v1/group-tools/hedge) brings its own levels and never reads Academy desks
       (q.noAlerts || (q.entry > 0 && q.target > 0 && q.stop > 0)) ? null : alertLevels(symbol, q.userId, q.view)
     ]);
@@ -402,12 +404,14 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
       else if (alert && alert[name] > 0) { val[name] = alert[name]; from[name] = 'alert'; }
     }
     if (!(val.entry > 0)) { val.entry = price; from.entry = 'price'; }
-    if (atr > 0 && fin(price)) {
-      if (!(val.stop > 0)) { val.stop = price - sgn * k[0] * atr; from.stop = 'atr'; }
-      if (!(val.target > 0)) { val.target = price + sgn * k[1] * atr; from.target = 'atr'; }
+    // no candles in time: a typical 2.5% daily range stands in for the ATR so the ideas still come back
+    const rng = atr > 0 ? atr : (fin(price) && price > 0 ? price * 0.025 : null), how = atr > 0 ? 'atr' : 'estimate';
+    if (rng > 0 && fin(price)) {
+      if (!(val.stop > 0)) { val.stop = price - sgn * k[0] * rng; from.stop = how; }
+      if (!(val.target > 0)) { val.target = price + sgn * k[1] * rng; from.target = how; }
     }
     const { entry, target, stop } = val;
-    const source = Object.values(from).includes('alert') ? 'alert' : Object.values(from).includes('atr') ? 'atr' : 'query';
+    const source = Object.values(from).includes('alert') ? 'alert' : (Object.values(from).includes('atr') || Object.values(from).includes('estimate')) ? 'atr' : 'query';
     const out = planHedges({ symbol, price, side, shares: q.shares, entry, target, stop, horizon, memRead: { dir: q.dir, strength: q.strength }, chain: ch.rows, now: now() });
     out.levels = Object.assign({}, out.levels, { source, from, alertId: alert ? alert.id : null, atr: atr ? Math.round(atr * 100) / 100 : null });
     out.expirations = ch.expirations;
