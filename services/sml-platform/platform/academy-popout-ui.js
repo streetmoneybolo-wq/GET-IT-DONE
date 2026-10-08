@@ -26,6 +26,7 @@
     ['buy-sell', 'Buy / sell pressure', '.academy-buysell'],
     ['dark-pool', 'Dark pool', '.academy-darkpool'],
     ['short-sale', 'Short sale', '.academy-shortsale'],
+    ['sentiment', 'Sentiment', '.academy-sentiment'],
     ['options-focus', 'Options focus', '#options-focus'],
     ['sire', 'S.I.R.E.', '#sire-panel'],
     ['mem-algo', 'MEM ALGO', '#mem-algo-panel'],
@@ -347,7 +348,12 @@
     screener: () => { const sc = document.getElementById('academy-screener'); if (sc && getComputedStyle(sc).display === 'none') { const t = document.getElementById('academy-screener-toggle'); if (t) t.click(); } },
     alerts: () => { const a = document.getElementById('academy-alerts'); if (a && getComputedStyle(a).display === 'none') { const f = document.getElementById('academy-alerts-fab'); if (f) f.click(); } }
   };
+  // panels driven by a toolbar toggle (DARK POOL, BUY/SELL, SHORT SALE, SENTIMENT, EARNINGS): switch it on once
+  const TOGGLES = { 'dark-pool': '#darkpool-toggle', 'buy-sell': '#buysell-toggle', 'short-sale': '#shortsale-toggle', sentiment: '#sentiment-toggle', earnings: '#earnings-toggle' };
+  const toggleOn = (sel) => { const b = document.querySelector(sel); if (b && !b.classList.contains('on')) b.click(); };
+  Object.keys(TOGGLES).forEach((id) => { const before = OPEN[id]; OPEN[id] = () => { if (before) before(); toggleOn(TOGGLES[id]); }; });
   const READY = { sire: () => !!(window.smlSirePanel && window.smlSirePanel.state && window.smlSirePanel.state.open) };
+  Object.keys(TOGGLES).forEach((id) => { READY[id] = () => { const b = document.querySelector(TOGGLES[id]); return !!(b && b.classList.contains('on')); }; });
   const hasContent = (id) => { const m = modules().find((x) => x.id === id); return !!(m && m.el && String(m.el.innerText || '').replace('⧉', '').trim().length > 4); };
 
   async function bootPopout() {
