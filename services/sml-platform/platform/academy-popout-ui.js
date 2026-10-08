@@ -127,7 +127,9 @@
     }
   }
   let scanQueued = false;
-  const queueScan = () => { if (scanQueued) return; scanQueued = true; setTimeout(() => { scanQueued = false; addButtons(); document.querySelectorAll('.sml-pop-btn').forEach((b) => { if (covers(b)) place(b); }); }, 400); };
+  const queueScan = () => { if (scanQueued) return; scanQueued = true; setTimeout(() => { scanQueued = false; addButtons(); }, 400); };
+  // layouts shift as panels open and close: re-check now and then, never on every live tick
+  setInterval(() => { if (!document.hidden) document.querySelectorAll('.sml-pop-btn').forEach((b) => { if (covers(b)) place(b); }); }, 5000);
 
   /* ---------- linked tickers across a member's windows ---------- */
   const LINK_KEY = 'sml-pop-link:' + (POP || 'main');
