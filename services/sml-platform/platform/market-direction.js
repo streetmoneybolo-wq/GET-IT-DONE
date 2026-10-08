@@ -56,6 +56,7 @@ function sessionOf(ms) {
 function internalsFrom(rows) {
   const list = (Array.isArray(rows) ? rows : []).filter((r) => r && r.prevDay && Number(r.prevDay.c) >= 2 && Number(r.prevDay.v) >= 100_000 && fin(Number(r.todaysChangePerc)));
   let adv = 0, dec = 0, upVol = 0, downVol = 0, tickUp = 0, tickDown = 0, nearHigh = 0, nearLow = 0;
+  const unusual = []; // today's volume (pre-market included) vs yesterday's whole day, liquid names only
   const newest = list.reduce((m, r) => Math.max(m, Number(r.min && r.min.t) || 0), 0);
   for (const r of list) {
     const ch = Number(r.todaysChangePerc);
@@ -64,6 +65,8 @@ function internalsFrom(rows) {
     // TICK-style: stocks whose latest one-minute bar closed up vs down (only bars from the last 3 minutes count)
     const m = r.min;
     if (m && newest && newest - Number(m.t) <= 180_000 && fin(Number(m.o)) && fin(Number(m.c))) { if (m.c > m.o) tickUp += 1; else if (m.c < m.o) tickDown += 1; }
+    const prevV = Number(r.prevDay.v);
+    if (vol >= 100_000 && prevV >= 300_000 && Number(r.prevDay.c) >= 1) unusual.push({ sym: r.ticker, ratio: vol / prevV, vol, chg: round(ch, 2) });
     const d = r.day;
     if (d && Number(d.h) > 0 && Number(d.l) > 0) { const c = Number(r.lastTrade && r.lastTrade.p) || Number(d.c); if (c >= d.h * 0.998) nearHigh += 1; else if (c <= d.l * 1.002) nearLow += 1; }
   }
@@ -72,7 +75,8 @@ function internalsFrom(rows) {
     universe: list.length, adv, dec, adRatio: dec ? round(adv / dec) : null, pctAdvancing: adv + dec ? round((adv / (adv + dec)) * 100, 1) : null,
     upVol, downVol, upDownVolRatio: downVol ? round(upVol / downVol) : null,
     tick: ticks >= 50 ? { up: tickUp, down: tickDown, net: tickUp - tickDown, ratio: round((tickUp - tickDown) / ticks, 3) } : null,
-    nearHigh, nearLow
+    nearHigh, nearLow,
+    unusualVolume: unusual.sort((a, b) => b.ratio - a.ratio).slice(0, 10).map((u) => ({ sym: u.sym, ratio: round(u.ratio, 2), vol: Math.round(u.vol), chg: u.chg }))
   };
 }
 
@@ -358,7 +362,7 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
       }
       return out;
     }) || {};
-    const internals = await cached('internals', open ? 60_000 : 600_000, async () => internalsFrom(await snapshotAll()));
+    const internals = await cached('internals', open ? 60_000 : session === 'closed' ? 600_000 : 120_000, async () => internalsFrom(await snapshotAll()));
     const tfs = mode === 'day' ? ['5m', '15m', '1h', '4h'] : ['1h', '4h', '1D', '1W'];
     const mtf = { SPY: {} };
     await Promise.all(tfs.map(async (tf) => { mtf.SPY[tf] = await trendFor('SPY', tf, tf === '5m' ? 30_000 : tf === '15m' ? 60_000 : 300_000); }));
@@ -403,6 +407,7 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
         levels: data.levels.SPY, options: data.options ? { pcVolume: data.options.pcVolume, callWall: data.options.callWall, putWall: data.options.putWall } : null,
         vol: data.vol ? { level: data.vol.level, change: data.vol.change || null, terms: data.vol.terms, source: data.vol.source, stale: !!data.vol.stale, asOf: data.vol.asOf } : null,
         checklist: checklist(m, data, result), flips: flips(m, data, result),
+        unusualVolume: data.internals && data.internals.unusualVolume ? data.internals.unusualVolume : [],
         proxies: 'SPY / QQQ stand in for ES / NQ futures. ' + (data.vol ? 'SML VIX is computed with the CBOE VIX method from live SPY options.' : 'VIXY stands in for VIX while the SPY options feed is down.') + ' Internals are built from the whole US stock snapshot.',
         disclaimer: 'Educational market read. Not financial advice; no read is certain and nothing here places a trade.'
       };

@@ -111,3 +111,9 @@ test('volatility uses the SML VIX when it is live: level plus its move since the
   const fallback = md.score('day', { ...base, vol: null, quotes: { ...base.quotes, VIXY: { changePct: 5 } } }).components.find((c) => c.key === 'volatility');
   assert.match(fallback.label, /VIXY/);
 });
+
+test('unusual volume: today vs yesterday whole day, liquid names only, biggest first', () => {
+  const r = (ticker, vol, prevV, price = 10) => ({ ticker, todaysChangePerc: 1, prevDay: { c: price, v: prevV }, day: { v: vol }, min: { t: 1, o: 1, c: 1, av: vol } });
+  const it = md.internalsFrom([r('HOT', 5_000_000, 1_000_000), r('WARM', 900_000, 600_000), r('TINY', 50_000, 400_000), r('THIN', 400_000, 100_000), r('NORM', 1_000_000, 2_000_000)]);
+  assert.deepEqual(it.unusualVolume.map((u) => [u.sym, u.ratio]), [['HOT', 5], ['WARM', 1.5], ['NORM', 0.5]]);
+});
