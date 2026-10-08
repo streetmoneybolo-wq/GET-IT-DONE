@@ -1697,3 +1697,23 @@ test('pop-out windows: ticket -> exchange -> renew re-checks access, and the lin
     assert.equal((await fetch(base + '/academy-activity/popout/exchange', { method: 'POST' })).status, 503);
   });
 });
+
+test('market direction: Academy route needs a session, the site route needs the billing signature', async () => {
+  const crypto = require('node:crypto');
+  const { createAcademyOAuth } = require('./academy-oauth');
+  const oauth = createAcademyOAuth({ clientId: 'c', clientSecret: 's', academyAccess: { verify: async () => ({ ok: true }) } });
+  const asked = [];
+  const marketDirection = { get: async (mode) => { asked.push(mode); return { ok: true, mode, label: 'Neutral', bias: 0 }; } };
+  const secret = 'billing-test-secret';
+  const signed = (base, payload) => { const raw = JSON.stringify(payload), ts = 1_700_000_000; return fetch(base + '/v1/group-tools/direction', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sml-timestamp': String(ts), 'x-sml-signature': crypto.createHmac('sha256', secret).update(`${ts}.${raw}`, 'utf8').digest('hex') }, body: raw }); };
+  await withServer({ academyOAuth: oauth, marketDirection, billingApiSecret: secret }, async (base) => {
+    assert.equal((await fetch(base + '/academy-activity/direction')).status, 401);
+    const token = oauth.issuePopoutSession('420000000000000042', 'free');
+    const day = await (await fetch(base + '/academy-activity/direction?mode=day', { headers: { authorization: 'Bearer ' + token } })).json();
+    assert.equal(day.mode, 'day');
+    assert.equal((await fetch(base + '/academy-activity/direction?mode=swing', { headers: { authorization: 'Bearer ' + token } })).status, 200);
+    assert.ok([400, 401].includes((await fetch(base + '/v1/group-tools/direction', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status), 'unsigned is refused');
+    assert.equal((await (await signed(base, { mode: 'swing' })).json()).mode, 'swing');
+    assert.deepEqual(asked, ['day', 'swing', 'swing']);
+  });
+});

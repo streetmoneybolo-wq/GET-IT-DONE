@@ -44,6 +44,7 @@ const { createPgStateStore } = require('./academy-state-store');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
+const { createMarketDirection, massiveSnapshots } = require('./market-direction');
 const dataHealth = createDataHealth({ soft: { 'massive-indices': [401, 403], 'wordpress-history': [500] } });
 const { createDataRateLimit } = require('./data-rate-limit');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
@@ -746,6 +747,10 @@ const ACADEMY_APPEARANCE = (() => {
 const ACADEMY_POPOUT_HEAD = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-head.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+/* Market Direction panel (shared display file) + its Academy mount. */
+const ACADEMY_DIRECTION = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
@@ -845,7 +850,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_POPOUT_UI + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_POPOUT_UI + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -1604,7 +1609,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -1701,6 +1706,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
         return;
       }
+    }
+    /* Market Direction for stockmarketloop.com (signed with the shared billing secret, like the alerts desk). */
+    if (request.method === 'POST' && path === '/v1/group-tools/direction') {
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      const verified = verifySignature({ secret: billingOptions.billingApiSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: billingOptions.now() });
+      if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
+      if (!marketDirection) { sendJson(response, 503, { ok: false, error: 'direction_unavailable' }); return; }
+      let input = {};
+      try { input = JSON.parse(body.rawBody) || {}; } catch (_) { input = {}; }
+      try { sendJson(response, 200, await marketDirection.get(input.mode === 'swing' ? 'swing' : 'day')); }
+      catch (error) { logger('error', 'market_direction_failed', { error }); sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' }); }
+      return;
     }
     if (request.method === 'POST' && path === '/v1/group-tools/alerts') {
       await handleSiteAlerts(request, response, { ...billingOptions, academyAlerts, academyAlertSources });
@@ -2469,6 +2488,17 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Real-time push of every trade and quote for one symbol (Server-Sent Events) from the shared Massive connection. The polled /live above stays as the fallback. */
+    /* Market Direction for the Academy (any signed-in Academy session). */
+    if (request.method === 'GET' && path === '/academy-activity/direction') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!marketDirection) { sendJson(response, 503, { ok: false, error: 'direction_unavailable' }); return; }
+      const mode = new URL(request.url || '/', 'http://localhost').searchParams.get('mode') === 'swing' ? 'swing' : 'day';
+      try { sendJson(response, 200, await marketDirection.get(mode)); }
+      catch (error) { logger('error', 'market_direction_failed', { error }); sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' }); }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/stream') {
       const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
       if (!academyMassive || !academyMassive.status().enabled) { sendJson(response, 503, { ok: false, error: 'stream_disabled' }); return; }
@@ -3124,6 +3154,15 @@ async function main() {
     if (marketHistory.enabled && Object.prototype.hasOwnProperty.call(MASSIVE_TIMEFRAMES, tf)) { const r = await marketHistory.get(symbol, tf); if (r.ok) return r.data; }
     return getAcademyCandles(symbol, tf);
   };
+  /* Market Direction engine: one shared read for the Academy panel and the stockmarketloop.com dashboard panel. */
+  const marketDirection = String(config.massiveApiKey || '').trim() ? createMarketDirection({
+    ...massiveSnapshots({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o) }),
+    candles: getAcademyCandles,
+    tape: academyMassive && academyMassive.status().enabled ? academyMassive : null,
+    optionsChain: academyDataBridge.configured ? async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; } : null,
+    normalizeChain: require('./academy-alert-options').normalizeChain,
+    logger: log
+  }) : null;
   const marketGauges = createMarketGauges({ candles: sentimentCandles, vix: createVixFetcher({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-indices', u, o) }) });
   const academySentiment = academyAlerts ? createSentimentService({
     news: (s) => academyAlerts.newsFor(s), social: (s) => academyAlerts.socialFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(),
@@ -3246,7 +3285,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

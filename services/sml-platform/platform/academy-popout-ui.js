@@ -15,6 +15,7 @@
 
   const MODULES = [
     ['chart', 'Chart', 'section.chart'],
+    ['direction', 'Market direction', '#academy-direction'],
     ['alerts', 'Alerts desk', '#academy-alerts'],
     ['quote', 'Quote & order book', 'aside.side'],
     ['quote-stats', 'Quote statistics', '.academy-quote-stats'],
