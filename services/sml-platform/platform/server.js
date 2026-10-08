@@ -3253,15 +3253,18 @@ async function main() {
   });
   /* Auto price-target updates (ACADEMY_AUTO_PT=dry decides and logs only, =on also posts): every alert is watched for five days; when its target is hit the Academy's data,
      sentiment and the market outlook decide a new target 12% to 40% beyond the live price. Off unless switched on. */
-  const AUTO_PT_MODE = ['on', 'dry'].includes(String(process.env.ACADEMY_AUTO_PT || '').toLowerCase()) ? String(process.env.ACADEMY_AUTO_PT).toLowerCase() : 'off';
+  /* desk (default): new targets are decided and shown on the Academy alerts desk with their write-up, nothing is posted; on: also posted to the alert's channel; dry: log only; off */
+  const AUTO_PT_MODE = ['on', 'dry', 'desk', 'off'].includes(String(process.env.ACADEMY_AUTO_PT || '').toLowerCase()) ? String(process.env.ACADEMY_AUTO_PT).toLowerCase() : 'desk';
+  // only the owner's own alert channels are ever posted to; alerts from channels members follow elsewhere stay on the desk
+  const ownAlertChannels = new Set(defaultChannels().flatMap((c) => [String(c.id || ''), String(c.mirrorId || '')]).filter(Boolean));
   const academyAutoPt = academyClickAlert && AUTO_PT_MODE !== 'off' ? createAutoPtService({
     mode: AUTO_PT_MODE, logger: log,
     listAlerts: async () => {
-      const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source) })) : [];
+      const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))) })) : [];
       const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, at: r.at, channelId: r.channelId }));
       return desk.concat(click);
     },
-    range: academyClickAlert.rangeSince, evidence: academyClickAlert.evidenceFor, post: academyClickAlert.postAutoUpdate,
+    range: academyClickAlert.rangeSince, evidence: academyClickAlert.evidenceFor, post: academyClickAlert.postAutoUpdate, compose: academyClickAlert.composeAutoUpdate,
     sentiment: academySentiment ? (s) => academySentiment.get(s) : null, market: () => marketGauges.get(),
     store: createPgStateStore({ pool: database.pool, key: 'auto-pt', defaultValue: () => ({ alerts: {} }), logger: log })
   }) : null;
@@ -3269,6 +3272,9 @@ async function main() {
     const runAutoPt = () => academyAutoPt.tick().then((r) => { if (r && r.ran && (r.hits || r.posted || r.errors)) log('info', 'auto_pt_tick', r); }).catch((error) => log('warn', 'auto_pt_tick_failed', { error }));
     setTimeout(runAutoPt, 90_000).unref(); setInterval(runAutoPt, 5 * 60_000).unref();
     log('info', 'auto_pt_enabled', { mode: AUTO_PT_MODE });
+    // the alerts desk works toward the newest target and shows each update's write-up
+    void academyAutoPt.load().catch(() => {});
+    if (academyAlerts && typeof academyAlerts.setPtLadder === 'function') academyAlerts.setPtLadder((key) => academyAutoPt.forKey(key));
   }
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,

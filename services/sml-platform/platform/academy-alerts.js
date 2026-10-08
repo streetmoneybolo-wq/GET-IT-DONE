@@ -91,6 +91,7 @@ function createAlertsService({
   optionsChain = null, earnings = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
 } = {}) {
   const alerts = new Map(); // discord message id -> alert record
+  let ptLadder = null; // (key 'd:<id>') -> { target, updates } from the automatic price-target engine (academy-auto-pt.js)
   const styleOf = (c) => (c.style === 'longterm' || (!c.style && c.key === 'longterm') ? 'longterm' : 'swings');
   const feedFor = (c) => ({ ok: false, error: 'not polled yet', lastPollAt: 0, tokenLabel: '', via: 'channel', label: c.label || '' });
   const feed = {}; for (const c of channels) feed[c.key] = feedFor(c);
@@ -254,13 +255,16 @@ function createAlertsService({
     const chk = alert.channel === 'longterm' || detail ? risk.checklist({ fin, company: co, daily, quote: q }) : null;
     const g = risk.gradeRisk({ alert, quote: q, daily, fin, company: co, short: sh, sentiment: sent, news: nws, filings: fil, market, sector: sq, algoView: view, spreadPct, earnings: nextEr, now: now() });
     const since = risk.sinceAlert(alert, intraday, daily, q ? Number(q.last) : null);
-    const plan = risk.planFor({ alert, quote: q, daily, since, risk: g, algoView: view, flow, sentiment: sent, news: nws, checklist: chk, now: now() });
+    // once the engine has set a new price target, the plan works toward it (PT 2, PT 3...) instead of the original one
+    const ladder = ptLadder ? ptLadder('d:' + alert.id) : null;
+    const working = ladder && Number(ladder.target) > 0 ? { ...alert, target: Number(ladder.target) } : alert;
+    const plan = risk.planFor({ alert: working, quote: q, daily, since, risk: g, algoView: view, flow, sentiment: sent, news: nws, checklist: chk, now: now() });
     const last = alert.planLog[alert.planLog.length - 1];
     if (!last || last.action !== plan.action || Math.abs((last.target || 0) - plan.target) > 1e-9) { alert.planLog.push({ t: now(), action: plan.action, target: plan.target, price: q ? Number(q.last) : null }); if (alert.planLog.length > 12) alert.planLog.shift(); }
     let opt = null;
     if (chain && chain.length) { try { opt = optionsCalc.considerOptions({ alert, price: q ? Number(q.last) : null, atrPct: g.atrPct || (daily && risk.dailyStats(daily) ? risk.dailyStats(daily).atrPct : null), plan, algoView: view, flow, rows: chain, riskBand: g.band, now: now() }); } catch (_) { opt = null; } }
     else if (chain) opt = { verdict: 'NONE', available: false, reason: 'No listed options were found for this stock.', channel: alert.channel };
-    return { options: opt, alert, quote: q, risk: g, plan, since, after: postAlertRange(alert, intraday, daily), checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
+    return { ladder, options: opt, alert, quote: q, risk: g, plan, since, after: postAlertRange(alert, intraday, daily), checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
   }
 
   const evaluated = new Map();
@@ -292,6 +296,7 @@ function createAlertsService({
       price: q ? r4(Number(q.last)) : null, chgPct: q ? r4(Number(q.chgPct)) : null, sincePct: ev.since && ev.since.pct != null ? r4(ev.since.pct) : null, high: r4(ev.since && ev.since.high), low: r4(ev.since && ev.since.low),
       risk: { score: ev.risk.score, band: ev.risk.band, label: ev.risk.label, top: ev.risk.top, flags: ev.risk.flags, coverage: ev.risk.coverage },
       plan: { action: ev.plan.action, target: ev.plan.target, stop: ev.plan.stop, reasons: full ? ev.plan.reasons : ev.plan.reasons.slice(0, 2), progress: r4(ev.plan.progress) },
+      ptUpdates: ev.ladder ? ev.ladder.updates.map((u) => ({ n: u.n, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, posted: u.posted, text: full ? u.text : undefined })) : [],
       sector: ev.sector, flow: ev.flow ? { bias: ev.flow.bias, source: ev.flow.source } : null, algo: ev.algo ? { bias: ev.algo.bias, label: ev.algo.label } : null,
       options: ev.options ? (full ? ev.options : { verdict: ev.options.verdict, available: ev.options.available, side: ev.options.side || null, strength: ev.options.strength || null, label: ev.options.contract ? `${ev.options.contract.dte}d ${ev.options.contract.strike} ${ev.options.side}` : null }) : null,
       checklist: ev.checklist ? { yes: ev.checklist.yes, no: ev.checklist.no, unknown: ev.checklist.unknown, items: ev.checklist.items.map((i) => ({ k: i.key, l: i.label, ok: i.ok, d: full ? i.detail : undefined })) } : null
@@ -396,7 +401,8 @@ function createAlertsService({
   function stop() { running = false; if (pollTimer) timers.clearInterval(pollTimer); if (refreshTimer) timers.clearInterval(refreshTimer); }
 
   const channelIdFor = (key) => { const c = channels.find((x) => x.key === key); return c ? c.id : ''; };
-  return { channelIdFor, start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes };
+  const setPtLadder = (fn) => { ptLadder = typeof fn === 'function' ? fn : null; };
+  return { setPtLadder, channelIdFor, start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */

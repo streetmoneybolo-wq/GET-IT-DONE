@@ -431,6 +431,13 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     if (!mid.ok) return null;
     return { price, alignment: mid.alignment, levels: wide.ok ? wide.levels : mid.levels, volPct: (dailyVolatility(set.daily) || 0.03) * 100 };
   }
+  /* the same PT SMASHED update as text only, nothing posted: the Academy alerts desk shows it on the alert (new target + the insight behind it) */
+  async function composeAutoUpdate({ symbol, target, previousTarget }) {
+    const analysis = await gather(symbol, Number(target));
+    if (!analysis.ok) throw new Error('analysis_' + analysis.code);
+    analysis.smashed = { auto: true, prevTarget: previousTarget || null, forced: true };
+    return { text: textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())), stop: analysis.stop, horizon: analysis.horizon };
+  }
   /* post the update as the Academy app, to the channel the alert was posted in: PT SMASHED layout, @everyone, both scenario charts */
   async function postAutoUpdate({ symbol, channelId, target, previousTarget }) {
     if (!SNOWFLAKE.test(String(channelId))) throw new Error('invalid_channel');
@@ -447,7 +454,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return { messageId: posted.id, images: files.length === 2 };
   }
 
-  return { entitlement, preview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, store };
+  return { entitlement, preview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

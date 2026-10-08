@@ -119,3 +119,26 @@ test('a failure to post is recorded and retried, never lost or doubled', async (
   fail = false; const r2 = await h.svc.tick(); assert.equal(r2.posted, 1);
   assert.equal(h.saved.v.alerts['c:1'].updates.length, 1);
 });
+
+test('desk mode: the new target and its write-up are recorded for the alerts desk, nothing is posted', async () => {
+  const composed = [];
+  const { svc, posts } = harness({ deps: { mode: 'desk', compose: async (p) => { composed.push(p); return { text: '🔥 AIXI PT SMASHED — NEW PT SET $2.80 🔥', stop: 2.05 }; } } });
+  await svc.tick();
+  assert.equal(posts.length, 0, 'desk mode never posts');
+  const ladder = svc.forKey('c:1');
+  assert.ok(ladder && ladder.target > 2.3, 'a new target above the live price');
+  assert.equal(ladder.updates[0].n, 1); assert.equal(ladder.updates[0].previous, 2.2); assert.equal(ladder.updates[0].posted, false);
+  assert.match(ladder.updates[0].text, /PT SMASHED/); assert.equal(composed[0].previousTarget, 2.2);
+});
+
+test('on mode posts only to the owner\'s channels; a long watch window keeps long-term alerts watched', async () => {
+  const NOW2 = NOW;
+  const { svc, posts } = harness({ alerts: [
+    { key: 'd:own', symbol: 'AIXI', side: 'long', entry: 1.8, target: 2.2, at: NOW2 - 2 * DAY, channelId: '444444444444444444', postable: true },
+    { key: 'd:theirs', symbol: 'BBBB', side: 'long', entry: 1.8, target: 2.2, at: NOW2 - 2 * DAY, channelId: '555555555555555555', postable: false },
+    { key: 'd:long', symbol: 'CCCC', side: 'long', entry: 1.8, target: 2.2, at: NOW2 - 40 * DAY, channelId: '444444444444444444', postable: true, windowMs: 90 * DAY }
+  ], deps: { compose: async () => ({ text: 'x' }) } });
+  await svc.tick();
+  assert.deepEqual(posts.map((p) => p.symbol).sort(), ['AIXI', 'CCCC'], 'never posts into a channel the owner does not run; a 40-day-old long-term alert is still watched');
+  assert.equal(svc.forKey('d:theirs').updates[0].posted, false, 'the other channel still gets the desk update');
+});

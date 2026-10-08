@@ -7,7 +7,8 @@
  * target. A new target is always between 12% and 40% beyond the live price in the alert's direction, never outside that band: if the evidence is not good enough to
  * justify at least +12%, no update is posted at all. At most three updates per alert, and never twice for the same target.
  *
- * Modes (ACADEMY_AUTO_PT): off (default), dry (decide and log, post nothing), on (post to the alert's own channel). */
+ * Modes (ACADEMY_AUTO_PT): desk (default: decide and record the new target + its write-up for the Academy alerts desk, post nothing),
+ * dry (decide and log only), on (record AND post to the alert's own channel), off. Each alert can carry its own watch window (windowMs). */
 
 const MIN_PCT = 12, MAX_PCT = 40;
 const WINDOW_MS = 5 * 86_400_000;
@@ -73,8 +74,9 @@ function targetReached({ side, target, range }) {
   return side === 'short' ? Number(range.low) <= Number(target) : Number(range.high) >= Number(target);
 }
 
-function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
-  const enabled = mode === 'dry' || mode === 'on';
+function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
+  const enabled = mode === 'dry' || mode === 'on' || mode === 'desk';
+  const winOf = (s) => (fin(s && s.windowMs) ? Number(s.windowMs) : windowMs);
   let state = null, running = false;
   async function load() { if (!state) { try { state = (await store.read()) || { alerts: {} }; } catch (_) { state = { alerts: {} }; } if (!state.alerts) state.alerts = {}; } return state; }
   const save = () => Promise.resolve(store.write(state)).catch((error) => logger('warn', 'auto_pt_save_failed', { error }));
@@ -89,14 +91,16 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
       const list = (await listAlerts()) || [];
       for (const a of list) {
         if (!a || !a.key || !a.symbol || !a.channelId || !fin(a.entry) || !fin(a.target) || !fin(a.at)) continue;
-        if (t - a.at > windowMs) { const old = state.alerts[a.key]; if (old && old.status === 'watching') old.status = 'expired'; continue; }
-        if (!state.alerts[a.key]) state.alerts[a.key] = { symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '' };
+        if (t - a.at > (fin(a.windowMs) ? Number(a.windowMs) : windowMs)) { const old = state.alerts[a.key]; if (old && old.status === 'watching') old.status = 'expired'; continue; }
+        if (state.alerts[a.key] && fin(a.windowMs)) state.alerts[a.key].windowMs = Number(a.windowMs);
+        if (state.alerts[a.key] && a.postable === false) state.alerts[a.key].postable = false;
+        if (!state.alerts[a.key]) state.alerts[a.key] = { windowMs: fin(a.windowMs) ? Number(a.windowMs) : undefined, postable: a.postable !== false, symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '' };
       }
       const watching = Object.entries(state.alerts).filter(([, s]) => s.status === 'watching');
       watching.sort((x, y) => (x[1].checkedAt || 0) - (y[1].checkedAt || 0));
       for (const [key, s] of watching.slice(0, maxPerTick)) {
         out.checked++; s.checkedAt = t;
-        if (t - s.at > windowMs) { s.status = 'expired'; continue; }
+        if (t - s.at > winOf(s)) { s.status = 'expired'; continue; }
         if (s.updates.length >= MAX_UPDATES) { s.status = 'done'; s.note = 'update limit reached'; continue; }
         const cur = s.updates.length ? s.updates[s.updates.length - 1] : null;
         const target = cur ? cur.target : s.target, since = cur ? cur.at : s.at;
@@ -118,10 +122,16 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
             continue;
           }
           if (mode === 'dry') { out.dry++; s.note = 'dry run: would post ' + prop.target; logger('info', 'auto_pt_dry_run', { symbol: s.symbol, target: prop.target, pct: prop.pct }); s.dryTarget = prop.target; continue; }
-          const sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target });
-          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, messageId: sent2 && sent2.messageId || '' }); out.posted++;
-          s.note = 'posted ' + prop.target; delete s.hitAt;
-          logger('info', 'auto_pt_posted', { symbol: s.symbol, target: prop.target, pct: prop.pct, updates: s.updates.length });
+          // the write-up (same PT SMASHED layout as the Discord post) is kept for the Academy alerts desk
+          let written = null;
+          if (compose) { try { written = await compose({ symbol: s.symbol, side: s.side, target: prop.target, previousTarget: target }); } catch (error) { logger('warn', 'auto_pt_compose_failed', { symbol: s.symbol, error: String(error && error.message || error) }); } }
+          let sent2 = null;
+          const willPost = mode === 'on' && s.postable !== false;
+          if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target });
+          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: written && written.stop || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
+          out.posted++;
+          s.note = (willPost ? 'posted ' : 'set on the desk ') + prop.target; delete s.hitAt;
+          logger('info', willPost ? 'auto_pt_posted' : 'auto_pt_desk', { symbol: s.symbol, target: prop.target, pct: prop.pct, updates: s.updates.length });
         } catch (error) { out.errors++; s.note = 'error: ' + String(error && error.message || error).slice(0, 80); logger('warn', 'auto_pt_failed', { symbol: s.symbol, error }); }
       }
       await save();
@@ -129,7 +139,9 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
     return { ran: true, ...out };
   }
   const status = async () => { await load(); return { mode, watching: Object.values(state.alerts).filter((s) => s.status === 'watching').length, updates: Object.values(state.alerts).reduce((n, s) => n + s.updates.length, 0) }; };
-  return { tick, status, enabled, mode };
+  /* the target ladder for one alert (key 'd:<alert id>'): the latest target and every update, for the alerts desk */
+  const forKey = (key) => { const s = state && state.alerts[key]; return s && s.updates.length ? { target: s.updates[s.updates.length - 1].target, updates: s.updates.map((u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, text: u.text, posted: !!u.posted })) } : null; };
+  return { tick, status, enabled, mode, forKey, load };
 }
 
 module.exports = { proposeTarget, marketOutlook, targetReached, createAutoPtService, MIN_PCT, MAX_PCT, WINDOW_MS, MAX_UPDATES };

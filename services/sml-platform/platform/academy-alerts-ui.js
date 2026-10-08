@@ -87,9 +87,24 @@
       + '<div class="aa-top">' + (a.avatar ? '<img class="aa-av" src="' + esc(a.avatar) + '" alt="" loading="lazy" title="' + esc(a.author) + '">' : '') + '<span class="aa-risk" style="background:' + col + '" title="Risk ' + a.risk.score + ' of 100">' + a.risk.score + ' ' + esc(a.risk.label.toUpperCase()) + '</span><span class="aa-sym">' + esc(a.symbol) + '</span><span class="mut">' + ago(a.at) + '</span><span class="aa-who" title="posted by ' + esc(a.author) + '">' + esc(a.author) + '</span>'
       + '<span class="aa-px"><span>$' + px(a.price) + '</span> <span class="' + ((a.chgPct || 0) >= 0 ? 'up' : 'dn') + '">' + (a.chgPct == null ? '' : (a.chgPct >= 0 ? '+' : '') + a.chgPct.toFixed(1) + '%') + '</span><br><span class="' + ((a.sincePct || 0) >= 0 ? 'up' : 'dn') + '" title="since the alert">' + pc(a.sincePct) + ' since alert</span></span></div>'
       + progressBar(a)
-      + '<div class="aa-act"><span class="aa-chip" style="background:' + act[1] + ';color:' + act[2] + '">' + act[0] + (a.plan.action === 'RAISE_TARGET' || a.plan.action === 'PARTIAL' ? ' → ' + px(a.plan.target) : '') + '</span>' + optChip(a) + '<span class="aa-why">' + esc(a.plan.reasons[0] || '') + '</span></div>' + chk;
+      + '<div class="aa-act"><span class="aa-chip" style="background:' + act[1] + ';color:' + act[2] + '">' + act[0] + (a.plan.action === 'RAISE_TARGET' || a.plan.action === 'PARTIAL' ? ' → ' + px(a.plan.target) : '') + '</span>' + ptChip(a) + optChip(a) + '<span class="aa-why">' + esc(a.plan.reasons[0] || '') + '</span></div>' + chk;
     if (open) html += detailHtml(a);
     return html + '</div>';
+  }
+  /* the automatic price-target updates: PT smashed, new PT set (same layout as the Discord posts) */
+  function ptChip(a) {
+    const u = a.ptUpdates && a.ptUpdates.length ? a.ptUpdates[a.ptUpdates.length - 1] : null;
+    return u ? '<span class="aa-chip" style="background:#19e36b;color:#03150c" title="PT ' + u.n + ' smashed: new price target set ' + ago(u.at) + ' ago">🎯 NEW PT' + (u.n > 1 ? ' #' + (u.n + 1) : '') + ' ' + px(u.target) + '</span>' : '';
+  }
+  function ptUpdatesHtml(d) {
+    const list = d.ptUpdates || [];
+    if (!list.length) return '';
+    const last = list[list.length - 1];
+    let h = '<h5>🎯 NEW PRICE TARGET · PT ' + last.n + ' SMASHED</h5><ul>';
+    h += list.slice().reverse().map((u) => '<li><b>PT ' + (u.n + 1) + ' $' + px(u.target) + '</b> (+' + esc(u.pct) + '% from $' + px(u.price) + ') · previous PT $' + px(u.previous) + ' smashed ' + ago(u.at) + ' ago' + (u.stop ? ' · stop $' + px(u.stop) : '') + (u.posted ? ' · posted in Discord' : '') + '</li>').join('');
+    h += '</ul>';
+    if (last.text) h += '<div class="aa-raw" style="white-space:pre-wrap">' + esc(last.text) + '</div><button type="button" class="aa-src" data-act="copy-pt" style="margin-top:5px">Copy update</button>';
+    return h;
   }
   const OPT = { CALL: ['#19e36b', 'CALL'], PUT: ['#ff5470', 'PUT'], WAIT: ['#ffb020', 'OPTIONS: WAIT'], NONE: ['#7f97a4', 'NO OPTIONS'] };
   function optChip(a) {
@@ -118,6 +133,7 @@
     const d = S.detail && S.detail.id === a.id ? S.detail : null;
     if (!d) return '<div class="aa-det"><span class="mut">Loading the full breakdown…</span></div>';
     let h = '<div class="aa-det" data-stop="1">';
+    h += ptUpdatesHtml(d);
     h += '<h5>WHAT THE PLAN SAYS</h5><ul>' + d.plan.reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>';
     h += '<div class="aa-lv" style="margin-top:4px"><span>new target ' + px(d.plan.target) + '</span><span>stop ' + px(d.plan.stop) + '</span><span>high since ' + px(d.high) + '</span></div>';
     if (d.risk.flags && d.risk.flags.length) h += '<h5>FLAGS</h5><ul>' + d.risk.flags.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>';
@@ -274,6 +290,12 @@
     if (act) {
       if (act.dataset.act === 'unlock') { const u = document.getElementById('academy-unlock'); if (u) u.click(); }
       if (act.dataset.act === 'sources') { openPicker(); return; }
+      if (act.dataset.act === 'copy-pt') {
+        const d = S.detail, list = d && d.ptUpdates || [], text = list.length ? list[list.length - 1].text : '';
+        const done = () => { act.textContent = 'Copied'; setTimeout(() => { act.textContent = 'Copy update'; }, 1500); };
+        if (text) { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (_) { /* select by hand */ } ta.remove(); }); }
+        return;
+      }
       if (act.dataset.act === 'swap') { document.body.classList.add('alerts-quote'); }
       if (act.dataset.act === 'close') { if (window.matchMedia('(max-width:720px)').matches) { S.sheet = false; panel.classList.remove('sheet'); } else setHidden(true); }
       return;
