@@ -55,7 +55,7 @@
   css.textContent = '.sml-pop-btn{position:absolute;top:5px;right:5px;z-index:30;width:24px;height:22px;display:grid;place-items:center;border:1px solid #2b4b5a;border-radius:6px;background:rgba(9,17,24,.88);color:#9fe8c8;font:800 13px/1 system-ui;cursor:pointer;opacity:.55;transition:opacity .15s}'
     + '.sml-pop-btn:hover,.sml-pop-btn:focus-visible{opacity:1;border-color:#00c47d;outline:none}*:hover>.sml-pop-btn{opacity:.95}'
     + 'html.sml-popout,html.sml-popout body{overflow:hidden!important;height:100%!important}'
-    + '.sml-pop-hide{display:none!important}.sml-pop-path{transform:none!important;filter:none!important;contain:none!important;animation:none!important}'
+    + '.sml-pop-hide{display:none!important}.sml-pop-show{display:block!important}.sml-pop-path{transform:none!important;filter:none!important;contain:none!important;animation:none!important}'
     + '.sml-pop-solo{position:fixed!important;inset:0!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;overflow:auto!important;z-index:1!important}'
     + '.sml-pop-solo.chart{display:flex!important;flex-direction:column!important}.sml-pop-solo.chart .academy-chart-stage{flex:1 1 auto!important;height:auto!important;min-height:220px}'
     + 'html.sml-popout .sml-pop-btn{display:none}'
@@ -336,6 +336,10 @@
     wait.style.cssText = 'position:fixed;inset:0;z-index:2;display:none;place-items:center;padding:24px;text-align:center;color:#7b93a0;font:700 13px/1.5 system-ui,sans-serif;pointer-events:none';
     document.body.appendChild(wait);
     const checkEmpty = () => { const empty = !String(el.innerText || '').replace('⧉', '').trim(); wait.textContent = labelOf(POP) + ' for ' + symbol() + ' is waiting for data. It fills in by itself as soon as there is activity.'; wait.style.display = empty ? 'grid' : 'none'; };
+    // the full page may hide a view later (its tabs remember the last one): keep this window's module and its parents shown
+    const keepShown = () => { let n = el; while (n && n !== document.body) { if (getComputedStyle(n).display === 'none') n.classList.add('sml-pop-show'); n = n.parentElement; } };
+    let keepQueued = false;
+    keepShown(); new MutationObserver(() => { if (keepQueued) return; keepQueued = true; requestAnimationFrame(() => { keepQueued = false; keepShown(); }); }).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style', 'class', 'hidden'] });
     checkEmpty(); setInterval(checkEmpty, 2000);
     if (POP === 'alerts') watchAlerts(el);
     heartbeat(); setInterval(heartbeat, 4000);
