@@ -18,6 +18,7 @@ const chainLib = require('./academy-options-chain');
 const RATE = 0.043;
 const MULT = 100;
 const CANDLE_WAIT_MS = 6_000;
+const EXTRA_EXP_WAIT_MS = 7_000;
 const DISCLAIMER = 'Educational analysis, not financial advice. Options can lose 100% of what you pay for them, selling options carries obligations (you can be assigned), and nothing here places a trade. Prices are mid-market estimates; real fills can be worse.';
 
 /* expiry windows (days to expiry) per MEM ALGO mode: protect = hedges, income = premium selling, dir = the single directional contract */
@@ -355,7 +356,9 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
       const want = pickExpirations(exps, horizon, now());
       const have = new Map(); for (const r of paired) have.set(r.expiry, (have.get(r.expiry) || 0) + 1);
       const rows = paired.filter((r) => want.includes(r.expiry) || !want.length);
-      const fetched = await Promise.all(want.filter((e) => (have.get(e) || 0) < 6).slice(0, 3).map((e) => chain(symbol, e).then((r) => (r && r.ok ? chainLib.normalize(r.data) : []), () => [])));
+      // cold options calls are rate-limited (one every ~12 s), so extra expirations get a short deadline: the answer comes from whatever is in by then
+      const late = (ms) => new Promise((r) => { const t = setTimeout(() => r([]), ms); if (t.unref) t.unref(); });
+      const fetched = await Promise.all(want.filter((e) => (have.get(e) || 0) < 6).slice(0, 2).map((e) => Promise.race([chain(symbol, e).then((r) => (r && r.ok ? chainLib.normalize(r.data) : []), () => []), late(EXTRA_EXP_WAIT_MS)])));
       const seen = new Set(rows.map((r) => r.expiry + '|' + r.strike));
       for (const list of fetched) for (const r of list) { const k = r.expiry + '|' + r.strike; if (!seen.has(k)) { seen.add(k); rows.push(r); } }
       return { ok: true, rows: flattenChain(rows), spot: chainLib.findSpot(first.data), expirations: want, source: first.source || (first.data && first.data.provider) || null };
