@@ -35,6 +35,10 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
      session and a session is never a ticket. */
   const buyKey = clientSecret ? Buffer.from(crypto.hkdfSync('sha256', String(clientSecret), 'sml-academy-activity', 'buy-ticket-v1', 32)) : null;
   const signBuy = (body) => crypto.createHmac('sha256', buyKey).update(body).digest('base64url');
+  /* Pop-out windows (a module opened in the member's browser) renew with their own key and a 'p1' prefix:
+     a renewal key is never a session or a buy ticket, and renewing re-checks the member's access. */
+  const popKey = clientSecret ? Buffer.from(crypto.hkdfSync('sha256', String(clientSecret), 'sml-academy-activity', 'popout-renew-v1', 32)) : null;
+  const signPop = (body) => crypto.createHmac('sha256', popKey).update(body).digest('base64url');
   function issueSession(userId, tier = 'member', displayName = '') {
     const claims = { u: String(userId), e: now() + SESSION_TTL_MS, n: randomBytes(16).toString('base64url') };
     if (tier && tier !== 'member') claims.t = tier;
@@ -136,7 +140,28 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     if (!claims || !SNOWFLAKE.test(String(claims.u)) || !(Number(claims.e) > now())) return null;
     return { userId: String(claims.u) };
   }
-  return { configured, activityConfigured, start, complete, completeActivity, verifySession, issueBuyTicket, verifyBuyTicket };
+  const POPOUT_RENEW_MS = 12 * 60 * 60 * 1000;
+  function issuePopoutRenewal(userId, displayName = '') {
+    if (!popKey || !SNOWFLAKE.test(String(userId || ''))) return '';
+    const claims = { u: String(userId), e: now() + POPOUT_RENEW_MS, n: randomBytes(12).toString('base64url') };
+    if (displayName) claims.d = String(displayName).slice(0, 80);
+    const body = `p1.${Buffer.from(JSON.stringify(claims)).toString('base64url')}`;
+    return `${body}.${signPop(body)}`;
+  }
+  function verifyPopoutRenewal(token) {
+    const parts = String(token || '').split('.');
+    if (!popKey || parts.length !== 3 || parts[0] !== 'p1') return null;
+    const expected = Buffer.from(signPop(`${parts[0]}.${parts[1]}`));
+    const given = Buffer.from(parts[2]);
+    if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
+    let claims;
+    try { claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')); } catch (_) { return null; }
+    if (!claims || !SNOWFLAKE.test(String(claims.u)) || !(Number(claims.e) > now())) return null;
+    return { userId: String(claims.u), displayName: String(claims.d || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80) };
+  }
+  /* A pop-out session is an ordinary session: same key, same 15-minute life, same tier rules. */
+  const issuePopoutSession = (userId, tier, displayName) => (sessionKey && SNOWFLAKE.test(String(userId || '')) && SESSION_TIERS.has(tier) ? issueSession(userId, tier, displayName) : '');
+  return { configured, activityConfigured, start, complete, completeActivity, verifySession, issueBuyTicket, verifyBuyTicket, issuePopoutSession, issuePopoutRenewal, verifyPopoutRenewal };
 }
 
 /* Buy-link handoff (SML_ACADEMY_BILLING_IN_DISCORD_LINKS). A bearer token

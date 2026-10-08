@@ -38,6 +38,8 @@ const { createDataHealth } = require('./data-health');
 const { isMarketOpen, marketState } = require('./market-clock');
 const { sanitizeBars, annotateCandles } = require('./data-quality');
 const { sseWrite, sseEvent } = require('./sse-safe');
+const { createPopoutService, validModule: validPopoutModule, validSymbol: validPopoutSymbol } = require('./academy-popout');
+const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
@@ -740,6 +742,13 @@ const ACADEMY_APPEARANCE = (() => {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-appearance-ui.js'), 'utf8') + '</script>';
   } catch (_) { return ''; }
 })();
+/* Pop-out modules: the sign-in shim runs in <head> (only acts in a ?popout window), the UI after the page. */
+const ACADEMY_POPOUT_HEAD = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-head.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
+const ACADEMY_POPOUT_UI = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_LB_UI = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-lb-ui.js'), 'utf8') + '</script>';
@@ -836,8 +845,9 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + '</body></html>');
-  return gate ? html.replace('</head>', () => academyGateClientScript(gate) + '</head>') : html;
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_POPOUT_UI + '</body></html>');
+  const withPopout = html.replace('</head>', () => ACADEMY_POPOUT_HEAD + '</head>');
+  return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
 
 function academyActivityHtmlBase(initialMarket = {}, options = {}) {
@@ -913,6 +923,8 @@ const academyNoticeText={
   authorization_failed:['SIGN-IN NEEDED','Discord sign-in did not finish, so your lesson progress cannot save yet.','Sign in again'],
   authorization_denied:['SIGN-IN NEEDED','Discord sign-in was cancelled, so your lesson progress cannot save yet.','Sign in again'],
   outside_discord:['OPEN IN DISCORD','Open the Academy from the Making Easy Money Discord server to save your lesson progress.',''],
+  popout_expired:['WINDOW EXPIRED','This pop-out window has expired. Close it and pop the module out again from the Academy in Discord.',''],
+  access_ended:['ACCESS ENDED','Your Academy access has ended, so this window stopped updating.',''],
   temporary_unavailable:['OFFLINE','Academy sign-in is temporarily unavailable. The chart still works; try again in a moment to save your progress.','Retry']
 };
 function academyNotice(code){
@@ -928,6 +940,7 @@ function academyNotice(code){
   if(entry[2]){const retry=document.createElement('button');retry.type='button';retry.textContent=entry[2];retry.style.cssText='border:1px solid #75f5bf;background:#0b2a20;color:#dffbee;border-radius:6px;padding:.25rem .6rem;font:inherit;cursor:pointer';retry.onclick=()=>{retry.disabled=true;void authenticateAcademyActivity()};notice.appendChild(retry)}
 }
 async function academySignIn(){
+  if(window.smlAcademyPopoutSignIn)return window.smlAcademyPopoutSignIn();
   if(!academySdk){academySdk=new DiscordSDK(academyAppId);await academySdk.ready()}
   const authorization=await academySdk.commands.authorize({client_id:academyAppId,response_type:'code',prompt:'none',scope:['identify','guilds.members.read']});
   const response=await fetch('/academy-activity/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:authorization.code})});
@@ -1591,7 +1604,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2596,6 +2609,82 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Pop-out windows (academy-popout.js): a module opened in the member's own browser window. */
+    if (path.startsWith('/academy-activity/popout/')) {
+      if (!academyOAuth || !academyPopout || typeof academyOAuth.issuePopoutSession !== 'function') { sendJson(response, 503, { ok: false, error: 'popout_unavailable' }); return; }
+      const readJson = async () => {
+        if (!contentTypeIsJson(request)) return { error: [415, 'content_type_required'] };
+        const body = await readRequestBody(request, 4096);
+        if (!body.ok) return { error: [body.status, body.error] };
+        try { const v = JSON.parse(body.rawBody); return v && typeof v === 'object' ? { value: v } : { error: [400, 'invalid_json'] }; } catch (_) { return { error: [400, 'invalid_json'] }; }
+      };
+      const sessionOf = () => academyOAuth.verifySession(request.headers.authorization);
+      /* from a signed-in Activity: a one-time ticket inside the link Discord opens */
+      if (request.method === 'POST' && path === '/academy-activity/popout/ticket') {
+        const session = sessionOf();
+        if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+        const input = await readJson();
+        if (input.error) { sendJson(response, input.error[0], { ok: false, error: input.error[1] }); return; }
+        const mod = String(input.value.module || '');
+        const symbol = String(input.value.symbol || 'SPY').toUpperCase();
+        if (!validPopoutModule(mod)) { sendJson(response, 400, { ok: false, error: 'invalid_module' }); return; }
+        const ticket = academyPopout.issueTicket({ userId: session.userId, tier: session.tier, displayName: session.displayName });
+        if (!ticket) { sendJson(response, 429, { ok: false, error: 'rate_limited' }); return; }
+        const query = new URLSearchParams({ popout: mod, symbol: validPopoutSymbol(symbol) ? symbol : 'SPY' });
+        sendJson(response, 200, { ok: true, url: `${POPOUT_BASE}/academy-activity/?${query}#pt=${ticket}` });
+        return;
+      }
+      /* in the new window: ticket -> session + a renewal key (12 h, this browser only) */
+      if (request.method === 'POST' && path === '/academy-activity/popout/exchange') {
+        const input = await readJson();
+        if (input.error) { sendJson(response, input.error[0], { ok: false, error: input.error[1] }); return; }
+        const record = academyPopout.consumeTicket(input.value.ticket);
+        if (!record) { sendJson(response, 401, { ok: false, error: 'popout_expired' }); return; }
+        const sessionToken = academyOAuth.issuePopoutSession(record.userId, record.tier, record.displayName);
+        if (!sessionToken) { sendJson(response, 503, { ok: false, error: 'popout_unavailable' }); return; }
+        logger('info', 'academy_popout_opened', {});
+        sendJson(response, 200, { ok: true, sessionToken, tier: record.tier, displayName: record.displayName, renew: academyOAuth.issuePopoutRenewal(record.userId, record.displayName) });
+        return;
+      }
+      /* every 12 minutes, and on any 401: a new session, but only after re-checking the member's access now */
+      if (request.method === 'POST' && path === '/academy-activity/popout/renew') {
+        const input = await readJson();
+        if (input.error) { sendJson(response, input.error[0], { ok: false, error: input.error[1] }); return; }
+        const who = academyOAuth.verifyPopoutRenewal(input.value.renew);
+        if (!who) { sendJson(response, 401, { ok: false, error: 'popout_expired' }); return; }
+        let tier = 'none';
+        try { tier = academyTierLive ? await academyTierLive(who.userId) : 'none'; } catch (_) { sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
+        if (tier === 'free' && !academyFreeSessions) tier = 'none';
+        if (tier === 'none') { sendJson(response, 403, { ok: false, error: 'access_ended' }); return; }
+        sendJson(response, 200, { ok: true, sessionToken: academyOAuth.issuePopoutSession(who.userId, tier, who.displayName), tier, displayName: who.displayName, renew: academyOAuth.issuePopoutRenewal(who.userId, who.displayName) });
+        return;
+      }
+      /* the link between one member's windows */
+      if (path === '/academy-activity/popout/bus') {
+        const session = sessionOf();
+        if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+        if (request.method === 'POST') {
+          const input = await readJson();
+          if (input.error) { sendJson(response, input.error[0], { ok: false, error: input.error[1] }); return; }
+          const n = academyPopout.publish(session.userId, input.value);
+          sendJson(response, n < 0 ? 429 : 200, n < 0 ? { ok: false, error: 'rate_limited' } : { ok: true, delivered: n });
+          return;
+        }
+        if (request.method === 'GET') {
+          response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+          const off = academyPopout.subscribe(session.userId, (msg) => sseEvent(response, 'link', msg));
+          if (!off) { sseEvent(response, 'busy', { ok: false }); response.end(); return; }
+          sseWrite(response, ': linked\n\n');
+          const beat = setInterval(() => { sseWrite(response, ': keep-alive\n\n'); }, 20_000);
+          // a session lasts 15 minutes: close after 14 so the window reconnects with its renewed session
+          const limit = setTimeout(() => { try { response.end(); } catch (_) { /* gone */ } }, 14 * 60 * 1000);
+          request.on('close', () => { clearInterval(beat); clearTimeout(limit); off(); });
+          return;
+        }
+      }
+      sendJson(response, 404, { ok: false, error: 'not_found' });
+      return;
+    }
     if (request.method === 'POST' && path === '/academy-activity/token') {
       if (!academyOAuth || typeof academyOAuth.completeActivity !== 'function') { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
@@ -3048,20 +3137,26 @@ async function main() {
     alerts: academyAlerts, sentiment: academySentiment, logger: log
   });
   const siteTierDirectory = createDiscordDirectory({ tokens: alertTokens, logger: log });
+  /* A member's Academy level right now, read by the bot (no Discord login needed): roles, free users and day passes.
+     Used by the stockmarketloop.com alerts desk and by pop-out windows when they renew. */
+  const academyTierLive = async (userId) => {
+    if (freeUsers.has(userId)) return 'member';
+    const held = await siteTierDirectory.memberRoles(config.academyGuildId, userId).catch(() => null);
+    const memberRoles = academyMemberRoleIds.map(String).filter(Boolean);
+    const accessRoles = config.academyAccessRoleIds.map(String);
+    if (held && held.some((r) => memberRoles.includes(r))) return 'member';
+    if (held && held.some((r) => accessRoles.includes(r))) return 'academy';
+    if (academyPasses && academyPasses.configured && await academyPasses.hasActive(userId).catch(() => false)) return 'academy';
+    return held ? 'free' : 'none';
+  };
   const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
     store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     alerts: academyAlerts, presets: defaultChannels(), logger: log,
     alertsTiering: !!(academyGate && academyGate.alertsTiering), ownerIds: [...OWNER_IDS],
     /* a linked stockmarketloop.com member's Academy level, read from their roles in the Academy server (no Discord login needed) */
-    tierFor: async (userId) => {
-      if (freeUsers.has(userId)) return 'member';
-      const held = await siteTierDirectory.memberRoles(config.academyGuildId, userId).catch(() => null);
-      if (!held) return 'none';
-      const memberRoles = academyMemberRoleIds.map(String).filter(Boolean);
-      if (!held.some((r) => memberRoles.includes(r) || config.academyAccessRoleIds.map(String).includes(r))) return 'free';
-      return held.some((r) => memberRoles.includes(r)) ? 'member' : 'academy';
-    }
+    tierFor: academyTierLive
   }) : null;
+  const academyPopout = createPopoutService();
   /* Quick Snapshot (chart picture to a Discord channel). ACADEMY_SNAPSHOT=off removes it. */
   const academySnapshot = process.env.ACADEMY_SNAPSHOT === 'off' ? null : createSnapshotService({ directory: createDiscordDirectory({ tokens: alertTokens, logger: log }), logger: log });
   /* MEM LAB: opt-in (ACADEMY_MEM_LAB=on). Reads the scanner's daily candles, proposes gated improvements; a human approves via the operator route. */
@@ -3151,7 +3246,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

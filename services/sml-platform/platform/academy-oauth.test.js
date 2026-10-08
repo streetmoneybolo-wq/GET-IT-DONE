@@ -259,3 +259,20 @@ test('buy tickets: one Discord id for 15 minutes, never a session, never forgeab
   clock += 15 * 60_000;
   assert.equal(oauth.verifyBuyTicket(ticket), null, 'expired');
 });
+
+test('pop-out renewal keys: signed, 12 hours, never a session, and pop-out sessions are ordinary sessions', () => {
+  let time = 1_700_000_000_000;
+  const oauth = createAcademyOAuth({ clientId: 'c', clientSecret: 's', now: () => time, academyAccess: { verify: async () => ({ ok: true }) } });
+  const renew = oauth.issuePopoutRenewal('420000000000000042', 'Obi');
+  assert.match(renew, /^p1\./);
+  assert.deepEqual(oauth.verifyPopoutRenewal(renew), { userId: '420000000000000042', displayName: 'Obi' });
+  assert.equal(oauth.verifySession(`Bearer ${renew}`).ok, false, 'a renewal key is not a session');
+  const session = oauth.issuePopoutSession('420000000000000042', 'academy', 'Obi');
+  assert.deepEqual(oauth.verifySession(`Bearer ${session}`), { ok: true, userId: '420000000000000042', tier: 'academy', displayName: 'Obi' });
+  assert.equal(oauth.verifyPopoutRenewal(session), null, 'a session is not a renewal key');
+  assert.equal(oauth.issuePopoutSession('420000000000000042', 'owner'), '', 'only known tiers');
+  const forged = renew.slice(0, -2) + (renew.endsWith('A') ? 'BB' : 'AA');
+  assert.equal(oauth.verifyPopoutRenewal(forged), null);
+  time += 13 * 60 * 60 * 1000;
+  assert.equal(oauth.verifyPopoutRenewal(renew), null, 'expires after 12 hours');
+});

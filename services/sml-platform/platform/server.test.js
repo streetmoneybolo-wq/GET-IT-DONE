@@ -1652,3 +1652,48 @@ test('site alerts desk is signature-checked and serves the view WordPress chose 
     assert.equal((await post(base, { discordUserId: '1087769175453339648', detail: '2' })).status, 404, 'an alert outside the member desk is not found');
   });
 });
+
+test('pop-out windows: ticket -> exchange -> renew re-checks access, and the link bus stays within one member', async () => {
+  const { createAcademyOAuth } = require('./academy-oauth');
+  const { createPopoutService } = require('./academy-popout');
+  const oauth = createAcademyOAuth({ clientId: 'c', clientSecret: 's', academyAccess: { verify: async () => ({ ok: true }) } });
+  const U = '420000000000000042', V = '430000000000000043';
+  let tierNow = 'academy';
+  const json = (base, path, body, token) => fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
+  await withServer({ academyOAuth: oauth, academyPopout: createPopoutService(), academyTierLive: async () => tierNow }, async (base) => {
+    const session = oauth.issuePopoutSession(U, 'member', 'Obi');
+    assert.equal((await json(base, '/academy-activity/popout/ticket', { module: 'scanner' })).status, 401, 'needs a session');
+    assert.equal((await json(base, '/academy-activity/popout/ticket', { module: '../x' }, session)).status, 400);
+    const t = await (await json(base, '/academy-activity/popout/ticket', { module: 'scanner', symbol: 'nvda' }, session)).json();
+    const url = new URL(t.url);
+    assert.equal(url.origin, 'https://sml-platform-api.onrender.com');
+    assert.equal(url.searchParams.get('popout'), 'scanner'); assert.equal(url.searchParams.get('symbol'), 'NVDA');
+    const ticket = url.hash.replace('#pt=', '');
+    assert.ok(!url.search.includes(ticket), 'the ticket never rides in the query');
+    const ex = await (await json(base, '/academy-activity/popout/exchange', { ticket })).json();
+    assert.equal(ex.ok, true); assert.equal(ex.tier, 'member'); assert.equal(oauth.verifySession('Bearer ' + ex.sessionToken).userId, U);
+    assert.equal((await json(base, '/academy-activity/popout/exchange', { ticket })).status, 401, 'single use');
+    const r1 = await (await json(base, '/academy-activity/popout/renew', { renew: ex.renew })).json();
+    assert.equal(r1.tier, 'academy', 'renewal takes the access level as it is now');
+    tierNow = 'none';
+    const ended = await json(base, '/academy-activity/popout/renew', { renew: r1.renew });
+    assert.equal(ended.status, 403); assert.equal((await ended.json()).error, 'access_ended');
+    tierNow = 'free';
+    assert.equal((await json(base, '/academy-activity/popout/renew', { renew: r1.renew })).status, 403, 'free sessions off: a free member cannot keep a pop-out');
+
+    // link bus: my window hears my other window, never another member's
+    const ctrl = new AbortController();
+    const stream = await fetch(base + '/academy-activity/popout/bus', { headers: { authorization: 'Bearer ' + session }, signal: ctrl.signal });
+    const reader = stream.body.getReader();
+    await reader.read(); // ': linked'
+    const other = oauth.issuePopoutSession(V, 'member');
+    assert.equal((await (await json(base, '/academy-activity/popout/bus', { symbol: 'TSLA', from: 'x' }, other)).json()).delivered, 0);
+    assert.equal((await (await json(base, '/academy-activity/popout/bus', { symbol: 'amd', from: 'w2' }, session)).json()).delivered, 1);
+    const chunk = new TextDecoder().decode((await reader.read()).value);
+    assert.match(chunk, /"symbol":"AMD"/); assert.doesNotMatch(chunk, /TSLA/);
+    ctrl.abort();
+  });
+  await withServer({}, async (base) => {
+    assert.equal((await fetch(base + '/academy-activity/popout/exchange', { method: 'POST' })).status, 503);
+  });
+});
