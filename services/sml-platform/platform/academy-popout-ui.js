@@ -27,7 +27,6 @@
     ['dark-pool', 'Dark pool', '.academy-darkpool'],
     ['short-sale', 'Short sale', '.academy-shortsale'],
     ['sentiment', 'Sentiment', '.academy-sentiment'],
-    ['options-focus', 'Options focus', '#options-focus'],
     ['sire', 'S.I.R.E.', '#sire-panel'],
     ['mem-algo', 'MEM ALGO', '#mem-algo-panel'],
     ['indicators', 'Indicator engine', 'section.academy-intelligence'],
@@ -336,11 +335,14 @@
   }
 
   /* modules that only appear after a click on the full page (a view tab, a toggle): the window makes that click */
+  // the options chain waits for a Load click: a pop-out loads it as soon as the member's session is there
+  const loadChain = () => { const grid = document.getElementById('options-grid'); const btn = document.getElementById('load-options'); if (btn && window.smlAcademySessionToken && grid && !grid.querySelector('tr td')) btn.click(); };
+  if (POP === 'options') window.addEventListener('sml-academy-session', () => setTimeout(loadChain, 400));
   const clickView = (label) => { const b = [...document.querySelectorAll('.academy-view-cycle button')].find((x) => String(x.textContent || '').trim().toUpperCase().indexOf(label) === 0); if (b && !b.classList.contains('on')) b.click(); };
   const OPEN = {
     earnings: () => clickView('EARNINGS'),
     'scanner-intel': () => clickView('SCANNER INTELLIGENCE'),
-    options: () => clickView('OPTIONS CHAIN'),
+    options: () => { clickView('OPTIONS CHAIN'); loadChain(); },
     calculator: () => clickView('OPTIONS CHAIN'),
     'mem-algo': () => { const p = document.getElementById('mem-algo-panel'); const t = document.getElementById('mem-algo-toggle'); if (t && (!p || String(p.innerText || '').replace('⧉', '').trim().length < 5)) t.click(); },
     // panels with their own on/off state only fetch data while they are switched on
