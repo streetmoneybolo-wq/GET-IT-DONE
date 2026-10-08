@@ -278,6 +278,8 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
 
   async function sync() {
     const followed = await store.followedChannels();
+    /* The owner's streams are always tracked, even before any Academy member follows them: the stockmarketloop.com group desk reads them too. */
+    for (const p of PRESETS) if (!followed.some((f) => f.channelId === p.channelId)) followed.push({ channelId: p.channelId, style: p.style, label: p.label });
     const records = followed.map((f) => {
       const preset = presetOf(f.channelId);
       return { key: f.channelId, id: f.channelId, mirrorId: preset ? preset.mirrorId : '', style: preset ? preset.style : f.style, premium: !!preset, label: preset ? preset.label : f.label };
@@ -297,6 +299,10 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
       out.push({ ...s, key: s.channelId, view: preset ? premiumView : 'live', premium: !!preset, access: ok });
     }
     return out;
+  }
+  /* The owner's streams as desk sources, all shown the same way ('live' | 'closed' | 'teaser'). Used by the stockmarketloop.com group desk. */
+  function presetSources(view = 'live') {
+    return PRESETS.map((p) => ({ key: p.channelId, channelId: p.channelId, guildId: 'preset', label: p.label, style: p.style, view, premium: true, access: true }));
   }
   const publicSource = (s) => ({ guildId: s.guildId, guildName: s.guildName, channelId: s.channelId, label: s.label, authorId: s.authorId, authorName: s.authorName, style: s.style, premium: !!s.premium, access: s.access !== false });
 
@@ -353,7 +359,7 @@ function createAlertSources({ store, directory, alerts, presets = [], logger = (
       posters: [...posters.values()].sort((x, y) => y.alerts - x.alerts || y.posts - x.posts).slice(0, 15), alerts: alertsFound };
   }
 
-  return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, MAX_SOURCES };
+  return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, presetSources, MAX_SOURCES };
 }
 
 module.exports = { createAlertSources, createAlertSourceStore, createDiscordDirectory, channelPermissions, canReadWith, postingWith, MAX_SOURCES };

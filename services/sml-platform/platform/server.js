@@ -1379,15 +1379,18 @@ async function handleSiteAlerts(request, response, options) {
   const gate = groupToolsLimit.take({ headers: { 'x-forwarded-for': 'site-alerts:' + String(Number(input.groupId) || 'none') }, socket: {} });
   if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
   try {
+    // per-member desks: the site reads the owner's streams (the presets), all shown the way WordPress chose
+    const sources = options.academyAlertSources && options.academyAlertSources.presetSources ? options.academyAlertSources.presetSources(view) : null;
     if (input.detail) {
       if (view === 'teaser') { sendJson(response, 403, { ok: false, error: 'membership_required' }); return; }
       const alertId = String(input.detail).replace(/[^0-9]/g, '').slice(0, 24);
+      if (sources && !options.academyAlerts.allows(alertId, sources)) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
       const one = await options.academyAlerts.detail(alertId, view === 'closed' ? { closedOnly: true } : undefined);
       if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
       sendJson(response, 200, { ok: true, view, alert: one });
       return;
     }
-    const snap = view === 'live' ? options.academyAlerts.snapshot() : options.academyAlerts.snapshot({ view });
+    const snap = sources ? options.academyAlerts.snapshot({ sources }) : (view === 'live' ? options.academyAlerts.snapshot() : options.academyAlerts.snapshot({ view }));
     sendJson(response, 200, { ...snap, view });
   } catch (error) {
     options.logger('error', 'site_alerts_failed', { error });
@@ -1665,7 +1668,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
     }
     if (request.method === 'POST' && path === '/v1/group-tools/alerts') {
-      await handleSiteAlerts(request, response, { ...billingOptions, academyAlerts });
+      await handleSiteAlerts(request, response, { ...billingOptions, academyAlerts, academyAlertSources });
       return;
     }
     if (request.method === 'POST' && path === '/v1/group-tools/run') {
