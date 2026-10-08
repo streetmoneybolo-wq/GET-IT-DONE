@@ -106,11 +106,14 @@ function formatPtSmashed(a) {
       '',
       '👉 🆕 ' + bold('NEW TARGET ZONE') + ' — ' + plainPrice(pt) + (plus ? '+' : '') + '  ',
       sentence(a.targetNote, 'Continuation valid — strong extension forming.'),
+      ...(Array.isArray(a.why) && a.why.length ? ['', '📊 ' + bold('WHY IT CAN KEEP ' + (short ? 'DROPPING' : 'RUNNING')), ...a.why.slice(0, 5).map((w) => '• ' + String(w).trim())] : []),
       '',
       '⚠️ ' + bold('HIGH' + NBH + 'RISK ZONE') + '  ',
       sentence(a.riskNote, 'Volatility elevated — consider majority profits as we push deeper into extended territory.'),
       '',
-      '🚨 ' + bold('WIDE STOP LOSS') + ': ' + (short ? 'Above ' : 'Below ') + plainPrice(lo) + '–' + plainPrice(hi).replace(/^\$/, '$') + ' (wide buffer for ' + tk + ' volatility)'
+      a.stopWas
+        ? '🚨 ' + bold(short ? 'STOP LOWERED' : 'STOP RAISED') + ': ' + (short ? 'Above ' : 'Below ') + plainPrice(lo) + '–' + plainPrice(hi) + ' (was ' + String(a.stopWas) + ') — ' + (short ? 'locks in the gains from the drop.' : 'locks in gains, gives ' + tk + ' room to breathe.')
+        : '🚨 ' + bold('WIDE STOP LOSS') + ': ' + (short ? 'Above ' : 'Below ') + plainPrice(lo) + '–' + plainPrice(hi).replace(/^\$/, '$') + ' (wide buffer for ' + tk + ' volatility)'
     ].join('\n');
   }
   return [

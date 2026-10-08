@@ -68,20 +68,85 @@ function proposeTarget({ side = 'long', price, alignment = 0, sentiment = null, 
   return { post: true, target, pct: realPct, snappedTo: snapped, reason: 'ok', ...detail };
 }
 
-/* The three lines of the PT SMASHED update, written from the decision itself (not stock sentences). */
-function insightFor({ side = 'long', price, prop, updates = 0 }) {
+/* The stop moves up with every smashed target and never moves back. The smashed target is now support, so the new stop sits under it by a
+   volatility buffer (3% to 8%), at least 3% under the live price, and never below breakeven once the alert is far enough in profit.
+   prev = { low, high } of the stop before this update (the alert's own stop the first time). Mirrored for a short. */
+function raisedStop({ side = 'long', price, previousTarget, entry, prev = null, volPct = 4 } = {}) {
+  const p = Number(price), anchor = Number(previousTarget), e = Number(entry);
+  if (!(p > 0) || !(anchor > 0)) return null;
+  const buf = clamp((Number(volPct) || 4) * 0.6, 3, 8) / 100;
+  let low, high;
+  if (side !== 'short') {
+    high = Math.min(anchor * (1 - buf), p * 0.97);
+    if (e > 0 && e < p * 0.97) high = Math.max(high, e);
+    low = high * 0.975;
+    if (prev && Number(prev.high) > high) { high = Number(prev.high); low = Math.max(low, Number(prev.low) || 0); }
+    if (low >= high) low = high * 0.975;
+  } else {
+    low = Math.max(anchor * (1 + buf), p * 1.03);
+    if (e > 0 && e > p * 1.03) low = Math.min(low, e);
+    high = low * 1.025;
+    if (prev && Number(prev.low) > 0 && Number(prev.low) < low) { low = Number(prev.low); high = Math.min(high, Number(prev.high) || high); }
+    if (high <= low) high = low * 1.025;
+  }
+  return { low: roundPrice(low), high: roundPrice(high) };
+}
+const money = (v) => '$' + (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
+const rangeText = (r) => (r ? money(r.low) + '–' + money(r.high) : '');
+
+/* The write-up behind a new target, from the decision and the chart readings (evidence.tech / evidence.reads):
+   status/targetNote/riskNote fill the PT SMASHED lines, why[] is the "why it can keep running" list (also posted), signals[] are the chips on
+   the desk, and story is the same thing said the way a person would say it (the Academy notification and the desk). */
+function insightFor({ side = 'long', symbol = '', price, prop, updates = 0, tech = null, reads = null, previousTarget = null, stop = null, stopWas = null }) {
   const up = side !== 'short';
+  const tk = String(symbol || '').toUpperCase();
   const al = Number(prop && prop.alignment) || 0, sent = prop ? prop.sentiment : null, mk = prop ? prop.market : null, vol = Number(prop && prop.volPct) || 0;
   const dirWord = up ? 'upward' : 'downward';
-  const status = al >= 0.5 ? 'momentum still pushing ' + dirWord + ', MEM ALGO lined up on every horizon.' : al > 0 ? 'momentum holding, MEM ALGO still leaning our way.' : 'price held the level; momentum is mixed, so this leg is on a shorter leash.';
-  const parts = ['New target is ' + (prop && prop.pct) + '% ' + (up ? 'above' : 'below') + ' here' + (prop && prop.snappedTo ? ', set just ' + (up ? 'under' : 'over') + ' the $' + prop.snappedTo + ' level the chart already respects' : '') + '.'];
+  const why = [], signals = [];
+  const add = (text, tone, chip) => { why.push(text); signals.push({ text: chip || text, tone }); };
+  const px = Number(price);
+  // MEM ALGO horizons that agree with the trade
+  const H = { day: 'day', swing: 'swing', mid: 'mid', long: 'long-term' };
+  const agree = reads ? Object.keys(H).filter((h) => reads[h] && Number(reads[h].dir) === (up ? 1 : -1)) : [];
+  const against = reads ? Object.keys(H).filter((h) => reads[h] && Number(reads[h].dir) === (up ? -1 : 1)) : [];
+  const list = (arr) => arr.map((h) => H[h]).join(', ').replace(/, ([^,]*)$/, ' & $1');
+  if (agree.length) add('MEM ALGO ' + (up ? 'bullish' : 'bearish') + ' on the ' + list(agree) + ' read' + (agree.length > 1 ? 's' : ''), agree.length >= 3 ? 'good' : 'ok', 'MEM ALGO ' + agree.length + '/4 ' + (up ? 'bull' : 'bear'));
+  const t = tech || {};
+  if (fin(t.relVol) && t.relVol >= 1.5) add('Volume ' + t.relVol + '× its 20-day average: ' + (up ? 'buyers' : 'sellers') + ' are still showing up', t.relVol >= 3 ? 'good' : 'ok', 'Volume ' + t.relVol + '×');
+  if (t.aboveVwap != null && fin(t.vwap)) {
+    if (t.aboveVwap === up) add('Holding ' + (up ? 'above' : 'below') + ' today’s VWAP (' + money(t.vwap) + ')', 'good', (up ? 'Above' : 'Below') + ' VWAP');
+    else signals.push({ text: (up ? 'Under' : 'Over') + ' VWAP', tone: 'warn' });
+  }
+  if (fin(t.sma20) && px > 0 && (up ? px > t.sma20 : px < t.sma20)) add((up ? 'Above' : 'Below') + ' its ' + (t.sma20Rising === up ? (up ? 'rising' : 'falling') + ' ' : '') + '20-day average (' + money(t.sma20) + ')' + (fin(t.sma50) && (up ? px > t.sma50 : px < t.sma50) ? ' and the 50-day (' + money(t.sma50) + ')' : ''), 'good', (up ? 'Above' : 'Below') + ' 20D avg');
+  if (t.breakout && t.range20) add('Broke its 20-day ' + (up ? 'high (' + money(t.range20.high) : 'low (' + money(t.range20.low)) + ')', 'good', '20-day ' + (up ? 'breakout' : 'breakdown'));
+  if (fin(t.rsi)) {
+    const r = up ? t.rsi : 100 - t.rsi;
+    if (r >= 80) signals.push({ text: 'RSI ' + t.rsi + ' stretched', tone: 'warn' });
+    else if (r >= 55) add('RSI ' + t.rsi + ': strong momentum, not exhausted yet', 'good', 'RSI ' + t.rsi);
+    else signals.push({ text: 'RSI ' + t.rsi, tone: 'ok' });
+  }
   const sentS = Number(sent) * (up ? 1 : -1);
-  if (sent != null && Number.isFinite(sentS)) parts.push(sentS > 0.2 ? 'Sentiment is behind it.' : sentS < -0.2 ? 'Sentiment is cooling, so size down.' : 'Sentiment is neutral.');
+  if (sent != null && fin(sentS)) { if (sentS > 0.2) add('News and social sentiment are behind it', 'good', 'Sentiment +'); else if (sentS < -0.2) signals.push({ text: 'Sentiment cooling', tone: 'warn' }); }
   const mkS = Number(mk) * (up ? 1 : -1);
-  if (mk != null && Number.isFinite(mkS)) parts.push(mkS > 0.2 ? 'Market backdrop is supportive.' : mkS < -0.2 ? 'The market is risk-off, so trail it tight.' : '');
+  if (mk != null && fin(mkS)) { if (mkS > 0.2) add('The market backdrop is supportive', 'good', 'Market ' + (up ? 'risk-on' : 'risk-off')); else if (mkS < -0.2) signals.push({ text: 'Market against', tone: 'warn' }); }
+  if (prop && prop.snappedTo) signals.push({ text: 'Target under ' + money(prop.snappedTo) + ' level', tone: 'ok' });
+
+  const status = al >= 0.5 ? 'momentum still pushing ' + dirWord + ', MEM ALGO lined up' + (agree.length >= 3 ? ' on ' + agree.length + ' of 4 horizons.' : '.') : al > 0 ? 'momentum holding, MEM ALGO still leaning our way.' : 'price held the level; momentum is mixed, so this leg is on a shorter leash.';
+  const targetNote = 'New target is ' + (prop && prop.pct) + '% ' + (up ? 'above' : 'below') + ' here' + (prop && prop.snappedTo ? ', set just ' + (up ? 'under' : 'over') + ' the ' + money(prop.snappedTo) + ' level the chart already respects' : '') + '.';
   const legs = updates >= 1 ? (updates === 1 ? 'Third target now. ' : 'Deep in extended territory now. ') : '';
-  const riskNote = legs + (vol >= 6 ? 'This one moves about ' + Math.round(vol) + '% a day, so take majority profits into strength.' : 'Volatility elevated, consider majority profits as we push deeper into extended territory.');
-  return { status, targetNote: parts.filter(Boolean).join(' '), riskNote };
+  const warn = fin(t.rsi) && (up ? t.rsi >= 80 : t.rsi <= 20) ? 'RSI is stretched at ' + t.rsi + ', so expect shakeouts. ' : '';
+  const riskNote = legs + warn + (vol >= 6 ? 'This one moves about ' + Math.round(vol) + '% a day, so take majority profits into strength.' : 'Volatility elevated, consider majority profits as we push deeper into extended territory.');
+
+  // the same read, said the way a person would say it
+  const parts = [];
+  parts.push(tk + ' just ' + (up ? 'ran through' : 'broke down through') + ' our ' + (previousTarget ? money(previousTarget) + ' ' : '') + 'target' + (px > 0 ? ' and it’s still holding ' + (up ? 'up' : 'down') + ' there at ' + money(px) : '') + '.');
+  parts.push('The new target is ' + (prop ? money(prop.target) + ', about ' + prop.pct + '% ' + (up ? 'higher' : 'lower') : 'set') + (prop && prop.snappedTo ? ', parked just ' + (up ? 'under' : 'above') + ' the ' + money(prop.snappedTo) + ' level the chart has respected before' : '') + '.');
+  if (why.length) parts.push('Why we think it has more in it: ' + why.slice(0, 4).map((w, i) => (i ? w.charAt(0).toLowerCase() + w.slice(1) : w)).join('; ') + '.');
+  else parts.push('The read is mixed, so treat this leg as a bonus and manage it tight.');
+  if (against.length && agree.length < 3) parts.push('Heads up: MEM ALGO leans the other way on the ' + list(against) + ' read.');
+  if (stop) parts.push('We ' + (up ? 'raised' : 'lowered') + ' the stop to ' + (up ? 'below ' : 'above ') + rangeText(stop) + (stopWas ? ' (it was ' + stopWas + ')' : '') + ', so a reversal still leaves you in good shape.');
+  parts.push(updates >= 1 ? 'We’re deep into extended territory, so most of the position should already be paid.' : 'Take some off into strength and let the rest work.');
+  return { status, targetNote, riskNote, why: why.slice(0, 5), signals: signals.slice(0, 8), story: parts.join(' '), stopLow: stop ? stop.low : null, stopHigh: stop ? stop.high : null, stopWas: stopWas || null };
 }
 
 /* Has the target been reached since `since`? range = { high, low } of everything traded after that moment (null when unknown). */
@@ -118,7 +183,9 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
         if (t - a.at > (fin(a.windowMs) ? Number(a.windowMs) : windowMs)) { const old = state.alerts[a.key]; if (old && old.status === 'watching') old.status = 'expired'; continue; }
         if (state.alerts[a.key] && fin(a.windowMs)) state.alerts[a.key].windowMs = Number(a.windowMs);
         if (state.alerts[a.key] && a.postable === false) state.alerts[a.key].postable = false;
-        if (!state.alerts[a.key]) state.alerts[a.key] = { windowMs: fin(a.windowMs) ? Number(a.windowMs) : undefined, postable: a.postable !== false, symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '' };
+        if (state.alerts[a.key] && a.postable === true) state.alerts[a.key].postable = true;
+        if (state.alerts[a.key] && fin(a.stop) && !fin(state.alerts[a.key].stop0)) state.alerts[a.key].stop0 = Number(a.stop);
+        if (!state.alerts[a.key]) state.alerts[a.key] = { stop0: fin(a.stop) ? Number(a.stop) : undefined, windowMs: fin(a.windowMs) ? Number(a.windowMs) : undefined, postable: a.postable !== false, symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '' };
       }
       // one Discord message is one alert: a Click-to-Alert copy ('c:<id>') of a message the desk already follows ('d:<id>') is not updated twice
       for (const [k, s] of Object.entries(state.alerts)) if (k.startsWith('c:') && state.alerts['d:' + k.slice(2)] && s.status === 'watching') { s.status = 'done'; s.note = 'same message as the desk alert'; }
@@ -159,12 +226,15 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
           if (mode === 'dry') { out.dry++; s.note = 'dry run: would post ' + prop.target; logger('info', 'auto_pt_dry_run', { symbol: s.symbol, target: prop.target, pct: prop.pct }); s.dryTarget = prop.target; continue; }
           // the write-up (same PT SMASHED layout as the Discord post) is kept for the Academy alerts desk
           let written = null;
-          const insight = insightFor({ side: s.side, price: ev && ev.price, prop, updates: s.updates.length });
+          // every new target raises the stop; the first time it moves up from the alert's own stop (or the usual wide 7-10% buffer)
+          const prevStop = cur && cur.stopRange ? cur.stopRange : (s.side === 'short' ? { low: fin(s.stop0) ? s.stop0 : s.entry * 1.07, high: fin(s.stop0) ? s.stop0 * 1.025 : s.entry * 1.10 } : { low: fin(s.stop0) ? s.stop0 * 0.975 : s.entry * 0.90, high: fin(s.stop0) ? s.stop0 : s.entry * 0.93 });
+          const stopRange = raisedStop({ side: s.side, price: ev && ev.price, previousTarget: target, entry: s.entry, prev: prevStop, volPct: ev && ev.volPct });
+          const insight = insightFor({ side: s.side, symbol: s.symbol, price: ev && ev.price, prop, updates: s.updates.length, tech: ev && ev.tech, reads: ev && ev.reads, previousTarget: target, stop: stopRange, stopWas: rangeText({ low: roundPrice(prevStop.low), high: roundPrice(prevStop.high) }) });
           if (compose) { try { written = await compose({ symbol: s.symbol, side: s.side, target: prop.target, previousTarget: target, insight }); } catch (error) { logger('warn', 'auto_pt_compose_failed', { symbol: s.symbol, error: String(error && error.message || error) }); } }
           let sent2 = null;
           const willPost = mode === 'on' && s.postable !== false;
           if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target, insight });
-          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 2, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: written && written.stop || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
+          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 3, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: stopRange ? (s.side === 'short' ? stopRange.low : stopRange.high) : (written && written.stop || null), stopRange, stopWas: insight.stopWas, why: insight.why, signals: insight.signals, story: insight.story, tech: ev && ev.tech || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
           out.posted++;
           s.note = (willPost ? 'posted ' : 'set on the desk ') + prop.target; delete s.hitAt;
           logger('info', willPost ? 'auto_pt_posted' : 'auto_pt_desk', { key, symbol: s.symbol, target: prop.target, pct: prop.pct, updates: s.updates.length });
@@ -176,8 +246,16 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
   }
   const status = async () => { await load(); return { mode, watching: Object.values(state.alerts).filter((s) => s.status === 'watching').length, updates: Object.values(state.alerts).reduce((n, s) => n + s.updates.length, 0) }; };
   /* the target ladder for one alert (key 'd:<alert id>'): the latest target and every update, for the alerts desk */
-  const forKey = (key) => { const s = state && state.alerts[key]; return s && s.updates.length ? { target: s.updates[s.updates.length - 1].target, updates: s.updates.map((u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, text: u.text, posted: !!u.posted })) } : null; };
-  return { tick, status, enabled, mode, forKey, load };
+  const view = (s, u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange || null, stopWas: u.stopWas || null, why: u.why || [], signals: u.signals || [], story: u.story || '', entry: s.entry, side: s.side, text: u.text, posted: !!u.posted });
+  const forKey = (key) => { const s = state && state.alerts[key]; return s && s.updates.length ? { target: s.updates[s.updates.length - 1].target, stop: s.updates[s.updates.length - 1].stop || null, side: s.side, updates: s.updates.map((u, i) => view(s, u, i)) } : null; };
+  /* every new target set after `since` (desk alerts only: 'd:<id>'), newest first, for the Academy's new-target notification */
+  const recent = (since = 0, limit = 20) => {
+    if (!state) return [];
+    const out = [];
+    for (const [key, s] of Object.entries(state.alerts)) if (key.startsWith('d:')) s.updates.forEach((u, i) => { if (u.at > since) out.push({ key, id: key.slice(2), symbol: s.symbol, ...view(s, u, i), text: undefined }); });
+    return out.sort((a, b) => b.at - a.at).slice(0, limit);
+  };
+  return { tick, status, enabled, mode, forKey, recent, load };
 }
 
-module.exports = { proposeTarget, marketOutlook, targetReached, insightFor, createAutoPtService, MIN_PCT, MAX_PCT, WINDOW_MS, MAX_UPDATES };
+module.exports = { proposeTarget, marketOutlook, targetReached, insightFor, raisedStop, createAutoPtService, MIN_PCT, MAX_PCT, WINDOW_MS, MAX_UPDATES };

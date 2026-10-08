@@ -43,6 +43,44 @@ function alertTimeAndPrice(analysis, at) {
   return '⏱ ' + et + ' · price at alert $' + entry.toFixed(entry >= 1 ? 2 : 4);
 }
 
+/* The chart readings behind an automatic price-target update, all from the stock's own candles:
+   RSI(14) on the daily, where price sits against its 20- and 50-day averages, today's volume against the 20-day average,
+   whether it broke the prior 20-day high (low for a short), and where it sits against today's VWAP. Plain numbers so the write-up can say why. */
+function technicalsFrom(set, price, side = 'long') {
+  const d = (set && set.daily) || [], p = Number(price);
+  if (d.length < 21 || !(p > 0)) return null;
+  const closes = d.map((b) => b.c);
+  const sma = (n) => (closes.length >= n ? closes.slice(-n).reduce((a, b) => a + b, 0) / n : null);
+  let gain = 0, loss = 0;
+  const rs = closes.slice(-15);
+  for (let i = 1; i < rs.length; i++) { const ch = rs[i] - rs[i - 1]; if (ch > 0) gain += ch; else loss -= ch; }
+  const rsi = loss === 0 ? 100 : 100 - 100 / (1 + gain / loss);
+  const sma20 = sma(20), sma50 = sma(50);
+  const sma20prev = closes.length >= 25 ? closes.slice(-25, -5).reduce((a, b) => a + b, 0) / 20 : null;
+  const vols = d.slice(-21, -1).map((b) => b.v).filter((v) => v > 0);
+  const avgVol = vols.length ? vols.reduce((a, b) => a + b, 0) / vols.length : null;
+  const todayVol = d[d.length - 1].v || 0;
+  const prior = d.slice(-21, -1);
+  const hi20 = Math.max(...prior.map((b) => b.h)), lo20 = Math.min(...prior.map((b) => b.l));
+  // session VWAP from today's 5-minute bars (ET calendar day of the newest bar)
+  let vwap = null;
+  const m5 = (set && set.m5) || [];
+  if (m5.length) {
+    const day = (t) => new Date(t).toLocaleDateString('en-US', { timeZone: 'America/New_York' });
+    const today = day(m5[m5.length - 1].t);
+    let pv = 0, vv = 0;
+    for (let i = m5.length - 1; i >= 0 && day(m5[i].t) === today; i--) { const b = m5[i]; const tp = (b.h + b.l + b.c) / 3; pv += tp * (b.v || 0); vv += b.v || 0; }
+    if (vv > 0) vwap = pv / vv;
+  }
+  const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
+  return {
+    rsi: Math.round(rsi), sma20: r2(sma20), sma50: r2(sma50), sma20Rising: sma20 != null && sma20prev != null ? sma20 > sma20prev : null,
+    relVol: avgVol ? Math.round((todayVol / avgVol) * 10) / 10 : null,
+    breakout: side === 'short' ? p < lo20 : p > hi20, range20: { high: r2(hi20), low: r2(lo20) },
+    vwap: r2(vwap), aboveVwap: vwap ? p > vwap : null
+  };
+}
+
 const horizonForDays = (days) => (days <= 2 ? 'day' : days <= 10 ? 'swing' : days <= 126 ? 'mid' : 'long');
 
 const cleanBars = (payload) => (payload && Array.isArray(payload.bars) ? payload.bars : []).map((b) => ({ t: +b.t, o: +b.o, h: +b.h, l: +b.l, c: +b.c, v: +b.v || 0 })).filter((b) => [b.t, b.o, b.h, b.l, b.c].every(fin));
@@ -222,8 +260,8 @@ function createClickAlertStore({ pool = null } = {}) {
   /* every plain-stock alert sent since a moment ago (options contracts have a space in their key and are left out) */
   async function recent({ sinceMs }) {
     if (db) {
-      const r = await db.query("SELECT channel_id, message_id, symbol, side, entry, target, created_at FROM academy_click_alerts WHERE created_at > now() - ($1 || ' milliseconds')::interval AND position(' ' in symbol) = 0 AND discord_id <> 'auto' ORDER BY created_at DESC LIMIT 500", [String(sinceMs)]);
-      return r.rows.map((x) => ({ channelId: String(x.channel_id), messageId: String(x.message_id), symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), at: new Date(x.created_at).getTime() }));
+      const r = await db.query("SELECT channel_id, message_id, symbol, side, entry, target, stop, created_at FROM academy_click_alerts WHERE created_at > now() - ($1 || ' milliseconds')::interval AND position(' ' in symbol) = 0 AND discord_id <> 'auto' ORDER BY created_at DESC LIMIT 500", [String(sinceMs)]);
+      return r.rows.map((x) => ({ channelId: String(x.channel_id), messageId: String(x.message_id), symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: new Date(x.created_at).getTime() }));
     }
     const cut = Date.now() - sinceMs;
     return mem.filter((x) => x.at > cut && x.userId !== 'auto' && !String(x.symbol).includes(' ')).map((x) => ({ channelId: x.channelId, messageId: x.messageId, symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), at: x.at }));
@@ -323,7 +361,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const long = analysis.side === 'long', r = (v) => (e >= 1 ? Math.round(v * 100) / 100 : Math.round(v * 10000) / 10000);
     return long ? { stopLow: r(e * 0.90), stopHigh: r(e * 0.93) } : { stopLow: r(e * 1.07), stopHigh: r(e * 1.10) };
   }
-  const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...(analysis.insight || {}) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
+  const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...Object.fromEntries(Object.entries(analysis.insight || {}).filter(([, v]) => v != null && v !== '')) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
   async function preview(userId, { symbol, target, contract = null, mode = 'auto' } = {}) {
     const ent = await entitlement(userId);
@@ -429,14 +467,15 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const mid = classify({ symbol: sym, target: price * (1 + dir * 0.2), price, bars: set });
     const wide = classify({ symbol: sym, target: price * (1 + dir * 0.4), price, bars: set });
     if (!mid.ok) return null;
-    return { price, alignment: mid.alignment, levels: wide.ok ? wide.levels : mid.levels, volPct: (dailyVolatility(set.daily) || 0.03) * 100 };
+    return { price, alignment: mid.alignment, reads: mid.reads || {}, tech: technicalsFrom(set, price, side), levels: wide.ok ? wide.levels : mid.levels, volPct: (dailyVolatility(set.daily) || 0.03) * 100 };
   }
   /* the same PT SMASHED update as text only, nothing posted: the Academy alerts desk shows it on the alert (new target + the insight behind it) */
   async function composeAutoUpdate({ symbol, target, previousTarget, insight = null }) {
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) throw new Error('analysis_' + analysis.code);
     analysis.smashed = { auto: true, prevTarget: previousTarget || null, forced: true };
-    if (insight) analysis.insight = { status: insight.status, targetNote: insight.targetNote, riskNote: insight.riskNote };
+    if (insight) analysis.insight = { status: insight.status, targetNote: insight.targetNote, riskNote: insight.riskNote, why: insight.why, stopLow: insight.stopLow, stopHigh: insight.stopHigh, stopWas: insight.stopWas };
+    if (insight && Number(insight.stopHigh) > 0) analysis.stop = Number(analysis.side === 'short' ? insight.stopLow : insight.stopHigh);
     return { text: textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())), stop: analysis.stop, horizon: analysis.horizon };
   }
   /* post the update as the Academy app, to the channel the alert was posted in: PT SMASHED layout, @everyone, both scenario charts */
@@ -445,6 +484,8 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) throw new Error('analysis_' + analysis.code);
     analysis.smashed = { auto: true, prevTarget: previousTarget || null, forced: true };
+    if (insight) analysis.insight = { status: insight.status, targetNote: insight.targetNote, riskNote: insight.riskNote, why: insight.why, stopLow: insight.stopLow, stopHigh: insight.stopHigh, stopWas: insight.stopWas };
+    if (insight && Number(insight.stopHigh) > 0) analysis.stop = Number(analysis.side === 'short' ? insight.stopLow : insight.stopHigh);
     let content = textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())) + '\n-# Automatic price-target update · Making Easy Money Academy · educational, not financial advice';
     const files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
     const body = { content, allowed_mentions: { parse: ['everyone'] } };
@@ -458,4 +499,4 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
   return { entitlement, preview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
 }
 
-module.exports = { createClickAlertService, createClickAlertStore, classify, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
+module.exports = { createClickAlertService, createClickAlertStore, classify, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

@@ -259,6 +259,8 @@ function createAlertsService({
     const ladder = ptLadder ? ptLadder('d:' + alert.id) : null;
     const working = ladder && Number(ladder.target) > 0 ? { ...alert, target: Number(ladder.target) } : alert;
     const plan = risk.planFor({ alert: working, quote: q, daily, since, risk: g, algoView: view, flow, sentiment: sent, news: nws, checklist: chk, now: now() });
+    // every smashed target raised the stop: the plan never works with a stop under the raised one
+    if (ladder && Number(ladder.stop) > 0 && (ladder.side === 'short' ? Number(ladder.stop) < Number(plan.stop) : Number(ladder.stop) > Number(plan.stop))) { plan.stop = Number(ladder.stop); plan.reasons.unshift('Stop raised to ' + plan.stop + ' after PT ' + ladder.updates.length + ' was smashed'); }
     const last = alert.planLog[alert.planLog.length - 1];
     if (!last || last.action !== plan.action || Math.abs((last.target || 0) - plan.target) > 1e-9) { alert.planLog.push({ t: now(), action: plan.action, target: plan.target, price: q ? Number(q.last) : null }); if (alert.planLog.length > 12) alert.planLog.shift(); }
     let opt = null;
@@ -296,7 +298,7 @@ function createAlertsService({
       price: q ? r4(Number(q.last)) : null, chgPct: q ? r4(Number(q.chgPct)) : null, sincePct: ev.since && ev.since.pct != null ? r4(ev.since.pct) : null, high: r4(ev.since && ev.since.high), low: r4(ev.since && ev.since.low),
       risk: { score: ev.risk.score, band: ev.risk.band, label: ev.risk.label, top: ev.risk.top, flags: ev.risk.flags, coverage: ev.risk.coverage },
       plan: { action: ev.plan.action, target: ev.plan.target, stop: ev.plan.stop, reasons: full ? ev.plan.reasons : ev.plan.reasons.slice(0, 2), progress: r4(ev.plan.progress) },
-      ptUpdates: ev.ladder ? ev.ladder.updates.map((u) => ({ n: u.n, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, posted: u.posted, text: full ? u.text : undefined })) : [],
+      ptUpdates: ev.ladder ? ev.ladder.updates.map((u) => ({ n: u.n, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange, stopWas: u.stopWas, entry: u.entry, side: u.side, signals: u.signals, why: full ? u.why : undefined, story: full ? u.story : undefined, posted: u.posted, text: full ? u.text : undefined })) : [],
       sector: ev.sector, flow: ev.flow ? { bias: ev.flow.bias, source: ev.flow.source } : null, algo: ev.algo ? { bias: ev.algo.bias, label: ev.algo.label } : null,
       options: ev.options ? (full ? ev.options : { verdict: ev.options.verdict, available: ev.options.available, side: ev.options.side || null, strength: ev.options.strength || null, label: ev.options.contract ? `${ev.options.contract.dte}d ${ev.options.contract.strike} ${ev.options.side}` : null }) : null,
       checklist: ev.checklist ? { yes: ev.checklist.yes, no: ev.checklist.no, unknown: ev.checklist.unknown, items: ev.checklist.items.map((i) => ({ k: i.key, l: i.label, ok: i.ok, d: full ? i.detail : undefined })) } : null

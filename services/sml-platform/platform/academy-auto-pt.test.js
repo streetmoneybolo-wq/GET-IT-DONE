@@ -169,17 +169,35 @@ test('one message, one update: a Click-to-Alert copy of a desk alert is not upda
   assert.equal(svc.forKey('c:777'), null);
 });
 
-test('insight lines come from the decision, not stock sentences', () => {
-  const { insightFor } = require('./academy-auto-pt.js');
-  const a = insightFor({ side: 'long', prop: { alignment: 1, sentiment: 0.6, market: -0.5, volPct: 9, pct: 12.4, snappedTo: 11 }, updates: 0 });
-  assert.match(a.status, /MEM ALGO lined up/);
-  assert.match(a.targetNote, /12\.4% above/);
-  assert.match(a.targetNote, /\$11 level/);
-  assert.match(a.targetNote, /Sentiment is behind it/);
-  assert.match(a.targetNote, /risk-off/);
-  assert.match(a.riskNote, /about 9% a day/);
-  const b = insightFor({ side: 'short', prop: { alignment: 0, sentiment: null, market: null, volPct: 2, pct: 8 }, updates: 1 });
+test('insight: data-driven reasons, a human story and the raised stop', () => {
+  const tech = { rsi: 68, sma20: 7.1, sma50: 6.4, sma20Rising: true, relVol: 3.4, breakout: true, range20: { high: 8.5, low: 6 }, vwap: 8.62, aboveVwap: true };
+  const reads = { day: { dir: 1 }, swing: { dir: 1 }, mid: { dir: 1 }, long: { dir: -1 } };
+  const stop = A.raisedStop({ side: 'long', price: 8.91, previousTarget: 8.47, entry: 7, prev: { low: 6.3, high: 6.51 }, volPct: 9 });
+  const a = A.insightFor({ side: 'long', symbol: 'biaf', price: 8.91, prop: { alignment: 0.8, sentiment: 0.6, market: -0.5, volPct: 9, pct: 20.8, target: 10.76, snappedTo: 11 }, updates: 0, tech, reads, previousTarget: 8.47, stop, stopWas: '$6.30–$6.51' });
+  assert.match(a.status, /MEM ALGO lined up on 3 of 4/);
+  assert.match(a.targetNote, /20\.8% above/);
+  assert.ok(a.why.some((w) => /Volume 3\.4×/.test(w)));
+  assert.ok(a.why.some((w) => /VWAP/.test(w)));
+  assert.ok(a.why.length <= 5);
+  assert.ok(a.signals.some((x) => x.tone === 'warn' && /Market against/.test(x.text)));
+  assert.match(a.story, /^BIAF just ran through our \$8\.47 target/);
+  assert.match(a.story, /raised the stop to below \$/);
+  assert.match(a.story, /it was \$6\.30–\$6\.51/);
+  assert.equal(a.stopHigh, stop.high);
+  const b = A.insightFor({ side: 'short', symbol: 'x', price: 5, prop: { alignment: 0, sentiment: null, market: null, volPct: 2, pct: 8, target: 4.6 }, updates: 1 });
   assert.match(b.status, /mixed/);
   assert.match(b.targetNote, /below here/);
   assert.match(b.riskNote, /^Third target now/);
+});
+
+test('raisedStop: under the smashed target, never lower than before, breakeven floor, mirrored for shorts', () => {
+  const s1 = A.raisedStop({ side: 'long', price: 10.2, previousTarget: 10, entry: 8, prev: { low: 7.2, high: 7.44 }, volPct: 5 });
+  assert.ok(s1.high < 10 && s1.high <= 10.2 * 0.97 && s1.high > 7.44, JSON.stringify(s1));
+  assert.ok(s1.low < s1.high);
+  const keep = A.raisedStop({ side: 'long', price: 10.2, previousTarget: 10, entry: 8, prev: { low: 9.6, high: 9.8 }, volPct: 5 });
+  assert.equal(keep.high, 9.8);
+  const be = A.raisedStop({ side: 'long', price: 10.6, previousTarget: 10.3, entry: 10, prev: null, volPct: 12 });
+  assert.ok(be.high >= 10, JSON.stringify(be));
+  const sh = A.raisedStop({ side: 'short', price: 9.8, previousTarget: 10, entry: 12, prev: { low: 12.84, high: 13.2 }, volPct: 5 });
+  assert.ok(sh.low > 10 && sh.low >= 9.8 * 1.03 && sh.low < 12.84, JSON.stringify(sh));
 });

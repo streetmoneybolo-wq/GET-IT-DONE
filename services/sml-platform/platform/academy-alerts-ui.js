@@ -96,14 +96,45 @@
     const u = a.ptUpdates && a.ptUpdates.length ? a.ptUpdates[a.ptUpdates.length - 1] : null;
     return u ? '<span class="aa-chip" style="background:#19e36b;color:#03150c" title="PT ' + u.n + ' smashed: new price target set ' + ago(u.at) + ' ago">🎯 NEW PT' + (u.n > 1 ? ' #' + (u.n + 1) : '') + ' ' + px(u.target) + '</span>' : '';
   }
+  /* The target ladder as a picture: the raised stop (red band), the entry, every smashed target, the price now and the new target. */
+  function ptLadderSvg(u, live, list) {
+    const short = u.side === 'short';
+    const marks = [];
+    if (u.stopRange) marks.push(u.stopRange.low, u.stopRange.high); else if (u.stop) marks.push(u.stop);
+    if (u.entry) marks.push(u.entry);
+    (list || [u]).forEach((x) => marks.push(x.previous));
+    marks.push(u.target); if (live > 0) marks.push(live); else if (u.price) marks.push(u.price);
+    const vals = marks.map(Number).filter((v) => v > 0);
+    if (vals.length < 2) return '';
+    let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.08 || hi * 0.02; lo -= pad; hi += pad;
+    const W = 300, H = 150, X0 = 8, X1 = 196;
+    const y = (v) => (H - 8 - ((v - lo) / (hi - lo)) * (H - 16)).toFixed(1);
+    const line = (v, col, label, dash, bold) => '<line x1="' + X0 + '" x2="' + X1 + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="' + col + '" stroke-width="' + (bold ? 2 : 1) + '"' + (dash ? ' stroke-dasharray="4 3"' : '') + '/><text x="' + (X1 + 6) + '" y="' + (Number(y(v)) + 3.5) + '" fill="' + col + '" font-size="10" font-weight="' + (bold ? 800 : 600) + '">' + esc(label) + ' $' + px(v) + '</text>';
+    let g = '';
+    if (u.stopRange) { const a = Math.min(Number(y(u.stopRange.low)), Number(y(u.stopRange.high))), b = Math.max(Number(y(u.stopRange.low)), Number(y(u.stopRange.high))); g += '<rect x="' + X0 + '" width="' + (X1 - X0) + '" y="' + a + '" height="' + Math.max(3, b - a) + '" fill="#ff5470" opacity=".25"/>' + line(short ? u.stopRange.low : u.stopRange.high, '#ff7a90', 'STOP', true); }
+    else if (u.stop) g += line(u.stop, '#ff7a90', 'STOP', true);
+    if (u.entry) g += line(u.entry, '#7f97a4', 'ENTRY', true);
+    (list || [u]).forEach((x) => { g += line(x.previous, '#5fb98f', 'PT ' + x.n + ' ✓', false); });
+    g += line(u.target, '#19e36b', 'NEW PT', false, true);
+    const now = live > 0 ? live : Number(u.price);
+    if (now > 0) g += '<circle cx="' + (X1 - 22) + '" cy="' + y(now) + '" r="4.5" fill="#fff" stroke="#0a1118" stroke-width="2"><title>Price now $' + px(now) + '</title></circle><text x="' + (X1 - 32) + '" y="' + (Number(y(now)) - 7) + '" fill="#dbe7ec" font-size="9" text-anchor="end">now $' + px(now) + '</text>';
+    g += '<path d="M' + (X1 - 22) + ' ' + y(now > 0 ? now : u.previous) + ' L' + (X1 - 22) + ' ' + (Number(y(u.target)) + (short ? -6 : 6)) + '" stroke="#19e36b" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#ptArrow)"/>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:340px;display:block;margin:6px 0;background:#0c161d;border:1px solid #13262f;border-radius:8px" role="img" aria-label="Target ladder: new target $' + px(u.target) + ', stop $' + px(u.stop) + '"><defs><marker id="ptArrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#19e36b"/></marker></defs>' + g + '</svg>';
+  }
+  window.smlAcademyPtLadder = ptLadderSvg;
+  const TONE = { good: ['#0b3b2e', '#7ef0bd'], ok: ['#16232b', '#cfd9de'], warn: ['#3a2a0c', '#ffcf7a'] };
   function ptUpdatesHtml(d) {
     const list = d.ptUpdates || [];
     if (!list.length) return '';
     const last = list[list.length - 1];
-    let h = '<h5>🎯 NEW PRICE TARGET · PT ' + last.n + ' SMASHED</h5><ul>';
-    h += list.slice().reverse().map((u) => '<li><b>PT ' + (u.n + 1) + ' $' + px(u.target) + '</b> (+' + esc(u.pct) + '% from $' + px(u.price) + ') · previous PT $' + px(u.previous) + ' smashed ' + ago(u.at) + ' ago' + (u.stop ? ' · stop $' + px(u.stop) : '') + (u.posted ? ' · posted in Discord' : '') + '</li>').join('');
-    h += '</ul>';
-    if (last.text) h += '<div class="aa-raw" style="white-space:pre-wrap">' + esc(last.text) + '</div><button type="button" class="aa-src" data-act="copy-pt" style="margin-top:5px">Copy update</button>';
+    const live = d.quote && Number(d.quote.last) > 0 ? Number(d.quote.last) : 0;
+    let h = '<h5>🎯 NEW PRICE TARGET · PT ' + last.n + ' SMASHED</h5>';
+    h += ptLadderSvg(last, live, list);
+    if ((last.signals || []).length) h += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 6px">' + last.signals.map((x) => { const c = TONE[x.tone] || TONE.ok; return '<span class="aa-chip" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(x.text) + '</span>'; }).join('') + '</div>';
+    if (last.story) h += '<p style="margin:4px 0 8px;line-height:1.5">' + esc(last.story) + '</p>';
+    if (last.stopRange) h += '<p style="margin:0 0 6px"><b style="color:#ff9aa4">🚨 Stop ' + (last.side === 'short' ? 'lowered' : 'raised') + ':</b> ' + (last.side === 'short' ? 'above' : 'below') + ' $' + px(last.stopRange.low) + '–$' + px(last.stopRange.high) + (last.stopWas ? ' <span style="color:#7f97a4">(was ' + esc(last.stopWas) + ')</span>' : '') + '</p>';
+    h += '<ul>' + list.slice().reverse().map((u) => '<li><b>PT ' + (u.n + 1) + ' $' + px(u.target) + '</b> (+' + esc(u.pct) + '% from $' + px(u.price) + ') · previous PT $' + px(u.previous) + ' smashed ' + ago(u.at) + ' ago' + (u.stopRange ? ' · stop $' + px(u.stopRange.low) + '–$' + px(u.stopRange.high) : u.stop ? ' · stop $' + px(u.stop) : '') + (u.posted ? ' · posted in Discord' : '') + '</li>').join('') + '</ul>';
+    if (last.text) h += '<details><summary style="cursor:pointer;color:#8fa6b3">Discord write-up</summary><div class="aa-raw" style="white-space:pre-wrap">' + esc(last.text) + '</div></details><button type="button" class="aa-src" data-act="copy-pt" style="margin-top:5px">Copy update</button>';
     return h;
   }
   const OPT = { CALL: ['#19e36b', 'CALL'], PUT: ['#ff5470', 'PUT'], WAIT: ['#ffb020', 'OPTIONS: WAIT'], NONE: ['#7f97a4', 'NO OPTIONS'] };
@@ -321,5 +352,7 @@
   setInterval(() => { if (window.smlChartGesture) return; load(); }, 15000);
   setInterval(() => { if (!window.smlChartGesture && !S.pick) paint(); }, 30000); // keeps the "ago" labels honest and the highlighted row on the chart symbol
   paint();
-  window.smlAlertsDesk = { state: S, reload: load };
+  // open one alert from outside (the new-target notification): show the desk, expand the alert, chart it
+  const openAlert = (id, sym) => { if (!id) return; if (S.hidden) setHidden(false); if (window.matchMedia('(max-width:720px)').matches) { S.sheet = true; panel.classList.add('sheet'); } if (sym && window.smlAcademyNavigateMarket && chartSymbol() !== sym) window.smlAcademyNavigateMarket(sym); S.open = String(id); S.detail = null; paint(); refreshDetail(); };
+  window.smlAlertsDesk = { state: S, reload: load, openAlert };
 })(0);

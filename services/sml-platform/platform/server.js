@@ -45,6 +45,7 @@ const { createSentimentService, createSentimentMemory } = require('./academy-sen
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
+const { createWideScanner, createSharedSnapshot, clampLimit: clampScannerLimit } = require('./academy-scanner-wide');
 const { createVolIndex } = require('./academy-vol-index');
 const dataHealth = createDataHealth({ soft: { 'massive-indices': [401, 403], 'wordpress-history': [500] } });
 const { createDataRateLimit } = require('./data-rate-limit');
@@ -106,6 +107,7 @@ const academyMarketInflight = new Map();
 const academyReportLimit = { bucket: 0, n: new Map() };
 let academyScannerCache = { freshUntil: 0, staleUntil: 0, payload: null, inflight: null };
 const academySirePriceHistory = new Map();
+const academyWideBodyCache = new Map(); // serialized wide scanner payloads, keyed by ranking version + limit + tier
 const academyDepthCache = new Map();
 const academyDepthInflight = new Map();
 /* parts/example/exampleIndex/narrationVersion come from the shared narration
@@ -750,7 +752,7 @@ const ACADEMY_POPOUT_HEAD = (() => {
 })();
 /* Market Direction panel (shared display file) + its Academy mount. */
 const ACADEMY_DIRECTION = (() => {
-  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-pt-notify.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
@@ -1017,6 +1019,19 @@ void authenticateAcademyActivity();
     .replace("['changePct','preMarketPct','postMarketPct'].includes(k)", "['changePct','preMarketPct','postMarketPct','sire'].includes(k)")
     .replace("['macd','MACD']]", "['macd','MACD'],['high52','52wk High'],['low52','52wk Low'],['chg5mPct','% Chg 5M'],['chg5dPct','% Chg 5D'],['chg10dPct','% Chg 10D'],['chg20dPct','% Chg 20D'],['chg60dPct','% Chg 60D'],['chg120dPct','% Chg 120D'],['chg250dPct','% Chg 250D'],['ytdPct','YTD Chg'],['handTurnover','Hand Turnover'],['amplitude','Amplitude'],['peLyr','PE LYR'],['divYield','Dividend Yield'],['roe','ROE'],['roa','ROA'],['netMargin','Net Margin'],['grossMargin','Gross Margin'],['revenueGrowth','Revenue Growth'],['epsGrowth','EPS Growth'],['assetTurnover','Asset Turnover'],['inventoryTurnover','Inventory Turnover'],['currentRatio','Current Ratio'],['quickRatio','Quick Ratio'],['ma20','MA20'],['ma50','MA50'],['institutionalHoldings','Institutional Holdings'],['insiderHoldings','Insider Holdings'],['profitRatio','Profit Ratio'],['overlapDegree','Degree of Overlap']]")
     .replace("panel.querySelector('#academy-scan-refresh').onclick=()=>location.reload();render()", "window.smlAcademyScannerRows=()=>rows.slice();const refreshScanner=async()=>{const badge=panel.querySelector('.academy-scan-live');badge.textContent='Refreshing';try{const response=await fetch('/academy-activity/scanner',{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');rows=payload.rows;overlayLive();render();window.dispatchEvent(new CustomEvent('sml-academy-scanner-update'));badge.textContent=(window.smlLiveCells&&window.smlLiveCells.feed.streaming())?'Live stream · streaming':'Live stream'}catch(_){badge.textContent='Reconnecting'}};panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;render();window.dispatchEvent(new CustomEvent('sml-academy-scanner-update'));refreshScanner();setInterval(()=>{if(!document.hidden)refreshScanner()},4000)")
+    /* Wide live scanner (pop-out): Top 100/250/500 selector, live Rank column with movement, 50 rows a page in a pop-out,
+       a pager that reaches every page, and /academy-activity/scanner?limit=N refreshes. Other client readers of
+       smlAcademyScannerRows (SIRE panel, intelligence, hover) keep the site rows only. */
+    .replace("page=1,sortKey='changeRate3min',sortDir=-1;", `page=1,sortKey='changeRate3min',sortDir=-1;const popped=String(window.smlAcademyPopout||new URLSearchParams(location.search).get('popout')||'')==='scanner',TOPKEY='sml-academy-scan-top:'+(popped?'pop':'dock');let topN=popped?500:100;try{const saved=Number(localStorage.getItem(TOPKEY));if([100,250,500].includes(saved))topN=saved}catch(_){}if(topN>100){sortKey='liveRank';sortDir=1}const rankMove=m=>{m=Number(m);return!Number.isFinite(m)||!m?'':m>0?' <small style="color:#52e6ad;font-weight:800">▲'+m+'</small>':' <small style="color:#ff778b;font-weight:800">▼'+(-m)+'</small>'};`)
+    .replace("else{sortKey=key;sortDir=-1}", "else{sortKey=key;sortDir=key==='liveRank'?1:-1}")
+    .replace("const cols=columns[preset]||columns.full,all=filtered(),per=15,", "const cols=topN>100?[['liveRank','Rank']].concat(columns[preset]||columns.full):(columns[preset]||columns.full),all=filtered(),per=popped?50:15,")
+    .replace(`if(k==='symbol')return'<td><span class="academy-scan-symbol">'`, `if(k==='liveRank')return'<td class="academy-scan-rank" style="white-space:nowrap;font-variant-numeric:tabular-nums">'+(r.liveRank||'—')+rankMove(r.rankMove)+'</td>';if(k==='symbol')return'<td><span class="academy-scan-symbol">'`)
+    .replace("count.textContent='Showing '+(all.length?start+1:0)+' to '", "count.textContent=topN>100?'Showing '+(all.length?start+1:0)+'–'+Math.min(start+per,all.length)+' of '+all.length+' · ranked live by volume, move and momentum':'Showing '+(all.length?start+1:0)+' to '")
+    .replace("for(let p=1;p<=Math.min(max,7);p++){const b=document.createElement('button');b.textContent=p;b.className=p===page?'on':'';b.onclick=()=>{page=p;render()};pages.appendChild(b)}", "const pgBtn=(label,p,on,dis)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.className=on?'on':'';if(dis)b.disabled=true;else b.onclick=()=>{page=p;render();const w=panel.querySelector('.academy-scan-wrap');if(w)w.scrollTop=0};pages.appendChild(b)},pgGap=()=>{const s=document.createElement('span');s.textContent='…';s.style.cssText='padding:0 4px;color:#6f8a97';pages.appendChild(s)};if(max>1)pgBtn('‹',page-1,false,page<=1);const pgWin=popped?7:5;let pgLo=Math.max(1,page-Math.floor(pgWin/2)),pgHi=Math.min(max,pgLo+pgWin-1);pgLo=Math.max(1,pgHi-pgWin+1);if(pgLo>1){pgBtn('1',1,page===1);if(pgLo>2)pgGap()}for(let p=pgLo;p<=pgHi;p++)pgBtn(String(p),p,p===page);if(pgHi<max){if(pgHi<max-1)pgGap();pgBtn(String(max),max,page===max)}if(max>1)pgBtn('›',page+1,false,page>=max);")
+    .replace('<button id="academy-scan-refresh">Refresh</button>', '<select id="academy-scan-top" title="How many tickers to rank live"><option value="100">Top 100</option><option value="250">Top 250</option><option value="500">Top 500</option></select><button id="academy-scan-refresh">Refresh</button>')
+    .replace("window.smlAcademyScannerRows=()=>rows.slice();const refreshScanner=async()=>{const badge=", "window.smlAcademyScannerRows=()=>rows.filter(r=>r&&r.source!=='massive');let scanBusy=false;const refreshScanner=async()=>{if(scanBusy)return;scanBusy=true;try{await refreshScannerNow()}finally{scanBusy=false}},refreshScannerNow=async()=>{const badge=")
+    .replace("const response=await fetch('/academy-activity/scanner',{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');rows=payload.rows;", "const asked=topN,response=await fetch('/academy-activity/scanner'+(asked>100?'?limit='+asked:''),{cache:'no-store'}),payload=await response.json();if(!response.ok||!Array.isArray(payload.rows))throw new Error('unavailable');if(asked!==topN)return;rows=payload.rows;")
+    .replace("panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;", "const topSel=panel.querySelector('#academy-scan-top');if(topSel){topSel.value=String(topN);topSel.onchange=()=>{topN=[100,250,500].includes(Number(topSel.value))?Number(topSel.value):100;try{localStorage.setItem(TOPKEY,String(topN))}catch(_){}if(topN>100){sortKey='liveRank';sortDir=1}else if(sortKey==='liveRank'){sortKey='changeRate3min';sortDir=-1}page=1;render();refreshScannerNow()}}panel.querySelector('#academy-scan-refresh').onclick=refreshScanner;")
     .replaceAll('The provider returned no displayable contracts for this ticker.', 'No contracts are available for this ticker.')
     .replaceAll('No displayable contracts were returned for this expiration.', 'No contracts are available for this expiration.')
     .replaceAll('The provider returned data, but no recognized call/put contracts. Check the bridge mapping.', 'No compatible call or put contracts are available for this symbol.')
@@ -1610,7 +1625,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyWideScanner = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2517,6 +2532,24 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
     /* Unusual volume across the whole market (any signed-in Academy session). */
+    /* New price targets the engine set since ?since= (ms), for the Academy's pop-up notification. Only alerts the member can see live. */
+    if (request.method === 'GET' && path === '/academy-activity/pt-updates') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academyAutoPt || !academyAlerts) { sendJson(response, 200, { ok: true, updates: [], now: Date.now() }); return; }
+      const since = Math.max(Date.now() - 3 * 86_400_000, Number(new URL(request.url || '/', 'http://localhost').searchParams.get('since')) || 0);
+      const alertView = session.tier === 'free' ? 'teaser' : (session.tier === 'academy' && academyGate && academyGate.alertsTiering ? 'closed' : 'live');
+      try {
+        let list = academyAutoPt.recent(since, 20);
+        if (academyAlertSources) {
+          const sources = (await academyAlertSources.viewFor(session.userId, alertView)).filter((x) => x.access);
+          list = list.filter((u) => { const src = academyAlerts.allows(u.id, sources); return src && src.view === 'live'; });
+        } else if (alertView !== 'live') list = [];
+        sendJson(response, 200, { ok: true, updates: list, now: Date.now() });
+      } catch (error) { logger('warn', 'pt_updates_failed', { error }); sendJson(response, 503, { ok: false, error: 'temporarily_unavailable' }); }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/unusual-volume') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -2586,6 +2619,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const scannerTier = contentGateOn ? callerTier(request) : 'member';
       if (scannerTier === null) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
       try {
+        /* ?limit=101..500 (the scanner pop-out): the wide list ranked live; missing or <=100 keeps the site list. */
+        const rawLimit = new URL(request.url || '/', 'http://localhost').searchParams.get('limit');
+        const wideLimit = rawLimit === null || rawLimit === '' ? 0 : clampScannerLimit(rawLimit, 0);
+        if (wideLimit > 100 && academyWideScanner) {
+          let wide = null;
+          try { wide = await academyWideScanner.get(wideLimit); } catch (error) { logger('warn', 'academy_wide_scanner_failed', { error }); }
+          if (wide) {
+            const full = tierEntitled(scannerTier);
+            const cacheKey = wide.version + ':' + wide.limit + ':' + (full ? 'f' : 'g') + ':' + (wide.stale ? 's' : '');
+            let entry = academyWideBodyCache.get(cacheKey);
+            if (!entry) {
+              const json = Buffer.from(JSON.stringify(full ? wide : gatedScanner(wide)));
+              entry = { json, gz: zlib.gzipSync(json, { level: zlib.constants.Z_BEST_SPEED }) };
+              if (academyWideBodyCache.size > 12) academyWideBodyCache.clear();
+              academyWideBodyCache.set(cacheKey, entry);
+            }
+            const gzipOk = /\bgzip\b/i.test(String(request.headers['accept-encoding'] || ''));
+            const body = gzipOk ? entry.gz : entry.json;
+            response.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-length': body.length, 'cache-control': 'no-store', vary: 'Accept-Encoding, Authorization', 'x-content-type-options': 'nosniff', ...(gzipOk ? { 'content-encoding': 'gzip' } : {}) });
+            response.end(body);
+            return;
+          }
+        }
         const scannerPayload = await getAcademyScanner();
         sendJson(response, 200, tierEntitled(scannerTier) ? scannerPayload : gatedScanner(scannerPayload));
       } catch (error) {
@@ -3187,9 +3243,17 @@ async function main() {
     chain: (symbol, expiration) => academyDataBridge.get('options', symbol, expiration ? { expiration } : {}),
     isOpen: (t) => isMarketOpen(t), logger: log
   }) : null;
-  const marketDirection = String(config.massiveApiKey || '').trim() ? createMarketDirection({
+  /* One Massive whole-market snapshot (~5 MB) shared by Market Direction internals and the wide live scanner. */
+  const academySnapshots = String(config.massiveApiKey || '').trim() ? massiveSnapshots({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o) }) : null;
+  const academySharedSnapshot = academySnapshots ? createSharedSnapshot({ snapshotAll: academySnapshots.snapshotAll, logger: log, session: () => marketState().session }) : null;
+  /* Live scanner pop-out: up to 500 liquid US stocks ranked live (site scanner rows + the whole-market snapshot). */
+  const academyWideScanner = academySharedSnapshot && process.env.ACADEMY_WIDE_SCANNER !== 'off' ? createWideScanner({
+    snapshots: academySharedSnapshot, base: () => getAcademyScanner(), logger: log,
+    history: academySirePriceHistory, windowChange: calculateWindowChange, state: () => marketState()
+  }) : null;
+  const marketDirection = academySnapshots ? createMarketDirection({
     volIndex: smlVix,
-    ...massiveSnapshots({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o) }),
+    snapshotAll: academySharedSnapshot.snapshotAll, snapshotTickers: academySnapshots.snapshotTickers,
     candles: getAcademyCandles,
     tape: academyMassive && academyMassive.status().enabled ? academyMassive : null,
     optionsChain: academyDataBridge.configured ? async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; } : null,
@@ -3261,7 +3325,7 @@ async function main() {
     mode: AUTO_PT_MODE, logger: log,
     listAlerts: async () => {
       const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))), price: (() => { const ev = academyAlerts.evaluated.get(a.id); return ev && ev.quote && Number(ev.quote.last) > 0 ? Number(ev.quote.last) : null; })() })) : [];
-      const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, at: r.at, channelId: r.channelId }));
+      const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, stop: Number(r.stop) > 0 ? Number(r.stop) : undefined, at: r.at, channelId: r.channelId, postable: ownAlertChannels.has(String(r.channelId)) }));
       const deskIds = new Set(desk.map((d) => d.key.slice(2)));
       return desk.concat(click.filter((c) => !deskIds.has(c.key.slice(2)))); // the desk copy of a message wins
     },
@@ -3327,7 +3391,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyWideScanner,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
