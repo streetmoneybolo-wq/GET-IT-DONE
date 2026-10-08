@@ -78,7 +78,15 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
   const enabled = mode === 'dry' || mode === 'on' || mode === 'desk';
   const winOf = (s) => (fin(s && s.windowMs) ? Number(s.windowMs) : windowMs);
   let state = null, running = false;
-  async function load() { if (!state) { try { state = (await store.read()) || { alerts: {} }; } catch (_) { state = { alerts: {} }; } if (!state.alerts) state.alerts = {}; } return state; }
+  async function load() {
+    if (!state) {
+      try { state = (await store.read()) || { alerts: {} }; } catch (_) { state = { alerts: {} }; }
+      if (!state.alerts) state.alerts = {};
+      // desk-only updates made before the pull-back and live-price checks existed (v < 2) are dropped; posted ones are history and stay
+      for (const s of Object.values(state.alerts)) if (Array.isArray(s.updates)) { const kept = s.updates.filter((u) => u.posted || u.messageId || u.v >= 2); if (kept.length !== s.updates.length) { s.updates = kept; if (s.status === 'done' && !kept.length) s.status = 'watching'; } }
+    }
+    return state;
+  }
   const save = () => Promise.resolve(store.write(state)).catch((error) => logger('warn', 'auto_pt_save_failed', { error }));
 
   async function tick() {
@@ -112,6 +120,15 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
           if (!targetReached({ side: s.side, target, range: r })) continue;
           if (!s.hitAt) { s.hitAt = t; out.hits++; }
           const ev = await evidence(s.symbol, s.side);
+          // decide on the live price when the desk has one (the evidence bars can still be yesterday's close before the open)
+          const live = list.find((x) => x && x.key === key);
+          if (ev && live && fin(live.price) && Number(live.price) > 0) ev.price = Number(live.price);
+          // only a target that is still being held earns a new one: after a pull-back under the smashed target, hold and look again later
+          if (ev && fin(ev.price) && (s.side === 'short' ? Number(ev.price) > target * 1.03 : Number(ev.price) < target * 0.97)) {
+            out.held++; s.note = 'no update: pulled back under the smashed target (' + roundPrice(Number(ev.price)) + ' vs ' + target + ')';
+            if (t - s.hitAt > HOLD_RECHECK_MS) { s.status = 'done'; s.note += ' (a day after the target was hit)'; }
+            continue;
+          }
           const sent = sentiment ? await Promise.resolve(sentiment(s.symbol)).catch(() => null) : null;
           const mk = market ? await Promise.resolve(market()).catch(() => null) : null;
           const prop = proposeTarget({ side: s.side, price: ev && ev.price, alignment: ev && ev.alignment, sentiment: sent && sent.available !== false && fin(sent.score) ? Number(sent.score) : null, market: marketOutlook(mk), volPct: ev && ev.volPct, levels: ev && ev.levels, updates: s.updates.length });
@@ -128,10 +145,10 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
           let sent2 = null;
           const willPost = mode === 'on' && s.postable !== false;
           if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target });
-          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: written && written.stop || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
+          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 2, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: written && written.stop || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
           out.posted++;
           s.note = (willPost ? 'posted ' : 'set on the desk ') + prop.target; delete s.hitAt;
-          logger('info', willPost ? 'auto_pt_posted' : 'auto_pt_desk', { symbol: s.symbol, target: prop.target, pct: prop.pct, updates: s.updates.length });
+          logger('info', willPost ? 'auto_pt_posted' : 'auto_pt_desk', { key, symbol: s.symbol, target: prop.target, pct: prop.pct, updates: s.updates.length });
         } catch (error) { out.errors++; s.note = 'error: ' + String(error && error.message || error).slice(0, 80); logger('warn', 'auto_pt_failed', { symbol: s.symbol, error }); }
       }
       await save();

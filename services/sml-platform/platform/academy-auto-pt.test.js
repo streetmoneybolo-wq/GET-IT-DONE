@@ -142,3 +142,19 @@ test('on mode posts only to the owner\'s channels; a long watch window keeps lon
   assert.deepEqual(posts.map((p) => p.symbol).sort(), ['AIXI', 'CCCC'], 'never posts into a channel the owner does not run; a 40-day-old long-term alert is still watched');
   assert.equal(svc.forKey('d:theirs').updates[0].posted, false, 'the other channel still gets the desk update');
 });
+
+test('no new target after a pull-back under the smashed target, and the live price wins over stale bars', async () => {
+  const { svc, posts } = harness({ alerts: [{ key: 'd:1', symbol: 'BIAF', side: 'long', entry: 7.38, target: 8.47, at: NOW - 2 * DAY, channelId: '444444444444444444', postable: true, price: 7.58 }],
+    range: { high: 8.6, low: 7.3 }, evidence: { price: 8.43, alignment: 0.6, levels: [], volPct: 5 }, deps: { mode: 'desk', compose: async () => ({ text: 'x' }) } });
+  await svc.tick();
+  assert.equal(svc.forKey('d:1'), null, 'held: price 7.58 is back under the 8.47 target');
+  assert.equal(posts.length, 0);
+});
+
+test('old desk-only updates (before these checks) are dropped on load; posted ones stay', async () => {
+  const { svc, saved } = harness({ deps: { mode: 'desk' } });
+  saved.v = { alerts: { 'd:x': { symbol: 'X', side: 'long', status: 'done', updates: [{ at: 1, target: 2, posted: false }] }, 'd:y': { symbol: 'Y', side: 'long', status: 'watching', updates: [{ at: 1, target: 3, posted: true, messageId: 'm1' }] } } };
+  await svc.load();
+  assert.equal(svc.forKey('d:x'), null);
+  assert.equal(svc.forKey('d:y').target, 3);
+});
