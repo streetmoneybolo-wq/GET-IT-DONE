@@ -105,10 +105,29 @@
       b.setAttribute('aria-label', 'Pop out ' + m.label);
       b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); void popOut(m.id); });
       el.appendChild(b);
+      place(b);
+    }
+  }
+  /* never cover a module's own controls: try the top-right corner, then step left, then the bottom-right */
+  const SPOTS = [[5, 5], [5, 33], [5, 61], [5, 89], [5, 117], [5, 145], ['b', 5]];
+  function covers(b) {
+    const r = b.getBoundingClientRect();
+    if (!r.width) return false;
+    for (const c of b.parentElement.querySelectorAll('button,a,select,input,[role=button]')) {
+      if (c === b || c.classList.contains('sml-pop-btn')) continue;
+      const q = c.getBoundingClientRect();
+      if (q.width && q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top) return true;
+    }
+    return false;
+  }
+  function place(b) {
+    for (const [top, right] of SPOTS) {
+      b.style.top = top === 'b' ? 'auto' : top + 'px'; b.style.bottom = top === 'b' ? '5px' : 'auto'; b.style.right = right + 'px';
+      if (!covers(b)) return;
     }
   }
   let scanQueued = false;
-  const queueScan = () => { if (scanQueued) return; scanQueued = true; setTimeout(() => { scanQueued = false; addButtons(); }, 400); };
+  const queueScan = () => { if (scanQueued) return; scanQueued = true; setTimeout(() => { scanQueued = false; addButtons(); document.querySelectorAll('.sml-pop-btn').forEach((b) => { if (covers(b)) place(b); }); }, 400); };
 
   /* ---------- linked tickers across a member's windows ---------- */
   const LINK_KEY = 'sml-pop-link:' + (POP || 'main');
