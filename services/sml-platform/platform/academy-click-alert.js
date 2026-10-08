@@ -21,6 +21,7 @@ const { buildScenarios } = require('./academy-scenarios');
 const images = require('./academy-scenario-image');
 const optionsAlert = require('./academy-options-alert');
 const optionsCalc = require('./academy-options-calc');
+const { normalizeChain: normalizeAlertChain } = require('./academy-alert-options');
 const { postAlertRange } = require('./academy-alerts');
 
 const SNOWFLAKE = /^\d{15,25}$/;
@@ -347,7 +348,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
 
   /* The stock analysis behind an alert. With a contract and no chart target (or autoTarget), the target is derived from the contract
      (autoTargetForContract) and everything after that runs exactly as for a clicked target. Returns { analysis, rows } or { error }. */
-  async function analysisFor({ symbol, target, contract, autoTarget, anyExpiry = false }) {
+  async function analysisFor({ symbol, target, contract, autoTarget, anyExpiry = false, givenRows = null }) {
     const auto = !!contract && (autoTarget === true || !(Number(target) > 0));
     if (!auto) return { analysis: await gather(symbol, Number(target)) };
     const err = (status, code, detail = '') => ({ error: { ok: false, status, code, ...(detail ? { detail } : {}) } });
@@ -357,14 +358,16 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     const type = String(c.type || '').toLowerCase().startsWith('p') ? 'put' : String(c.type || '').toLowerCase().startsWith('c') ? 'call' : '';
     const strike = Number(c.strike), expiry = String(c.expiry || '').slice(0, 10);
     if (!type || !(strike > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return err(422, 'invalid_contract', 'Pick a call or put from the options chain.');
-    if (!chain) return err(503, 'options_unavailable', 'The options chain is not available right now.');
+    if (!chain && !(givenRows && givenRows.length)) return err(503, 'options_unavailable', 'The options chain is not available right now.');
     const loaded = await loadBars(sym);
     const price = loaded.last ? loaded.last.c : null;
     if (!(price > 0)) return err(422, 'no_live_price');
-    let rows = null; try { rows = await chain(sym); } catch (_) { rows = null; }
+    // the site sends the chain it is showing (fast, and the same contracts the member double-clicked); else the Academy's own chain
+    let rows = givenRows && givenRows.length ? givenRows : null;
+    if (!rows) { try { rows = await chain(sym); } catch (_) { rows = null; } }
     // the site's chain can list an expiration the default chain load left out: fetch that expiration once (site preview only)
-    if (anyExpiry && chainExpiry && !(rows && optionsAlert.findContract(rows, { type, strike, expiry }))) {
-      try { const raw = await chainExpiry(sym, expiry); const more = raw ? optionsCalc.normalizeChain(raw) : []; if (more && more.length) rows = (rows || []).concat(more); } catch (_) { /* keep what we have */ }
+    if (!givenRows && anyExpiry && chainExpiry && !(rows && optionsAlert.findContract(rows, { type, strike, expiry }))) {
+      try { const raw = await chainExpiry(sym, expiry); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = (rows || []).concat(more); } catch (_) { /* keep what we have */ }
     }
     if (!rows || !rows.length) return err(503, 'options_unavailable', 'The options chain is not available right now.');
     const found = optionsAlert.findContract(rows, { type, strike, expiry });
@@ -481,9 +484,10 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
      entitlement, no PT SMASHED lookup, nothing posted or recorded, and no Academy branding on the charts. The site posts the alert
      through its own alert path. */
   const SITE_FOOTER = 'Illustrative path from market data. Not a prediction, not financial advice, not a trade instruction.';
-  async function sitePreview({ symbol, contract } = {}) {
+  async function sitePreview({ symbol, contract, chainData = null } = {}) {
     if (!contract) return { ok: false, status: 400, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
-    const got = await analysisFor({ symbol, contract, autoTarget: true, anyExpiry: true });
+    let givenRows = null; if (chainData) { try { givenRows = normalizeAlertChain(chainData); } catch (_) { givenRows = null; } }
+    const got = await analysisFor({ symbol, contract, autoTarget: true, anyExpiry: true, givenRows });
     if (got.error) return got.error;
     const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };

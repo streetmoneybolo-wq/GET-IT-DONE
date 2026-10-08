@@ -1750,7 +1750,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
        The site sends its own levels; Academy alert desks are never read (noAlerts) and no Academy entitlement applies. Educational only. */
     if (request.method === 'POST' && (path === '/v1/group-tools/hedge' || path === '/v1/group-tools/contract-alert-preview')) {
       if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
-      const body = await readRequestBody(request);
+      const body = await readRequestBody(request, 384 * 1024); // the site sends the options chain it is showing
+      const siteChain = (v) => (v && typeof v === 'object' && Array.isArray(v.contracts) && v.contracts.length <= 2500 ? v : null);
       if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
       const verified = verifySignature({ secret: billingOptions.billingApiSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: billingOptions.now() });
       if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
@@ -1767,7 +1768,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
             symbol, shares: Math.min(1_000_000, Math.max(1, Math.round(Number(input.shares) || 100))), entry: level(input.entry), target: level(input.target), stop: level(input.stop),
             horizon: ['day', 'swing', 'mid', 'long', 'short'].includes(input.horizon) ? input.horizon : 'swing', side: input.side === 'short' ? 'short' : 'long',
             dir: ['bull', 'bear', 'neutral'].includes(input.dir) ? input.dir : null, strength: Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : null,
-            userId: null, view: 'site', noAlerts: true
+            userId: null, view: 'site', noAlerts: true, chainData: siteChain(input.chain)
           });
           sendJson(response, out.ok ? 200 : (out.status || 503), out);
         } catch (error) { logger('error', 'site_hedge_failed', { symbol, error }); sendJson(response, 503, { ok: false, error: 'hedge_unavailable', message: 'Hedge ideas are not available right now.' }); }
@@ -1779,7 +1780,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const strike = Number(c.strike), expiry = String(c.expiry || '');
       if (!type || !(strike > 0 && strike < 1e7) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) { sendJson(response, 400, { ok: false, error: 'invalid_contract' }); return; }
       try {
-        const out = await academyClickAlert.sitePreview({ symbol, contract: { type, strike, expiry } });
+        const out = await academyClickAlert.sitePreview({ symbol, contract: { type, strike, expiry }, chainData: siteChain(input.chain) });
         sendJson(response, out.ok ? 200 : (out.status || 503), out.ok ? out : { ok: false, error: out.code || 'contract_alert_failed', detail: out.detail || '' });
       } catch (error) { logger('error', 'site_contract_alert_failed', { symbol, error }); sendJson(response, 503, { ok: false, error: 'contract_alert_unavailable' }); }
       return;

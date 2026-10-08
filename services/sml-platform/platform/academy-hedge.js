@@ -368,6 +368,17 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
     finally { inflight.delete(key); }
   }
 
+  /* a chain the caller already has (the stockmarketloop.com dashboard sends the moomoo chain it shows): no feed calls at all */
+  function fromPayload(data, horizon) {
+    try {
+      const paired = chainLib.normalize(data);
+      if (!paired.length) return { ok: false };
+      const want = pickExpirations(chainLib.expirations(data, paired), horizon, now());
+      const rows = paired.filter((r) => !want.length || want.includes(r.expiry));
+      return { ok: true, rows: flattenChain(rows.length ? rows : paired), spot: chainLib.findSpot(data), expirations: want, source: 'site' };
+    } catch (_) { return { ok: false }; }
+  }
+
   /** The newest open equity alert for this symbol on the member's own desk, with the auto-PT ladder's raised stop applied. */
   async function alertLevels(symbol, userId, view) {
     if (!alertsFor || view !== 'live') return null;
@@ -387,7 +398,7 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
     const horizon = WINDOWS[q.horizon] ? q.horizon : 'swing';
     if (!chain) return { ok: false, status: 503, error: 'options_unconfigured', message: 'The live options feed is not connected right now.' };
     const [ch, daily, alert] = await Promise.all([
-      loadChain(symbol, horizon).catch((error) => { logger('warn', 'hedge_chain_failed', { symbol, error }); return { ok: false }; }),
+      q.chainData ? Promise.resolve(fromPayload(q.chainData, horizon)) : loadChain(symbol, horizon).catch((error) => { logger('warn', 'hedge_chain_failed', { symbol, error }); return { ok: false }; }),
       // daily candles only refine the levels: never let a slow or rate-limited candle source hold the answer back
       candles ? Promise.race([Promise.resolve(candles(symbol, '1D')).catch(() => null), new Promise((r) => { const t = setTimeout(() => r(null), CANDLE_WAIT_MS); if (t.unref) t.unref(); })]) : null,
       // noAlerts: the stockmarketloop.com dashboard (signed /v1/group-tools/hedge) brings its own levels and never reads Academy desks
