@@ -1791,7 +1791,7 @@ test('stockmarketloop.com dashboard: signed hedge and contract-alert preview rou
     assert.equal((await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'call', strike: 100, expiry: 'soon' } })).status, 400);
     const ok = await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'aapl', contract: { type: 'call', strike: '100', expiry: '2026-11-20', extra: 1 } });
     assert.equal(ok.status, 200); assert.equal((await ok.json()).scenarios.images.length, 2);
-    assert.deepEqual(previews[0], { symbol: 'AAPL', contract: { type: 'call', strike: 100, expiry: '2026-11-20' } });
+    assert.deepEqual(previews[0], { symbol: 'AAPL', contract: { type: 'call', strike: 100, expiry: '2026-11-20' }, chainData: null });
     const gone = await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'put', strike: 999, expiry: '2026-11-20' } });
     assert.equal(gone.status, 404); assert.deepEqual(await gone.json(), { ok: false, error: 'contract_not_found', detail: 'gone' });
   });
