@@ -1746,6 +1746,44 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       catch (error) { logger('error', 'market_direction_failed', { error }); sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' }); }
       return;
     }
+    /* Hedge & Income and the options-chain contract alert for the stockmarketloop.com analyst dashboard (signed like Market Direction).
+       The site sends its own levels; Academy alert desks are never read (noAlerts) and no Academy entitlement applies. Educational only. */
+    if (request.method === 'POST' && (path === '/v1/group-tools/hedge' || path === '/v1/group-tools/contract-alert-preview')) {
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      const verified = verifySignature({ secret: billingOptions.billingApiSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: billingOptions.now() });
+      if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
+      let input = {};
+      try { input = JSON.parse(body.rawBody) || {}; } catch (_) { input = {}; }
+      const symbol = String(input.symbol || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      if (path === '/v1/group-tools/hedge') {
+        if (!academyHedge) { sendJson(response, 503, { ok: false, error: 'hedge_unavailable', message: 'The live options feed is not connected right now.' }); return; }
+        const level = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 1e7 ? n : null; };
+        const strength = input.strength == null || input.strength === '' ? NaN : Number(input.strength);
+        try {
+          const out = await academyHedge.plan({
+            symbol, shares: Math.min(1_000_000, Math.max(1, Math.round(Number(input.shares) || 100))), entry: level(input.entry), target: level(input.target), stop: level(input.stop),
+            horizon: ['day', 'swing', 'mid', 'long', 'short'].includes(input.horizon) ? input.horizon : 'swing', side: input.side === 'short' ? 'short' : 'long',
+            dir: ['bull', 'bear', 'neutral'].includes(input.dir) ? input.dir : null, strength: Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : null,
+            userId: null, view: 'site', noAlerts: true
+          });
+          sendJson(response, out.ok ? 200 : (out.status || 503), out);
+        } catch (error) { logger('error', 'site_hedge_failed', { symbol, error }); sendJson(response, 503, { ok: false, error: 'hedge_unavailable', message: 'Hedge ideas are not available right now.' }); }
+        return;
+      }
+      if (!academyClickAlert || typeof academyClickAlert.sitePreview !== 'function') { sendJson(response, 503, { ok: false, error: 'contract_alert_unavailable' }); return; }
+      const c = input.contract && typeof input.contract === 'object' ? input.contract : {};
+      const type = c.type === 'call' || c.type === 'put' ? c.type : '';
+      const strike = Number(c.strike), expiry = String(c.expiry || '');
+      if (!type || !(strike > 0 && strike < 1e7) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) { sendJson(response, 400, { ok: false, error: 'invalid_contract' }); return; }
+      try {
+        const out = await academyClickAlert.sitePreview({ symbol, contract: { type, strike, expiry } });
+        sendJson(response, out.ok ? 200 : (out.status || 503), out.ok ? out : { ok: false, error: out.code || 'contract_alert_failed', detail: out.detail || '' });
+      } catch (error) { logger('error', 'site_contract_alert_failed', { symbol, error }); sendJson(response, 503, { ok: false, error: 'contract_alert_unavailable' }); }
+      return;
+    }
     if (request.method === 'POST' && path === '/v1/group-tools/alerts') {
       await handleSiteAlerts(request, response, { ...billingOptions, academyAlerts, academyAlertSources });
       return;
@@ -3381,6 +3419,7 @@ async function main() {
   if (process.env.SML_OBI_BOT_TOKEN) for (const id of OWNER_IDS) personaBots[id] = createDiscordDirectory({ tokens: [{ label: 'persona', token: process.env.SML_OBI_BOT_TOKEN }], logger: log });
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, chain: (s) => (academyAlerts ? academyAlerts.chainFor(s) : null), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    chainExpiry: academyDataBridge.configured ? async (s, expiration) => { const r = await academyDataBridge.get('options', s, { expiration }); return r && r.ok ? r.data : null; } : null,
     store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses, freeUserIds: freeUsers, personas: personaBots,
     roleIds: String(process.env.SML_ACADEMY_CLICK_ALERT_ROLE_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
     footer: process.env.SML_ACADEMY_CLICK_ALERT_FOOTER !== 'off', logger: log

@@ -136,3 +136,28 @@ test('options ALERT mode refuses an unknown contract, a missing chain and an uns
   const u = await unsub.preview('333333333333333333', { symbol: 'TEST', contract: { type: 'call', strike: strikeNear(r), expiry: EXPIRY }, autoTarget: true });
   assert.equal(u.status, 402); assert.equal(u.code, 'click_alert_subscription_required');
 });
+
+test('site preview (stockmarketloop.com dashboard): same contract target, reasoning and two scenarios, no entitlement, no Academy branding, nothing posted', async () => {
+  const r = rows(), k = strikeNear(r), posts = [];
+  const directory = { post: async () => { posts.push(1); return { id: '1', channelId: '1' }; } };
+  const getBars = async (s, tf) => ({ bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? intraday(200, spot, 9e5) : intraday(200, spot) });
+  // no role ids, no passes, no free users: the Academy preview is refused, the site preview is not
+  const later = new Date(Date.now() + 45 * 864e5).toISOString().slice(0, 10);
+  const asked = [];
+  const svc = CA.createClickAlertService({ getBars, chain: async () => r, chainExpiry: async (s, e) => { asked.push(e); return { contracts: [] }; }, directory });
+  assert.equal((await svc.preview('333333333333333333', { symbol: 'TEST', contract: { type: 'call', strike: k, expiry: EXPIRY }, autoTarget: true })).ok, false);
+  const p = await svc.sitePreview({ symbol: 'TEST', contract: { type: 'call', strike: k, expiry: EXPIRY } });
+  assert.equal(p.ok, true, JSON.stringify(p));
+  assert.equal(p.analysis.autoTarget, true); assert.equal(p.analysis.side, 'long'); assert.ok(p.analysis.target > spot);
+  assert.match(p.analysis.targetBasis, /^(next resistance at \$|breakeven \$|live price \$)/);
+  assert.ok(p.options.contract.mid > 0); assert.ok(p.options.estimates.atTarget.base > p.options.contract.mid);
+  assert.equal(p.scenarios.images.length, 2);
+  for (const im of p.scenarios.images) { assert.ok(im.svg.startsWith('<svg')); assert.ok(!/Academy/.test(im.svg), 'no Academy branding'); assert.match(im.name, /\.svg$/); }
+  assert.ok(!/Academy/.test(p.analysis.disclaimer));
+  assert.ok(p.analysis.alertText.includes('Target from the contract: '));
+  assert.equal(posts.length, 0); assert.equal(asked.length, 0, 'the default chain had the contract');
+  // an expiration the default chain load left out is fetched once
+  const miss = await svc.sitePreview({ symbol: 'TEST', contract: { type: 'call', strike: k, expiry: later } });
+  assert.equal(miss.ok, false); assert.equal(miss.code, 'contract_not_found'); assert.deepEqual(asked, [later]);
+  assert.equal((await svc.sitePreview({ symbol: 'TEST' })).code, 'invalid_contract');
+});

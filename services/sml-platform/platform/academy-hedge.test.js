@@ -245,3 +245,20 @@ test('service: falls back to ATR levels without an alert, and reports a missing 
   const bad = await none.plan({ symbol: 'XYZ' });
   assert.equal(bad.ok, false); assert.equal(bad.status, 503);
 });
+
+test('service: noAlerts (the stockmarketloop.com dashboard) never reads an alert desk; its own levels win, ATR fills the rest', async () => {
+  const bars = Array.from({ length: 40 }, (_, i) => ({ t: i, o: 100, h: 102, l: 98, c: 100 })); // ATR 4
+  let asked = 0;
+  const svc = H.createHedgeService({ now: () => NOW, chain: async () => ({ ok: true, data: { contracts: chain({ days: [24, 38] }) } }), candles: async () => ({ bars }),
+    alertsFor: async () => { asked += 1; return [{ id: '9', symbol: 'XYZ', entry: 80, plan: { stop: 70, target: 90 }, at: 1 }]; } });
+  const r = await svc.plan({ symbol: 'XYZ', horizon: 'swing', view: 'live', userId: 'u', noAlerts: true, entry: 97, target: 110 });
+  assert.equal(asked, 0, 'alertsFor is never called');
+  assert.equal(r.ok, true);
+  assert.equal(r.levels.entry, 97); assert.equal(r.levels.target, 110);
+  assert.equal(r.levels.stop, 92, 'stop from ATR: 100 - 2 x 4');
+  assert.equal(r.levels.from.entry, 'query'); assert.equal(r.levels.from.stop, 'atr');
+  assert.equal(r.levels.alertId, null);
+  // without the flag the same call does read the desk
+  await svc.plan({ symbol: 'XYZ', horizon: 'swing', view: 'live', userId: 'u' });
+  assert.equal(asked, 1);
+});

@@ -117,7 +117,9 @@ function svgFor(scn, which, meta = {}) {
     lines.forEach((ln, q) => add('<text x="' + (px0 + 30) + '" y="' + (y + q * 15) + '" font-size="12.5" fill="#d3e0e7">' + esc(ln) + '</text>'));
     y += lines.length * 15 + 5;
   }
-  add('<text x="' + px0 + '" y="' + (H - 12) + '" font-size="11" fill="#6f8794">Illustrative path built from the Academy\'s data. Not a prediction, not financial advice, not a trade instruction. Making Easy Money Academy</text>');
+  // meta.footer replaces the closing line (the stockmarketloop.com dashboard shows these charts without Academy branding)
+  const footer = typeof meta.footer === 'string' ? meta.footer : 'Illustrative path built from the Academy\'s data. Not a prediction, not financial advice, not a trade instruction. Making Easy Money Academy';
+  add('<text x="' + px0 + '" y="' + (H - 12) + '" font-size="11" fill="#6f8794">' + esc(footer) + '</text>');
   add('</svg>');
   return parts.join('');
 }

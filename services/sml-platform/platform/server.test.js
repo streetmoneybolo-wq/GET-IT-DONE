@@ -1766,3 +1766,37 @@ test('Hedge & Income (Academy): session required, free tier refused, members get
     assert.equal((await fetch(base + '/academy-activity/hedge?symbol=AAPL', { headers: { authorization: 'Bearer member' } })).status, 503);
   });
 });
+
+test('stockmarketloop.com dashboard: signed hedge and contract-alert preview routes (no Academy session, desks never read)', async () => {
+  const secret = 'billing-test-secret';
+  const post = (base, path, payload) => { const raw = JSON.stringify(payload), ts = 1_700_000_000; return fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-sml-timestamp': String(ts), 'x-sml-signature': crypto.createHmac('sha256', secret).update(`${ts}.${raw}`, 'utf8').digest('hex') }, body: raw }); };
+  const asked = [], previews = [];
+  const academyHedge = { plan: async (q) => { asked.push(q); return { ok: true, symbol: q.symbol, ideas: [{ kind: 'collar' }] }; } };
+  const academyClickAlert = { sitePreview: async (q) => { previews.push(q); return q.contract.strike === 999 ? { ok: false, status: 404, code: 'contract_not_found', detail: 'gone' } : { ok: true, analysis: { target: 110 }, scenarios: { images: [{ svg: '<svg/>' }, { svg: '<svg/>' }] } }; } };
+  await withServer({ academyHedge, academyClickAlert, billingApiSecret: secret }, async (base) => {
+    // unsigned is refused
+    assert.ok([400, 401].includes((await fetch(base + '/v1/group-tools/hedge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"symbol":"AAPL"}' })).status));
+    assert.ok([400, 401].includes((await fetch(base + '/v1/group-tools/contract-alert-preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"symbol":"AAPL"}' })).status));
+    assert.equal((await post(base, '/v1/group-tools/hedge', { symbol: '<x>' })).status, 400);
+    const r = await post(base, '/v1/group-tools/hedge', { symbol: 'aapl', shares: 250, entry: 180, target: 'x', stop: -4, horizon: 'long', side: 'short', dir: 'bear', strength: 900, userId: 'smuggled', view: 'live' });
+    assert.equal(r.status, 200); assert.equal((await r.json()).ideas[0].kind, 'collar');
+    const q = asked[0];
+    assert.equal(q.symbol, 'AAPL'); assert.equal(q.shares, 250); assert.equal(q.entry, 180); assert.equal(q.target, null); assert.equal(q.stop, null);
+    assert.equal(q.horizon, 'long'); assert.equal(q.side, 'short'); assert.equal(q.dir, 'bear'); assert.equal(q.strength, 100);
+    assert.equal(q.noAlerts, true); assert.equal(q.userId, null); assert.equal(q.view, 'site', 'a caller cannot ask for an Academy desk');
+    assert.equal((await post(base, '/v1/group-tools/hedge', { symbol: 'AAPL' })).status, 200);
+    assert.equal(asked[1].strength, null); assert.equal(asked[1].horizon, 'swing'); assert.equal(asked[1].shares, 100);
+    // contract preview
+    assert.equal((await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'x', strike: 100, expiry: '2026-11-20' } })).status, 400);
+    assert.equal((await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'call', strike: 100, expiry: 'soon' } })).status, 400);
+    const ok = await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'aapl', contract: { type: 'call', strike: '100', expiry: '2026-11-20', extra: 1 } });
+    assert.equal(ok.status, 200); assert.equal((await ok.json()).scenarios.images.length, 2);
+    assert.deepEqual(previews[0], { symbol: 'AAPL', contract: { type: 'call', strike: 100, expiry: '2026-11-20' } });
+    const gone = await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'put', strike: 999, expiry: '2026-11-20' } });
+    assert.equal(gone.status, 404); assert.deepEqual(await gone.json(), { ok: false, error: 'contract_not_found', detail: 'gone' });
+  });
+  await withServer({ billingApiSecret: secret }, async (base) => {
+    assert.equal((await post(base, '/v1/group-tools/hedge', { symbol: 'AAPL' })).status, 503);
+    assert.equal((await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'call', strike: 1, expiry: '2026-11-20' } })).status, 503);
+  });
+});

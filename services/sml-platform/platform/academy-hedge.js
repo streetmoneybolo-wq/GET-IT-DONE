@@ -385,7 +385,8 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
     const [ch, daily, alert] = await Promise.all([
       loadChain(symbol, horizon).catch((error) => { logger('warn', 'hedge_chain_failed', { symbol, error }); return { ok: false }; }),
       candles ? Promise.resolve(candles(symbol, '1D')).catch(() => null) : null,
-      (q.entry > 0 && q.target > 0 && q.stop > 0) ? null : alertLevels(symbol, q.userId, q.view)
+      // noAlerts: the stockmarketloop.com dashboard (signed /v1/group-tools/hedge) brings its own levels and never reads Academy desks
+      (q.noAlerts || (q.entry > 0 && q.target > 0 && q.stop > 0)) ? null : alertLevels(symbol, q.userId, q.view)
     ]);
     if (!ch || !ch.ok) return { ok: false, status: 503, error: 'options_unavailable', message: `Options data for ${symbol} is not available right now. Try again in a minute.` };
     const bars = daily && Array.isArray(daily.bars) ? daily.bars : [];

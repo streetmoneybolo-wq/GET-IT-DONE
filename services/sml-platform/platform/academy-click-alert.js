@@ -311,7 +311,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, last, recent, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, chain = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, chain = null, chainExpiry = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
@@ -347,7 +347,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
 
   /* The stock analysis behind an alert. With a contract and no chart target (or autoTarget), the target is derived from the contract
      (autoTargetForContract) and everything after that runs exactly as for a clicked target. Returns { analysis, rows } or { error }. */
-  async function analysisFor({ symbol, target, contract, autoTarget }) {
+  async function analysisFor({ symbol, target, contract, autoTarget, anyExpiry = false }) {
     const auto = !!contract && (autoTarget === true || !(Number(target) > 0));
     if (!auto) return { analysis: await gather(symbol, Number(target)) };
     const err = (status, code, detail = '') => ({ error: { ok: false, status, code, ...(detail ? { detail } : {}) } });
@@ -362,6 +362,10 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const price = loaded.last ? loaded.last.c : null;
     if (!(price > 0)) return err(422, 'no_live_price');
     let rows = null; try { rows = await chain(sym); } catch (_) { rows = null; }
+    // the site's chain can list an expiration the default chain load left out: fetch that expiration once (site preview only)
+    if (anyExpiry && chainExpiry && !(rows && optionsAlert.findContract(rows, { type, strike, expiry }))) {
+      try { const raw = await chainExpiry(sym, expiry); const more = raw ? optionsCalc.normalizeChain(raw) : []; if (more && more.length) rows = (rows || []).concat(more); } catch (_) { /* keep what we have */ }
+    }
     if (!rows || !rows.length) return err(503, 'options_unavailable', 'The options chain is not available right now.');
     const found = optionsAlert.findContract(rows, { type, strike, expiry });
     if (!found) return err(404, 'contract_not_found', 'That contract is not in the live options chain right now. Reload the chain and pick it again.');
@@ -396,12 +400,12 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
   }
 
   /* the two scenarios (base case, and what to watch) drawn on the chart of the alert's own horizon */
-  function scenariosFor(analysis, { png = false, options = null } = {}) {
+  function scenariosFor(analysis, { png = false, options = null, footer = undefined } = {}) {
     try {
       const key = { day: 'm15', swing: 'daily', mid: 'weekly', long: 'weekly' }[analysis.horizon] || 'daily';
       const series = (analysis.__bars && analysis.__bars[key] && analysis.__bars[key].length >= 40) ? analysis.__bars[key] : analysis.__bars.daily;
       const scn = buildScenarios({ symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: series === analysis.__bars.daily && key !== 'daily' ? 'swing' : analysis.horizon, expectedDays: analysis.expectedDays, levels: analysis.levels, series, atr: analysis.atr });
-      return scn ? images.renderPair(scn, { horizonLabel: analysis.horizonLabel, contract: options ? contractMeta(options) : null }, { withPng: png }) : [];
+      return scn ? images.renderPair(scn, { horizonLabel: analysis.horizonLabel, contract: options ? contractMeta(options) : null, footer }, { withPng: png }) : [];
     } catch (error) { logger('warn', 'click_alert_scenarios_failed', { error: String(error.message || error) }); return []; }
   }
 
@@ -470,6 +474,25 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
     return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
+  }
+
+  /* stockmarketloop.com analyst dashboard (signed /v1/group-tools/contract-alert-preview): the same contract analysis as an options-chain
+     double-click in ALERT mode (target from the contract, reasoning, the two scenario charts and the alert text), with no Academy
+     entitlement, no PT SMASHED lookup, nothing posted or recorded, and no Academy branding on the charts. The site posts the alert
+     through its own alert path. */
+  const SITE_FOOTER = 'Illustrative path from market data. Not a prediction, not financial advice, not a trade instruction.';
+  async function sitePreview({ symbol, contract } = {}) {
+    if (!contract) return { ok: false, status: 400, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
+    const got = await analysisFor({ symbol, contract, autoTarget: true, anyExpiry: true });
+    if (got.error) return got.error;
+    const analysis = got.analysis;
+    if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
+    analysis.smashed = null;
+    const opt = await optionsFor(analysis, contract, got.rows);
+    if (opt && opt.error) return opt.error;
+    const pics = scenariosFor(analysis, { options: opt && opt.oa, footer: SITE_FOOTER }).map((im) => ({ which: im.which, name: im.name.replace(/\.png$/, '.svg'), alt: im.alt, svg: im.svg }));
+    delete analysis.__bars;
+    return { ok: true, scenarios: { available: pics.length > 0, images: pics }, options: opt ? opt.oa : null, analysis: { ...analysis, disclaimer: 'Educational estimate from market data. It is not a prediction, financial advice, or a trade instruction.', alertText: textFor(analysis, opt, false) } };
   }
 
   async function overLimit(userId, channelId) {
@@ -592,7 +615,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return { messageId: posted.id, images: files.length === 2 };
   }
 
-  return { entitlement, preview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
+  return { entitlement, preview, sitePreview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
