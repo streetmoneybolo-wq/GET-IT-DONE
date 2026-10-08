@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: SML Chart Academy Tools
- * Description: Adds the Academy chart tools the site chart did not have (smart-money map, MEM ALGO strategies, named candlesticks, bar-close countdown, options calculator) to the LoopCharts chart on the analyst dashboard. Group pages embed that same dashboard, so they get the tools too.
- * Version: 1.0.0
+ * Description: Adds the Academy chart tools the site chart did not have (smart-money map, MEM ALGO strategies, named candlesticks, bar-close countdown, options calculator, order-book walls, cost distribution, tape stats) to the LoopCharts chart on the analyst dashboard. Group pages embed that same dashboard, so they get the tools too.
+ * Version: 1.1.0
  *
  * The scripts are inlined before </body> on /analyst-dashboard/ only (one injection covers the dashboard and every group's embedded copy).
  * Script ids start with "sml-dashboard-chart-" because the dashboard strips other sml-* script tags.
@@ -24,6 +24,7 @@ function sml_cat_scripts() {
 		'patterns'        => $wrap_cjs( 'academy-patterns.js', 'SmlPatterns' ),
 		'mem-algo'        => $wrap_cjs( 'academy-mem-algo.js', 'MemAlgoEngine' ),
 		'adapter'         => @file_get_contents( $dir . 'adapter.js' ),
+		'depth'           => @file_get_contents( $dir . 'depth.js' ),        // walls, cost distribution, tape stats
 	);
 	$out = '';
 	foreach ( $parts as $id => $js ) {
