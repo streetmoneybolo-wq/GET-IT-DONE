@@ -341,13 +341,19 @@
     'scanner-intel': () => clickView('SCANNER INTELLIGENCE'),
     options: () => clickView('OPTIONS CHAIN'),
     calculator: () => clickView('OPTIONS CHAIN'),
-    'mem-algo': () => { const p = document.getElementById('mem-algo-panel'); const t = document.getElementById('mem-algo-toggle'); if (t && (!p || String(p.innerText || '').replace('⧉', '').trim().length < 5)) t.click(); }
+    'mem-algo': () => { const p = document.getElementById('mem-algo-panel'); const t = document.getElementById('mem-algo-toggle'); if (t && (!p || String(p.innerText || '').replace('⧉', '').trim().length < 5)) t.click(); },
+    // panels with their own on/off state only fetch data while they are switched on
+    sire: () => { const sp = window.smlSirePanel; if (sp && sp.state && !sp.state.open) sp.open(); },
+    screener: () => { const sc = document.getElementById('academy-screener'); if (sc && getComputedStyle(sc).display === 'none') { const t = document.getElementById('academy-screener-toggle'); if (t) t.click(); } },
+    alerts: () => { const a = document.getElementById('academy-alerts'); if (a && getComputedStyle(a).display === 'none') { const f = document.getElementById('academy-alerts-fab'); if (f) f.click(); } }
   };
+  const READY = { sire: () => !!(window.smlSirePanel && window.smlSirePanel.state && window.smlSirePanel.state.open) };
   const hasContent = (id) => { const m = modules().find((x) => x.id === id); return !!(m && m.el && String(m.el.innerText || '').replace('⧉', '').trim().length > 4); };
 
   async function bootPopout() {
     watchAuth();
-    if (OPEN[POP]) for (let i = 0; i < 12 && !hasContent(POP); i++) { try { OPEN[POP](); } catch (_) { /* try again */ } await new Promise((r) => setTimeout(r, 800)); }
+    const ready = () => (READY[POP] ? READY[POP]() : hasContent(POP));
+    if (OPEN[POP]) for (let i = 0; i < 15 && !(i > 0 && ready()); i++) { try { OPEN[POP](); } catch (_) { /* try again */ } await new Promise((r) => setTimeout(r, 800)); }
     const el = await waitFor(POP, 20000);
     if (!el) { document.body.insertAdjacentHTML('beforeend', '<div id="sml-pop-hold" style="position:fixed;inset:0;z-index:2147483000;background:#070b10">' + esc(labelOf(POP)) + ' could not be found on this page. Close this window and pop it out again from the Academy.</div>'); return; }
     solo(el);
