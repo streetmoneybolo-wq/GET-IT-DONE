@@ -68,6 +68,22 @@ function proposeTarget({ side = 'long', price, alignment = 0, sentiment = null, 
   return { post: true, target, pct: realPct, snappedTo: snapped, reason: 'ok', ...detail };
 }
 
+/* The three lines of the PT SMASHED update, written from the decision itself (not stock sentences). */
+function insightFor({ side = 'long', price, prop, updates = 0 }) {
+  const up = side !== 'short';
+  const al = Number(prop && prop.alignment) || 0, sent = prop ? prop.sentiment : null, mk = prop ? prop.market : null, vol = Number(prop && prop.volPct) || 0;
+  const dirWord = up ? 'upward' : 'downward';
+  const status = al >= 0.5 ? 'momentum still pushing ' + dirWord + ', MEM ALGO lined up on every horizon.' : al > 0 ? 'momentum holding, MEM ALGO still leaning our way.' : 'price held the level; momentum is mixed, so this leg is on a shorter leash.';
+  const parts = ['New target is ' + (prop && prop.pct) + '% ' + (up ? 'above' : 'below') + ' here' + (prop && prop.snappedTo ? ', set just ' + (up ? 'under' : 'over') + ' the $' + prop.snappedTo + ' level the chart already respects' : '') + '.'];
+  const sentS = Number(sent) * (up ? 1 : -1);
+  if (sent != null && Number.isFinite(sentS)) parts.push(sentS > 0.2 ? 'Sentiment is behind it.' : sentS < -0.2 ? 'Sentiment is cooling, so size down.' : 'Sentiment is neutral.');
+  const mkS = Number(mk) * (up ? 1 : -1);
+  if (mk != null && Number.isFinite(mkS)) parts.push(mkS > 0.2 ? 'Market backdrop is supportive.' : mkS < -0.2 ? 'The market is risk-off, so trail it tight.' : '');
+  const legs = updates >= 1 ? (updates === 1 ? 'Third target now. ' : 'Deep in extended territory now. ') : '';
+  const riskNote = legs + (vol >= 6 ? 'This one moves about ' + Math.round(vol) + '% a day, so take majority profits into strength.' : 'Volatility elevated, consider majority profits as we push deeper into extended territory.');
+  return { status, targetNote: parts.filter(Boolean).join(' '), riskNote };
+}
+
 /* Has the target been reached since `since`? range = { high, low } of everything traded after that moment (null when unknown). */
 function targetReached({ side, target, range }) {
   if (!range || !fin(target)) return false;
@@ -143,10 +159,11 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
           if (mode === 'dry') { out.dry++; s.note = 'dry run: would post ' + prop.target; logger('info', 'auto_pt_dry_run', { symbol: s.symbol, target: prop.target, pct: prop.pct }); s.dryTarget = prop.target; continue; }
           // the write-up (same PT SMASHED layout as the Discord post) is kept for the Academy alerts desk
           let written = null;
-          if (compose) { try { written = await compose({ symbol: s.symbol, side: s.side, target: prop.target, previousTarget: target }); } catch (error) { logger('warn', 'auto_pt_compose_failed', { symbol: s.symbol, error: String(error && error.message || error) }); } }
+          const insight = insightFor({ side: s.side, price: ev && ev.price, prop, updates: s.updates.length });
+          if (compose) { try { written = await compose({ symbol: s.symbol, side: s.side, target: prop.target, previousTarget: target, insight }); } catch (error) { logger('warn', 'auto_pt_compose_failed', { symbol: s.symbol, error: String(error && error.message || error) }); } }
           let sent2 = null;
           const willPost = mode === 'on' && s.postable !== false;
-          if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target });
+          if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target, insight });
           s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 2, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: written && written.stop || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
           out.posted++;
           s.note = (willPost ? 'posted ' : 'set on the desk ') + prop.target; delete s.hitAt;
@@ -163,4 +180,4 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
   return { tick, status, enabled, mode, forKey, load };
 }
 
-module.exports = { proposeTarget, marketOutlook, targetReached, createAutoPtService, MIN_PCT, MAX_PCT, WINDOW_MS, MAX_UPDATES };
+module.exports = { proposeTarget, marketOutlook, targetReached, insightFor, createAutoPtService, MIN_PCT, MAX_PCT, WINDOW_MS, MAX_UPDATES };

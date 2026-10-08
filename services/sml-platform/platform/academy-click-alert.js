@@ -323,7 +323,7 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     const long = analysis.side === 'long', r = (v) => (e >= 1 ? Math.round(v * 100) / 100 : Math.round(v * 10000) / 10000);
     return long ? { stopLow: r(e * 0.90), stopHigh: r(e * 0.93) } : { stopLow: r(e * 1.07), stopHigh: r(e * 1.10) };
   }
-  const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
+  const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...(analysis.insight || {}) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
   async function preview(userId, { symbol, target, contract = null, mode = 'auto' } = {}) {
     const ent = await entitlement(userId);
@@ -432,14 +432,15 @@ function createClickAlertService({ getBars, chain = null, directory, store = cre
     return { price, alignment: mid.alignment, levels: wide.ok ? wide.levels : mid.levels, volPct: (dailyVolatility(set.daily) || 0.03) * 100 };
   }
   /* the same PT SMASHED update as text only, nothing posted: the Academy alerts desk shows it on the alert (new target + the insight behind it) */
-  async function composeAutoUpdate({ symbol, target, previousTarget }) {
+  async function composeAutoUpdate({ symbol, target, previousTarget, insight = null }) {
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) throw new Error('analysis_' + analysis.code);
     analysis.smashed = { auto: true, prevTarget: previousTarget || null, forced: true };
+    if (insight) analysis.insight = { status: insight.status, targetNote: insight.targetNote, riskNote: insight.riskNote };
     return { text: textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())), stop: analysis.stop, horizon: analysis.horizon };
   }
   /* post the update as the Academy app, to the channel the alert was posted in: PT SMASHED layout, @everyone, both scenario charts */
-  async function postAutoUpdate({ symbol, channelId, target, previousTarget }) {
+  async function postAutoUpdate({ symbol, channelId, target, previousTarget, insight = null }) {
     if (!SNOWFLAKE.test(String(channelId))) throw new Error('invalid_channel');
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) throw new Error('analysis_' + analysis.code);

@@ -168,3 +168,18 @@ test('one message, one update: a Click-to-Alert copy of a desk alert is not upda
   assert.equal(posts.length, 1);
   assert.equal(svc.forKey('c:777'), null);
 });
+
+test('insight lines come from the decision, not stock sentences', () => {
+  const { insightFor } = require('./academy-auto-pt.js');
+  const a = insightFor({ side: 'long', prop: { alignment: 1, sentiment: 0.6, market: -0.5, volPct: 9, pct: 12.4, snappedTo: 11 }, updates: 0 });
+  assert.match(a.status, /MEM ALGO lined up/);
+  assert.match(a.targetNote, /12\.4% above/);
+  assert.match(a.targetNote, /\$11 level/);
+  assert.match(a.targetNote, /Sentiment is behind it/);
+  assert.match(a.targetNote, /risk-off/);
+  assert.match(a.riskNote, /about 9% a day/);
+  const b = insightFor({ side: 'short', prop: { alignment: 0, sentiment: null, market: null, volPct: 2, pct: 8 }, updates: 1 });
+  assert.match(b.status, /mixed/);
+  assert.match(b.targetNote, /below here/);
+  assert.match(b.riskNote, /^Third target now/);
+});
