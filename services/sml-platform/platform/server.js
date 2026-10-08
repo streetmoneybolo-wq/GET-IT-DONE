@@ -45,6 +45,7 @@ const { createSentimentService, createSentimentMemory } = require('./academy-sen
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
+const { createVolIndex } = require('./academy-vol-index');
 const dataHealth = createDataHealth({ soft: { 'massive-indices': [401, 403], 'wordpress-history': [500] } });
 const { createDataRateLimit } = require('./data-rate-limit');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
@@ -3155,7 +3156,13 @@ async function main() {
     return getAcademyCandles(symbol, tf);
   };
   /* Market Direction engine: one shared read for the Academy panel and the stockmarketloop.com dashboard panel. */
+  /* SML VIX: the CBOE VIX method on live SPY options (moomoo through the site bridge); two chain reads every 2 minutes in market hours */
+  const smlVix = academyDataBridge.configured ? createVolIndex({
+    chain: (symbol, expiration) => academyDataBridge.get('options', symbol, expiration ? { expiration } : {}),
+    isOpen: (t) => isMarketOpen(t), logger: log
+  }) : null;
   const marketDirection = String(config.massiveApiKey || '').trim() ? createMarketDirection({
+    volIndex: smlVix,
     ...massiveSnapshots({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-rest', u, o) }),
     candles: getAcademyCandles,
     tape: academyMassive && academyMassive.status().enabled ? academyMassive : null,

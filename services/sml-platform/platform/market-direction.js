@@ -220,9 +220,21 @@ function score(mode, data) {
     ]);
   }
 
-  /* 5. volatility (VIXY for VIX) */
+  /* 5. volatility: the SML VIX (CBOE method on SPY options) when it is live, VIXY otherwise */
   const vix = q.VIXY || {};
-  if (mode === 'day' && fin(vix.changePct)) {
+  const sv = data.vol && data.vol.ok && fin(data.vol.level) ? data.vol : null;
+  if (sv) {
+    const lvlScore = sv.level < 15 ? 1 : sv.level <= 20 ? 0 : sv.level <= 25 ? -1 : -2;
+    const ch = sv.change;
+    const chScore = ch && fin(ch.pct) ? (ch.pct > 6 ? -2 : ch.pct > 2 ? -1 : ch.pct < -6 ? 2 : ch.pct < -2 ? 1 : 0) : null;
+    const vixyTrend = mode === 'swing' && data.mtf && data.mtf.VIXY && data.mtf.VIXY['1D'] ? -data.mtf.VIXY['1D'].dir : null;
+    const vals = [lvlScore, chScore, vixyTrend].filter((x) => x !== null);
+    add('volatility', 'Volatility (SML VIX: 30-day, from SPY options)', clamp(Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), -2, 2), [
+      'SML VIX ' + sv.level + (sv.level < 15 ? ': calm market' : sv.level <= 20 ? ': normal' : sv.level <= 25 ? ': elevated fear' : ': high fear') + (sv.stale ? ' (last reading)' : ''),
+      ch ? (mode === 'day' ? 'Since the open ' : 'Since earlier ') + (ch.change > 0 ? '+' : '') + ch.change + ' (' + (ch.pct > 0 ? '+' : '') + ch.pct + '%)' + (ch.pct > 2 ? ': fear rising' : ch.pct < -2 ? ': fear easing' : '') : '',
+      vixyTrend !== null ? 'VIXY daily trend is ' + (vixyTrend < 0 ? 'rising' : vixyTrend > 0 ? 'falling' : 'flat') : (fin(vix.changePct) ? 'VIXY ' + pct(vix.changePct) + ' today' : '')
+    ], { vol: { level: sv.level, change: ch || null } });
+  } else if (mode === 'day' && fin(vix.changePct)) {
     add('volatility', 'Volatility (VIXY for VIX)', step(-vix.changePct, [-4, -1.5, 1.5, 4]), ['VIXY ' + pct(vix.changePct) + ' today: ' + (vix.changePct > 1.5 ? 'fear rising, a headwind for longs' : vix.changePct < -1.5 ? 'fear easing, a tailwind for longs' : 'calm')]);
   } else if (mode === 'swing' && data.mtf && data.mtf.VIXY && data.mtf.VIXY['1D']) {
     const v = data.mtf.VIXY['1D'];
@@ -286,7 +298,9 @@ function checklist(mode, data, result) {
   const add = (status, text) => items.push({ status, text });
   if (mode === 'day') {
     if (fin(spy.changePct)) add(Math.abs(spy.changePct) < 0.25 ? 'warn' : spy.changePct > 0 ? 'up' : 'down', (data.session === 'pre' ? 'Pre-market: ' : 'Today: ') + 'SPY ' + pct(spy.changePct) + ', QQQ ' + pct(q.QQQ && q.QQQ.changePct));
-    if (fin(q.VIXY && q.VIXY.changePct)) add(q.VIXY.changePct > 1.5 ? 'down' : q.VIXY.changePct < -1.5 ? 'up' : 'ok', 'Volatility (VIXY) ' + pct(q.VIXY.changePct));
+    const sv = data.vol && data.vol.ok && fin(data.vol.level) ? data.vol : null;
+    if (sv) add(sv.level > 20 || (sv.change && sv.change.pct > 2) ? 'down' : sv.level < 15 || (sv.change && sv.change.pct < -2) ? 'up' : 'ok', 'SML VIX ' + sv.level + (sv.change ? ' (' + (sv.change.change > 0 ? '+' : '') + sv.change.change + ' since the open)' : ''));
+    else if (fin(q.VIXY && q.VIXY.changePct)) add(q.VIXY.changePct > 1.5 ? 'down' : q.VIXY.changePct < -1.5 ? 'up' : 'ok', 'Volatility (VIXY) ' + pct(q.VIXY.changePct));
     if (fin(it.adRatio) && fin(spy.changePct)) { const agree = (spy.changePct > 0) === (it.adRatio > 1); add(agree ? 'ok' : 'warn', agree ? 'Breadth confirms the index (' + it.pctAdvancing + '% of stocks up)' : 'Breadth does NOT confirm the index: be careful with size'); }
     if (fin(spy.price) && fin(lv.vwap)) add(spy.price >= lv.vwap ? 'up' : 'down', 'SPY ' + (spy.price >= lv.vwap ? 'above' : 'below') + ' VWAP $' + lv.vwap);
     const h = data.mtf && data.mtf.SPY || {};
@@ -320,7 +334,7 @@ function flips(mode, data, result) {
 }
 
 /* ---------- the service: gathers data with its own caches ---------- */
-function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = null, optionsChain = null, normalizeChain = (x) => x, now = Date.now, logger = () => {} } = {}) {
+function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = null, optionsChain = null, normalizeChain = (x) => x, volIndex = null, now = Date.now, logger = () => {} } = {}) {
   const caches = new Map();
   const cached = async (key, ms, fn) => {
     const hit = caches.get(key);
@@ -365,7 +379,18 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
       const rows = await cached('opt:SPY', 120_000, async () => normalizeChain(await optionsChain('SPY')));
       options = optionsRead(rows, quotes.SPY && quotes.SPY.price, mode === 'day' ? 7 : 45, t);
     }
-    return { session, quotes, internals, mtf, levels, tape: tapeData, options };
+    let vol = null;
+    if (volIndex) {
+      try {
+        const v = await volIndex.get();
+        if (v && v.ok) {
+          const d = easternParts(t);
+          const sinceMs = mode === 'day' ? t - ((d.minutes - 570) * 60_000) : t - 3 * 86_400_000; // today's 9:30 open / last few days
+          vol = { ...v, change: d.minutes >= 570 || mode === 'swing' ? volIndex.changeSince(sinceMs) : null };
+        }
+      } catch (_) { vol = null; }
+    }
+    return { session, quotes, internals, mtf, levels, tape: tapeData, options, vol };
   }
 
   async function get(mode = 'day') {
@@ -376,8 +401,9 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
       return {
         ok: true, mode: m, asOf: now(), session: data.session, ...result,
         levels: data.levels.SPY, options: data.options ? { pcVolume: data.options.pcVolume, callWall: data.options.callWall, putWall: data.options.putWall } : null,
+        vol: data.vol ? { level: data.vol.level, change: data.vol.change || null, terms: data.vol.terms, source: data.vol.source, stale: !!data.vol.stale, asOf: data.vol.asOf } : null,
         checklist: checklist(m, data, result), flips: flips(m, data, result),
-        proxies: 'SPY / QQQ stand in for ES / NQ futures and VIXY for VIX on the current data plan. Internals are built from the whole US stock snapshot.',
+        proxies: 'SPY / QQQ stand in for ES / NQ futures. ' + (data.vol ? 'SML VIX is computed with the CBOE VIX method from live SPY options.' : 'VIXY stands in for VIX while the SPY options feed is down.') + ' Internals are built from the whole US stock snapshot.',
         disclaimer: 'Educational market read. Not financial advice; no read is certain and nothing here places a trade.'
       };
     });

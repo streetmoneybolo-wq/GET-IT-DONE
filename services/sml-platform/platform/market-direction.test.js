@@ -100,3 +100,14 @@ test('the service caches each source and never throws when one is down', async (
   assert.equal(calls, 1, 'cached');
   assert.match(r.disclaimer, /Not financial advice/);
 });
+
+test('volatility uses the SML VIX when it is live: level plus its move since the open', () => {
+  const base = { session: 'open', quotes: { SPY: { price: 650, changePct: 0 }, VIXY: { changePct: 0 } }, internals: null, mtf: { SPY: {} }, levels: { SPY: {} }, options: null };
+  const calm = md.score('day', { ...base, vol: { ok: true, level: 13.2, change: { change: -0.9, pct: -6.4 } } }).components.find((c) => c.key === 'volatility');
+  assert.match(calm.label, /SML VIX/); assert.equal(calm.score, 2);
+  assert.match(calm.reasons[0], /SML VIX 13.2: calm market/);
+  const fear = md.score('day', { ...base, vol: { ok: true, level: 27, change: { change: 3, pct: 12.5 } } }).components.find((c) => c.key === 'volatility');
+  assert.equal(fear.score, -2);
+  const fallback = md.score('day', { ...base, vol: null, quotes: { ...base.quotes, VIXY: { changePct: 5 } } }).components.find((c) => c.key === 'volatility');
+  assert.match(fallback.label, /VIXY/);
+});
