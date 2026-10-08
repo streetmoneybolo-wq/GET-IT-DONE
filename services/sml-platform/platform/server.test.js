@@ -1607,3 +1607,34 @@ test('group pro tools route is signature-checked, validates input, passes previe
     assert.equal((await post(base, { tool: 'setups', symbol: 'SPY' })).status, 503, 'disabled without the service');
   });
 });
+
+test('site alerts desk is signature-checked and serves the view WordPress chose (live / closed / teaser)', async () => {
+  const crypto = require('node:crypto');
+  const secret = 'billing-test-secret';
+  const post = (base, payload, { sign = true, ts = 1_700_000_000 } = {}) => {
+    const raw = JSON.stringify(payload);
+    const headers = { 'content-type': 'application/json', 'x-sml-timestamp': String(ts) };
+    if (sign) headers['x-sml-signature'] = crypto.createHmac('sha256', secret).update(`${ts}.${raw}`, 'utf8').digest('hex');
+    return fetch(`${base}/v1/group-tools/alerts`, { method: 'POST', headers, body: raw });
+  };
+  const seen = [];
+  const academyAlerts = {
+    snapshot: (opts) => { seen.push(['snap', opts ? opts.view : 'live']); return opts && opts.view === 'teaser' ? { ok: true, alerts: [], locked: true, teaser: { count: 3, closed: 1 } } : { ok: true, alerts: [{ id: '1', symbol: 'TXG' }] }; },
+    detail: async (id, opts) => { seen.push(['detail', id, opts ? opts.closedOnly : false]); return id === '1' ? { id: '1', symbol: 'TXG' } : null; }
+  };
+  await withServer({ billingApiSecret: secret, academyAlerts }, async (base) => {
+    assert.equal((await post(base, { groupId: 7, view: 'live' }, { sign: false })).status, 401);
+    const live = await (await post(base, { groupId: 7, view: 'live' })).json();
+    assert.equal(live.alerts[0].symbol, 'TXG'); assert.equal(live.view, 'live');
+    const teaser = await (await post(base, { groupId: 7, view: 'teaser' })).json();
+    assert.equal(teaser.teaser.count, 3); assert.equal(teaser.alerts.length, 0);
+    assert.equal((await post(base, { groupId: 7, view: 'teaser', detail: '1' })).status, 403, 'a teaser never opens an alert');
+    assert.equal((await post(base, { groupId: 7, view: 'live', detail: '1' })).status, 200);
+    assert.equal((await post(base, { groupId: 7, view: 'live', detail: '9' })).status, 404);
+    const odd = await (await post(base, { groupId: 7, view: 'anything' })).json();
+    assert.equal(odd.view, 'teaser', 'an unknown view falls back to the teaser');
+  });
+  await withServer({ billingApiSecret: secret }, async (base) => {
+    assert.equal((await post(base, { groupId: 7, view: 'live' })).status, 503);
+  });
+});

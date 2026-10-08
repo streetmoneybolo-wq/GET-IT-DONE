@@ -1363,6 +1363,38 @@ async function handleSiteExportIngest(request, response, options) {
 /* Group Pro Tools: the StockMarketLoop group plugin asks for one tool at a time, signed with the same secret as every other site-to-platform call.
    WordPress has already decided who may use the group and whether the member gets the full tool or a preview. */
 const groupToolsLimit = createDataRateLimit({ limit: Math.max(60, Number(process.env.GROUP_TOOLS_RATE_PER_MIN) || 600), windowMs: 60_000 });
+/* The alerts desk for stockmarketloop.com groups. WordPress decides who may see what (group role) and signs the request with the shared
+   billing secret; this answers with the same desk the Academy shows: 'live' (full alerts), 'closed' (case studies) or 'teaser' (a count only). */
+async function handleSiteAlerts(request, response, options) {
+  if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+  const body = await readRequestBody(request);
+  if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+  const verified = verifySignature({ secret: options.billingApiSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: options.now() });
+  if (!verified.ok) { sendJson(response, verified.status, { ok: false, error: verified.error }); return; }
+  if (!options.academyAlerts) { sendJson(response, 503, { ok: false, error: 'alerts_disabled' }); return; }
+  let input;
+  try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+  if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+  const view = ['live', 'closed', 'teaser'].includes(input.view) ? input.view : 'teaser';
+  const gate = groupToolsLimit.take({ headers: { 'x-forwarded-for': 'site-alerts:' + String(Number(input.groupId) || 'none') }, socket: {} });
+  if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+  try {
+    if (input.detail) {
+      if (view === 'teaser') { sendJson(response, 403, { ok: false, error: 'membership_required' }); return; }
+      const alertId = String(input.detail).replace(/[^0-9]/g, '').slice(0, 24);
+      const one = await options.academyAlerts.detail(alertId, view === 'closed' ? { closedOnly: true } : undefined);
+      if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
+      sendJson(response, 200, { ok: true, view, alert: one });
+      return;
+    }
+    const snap = view === 'live' ? options.academyAlerts.snapshot() : options.academyAlerts.snapshot({ view });
+    sendJson(response, 200, { ...snap, view });
+  } catch (error) {
+    options.logger('error', 'site_alerts_failed', { error });
+    sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' });
+  }
+}
+
 async function handleGroupTools(request, response, options) {
   if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
   const body = await readRequestBody(request);
@@ -1631,6 +1663,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
         return;
       }
+    }
+    if (request.method === 'POST' && path === '/v1/group-tools/alerts') {
+      await handleSiteAlerts(request, response, { ...billingOptions, academyAlerts });
+      return;
     }
     if (request.method === 'POST' && path === '/v1/group-tools/run') {
       await handleGroupTools(request, response, { ...billingOptions, groupTools });
