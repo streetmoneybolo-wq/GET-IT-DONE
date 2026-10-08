@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Channel Banners
  * Description: Owner/admin controlled visual banners for individual SML group channels.
- * Version: 1.0.6
+ * Version: 1.1.1
  * Author: Stock Market Loop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_CBANNER_VERSION', '1.0.6' );
+define( 'SML_CBANNER_VERSION', '1.1.0' );
 define( 'SML_CBANNER_MAX_GIF', 50 * MB_IN_BYTES );
 define( 'SML_CBANNER_MAX_IMAGE', 5 * MB_IN_BYTES );
 
@@ -77,15 +77,59 @@ function sml_cbanner_get_all( int $group_id ): array {
 	return is_array( $value ) ? $value : array();
 }
 
+function sml_cbanner_picture_exists( array $entry ): bool {
+	$aid = (int) ( $entry['attachment_id'] ?? 0 );
+	if ( ! $aid ) { return true; } // older rows without an attachment id: trust the URL
+	if ( ! get_post( $aid ) ) { return false; }
+	$file = get_attached_file( $aid );
+	return ! $file || file_exists( $file ); // remote/offloaded media has no local file to check
+}
+
+/* Records a channel whose banner picture went missing, so it shows up for admins instead of as a broken image. */
+function sml_cbanner_note_missing( int $group_id, int $channel_id, array $entry ) {
+	$missing = get_option( 'sml_cbanner_missing', array() );
+	if ( ! is_array( $missing ) ) { $missing = array(); }
+	$k = $group_id . ':' . $channel_id;
+	if ( isset( $missing[ $k ] ) ) { return; }
+	$missing[ $k ] = array( 'group_id' => $group_id, 'channel_id' => $channel_id, 'attachment_id' => (int) ( $entry['attachment_id'] ?? 0 ), 'url' => (string) ( $entry['url'] ?? '' ), 'seen' => gmdate( 'c' ) );
+	update_option( 'sml_cbanner_missing', $missing, false );
+}
+
+add_action( 'admin_notices', function () {
+	if ( ! current_user_can( 'manage_options' ) ) { return; }
+	$missing = get_option( 'sml_cbanner_missing', array() );
+	if ( ! is_array( $missing ) || ! $missing ) { return; }
+	echo '<div class="notice notice-warning"><p><strong>Channel banners:</strong> ' . esc_html( count( $missing ) ) . ' channel banner picture(s) are missing and are hidden until a new picture is uploaded: ';
+	echo esc_html( implode( ', ', array_map( function ( $m ) { return 'group ' . $m['group_id'] . ' channel ' . $m['channel_id']; }, $missing ) ) ) . '.</p></div>';
+} );
+
+/* A banner that gets a new picture is no longer missing. */
+add_action( 'updated_option', function ( $name, $old, $new ) {
+	if ( ! preg_match( '/^sml_channel_banners_(\d+)$/', (string) $name, $m ) || ! is_array( $new ) ) { return; }
+	$missing = get_option( 'sml_cbanner_missing', array() );
+	if ( ! is_array( $missing ) || ! $missing ) { return; }
+	$changed = false;
+	foreach ( $missing as $k => $row ) {
+		if ( (int) $row['group_id'] !== (int) $m[1] ) { continue; }
+		$e = $new[ (string) $row['channel_id'] ] ?? ( $new[ (int) $row['channel_id'] ] ?? null );
+		if ( ! is_array( $e ) || empty( $e['url'] ) || (int) ( $e['attachment_id'] ?? 0 ) !== (int) $row['attachment_id'] ) { unset( $missing[ $k ] ); $changed = true; }
+	}
+	if ( $changed ) { update_option( 'sml_cbanner_missing', $missing, false ); }
+}, 10, 3 );
+
 function sml_cbanner_public_map( int $group_id ): array {
 	$map = array();
 	foreach ( sml_cbanner_get_all( $group_id ) as $channel_id => $entry ) {
 		if ( ! is_array( $entry ) || empty( $entry['url'] ) ) { continue; }
+		if ( ! sml_cbanner_picture_exists( $entry ) ) { sml_cbanner_note_missing( $group_id, (int) $channel_id, $entry ); continue; }
 		$map[ (string) absint( $channel_id ) ] = array(
 			'url'   => esc_url_raw( (string) $entry['url'] ),
-			'zoom'  => max( 100, min( 300, (int) ( $entry['zoom'] ?? 100 ) ) ),
+			'zoom'  => max( 25, min( 400, (int) ( $entry['zoom'] ?? 100 ) ) ),
 			'pos_x' => max( 0, min( 100, (int) ( $entry['pos_x'] ?? 50 ) ) ),
 			'pos_y' => max( 0, min( 100, (int) ( $entry['pos_y'] ?? 50 ) ) ),
+			'off_x' => max( -300, min( 300, round( (float) ( $entry['off_x'] ?? 0 ), 1 ) ) ),
+			'off_y' => max( -300, min( 300, round( (float) ( $entry['off_y'] ?? 0 ), 1 ) ) ),
+			'height' => max( 30, min( 500, (int) ( $entry['height'] ?? 152 ) ) ),
 		);
 	}
 	return $map;
@@ -162,13 +206,17 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 			$current['attachment_id'] = $uploaded['attachment_id'];
 			$current['url'] = $uploaded['url'];
 			$new_attachment = (int) $uploaded['attachment_id'];
+			if ( null === $request->get_param( 'height' ) ) { unset( $current['height'], $current['off_x'], $current['off_y'] ); }
 		}
 		if ( empty( $current['url'] ) ) {
 			return new WP_Error( 'sml_cbanner_missing_file', 'Choose a banner image first.', array( 'status' => 400 ) );
 		}
-		$current['zoom'] = max( 100, min( 300, (int) ( $request->get_param( 'zoom' ) ?: 100 ) ) );
+		$current['zoom'] = max( 25, min( 400, (int) ( $request->get_param( 'zoom' ) ?: 100 ) ) );
 		$current['pos_x'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_x' ) ?? 50 ) ) );
 		$current['pos_y'] = max( 0, min( 100, (int) ( $request->get_param( 'pos_y' ) ?? 50 ) ) );
+		if ( null !== $request->get_param( 'off_x' ) ) { $current['off_x'] = max( -300, min( 300, round( (float) $request->get_param( 'off_x' ), 1 ) ) ); }
+		if ( null !== $request->get_param( 'off_y' ) ) { $current['off_y'] = max( -300, min( 300, round( (float) $request->get_param( 'off_y' ), 1 ) ) ); }
+		if ( null !== $request->get_param( 'height' ) ) { $h = (int) $request->get_param( 'height' ); if ( $h > 0 ) { $current['height'] = max( 30, min( 500, $h ) ); } else { unset( $current['height'] ); } }
 		$current['updated_by'] = get_current_user_id();
 		$current['updated_at'] = current_time( 'mysql', true );
 		$all[ $key ] = $current;
@@ -178,7 +226,10 @@ function sml_cbanner_rest_save( WP_REST_Request $request ) {
 		if ( $new_attachment ) { wp_delete_attachment( $new_attachment, true ); }
 		return new WP_Error( 'sml_cbanner_store', 'The banner could not be saved.', array( 'status' => 500 ) );
 	}
-	if ( $old_attachment && $old_attachment !== $new_attachment ) { wp_delete_attachment( $old_attachment, true ); }
+	/* Only a REPLACED or REMOVED picture may be deleted. A save that only moves, zooms, resizes or hides the banner keeps
+	   the same picture, and deleting it there is what left channels with a broken banner (fixed 1.1.1). */
+	$replaced = $remove || ( $new_attachment && $new_attachment !== $old_attachment );
+	if ( $replaced && $old_attachment && ! sml_cbanner_attachment_still_used( $group_id, $key, $old_attachment, $remove ) ) { wp_delete_attachment( $old_attachment, true ); }
 	return rest_ensure_response( array(
 		'ok' => true,
 		'channel_id' => $channel_id,
@@ -228,6 +279,76 @@ function sml_cbanner_rest_save_conversation_background( WP_REST_Request $request
 	return rest_ensure_response( array( 'ok' => true, 'watermark' => $current ) );
 }
 
+
+/* A picture copied to other channels is shared by URL. The file is only deleted when no channel in the group still shows it. */
+/** True when the attachment is still referenced anywhere a group picture can live (any group), so it must not be deleted. */
+function sml_cbanner_attachment_still_used( int $group_id, string $key, int $attachment_id, bool $removed ): bool {
+	if ( sml_cbanner_url_in_use( $group_id, '', $removed ? '' : $key, $attachment_id ) ) { return true; }
+	global $wpdb;
+	$url = (string) wp_get_attachment_url( $attachment_id );
+	$file = $url ? basename( (string) wp_parse_url( $url, PHP_URL_PATH ) ) : '';
+	if ( '' === $file ) { return false; }
+	$like = '%' . $wpdb->esc_like( $file ) . '%';
+	// every group's banners, backgrounds and visuals, plus group icon/banner columns
+	$opt = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name REGEXP '^sml_(channel_banners|channel_watermarks|group_visuals)_[0-9]+$' AND option_value LIKE %s", $like ) );
+	if ( $opt > 0 ) {
+		// the option we just wrote no longer contains it when it was replaced; any remaining hit is a real reference
+		return true;
+	}
+	$groups = $wpdb->prefix . 'sml_groups';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $groups ) ) === $groups ) {
+		if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$groups} WHERE banner_url LIKE %s OR icon_url LIKE %s", $like, $like ) ) ) { return true; }
+	}
+	if ( function_exists( 'sml_mr_is_referenced' ) ) { $why = ''; if ( sml_mr_is_referenced( $attachment_id, $why ) ) { return true; } }
+	return false;
+}
+
+function sml_cbanner_url_in_use( int $group_id, string $new_url, string $except_key, int $attachment_id ): bool {
+	$old_url = (string) wp_get_attachment_url( $attachment_id );
+	if ( '' === $old_url ) { return false; }
+	foreach ( array( 'sml_channel_banners_' . $group_id, 'sml_channel_watermarks_' . $group_id ) as $opt ) {
+		$all = get_option( $opt, array() );
+		if ( ! is_array( $all ) ) { continue; }
+		foreach ( $all as $k => $entry ) {
+			if ( (string) $k === $except_key && 'sml_channel_banners_' . $group_id === $opt ) { continue; }
+			if ( is_array( $entry ) && ! empty( $entry['url'] ) && (string) $entry['url'] === $old_url ) { return true; }
+		}
+	}
+	return false;
+}
+
+/* Copy one channel's banner or background (picture and settings) to other channels of the same group. */
+function sml_cbanner_rest_copy( WP_REST_Request $request ) {
+	$group_id = absint( $request->get_param( 'group_id' ) );
+	$from     = absint( $request->get_param( 'from_channel_id' ) );
+	$kind     = 'background' === $request->get_param( 'kind' ) ? 'background' : 'banner';
+	$to       = array_values( array_unique( array_filter( array_map( 'absint', (array) $request->get_param( 'to_channel_ids' ) ) ) ) );
+	if ( ! $group_id || ! $from || ! $to || count( $to ) > 100 ) { return new WP_Error( 'sml_cbanner_copy_args', 'Pick the channels to copy to.', array( 'status' => 400 ) ); }
+	if ( ! sml_cbanner_can_manage( $group_id ) ) { return new WP_Error( 'sml_cbanner_forbidden', 'Only this group’s owner or admin can change channels.', array( 'status' => 403 ) ); }
+	if ( ! sml_cbanner_channel( $from, $group_id ) ) { return new WP_Error( 'sml_cbanner_channel', 'That channel does not belong to this group.', array( 'status' => 400 ) ); }
+	$option = ( 'banner' === $kind ? 'sml_channel_banners_' : 'sml_channel_watermarks_' ) . $group_id;
+	$all    = get_option( $option, array() );
+	$all    = is_array( $all ) ? $all : array();
+	$src    = isset( $all[ (string) $from ] ) && is_array( $all[ (string) $from ] ) ? $all[ (string) $from ] : array();
+	if ( empty( $src['url'] ) ) { return new WP_Error( 'sml_cbanner_copy_source', 'This channel has no picture to copy yet.', array( 'status' => 409 ) ); }
+	$keys = 'banner' === $kind ? array( 'url', 'zoom', 'pos_x', 'pos_y', 'off_x', 'off_y', 'height' ) : array( 'url', 'opacity' );
+	$done = 0;
+	foreach ( $to as $channel_id ) {
+		if ( $channel_id === $from || ! sml_cbanner_channel( $channel_id, $group_id ) ) { continue; }
+		$key  = (string) $channel_id;
+		$cur  = isset( $all[ $key ] ) && is_array( $all[ $key ] ) ? $all[ $key ] : array();
+		unset( $cur['attachment_id'], $cur['height'], $cur['off_x'], $cur['off_y'] );
+		foreach ( $keys as $k ) { if ( isset( $src[ $k ] ) ) { $cur[ $k ] = $src[ $k ]; } }
+		$cur['attachment_id'] = 0;
+		$cur['updated_by']    = get_current_user_id();
+		$cur['updated_at']    = current_time( 'mysql', true );
+		$all[ $key ] = $cur;
+		$done++;
+	}
+	update_option( $option, $all, false );
+	return rest_ensure_response( array( 'ok' => true, 'copied' => $done ) );
+}
+
 function sml_cbanner_rest_upload_group_background( WP_REST_Request $request ) {
 	$group_id = absint( $request->get_param( 'group_id' ) );
 	if ( ! $group_id ) {
@@ -246,6 +367,11 @@ add_action( 'rest_api_init', static function () {
 		'methods' => 'GET',
 		'callback' => 'sml_cbanner_rest_get',
 		'permission_callback' => '__return_true',
+	) );
+	register_rest_route( 'sml-channel-visuals/v1', '/copy', array(
+		'methods' => 'POST',
+		'callback' => 'sml_cbanner_rest_copy',
+		'permission_callback' => static function () { return is_user_logged_in(); },
 	) );
 	register_rest_route( 'sml-channel-visuals/v1', '/visual', array(
 		'methods' => 'POST',
@@ -298,3 +424,23 @@ add_action( 'wp_enqueue_scripts', static function () {
 		'nonce' => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 	) );
 }, 99 );
+
+/* One-time (1.0.10): earlier versions cropped banners, so owners zoomed or moved them to compensate. Show every saved banner whole again:
+ * zoom 100%, centred, height from the picture's own proportions. Owners can still zoom, move and resize afterwards. */
+add_action( 'init', static function () {
+	if ( get_option( 'sml_cbanner_fit_migrated' ) === '1.0.10' ) { return; }
+	global $wpdb;
+	$names = $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'sml\\_channel\\_banners\\_%'" );
+	foreach ( (array) $names as $name ) {
+		$all = get_option( $name, array() );
+		if ( ! is_array( $all ) ) { continue; }
+		foreach ( $all as $key => $entry ) {
+			if ( ! is_array( $entry ) ) { continue; }
+			$entry['zoom'] = 100; $entry['pos_x'] = 50; $entry['pos_y'] = 50;
+			unset( $entry['off_x'], $entry['off_y'], $entry['height'] );
+			$all[ $key ] = $entry;
+		}
+		update_option( $name, $all, false );
+	}
+	update_option( 'sml_cbanner_fit_migrated', '1.0.10', false );
+} );
