@@ -33,6 +33,7 @@
     root.className = 'smd'; root.id = opts.id;
     root.setAttribute('aria-label', 'Market direction');
     if (opts.before) opts.host.insertBefore(root, opts.before); else opts.host.appendChild(root);
+    var body = document.createElement('div'); root.appendChild(body); // redraws stay inside, so a pop-out button on the panel is never wiped
     var KEY = 'smd-mode';
     var mode = 'day'; try { mode = localStorage.getItem(KEY) === 'swing' ? 'swing' : 'day'; } catch (e) { /* default */ }
     var data = {}, err = '', timer = 0;
@@ -40,12 +41,12 @@
       var r = data[mode];
       var head = '<div class="smd-head"><span class="smd-title">MARKET DIRECTION</span><span class="smd-tabs"><button type="button" data-m="day" class="' + (mode === 'day' ? 'on' : '') + '">Day trading</button><button type="button" data-m="swing" class="' + (mode === 'swing' ? 'on' : '') + '">Swing trading</button></span>'
         + '<span class="smd-meta">' + (r ? (SESSION[r.session] || '') + ' · updated ' + ago(r.asOf) : '') + '</span></div>';
-      if (!r) { root.innerHTML = head + '<div class="smd-empty">' + esc(err || 'Reading the market…') + '</div>'; return; }
+      if (!r) { body.innerHTML = head + '<div class="smd-empty">' + esc(err || 'Reading the market…') + '</div>'; return; }
       var comps = r.components.map(function (c) { return '<div class="smd-row' + (c.available ? '' : ' off') + '">' + pill(c) + '<div><b>' + esc(c.label) + '</b>' + c.reasons.map(function (x) { return '<small>' + esc(x) + '</small>'; }).join('') + '</div></div>'; }).join('');
       var lv = Object.keys(LEVELS).filter(function (k) { return r.levels && r.levels[k] != null; }).map(function (k) { return '<span><em>' + LEVELS[k] + '</em><strong>$' + esc(r.levels[k]) + '</strong></span>'; });
       if (r.options && r.options.callWall) lv.push('<span><em>Call wall (OI)</em><strong>$' + esc(r.options.callWall.strike) + '</strong></span>');
       if (r.options && r.options.putWall) lv.push('<span><em>Put wall (OI)</em><strong>$' + esc(r.options.putWall.strike) + '</strong></span>');
-      root.innerHTML = head + '<div class="smd-body"><div class="smd-col">'
+      body.innerHTML = head + '<div class="smd-body"><div class="smd-col">'
         + '<div class="smd-read"><span class="smd-label" style="color:' + color(r.bias) + '">' + esc(r.label) + '</span><span class="smd-sub">' + (r.bias > 0 ? '+' : '') + r.bias + ' · ' + r.confidence + '% of the evidence agrees · ' + r.coverage + '% of sources live</span></div>'
         + '<div class="smd-gauge"><i style="left:' + ((r.bias + 100) / 2) + '%"></i></div><div class="smd-scale"><span>BEARISH</span><span>NEUTRAL</span><span>BULLISH</span></div>'
         + '<div class="smd-h" style="margin-top:10px">WHAT IT IS BUILT FROM</div>' + comps + '</div>'

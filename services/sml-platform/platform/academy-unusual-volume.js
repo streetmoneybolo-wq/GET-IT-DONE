@@ -15,13 +15,13 @@
   const compact = (v) => (Number.isFinite(v) ? Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v) : '–');
   const ago = (t) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : Math.round(s / 60) + 'm ago'; };
   const SESSION = { pre: 'PRE-MARKET', open: 'MARKET OPEN', after: 'AFTER HOURS', closed: 'MARKET CLOSED' };
-  let root = null, data = null, message = 'Loading…', timer = 0;
+  let root = null, body = null, data = null, message = 'Loading…', timer = 0;
 
   function paint() {
-    if (!root) return;
+    if (!body) return;
     const head = '<div class="auv-head"><b>UNUSUAL VOLUME</b><span style="color:#8fa6b3">whole US market · today vs yesterday</span><small>' + (data ? (SESSION[data.session] || '') + ' · ' + ago(data.asOf) : '') + '</small></div>';
-    if (!data || !data.rows.length) { root.innerHTML = head + '<div class="auv-empty">' + esc(data ? 'Nothing unusual yet today.' : message) + '</div>'; return; }
-    root.innerHTML = head + '<div class="auv-list">' + data.rows.map((u) => {
+    if (!data || !data.rows.length) { body.innerHTML = head + '<div class="auv-empty">' + esc(data ? 'Nothing unusual yet today.' : message) + '</div>'; return; }
+    body.innerHTML = head + '<div class="auv-list">' + data.rows.map((u) => {
       const x = u.ratio >= 10 ? Math.round(u.ratio) + '×' : u.ratio.toFixed(1) + '×';
       return '<button type="button" class="auv-row" data-sym="' + esc(u.sym) + '" title="Put ' + esc(u.sym) + ' on the chart"><strong>' + esc(u.sym) + '</strong><em>' + x + '</em>'
         + '<small>' + compact(u.vol) + ' shares today</small><small class="' + (u.chg >= 0 ? 'up' : 'dn') + '">' + (u.chg > 0 ? '+' : '') + esc(u.chg) + '%</small></button>';
@@ -46,6 +46,7 @@
     if (!host) { setTimeout(mount, 300); return; }
     root = document.createElement('section');
     root.className = 'auv'; root.id = 'academy-unusual-volume'; root.setAttribute('aria-label', 'Unusual volume');
+    body = document.createElement('div'); root.appendChild(body); // the panel draws inside; the pop-out button stays on the outside
     const after = document.getElementById('academy-direction');
     if (after) after.after(root); else { const title = host.querySelector('.below-title'); host.insertBefore(root, title ? title.nextSibling : host.firstChild); }
     root.addEventListener('click', (e) => { const b = e.target.closest('[data-sym]'); if (b && typeof window.smlAcademyNavigateMarket === 'function') window.smlAcademyNavigateMarket(b.getAttribute('data-sym')); });
