@@ -104,6 +104,8 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
         if (state.alerts[a.key] && a.postable === false) state.alerts[a.key].postable = false;
         if (!state.alerts[a.key]) state.alerts[a.key] = { windowMs: fin(a.windowMs) ? Number(a.windowMs) : undefined, postable: a.postable !== false, symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '' };
       }
+      // one Discord message is one alert: a Click-to-Alert copy ('c:<id>') of a message the desk already follows ('d:<id>') is not updated twice
+      for (const [k, s] of Object.entries(state.alerts)) if (k.startsWith('c:') && state.alerts['d:' + k.slice(2)] && s.status === 'watching') { s.status = 'done'; s.note = 'same message as the desk alert'; }
       const watching = Object.entries(state.alerts).filter(([, s]) => s.status === 'watching');
       watching.sort((x, y) => (x[1].checkedAt || 0) - (y[1].checkedAt || 0));
       for (const [key, s] of watching.slice(0, maxPerTick)) {

@@ -158,3 +158,13 @@ test('old desk-only updates (before these checks) are dropped on load; posted on
   assert.equal(svc.forKey('d:x'), null);
   assert.equal(svc.forKey('d:y').target, 3);
 });
+
+test('one message, one update: a Click-to-Alert copy of a desk alert is not updated twice', async () => {
+  const { svc, posts } = harness({ alerts: [
+    { key: 'd:777', symbol: 'AIXI', side: 'long', entry: 1.8, target: 2.2, at: NOW - 2 * DAY, channelId: '444444444444444444', postable: true },
+    { key: 'c:777', symbol: 'AIXI', side: 'long', entry: 1.8, target: 2.2, at: NOW - 2 * DAY, channelId: '444444444444444444' }
+  ], deps: { compose: async () => ({ text: 'x' }) } });
+  await svc.tick();
+  assert.equal(posts.length, 1);
+  assert.equal(svc.forKey('c:777'), null);
+});

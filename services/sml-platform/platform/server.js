@@ -3262,7 +3262,8 @@ async function main() {
     listAlerts: async () => {
       const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))), price: (() => { const ev = academyAlerts.evaluated.get(a.id); return ev && ev.quote && Number(ev.quote.last) > 0 ? Number(ev.quote.last) : null; })() })) : [];
       const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, at: r.at, channelId: r.channelId }));
-      return desk.concat(click);
+      const deskIds = new Set(desk.map((d) => d.key.slice(2)));
+      return desk.concat(click.filter((c) => !deskIds.has(c.key.slice(2)))); // the desk copy of a message wins
     },
     range: academyClickAlert.rangeSince, evidence: academyClickAlert.evidenceFor, post: academyClickAlert.postAutoUpdate, compose: academyClickAlert.composeAutoUpdate,
     sentiment: academySentiment ? (s) => academySentiment.get(s) : null, market: () => marketGauges.get(),
