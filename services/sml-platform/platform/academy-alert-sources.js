@@ -270,7 +270,7 @@ function createAlertSourceStore({ pool = null } = {}) {
 }
 
 /* Ties the store, the Discord directory and the alerts service together, and answers the desk's routes. */
-function createAlertSources({ store, directory, alerts, presets = [], tierFor = null, alertsTiering = false, logger = () => {}, timers = { setInterval, clearInterval } } = {}) {
+function createAlertSources({ store, directory, alerts, presets = [], tierFor = null, alertsTiering = false, ownerIds = [], logger = () => {}, timers = { setInterval, clearInterval } } = {}) {
   /* presets: the owner's streams [{ key, id, mirrorId }] from defaultChannels(); shown to every Academy session */
   const PRESETS = presets.filter((p) => p && cleanId(p.id)).map((p) => ({ channelId: String(p.id), mirrorId: cleanId(p.mirrorId), style: cleanStyle(p.key), label: PRESET_LABELS[p.key] || cleanLabel(p.key) }));
   const presetOf = (channelId) => PRESETS.find((p) => p.channelId === channelId) || null;
@@ -316,7 +316,8 @@ function createAlertSources({ store, directory, alerts, presets = [], tierFor = 
     const granted = VIEW_RANK[grantedView] ? grantedView : '';
     const view = VIEW_RANK[granted] > VIEW_RANK[academyView] ? granted : academyView;
     const sources = (await viewFor(id, view || 'teaser')).filter((s) => s.access);
-    if (granted) for (const p of presetSources(view)) if (!sources.some((s) => s.channelId === p.channelId)) sources.push(p);
+    // the trader who posts the owner streams always has them on his own desk
+    if (granted || ownerIds.includes(id)) for (const p of presetSources(view)) if (!sources.some((s) => s.channelId === p.channelId)) sources.push(p);
     return { view: view || 'teaser', tier, sources };
   }
   const publicSource = (s) => ({ guildId: s.guildId, guildName: s.guildName, channelId: s.channelId, label: s.label, authorId: s.authorId, authorName: s.authorName, style: s.style, premium: !!s.premium, access: s.access !== false });

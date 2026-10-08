@@ -3051,7 +3051,7 @@ async function main() {
   const academyAlertSources = academyAlerts && perMemberAlerts ? createAlertSources({
     store: createAlertSourceStore({ pool: database.pool }), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     alerts: academyAlerts, presets: defaultChannels(), logger: log,
-    alertsTiering: !!(academyGate && academyGate.alertsTiering),
+    alertsTiering: !!(academyGate && academyGate.alertsTiering), ownerIds: [...OWNER_IDS],
     /* a linked stockmarketloop.com member's Academy level, read from their roles in the Academy server (no Discord login needed) */
     tierFor: async (userId) => {
       if (freeUsers.has(userId)) return 'member';

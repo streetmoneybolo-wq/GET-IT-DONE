@@ -121,6 +121,8 @@ test('a linked site member gets their own desk at their Academy level; a group c
   const groupOnly = await sources.siteDesk('400000000000000002', 'live');
   assert.deepEqual(groupOnly.sources.map((s) => [s.channelId, s.view]), [[OWNER_STREAM, 'live']], 'inside a group the owner streams are always on the desk');
   assert.deepEqual((await sources.siteDesk('nope')).sources, []);
+  const owned = createAlertSources({ store: createAlertSourceStore(), directory, alerts, ownerIds: ['400000000000000009'], tierFor: async () => 'member', presets: [{ key: 'swings', id: OWNER_STREAM, mirrorId: '' }] });
+  assert.deepEqual((await owned.siteDesk('400000000000000009')).sources.map((s) => [s.channelId, s.view]), [[OWNER_STREAM, 'live']], 'the owner always sees his own streams');
 });
 
 test('one desk follows at most 12 sources', async () => {
