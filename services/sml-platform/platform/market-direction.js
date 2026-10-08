@@ -350,6 +350,14 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
   };
   const trendFor = async (sym, tf, ttl) => cached(`t:${sym}:${tf}`, ttl, async () => { const p = await candles(sym, tf); return trendOf(p && p.bars, tf === '1W' ? 3 : 5); });
 
+  const readInternals = (session) => cached('internals', session === 'open' ? 60_000 : session === 'closed' ? 600_000 : 120_000, async () => { const it = internalsFrom(await snapshotAll()); it.asOf = now(); return it; });
+  /* the whole-market unusual volume list on its own (the Academy panel and the dashboard card) */
+  async function unusualVolume() {
+    const session = sessionOf(now());
+    const it = await readInternals(session);
+    return { ok: !!it, session, asOf: it && it.asOf ? it.asOf : now(), universe: it ? it.universe : 0, rows: it && it.unusualVolume ? it.unusualVolume : [] };
+  }
+
   async function gather(mode) {
     const t = now(), session = sessionOf(t), open = session === 'open';
     const quotesTtl = open ? 15_000 : 60_000;
@@ -362,7 +370,7 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
       }
       return out;
     }) || {};
-    const internals = await cached('internals', open ? 60_000 : session === 'closed' ? 600_000 : 120_000, async () => internalsFrom(await snapshotAll()));
+    const internals = await readInternals(session);
     const tfs = mode === 'day' ? ['5m', '15m', '1h', '4h'] : ['1h', '4h', '1D', '1W'];
     const mtf = { SPY: {} };
     await Promise.all(tfs.map(async (tf) => { mtf.SPY[tf] = await trendFor('SPY', tf, tf === '5m' ? 30_000 : tf === '15m' ? 60_000 : 300_000); }));
@@ -413,7 +421,7 @@ function createMarketDirection({ snapshotAll, snapshotTickers, candles, tape = n
       };
     });
   }
-  return { get };
+  return { get, unusualVolume };
 }
 
 /* Massive (Polygon-format) snapshot readers */

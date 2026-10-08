@@ -750,7 +750,7 @@ const ACADEMY_POPOUT_HEAD = (() => {
 })();
 /* Market Direction panel (shared display file) + its Academy mount. */
 const ACADEMY_DIRECTION = (() => {
-  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
@@ -2498,6 +2498,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const mode = new URL(request.url || '/', 'http://localhost').searchParams.get('mode') === 'swing' ? 'swing' : 'day';
       try { sendJson(response, 200, await marketDirection.get(mode)); }
       catch (error) { logger('error', 'market_direction_failed', { error }); sendJson(response, 503, { ok: false, error: 'direction_temporarily_unavailable' }); }
+      return;
+    }
+    /* Unusual volume across the whole market (any signed-in Academy session). */
+    if (request.method === 'GET' && path === '/academy-activity/unusual-volume') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!marketDirection) { sendJson(response, 503, { ok: false, error: 'unusual_volume_unavailable' }); return; }
+      try { sendJson(response, 200, await marketDirection.unusualVolume()); }
+      catch (error) { logger('error', 'unusual_volume_failed', { error }); sendJson(response, 503, { ok: false, error: 'unusual_volume_unavailable' }); }
       return;
     }
     if (request.method === 'GET' && path === '/academy-activity/stream') {

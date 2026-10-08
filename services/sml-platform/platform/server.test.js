@@ -1717,3 +1717,15 @@ test('market direction: Academy route needs a session, the site route needs the 
     assert.deepEqual(asked, ['day', 'swing', 'swing']);
   });
 });
+
+test('unusual volume (Academy): needs a session and returns the whole-market list', async () => {
+  const { createAcademyOAuth } = require('./academy-oauth');
+  const oauth = createAcademyOAuth({ clientId: 'c', clientSecret: 's', academyAccess: { verify: async () => ({ ok: true }) } });
+  const marketDirection = { get: async () => ({ ok: true }), unusualVolume: async () => ({ ok: true, session: 'pre', asOf: 1, universe: 6500, rows: [{ sym: 'MEDS', ratio: 13.4, vol: 4858168, chg: 16 }] }) };
+  await withServer({ academyOAuth: oauth, marketDirection }, async (base) => {
+    assert.equal((await fetch(base + '/academy-activity/unusual-volume')).status, 401);
+    const token = oauth.issuePopoutSession('420000000000000042', 'free');
+    const j = await (await fetch(base + '/academy-activity/unusual-volume', { headers: { authorization: 'Bearer ' + token } })).json();
+    assert.equal(j.rows[0].sym, 'MEDS');
+  });
+});
