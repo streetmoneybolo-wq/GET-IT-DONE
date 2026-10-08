@@ -298,11 +298,45 @@
     });
   }
 
+  /* the page's sign-in messages live in the top bar, which a pop-out hides: show the ones that matter here */
+  function watchAuth() {
+    const say = { popout_expired: 'This window has expired. Close it and pop the module out again from the Academy in Discord.', access_ended: 'Your Academy access has ended, so this window stopped updating.', academy_role_required: 'Your Academy access has ended, so this window stopped updating.' };
+    const paint = () => {
+      const code = document.body.dataset.academyAuth || '';
+      let box = document.getElementById('sml-pop-auth');
+      if (!say[code]) { if (box) box.remove(); return; }
+      if (!box) { box = document.createElement('div'); box.id = 'sml-pop-auth'; box.setAttribute('role', 'alert'); box.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483350;padding:10px 14px;background:#3a1d07;border-bottom:1px solid #ff9f43;color:#ffd7a1;font:700 13px/1.4 system-ui,sans-serif;text-align:center'; document.body.appendChild(box); }
+      box.textContent = say[code];
+    };
+    new MutationObserver(paint).observe(document.body, { attributes: true, attributeFilter: ['data-academy-auth'] });
+    paint();
+  }
+
+  /* modules that only appear after a click on the full page (a view tab, a toggle): the window makes that click */
+  const clickView = (label) => { const b = [...document.querySelectorAll('.academy-view-cycle button')].find((x) => String(x.textContent || '').trim().toUpperCase().indexOf(label) === 0); if (b && !b.classList.contains('on')) b.click(); };
+  const OPEN = {
+    earnings: () => clickView('EARNINGS'),
+    'scanner-intel': () => clickView('SCANNER INTELLIGENCE'),
+    options: () => clickView('OPTIONS CHAIN'),
+    calculator: () => clickView('OPTIONS CHAIN'),
+    'mem-algo': () => { const p = document.getElementById('mem-algo-panel'); const t = document.getElementById('mem-algo-toggle'); if (t && (!p || String(p.innerText || '').replace('⧉', '').trim().length < 5)) t.click(); }
+  };
+  const hasContent = (id) => { const m = modules().find((x) => x.id === id); return !!(m && m.el && String(m.el.innerText || '').replace('⧉', '').trim().length > 4); };
+
   async function bootPopout() {
+    watchAuth();
+    if (OPEN[POP]) for (let i = 0; i < 12 && !hasContent(POP); i++) { try { OPEN[POP](); } catch (_) { /* try again */ } await new Promise((r) => setTimeout(r, 800)); }
     const el = await waitFor(POP, 20000);
     if (!el) { document.body.insertAdjacentHTML('beforeend', '<div id="sml-pop-hold" style="position:fixed;inset:0;z-index:2147483000;background:#070b10">' + esc(labelOf(POP)) + ' could not be found on this page. Close this window and pop it out again from the Academy.</div>'); return; }
     solo(el);
     bar();
+    // panels that fill only when there is data (dark pool, short sale...) say so instead of showing a blank window
+    const wait = document.createElement('div');
+    wait.id = 'sml-pop-wait';
+    wait.style.cssText = 'position:fixed;inset:0;z-index:2;display:none;place-items:center;padding:24px;text-align:center;color:#7b93a0;font:700 13px/1.5 system-ui,sans-serif;pointer-events:none';
+    document.body.appendChild(wait);
+    const checkEmpty = () => { const empty = !String(el.innerText || '').replace('⧉', '').trim(); wait.textContent = labelOf(POP) + ' for ' + symbol() + ' is waiting for data. It fills in by itself as soon as there is activity.'; wait.style.display = empty ? 'grid' : 'none'; };
+    checkEmpty(); setInterval(checkEmpty, 2000);
     if (POP === 'alerts') watchAlerts(el);
     heartbeat(); setInterval(heartbeat, 4000);
     addEventListener('pagehide', () => { const all = store.get(WINS, {}); delete all[ME]; store.set(WINS, all); busStop = true; });
