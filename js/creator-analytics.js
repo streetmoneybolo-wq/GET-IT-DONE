@@ -982,6 +982,51 @@
     modShell('<div class="ca-onboard"><div class="ca-big">Loading account #' + id + '…</div></div>');
     modApi('/user/' + id + '?days=' + Math.max(30, MOD.days)).then(function (r) { if (!r.ok) { modShell('<div class="ca-card"><div class="ca-sub">' + esc((r.j && r.j.message) || 'Could not load that account.') + '</div></div>'); return; } modRenderUser(r.j); });
   }
+  /* Account header in the style of a billing dashboard: back link, identity block (name, email, Discord), copy buttons, and a coloured summary band. */
+  var MOD_COPY_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>';
+  function modAccountHeader(u, st) {
+    var d = u.discord || null, risk = n(st.risk);
+    var band = risk >= 60 ? '#d23c4f' : risk >= 25 ? '#d9822b' : '#2f55d4';
+    var label = risk >= 60 ? 'High risk' : risk >= 25 ? 'Worth a look' : 'Low risk';
+    if (!document.getElementById('sml-mod-head-css')) {
+      var c = document.createElement('style'); c.id = 'sml-mod-head-css';
+      c.textContent = '.mod-acct{background:var(--ca-panel);border:1px solid var(--ca-line);border-radius:12px;overflow:hidden;margin-bottom:14px}'
+        + '.mod-acct__back{display:inline-flex;align-items:center;gap:6px;margin:12px 16px 0;padding:0;border:0;background:none;color:#5b8cff;font:700 12px/1 inherit;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}'
+        + '.mod-acct__top{display:flex;align-items:flex-start;gap:14px;padding:14px 16px 16px;flex-wrap:wrap}'
+        + '.mod-acct__av{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--ca-panel2)}'
+        + '.mod-acct__name{font-size:18px;font-weight:700;color:var(--ca-text);line-height:1.2}'
+        + '.mod-acct__line{font-size:12px;color:var(--ca-text2);margin-top:4px}.mod-acct__line b{color:var(--ca-muted);font-weight:600}'
+        + '.mod-acct__copy{margin-left:auto;display:flex;gap:16px;flex-wrap:wrap}'
+        + '.mod-acct__copy button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:#5b8cff;font:700 12px/1 inherit;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;padding:4px 0}'
+        + '.mod-acct__copy button:disabled{color:var(--ca-muted);cursor:not-allowed}'
+        + '.mod-acct__band{display:flex;align-items:center;gap:12px;padding:14px 16px;color:#fff}'
+        + '.mod-acct__band small{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.9}'
+        + '.mod-acct__band strong{display:block;font-size:24px;font-weight:800;line-height:1.2}'
+        + '.mod-acct__band i{margin-left:auto;width:38px;height:38px;border-radius:50%;background:#fff;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:18px}'
+        + '.mod-acct__flags{padding:10px 16px;border-top:1px solid var(--ca-line)}'
+        + '@media(max-width:640px){.mod-acct__copy{margin-left:0;width:100%}}';
+      document.head.appendChild(c);
+    }
+    return '<div class="mod-acct">'
+      + '<button type="button" class="mod-acct__back" data-mod-tab="accounts">&larr; Back</button>'
+      + '<div class="mod-acct__top"><img class="mod-acct__av" src="' + esc(u.avatar) + '" alt="">'
+      + '<div><div class="mod-acct__name">' + esc(u.handle || u.name) + '</div>'
+      + '<div class="mod-acct__line">' + esc(u.name) + ' · #' + n(u.id) + ' · joined ' + esc((u.registered || '').slice(0, 10)) + '</div>'
+      + '<div class="mod-acct__line"><b>Email:</b> ' + (u.email ? esc(u.email) : '—') + '</div>'
+      + '<div class="mod-acct__line"><b>Discord:</b> ' + (d && d.id ? esc(d.id) + (d.tag ? ' (' + esc(d.tag) + ')' : '') : 'not linked') + '</div></div>'
+      + '<div class="mod-acct__copy"><button type="button" data-copy-value="' + esc(String(u.id)) + '">' + MOD_COPY_ICON + 'Copy user ID</button>'
+      + '<button type="button"' + (d && d.id ? ' data-copy-value="' + esc(d.id) + '"' : ' disabled title="This member has not linked Discord yet"') + '>' + MOD_COPY_ICON + 'Copy Discord ID</button></div></div>'
+      + '<div class="mod-acct__band" style="background:' + band + '"><div><small>Risk score</small><strong>' + risk + ' / 100 · ' + label + '</strong></div><i style="color:' + band + '">!</i></div>'
+      + '<div class="mod-acct__flags">' + (st.flags && st.flags.length ? modFlags(st.flags) : '<span class="ca-sub">No warning signs in this window.</span>') + '</div>'
+      + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('[data-copy-value]');
+    if (!b) return;
+    var v = b.getAttribute('data-copy-value'), html = b.innerHTML;
+    var done = function () { b.innerHTML = MOD_COPY_ICON + 'Copied'; setTimeout(function () { b.innerHTML = html; }, 1500); };
+    try { navigator.clipboard.writeText(v).then(done, function () { window.prompt('Copy:', v); }); } catch (_) { window.prompt('Copy:', v); }
+  });
   function modRenderUser(d) {
     var u = d.user, st = d.stats || { posts: 0, flags: [], risk: 0, types: {} };
     var sess = (d.sessions || []).map(function (s) { return '<tr><td><code>' + esc(s.ip) + '</code></td><td>' + esc(s.geo || '—') + '</td><td>' + esc(modWhen(s.login)) + '</td><td class="ca-sub">' + esc(s.ua) + '</td></tr>'; }).join('');
@@ -989,8 +1034,7 @@
     var sharedIps = Object.keys(d.shared_ips || {}).map(function (ip) { return '<div style="margin:6px 0"><code>' + esc(ip) + '</code> also used by ' + d.shared_ips[ip].map(modUserChip).join(' ') + '</div>'; }).join('');
     var sharedDevs = Object.keys(d.shared_devices || {}).map(function (fp) { return '<div style="margin:6px 0"><code>' + esc(fp.slice(0, 16)) + '</code> also used by ' + d.shared_devices[fp].map(modUserChip).join(' ') + '</div>'; }).join('');
     var tl = (d.timeline || []).map(function (e) { return '<div class="ca-adm-msg' + (e.link ? ' link' : '') + '"><b>' + esc(modTypeLabel(e.type)) + '</b> · ' + esc(modWhen(e.at)) + '<br>' + esc(e.text) + '</div>'; }).join('') || '<div class="ca-sub">No activity in this window.</div>';
-    modShell('<div class="ca-card"><div class="ca-row" style="align-items:center;gap:14px"><img src="' + esc(u.avatar) + '" alt="" style="width:56px;height:56px;border-radius:50%"><div><div class="ca-big" style="font-size:22px">' + esc(u.name) + '</div><div class="ca-sub">@' + esc(u.handle) + ' · #' + n(u.id) + ' · joined ' + esc((u.registered || '').slice(0, 10)) + '</div>' + modDiscordLine(u) + '</div><button class="ca-pill" type="button" style="margin-left:auto" data-mod-tab="accounts">← Accounts</button></div>'
-      + '<div style="margin-top:12px">Risk ' + modRisk(st.risk) + ' ' + modFlags(st.flags) + '</div></div>'
+    modShell(modAccountHeader(u, st)
       + '<div class="ca-grid ca-kpi-grid">' + admChip('Posts', fmt(st.posts), Object.keys(st.types || {}).map(function (t) { return fmt(st.types[t]) + ' ' + modTypeLabel(t).toLowerCase(); }).join(' · ')) + admChip('Burst', fmt(st.burst60 || 0) + '<span class="ca-fresh"> /min</span>', fmt(st.burst5m || 0) + ' in 5 min') + admChip('Repeated text', Math.round(n(st.dup_ratio) * 100) + '%', fmt(st.links || 0) + ' with links') + admChip('Rhythm', st.cadence_cv == null ? '–' : st.cadence_cv, st.cadence_cv != null && st.cadence_cv < 0.15 ? 'machine-regular' : 'human-like variation') + '</div>'
       + '<div class="ca-card"><h3>Shared with other accounts</h3>' + ((sharedIps || sharedDevs) ? sharedIps + sharedDevs : '<div class="ca-sub">No other account uses this account’s IPs or devices in the window.</div>') + '</div>'
       + '<div class="ca-card"><h3>Sign-ins &amp; IPs<span class="ca-fresh">' + (d.sessions || []).length + ' active sessions</span></h3><div class="ca-adm-table"><table><thead><tr><th>IP</th><th>Location</th><th>Signed in</th><th>Browser</th></tr></thead><tbody>' + (sess || '<tr><td colspan="4" class="ca-sub">No sessions.</td></tr>') + '</tbody></table></div></div>'
