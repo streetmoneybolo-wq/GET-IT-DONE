@@ -1340,7 +1340,8 @@ test('Click-to-Alert routes need a session, a subscription, and answer with the 
     destinations: async () => [{ id: '100000000000000001', name: 'House of Traders', current: true }],
     channels: async (u, g) => (g === '100000000000000001' ? [{ id: '500000000000000005', name: 'alerts', category: '', mentionEveryone: false }] : null),
     preview: async (u, body) => (u === 'sub' ? { ok: true, entitlement: { entitled: true }, analysis: { horizon: 'swing', symbol: body.symbol } } : { ok: false, status: 402, code: 'click_alert_subscription_required' }),
-    send: async (user, body) => { calls.push({ user, body }); return body.symbol === 'LIMIT' ? { ok: false, status: 429, code: 'rate_limited', detail: 'slow down' } : { ok: true, messageId: '1', channelId: body.channelId, mentioned: false }; }
+    send: async (user, body) => { calls.push({ user, body }); return body.symbol === 'LIMIT' ? { ok: false, status: 429, code: 'rate_limited', detail: 'slow down' } : { ok: true, messageId: '1', channelId: body.channelId, mentioned: false }; },
+    chainFor: async ({ symbol, expiry }) => (symbol === 'AAPL' ? { ok: true, symbol, price: 190, expirations: ['2099-01-15', '2099-02-19'], loaded: expiry ? [expiry] : ['2099-01-15'], expiry: expiry || null, rows: [{ expiry: expiry || '2099-01-15', strike: 190, call: { bid: 5, ask: 5.2, mid: 5.1 }, put: { bid: 4.8, ask: 5, mid: 4.9 } }] } : { ok: false, status: 503, code: 'options_unavailable' })
   };
   const academyOAuth = { verifySession: (a) => (a === 'Bearer sub' ? { ok: true, userId: 'sub', tier: 'academy', displayName: 'Ana' } : a === 'Bearer plain' ? { ok: true, userId: 'plain', tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
   const sub = { authorization: 'Bearer sub' }, plain = { authorization: 'Bearer plain' };
@@ -1354,6 +1355,10 @@ test('Click-to-Alert routes need a session, a subscription, and answer with the 
     assert.equal((await fetch(u('channels?guild=100000000000000001'), { headers: plain })).status, 402);
     assert.equal((await (await fetch(u('channels?guild=100000000000000001'), { headers: sub })).json()).channels[0].name, 'alerts');
     assert.equal((await fetch(u('channels?guild=1'), { headers: sub })).status, 404);
+    assert.equal((await fetch(u('chain?symbol=AAPL'), { headers: plain })).status, 402, 'the contract picker is part of the add-on');
+    const chain = await (await fetch(u('chain?symbol=AAPL&expiry=2099-02-19'), { headers: sub })).json();
+    assert.deepEqual(chain.expirations, ['2099-01-15', '2099-02-19']); assert.equal(chain.rows[0].call.mid, 5.1); assert.equal(chain.expiry, '2099-02-19');
+    assert.equal((await fetch(u('chain?symbol=NOPE'), { headers: sub })).status, 503);
     assert.equal((await fetch(u('preview'), { method: 'POST', headers: plain, body: '{}' })).status, 415);
     assert.equal((await fetch(u('preview'), { method: 'POST', headers: json(sub), body: 'nope' })).status, 400);
     const denied = await fetch(u('preview'), { method: 'POST', headers: json(plain), body: JSON.stringify({ symbol: 'AAPL', target: 200 }) });
@@ -1375,7 +1380,7 @@ test('Click-to-Alert routes need a session, a subscription, and answer with the 
 test('The Academy page carries the smart-money hover explainer and the Click-to-Alert panel as plain inline scripts', async () => {
   await withServer({}, async (base) => {
     const html = await (await fetch(`${base}/academy-activity/`)).text();
-    for (const marker of ['SmlSmcExplain', 'smc-tip', 'CONCLUSION:', 'click-alert-toggle', 'academy-activity/click-alert/', 'data-ca="send"', 'MAP READ']) assert.ok(html.includes(marker), marker + ' is on the page');
+    for (const marker of ['SmlSmcExplain', 'smc-tip', 'CONCLUSION:', 'click-alert-toggle', 'academy-activity/click-alert/', 'data-ca="send"', 'data-kind="option"', 'data-ca="pstrike"', 'CATALYST CHECK', 'MAP READ']) assert.ok(html.includes(marker), marker + ' is on the page');
     // the page is one template literal: an inlined script must have no backslash escapes or template placeholders that would be rewritten
     assert.ok(!/\\u[0-9a-f]{4}/i.test(html.slice(html.indexOf('SmlSmcExplain'), html.indexOf('SmlSmcExplain') + 200)), 'no stray escapes');
   });

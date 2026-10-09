@@ -94,7 +94,7 @@ test('the alert text is Obi\'s layout with the click as the target', () => {
 /* ---------- the service: entitlement, permissions, limits ---------- */
 const GUILD = '111111111111111111', ROLE = '222222222222222222', USER = '333333333333333333', CHAN = '444444444444444444';
 const FIX = { m5: null, m15: null };
-function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false, personas = null, publisher = null, publishUsers = null } = {}) {
+function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEveryone = true, channelFound = true, botCanWebhook = false, webhookFails = false, personas = null, publisher = null, publishUsers = null, extra = {} } = {}) {
   const posts = [];
   const directory = {
     memberRolesLive: async () => roles,
@@ -106,7 +106,7 @@ function fake({ roles = [ROLE], userCanSend = true, botCanSend = true, mentionEv
   };
   const svc = CA.createClickAlertService({
     getBars: async (sym, tf) => { FIX.m5 = FIX.m5 || intraday(200, lastClose); FIX.m15 = FIX.m15 || intraday(200, lastClose, 9e5); return { bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : tf === '15m' ? FIX.m15 : FIX.m5 }; },
-    directory, personas, publisher, publishUsers, academyGuildId: GUILD, roleIds: [ROLE], limits: { userHour: 3, channelHour: 10, userDay: 10 }
+    directory, personas, publisher, publishUsers, academyGuildId: GUILD, roleIds: [ROLE], limits: { userHour: 3, channelHour: 10, userDay: 10 }, ...extra
   });
   return { svc, posts };
 }
@@ -355,4 +355,78 @@ test('autoTargetForContract: refuses what it cannot price', () => {
   assert.equal(CA.autoTargetForContract({ type: 'x', price: 100, strike: 100, premium: 1, iv: 0.3, dte: 10 }).code, 'invalid_contract');
   assert.equal(CA.autoTargetForContract({ type: 'call', price: 100, strike: 100, premium: 1, iv: 0.3, dte: 0 }).code, 'contract_expired');
   assert.equal(CA.autoTargetForContract({ type: 'call', price: 100, strike: 100, premium: 1, iv: null, dte: 10 }).code, 'contract_not_priced');
+});
+
+/* ---------- the Stock / Option chooser on the ALERT panel: the contract picker's chain and the earnings + news catalyst check ---------- */
+const calcPx = require('./academy-options-calc');
+const isoDays = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+const EXP_NEAR = isoDays(30), EXP_FAR = isoDays(60), EXP_LISTED = isoDays(90);
+function chainRows(expiry, days, raw = false) {
+  const T = days / 365, out = [];
+  for (let k = Math.round(lastClose * 0.85); k <= lastClose * 1.25; k += Math.max(1, Math.round(lastClose * 0.03))) {
+    const leg = (t) => { const p = calcPx.price(t, lastClose, k, T, 0.043, 0, 0.3).price; return { bid: +(p * 0.98).toFixed(2), ask: +(p * 1.02).toFixed(2), iv: 0.3, oi: 900, volume: 200 }; };
+    out.push(raw ? { strike: k, expiration: expiry, call: leg('call'), put: leg('put') } : { expiry, strike: k, call: leg('call'), put: leg('put') });
+  }
+  return out;
+}
+const optionsExtra = (catalysts = null) => ({
+  chain: async () => chainRows(EXP_NEAR, 30),
+  chainExpiry: async (sym, expiry) => (expiry === EXP_FAR ? chainRows(EXP_FAR, 60, true) : null),
+  expirations: async () => [EXP_NEAR, EXP_FAR, EXP_LISTED],
+  catalysts
+});
+
+test('the picker chain lists every expiration, serves the loaded strikes with live quotes, and fetches an expiration the chain left out', async () => {
+  const { svc } = fake({ extra: optionsExtra() });
+  const first = await svc.chainFor({ symbol: 'TEST' });
+  assert.equal(first.ok, true); assert.equal(first.symbol, 'TEST'); assert.ok(first.price > 0, 'the live price rides along for the ATM marker');
+  assert.deepEqual(first.expirations, [EXP_NEAR, EXP_FAR, EXP_LISTED]);
+  assert.deepEqual(first.loaded, [EXP_NEAR]);
+  assert.ok(first.rows.length > 5 && first.rows.every((r) => r.expiry === EXP_NEAR && r.call.mid > 0 && r.put.mid > 0 && r.call.oi === 900));
+  const far = await svc.chainFor({ symbol: 'TEST', expiry: EXP_FAR });
+  assert.equal(far.expiry, EXP_FAR); assert.ok(far.rows.length > 5 && far.rows.every((r) => r.expiry === EXP_FAR), 'the missing expiration was fetched and normalised');
+  assert.deepEqual(far.loaded, [EXP_NEAR, EXP_FAR]);
+  assert.equal((await svc.chainFor({ symbol: 'bad!' })).code, 'invalid_symbol');
+  const none = fake().svc; assert.equal((await none.chainFor({ symbol: 'TEST' })).code, 'options_unavailable');
+});
+
+test('an options alert picked on the panel is read from the contract, and earnings before expiry plus the week\'s news write the reason into the alert', async () => {
+  const earningsSoon = { date: isoDays(12), daysAway: 12 };
+  const headlines = [{ title: 'TEST beats on revenue and raises guidance', url: 'https://example.com/a', date: new Date(Date.now() - 864e5).toISOString() }];
+  const { svc, posts } = fake({ extra: optionsExtra({ earnings: async () => earningsSoon, news: async () => headlines }) });
+  const strike = chainRows(EXP_NEAR, 30).map((r) => r.strike).reduce((a, b) => (Math.abs(b - lastClose * 1.03) < Math.abs(a - lastClose * 1.03) ? b : a));
+  const out = await svc.preview(USER, { symbol: 'TEST', contract: { type: 'call', strike, expiry: EXP_NEAR }, autoTarget: true });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.equal(out.analysis.autoTarget, true); assert.ok(out.analysis.target > out.analysis.entry, 'a call targets above the live price');
+  assert.equal(out.options.contract.type, 'call'); assert.equal(out.options.contract.strike, strike);
+  const c = out.catalysts;
+  assert.equal(c.earnings.beforeExpiry, true); assert.equal(c.riskBump, true); assert.equal(c.news.positive, 1);
+  assert.ok(['caution', 'against'].includes(c.verdict));
+  assert.match(out.analysis.alert.riskNote, /^Earnings .* before expiry/);
+  assert.match(out.analysis.alert.setup, /News leans with the trade this week: TEST beats/);
+  assert.ok(out.analysis.rationale.some((r) => /before this contract expires/.test(r)), 'the reason is in the evidence list');
+  assert.match(out.analysis.alertText, /before expiry/); assert.match(out.analysis.alertText, /News leans with the trade/);
+  assert.equal(posts.length, 0);
+  const sent = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', contract: { type: 'call', strike, expiry: EXP_NEAR }, autoTarget: true, channelId: CHAN });
+  assert.equal(sent.ok, true, JSON.stringify(sent)); assert.deepEqual(sent.catalysts, { verdict: c.verdict, headline: c.headline });
+  assert.match(posts[0].body.content, /before expiry/);
+});
+
+test('a stock alert gets the same catalyst check, the risk steps up a notch when it says so, and a broken provider never blocks the alert', async () => {
+  const quiet = fake({ extra: { catalysts: { earnings: async () => null, news: async () => [] } } });
+  const base = await quiet.svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 });
+  assert.equal(base.ok, true); assert.equal(base.catalysts.available, false); assert.equal(base.catalysts.verdict, 'quiet');
+  const flagged = fake({ extra: { catalysts: { earnings: async () => ({ date: isoDays(2), daysAway: 2 }), news: async () => [{ title: 'TEST prices $40M stock offering', date: new Date().toISOString() }] } } });
+  const out = await flagged.svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 });
+  assert.equal(out.ok, true);
+  const order = ['low', 'mid', 'mid-high', 'high', 'extreme'];
+  assert.equal(order.indexOf(out.analysis.risk), Math.min(4, order.indexOf(base.analysis.risk) + 1), 'risk is one notch higher');
+  assert.equal(out.analysis.alert.risk, out.analysis.risk);
+  assert.match(out.analysis.alertText, /Red-flag news this week/);
+  assert.match(out.analysis.alert.riskNote, /inside the window/);
+  const broken = fake({ extra: { catalysts: { earnings: async () => { throw new Error('bridge down'); }, news: () => new Promise(() => {}) } } });
+  const t0 = Date.now();
+  const ok = await broken.svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 });
+  assert.equal(ok.ok, true); assert.equal(ok.catalysts.verdict, 'quiet');
+  assert.ok(Date.now() - t0 < 6000, 'a hanging provider is cut off by the timeout');
 });

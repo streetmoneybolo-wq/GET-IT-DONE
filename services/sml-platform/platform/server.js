@@ -2464,7 +2464,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     /* Click-to-Alert (a separate paid add-on, checked live against a Discord role): the member clicks a price on the chart, the Academy's data picks the horizon
        (day / swing / mid / long), and the alert is posted to a channel the member can post in, in GrandMaster-Obi's layout. */
-    if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
+    if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/chain', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
@@ -2483,6 +2483,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const channels = await academyClickAlert.channels(session.userId, params.get('guild'));
           if (!channels) { sendJson(response, 404, { ok: false, error: 'server_unavailable' }); return; }
           sendJson(response, 200, { ok: true, channels }); return;
+        }
+        /* the contract picker on the ALERT panel: expirations, then strikes with live call/put quotes for one expiration */
+        if (request.method === 'GET' && path === '/academy-activity/click-alert/chain') {
+          const entitlement = await academyClickAlert.entitlement(session.userId);
+          if (!entitlement.entitled) { sendJson(response, 402, { ok: false, error: 'click_alert_subscription_required' }); return; }
+          const out = await academyClickAlert.chainFor({ symbol: params.get('symbol'), expiry: params.get('expiry') || '' });
+          if (!out.ok) { fail(out); return; }
+          sendJson(response, 200, out); return;
         }
         if (request.method === 'POST') {
           if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
@@ -3421,6 +3429,10 @@ async function main() {
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, chain: (s) => (academyAlerts ? academyAlerts.chainFor(s) : null), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     chainExpiry: academyDataBridge.configured ? async (s, expiration) => { const r = await academyDataBridge.get('options', s, { expiration }); return r && r.ok ? r.data : null; } : null,
+    /* every expiration the bridge lists (the chain itself loads the nearest ones), for the contract picker */
+    expirations: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('options', s); if (!(r && r.ok && r.data)) return []; const oc = require('./academy-options-chain'); return oc.expirations(r.data, oc.normalize(r.data)); } : null,
+    /* the catalyst check: next earnings date (bridge) and this week's news (hub ticker feed) */
+    catalysts: { earnings: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('earnings', s); return r && r.ok ? r.data : null; } : null, news: academyAlerts ? (s) => academyAlerts.newsFor(s) : null },
     store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses, freeUserIds: freeUsers, personas: personaBots,
     roleIds: String(process.env.SML_ACADEMY_CLICK_ALERT_ROLE_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
     footer: process.env.SML_ACADEMY_CLICK_ALERT_FOOTER !== 'off', logger: log
