@@ -23,6 +23,8 @@ const optionsAlert = require('./academy-options-alert');
 const optionsCalc = require('./academy-options-calc');
 const { normalizeChain: normalizeAlertChain } = require('./academy-alert-options');
 const { postAlertRange } = require('./academy-alerts');
+const { assessCatalysts } = require('./academy-alert-catalysts');
+const RISK_ORDER = ['low', 'mid', 'mid-high', 'high', 'extreme'];
 
 const SNOWFLAKE = /^\d{15,25}$/;
 const HORIZONS = ['day', 'swing', 'mid', 'long'];
@@ -312,7 +314,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, last, recent, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, chain = null, chainExpiry = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
@@ -439,6 +441,56 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     };
   };
 
+  /* ---------- the catalyst check: earnings and this week's news, read against the alert's window (academy-alert-catalysts.js) ---------- */
+  const withTimeout = (p, ms) => new Promise((resolve) => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; resolve(null); } }, ms);
+    Promise.resolve(p).then((v) => { if (!done) { done = true; clearTimeout(t); resolve(v); } }, () => { if (!done) { done = true; clearTimeout(t); resolve(null); } });
+  });
+  async function catalystsFor(analysis, oa = null) {
+    if (!catalysts || (!catalysts.earnings && !catalysts.news)) return null;
+    const sym = analysis.symbol;
+    const [earnings, news] = await Promise.all([
+      catalysts.earnings ? withTimeout(catalysts.earnings(sym), 4_000) : null,
+      catalysts.news ? withTimeout(catalysts.news(sym), 4_000) : null
+    ]);
+    let c;
+    try { c = assessCatalysts({ symbol: sym, side: analysis.side, horizon: analysis.horizon, expectedDays: analysis.expectedDays, dte: oa && oa.contract ? oa.contract.dte : null, earnings, news, now: now() }); }
+    catch (error) { logger('warn', 'click_alert_catalysts_failed', { error: String(error.message || error) }); return null; }
+    analysis.catalysts = c;
+    if (c.riskBump) {
+      const bump = (r) => RISK_ORDER[Math.min(RISK_ORDER.length - 1, Math.max(0, RISK_ORDER.indexOf(r)) + 1)];
+      analysis.risk = bump(analysis.risk); analysis.alert.risk = analysis.risk;
+      if (oa && oa.risk) oa.risk = bump(oa.risk);
+    }
+    for (const r of c.reasons) analysis.rationale.push(r);
+    /* the layout's one-line notes carry the reason, so the posted alert says why it holds up (or what to watch) */
+    if (c.riskNote) analysis.alert.riskNote = c.riskNote + ' ' + analysis.alert.riskNote;
+    if (c.setupNote) analysis.alert.setup = analysis.alert.setup + ' ' + c.setupNote;
+    return c;
+  }
+
+  /* The contract picker on the ALERT panel: every expiration the chain lists and, for one expiration, its strikes with the live call and put quotes. */
+  async function chainFor({ symbol, expiry = '' } = {}) {
+    const sym = String(symbol || '').toUpperCase();
+    if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return { ok: false, status: 422, code: 'invalid_symbol' };
+    if (!chain && !chainExpiry) return { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' };
+    const exp = /^\d{4}-\d{2}-\d{2}$/.test(String(expiry || '')) ? String(expiry) : '';
+    let rows = []; if (chain) { try { rows = (await chain(sym)) || []; } catch (_) { rows = []; } }
+    if (exp && chainExpiry && !rows.some((r) => r && r.expiry === exp)) {
+      try { const raw = await chainExpiry(sym, exp); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = rows.concat(more); } catch (_) { /* keep what we have */ }
+    }
+    let listed = []; if (expirations) { try { listed = (await expirations(sym)) || []; } catch (_) { listed = []; } }
+    const today = new Date(now()).toISOString().slice(0, 10);
+    const exps = [...new Set([...rows.map((r) => r && r.expiry), ...listed].map((e) => String(e || '').slice(0, 10)).filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e) && e >= today))].sort();
+    if (!rows.length && !exps.length) return { ok: false, status: 503, code: 'options_unavailable', detail: 'No listed options were found for ' + sym + '.' };
+    let price = null; try { const { last } = await loadBars(sym); price = last ? last.c : null; } catch (_) { price = null; }
+    const leg = (s) => (s ? { bid: fin(Number(s.bid)) ? Number(s.bid) : null, ask: fin(Number(s.ask)) ? Number(s.ask) : null, mid: optionsAlert.mid(s), iv: fin(Number(s.iv)) ? Number(s.iv) : null, delta: fin(Number(s.delta)) ? Number(s.delta) : null, oi: fin(Number(s.oi)) ? Number(s.oi) : null, volume: fin(Number(s.volume)) ? Number(s.volume) : null } : null);
+    const list = rows.filter((r) => r && (!exp || r.expiry === exp) && Number(r.strike) > 0).map((r) => ({ expiry: r.expiry, strike: Number(r.strike), call: leg(r.call), put: leg(r.put) }))
+      .sort((a, b) => a.expiry.localeCompare(b.expiry) || a.strike - b.strike);
+    return { ok: true, symbol: sym, price, expirations: exps, loaded: [...new Set(rows.map((r) => r && r.expiry).filter(Boolean))].sort(), expiry: exp || null, rows: list };
+  }
+
   /* Did this member already alert this ticker, and has price since reached that alert's target? Then a higher target is a PT SMASHED update. */
   const SMASH_WINDOW_MS = 21 * 86_400_000;
   async function detectSmashed(userId, analysis, mode, contract) {
@@ -467,16 +519,17 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     // the horizon read is part of the paid add-on, so an unsubscribed member never receives it
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured', entitlement: ent };
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required', entitlement: ent };
-    const got = await analysisFor({ symbol, target, contract, autoTarget });
+    const got = await analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
     if (got.error) return { ...got.error, entitlement: ent };
     const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '', entitlement: ent };
     analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
     const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return { ...opt.error, entitlement: ent };
+    const cat = await catalystsFor(analysis, opt && opt.oa);
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
-    return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
+    return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
   }
 
   /* stockmarketloop.com analyst dashboard (signed /v1/group-tools/contract-alert-preview): the same contract analysis as an options-chain
@@ -494,9 +547,10 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     analysis.smashed = null;
     const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return opt.error;
+    const cat = await catalystsFor(analysis, opt && opt.oa);
     const pics = scenariosFor(analysis, { options: opt && opt.oa, footer: SITE_FOOTER }).map((im) => ({ which: im.which, name: im.name.replace(/\.png$/, '.svg'), alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
-    return { ok: true, scenarios: { available: pics.length > 0, images: pics }, options: opt ? opt.oa : null, analysis: { ...analysis, disclaimer: 'Educational estimate from market data. It is not a prediction, financial advice, or a trade instruction.', alertText: textFor(analysis, opt, false) } };
+    return { ok: true, scenarios: { available: pics.length > 0, images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, disclaimer: 'Educational estimate from market data. It is not a prediction, financial advice, or a trade instruction.', alertText: textFor(analysis, opt, false) } };
   }
 
   async function overLimit(userId, channelId) {
@@ -532,13 +586,14 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     if (!where.userCanSend) return { ok: false, status: 403, code: 'you_cannot_post_there', detail: 'You do not have permission to send messages in that channel.' };
     if (!where.botCanSend) return { ok: false, status: 403, code: 'app_cannot_post_there', detail: 'The Academy app cannot send messages in that channel. Ask a server admin to allow it.' };
     const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
-    const got = await analysisFor({ symbol, target, contract, autoTarget });
+    const got = await analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
     if (got.error) return got.error;
     const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
     analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
     const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return opt.error;
+    const cat = await catalystsFor(analysis, opt && opt.oa);
     const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
     if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     /* a PT SMASHED update goes to everyone unless the member said otherwise */
@@ -574,7 +629,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, catalysts: cat ? { verdict: cat.verdict, headline: cat.headline } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
   }
 
   /* ---------- the automatic price-target update (academy-auto-pt.js) ---------- */
@@ -619,7 +674,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, di
     return { messageId: posted.id, images: files.length === 2 };
   }
 
-  return { entitlement, preview, sitePreview, send, destinations, channels, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
+  return { entitlement, preview, sitePreview, send, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
