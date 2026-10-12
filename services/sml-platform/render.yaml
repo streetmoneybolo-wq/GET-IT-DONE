@@ -126,10 +126,12 @@ services:
       - key: MASSIVE_OPTIONS_ENABLED
         value: "0"
       # How long one options/earnings request to the site may take. A ticker the
-      # site has not cached is fetched from the moomoo bridge first, which runs
-      # well past the old 8 s; cutting it short made every chain load fail.
+      # site has not cached is fetched from the moomoo bridge first, which the
+      # platform's own logs show running past 25 s ("The site did not answer in
+      # time"); cutting it short made every chain load fail. Once a cold load
+      # completes, the site and the platform both cache it, so later loads are fast.
       - key: SML_ACADEMY_BRIDGE_TIMEOUT_MS
-        value: "25000"
+        value: "60000"
       - key: SML_ACADEMY_ELEVENLABS_VOICE_ID
         sync: false
       - key: SML_ACADEMY_ELEVENLABS_MODEL
