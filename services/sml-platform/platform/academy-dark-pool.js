@@ -77,20 +77,53 @@
     if (!box) { box = document.createElement('div'); box.className = 'academy-darkpool'; const buysell = document.querySelector('.academy-buysell'), stats = document.querySelector('.academy-stats'), tape = document.querySelector('.academy-tape'); (buysell || stats || tape || panel).after(box); }
     if (!S.on) { box.style.display = 'none'; return; }
     box.style.display = '';
+    if (DP.sym !== sym()) void loadSession(true);
     const L = window.smlLive, st = L && L.symbol === sym() ? L.stats : null;
-    if (!st || !st.count) { box.innerHTML = '<h4>DARK POOL</h4><small>Collecting trades. Off-exchange prints fill in as they arrive.</small>'; return; }
-    const pct = st.vol > 0 ? (st.offVol / st.vol * 100) : 0;
-    const recent = offPrints(L).slice(0, 6);
-    const big = (st.big || []).filter((b) => b.off).slice(0, 3);
-    box.innerHTML = '<h4>DARK POOL · ' + pct.toFixed(0) + '% OF VOLUME</h4>'
-      + '<div class="kv"><span>Off-exchange volume</span><span>' + whole(st.offVol) + ' sh · ' + whole(st.offN) + ' prints</span>'
-      + '<span>Lit volume</span><span>' + whole(st.vol - st.offVol) + ' sh</span></div>'
-      + (big.length ? '<h4 style="margin-top:6px">LARGEST OFF-EXCHANGE PRINTS</h4>' + big.map((b) => '<div class="row"><i>' + new Date(b.t).toLocaleTimeString('en-US', { hour12: false }) + '</i><span>$' + num(b.price) + ' × ' + whole(b.size) + '</span></div>').join('') : '')
-      + (recent.length ? '<h4 style="margin-top:6px">RECENT OFF-EXCHANGE PRINTS</h4>' + recent.map((t) => '<div class="row"><i>' + new Date(t.t).toLocaleTimeString('en-US', { hour12: false }) + '</i><span>$' + num(t.price) + ' × ' + whole(t.size) + '</span></div>').join('') : '')
-      + '<small>Off-exchange (dark pool / ATS) prints are reported to the tape but not shown on a public exchange order book at the time they trade. They can reflect large, already-arranged trades. Educational only.</small>';
+    let h = sessionHtml(DP.data && DP.sym === sym() ? DP.data : null);
+    if (st && st.count) {
+      const pct = st.vol > 0 ? (st.offVol / st.vol * 100) : 0;
+      const recent = offPrints(L).slice(0, 6);
+      h += '<h4 style="margin-top:8px">LIVE SINCE YOU OPENED · ' + pct.toFixed(0) + '% OF VOLUME</h4>'
+        + '<div class="kv"><span>Off-exchange</span><span>' + whole(st.offVol) + ' sh · ' + whole(st.offN) + ' prints</span><span>Lit</span><span>' + whole(st.vol - st.offVol) + ' sh</span></div>'
+        + (recent.length ? recent.map((t) => '<div class="row"><i>' + new Date(t.t).toLocaleTimeString('en-US', { hour12: false }) + '</i><span>$' + num(t.price) + ' × ' + whole(t.size) + '</span></div>').join('') : '<small>Off-exchange prints appear here as they arrive.</small>');
+    } else h += '<small style="margin-top:6px">Live prints: collecting. Off-exchange prints appear here as they arrive during the session.</small>';
+    box.innerHTML = h;
   }
 
-  function sync() { btn.classList.toggle('on', S.on); }
+  /* Session-wide read from the trade record (server: /academy-activity/dark-pool), refreshed every minute while the tool is on */
+  const DP = { sym: '', data: null, at: 0, busy: false, err: '' };
+  async function loadSession(force) {
+    const s = sym();
+    if (DP.busy || (!force && DP.sym === s && Date.now() - DP.at < 60000)) return;
+    DP.busy = true;
+    try {
+      const headers = window.smlAcademySessionToken ? { authorization: 'Bearer ' + window.smlAcademySessionToken } : {};
+      const r = await fetch('/academy-activity/dark-pool?symbol=' + encodeURIComponent(s), { cache: 'no-store', headers });
+      const j = await r.json().catch(() => null);
+      DP.sym = s; DP.at = Date.now(); DP.data = r.ok && j && j.ok ? j : null; DP.err = r.ok ? '' : (j && (j.detail || j.error)) || ('HTTP ' + r.status);
+    } catch (_) { DP.sym = s; DP.at = Date.now(); DP.data = null; DP.err = 'offline'; }
+    DP.busy = false; paintPanel();
+  }
+  const money = (v) => (v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(Math.round(v)));
+  const hhmm = (t) => new Date(t).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' });
+  function sessionHtml(d) {
+    if (!d) return '<h4>DARK POOL · TODAY</h4><small>' + (DP.busy ? 'Reading today\'s trade record…' : DP.err ? 'Trade record unavailable: ' + DP.err : 'Reading today\'s trade record…') + '</small>';
+    if (!d.available) return '<h4>DARK POOL · TODAY</h4><small>' + (d.detail || (d.reason === 'too_few_prints' ? 'Only ' + whole(d.prints) + ' prints in the record so far: not enough to read.' : 'No prints in the trade record yet.')) + '</small>';
+    const vs = d.offSharePct == null ? '' : d.offSharePct >= d.typicalSharePct + 10 ? ' · HIGH' : d.offSharePct <= d.typicalSharePct - 15 ? ' · LOW' : ' · normal';
+    let h = '<h4>DARK POOL · TODAY · ' + (d.offSharePct == null ? '–' : d.offSharePct.toFixed(0)) + '% OF VOLUME' + vs + '</h4>';
+    h += '<div class="kv"><span>Window</span><span>' + d.window.label + '</span>'
+      + '<span>Off-exchange</span><span>' + whole(d.offVolume) + ' sh · ' + whole(d.offPrints) + ' prints</span>'
+      + '<span>Typical share</span><span>about ' + d.typicalSharePct + '%</span>'
+      + (d.blocks && d.blocks.count ? '<span>Blocks (' + d.blocks.rule + ')</span><span>' + whole(d.blocks.count) + ' · ' + whole(d.blocks.volume) + ' sh · ' + (d.blocks.sharePct == null ? '–' : d.blocks.sharePct.toFixed(0) + '% of off-exchange') + '</span>' : '<span>Blocks (' + (d.blocks ? d.blocks.rule : '10,000+ sh') + ')</span><span>none in this window</span>')
+      + (d.lean ? '<span>Lean (tick rule)</span><span>' + (d.lean.offExchange > 0.25 ? 'buy side' : d.lean.offExchange < -0.25 ? 'sell side' : 'balanced') + (d.lean.lit != null ? ' · lit ' + (d.lean.lit > 0.25 ? 'buy side' : d.lean.lit < -0.25 ? 'sell side' : 'balanced') : '') + '</span>' : '') + '</div>';
+    if (d.largest && d.largest.length) h += '<h4 style="margin-top:6px">LARGEST OFF-EXCHANGE PRINTS</h4>' + d.largest.slice(0, 5).map((b) => '<div class="row"><i>' + hhmm(b.t) + '</i><span>$' + num(b.price) + ' × ' + whole(b.size) + ' · $' + money(b.notional) + (b.dir === 'B' ? ' ▲' : b.dir === 'S' ? ' ▼' : '') + '</span></div>').join('');
+    if (d.levels && d.levels.length) h += '<h4 style="margin-top:6px">WHERE IT PRINTED</h4>' + d.levels.map((l) => '<div class="row"><i>$' + num(l.price) + '</i><span>' + whole(l.volume) + ' sh · ' + whole(l.prints) + ' prints · ' + l.lean + '</span></div>').join('');
+    if (d.byHour && d.byHour.length > 1) h += '<h4 style="margin-top:6px">OFF-EXCHANGE SHARE BY HOUR</h4>' + d.byHour.map((x) => '<div class="row"><i>' + x.hour + '</i><span>' + (x.offSharePct == null ? '–' : x.offSharePct.toFixed(0) + '%') + ' of ' + whole(x.volume) + ' sh</span></div>').join('');
+    h += '<small>' + d.note + ' ' + d.caveat + '</small>';
+    return h;
+  }
+  function sync() { btn.classList.toggle('on', S.on); if (S.on) void loadSession(true); }
+  setInterval(() => { if (S.on) void loadSession(false); }, 15000);
   btn.addEventListener('click', () => { S.on = !S.on; save(); sync(); draw(); paintPanel(); });
   window.addEventListener('sml-live-data', () => { if (!window.smlChartGesture) draw(); paintPanel(); });
   // The chart is wrapped into its stage by a script that loads after this one, so the layer must follow it there even while the tool is off (draw() re-parents first).

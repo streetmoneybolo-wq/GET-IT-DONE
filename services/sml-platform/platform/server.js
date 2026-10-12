@@ -74,6 +74,7 @@ const { createChatStore, createChatHub, attachChatServer } = require('./academy-
 const { createMentionService } = require('./academy-mentions');
 const { createSignalRadar } = require('./academy-signal-radar');
 const { createDmNotifier } = require('./academy-notify-dm');
+const { sessionDarkPool } = require('./academy-dark-pool-session');
 const { createDiscordDmClient } = require('./dispute-notifier');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -1624,6 +1625,7 @@ async function handleNewsWebhook(request, response, options) {
 }
 
 let streamClients = 0;
+const darkPoolCache = new Map(); // symbol -> { until, payload } for /academy-activity/dark-pool
 /* Real-time trades and quotes from Massive replace the (minutes-old) tape and top of book whenever they are fresh; moomoo still supplies the deeper Level 2 ladder. */
 function mergeLive(base, massive, symbolRaw) {
   if (massive) massive.watch(symbolRaw);
@@ -2592,6 +2594,36 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Tick-by-tick view: newest book levels and individual prints, polled by the Activity about once a second. Read-only, never cached. */
+    /* Dark pool, session-wide: off-exchange prints from the Massive trade record (the live tape only knows prints since this server
+       started watching the symbol). Cached a minute per symbol. */
+    if (request.method === 'GET' && path === '/academy-activity/dark-pool') {
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      const sym = String(params.get('symbol') || '').toUpperCase();
+      if (!allowGatedSymbol(request, response, sym)) return;
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      if (!marketHistory || !marketHistory.enabled) { sendJson(response, 503, { ok: false, error: 'trade_record_unavailable', detail: 'The trade record is not configured on this server.' }); return; }
+      const hit = darkPoolCache.get(sym);
+      if (hit && hit.until > Date.now()) { sendJson(response, 200, hit.payload); return; }
+      try {
+        if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(sym);
+        const rows = await marketHistory.trades(sym, 50_000);
+        const live = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(sym) : null;
+        const st = marketState();
+        // today's 09:30 ET as a timestamp: the ET wall clock the market clock reports, shifted by the current ET offset
+        let openMs = null;
+        try { const et = String(st.et || ''); const asUtc = Date.parse(et.replace(' ', 'T') + ':00Z'); if (Number.isFinite(asUtc)) { const offset = Math.round((Date.now() - asUtc) / 60_000) * 60_000; openMs = Date.parse(et.slice(0, 10) + 'T09:30:00Z') + offset; } } catch (_) { openMs = null; }
+        const summary = sessionDarkPool(rows, { price: live && Number(live.last) > 0 ? Number(live.last) : null, now: Date.now(), sessionOpenMs: openMs });
+        const payload = { ok: true, symbol: sym, session: st.session, ...summary };
+        if (!rows.length) payload.detail = st.session === 'closed' && !st.tradingDay ? 'No trades today (market closed).' : 'The trade record returned no prints for this symbol yet.';
+        darkPoolCache.set(sym, { until: Date.now() + (rows.length ? 60_000 : 20_000), payload });
+        if (darkPoolCache.size > 300) darkPoolCache.delete(darkPoolCache.keys().next().value);
+        sendJson(response, 200, payload);
+      } catch (error) {
+        logger('warn', 'academy_dark_pool_failed', { symbol: sym, error: String(error && error.message || error) });
+        sendJson(response, 503, { ok: false, error: 'temporary_unavailable' });
+      }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/live') {
       if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;

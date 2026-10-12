@@ -688,3 +688,27 @@ test('the signal radar route is the owner\'s only; pt-updates returns a member t
     assert.ok(!('owner' in mine.updates[0]), 'who sent it is not echoed');
   });
 });
+
+test('the dark-pool route reads the session from the trade record (off-exchange flag kept), caches it, and says plainly when the record is not configured', async () => {
+  const academyOAuth = oauth();
+  const T0 = Date.now() - 90 * 60_000; let calls = 0;
+  const rows = []; for (let i = 0; i < 300; i++) rows.push([T0 + i * 10_000, 50 + (i % 4) * 0.01, 100 + (i % 3 === 0 ? 20_000 : 0), i % 3 === 0 ? 1 : 0]);
+  const marketHistory = { enabled: true, trades: async (sym, limit) => { calls++; assert.equal(limit, 50_000); return sym === 'AAA' ? rows : []; } };
+  const academyMassive = { watch: () => {}, peek: () => ({ last: 50.02 }), status: () => ({ enabled: true }), ticks: () => [] };
+  await withServer({ academyOAuth, academyGate: null, marketHistory, academyMassive }, async (base) => {
+    const d = await (await realFetch(`${base}/academy-activity/dark-pool?symbol=aaa`)).json();
+    assert.equal(d.ok, true); assert.equal(d.symbol, 'AAA'); assert.equal(d.available, true); assert.equal(d.source, 'trade-record');
+    assert.equal(d.prints, 300); assert.equal(d.offPrints, 100); assert.ok(d.offSharePct > 90, 'the big prints are the off-exchange ones');
+    assert.equal(d.blocks.count, 100); assert.ok(d.largest[0].size === 20100);
+    assert.match(d.window.label, /minutes of prints|whole session/);
+    await realFetch(`${base}/academy-activity/dark-pool?symbol=AAA`);
+    assert.equal(calls, 1, 'cached for a minute');
+    const none = await (await realFetch(`${base}/academy-activity/dark-pool?symbol=BBB`)).json();
+    assert.equal(none.available, false); assert.ok(none.detail);
+    assert.equal((await realFetch(`${base}/academy-activity/dark-pool?symbol=bad!`)).status, 400);
+  });
+  await withServer({ academyOAuth, academyGate: null, marketHistory: null }, async (base) => {
+    const r = await realFetch(`${base}/academy-activity/dark-pool?symbol=AAA`);
+    assert.equal(r.status, 503); assert.equal((await r.json()).error, 'trade_record_unavailable');
+  });
+});

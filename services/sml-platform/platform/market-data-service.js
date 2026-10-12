@@ -88,9 +88,11 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
       const response = await fetchImpl(url, { headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8_000) });
       if (!response.ok) throw new Error(`massive_trades_${response.status}`);
       const body = await response.json();
+      /* [t ms, price, size, off]: off = printed off-exchange (SIP exchange 4, the FINRA trade reporting facility, or a TRF id),
+         which is what the dark-pool tool counts. Real trade-record data, not an estimate. */
       const rows = (Array.isArray(body?.results) ? body.results : []).map((r) => {
         const ns = Number(r.participant_timestamp ?? r.sip_timestamp), price = Number(r.price), size = Number(r.size);
-        return [Math.floor(ns / 1e6), price, Number.isFinite(size) ? size : 0];
+        return [Math.floor(ns / 1e6), price, Number.isFinite(size) ? size : 0, Number(r.exchange) === 4 || (r.trf_id != null && r.trf_id !== '') ? 1 : 0];
       }).filter((r) => Number.isFinite(r[0]) && r[1] > 0).reverse();
       tradeCache.set(symbol, { until: current + 20_000, rows });
       return rows;
