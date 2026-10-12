@@ -340,11 +340,16 @@ function pickExpirations(list, horizon, now, max = 3) {
   return out.sort();
 }
 
-function createHedgeService({ chain = null, candles = null, alertsFor = null, ptLadder = null, now = Date.now, cacheMs = 60_000, logger = () => {} } = {}) {
+function createHedgeService({ chain = null, candles = null, alertsFor = null, ptLadder = null, now = Date.now, cacheMs = 60_000, failCacheMs = 20_000, logger = () => {} } = {}) {
   const chainCache = new Map(), expCache = new Map(), inflight = new Map();
+  /* A failed chain load is remembered briefly per symbol. The panel asks again on every chart tick, and each ask is a
+     fresh call to the site; without this, one slow or throttled ticker turns into dozens of calls a minute. */
+  const failCache = new Map();
   async function loadChain(symbol, horizon) {
     const key = symbol + ':' + horizon, hit = chainCache.get(key);
     if (hit && hit.until > now()) return hit.value;
+    const failed = failCache.get(symbol);
+    if (failed && failed.until > now()) return failed.value;
     if (inflight.has(key)) return inflight.get(key);
     const p = (async () => {
       const first = await chain(symbol, '');
@@ -364,8 +369,16 @@ function createHedgeService({ chain = null, candles = null, alertsFor = null, pt
       return { ok: true, rows: flattenChain(rows), spot: chainLib.findSpot(first.data), expirations: want, source: first.source || (first.data && first.data.provider) || null };
     })();
     inflight.set(key, p);
-    try { const value = await p; if (value.ok) chainCache.set(key, { value, until: now() + cacheMs }); if (chainCache.size > 200) chainCache.delete(chainCache.keys().next().value); return value; }
-    finally { inflight.delete(key); }
+    try {
+      const value = await p;
+      if (value.ok) { chainCache.set(key, { value, until: now() + cacheMs }); failCache.delete(symbol); }
+      else { failCache.set(symbol, { value, until: now() + failCacheMs }); if (failCache.size > 200) failCache.delete(failCache.keys().next().value); }
+      if (chainCache.size > 200) chainCache.delete(chainCache.keys().next().value);
+      return value;
+    } catch (error) {
+      failCache.set(symbol, { value: { ok: false, code: 'options_unavailable' }, until: now() + failCacheMs });
+      throw error;
+    } finally { inflight.delete(key); }
   }
 
   /* a chain the caller already has (the stockmarketloop.com dashboard sends the moomoo chain it shows): no feed calls at all */

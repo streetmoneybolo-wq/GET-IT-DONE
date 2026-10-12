@@ -262,3 +262,15 @@ test('service: noAlerts (the stockmarketloop.com dashboard) never reads an alert
   await svc.plan({ symbol: 'XYZ', horizon: 'swing', view: 'live', userId: 'u' });
   assert.equal(asked, 1);
 });
+
+test('a failed chain load is remembered briefly, so a panel asking on every chart tick makes one call, not dozens', async () => {
+  let clock = NOW, calls = 0;
+  const svc = H.createHedgeService({ now: () => clock, failCacheMs: 20_000, chain: async () => { calls += 1; return { ok: false, code: 'academy_data_unavailable' }; }, candles: async () => ({ bars: [] }) });
+  const q = { symbol: 'XYZ', shares: 100, horizon: 'swing', side: 'long' };
+  const a = await svc.plan(q); const b = await svc.plan(q); const c = await svc.plan({ ...q, horizon: 'mid' });
+  assert.equal(a.ok, false); assert.equal(b.ok, false); assert.equal(c.ok, false);
+  assert.equal(calls, 1, 'the second and third asks within 20 s do not reach the feed');
+  clock += 21_000;
+  await svc.plan(q);
+  assert.equal(calls, 2, 'after the window one fresh attempt is made');
+});

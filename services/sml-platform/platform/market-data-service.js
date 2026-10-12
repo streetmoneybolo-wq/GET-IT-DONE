@@ -218,4 +218,34 @@ function allowedPublicOrigin(origin) {
   } catch (_) { return false; }
 }
 
-module.exports = { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol, cleanTimeframe, normalizeBars, allowedPublicOrigin, TIMEFRAMES };
+/* Intervals Massive does not serve directly, built from one it does. The WordPress history feed is the normal source for
+ * these; when that feed is throttled or down, the chart would otherwise show nothing for them. Intraday buckets of an hour
+ * or more are phased to the half hour so they line up with the 9:30 open; shorter ones already divide 9:30 evenly. */
+const DERIVED_TIMEFRAMES = Object.freeze({
+  '3m': { base: '1m', ms: 3 * 60_000 }, '10m': { base: '5m', ms: 10 * 60_000 }, '15m': { base: '5m', ms: 15 * 60_000 }, '30m': { base: '5m', ms: 30 * 60_000 },
+  '1h': { base: '5m', ms: 3_600_000, phaseMs: 1_800_000 }, '2h': { base: '5m', ms: 2 * 3_600_000, phaseMs: 1_800_000 }, '4h': { base: '5m', ms: 4 * 3_600_000, phaseMs: 1_800_000 },
+  '1Q': { base: '1M', months: 3 }, '1Y': { base: '1M', months: 12 }
+});
+
+function resampleBars(bars, timeframe) {
+  const cfg = DERIVED_TIMEFRAMES[timeframe];
+  if (!cfg) return [];
+  const bucketOf = (t) => {
+    if (cfg.ms) { const phase = cfg.phaseMs || 0; return Math.floor((t - phase) / cfg.ms) * cfg.ms + phase; }
+    const d = new Date(t);
+    return Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / cfg.months) * cfg.months, 1);
+  };
+  const out = [];
+  let cur = null;
+  for (const b of Array.isArray(bars) ? bars : []) {
+    const t = Number(b && b.t), o = Number(b && b.o), h = Number(b && b.h), l = Number(b && b.l), c = Number(b && b.c), v = Number(b && b.v) || 0;
+    if (![t, o, h, l, c].every(Number.isFinite)) continue;
+    const key = bucketOf(t);
+    if (!cur || cur.t !== key) { if (cur) out.push(cur); cur = { t: key, o, h, l, c, v }; }
+    else { cur.h = Math.max(cur.h, h); cur.l = Math.min(cur.l, l); cur.c = c; cur.v += v; }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+module.exports = { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol, cleanTimeframe, normalizeBars, allowedPublicOrigin, resampleBars, TIMEFRAMES, DERIVED_TIMEFRAMES };

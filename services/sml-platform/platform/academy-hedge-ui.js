@@ -136,6 +136,10 @@
     clearTimeout(S.timer);
     const sym = chartSymbol();
     if (!visible()) return;
+    /* one request at a time: every chart tick used to start another fetch while the last one was still waiting on the options feed */
+    if (S.busy) return;
+    /* after a failure, wait before asking again; the feed is usually throttled, and asking faster only keeps it that way */
+    if (S.failedAt && sym === S.sym && Date.now() - S.failedAt < 45000) { S.timer = setTimeout(load, 45000 - (Date.now() - S.failedAt)); return; }
     S.tried = Date.now();
     if (document.hidden && S.data && S.sym === sym) { S.timer = setTimeout(load, 15000); return; }
     let token = window.smlAcademySessionToken;
@@ -151,10 +155,10 @@
       let res = await fetch(url, { headers: { authorization: 'Bearer ' + token }, cache: 'no-store' });
       if (res.status === 401 && typeof window.smlAcademyReauth === 'function') { token = await window.smlAcademyReauth(); if (token) res = await fetch(url, { headers: { authorization: 'Bearer ' + token }, cache: 'no-store' }); }
       const j = await res.json().catch(() => null);
-      if (sym !== chartSymbol()) { S.busy = false; return load(); }
-      if (j && j.ok) S.data = j;
-      else { S.data = null; S.msg = (j && j.message) || (res.status === 403 ? 'Hedge & income ideas are part of the full Academy.' : 'Options ideas are not available right now. Trying again shortly.'); }
-    } catch (_) { S.data = null; S.msg = 'Options ideas are not available right now. Trying again shortly.'; }
+      if (sym !== chartSymbol()) { S.busy = false; S.failedAt = 0; return load(); }
+      if (j && j.ok) { S.data = j; S.failedAt = 0; }
+      else { S.data = null; S.failedAt = Date.now(); S.msg = (j && j.message) || (res.status === 403 ? 'Hedge & income ideas are part of the full Academy.' : 'Options ideas are not available right now. Trying again shortly.'); }
+    } catch (_) { S.data = null; S.failedAt = Date.now(); S.msg = 'Options ideas are not available right now. Trying again shortly.'; }
     S.busy = false;
     paint();
     S.timer = setTimeout(load, 60000);
@@ -197,7 +201,8 @@
     show();
     if (changed && visible() && S.data && !S.busy) { clearTimeout(S.reloadSoon); S.reloadSoon = setTimeout(load, 600); }
   });
-  window.addEventListener('sml-academy-market', () => { if (visible()) setTimeout(load, 400); });
+  /* a chart refresh only refetches when the ideas are missing or a minute old; a load already running, or a recent failure, is left alone (load() checks both) */
+  window.addEventListener('sml-academy-market', () => { if (visible() && !S.busy && (!S.data || Date.now() - (S.data.asOf || 0) > 60000)) setTimeout(load, 400); });
   window.addEventListener('sml-academy-session', () => { if (visible()) load(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && visible() && S.data && Date.now() - (S.data.asOf || 0) > 60000) load(); });
   setInterval(show, 1500); // catches a symbol change that did not fire the market event, MEM ALGO switched on before this loaded, and pop-out mode

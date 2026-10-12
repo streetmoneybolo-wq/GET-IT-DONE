@@ -87,3 +87,23 @@ test('queued options source serves the last good chain, marked stale, while the 
   assert.equal(back.ok, true); assert.equal(back.stale, undefined);
   assert.equal(queued.lastFailure('options', 'SPY'), null, 'a good answer clears the remembered failure');
 });
+
+test('derived intervals are built from the Massive interval underneath them, aligned to the session', () => {
+  const { resampleBars, DERIVED_TIMEFRAMES } = require('./market-data-service');
+  const open = Date.UTC(2026, 9, 12, 13, 30); // 9:30 ET on an EDT day
+  const m5 = Array.from({ length: 24 }, (_, i) => ({ t: open + i * 300_000, o: 100 + i, h: 101 + i, l: 99 + i, c: 100.5 + i, v: 10 }));
+  const h1 = resampleBars(m5, '1h');
+  assert.deepEqual(h1.map((b) => b.t), [open, open + 3_600_000]);
+  assert.equal(h1[0].o, 100); assert.equal(h1[0].h, 112); assert.equal(h1[0].l, 99); assert.equal(h1[0].c, 111.5); assert.equal(h1[0].v, 120);
+  const m15 = resampleBars(m5, '15m');
+  assert.equal(m15.length, 8); assert.equal(m15[1].t, open + 900_000); assert.equal(m15[1].o, 103);
+  const m1 = Array.from({ length: 9 }, (_, i) => ({ t: open + i * 60_000, o: 1, h: 2, l: 0.5, c: 1.5, v: 1 }));
+  assert.equal(resampleBars(m1, '3m').length, 3);
+  assert.equal(DERIVED_TIMEFRAMES['3m'].base, '1m');
+  const months = [8, 9, 10, 11].map((m) => ({ t: Date.UTC(2026, m, 1), o: m, h: m + 1, l: m - 1, c: m + 0.5, v: 1 }));
+  const q = resampleBars(months, '1Q');
+  assert.deepEqual(q.map((b) => b.t), [Date.UTC(2026, 6, 1), Date.UTC(2026, 9, 1)]);
+  assert.equal(q[1].o, 9); assert.equal(q[1].c, 11.5); assert.equal(q[1].v, 3);
+  assert.deepEqual(resampleBars([{ t: 'x' }], '1h'), []);
+  assert.deepEqual(resampleBars(m5, '7m'), []);
+});

@@ -58,7 +58,7 @@ const { createAppApi } = require('./app-api');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
 const ACADEMY_LIMITED_PATHS = new Set(['/academy-activity/market', '/academy-activity/scanner', '/academy-activity/orderflow', '/academy-activity/live', '/academy-activity/data/short', '/academy-activity/data/earnings']);
 let dataStatusExtras = () => ({});
-const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin, TIMEFRAMES: MASSIVE_TIMEFRAMES } = require('./market-data-service');
+const { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol: cleanMarketSymbol, allowedPublicOrigin, resampleBars, TIMEFRAMES: MASSIVE_TIMEFRAMES, DERIVED_TIMEFRAMES: MASSIVE_DERIVED_TIMEFRAMES } = require('./market-data-service');
 const { createAlertsService, defaultChannels } = require('./academy-alerts');
 const { createAlertSources, createAlertSourceStore, createDiscordDirectory } = require('./academy-alert-sources');
 const { createClickAlertService, createClickAlertStore } = require('./academy-click-alert');
@@ -2292,6 +2292,19 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         const massive = marketHistory?.enabled && Object.prototype.hasOwnProperty.call(MASSIVE_TIMEFRAMES, timeframe) ? await marketHistory.get(symbol, timeframe) : null;
         sendJson(response, 200, massive?.ok ? massive.data : await getAcademyCandles(symbol, timeframe));
       } catch (error) {
+        /* The WordPress history feed (the only direct source for 3m, 15m, 1h, 1Q...) is throttled or down: build those bars from the
+           Massive interval underneath them instead of leaving the chart on RETRY. Marked derived so the UI can say so. */
+        if (!(error instanceof TypeError) && marketHistory?.enabled && MASSIVE_DERIVED_TIMEFRAMES[timeframe]) {
+          try {
+            const base = await marketHistory.get(symbol, MASSIVE_DERIVED_TIMEFRAMES[timeframe].base);
+            const bars = base?.ok ? resampleBars(base.data.bars, timeframe).slice(-600) : [];
+            if (bars.length) {
+              logger('warn', 'academy_market_derived', { symbol: String(symbol || '').toUpperCase(), tf: timeframe, error });
+              sendJson(response, 200, annotateCandles({ symbol: String(symbol || '').toUpperCase(), tf: timeframe, bars, asOf: Date.now(), lastBarAt: bars[bars.length - 1].t, ...(base.data.stale ? { stale: true } : {}) }, { source: 'massive-derived', adjusted: true }));
+              return;
+            }
+          } catch (_) { /* fall through to the ordinary failure */ }
+        }
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_market_request_failed', { error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
       }
