@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const { createServer } = require('./server');
 const { createAppApi } = require('./app-api');
 const { createAppAuth, createAppSessionStore } = require('./app-auth');
@@ -197,6 +198,44 @@ test('push device tokens: register, list, remove; a token moves to whoever signs
     assert.equal((await api('/v1/app/push/devices', { token: two.accessToken })).json.devices.length, 1);
     assert.equal((await api('/v1/app/push/devices', { method: 'DELETE', token: two.accessToken, body: { token: 'a'.repeat(64) } })).json.removed, true);
     assert.deepEqual((await api('/v1/app/push/devices', { token: two.accessToken })).json.devices, []);
+  });
+});
+
+test('push: a member tests their own devices, the site pushes to many members with a signed call, the PWA reads the VAPID key', async () => {
+  const pushed = [];
+  const pushSender = {
+    configured: true, status: () => ({ ios: true, android: false, web: true }), webPublicKey: async () => 'BPublicKey',
+    send: async (userId, message) => { pushed.push({ userId, message }); return { ok: true, userId, devices: 1, sent: 1, gone: 0, results: [{ platform: 'ios', ok: true, status: 200 }] }; },
+    sendMany: async (userIds, message) => { pushed.push({ userIds, message }); return { ok: true, members: userIds.length, reached: 2, devices: 3, sent: 3, gone: 0 }; }
+  };
+  const SITE = 'site-secret-'.padEnd(40, 'x');
+  await withApp(async ({ api, signIn, base }) => {
+    const s = await signIn();
+    assert.deepEqual((await api('/v1/app')).json.pushSenders, { ios: true, android: false, web: true });
+    assert.deepEqual((await api('/v1/app/push/vapid-key')).json, { ok: true, publicKey: 'BPublicKey' });
+    const t = await api('/v1/app/push/test', { method: 'POST', token: s.accessToken, body: { title: 'Hi' } });
+    assert.equal(t.status, 200); assert.equal(t.json.sent, 1); assert.equal(pushed[0].userId, 7); assert.equal(pushed[0].message.title, 'Hi'); assert.equal(pushed[0].message.body, 'Push is working on this device.');
+    assert.equal((await api('/v1/app/push/test', { method: 'POST', body: {} })).status, 401);
+    // the site's signed call: HMAC over "{ts}.{body}" like every other site -> platform route
+    const body = JSON.stringify({ userIds: [7, 9, 11], message: { title: '$NVDA alert', body: 'entry 180 pt 200', url: 'https://stockmarketloop.com/groups/mem/' } });
+    const ts = String(Math.floor(START / 1000));
+    const sig = crypto.createHmac('sha256', SITE).update(`${ts}.${body}`).digest('hex');
+    const res = await fetch(base + '/v1/app/push/send', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sml-timestamp': ts, 'x-sml-signature': sig }, body });
+    assert.equal(res.status, 202); const j = await res.json(); assert.equal(j.members, 3); assert.equal(j.sent, 3);
+    assert.deepEqual(pushed[1].userIds, [7, 9, 11]); assert.equal(pushed[1].message.title, '$NVDA alert');
+    const bad = await fetch(base + '/v1/app/push/send', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sml-timestamp': ts, 'x-sml-signature': 'deadbeef'.repeat(8) }, body });
+    assert.equal(bad.status, 401); assert.equal((await bad.json()).error, 'invalid_signature');
+    const stale = await fetch(base + '/v1/app/push/send', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sml-timestamp': '1600000000', 'x-sml-signature': crypto.createHmac('sha256', SITE).update(`1600000000.${body}`).digest('hex') }, body });
+    assert.equal((await stale.json()).error, 'stale_request');
+    const none = JSON.stringify({ userIds: [], message: { title: 'x' } });
+    const empty = await fetch(base + '/v1/app/push/send', { method: 'POST', headers: { 'content-type': 'application/json', 'x-sml-timestamp': ts, 'x-sml-signature': crypto.createHmac('sha256', SITE).update(`${ts}.${none}`).digest('hex') }, body: none });
+    assert.equal((await empty.json()).error, 'invalid_user_ids');
+  }, { extra: { pushSender, siteSecret: SITE } });
+  await withApp(async ({ api, signIn }) => {
+    const s = await signIn();
+    assert.equal((await api('/v1/app/push/test', { method: 'POST', token: s.accessToken, body: {} })).json.error, 'push_senders_off');
+    assert.equal((await api('/v1/app/push/send', { method: 'POST', body: {} })).json.error, 'integration_unconfigured');
+    assert.equal((await api('/v1/app/push/vapid-key')).json.error, 'web_push_unavailable');
   });
 });
 

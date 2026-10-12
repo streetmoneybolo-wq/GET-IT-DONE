@@ -13,7 +13,7 @@
  *   - 429 carries `retryAfterSec`. Limits are per member (600 requests a minute), never per IP, except sign-in itself.
  *   - CORS is open to stockmarketloop.com origins (and SML_APP_CORS_ORIGINS) so the PWA shell can call it from a browser. */
 
-const { readRequestBody } = require('./wordpress-gateway');
+const { readRequestBody, verifySignature } = require('./wordpress-gateway');
 const { sseWrite, sseEvent } = require('./sse-safe');
 const { createDataRateLimit } = require('./data-rate-limit');
 const { allowedPublicOrigin } = require('./market-data-service');
@@ -38,7 +38,7 @@ const SITE_DENY = /(^|\/)(login|register|resend-code|webhook|reset|reconcile|adm
 const SITE_ROUTE = /^[a-z0-9-]+\/v\d+(?:\/(?!\.{1,2}(?:\/|$))[\w.-]+)*$/;
 
 function createAppApi({ auth = null, identity = null, scanner = null, sireFeed = null, massive = null, marketHistory = null, candles = null, news = null, timeframes = {},
-  pushDevices = null, corsOrigins = [], logger = () => {}, now = Date.now, maxStreams = 200, perUserPerMinute = 600 } = {}) {
+  pushDevices = null, pushSender = null, siteSecret = '', corsOrigins = [], logger = () => {}, now = Date.now, maxStreams = 200, perUserPerMinute = 600 } = {}) {
   const userLimit = createDataRateLimit({ limit: perUserPerMinute, windowMs: 60_000, now });
   const loginIpLimit = createDataRateLimit({ limit: 10, windowMs: 60_000, now });
   const loginNameLimit = createDataRateLimit({ limit: 10, windowMs: 15 * 60_000, now });
@@ -114,6 +114,7 @@ function createAppApi({ auth = null, identity = null, scanner = null, sireFeed =
     if (method === 'GET' && rest === '/') {
       json(request, response, 200, { ok: true, name: 'StockMarketLoop App API', version: 1, contract: CONTRACT,
         ready: Boolean(auth && auth.configured), market: Boolean(massive && massive.status && massive.status().enabled), scanner: Boolean(scanner), push: Boolean(pushDevices),
+        pushSenders: pushSender ? pushSender.status() : { ios: false, android: false, web: false },
         accessTokenSeconds: auth ? Math.round(auth.accessTtlMs / 1000) : null, refreshTokenDays: auth ? Math.round(auth.refreshTtlMs / 86_400_000) : null });
       return true;
     }
@@ -252,7 +253,42 @@ function createAppApi({ auth = null, identity = null, scanner = null, sireFeed =
       return true;
     }
 
-    /* ---- push device tokens ---- */
+    /* ---- push ---- */
+    if (method === 'GET' && rest === '/push/vapid-key') {
+      /* the PWA shell's web push key: public by nature, the same key the Academy's web push uses */
+      const key = pushSender ? await pushSender.webPublicKey().catch(() => null) : null;
+      if (!key) { fail(request, response, 503, 'web_push_unavailable'); return true; }
+      json(request, response, 200, { ok: true, publicKey: key });
+      return true;
+    }
+    if (method === 'POST' && rest === '/push/test') {
+      /* a member pushes to their own registered devices: the builder's end-to-end check */
+      const session = await member(request, response, 10); if (!session) return true;
+      if (!pushSender || !pushSender.configured) { fail(request, response, 503, 'push_senders_off', { senders: pushSender ? pushSender.status() : null }); return true; }
+      const body = (await readRequestBody(request, 2 * 1024)).rawBody || '';
+      let custom = {}; try { custom = body ? JSON.parse(body) : {}; } catch (_) { custom = {}; }
+      const own = custom && typeof custom === 'object' ? custom : {};
+      const result = await pushSender.send(session.userId, { title: 'StockMarketLoop', body: 'Push is working on this device.', url: 'https://stockmarketloop.com/', collapseId: 'push-test',
+        ...(typeof own.title === 'string' && own.title.trim() ? { title: own.title } : {}), ...(typeof own.body === 'string' && own.body.trim() ? { body: own.body } : {}) });
+      json(request, response, 200, result);
+      return true;
+    }
+    if (method === 'POST' && rest === '/push/send') {
+      /* the site (alert plugins, Loop Kick) pushes to members' app devices. Signed like every other site -> platform call: x-sml-timestamp + x-sml-signature over "{ts}.{body}". */
+      if (!siteSecret) { fail(request, response, 503, 'integration_unconfigured'); return true; }
+      if (!/^application\/json(?:\s*;|$)/i.test(String(request.headers['content-type'] || ''))) { fail(request, response, 415, 'content_type_required'); return true; }
+      const body = await readRequestBody(request, 256 * 1024);
+      if (!body.ok) { fail(request, response, body.status || 400, body.error || 'invalid_body'); return true; }
+      const verified = verifySignature({ secret: siteSecret, timestamp: request.headers['x-sml-timestamp'], signature: request.headers['x-sml-signature'], rawBody: body.rawBody, now: now() });
+      if (!verified.ok) { fail(request, response, verified.status, verified.error); return true; }
+      let input; try { input = JSON.parse(body.rawBody); } catch (_) { fail(request, response, 400, 'invalid_json'); return true; }
+      if (!pushSender || !pushSender.configured) { fail(request, response, 503, 'push_senders_off'); return true; }
+      const userIds = Array.isArray(input && input.userIds) ? input.userIds : (input && input.userId ? [input.userId] : []);
+      if (!userIds.length || userIds.length > 500) { fail(request, response, 400, 'invalid_user_ids', { max: 500 }); return true; }
+      const result = await pushSender.sendMany(userIds, input.message || {});
+      json(request, response, result.ok ? 202 : 400, result);
+      return true;
+    }
     if (rest === '/push/devices' && (method === 'POST' || method === 'DELETE' || method === 'GET')) {
       const session = await member(request, response); if (!session) return true;
       if (!pushDevices) { fail(request, response, 503, 'push_unavailable'); return true; }

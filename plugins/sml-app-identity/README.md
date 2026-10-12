@@ -16,6 +16,23 @@ Signature: `x-sml-lk-timestamp` / `x-sml-lk-signature: sha256=HMAC(secret, "{ts}
 
 A member with two-step on must give a code. The plugin asks, in order: the site's `sml_app_two_step_*` filters, the Two Factor plugin (authenticator app, emailed token, backup codes), then its own emailed six-digit code (10 minutes, 5 attempts, one send a minute). "Two-step on" is decided the way the Academy wallet decides it: `sml_academy_user_two_step` filter, then `Two_Factor_Core`, then the `sml_two_step_enabled` user meta.
 
+## Pushing to members' phones (1.1.0)
+
+From any plugin or snippet on the site:
+
+```php
+sml_app_push( array( $user_id, $other_user_id ), array(
+	'title'      => '$NVDA alert',
+	'body'       => 'Entry 180, price target 200',
+	'url'        => 'https://stockmarketloop.com/groups/making-easy-money/',
+	'collapseId' => 'alert-' . $alert_id,   // optional: replaces an earlier push about the same thing
+	'data'       => array( 'symbol' => 'NVDA', 'alertId' => $alert_id ),
+) );
+// or: do_action( 'sml_app_push', $user_ids, $message );
+```
+
+It posts to the platform's `/v1/app/push/send`, signed with the billing API secret (the same constant the alert router uses), non-blocking. The platform fans the message out to every registered iPhone, Android phone and PWA of those members. Pass `true` as the third argument to wait for the counts.
+
 ## What it never does
 
 - Never fires `wp_login` (that is the browser flow with Two Factor's own page and redirects). It fires `sml_app_login` instead.

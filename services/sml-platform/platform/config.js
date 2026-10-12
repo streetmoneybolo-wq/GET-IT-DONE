@@ -198,7 +198,18 @@ function getConfig(env = process.env) {
     appTokenSecret: String(env.SML_APP_TOKEN_SECRET || env.SML_LOOP_KICK_BRIDGE_SECRET || '').trim(),
     // Extra browser origins for the PWA shell, comma separated (stockmarketloop.com is always allowed).
     appCorsOrigins: String(env.SML_APP_CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
-    appApiEnabled: String(env.SML_APP_API || '1').trim() !== '0'
+    appApiEnabled: String(env.SML_APP_API || '1').trim() !== '0',
+    // Native push for the app. Each sender is off until its credentials exist.
+    // APNs: the .p8 key (PEM, newlines may be written as \n), its key id, the team id, the app's bundle id.
+    apnsKeyId: String(env.SML_APNS_KEY_ID || '').trim(),
+    apnsTeamId: String(env.SML_APNS_TEAM_ID || '').trim(),
+    apnsKey: String(env.SML_APNS_KEY || '').trim(),
+    apnsBundleId: String(env.SML_APNS_BUNDLE_ID || '').trim(),
+    apnsEnv: String(env.SML_APNS_ENV || 'production').trim().toLowerCase() === 'sandbox' ? 'sandbox' : 'production',
+    // FCM: the Firebase service-account JSON (raw or base64).
+    fcmServiceAccount: String(env.SML_FCM_SERVICE_ACCOUNT || '').trim(),
+    // Who may ask the platform to push to app devices (the site's alert plugins): the alert-router secret, else the billing one.
+    appPushSiteSecret: String(env.SML_APP_PUSH_SECRET || env.SML_ALERT_ROUTER_SECRET || env.SML_BILLING_API_SECRET || '').trim()
   });
 }
 

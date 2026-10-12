@@ -53,6 +53,7 @@ const { createDataRateLimit } = require('./data-rate-limit');
 const { createAppIdentity } = require('./app-identity');
 const { createAppAuth, createAppSessionStore } = require('./app-auth');
 const { createAppPushDevices } = require('./app-push-devices');
+const { createAppPushSender, createApnsClient, createFcmClient, createWebPushClient } = require('./app-push-sender');
 const { createAppApi } = require('./app-api');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
 const ACADEMY_LIMITED_PATHS = new Set(['/academy-activity/market', '/academy-activity/scanner', '/academy-activity/orderflow', '/academy-activity/live', '/academy-activity/data/short', '/academy-activity/data/earnings']);
@@ -3541,12 +3542,20 @@ async function main() {
   const appAuth = createAppAuth({ store: createAppSessionStore({ pool: database.pool }), identity: appIdentity, secret: config.appTokenSecret, logger: log });
   /* one SIRE feed shared by the Academy's SIRE panel and the app's scanner stream (idle until the first viewer) */
   const appSireFeed = createSireFeed({ scanner: getAcademyScanner, massive: academyMassive, logger: log });
+  /* native + web push to app devices: each sender is off until its credentials exist (SML_APNS_*, SML_FCM_SERVICE_ACCOUNT; web reuses the VAPID keys) */
+  const appPushDevices = createAppPushDevices({ pool: database.pool });
+  const appPushSender = createAppPushSender({
+    devices: appPushDevices, logger: log,
+    apns: createApnsClient({ keyId: config.apnsKeyId, teamId: config.apnsTeamId, key: config.apnsKey, bundleId: config.apnsBundleId, env: config.apnsEnv, logger: log }),
+    fcm: createFcmClient({ serviceAccount: config.fcmServiceAccount, fetchImpl: (u, o) => dataHealth.guardedFetch('fcm', u, o), logger: log }),
+    web: createWebPushClient({ pool: database.pool, logger: log })
+  });
   const appApi = config.appApiEnabled ? createAppApi({
     auth: appAuth, identity: appIdentity, scanner: getAcademyScanner, sireFeed: appSireFeed, massive: academyMassive, marketHistory, candles: getAcademyCandles,
     news: academyAlerts ? (symbol) => academyAlerts.newsFor(symbol) : null, timeframes: MASSIVE_TIMEFRAMES,
-    pushDevices: createAppPushDevices({ pool: database.pool }), corsOrigins: config.appCorsOrigins, logger: log
+    pushDevices: appPushDevices, pushSender: appPushSender, siteSecret: config.appPushSiteSecret, corsOrigins: config.appCorsOrigins, logger: log
   }) : null;
-  log('info', 'app_api_runtime', { enabled: Boolean(appApi), identity: appIdentity.configured, auth: appAuth.configured, tokenSecret: config.appTokenSecret ? (process.env.SML_APP_TOKEN_SECRET ? 'own' : 'bridge') : 'none' });
+  log('info', 'app_api_runtime', { enabled: Boolean(appApi), identity: appIdentity.configured, auth: appAuth.configured, tokenSecret: config.appTokenSecret ? (process.env.SML_APP_TOKEN_SECRET ? 'own' : 'bridge') : 'none', push: appPushSender.status() });
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,

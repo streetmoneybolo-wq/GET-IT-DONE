@@ -2,12 +2,16 @@
 /**
  * Plugin Name: SML App Identity
  * Description: Lets sml-platform-api sign a member into the StockMarketLoop phone app with their stockmarketloop.com account. HMAC-guarded (the same LOOP-KICK bridge secret and signature as the Academy wallet), three signed server-to-server routes: login (username or email + password, plus the member's two-step code when two-step sign-in is on), me (profile, groups, wallet) and proxy (one allow-listed site REST route run as that member). No browser ever calls these routes; the phone talks to the platform API only.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: StockMarketLoop
  * Requires PHP: 7.4
  *
  * Depends on mu-plugins/sml-loop-kick-discord.php (sml_lkd_verify_signed / sml_lkd_signed_json / sml_lkd_bridge_secret).
  * Without it every route fails closed (503).
+ *
+ * Outbound: sml_app_push( $user_ids, $message ) asks the platform to push to those members' app devices
+ * (POST /v1/app/push/send, signed with the billing API secret like the alert router). Also reachable as
+ * do_action( 'sml_app_push', $user_ids, $message ). $message = ['title','body','url','data','collapseId','ttl'].
  *
  * Site hooks (all optional):
  *   apply_filters( 'sml_academy_user_two_step', null, $user_id )            true/false when a 2FA system says so (shared with the wallet)
@@ -21,7 +25,49 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_APP_IDENTITY_VERSION', '1.0.0' );
+define( 'SML_APP_IDENTITY_VERSION', '1.1.0' );
+
+/* ---------- outbound: push to members' app devices ---------- */
+
+/**
+ * Push one message to the app devices of the given members. Fire-and-forget by default (non-blocking HTTP);
+ * pass $blocking = true to get the platform's counts back. Returns WP_Error when unconfigured.
+ */
+function sml_app_push( $user_ids, array $message, $blocking = false ) {
+	$secret = defined( 'SML_PLATFORM_BILLING_API_SECRET' ) ? trim( (string) SML_PLATFORM_BILLING_API_SECRET ) : '';
+	$base   = defined( 'SML_PLATFORM_API_URL' ) ? untrailingslashit( (string) SML_PLATFORM_API_URL ) : 'https://sml-platform-api.onrender.com';
+	if ( '' === $secret ) { return new WP_Error( 'sml_app_push_unconfigured', 'Platform API secret is not configured.' ); }
+	$ids = array_values( array_unique( array_filter( array_map( 'absint', (array) $user_ids ) ) ) );
+	if ( ! $ids ) { return new WP_Error( 'sml_app_push_nobody', 'No members to push to.' ); }
+	$clean = array();
+	foreach ( array( 'title', 'body', 'url', 'collapseId', 'channelId', 'category', 'sound' ) as $k ) { if ( isset( $message[ $k ] ) && is_scalar( $message[ $k ] ) ) { $clean[ $k ] = (string) $message[ $k ]; } }
+	if ( isset( $message['ttl'] ) ) { $clean['ttl'] = absint( $message['ttl'] ); }
+	if ( isset( $message['badge'] ) ) { $clean['badge'] = absint( $message['badge'] ); }
+	if ( isset( $message['data'] ) && is_array( $message['data'] ) ) { $clean['data'] = array_map( 'strval', array_filter( $message['data'], 'is_scalar' ) ); }
+	if ( '' === trim( (string) ( $clean['title'] ?? '' ) ) && '' === trim( (string) ( $clean['body'] ?? '' ) ) ) { return new WP_Error( 'sml_app_push_empty', 'A push needs a title or a body.' ); }
+	$out = array();
+	foreach ( array_chunk( $ids, 500 ) as $chunk ) {
+		$body      = wp_json_encode( array( 'userIds' => $chunk, 'message' => $clean ) );
+		$timestamp = (string) time();
+		$response  = wp_remote_post( $base . '/v1/app/push/send', array(
+			'timeout'  => $blocking ? 20 : 3,
+			'blocking' => (bool) $blocking,
+			'headers'  => array(
+				'Content-Type'    => 'application/json',
+				'X-SML-Timestamp' => $timestamp,
+				'X-SML-Signature' => hash_hmac( 'sha256', $timestamp . '.' . $body, $secret ),
+			),
+			'body'     => $body,
+		) );
+		if ( $blocking ) {
+			if ( is_wp_error( $response ) ) { return $response; }
+			$decoded = json_decode( wp_remote_retrieve_body( $response ), true );
+			$out[]   = is_array( $decoded ) ? $decoded : array( 'ok' => false, 'status' => wp_remote_retrieve_response_code( $response ) );
+		}
+	}
+	return $blocking ? $out : true;
+}
+add_action( 'sml_app_push', static function ( $user_ids, $message ) { if ( is_array( $message ) ) { sml_app_push( $user_ids, $message ); } }, 10, 2 );
 
 function sml_app_ready() {
 	return function_exists( 'sml_lkd_verify_signed' ) && function_exists( 'sml_lkd_signed_json' ) && function_exists( 'sml_lkd_bridge_secret' );

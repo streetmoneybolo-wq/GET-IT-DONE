@@ -51,9 +51,29 @@ Rate limit for signed-in calls: 600 a minute per member (streams count 5, site p
 
 Streams: at most 4 per member. Send `Accept: text/event-stream`; a keep-alive comment arrives every 15 seconds. Reconnect with backoff on close.
 
-## Push devices
+## Push
 
-`POST /push/devices {platform:"ios"|"android"|"web", token, deviceId?, appVersion?}` registers (or re-registers) the device token for the signed-in member; a token moves to whoever signs in on that phone. `DELETE /push/devices {token}` on sign-out. `GET /push/devices` lists. Registration only for now: the APNs and FCM senders are the next step on the platform, on the same alert server that drives Loop Kick web push.
+Register the device, then prove it with the test route.
+
+| Call | What it does |
+|---|---|
+| `POST /push/devices {platform:"ios"\|"android"\|"web", token, deviceId?, appVersion?, keys?}` | registers (or re-registers) the device for the signed-in member; a token moves to whoever signs in on that phone. iOS: the 64-hex APNs device token. Android: the FCM registration token. Web (the PWA shell): the push subscription's `endpoint` as `token` plus `keys:{p256dh, auth}` |
+| `DELETE /push/devices {token}` | on sign-out or when the member turns notifications off |
+| `GET /push/devices` | the member's live devices |
+| `POST /push/test {title?, body?}` | sends a real push to every device of the signed-in member and returns per-device results (`{devices, sent, gone, results:[{platform, ok, status, reason}]}`). Counts 10 against the rate limit |
+| `GET /push/vapid-key` | the web push application server key for `pushManager.subscribe({applicationServerKey})` |
+
+How a push arrives:
+
+- **iOS**: `aps.alert.title/body`, `sound`, `badge` when given, `thread-id` and `apns-collapse-id` from `collapseId`, `mutable-content: 1`. Custom `data` keys and `url` sit at the top level of the payload.
+- **Android**: `notification.title/body` plus `data` (always includes `title`, `body`, and `url` when given) so the app can route a tap. Channel id is `alerts` unless the sender says otherwise; `collapseId` becomes `collapse_key` and the notification `tag`.
+- **Web**: the service worker receives `{title, body, url, data, tag}` encrypted with the VAPID key above.
+
+Dead tokens are pruned automatically: APNs `Unregistered` / `BadDeviceToken`, FCM `UNREGISTERED`, web 404 / 410 disable the device, and the next registration from that phone revives it.
+
+**For the site** (alert plugins, Loop Kick): `POST /push/send {userIds:[...≤500], message:{title, body, url?, data?, collapseId?, ttl?, badge?}}` signed like every other site-to-platform call (`x-sml-timestamp`, `x-sml-signature` = HMAC-SHA256 over `"{ts}.{body}"` with the billing API secret). In WordPress just call `sml_app_push( $user_ids, $message )` or `do_action( 'sml_app_push', $user_ids, $message )` from the `sml-app-identity` plugin. Answers `202 {members, reached, devices, sent, gone}`.
+
+Senders are off until their credentials exist. `GET /v1/app` shows which are on under `pushSenders`.
 
 ## The site, as the member
 
@@ -83,7 +103,12 @@ Browser origins `https://stockmarketloop.com`, `https://www.stockmarketloop.com`
 | `SML_APP_TOKEN_SECRET` | optional, 32+ random characters. Signs access tokens. Until set, a key derived from the bridge secret is used. Changing it signs every app out at their next refresh |
 | `SML_APP_CORS_ORIGINS` | optional extra browser origins for the PWA shell |
 | `SML_APP_API` | `0` turns the whole `/v1/app` surface off |
+| `SML_APNS_KEY`, `SML_APNS_KEY_ID`, `SML_APNS_TEAM_ID`, `SML_APNS_BUNDLE_ID` | iOS push. The .p8 key from the Apple Developer account (paste the PEM; `\n` for newlines is fine), its 10-character key id, the team id, and the app's bundle id. `SML_APNS_ENV=sandbox` for development builds, default production |
+| `SML_FCM_SERVICE_ACCOUNT` | Android push. The Firebase service-account JSON (raw or base64) with the Firebase Cloud Messaging API enabled |
+| `SML_APP_PUSH_SECRET` | optional. Who may call `/push/send`; defaults to the alert-router secret, then the billing API secret, which is what the site already holds |
 
-Database: migration `042_app_sessions` (tables `app_sessions`, `app_push_devices`) runs in the pre-deploy step like every other migration.
+Web push needs nothing new: it reuses the VAPID key pair the platform already keeps for Loop Kick web push.
+
+Database: migrations `042_app_sessions` (tables `app_sessions`, `app_push_devices`) and `043_app_push_keys` run in the pre-deploy step like every other migration.
 
 Site: install and activate `plugins/sml-app-identity` (see its README). `GET /v1/app` answers `ready: true` once both sides are in place.

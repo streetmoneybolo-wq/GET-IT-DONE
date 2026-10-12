@@ -40,6 +40,19 @@ services:
         sync: false
       - key: SML_ALERT_ROUTER_SECRET
         sync: false
+      # --- phone app API (/v1/app): token signing, native push credentials (see APP-API.md) ---
+      - key: SML_APP_TOKEN_SECRET
+        sync: false
+      - key: SML_APNS_KEY
+        sync: false
+      - key: SML_APNS_KEY_ID
+        sync: false
+      - key: SML_APNS_TEAM_ID
+        sync: false
+      - key: SML_APNS_BUNDLE_ID
+        sync: false
+      - key: SML_FCM_SERVICE_ACCOUNT
+        sync: false
       # --- private owner-only member email analytics; no plaintext email enters browser analytics ---
       - key: SML_MEMBER_EMAIL_ENABLED
         sync: false
