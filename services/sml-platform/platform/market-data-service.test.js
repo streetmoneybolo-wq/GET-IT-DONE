@@ -83,6 +83,7 @@ test('queued options source serves the last good chain, marked stale, while the 
   assert.equal(gone.ok, false, 'a chain older than the stale window is not served');
   assert.equal(gone.code, 'academy_data_unavailable');
   fail = false;
+  clock += 31 * 60_000; // a background caller waits out the retry window before asking the site again
   const back = await queued.get('options', 'SPY');
   assert.equal(back.ok, true); assert.equal(back.stale, undefined);
   assert.equal(queued.lastFailure('options', 'SPY'), null, 'a good answer clears the remembered failure');
@@ -106,4 +107,29 @@ test('derived intervals are built from the Massive interval underneath them, ali
   assert.equal(q[1].o, 9); assert.equal(q[1].c, 11.5); assert.equal(q[1].v, 3);
   assert.deepEqual(resampleBars([{ t: 'x' }], '1h'), []);
   assert.deepEqual(resampleBars(m5, '7m'), []);
+});
+
+test('a member waiting on a click goes ahead of background sweeps, and a background sweep does not retry a symbol the site just refused', async () => {
+  let clock = 1000;
+  const order = [];
+  const refuse = new Set(['BAD']);
+  const source = { configured: true, get: async (kind, symbol) => { order.push(symbol); return refuse.has(symbol) ? { ok: false, status: 503, code: 'academy_data_unavailable', detail: 'Academy data is temporarily unavailable.' } : { ok: true, status: 200, data: { symbol } }; } };
+  const queued = createQueuedDataSource({ source, now: () => clock, minimumIntervalMs: 100, backgroundRetryMs: 30 * 60_000,
+    setTimer: (resolve, ms) => { clock += ms; resolve(); }, marketOpen: () => true });
+  const a = queued.get('options', 'AAA');            // starts at once
+  const b = queued.get('options', 'BBB');            // background, queued
+  const c = queued.get('options', 'CCC', {}, { priority: 'interactive' }); // a click: must run before BBB
+  await Promise.all([a, b, c]);
+  assert.deepEqual(order, ['AAA', 'CCC', 'BBB']);
+  const first = await queued.get('options', 'BAD');
+  assert.equal(first.ok, false); assert.equal(order.filter((s) => s === 'BAD').length, 1);
+  const again = await queued.get('options', 'BAD');
+  assert.equal(again.ok, false); assert.equal(again.skipped, true, 'the sweep is answered from the remembered failure');
+  assert.equal(order.filter((s) => s === 'BAD').length, 1, 'the site was not asked again');
+  const click = await queued.get('options', 'BAD', {}, { priority: 'interactive' });
+  assert.equal(click.ok, false); assert.equal(click.skipped, undefined);
+  assert.equal(order.filter((s) => s === 'BAD').length, 2, 'a member\'s own click still tries the site');
+  clock += 31 * 60_000;
+  await queued.get('options', 'BAD');
+  assert.equal(order.filter((s) => s === 'BAD').length, 3, 'after the window a sweep tries once more');
 });

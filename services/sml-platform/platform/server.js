@@ -2824,7 +2824,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const side = optParams.get('side') === 'put' ? 'put' : 'call';
       const horizon = SCREENER_HORIZONS[optParams.get('horizon')] ? optParams.get('horizon') : 'swing';
       try {
-        const chain = await academyDataBridge.get('options', symbol, {});
+        const chain = await academyDataBridge.get('options', symbol, {}, { priority: 'interactive' });
         if (!chain.ok) { sendJson(response, chain.status || 503, { ok: false, error: chain.code }); return; }
         const rows = require('./academy-alert-options').normalizeChain(chain.data);
         sendJson(response, 200, { ok: true, symbol, side, horizon, suggestion: academyScreener.optionFor({ symbol, side, horizon, rows, bars: academyScreener.barsFor(symbol) }) });
@@ -3165,7 +3165,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const dataParams = new URL(request.url || '/', 'http://localhost').searchParams;
       const symbol = dataParams.get('symbol');
       try {
-        const result = await academyDataBridge.get(kind, symbol, { expiration: dataParams.get('expiration') || '' });
+        const result = await academyDataBridge.get(kind, symbol, { expiration: dataParams.get('expiration') || '' }, { priority: 'interactive' });
         sendJson(response, result.status || (result.ok ? 200 : 503), result.ok ? { ok: true, data: result.data, ...(result.stale ? { stale: true } : {}) } : { ok: false, error: result.code, ...(result.detail ? { detail: result.detail } : {}) });
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_data_request_failed', { kind, error });
@@ -3339,14 +3339,16 @@ async function main() {
   const massiveOptions = createMassiveOptions({ apiKey: config.massiveApiKey, enabled: config.massiveOptionsEnabled, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-options', u, o), maxPages: Math.max(1, Math.min(8, Number(process.env.MASSIVE_OPTIONS_MAX_PAGES) || 4)) });
   const academyDataBridge = {
     configured: queuedMoomooBridge.configured || massiveOptions.configured,
-    async get(kind, symbol, params = {}) {
+    /* opts.priority 'interactive': a member is waiting on this call (the chain lab, Click-to-Alert, the hedge panel); it goes to the
+       front of the site queue. Everything else is a background sweep and takes the slots nobody is waiting on. */
+    async get(kind, symbol, params = {}, opts = {}) {
       let fellBack = false;
       if (kind === 'options' && massiveOptions.configured) {
         const preferred = await massiveOptions.get(kind, symbol, params);
         if (preferred.ok) return tagOptionsSource(preferred, 'massive', false);
         fellBack = true;
       }
-      const answer = await queuedMoomooBridge.get(kind, symbol, params);
+      const answer = await queuedMoomooBridge.get(kind, symbol, params, opts);
       /* the member-facing routes only say "unavailable"; the bridge's real reason (timeout, provider refusal, site error) goes here */
       if (answer && !answer.ok) log('warn', 'academy_data_source_failed', { kind, symbol: String(symbol || '').toUpperCase(), status: answer.status, code: answer.code, detail: answer.detail || '' });
       else if (answer && answer.stale) log('warn', 'academy_data_source_stale', { kind, symbol: String(symbol || '').toUpperCase(), asOf: answer.data && answer.data.asOf, detail: answer.failure && answer.failure.detail || '' });
@@ -3469,12 +3471,15 @@ async function main() {
   const personaBots = {};
   if (process.env.SML_OBI_BOT_TOKEN) for (const id of OWNER_IDS) personaBots[id] = createDiscordDirectory({ tokens: [{ label: 'persona', token: process.env.SML_OBI_BOT_TOKEN }], logger: log });
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
-    getBars: getAcademyCandles, chain: (s) => (academyAlerts ? academyAlerts.chainFor(s) : null), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
-    chainExpiry: academyDataBridge.configured ? async (s, expiration) => { const r = await academyDataBridge.get('options', s, { expiration }); return r && r.ok ? r.data : null; } : null,
+    getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    /* the member is waiting on this chain: ask the site directly at interactive priority rather than through the alert desk's
+       background cache, which may be holding an empty answer from a sweep that was refused */
+    chain: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('options', s, {}, { priority: 'interactive' }); return r && r.ok && r.data ? require('./academy-alert-options').normalizeChain(r.data) : null; } : (s) => (academyAlerts ? academyAlerts.chainFor(s) : null),
+    chainExpiry: academyDataBridge.configured ? async (s, expiration) => { const r = await academyDataBridge.get('options', s, { expiration }, { priority: 'interactive' }); return r && r.ok ? r.data : null; } : null,
     /* why the last chain load for this symbol failed (bridge timeout, provider refusal), for the member-facing message */
     chainDetail: (s) => { const f = queuedMoomooBridge.lastFailure('options', s); return f && f.result ? String(f.result.detail || '') : ''; },
     /* every expiration the bridge lists (the chain itself loads the nearest ones), for the contract picker */
-    expirations: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('options', s); if (!(r && r.ok && r.data)) return []; const oc = require('./academy-options-chain'); return oc.expirations(r.data, oc.normalize(r.data)); } : null,
+    expirations: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('options', s, {}, { priority: 'interactive' }); if (!(r && r.ok && r.data)) return []; const oc = require('./academy-options-chain'); return oc.expirations(r.data, oc.normalize(r.data)); } : null,
     /* the catalyst check: next earnings date (bridge) and this week's news (hub ticker feed) */
     catalysts: { earnings: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('earnings', s); return r && r.ok ? r.data : null; } : null, news: academyAlerts ? (s) => academyAlerts.newsFor(s) : null },
     store: createClickAlertStore({ pool: database.pool }), academyGuildId: config.academyGuildId, passes: academyClickAlertPasses, freeUserIds: freeUsers, personas: personaBots,
@@ -3542,7 +3547,7 @@ async function main() {
     chain: async (symbol, expiration) => {
       const params = expiration ? { expiration } : {};
       if (rawAcademyDataBridge.configured) { const fast = await rawAcademyDataBridge.get('options', symbol, params).catch(() => null); if (fast && fast.ok) return fast; }
-      return academyDataBridge.get('options', symbol, params);
+      return academyDataBridge.get('options', symbol, params, { priority: 'interactive' });
     },
     candles: getAcademyCandles, logger: log,
     alertsFor: academyAlerts ? async (userId, view) => {

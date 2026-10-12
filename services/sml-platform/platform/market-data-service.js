@@ -147,7 +147,7 @@ function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch,
 }
 
 function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout, minimumIntervalMs = 12_100,
-  optionsTtlMs = 10 * 60_000, closedOptionsTtlMs = 60 * 60_000, staleTtlMs = 2 * 60 * 60_000, marketOpen = () => false } = {}) {
+  optionsTtlMs = 10 * 60_000, closedOptionsTtlMs = 60 * 60_000, staleTtlMs = 2 * 60 * 60_000, backgroundRetryMs = 30 * 60_000, marketOpen = () => false } = {}) {
   if (!source || typeof source.get !== 'function') throw new TypeError('source_required');
   const cache = new Map();
   const inflight = new Map();
@@ -155,31 +155,58 @@ function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout,
   const lastGood = new Map();
   /* the last failure per key, so the route that asks next can say what actually went wrong */
   const failures = new Map();
-  let queue = Promise.resolve();
+  /* One cold options call at a time, spaced minimumIntervalMs apart. A member waiting on a click goes to the front of the
+     line; the background sweeps (alert desk, VIX index, market direction) take the slots nobody is waiting on. */
+  const pending = [];
+  let pumping = false;
   let lastStartedAt = 0;
 
   function keyOf(kind, symbol, params) {
     return `${kind}:${String(symbol || '').toUpperCase()}:${String(params?.expiration || '')}`;
   }
 
-  function enqueue(work) {
-    const run = async () => {
-      const wait = Math.max(0, lastStartedAt + minimumIntervalMs - now());
-      if (wait) await new Promise((resolve) => setTimer(resolve, wait));
-      lastStartedAt = now();
-      return work();
-    };
-    const result = queue.then(run, run);
-    queue = result.catch(() => {});
-    return result;
+  function enqueue(work, priority) {
+    return new Promise((resolve, reject) => {
+      const item = { work, resolve, reject, priority };
+      if (priority === 'interactive') {
+        const at = pending.findIndex((p) => p.priority !== 'interactive');
+        if (at < 0) pending.push(item); else pending.splice(at, 0, item);
+      } else pending.push(item);
+      void pump();
+    });
   }
 
-  async function get(kind, symbol, params = {}) {
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (pending.length) {
+        const wait = Math.max(0, lastStartedAt + minimumIntervalMs - now());
+        if (wait) await new Promise((resolve) => setTimer(resolve, wait));
+        const item = pending.shift(); // taken after the wait, so a click that arrived meanwhile goes first
+        lastStartedAt = now();
+        try { item.resolve(await item.work()); } catch (error) { item.reject(error); }
+      }
+    } finally { pumping = false; }
+  }
+
+  function staleOf(good, failure) {
+    const data = good.result.data && typeof good.result.data === 'object' ? { ...good.result.data, stale: true, asOf: good.at } : good.result.data;
+    return { ...good.result, data, stale: true, cached: true, failure };
+  }
+
+  async function get(kind, symbol, params = {}, { priority = 'background' } = {}) {
     const key = keyOf(kind, symbol, params);
     const current = now();
     const cached = cache.get(key);
     if (cached && cached.expiresAt > current) return { ...cached.result, cached: true };
     if (inflight.has(key)) return inflight.get(key);
+    /* a background sweep does not retry a symbol the site just refused; that call would only spend the feed's quota again */
+    const failed = failures.get(key);
+    if (priority !== 'interactive' && failed && current - failed.at < backgroundRetryMs) {
+      const good = lastGood.get(key);
+      return good && current - good.at <= staleTtlMs ? staleOf(good, failed.result) : { ...failed.result, skipped: true };
+    }
     const work = async () => {
       const result = await source.get(kind, symbol, params);
       if (result?.ok) {
@@ -191,23 +218,21 @@ function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout,
         return result;
       }
       failures.set(key, { at: now(), result });
+      if (failures.size > 500) failures.delete(failures.keys().next().value);
       const good = lastGood.get(key);
-      if (good && now() - good.at <= staleTtlMs) {
-        const data = good.result.data && typeof good.result.data === 'object' ? { ...good.result.data, stale: true, asOf: good.at } : good.result.data;
-        return { ...good.result, data, stale: true, cached: true, failure: result };
-      }
+      if (good && now() - good.at <= staleTtlMs) return staleOf(good, result);
       return result;
     };
-    const pending = (kind === 'options' ? enqueue(work) : work()).finally(() => inflight.delete(key));
-    inflight.set(key, pending);
-    return pending;
+    const run = (kind === 'options' ? enqueue(work, priority) : work()).finally(() => inflight.delete(key));
+    inflight.set(key, run);
+    return run;
   }
 
   function lastFailure(kind, symbol, params = {}) {
     return failures.get(keyOf(kind, symbol, params)) || null;
   }
 
-  return { configured: source.configured, get, lastFailure, cache, inflight };
+  return { configured: source.configured, get, lastFailure, cache, inflight, pending };
 }
 
 function allowedPublicOrigin(origin) {

@@ -205,7 +205,7 @@ function createAlertsService({
   const shortData = (s) => cached(`s:${s}`, TTL.short, async () => wp(`/wp-json/sml-short/v1/short?symbol=${encodeURIComponent(s)}&days=10`));
   const sentiment = (s) => cached(`st:${s}`, TTL.sentiment, async () => wp(`/wp-json/sml-stocktwits/v1/feed?symbol=${encodeURIComponent(s)}`));
   const news = (s) => cached(`n:${s}`, 900_000, async () => { const d = await wp(`/wp-json/sml-ticker-news/v1/feed?symbol=${encodeURIComponent(s)}`); return d && Array.isArray(d.articles) ? d.articles : null; });
-  const chainFor = (s) => (optionsChain ? cached(`oc:${s}`, 600_000, async () => { const d = await optionsChain(s); const rows = d ? optionsCalc.normalizeChain(d) : []; return rows; }) : Promise.resolve(null));
+  const chainFor = (s) => (optionsChain ? cached(`oc:${s}`, 1_800_000, async () => { const d = await optionsChain(s); const rows = d ? optionsCalc.normalizeChain(d) : []; return rows; }) : Promise.resolve(null));
   const nextEarnings = (s) => (earnings ? cached(`er:${s}`, 6 * 3_600_000, async () => { const d = await earnings(s); return d ? extractNextEarnings(d, now()) : null; }) : Promise.resolve(null));
   const filings = (s) => cached(`fi:${s}`, TTL.filings, async () => { const d = await wp(`/wp-json/sml-massive/v1/market-data/filings?symbol=${encodeURIComponent(s)}&limit=30`); return d && d.filings ? d.filings : null; });
 
