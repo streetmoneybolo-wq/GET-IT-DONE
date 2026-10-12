@@ -3322,7 +3322,11 @@ async function main() {
         if (preferred.ok) return tagOptionsSource(preferred, 'massive', false);
         fellBack = true;
       }
-      return tagOptionsSource(await queuedMoomooBridge.get(kind, symbol, params), 'moomoo', fellBack);
+      const answer = await queuedMoomooBridge.get(kind, symbol, params);
+      /* the member-facing routes only say "unavailable"; the bridge's real reason (timeout, provider refusal, site error) goes here */
+      if (answer && !answer.ok) log('warn', 'academy_data_source_failed', { kind, symbol: String(symbol || '').toUpperCase(), status: answer.status, code: answer.code, detail: answer.detail || '' });
+      else if (answer && answer.stale) log('warn', 'academy_data_source_stale', { kind, symbol: String(symbol || '').toUpperCase(), asOf: answer.data && answer.data.asOf, detail: answer.failure && answer.failure.detail || '' });
+      return tagOptionsSource(answer, 'moomoo', fellBack);
     }
   };
   /* Live push for whatever options chain is currently loaded, the same shared-poll-per-symbol
