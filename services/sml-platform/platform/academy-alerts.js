@@ -88,8 +88,18 @@ function postAlertRange(alert, intraday, daily) {
 
 function createAlertsService({
   tokens = [], channels = [], origin = '', fetchImpl = globalThis.fetch, candles = null, orderFlow = null, patterns = null,
-  optionsChain = null, earnings = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval }
+  optionsChain = null, earnings = null, logger = () => {}, now = Date.now, pollMs = 20_000, refreshMs = 15_000, timers = { setTimeout, clearTimeout, setInterval, clearInterval },
+  attribution = null
 } = {}) {
+  /* A Click-to-Alert post goes out through the member's own bot or the channel webhook, so Discord names the bot as its author. attribution()
+     (async () => Map(messageId -> { userId, name })) says which member really sent each one; the desk then files the alert under that member,
+     so "only my alerts" follows and the member's own desk include what their bot posted for them. Refreshed once per poll. */
+  let attributed = new Map(), attributedAt = 0;
+  async function refreshAttribution() {
+    if (typeof attribution !== 'function' || now() - attributedAt < 15_000) return;
+    attributedAt = now();
+    try { const m = await attribution(); if (m instanceof Map) attributed = m; } catch (error) { logger('warn', 'academy_alerts_attribution_failed', { error: String(error && error.message || error) }); }
+  }
   const alerts = new Map(); // discord message id -> alert record
   let ptLadder = null; // (key 'd:<id>') -> { target, updates } from the automatic price-target engine (academy-auto-pt.js)
   const styleOf = (c) => (c.style === 'longterm' || (!c.style && c.key === 'longterm') ? 'longterm' : 'swings');
@@ -141,10 +151,13 @@ function createAlertsService({
     if (!Number.isFinite(at)) return false;
     const id = String(message.id);
     const existing = alerts.get(id);
+    const sentBy = attributed.get(id) || null;
     alerts.set(id, Object.assign(existing || { planLog: [], addedAt: now() }, {
       id, channel: style, source: channelKey, symbol: parsed.symbol, kind: 'equity', entry: parsed.entryPrice, target: parsed.targetPrice, targetIsMinimum: parsed.targetIsMinimum,
-      riskFlag: parsed.riskFlag, raw: parsed.raw, at, author: (message.author && (message.author.global_name || message.author.username)) || 'trader', edited: Boolean(message.edited_timestamp),
-      authorId: message.author && /^\d{5,25}$/.test(String(message.author.id)) ? String(message.author.id) : '', avatarHash: message.author && /^(a_)?[0-9a-f]{6,64}$/i.test(String(message.author.avatar || '')) ? String(message.author.avatar) : ''
+      riskFlag: parsed.riskFlag, raw: parsed.raw, at, author: (sentBy && sentBy.name) || (message.author && (message.author.global_name || message.author.username)) || 'trader', edited: Boolean(message.edited_timestamp),
+      authorId: sentBy && /^\d{5,25}$/.test(String(sentBy.userId)) ? String(sentBy.userId) : (message.author && /^\d{5,25}$/.test(String(message.author.id)) ? String(message.author.id) : ''),
+      avatarHash: message.author && /^(a_)?[0-9a-f]{6,64}$/i.test(String(message.author.avatar || '')) ? String(message.author.avatar) : '',
+      ...(sentBy ? { via: 'academy', botId: message.author && /^\d{5,25}$/.test(String(message.author.id)) ? String(message.author.id) : '' } : {})
     }));
     return true;
   }
@@ -154,6 +167,7 @@ function createAlertsService({
     try { await pollAll(); } finally { polling = false; }
   }
   async function pollAll() {
+    await refreshAttribution();
     for (const c of channels.slice()) {
       const state = feed[c.key] || (feed[c.key] = feedFor(c));
       const last = c.lastId;

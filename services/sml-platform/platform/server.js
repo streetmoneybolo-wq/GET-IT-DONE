@@ -72,6 +72,7 @@ const { freeUserIds: loadFreeUserIds, withFreeUsers, OWNER_IDS } = require('./ac
 const { parsePrices: parsePassPrices, createPassStore, createPassService, createWalletClient, withPasses } = require('./academy-passes');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createMentionService } = require('./academy-mentions');
+const { createSignalRadar } = require('./academy-signal-radar');
 const { createDiscordDmClient } = require('./dispute-notifier');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -768,7 +769,7 @@ const ACADEMY_POPOUT_HEAD = (() => {
 })();
 /* Market Direction panel (shared display file) + its Academy mount. */
 const ACADEMY_DIRECTION = (() => {
-  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-pt-notify.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-hedge-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-pt-notify.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-signal-radar-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-hedge-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
@@ -1641,7 +1642,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null, academySignals = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2538,6 +2539,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
           const out = path.endsWith('/preview') ? await academyClickAlert.preview(session.userId, input) : await academyClickAlert.send({ userId: session.userId, displayName: session.displayName }, input);
           if (!out.ok) { fail(out); return; }
+          // the member's own alerts in that channel now belong on their desk (their bot's posts are attributed to them); never awaited
+          if (path.endsWith('/send') && academyAlertSources && typeof academyAlertSources.followOwn === 'function') void academyAlertSources.followOwn(session.userId, input.channelId, session.displayName);
           sendJson(response, 200, out); return;
         }
         sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
@@ -2662,6 +2665,17 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       sendJson(response, 404, { ok: false, error: 'not_found' }); return;
     }
+    /* Signal radar (academy-signal-radar.js): MEM ALGO buy signals across the market, with 10-15% targets. The owner's desk only. */
+    if (request.method === 'GET' && path === '/academy-activity/signals') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academySignals || !academySignals.allowed(session.userId)) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      const q = new URL(request.url || '/', 'http://localhost').searchParams;
+      const since = Math.max(Date.now() - 7 * 86_400_000, Number(q.get('since')) || 0);
+      sendJson(response, 200, { ok: true, signals: academySignals.recent(since, Number(q.get('limit')) || 40), status: academySignals.status(), now: Date.now() });
+      return;
+    }
     /* New price targets the engine set since ?since= (ms), for the Academy's pop-up notification. Only alerts the member can see live. */
     if (request.method === 'GET' && path === '/academy-activity/pt-updates') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -2671,11 +2685,15 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const since = Math.max(Date.now() - 3 * 86_400_000, Number(new URL(request.url || '/', 'http://localhost').searchParams.get('since')) || 0);
       const alertView = session.tier === 'free' ? 'teaser' : (session.tier === 'academy' && academyGate && academyGate.alertsTiering ? 'closed' : 'live');
       try {
-        let list = academyAutoPt.recent(since, 20);
+        const all = academyAutoPt.recent(since, 40);
+        // a Click-to-Alert post's events are the sender's own; desk alerts need the member to see that alert live
+        const mine = all.filter((u) => String(u.key).startsWith('c:') && u.owner && String(u.owner) === String(session.userId));
+        let desk = all.filter((u) => String(u.key).startsWith('d:'));
         if (academyAlertSources) {
           const sources = (await academyAlertSources.viewFor(session.userId, alertView)).filter((x) => x.access);
-          list = list.filter((u) => { const src = academyAlerts.allows(u.id, sources); return src && src.view === 'live'; });
-        } else if (alertView !== 'live') list = [];
+          desk = desk.filter((u) => { const src = academyAlerts.allows(u.id, sources); return src && src.view === 'live'; });
+        } else if (alertView !== 'live') desk = [];
+        const list = mine.concat(desk).map(({ owner, ...u }) => u).sort((a, b) => b.at - a.at).slice(0, 20);
         sendJson(response, 200, { ok: true, updates: list, now: Date.now() });
       } catch (error) { logger('warn', 'pt_updates_failed', { error }); sendJson(response, 503, { ok: false, error: 'temporarily_unavailable' }); }
       return;
@@ -3404,7 +3422,9 @@ async function main() {
   const academyAlerts = process.env.ACADEMY_ALERTS === 'off' ? null : createAlertsService({
     tokens: alertTokens, channels: perMemberAlerts ? [] : defaultChannels(), origin: REDDIT_HUB_ORIGIN, optionsChain: async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; }, earnings: async (symbol) => { const r = await academyDataBridge.get('earnings', symbol); return r && r.ok ? r.data : null; }, candles: (symbol, tf) => getAcademyCandles(symbol, tf), logger: log,
     orderFlow: (symbol) => (academyOrderFlow ? academyOrderFlow.peek(symbol) : null),
-    patterns: (() => { try { return require('./academy-patterns').detect; } catch (_) { return null; } })()
+    patterns: (() => { try { return require('./academy-patterns').detect; } catch (_) { return null; } })(),
+    // which member sent each Click-to-Alert post (their bot or the channel webhook is Discord's author): academyClickAlert is created further down
+    attribution: async () => { const m = new Map(); if (!academyClickAlert) return m; for (const r of await academyClickAlert.store.recent({ sinceMs: 45 * 86_400_000 })) if (r.userId && r.messageId) m.set(String(r.messageId), { userId: String(r.userId), name: '' }); return m; }
   });
   /* Sentiment desk: scored news, StockTwits tags + velocity, options positioning (put/call, unusual flow, GEX, max pain) and market gauges (SPY/QQQ, VIX). */
   const sentimentCandles = async (symbol, tf) => {
@@ -3520,8 +3540,25 @@ async function main() {
     const src = academyAlerts.allows(String(alertId), sources);
     return !!(src && src.view === 'live');
   };
+  /* who a price-target event goes to: a desk alert reaches every member who sees it live; a Click-to-Alert post reaches the member who sent it */
+  const ptAudience = (u) => (String(u.key || '').startsWith('c:') ? (userId) => String(userId) === String(u.owner || '') : (userId) => memberSeesAlertLive(userId, String(u.key).slice(2)));
+  const pushTargetHit = (u) => {
+    if (!academyPush || !u || !u.symbol || (String(u.key || '').startsWith('c:') && !u.owner)) return;
+    const px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
+    const id = String(u.key).slice(2);
+    const msg = {
+      kind: 'pt', id, symbol: u.symbol, tag: 'sml-pthit-' + id, sticky: true,
+      title: '🎯 ' + u.symbol + ' hit your price target $' + px(u.target),
+      body: 'Entry $' + px(u.entry) + '. ' + (u.suggested ? 'MEM ALGO suggests a new PT of $' + px(u.suggested) + '. ' : '') + 'Open the Academy to post a new price target.',
+      url: '/academy-activity/?symbol=' + encodeURIComponent(u.symbol) + '&ptalert=' + encodeURIComponent(id),
+      update: { ...u }
+    };
+    academyPush.sendTo(ptAudience(u), msg, { topic: 'pthit' + id })
+      .then((r) => log('info', 'push_target_hit', { symbol: u.symbol, ...r }))
+      .catch((error) => log('warn', 'push_target_hit_failed', { error }));
+  };
   const pushNewTarget = (u) => {
-    if (!academyPush || !u || !String(u.key || '').startsWith('d:')) return;
+    if (!academyPush || !u || !/^[dc]:/.test(String(u.key || ''))) return;
     const up = u.side !== 'short', px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
     const id = String(u.key).slice(2);
     const msg = {
@@ -3531,15 +3568,15 @@ async function main() {
       url: '/academy-activity/?symbol=' + encodeURIComponent(u.symbol) + '&ptalert=' + encodeURIComponent(id),
       update: { key: u.key, id, symbol: u.symbol, n: u.n, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, entry: u.entry, side: u.side, stop: u.stop, stopRange: u.stopRange, stopWas: u.stopWas, signals: u.signals, story: u.story }
     };
-    academyPush.sendTo((userId) => memberSeesAlertLive(userId, id), msg, { topic: 'pt' + id })
+    academyPush.sendTo(ptAudience(u), msg, { topic: 'pt' + id })
       .then((r) => log('info', 'push_new_target', { symbol: u.symbol, ...r }))
       .catch((error) => log('warn', 'push_new_target_failed', { error }));
   };
   const academyAutoPt = academyClickAlert && AUTO_PT_MODE !== 'off' ? createAutoPtService({
-    mode: AUTO_PT_MODE, logger: log, onUpdate: pushNewTarget,
+    mode: AUTO_PT_MODE, logger: log, onUpdate: pushNewTarget, onHit: pushTargetHit,
     listAlerts: async () => {
       const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))), price: (() => { const ev = academyAlerts.evaluated.get(a.id); return ev && ev.quote && Number(ev.quote.last) > 0 ? Number(ev.quote.last) : null; })() })) : [];
-      const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, stop: Number(r.stop) > 0 ? Number(r.stop) : undefined, at: r.at, channelId: r.channelId, postable: ownAlertChannels.has(String(r.channelId)) }));
+      const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, userId: r.userId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, stop: Number(r.stop) > 0 ? Number(r.stop) : undefined, at: r.at, channelId: r.channelId, postable: ownAlertChannels.has(String(r.channelId)) }));
       const deskIds = new Set(desk.map((d) => d.key.slice(2)));
       return desk.concat(click.filter((c) => !deskIds.has(c.key.slice(2)))); // the desk copy of a message wins
     },
@@ -3554,6 +3591,41 @@ async function main() {
     // the alerts desk works toward the newest target and shows each update's write-up
     void academyAutoPt.load().catch(() => {});
     if (academyAlerts && typeof academyAlerts.setPtLadder === 'function') academyAlerts.setPtLadder((key) => academyAutoPt.forKey(key));
+  }
+  /* Signal radar: MEM ALGO buy signals across the wide scanner's universe, for the owner (OWNER_IDS + SML_ACADEMY_SIGNAL_USER_IDS).
+     ACADEMY_SIGNAL_RADAR=off removes it. Reads 25 symbols a minute through Massive REST (sentimentCandles), so a 300-name universe
+     is covered about every 12 minutes in the regular session; outside it only the daily (swing) read runs. */
+  const signalUserIds = new Set([...OWNER_IDS, ...String(process.env.SML_ACADEMY_SIGNAL_USER_IDS || '').split(',').map((v) => v.trim()).filter((v) => /^\d{15,25}$/.test(v))]);
+  const pushSignal = (sig) => {
+    if (!academyPush || !sig) return;
+    const px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
+    const msg = {
+      kind: 'signal', id: sig.id, symbol: sig.symbol, tag: 'sml-signal-' + sig.symbol + '-' + sig.style, sticky: false,
+      title: '🟢 BUY SIGNAL ' + sig.symbol + ' · ' + sig.label + ' · grade ' + sig.grade,
+      body: 'Entry $' + px(sig.entry) + ' → PT $' + px(sig.target) + ' (+' + sig.pct + '%), stop $' + px(sig.stop) + '. ' + (sig.why && sig.why[0] ? sig.why[0] + '.' : ''),
+      url: '/academy-activity/?symbol=' + encodeURIComponent(sig.symbol) + '&signal=' + encodeURIComponent(sig.id),
+      signal: sig
+    };
+    academyPush.sendTo((userId) => signalUserIds.has(String(userId)), msg, { topic: 'signal' + sig.symbol + sig.style })
+      .then((r) => log('info', 'push_signal', { symbol: sig.symbol, style: sig.style, ...r }))
+      .catch((error) => log('warn', 'push_signal_failed', { error }));
+  };
+  const signalRadar = process.env.ACADEMY_SIGNAL_RADAR === 'off' ? null : createSignalRadar({
+    universe: async () => {
+      const cap = Math.max(50, Math.min(500, Number(process.env.ACADEMY_SIGNAL_RADAR_UNIVERSE) || 300));
+      if (academyWideScanner) { try { const w = await academyWideScanner.get(cap); if (w && Array.isArray(w.rows) && w.rows.length) return w.rows; } catch (error) { log('warn', 'signal_radar_wide_failed', { error }); } }
+      const s = await getAcademyScanner().catch(() => null); return s && Array.isArray(s.rows) ? s.rows.slice(0, cap) : [];
+    },
+    candles: sentimentCandles, analyze: require('./academy-mem-algo').analyze, state: () => marketState(), push: pushSignal, logger: log,
+    perTick: Math.max(5, Math.min(60, Number(process.env.ACADEMY_SIGNAL_RADAR_PER_TICK) || 25)),
+    store: createPgStateStore({ pool: database.pool, key: 'signal-radar', defaultValue: () => ({ signals: [] }), logger: log })
+  });
+  const academySignals = signalRadar ? { recent: signalRadar.recent, status: signalRadar.status, allowed: (userId) => signalUserIds.has(String(userId)) } : null;
+  if (signalRadar) {
+    const runRadar = () => signalRadar.tick().then((r) => { if (r && r.ran && r.found) log('info', 'signal_radar_tick', r); }).catch((error) => log('warn', 'signal_radar_tick_failed', { error }));
+    setTimeout(runRadar, 45_000).unref(); setInterval(runRadar, 60_000).unref();
+    void signalRadar.load().catch(() => {});
+    log('info', 'signal_radar_enabled', { owners: signalUserIds.size });
   }
   /* Hedge & Income: the live chain (up to 3 expirations per request, cached 60 s), daily candles for ATR levels, and the member's own alert desk */
   const academyHedge = academyDataBridge.configured ? createHedgeService({
@@ -3641,7 +3713,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

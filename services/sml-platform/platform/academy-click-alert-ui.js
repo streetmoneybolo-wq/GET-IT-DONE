@@ -414,6 +414,20 @@
     render(); draw();
   }
   btn.addEventListener('click', () => setOn(!S.on));
+  /* Other panels (the signal radar, the target-hit card) open Click-to-Alert ready to send: the chart moves to the symbol, the
+     target is set, the read runs. mode 'smashed' writes a PT SMASHED post (a higher target on a symbol already alerted). */
+  window.smlClickAlertPrefill = ({ symbol, target, mode } = {}) => {
+    const s = String(symbol || '').toUpperCase(); if (!s) return false;
+    if (typeof window.smlAcademyNavigateMarket === 'function') { try { window.smlAcademyNavigateMarket(s); } catch (_) { /* keep going */ } }
+    if (!S.on) setOn(true);
+    S.kind = 'stock'; S.contract = null; S.opt = null; S.autoTarget = false; S.symNote = ''; S.sent = false; S.msg = '';
+    S.symbol = s; S.mode = mode === 'smashed' || mode === 'new' ? mode : 'auto';
+    const t = Number(target); S.target = t > 0 ? Math.round(t * (t >= 1 ? 100 : 10000)) / (t >= 1 ? 100 : 10000) : null;
+    if (S.target != null) { if (S.status && S.status.ok && S.status.entitled) void reading(); else void loadStatus().then(() => { if (S.status && S.status.entitled) void reading(); }); }
+    render(); draw();
+    try { panel.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+    return true;
+  };
   window.addEventListener('sml-academy-session', () => { if (S.on) void loadStatus(); });
   render();
 })(0);

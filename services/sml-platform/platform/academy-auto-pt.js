@@ -155,7 +155,7 @@ function targetReached({ side, target, range }) {
   return side === 'short' ? Number(range.low) <= Number(target) : Number(range.high) >= Number(target);
 }
 
-function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, onUpdate = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
+function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, onUpdate = null, onHit = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
   const enabled = mode === 'dry' || mode === 'on' || mode === 'desk';
   const winOf = (s) => (fin(s && s.windowMs) ? Number(s.windowMs) : windowMs);
   let state = null, running = false, view = null;
@@ -185,7 +185,8 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
         if (state.alerts[a.key] && a.postable === false) state.alerts[a.key].postable = false;
         if (state.alerts[a.key] && a.postable === true) state.alerts[a.key].postable = true;
         if (state.alerts[a.key] && fin(a.stop) && !fin(state.alerts[a.key].stop0)) state.alerts[a.key].stop0 = Number(a.stop);
-        if (!state.alerts[a.key]) state.alerts[a.key] = { stop0: fin(a.stop) ? Number(a.stop) : undefined, windowMs: fin(a.windowMs) ? Number(a.windowMs) : undefined, postable: a.postable !== false, symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '' };
+        if (state.alerts[a.key] && a.userId && !state.alerts[a.key].userId) state.alerts[a.key].userId = String(a.userId);
+        if (!state.alerts[a.key]) state.alerts[a.key] = { stop0: fin(a.stop) ? Number(a.stop) : undefined, windowMs: fin(a.windowMs) ? Number(a.windowMs) : undefined, postable: a.postable !== false, symbol: a.symbol, side: a.side === 'short' ? 'short' : 'long', channelId: String(a.channelId), at: a.at, entry: a.entry, target: a.target, status: 'watching', updates: [], note: '', ...(a.userId ? { userId: String(a.userId) } : {}) };
       }
       // one Discord message is one alert: a Click-to-Alert copy ('c:<id>') of a message the desk already follows ('d:<id>') is not updated twice
       for (const [k, s] of Object.entries(state.alerts)) if (k.startsWith('c:') && state.alerts['d:' + k.slice(2)] && s.status === 'watching') { s.status = 'done'; s.note = 'same message as the desk alert'; }
@@ -203,7 +204,12 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
         try {
           const r = await range(s.symbol, since);
           if (!targetReached({ side: s.side, target, range: r })) continue;
-          if (!s.hitAt) { s.hitAt = t; out.hits++; }
+          if (!s.hitAt) {
+            s.hitAt = t; out.hits++;
+            // the moment a target is reached is news in itself (the member who posted it wants to know, whatever the engine decides next)
+            s.hits = (s.hits || []).concat({ at: t, target, n: s.updates.length, price: r && fin(r.high) ? Number(s.side === 'short' ? r.low : r.high) : null }).slice(-MAX_UPDATES - 1);
+            if (typeof onHit === 'function') { try { onHit(hitView(key, s, s.hits[s.hits.length - 1])); } catch (error) { logger('warn', 'auto_pt_hit_notify_failed', { error }); } }
+          }
           const ev = await evidence(s.symbol, s.side);
           // decide on the live price when the desk has one (the evidence bars can still be yesterday's close before the open)
           const live = list.find((x) => x && x.key === key);
@@ -249,11 +255,17 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
   /* the target ladder for one alert (key 'd:<alert id>'): the latest target and every update, for the alerts desk */
   view = (s, u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange || null, stopWas: u.stopWas || null, why: u.why || [], signals: u.signals || [], story: u.story || '', entry: s.entry, side: s.side, text: u.text, posted: !!u.posted });
   const forKey = (key) => { const s = state && state.alerts[key]; return s && s.updates.length ? { target: s.updates[s.updates.length - 1].target, stop: s.updates[s.updates.length - 1].stop || null, side: s.side, updates: s.updates.map((u, i) => view(s, u, i)) } : null; };
-  /* every new target set after `since` (desk alerts only: 'd:<id>'), newest first, for the Academy's new-target notification */
+  /* a "target reached" event: the alert's own target (or its latest raised one) was touched; `suggested` is the engine's proposal when it has one */
+  const hitView = (key, s, h) => ({ kind: 'hit', key, id: key.slice(2), symbol: s.symbol, n: 'hit' + h.n, at: h.at, target: h.target, price: h.price, entry: s.entry, side: s.side, owner: s.userId || '', channelId: s.channelId, suggested: s.lastProposal && fin(s.lastProposal.target) ? Number(s.lastProposal.target) : null });
+  /* every new target set after `since`, and every target reached, newest first, for the Academy's notification. Desk alerts ('d:<id>') are
+     for everyone who follows them; a Click-to-Alert post ('c:<id>') carries `owner`, the member who sent it, and is for them alone. */
   const recent = (since = 0, limit = 20) => {
     if (!state) return [];
     const out = [];
-    for (const [key, s] of Object.entries(state.alerts)) if (key.startsWith('d:')) s.updates.forEach((u, i) => { if (u.at > since) out.push({ key, id: key.slice(2), symbol: s.symbol, ...view(s, u, i), text: undefined }); });
+    for (const [key, s] of Object.entries(state.alerts)) {
+      s.updates.forEach((u, i) => { if (u.at > since) out.push({ key, id: key.slice(2), symbol: s.symbol, ...view(s, u, i), text: undefined, owner: s.userId || '', channelId: s.channelId }); });
+      for (const h of s.hits || []) if (h.at > since) out.push(hitView(key, s, h));
+    }
     return out.sort((a, b) => b.at - a.at).slice(0, limit);
   };
   return { tick, status, enabled, mode, forKey, recent, load };

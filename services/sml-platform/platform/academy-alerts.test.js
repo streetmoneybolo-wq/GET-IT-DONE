@@ -443,3 +443,18 @@ test('alerts tiering: evaluate() judges closure from candles that start after th
   assert.ok(closedHit, 'a real post-alert target hit closes the alert');
   assert.equal(closedHit.closed.reason, 'target_hit');
 });
+
+test('a Click-to-Alert post made through a bot or webhook is filed under the member who sent it, so "only my alerts" follows pick it up', async () => {
+  const who = new Map([['9001', { userId: '200000000000000002', name: '' }]]);
+  const svc = createAlertsService({ channels: [{ key: 'swings', id: '1' }], now: () => Date.parse('2026-09-24T15:00:00Z'), attribution: async () => who });
+  // attribution is refreshed at the top of a poll; here the poll is driven by hand
+  await svc.poll().catch(() => {});
+  const bot = (id, content) => ({ id, content, timestamp: '2026-09-24T14:00:00Z', author: { id: '300000000000000003', username: 'Academy Alerts', bot: true } });
+  svc.ingest('swings', bot('9001', '@everyone GDC entry $2 pt 2.33 plus'));
+  svc.ingest('swings', bot('9002', '@everyone ZEO entry 1 pt 1.2 plus'));
+  const a = svc.alerts.get('9001'), b = svc.alerts.get('9002');
+  assert.equal(a.authorId, '200000000000000002'); assert.equal(a.via, 'academy'); assert.equal(a.botId, '300000000000000003'); assert.equal(a.author, 'Academy Alerts');
+  assert.equal(b.authorId, '300000000000000003', 'a bot post nobody sent through the Academy keeps the bot as its author');
+  assert.equal(svc.allows('9001', [{ key: 'swings', authorId: '200000000000000002', view: 'live' }]).view, 'live');
+  assert.ok(!svc.allows('9002', [{ key: 'swings', authorId: '200000000000000002', view: 'live' }]));
+});

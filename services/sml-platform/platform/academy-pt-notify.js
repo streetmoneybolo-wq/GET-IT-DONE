@@ -110,17 +110,30 @@
   const up = (u) => u.side !== 'short';
   const stopLine = (u) => (u.stopRange ? '🚨 Stop ' + (up(u) ? 'raised: below' : 'lowered: above') + ' $' + px(u.stopRange.low) + '–$' + px(u.stopRange.high) + (u.stopWas ? ' (was ' + u.stopWas + ')' : '') : '');
 
+  /* a Click-to-Alert post of the member's own ('c:<message id>'): the server only returns those to the member who sent them */
+  const own = (u) => String(u.key || '').indexOf('c:') === 0;
+  const canPost = () => typeof window.smlClickAlertPrefill === 'function';
+  /* the next target to offer when the member wants to post a new PT: the engine's proposal, else 12% past the one just hit */
+  const nextTarget = (u) => (Number(u.suggested) > 0 ? Number(u.suggested) : u.kind === 'hit' ? Number(u.target) * (up(u) ? 1.12 : 0.88) : Number(u.target));
   function card(u) {
     const el = document.createElement('section');
     el.className = 'sml-pt'; el.setAttribute('role', 'status');
-    const ladder = typeof window.smlAcademyPtLadder === 'function' ? window.smlAcademyPtLadder(u, 0, [u]) : '';
+    const hit = u.kind === 'hit';
+    const ladder = !hit && typeof window.smlAcademyPtLadder === 'function' ? window.smlAcademyPtLadder(u, 0, [u]) : '';
     const chips = (u.signals || []).slice(0, 6).map((x) => { const c = TONE[x.tone] || TONE.ok; return '<span style="background:' + c[0] + ';color:' + c[1] + '">' + esc(x.text) + '</span>'; }).join('');
     const perm = !push.on;
-    el.innerHTML = '<div class="sml-pt-top"><b>🎯 NEW PRICE TARGET SET</b><small>PT ' + esc(u.n) + ' smashed</small><button type="button" class="sml-pt-x" aria-label="Dismiss">✕</button></div>'
+    const postBtn = own(u) && canPost() ? '<button type="button" class="go" data-a="post">' + (hit ? '🎯 Post a new PT $' + px(nextTarget(u)) : '📣 Post this PT to Discord') + '</button>' : '';
+    if (hit) {
+      el.innerHTML = '<div class="sml-pt-top"><b>🎯 PRICE TARGET HIT</b><small>' + (own(u) ? 'your alert' : 'desk alert') + '</small><button type="button" class="sml-pt-x" aria-label="Dismiss">✕</button></div>'
+        + '<div class="sml-pt-body"><div class="sml-pt-sym"><strong>' + esc(u.symbol) + '</strong><em>entry $' + px(u.entry) + ' →</em><span>PT $' + px(u.target) + ' reached' + (Number(u.price) > 0 ? ' (high $' + px(u.price) + ')' : '') + '</span></div>'
+        + (Number(u.suggested) > 0 ? '<p class="sml-pt-story">MEM ALGO suggests a new target of $' + px(u.suggested) + '.</p>' : '<p class="sml-pt-story">Post a new price target, or let the alert ride.</p>') + '</div>'
+        + '<div class="sml-pt-act">' + postBtn + '<button type="button"' + (postBtn ? '' : ' class="go"') + ' data-a="open">Open chart</button>' + (perm ? '<button type="button" data-a="perm">🔔 Turn on push alerts</button>' : '') + '</div>'
+        + '<div class="sml-pt-foot">Target tracking · educational, not financial advice</div>';
+    } else el.innerHTML = '<div class="sml-pt-top"><b>🎯 NEW PRICE TARGET SET</b><small>PT ' + esc(u.n) + ' smashed</small><button type="button" class="sml-pt-x" aria-label="Dismiss">✕</button></div>'
       + '<div class="sml-pt-body"><div class="sml-pt-sym"><strong>' + esc(u.symbol) + '</strong><em>$' + px(u.previous) + ' →</em><span>$' + px(u.target) + ' (' + (up(u) ? '+' : '−') + esc(u.pct) + '%)</span></div>'
       + (u.stopRange ? '<div class="sml-pt-stop">' + esc(stopLine(u)) + '</div>' : '') + ladder
       + (chips ? '<div class="sml-pt-chips">' + chips + '</div>' : '') + (u.story ? '<p class="sml-pt-story">' + esc(u.story) + '</p>' : '') + '</div>'
-      + '<div class="sml-pt-act"><button type="button" class="go" data-a="open">Open alert</button>' + (u.story ? '<button type="button" data-a="more">Read all</button>' : '') + (perm ? '<button type="button" data-a="perm">🔔 Turn on push alerts</button>' : '') + '</div>'
+      + '<div class="sml-pt-act">' + postBtn + '<button type="button"' + (postBtn ? '' : ' class="go"') + ' data-a="open">Open alert</button>' + (u.story ? '<button type="button" data-a="more">Read all</button>' : '') + (perm ? '<button type="button" data-a="perm">🔔 Turn on push alerts</button>' : '') + '</div>'
       + '<div class="sml-pt-foot">Automatic price-target update · educational, not financial advice</div>';
     let timer = 0;
     const close = () => { clearTimeout(timer); el.remove(); };
@@ -129,7 +142,8 @@
     el.addEventListener('click', (e) => {
       if (e.target.closest('.sml-pt-x')) { close(); return; }
       const b = e.target.closest('[data-a]'); if (!b) return;
-      if (b.dataset.a === 'open') { open(u); close(); }
+      if (b.dataset.a === 'open') { if (own(u) && window.smlAcademyNavigateMarket) { try { window.focus(); } catch (_) { /* fine */ } window.smlAcademyNavigateMarket(u.symbol); } else open(u); close(); }
+      if (b.dataset.a === 'post') { window.smlClickAlertPrefill({ symbol: u.symbol, target: nextTarget(u), mode: 'smashed' }); close(); }
       if (b.dataset.a === 'more') { el.classList.toggle('more'); b.textContent = el.classList.contains('more') ? 'Show less' : 'Read all'; clearTimeout(timer); }
       if (b.dataset.a === 'perm') { b.disabled = true; enablePush().then((on) => { b.textContent = on ? 'Push alerts on' : 'Not turned on'; }); }
     });
@@ -140,7 +154,9 @@
   function desktop(u) {
     if (push.on || !('Notification' in window) || Notification.permission !== 'granted') return; // with push on, the service worker shows it
     try {
-      const n = new Notification('🎯 ' + u.symbol + ' new price target $' + px(u.target), { body: 'PT ' + u.n + ' $' + px(u.previous) + ' smashed. ' + (u.stopRange ? stopLine(u).replace('🚨 ', '') + '. ' : '') + (u.story ? u.story.split('. ').slice(1, 3).join('. ') : ''), tag: 'sml-pt-' + u.key + '-' + u.n });
+      const n = u.kind === 'hit'
+        ? new Notification('🎯 ' + u.symbol + ' hit your price target $' + px(u.target), { body: 'Entry $' + px(u.entry) + '. ' + (Number(u.suggested) > 0 ? 'MEM ALGO suggests $' + px(u.suggested) + '. ' : '') + 'Open the Academy to post a new PT.', tag: 'sml-pt-' + u.key + '-' + u.n })
+        : new Notification('🎯 ' + u.symbol + ' new price target $' + px(u.target), { body: 'PT ' + u.n + ' $' + px(u.previous) + ' smashed. ' + (u.stopRange ? stopLine(u).replace('🚨 ', '') + '. ' : '') + (u.story ? u.story.split('. ').slice(1, 3).join('. ') : ''), tag: 'sml-pt-' + u.key + '-' + u.n });
       n.onclick = () => { open(u); n.close(); };
     } catch (_) { /* some browsers only allow notifications from a service worker */ }
   }

@@ -346,6 +346,18 @@ function createAlertSources({ store, directory, alerts, presets = [], tierFor = 
     await sync().catch(() => {});
     return list(userId);
   }
+  /* After a member posts an alert to a channel: make sure their own alerts there reach their desk. Already following the channel (anyone or
+     themselves): nothing to do. Otherwise follow their own posts there (the desk attributes their bot/webhook posts to them). Never throws. */
+  async function followOwn(userId, channelId, authorName = '') {
+    const channel = cleanId(channelId), me = cleanId(userId);
+    if (!channel || !me) return false;
+    try {
+      const mine = await store.list(me);
+      if (mine.some((s) => s.channelId === channel && (!s.authorId || s.authorId === me))) return false;
+      await add(me, { channel, author: me, authorName: cleanLabel(authorName) });
+      return true;
+    } catch (_) { return false; }
+  }
   async function remove(userId, input) {
     const channelId = cleanId(input && input.channel), authorId = input && input.author ? cleanId(input.author) : '';
     if (!channelId) throw new TypeError('invalid_source');
@@ -364,8 +376,9 @@ function createAlertSources({ store, directory, alerts, presets = [], tierFor = 
     const messages = await directory.recent(channelId).catch(() => []);
     const posters = new Map(); const alertsFound = [];
     for (const m of messages) {
-      const a = m.author || {}; const id = cleanId(a.id); if (!id || a.bot) continue;
-      const p = posters.get(id) || { id, name: cleanLabel(a.global_name || a.username) || 'member', posts: 0, alerts: 0 };
+      const a = m.author || {}; const id = cleanId(a.id); if (!id) continue;
+      // a bot or webhook counts as a poster too: many members post their alerts through their own bot
+      const p = posters.get(id) || { id, name: cleanLabel(a.global_name || a.username) || (a.bot ? 'bot' : 'member'), posts: 0, alerts: 0, ...(a.bot ? { bot: true } : {}) };
       p.posts += 1;
       const parsed = parseAlertMessage(m.content, m.timestamp);
       if (parsed && parsed.kind === 'equity') { p.alerts += 1; if (alertsFound.length < 8) alertsFound.push({ symbol: parsed.symbol, entry: parsed.entryPrice, target: parsed.targetPrice, author: p.name, authorId: id, at: Date.parse(m.timestamp) || 0 }); }
@@ -375,7 +388,7 @@ function createAlertSources({ store, directory, alerts, presets = [], tierFor = 
       posters: [...posters.values()].sort((x, y) => y.alerts - x.alerts || y.posts - x.posts).slice(0, 15), alerts: alertsFound };
   }
 
-  return { sync, start, stop, viewFor, add, remove, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, presetSources, siteDesk, MAX_SOURCES };
+  return { sync, start, stop, viewFor, add, remove, followOwn, list, preview, guilds: (u, g) => directory.guildsFor(u, cleanId(g)), channels: (u, g) => directory.readableChannels(cleanId(g), u), presetOf, presetSources, siteDesk, MAX_SOURCES };
 }
 
 module.exports = { createAlertSources, createAlertSourceStore, createDiscordDirectory, channelPermissions, canReadWith, postingWith, MAX_SOURCES };

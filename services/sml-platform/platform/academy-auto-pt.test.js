@@ -201,3 +201,18 @@ test('raisedStop: under the smashed target, never lower than before, breakeven f
   const sh = A.raisedStop({ side: 'short', price: 9.8, previousTarget: 10, entry: 12, prev: { low: 12.84, high: 13.2 }, volPct: 5 });
   assert.ok(sh.low > 10 && sh.low >= 9.8 * 1.03 && sh.low < 12.84, JSON.stringify(sh));
 });
+
+test('a target reached is an event of its own: recorded once, reported to onHit, and listed by recent() with the sender of a Click-to-Alert post', async () => {
+  const hits = [];
+  const h = harness({ deps: { onHit: (x) => hits.push(x) }, alerts: [{ key: 'c:7', userId: '200000000000000002', symbol: 'AIXI', side: 'long', entry: 1.8, target: 2.2, at: NOW - 2 * DAY, channelId: '444444444444444444' }] });
+  await h.svc.tick();
+  assert.equal(hits.length, 1);
+  assert.deepEqual([hits[0].kind, hits[0].key, hits[0].symbol, hits[0].target, hits[0].owner, hits[0].n], ['hit', 'c:7', 'AIXI', 2.2, '200000000000000002', 'hit0']);
+  const list = h.svc.recent(0);
+  const hit = list.find((u) => u.kind === 'hit'), upd = list.find((u) => u.kind !== 'hit');
+  assert.ok(hit && upd, 'the hit and the new target it led to');
+  assert.equal(hit.owner, '200000000000000002'); assert.equal(upd.owner, '200000000000000002'); assert.equal(upd.channelId, '444444444444444444');
+  assert.ok(hit.suggested == null || hit.suggested > 2.2);
+  await h.svc.tick();
+  assert.equal(hits.length, 1, 'not reported twice');
+});

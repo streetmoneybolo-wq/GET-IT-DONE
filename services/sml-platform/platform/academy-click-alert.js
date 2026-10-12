@@ -305,11 +305,11 @@ function createClickAlertStore({ pool = null } = {}) {
   /* every plain-stock alert sent since a moment ago (options contracts have a space in their key and are left out) */
   async function recent({ sinceMs }) {
     if (db) {
-      const r = await db.query("SELECT channel_id, message_id, symbol, side, entry, target, stop, created_at FROM academy_click_alerts WHERE created_at > now() - ($1 || ' milliseconds')::interval AND position(' ' in symbol) = 0 AND discord_id <> 'auto' ORDER BY created_at DESC LIMIT 500", [String(sinceMs)]);
-      return r.rows.map((x) => ({ channelId: String(x.channel_id), messageId: String(x.message_id), symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: new Date(x.created_at).getTime() }));
+      const r = await db.query("SELECT discord_id, channel_id, message_id, symbol, side, entry, target, stop, created_at FROM academy_click_alerts WHERE created_at > now() - ($1 || ' milliseconds')::interval AND position(' ' in symbol) = 0 AND discord_id <> 'auto' ORDER BY created_at DESC LIMIT 500", [String(sinceMs)]);
+      return r.rows.map((x) => ({ userId: String(x.discord_id), channelId: String(x.channel_id), messageId: String(x.message_id), symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: new Date(x.created_at).getTime() }));
     }
     const cut = Date.now() - sinceMs;
-    return mem.filter((x) => x.at > cut && x.userId !== 'auto' && !String(x.symbol).includes(' ')).map((x) => ({ channelId: x.channelId, messageId: x.messageId, symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), at: x.at }));
+    return mem.filter((x) => x.at > cut && x.userId !== 'auto' && !String(x.symbol).includes(' ')).map((x) => ({ userId: String(x.userId), channelId: x.channelId, messageId: x.messageId, symbol: x.symbol, side: x.side, entry: Number(x.entry), target: Number(x.target), stop: x.stop == null ? null : Number(x.stop), at: x.at }));
   }
   return { record, count, last, recent, persistent: !!db };
 }

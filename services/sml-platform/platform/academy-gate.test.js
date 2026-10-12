@@ -667,3 +667,24 @@ test('a successful token exchange records the member for chat @mentions (name an
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(touched, [{ userId: USER, displayName: 'Ace Trader' }]);
 });
+
+test('the signal radar route is the owner\'s only; pt-updates returns a member their own Click-to-Alert events and nobody else\'s', async () => {
+  const OWNER = '1087769175453339648';
+  const academyOAuth = { ...oauth(), verifySession: (auth) => { const m = /^Bearer (\S+)$/.exec(auth || ''); if (!m) return { ok: false, status: 401, code: 'authorization_required' }; return { ok: true, userId: m[1] === 'owner' ? OWNER : USER, tier: 'member', displayName: 'x' }; } };
+  const academySignals = { allowed: (id) => id === OWNER, recent: () => [{ id: 'AAA:day:1', symbol: 'AAA', style: 'day', at: Date.now(), entry: 10, target: 11, pct: 10, grade: 'A' }], status: () => ({ enabled: true }) };
+  const academyAutoPt = { recent: () => [
+    { kind: 'hit', key: 'c:1', id: '1', symbol: 'MINE', n: 'hit0', at: Date.now(), target: 2, owner: USER },
+    { kind: 'hit', key: 'c:2', id: '2', symbol: 'THEIRS', n: 'hit0', at: Date.now(), target: 3, owner: OWNER },
+    { key: 'd:3', id: '3', symbol: 'DESK', n: 1, at: Date.now(), target: 4, owner: '' }
+  ] };
+  const academyAlerts = { allows: () => undefined }, academyAlertSources = { viewFor: async () => [] };
+  await withServer({ academyOAuth, academyGate: null, academySignals, academyAutoPt, academyAlerts, academyAlertSources }, async (base) => {
+    const get = (p, t) => realFetch(`${base}${p}`, { headers: { authorization: 'Bearer ' + t } });
+    assert.equal((await get('/academy-activity/signals', 'member')).status, 403);
+    const own = await (await get('/academy-activity/signals', 'owner')).json();
+    assert.equal(own.ok, true); assert.deepEqual(own.signals.map((s) => s.symbol), ['AAA']);
+    const mine = await (await get('/academy-activity/pt-updates?since=0', 'member')).json();
+    assert.deepEqual(mine.updates.map((u) => [u.symbol, u.kind]), [['MINE', 'hit']], 'own hit yes; another member\'s no; a desk alert not followed no');
+    assert.ok(!('owner' in mine.updates[0]), 'who sent it is not echoed');
+  });
+});

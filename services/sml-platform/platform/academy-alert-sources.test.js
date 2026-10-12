@@ -156,3 +156,23 @@ test('posting under a member: one webhook is made and reused, and the post carri
   assert.equal(posts[0].avatar_url, `https://cdn.discordapp.com/avatars/${U}/abc123.png?size=128`);
   assert.equal(posts[1].username, 'Ace');
 });
+
+test('a bot that posts alerts is offered as a poster to follow; after posting an alert to a channel the member follows their own posts there, once', async () => {
+  const at = (h) => new Date(Date.parse('2026-09-24T15:00:00Z') - h * 3600_000).toISOString();
+  const messages = [
+    { id: '700000000000000003', content: '$AAPL entry 180 pt 195', timestamp: at(1), author: { id: '800000000000000009', username: 'Grandmaster-Obi', bot: true } },
+    { id: '700000000000000002', content: 'BUY $NVDA @ 120 PT 135', timestamp: at(2), author: { id: '800000000000000002', username: 'bo' } }
+  ];
+  const discord = fakeDiscord({ messages });
+  const directory = createDiscordDirectory({ tokens: [{ label: 'academy', token: 't' }], fetchImpl: discord.fetchImpl });
+  const alerts = createAlertsService({ channels: [], now: () => Date.parse('2026-09-24T15:00:00Z') });
+  const store = createAlertSourceStore();
+  const sources = createAlertSources({ store, directory, alerts, presets: [] });
+  const preview = await sources.preview(U, CH_OPEN);
+  assert.deepEqual(preview.posters.map((p) => [p.name, p.alerts, !!p.bot]), [['Grandmaster-Obi', 1, true], ['bo', 1, false]]);
+  assert.equal(await sources.followOwn(U, CH_OPEN, 'Me'), true);
+  assert.deepEqual((await sources.list(U)).sources.map((s) => [s.channelId, s.authorId, s.authorName]), [[CH_OPEN, U, 'Me']]);
+  assert.equal(await sources.followOwn(U, CH_OPEN, 'Me'), false, 'already following');
+  assert.equal(await sources.followOwn(U, CH_VIP), false, 'a channel the member cannot read: no follow, no throw');
+  assert.equal((await sources.list(U)).sources.length, 1);
+});
