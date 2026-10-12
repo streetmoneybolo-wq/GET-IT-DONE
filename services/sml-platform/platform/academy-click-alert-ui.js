@@ -262,7 +262,7 @@
   window.addEventListener('sml-options-alert-mode', (e) => {
     const on = !!(e.detail && e.detail.on);
     S.optMode = on;
-    if (on) { S.kind = 'option'; if (!S.on) { S.msg = ''; setOn(true, { quiet: true }); } else { render(); void loadStatus(); void loadChain(); } }
+    if (on) { S.kind = 'option'; if (!S.on) { S.msg = ''; setOn(true, { quiet: true }); void loadChain(); } else { render(); void loadStatus(); void loadChain(); } }
     else render();
   });
 
