@@ -1496,7 +1496,7 @@ test('The options chain gets the broker buy bar, wired to the clicked contract',
 test('The chat panel threads replies with votes and pins the busiest threads; the appearance panel ships with the page', () => {
   const fs = require('node:fs'), p = (f) => fs.readFileSync(require('node:path').join(__dirname, f), 'utf8');
   const chat = p('academy-chat-panel.js'), look = p('academy-appearance-ui.js'), lb = p('academy-lb-ui.js');
-  for (const marker of ["type: 'vote'", 'parentId', 'HOT THREAD', 'data-reply', 'data-fold']) assert.ok(chat.includes(marker), marker);
+  for (const marker of ["type: 'vote'", 'parentId', 'HOT THREAD', 'data-reply', 'data-fold', "type: 'members'", 'mentions: mentionsIn(body)', 'class="mn', 'data-pick']) assert.ok(chat.includes(marker), marker);
   for (const marker of ['Customize your Academy', 'COLOR SCHEME', 'TEXT SIZE', 'localStorage']) assert.ok(look.includes(marker), marker);
   for (const [name, src] of [['chat', chat], ['appearance', look], ['loop bucks', lb]]) assert.ok(!/[`\\]|\$\{/.test(src), name + ' is inlined into a template literal and must hold no backtick, backslash or ${');
   assert.ok(p('server.js').includes('ACADEMY_APPEARANCE + ') && p('server.js').includes('ACADEMY_LB_UI + '), 'injected into the page');

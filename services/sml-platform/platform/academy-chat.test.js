@@ -199,3 +199,45 @@ test('replies nest at most five levels deep', async () => {
   const depth = (m) => { let d = 0; while (m.parentId) { m = byId.get(m.parentId); d++; } return d; };
   assert.ok(Math.max(...all.map(depth)) <= 4);
 });
+
+test('@mentions: a picked member is stored on the message and DMed, a tag that is not in the text, is the sender, or is not taggable is dropped; the picker lists members', async () => {
+  const { createMentionService } = require('./academy-mentions');
+  const dm = { sent: [], send: async (id, content) => { dm.sent.push({ id, content }); return { ok: true }; } };
+  const mentions = createMentionService({ guildId: '100000000000000001', dm });
+  await mentions.touch({ userId: U1, displayName: 'Ace Trader' });
+  await mentions.touch({ userId: U2, displayName: 'Bo' });
+  const store = createChatStore();
+  const hub = createChatHub({ store, mentions, verifySession: fakeVerify({ t1: { userId: U1, displayName: 'Ace Trader' }, t2: { userId: U2, displayName: 'Bo' } }) });
+  const c1 = fakeConn(), c2 = fakeConn();
+  const h1 = hub.open(c1, hub.authenticate('t1'));
+  const h2 = hub.open(c2, hub.authenticate('t2'));
+  await h1.receive(JSON.stringify({ type: 'join', channel: 'swing' }));
+  await h2.receive(JSON.stringify({ type: 'join', channel: 'swing' }));
+
+  await h1.receive(JSON.stringify({ type: 'members', q: 'b' }));
+  assert.deepEqual(c1.sent.at(-1), { type: 'members', q: 'b', users: [{ id: U2, name: 'Bo' }] });
+
+  await h1.receive(JSON.stringify({ type: 'message', body: '@Bo check SPY', mentions: [U2, U1, '300000000000000003', 'junk'] }));
+  await new Promise((r) => setTimeout(r, 10));
+  const posted = c2.sent.find((m) => m.type === 'message').message;
+  assert.deepEqual(posted.mentions, [{ id: U2, name: 'Bo' }]);
+  assert.equal(dm.sent.length, 1);
+  assert.equal(dm.sent[0].id, U2);
+  assert.match(dm.sent[0].content, /^\*\*Ace Trader\*\* tagged you in the Academy live chat \(Swing Trade\):\n> @Bo check SPY/);
+
+  await h2.receive(JSON.stringify({ type: 'message', body: 'no tag here', mentions: [U1] })); // the id was sent but "@Ace Trader" is not in the text
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(c1.sent.filter((m) => m.type === 'message').at(-1).message.mentions, []);
+  assert.equal(dm.sent.length, 1);
+  assert.deepEqual((await store.history('swing')).map((m) => m.mentions.length), [1, 0]);
+});
+
+test('without a mention service messages carry no tags and the picker answers with nobody', async () => {
+  const hub = createChatHub({ store: createChatStore(), verifySession: fakeVerify({ t1: { userId: U1 } }) });
+  const c = fakeConn(); const h = hub.open(c, hub.authenticate('t1'));
+  await h.receive(JSON.stringify({ type: 'join', channel: 'global' }));
+  await h.receive(JSON.stringify({ type: 'members', q: 'x' }));
+  assert.deepEqual(c.sent.at(-1), { type: 'members', q: 'x', users: [] });
+  await h.receive(JSON.stringify({ type: 'message', body: '@Bo hi', mentions: [U2] }));
+  assert.deepEqual(c.sent.at(-1).message.mentions, []);
+});

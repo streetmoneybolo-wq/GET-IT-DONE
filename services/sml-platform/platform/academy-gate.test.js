@@ -652,3 +652,18 @@ test('gate client: Get Academy access posts the buy ticket, then opens the one-t
   assert.equal(button.disabled, false, 'the member can try again');
   assert.equal(client.opened.length, 2);
 });
+
+test('a successful token exchange records the member for chat @mentions (name and sign-in); a refusal records nothing; recording never blocks the sign-in', async () => {
+  let next; const touched = [];
+  const academyOAuth = oauth(async () => next);
+  const academyMentions = { touch: async (m) => { touched.push(m); throw new Error('db down'); } };
+  await withServer({ academyOAuth, academyGate: null, academyMentions }, async (base) => {
+    next = { ok: true, accessToken: 'discord-access', sessionToken: 'session', userId: USER, tier: 'academy', displayName: 'Ace Trader' };
+    const ok = await (await post(base, '/academy-activity/token', { code: 'c' })).json();
+    assert.equal(ok.ok, true);
+    next = { ok: false, status: 403, code: 'academy_role_required', userId: USER, inGuild: true };
+    assert.equal((await post(base, '/academy-activity/token', { code: 'c' })).status, 403);
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(touched, [{ userId: USER, displayName: 'Ace Trader' }]);
+});

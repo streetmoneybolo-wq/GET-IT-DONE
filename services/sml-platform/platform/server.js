@@ -71,6 +71,8 @@ const { parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars')
 const { freeUserIds: loadFreeUserIds, withFreeUsers, OWNER_IDS } = require('./academy-free-users');
 const { parsePrices: parsePassPrices, createPassStore, createPassService, createWalletClient, withPasses } = require('./academy-passes');
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
+const { createMentionService } = require('./academy-mentions');
+const { createDiscordDmClient } = require('./dispute-notifier');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
 const { createOptionsStream } = require('./academy-options-stream');
@@ -1639,7 +1641,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   newsIngestToken = '',
   paypalWebhook = null, upgradeChatWebhook = null, discordInteractions = null, disputeDiscordInteractions = null, dailySocialPayoutsInteractions = null,
   disputeService = null, schemaVersion = null, corporate = null, corporateConflictCodes = null,
-  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null,
+  academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAppId = '', academyGate = null,
@@ -2968,6 +2970,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
            one-time handoff code is minted by POST /academy-activity/buy only
            when the member presses 'Get Academy access', so sign-in and the
            15-minute renewals never wait on it or write a row. */
+        /* a signed-in member becomes taggable in the live chat: their display name and this sign-in are recorded (never awaited) */
+        if (result.ok && result.userId && academyMentions && typeof academyMentions.touch === 'function') academyMentions.touch({ userId: result.userId, displayName: result.displayName }).catch((error) => log('warn', 'academy_mention_touch_failed', { error: String(error && error.message || error) }));
         let buy = null;
         if ((buyLinksOn || (academyPasses && academyPasses.configured)) && result.userId && typeof academyOAuth.issueBuyTicket === 'function'
           && ((!result.ok && result.code === 'academy_role_required') || (result.ok && result.tier === 'free'))) {
@@ -3303,8 +3307,17 @@ async function main() {
   /* The Academy in-app chat (switchable Day Trade / Swing Trade / Short Sale / Options Trading
      channels), over a real WebSocket at /academy-activity/chat. Reuses the same session tokens
      the Activity's HTTP routes verify with, so a chat connection is just as authenticated. */
+  /* @mentions: who may be tagged (members who have signed in to the Academy, see the token route
+     below) and the Discord DM a tagged member gets, from the Academy bot. hasAccess is checked at
+     post time against the member's live tier (academyTierLive is defined further down; it is only
+     called once the server is serving). */
+  const academyMentions = createMentionService({
+    pool: database.pool, guildId: config.academyGuildId, logger: log,
+    dm: createDiscordDmClient({ token: config.academyBotToken || config.discordBotToken }),
+    hasAccess: (userId) => academyTierLive(userId).then((tier) => tier !== 'none')
+  });
   const academyChatHub = process.env.ACADEMY_CHAT === 'off' ? null : createChatHub({
-    store: createChatStore({ pool: database.pool }), verifySession: (auth) => academyOAuth.verifySession(auth), logger: log
+    store: createChatStore({ pool: database.pool }), verifySession: (auth) => academyOAuth.verifySession(auth), logger: log, mentions: academyMentions
   });
   const academyGate = academyGateFlags ? Object.freeze({
     ...createAcademyContentGate({ enabled: config.academyContentGateEnabled, freePreview: config.academyFreePreview,
@@ -3626,7 +3639,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

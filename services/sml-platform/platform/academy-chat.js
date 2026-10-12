@@ -10,6 +10,10 @@
  * and may report someone else's (stored in academy_chat_reports for moderators; muting a member is
  * a per-viewer client setting, not a server decision).
  *
+ * @mentions: a message may tag members (an array of Discord ids the picker chose, see
+ * academy-mentions.js); the hub keeps only ids that resolve to a taggable member whose "@Name"
+ * really appears in the text, stores them on the message, and has the mention service DM them.
+ *
  * The real-time transport is a WebSocket (attachChatServer, thin glue over the "ws" package).
  * Everything that matters is in createChatHub, which only needs a { send(json) } connection object
  * and is tested with fakes — it never touches a real socket. */
@@ -27,6 +31,7 @@ const HISTORY = 300; // threads need their replies, so a room opens on its last 
 const MAX_DEPTH = 5; // replies deeper than this attach to the reply above, as on Reddit's collapsed threads
 const RATE_LIMIT = 8; // messages
 const RATE_WINDOW_MS = 10_000; // per this many ms
+const MAX_MENTIONS = 5; // per message
 
 const cleanBody = (v) => String(v || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, MAX_BODY);
 const cleanName = (v) => String(v || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80);
@@ -34,13 +39,14 @@ const cleanName = (v) => String(v || '').replace(/[\u0000-\u001f<>]/g, '').trim(
 /* Where messages are kept: Postgres (academy_chat_messages) when there is a database, memory otherwise (local runs, tests). */
 function createChatStore({ pool = null } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
-  const mem = []; // [{ id, channel, discordId, authorName, body, createdAt, parentId, deleted }]
+  const mem = []; // [{ id, channel, discordId, authorName, body, createdAt, parentId, deleted, mentions }]
   const memVotes = new Map(); // messageId -> Map(voterId -> 1 | -1)
   let nextId = 1;
   const iso = (v) => (v instanceof Date ? v.toISOString() : String(v));
-  const rowOut = (r) => ({ id: String(r.id), channel: String(r.channel), discordId: String(r.discord_id), authorName: String(r.author_name || ''), body: String(r.body), createdAt: iso(r.created_at), parentId: r.parent_id == null ? null : String(r.parent_id), deleted: !!r.deleted, score: Number(r.score) || 0, myVote: Number(r.my_vote) || 0 });
+  const mentionsOut = (v) => { const list = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch (_) { return []; } })() : v; return Array.isArray(list) ? list.filter((m) => m && m.id).map((m) => ({ id: String(m.id), name: String(m.name || '') })) : []; };
+  const rowOut = (r) => ({ id: String(r.id), channel: String(r.channel), discordId: String(r.discord_id), authorName: String(r.author_name || ''), body: String(r.body), createdAt: iso(r.created_at), parentId: r.parent_id == null ? null : String(r.parent_id), deleted: !!r.deleted, score: Number(r.score) || 0, myVote: Number(r.my_vote) || 0, mentions: mentionsOut(r.mentions) });
   const scoreOf = (id) => { let n = 0; for (const v of (memVotes.get(String(id)) || new Map()).values()) n += v; return n; };
-  const memOut = (m, viewerId) => rowOut({ id: m.id, channel: m.channel, discord_id: m.discordId, author_name: m.authorName, body: m.body, created_at: m.createdAt, parent_id: m.parentId, deleted: m.deleted, score: scoreOf(m.id), my_vote: viewerId ? ((memVotes.get(String(m.id)) || new Map()).get(String(viewerId)) || 0) : 0 });
+  const memOut = (m, viewerId) => rowOut({ id: m.id, channel: m.channel, discord_id: m.discordId, author_name: m.authorName, body: m.body, created_at: m.createdAt, parent_id: m.parentId, deleted: m.deleted, mentions: m.mentions, score: scoreOf(m.id), my_vote: viewerId ? ((memVotes.get(String(m.id)) || new Map()).get(String(viewerId)) || 0) : 0 });
 
   /* The most recent messages of a room (replies included), each with its vote score and, for viewerId, that member's own vote. */
   async function history(channel, limit = HISTORY, viewerId = '') {
@@ -58,14 +64,15 @@ function createChatStore({ pool = null } = {}) {
     const m = mem.find((x) => String(x.id) === String(id));
     return m ? memOut(m, '') : null;
   }
-  async function add({ channel, discordId, authorName, body, parentId = null }) {
+  async function add({ channel, discordId, authorName, body, parentId = null, mentions = [] }) {
+    const tagged = mentionsOut(mentions);
     if (db) {
-      const row = (await db.query('INSERT INTO academy_chat_messages (channel, discord_id, author_name, body, parent_id) VALUES ($1,$2,$3,$4,$5) RETURNING *', [channel, discordId, authorName, body, parentId])).rows[0];
+      const row = (await db.query('INSERT INTO academy_chat_messages (channel, discord_id, author_name, body, parent_id, mentions) VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING *', [channel, discordId, authorName, body, parentId, JSON.stringify(tagged)])).rows[0];
       return rowOut(row);
     }
     const createdAt = new Date().toISOString();
     const id = nextId++;
-    mem.push({ id, channel, discordId, authorName, body, createdAt, parentId: parentId == null ? null : String(parentId), deleted: false });
+    mem.push({ id, channel, discordId, authorName, body, createdAt, parentId: parentId == null ? null : String(parentId), deleted: false, mentions: tagged });
     return memOut(mem[mem.length - 1], '');
   }
   /* Only the author can delete their own message. One that already has replies stays in its thread as "[deleted]" so the replies keep their place; returns { channel, soft } or null. */
@@ -118,8 +125,9 @@ function createChatStore({ pool = null } = {}) {
   return { history, get, add, remove, vote, report };
 }
 
-/* verifySession: the same shape as academyOAuth.verifySession — (authorizationHeaderString) => { ok, userId, tier } | { ok:false, ... } */
-function createChatHub({ store, verifySession, logger = () => {}, now = Date.now, rateLimit = RATE_LIMIT, rateWindowMs = RATE_WINDOW_MS } = {}) {
+/* verifySession: the same shape as academyOAuth.verifySession — (authorizationHeaderString) => { ok, userId, tier } | { ok:false, ... }
+   mentions (optional): an academy-mentions.js service — { search, resolve, notify }; without it messages carry no tags and the picker is empty. */
+function createChatHub({ store, verifySession, mentions = null, logger = () => {}, now = Date.now, rateLimit = RATE_LIMIT, rateWindowMs = RATE_WINDOW_MS } = {}) {
   const byChannel = new Map(CHANNELS.map((c) => [c.key, new Set()])); // channel -> Set(conn)
   const hits = new Map(); // discordId -> [timestamps within the window]
 
@@ -162,11 +170,21 @@ function createChatHub({ store, verifySession, logger = () => {}, now = Date.now
       const messages = await store.history(channel, HISTORY, identity.userId).catch(() => []);
       conn.send(JSON.stringify({ type: 'history', channel, messages }));
     }
-    async function post(body, parentId) {
+    /* Which of the ids the client says it tagged may really be tagged: taggable per the mention
+       service, not the sender, and "@Name" present in the text — so a tag can neither be hidden nor
+       point at someone who never used the app. */
+    async function tagsIn(clean, ids) {
+      if (!mentions || !Array.isArray(ids) || !ids.length) return [];
+      const want = [...new Set(ids.map((v) => String(v || '')))].filter((id) => id && id !== String(identity.userId)).slice(0, MAX_MENTIONS);
+      const found = await mentions.resolve(want).catch(() => []);
+      return found.filter((m) => m.name && clean.includes('@' + m.name));
+    }
+    async function post(body, parentId, mentionIds) {
       if (!channel) { conn.send(JSON.stringify({ type: 'error', error: 'join_first' })); return; }
       const clean = cleanBody(body);
       if (!clean) { conn.send(JSON.stringify({ type: 'error', error: 'empty_message' })); return; }
       if (!withinRate(identity.userId)) { conn.send(JSON.stringify({ type: 'error', error: 'rate_limited' })); return; }
+      const tagged = await tagsIn(clean, mentionIds);
       let parent = null;
       if (parentId != null && parentId !== '') {
         parent = await store.get(parentId).catch(() => null);
@@ -175,8 +193,20 @@ function createChatHub({ store, verifySession, logger = () => {}, now = Date.now
         while (chain[chain.length - 1].parentId && chain.length < 60) { const up = await store.get(chain[chain.length - 1].parentId).catch(() => null); if (!up) break; chain.push(up); }
         parent = chain[Math.max(0, chain.length - (MAX_DEPTH - 1))];
       }
-      const row = await store.add({ channel, discordId: identity.userId, authorName, body: clean, parentId: parent ? parent.id : null });
+      const row = await store.add({ channel, discordId: identity.userId, authorName, body: clean, parentId: parent ? parent.id : null, mentions: tagged });
       broadcast(channel, { type: 'message', channel, message: row });
+      if (tagged.length && mentions && typeof mentions.notify === 'function') {
+        // the DM is delivery, not part of posting: the room already has the message, so a slow or failed DM never holds a sender up
+        Promise.resolve().then(() => mentions.notify({ sender: { userId: identity.userId, displayName: authorName }, mentions: tagged, message: row, channel }))
+          .catch((error) => logger('warn', 'academy_chat_mention_notify_failed', { error: String(error && error.message || error) }));
+      }
+    }
+    /* The @ picker: members whose name contains what was typed so far. */
+    async function members(q) {
+      if (!mentions) { conn.send(JSON.stringify({ type: 'members', q: String(q || ''), users: [] })); return; }
+      if (!withinRate('m:' + identity.userId, 40)) { conn.send(JSON.stringify({ type: 'error', error: 'rate_limited' })); return; }
+      const users = await mentions.search(String(q || ''), { limit: 8, exclude: identity.userId }).catch(() => []);
+      conn.send(JSON.stringify({ type: 'members', q: String(q || ''), users }));
     }
     async function remove(id) {
       const removed = await store.remove({ id, discordId: identity.userId }).catch(() => null);
@@ -203,7 +233,8 @@ function createChatHub({ store, verifySession, logger = () => {}, now = Date.now
     function receive(raw) {
       let msg; try { msg = JSON.parse(raw); } catch (_) { conn.send(JSON.stringify({ type: 'error', error: 'invalid_json' })); return null; }
       if (msg && msg.type === 'join') return join(String(msg.channel || ''));
-      if (msg && msg.type === 'message') return post(msg.body, msg.parentId);
+      if (msg && msg.type === 'message') return post(msg.body, msg.parentId, msg.mentions);
+      if (msg && msg.type === 'members') return members(msg.q);
       if (msg && msg.type === 'vote') return vote(msg.id, msg.value);
       if (msg && msg.type === 'delete') return remove(msg.id);
       if (msg && msg.type === 'report') return report(msg.id);

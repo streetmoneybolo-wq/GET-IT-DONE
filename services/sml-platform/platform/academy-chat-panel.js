@@ -41,13 +41,17 @@
     + '#academy-profile-card .sec{margin:10px 12px 0;padding-top:8px;border-top:1px solid #16303e}#academy-profile-card .sec h6{margin:0 0 5px;font:800 .56rem ui-monospace,monospace;letter-spacing:.08em;color:#7ef0bd}'
     + '#academy-profile-card .btns{display:flex;flex-wrap:wrap;gap:6px}#academy-profile-card button{border:1px solid #2a4a58;border-radius:7px;background:#0d1a24;color:#e6eef2;padding:6px 9px;font:800 .64rem system-ui;cursor:pointer}#academy-profile-card button.go{background:#00c47d;border-color:#7dffc4;color:#032318}#academy-profile-card button.dc{background:#5865f2;border-color:#8e98ff;color:#fff}#academy-profile-card button:hover{filter:brightness(1.12)}'
     + '#academy-profile-card .note{color:#7f95a1;font-weight:500;margin:4px 0 0}#academy-profile-card .ft{margin:10px 12px 12px;color:#6f8794;font-weight:500;font-size:.54rem}'
+    + '.academy-chat-form,.rbox{position:relative}'
+    + '.mm{position:absolute;left:12px;right:12px;bottom:calc(100% - 4px);background:#0d1a24;border:1px solid #2a4a58;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.5);padding:4px;z-index:5;display:flex;flex-direction:column;max-height:220px;overflow-y:auto}.rbox .mm{left:0;right:0;bottom:100%}'
+    + '.mm button{text-align:left;background:none;border:0;border-radius:5px;color:#dfe9ee;padding:6px 8px;font:700 .68rem system-ui;cursor:pointer}.mm button.on,.mm button:hover{background:#0b3b2e;color:#7ef0bd}.mm-none{color:#5d7085;font:.64rem system-ui;padding:6px 8px}'
+    + '.academy-chat-msg .mn{color:#8fb8ff;background:rgba(88,101,242,.18);border-radius:4px;padding:0 3px;font-weight:700;cursor:pointer}.academy-chat-msg .mn.me{color:#ffd166;background:rgba(255,176,32,.22)}.academy-chat-msg.tome{background:rgba(255,176,32,.08);border-radius:6px}'
     + '@media(max-width:720px){.academy-chat-log{height:260px}}';
   document.head.appendChild(style);
 
   const section = document.createElement('section');
   section.className = 'academy-chat';
   section.innerHTML = '<div class="academy-chat-tabs"></div><div class="academy-chat-log"><p class="academy-chat-empty">Connecting…</p></div>'
-    + '<form class="academy-chat-form"><input maxlength="500" placeholder="Message the desk…" autocomplete="off"><button type="submit">Send</button></form>';
+    + '<form class="academy-chat-form"><input maxlength="500" placeholder="Message the desk… (@ tags a member)" autocomplete="off"><button type="submit">Send</button></form>';
   const tabsEl = section.querySelector('.academy-chat-tabs');
   const mutedEl = document.createElement('div'); mutedEl.className = 'academy-chat-muted'; mutedEl.style.display = 'none'; section.insertBefore(mutedEl, section.querySelector('form'));
   const status = document.createElement('span'); status.className = 'academy-chat-status'; status.textContent = 'CONNECTING';
@@ -177,6 +181,77 @@
   cardEl.addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b && b.dataset.open) openUrl(b.dataset.open); });
   logEl.addEventListener('scroll', hideCard, { passive: true });
 
+  /* ---------- @mentions: type @ and pick a member (only members who have used the Academy are offered); the tag is kept
+     on the message and highlighted for everyone, and the tagged member is DMed on Discord by the server ---------- */
+  const picked = new Map(); // name -> id chosen in the picker; only those still "@Name" in the text are sent (the server re-checks)
+  let menuFor = null; // { input, form, menu, q, items, idx, loading }
+  function mentionQuery(inp) {
+    const caret = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+    const upTo = String(inp.value || '').slice(0, caret);
+    const at = upTo.lastIndexOf('@');
+    if (at < 0 || (at > 0 && upTo[at - 1] !== ' ')) return null;
+    const q = upTo.slice(at + 1);
+    if (q.length > 24 || q.indexOf(' ') >= 0) return null;
+    return { at, q };
+  }
+  function closeMenu() { if (menuFor) { menuFor.menu.remove(); menuFor = null; } }
+  function paintMenu() {
+    if (!menuFor) return;
+    const items = menuFor.items;
+    if (!items.length) { menuFor.menu.innerHTML = '<div class="mm-none">' + (menuFor.loading ? 'Searching members…' : 'No member matches') + '</div>'; return; }
+    menuFor.menu.innerHTML = items.map((u, i) => '<button type="button" class="' + (i === menuFor.idx ? 'on' : '') + '" data-pick="' + i + '">@' + escapeHtml(u.name) + '</button>').join('');
+  }
+  function openMenu(inp, form, q) {
+    if (!menuFor || menuFor.input !== inp) {
+      closeMenu();
+      const menu = document.createElement('div'); menu.className = 'mm'; form.appendChild(menu);
+      menu.addEventListener('mousedown', (e) => { const b = e.target.closest ? e.target.closest('[data-pick]') : null; if (b) { e.preventDefault(); pick(Number(b.dataset.pick)); } });
+      menuFor = { input: inp, form, menu, q: null, items: [], idx: 0, loading: true };
+    }
+    if (menuFor.q !== q) { menuFor.q = q; menuFor.loading = true; menuFor.idx = 0; menuFor.items = []; paintMenu(); send({ type: 'members', q }); }
+  }
+  function pick(i) {
+    const u = menuFor && menuFor.items[i]; if (!u) return;
+    const inp = menuFor.input, m = mentionQuery(inp); if (!m) { closeMenu(); return; }
+    const caret = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+    const before = inp.value.slice(0, m.at) + '@' + u.name + ' ';
+    inp.value = before + inp.value.slice(caret);
+    picked.set(u.name, String(u.id));
+    try { inp.setSelectionRange(before.length, before.length); } catch (_) { /* ignore */ }
+    closeMenu(); inp.focus();
+  }
+  function watchMentions(inp, form) {
+    if (!inp || inp.dataset.mm) return; inp.dataset.mm = '1';
+    const refresh = () => { const m = mentionQuery(inp); if (m) openMenu(inp, form, m.q); else if (menuFor && menuFor.input === inp) closeMenu(); };
+    inp.addEventListener('input', refresh);
+    inp.addEventListener('click', refresh);
+    inp.addEventListener('blur', () => setTimeout(() => { if (menuFor && menuFor.input === inp && document.activeElement !== inp) closeMenu(); }, 150));
+    inp.addEventListener('keydown', (e) => {
+      if (!menuFor || menuFor.input !== inp) return;
+      const n = Math.max(1, menuFor.items.length);
+      if (e.key === 'ArrowDown') { e.preventDefault(); menuFor.idx = (menuFor.idx + 1) % n; paintMenu(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); menuFor.idx = (menuFor.idx - 1 + n) % n; paintMenu(); }
+      else if ((e.key === 'Enter' || e.key === 'Tab') && menuFor.items.length) { e.preventDefault(); pick(menuFor.idx); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+    });
+  }
+  function mentionsIn(body) {
+    const ids = [];
+    for (const [name, id] of picked) if (body.indexOf('@' + name) >= 0 && ids.indexOf(id) < 0) ids.push(id);
+    return ids;
+  }
+  function mentionHtml(m) {
+    let h = escapeHtml(m.body);
+    for (const u of (m.mentions || [])) {
+      if (!u || !u.name) continue;
+      const needle = escapeHtml('@' + u.name);
+      h = h.split(needle).join('<span class="mn' + (String(u.id) === selfId ? ' me' : '') + '" data-uid="' + escapeHtml(String(u.id)) + '">' + needle + '</span>');
+    }
+    return h;
+  }
+  const tagsMe = (m) => !!selfId && (m.mentions || []).some((u) => u && String(u.id) === selfId);
+  watchMentions(input, form);
+
   /* ---------- threads: each room keeps its own messages; replies hang under their parent, voted up or down ---------- */
   let msgs = new Map(), openReply = '', collapsed = new Set();
   const HOT_MIN = 2; // a thread needs at least this many replies to be pinned and highlighted
@@ -196,11 +271,11 @@
   function threadHtml(m, t, hotRoot) {
     const id = escapeHtml(m.id), uid = escapeHtml(String(m.discordId)), n = t.size.get(m.id) || 0, kids = t.kids.get(m.id) || [];
     const mine = String(m.discordId) === selfId;
-    let h = '<div class="th' + (hotRoot ? ' hot' : '') + '" data-th="' + id + '"><div class="academy-chat-msg" data-id="' + id + '">';
+    let h = '<div class="th' + (hotRoot ? ' hot' : '') + '" data-th="' + id + '"><div class="academy-chat-msg' + (tagsMe(m) ? ' tome' : '') + '" data-id="' + id + '">';
     h += '<span class="vt"><button type="button" class="up' + (m.myVote === 1 ? ' on' : '') + '" data-vote="1" data-mid="' + id + '" title="Upvote">&#9650;</button><i>' + escapeHtml(m.score) + '</i><button type="button" class="dn' + (m.myVote === -1 ? ' on' : '') + '" data-vote="-1" data-mid="' + id + '" title="Downvote">&#9660;</button></span>';
     if (hotRoot) h += '<span class="hotlbl">HOT THREAD &middot; ' + n + ' ' + (n === 1 ? 'reply' : 'replies') + '</span>';
     if (m.deleted) h += '<span class="gone">[deleted]</span>';
-    else h += '<span class="ava" data-uid="' + uid + '">' + escapeHtml(String(m.authorName || 'M').slice(0, 1).toUpperCase()) + '</span><b class="nm" data-uid="' + uid + '">' + escapeHtml(m.authorName || 'Member') + '</b><span>' + escapeHtml(m.body) + '</span>';
+    else h += '<span class="ava" data-uid="' + uid + '">' + escapeHtml(String(m.authorName || 'M').slice(0, 1).toUpperCase()) + '</span><b class="nm" data-uid="' + uid + '">' + escapeHtml(m.authorName || 'Member') + '</b><span class="bd">' + mentionHtml(m) + '</span>';
     h += '<time>' + timeOf(m.createdAt) + '</time>';
     if (!m.deleted) h += '<button type="button" class="act" data-reply="' + id + '">reply</button>';
     if (n) h += '<button type="button" class="act" data-fold="' + id + '">' + (collapsed.has(m.id) ? '[+' + n + ']' : '[&minus;]') + '</button>';
@@ -218,7 +293,8 @@
     if (!msgs.size) { logEl.innerHTML = '<p class="academy-chat-empty">No messages yet — be the first.</p>'; return; }
     logEl.innerHTML = t.hot.map((m) => threadHtml(m, t, true)).join('') + t.rest.map((m) => threadHtml(m, t, false)).join('');
     logEl.querySelectorAll('.ava').forEach((el) => paintAvatar(el, el.dataset.uid));
-    if (openReply) { const inp = logEl.querySelector('[data-rform="' + openReply + '"] input'); if (inp) { inp.value = draft; if (keepFocus || draft === '') inp.focus(); } }
+    if (menuFor && !menuFor.input.isConnected) closeMenu();
+    if (openReply) { const rf = logEl.querySelector('[data-rform="' + openReply + '"]'), inp = rf ? rf.querySelector('input') : null; if (inp) { inp.value = draft; watchMentions(inp, rf); if (keepFocus || draft === '') inp.focus(); } }
     if (near) logEl.scrollTop = logEl.scrollHeight;
   }
   logEl.addEventListener('click', (e) => {
@@ -233,7 +309,7 @@
   logEl.addEventListener('submit', (e) => {
     const f = e.target.closest ? e.target.closest('[data-rform]') : null; if (!f) return;
     e.preventDefault(); const inp = f.querySelector('input'), body = inp.value.trim(); if (!body) return;
-    send({ type: 'message', body, parentId: f.dataset.rform }); inp.value = ''; openReply = '';
+    send({ type: 'message', body, parentId: f.dataset.rform, mentions: mentionsIn(body) }); inp.value = ''; openReply = ''; picked.clear();
   });
   function send(payload) {
     const json = JSON.stringify(payload);
@@ -265,6 +341,7 @@
       else if (msg.type === 'deleted' && msg.channel === current) { if (msg.soft && msgs.has(msg.id)) { Object.assign(msgs.get(msg.id), { deleted: true, body: '', authorName: '' }); } else msgs.delete(msg.id); renderAll(); }
       else if (msg.type === 'vote' && msg.channel === current) { const m = msgs.get(msg.id); if (m) { m.score = msg.score; renderAll(); } }
       else if (msg.type === 'voted') { const m = msgs.get(msg.id); if (m) { m.myVote = msg.myVote; m.score = msg.score; renderAll(); } }
+      else if (msg.type === 'members') { if (menuFor && menuFor.q === msg.q) { menuFor.items = Array.isArray(msg.users) ? msg.users : []; menuFor.loading = false; menuFor.idx = 0; paintMenu(); } }
       else if (msg.type === 'reported') { const row = logEl.querySelector('[data-id="' + msg.id + '"] .rep'); if (row) row.textContent = 'reported'; }
       else if (msg.type === 'error') status.textContent = String(msg.error || 'error').toUpperCase().replace(/_/g, ' ');
     };
@@ -274,8 +351,8 @@
     event.preventDefault();
     const body = input.value.trim();
     if (!body) return;
-    send({ type: 'message', body });
-    input.value = '';
+    send({ type: 'message', body, mentions: mentionsIn(body) });
+    input.value = ''; picked.clear();
   };
 
   paintMuted();
