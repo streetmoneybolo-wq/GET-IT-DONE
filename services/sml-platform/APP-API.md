@@ -91,6 +91,18 @@ Useful site routes for the first screens (shapes are the site's own; call them o
 - Loop Bucks: `sml-lb/v1/me`, `sml-lb/v1/earn`, `sml-lb/v1/leaderboard`, `sml-lb/v1/vault`, `sml-members/v1/loop-bucks`
 - Profile and settings: `sml-members/v1/profile` (GET/POST), `sml-members/v1/notifications` (GET/POST), `sml-2step/v1/status`, `sml-2step/v1/sessions`
 
+## Deep links and the app shell (served by the site)
+
+The `sml-app-links` plugin on stockmarketloop.com serves the files phones look for, with a settings page for the values the builder supplies:
+
+| URL | Purpose |
+|---|---|
+| `https://stockmarketloop.com/.well-known/apple-app-site-association` | iOS universal links for `TEAMID.bundleid` over the whole site except admin, API, checkout and store paths; also `webcredentials` for password autofill |
+| `https://stockmarketloop.com/.well-known/assetlinks.json` | Android app links (`handle_all_urls`) and credential sharing (`get_login_creds`) for the package and every signing fingerprint |
+| `https://stockmarketloop.com/manifest.webmanifest` | the PWA manifest: name, colours, icons, start URL, store listings |
+
+Until the Team ID, bundle ID, package name and SHA-256 fingerprints are entered under Settings → SML App Links, the first two are served empty and valid. The app needs `applinks:stockmarketloop.com` and `webcredentials:stockmarketloop.com` in its Associated Domains (iOS) and an `autoVerify` intent filter for `https://stockmarketloop.com` (Android). Any site link then opens the app, which maps the URL to a screen: `/groups/{slug}/` → group, `/markets/...` → tickers, `/{handle}/` → profile, article slugs → the post.
+
 ## CORS
 
 Browser origins `https://stockmarketloop.com`, `https://www.stockmarketloop.com`, any `https://*.stockmarketloop.com`, plus whatever `SML_APP_CORS_ORIGINS` lists (comma separated) may call every route with `Authorization` and `Content-Type` headers. Native apps need none of this.
