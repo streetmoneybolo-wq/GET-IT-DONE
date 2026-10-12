@@ -101,7 +101,7 @@ The `sml-app-links` plugin on stockmarketloop.com serves the files phones look f
 | `https://stockmarketloop.com/.well-known/assetlinks.json` | Android app links (`handle_all_urls`) and credential sharing (`get_login_creds`) for the package and every signing fingerprint |
 | `https://stockmarketloop.com/manifest.webmanifest` | the PWA manifest: name, colours, icons, start URL, store listings |
 
-Until the Team ID, bundle ID, package name and SHA-256 fingerprints are entered under Settings → SML App Links, the first two are served empty and valid. The app needs `applinks:stockmarketloop.com` and `webcredentials:stockmarketloop.com` in its Associated Domains (iOS) and an `autoVerify` intent filter for `https://stockmarketloop.com` (Android). Any site link then opens the app, which maps the URL to a screen: `/groups/{slug}/` → group, `/markets/...` → tickers, `/{handle}/` → profile, article slugs → the post.
+Until the Team ID, bundle ID, package name and SHA-256 fingerprints are entered under Settings → SML App Links, the first two are served empty and valid. Status on 2026-10-12: Google's verifier reads the Android file fine; Apple's CDN is refused (403) by WordPress.com's bot challenge in front of the site, so iOS universal links need that challenge lifted for `/.well-known/*` first (see the plugin README). The app needs `applinks:stockmarketloop.com` and `webcredentials:stockmarketloop.com` in its Associated Domains (iOS) and an `autoVerify` intent filter for `https://stockmarketloop.com` (Android). Any site link then opens the app, which maps the URL to a screen: `/groups/{slug}/` → group, `/markets/...` → tickers, `/{handle}/` → profile, article slugs → the post.
 
 ## CORS
 

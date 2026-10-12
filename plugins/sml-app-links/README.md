@@ -27,6 +27,15 @@ Constants in `wp-config.php` win over the saved settings: `SML_APP_IOS_TEAM_ID`,
 - Android: declare an intent filter with `android:autoVerify="true"` for `https://stockmarketloop.com`. Verify with `adb shell pm verify-app-links --re-verify <package>` or the Play Console deep-links report.
 - Both: a tap on any stockmarketloop.com link then opens the app, which reads the URL and routes to the screen (feed post, group, ticker, profile) via the app API.
 
+## Known blocker: WordPress.com's browser challenge vs Apple's fetcher
+
+Checked on 2026-10-12, minutes after activation:
+
+- Google's verifier (`digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://stockmarketloop.com`) fetched `/.well-known/assetlinks.json` from the site without error.
+- Apple's CDN (`app-site-association.cdn-apple.com/a/v1/stockmarketloop.com`) was refused by the site: `Apple-Failure-Reason: SWCERR00101 Bad HTTP Response: 403 Forbidden`. The 403 is WordPress.com's "Checking your browser" bot challenge in front of the site, which also blocks plain `curl`. The plugin never answers 403.
+
+Until Apple's fetcher can read the file, iOS universal links will not verify on real installs (development builds can use `?mode=developer` in the entitlement to fetch directly). Fix on the hosting side: ask WordPress.com support to exempt `/.well-known/apple-app-site-association` (ideally all of `/.well-known/*`) from the browser challenge for stockmarketloop.com, or to allow Apple's AASA fetcher. Re-check with the Apple CDN URL above; Apple caches a failure for a while, so allow an hour after the change.
+
 ## Tests
 
 ```
