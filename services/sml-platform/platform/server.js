@@ -73,6 +73,7 @@ const { parsePrices: parsePassPrices, createPassStore, createPassService, create
 const { createChatStore, createChatHub, attachChatServer } = require('./academy-chat');
 const { createMentionService } = require('./academy-mentions');
 const { createSignalRadar } = require('./academy-signal-radar');
+const { createDmNotifier } = require('./academy-notify-dm');
 const { createDiscordDmClient } = require('./dispute-notifier');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -3329,9 +3330,10 @@ async function main() {
      below) and the Discord DM a tagged member gets, from the Academy bot. hasAccess is checked at
      post time against the member's live tier (academyTierLive is defined further down; it is only
      called once the server is serving). */
+  const academyDmClient = createDiscordDmClient({ token: config.academyBotToken || config.discordBotToken });
   const academyMentions = createMentionService({
     pool: database.pool, guildId: config.academyGuildId, logger: log,
-    dm: createDiscordDmClient({ token: config.academyBotToken || config.discordBotToken }),
+    dm: academyDmClient,
     hasAccess: (userId) => academyTierLive(userId).then((tier) => tier !== 'none')
   });
   const academyChatHub = process.env.ACADEMY_CHAT === 'off' ? null : createChatHub({
@@ -3542,7 +3544,13 @@ async function main() {
   };
   /* who a price-target event goes to: a desk alert reaches every member who sees it live; a Click-to-Alert post reaches the member who sent it */
   const ptAudience = (u) => (String(u.key || '').startsWith('c:') ? (userId) => String(userId) === String(u.owner || '') : (userId) => memberSeesAlertLive(userId, String(u.key).slice(2)));
+  /* Discord DMs (the Academy bot) for what should reach a member away from the app: their own alert's target hit or raised, and the
+     owner's buy signals. Push cannot reach anyone inside the Discord app, so this is the path that always works. */
+  // who the buy-signal radar is for: the owner, plus SML_ACADEMY_SIGNAL_USER_IDS
+  const signalUserIds = new Set([...OWNER_IDS, ...String(process.env.SML_ACADEMY_SIGNAL_USER_IDS || '').split(',').map((v) => v.trim()).filter((v) => /^\d{15,25}$/.test(v))]);
+  const academyDm = createDmNotifier({ dm: academyDmClient, logger: log, recipientsFor: (kind, p) => (kind === 'signal' ? [...signalUserIds] : (String(p && p.key || '').startsWith('c:') && p.owner ? [String(p.owner)] : [])) });
   const pushTargetHit = (u) => {
+    if (u && u.symbol) academyDm.targetHit(u).catch(() => {});
     if (!academyPush || !u || !u.symbol || (String(u.key || '').startsWith('c:') && !u.owner)) return;
     const px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
     const id = String(u.key).slice(2);
@@ -3558,6 +3566,7 @@ async function main() {
       .catch((error) => log('warn', 'push_target_hit_failed', { error }));
   };
   const pushNewTarget = (u) => {
+    if (u && u.symbol) academyDm.newTarget(u).catch(() => {});
     if (!academyPush || !u || !/^[dc]:/.test(String(u.key || ''))) return;
     const up = u.side !== 'short', px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
     const id = String(u.key).slice(2);
@@ -3595,8 +3604,8 @@ async function main() {
   /* Signal radar: MEM ALGO buy signals across the wide scanner's universe, for the owner (OWNER_IDS + SML_ACADEMY_SIGNAL_USER_IDS).
      ACADEMY_SIGNAL_RADAR=off removes it. Reads 25 symbols a minute through Massive REST (sentimentCandles), so a 300-name universe
      is covered about every 12 minutes in the regular session; outside it only the daily (swing) read runs. */
-  const signalUserIds = new Set([...OWNER_IDS, ...String(process.env.SML_ACADEMY_SIGNAL_USER_IDS || '').split(',').map((v) => v.trim()).filter((v) => /^\d{15,25}$/.test(v))]);
   const pushSignal = (sig) => {
+    if (sig) academyDm.signal(sig).catch(() => {});
     if (!academyPush || !sig) return;
     const px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
     const msg = {
