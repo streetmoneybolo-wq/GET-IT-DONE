@@ -3485,6 +3485,8 @@ async function main() {
   if (process.env.SML_OBI_BOT_TOKEN) for (const id of OWNER_IDS) personaBots[id] = createDiscordDirectory({ tokens: [{ label: 'persona', token: process.env.SML_OBI_BOT_TOKEN }], logger: log });
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
+    /* posting caps (Discord posts, per member per hour / per day, per channel per hour); unset = the service defaults, 0 = no cap */
+    limits: { userHour: process.env.SML_CLICK_ALERT_USER_HOUR, userDay: process.env.SML_CLICK_ALERT_USER_DAY, channelHour: process.env.SML_CLICK_ALERT_CHANNEL_HOUR },
     /* the member is waiting on this chain: ask the site directly at interactive priority rather than through the alert desk's
        background cache, which may be holding an empty answer from a sweep that was refused */
     chain: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('options', s, {}, { priority: 'interactive' }); return r && r.ok && r.data ? require('./academy-alert-options').normalizeChain(r.data) : null; } : (s) => (academyAlerts ? academyAlerts.chainFor(s) : null),

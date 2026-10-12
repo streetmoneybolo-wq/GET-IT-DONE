@@ -439,3 +439,10 @@ test('an empty chain tells the member why the bridge failed instead of claiming 
   const quiet = fake({ extra: { chain: async () => [], expirations: async () => [], chainDetail: async () => '' } }).svc;
   assert.equal((await quiet.chainFor({ symbol: 'TEST' })).detail, 'No listed options were found for TEST.');
 });
+
+test('posting caps: the defaults are 30 an hour / 200 a day per member and 90 an hour per channel, strings from the environment are read, and 0 lifts a cap', async () => {
+  const lim = (limits) => { const { svc } = fake({ extra: { limits } }); return svc.limits; };
+  assert.deepEqual(lim(undefined), { userHour: 30, userDay: 200, channelHour: 90 });
+  assert.deepEqual(lim({ userHour: '12', userDay: undefined, channelHour: '' }), { userHour: 12, userDay: 200, channelHour: 90 });
+  assert.deepEqual(lim({ userHour: '0', userDay: 0, channelHour: 'junk' }), { userHour: 0, userDay: 0, channelHour: 90 });
+});

@@ -151,6 +151,13 @@ services:
       # --- Click-to-Alert: the separate paid add-on. Off until the role its subscription grants is named here (comma-separated Discord role ids).
       - key: SML_ACADEMY_CLICK_ALERT_ROLE_IDS
         sync: false
+      # Click-to-Alert posting caps (Discord posts): per member per hour / per day, per channel per hour. 0 = no cap.
+      - key: SML_CLICK_ALERT_USER_HOUR
+        value: "30"
+      - key: SML_CLICK_ALERT_USER_DAY
+        value: "200"
+      - key: SML_CLICK_ALERT_CHANNEL_HOUR
+        value: "90"
       - key: SML_ACADEMY_MONARCH_ACCESS
         sync: false
       - key: SML_ACADEMY_BILLING_LIFETIME_ROLE_ID

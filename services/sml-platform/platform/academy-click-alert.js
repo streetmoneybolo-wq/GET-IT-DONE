@@ -317,7 +317,10 @@ function createClickAlertStore({ pool = null } = {}) {
 function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
-  const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
+  /* How many alerts may be posted: per member per hour and per day, and per Discord channel per hour (every member
+     combined). A value of 0 means no cap on that one. */
+  const capOf = (v, dflt) => (v === 0 || v === '0' ? 0 : Number(v) > 0 ? Number(v) : dflt);
+  const lim = { userHour: capOf(limits.userHour, 30), userDay: capOf(limits.userDay, 200), channelHour: capOf(limits.channelHour, 90) };
   const byRole = !!(SNOWFLAKE.test(String(academyGuildId)) && roles.size), byPass = !!(passes && passes.configured);
   const free = freeUserIds instanceof Set ? freeUserIds : new Set(freeUserIds || []);
   const configured = byRole || byPass || free.size > 0;
@@ -565,9 +568,9 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
 
   async function overLimit(userId, channelId) {
     const [uh, ud, ch] = await Promise.all([store.count({ userId, sinceMs: 3_600_000 }), store.count({ userId, sinceMs: 86_400_000 }), store.count({ channelId, sinceMs: 3_600_000 })]);
-    if (uh >= lim.userHour) return 'You have reached the hourly limit for alerts. Try again later.';
-    if (ud >= lim.userDay) return 'You have reached the daily limit for alerts.';
-    if (ch >= lim.channelHour) return 'This channel has reached its hourly limit for alerts.';
+    if (lim.userHour && uh >= lim.userHour) return `You have reached the hourly limit for alerts (${lim.userHour} an hour). Try again later.`;
+    if (lim.userDay && ud >= lim.userDay) return `You have reached the daily limit for alerts (${lim.userDay} a day).`;
+    if (lim.channelHour && ch >= lim.channelHour) return `This channel has reached its hourly limit for alerts (${lim.channelHour} an hour).`;
     return '';
   }
 
@@ -684,7 +687,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return { messageId: posted.id, images: files.length === 2 };
   }
 
-  return { entitlement, preview, sitePreview, send, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store };
+  return { entitlement, preview, sitePreview, send, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
