@@ -647,7 +647,7 @@ test('with Massive on, timeframes it does not serve (1h, 15m, 1Q, 1Y) fall back 
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const u = String(url);
-    if (u.includes('/wp-json/sml/v1/history')) { asked.push(new URL(u).searchParams.get('tf')); return new Response(JSON.stringify({ bars: [{ t: 1, o: 1, h: 2, l: 1, c: 2, v: 5 }] }), { status: 200 }); }
+    if (u.includes('/wp-json/sml/v1/history')) { asked.push(new URL(u).searchParams.get('tf')); return new Response(JSON.stringify({ bars: [{ t: Date.now() - 60_000, o: 1, h: 2, l: 1, c: 2, v: 5 }] }), { status: 200 }); }
     return realFetch(url, init);
   };
   const massiveCalls = [];
@@ -665,6 +665,31 @@ test('with Massive on, timeframes it does not serve (1h, 15m, 1Q, 1Y) fall back 
   } finally { globalThis.fetch = realFetch; }
   assert.deepEqual(asked.sort(), ['15m', '1Q', '1Y', '1h'].sort());
   assert.deepEqual(massiveCalls, ['1D'], 'Massive is only asked for the timeframes it serves');
+});
+
+test('an interval the site cannot serve, or stopped updating, is built from the Massive interval underneath it', async () => {
+  const realFetch = globalThis.fetch;
+  const open = Date.UTC(2026, 9, 12, 13, 30);
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/wp-json/sml/v1/history')) {
+      const tf = new URL(u).searchParams.get('tf');
+      if (tf === '1h') return new Response('down', { status: 503 });
+      /* the site's 15m series stopped months ago */
+      return new Response(JSON.stringify({ bars: [{ t: Date.UTC(2026, 6, 2, 15), o: 1, h: 2, l: 1, c: 2, v: 5 }] }), { status: 200 });
+    }
+    return realFetch(url, init);
+  };
+  const m5 = Array.from({ length: 24 }, (_, i) => ({ t: open + i * 300_000, o: 100 + i, h: 101 + i, l: 99 + i, c: 100.5 + i, v: 10 }));
+  const marketHistory = { enabled: true, get: async (symbol, tf) => (tf === '5m' ? { ok: true, data: { symbol, tf, bars: m5, source: 'massive-rest' } } : { ok: false, status: 503, code: 'massive_history_unavailable' }) };
+  try {
+    await withServer({ marketHistory }, async (base) => {
+      const hour = await (await fetch(`${base}/academy-activity/market?symbol=ZZDERIVEH&tf=1h`)).json();
+      assert.equal(hour.tf, '1h'); assert.equal(hour.source, 'massive-derived'); assert.equal(hour.bars.length, 2); assert.equal(hour.bars[0].t, open); assert.equal(hour.bars[0].v, 120);
+      const quarter = await (await fetch(`${base}/academy-activity/market?symbol=ZZDERIVEM&tf=15m`)).json();
+      assert.equal(quarter.source, 'massive-derived', 'months-old site bars are replaced'); assert.equal(quarter.bars.length, 8);
+    });
+  } finally { globalThis.fetch = realFetch; }
 });
 
 function signedHeaders(secret, body, timestamp = '1700000000') {

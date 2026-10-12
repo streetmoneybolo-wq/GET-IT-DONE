@@ -2289,22 +2289,33 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       try {
         // Massive serves only the timeframes in TIMEFRAMES; every other one (3m, 15m, 1h, 1Q, 1Y...) comes from the WordPress history feed, not a 400.
+        /* 3m, 15m, 1h, 1Q... have no direct Massive series: they come from the WordPress history feed, and when that feed is throttled,
+           down, or serving an interval it stopped updating (its 1h series ends months back), the bars are built from the Massive interval
+           underneath them instead. Marked "massive-derived" so the UI can say so. */
+        const derivedCandles = async (why) => {
+          const cfg = MASSIVE_DERIVED_TIMEFRAMES[timeframe];
+          if (!cfg || !marketHistory?.enabled) return null;
+          const base = await marketHistory.get(symbol, cfg.base).catch(() => null);
+          const bars = base?.ok ? resampleBars(base.data.bars, timeframe).slice(-600) : [];
+          if (!bars.length) return null;
+          logger('warn', 'academy_market_derived', { symbol: String(symbol || '').toUpperCase(), tf: timeframe, why });
+          return annotateCandles({ symbol: String(symbol || '').toUpperCase(), tf: timeframe, bars, asOf: Date.now(), lastBarAt: bars[bars.length - 1].t, ...(base.data.stale ? { stale: true } : {}) }, { source: 'massive-derived', adjusted: true });
+        };
         const massive = marketHistory?.enabled && Object.prototype.hasOwnProperty.call(MASSIVE_TIMEFRAMES, timeframe) ? await marketHistory.get(symbol, timeframe) : null;
-        sendJson(response, 200, massive?.ok ? massive.data : await getAcademyCandles(symbol, timeframe));
-      } catch (error) {
-        /* The WordPress history feed (the only direct source for 3m, 15m, 1h, 1Q...) is throttled or down: build those bars from the
-           Massive interval underneath them instead of leaving the chart on RETRY. Marked derived so the UI can say so. */
-        if (!(error instanceof TypeError) && marketHistory?.enabled && MASSIVE_DERIVED_TIMEFRAMES[timeframe]) {
-          try {
-            const base = await marketHistory.get(symbol, MASSIVE_DERIVED_TIMEFRAMES[timeframe].base);
-            const bars = base?.ok ? resampleBars(base.data.bars, timeframe).slice(-600) : [];
-            if (bars.length) {
-              logger('warn', 'academy_market_derived', { symbol: String(symbol || '').toUpperCase(), tf: timeframe, error });
-              sendJson(response, 200, annotateCandles({ symbol: String(symbol || '').toUpperCase(), tf: timeframe, bars, asOf: Date.now(), lastBarAt: bars[bars.length - 1].t, ...(base.data.stale ? { stale: true } : {}) }, { source: 'massive-derived', adjusted: true }));
-              return;
-            }
-          } catch (_) { /* fall through to the ordinary failure */ }
+        let payload = massive?.ok ? massive.data : null;
+        if (!payload) {
+          try { payload = await getAcademyCandles(symbol, timeframe); }
+          catch (error) { if (error instanceof TypeError) throw error; payload = await derivedCandles(String(error && error.message || error)); if (!payload) throw error; }
+          /* an intraday series the site stopped updating is worse than none: a 1h chart drawn from months-old bars reads as live */
+          const cfg = MASSIVE_DERIVED_TIMEFRAMES[timeframe];
+          const lastBar = payload && Array.isArray(payload.bars) && payload.bars.length ? Number(payload.bars[payload.bars.length - 1].t) : 0;
+          if (cfg && cfg.ms && payload && payload.source === 'wordpress-history' && lastBar && Date.now() - lastBar > 2 * 86_400_000) {
+            const fresh = await derivedCandles('site_history_stale_' + new Date(lastBar).toISOString().slice(0, 10));
+            if (fresh) payload = fresh;
+          }
         }
+        sendJson(response, 200, payload);
+      } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_market_request_failed', { error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
       }
