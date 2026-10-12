@@ -190,7 +190,15 @@ function getConfig(env = process.env) {
     dailySocialPayoutsManagerRoleId: String(env.SML_DSP_MANAGER_ROLE_ID || '1260433215189946420').trim(),
     discordClientId: String(env.DISCORD_CLIENT_ID || '').trim(),
     discordClientSecret: String(env.DISCORD_CLIENT_SECRET || '').trim(),
-    discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim()
+    discordRedirectUri: String(env.DISCORD_REDIRECT_URI || '').trim(),
+    // --- phone app API (/v1/app) ---
+    // Access tokens are signed with a key derived from this; until it is set the LOOP-KICK
+    // bridge secret stands in, so the API works with no new secret. Rotating it signs every
+    // app out at the next refresh.
+    appTokenSecret: String(env.SML_APP_TOKEN_SECRET || env.SML_LOOP_KICK_BRIDGE_SECRET || '').trim(),
+    // Extra browser origins for the PWA shell, comma separated (stockmarketloop.com is always allowed).
+    appCorsOrigins: String(env.SML_APP_CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
+    appApiEnabled: String(env.SML_APP_API || '1').trim() !== '0'
   });
 }
 

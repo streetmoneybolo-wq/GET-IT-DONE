@@ -1,0 +1,4 @@
+BEGIN;
+DROP TABLE IF EXISTS app_push_devices;
+DROP TABLE IF EXISTS app_sessions;
+COMMIT;

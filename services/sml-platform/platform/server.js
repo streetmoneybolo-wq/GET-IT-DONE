@@ -50,6 +50,10 @@ const { createWideScanner, createSharedSnapshot, clampLimit: clampScannerLimit }
 const { createVolIndex } = require('./academy-vol-index');
 const dataHealth = createDataHealth({ soft: { 'massive-indices': [401, 403], 'wordpress-history': [500] } });
 const { createDataRateLimit } = require('./data-rate-limit');
+const { createAppIdentity } = require('./app-identity');
+const { createAppAuth, createAppSessionStore } = require('./app-auth');
+const { createAppPushDevices } = require('./app-push-devices');
+const { createAppApi } = require('./app-api');
 const academyDataLimit = createDataRateLimit({ limit: Math.max(30, Number(process.env.ACADEMY_DATA_RATE_PER_MIN) || 240) });
 const ACADEMY_LIMITED_PATHS = new Set(['/academy-activity/market', '/academy-activity/scanner', '/academy-activity/orderflow', '/academy-activity/live', '/academy-activity/data/short', '/academy-activity/data/earnings']);
 let dataStatusExtras = () => ({});
@@ -1640,6 +1644,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academySlideDesigner = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
+  appApi = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -1711,6 +1716,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     const path = new URL(request.url || '/', 'http://localhost').pathname;
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
+
+    /* The phone app's API (app-api.js): every /v1/app route, answered before anything else. */
+    if (appApi && (path === '/v1/app' || path.startsWith('/v1/app/'))) {
+      try { if (await appApi.handle(request, response, path)) return; }
+      catch (error) { logger('error', 'app_api_failed', { error, path }); if (!response.headersSent) sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); else response.end(); return; }
+    }
 
     /* Discord verification page (one-time links handed out by the Verify button). */
     if (path.startsWith('/verify/') && verifyGate) {
@@ -3524,6 +3535,18 @@ async function main() {
     const found = await database.pool.query('SELECT MAX(version) AS version FROM schema_migrations', []);
     return found.rows[0] && found.rows[0].version != null ? String(found.rows[0].version) : null;
   };
+  /* The phone app's API (/v1/app). Sign-in is the member's stockmarketloop.com account, checked by the site's app identity
+     plugin over the LOOP-KICK bridge channel; sessions live in app_sessions (schema 042). Off with SML_APP_API=0. */
+  const appIdentity = createAppIdentity({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret, fetchImpl: (u, o) => dataHealth.guardedFetch('app-identity', u, o) });
+  const appAuth = createAppAuth({ store: createAppSessionStore({ pool: database.pool }), identity: appIdentity, secret: config.appTokenSecret, logger: log });
+  /* one SIRE feed shared by the Academy's SIRE panel and the app's scanner stream (idle until the first viewer) */
+  const appSireFeed = createSireFeed({ scanner: getAcademyScanner, massive: academyMassive, logger: log });
+  const appApi = config.appApiEnabled ? createAppApi({
+    auth: appAuth, identity: appIdentity, scanner: getAcademyScanner, sireFeed: appSireFeed, massive: academyMassive, marketHistory, candles: getAcademyCandles,
+    news: academyAlerts ? (symbol) => academyAlerts.newsFor(symbol) : null, timeframes: MASSIVE_TIMEFRAMES,
+    pushDevices: createAppPushDevices({ pool: database.pool }), corsOrigins: config.appCorsOrigins, logger: log
+  }) : null;
+  log('info', 'app_api_runtime', { enabled: Boolean(appApi), identity: appIdentity.configured, auth: appAuth.configured, tokenSecret: config.appTokenSecret ? (process.env.SML_APP_TOKEN_SECRET ? 'own' : 'bridge') : 'none' });
   const server = createServer({
     checkDatabase: database.health,
     acceptWordPressEvent: database.acceptWordPressEvent,
@@ -3564,7 +3587,8 @@ async function main() {
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
-    memberEmail
+    memberEmail,
+    appApi, academySireFeed: appSireFeed
   });
   const academyChatWss = academyChatHub ? attachChatServer(server, academyChatHub, { WebSocketServer }) : null;
   let shuttingDown = false;
