@@ -1830,3 +1830,30 @@ test('stockmarketloop.com dashboard: signed hedge and contract-alert preview rou
     assert.equal((await post(base, '/v1/group-tools/contract-alert-preview', { symbol: 'AAPL', contract: { type: 'call', strike: 1, expiry: '2026-11-20' } })).status, 503);
   });
 });
+
+test('the StockMarketLoop app shell is served at /app/: page with manifest and service worker, scoped worker headers, manifest, PNG icons, and a 404 for anything else', async () => {
+  await withServer({}, async (base) => {
+    const page = await fetch(`${base}/app/`);
+    assert.equal(page.status, 200); assert.match(page.headers.get('content-type'), /text\/html/);
+    assert.match(page.headers.get('content-security-policy') || '', /script-src 'self'/);
+    const html = await page.text();
+    for (const marker of ['rel="manifest" href="/app/manifest.webmanifest"', 'src="/app/app.js"', 'apple-mobile-web-app-capable', 'StockMarketLoop']) assert.ok(html.includes(marker), marker);
+    const redirect = await fetch(`${base}/app?x=1`, { redirect: 'manual' });
+    assert.equal(redirect.status, 301); assert.equal(redirect.headers.get('location'), '/app/?x=1');
+    const sw = await fetch(`${base}/app/sw.js`);
+    assert.equal(sw.status, 200); assert.equal(sw.headers.get('service-worker-allowed'), '/app/'); assert.match(sw.headers.get('cache-control'), /no-cache/);
+    assert.match(await sw.text(), /addEventListener\('push'/);
+    const js = await fetch(`${base}/app/app.js`); assert.equal(js.status, 200); assert.match(js.headers.get('content-type'), /javascript/);
+    const script = await js.text();
+    for (const marker of ['/auth/login', '/auth/refresh', '/scanner/stream', 'access_token=', '/push/devices', '/tickers/', 'beforeinstallprompt']) assert.ok(script.includes(marker), marker);
+    const css = await fetch(`${base}/app/app.css`); assert.equal(css.status, 200); assert.match(css.headers.get('content-type'), /text\/css/);
+    const man = await (await fetch(`${base}/app/manifest.webmanifest`)).json();
+    assert.equal(man.scope, '/app/'); assert.equal(man.start_url, '/app/'); assert.equal(man.display, 'standalone'); assert.equal(man.icons.length, 3);
+    for (const name of ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']) {
+      const r = await fetch(`${base}/app/${name}`); assert.equal(r.status, 200, name); assert.equal(r.headers.get('content-type'), 'image/png');
+      const buf = Buffer.from(await r.arrayBuffer()); assert.equal(buf.toString('hex', 0, 8), '89504e470d0a1a0a', name + ' is a PNG');
+    }
+    assert.equal((await fetch(`${base}/app/nope.js`)).status, 404);
+    assert.equal((await fetch(`${base}/app/../server.js`)).status, 404);
+  });
+});

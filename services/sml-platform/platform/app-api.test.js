@@ -160,6 +160,11 @@ test('live streams: the scanner feed and a multi-symbol quote stream over Server
     assert.match(quotes, /event: quote\ndata: \{"symbol":"AMD","bid":1,"ask":2\}/);
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(massive.listeners.size, 0, 'closing the stream unsubscribes every symbol');
+    // a browser EventSource cannot set a header: the two streams also take the token as ?access_token= (nothing else does)
+    const viaQuery = await fetch(base + '/v1/app/stream?symbols=NVDA&access_token=' + encodeURIComponent(s.accessToken), { headers: { accept: 'text/event-stream' } });
+    assert.equal(viaQuery.status, 200); assert.match(viaQuery.headers.get('content-type'), /text\/event-stream/); await viaQuery.body.cancel();
+    assert.equal((await fetch(base + '/v1/app/stream?symbols=NVDA&access_token=bad')).status, 401);
+    assert.equal((await fetch(base + '/v1/app/me?access_token=' + encodeURIComponent(s.accessToken))).status, 401, 'plain routes take the header only');
     const tooMany = await fetch(base + '/v1/app/stream?symbols=' + Array.from({ length: 21 }, (_, i) => 'S' + i).join(','), { headers: { authorization: 'Bearer ' + s.accessToken } });
     assert.equal(tooMany.status, 400); assert.equal((await tooMany.json()).max, 20);
   });

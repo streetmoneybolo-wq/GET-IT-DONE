@@ -764,6 +764,20 @@ const ACADEMY_PUSH_SW = (() => { try { return fs.readFileSync(pathModule.join(__
 const ACADEMY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#06110d"/><circle cx="256" cy="256" r="178" fill="none" stroke="#19e36b" stroke-width="22" opacity=".35"/><circle cx="256" cy="256" r="112" fill="none" stroke="#19e36b" stroke-width="22" opacity=".6"/><circle cx="256" cy="256" r="44" fill="#19e36b"/><path d="M96 392 L208 280 L270 334 L408 160" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/><path d="M340 152 L414 152 L414 226" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const academyIconPng = (() => { const memo = new Map(); return (size) => { if (memo.has(size)) return memo.get(size); let png = null; try { const { Resvg } = require('@resvg/resvg-js'); png = new Resvg(ACADEMY_ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng(); } catch (_) { png = null; } memo.set(size, png); return png; }; })();
 const ACADEMY_MANIFEST = JSON.stringify({ name: 'Making Easy Money Academy', short_name: 'MEM Academy', start_url: '/academy-activity/', scope: '/academy-activity/', display: 'standalone', background_color: '#05090d', theme_color: '#06110d', icons: [{ src: '/academy-activity/push-icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/academy-activity/push-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }] });
+/* The StockMarketLoop app shell (platform/app-shell): an installable web app over /v1/app, served at /app/. Files are read once at start. */
+const APP_SHELL_DIR = pathModule.join(__dirname, 'app-shell');
+const APP_SHELL = (() => {
+  const files = {};
+  for (const [name, type] of [['index.html', 'text/html; charset=utf-8'], ['app.js', 'text/javascript; charset=utf-8'], ['app.css', 'text/css; charset=utf-8'], ['sw.js', 'text/javascript; charset=utf-8']]) {
+    try { files[name] = { body: fs.readFileSync(pathModule.join(APP_SHELL_DIR, name)), type }; } catch (_) { /* a missing file is a 404 */ }
+  }
+  return files;
+})();
+const APP_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#06110d"/><path d="M256 86c94 0 170 76 170 170s-76 170-170 170S86 350 86 256" fill="none" stroke="#19e36b" stroke-width="30" stroke-linecap="round" opacity=".9"/><path d="M118 322 L196 244 L252 296 L394 154" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/><path d="M326 150 L398 150 L398 222" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const APP_ICON_MASKABLE_SVG = APP_ICON_SVG.replace('rx="112"', 'rx="0"');
+const appIconPng = (() => { const memo = new Map(); return (size, maskable = false) => { const key = size + (maskable ? 'm' : ''); if (memo.has(key)) return memo.get(key); let png = null; try { const { Resvg } = require('@resvg/resvg-js'); png = new Resvg(maskable ? APP_ICON_MASKABLE_SVG : APP_ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng(); } catch (_) { png = null; } memo.set(key, png); return png; }; })();
+const APP_MANIFEST = JSON.stringify({ name: 'StockMarketLoop', short_name: 'StockMarketLoop', description: 'Live scanner, watchlist, charts, news and alerts for StockMarketLoop members.', id: '/app/', start_url: '/app/', scope: '/app/', display: 'standalone', orientation: 'portrait', background_color: '#06110d', theme_color: '#06110d', categories: ['finance', 'news'],
+  icons: [{ src: '/app/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/app/icon-512.png', sizes: '512x512', type: 'image/png' }, { src: '/app/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }] });
 const ACADEMY_MANIFEST_HEAD = '<link rel="manifest" href="/academy-activity/manifest.webmanifest"><meta name="theme-color" content="#06110d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="MEM Academy"><link rel="apple-touch-icon" href="/academy-activity/push-icon-192.png">';
 /* Pop-out modules: the sign-in shim runs in <head> (only acts in a ?popout window), the UI after the page. */
 const ACADEMY_POPOUT_HEAD = (() => {
@@ -1724,6 +1738,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     const billingOptions = { billingApiSecret, stripe, pool, upgradeChat, upgradeChatPlanMap, logger, now };
     const connectOptions = { billingApiSecret, pool, logger, now };
 
+    /* The StockMarketLoop app shell at /app/: the page, its script and style, the service worker, manifest and icons. */
+    if (request.method === 'GET' && (path === '/app' || path.startsWith('/app/'))) {
+      if (path === '/app') { response.writeHead(301, { Location: '/app/' + (request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '') }); response.end(); return; }
+      const name = path === '/app/' ? 'index.html' : path.slice('/app/'.length);
+      if (name === 'manifest.webmanifest') { response.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }); response.end(APP_MANIFEST); return; }
+      const icon = /^(icon-(192|512)|icon-maskable-512|apple-touch-icon)\.png$/.exec(name);
+      if (icon) { const png = appIconPng(name === 'apple-touch-icon.png' ? 180 : Number(icon[2] || 512), name.startsWith('icon-maskable')); if (!png) { response.writeHead(404); response.end(); return; } response.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }); response.end(png); return; }
+      const file = APP_SHELL[name];
+      if (!file) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
+      const headers = { 'Content-Type': file.type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': name === 'index.html' || name === 'sw.js' ? 'no-cache' : 'public, max-age=3600' };
+      if (name === 'sw.js') headers['Service-Worker-Allowed'] = '/app/';
+      if (name === 'index.html') headers['Content-Security-Policy'] = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; manifest-src 'self'; worker-src 'self'; base-uri 'none'; frame-ancestors 'none'";
+      response.writeHead(200, headers); response.end(file.body); return;
+    }
     /* The phone app's API (app-api.js): every /v1/app route, answered before anything else. */
     if (appApi && (path === '/v1/app' || path.startsWith('/v1/app/'))) {
       try { if (await appApi.handle(request, response, path)) return; }

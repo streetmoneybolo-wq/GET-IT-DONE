@@ -72,9 +72,11 @@ function createAppApi({ auth = null, identity = null, scanner = null, sireFeed =
     catch (_) { fail(request, response, 400, 'invalid_json'); return null; }
   }
   /* bearer + live session + per-member rate limit; sends the refusal itself and returns null */
-  async function member(request, response, cost = 1) {
+  async function member(request, response, cost = 1, { queryToken = false } = {}) {
     if (!auth || !auth.configured) { fail(request, response, 503, 'app_auth_unconfigured'); return null; }
-    const session = auth.verify(request.headers.authorization);
+    // a browser's EventSource cannot set a header, so the two live streams also take the access token as ?access_token= (15-minute tokens, never logged)
+    const fromQuery = queryToken && !request.headers.authorization ? String(params(request).get('access_token') || '') : '';
+    const session = auth.verify(fromQuery ? 'Bearer ' + fromQuery : request.headers.authorization);
     if (!session.ok) { fail(request, response, session.status || 401, session.code); return null; }
     const t = now();
     let live = liveCache.get(session.sessionId);
@@ -226,7 +228,7 @@ function createAppApi({ auth = null, identity = null, scanner = null, sireFeed =
       return true;
     }
     if (method === 'GET' && rest === '/scanner/stream') {
-      const session = await member(request, response, 5); if (!session) return true;
+      const session = await member(request, response, 5, { queryToken: true }); if (!session) return true;
       if (!sireFeed) { fail(request, response, 503, 'scanner_unavailable'); return true; }
       const stream = openStream(request, response, session.userId); if (!stream) return true;
       try { stream.onClose(sireFeed.subscribe(stream.write, {})); }
@@ -234,7 +236,7 @@ function createAppApi({ auth = null, identity = null, scanner = null, sireFeed =
       return true;
     }
     if (method === 'GET' && rest === '/stream') {
-      const session = await member(request, response, 5); if (!session) return true;
+      const session = await member(request, response, 5, { queryToken: true }); if (!session) return true;
       if (!massive || !massive.status || !massive.status().enabled) { fail(request, response, 503, 'market_unavailable'); return true; }
       const symbols = [...new Set(String(params(request).get('symbols') || '').toUpperCase().split(',').map((s) => s.trim()).filter(Boolean))];
       if (!symbols.length || symbols.length > MAX_STREAM_SYMBOLS || !symbols.every((s) => SYMBOL.test(s))) { fail(request, response, 400, 'invalid_symbols', { max: MAX_STREAM_SYMBOLS }); return true; }

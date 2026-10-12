@@ -49,7 +49,11 @@ Rate limit for signed-in calls: 600 a minute per member (streams count 5, site p
 | `GET /scanner/stream` | SSE. `snapshot` once (`{rows:[{s,n,p,ch,c,r1,r3,rv,v,b,a,bs,as,t}], ...}`, compact keys: symbol, name, price, change, changePct, 1-minute rate, 3-minute S.I.R.E. rate, rvol, volume, bid, ask, bid size, ask size, time), then `tick {at, rows:[...]}` where each row carries `s` plus only the fields that changed. Same feed the Academy's S.I.R.E. panel uses |
 | `GET /stream?symbols=NVDA,AMD` | SSE, up to 20 symbols. `snapshot` per symbol, then `trade {symbol,p,s,t,...}` and `quote {symbol,bid,ask,bs,as,t}` (quotes coalesced to 10 a second per symbol) |
 
-Streams: at most 4 per member. Send `Accept: text/event-stream`; a keep-alive comment arrives every 15 seconds. Reconnect with backoff on close.
+Streams: at most 4 per member. Send `Accept: text/event-stream`; a keep-alive comment arrives every 15 seconds. Reconnect with backoff on close. A browser `EventSource` cannot set a header, so these two stream routes (only these) also accept the access token as `?access_token=`.
+
+## The app shell
+
+The installable web app lives at `https://sml-platform-api.onrender.com/app/` (source: `platform/app-shell/`). It is a plain web app over this API: sign-in, live scanner, watchlist, charts, news, web push, account. Phones install it from the browser (Android: the install prompt; iPhone: Share → Add to Home Screen, which is also what web push on iOS requires); desktops install it from the address-bar icon. Tokens are kept in the browser's localStorage for that origin. The same files can be served from an `app.stockmarketloop.com` host later with no change to the API (CORS already allows that origin).
 
 ## Push
 
