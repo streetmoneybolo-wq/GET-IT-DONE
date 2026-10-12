@@ -147,10 +147,14 @@ function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch,
 }
 
 function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout, minimumIntervalMs = 12_100,
-  optionsTtlMs = 10 * 60_000, closedOptionsTtlMs = 60 * 60_000, marketOpen = () => false } = {}) {
+  optionsTtlMs = 10 * 60_000, closedOptionsTtlMs = 60 * 60_000, staleTtlMs = 2 * 60 * 60_000, marketOpen = () => false } = {}) {
   if (!source || typeof source.get !== 'function') throw new TypeError('source_required');
   const cache = new Map();
   const inflight = new Map();
+  /* the last good answer per key, kept past its freshness so a provider hiccup serves a marked-stale chain instead of nothing */
+  const lastGood = new Map();
+  /* the last failure per key, so the route that asks next can say what actually went wrong */
+  const failures = new Map();
   let queue = Promise.resolve();
   let lastStartedAt = 0;
 
@@ -180,7 +184,17 @@ function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout,
       const result = await source.get(kind, symbol, params);
       if (result?.ok) {
         const ttl = kind === 'options' ? (marketOpen(current) ? optionsTtlMs : closedOptionsTtlMs) : optionsTtlMs;
-        cache.set(key, { expiresAt: now() + ttl, result });
+        const at = now();
+        cache.set(key, { expiresAt: at + ttl, result });
+        lastGood.set(key, { at, result });
+        failures.delete(key);
+        return result;
+      }
+      failures.set(key, { at: now(), result });
+      const good = lastGood.get(key);
+      if (good && now() - good.at <= staleTtlMs) {
+        const data = good.result.data && typeof good.result.data === 'object' ? { ...good.result.data, stale: true, asOf: good.at } : good.result.data;
+        return { ...good.result, data, stale: true, cached: true, failure: result };
       }
       return result;
     };
@@ -189,7 +203,11 @@ function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout,
     return pending;
   }
 
-  return { configured: source.configured, get, cache, inflight };
+  function lastFailure(kind, symbol, params = {}) {
+    return failures.get(keyOf(kind, symbol, params)) || null;
+  }
+
+  return { configured: source.configured, get, lastFailure, cache, inflight };
 }
 
 function allowedPublicOrigin(origin) {

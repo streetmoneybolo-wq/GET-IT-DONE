@@ -61,3 +61,29 @@ test('Massive options adapter is disabled by default and never invents empty con
   const empty = createMassiveOptions({ apiKey: 'secret', enabled: true, fetchImpl: async () => new Response(JSON.stringify({ results: [] }), { status: 200 }) });
   assert.equal((await empty.get('options', 'SPY')).code, 'massive_options_empty');
 });
+
+test('queued options source serves the last good chain, marked stale, while the bridge is failing, and remembers why', async () => {
+  let clock = 1_800_000_000_000, fail = false;
+  const source = { configured: true, get: async () => (fail
+    ? { ok: false, status: 503, code: 'academy_data_unavailable', detail: 'The site did not answer in time.' }
+    : { ok: true, status: 200, data: { ok: true, symbol: 'SPY', contracts: 12 } }) };
+  const queued = createQueuedDataSource({ source, now: () => clock, minimumIntervalMs: 0, optionsTtlMs: 60_000, staleTtlMs: 2 * 60 * 60_000,
+    setTimer: (resolve) => resolve(), marketOpen: () => true });
+  const fresh = await queued.get('options', 'SPY');
+  assert.equal(fresh.ok, true); assert.equal(fresh.stale, undefined);
+  clock += 61_000; fail = true;
+  const stale = await queued.get('options', 'SPY');
+  assert.equal(stale.ok, true); assert.equal(stale.stale, true); assert.equal(stale.data.stale, true);
+  assert.equal(stale.data.asOf, 1_800_000_000_000, 'the chain says when it was really fetched');
+  assert.equal(stale.data.contracts, 12);
+  assert.equal(queued.lastFailure('options', 'SPY').result.detail, 'The site did not answer in time.');
+  assert.equal(queued.lastFailure('options', 'QQQ'), null);
+  clock += 3 * 60 * 60_000;
+  const gone = await queued.get('options', 'SPY');
+  assert.equal(gone.ok, false, 'a chain older than the stale window is not served');
+  assert.equal(gone.code, 'academy_data_unavailable');
+  fail = false;
+  const back = await queued.get('options', 'SPY');
+  assert.equal(back.ok, true); assert.equal(back.stale, undefined);
+  assert.equal(queued.lastFailure('options', 'SPY'), null, 'a good answer clears the remembered failure');
+});

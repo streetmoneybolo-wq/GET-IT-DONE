@@ -3142,7 +3142,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const symbol = dataParams.get('symbol');
       try {
         const result = await academyDataBridge.get(kind, symbol, { expiration: dataParams.get('expiration') || '' });
-        sendJson(response, result.status || (result.ok ? 200 : 503), result.ok ? { ok: true, data: result.data } : { ok: false, error: result.code });
+        sendJson(response, result.status || (result.ok ? 200 : 503), result.ok ? { ok: true, data: result.data, ...(result.stale ? { stale: true } : {}) } : { ok: false, error: result.code, ...(result.detail ? { detail: result.detail } : {}) });
       } catch (error) {
         logger(error instanceof TypeError ? 'warn' : 'error', 'academy_data_request_failed', { kind, error });
         sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'academy_data_unavailable' });
@@ -3302,7 +3302,9 @@ async function main() {
     ? createAcademyOAuth({ clientId: config.discordConnectAppId, clientSecret: config.discordConnectClientSecret, academyAccess: createIdentityAccess({}) })
     : null;
   const { createAcademyDataBridge } = require('./academy-data-bridge');
-  const rawAcademyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret, fetchImpl: (u, o) => dataHealth.guardedFetch('moomoo-bridge', u, o) });
+  /* SML_ACADEMY_BRIDGE_TIMEOUT_MS: how long one site request may take. A cold ticker is fetched from the moomoo bridge
+     before the site can answer, which takes well over the old 8 s; abandoning those made every chain load fail. */
+  const rawAcademyDataBridge = createAcademyDataBridge({ baseUrl: config.academyBridgeUrl, secret: config.academyBridgeSecret, timeoutMs: Number(process.env.SML_ACADEMY_BRIDGE_TIMEOUT_MS) || undefined, fetchImpl: (u, o) => dataHealth.guardedFetch('moomoo-bridge', u, o) });
   const queuedMoomooBridge = createQueuedDataSource({
     source: rawAcademyDataBridge,
     // Five cold options calls per minute is the safe ceiling; cached and
@@ -3441,6 +3443,8 @@ async function main() {
   const academyClickAlert = process.env.ACADEMY_CLICK_ALERT === 'off' ? null : createClickAlertService({
     getBars: getAcademyCandles, chain: (s) => (academyAlerts ? academyAlerts.chainFor(s) : null), directory: createDiscordDirectory({ tokens: alertTokens, logger: log }),
     chainExpiry: academyDataBridge.configured ? async (s, expiration) => { const r = await academyDataBridge.get('options', s, { expiration }); return r && r.ok ? r.data : null; } : null,
+    /* why the last chain load for this symbol failed (bridge timeout, provider refusal), for the member-facing message */
+    chainDetail: (s) => { const f = queuedMoomooBridge.lastFailure('options', s); return f && f.result ? String(f.result.detail || '') : ''; },
     /* every expiration the bridge lists (the chain itself loads the nearest ones), for the contract picker */
     expirations: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('options', s); if (!(r && r.ok && r.data)) return []; const oc = require('./academy-options-chain'); return oc.expirations(r.data, oc.normalize(r.data)); } : null,
     /* the catalyst check: next earnings date (bridge) and this week's news (hub ticker feed) */

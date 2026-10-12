@@ -125,6 +125,11 @@ services:
       # Keep Massive options disabled until an entitled Options plan exists.
       - key: MASSIVE_OPTIONS_ENABLED
         value: "0"
+      # How long one options/earnings request to the site may take. A ticker the
+      # site has not cached is fetched from the moomoo bridge first, which runs
+      # well past the old 8 s; cutting it short made every chain load fail.
+      - key: SML_ACADEMY_BRIDGE_TIMEOUT_MS
+        value: "25000"
       - key: SML_ACADEMY_ELEVENLABS_VOICE_ID
         sync: false
       - key: SML_ACADEMY_ELEVENLABS_MODEL

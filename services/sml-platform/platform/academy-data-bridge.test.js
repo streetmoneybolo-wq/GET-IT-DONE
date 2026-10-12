@@ -33,3 +33,27 @@ test('academy data bridge includes a validated option expiration in its signatur
   assert.match(calls[0].url, /expiration=2026-10-16$/);
   await assert.rejects(() => bridge.get('options', 'SPY', { expiration: 'tomorrow' }), /invalid_expiration/);
 });
+
+test('academy data bridge keeps the site\'s own reason for a refused request and names a timeout', async () => {
+  const refused = createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'c'.repeat(32),
+    fetchImpl: async () => new Response(JSON.stringify({ code: 'sml_academy_bridge_source', message: 'Academy data is temporarily unavailable.', data: { status: 503 } }), { status: 503 }) });
+  const r1 = await refused.get('options', 'SPY');
+  assert.equal(r1.ok, false); assert.equal(r1.code, 'academy_data_unavailable'); assert.equal(r1.status, 503);
+  assert.equal(r1.detail, 'Academy data is temporarily unavailable.');
+
+  const slow = createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'c'.repeat(32),
+    fetchImpl: async () => { const e = new Error('The operation was aborted due to timeout'); e.name = 'TimeoutError'; throw e; } });
+  const r2 = await slow.get('options', 'SPY');
+  assert.equal(r2.ok, false); assert.equal(r2.status, 503); assert.equal(r2.detail, 'The site did not answer in time.');
+
+  const open = createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'c'.repeat(32),
+    fetchImpl: async () => { const e = new Error('circuit_open_moomoo-bridge'); e.code = 'circuit_open'; throw e; } });
+  assert.match((await open.get('options', 'SPY')).detail, /cooling down/);
+});
+
+test('academy data bridge gives the site long enough for a cold moomoo chain and honours an override', () => {
+  assert.equal(createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'd'.repeat(32) }).timeoutMs, 25_000);
+  assert.equal(createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'd'.repeat(32), timeoutMs: 40_000 }).timeoutMs, 40_000);
+  assert.equal(createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'd'.repeat(32), timeoutMs: 'nope' }).timeoutMs, 25_000);
+  assert.equal(createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'd'.repeat(32), timeoutMs: 10 }).timeoutMs, 1_000);
+});

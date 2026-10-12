@@ -430,3 +430,12 @@ test('a stock alert gets the same catalyst check, the risk steps up a notch when
   assert.equal(ok.ok, true); assert.equal(ok.catalysts.verdict, 'quiet');
   assert.ok(Date.now() - t0 < 6000, 'a hanging provider is cut off by the timeout');
 });
+
+test('an empty chain tells the member why the bridge failed instead of claiming the ticker has no options', async () => {
+  const { svc } = fake({ extra: { chain: async () => [], expirations: async () => [], chainDetail: async () => 'The site did not answer in time.' } });
+  const out = await svc.chainFor({ symbol: 'TEST' });
+  assert.equal(out.ok, false); assert.equal(out.code, 'options_unavailable');
+  assert.equal(out.detail, 'The options chain could not be loaded: The site did not answer in time.');
+  const quiet = fake({ extra: { chain: async () => [], expirations: async () => [], chainDetail: async () => '' } }).svc;
+  assert.equal((await quiet.chainFor({ symbol: 'TEST' })).detail, 'No listed options were found for TEST.');
+});

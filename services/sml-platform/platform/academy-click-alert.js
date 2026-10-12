@@ -314,7 +314,7 @@ function createClickAlertStore({ pool = null } = {}) {
   return { record, count, last, recent, persistent: !!db };
 }
 
-function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
+function createClickAlertService({ getBars, chain = null, chainExpiry = null, expirations = null, chainDetail = null, catalysts = null, directory, store = createClickAlertStore(), academyGuildId = '', roleIds = [], passes = null, freeUserIds = null, personas = null, footer = true, now = Date.now, logger = () => {},
   limits = {} } = {}) {
   const roles = new Set((roleIds || []).map(String).filter((id) => SNOWFLAKE.test(id)));
   const lim = { userHour: Number(limits.userHour) || 6, userDay: Number(limits.userDay) || 40, channelHour: Number(limits.channelHour) || 20, ...limits };
@@ -371,7 +371,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (!givenRows && anyExpiry && chainExpiry && !(rows && optionsAlert.findContract(rows, { type, strike, expiry }))) {
       try { const raw = await chainExpiry(sym, expiry); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = (rows || []).concat(more); } catch (_) { /* keep what we have */ }
     }
-    if (!rows || !rows.length) return err(503, 'options_unavailable', 'The options chain is not available right now.');
+    if (!rows || !rows.length) return err(503, 'options_unavailable', await whyNoChain(sym));
     const found = optionsAlert.findContract(rows, { type, strike, expiry });
     if (!found) return err(404, 'contract_not_found', 'That contract is not in the live options chain right now. Reload the chain and pick it again.');
     const premium = optionsAlert.mid(found.leg);
@@ -471,6 +471,16 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   }
 
   /* The contract picker on the ALERT panel: every expiration the chain lists and, for one expiration, its strikes with the live call and put quotes. */
+  /* An empty chain usually means the data bridge failed, not that the ticker has no options. When the bridge recorded why
+     (the site timed out, the provider refused), say that; the member can then tell a real outage from a symbol with no listings. */
+  async function whyNoChain(sym, fallback = 'The options chain is not available right now.') {
+    if (typeof chainDetail !== 'function') return fallback;
+    try {
+      const why = String((await chainDetail(sym)) || '').trim();
+      return why ? 'The options chain could not be loaded: ' + why : fallback;
+    } catch (_) { return fallback; }
+  }
+
   async function chainFor({ symbol, expiry = '' } = {}) {
     const sym = String(symbol || '').toUpperCase();
     if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return { ok: false, status: 422, code: 'invalid_symbol' };
@@ -483,7 +493,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     let listed = []; if (expirations) { try { listed = (await expirations(sym)) || []; } catch (_) { listed = []; } }
     const today = new Date(now()).toISOString().slice(0, 10);
     const exps = [...new Set([...rows.map((r) => r && r.expiry), ...listed].map((e) => String(e || '').slice(0, 10)).filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e) && e >= today))].sort();
-    if (!rows.length && !exps.length) return { ok: false, status: 503, code: 'options_unavailable', detail: 'No listed options were found for ' + sym + '.' };
+    if (!rows.length && !exps.length) return { ok: false, status: 503, code: 'options_unavailable', detail: await whyNoChain(sym, 'No listed options were found for ' + sym + '.') };
     let price = null; try { const { last } = await loadBars(sym); price = last ? last.c : null; } catch (_) { price = null; }
     const leg = (s) => (s ? { bid: fin(Number(s.bid)) ? Number(s.bid) : null, ask: fin(Number(s.ask)) ? Number(s.ask) : null, mid: optionsAlert.mid(s), iv: fin(Number(s.iv)) ? Number(s.iv) : null, delta: fin(Number(s.delta)) ? Number(s.delta) : null, oi: fin(Number(s.oi)) ? Number(s.oi) : null, volume: fin(Number(s.volume)) ? Number(s.volume) : null } : null);
     const list = rows.filter((r) => r && (!exp || r.expiry === exp) && Number(r.strike) > 0).map((r) => ({ expiry: r.expiry, strike: Number(r.strike), call: leg(r.call), put: leg(r.put) }))
