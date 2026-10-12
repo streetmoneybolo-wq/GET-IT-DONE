@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Edge Cache
  * Description: Lets WordPress.com's edge cache serve stockmarketloop.com's logged-out pages. Today every anonymous page leaves the site with "Cache-Control: no-cache, must-revalidate, max-age=0, no-store, private" (WordPress's nocache_headers(), called by a plugin on every request), so the edge never caches and every visitor waits on PHP. This plugin, at the last moment before the template renders, replaces those headers with public, short-lived caching for safe requests only: logged-out, GET, no WordPress / commerce / session cookies, no Set-Cookie in the response, not admin, login, REST, preview, search or any excluded path. Pages that declare DONOTCACHEPAGE are left alone. It also records which plugin asked for no-cache, so the culprit can be fixed at the source (Settings → SML Edge Cache).
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: StockMarketLoop
  * Requires PHP: 7.4
  *
@@ -11,7 +11,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_EDGE_CACHE_VERSION', '1.0.0' );
+define( 'SML_EDGE_CACHE_VERSION', '1.0.1' );
 define( 'SML_EDGE_CACHE_OPTION', 'sml_edge_cache' );
 define( 'SML_EDGE_CACHE_LOG', 'sml_edge_cache_log' );
 
@@ -146,20 +146,25 @@ function sml_ec_log( array $entry ) {
 	update_option( SML_EDGE_CACHE_LOG, $log, false );
 }
 
-/** The last word on the headers, just before the template renders (nothing has been output yet, so headers can still change). */
-add_action( 'template_redirect', static function () {
-	if ( headers_sent() ) { return; }
-	$cfg = sml_ec_config();
-	$request = sml_ec_request_snapshot();
-	$decision = apply_filters( 'sml_edge_cache_decision', sml_ec_decide( $request, $cfg ), $request );
-	$callers = array_values( array_unique( (array) $GLOBALS['sml_ec_nocache_callers'] ) );
-	// remember, at most once a minute per page, which plugins asked for no-cache on an anonymous page
-	if ( $callers && ! $request['logged_in'] && ! $request['is_admin'] && ! $request['is_rest'] && false === get_transient( 'sml_ec_seen_' . md5( $request['path'] ) ) ) {
-		set_transient( 'sml_ec_seen_' . md5( $request['path'] ), 1, MINUTE_IN_SECONDS );
-		sml_ec_log( array( 'path' => $request['path'], 'reason' => $decision['reason'], 'cached' => (bool) $decision['cache'], 'callers' => $callers ) );
+/** Write the decided headers. Runs twice: before the template, and again at the very end of the request, because some plugins call
+ *  nocache_headers() while the template renders (inside an output buffer, so headers are still open) and would otherwise win. */
+function sml_ec_apply( $final = false ) {
+	if ( headers_sent() || empty( $GLOBALS['sml_ec_decision'] ) ) { return; }
+	$decision = $GLOBALS['sml_ec_decision'];
+	$request  = $GLOBALS['sml_ec_request'];
+	$callers  = array_values( array_unique( (array) $GLOBALS['sml_ec_nocache_callers'] ) );
+	if ( $final ) {
+		// a cookie set during rendering makes the page personal after all
+		foreach ( headers_list() as $h ) { if ( 0 === stripos( $h, 'Set-Cookie:' ) ) { $decision = array( 'cache' => false, 'reason' => 'response_sets_cookie', 'headers' => array() ); break; } }
+		// remember, at most once a minute per page, which plugins asked for no-cache on an anonymous page
+		if ( $callers && empty( $request['logged_in'] ) && empty( $request['is_admin'] ) && empty( $request['is_rest'] ) && false === get_transient( 'sml_ec_seen_' . md5( $request['path'] ) ) ) {
+			set_transient( 'sml_ec_seen_' . md5( $request['path'] ), 1, MINUTE_IN_SECONDS );
+			sml_ec_log( array( 'path' => $request['path'], 'reason' => $decision['reason'], 'cached' => (bool) $decision['cache'], 'callers' => $callers ) );
+		}
 	}
 	if ( empty( $decision['cache'] ) ) {
-		header( 'X-SML-Edge-Cache: skip ' . $decision['reason'] );
+		if ( 'response_sets_cookie' === $decision['reason'] ) { header( 'Cache-Control: private, no-store', true ); }
+		header( 'X-SML-Edge-Cache: skip ' . $decision['reason'], true );
 		return;
 	}
 	header_remove( 'Expires' );
@@ -167,7 +172,22 @@ add_action( 'template_redirect', static function () {
 	header_remove( 'Cache-Control' );
 	header_remove( 'Last-Modified' );
 	foreach ( $decision['headers'] as $name => $value ) { header( $name . ': ' . $value, true ); }
-	header( 'X-SML-Edge-Cache: ' . $decision['reason'] . ( $callers ? ' (overrode ' . count( $callers ) . ' nocache call' . ( 1 === count( $callers ) ? '' : 's' ) . ')' : '' ) );
+	header( 'X-SML-Edge-Cache: ' . $decision['reason'] . ( $callers ? ' (overrode ' . count( $callers ) . ' nocache call' . ( 1 === count( $callers ) ? '' : 's' ) . ')' : '' ) . ( $final ? ' final' : '' ), true );
+}
+function sml_ec_ob_finalize( $buffer ) { sml_ec_apply( true ); return $buffer; }
+
+add_action( 'template_redirect', static function () {
+	if ( headers_sent() ) { return; }
+	$cfg = sml_ec_config();
+	$request = sml_ec_request_snapshot();
+	$GLOBALS['sml_ec_request']  = $request;
+	$GLOBALS['sml_ec_decision'] = apply_filters( 'sml_edge_cache_decision', sml_ec_decide( $request, $cfg ), $request );
+	sml_ec_apply( false );
+	if ( ! empty( $GLOBALS['sml_ec_decision']['cache'] ) ) {
+		// the buffer's callback runs when the page is complete and nothing has reached the client yet: the last word on the headers
+		ob_start( 'sml_ec_ob_finalize' );
+		add_action( 'shutdown', static function () { sml_ec_apply( true ); }, -1000 );
+	}
 }, PHP_INT_MAX );
 
 /** WordPress core's own nocache for the "wp" headers stage (logged-in only in core, but some plugins filter it): keep the public ones out of the way. */
