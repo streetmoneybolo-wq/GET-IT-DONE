@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Academy Data Bridge
  * Description: Private, signed Academy access to existing Options and Earnings REST data. It never exposes those feeds to site visitors.
- * Version: 0.1.2
+ * Version: 0.1.3
  * Requires PHP: 7.4
  */
 
@@ -152,7 +152,20 @@ if ( ! function_exists( 'sml_academy_bridge_subrequest' ) ) {
 		$response = rest_ensure_response( $response );
 		$status   = (int) $response->get_status();
 		if ( $status < 200 || $status > 299 ) {
-			return new WP_Error( 'sml_academy_bridge_source', 'Academy data is temporarily unavailable.', array( 'status' => 503 ) );
+			// Carry the source route's own reason through (the options provider guard names the real cause:
+			// a refused provider, an unreachable bridge, a symbol with no listed options). The platform shows
+			// it to the member and logs it; a bare "temporarily unavailable" told nobody what to fix.
+			$data   = $response->get_data();
+			$code   = is_array( $data ) && ! empty( $data['code'] ) ? sanitize_key( (string) $data['code'] ) : '';
+			$reason = is_array( $data ) && ! empty( $data['message'] ) ? trim( wp_strip_all_tags( (string) $data['message'] ) ) : '';
+			if ( '' === $reason && is_array( $data ) && ! empty( $data['error'] ) && is_string( $data['error'] ) ) {
+				$reason = trim( wp_strip_all_tags( $data['error'] ) );
+			}
+			$message = 'Academy data is temporarily unavailable.';
+			if ( '' !== $reason ) {
+				$message .= ' ' . mb_substr( $reason, 0, 200 );
+			}
+			return new WP_Error( 'sml_academy_bridge_source', $message, array( 'status' => 503, 'source_status' => $status, 'source_code' => $code ) );
 		}
 		return $response->get_data();
 	}
