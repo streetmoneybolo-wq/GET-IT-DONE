@@ -2,15 +2,15 @@
 /**
  * Plugin Name: SML PWA
  * Description: Makes stockmarketloop.com installable as an app on Android, iPhone/iPad and desktop: web app manifest, service worker (offline fallback, cached assets), home-screen icons, an install prompt and the iPhone "Add to Home Screen" hint. The app is the whole site.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_PWA_VERSION', '1.0.0' );
+define( 'SML_PWA_VERSION', '1.0.1' );
 define( 'SML_PWA_SW_PATH', '/sml-sw.js' );
-define( 'SML_PWA_MANIFEST_PATH', '/manifest.webmanifest' );
+define( 'SML_PWA_MANIFEST_PATH', '/sml-manifest.webmanifest' ); // its own path: the site already answers /manifest.webmanifest elsewhere (SML App Links)
 define( 'SML_PWA_OFFLINE_PATH', '/sml-pwa-offline' );
 define( 'SML_PWA_THEME_COLOR', '#06110d' );
 
