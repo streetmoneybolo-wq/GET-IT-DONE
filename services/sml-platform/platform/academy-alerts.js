@@ -312,6 +312,8 @@ function createAlertsService({
       price: q ? r4(Number(q.last)) : null, chgPct: q ? r4(Number(q.chgPct)) : null, sincePct: ev.since && ev.since.pct != null ? r4(ev.since.pct) : null, high: r4(ev.since && ev.since.high), low: r4(ev.since && ev.since.low),
       risk: { score: ev.risk.score, band: ev.risk.band, label: ev.risk.label, top: ev.risk.top, flags: ev.risk.flags, coverage: ev.risk.coverage },
       plan: { action: ev.plan.action, target: ev.plan.target, stop: ev.plan.stop, reasons: full ? ev.plan.reasons : ev.plan.reasons.slice(0, 2), progress: r4(ev.plan.progress) },
+      channelId: channelIdFor(a.source) || '',
+      next: risk.suggestNext({ plan: ev.plan, risk: ev.risk, algoView: ev.algo, flow: ev.flow, since: ev.since, alert: a, price: q ? Number(q.last) : null, ladder: ev.ladder }),
       ptUpdates: ev.ladder ? ev.ladder.updates.map((u) => ({ n: u.n, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange, stopWas: u.stopWas, entry: u.entry, side: u.side, signals: u.signals, why: full ? u.why : undefined, story: full ? u.story : undefined, posted: u.posted, text: full ? u.text : undefined })) : [],
       sector: ev.sector, flow: ev.flow ? { bias: ev.flow.bias, source: ev.flow.source } : null, algo: ev.algo ? { bias: ev.algo.bias, label: ev.algo.label } : null,
       options: ev.options ? (full ? ev.options : { verdict: ev.options.verdict, available: ev.options.available, side: ev.options.side || null, strength: ev.options.strength || null, label: ev.options.contract ? `${ev.options.contract.dte}d ${ev.options.contract.strike} ${ev.options.side}` : null }) : null,

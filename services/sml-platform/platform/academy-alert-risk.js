@@ -325,6 +325,35 @@ function planFor(input) {
   return out('HOLD');
 }
 
+/* ---------- the desk's next move: New PT or Sell ----------
+ * One verdict for the two buttons on an alert, from everything the desk already read on the stock: the plan (which weighs price against the
+ * entry, target and stop, MEM ALGO, order-book pressure, risk, news and chatter), the risk band and how far the trade has come.
+ * action 'pt' = post a higher price target, 'sell' = take profits (partial when the plan says so), 'hold' = neither yet. */
+function suggestNext({ plan, risk, algoView, flow, since, alert, price, ladder } = {}) {
+  const p = plan || { action: 'HOLD', reasons: [], target: alert && alert.target, stop: null };
+  const entry = alert ? num(alert.entry) : null, tgt0 = ladder && num(ladder.target) > 0 ? num(ladder.target) : (alert ? num(alert.target) : null);
+  const px = fin(num(price)) ? num(price) : null;
+  const why = Array.isArray(p.reasons) ? p.reasons.slice(0, 4) : [];
+  const bull = algoView && (algoView.bias === 'long' || algoView.bias === 'pullback'), bear = algoView && (algoView.bias === 'short' || (algoView.latestSignal && algoView.latestSignal.dir < 0 && algoView.latestSignal.recent));
+  const gainPct = entry > 0 && px != null ? roundPx(((px - entry) / entry) * 100) : null;
+  const facts = [];
+  if (gainPct != null) facts.push((gainPct >= 0 ? '+' : '') + gainPct + '% from the entry');
+  if (algoView && algoView.label) facts.push('MEM ALGO: ' + algoView.label);
+  if (flow && flow.bias) facts.push('order book ' + flow.bias);
+  if (risk && risk.band) facts.push('risk ' + String(risk.band).toLowerCase());
+  // a raised target: the plan's own when it has one past the working target, else a step above the high so far
+  const high = since && fin(num(since.high)) ? num(since.high) : px;
+  let nextTarget = fin(num(p.target)) && num(p.target) > (tgt0 || 0) ? num(p.target) : null;
+  if (!nextTarget && tgt0 > 0) nextTarget = roundPx(Math.max(tgt0 * 1.1, (high || tgt0) * 1.05));
+  if (p.action === 'RAISE_TARGET') return { action: 'pt', label: 'Post a new PT', target: nextTarget, partial: false, confidence: bull && !bear ? 'high' : 'medium', why, facts };
+  if (p.action === 'SELL') return { action: 'sell', label: 'Take profits', target: nextTarget, partial: false, confidence: bear ? 'high' : 'medium', why, facts };
+  if (p.action === 'PARTIAL') return { action: 'sell', label: 'Take partial profits', target: nextTarget, partial: true, confidence: 'medium', why, facts };
+  const progress = fin(num(p.progress)) ? num(p.progress) : null;
+  if (progress != null && progress >= 0.85 && bull && !bear && !(risk && (risk.band === 'HIGH' || risk.band === 'EXTREME'))) return { action: 'pt', label: 'Close to target: a new PT is next', target: nextTarget, partial: false, confidence: 'medium', why, facts };
+  if (progress != null && progress < 0 && bear) return { action: 'sell', label: 'Under the entry with MEM ALGO against it', target: nextTarget, partial: false, confidence: 'medium', why, facts };
+  return { action: 'hold', label: 'Hold for now', target: nextTarget, partial: false, confidence: 'medium', why, facts };
+}
+
 const ACTION_LABEL = { HOLD: 'Hold', RAISE_TARGET: 'Raise target', PARTIAL: 'Take partial profits', SELL: 'Sell' };
 
-module.exports = { gradeRisk, checklist, planFor, sinceAlert, dailyStats, bandOf, BANDS, ACTION_LABEL, impliedStopDistance, roundPx, CHATTER_ALARM };
+module.exports = { gradeRisk, checklist, planFor, suggestNext, sinceAlert, dailyStats, bandOf, BANDS, ACTION_LABEL, impliedStopDistance, roundPx, CHATTER_ALARM };

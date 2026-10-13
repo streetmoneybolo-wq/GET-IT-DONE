@@ -131,6 +131,30 @@ function formatPtSmashed(a) {
   ].join('\n');
 }
 
+/* ---------- equity take profits ----------
+ * The exit post from the alerts desk's SELL button: the entry, where price is now and the gain, why the Academy says lock it in, and what
+ * to do with any runner. The same voice as the entry and PT SMASHED posts; a.why lines come from the desk's own read of the stock. */
+function formatTakeProfits(a) {
+  const entry = Number(a.entry), price = Number(a.price);
+  if (!a.ticker || !(entry > 0) || !(price > 0)) throw new TypeError('take_profits_needs_ticker_entry_and_price');
+  const tk = String(a.ticker).toUpperCase().replace(/[^A-Z0-9.]/g, ''), short = a.side === 'short';
+  const gain = (short ? (entry - price) / entry : (price - entry) / entry) * 100;
+  const gainText = (gain >= 0 ? '+' : '−') + Math.abs(gain).toFixed(gain >= 10 ? 0 : 1) + '%';
+  const partial = a.partial === true;
+  const why = Array.isArray(a.why) ? a.why.map((w) => clean(w, 160)).filter(Boolean).slice(0, 5) : [];
+  return [
+    ...everyone(a.mention),
+    '💰 ' + bold(tk) + ' ' + bold(partial ? 'TAKE PARTIAL PROFITS' : 'TAKE PROFITS') + ' — ' + bold('ENTRY') + ' ' + priceText(entry) + ' | ' + bold('NOW') + ' ' + priceText(price) + ' (' + bold(gainText) + ') 💰',
+    '🏁 ' + sentence(a.status, gain >= 0 ? (partial ? 'Bank the bulk here — let a small runner work.' : 'Lock it in — the move has done its job.') : 'Cut it here — the setup is not holding.'),
+    ...(why.length ? ['', '📊 ' + bold('WHY NOW'), ...why.map((w) => '• ' + w)] : []),
+    '',
+    '⚠️ ' + bold(partial ? 'RUNNER RULES' : 'DO NOT CHASE') + '  ',
+    sentence(a.riskNote, partial ? 'Stop on the rest moves to the entry — the runner can only win from here.' : 'Profits are profits. A re-entry needs a fresh setup, not a feeling.'),
+    '',
+    '🚨 ' + bold('STOP') + ': ' + sentence(a.stopNote, partial && Number(a.stop) > 0 ? (short ? 'Above ' : 'Below ') + plainPrice(a.stop) + ' on what is left.' : 'Out — nothing left to protect.')
+  ].join('\n');
+}
+
 /* ---------- options ---------- */
 const EXPIRY = {
   daily: { label: 'DAILY', note: 'Fast movement, fast risk — manage size tight.' },
@@ -219,4 +243,4 @@ function formatOptionsPtSmashed(a) {
   ].join('\n');
 }
 
-module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };
+module.exports = { bold, priceText, plainPrice, autoStop, tradeType, riskLabel, formatEntryAlert, formatPtSmashed, formatTakeProfits, formatOptionsAlert, formatOptionsContractAlert, formatOptionsPtSmashed, TRADE_TYPES, RISKS };

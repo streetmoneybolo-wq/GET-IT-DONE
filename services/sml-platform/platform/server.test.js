@@ -1857,3 +1857,38 @@ test('the StockMarketLoop app shell is served at /app/: page with manifest and s
     assert.equal((await fetch(`${base}/app/../server.js`)).status, 404);
   });
 });
+
+test('the alerts desk buttons: New PT and Sell post through the service as a reply, only on the member own alerts (any alert for the owner), and the desk learns who is looking', async () => {
+  const calls = [];
+  const rec = { id: '900000000000000009', symbol: 'GDC', entry: 2, target: 2.33, at: 1, source: 'swings', authorId: 'sub' };
+  const academyAlerts = {
+    snapshot: () => ({ ok: true, asOf: 1, feed: {}, alerts: [{ id: rec.id, symbol: 'GDC', authorId: 'sub', channelId: '111' }], pending: 0 }),
+    detail: async () => null,
+    alerts: new Map([[rec.id, rec]]), evaluated: new Map([[rec.id, { plan: { action: 'RAISE_TARGET', target: 2.6, stop: 2.2, reasons: ['Target 2.33 was reached'] } }]]),
+    channelIdFor: (key) => (key === 'swings' ? '111' : '')
+  };
+  const academyClickAlert = { deskAction: async (user, args) => { calls.push({ user, args }); return args.action === 'sell' ? { ok: true, messageId: '2', repliedTo: rec.id, gainPct: 5, partial: false } : { ok: true, messageId: '3', repliedTo: rec.id, smashed: true }; } };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer sub' ? { ok: true, userId: 'sub', tier: 'academy', displayName: 'Ana' } : a === 'Bearer other' ? { ok: true, userId: 'other', tier: 'academy' } : a === 'Bearer owner' ? { ok: true, userId: '1087769175453339648', tier: 'academy', displayName: 'Obi' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const json = (t) => ({ authorization: 'Bearer ' + t, 'content-type': 'application/json' });
+  await withServer({ academyAlerts, academyClickAlert, academyOAuth }, async (base) => {
+    const u = `${base}/academy-activity/click-alert/desk`;
+    assert.equal((await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 401);
+    assert.equal((await fetch(u, { method: 'POST', headers: { authorization: 'Bearer sub' }, body: '{}' })).status, 415);
+    assert.equal((await fetch(u, { method: 'POST', headers: json('sub'), body: JSON.stringify({ alertId: rec.id, action: 'nope' }) })).status, 400);
+    assert.equal((await fetch(u, { method: 'POST', headers: json('sub'), body: JSON.stringify({ alertId: '1', action: 'sell' }) })).status, 404);
+    const notMine = await fetch(u, { method: 'POST', headers: json('other'), body: JSON.stringify({ alertId: rec.id, action: 'sell' }) });
+    assert.equal(notMine.status, 403); assert.equal((await notMine.json()).error, 'not_your_alert'); assert.equal(calls.length, 0);
+    const sold = await fetch(u, { method: 'POST', headers: json('sub'), body: JSON.stringify({ alertId: rec.id, action: 'sell' }) });
+    assert.equal(sold.status, 200); assert.equal((await sold.json()).repliedTo, rec.id);
+    assert.deepEqual(calls[0].user, { userId: 'sub', displayName: 'Ana' });
+    assert.equal(calls[0].args.action, 'sell'); assert.equal(calls[0].args.alert.channelId, '111'); assert.equal(calls[0].args.alert.plan.action, 'RAISE_TARGET'); assert.equal(calls[0].args.asMe, true);
+    const pt = await fetch(u, { method: 'POST', headers: json('owner'), body: JSON.stringify({ alertId: rec.id, action: 'pt', target: 2.6, mention: false }) });
+    assert.equal(pt.status, 200, 'the owner may update any alert'); assert.equal(calls[1].args.target, 2.6); assert.equal(calls[1].args.mention, false);
+    const me = await (await fetch(`${base}/academy-activity/alerts`, { headers: { authorization: 'Bearer owner' } })).json();
+    assert.deepEqual(me.me, { userId: '1087769175453339648', owner: true });
+    assert.deepEqual((await (await fetch(`${base}/academy-activity/alerts`, { headers: { authorization: 'Bearer sub' } })).json()).me, { userId: 'sub', owner: false });
+  });
+  await withServer({ academyAlerts, academyOAuth }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/click-alert/desk`, { method: 'POST', headers: json('sub'), body: '{}' })).status, 503, 'off without the service');
+  });
+});

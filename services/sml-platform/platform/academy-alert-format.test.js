@@ -126,3 +126,18 @@ test('the alerts desk reads the bold layout back as the same alert', () => {
   const back = parseAlertMessage(made, Date.UTC(2026, 9, 5, 15));
   assert.deepEqual([back.symbol, back.entryPrice, back.targetPrice], ['AMD', 150, 171.5]);
 });
+
+test('the TAKE PROFITS template: entry, price now and the gain, the why lines, and a partial keeps a runner with its stop', () => {
+  const t = F.formatTakeProfits({ ticker: 'PMI', entry: 5.2, price: 6.3, why: ['MEM ALGO turned bearish on the daily', 'Price gave back 30% of the gain'] });
+  assert.equal(t.split('\n')[0], '@everyone');
+  assert.equal(t.split('\n')[1], '💰 𝐏𝐌𝐈 𝐓𝐀𝐊𝐄 𝐏𝐑𝐎𝐅𝐈𝐓𝐒 — 𝐄𝐍𝐓𝐑𝐘 $𝟓.𝟐𝟎 | 𝐍𝐎𝐖 $𝟔.𝟑𝟎 (+𝟐𝟏%) 💰');
+  assert.match(t, /🏁 Lock it in — the move has done its job\.\n\n📊 𝐖𝐇𝐘 𝐍𝐎𝐖\n• MEM ALGO turned bearish on the daily\n• Price gave back 30% of the gain\n/);
+  assert.match(t, /🚨 𝐒𝐓𝐎𝐏: Out — nothing left to protect\.$/);
+  const part = F.formatTakeProfits({ ticker: 'PMI', entry: 5.2, price: 6.3, partial: true, stop: 5.2, mention: false });
+  assert.doesNotMatch(part, /@everyone/);
+  assert.match(part, /𝐓𝐀𝐊𝐄 𝐏𝐀𝐑𝐓𝐈𝐀𝐋 𝐏𝐑𝐎𝐅𝐈𝐓𝐒/); assert.match(part, /𝐑𝐔𝐍𝐍𝐄𝐑 𝐑𝐔𝐋𝐄𝐒/); assert.match(part, /🚨 𝐒𝐓𝐎𝐏: Below \$5\.20 on what is left\./);
+  const loss = F.formatTakeProfits({ ticker: 'PMI', entry: 5.2, price: 4.9 });
+  assert.match(loss, /\(−𝟓\.𝟖%\)/); assert.match(loss, /Cut it here/);
+  assert.match(F.formatTakeProfits({ ticker: 'PMI', entry: 5.2, price: 6.3, why: ['<@everyone> buy'] }), /• everyone buy/, 'mentions are stripped out of model text');
+  assert.throws(() => F.formatTakeProfits({ ticker: 'PMI', entry: 0, price: 1 }), TypeError);
+});

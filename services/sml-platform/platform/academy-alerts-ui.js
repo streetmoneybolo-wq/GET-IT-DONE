@@ -19,7 +19,7 @@
   const BAND = { LOW: '#19c37d', MODERATE: '#9bd93c', ELEVATED: '#ffb020', HIGH: '#ff6a3d', EXTREME: '#ff2d55' };
   const ACT = { HOLD: ['HOLD', '#7fa6bf', '#0c1a24'], RAISE_TARGET: ['RAISE TARGET', '#19e36b', '#03150c'], PARTIAL: ['TAKE PARTIAL', '#ffb020', '#221500'], SELL: ['SELL', '#ff5470', '#2a0509'] };
 
-  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false, perMember: false, sourceCount: 0, teaser: null, pick: null };
+  const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false, perMember: false, sourceCount: 0, teaser: null, pick: null, me: null, arm: null, busy: '', note: {} };
   const KEY = 'sml-alerts-desk-v1';
   try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; if (saved && saved.hidden === true) S.hidden = true; } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, hidden: S.hidden })); } catch (_) { /* ignore */ } };
@@ -51,6 +51,9 @@
     + '#academy-alerts .pk-seg{display:flex;gap:4px;margin:6px 0}#academy-alerts .pk-seg button{flex:1;padding:5px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#a9bfcb;font:800 .6rem system-ui;cursor:pointer}#academy-alerts .pk-seg button.on{background:#12362b;border-color:#00d084;color:#fff}'
     + '#academy-alerts .pk-big{width:100%;margin:4px 0 8px;padding:9px;border:0;border-radius:8px;background:#00c47d;color:#042217;font:800 .7rem system-ui;cursor:pointer}#academy-alerts .pk-big.on{background:#17303c;color:#8fa6b3}#academy-alerts .pk-id{display:flex;gap:5px;margin:4px 0 8px}#academy-alerts .pk-id input{flex:1;min-width:0;padding:7px 8px;border:1px solid #23495a;border-radius:7px;background:#08121a;color:#fff;font:700 .66rem ui-monospace,monospace}'
     + '#academy-alerts .pk-msg{padding:6px 8px;margin:4px 0;border-radius:7px;background:#0b1a24;color:#a9bfcb;font-weight:600;font-size:.6rem;line-height:1.4}#academy-alerts .pk-msg.bad{background:#2a0c12;color:#ff9fb0}#academy-alerts .pk-tag{padding:1px 5px;border-radius:4px;background:#17303c;color:#8fa6b3;font:800 .5rem ui-monospace,monospace}'
+    + '#academy-alerts .aa-desk{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:7px;padding-top:6px;border-top:1px dashed #1d3a48;cursor:default}#academy-alerts .aa-sug{flex:1 1 100%;font:700 .6rem system-ui;color:#a9bfcb;line-height:1.35}#academy-alerts .aa-sug b{font:800 .6rem ui-monospace,monospace;letter-spacing:.04em}#academy-alerts .aa-sug.pt b{color:#19e36b}#academy-alerts .aa-sug.sell b{color:#ffb020}#academy-alerts .aa-sug.hold b{color:#7fa6bf}'
+    + '#academy-alerts .aa-db{flex:1 1 0;min-width:0;padding:7px 6px;border:1px solid #23495a;border-radius:7px;background:#0d1a24;color:#dcebf4;font:800 .62rem system-ui;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#academy-alerts .aa-db.pt{border-color:#19e36b;color:#5df0b0}#academy-alerts .aa-db.sell{border-color:#ffb020;color:#ffd08a}#academy-alerts .aa-db.rec{box-shadow:0 0 0 1px currentColor inset}#academy-alerts .aa-db.arm{background:#12362b;color:#fff;border-color:#00d084}#academy-alerts .aa-db.sell.arm{background:#3a2a0c;border-color:#ffb020}#academy-alerts .aa-db:disabled{opacity:.5;cursor:default}'
+    + '#academy-alerts .aa-dt{width:72px;padding:6px 6px;border:1px solid #23495a;border-radius:7px;background:#08121a;color:#fff;font:700 .64rem ui-monospace,monospace}#academy-alerts .aa-dm{flex:1 1 100%;font:600 .58rem system-ui;line-height:1.35;color:#a9bfcb}#academy-alerts .aa-dm.ok{color:#5df0b0}#academy-alerts .aa-dm.err{color:#ff9fb0}'
     + '#academy-alerts .aa-close{margin-left:auto;padding:3px 9px;border:1px solid #23495a;border-radius:6px;background:#0d1a24;color:#eaf5f8;font:800 .7rem system-ui;cursor:pointer}'
     + '#academy-alerts-fab{display:none;position:fixed;left:10px;bottom:14px;z-index:2147481000;align-items:center;gap:6px;padding:9px 13px;border:1px solid #2b5362;border-radius:999px;background:#0b1620;color:#eaf5f8;font:800 .72rem system-ui;box-shadow:0 6px 20px rgba(0,0,0,.5);cursor:pointer}#academy-alerts-fab i{width:9px;height:9px;border-radius:50%;background:#19c37d}'
     // wide: a third column between the chart and the quote panel
@@ -88,8 +91,44 @@
       + '<span class="aa-px"><span>$' + px(a.price) + '</span> <span class="' + ((a.chgPct || 0) >= 0 ? 'up' : 'dn') + '">' + (a.chgPct == null ? '' : (a.chgPct >= 0 ? '+' : '') + a.chgPct.toFixed(1) + '%') + '</span><br><span class="' + ((a.sincePct || 0) >= 0 ? 'up' : 'dn') + '" title="since the alert">' + pc(a.sincePct) + ' since alert</span></span></div>'
       + progressBar(a)
       + '<div class="aa-act"><span class="aa-chip" style="background:' + act[1] + ';color:' + act[2] + '">' + act[0] + (a.plan.action === 'RAISE_TARGET' || a.plan.action === 'PARTIAL' ? ' → ' + px(a.plan.target) : '') + '</span>' + ptChip(a) + optChip(a) + '<span class="aa-why">' + esc(a.plan.reasons[0] || '') + '</span></div>' + chk;
+    html += deskHtml(a);
     if (open) html += detailHtml(a);
     return html + '</div>';
+  }
+  /* The two buttons on an alert the member posted (every alert, for the owner): New PT posts the PT SMASHED layout with a higher target, Sell
+     posts TAKE PROFITS, both to the alert's channel as a reply to the newest post on that stock. The suggestion comes from the desk's read of
+     everything on the stock (the plan, MEM ALGO, the order book, risk, news and chatter). A press arms the button; a second press posts. */
+  const canAct = (a) => !!(S.me && a.channelId && a.next && (S.me.owner || (a.authorId && a.authorId === S.me.userId)));
+  const SUG = { pt: 'NEW PT', sell: 'SELL', hold: 'HOLD' };
+  function deskHtml(a) {
+    if (!canAct(a)) return '';
+    const n = a.next, armed = S.arm && S.arm.id === a.id ? S.arm : null, busy = S.busy === a.id, note = S.note[a.id];
+    const tgt = armed && armed.action === 'pt' ? armed.target : n.target;
+    let h = '<div class="aa-desk" data-stop="1"><span class="aa-sug ' + esc(n.action) + '" title="' + esc((n.facts || []).join(' · ')) + '"><b>MEM ALGO SAYS: ' + esc(SUG[n.action] || 'HOLD') + (n.action === 'sell' && n.partial ? ' (PARTIAL)' : '') + '</b> · ' + esc(n.label) + (n.facts && n.facts.length ? ' · ' + esc(n.facts.slice(0, 2).join(' · ')) : '') + '</span>';
+    if (armed && armed.action === 'pt') h += '<input class="aa-dt" type="number" step="0.01" min="0" value="' + esc(tgt) + '" data-desk-target="' + esc(a.id) + '" aria-label="New price target">';
+    h += '<button type="button" class="aa-db pt' + (n.action === 'pt' ? ' rec' : '') + (armed && armed.action === 'pt' ? ' arm' : '') + '" data-desk="pt" data-id="' + esc(a.id) + '"' + (busy ? ' disabled' : '') + '>' + (armed && armed.action === 'pt' ? (busy ? 'Posting…' : '↩ Confirm new PT') : '🎯 New PT' + (n.target ? ' $' + px(n.target) : '')) + '</button>';
+    h += '<button type="button" class="aa-db sell' + (n.action === 'sell' ? ' rec' : '') + (armed && armed.action === 'sell' ? ' arm' : '') + '" data-desk="sell" data-id="' + esc(a.id) + '"' + (busy ? ' disabled' : '') + '>' + (armed && armed.action === 'sell' ? (busy ? 'Posting…' : '↩ Confirm ' + (n.partial ? 'partial' : 'take profits')) : '💰 Sell' + (n.partial && n.action === 'sell' ? ' (partial)' : '')) + '</button>';
+    if (armed && !busy) h += '<span class="aa-dm">' + (armed.action === 'pt' ? 'Posts a PT SMASHED update to @everyone as a reply to your last ' + esc(a.symbol) + ' post. Change the target, then confirm.' : 'Posts TAKE PROFITS to @everyone as a reply to your last ' + esc(a.symbol) + ' post. Confirm to send.') + ' <a href="#" data-desk="cancel" data-id="' + esc(a.id) + '" style="color:#8fa6b3">cancel</a></span>';
+    if (note) h += '<span class="aa-dm ' + esc(note.tone) + '">' + esc(note.text) + '</span>';
+    return h + '</div>';
+  }
+  const DESK_ERR = { not_your_alert: 'Only the trader who posted an alert can update it.', channel_unavailable: 'That channel is not reachable by the Academy app right now.', you_cannot_post_there: 'You cannot post in that channel.', app_cannot_post_there: 'The Academy app cannot post in that channel.', rate_limited: 'Too many posts right now. Try again in a bit.', duplicate_alert: 'You just posted this.', no_live_price: 'No live price for this stock right now.', click_alert_subscription_required: 'Click-to-Alert is not unlocked on your account.', invalid_target: 'Pick a target above the current one.', alert_not_found: 'That alert is no longer on the desk.' };
+  async function deskPost(id, action) {
+    const a = S.alerts.find((x) => x.id === id); if (!a || S.busy) return;
+    const armed = S.arm && S.arm.id === id ? S.arm : null;
+    const target = action === 'pt' ? Number(armed && armed.target) : null;
+    if (action === 'pt' && !(target > 0)) { S.note[id] = { tone: 'err', text: 'Enter a price target first.' }; paint(); return; }
+    S.busy = id; delete S.note[id]; paint();
+    try {
+      const res = await api('/academy-activity/click-alert/desk', 'POST', { alertId: id, action, target: action === 'pt' ? target : undefined });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) { S.note[id] = { tone: 'err', text: j.detail || DESK_ERR[j.error] || 'That did not post. Try again in a moment.' }; }
+      else {
+        S.note[id] = { tone: 'ok', text: (action === 'pt' ? 'New PT $' + px(target) + ' posted' : (j.partial ? 'Take partial profits' : 'Take profits') + ' posted' + (j.gainPct != null ? ' (' + (j.gainPct >= 0 ? '+' : '') + j.gainPct + '% from the entry)' : '')) + (j.repliedTo ? ' as a reply to the last ' + a.symbol + ' post' : '') + (j.mentioned ? ' with @everyone' : '') + (j.postedAs === 'persona' ? ' from your bot.' : j.postedAs === 'member' ? ' under your name.' : ' as the Academy app.') };
+        S.arm = null; setTimeout(() => { delete S.note[id]; paint(); }, 12000); load();
+      }
+    } catch (_) { S.note[id] = { tone: 'err', text: 'The desk is reconnecting. Try again in a moment.' }; }
+    S.busy = ''; paint();
   }
   /* the automatic price-target updates: PT smashed, new PT set (same layout as the Discord posts) */
   function ptChip(a) {
@@ -165,6 +204,7 @@
     if (!d) return '<div class="aa-det"><span class="mut">Loading the full breakdown…</span></div>';
     let h = '<div class="aa-det" data-stop="1">';
     h += ptUpdatesHtml(d);
+    if (d.next) h += '<h5>WHAT TO DO NEXT · ' + esc(SUG[d.next.action] || 'HOLD') + (d.next.action === 'sell' && d.next.partial ? ' (PARTIAL)' : '') + '</h5><p style="margin:0 0 4px;line-height:1.45"><b>' + esc(d.next.label) + '.</b> ' + esc((d.next.facts || []).join(' · ')) + (d.next.target ? ' · next PT $' + px(d.next.target) : '') + ' · confidence ' + esc(d.next.confidence) + '</p>';
     h += '<h5>WHAT THE PLAN SAYS</h5><ul>' + d.plan.reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>';
     h += '<div class="aa-lv" style="margin-top:4px"><span>new target ' + px(d.plan.target) + '</span><span>stop ' + px(d.plan.stop) + '</span><span>high since ' + px(d.high) + '</span></div>';
     if (d.risk.flags && d.risk.flags.length) h += '<h5>FLAGS</h5><ul>' + d.risk.flags.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>';
@@ -290,10 +330,12 @@
       const res = await api('/academy-activity/alerts'); const j = await res.json();
       if (!res.ok || !j.ok) throw new Error(j && j.error || 'alerts_unavailable');
       S.alerts = j.alerts || []; S.feed = j.feed || {}; S.asOf = j.asOf; S.error = '';
-      S.perMember = j.perMember === true; S.sourceCount = Number(j.sources) || 0; S.teaser = j.teaser || null;
+      S.perMember = j.perMember === true; S.sourceCount = Number(j.sources) || 0; S.teaser = j.teaser || null; S.me = j.me || null;
       if (S.open && !S.alerts.some((a) => a.id === S.open)) { S.open = null; S.detail = null; }
     } catch (e) { S.error = e && e.message === 'alerts_disabled' ? 'The alerts desk is switched off right now.' : 'The alerts desk is reconnecting…'; }
-    S.loading = false; if (!S.pick) paint();
+    S.loading = false;
+    const typing = S.arm && document.activeElement && document.activeElement.dataset && document.activeElement.dataset.deskTarget; // a target being typed is not repainted away
+    if (!S.pick && !typing) paint();
     if (S.open) refreshDetail();
   }
   async function refreshDetail() {
@@ -317,6 +359,16 @@
       else if (t.dataset.ch && !t.dataset.act) { openChannel(t.dataset.ch); return; }
     }
     const tab = e.target.closest('[data-tab]'); if (tab) { S.tab = tab.dataset.tab; save(); paint(); return; }
+    const desk = e.target.closest('[data-desk]');
+    if (desk) {
+      e.preventDefault();
+      const id = desk.dataset.id, which = desk.dataset.desk;
+      if (which === 'cancel') { S.arm = null; paint(); return; }
+      const a = S.alerts.find((x) => x.id === id); if (!a || S.busy) return;
+      const armed = S.arm && S.arm.id === id && S.arm.action === which;
+      if (!armed) { S.arm = { id, action: which, target: a.next && a.next.target ? a.next.target : null, at: Date.now() }; paint(); const inp = panel.querySelector('[data-desk-target="' + id + '"]'); if (inp) { try { inp.focus(); inp.select(); } catch (_) { /* ignore */ } } return; }
+      deskPost(id, which); return;
+    }
     const act = e.target.closest('[data-act]');
     if (act) {
       if (act.dataset.act === 'unlock') { const u = document.getElementById('academy-unlock'); if (u) u.click(); }
@@ -339,6 +391,10 @@
     else { S.open = id; S.detail = null; paint(); refreshDetail(); }
     if (window.matchMedia('(max-width:720px)').matches && chartSymbol() !== sym) { S.sheet = false; panel.classList.remove('sheet'); }
   });
+  panel.addEventListener('input', (e) => { const t = e.target; if (t && t.dataset && t.dataset.deskTarget && S.arm && S.arm.id === t.dataset.deskTarget) S.arm.target = Number(t.value) || null; });
+  panel.addEventListener('keydown', (e) => { const t = e.target; if (e.key === 'Enter' && t && t.dataset && t.dataset.deskTarget && S.arm && S.arm.id === t.dataset.deskTarget) { e.preventDefault(); deskPost(t.dataset.deskTarget, 'pt'); } });
+  // an armed button disarms itself after a while
+  setInterval(() => { if (S.arm && Date.now() - S.arm.at > 45000 && !S.busy) { S.arm = null; paint(); } }, 5000);
   fab.addEventListener('click', () => { if (S.hidden && !window.matchMedia('(max-width:720px)').matches) { setHidden(false); return; } S.sheet = !S.sheet; panel.classList.toggle('sheet', S.sheet); paint(); });
   // the quote panel gets a way back to the alerts on medium screens
   const back = document.createElement('button'); back.type = 'button'; back.className = 'aa-swap'; back.textContent = '← Alerts'; back.style.cssText = 'display:none;margin:0 0 8px';

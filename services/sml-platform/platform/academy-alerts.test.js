@@ -458,3 +458,35 @@ test('a Click-to-Alert post made through a bot or webhook is filed under the mem
   assert.equal(svc.allows('9001', [{ key: 'swings', authorId: '200000000000000002', view: 'live' }]).view, 'live');
   assert.ok(!svc.allows('9002', [{ key: 'swings', authorId: '200000000000000002', view: 'live' }]));
 });
+
+test('suggestNext: the two desk buttons get one verdict from the plan and the rest of the read, with a next target', () => {
+  const { suggestNext } = require('./academy-alert-risk');
+  const alert = { entry: 2, target: 2.33 };
+  const up = { bias: 'long', label: 'swing model is bullish' };
+  const pt = suggestNext({ plan: { action: 'RAISE_TARGET', target: 2.6, stop: 2.2, reasons: ['Target 2.33 was reached (high 2.4)', 'MEM ALGO is still bullish'] }, risk: { band: 'MODERATE' }, algoView: up, flow: { bias: 'bullish' }, since: { high: 2.4 }, alert, price: 2.38 });
+  assert.equal(pt.action, 'pt'); assert.equal(pt.target, 2.6); assert.equal(pt.confidence, 'high');
+  assert.deepEqual(pt.facts, ['+19% from the entry', 'MEM ALGO: swing model is bullish', 'order book bullish', 'risk moderate']);
+  assert.equal(pt.why[0], 'Target 2.33 was reached (high 2.4)');
+  const sell = suggestNext({ plan: { action: 'SELL', target: 2.33, reasons: ['MEM ALGO has turned against the trade'] }, risk: { band: 'HIGH' }, algoView: { bias: 'short', label: 'bearish' }, alert, price: 2.1 });
+  assert.equal(sell.action, 'sell'); assert.equal(sell.partial, false); assert.equal(sell.confidence, 'high');
+  const part = suggestNext({ plan: { action: 'PARTIAL', target: 2.33, stop: 2, reasons: [] }, risk: { band: 'HIGH' }, algoView: up, alert, price: 2.2 });
+  assert.equal(part.action, 'sell'); assert.equal(part.partial, true); assert.equal(part.label, 'Take partial profits');
+  assert.equal(part.target, 2.56, 'no raised target from the plan: 10% above the working target');
+  const near = suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: 0.9, reasons: [] }, risk: { band: 'LOW' }, algoView: up, alert, price: 2.3 });
+  assert.equal(near.action, 'pt', 'close to target with MEM ALGO bullish leans to a new PT');
+  const under = suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: -0.2, reasons: [] }, risk: { band: 'LOW' }, algoView: { bias: 'short' }, alert, price: 1.9 });
+  assert.equal(under.action, 'sell');
+  assert.equal(suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: 0.3, reasons: [] }, alert, price: 2.1 }).action, 'hold');
+  const ladder = suggestNext({ plan: { action: 'HOLD', target: 2.8, progress: 0.3, reasons: [] }, alert, price: 2.5, ladder: { target: 2.8 } });
+  assert.equal(ladder.target, 3.08, 'a raised ladder target is the working target');
+  assert.equal(suggestNext({}).action, 'hold', 'nothing known is a hold');
+});
+
+test('each desk alert carries its Discord channel and the next-move verdict for the buttons', async () => {
+  const { svc } = await boot({ discord: good(), quotes: { GDC: 2.1, ZEO: 0.4, INTC: 120 } });
+  await svc.poll(); await svc.refresh();
+  const gdc = svc.snapshot().alerts.find((a) => a.symbol === 'GDC');
+  assert.equal(gdc.channelId, '111');
+  assert.ok(['pt', 'sell', 'hold'].includes(gdc.next.action)); assert.ok(gdc.next.target > 0); assert.ok(Array.isArray(gdc.next.facts) && gdc.next.facts.length);
+  assert.equal(svc.channelIdFor('longterm'), '222'); assert.equal(svc.channelIdFor('nope'), '');
+});

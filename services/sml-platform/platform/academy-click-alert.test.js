@@ -462,3 +462,63 @@ test('a contract that expires today (0DTE) can be alerted until the close, reads
   const gone = await late.preview(USER, { symbol: 'TEST', contract: { type: 'call', strike, expiry: today }, autoTarget: true });
   assert.equal(gone.code, 'contract_expired'); assert.match(gone.detail, /stopped trading at the close/);
 });
+
+/* ---------- the alerts desk buttons: New PT and Sell, posted as replies ---------- */
+test('a reply: a bot post carries message_reference, a webhook post opens with a jump link, and a bad id is no reply', async () => {
+  const { svc, posts } = fake({ botCanWebhook: false });
+  const out = await svc.send({ userId: USER, displayName: 'Ana' }, body({ replyTo: '777777777777777777' }));
+  assert.equal(out.ok, true); assert.equal(out.repliedTo, '777777777777777777');
+  assert.deepEqual(posts[0].body.message_reference, { message_id: '777777777777777777', channel_id: CHAN, fail_if_not_exists: false });
+  const w = fake({ botCanWebhook: true });
+  const out2 = await w.svc.send({ userId: USER, displayName: 'Ana' }, body({ replyTo: '777777777777777777' }));
+  assert.equal(out2.postedAs, 'member'); assert.equal(out2.repliedTo, '777777777777777777');
+  assert.equal(w.posts[0].body.message_reference, undefined, 'a webhook cannot reply');
+  assert.match(w.posts[0].body.content, new RegExp('^↩️ Update to https://discord.com/channels/' + GUILD + '/' + CHAN + '/777777777777777777\n'));
+  const n = fake({ botCanWebhook: false });
+  const out3 = await n.svc.send({ userId: USER, displayName: 'Ana' }, body({ replyTo: 'junk' }));
+  assert.equal(out3.repliedTo, null); assert.equal(n.posts[0].body.message_reference, undefined);
+});
+
+test('takeProfits posts the TAKE PROFITS layout with the live price and the gain, the plan reasons plus what the chart says, and records an exit', async () => {
+  const store = CA.createClickAlertStore(), posts = [];
+  const svc = smashService(store, posts);
+  const out = await svc.takeProfits({ userId: USER, displayName: 'Ana' }, { symbol: 'test', channelId: CHAN, entry: lastClose * 0.8, why: ['Target was reached (high ' + lastClose + ')', 'Momentum is not strong enough to raise the target'], replyTo: '777777777777777777' });
+  assert.equal(out.ok, true); assert.ok(out.price > 0, 'the live price (last intraday close)'); assert.equal(out.gainPct, Math.round(((out.price - lastClose * 0.8) / (lastClose * 0.8)) * 1000) / 10); assert.equal(out.repliedTo, '777777777777777777'); assert.equal(out.mentioned, true);
+  assert.match(posts[0].body.content, /^@everyone\n💰 𝐓𝐄𝐒𝐓 𝐓𝐀𝐊𝐄 𝐏𝐑𝐎𝐅𝐈𝐓𝐒 — 𝐄𝐍𝐓𝐑𝐘 \$/);
+  assert.match(posts[0].body.content, /📊 𝐖𝐇𝐘 𝐍𝐎𝐖\n• Target was reached/);
+  assert.match(posts[0].body.content, /⏱ .* ET · price now \$/);
+  assert.deepEqual(posts[0].body.message_reference, { message_id: '777777777777777777', channel_id: CHAN, fail_if_not_exists: false });
+  assert.equal(await store.count({ userId: USER, symbol: 'TEST exit', sinceMs: 60_000 }), 1);
+  const again = await svc.takeProfits({ userId: USER }, { symbol: 'TEST', channelId: CHAN, entry: lastClose * 0.8 });
+  assert.equal(again.code, 'duplicate_alert');
+  assert.equal((await svc.takeProfits({ userId: USER }, { symbol: 'TEST', channelId: CHAN, entry: 0 })).code, 'invalid_entry');
+  assert.equal((await svc.takeProfits({ userId: USER }, { symbol: 'TEST', channelId: 'nope', entry: 1 })).code, 'invalid_channel');
+  const partial = await svc.takeProfits({ userId: USER }, { symbol: 'OTHER', channelId: CHAN, entry: lastClose * 0.9, partial: true, stop: lastClose * 0.9, mention: false });
+  assert.equal(partial.partial, true); assert.doesNotMatch(posts[1].body.content, /@everyone/); assert.match(posts[1].body.content, /𝐓𝐀𝐊𝐄 𝐏𝐀𝐑𝐓𝐈𝐀𝐋 𝐏𝐑𝐎𝐅𝐈𝐓𝐒/); assert.match(posts[1].body.content, /🚨 𝐒𝐓𝐎𝐏: Below \$/);
+});
+
+test('deskAction replies to the newest post on the stock in that channel: the member\'s last Click-to-Alert update when it is newer than the alert, else the alert itself', async () => {
+  const store = CA.createClickAlertStore(), posts = [];
+  const svc = smashService(store, posts);
+  const alert = { id: '600000000000000006', symbol: 'TEST', entry: lastClose * 0.9, target: lastClose * 0.95, at: Date.now() - 86_400_000, channelId: CHAN, plan: { action: 'RAISE_TARGET', target: lastClose * 1.08, stop: lastClose * 0.95, reasons: ['Target was reached'] } };
+  // no update of ours yet: the reply goes to the alert
+  let out = await svc.deskAction({ userId: USER, displayName: 'Ana' }, { alert, action: 'pt', target: lastClose * 1.08 });
+  assert.equal(out.ok, true); assert.equal(out.smashed, true, 'New PT is the PT SMASHED layout'); assert.equal(out.repliedTo, '600000000000000006');
+  assert.match(posts[0].body.content, /𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃/);
+  assert.equal(posts[0].body.message_reference.message_id, '600000000000000006');
+  // that post is now the newest on the stock here: Sell replies to it
+  out = await svc.deskAction({ userId: USER, displayName: 'Ana' }, { alert, action: 'sell' });
+  assert.equal(out.ok, true); assert.equal(out.repliedTo, '555555555555555555');
+  assert.match(posts[1].body.content, /𝐓𝐀𝐊𝐄 𝐏𝐑𝐎𝐅𝐈𝐓𝐒/); assert.match(posts[1].body.content, /• Target was reached/);
+  // a partial plan makes it a partial with the plan's stop on the runner
+  const p2 = { ...alert, symbol: 'OTHR', plan: { action: 'PARTIAL', target: lastClose * 1.1, stop: lastClose * 0.97, reasons: ['Risk is high, so bank part of it'] } };
+  out = await svc.deskAction({ userId: USER }, { alert: p2, action: 'sell' });
+  assert.equal(out.partial, true); assert.match(posts[2].body.content, /𝐓𝐀𝐊𝐄 𝐏𝐀𝐑𝐓𝐈𝐀𝐋 𝐏𝐑𝐎𝐅𝐈𝐓𝐒/);
+  assert.equal((await svc.deskAction({ userId: USER }, { alert, action: 'pt' })).code, 'invalid_target');
+  assert.equal((await svc.deskAction({ userId: USER }, { alert, action: 'nope' })).code, 'invalid_action');
+  assert.equal((await svc.deskAction({ userId: USER }, { alert: { ...alert, channelId: '' }, action: 'sell' })).code, 'channel_unavailable');
+  // the store knows where the last post on a symbol went
+  const last = await store.last({ userId: USER, symbol: 'TEST', sinceMs: 60_000, channelId: CHAN });
+  assert.equal(last.messageId, '555555555555555555'); assert.equal(last.channelId, CHAN);
+  assert.equal(await store.last({ userId: USER, symbol: 'TEST', sinceMs: 60_000, channelId: '1' }), null);
+});

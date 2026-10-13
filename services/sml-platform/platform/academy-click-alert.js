@@ -293,13 +293,16 @@ function createClickAlertStore({ pool = null } = {}) {
     return mem.filter((r) => r.at > cut && (!userId || r.userId === userId) && (!channelId || r.channelId === channelId) && (!symbol || r.symbol === symbol) && (target == null || r.target === target)).length;
   }
   /* this member's newest alert on a symbol (to know if its target has since been hit) */
-  async function last({ userId, symbol, sinceMs }) {
+  async function last({ userId, symbol, sinceMs, channelId = null }) {
+    const toRow = (r) => ({ side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at, messageId: r.messageId ? String(r.messageId) : '', channelId: r.channelId ? String(r.channelId) : '' });
     if (db) {
-      const r = await db.query('SELECT side, entry, target, created_at FROM academy_click_alerts WHERE discord_id = $1 AND symbol = $2 AND created_at > now() - ($3 || \' milliseconds\')::interval ORDER BY created_at DESC LIMIT 1', [userId, symbol, String(sinceMs)]);
-      const row = r.rows[0]; return row ? { side: row.side, entry: Number(row.entry), target: Number(row.target), at: new Date(row.created_at).getTime() } : null;
+      const args = [userId, symbol, String(sinceMs)]; let where = 'discord_id = $1 AND symbol = $2 AND created_at > now() - ($3 || \' milliseconds\')::interval';
+      if (channelId) { args.push(String(channelId)); where += ' AND channel_id = $' + args.length; }
+      const r = await db.query('SELECT side, entry, target, created_at, message_id, channel_id FROM academy_click_alerts WHERE ' + where + ' ORDER BY created_at DESC LIMIT 1', args);
+      const row = r.rows[0]; return row ? toRow({ side: row.side, entry: row.entry, target: row.target, at: new Date(row.created_at).getTime(), messageId: row.message_id, channelId: row.channel_id }) : null;
     }
     const cut = Date.now() - sinceMs; let hit = null;
-    for (const r of mem) if (r.userId === userId && r.symbol === symbol && r.at > cut && (!hit || r.at >= hit.at)) hit = { side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at };
+    for (const r of mem) if (r.userId === userId && r.symbol === symbol && r.at > cut && (!channelId || r.channelId === String(channelId)) && (!hit || r.at >= hit.at)) hit = toRow(r);
     return hit;
   }
   /* every plain-stock alert sent since a moment ago (options contracts have a space in their key and are left out) */
@@ -586,7 +589,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, channelId, mention, images: wantImages = true, asMe = true, via = '' } = {}) {
+  async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, channelId, mention, images: wantImages = true, asMe = true, via = '', replyTo = '' } = {}) {
     const userId = String(user.userId || '');
     if (via === 'site') return { ok: false, status: 410, code: 'site_publishing_unavailable', detail: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.' };
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
@@ -628,22 +631,111 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
       if (files.length < 2) { files = []; skipped = 'unavailable'; }
     }
     const msgBody = { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } };
+    const reply = replyRef(replyTo, where.guildId, channelId);
     let posted, postedAs = 'app';
     if (persona) {
-      try { posted = await persona.post(String(channelId), msgBody, files); postedAs = 'persona'; }
+      try { posted = await persona.post(String(channelId), reply.asReply(msgBody), files); postedAs = 'persona'; }
       catch (error) { logger('warn', 'click_alert_persona_failed', { error: String(error.message || error) }); }
     }
     if (!posted && viaWebhook) {
-      try { posted = await directory.postAsMember(String(channelId), msgBody, files, { userId, displayName: user.displayName }); postedAs = 'member'; }
+      try { posted = await directory.postAsMember(String(channelId), reply.asLink(msgBody), files, { userId, displayName: user.displayName }); postedAs = 'member'; }
       catch (error) { logger('warn', 'click_alert_webhook_failed', { error: String(error.message || error) }); }
     }
     if (!posted) {
       if (footer && (viaWebhook || persona)) msgBody.content += '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
-      posted = await directory.post(String(channelId), msgBody, files);
+      posted = await directory.post(String(channelId), reply.asReply(msgBody), files);
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, catalysts: cat ? { verdict: cat.verdict, headline: cat.headline } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, repliedTo: reply.id || null, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, catalysts: cat ? { verdict: cat.verdict, headline: cat.headline } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
+  }
+
+  /* A reply to an earlier post on the same stock. A bot post carries a real Discord reply (message_reference); a webhook post cannot, so it
+     opens with a jump link to the earlier post instead. An id that is not a snowflake means no reply at all. */
+  function replyRef(replyTo, guildId, channelId) {
+    const id = SNOWFLAKE.test(String(replyTo || '')) ? String(replyTo) : '';
+    return {
+      id,
+      asReply: (body) => (id ? { ...body, message_reference: { message_id: id, channel_id: String(channelId), fail_if_not_exists: false } } : body),
+      asLink: (body) => (id && SNOWFLAKE.test(String(guildId || '')) ? { ...body, content: '↩️ Update to https://discord.com/channels/' + guildId + '/' + channelId + '/' + id + '\n' + body.content } : body)
+    };
+  }
+
+  /* ---------- the alerts desk's two buttons ----------
+   * "New PT" posts the PT SMASHED layout with a higher target; "Sell" posts TAKE PROFITS. Both go to the channel the alert lives in, as a reply
+   * to the newest post on that stock there (the member's latest Click-to-Alert update on it, else the alert itself). */
+  const ALERT_REPLY_WINDOW_MS = 45 * 86_400_000;
+  async function replyTargetFor(userId, { symbol, channelId, alertId, alertAt }) {
+    const mine = store.last ? await store.last({ userId, symbol: String(symbol).toUpperCase(), sinceMs: ALERT_REPLY_WINDOW_MS, channelId: String(channelId) }).catch(() => null) : null;
+    if (mine && mine.messageId && (!alertAt || mine.at >= Number(alertAt))) return mine.messageId;
+    return SNOWFLAKE.test(String(alertId || '')) ? String(alertId) : '';
+  }
+  /* the exit post: entry from the alert, price now, the gain, and why (the desk's plan reasons first, then what the chart says) */
+  async function takeProfits(user, { symbol, channelId, entry, side = 'long', partial = false, stop = null, why = [], status = '', mention, asMe = true, replyTo = '' } = {}) {
+    const userId = String(user.userId || '');
+    const sym = String(symbol || '').toUpperCase();
+    if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return { ok: false, status: 422, code: 'invalid_symbol' };
+    if (!(Number(entry) > 0)) return { ok: false, status: 422, code: 'invalid_entry', detail: 'The alert has no entry price.' };
+    if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
+    const ent = await entitlement(userId);
+    if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
+    if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
+    const pd = personas && personas[userId];
+    const where = await (pd || directory).postingIn(userId, String(channelId)).catch(() => null);
+    if (!where) return { ok: false, status: 404, code: 'channel_unavailable', detail: pd ? 'Your Grandmaster-Obi bot is not in that server, or the channel could not be found.' : 'The Academy app is not installed in that server, or the channel could not be found.' };
+    if (!where.userCanSend) return { ok: false, status: 403, code: 'you_cannot_post_there', detail: 'You do not have permission to send messages in that channel.' };
+    if (!where.botCanSend) return { ok: false, status: 403, code: 'app_cannot_post_there', detail: 'The Academy app cannot send messages in that channel. Ask a server admin to allow it.' };
+    const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
+    const { last } = await loadBars(sym);
+    const price = last ? last.c : null;
+    if (!(price > 0)) return { ok: false, status: 422, code: 'no_live_price' };
+    const dupKey = sym + ' exit';
+    if (await store.count({ userId, symbol: dupKey, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just posted take profits on ' + sym + '.' };
+    // the reasons: the desk's plan first, then the chart's own read of the stock
+    const lines = (Array.isArray(why) ? why : []).map((w) => String(w || '').trim()).filter(Boolean);
+    let ev = null; try { ev = await evidenceFor(sym, side); } catch (_) { ev = null; }
+    if (ev && ev.tech) {
+      const t = ev.tech;
+      if (t.rsi != null && t.rsi >= 70) lines.push('RSI ' + t.rsi + ' on the daily: stretched');
+      if (t.aboveVwap === false) lines.push('Trading under today\'s VWAP: buyers have lost the session');
+      if (t.sma20 != null && price < t.sma20) lines.push('Price is under its 20-day average ($' + t.sma20.toFixed(2) + ')');
+      if (t.relVol != null && t.relVol >= 2) lines.push('Volume ' + t.relVol + 'x normal: the crowd is here');
+    }
+    if (ev && Number.isFinite(ev.alignment) && ev.alignment <= -0.3) lines.push('MEM ALGO now leans ' + (side === 'short' ? 'up' : 'down') + ' on the horizons it reads');
+    const wantPing = mention === undefined ? true : !!mention;
+    const ping = wantPing && where.mentionEveryone;
+    const text = format.formatTakeProfits({ ticker: sym, entry: Number(entry), price, side, partial: !!partial, stop: Number(stop) > 0 ? Number(stop) : null, why: [...new Set(lines)].slice(0, 5), status, mention: ping });
+    let content = text + '\n\n' + alertTimeAndPrice({ entry: price }, new Date(now())).replace('price at alert', 'price now');
+    const persona = pd || null;
+    const viaWebhook = !persona && asMe !== false && !!where.botCanWebhook && typeof directory.postAsMember === 'function';
+    const sentBy = () => '\n-# Sent by ' + String(user.displayName || 'an Academy member').replace(/[\u0000-\u001f<>@`*_~|]/g, '').slice(0, 40) + ' with Click-to-Alert · Making Easy Money Academy · educational, not financial advice';
+    if (footer && !viaWebhook && !persona) content += sentBy();
+    const msgBody = { content, allowed_mentions: { parse: ping ? ['everyone'] : [] } };
+    const reply = replyRef(replyTo, where.guildId, channelId);
+    let posted, postedAs = 'app';
+    if (persona) { try { posted = await persona.post(String(channelId), reply.asReply(msgBody), []); postedAs = 'persona'; } catch (error) { logger('warn', 'click_alert_persona_failed', { error: String(error.message || error) }); } }
+    if (!posted && viaWebhook) { try { posted = await directory.postAsMember(String(channelId), reply.asLink(msgBody), [], { userId, displayName: user.displayName }); postedAs = 'member'; } catch (error) { logger('warn', 'click_alert_webhook_failed', { error: String(error.message || error) }); } }
+    if (!posted) { if (footer && (viaWebhook || persona)) msgBody.content += sentBy(); posted = await directory.post(String(channelId), reply.asReply(msgBody), []); }
+    await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: side === 'short' ? 'short' : 'long', entry: Number(entry), target: price, stop: Number(stop) > 0 ? Number(stop) : null, horizon: 'swing', confidence: 'n/a' }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
+    logger('info', 'click_alert_sent', { symbol: sym, horizon: 'exit', guildId: where.guildId, partial: !!partial });
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, repliedTo: reply.id || null, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, price, entry: Number(entry), gainPct: Math.round(((side === 'short' ? Number(entry) - price : price - Number(entry)) / Number(entry)) * 1000) / 10, partial: !!partial, text };
+  }
+  /* one button press on the desk: alert = the desk's record of the post (id, symbol, entry, channelId, at, plan) */
+  async function deskAction(user, { alert, action, target, mention, asMe = true } = {}) {
+    if (!alert || !SNOWFLAKE.test(String(alert.channelId || ''))) return { ok: false, status: 404, code: 'channel_unavailable', detail: 'That alert\'s channel is not known.' };
+    const userId = String(user.userId || '');
+    const replyTo = await replyTargetFor(userId, { symbol: alert.symbol, channelId: alert.channelId, alertId: alert.id, alertAt: alert.at });
+    if (action === 'sell') {
+      const plan = alert.plan || {};
+      const partial = plan.action === 'PARTIAL';
+      return takeProfits(user, { symbol: alert.symbol, channelId: alert.channelId, entry: alert.entry, side: 'long', partial, stop: partial ? plan.stop : null, why: Array.isArray(plan.reasons) ? plan.reasons.slice(0, 3) : [], mention, asMe, replyTo });
+    }
+    if (action === 'pt') {
+      const t = Number(target);
+      if (!(t > 0)) return { ok: false, status: 422, code: 'invalid_target', detail: 'Pick a price target above the current one.' };
+      return send(user, { symbol: alert.symbol, target: t, mode: 'smashed', channelId: alert.channelId, mention, asMe, replyTo });
+    }
+    return { ok: false, status: 400, code: 'invalid_action' };
   }
 
   /* ---------- the automatic price-target update (academy-auto-pt.js) ---------- */
@@ -688,7 +780,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return { messageId: posted.id, images: files.length === 2 };
   }
 
-  return { entitlement, preview, sitePreview, send, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store, limits: { ...lim } };
+  return { entitlement, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

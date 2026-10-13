@@ -2536,6 +2536,39 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     /* Click-to-Alert (a separate paid add-on, checked live against a Discord role): the member clicks a price on the chart, the Academy's data picks the horizon
        (day / swing / mid / long), and the alert is posted to a channel the member can post in, in GrandMaster-Obi's layout. */
+    /* The alerts desk's two buttons: New PT (a PT SMASHED post with a higher target) and Sell (TAKE PROFITS), posted to the alert's own
+       channel as a reply to the newest post on that stock. The member's own alerts, or any alert for the owner. */
+    if (request.method === 'POST' && path === '/academy-activity/click-alert/desk') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!academyClickAlert || typeof academyClickAlert.deskAction !== 'function' || !academyAlerts) { sendJson(response, 503, { ok: false, error: 'click_alert_disabled' }); return; }
+      if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+      const body = await readRequestBody(request, 2048);
+      if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+      let input; try { input = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+      const action = input.action === 'sell' ? 'sell' : input.action === 'pt' ? 'pt' : '';
+      const alertId = String(input.alertId || '').replace(/[^0-9]/g, '').slice(0, 24);
+      if (!action || !alertId) { sendJson(response, 400, { ok: false, error: 'invalid_action' }); return; }
+      try {
+        const rec = academyAlerts.alerts && typeof academyAlerts.alerts.get === 'function' ? academyAlerts.alerts.get(alertId) : null;
+        if (!rec) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
+        const owner = OWNER_IDS.includes(String(session.userId));
+        if (!owner && String(rec.authorId || '') !== String(session.userId)) { sendJson(response, 403, { ok: false, error: 'not_your_alert', detail: 'Only the trader who posted an alert can update it.' }); return; }
+        const ev = academyAlerts.evaluated && typeof academyAlerts.evaluated.get === 'function' ? academyAlerts.evaluated.get(alertId) : null;
+        const alert = { id: rec.id, symbol: rec.symbol, entry: rec.entry, target: rec.target, at: rec.at, channelId: academyAlerts.channelIdFor ? academyAlerts.channelIdFor(rec.source) : '', plan: ev && ev.plan ? { action: ev.plan.action, target: ev.plan.target, stop: ev.plan.stop, reasons: ev.plan.reasons } : null };
+        const out = await academyClickAlert.deskAction({ userId: session.userId, displayName: session.displayName }, { alert, action, target: input.target, mention: input.mention, asMe: input.asMe !== false });
+        if (!out.ok) { sendJson(response, out.status || 400, { ok: false, error: out.code, ...(out.detail ? { detail: out.detail } : {}) }); return; }
+        if (academyAlertSources && typeof academyAlertSources.followOwn === 'function') void academyAlertSources.followOwn(session.userId, alert.channelId, session.displayName);
+        logger('info', 'academy_desk_action', { action, symbol: alert.symbol, repliedTo: out.repliedTo || null });
+        sendJson(response, 200, out);
+      } catch (error) {
+        logger('error', 'academy_desk_action_failed', { error });
+        sendJson(response, error && error.status === 429 ? 429 : 503, { ok: false, error: 'temporarily_unavailable' });
+      }
+      return;
+    }
     if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/chain', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -2607,7 +2640,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
             const one = await academyAlerts.detail(alertId, { closedOnly: src.view === 'closed' });
             if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
             sendJson(response, 200, { ok: true, alert: one });
-          } else sendJson(response, 200, { ...academyAlerts.snapshot({ sources }), sources: sources.length, perMember: true });
+          } else sendJson(response, 200, { ...academyAlerts.snapshot({ sources }), sources: sources.length, perMember: true, me: { userId: String(session.userId), owner: OWNER_IDS.includes(String(session.userId)) } });
         } catch (error) { logger('error', 'academy_alerts_request_failed', { error }); sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' }); }
         return;
       }
@@ -2618,7 +2651,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const one = alertView === 'closed' ? await academyAlerts.detail(alertId, { closedOnly: true }) : await academyAlerts.detail(alertId);
           if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
           sendJson(response, 200, { ok: true, alert: one });
-        } else sendJson(response, 200, alertView === 'live' ? academyAlerts.snapshot() : academyAlerts.snapshot({ view: alertView }));
+        } else sendJson(response, 200, { ...(alertView === 'live' ? academyAlerts.snapshot() : academyAlerts.snapshot({ view: alertView })), me: { userId: String(session.userId), owner: OWNER_IDS.includes(String(session.userId)) } });
       } catch (error) { logger('error', 'academy_alerts_request_failed', { error }); sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' }); }
       return;
     }
