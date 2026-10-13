@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML PWA
  * Description: Makes stockmarketloop.com installable as an app on Android, iPhone/iPad and desktop: web app manifest, service worker (offline fallback, cached assets), home-screen icons, an install prompt and the iPhone "Add to Home Screen" hint. The app is the whole site.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_PWA_VERSION', '1.2.0' );
+define( 'SML_PWA_VERSION', '1.2.1' );
 define( 'SML_PWA_SW_PATH', '/sml-sw.js' );
 define( 'SML_PWA_MANIFEST_PATH', '/sml-manifest.webmanifest' ); // its own path: the site already answers /manifest.webmanifest elsewhere (SML App Links)
 define( 'SML_PWA_OFFLINE_PATH', '/sml-pwa-offline' );
@@ -125,27 +125,27 @@ function sml_pwa_footer() {
 function sml_pwa_footer_html() {
 	$sw   = SML_PWA_SW_PATH . '?v=' . rawurlencode( SML_PWA_VERSION );
 	$icon = sml_pwa_url( 'icons/icon-192.png' );
-	ob_start();
-	?>
+	return '
 <style id="sml-pwa-css">#sml-pwa-bar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:2147483000;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:#06110d;border:1px solid #1f4a39;box-shadow:0 14px 40px rgba(0,0,0,.55);color:#e6f2ec;font:600 14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}#sml-pwa-bar img{width:44px;height:44px;border-radius:11px;flex:none}#sml-pwa-bar .t{flex:1;min-width:0}#sml-pwa-bar .t b{display:block;color:#fff}#sml-pwa-bar .t small{display:block;color:#8fb0a2;font-weight:500;font-size:12px}#sml-pwa-bar button{appearance:none;border:0;border-radius:10px;padding:9px 13px;font:800 13px system-ui,sans-serif;cursor:pointer}#sml-pwa-bar .go{background:#19e36b;color:#042217}#sml-pwa-bar .x{background:none;color:#8fb0a2;font-size:18px;padding:4px 6px}@media(min-width:720px){#sml-pwa-bar{left:auto;right:20px;max-width:420px}}</style>
 <script id="sml-pwa-js">(function(){
-if(!('serviceWorker' in navigator))return;
-navigator.serviceWorker.register(<?php echo wp_json_encode( $sw ); ?>,{scope:'/'}).catch(function(){});
-var KEY='sml-pwa-dismissed',standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
-if(standalone){document.documentElement.classList.add('sml-pwa-standalone');return;}
-var ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+if(!(\'serviceWorker\' in navigator))return;
+navigator.serviceWorker.register('
+		. wp_json_encode( $sw ) . ',{scope:\'/\'}).catch(function(){});
+var KEY=\'sml-pwa-dismissed\',standalone=window.matchMedia(\'(display-mode: standalone)\').matches||navigator.standalone===true;
+if(standalone){document.documentElement.classList.add(\'sml-pwa-standalone\');return;}
+var ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform===\'MacIntel\'&&navigator.maxTouchPoints>1);
 function dismissed(){try{var t=Number(localStorage.getItem(KEY)||0);return Date.now()-t<7*86400000}catch(e){return false}}
-function dismiss(){try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}var b=document.getElementById('sml-pwa-bar');if(b)b.remove()}
-function bar(title,sub,action){if(dismissed()||document.getElementById('sml-pwa-bar'))return;var d=document.createElement('div');d.id='sml-pwa-bar';d.innerHTML='<img alt="" src="<?php echo esc_js( $icon ); ?>"><div class="t"><b>'+title+'</b><small>'+sub+'</small></div>'+(action?'<button type="button" class="go">Install</button>':'')+'<button type="button" class="x" aria-label="Not now">✕</button>';d.querySelector('.x').onclick=dismiss;if(action)d.querySelector('.go').onclick=action;document.body.appendChild(d)}
+function dismiss(){try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}var b=document.getElementById(\'sml-pwa-bar\');if(b)b.remove()}
+function bar(title,sub,action){if(dismissed()||document.getElementById(\'sml-pwa-bar\'))return;var d=document.createElement(\'div\');d.id=\'sml-pwa-bar\';d.innerHTML=\'<img alt="" src="'
+		. esc_js( $icon ) . '"><div class="t"><b>\'+title+\'</b><small>\'+sub+\'</small></div>\'+(action?\'<button type="button" class="go">Install</button>\':\'\')+\'<button type="button" class="x" aria-label="Not now">✕</button>\';d.querySelector(\'.x\').onclick=dismiss;if(action)d.querySelector(\'.go\').onclick=action;document.body.appendChild(d)}
 var prompt=null,android=/Android/i.test(navigator.userAgent),mobile=ios||android||/Mobi/i.test(navigator.userAgent);
-function howTo(){var b=document.getElementById('sml-pwa-bar');if(!b)return;b.querySelector('.t').innerHTML='<b>'+(ios?'Tap Share, then "Add to Home Screen"':'Open the browser menu (\u22ee), then "Add to Home screen" or "Install app"')+'</b><small>StockMarketLoop then opens full screen from its own icon.</small>';var g=b.querySelector('.go');if(g)g.remove()}
-window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();prompt=e;var g=document.querySelector('#sml-pwa-bar .go');if(g)g.onclick=function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})};else bar('Install the StockMarketLoop app','Opens full screen from your home screen or desktop, with its own icon.',function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})})});
-window.addEventListener('appinstalled',dismiss);
-/* phones: show the bar on every visit until installed or dismissed; the Install button uses the browser's prompt when it exists, else shows the steps */
-if(mobile)setTimeout(function(){bar(ios?'Add StockMarketLoop to your Home Screen':'Install the StockMarketLoop app',ios?'Tap the Share button, then "Add to Home Screen". It opens like an app.':'Opens full screen from your home screen, with its own icon.',ios?null:function(){if(prompt){prompt.prompt();prompt.userChoice.then(function(){dismiss()})}else howTo()})},1500);
+function howTo(){var b=document.getElementById(\'sml-pwa-bar\');if(!b)return;b.querySelector(\'.t\').innerHTML=\'<b>\'+(ios?\'Tap Share, then "Add to Home Screen"\':\'Open the browser menu (\\u22ee), then "Add to Home screen" or "Install app"\')+\'</b><small>StockMarketLoop then opens full screen from its own icon.</small>\';var g=b.querySelector(\'.go\');if(g)g.remove()}
+window.addEventListener(\'beforeinstallprompt\',function(e){e.preventDefault();prompt=e;var g=document.querySelector(\'#sml-pwa-bar .go\');if(g)g.onclick=function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})};else bar(\'Install the StockMarketLoop app\',\'Opens full screen from your home screen or desktop, with its own icon.\',function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})})});
+window.addEventListener(\'appinstalled\',dismiss);
+/* phones: show the bar on every visit until installed or dismissed; the Install button uses the browser\'s prompt when it exists, else shows the steps */
+if(mobile)setTimeout(function(){bar(ios?\'Add StockMarketLoop to your Home Screen\':\'Install the StockMarketLoop app\',ios?\'Tap the Share button, then "Add to Home Screen". It opens like an app.\':\'Opens full screen from your home screen, with its own icon.\',ios?null:function(){if(prompt){prompt.prompt();prompt.userChoice.then(function(){dismiss()})}else howTo()})},1500);
 })();</script>
-	<?php
-	return (string) ob_get_clean();
+	';
 }
 
 function sml_pwa_offline_page() {
