@@ -379,8 +379,9 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     if (!found) return err(404, 'contract_not_found', 'That contract is not in the live options chain right now. Reload the chain and pick it again.');
     const premium = optionsAlert.mid(found.leg);
     if (!(premium > 0)) return err(422, 'contract_not_priced', 'That contract has no current quote.');
-    const dte = optionsAlert.daysTo(expiry, now());
-    if (dte == null || dte < 0.5) return err(422, 'contract_expired', 'That contract expires today or has expired.');
+    const dteReal = optionsAlert.daysTo(expiry, now());
+    if (dteReal == null || dteReal <= 0) return err(422, 'contract_expired', 'That contract has expired (it stopped trading at the close on ' + expiry + ').');
+    const dte = optionsAlert.effectiveDte(dteReal); // same-day (0DTE) contracts are alertable until the close
     let iv = Number(found.leg.iv); if (fin(iv) && iv > 3) iv /= 100;
     if (!(iv > 0 && iv < 6)) iv = optionsCalc.impliedVol(type, price, strike, dte / 365, 0.043, 0, premium);
     if (!(iv > 0 && iv < 6)) { const dv = dailyVolatility(loaded.set.daily); iv = dv ? dv * Math.sqrt(252) : null; }
@@ -435,7 +436,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const pc = (n) => (n == null ? 'n/a' : (n >= 0 ? '+' : '-') + Math.abs(n).toFixed(0) + '%');
     const usd = (n) => (n == null ? 'n/a' : '$' + Number(n).toFixed(2));
     return {
-      line1: c.name + ' · ' + usd(c.mid) + ' (' + '$' + c.perContract + ' per contract) · ' + c.dte + ' days left',
+      line1: c.name + ' · ' + usd(c.mid) + ' (' + '$' + c.perContract + ' per contract) · ' + (c.dte < 1 ? 'expires today (0DTE)' : c.dte + ' days left'),
       line2: 'breakeven ' + usd(e.breakeven) + ' · IV ' + (c.iv == null ? 'n/a' : c.iv + '%') + ' · delta ' + (c.delta == null ? 'n/a' : c.delta) + ' · ' + c.liquidity + ' liquidity',
       bullets: {
         base: ['The contract: about ' + usd(t.base) + ' at the target (' + pc(t.basePct) + ') after ~' + Math.round(t.days.base) + ' days; ' + usd(t.fast) + ' if it is fast, ' + usd(t.slow) + ' if it is slow.'],

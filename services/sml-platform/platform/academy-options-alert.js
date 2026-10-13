@@ -24,10 +24,15 @@ const mid = (leg) => {
   return null;
 };
 
+/* Days until the contract stops trading: 4 pm Eastern on the expiration date (21:00 UTC covers both EDT and EST, so a same-day
+   contract stays alertable through the close). A fraction on expiration day; negative once that close has passed. */
 function daysTo(expiry, now) {
-  const t = Date.parse(String(expiry).slice(0, 10) + 'T20:00:00Z'); // 4 pm Eastern is 20:00 or 21:00 UTC; the later bound is not needed for day counts
+  const t = Date.parse(String(expiry).slice(0, 10) + 'T21:00:00Z');
   return fin(t) ? (t - now) / 86_400_000 : null;
 }
+/* the time left that the maths runs on: a same-day (0DTE) contract keeps at least half an hour so the expected move is not zero */
+const MIN_DTE = 0.02;
+const effectiveDte = (dte) => Math.max(MIN_DTE, Number(dte));
 
 /* the alert's horizon estimate is in TRADING days; options decay in calendar days */
 const calendarDays = (tradingDays) => tradingDays * (7 / 5);
@@ -65,8 +70,9 @@ function buildOptionsAlert({ analysis, rows, contract, now = Date.now(), rate = 
   if (!found) throw new OptionsAlertError('contract_not_found', 'That contract is not in the live options chain right now. Reload the chain and pick it again.');
   const entryPx = mid(found.leg);
   if (!(entryPx > 0)) throw new OptionsAlertError('contract_not_priced', 'That contract has no current quote.');
-  const dte = daysTo(expiry, now);
-  if (dte == null || dte < 0.5) throw new OptionsAlertError('contract_expired', 'That contract expires today or has expired.');
+  const dteReal = daysTo(expiry, now);
+  if (dteReal == null || dteReal <= 0) throw new OptionsAlertError('contract_expired', 'That contract has expired (it stopped trading at the close on ' + String(expiry).slice(0, 10) + ').');
+  const dte = effectiveDte(dteReal); // a 0DTE contract is alertable until the close; its time value is whatever is left of the session
 
   const S0 = Number(analysis.entry), tgt = Number(analysis.target), stp = Number(analysis.stop);
   let iv = Number(found.leg.iv);
@@ -92,7 +98,8 @@ function buildOptionsAlert({ analysis, rows, contract, now = Date.now(), rate = 
   const contractCost = Math.round(entryPx * 100);
   const liq = liquidity(found.leg);
   const warnings = [];
-  if (dte < calendarDays(ed.high) + 2) warnings.push(`Expires in ${Math.round(dte)} days, which is about as long as the slow-case estimate (${Math.round(calendarDays(ed.high))} days): time decay can eat the gain even if the stock gets there.`);
+  if (dte < 1) warnings.push('Expires today (0DTE): the whole move has to happen before the close, and time decay is at its fastest. Treat it as a day trade.');
+  else if (dte < calendarDays(ed.high) + 2) warnings.push(`Expires in ${Math.round(dte)} days, which is about as long as the slow-case estimate (${Math.round(calendarDays(ed.high))} days): time decay can eat the gain even if the stock gets there.`);
   else if (dte < calendarDays(ed.mid) * 1.5) warnings.push(`Expires in ${Math.round(dte)} days, close to the ${Math.round(calendarDays(ed.mid))}-day base case. A later expiry gives the idea more room.`);
   if (liq.grade === 'poor') warnings.push(`Liquidity is poor (${liq.why.join(', ')}): expect to give up a lot to get in and out. Use a limit order near the mid.`);
   else if (liq.grade === 'fair' || liq.grade === 'unknown') warnings.push(`Liquidity is only fair (${liq.why.join(', ')}). Use a limit order near the mid.`);
@@ -125,4 +132,4 @@ function buildOptionsAlert({ analysis, rows, contract, now = Date.now(), rate = 
   };
 }
 
-module.exports = { buildOptionsAlert, findContract, liquidity, OptionsAlertError, calendarDays, mid, daysTo };
+module.exports = { effectiveDte, MIN_DTE, buildOptionsAlert, findContract, liquidity, OptionsAlertError, calendarDays, mid, daysTo };

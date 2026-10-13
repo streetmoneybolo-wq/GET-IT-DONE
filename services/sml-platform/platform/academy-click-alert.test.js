@@ -446,3 +446,19 @@ test('posting caps: the defaults are 30 an hour / 200 a day per member and 90 an
   assert.deepEqual(lim({ userHour: '12', userDay: undefined, channelHour: '' }), { userHour: 12, userDay: 200, channelHour: 90 });
   assert.deepEqual(lim({ userHour: '0', userDay: 0, channelHour: 'junk' }), { userHour: 0, userDay: 0, channelHour: 90 });
 });
+
+test('a contract that expires today (0DTE) can be alerted until the close, reads as "expires today", and is refused once the close has passed', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const midday = Date.parse(today + 'T14:30:00Z'), afterClose = Date.parse(today + 'T21:30:00Z');
+  const rows = chainRows(today, 30);
+  const strike = rows.map((r) => r.strike).reduce((a, b) => (Math.abs(b - lastClose * 1.01) < Math.abs(a - lastClose * 1.01) ? b : a));
+  const { svc } = fake({ extra: { chain: async () => rows, chainExpiry: async () => null, expirations: async () => [today], now: () => midday } });
+  const out = await svc.preview(USER, { symbol: 'TEST', contract: { type: 'call', strike, expiry: today }, autoTarget: true });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  assert.ok(out.analysis.target > out.analysis.entry, 'a same-day call still gets a target above the live price');
+  assert.ok(out.options && out.options.contract && out.options.contract.dte < 1, 'a fraction of a day left');
+  assert.ok((out.options.warnings || []).some((w) => /Expires today \(0DTE\)/.test(w)), JSON.stringify(Object.keys(out.options)) + ' ' + JSON.stringify(out.options.warnings));
+  const late = fake({ extra: { chain: async () => rows, chainExpiry: async () => null, expirations: async () => [today], now: () => afterClose } }).svc;
+  const gone = await late.preview(USER, { symbol: 'TEST', contract: { type: 'call', strike, expiry: today }, autoTarget: true });
+  assert.equal(gone.code, 'contract_expired'); assert.match(gone.detail, /stopped trading at the close/);
+});
