@@ -284,6 +284,7 @@ function createAlertsService({
   }
 
   const evaluated = new Map();
+  let refreshLoggedAt = 0;
   let lastContext = { market: { spyChgPct: null }, sectorQuotes: new Map() };
   async function refresh() {
     if (refreshing) return; refreshing = true;
@@ -300,6 +301,12 @@ function createAlertsService({
       const sectorQuotes = new Map([...sectorEtfs].map((e) => [e, quotes.get(e)]).filter(([, v]) => v));
       lastContext = { market, sectorQuotes };
       for (const a of list) { try { evaluated.set(a.id, await evaluate(a, quotes, market, sectorQuotes)); } catch (error) { logger('warn', 'academy_alert_eval_failed', { symbol: a.symbol, error }); } }
+      // every few minutes: what the desk holds and which alerts carry a raised target from the engine (a NEW PT chip)
+      if (now() - refreshLoggedAt > 300_000) {
+        refreshLoggedAt = now();
+        const evs = list.map((a) => evaluated.get(a.id)).filter(Boolean);
+        logger('info', 'academy_alerts_refreshed', { alerts: list.length, evaluated: evs.length, ladder: !!ptLadder, withLadder: evs.filter((ev) => ev.ladder).map((ev) => ev.alert.symbol + ' ' + ev.alert.id + ' ' + ev.ladder.updates.length + '->' + ev.ladder.target), symbols: list.slice(0, 40).map((a) => a.symbol + ':' + a.id.slice(-6)) });
+      }
     } finally { refreshing = false; }
   }
 

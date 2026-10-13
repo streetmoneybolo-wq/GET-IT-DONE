@@ -494,3 +494,20 @@ test('each desk alert carries its Discord channel and the next-move verdict for 
   assert.ok(['pt', 'sell', 'hold'].includes(gdc.next.action)); assert.ok(gdc.next.target > 0); assert.ok(Array.isArray(gdc.next.facts) && gdc.next.facts.length);
   assert.equal(svc.channelIdFor('longterm'), '222'); assert.equal(svc.channelIdFor('nope'), '');
 });
+
+test('the automatic engine\'s ladder reaches the desk card (NEW PT chip) and the detail, before and after the engine state loads', async () => {
+  const { createAutoPtService } = require('./academy-auto-pt');
+  const { svc } = await boot({ discord: good(), quotes: { GDC: 2.1, ZEO: 0.4, INTC: 120 } });
+  const state = { alerts: { 'd:300': { symbol: 'GDC', side: 'long', entry: 2, target: 2.33, at: 1, status: 'watching', updates: [{ at: 5, target: 2.6, pct: 12, previous: 2.33, price: 2.4, v: 3, text: 'hello', stop: 2.2, stopRange: { low: 2.15, high: 2.2 }, why: ['x'], signals: [], story: 's', posted: false, messageId: '' }] } } };
+  const engine = createAutoPtService({ mode: 'on', listAlerts: async () => [], range: async () => null, evidence: async () => null, post: async () => null, store: { read: async () => state, write: async () => {} } });
+  svc.setPtLadder((key) => engine.forKey(key));
+  await svc.poll(); await svc.refresh();
+  assert.equal(svc.snapshot().alerts.find((a) => a.symbol === 'GDC').ptUpdates.length, 0, 'nothing before the engine state is loaded');
+  await engine.load();
+  await svc.refresh();
+  const after = svc.snapshot().alerts.find((a) => a.symbol === 'GDC');
+  assert.equal(after.ptUpdates.length, 1); assert.equal(after.ptUpdates[0].target, 2.6); assert.equal(after.ptUpdates[0].text, undefined, 'the list view leaves the write-up out');
+  const d = await svc.detail('300');
+  assert.equal(d.ptUpdates.length, 1); assert.equal(d.ptUpdates[0].text, 'hello');
+  assert.equal(d.plan.target, 2.6, 'the plan works toward the raised target');
+});
