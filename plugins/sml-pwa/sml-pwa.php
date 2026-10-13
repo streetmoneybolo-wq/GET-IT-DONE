@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML PWA
  * Description: Makes stockmarketloop.com installable as an app on Android, iPhone/iPad and desktop: web app manifest, service worker (offline fallback, cached assets), home-screen icons, an install prompt and the iPhone "Add to Home Screen" hint. The app is the whole site.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_PWA_VERSION', '1.0.1' );
+define( 'SML_PWA_VERSION', '1.0.2' );
 define( 'SML_PWA_SW_PATH', '/sml-sw.js' );
 define( 'SML_PWA_MANIFEST_PATH', '/sml-manifest.webmanifest' ); // its own path: the site already answers /manifest.webmanifest elsewhere (SML App Links)
 define( 'SML_PWA_OFFLINE_PATH', '/sml-pwa-offline' );
@@ -74,8 +74,9 @@ function sml_pwa_manifest() {
 	return apply_filters( 'sml_pwa_manifest', $manifest );
 }
 
-/* Head: the manifest, theme colour, iPhone home-screen tags and icons. Only on the front end. */
-add_action( 'wp_head', 'sml_pwa_head', 1 );
+/* Head: the manifest, theme colour, iPhone home-screen tags and icons. Only on the front end. Printed before anything else in <head>:
+   a browser uses the FIRST manifest link it meets, and SML App Links prints a thinner one of its own. */
+add_action( 'wp_head', 'sml_pwa_head', -100 );
 function sml_pwa_head() {
 	if ( is_admin() ) { return; }
 	echo "\n" . '<link rel="manifest" href="' . esc_url( SML_PWA_MANIFEST_PATH ) . '">' . "\n";
