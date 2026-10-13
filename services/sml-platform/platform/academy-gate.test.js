@@ -675,7 +675,8 @@ test('the signal radar route is the owner\'s only; pt-updates returns a member t
   const academyAutoPt = { recent: () => [
     { kind: 'hit', key: 'c:1', id: '1', symbol: 'MINE', n: 'hit0', at: Date.now(), target: 2, owner: USER },
     { kind: 'hit', key: 'c:2', id: '2', symbol: 'THEIRS', n: 'hit0', at: Date.now(), target: 3, owner: OWNER },
-    { key: 'd:3', id: '3', symbol: 'DESK', n: 1, at: Date.now(), target: 4, owner: '' }
+    { key: 'd:3', id: '3', symbol: 'DESK', n: 1, at: Date.now(), target: 4, owner: '' },
+    { key: 'd:4', id: '4', symbol: 'MYDESK', n: 1, at: Date.now() - 1, target: 5, owner: USER }
   ] };
   const academyAlerts = { allows: () => undefined }, academyAlertSources = { viewFor: async () => [] };
   await withServer({ academyOAuth, academyGate: null, academySignals, academyAutoPt, academyAlerts, academyAlertSources }, async (base) => {
@@ -684,7 +685,7 @@ test('the signal radar route is the owner\'s only; pt-updates returns a member t
     const own = await (await get('/academy-activity/signals', 'owner')).json();
     assert.equal(own.ok, true); assert.deepEqual(own.signals.map((s) => s.symbol), ['AAA']);
     const mine = await (await get('/academy-activity/pt-updates?since=0', 'member')).json();
-    assert.deepEqual(mine.updates.map((u) => [u.symbol, u.kind]), [['MINE', 'hit']], 'own hit yes; another member\'s no; a desk alert not followed no');
+    assert.deepEqual(mine.updates.map((u) => [u.symbol, u.kind]), [['MINE', 'hit'], ['MYDESK', undefined]], 'own hit yes; another member\'s no; a desk alert not followed no; a desk-tracked alert the member sent yes');
     assert.ok(!('owner' in mine.updates[0]), 'who sent it is not echoed');
   });
 });

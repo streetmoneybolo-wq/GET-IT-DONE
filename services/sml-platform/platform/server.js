@@ -2783,8 +2783,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       try {
         const all = academyAutoPt.recent(since, 40);
         // a Click-to-Alert post's events are the sender's own; desk alerts need the member to see that alert live
-        const mine = all.filter((u) => String(u.key).startsWith('c:') && u.owner && String(u.owner) === String(session.userId));
-        let desk = all.filter((u) => String(u.key).startsWith('d:'));
+        const mine = all.filter((u) => u.owner && String(u.owner) === String(session.userId));
+        let desk = all.filter((u) => String(u.key).startsWith('d:') && !(u.owner && String(u.owner) === String(session.userId)));
         if (academyAlertSources) {
           const sources = (await academyAlertSources.viewFor(session.userId, alertView)).filter((x) => x.access);
           desk = desk.filter((u) => { const src = academyAlerts.allows(u.id, sources); return src && src.view === 'live'; });
@@ -3643,7 +3643,7 @@ async function main() {
      owner's buy signals. Push cannot reach anyone inside the Discord app, so this is the path that always works. */
   // who the buy-signal radar is for: the owner, plus SML_ACADEMY_SIGNAL_USER_IDS
   const signalUserIds = new Set([...OWNER_IDS, ...String(process.env.SML_ACADEMY_SIGNAL_USER_IDS || '').split(',').map((v) => v.trim()).filter((v) => /^\d{15,25}$/.test(v))]);
-  const academyDm = createDmNotifier({ dm: academyDmClient, logger: log, recipientsFor: (kind, p) => (kind === 'signal' ? [...signalUserIds] : (String(p && p.key || '').startsWith('c:') && p.owner ? [String(p.owner)] : [])) });
+  const academyDm = createDmNotifier({ dm: academyDmClient, logger: log, recipientsFor: (kind, p) => (kind === 'signal' ? [...signalUserIds] : (p && /^\d{5,25}$/.test(String(p.owner || '')) ? [String(p.owner)] : [])) });
   const pushTargetHit = (u) => {
     if (u && u.symbol) academyDm.targetHit(u).catch(() => {});
     if (!academyPush || !u || !u.symbol || (String(u.key || '').startsWith('c:') && !u.owner)) return;
@@ -3679,7 +3679,7 @@ async function main() {
   const academyAutoPt = academyClickAlert && AUTO_PT_MODE !== 'off' ? createAutoPtService({
     mode: AUTO_PT_MODE, logger: log, onUpdate: pushNewTarget, onHit: pushTargetHit,
     listAlerts: async () => {
-      const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))), price: (() => { const ev = academyAlerts.evaluated.get(a.id); return ev && ev.quote && Number(ev.quote.last) > 0 ? Number(ev.quote.last) : null; })() })) : [];
+      const desk = academyAlerts ? academyAlerts.active().filter((a) => a.kind === 'equity' && a.symbol && a.target > 0 && a.entry > 0).map((a) => ({ key: 'd:' + a.id, windowMs: (a.channel === 'longterm' ? 90 : 14) * 86_400_000, symbol: a.symbol, side: 'long', entry: a.entry, target: a.target, at: a.at, channelId: academyAlerts.channelIdFor(a.source), postable: ownAlertChannels.has(String(academyAlerts.channelIdFor(a.source))), ...(a.via === 'academy' && /^\d{5,25}$/.test(String(a.authorId || '')) ? { userId: String(a.authorId) } : {}), price: (() => { const ev = academyAlerts.evaluated.get(a.id); return ev && ev.quote && Number(ev.quote.last) > 0 ? Number(ev.quote.last) : null; })() })) : [];
       const click = (await academyClickAlert.store.recent({ sinceMs: 6 * 86_400_000 }).catch(() => [])).map((r) => ({ key: 'c:' + r.messageId, userId: r.userId, symbol: r.symbol, side: r.side, entry: r.entry, target: r.target, stop: Number(r.stop) > 0 ? Number(r.stop) : undefined, at: r.at, channelId: r.channelId, postable: ownAlertChannels.has(String(r.channelId)) }));
       const deskIds = new Set(desk.map((d) => d.key.slice(2)));
       return desk.concat(click.filter((c) => !deskIds.has(c.key.slice(2)))); // the desk copy of a message wins
