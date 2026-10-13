@@ -471,14 +471,16 @@ test('suggestNext: the two desk buttons get one verdict from the plan and the re
   assert.equal(sell.action, 'sell'); assert.equal(sell.partial, false); assert.equal(sell.confidence, 'high');
   const part = suggestNext({ plan: { action: 'PARTIAL', target: 2.33, stop: 2, reasons: [] }, risk: { band: 'HIGH' }, algoView: up, alert, price: 2.2 });
   assert.equal(part.action, 'sell'); assert.equal(part.partial, true); assert.equal(part.label, 'Take partial profits');
-  assert.equal(part.target, 2.56, 'no raised target from the plan: 10% above the working target');
+  assert.equal(part.target, 2.33, 'price under the working target: the target stands');
   const near = suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: 0.9, reasons: [] }, risk: { band: 'LOW' }, algoView: up, alert, price: 2.3 });
   assert.equal(near.action, 'pt', 'close to target with MEM ALGO bullish leans to a new PT');
   const under = suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: -0.2, reasons: [] }, risk: { band: 'LOW' }, algoView: { bias: 'short' }, alert, price: 1.9 });
   assert.equal(under.action, 'sell');
   assert.equal(suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: 0.3, reasons: [] }, alert, price: 2.1 }).action, 'hold');
   const ladder = suggestNext({ plan: { action: 'HOLD', target: 2.8, progress: 0.3, reasons: [] }, alert, price: 2.5, ladder: { target: 2.8 } });
-  assert.equal(ladder.target, 3.08, 'a raised ladder target is the working target');
+  assert.equal(ladder.target, 2.8, 'a raised ladder target is the working target, and price under it suggests nothing higher');
+  const above = suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: 1.05, reasons: [] }, alert: { entry: 2, target: 2.33 }, price: 2.35, since: { high: 2.4 } });
+  assert.equal(above.target, 2.56, 'at the target with no plan target: 10% above it (or 5% above the high)');
   const pulled = suggestNext({ plan: { action: 'SELL', target: 3.19, progress: 2.3, reasons: ['Price has given back 55% of its gain'] }, alert: { entry: 2.43, target: 3.19 }, price: 4.19, ladder: { target: 7.29 } });
   assert.equal(pulled.action, 'sell'); assert.equal(pulled.target, 7.29, 'under the working target after a pull-back: the working target stands, nothing higher');
   assert.equal(suggestNext({}).action, 'hold', 'nothing known is a hold');
