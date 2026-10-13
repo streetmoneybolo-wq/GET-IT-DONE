@@ -356,7 +356,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   async function analysisFor({ symbol, target, contract, autoTarget, anyExpiry = false, givenRows = null }) {
     const auto = !!contract && (autoTarget === true || !(Number(target) > 0));
     if (!auto) return { analysis: await gather(symbol, Number(target)) };
-    const err = (status, code, detail = '') => ({ error: { ok: false, status, code, ...(detail ? { detail } : {}) } });
+    const err = (status, code, detail = '') => { logger('warn', 'click_alert_rejected', { symbol: String(symbol || '').toUpperCase(), code, detail, contract: contract ? { type: contract.type, strike: contract.strike, expiry: contract.expiry } : null }); return { error: { ok: false, status, code, ...(detail ? { detail } : {}) } }; };
     const sym = String(symbol || '').toUpperCase();
     if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return err(422, 'invalid_symbol');
     const c = contract || {};
