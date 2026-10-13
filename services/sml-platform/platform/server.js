@@ -1642,6 +1642,7 @@ async function handleNewsWebhook(request, response, options) {
 
 let streamClients = 0;
 const darkPoolCache = new Map(); // symbol -> { until, payload } for /academy-activity/dark-pool
+const deskServedAt = new Map(); // userId -> last time the desk snapshot was logged for them
 /* Real-time trades and quotes from Massive replace the (minutes-old) tape and top of book whenever they are fresh; moomoo still supplies the deeper Level 2 ladder. */
 function mergeLive(base, massive, symbolRaw) {
   if (massive) massive.watch(symbolRaw);
@@ -2619,6 +2620,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
 
     /* The alerts desk: the trader's posted alerts with risk grade, checklist and plan. Members only (the same Academy session as the options chain). */
     if (request.method === 'GET' && path === '/academy-activity/alerts') {
+      const deskServedLog = (userId, snap) => {
+        const k = String(userId), t = Date.now();
+        if ((deskServedAt.get(k) || 0) > t - 60_000) return;
+        deskServedAt.set(k, t); if (deskServedAt.size > 500) deskServedAt.delete(deskServedAt.keys().next().value);
+        const list = Array.isArray(snap && snap.alerts) ? snap.alerts : [];
+        logger('info', 'academy_desk_served', { userId: k, alerts: list.length, withPt: list.filter((a) => a.ptUpdates && a.ptUpdates.length).map((a) => a.symbol + ' ' + a.id + ' ' + a.ptUpdates.length), symbols: list.slice(0, 30).map((a) => a.symbol) });
+      };
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
@@ -2640,7 +2648,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
             const one = await academyAlerts.detail(alertId, { closedOnly: src.view === 'closed' });
             if (!one) { sendJson(response, 404, { ok: false, error: 'alert_not_found' }); return; }
             sendJson(response, 200, { ok: true, alert: one });
-          } else sendJson(response, 200, { ...academyAlerts.snapshot({ sources }), sources: sources.length, perMember: true, me: { userId: String(session.userId), owner: OWNER_IDS.includes(String(session.userId)) } });
+          } else {
+            const snap = academyAlerts.snapshot({ sources });
+            deskServedLog(session.userId, snap);
+            sendJson(response, 200, { ...snap, sources: sources.length, perMember: true, me: { userId: String(session.userId), owner: OWNER_IDS.includes(String(session.userId)) } });
+          }
         } catch (error) { logger('error', 'academy_alerts_request_failed', { error }); sendJson(response, 503, { ok: false, error: 'alerts_temporarily_unavailable' }); }
         return;
       }

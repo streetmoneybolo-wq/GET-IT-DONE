@@ -165,6 +165,8 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
       if (!state.alerts) state.alerts = {};
       // desk-only updates made before the pull-back and live-price checks existed (v < 2) are dropped; posted ones are history and stay
       for (const s of Object.values(state.alerts)) if (Array.isArray(s.updates)) { const kept = s.updates.filter((u) => u.posted || u.messageId || u.v >= 2); if (kept.length !== s.updates.length) { s.updates = kept; if (s.status === 'done' && !kept.length) s.status = 'watching'; } }
+      const withUpdates = Object.entries(state.alerts).filter(([, s]) => Array.isArray(s.updates) && s.updates.length);
+      logger('info', 'auto_pt_state_loaded', { alerts: Object.keys(state.alerts).length, withUpdates: withUpdates.length, keys: withUpdates.slice(0, 20).map(([k, s]) => k + ' ' + s.symbol + ' ' + s.updates.length) });
     }
     return state;
   }

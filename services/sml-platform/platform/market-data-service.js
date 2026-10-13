@@ -78,11 +78,15 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
   }
 
   /* Recent individual trades as [t, price, size] oldest first, for tick charts. Best effort: a plan without trade history just returns nothing and the live record is used alone. */
-  const tradeCache = new Map();
+  const tradeCache = new Map(); // symbol -> { until, rows }, at most TRADE_CACHE_MAX symbols
+  const TRADE_CACHE_MAX = 4;
   async function trades(symbolRaw, limit = 20_000) {
     if (!enabled) return [];
     const symbol = cleanSymbol(symbolRaw), current = now(), hit = tradeCache.get(symbol);
     if (hit && hit.until > current) return hit.rows;
+    // 50,000 prints are several megabytes a symbol: expired symbols go, and only the last few stay in memory
+    for (const [k, v] of tradeCache) if (v.until <= current) tradeCache.delete(k);
+    while (tradeCache.size >= TRADE_CACHE_MAX) tradeCache.delete(tradeCache.keys().next().value);
     try {
       const url = `${String(baseUrl).replace(/\/$/, '')}/v3/trades/${encodeURIComponent(symbol)}?order=desc&sort=timestamp&limit=${Math.min(50_000, limit)}`;
       const response = await fetchImpl(url, { headers: { accept: 'application/json', authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(8_000) });
