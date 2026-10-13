@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML PWA
  * Description: Makes stockmarketloop.com installable as an app on Android, iPhone/iPad and desktop: web app manifest, service worker (offline fallback, cached assets), home-screen icons, an install prompt and the iPhone "Add to Home Screen" hint. The app is the whole site.
- * Version: 1.0.2
+ * Version: 1.1.0
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_PWA_VERSION', '1.0.2' );
+define( 'SML_PWA_VERSION', '1.1.0' );
 define( 'SML_PWA_SW_PATH', '/sml-sw.js' );
 define( 'SML_PWA_MANIFEST_PATH', '/sml-manifest.webmanifest' ); // its own path: the site already answers /manifest.webmanifest elsewhere (SML App Links)
 define( 'SML_PWA_OFFLINE_PATH', '/sml-pwa-offline' );
@@ -63,6 +63,7 @@ function sml_pwa_manifest() {
 		'icons'            => array(
 			array( 'src' => sml_pwa_url( 'icons/icon-192.png' ), 'sizes' => '192x192', 'type' => 'image/png' ),
 			array( 'src' => sml_pwa_url( 'icons/icon-512.png' ), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any' ),
+			array( 'src' => sml_pwa_url( 'icons/icon-maskable-512.png' ), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable' ),
 		),
 		'shortcuts'        => array(
 			array( 'name' => 'Groups', 'url' => '/groups/?utm_source=pwa', 'icons' => array( array( 'src' => sml_pwa_url( 'icons/icon-192.png' ), 'sizes' => '192x192' ) ) ),
@@ -105,10 +106,12 @@ var ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIn
 function dismissed(){try{var t=Number(localStorage.getItem(KEY)||0);return Date.now()-t<7*86400000}catch(e){return false}}
 function dismiss(){try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}var b=document.getElementById('sml-pwa-bar');if(b)b.remove()}
 function bar(title,sub,action){if(dismissed()||document.getElementById('sml-pwa-bar'))return;var d=document.createElement('div');d.id='sml-pwa-bar';d.innerHTML='<img alt="" src="<?php echo esc_js( $icon ); ?>"><div class="t"><b>'+title+'</b><small>'+sub+'</small></div>'+(action?'<button type="button" class="go">Install</button>':'')+'<button type="button" class="x" aria-label="Not now">✕</button>';d.querySelector('.x').onclick=dismiss;if(action)d.querySelector('.go').onclick=action;document.body.appendChild(d)}
-var prompt=null;
-window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();prompt=e;bar('Install the StockMarketLoop app','Opens full screen from your home screen or desktop, with its own icon.',function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})})});
+var prompt=null,android=/Android/i.test(navigator.userAgent),mobile=ios||android||/Mobi/i.test(navigator.userAgent);
+function howTo(){var b=document.getElementById('sml-pwa-bar');if(!b)return;b.querySelector('.t').innerHTML='<b>'+(ios?'Tap Share, then "Add to Home Screen"':'Open the browser menu (\u22ee), then "Add to Home screen" or "Install app"')+'</b><small>StockMarketLoop then opens full screen from its own icon.</small>';var g=b.querySelector('.go');if(g)g.remove()}
+window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();prompt=e;var g=document.querySelector('#sml-pwa-bar .go');if(g)g.onclick=function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})};else bar('Install the StockMarketLoop app','Opens full screen from your home screen or desktop, with its own icon.',function(){prompt.prompt();prompt.userChoice.then(function(){dismiss()})})});
 window.addEventListener('appinstalled',dismiss);
-if(ios&&/Safari/.test(navigator.userAgent)&&!/CriOS|FxiOS/.test(navigator.userAgent))setTimeout(function(){bar('Add StockMarketLoop to your Home Screen','Tap the Share button, then "Add to Home Screen". It opens like an app.')},2500);
+/* phones: show the bar on every visit until installed or dismissed; the Install button uses the browser's prompt when it exists, else shows the steps */
+if(mobile)setTimeout(function(){bar(ios?'Add StockMarketLoop to your Home Screen':'Install the StockMarketLoop app',ios?'Tap the Share button, then "Add to Home Screen". It opens like an app.':'Opens full screen from your home screen, with its own icon.',ios?null:function(){if(prompt){prompt.prompt();prompt.userChoice.then(function(){dismiss()})}else howTo()})},1500);
 })();</script>
 	<?php
 }

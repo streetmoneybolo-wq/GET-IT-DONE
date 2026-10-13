@@ -773,6 +773,8 @@ const APP_SHELL = (() => {
   }
   return files;
 })();
+/* the StockMarketLoop app icon (app-shell/icons, the owner's artwork); the drawn mark below is only the fallback when a file is missing */
+const APP_SHELL_ICONS = (() => { const out = {}; for (const name of ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']) { try { out[name] = fs.readFileSync(pathModule.join(APP_SHELL_DIR, 'icons', name)); } catch (_) { /* fallback below */ } } return out; })();
 const APP_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#06110d"/><path d="M256 86c94 0 170 76 170 170s-76 170-170 170S86 350 86 256" fill="none" stroke="#19e36b" stroke-width="30" stroke-linecap="round" opacity=".9"/><path d="M118 322 L196 244 L252 296 L394 154" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/><path d="M326 150 L398 150 L398 222" fill="none" stroke="#7ef0bd" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const APP_ICON_MASKABLE_SVG = APP_ICON_SVG.replace('rx="112"', 'rx="0"');
 const appIconPng = (() => { const memo = new Map(); return (size, maskable = false) => { const key = size + (maskable ? 'm' : ''); if (memo.has(key)) return memo.get(key); let png = null; try { const { Resvg } = require('@resvg/resvg-js'); png = new Resvg(maskable ? APP_ICON_MASKABLE_SVG : APP_ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng(); } catch (_) { png = null; } memo.set(key, png); return png; }; })();
@@ -1744,7 +1746,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const name = path === '/app/' ? 'index.html' : path.slice('/app/'.length);
       if (name === 'manifest.webmanifest') { response.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }); response.end(APP_MANIFEST); return; }
       const icon = /^(icon-(192|512)|icon-maskable-512|apple-touch-icon)\.png$/.exec(name);
-      if (icon) { const png = appIconPng(name === 'apple-touch-icon.png' ? 180 : Number(icon[2] || 512), name.startsWith('icon-maskable')); if (!png) { response.writeHead(404); response.end(); return; } response.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }); response.end(png); return; }
+      if (icon) { const png = APP_SHELL_ICONS[name] || appIconPng(name === 'apple-touch-icon.png' ? 180 : Number(icon[2] || 512), name.startsWith('icon-maskable')); if (!png) { response.writeHead(404); response.end(); return; } response.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }); response.end(png); return; }
       const file = APP_SHELL[name];
       if (!file) { sendJson(response, 404, { ok: false, error: 'not_found' }); return; }
       const headers = { 'Content-Type': file.type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': name === 'index.html' || name === 'sw.js' ? 'no-cache' : 'public, max-age=3600' };
