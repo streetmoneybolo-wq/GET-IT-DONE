@@ -3667,7 +3667,6 @@ async function main() {
      ACADEMY_SIGNAL_RADAR=off removes it. Reads 25 symbols a minute through Massive REST (sentimentCandles), so a 300-name universe
      is covered about every 12 minutes in the regular session; outside it only the daily (swing) read runs. */
   const pushSignal = (sig) => {
-    if (sig) academyDm.signal(sig).catch(() => {});
     if (!academyPush || !sig) return;
     const px = (v) => (Number(v) >= 1 ? Number(v).toFixed(2) : Number(v).toFixed(4));
     const msg = {
@@ -3688,6 +3687,7 @@ async function main() {
       const s = await getAcademyScanner().catch(() => null); return s && Array.isArray(s.rows) ? s.rows.slice(0, cap) : [];
     },
     candles: sentimentCandles, analyze: require('./academy-mem-algo').analyze, state: () => marketState(), push: pushSignal, logger: log,
+    pushBatch: (found) => { academyDm.signals(found).catch(() => {}); }, // one Discord DM per sweep, however many symbols it found
     perTick: Math.max(5, Math.min(60, Number(process.env.ACADEMY_SIGNAL_RADAR_PER_TICK) || 25)),
     store: createPgStateStore({ pool: database.pool, key: 'signal-radar', defaultValue: () => ({ signals: [] }), logger: log })
   });

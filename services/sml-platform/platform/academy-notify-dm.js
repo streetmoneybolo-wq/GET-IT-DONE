@@ -18,6 +18,13 @@ function signalText(sig) {
     + (sig.relVolume ? ` · volume ${Number(sig.relVolume).toFixed(1)}x` : '') + '\n' + (why ? why + '\n' : '')
     + 'Open the Academy → SIGNALS → ⚡ Click to Alert to post it. Educational, not financial advice.';
 }
+/* one DM for everything a sweep found: the symbols on one line each, biggest grade first, capped so Discord's 2000 characters hold */
+function signalsText(list) {
+  const sigs = (Array.isArray(list) ? list : []).filter((s) => s && s.symbol).sort((a, b) => (b.score || 0) - (a.score || 0));
+  if (sigs.length === 1) return signalText(sigs[0]);
+  const lines = sigs.slice(0, 12).map((s) => `• **${s.symbol}** ${s.label || s.style} · ${s.grade} (${s.score}) · entry $${px(s.entry)} → PT $${px(s.target)} (+${s.pct}%) · stop $${px(s.stop)}${s.relVolume ? ` · vol ${Number(s.relVolume).toFixed(1)}x` : ''}`);
+  return `🟢 **${sigs.length} BUY SIGNALS**\n${lines.join('\n')}${sigs.length > 12 ? `\n…and ${sigs.length - 12} more in the Academy` : ''}\nOpen the Academy → SIGNALS → ⚡ Click to Alert. Educational, not financial advice.`;
+}
 function targetHitText(u) {
   return `🎯 **${u.symbol} hit your price target $${px(u.target)}** (entry $${px(u.entry)}${Number(u.price) > 0 ? `, high $${px(u.price)}` : ''}).\n`
     + (Number(u.suggested) > 0 ? `MEM ALGO suggests a new target of $${px(u.suggested)}. ` : '') + 'Open the Academy to post a new price target.';
@@ -53,9 +60,10 @@ function createDmNotifier({ dm = null, recipientsFor = () => [], logger = () => 
   }
   return {
     signal: (sig) => deliver('signal', sig, signalText(sig)),
+    signals: (list) => { const sigs = (Array.isArray(list) ? list : []).filter((s) => s && s.symbol); return sigs.length ? deliver('signal', { symbol: sigs.map((s) => s.symbol).join(',') }, signalsText(sigs)) : Promise.resolve({ sent: [], skipped: [] }); },
     targetHit: (u) => deliver('target_hit', u, targetHitText(u)),
     newTarget: (u) => deliver('new_target', u, newTargetText(u))
   };
 }
 
-module.exports = { createDmNotifier, signalText, targetHitText, newTargetText };
+module.exports = { createDmNotifier, signalText, signalsText, targetHitText, newTargetText };

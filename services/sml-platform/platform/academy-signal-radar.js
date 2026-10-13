@@ -46,7 +46,7 @@ function judge(result, style, row = {}) {
   return { score, grade: gradeOf(score), why, signals, age };
 }
 
-function createSignalRadar({ universe, candles, analyze, store = null, state = null, push = null, logger = () => {}, now = Date.now, perTick = 25, enabled = true } = {}) {
+function createSignalRadar({ universe, candles, analyze, store = null, state = null, push = null, pushBatch = null, logger = () => {}, now = Date.now, perTick = 25, enabled = true } = {}) {
   let signals = [], loaded = false, running = false, cursor = 0, list = [], listAt = 0;
   const lastSeen = new Map(); // symbol:style -> at of the last signal
   async function load() {
@@ -108,6 +108,7 @@ function createSignalRadar({ universe, candles, analyze, store = null, state = n
         signals = signals.concat(found).slice(-KEEP); out.found = found.length;
         await save();
         for (const s of found) { logger('info', 'signal_radar_buy', { symbol: s.symbol, style: s.style, grade: s.grade, entry: s.entry, target: s.target }); if (typeof push === 'function') { try { push(s); } catch (error) { logger('warn', 'signal_radar_push_failed', { error }); } } }
+        if (typeof pushBatch === 'function') { try { pushBatch(found); } catch (error) { logger('warn', 'signal_radar_push_failed', { error }); } }
       }
     } finally { running = false; }
     return { ran: true, ...out };

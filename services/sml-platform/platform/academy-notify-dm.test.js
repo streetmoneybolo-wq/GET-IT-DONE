@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createDmNotifier, signalText, targetHitText, newTargetText } = require('./academy-notify-dm');
+const { createDmNotifier, signalText, signalsText, targetHitText, newTargetText } = require('./academy-notify-dm');
 
 const A = '200000000000000001', B = '200000000000000002';
 const sig = { symbol: 'EBAY', style: 'swing', label: 'Swing trade', grade: 'A', score: 85, entry: 114.65, target: 131.85, pct: 15, stop: 109.1, relVolume: 2.1, why: ['BUY signal on the latest 1D candle', 'volume 2.1x normal'] };
@@ -25,4 +25,21 @@ test('each recipient from recipientsFor gets the DM, capped per hour; failures a
   assert.deepEqual(await n.newTarget({ symbol: 'AIXI', side: 'long', target: 2.6, pct: 18, n: 1, previous: 2.2 }), { sent: [A], skipped: [] });
   const none = createDmNotifier({ recipientsFor: () => [A] });
   assert.deepEqual(await none.signal(sig), { sent: [], skipped: [] });
+});
+
+test('a sweep with several signals goes out as one DM (one line per symbol, best grade first, 12 lines max); a single signal keeps the full card', async () => {
+  const sig2 = { ...sig, symbol: 'AVGO', style: 'day', label: 'Day trade', grade: 'B', score: 70, entry: 100, target: 110, pct: 10, stop: 95, relVolume: 0 };
+  const text = signalsText([sig2, sig]);
+  assert.match(text, /^🟢 \*\*2 BUY SIGNALS\*\*\n• \*\*EBAY\*\* Swing trade · A \(85\) · entry \$114\.65 → PT \$131\.85 \(\+15%\) · stop \$109\.10 · vol 2\.1x\n• \*\*AVGO\*\* Day trade · B \(70\) · entry \$100\.00 → PT \$110\.00 \(\+10%\) · stop \$95\.00\n/);
+  assert.equal(signalsText([sig]), signalText(sig));
+  const many = Array.from({ length: 15 }, (_, i) => ({ ...sig2, symbol: 'S' + i, score: 70 + i }));
+  assert.match(signalsText(many), /15 BUY SIGNALS[\s\S]*…and 3 more in the Academy/);
+  assert.equal((signalsText(many).match(/^• /gm) || []).length, 12);
+  const dms = [];
+  const n = createDmNotifier({ dm: { send: async (id, content) => { dms.push({ id, content }); return { ok: true }; } }, recipientsFor: () => [A, B] });
+  assert.deepEqual(await n.signals([sig2, sig]), { sent: [A, B], skipped: [] });
+  assert.equal(dms.length, 2, 'one DM per recipient for the whole sweep');
+  assert.match(dms[0].content, /2 BUY SIGNALS/);
+  assert.deepEqual(await n.signals([]), { sent: [], skipped: [] });
+  assert.equal(dms.length, 2);
 });

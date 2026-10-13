@@ -160,3 +160,23 @@ test('the DM client opens a DM channel, sends with mentions disabled, and maps D
   assert.equal(JSON.parse(calls[1].options.body).allowed_mentions.parse.length, 0);
   assert.equal(createDiscordDmClient({ token: '' }), null);
 });
+
+test('the DM client reuses an opened DM channel for a day, treats 40003 (opening DMs too fast) as retryable, and forgets a channel that answers 403/404', async () => {
+  let t = 1_000, openStatus = 200, msgStatus = 200; const opens = [], posts = [];
+  const fetchImpl = async (url) => {
+    if (url.endsWith('/users/@me/channels')) { opens.push(url); return { status: openStatus, async json() { return openStatus === 200 ? { id: 'dm_9' } : { code: 40003 }; } }; }
+    posts.push(url); return { status: msgStatus, async json() { return {}; } };
+  };
+  const client = createDiscordDmClient({ token: 'bot-token', fetchImpl, now: () => t });
+  assert.equal((await client.send('100000000000000009', 'one')).ok, true);
+  assert.equal((await client.send('100000000000000009', 'two')).ok, true);
+  assert.equal(opens.length, 1, 'the second DM reuses the channel');
+  assert.equal(posts.length, 2);
+  t += 24 * 3_600_000 + 1;
+  await client.send('100000000000000009', 'three');
+  assert.equal(opens.length, 2, 'after a day the channel is opened again');
+  msgStatus = 404; await client.send('100000000000000009', 'four');
+  msgStatus = 200; openStatus = 400;
+  assert.deepEqual(await client.send('100000000000000009', 'five'), { ok: false, code: 40003, retryable: true }, 'a 404 dropped the cache; the reopen hit 40003');
+  assert.equal(opens.length, 3);
+});

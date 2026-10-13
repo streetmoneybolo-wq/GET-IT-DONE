@@ -41,9 +41,13 @@ function token(value, fallback = 'unknown') {
   return /^[A-Za-z0-9_.:-]{1,64}$/.test(text) ? text : fallback;
 }
 
-function createDiscordDmClient({ token: botToken, fetchImpl = globalThis.fetch } = {}) {
+function createDiscordDmClient({ token: botToken, fetchImpl = globalThis.fetch, now = Date.now } = {}) {
   const auth = String(botToken || '').trim();
   if (!auth) return null;
+  /* A member's DM channel never changes, and Discord throttles opening one (40003 "opening direct messages too fast"), so the
+     channel id is kept per recipient and reused for a day. */
+  const channels = new Map(); // discordUserId -> { id, until }
+  const DM_CHANNEL_TTL = 24 * 3_600_000;
   async function post(path, body) {
     const response = await fetchImpl(`${DISCORD_API}${path}`, {
       method: 'POST',
@@ -56,14 +60,25 @@ function createDiscordDmClient({ token: botToken, fetchImpl = globalThis.fetch }
   }
   return {
     async send(discordUserId, content) {
-      const channel = await post('/users/@me/channels', { recipient_id: String(discordUserId) });
-      if (channel.status === 429) return { ok: false, code: 429, retryable: true };
-      if (channel.status >= 300 || !channel.data || !channel.data.id) {
-        return { ok: false, code: (channel.data && channel.data.code) || channel.status, retryable: false };
+      const key = String(discordUserId);
+      let channelId = null;
+      const known = channels.get(key);
+      if (known && known.until > now()) channelId = known.id;
+      else {
+        const channel = await post('/users/@me/channels', { recipient_id: key });
+        if (channel.status === 429) return { ok: false, code: 429, retryable: true };
+        if (channel.status >= 300 || !channel.data || !channel.data.id) {
+          const code = (channel.data && channel.data.code) || channel.status;
+          return { ok: false, code, retryable: code === 40003 };
+        }
+        channelId = String(channel.data.id);
+        channels.set(key, { id: channelId, until: now() + DM_CHANNEL_TTL });
+        if (channels.size > 10_000) channels.delete(channels.keys().next().value);
       }
-      const message = await post(`/channels/${encodeURIComponent(String(channel.data.id))}/messages`, {
+      const message = await post(`/channels/${encodeURIComponent(channelId)}/messages`, {
         content, allowed_mentions: { parse: [] }
       });
+      if (message.status === 404 || message.status === 403) channels.delete(key); // the cached channel went away: the next send opens it again
       if (message.status === 429) return { ok: false, code: 429, retryable: true };
       if (message.status >= 300) {
         const code = (message.data && message.data.code) || message.status;

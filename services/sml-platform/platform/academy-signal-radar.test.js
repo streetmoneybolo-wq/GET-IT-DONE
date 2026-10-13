@@ -22,7 +22,7 @@ test('judge: a fresh BUY in a long bias with wide EMA separation, a paying backt
 });
 
 test('the radar reads the universe in slices, emits grade A/B buys with a +10% (day) / +15% (swing) target, persists them, and does not repeat a symbol inside its window', async () => {
-  let t = NOW; const saved = { v: null }; const pushed = [];
+  let t = NOW; const saved = { v: null }; const pushed = [], batches = [];
   const reads = { AAA: read(), BBB: read({ sep: 0.36, trades: 3 }), CCC: read({ dir: -1 }) };
   // the fake MEM ALGO answers for whichever symbol was just read
   const order = [];
@@ -30,7 +30,7 @@ test('the radar reads the universe in slices, emits grade A/B buys with a +10% (
     universe: async () => [{ symbol: 'AAA', relVolume: 2.5, changePct: 4, liveRank: 1 }, { symbol: 'BBB' }, { symbol: 'CCC' }, { symbol: 'bad symbol' }],
     candles: async (symbol) => { order.push(symbol); return { bars: Array.from({ length: 300 }, (_, i) => ({ t: NOW - (300 - i) * 300_000, o: 10, h: 10.2, l: 9.8, c: 10, v: 1000 })) }; },
     analyze: () => reads[order[order.length - 1]],
-    state: () => ({ tradingDay: true, session: 'regular' }), push: (s) => pushed.push(s), now: () => t, perTick: 2,
+    state: () => ({ tradingDay: true, session: 'regular' }), push: (s) => pushed.push(s), pushBatch: (list) => batches.push(list.map((s) => s.symbol + ':' + s.style)), now: () => t, perTick: 2,
     store: { read: async () => saved.v, write: async (x) => { saved.v = JSON.parse(JSON.stringify(x)); } }
   });
   let r = await radar2.tick();
@@ -39,6 +39,7 @@ test('the radar reads the universe in slices, emits grade A/B buys with a +10% (
   assert.deepEqual(sigs.map((s) => [s.symbol, s.style, s.entry, s.target, s.pct, s.grade]).sort(), [['AAA', 'day', 10, 11, 10, 'A'], ['AAA', 'swing', 10, 11.5, 15, 'A']]);
   assert.equal(sigs[0].stop, 9.5); assert.equal(sigs[0].side, 'long'); assert.equal(sigs[0].relVolume, 2.5);
   assert.equal(pushed.length, 2); assert.equal(saved.v.signals.length, 2);
+  assert.deepEqual(batches, [['AAA:day', 'AAA:swing']], 'the whole sweep is handed over once');
   r = await radar2.tick();
   assert.deepEqual([r.read, r.found], [1, 0], 'the rest of the universe (CCC is a sell; the bad symbol is skipped)');
   t += 60_000; r = await radar2.tick();
