@@ -479,6 +479,8 @@ test('suggestNext: the two desk buttons get one verdict from the plan and the re
   assert.equal(suggestNext({ plan: { action: 'HOLD', target: 2.33, progress: 0.3, reasons: [] }, alert, price: 2.1 }).action, 'hold');
   const ladder = suggestNext({ plan: { action: 'HOLD', target: 2.8, progress: 0.3, reasons: [] }, alert, price: 2.5, ladder: { target: 2.8 } });
   assert.equal(ladder.target, 3.08, 'a raised ladder target is the working target');
+  const pulled = suggestNext({ plan: { action: 'SELL', target: 3.19, progress: 2.3, reasons: ['Price has given back 55% of its gain'] }, alert: { entry: 2.43, target: 3.19 }, price: 4.19, ladder: { target: 7.29 } });
+  assert.equal(pulled.action, 'sell'); assert.equal(pulled.target, 7.29, 'under the working target after a pull-back: the working target stands, nothing higher');
   assert.equal(suggestNext({}).action, 'hold', 'nothing known is a hold');
 });
 

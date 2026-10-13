@@ -345,6 +345,8 @@ function suggestNext({ plan, risk, algoView, flow, since, alert, price, ladder }
   const high = since && fin(num(since.high)) ? num(since.high) : px;
   let nextTarget = fin(num(p.target)) && num(p.target) > (tgt0 || 0) ? num(p.target) : null;
   if (!nextTarget && tgt0 > 0) nextTarget = roundPx(Math.max(tgt0 * 1.1, (high || tgt0) * 1.05));
+  // price well under the working target (a pull-back after a smashed one, or a target not reached yet): the working target stands, nothing higher is suggested
+  if (nextTarget && px != null && tgt0 > 0 && px < tgt0 * 0.97) nextTarget = tgt0;
   if (p.action === 'RAISE_TARGET') return { action: 'pt', label: 'Post a new PT', target: nextTarget, partial: false, confidence: bull && !bear ? 'high' : 'medium', why, facts };
   if (p.action === 'SELL') return { action: 'sell', label: 'Take profits', target: nextTarget, partial: false, confidence: bear ? 'high' : 'medium', why, facts };
   if (p.action === 'PARTIAL') return { action: 'sell', label: 'Take partial profits', target: nextTarget, partial: true, confidence: 'medium', why, facts };
