@@ -91,11 +91,42 @@
     + '.pv-sec[class*=tx-] .pv-ava{border-color:var(--hd)}.pv-sec[class*=tx-] .pv-bars i{background:var(--hd)}.pv-sec[class*=tx-] .pv-btn{color:var(--ink);border-color:var(--mut)}'
     + '.pv-sec[class*=tx-]{-webkit-backdrop-filter:none;backdrop-filter:none;position:relative}'
     + '.pd-sw{display:block;height:38px;border-radius:6px;position:relative}.pd-sw span{position:absolute;left:0;right:0;bottom:0;padding:2px 4px;font:800 .5rem system-ui,sans-serif;color:var(--ink);background:var(--soft);border-radius:0 0 6px 6px;text-align:center}';
+  /* real surfaces: a generated relief (SVG noise lit like a light raking across the material) printed over each texture, so
+   * paper has fibres, wood has grain, leather is pebbled, steel is brushed, concrete is pitted and marble is veined */
+  const svgUri = (inner) => 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><filter id="f" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">' + inner + '</filter><rect width="100%" height="100%" filter="url(#f)"/></svg>') + '")';
+  const turb = (bf, oct, seed, type) => '<feTurbulence type="' + (type || 'fractalNoise') + '" baseFrequency="' + bf + '" numOctaves="' + oct + '" seed="' + seed + '" stitchTiles="stitch" result="n"/>';
+  const lit = (surf, elev, az, col) => '<feDiffuseLighting in="n" surfaceScale="' + surf + '" diffuseConstant="1" lighting-color="' + (col || '#fff') + '"><feDistantLight azimuth="' + (az || 225) + '" elevation="' + elev + '"/></feDiffuseLighting>';
+  const shine = (surf, elev, exp) => '<feSpecularLighting in="n" surfaceScale="' + surf + '" specularConstant="1.1" specularExponent="' + exp + '" lighting-color="#fff"><feDistantLight azimuth="225" elevation="' + elev + '"/></feSpecularLighting>';
+  const veins = (bf, seed, r, g, b, k) => turb(bf, 5, seed, 'turbulence') + '<feColorMatrix type="matrix" values="0 0 0 0 ' + r + ' 0 0 0 0 ' + g + ' 0 0 0 0 ' + b + ' ' + (-k) + ' 0 0 0 ' + (k * 0.1) + '"/>';
+  /* [filter, blend, opacity] */
+  const paperFibre = (seed, op) => [turb('0.045 0.05', 5, seed) + lit(1.6, 62, 225), 'multiply', op || 0.5];
+  const GRAIN = {
+    'legal-pad': paperFibre(3, 0.42), 'graph-paper': paperFibre(5, 0.35), 'manila-folder': paperFibre(8, 0.6), 'index-card': paperFibre(11, 0.4),
+    'kraft-paper': [turb('0.03 0.06', 6, 2) + lit(2.4, 58, 225), 'multiply', 0.75], 'newsprint': [turb('0.06 0.03', 5, 6) + lit(1.8, 60, 225), 'multiply', 0.55],
+    'ledger-green': paperFibre(14, 0.4), 'ticker-tape': paperFibre(17, 0.35), 'sticky-note': paperFibre(19, 0.25), 'parchment': [turb('0.02 0.025', 6, 21) + lit(2.8, 52, 225), 'multiply', 0.7],
+    'blueprint': [turb('0.7', 2, 4) + lit(0.6, 40, 225), 'soft-light', 0.5],
+    'carbon-fiber': [turb('0.5', 2, 9) + lit(0.8, 32, 225), 'overlay', 0.35],
+    'brushed-steel': [turb('0.0015 0.8', 3, 3) + lit(1.4, 34, 200), 'overlay', 0.85],
+    'brass-plate': [turb('0.002 0.9', 3, 6) + lit(1.6, 34, 200), 'overlay', 0.8],
+    'leather': [turb('0.32', 3, 12) + lit(2.4, 30, 225), 'overlay', 0.7],
+    'walnut': [turb('0.006 0.2', 5, 4) + lit(2.6, 31, 190), 'overlay', 0.9],
+    'oak': [turb('0.008 0.14', 5, 7) + lit(2.6, 33, 190), 'overlay', 0.85],
+    'marble': [veins('0.005 0.008', 15, 0.2, 0.24, 0.33, 9), 'multiply', 1],
+    'green-felt': [turb('0.9', 2, 5) + lit(1.1, 32, 225), 'overlay', 0.8],
+    'cork-board': [turb('0.07', 4, 13) + lit(2.2, 31, 225), 'overlay', 0.55],
+    'crt-terminal': [turb('0.9 0.5', 2, 23) + lit(0.6, 33, 225), 'overlay', 0.3],
+    'concrete': [turb('0.085', 5, 16) + lit(2.4, 38, 225), 'multiply', 0.6],
+    'slate': [turb('0.012 0.05', 5, 18) + lit(2.8, 30, 225), 'overlay', 0.85],
+    'frosted-glass': [turb('0.8', 2, 20) + lit(0.5, 45, 225), 'soft-light', 0.55]
+  };
   for (const t of TEX) {
     const sel = '.pv-sec.tx-' + t[0] + '.tx-' + t[0] + ',.pd-sw.tx-' + t[0] + '.tx-' + t[0];
     const dark = ['#f', '#e', '#6', '#a'].indexOf(t[2].slice(0, 2)) >= 0 || t[2] === 'var(--acc)';
     css += sel + '{--ink:' + t[2] + ';--mut:' + t[3] + ';--hd:' + t[4] + ';--soft:' + (dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)') + ';' + t[5] + '}';
+    const g = GRAIN[t[0]];
+    if (g) css += '.pv-sec.tx-' + t[0] + '.tx-' + t[0] + ':before,.pd-sw.tx-' + t[0] + '.tx-' + t[0] + ':before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:' + svgUri(g[0]) + ';mix-blend-mode:' + g[1] + ';opacity:' + g[2] + '}';
   }
+  css += '.pv-sec[class*=tx-]{isolation:isolate}.pd-sw[class*=tx-]{overflow:hidden}';
   css += '.pd-d{position:absolute;pointer-events:none;display:block}'
     + '.pd-tab{left:20px;top:-15px;width:92px;height:16px;background:linear-gradient(180deg,#e8cc92,#dcb870);border:1px solid #b8914a;border-bottom:0;border-radius:7px 7px 0 0}'
     + '.pd-bind{left:0;right:0;top:0;height:11px;background:linear-gradient(180deg,#d8c04a,#b99b2c);border-bottom:1px solid #8c7418;border-radius:2px 2px 0 0;box-shadow:0 2px 3px rgba(0,0,0,.25)}'
@@ -111,6 +142,10 @@
     + '.dk-nyse-floor .pv-sec,.dk-steel-trader .pv-sec{border-radius:6px}'
     + '.pv-sec.orb{padding:10px 10px 6px;overflow:visible}.pv-sec.orb{background:transparent;border-color:transparent;box-shadow:none}'
     + '@media(min-width:900px){.pv-sec.orb{grid-area:orb}}'
+    /* modules that move with the music: each listens to one part of the sound (kick, bass, vocal, snare, hi-hats) */
+    + '.pv-sec[data-rx]{will-change:scale,translate,rotate}.pd-rx{inset:-1px;border-radius:inherit;opacity:calc(var(--rx,0) * .9);box-shadow:0 0 calc(10px + var(--rx,0) * 26px) 2px var(--rxc,var(--acc,#00c47d)),inset 0 0 calc(var(--rx,0) * 18px) var(--rxc,var(--acc,#00c47d));z-index:3}'
+    + '.pv-sec[data-rx=kick]{scale:calc(1 + var(--rx,0) * .034)}.pv-sec[data-rx=bass]{translate:0 calc(var(--rx,0) * -4px);scale:calc(1 + var(--rx,0) * .01)}.pv-sec[data-rx=vocal]{scale:calc(1 + var(--rx,0) * .014)}.pv-sec[data-rx=vocal] .pd-rx{--rxc:var(--acc2,#6c8cff)}'
+    + '.pv-sec[data-rx=snare]{rotate:calc(var(--rx,0) * .45deg);scale:calc(1 + var(--rx,0) * .016)}.pv-sec[data-rx=snare] .pd-rx{--rxc:#ffffff}.pv-sec[data-rx=hats]{translate:calc(var(--rx,0) * 2px) 0;scale:calc(1 + var(--rx,0) * .008)}.pv-sec[data-rx=hats] .pd-rx{--rxc:#ffe9a6}'
     /* the 3D gallery */
     + '.pd-orbit{position:relative;height:340px;perspective:1100px;overflow:hidden;cursor:grab;touch-action:pan-y;-webkit-user-select:none;user-select:none}.pd-orbit.drag{cursor:grabbing}'
     + '.pd-stage{position:absolute;inset:0;transform-style:preserve-3d}'
@@ -122,6 +157,7 @@
     + '@media(max-width:640px){.pd-orbit{height:270px}.pd-it{--w:96px}}'
     /* editor */
     + '.pd-sw.none{background:#0c1821;--ink:#cfe3ea;--soft:rgba(255,255,255,.06);border:1px solid #23404d}.pd-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pd-grid button{border:1px solid #23404d;border-radius:8px;background:#0c1821;color:#cfe3ea;padding:4px;cursor:pointer;font:700 .56rem system-ui,sans-serif}.pd-grid button.on{border-color:var(--acc,#00c47d);color:#fff;background:#0e1f1a}.pd-grid .pd-sw{margin-bottom:3px}'
+    + '.pd-mod{display:grid;grid-template-columns:62px 1fr 1fr;gap:5px;margin-top:5px;align-items:center}.pd-mod b{font:800 .58rem system-ui,sans-serif;color:#7ef0bd}.pd-mod select{min-width:0;border:1px solid #23404d;border-radius:6px;background:#0c1821;color:#cfe3ea;padding:5px 4px;font:700 .58rem system-ui,sans-serif}'
     + '.pd-orow{display:flex;flex-direction:column;gap:4px;margin-top:8px;padding:7px;border:1px solid #1d3744;border-radius:8px;background:#0b141c}.pd-orow .r{display:flex;gap:5px;align-items:center}.pd-orow .r input{flex:1;min-width:0}.pd-orow b{font:800 .56rem ui-monospace,monospace;color:#7ef0bd;flex:none}.pd-orow button{border:1px solid #3a2a2a;border-radius:6px;background:#1a0e0e;color:#ff9f9f;padding:3px 7px;cursor:pointer;font:800 .6rem system-ui}';
   const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
 
@@ -211,7 +247,7 @@
   };
 
   /* ---------- the running scene: lighting, orbs, gallery ---------- */
-  const R = { raf: 0, view: null, light: null, orbs: null, orbit: null, mode: 'off', orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
+  const R = { raf: 0, view: null, light: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
   const rnd = (a, b) => a + Math.random() * (b - a);
   function shade(hex, k) {
     const m = /^#([0-9a-f]{6})$/i.exec(String(hex)); if (!m) return '#334455';
@@ -224,14 +260,27 @@
     const n = parseInt(m[1], 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
   }
   function motes() { R.motes = []; for (let i = 0; i < 60; i++) R.motes.push({ x: Math.random(), y: Math.random(), z: Math.random(), s: rnd(0.2, 1), p: rnd(0, 6.28) }); }
+  const CHN = ['kick', 'bass', 'vocal', 'snare', 'hats'];
   function orbList(mode) {
     R.orbList = []; const n = mode === 'many' ? 14 : mode === 'few' ? 6 : 0;
-    for (let i = 0; i < n; i++) R.orbList.push({ a: rnd(0, 6.28), rr: rnd(0.35, 1.05), y: rnd(-1, 1), sp: rnd(0.0012, 0.0045) * (Math.random() < 0.5 ? -1 : 1), bob: rnd(0, 6.28), rad: rnd(14, 46), col: i % 5 === 0 ? '#ffffff' : (i % 2 ? R.acc : R.acc2) });
+    for (let i = 0; i < n; i++) R.orbList.push({ a: rnd(0, 6.28), rr: rnd(0.35, 1.05), y: rnd(-1, 1), sp: rnd(0.0012, 0.0045) * (Math.random() < 0.5 ? -1 : 1), bob: rnd(0, 6.28), rad: rnd(14, 46), col: i % 5 === 0 ? '#ffffff' : (i % 2 ? R.acc : R.acc2), c: CHN[i % 5] });
   }
   function drawLight(ctx, w, h, t, p) {
     ctx.clearRect(0, 0, w, h);
-    const mode = R.mode; if (mode === 'off') return;
+    const modes = R.modes; if (!modes.length) return;
     ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = modes.length > 1 ? 0.78 : 1;
+    for (const m of modes) lightOne(ctx, m, w, h, t, p);
+    ctx.globalAlpha = 1;
+    /* dust floating in the light */
+    for (const m of R.motes) {
+      m.y -= 0.00006 * (0.4 + m.s) * (1 + p * 3); m.x += Math.sin(t / 2000 + m.p) * 0.00008; if (m.y < -0.02) { m.y = 1.02; m.x = Math.random(); }
+      const a = (0.14 + 0.24 * Math.abs(Math.sin(t / 900 + m.p))) * (modes.length === 1 && modes[0] === 'monitor-glow' ? 0.5 : 1);
+      ctx.fillStyle = 'rgba(255,245,225,' + a + ')'; ctx.beginPath(); ctx.arc(m.x * w, m.y * h, 0.6 + m.z * 1.6, 0, 6.283); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  function lightOne(ctx, mode, w, h, t, p) {
     const acc = R.acc, acc2 = R.acc2, big = Math.max(w, h);
     if (mode === 'desk-lamp') {
       const fl = 0.93 + 0.07 * Math.sin(t / 230) + 0.03 * Math.sin(t / 97), lx = w * 0.84, ly = h * 0.06;
@@ -264,13 +313,6 @@
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(sx - 20, 0); ctx.lineTo(sx + 20, 0); ctx.lineTo(sx + w * 0.22, h); ctx.lineTo(sx - w * 0.22, h); ctx.closePath(); ctx.fill();
       const pool = ctx.createRadialGradient(sx, h * 0.92, 10, sx, h * 0.92, w * 0.25); pool.addColorStop(0, 'rgba(255,255,240,0.28)'); pool.addColorStop(1, 'rgba(255,255,240,0)'); ctx.save(); ctx.translate(0, 0); ctx.fillStyle = pool; ctx.fillRect(0, 0, w, h); ctx.restore();
     }
-    /* dust floating in the light */
-    for (const m of R.motes) {
-      m.y -= 0.00006 * (0.4 + m.s) * (1 + p * 3); m.x += Math.sin(t / 2000 + m.p) * 0.00008; if (m.y < -0.02) { m.y = 1.02; m.x = Math.random(); }
-      const a = (0.14 + 0.24 * Math.abs(Math.sin(t / 900 + m.p))) * (mode === 'monitor-glow' ? 0.5 : 1);
-      ctx.fillStyle = 'rgba(255,245,225,' + a + ')'; ctx.beginPath(); ctx.arc(m.x * w, m.y * h, 0.6 + m.z * 1.6, 0, 6.283); ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
   }
   function drawOrbs(ctx, w, h, t, p) {
     ctx.clearRect(0, 0, w, h);
@@ -280,11 +322,12 @@
       o.a += o.sp * (1 + p * 4);
       const wx = Math.cos(o.a) * o.rr * w * 0.62, wz = Math.sin(o.a) * o.rr * w * 0.62, wy = o.y * h * 0.42 + Math.sin(t / 1700 + o.bob) * 26;
       const s = F / (F + wz + 520);
-      items.push({ x: cx + wx * s, y: cy + wy * s, r: o.rad * s * (1 + p * 0.5), z: wz, col: o.col, s });
+      const cv = (R.ch && R.ch[o.c]) || 0;
+      items.push({ x: cx + wx * s, y: cy + wy * s, r: o.rad * s * (1 + p * 0.3 + cv * 0.55), z: wz, col: o.col, s: s, g: cv });
     }
     items.sort((a, b) => b.z - a.z);
     for (const q of items) {
-      const al = Math.max(0.25, Math.min(0.95, 0.35 + q.s * 0.6));
+      const al = Math.max(0.25, Math.min(0.97, 0.35 + q.s * 0.6 + q.g * 0.25));
       ctx.save(); ctx.globalAlpha = al;
       const halo = ctx.createRadialGradient(q.x, q.y, q.r * 0.6, q.x, q.y, q.r * 2.4); halo.addColorStop(0, rgba(q.col, 0.28)); halo.addColorStop(1, rgba(q.col, 0));
       ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(q.x, q.y, q.r * 2.4, 0, 6.283); ctx.fill();
@@ -305,8 +348,10 @@
     for (let i = 0; i < n; i++) {
       const th = (i / n) * 6.2832 + R.ang, cz = Math.cos(th), sx = Math.sin(th);
       const x = sx * Rad * 1.25, z = cz * Rad, y = -cz * 26 + Math.sin(t / 1600 + i) * 4;
-      const sc = 0.62 + 0.38 * (cz + 1) / 2;
+      const cv = (R.ch && R.ch[CHN[i % 5]]) || 0;
+      const sc = (0.62 + 0.38 * (cz + 1) / 2) * (1 + cv * 0.14);
       const el = items[i];
+      el.style.boxShadow = cv > 0.08 ? '0 12px 26px rgba(0,0,0,.55),0 0 ' + Math.round(8 + cv * 26) + 'px ' + R.acc : '';
       el.style.transform = 'translate3d(' + f1(x) + 'px,' + f1(y) + 'px,' + f1(z) + 'px) scale(' + f1(sc * 100) / 100 + ')';
       el.style.opacity = String(f1((0.4 + 0.6 * (cz + 1) / 2) * 100) / 100);
       el.style.zIndex = String(Math.round(cz * 100 + 100));
@@ -315,6 +360,8 @@
   }
   function frame(t) {
     const p = R.pulse ? R.pulse() : { p: 0 }, lvl = p.p || 0;
+    R.ch = p.ch || null;
+    for (const m of R.mods) m.el.style.setProperty('--rx', R.ch ? String(Math.round(Math.max(0, Math.min(1, R.ch[m.c] || 0)) * 100) / 100) : '0');
     if (R.light) drawLight(R.light.getContext('2d'), R.w, R.h, t, lvl);
     if (R.orbs) drawOrbs(R.orbs.getContext('2d'), R.w, R.h, t, lvl);
     if (R.orbit) { if (!R.drag) R.ang += (R.spin + lvl * 0.5) * 0.017; layOrbit(t); }
@@ -328,7 +375,7 @@
   function stop() {
     if (R.raf) cancelAnimationFrame(R.raf); R.raf = 0;
     if (R.resize) window.removeEventListener('resize', R.resize); R.resize = null;
-    R.light = R.orbs = R.orbit = null; R.view = null;
+    R.light = R.orbs = R.orbit = null; R.view = null; R.mods = []; R.modes = []; R.ch = null;
   }
   function openLink(url) { if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } }
   function wireOrbit(box) {
@@ -356,35 +403,45 @@
     const root = view.querySelector('.pv-root'); if (!root) return;
     R.view = view; R.pulse = pulse; R.acc = t.accent || '#00c47d'; R.acc2 = t.accent2 || '#6c8cff';
     R.reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    const desk = DESKS.some((d) => d[0] === t.desk) ? t.desk : 'none', tex = TEX_IDS.indexOf(t.texture) >= 0 ? t.texture : 'none';
-    const light = LIGHTS.some((d) => d[0] === t.light) ? t.light : 'off', orbs = ORB_LEVELS.some((d) => d[0] === t.orbs) ? t.orbs : 'off';
+    const desk = DESKS.some((d) => d[0] === t.desk) ? t.desk : 'none';
+    /* effects stack: the member can have several textures, several lights at once (older single choices still work) */
+    const pool = (Array.isArray(t.textures) && t.textures.length ? t.textures : (t.texture && t.texture !== 'none' ? [t.texture] : [])).filter((id) => TEX_IDS.indexOf(id) >= 0);
+    const lightList = (Array.isArray(t.lights) && t.lights.length ? t.lights : (t.light && t.light !== 'off' ? [t.light] : [])).filter((id) => id !== 'off' && LIGHTS.some((d) => d[0] === id));
+    const orbs = ORB_LEVELS.some((d) => d[0] === t.orbs) ? t.orbs : 'off';
+    const byModule = t.moduleTex && typeof t.moduleTex === 'object' ? t.moduleTex : {}, reacts = t.moduleReact && typeof t.moduleReact === 'object' ? t.moduleReact : {};
+    const M = window.smlProfileMusic, DEF = (M && M.DEFAULT_REACT) || {};
     root.classList.add('dk-' + desk);
     /* layers: desk scene, light, vignette sit behind the page; orbs fly over it */
     const fx = view.querySelector('.pv-fx');
     if (desk !== 'none') { const d = document.createElement('div'); d.className = 'pd-desk'; d.innerHTML = deskSvg(desk); view.insertBefore(d, view.firstChild); if (fx) fx.style.opacity = '.3'; view.style.background = '#05080e'; }
-    if (light !== 'off') {
-      const c = document.createElement('canvas'); c.className = 'pd-light'; view.insertBefore(c, root); R.light = c; R.mode = light; motes();
+    if (lightList.length) {
+      const c = document.createElement('canvas'); c.className = 'pd-light'; view.insertBefore(c, root); R.light = c; R.modes = lightList; R.mode = lightList[0]; motes();
       const v = document.createElement('div'); v.className = 'pd-vig'; view.insertBefore(v, root);
-    } else R.mode = 'off';
+    } else { R.mode = 'off'; R.modes = []; }
     if (orbs !== 'off') { const c = document.createElement('canvas'); c.className = 'pd-orbs'; view.appendChild(c); R.orbs = c; R.orbMode = orbs; orbList(orbs); }
-    /* modules: one texture for all, or the desk's own mix */
+    /* modules: a texture of their own, else handed out from the chosen textures in turn, else the desk's own mix */
     const secs = root.querySelectorAll('.pv-sec');
-    const mix = tex === 'none' ? (MIX[desk] || null) : null;
+    const mix = !pool.length ? (MIX[desk] || null) : null;
+    const KEYS = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed'];
     let k = 0;
     secs.forEach((el, i) => {
       if (el.classList.contains('orb')) return; /* the gallery stays clear so the desk shows behind the pictures */
-      const id = tex !== 'none' ? tex : (mix ? mix[k % mix.length] : '');
+      const key = KEYS.find((x) => el.classList.contains(x)) || '';
+      const own = key && TEX_IDS.indexOf(byModule[key]) >= 0 ? byModule[key] : '';
+      const id = own || (pool.length ? pool[k % pool.length] : (mix ? mix[k % mix.length] : ''));
       k += 1;
       if (id) el.classList.add('tx-' + id);
       const kinds = [];
       if (id && DECO[id]) kinds.push(DECO[id]);
-      const dd = DESK_DECO[desk]; if (dd && !(id === 'sticky-note' && dd[0] === 'tape' && false)) kinds.push(dd[i % dd.length]);
-      for (const k of kinds) { const i2 = document.createElement('i'); i2.className = 'pd-d pd-' + k; el.appendChild(i2); }
+      const dd = DESK_DECO[desk]; if (dd) kinds.push(dd[i % dd.length]);
+      for (const kd of kinds) { const i2 = document.createElement('i'); i2.className = 'pd-d pd-' + kd; el.appendChild(i2); }
+      const want = key ? (reacts[key] || DEF[key] || '') : '';
+      if (M && want && want !== 'off') { el.setAttribute('data-rx', want); const g = document.createElement('i'); g.className = 'pd-d pd-rx'; el.appendChild(g); R.mods.push({ el: el, c: want }); }
     });
     /* the 3D gallery */
     const box = root.querySelector('.pd-orbit');
     if (box) { R.orbit = box; wireOrbit(box); R.spin = 0.18; }
-    if (R.light || R.orbs || R.orbit) {
+    if (R.light || R.orbs || R.orbit || R.mods.length) {
       R.resize = () => size(); window.addEventListener('resize', R.resize); size();
       if (!R.reduce) R.raf = requestAnimationFrame(frame);
     }

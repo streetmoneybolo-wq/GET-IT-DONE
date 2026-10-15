@@ -8,7 +8,7 @@
  *     the Activity is visible), the busiest server wins
  *   - tier: the live access check, cached a few minutes
  * The member chooses one of LAYOUTS, a theme (accent, background effect, font, immersive level), one song (a direct audio
- * link plays in the Academy; YouTube/Spotify/SoundCloud/Apple links open outside), and up to 8 social links, each with a
+ * link or a YouTube/Spotify/SoundCloud/Apple link, all played in the Academy's music dock), and up to 8 social links, each with a
  * link card (title + image read from the page's own Open Graph tags, image served through the Academy's origin because
  * the Activity may only show images from itself). Nothing here reads DMs, other channels or anything private. */
 
@@ -30,6 +30,12 @@ const TEXTURES = new Set(['none', 'legal-pad', 'graph-paper', 'manila-folder', '
 const DESKS = new Set(['none', 'nyse-floor', 'paper-desk', 'walnut-office', 'steel-trader', 'cork-wall', 'leather-blotter']);
 const LIGHTS = new Set(['off', 'desk-lamp', 'window-sun', 'monitor-glow', 'neon-sweep', 'golden-hour', 'spotlight']);
 const ORBS = new Set(['off', 'few', 'many']);
+/* effects can be stacked: several textures (handed out across the modules), several lights and several background effects at
+ * once; each module can also be given its own texture and told which part of the music it moves to */
+const MODULES = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed'];
+const REACTS = new Set(['auto', 'off', 'kick', 'bass', 'vocal', 'snare', 'hats']);
+const MAX_TEXTURES = 6, MAX_LIGHTS = 4, MAX_FXS = 4;
+const pickSet = (list, allowed, max, skip) => { const out = []; for (const v of Array.isArray(list) ? list : []) { const id = String(v); if (id !== skip && allowed.has(id) && !out.includes(id)) out.push(id); if (out.length >= max) break; } return out; };
 const MAX_ORBIT = 12;
 const SOCIAL_KINDS = [
   ['x', /(^|\.)(x|twitter)\.com$/], ['instagram', /(^|\.)instagram\.com$/], ['tiktok', /(^|\.)tiktok\.com$/], ['youtube', /(^|\.)(youtube\.com|youtu\.be)$/],
@@ -63,8 +69,16 @@ function cleanSettings(input = {}, prev = {}) {
     if (t.immersive !== undefined) out.immersive = IMMERSIVE.has(String(t.immersive)) ? String(t.immersive) : 'balanced';
     if (t.dark !== undefined) out.dark = t.dark !== false;
     if (t.texture !== undefined) out.texture = TEXTURES.has(String(t.texture)) ? String(t.texture) : 'none';
+    if (t.textures !== undefined) { out.textures = pickSet(t.textures, TEXTURES, MAX_TEXTURES, 'none'); out.texture = out.textures[0] || 'none'; }
+    else if (t.texture !== undefined) out.textures = out.texture === 'none' ? [] : [out.texture];
     if (t.desk !== undefined) out.desk = DESKS.has(String(t.desk)) ? String(t.desk) : 'none';
     if (t.light !== undefined) out.light = LIGHTS.has(String(t.light)) ? String(t.light) : 'off';
+    if (t.lights !== undefined) { out.lights = pickSet(t.lights, LIGHTS, MAX_LIGHTS, 'off'); out.light = out.lights[0] || 'off'; }
+    else if (t.light !== undefined) out.lights = out.light === 'off' ? [] : [out.light];
+    if (t.fxs !== undefined) { out.fxs = pickSet(t.fxs, FX, MAX_FXS, 'none'); out.fx = out.fxs[0] || 'none'; }
+    else if (t.fx !== undefined) out.fxs = out.fx === 'none' ? [] : [out.fx];
+    if (t.moduleTex !== undefined && t.moduleTex && typeof t.moduleTex === 'object') { const m = {}; for (const k of MODULES) if (TEXTURES.has(String(t.moduleTex[k])) && String(t.moduleTex[k]) !== 'none') m[k] = String(t.moduleTex[k]); out.moduleTex = m; }
+    if (t.moduleReact !== undefined && t.moduleReact && typeof t.moduleReact === 'object') { const m = {}; for (const k of MODULES) if (REACTS.has(String(t.moduleReact[k])) && String(t.moduleReact[k]) !== 'auto') m[k] = String(t.moduleReact[k]); out.moduleReact = m; }
     if (t.orbs !== undefined) out.orbs = ORBS.has(String(t.orbs)) ? String(t.orbs) : 'off';
     if (t.orbit !== undefined) {
       /* up to 12 pictures; each is an https image and may link to an https page (the member's own link back) */
@@ -82,7 +96,8 @@ function cleanSettings(input = {}, prev = {}) {
     if (!input.song || !input.song.url) s.song = null;
     else {
       const url = httpsUrl(input.song.url);
-      s.song = url ? { url, title: text(input.song.title, 80), kind: AUDIO_EXT.test(url) ? 'audio' : kindOf(SONG_KINDS, url, 'link') } : null;
+      const bpm = Math.round(Number(input.song.bpm));
+      s.song = url ? { url, title: text(input.song.title, 80), kind: AUDIO_EXT.test(url) ? 'audio' : kindOf(SONG_KINDS, url, 'link'), bpm: bpm >= 60 && bpm <= 200 ? bpm : 0 } : null;
     }
   }
   if (input.socials !== undefined) {
@@ -103,7 +118,7 @@ function cleanSettings(input = {}, prev = {}) {
   }
   return s;
 }
-const defaults = () => ({ displayName: '', tagline: '', bio: '', layout: 'classic', theme: { accent: '', accent2: '', fx: 'aurora', font: 'system', immersive: 'balanced', dark: true, texture: 'none', desk: 'none', light: 'off', orbs: 'off', orbit: [] }, song: null, socials: [], flags: { showPaper: true, showServer: true, showSocials: true, showFeed: true, showFollowers: true } });
+const defaults = () => ({ displayName: '', tagline: '', bio: '', layout: 'classic', theme: { accent: '', accent2: '', fx: 'aurora', font: 'system', immersive: 'balanced', dark: true, texture: 'none', textures: [], desk: 'none', light: 'off', lights: [], fxs: [], moduleTex: {}, moduleReact: {}, orbs: 'off', orbit: [] }, song: null, socials: [], flags: { showPaper: true, showServer: true, showSocials: true, showFeed: true, showFollowers: true } });
 
 /* Open Graph title + image of a page, for the link card. Only the page's own meta tags are read. */
 function parseOg(html, url) {

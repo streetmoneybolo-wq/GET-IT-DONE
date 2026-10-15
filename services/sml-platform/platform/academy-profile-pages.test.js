@@ -10,8 +10,8 @@ test('settings are cleaned: layouts from the list, bounded text, one song with i
   assert.equal(LAYOUTS.length, 20);
   const s = cleanSettings({ displayName: 'Ana <b>', tagline: 'x'.repeat(200), layout: 'nope', theme: { accent: '#00C47D', fx: 'lasers', font: 'mono', immersive: 'immersive' }, song: { url: 'https://cdn.example.com/track.mp3', title: 'My song' }, socials: [{ url: 'https://x.com/ana' }, 'https://www.instagram.com/ana', 'http://insecure.example.com', 'https://x.com/ana', { url: 'https://stockmarketloop.com/ana/' }], flags: { showPaper: false } });
   assert.equal(s.displayName, 'Ana b'); assert.equal(s.tagline.length, 90); assert.equal(s.layout, 'classic');
-  assert.deepEqual(s.theme, { accent: '#00c47d', fx: 'aurora', font: 'mono', immersive: 'immersive' });
-  assert.deepEqual(s.song, { url: 'https://cdn.example.com/track.mp3', title: 'My song', kind: 'audio' });
+  assert.deepEqual(s.theme, { accent: '#00c47d', fx: 'aurora', fxs: ['aurora'], font: 'mono', immersive: 'immersive' });
+  assert.deepEqual(s.song, { url: 'https://cdn.example.com/track.mp3', title: 'My song', kind: 'audio', bpm: 0 });
   assert.deepEqual(s.socials.map((x) => x.kind), ['x', 'instagram', 'stockmarketloop']);
   assert.equal(s.flags.showPaper, false);
   assert.equal(cleanSettings({ song: { url: 'https://www.youtube.com/watch?v=abc' } }).song.kind, 'youtube');
@@ -89,6 +89,21 @@ test('look and feel: texture, desk, light and orbs come from the lists; the 3D g
   assert.equal(new Set(orbit.map((o) => o.image)).size, 12, 'no duplicate pictures');
 });
 
+test('effects stack: several textures, lights and background effects; a texture and a part of the song per module; a BPM for embedded songs', () => {
+  const t = cleanSettings({ theme: { textures: ['leather', 'marble', 'lava', 'leather', 'none', 'oak', 'walnut', 'slate', 'concrete', 'cork-board'], lights: ['desk-lamp', 'neon-sweep', 'off', 'x'], fxs: ['grid', 'stars', 'none', 'nope'], moduleTex: { head: 'brass-plate', feed: 'lava', bogus: 'oak' }, moduleReact: { stats: 'kick', head: 'vocal', feed: 'auto', paper: 'drums' } } }).theme;
+  assert.deepEqual(t.textures, ['leather', 'marble', 'oak', 'walnut', 'slate', 'concrete'], 'six at most, no repeats, no unknown ids, "none" skipped');
+  assert.equal(t.texture, 'leather');
+  assert.deepEqual(t.lights, ['desk-lamp', 'neon-sweep']); assert.equal(t.light, 'desk-lamp');
+  assert.deepEqual(t.fxs, ['grid', 'stars']); assert.equal(t.fx, 'grid');
+  assert.deepEqual(t.moduleTex, { head: 'brass-plate' });
+  assert.deepEqual(t.moduleReact, { stats: 'kick', head: 'vocal' }, 'auto is the default and is not stored');
+  const old = cleanSettings({ theme: { texture: 'oak', light: 'spotlight' } }).theme;
+  assert.deepEqual([old.textures, old.lights], [['oak'], ['spotlight']], 'a single older choice still works');
+  assert.deepEqual(cleanSettings({ theme: { textures: [] } }).theme.textures, []);
+  assert.equal(cleanSettings({ song: { url: 'https://open.spotify.com/track/abc123', bpm: 128.4 } }).song.bpm, 128);
+  assert.equal(cleanSettings({ song: { url: 'https://open.spotify.com/track/abc123', bpm: 9000 } }).song.bpm, 0);
+});
+
 test('orbit pictures: registered only after the server proves they are pictures; internal hosts refused; allowed again after a restart', async () => {
   const png = Buffer.from('89504e470d0a1a0a', 'hex');
   const fetchImpl = async (url) => (String(url).includes('good.example.com') ? { ok: true, headers: { get: () => 'image/png' }, arrayBuffer: async () => png } : { ok: true, headers: { get: () => 'text/html' }, arrayBuffer: async () => png });
@@ -116,4 +131,12 @@ test('the profile desk script is inlined into the Academy page: no backslash, ba
   assert.equal(src.includes('${'), false);
   assert.equal(src.includes('</script'), false);
   assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 24, 'exactly 24 textures');
+});
+
+test('the profile music script is inlined into the Academy page too, and the page may frame only the four music players', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-music.js'), 'utf8');
+  for (const bad of ['\\', '`', '${', '</script']) assert.equal(src.includes(bad), false, 'no ' + bad);
+  const server = require('node:fs').readFileSync(require('node:path').join(__dirname, 'server.js'), 'utf8');
+  assert.match(server, /frame-src 'self' https:\/\/www\.youtube-nocookie\.com https:\/\/open\.spotify\.com https:\/\/w\.soundcloud\.com https:\/\/embed\.music\.apple\.com;/);
+  assert.match(server, /ACADEMY_PROFILE_DESK \+ ACADEMY_PROFILE_MUSIC \+ ACADEMY_PROFILE_UI/, 'the music player loads before the profile page uses it');
 });

@@ -2,8 +2,8 @@
  *
  * A full-screen page inside the Academy for any member: identity + tier, main Discord server, paper account and its
  * leaderboard rank, one song, social link cards, and a feed of their live-chat posts. The owner of a page customizes it:
- * 20 layouts, accent colours, a background effect that pulses to the song (a direct audio link plays here; YouTube,
- * Spotify, SoundCloud and Apple links open outside), font, immersive level, tagline, bio, what to show.
+ * 20 layouts, accent colours, stackable background effects, textures and lights that move to the song (it plays in the
+ * Academy music dock, academy-profile-music.js: a direct audio link or a YouTube, Spotify, SoundCloud or Apple embed), font, immersive level, tagline, bio, what to show.
  * Members follow each other; follower counts show on the page and on the hover card in chat (last 3 posts, paper
  * rank, main server, Follow). Opened from the 👤 button, a name in chat, or ?popout=profile&user=<id>. */
 (() => {
@@ -112,27 +112,35 @@
   let toastTm = 0; const toast = (t) => { toastEl.textContent = t; toastEl.style.display = 'block'; clearTimeout(toastTm); toastTm = setTimeout(() => { toastEl.style.display = 'none'; }, 3800); };
   document.body.appendChild(view); document.body.appendChild(edit); document.body.appendChild(toastEl);
 
-  const S = { open: false, userId: '', data: null, draft: null, saving: false, audio: null, ctx: null, analyser: null, fx: null };
+  const S = { open: false, userId: '', data: null, draft: null, saving: false, fx: null };
 
   /* ---------- background effects, pulsing with the song when one plays here ---------- */
+  const CHN = ['kick', 'bass', 'vocal', 'snare', 'hats'];
   function pulse() {
     const lvl = { off: 0, subtle: .35, balanced: .7, immersive: 1 }[(S.data && S.data.settings.theme.immersive) || 'balanced'];
-    if (S.analyser && S.audio && !S.audio.paused) { const arr = new Uint8Array(S.analyser.frequencyBinCount); S.analyser.getByteFrequencyData(arr); let bass = 0; for (let i = 0; i < 12; i++) bass += arr[i]; return { p: Math.min(1, bass / 12 / 180) * lvl, arr, live: true }; }
-    return { p: (0.5 + 0.5 * Math.sin(Date.now() / 900)) * lvl * 0.35, arr: null, live: false };
+    const M = window.smlProfileMusic;
+    if (M && M.active() && M.isPlaying()) {
+      const raw = M.read(performance.now()), k = lvl === 0 ? 0 : 0.45 + 0.55 * lvl, ch = {};
+      for (const c of CHN) ch[c] = Math.min(1, (raw[c] || 0) * k);
+      return { p: Math.min(1, Math.max(ch.kick, ch.bass * .85)), ch: ch, arr: M.frequency(), live: M.mode() === 'live' };
+    }
+    return { p: (0.5 + 0.5 * Math.sin(Date.now() / 900)) * lvl * 0.35, ch: null, arr: null, live: false };
   }
-  function startFx(mode) {
+  function startFx(modes) {
     stopFx();
-    const canvas = view.querySelector('.pv-fx'); if (!canvas || mode === 'none') return;
-    const ctx = canvas.getContext('2d'); let w = 0, h = 0, parts = [];
+    const canvas = view.querySelector('.pv-fx'); if (!canvas || !modes || !modes.length) return;
+    const ctx = canvas.getContext('2d'); let w = 0, h = 0;
     const acc = (S.data && S.data.settings.theme.accent) || '#00c47d', acc2 = (S.data && S.data.settings.theme.accent2) || '#6c8cff';
     const size = () => { w = canvas.width = innerWidth; h = canvas.height = innerHeight; };
     size();
-    const N = mode === 'rain' ? 160 : mode === 'stars' ? 140 : mode === 'embers' ? 90 : 70;
-    for (let i = 0; i < N; i++) parts.push({ x: Math.random() * w, y: Math.random() * h, r: 1 + Math.random() * 2.5, s: .3 + Math.random() * 1.2, a: Math.random() * Math.PI * 2 });
+    const partsBy = {};
+    for (const mode of modes) {
+      const N = mode === 'rain' ? 160 : mode === 'stars' ? 140 : mode === 'embers' ? 90 : 70, list = [];
+      for (let i = 0; i < N; i++) list.push({ x: Math.random() * w, y: Math.random() * h, r: 1 + Math.random() * 2.5, s: .3 + Math.random() * 1.2, a: Math.random() * Math.PI * 2 });
+      partsBy[mode] = list;
+    }
     const bars = () => { const b = view.querySelector('.pv-bars'); return b ? [...b.children] : []; };
-    const frame = () => {
-      const { p, arr } = pulse();
-      ctx.clearRect(0, 0, w, h);
+    const one = (mode, parts, p) => {
       if (mode === 'aurora') {
         const g = ctx.createRadialGradient(w * (0.3 + 0.1 * Math.sin(Date.now() / 4000)), h * 0.2, 20, w * 0.3, h * 0.2, w * (0.6 + p * 0.3)); g.addColorStop(0, acc + '55'); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
         const g2 = ctx.createRadialGradient(w * 0.75, h * (0.7 + 0.1 * Math.cos(Date.now() / 5000)), 20, w * 0.75, h * 0.7, w * (0.5 + p * 0.3)); g2.addColorStop(0, acc2 + '44'); g2.addColorStop(1, 'transparent'); ctx.fillStyle = g2; ctx.fillRect(0, 0, w, h);
@@ -152,7 +160,12 @@
           ctx.fillStyle = (mode === 'embers' ? '#ff9f43' : (Math.random() < 0.5 ? acc : acc2)) + (mode === 'stars' ? 'cc' : '88'); ctx.beginPath(); ctx.arc(q.x, q.y, rr, 0, Math.PI * 2); ctx.fill();
         }
       }
-      const bs = bars(); if (bs.length) { for (let i = 0; i < bs.length; i++) { const v = arr ? arr[i * 3] / 255 : (0.15 + 0.1 * Math.sin(Date.now() / 300 + i)); bs[i].style.height = Math.max(3, Math.round(v * 22)) + 'px'; } }
+    };
+    const frame = () => {
+      const { p, arr, ch } = pulse();
+      ctx.clearRect(0, 0, w, h);
+      for (const mode of modes) one(mode, partsBy[mode], p);
+      const bs = bars(); if (bs.length) { for (let i = 0; i < bs.length; i++) { const v = arr ? arr[i * 3] / 255 : (ch ? Math.min(1, ch[CHN[i % 5]] * .9 + .08) : (0.15 + 0.1 * Math.sin(Date.now() / 300 + i))); bs[i].style.height = Math.max(3, Math.round(v * 22)) + 'px'; } }
       S.fx = requestAnimationFrame(frame);
     };
     S.fx = requestAnimationFrame(frame);
@@ -160,32 +173,15 @@
   }
   function stopFx() { if (S.fx) cancelAnimationFrame(S.fx); S.fx = null; if (S.fxResize) window.removeEventListener('resize', S.fxResize); S.fxResize = null; }
 
-  /* ---------- the song ---------- */
-  function stopAudio() { if (S.audio) { try { S.audio.pause(); } catch (_) { /* fine */ } S.audio.remove(); } S.audio = null; S.analyser = null; }
-  function toggleAudio(auto) {
-    const d = S.data; if (!d || !d.settings.song || d.settings.song.kind !== 'audio') return;
-    const box = view.querySelector('.pv-song');
-    if (S.audio && !S.audio.paused) { if (auto) return; S.audio.pause(); if (box) box.classList.remove('playing'); return; }
-    if (!S.audio) {
-      const a = document.createElement('audio'); a.preload = 'auto'; a.loop = true; a.src = '/academy-activity/profiles/' + encodeURIComponent(d.userId) + '/audio?t=' + encodeURIComponent(token()); a.style.display = 'none'; view.appendChild(a); S.audio = a;
-      try { S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)(); const src = S.ctx.createMediaElementSource(a); S.analyser = S.ctx.createAnalyser(); S.analyser.fftSize = 128; src.connect(S.analyser); S.analyser.connect(S.ctx.destination); } catch (_) { S.analyser = null; }
-      a.addEventListener('error', () => { toast('That song link could not be played here. Use a direct MP3 or M4A link.'); if (box) box.classList.remove('playing'); });
-    }
-    if (S.ctx && S.ctx.state === 'suspended') S.ctx.resume().catch(() => {});
-    S.audio.play().then(() => { if (box) box.classList.add('playing'); }).catch(() => { if (auto) armGesture(); else toast('Press play again to start the song.'); });
+  /* ---------- the song: plays in the Academy music dock (academy-profile-music.js), starts by itself when the page opens ---------- */
+  function playable(song) { const M = window.smlProfileMusic; return !!(song && M && (song.kind === 'audio' || M.embed(song))); }
+  function syncSong() {
+    const M = window.smlProfileMusic; if (!M) return;
+    const d = S.data, song = d && d.settings.song;
+    if (!S.open || !d || !playable(song)) { M.unmount(); return; }
+    M.mount(song, { userId: d.userId, token: token(), accent: (d.settings.theme && d.settings.theme.accent) || '#00c47d', onState: (on) => { const box = view.querySelector('.pv-song'); if (box) box.classList.toggle('playing', on); }, onError: toast });
   }
-  /* the song starts by itself when a profile opens; if the browser holds it back until the person touches the page, the first
-     tap, click or key press anywhere on the profile starts it */
-  function armGesture() {
-    if (S.armed) return; S.armed = true;
-    const go = () => { S.armed = false; view.removeEventListener('pointerdown', go, true); view.removeEventListener('keydown', go, true); if (S.open && S.data && S.data.settings.song && S.data.settings.song.kind === 'audio') toggleAudio(true); };
-    view.addEventListener('pointerdown', go, true); view.addEventListener('keydown', go, true);
-  }
-  function autoplay() {
-    const d = S.data; if (!d || !d.settings.song || d.settings.song.kind !== 'audio' || !S.open) return;
-    if (S.autoFor === d.userId) return; S.autoFor = d.userId;
-    toggleAudio(true);
-  }
+  function stopAudio() { const M = window.smlProfileMusic; if (M) M.unmount(); }
 
   /* ---------- rendering ---------- */
   const sec = (name, title, body, hidden) => '<section class="pv-sec ' + name + (hidden ? ' hidden' : '') + '">' + (title ? '<h6>' + esc(title) + '</h6>' : '') + body + '</section>';
@@ -206,7 +202,8 @@
     h += sec('server', 'Main Discord server', d.server ? '<div class="pv-srv"><div class="ic">' + esc(String(d.server.name || 'D').slice(0, 1).toUpperCase()) + '</div><div><b>' + esc(d.server.name) + '</b><small>' + d.server.minutes + ' min in the Academy here' + (d.server.servers > 1 ? ' · ' + d.server.sharePct + '% of their time' : '') + '</small></div></div>' : '<p class="pv-empty">Shows the Discord server they use the Academy in most.</p>', s.flags.showServer === false);
     h += sec('paper', 'Paper trading account', d.paper ? '<div class="pv-kv"><div><span>ACCOUNT</span><b>' + money(d.paper.equity) + '</b></div><div><span>P&amp;L</span><b class="' + (d.paper.pnl >= 0 ? 'up' : 'dn') + '">' + money(d.paper.pnl) + '</b></div><div><span>RETURN</span><b class="' + (d.paper.returnPct >= 0 ? 'up' : 'dn') + '">' + pct(d.paper.returnPct) + '</b></div><div><span>LEADERBOARD</span><b>' + (d.paper.rank ? '#' + d.paper.rank + ' <small style="color:#7f95a1;font-size:.6rem">of ' + d.paper.of + '</small>' : 'unranked') + '</b></div></div><p class="pv-note">Simulated paper account. Not real money.</p>' : '<p class="pv-empty">No paper trades yet.</p>', s.flags.showPaper === false);
     const song = s.song;
-    h += sec('song', 'Song', song ? '<div class="pv-song' + (S.audio && !S.audio.paused ? ' playing' : '') + '"><div class="disc"></div><div style="min-width:0;flex:1"><div class="ttl">' + esc(song.title || 'Profile song') + '</div><div class="sub">' + esc(song.kind === 'audio' ? 'Plays here' : song.kind.charAt(0).toUpperCase() + song.kind.slice(1) + ' · opens outside') + '</div>' + (song.kind === 'audio' ? '<div class="pv-bars">' + '<i></i>'.repeat(14) + '</div>' : '') + '</div>' + (song.kind === 'audio' ? '<button type="button" class="pv-btn acc" data-pv="play">▶ / ❚❚</button>' : '<button type="button" class="pv-btn" data-pv="open" data-url="' + esc(song.url) + '">Open ↗</button>') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add one song in Customize.' : 'No song yet.') + '</p>', !song && !d.own);
+    const canPlay = playable(song), MU = window.smlProfileMusic;
+    h += sec('song', 'Song', song ? '<div class="pv-song' + (MU && MU.isPlaying() ? ' playing' : '') + '"><div class="disc"></div><div style="min-width:0;flex:1"><div class="ttl">' + esc(song.title || 'Profile song') + '</div><div class="sub">' + esc(canPlay ? 'Playing in the Academy music player' : song.kind.charAt(0).toUpperCase() + song.kind.slice(1) + ' · opens outside') + '</div>' + (canPlay ? '<div class="pv-bars">' + '<i></i>'.repeat(14) + '</div>' : '') + '</div>' + (canPlay ? '<button type="button" class="pv-btn acc" data-pv="play">▶ / ❚❚</button>' : '<button type="button" class="pv-btn" data-pv="open" data-url="' + esc(song.url) + '">Open ↗</button>') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add one song in Customize.' : 'No song yet.') + '</p>', !song && !d.own);
     const socials = s.socials || [];
     h += sec('social', 'Links', socials.length ? '<div class="pv-links">' + socials.map((x) => '<button type="button" class="pv-link" data-pv="open" data-url="' + esc(x.url) + '">' + (x.card && x.card.image ? '<img alt="" loading="lazy" src="/academy-activity/profiles/link-image?u=' + encodeURIComponent(x.card.image) + '&t=' + encodeURIComponent(token()) + '">' : '<div class="ph">' + esc(SOCIAL_ICON[x.kind] || '↗') + '</div>') + '<span class="t">' + esc(x.title || (x.card && x.card.title) || x.kind) + '<small>' + esc((x.card && x.card.site) || x.kind) + '</small></span></button>').join('') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add your social links in Customize.' : 'No links yet.') + '</p>', s.flags.showSocials === false || (!socials.length && !d.own));
     const posts = d.posts || [];
@@ -215,11 +212,10 @@
     view.innerHTML = h;
     view.style.background = '';
     view.classList.add('open');
-    startFx(fx);
-    if (S.audio) { S.audio.remove(); view.appendChild(S.audio); }
+    startFx((Array.isArray(t.fxs) && t.fxs.length ? t.fxs : [fx]).filter((x) => x && x !== 'none'));
     /* textures, desk, lighting, 3D orbs and the 3D gallery (academy-profile-desk.js) */
     if (DESK) { try { DESK.apply(view, d, pulse); } catch (_) { /* the page still works without the scene */ } }
-    autoplay();
+    syncSong();
   }
 
   async function open(userId) {
@@ -231,28 +227,38 @@
     if (!r.ok) { view.innerHTML = '<div class="pv-top"><b>👤 ACADEMY PROFILE</b><span class="sp"></span><button type="button" class="pv-btn" data-pv="close">✕</button></div><p style="padding:30px;text-align:center;color:#ff9f9f">' + esc(r.error === 'not_found' ? 'That member has no Academy profile yet.' : 'The profile could not be loaded right now.') + '</p>'; return; }
     S.data = r.profile; render();
   }
-  function close() { S.open = false; view.classList.remove('open'); edit.classList.remove('open'); stopFx(); if (window.smlProfileDesk) window.smlProfileDesk.stop(); stopAudio(); S.draft = null; S.autoFor = ''; }
+  function close() { S.open = false; view.classList.remove('open'); edit.classList.remove('open'); stopFx(); if (window.smlProfileDesk) window.smlProfileDesk.stop(); stopAudio(); S.draft = null; }
 
   /* ---------- the editor (own profile) ---------- */
   const SWATCH = ['#00c47d', '#6c8cff', '#ff9f43', '#ff6b6b', '#c46bff', '#ffe600', '#19d3f3', '#ff4fa3', '#9aa7b8', '#ffffff'];
   function openEditor() {
     if (!S.data || !S.data.own) return;
     S.draft = JSON.parse(JSON.stringify(S.data.settings)); S.draft.theme = { accent: '', accent2: '', fx: '', font: 'system', immersive: 'balanced', dark: true, ...S.draft.theme };
+    const th = S.draft.theme;
+    if (!Array.isArray(th.textures) || !th.textures.length) th.textures = th.texture && th.texture !== 'none' ? [th.texture] : [];
+    if (!Array.isArray(th.lights) || !th.lights.length) th.lights = th.light && th.light !== 'off' ? [th.light] : [];
+    if (!Array.isArray(th.fxs) || !th.fxs.length) th.fxs = th.fx && th.fx !== 'none' ? [th.fx] : (th.fx === 'none' ? [] : [LAYOUT_FX[S.draft.layout] || 'aurora']);
+    th.moduleTex = th.moduleTex || {}; th.moduleReact = th.moduleReact || {};
     paintEditor(); edit.classList.add('open');
   }
+  const toggleIn = (list, id, max) => { const i = list.indexOf(id); if (i >= 0) { list.splice(i, 1); return true; } if (list.length >= max) return false; list.push(id); return true; };
   /* the look and feel controls: texture, desk, lighting, 3D orbs and the 3D gallery (academy-profile-desk.js) */
   function deskControls(t) {
     const D = window.smlProfileDesk; if (!D) return '';
     const on = (cond) => (cond ? 'on' : '');
     const opts = (key, list, cur) => '<div class="pv-opts">' + list.map((x) => '<button type="button" data-' + key + '="' + esc(x.id) + '" class="' + on((cur || list[0].id) === x.id) + '">' + esc(x.label) + '</button>').join('') + '</div>';
-    const cur = t.texture || 'none';
-    const grid = [{ id: 'none', label: 'Plain' }].concat(D.textures).map((x) => '<button type="button" data-tex="' + esc(x.id) + '" class="' + on(cur === x.id) + '"><span class="pd-sw ' + (x.id === 'none' ? 'none' : 'tx-' + esc(x.id)) + '"><span>' + esc(x.label) + '</span></span></button>').join('');
+    const picked = Array.isArray(t.textures) ? t.textures : [];
+    const grid = [{ id: 'none', label: 'Plain (none)' }].concat(D.textures).map((x) => '<button type="button" data-tex="' + esc(x.id) + '" class="' + on(x.id === 'none' ? !picked.length : picked.indexOf(x.id) >= 0) + '"><span class="pd-sw ' + (x.id === 'none' ? 'none' : 'tx-' + esc(x.id)) + '"><span>' + esc(x.label) + '</span></span></button>').join('');
+    const lights = Array.isArray(t.lights) ? t.lights : [], light = (D.lights || []).map((x) => '<button type="button" data-light="' + esc(x.id) + '" class="' + on(x.id === 'off' ? !lights.length : lights.indexOf(x.id) >= 0) + '">' + esc(x.label) + '</button>').join('');
+    const MODN = [['head', 'Name'], ['stats', 'Followers'], ['server', 'Server'], ['paper', 'Paper acct'], ['song', 'Song'], ['social', 'Links'], ['feed', 'Posts']], RX = [['auto', 'auto'], ['off', 'none'], ['kick', 'kick'], ['bass', 'bass'], ['vocal', 'vocals'], ['snare', 'snare'], ['hats', 'hi-hats']];
+    const mods = MODN.map(([k, l]) => '<div class="pd-mod"><b>' + l + '</b><select data-modtex="' + k + '"><option value="">texture: auto</option>' + D.textures.map((x) => '<option value="' + esc(x.id) + '"' + ((t.moduleTex || {})[k] === x.id ? ' selected' : '') + '>' + esc(x.label) + '</option>').join('') + '</select><select data-modrx="' + k + '">' + RX.map(([v, n]) => '<option value="' + v + '"' + (((t.moduleReact || {})[k] || 'auto') === v ? ' selected' : '') + '>moves to: ' + n + '</option>').join('') + '</select></div>').join('');
     const orbit = t.orbit || [];
     const rows = orbit.map((o, i) => '<div class="pd-orow"><div class="r"><b>' + (i + 1) + '</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cfe3ea" title="' + esc(o.image) + '">' + esc(o.image) + '</span><button type="button" data-orb-rm="' + i + '">remove</button></div>'
       + '<div class="r"><input type="url" data-orb="href" data-i="' + i + '" placeholder="Link this picture goes to (https://, optional)" value="' + esc(o.href || '') + '"></div><div class="r"><input type="text" data-orb="title" data-i="' + i + '" maxlength="60" placeholder="Caption (optional)" value="' + esc(o.title || '') + '"></div></div>').join('');
-    return '<h6>MODULE TEXTURE · ' + esc(cur === 'none' ? 'plain (or your desk dresses them)' : cur) + '</h6><div class="pd-grid">' + grid + '</div>'
+    return '<h6>MODULE TEXTURES · ' + (picked.length ? picked.length + ' picked' : 'plain (or your desk dresses them)') + '</h6><p class="pv-note">Pick as many as you like (up to 6). They are handed out across your modules in turn, so a page can be legal pad, leather, marble and brushed steel all at once.</p><div class="pd-grid">' + grid + '</div>'
+      + '<h6>EACH MODULE: ITS OWN TEXTURE AND WHAT IT MOVES TO</h6>' + mods + '<p class="pv-note">Every module listens to one part of the song: the kick punches, the bass lifts, vocals glow, the snare flashes, hi-hats shimmer. Leave it on auto, or point a module at the part you want.</p>'
       + '<h6>DESK</h6>' + opts('desk', D.desks, t.desk || 'none') + '<p class="pv-note">The surface your modules sit on. With a desk and a plain texture, the desk dresses each module itself: paper desk = a different sheet of paper each, NYSE floor = screens and instruments.</p>'
-      + '<h6>LIGHTING</h6>' + opts('light', D.lights, t.light || 'off')
+      + '<h6>LIGHTING · ' + (lights.length ? lights.length + ' on' : 'off') + '</h6><div class="pv-opts">' + light + '</div><p class="pv-note">Turn on several lights at once.</p>'
       + '<h6>3D ORBS FLYING AROUND</h6>' + opts('orbs', D.orbs, t.orbs || 'off')
       + '<h6>3D GALLERY (UP TO 12 PICTURES)</h6>' + rows + (orbit.length < 12 ? '<div class="pd-orow"><div class="r"><input type="url" data-orbnew="image" placeholder="Picture link (https://…)"></div><div class="r"><input type="url" data-orbnew="href" placeholder="Link it goes to (https://, optional)"></div><div class="r"><input type="text" data-orbnew="title" maxlength="60" placeholder="Caption (optional)"><button type="button" class="pv-btn acc" data-pv="addorb">Add</button></div></div>' : '')
       + '<p class="pv-note">Pictures orbit in 3D on your page; drag to spin. A picture with a link opens that page when tapped, so you can point people to your own pages.</p>';
@@ -267,11 +273,11 @@
       + '<h6>LAYOUT · ' + esc((lay.find((l) => l.id === d.layout) || {}).name || d.layout) + '</h6><div class="pv-lay">' + lay.map((l) => '<button type="button" data-layout="' + esc(l.id) + '" class="' + (l.id === d.layout ? 'on' : '') + '">' + mini(l.id) + esc(l.name) + '</button>').join('') + '</div>'
       + '<h6>ACCENT</h6><div class="pv-sw">' + SWATCH.map((c) => '<button type="button" data-accent="' + c + '" class="' + (t.accent === c ? 'on' : '') + '" style="background:' + c + '"></button>').join('') + '</div><div class="pv-row"><label style="color:#cfe3ea">Any colour <input type="color" data-color="accent" value="' + esc(t.accent || '#00c47d') + '"></label></div>'
       + '<h6>SECOND COLOUR</h6><div class="pv-sw">' + SWATCH.map((c) => '<button type="button" data-accent2="' + c + '" class="' + (t.accent2 === c ? 'on' : '') + '" style="background:' + c + '"></button>').join('') + '</div><div class="pv-row"><label style="color:#cfe3ea">Any colour <input type="color" data-color="accent2" value="' + esc(t.accent2 || '#6c8cff') + '"></label></div>'
-      + '<h6>BACKGROUND EFFECT</h6><div class="pv-opts">' + ['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain'].map((f) => '<button type="button" data-fx="' + f + '" class="' + ((t.fx || LAYOUT_FX[d.layout]) === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
+      + '<h6>BACKGROUND EFFECTS · stack up to 4</h6><div class="pv-opts">' + ['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain'].map((f) => '<button type="button" data-fx="' + f + '" class="' + ((f === 'none' ? !(t.fxs || []).length : (t.fxs || []).indexOf(f) >= 0) ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
       + '<h6>IMMERSIVE</h6><div class="pv-opts">' + ['off', 'subtle', 'balanced', 'immersive'].map((f) => '<button type="button" data-imm="' + f + '" class="' + (t.immersive === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div><p class="pv-note">How hard the background moves with the song.</p>'
       + '<h6>FONT</h6><div class="pv-opts">' + ['system', 'mono', 'serif', 'display', 'rounded'].map((f) => '<button type="button" data-font="' + f + '" class="' + (t.font === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
       + deskControls(t)
-      + '<h6>SONG (ONE)</h6><input type="url" data-song="url" placeholder="https://… direct MP3/M4A, YouTube, Spotify, SoundCloud or Apple Music" value="' + esc(d.song ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"></div><p class="pv-note">A direct audio link plays on your page and drives the effect. YouTube, Spotify, SoundCloud and Apple links show as a card that opens outside the Academy.</p>'
+      + '<h6>SONG (ONE)</h6><input type="url" data-song="url" placeholder="https://… YouTube, Spotify, SoundCloud, Apple Music or a direct MP3/M4A" value="' + esc(d.song ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"><input type="number" data-song="bpm" min="60" max="200" placeholder="BPM" style="max-width:84px" value="' + esc(d.song && d.song.bpm ? d.song.bpm : '') + '"></div><p class="pv-note">Your song plays inside the Academy, in a music player on your page, and starts by itself when someone opens your profile. A direct MP3/M4A link is analysed live: kick, bass, vocals, snare and hi-hats each move different modules. YouTube, Spotify, SoundCloud and Apple play in their own player here, and the page moves to a beat clock at the BPM you type (110 if blank), because a website cannot listen inside another site’s player.</p>'
       + '<h6>SOCIAL LINKS (UP TO 8)</h6>' + (d.socials || []).map((x, i) => '<div class="pv-soc"><span title="' + esc(x.url) + '">' + esc(SOCIAL_ICON[x.kind] || '↗') + ' ' + esc(x.title || (x.card && x.card.title) || x.url) + '</span><button type="button" data-rm="' + i + '">remove</button></div>').join('') + '<div class="pv-row"><input type="url" data-add="url" placeholder="https://x.com/you"><input type="text" data-add="title" maxlength="60" placeholder="Label (optional)" style="max-width:120px"><button type="button" class="pv-btn" data-pv="addlink">Add</button></div><p class="pv-note">Each link gets a card with the page’s own title and picture.</p>'
       + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Social links'], ['showFeed', 'My chat posts'], ['showFollowers', 'Follower counts']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
       + '<div class="pv-ft"><button type="button" class="pv-btn acc" data-pv="save">💾 Save profile</button><button type="button" class="pv-btn" data-pv="cancel">Cancel</button></div>';
@@ -280,25 +286,40 @@
   edit.addEventListener('input', (e) => {
     const el = e.target; if (!S.draft) return;
     if (el.dataset.k) S.draft[el.dataset.k] = el.value;
-    if (el.dataset.song === 'url') S.draft.song = el.value.trim() ? { url: el.value.trim(), title: (S.draft.song && S.draft.song.title) || '', kind: /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i.test(el.value) ? 'audio' : 'link' } : null;
+    if (el.dataset.song === 'url') S.draft.song = el.value.trim() ? { url: el.value.trim(), title: (S.draft.song && S.draft.song.title) || '', kind: /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i.test(el.value) ? 'audio' : 'link', bpm: (S.draft.song && S.draft.song.bpm) || 0 } : null;
+    if (el.dataset.song === 'bpm' && S.draft.song) S.draft.song.bpm = Math.max(0, Math.min(200, Math.round(Number(el.value) || 0)));
     if (el.dataset.song === 'title' && S.draft.song) S.draft.song.title = el.value;
     if (el.dataset.orb && S.draft.theme.orbit && S.draft.theme.orbit[Number(el.dataset.i)]) { S.draft.theme.orbit[Number(el.dataset.i)][el.dataset.orb] = el.value.trim(); clearTimeout(S.pt); S.pt = setTimeout(preview, 450); return; }
     if (el.dataset.color) { S.draft.theme[el.dataset.color] = el.value; preview(); return; }
     if (el.dataset.k !== undefined || el.dataset.song !== undefined) { clearTimeout(S.pt); S.pt = setTimeout(preview, 350); }
   });
-  edit.addEventListener('change', (e) => { const el = e.target; if (el.dataset.flag && S.draft) { S.draft.flags[el.dataset.flag] = !!el.checked; preview(); } });
+  edit.addEventListener('change', (e) => {
+    const el = e.target; if (!S.draft) return;
+    if (el.dataset.flag) { S.draft.flags[el.dataset.flag] = !!el.checked; preview(); }
+    else if (el.dataset.modtex) { const m = S.draft.theme.moduleTex = S.draft.theme.moduleTex || {}; if (el.value) m[el.dataset.modtex] = el.value; else delete m[el.dataset.modtex]; preview(); }
+    else if (el.dataset.modrx) { const m = S.draft.theme.moduleReact = S.draft.theme.moduleReact || {}; if (el.value && el.value !== 'auto') m[el.dataset.modrx] = el.value; else delete m[el.dataset.modrx]; preview(); }
+  });
   edit.addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b || !S.draft) return;
     const d = S.draft;
     if (b.dataset.layout) { d.layout = b.dataset.layout; paintEditor(); preview(); return; }
     if (b.dataset.accent) { d.theme.accent = b.dataset.accent; paintEditor(); preview(); return; }
     if (b.dataset.accent2) { d.theme.accent2 = b.dataset.accent2; paintEditor(); preview(); return; }
-    if (b.dataset.fx) { d.theme.fx = b.dataset.fx; paintEditor(); preview(); return; }
+    if (b.dataset.fx) {
+      if (b.dataset.fx === 'none') { d.theme.fxs = []; d.theme.fx = 'none'; } else { if (!toggleIn(d.theme.fxs, b.dataset.fx, 4)) toast('Up to 4 background effects at once.'); d.theme.fx = d.theme.fxs[0] || 'none'; }
+      paintEditor(); preview(); return;
+    }
     if (b.dataset.imm) { d.theme.immersive = b.dataset.imm; paintEditor(); preview(); return; }
     if (b.dataset.font) { d.theme.font = b.dataset.font; paintEditor(); preview(); return; }
-    if (b.dataset.tex) { d.theme.texture = b.dataset.tex; paintEditor(); preview(); return; }
+    if (b.dataset.tex) {
+      if (b.dataset.tex === 'none') d.theme.textures = []; else if (!toggleIn(d.theme.textures, b.dataset.tex, 6)) toast('Up to 6 textures at once. Tap one to remove it first.');
+      d.theme.texture = d.theme.textures[0] || 'none'; paintEditor(); preview(); return;
+    }
     if (b.dataset.desk) { d.theme.desk = b.dataset.desk; paintEditor(); preview(); return; }
-    if (b.dataset.light) { d.theme.light = b.dataset.light; paintEditor(); preview(); return; }
+    if (b.dataset.light) {
+      if (b.dataset.light === 'off') d.theme.lights = []; else if (!toggleIn(d.theme.lights, b.dataset.light, 4)) toast('Up to 4 lights at once.');
+      d.theme.light = d.theme.lights[0] || 'off'; paintEditor(); preview(); return;
+    }
     if (b.dataset.orbs) { d.theme.orbs = b.dataset.orbs; paintEditor(); preview(); return; }
     if (b.dataset.orbRm !== undefined) { (d.theme.orbit || []).splice(Number(b.dataset.orbRm), 1); paintEditor(); preview(); return; }
     if (b.dataset.rm) { d.socials.splice(Number(b.dataset.rm), 1); paintEditor(); preview(); return; }
@@ -331,7 +352,7 @@
     const a = b.dataset.pv;
     if (a === 'close') close();
     else if (a === 'edit') openEditor();
-    else if (a === 'play') toggleAudio();
+    else if (a === 'play') { if (window.smlProfileMusic) window.smlProfileMusic.toggle(); }
     else if (a === 'open' && b.dataset.url) openOut(b.dataset.url);
     else if (a === 'popout') { if (typeof window.smlAcademyPopBrowser === 'function') void window.smlAcademyPopBrowser('profile', { user: S.userId }); }
     else if (a === 'follow') {
