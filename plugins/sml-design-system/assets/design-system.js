@@ -1,0 +1,72 @@
+/* SML Design System 1.0.0
+   Two small jobs the stylesheet cannot do on its own:
+   1. The read-only counts under each feed card arrive as plain text ("Likes 0"). They become an icon and a number.
+   2. An avatar whose image never arrives shows the author's initials instead of a broken picture or its alt text. */
+(function () {
+  'use strict';
+  if (window.__smlDesignSystem) return; window.__smlDesignSystem = true;
+
+  var ICON = {
+    likes: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z'/%3E%3C/svg%3E\")",
+    comments: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E\")",
+    shares: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='5' r='3'/%3E%3Ccircle cx='6' cy='12' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cline x1='8.6' y1='13.5' x2='15.4' y2='17.5'/%3E%3Cline x1='15.4' y1='6.5' x2='8.6' y2='10.5'/%3E%3C/svg%3E\")"
+  };
+  var LABEL = { likes: 'likes', comments: 'comments', shares: 'shares' };
+
+  function counts(root) {
+    var rows = (root || document).querySelectorAll('.sml-sth-actions');
+    for (var i = 0; i < rows.length; i++) {
+      var spans = rows[i].querySelectorAll(':scope > span');
+      for (var j = 0; j < spans.length; j++) {
+        var s = spans[j]; if (s.getAttribute('data-sml-ds')) continue;
+        var m = /^\s*(Likes?|Comments?|Shares?)\s+([\d.,]+[kKmM]?)\s*$/.exec(s.textContent || '');
+        if (!m) continue;
+        var key = m[1].toLowerCase().replace(/s?$/, 's');
+        s.setAttribute('data-sml-ds', key);
+        s.setAttribute('title', m[2] + ' ' + LABEL[key]);
+        s.setAttribute('aria-label', m[2] + ' ' + LABEL[key]);
+        var ico = document.createElement('i'); ico.className = 'sml-ds-ico'; ico.style.setProperty('--i', ICON[key]);
+        var n = document.createElement('b'); n.className = 'sml-ds-n'; n.textContent = m[2];
+        s.textContent = ''; s.appendChild(ico); s.appendChild(n);
+      }
+    }
+  }
+
+  function initials(text) {
+    var words = String(text || '').replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    return (words.length ? words.slice(0, 2).map(function (w) { return w[0]; }).join('') : 'SL').toUpperCase();
+  }
+  function fallback(img) {
+    if (!img || img.getAttribute('data-sml-ds-fallback')) return;
+    img.setAttribute('data-sml-ds-fallback', '1');
+    var span = document.createElement('span');
+    span.className = 'sml-ds-avatar';
+    span.textContent = initials(img.getAttribute('alt') || img.getAttribute('title') || '');
+    var w = img.getAttribute('width') || img.style.width, h = img.getAttribute('height') || img.style.height;
+    if (w) span.style.width = /px|%|em/.test(String(w)) ? w : w + 'px';
+    if (h) span.style.height = /px|%|em/.test(String(h)) ? h : h + 'px';
+    if (img.parentNode) img.parentNode.replaceChild(span, img);
+  }
+  // avatars and logos: the classed ones anywhere, plus any small picture in the feed shell (story circles, group badges)
+  var AVATAR = 'img.oh-post-avatar, .sml-gex-tile-logo img, .sml-gex-rank-logo img, img.sml-hfe-avatar, img[class*="avatar"], img[class*="logo"], #sml-hf-shell img[alt]';
+  function small(img) { var r = img.getBoundingClientRect(); return r.width > 0 ? r.width <= 96 && r.height <= 96 : /avatar|logo/.test(img.className); }
+  function onError(e) { var img = e.target; if (small(img)) fallback(img); }
+  function avatars(root) {
+    var imgs = (root || document).querySelectorAll(AVATAR);
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) { if (small(img)) fallback(img); }
+      else if (!img.getAttribute('data-sml-ds-watch')) { img.setAttribute('data-sml-ds-watch', '1'); img.addEventListener('error', onError); }
+    }
+  }
+
+  function run(root) { try { counts(root); avatars(root); } catch (e) { /* never break the page */ } }
+  function boot() {
+    run(document);
+    if (!window.MutationObserver) return;
+    var pending = null;
+    new MutationObserver(function () { if (pending) return; pending = setTimeout(function () { pending = null; run(document); }, 120); })
+      .observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
