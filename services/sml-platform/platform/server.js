@@ -3546,25 +3546,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    /* The challenge portfolio (simulated): any signed-in Academy session can watch it; only the owner can reset it. */
-    if (request.method === 'GET' && path === '/academy-activity/challenge') {
+    /* The challenge (simulated): any signed-in Academy session can watch it and see the ideas; only the owner takes, skips, shares or resets. */
+    if (path === '/academy-activity/challenge' || path.startsWith('/academy-activity/challenge/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const owner = OWNER_IDS.includes(String(session.userId)), me = { owner };
       const c = getChallenge();
       if (!c) { sendJson(response, 503, { ok: false, error: 'challenge_off' }); return; }
-      try { const snap = await c.snapshot(); sendJson(response, 200, { ...snap, me: { owner: OWNER_IDS.includes(String(session.userId)) } }); }
-      catch (error) { logger('error', 'academy_challenge_failed', { error }); sendJson(response, 503, { ok: false, error: 'challenge_unavailable' }); }
-      return;
-    }
-    if (request.method === 'POST' && path === '/academy-activity/challenge/reset') {
-      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
-      const session = academyOAuth.verifySession(request.headers.authorization);
-      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
-      if (!OWNER_IDS.includes(String(session.userId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
-      const c = getChallenge();
-      if (!c) { sendJson(response, 503, { ok: false, error: 'challenge_off' }); return; }
-      try { sendJson(response, 200, await c.reset()); } catch (error) { logger('error', 'academy_challenge_reset_failed', { error }); sendJson(response, 503, { ok: false, error: 'challenge_unavailable' }); }
+      const sub = path.slice('/academy-activity/challenge'.length);
+      try {
+        if (request.method === 'GET' && sub === '') { const snap = await c.snapshot(); delete snap.byId; sendJson(response, 200, { ...snap, me }); return; }
+        if (request.method === 'GET' && sub === '/ideas') { const since = Number(new URL(request.url || '/', 'http://localhost').searchParams.get('since')) || 0; sendJson(response, 200, { ok: true, ideas: await c.ideas({ since }), now: Date.now(), me }); return; }
+        if (request.method === 'POST') {
+          if (!owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+          const raw = await readRequestBody(request, 2_048).catch(() => null);
+          let body = {}; try { body = raw ? JSON.parse(typeof raw === 'string' ? raw : String(raw)) : {}; } catch (_) { body = {}; }
+          if (sub === '/take') { sendJson(response, 200, await c.take(body.id, { qty: body.qty })); return; }
+          if (sub === '/skip') { sendJson(response, 200, await c.skip(body.id)); return; }
+          if (sub === '/reset') { const snap = await c.reset(); delete snap.byId; sendJson(response, 200, { ...snap, me }); return; }
+          if (sub === '/share') { sendJson(response, 503, { ok: false, error: 'share_not_ready', message: 'The channel card is the next piece; not live yet.' }); return; }
+        }
+        sendJson(response, 404, { ok: false, error: 'not_found' });
+      } catch (error) { logger('error', 'academy_challenge_failed', { error }); sendJson(response, 503, { ok: false, error: 'challenge_unavailable' }); }
       return;
     }
 
@@ -3894,13 +3898,31 @@ async function main() {
       signals: memSignalsLib ? memSignalsLib.allVotes(bars) : null, orderFlow: academyOrderFlow ? (() => { try { return academyOrderFlow.get(symbol); } catch (_) { return null; } })() : null,
       earnings: earn && earn.daysAway != null ? { daysAway: earn.daysAway } : null, direction: dir, sentiment: sent, darkPool: null, gamma: gx, institutional: inst, filings: fil };
   };
+  /* a Discord DM to the owner from the Academy bot: open (or reuse) the DM channel, then post */
+  const dmChannels = new Map();
+  const discordDm = async (userId, content) => {
+    const token = config.academyBotToken || config.alertsBotToken || config.discordBotToken; if (!token || !/^\d{5,25}$/.test(String(userId))) return false;
+    const headers = { authorization: `Bot ${token}`, 'content-type': 'application/json', 'user-agent': 'StockMarketLoop-Academy/1.0' };
+    try {
+      let ch = dmChannels.get(String(userId));
+      if (!ch) { const r = await fetch('https://discord.com/api/v10/users/@me/channels', { method: 'POST', headers, body: JSON.stringify({ recipient_id: String(userId) }), signal: AbortSignal.timeout(8_000) }); if (!r.ok) return false; const j = await r.json(); ch = String(j.id || ''); if (!ch) return false; dmChannels.set(String(userId), ch); }
+      const r2 = await fetch(`https://discord.com/api/v10/channels/${ch}/messages`, { method: 'POST', headers, body: JSON.stringify({ content: String(content).slice(0, 1900), allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(8_000) });
+      return r2.ok;
+    } catch (error) { log('warn', 'challenge_dm_failed', { error: String(error && error.message || error) }); return false; }
+  };
   const getChallenge = () => {
     if (challenge || process.env.SML_ACADEMY_CHALLENGE === 'off') return challenge;
     challenge = createChallenge({
-      store: createPgStateStore({ pool: database.pool, key: 'challenge', defaultValue: () => null, logger: log }),
+      store: createPgStateStore({ pool: database.pool, key: 'challenge-ideas', defaultValue: () => null, logger: log }), paper: academyPaper,
       candles: (s, tf) => sentimentCandles(s, tf), analyze: memAlgoEngine.analyze, ctxFor: challengeCtxFor,
       universe: async () => { const core = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AMD', 'AVGO', 'JPM', 'XOM', 'COST', 'NFLX', 'CRM', 'LLY', 'UNH', 'V', 'MA'].map((symbol) => ({ symbol })); const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(80).catch(() => null) : null; return core.concat(w && Array.isArray(w.rows) ? w.rows.filter((r) => Number(r.price) >= 5) : []); },
-      direction: marketDirection ? () => marketDirection.get('swing') : null, nextEarnings: academyAlerts ? (s) => academyAlerts.nextEarnings(s) : null, logger: log
+      direction: marketDirection ? () => marketDirection.get('swing') : null, nextEarnings: academyAlerts ? (s) => academyAlerts.nextEarnings(s) : null,
+      notify: async (idea) => {
+        const text = `💡 1K→100K idea #${idea.id}: BUY ${idea.qty} ${idea.symbol} (${idea.mode}, grade ${idea.grade} ${idea.score}) near $${idea.entry} · stop $${idea.stop}${idea.target ? ' · target $' + idea.target : ''} · risk $${idea.riskDollars}\n${idea.reason}\nOpen the Academy → CHALLENGE → TAKE IT (expires ${new Date(idea.expiresAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET). Simulated account; not advice.`;
+        for (const uid of OWNER_IDS) await discordDm(uid, text);
+        if (academyPush) { try { await academyPush.sendTo(async (u) => OWNER_IDS.includes(String(u)), { kind: 'challenge', title: `💡 1K→100K: BUY ${idea.symbol} (grade ${idea.grade} ${idea.score})`, body: `${idea.qty} shares near $${idea.entry}, stop $${idea.stop}. Open the Academy to take it.`, tag: 'sml-challenge-' + idea.id, url: '/academy-activity/' }, { topic: 'challenge' + idea.id }); } catch (_) { /* push is best effort */ } }
+      },
+      logger: log
     });
     return challenge;
   };
