@@ -1,9 +1,11 @@
-/* SML Design System 1.0.3
+/* SML Design System 1.1.0
    The few jobs the stylesheet cannot do on its own:
    1. The read-only counts under each feed card arrive as plain text ("Likes 0"). They become an icon and a number.
    2. An avatar whose image never arrives shows the author's initials instead of a broken picture or its alt text.
    3. A theme page whose content carries its own heading, or an app screen, drops the theme's duplicate title.
-   4. An archive page reads "Crypto", not "Category: Crypto", and says so when it has no stories yet. */
+   4. An archive page reads "Crypto", not "Category: Crypto", and says so when it has no stories yet.
+   5. Spaced dashes in copy other scripts render become a colon or a comma (the server does the same for WordPress content).
+   6. Images far below the fold load lazily; a few lines of the sign-up page read like a person wrote them. */
 (function () {
   'use strict';
   if (window.__smlDesignSystem) return; window.__smlDesignSystem = true;
@@ -118,7 +120,61 @@
     }
   }
 
-  function run(root) { try { counts(root); avatars(root); guest(); titles(); archive(); } catch (e) { /* never break the page */ } }
+  // spaced dashes: a colon after a short lead-in at the start of a sentence, a comma anywhere else; ranges (2k–5k) untouched
+  var SKIP = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, INPUT: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1, OPTION: 1 };
+  var DASH = /[ \u00A0]*(?:\u2014|\u2013(?=[ \u00A0]))[ \u00A0]*/;
+  var done = typeof WeakSet === 'function' ? new WeakSet() : null;
+  function skip(el) { for (var e = el; e && e.nodeType === 1; e = e.parentNode) { if (SKIP[e.tagName] || e.isContentEditable || e.getAttribute('data-sml-ds-keep') !== null) return true; } return false; }
+  function fixDashes(text, openLabel) {
+    var out = '', rest = text, m;
+    while ((m = DASH.exec(rest))) {
+      var before = rest.slice(0, m.index), after = rest.slice(m.index + m[0].length);
+      var lead = (out + before).trim(), here = before.trim();
+      var tail = lead.split(/[.!?:;]\s+/).pop(), words = tail ? tail.trim().split(/\s+/).length : 0;
+      var conj = /^(?:and|or|but|so|nor|yet|not|which|because|while|then|plus|as|if|unless|though|although|even)\b/i.test(after.replace(/^\s+/, ''));
+      var label = !conj && ((here === '' && openLabel) || (here !== '' && words > 0 && words <= 4 && tail === lead && !/[,.!?:;]/.test(lead)));
+      var sep = label ? ': ' : ', '; if (here === '' && !openLabel) sep = ' ';
+      out += before.replace(/\s+$/, '') + sep; rest = after.replace(/^\s+/, ''); openLabel = false;
+    }
+    return out + rest;
+  }
+  function dashes(root) {
+    if (!document.createTreeWalker) return;
+    var w = document.createTreeWalker(root || document.body, NodeFilter.SHOW_TEXT, null), n, list = [];
+    while ((n = w.nextNode())) { if (done && done.has(n)) continue; if (n.nodeValue.indexOf('\u2014') < 0 && n.nodeValue.indexOf('\u2013') < 0) { if (done) done.add(n); continue; } list.push(n); }
+    for (var i = 0; i < list.length; i++) {
+      n = list[i]; if (done) done.add(n); if (skip(n.parentNode)) continue;
+      var prev = n.previousSibling, openLabel = !!(prev && prev.nodeType === 1 && /^(STRONG|B|EM|I|A|SPAN|H[1-6]|DT|TH)$/.test(prev.tagName));
+      var v = fixDashes(n.nodeValue, openLabel); if (v !== n.nodeValue) n.nodeValue = v;
+    }
+  }
+
+  // the sign-up page: a star rating with a made-up count goes, and two lines read plainly
+  function landing() {
+    var root = document.getElementById('sml-landing-v2'); if (!root || root.getAttribute('data-sml-ds')) return;
+    root.setAttribute('data-sml-ds', '1');
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), n;
+    while ((n = w.nextNode())) {
+      var t = n.nodeValue;
+      if (/from\s+[\d,.]+\+?\s+creators/i.test(t) || /^\s*★{3,}\s*$/.test(t)) { var el = n.parentNode, row = el; for (var e = el; e && e !== root; e = e.parentNode) { if ((e.textContent || '').replace(/\s+/g, ' ').trim().length <= 80) row = e; else break; } row.classList.add('sml-ds-hide'); continue; }
+      if (/Take your finance newsletter to the next level\.?/.test(t)) n.nodeValue = t.replace(/Take your finance newsletter to the next level\.?/, 'Run your finance newsletter here, with market tools built in.');
+      if (/Unlock platform perks/.test(t)) n.nodeValue = t.replace(/Unlock platform perks/, 'Perks across the platform');
+      if (/and unlock perks across the platform/.test(t)) n.nodeValue = t.replace(/and unlock perks across the platform/, 'and they open up perks across the platform');
+      if (/FIRST\s*&\s*ONLY OF ITS KIND/i.test(t)) n.nodeValue = t.replace(/FIRST\s*&\s*ONLY OF ITS KIND/i, 'BUILT FOR TRADING COMMUNITIES');
+    }
+  }
+
+  // pictures well below the first screen load when they are needed, not before the page is interactive
+  function lazyImages(root) {
+    var imgs = (root || document).querySelectorAll('img:not([loading]):not([data-sml-ds-lazy])'), h = window.innerHeight || 800;
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i]; img.setAttribute('data-sml-ds-lazy', '1');
+      if (img.complete && img.naturalWidth) continue;
+      var r = img.getBoundingClientRect(); if (r.top > h * 1.5) { img.setAttribute('loading', 'lazy'); img.setAttribute('decoding', 'async'); }
+    }
+  }
+
+  function run(root) { try { counts(root); avatars(root); guest(); titles(); archive(); landing(); dashes(document.body); lazyImages(root); } catch (e) { /* never break the page */ } }
   function boot() {
     run(document);
     if (!window.MutationObserver) return;
