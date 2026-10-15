@@ -14,9 +14,12 @@
 
 const { marketState, etParts } = require('./market-clock');
 
+/* Aggressive track: $250 a week, 18-month target. 3% of the account to the stop on a grade-A swing (1.5% day), up to eight
+   names, 35% in one, A or strong-B signals (70+). The target is a target, not a promise: the panel shows the pace it needs
+   against the pace it is actually running. */
 const RULES = Object.freeze({
-  start: 1000, goal: 100000, weeklyDeposit: 100, depositWeekday: 1,
-  riskPerTrade: { swing: 0.01, day: 0.005 }, maxPositions: 5, maxPositionPct: 0.25, minNotional: 25, minScore: 75,
+  start: 1000, goal: 100000, weeklyDeposit: 250, depositWeekday: 1, horizonMonths: 18,
+  riskPerTrade: { swing: 0.03, day: 0.015 }, maxPositions: 8, maxPositionPct: 0.35, minNotional: 25, minScore: 70,
   costBps: 3, slippageBps: 5, earningsBlackoutDays: 5,
   noNewLongsBelowBias: -30, hedge: { etf: 'SH', triggerBias: -40, clearBias: 0, sizePct: 0.5, minExposurePct: 0.4 },
   dayFlatByMinutesET: 945, maxEquityPoints: 4000
@@ -146,7 +149,23 @@ function stats(state, prices = {}, now = Date.now(), rules = RULES) {
   let peak = 0, dd = 0; for (const e of state.equity) { peak = Math.max(peak, e.value); dd = Math.max(dd, peak > 0 ? (peak - e.value) / peak : 0); }
   const days = Math.max(1, (now - state.startedAt) / DAY);
   const pnl = r2(equity - deposited);
-  return { equity, cash: r2(state.cash), deposited: r2(deposited), pnl, returnPct: r2(pnl / Math.max(1, deposited) * 100), progressPct: r2(Math.min(100, equity / rules.goal * 100)), goal: rules.goal, days: Math.round(days), trades: closed.length, winRate: closed.length ? r2(wins.length / closed.length * 100) : null, avgR: closed.length ? r2(closed.reduce((s, t) => s + (t.R || 0), 0) / closed.length) : null, maxDrawdownPct: r2(dd * 100), openPositions: state.positions.filter((p) => !p.hedge).length, hedged: state.positions.some((p) => p.hedge), exposurePct: equity > 0 ? r2(exposure(state, prices) / equity * 100) : 0 };
+  return { equity, cash: r2(state.cash), deposited: r2(deposited), pnl, returnPct: r2(pnl / Math.max(1, deposited) * 100), progressPct: r2(Math.min(100, equity / rules.goal * 100)), goal: rules.goal, days: Math.round(days), trades: closed.length, winRate: closed.length ? r2(wins.length / closed.length * 100) : null, avgR: closed.length ? r2(closed.reduce((s, t) => s + (t.R || 0), 0) / closed.length) : null, maxDrawdownPct: r2(dd * 100), openPositions: state.positions.filter((p) => !p.hedge).length, hedged: state.positions.some((p) => p.hedge), exposurePct: equity > 0 ? r2(exposure(state, prices) / equity * 100) : 0, pace: pace(state, equity, deposited, now, rules) };
+}
+
+/* The pace the target needs from here versus the pace the account is actually running. Needed = the monthly growth that turns
+   today's equity plus the remaining deposits into the goal by the deadline (bisection). Realized = monthly growth of each
+   dollar put in, once there is at least two weeks of curve. Neither is a forecast. */
+const MONTH = 30.44 * DAY;
+function pace(state, equity, deposited, now, rules) {
+  if (!rules.horizonMonths) return null;
+  const deadline = state.startedAt + rules.horizonMonths * MONTH, monthsLeft = Math.max(0, (deadline - now) / MONTH), monthsRun = Math.max(0, (now - state.startedAt) / MONTH);
+  const perMonth = rules.weeklyDeposit * (7 * 52 / 12 / 7);
+  const fv = (g) => (g <= 0 ? equity + perMonth * monthsLeft : equity * (1 + g) ** monthsLeft + perMonth * ((1 + g) ** monthsLeft - 1) / g);
+  let needed = null;
+  if (monthsLeft > 0.1) { if (fv(0) >= rules.goal) needed = 0; else { let lo = 0, hi = 5; for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (fv(mid) >= rules.goal) hi = mid; else lo = mid; } needed = hi; } }
+  const realized = monthsRun >= 0.5 && deposited > 0 ? (equity / deposited) ** (1 / monthsRun) - 1 : null;
+  const projected = realized != null && monthsLeft > 0 ? r2(fv(Math.max(-0.5, realized))) : null;
+  return { deadline, monthsLeft: r2(monthsLeft), monthsRun: r2(monthsRun), neededMonthlyPct: needed == null ? null : r2(needed * 100), realizedMonthlyPct: realized == null ? null : r2(realized * 100), projectedAtDeadline: projected, onPace: realized != null && needed != null ? realized >= needed : null, note: 'A target, not a promise. Needed pace is what the goal asks from today; realized pace is what the account has actually done.' };
 }
 
 /* ------------------------------------------------------------------ the service */
@@ -215,7 +234,7 @@ function createChallenge({ store, candles, analyze, ctxFor = null, universe, dir
   async function snapshot() {
     await load();
     const prices = state.lastPrices || {};
-    return { ok: true, name, simulated: true, asOf: now(), lastTick: state.lastTick, startedAt: state.startedAt, rules: { start: rules.start, goal: rules.goal, weeklyDeposit: rules.weeklyDeposit, riskPerTrade: rules.riskPerTrade, maxPositions: rules.maxPositions, maxPositionPct: rules.maxPositionPct, minScore: rules.minScore, earningsBlackoutDays: rules.earningsBlackoutDays, hedge: rules.hedge, costBps: rules.costBps, slippageBps: rules.slippageBps },
+    return { ok: true, name, simulated: true, asOf: now(), lastTick: state.lastTick, startedAt: state.startedAt, rules: { start: rules.start, goal: rules.goal, weeklyDeposit: rules.weeklyDeposit, horizonMonths: rules.horizonMonths, riskPerTrade: rules.riskPerTrade, maxPositions: rules.maxPositions, maxPositionPct: rules.maxPositionPct, minScore: rules.minScore, earningsBlackoutDays: rules.earningsBlackoutDays, hedge: rules.hedge, costBps: rules.costBps, slippageBps: rules.slippageBps },
       stats: stats(state, prices, now(), rules), positions: state.positions.map((p) => ({ ...p, price: num(prices[p.symbol], p.entry), value: r2(p.qty * num(prices[p.symbol], p.entry)), pnl: r2(p.qty * num(prices[p.symbol], p.entry) - p.cost), factors: undefined })),
       trades: state.trades.slice(-40).reverse(), deposits: state.deposits.slice(-20).reverse(), equity: state.equity.slice(-600), log: state.log.slice(-40).reverse(),
       disclaimer: 'SIMULATED portfolio on real market prices. No real money, no advice, no guarantee: a model that grades setups is not a promise of returns. Educational only.' };

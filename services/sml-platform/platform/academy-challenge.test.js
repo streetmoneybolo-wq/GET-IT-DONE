@@ -12,7 +12,7 @@ test('fresh state, weekly deposit once per week on an open day', () => {
   assert.equal(s.cash, 1000); assert.equal(s.deposits.length, 1);
   assert.equal(ch.applyDeposit(s, MON + 2 * D), false, 'same week');
   assert.equal(ch.applyDeposit(s, MON + 7 * D, R, false), false, 'next Monday but the market is closed: wait');
-  assert.equal(ch.applyDeposit(s, MON + 8 * D), true, 'first open day of the new week'); assert.equal(s.cash, 1100);
+  assert.equal(ch.applyDeposit(s, MON + 8 * D), true, 'first open day of the new week'); assert.equal(s.cash, 1000 + R.weeklyDeposit);
   assert.equal(ch.applyDeposit(s, MON + 9 * D), false); assert.equal(s.deposits.filter((d) => d.kind === 'weekly').length, 1);
 });
 
@@ -21,10 +21,11 @@ test('entries: grade A only, best first, sized to 1% risk, capped by position si
   const sig = { t: MON, dir: 1, i: 10 };
   const c = (symbol, score, price, stop, extra = {}) => ({ symbol, mode: 'swing', signal: sig, score, grade: score >= 75 ? 'A' : 'B', stop, target: price * 1.1, atr: 1, ...extra });
   const prices = { AAA: 100, BBB: 50, CCC: 20, DDD: 10, EEE: 5, FFF: 2, GGG: 200 };
-  const opened = ch.pickEntries(s, [c('BBB', 80, 50, 48), c('AAA', 90, 100, 98), c('CCC', 70, 20, 19), c('DDD', 85, 10, 9.9, { earningsDays: 3 }), c('EEE', 76, 5, 4.9), c('FFF', 77, 2, 1.9), c('GGG', 78, 200, 180)], prices, MON, { ok: true, bias: 10 });
-  assert.deepEqual(opened.map((p) => p.symbol), ['AAA', 'BBB', 'GGG', 'FFF', 'EEE'], 'best score first; CCC is grade B, DDD is in the earnings blackout, and the fifth slot fills');
-  const aaa = opened[0]; assert.ok(aaa.qty * (aaa.entry - aaa.stop) <= 1000 * 0.01 + 0.01, 'risk is one percent'); assert.ok(aaa.qty * aaa.entry <= 250.5, 'and at most a quarter of the account');
-  assert.ok(s.cash >= 0); assert.equal(s.positions.length, 5);
+  const opened = ch.pickEntries(s, [c('BBB', 80, 50, 48), c('AAA', 90, 100, 98), c('CCC', R.minScore - 5, 20, 19), c('DDD', 85, 10, 9.9, { earningsDays: 3 }), c('EEE', 76, 5, 4.9), c('FFF', 77, 2, 1.9), c('GGG', 78, 200, 180)], prices, MON, { ok: true, bias: 10 });
+  assert.deepEqual(opened.slice(0, 3).map((p) => p.symbol), ['AAA', 'BBB', 'GGG'], 'best score first; DDD is in the earnings blackout');
+  assert.ok(!opened.some((p) => p.symbol === 'CCC' || p.symbol === 'DDD'), 'below the minimum score, or inside the blackout: never');
+  for (const p of opened) { assert.ok(p.qty * (p.entry - p.stop) <= 1000 * R.riskPerTrade.swing + 0.01, p.symbol + ' risks at most the budget'); assert.ok(p.qty * p.entry <= 1000 * R.maxPositionPct + 0.5, p.symbol + ' is capped at the position limit'); }
+  assert.ok(s.cash >= 0, 'never borrows'); assert.ok(s.positions.length >= 3 && s.positions.length <= R.maxPositions);
   assert.ok(s.log.some((l) => /earnings in 3 days/.test(l.text)));
   const s2 = ch.freshState(MON);
   assert.equal(ch.pickEntries(s2, [c('AAA', 90, 100, 98)], prices, MON, { ok: true, bias: -35 }).length, 0, 'market read below -30: no new longs');
@@ -68,9 +69,13 @@ test('hedge: on when the read is clearly bearish and the book is exposed, off wh
 test('equity curve and stats: deposits are not returns, drawdown from the curve, progress to the goal', () => {
   const s = ch.freshState(MON);
   ch.recordEquity(s, {}, MON + 5 * 60_000); ch.applyDeposit(s, MON + 8 * D); ch.recordEquity(s, {}, MON + 8 * D);
-  const st = ch.stats(s, {}, MON + 8 * D);
-  assert.equal(st.equity, 1100); assert.equal(st.deposited, 1100); assert.equal(st.pnl, 0); assert.equal(st.returnPct, 0); assert.equal(st.progressPct, 1.1);
-  s.cash = 990; ch.recordEquity(s, {}, MON + 9 * D); assert.equal(ch.stats(s, {}, MON + 9 * D).maxDrawdownPct, 10);
+  const st = ch.stats(s, {}, MON + 8 * D), put = 1000 + R.weeklyDeposit;
+  assert.equal(st.equity, put); assert.equal(st.deposited, put); assert.equal(st.pnl, 0); assert.equal(st.returnPct, 0); assert.equal(st.progressPct, Math.round(put / R.goal * 10000) / 100);
+  assert.ok(st.pace && st.pace.monthsLeft > 17 && st.pace.monthsLeft <= 18, 'the 18-month clock runs from the start');
+  assert.ok(st.pace.neededMonthlyPct > 15 && st.pace.neededMonthlyPct < 40, 'the honest number: roughly a quarter a month is what $100k asks');
+  assert.equal(st.pace.realizedMonthlyPct, null, 'too early to call a pace'); assert.equal(st.pace.onPace, null);
+  s.cash = Math.round(put * 0.9 * 100) / 100; ch.recordEquity(s, {}, MON + 9 * D); assert.equal(ch.stats(s, {}, MON + 9 * D).maxDrawdownPct, 10);
+  const later = ch.stats(s, {}, MON + 40 * D); assert.ok(later.pace.realizedMonthlyPct < 0 && later.pace.onPace === false && later.pace.projectedAtDeadline > 0, 'after a month the pace is real and this one is behind');
 });
 
 test('service: ticks only in regular hours, fills a fresh grade-A swing signal at the live price, persists, snapshots as simulated', async () => {
