@@ -278,6 +278,35 @@ product works the same way, for example a Premium monthly (Premium Member
 Never delete an entry: a lifetime keeps the roles of the price it was bought
 on.
 
+### The Free Trial role (owner request 2026-10-15)
+
+Every member on a free trial holds the server's **Free Trial** role
+(`1542090070553526362`) for exactly the trial. `SML_ACADEMY_BILLING_TRIAL_ROLE_ID`
+names the role (default: that id; `0` turns it off, and trials then grant what
+the plan grants, as before). `SML_ACADEMY_BILLING_TRIAL_ROLE_MODE`:
+
+| mode | a membership trial (Elite Monthly/Yearly/Week Seat, Free Trial Access) | an Academy-line trial |
+| --- | --- | --- |
+| `replace` (default) | the Free Trial role INSTEAD of the membership's roles; Elite is added when the trial ends and the first payment goes through | Academy Student (the Academy must stay reachable) plus the Free Trial role |
+| `add` | the Free Trial role on top of the membership's roles | the same |
+
+How it is enforced: the trial role is handled like an external role (the
+`academy_billing_external_grants` ledger: granted only to a member who did not
+already hold it, recorded `held` otherwise and then never removed), with one
+difference: **its removal waits for neither Upgrade.Chat nor
+`SML_ACADEMY_BILLING_REVOKES_ENABLED`**. A trial role that outlives the trial
+is free access, so the moment no trial entitles it (the subscription converts
+to `active`, is cancelled or expires) the engine queues the DELETE at once
+(ledger `revoked`, reason `trial_ended`) and the applier sends it even while
+the revoke switch is off. The fail-closed rules still hold: never on an
+incomplete Stripe snapshot, never while a price is missing from the config,
+never for a role the engine did not give. The trial end itself is re-checked
+two hours after `trial_end`, independent of the webhook. Preflight checks the
+role like every external role (it warns when it sits above the bot: move the
+bot role above Free Trial or the PUT answers 403). No price may list the trial
+role in `roles`, no comp may grant it, and it is never an engine role. The
+consent text and the `/trial` page say which role the trial gives.
+
 ### Free trials and auto-stop
 
 Three more optional keys per entry, recurring prices only (a lifetime entry
@@ -780,6 +809,8 @@ complete PRICES_JSON in "Packages and prices".
 | `SML_ACADEMY_BILLING_LIFETIME_ROLE_ID` | optional; **leave unset** (Lifetime grants Monarch through its `roles`) |
 | `SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS` | optional extra ids the engine may never grant (the defaults are always protected) |
 | `SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS` | unset = Monarch, Elite, Premium: the roles a price's `roles` may list (grant-only-unless-safe) |
+| `SML_ACADEMY_BILLING_TRIAL_ROLE_ID` | the role every free trial grants for the trial (default the Free Trial role `1542090070553526362`; `0` turns it off). Removed when the trial ends whatever the revoke switch says; see "The Free Trial role" |
+| `SML_ACADEMY_BILLING_TRIAL_ROLE_MODE` | `replace` (default: a membership trial holds the trial role instead of the membership's roles) or `add` (on top of them) |
 | `SML_ACADEMY_BILLING_UC_MATCH` | `any` (default): any active Upgrade.Chat upgrade of the member (any product, hidden and one-time lifetime orders included) keeps an engine-granted external role; `mapped`: only the products of `UC_ROLE_PRODUCTS_JSON` count |
 | `SML_ACADEMY_BILLING_UC_ROLE_PRODUCTS_JSON` | `UC_MATCH=mapped` only (optional and unused with `any`): `{"<role id>":["<Upgrade.Chat product uuid>", ...]}` for every external role a price grants (`[]` = no UC product grants it); in `mapped` mode a role missing here is never removed automatically |
 | `UPGRADE_CHAT_CLIENT_ID` / `UPGRADE_CHAT_CLIENT_SECRET` | the platform's existing Upgrade.Chat API credentials, also set on this service; without them an engine-granted external role is never removed (it becomes `needs_review`) |

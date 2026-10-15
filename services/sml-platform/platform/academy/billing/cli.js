@@ -321,6 +321,9 @@ async function run(parsed, { env = process.env, engineFactory, out = (obj) => pr
           }
           const externalRoleIds = flags.role === undefined ? [] : String(flags.role).split(',').map((s) => s.trim()).filter(Boolean);
           for (const roleId of externalRoleIds) {
+            if (config.trialRoleId && roleId === String(config.trialRoleId)) {
+              throw new Error(`--role ${roleId.slice(0, 24)} is the trial role (SML_ACADEMY_BILLING_TRIAL_ROLE_ID): only a free trial grants it, never a comp`);
+            }
             if (!SNOWFLAKE.test(roleId) || !(config.externalRoleIds || []).includes(roleId)) {
               throw new Error(`--role ${roleId.slice(0, 24)} is not in SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS`);
             }

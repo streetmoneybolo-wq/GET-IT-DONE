@@ -44,7 +44,11 @@ const SAVED_CARD = { [CUS]: k.academyCustomer(CUS, USER, { invoice_settings: { d
    rulesAllowed=false: preflight blocks the Stripe rules. */
 function setup({ env = {}, members = { [USER]: [] }, fixtures = {}, uc = null, bound = true, customers = null, rulesAllowed = true, logs = null } = {}) {
   const now = k.clock();
-  const config = k.config({ ...k.memEnv(), ...env });
+  /* These tests are about the trial mechanics (auto-stop, grace, the ledger,
+     Upgrade.Chat): they run with the trial role off, so a trial grants what
+     the plan grants. The trial role itself is covered in external-roles.test.js
+     and access.test.js. */
+  const config = k.config({ ...k.memEnv(), SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '0', ...env });
   const store = k.createFakeStore({ now });
   const stripe = k.createFakeStripe({ customers: customers || { [CUS]: k.academyCustomer(CUS, USER) }, ...fixtures });
   const bot = k.createFakeBot({ members });

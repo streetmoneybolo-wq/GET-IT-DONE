@@ -120,7 +120,7 @@ function toMs(value) {
  * unconfigured price is present: no external revoke), plus the fields below.
  */
 function computeAccess({ snapshot = {}, now, partialRefundRevokes = false, livemode = true, stripeSuppressed = false,
-  externalRoleIds = null } = {}) {
+  externalRoleIds = null, trialRoleId = null, trialRoleMode = 'replace' } = {}) {
   if (!Number.isFinite(now)) throw new TypeError('computeAccess: now (ms) is required');
   const roles = new Set();
   const externalRoles = new Set();
@@ -230,9 +230,22 @@ function computeAccess({ snapshot = {}, now, partialRefundRevokes = false, livem
     if (entitled) {
       const endMs = toMs(sub.cancelAt) || toMs(sub.periodEnd);
       if (endMs !== null) nextChecks.push(endMs + PERIOD_END_SLACK_MS);
+      /* A free trial: the trial role for exactly the trial. 'replace': a
+         membership trial gives it INSTEAD of the membership's roles (an
+         Academy-line trial keeps Academy Student next to it); 'add': on top
+         of whatever the plan gives. The trial end is re-checked (the status
+         flips to active or the plan ends; Stripe may lag the webhook). */
+      const onTrial = status === 'trialing' && Boolean(trialRoleId);
+      const paidRoles = onTrial && trialRoleMode !== 'add' && !grant.academy ? [] : grant.roles;
+      const externalNow = onTrial ? [...paidRoles, String(trialRoleId)] : grant.roles;
+      if (onTrial) {
+        reasons.push('free_trial_role');
+        const trialEndMs = toMs(sub.trialEnd);
+        if (trialEndMs !== null) nextChecks.push(trialEndMs + PERIOD_END_SLACK_MS);
+      }
       if (grant.academy) for (const role of rolesFor(pkg === 'lifetime' ? 'monthly' : pkg)) stripeGrants.add(role);
-      for (const roleId of grant.roles) addExternal(stripeExternal, roleId, sub.id);
-      sources.push({ kind: 'subscription', id: sub.id, package: pkg, roles: grant.academy ? ['academy'] : [], externalRoles: grant.roles, line: grant.line });
+      for (const roleId of externalNow) addExternal(stripeExternal, roleId, sub.id);
+      sources.push({ kind: 'subscription', id: sub.id, package: pkg, roles: grant.academy ? ['academy'] : [], externalRoles: externalNow, line: grant.line, trial: onTrial });
     }
   }
 

@@ -18,7 +18,7 @@
  *              config_unmapped_price and never causes a revoke.
  * ========================================================================== */
 
-const { PACKAGES, DEFAULT_GRACE_HOURS, hasDelayedMethod, MONARCH_ROLE_ID, ELITE_ROLE_ID, PREMIUM_ROLE_ID,
+const { PACKAGES, DEFAULT_GRACE_HOURS, hasDelayedMethod, MONARCH_ROLE_ID, ELITE_ROLE_ID, PREMIUM_ROLE_ID, FREE_TRIAL_ROLE_ID,
   DEFAULT_DAILY_CANCEL_AFTER_DAYS } = require('./config');
 const { isAcademyMeta, idOf } = require('./stripe-shapes');
 
@@ -43,8 +43,18 @@ const LABELS = Object.freeze({
 const ROLE_NAMES = Object.freeze({
   [MONARCH_ROLE_ID]: 'Monarch',
   [ELITE_ROLE_ID]: 'Elite Member',
-  [PREMIUM_ROLE_ID]: 'Premium Member'
+  [PREMIUM_ROLE_ID]: 'Premium Member',
+  [FREE_TRIAL_ROLE_ID]: 'Free Trial'
 });
+
+/** The role a free trial grants (config.trialRoleId), as the pages name it:
+ *  { id, name, replace } or null. replace: a membership trial holds it instead
+ *  of the membership's roles (SML_ACADEMY_BILLING_TRIAL_ROLE_MODE=replace). */
+function trialRoleFor(config) {
+  if (!config || !config.trialRoleId) return null;
+  const id = String(config.trialRoleId);
+  return { id, name: ROLE_NAMES[id] || 'Free Trial', replace: config.trialRoleMode !== 'add' };
+}
 
 function roleNames(ids) {
   return (ids || []).map((id) => ROLE_NAMES[String(id)] || 'membership');
@@ -171,7 +181,7 @@ function validatePrice(price, entry, { livemode, automaticTax = false } = {}) {
 /** A sellable package. paymentMethods come from the configured entry (its own
  *  "paymentMethods", else SML_ACADEMY_BILLING_PAYMENT_METHODS); delayedPayment
  *  is true when one of them is a bank debit that clears days later. */
-function describePrice(price, pkg, entry = null, { lifetimeRole = true } = {}) {
+function describePrice(price, pkg, entry = null, { lifetimeRole = true, trialRole = null } = {}) {
   const paymentMethods = entry && Array.isArray(entry.paymentMethods) && entry.paymentMethods.length
     ? [...entry.paymentMethods] : ['card', 'link'];
   const academy = !entry || entry.academy !== false;
@@ -200,6 +210,9 @@ function describePrice(price, pkg, entry = null, { lifetimeRole = true } = {}) {
        (checkout.js decides per member), and its auto-stop */
     trialDays: entry && Number.isInteger(entry.trialDays) ? entry.trialDays : null,
     trialNoCard: Boolean(entry && entry.trialNoCard && Number.isInteger(entry.trialDays)),
+    /* the role held during that trial; replace applies to memberships only
+       (an Academy-line trial keeps Academy Student next to it) */
+    trialRole: trialRole && entry && Number.isInteger(entry.trialDays) ? { name: trialRole.name, replace: Boolean(trialRole.replace) && !academy } : null,
     cancelAfterDays: cancelAfterFor(pkg, entry),
     productId: product ? product.id : idOf(price.product),
     /* win-back offers (config.js): sold only to the listed former members */
@@ -311,9 +324,9 @@ function createCatalog({ config, stripeApi, now = Date.now, ttlMs = PRICE_TTL_MS
         if (!problems.length) problems.push(...validatePromotionCode(promo, coupon, price, entry, now()));
       }
       if (problems.length) invalid.push({ priceId: entry.priceId, package: entry.package, problems });
-      else if (entry.winback) winback.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false }));
-      else if (entry.academy === false) memberships.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false }));
-      else sellable.set(entry.package, describePrice(price, entry.package, entry, { lifetimeRole: Boolean(config.lifetimeRoleId) }));
+      else if (entry.winback) winback.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false, trialRole: trialRoleFor(config) }));
+      else if (entry.academy === false) memberships.set(entry.priceId, describePrice(price, entry.package, entry, { lifetimeRole: false, trialRole: trialRoleFor(config) }));
+      else sellable.set(entry.package, describePrice(price, entry.package, entry, { lifetimeRole: Boolean(config.lifetimeRoleId), trialRole: trialRoleFor(config) }));
     }
     cached = { at: now(), sellable, memberships, winback, invalid, complete };
     if (invalid.length && typeof onInvalid === 'function') {
@@ -376,6 +389,7 @@ function createCatalog({ config, stripeApi, now = Date.now, ttlMs = PRICE_TTL_MS
 module.exports = {
   EXPECTED,
   LABELS,
+  trialRoleFor,
   DAILY_MAX_CHARGES,
   PERIOD_MIN_DAYS,
   cancelAfterFor,

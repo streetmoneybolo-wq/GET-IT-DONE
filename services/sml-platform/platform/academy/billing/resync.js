@@ -255,6 +255,9 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
   kickApplier = () => {}, stripeWritesAllowed = () => false, revokeGate = () => true, ucChecker = null } = {}) {
   const engineRoleIds = config.engineRoleIds;
   const externalIds = Array.isArray(config.externalRoleIds) ? config.externalRoleIds.map(String) : [];
+  /* The trial role (config.trialRoleId): an external-ledger role whose revoke
+     waits for neither Upgrade.Chat nor the revoke switch (see decideExternal). */
+  const trialRoleId = config.trialRoleId ? String(config.trialRoleId) : null;
   /* SML_ACADEMY_BILLING_UC_MATCH (default any): a kept row stays revocable. */
   const ucAny = config.ucMatch !== 'mapped';
   /** A kept_external row that is not final (see the header). */
@@ -526,6 +529,16 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
   function decideExternal({ roleId, want, observed, row, grant, uc, revokesPossible, sourceRef }) {
     const has = observed.inGuild && observed.roles.includes(roleId);
     const queuedGrant = QUEUED(row) && row.desired;
+    /* The trial role: once no trial entitles it, the engine's own grant is
+       removed at once. There is no Upgrade.Chat membership to protect (a
+       trial is the engine's, time-boxed) and the revoke switch does not hold
+       it (a trial role that outlives the trial is free access). The ledger
+       rules still hold: only a role the engine gave to a member who did not
+       hold it before, and never on an incomplete snapshot. */
+    const trialRole = Boolean(trialRoleId) && roleId === trialRoleId;
+    if (trialRole && !want && grant) {
+      uc = { result: 'none', reason: 'trial_ended', generation: Number(grant.generation) };
+    }
     if (want) {
       const outbox = decideRole({ roleKey: 'external', roleId, want: true, observed, row, revokesPossible });
       let ledger = null;
@@ -569,7 +582,7 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
     if (['held', 'kept_external', 'released'].includes(grant.state) && !recheckKept) {
       return undelivered ? { outbox: withdraw('synced'), ledger: null, retry: true } : { outbox: releaseOutbox(row), ledger: null };
     }
-    if (grant.state === 'revoked') return decideRevoked({ has, row, grant, uc, revokesPossible, withdraw });
+    if (grant.state === 'revoked') return decideRevoked({ has, row, grant, uc, revokesPossible, withdraw, trialRole });
     /* engine_granted / needs_review */
     if (grant.had_role_before) {
       /* The engine PUT a role the member had held before (it had gone missing
@@ -591,7 +604,7 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
       return { outbox: UNFINISHED(row) ? settleRevoke() : releaseOutbox(row), ledger: { write: 'update', state: 'revoked', reason: 'role_already_removed' } };
     }
     if (!revokesPossible) return { deferred: true };
-    if (!config.revokesEnabled) {
+    if (!config.revokesEnabled && !trialRole) {
       if (row && !row.desired && row.state === 'suppressed') return {};
       return { outbox: { write: row ? 'update' : 'insert', desired: false, state: 'suppressed', bump: Boolean(row), nextAttemptAt: null, audit: 'role_suppressed' } };
     }
@@ -630,7 +643,7 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
    * on a fresh Upgrade.Chat "none"; an older answer is asked again), or did
    * not land (failed, or held by the kill switch): asked again and re-queued.
    */
-  function decideRevoked({ has, row, grant, uc, revokesPossible, withdraw }) {
+  function decideRevoked({ has, row, grant, uc, revokesPossible, withdraw, trialRole = false }) {
     const queuedRevoke = QUEUED(row) && !row.desired;
     const unfinished = UNFINISHED(row);
     if (QUEUED(row) && row.desired && !has) return { outbox: withdraw('suppressed'), ledger: null, retry: true };
@@ -639,7 +652,7 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
     if (!has && !queuedRevoke) return { outbox: unfinished ? settleRevoke() : releaseOutbox(row), ledger: null };
     if (has && !queuedRevoke && !unfinished) return { outbox: releaseOutbox(row), ledger: null };
     if (!revokesPossible) return { deferred: true };
-    if (!config.revokesEnabled) return {};
+    if (!config.revokesEnabled && !trialRole) return {};
     if (!uc) return queuedRevoke ? {} : { deferred: true, retry: true };
     if (uc.generation !== Number(grant.generation)) return { deferred: true, retry: true };
     if (uc.result === 'none') {
@@ -694,7 +707,8 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
        lock is held across the UC call; the transaction re-reads the ledger
        and only uses an answer taken for the same ledger generation. */
     const accessOptions = { partialRefundRevokes: config.partialRefundRevokes, livemode: config.livemode,
-      stripeSuppressed: Boolean(snap.bindingConflict), externalRoleIds: externalIds };
+      stripeSuppressed: Boolean(snap.bindingConflict), externalRoleIds: externalIds,
+      trialRoleId: config.trialRoleId || null, trialRoleMode: config.trialRoleMode || 'replace' };
     let preGrants = [];
     const ucResults = new Map();
     if (observed && externalIds.length) {
@@ -715,6 +729,8 @@ function createResync({ config, store, stripeApi, catalog, bot, logger = () => {
         for (const grant of pre.externalHold ? [] : preGrants) {
           const roleId = String(grant.role_id);
           if (!externalIds.includes(roleId) || pre.externalRoles.has(roleId)) continue;
+          /* the trial role ends with the trial: Upgrade.Chat is never asked */
+          if (roleId === trialRoleId) continue;
           const has = observed.inGuild && observed.roles.includes(roleId);
           if (!ucCheckWanted({ grant, row: preRow(roleId), has, nowMs: now(), force: ucRecheck, ucAny })) continue;
           const answer = await ask(roleId);
