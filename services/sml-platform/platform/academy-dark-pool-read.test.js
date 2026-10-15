@@ -32,6 +32,9 @@ test('no blocks and a normal share is QUIET; a lone block at the market with no 
   assert.equal(q.verdict, 'QUIET'); assert.match(q.steps[0].text, /No block-size prints/); assert.match(q.steps[1].text, /No earlier session on record/);
   const n = readDarkPool(session({ offSharePct: 41, lean: { offExchange: 0.05 }, blocks: { count: 1, volume: 20_000, sharePct: 1, rule: '10,000+ shares or $1M+', list: [{ t: 1, price: 101.5, size: 20_000, notional: 2_030_000, dir: 'S' }] } }), { history: [], price: 100 });
   assert.equal(n.verdict, 'NORMAL'); assert.match(n.steps.find((s) => s.k === 'WHERE').text, /1\.5% above the current price .* seller finding a buyer/);
+  assert.match(n.steps[n.steps.length - 1].text, /one block with a balanced lean\. Nothing out of line/);
+  const many = readDarkPool(session({ offSharePct: 38, lean: { offExchange: 0.34 }, blocks: { count: 89, volume: 7_300_000, sharePct: 90, rule: '10,000+ shares or $1M+', list: [{ t: 1, price: 769.24, size: 500_000, notional: 384_620_050, dir: 'S' }] } }), { history: [], price: 767.14 });
+  assert.equal(many.verdict, 'NORMAL'); assert.match(many.steps[many.steps.length - 1].text, /89 blocks with a buy side lean, and most of the off-exchange volume is block-sized/);
   assert.equal(readDarkPool({ available: false }), null);
   assert.equal(xText(3.93), '3.9x'); assert.equal(xText(1.3), '+30%'); assert.equal(xText(0.4), 'under half'); assert.equal(xText(12.4), '12x');
 });

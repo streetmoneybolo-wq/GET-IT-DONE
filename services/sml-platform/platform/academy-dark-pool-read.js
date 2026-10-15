@@ -63,7 +63,7 @@ function readDarkPool(d, { history = [], price = null, vwap = null } = {}) {
   else if (big && (bigVsY >= 2 || biggestInWindow)) { verdict = 'HEAVY'; action = 'Bigger size than yesterday at a readable price. Mark the print price on the chart; a hold above it with buy-side lean supports longs, a break below it with sell-side lean says the size was leaving.'; }
   else if (shareWord === 'high' && lean != null && Math.abs(lean) > 0.25) { verdict = 'HEAVY'; action = `High off-exchange share with a ${leanWord} lean: the flow has a side today. Trade with it on the lit chart, not against it, and watch for the lean to flip.`; }
   else if (!big && shareWord !== 'high') { verdict = 'QUIET'; action = 'Nothing here changes a plan. Off-exchange activity is ordinary; use the structure map and the lit tape instead.'; }
-  else { verdict = 'NORMAL'; action = 'Normal footprint. One block at the market with no lean is routine for a liquid name; note the level and move on.'; }
+  else { verdict = 'NORMAL'; action = `Normal footprint for this window: ${blockN === 1 ? 'one block' : blockN + ' blocks'} with a ${leanWord} lean${d.blocks && fin(d.blocks.sharePct) && d.blocks.sharePct >= 60 ? ', and most of the off-exchange volume is block-sized (working orders, not internalized retail)' : ''}. Nothing out of line for a liquid name. Note the biggest print's price as a level and move on.`; }
   steps.push({ k: 'WHAT TO DO', text: action });
   const headline = big
     ? `${verdict}: ${money(big.notional)} block at ${px(big.price)}${bigVsY != null && (bigVsY >= 1.15 || bigVsY <= 0.87) ? ', ' + xText(bigVsY) + (bigVsY >= 1.15 ? ' yesterday\'s biggest' : ' yesterday\'s biggest') : ''}${shareWord === 'high' ? ', high off-exchange share' : ''}`
