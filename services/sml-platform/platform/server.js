@@ -3534,7 +3534,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         }
         if (request.method === 'POST' && (sub === '/order' || sub === '/reset')) {
           const raw = await readRequestBody(request, 4_096).catch(() => null);
-          let body = null; try { body = raw ? JSON.parse(typeof raw === 'string' ? raw : String(raw)) : null; } catch (_) { body = null; }
+          let body = null; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { body = null; }
           if (!body || typeof body !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
           const name = body.account === 'challenge' ? 'challenge' : 'me';
           if (name === 'challenge' && !owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
@@ -3567,7 +3567,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (request.method === 'POST') {
           if (!owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
           const raw = await readRequestBody(request, 2_048).catch(() => null);
-          let body = {}; try { body = raw ? JSON.parse(typeof raw === 'string' ? raw : String(raw)) : {}; } catch (_) { body = {}; }
+          let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          if (!body || typeof body !== 'object') body = {};
           if (sub === '/take') { sendJson(response, 200, await c.take(body.id, { qty: body.qty })); return; }
           if (sub === '/skip') { sendJson(response, 200, await c.skip(body.id)); return; }
           if (sub === '/reset') { const snap = await c.reset(); delete snap.byId; sendJson(response, 200, { ...snap, me }); return; }
