@@ -203,7 +203,8 @@ const richCtx = (bars) => fullCtx(bars, {
   earnings: { daysAway: 30 },
   direction: { ok: true, bias: 45, label: 'bullish' },
   sentiment: { ok: true, score: 0.4, label: 'positive' },
-  darkPool: { available: true, lean: { label: 'accumulation' } }
+  darkPool: { available: true, lean: { label: 'accumulation' } },
+  gamma: { available: true, regime: 'positive', pressurePct: 3.1, basis: 'standard', callWall: { distancePct: 9 }, putWall: { distancePct: 1 }, zeroDteShare: 0.1 }
 });
 
 test('every hold signal carries a 0-100 conviction score with a factor breakdown that adds up', () => {
@@ -211,7 +212,7 @@ test('every hold signal carries a 0-100 conviction score with a factor breakdown
   assert.ok(a.signals.length >= 1 && a.confluence);
   for (const s of a.signals) {
     assert.ok(s.conf.score >= 0 && s.conf.score <= 100 && 'ABCD'.includes(s.conf.grade));
-    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,earnings,direction,sentiment,darkpool');
+    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,earnings,direction,sentiment,darkpool,gamma');
     const avail = s.conf.factors.filter((f) => f.available), max = avail.reduce((t, f) => t + f.max, 0), got = avail.reduce((t, f) => t + f.pts, 0);
     assert.equal(max, 110, 'original six factors + earnings safety (assumed safe) => 110 points');
     assert.equal(s.conf.score, Math.round((got / max) * 100));
@@ -260,9 +261,10 @@ test('all supplementary data sources contribute to the confluence score when pro
   const keys = s.conf.factors.map((f) => f.key);
   assert.ok(keys.includes('signals') && keys.includes('orderflow') && keys.includes('earnings') && keys.includes('direction') && keys.includes('sentiment') && keys.includes('darkpool'));
   const avail = s.conf.factors.filter((f) => f.available);
-  assert.equal(avail.length, 12, 'all 12 factors available with full data');
+  assert.equal(avail.length, 13, 'all 13 factors available with full data');
   const max = avail.reduce((t, f) => t + f.max, 0);
-  assert.equal(max, 160, '6 original (100) + 6 new (60) = 160 points');
+  assert.equal(max, 175, '6 original (100) + 6 data (60) + gamma (15) = 175 points');
+  assert.equal(s.conf.factors.find((f) => f.key === 'gamma').pts, 15, 'dampened + meaningful hedge flow + put wall floor = full 15');
   assert.ok(s.conf.factors.find((f) => f.key === 'signals').pts > 0, 'signals ensemble scores on real bars');
   assert.equal(s.conf.factors.find((f) => f.key === 'orderflow').pts, 10, 'bullish order flow with score 40 gets full 10');
   assert.equal(s.conf.factors.find((f) => f.key === 'earnings').pts, 10, '30 days away = full safety');

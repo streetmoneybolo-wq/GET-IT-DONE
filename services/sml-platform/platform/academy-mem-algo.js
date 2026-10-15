@@ -231,6 +231,7 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const dirData = ctx.direction && ctx.direction.ok ? ctx.direction : null;
   const sentData = ctx.sentiment && ctx.sentiment.ok ? ctx.sentiment : null;
   const dpData = ctx.darkPool && ctx.darkPool.available ? ctx.darkPool : null;
+  const gxData = ctx.gamma && ctx.gamma.available ? ctx.gamma : null;
 
   function scoreAt(i, withPatterns) {
     const F = [];
@@ -305,6 +306,19 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       const lean = dpData.lean.label || '';
       const bullLean = /buy|bull|accum/i.test(lean);
       add('darkpool', 'Dark pool flow', 5, bullLean ? 5 : /neutral/i.test(lean) ? 2 : 0, lean);
+    }
+    if (!gxData) add('gamma', 'Gamma pressure', 15, 0, 'options positioning not available', false);
+    else {
+      const dampened = gxData.regime === 'positive', pr = Number(gxData.pressurePct);
+      const a = ind.atr[i] > 0 ? ind.atr[i] / bars[i].c * 100 : 2; // one ATR as a percent of price
+      const cw = gxData.callWall && Number.isFinite(Number(gxData.callWall.distancePct)) ? Number(gxData.callWall.distancePct) : null;
+      const pw = gxData.putWall && Number.isFinite(Number(gxData.putWall.distancePct)) ? Number(gxData.putWall.distancePct) : null;
+      let pts = dampened ? 8 : 2; const notes = [dampened ? 'dealer hedging dampens moves' : 'dealer hedging amplifies moves'];
+      if (Number.isFinite(pr) && pr >= 2 && dampened) { pts += 3; notes.push('hedge flow is ' + pr.toFixed(1) + '% of daily volume'); }
+      if (pw != null && pw <= 2 * a) { pts += 4; notes.push('put wall ' + pw.toFixed(1) + '% below'); }
+      if (cw != null && cw <= a) { pts -= 4; notes.push('call wall ' + cw.toFixed(1) + '% overhead'); }
+      if (Number(gxData.zeroDteShare) >= 0.4) { pts -= 2; notes.push('mostly 0DTE, profile decays today'); }
+      add('gamma', 'Gamma pressure', 15, Math.max(0, Math.min(15, pts)), notes.join(', ') + (gxData.basis === 'inferred' ? ' (dealer side inferred from prints)' : ' (standard dealer assumption)'));
     }
     const avail = F.filter((f) => f.available), max = avail.reduce((s, f) => s + f.max, 0), got = avail.reduce((s, f) => s + f.pts, 0);
     const score = max > 0 ? Math.round((got / max) * 100) : 0;

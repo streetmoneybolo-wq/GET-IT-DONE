@@ -43,6 +43,7 @@ const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL
 const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
+const { createGammaService } = require('./academy-gamma');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -3410,6 +3411,21 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Gamma pressure (academy-gamma.js): Academy members, paid tiers. Dealer side is inferred and labelled as such. */
+    if (request.method === 'GET' && path === '/academy-activity/gamma') {
+      if (!academyOAuth || !academyGamma) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try { sendJson(response, 200, await academyGamma.get(symbol)); }
+      catch (error) { logger('error', 'academy_gamma_failed', { error }); sendJson(response, 503, { ok: false, error: 'gamma_unavailable' }); }
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -3643,6 +3659,11 @@ async function main() {
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars),
     memory: createSentimentMemory({ store: createPgStateStore({ pool: database.pool, key: 'sentiment', defaultValue: () => ({ baselines: {}, history: {} }), logger: log }), logger: log }),
     logger: log
+  }) : null;
+  /* Gamma pressure for the Academy: dealer hedge shares per 1% move against the stock's daily volume, walls, flip, 0DTE share. */
+  const academyGamma = academyAlerts ? createGammaService({
+    chain: (s) => academyAlerts.chainFor(s), candles: (s, tf) => sentimentCandles(s, tf),
+    quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars), logger: log
   }) : null;
   /* Group Pro Tools for StockMarketLoop groups (setups, absorption, dark pool, options strategies, dashboard). */
   const groupTools = process.env.GROUP_TOOLS === 'off' ? null : createGroupTools({
