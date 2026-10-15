@@ -11,7 +11,7 @@
 const algo = require('./academy-mem-algo');
 
 const DAY = 86_400_000;
-const num = (v, d = null) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
+const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
 const r2 = (v) => (Number.isFinite(v) ? Math.round(v * 100) / 100 : null);
 const r1 = (v) => (Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));

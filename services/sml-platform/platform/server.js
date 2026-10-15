@@ -45,7 +45,8 @@ const { createPushService } = require('./academy-push');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
 const { createGammaService } = require('./academy-gamma');
 const { createInstitutionalService } = require('./academy-institutional');
-const { createFilingsService } = require('./academy-filings');
+const { createFilingsService, DEFAULT_SEC_UA } = require('./academy-filings');
+const { createFdaService } = require('./academy-fda');
 const { createRedditService, mergeSocial } = require('./academy-reddit');
 const { createClassifier } = require('./academy-classifier');
 const { createEarningsPlaybook } = require('./academy-earnings-playbook');
@@ -3465,6 +3466,24 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* FDA decisions: upcoming PDUFA dates with approval/impact reads and plays (?days), or one symbol (?symbol). Paid tiers. */
+    if (request.method === 'GET' && path === '/academy-activity/fda') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const svc = getFdaService();
+      if (!svc) { sendJson(response, 503, { ok: false, error: 'fda_unavailable' }); return; }
+      const fq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(fq.get('symbol') || '').toUpperCase();
+      if (symbol && !/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try { sendJson(response, 200, symbol ? await svc.detail(symbol) : await svc.upcoming({ days: Number(fq.get('days')) || 60, limit: Number(fq.get('limit')) || 15 })); }
+      catch (error) { logger('error', 'academy_fda_failed', { error }); sendJson(response, 503, { ok: false, error: 'fda_unavailable' }); }
+      return;
+    }
+
     /* SEC filings (academy-filings.js): Academy members, paid tiers. Public EDGAR data, cached six hours per symbol. */
     if (request.method === 'GET' && path === '/academy-activity/filings') {
       if (!academyOAuth || !academyFilings) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3744,6 +3763,19 @@ async function main() {
     });
     return earningsPlaybook;
   };
+  /* FDA decisions (academy-fda.js): PDUFA dates from 8-K releases on EDGAR, approval and impact reads, plays with a hedge. Built on first use. */
+  let fdaService = null;
+  const getFdaService = () => {
+    if (fdaService || process.env.SML_ACADEMY_FDA === 'off') return fdaService;
+    fdaService = createFdaService({
+      userAgent: String(process.env.SML_SEC_USER_AGENT || DEFAULT_SEC_UA),
+      candles: (s, tf) => sentimentCandles(s, tf), chain: academyAlerts ? (s) => academyAlerts.chainFor(s) : null,
+      company: academyAlerts && typeof academyAlerts.company === 'function' ? (s) => academyAlerts.company(s) : null,
+      shortData: academyAlerts && typeof academyAlerts.shortData === 'function' ? (s) => academyAlerts.shortData(s) : null,
+      hedge: typeof academyHedge !== 'undefined' && academyHedge ? academyHedge : null, logger: log
+    });
+    return fdaService;
+  };
   /* Institutional flow for the Academy: moomoo order-size buckets (via the site bridge) + sweeps and blocks from the Massive tape. */
   const academyInstitutional = createInstitutionalService({
     capital: academyDataBridge && academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('capital', s); return r && r.ok && r.data && r.data.ok !== false ? (r.data.data || r.data) : null; } : null,
@@ -3752,7 +3784,7 @@ async function main() {
   });
   /* SEC filings for the Academy: Form 4 insider buys/sells and 13D/13G stakes straight from EDGAR (no vendor, no key). */
   const academyFilings = process.env.SML_ACADEMY_FILINGS === 'off' ? null : createFilingsService({
-    userAgent: String(process.env.SML_SEC_USER_AGENT || 'StockMarketLoop Academy (stockmarketloop.com)'), logger: log
+    userAgent: String(process.env.SML_SEC_USER_AGENT || DEFAULT_SEC_UA), logger: log
   });
   /* Group Pro Tools for StockMarketLoop groups (setups, absorption, dark pool, options strategies, dashboard). */
   const groupTools = process.env.GROUP_TOOLS === 'off' ? null : createGroupTools({

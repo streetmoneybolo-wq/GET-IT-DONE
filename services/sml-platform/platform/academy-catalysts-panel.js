@@ -99,6 +99,31 @@
   }
   function placeholderHtml(tab) { return '<p class="note">' + esc(S.err[tab] || 'Loading…') + '</p>'; }
 
+  function fdaDetail(e) {
+    const ap = e.approval, im = e.impact, pm = e.implied;
+    const inputs = (list) => '<div class="legs">' + list.map((i) => esc(i.k) + ' <b>' + esc(i.v) + '</b>').join(' · ') + '</div>';
+    return '<tr><td colspan="7"><div class="detail">'
+      + '<div><b>' + esc(e.company || e.symbol) + '</b> · decision due ' + esc(e.date) + ' (' + e.daysAway + ' days) · price ' + usd(e.price) + (e.marketCap ? ' · size $' + (e.marketCap >= 1e9 ? (e.marketCap / 1e9).toFixed(1) + 'B' : Math.round(e.marketCap / 1e6) + 'M') : '') + (e.shortDays != null ? ' · short interest ' + e.shortDays + ' days to cover' : '') + '</div>'
+      + '<div class="legs">' + esc(e.sentence) + '</div>'
+      + '<div>Approval read <b>' + ap.pct + '%</b> (' + esc(ap.label) + ')' + inputs(ap.inputs) + '<i>' + esc(ap.note) + '</i></div>'
+      + '<div>Impact read <b>' + im.score + '/100</b> (' + esc(im.label) + ')' + inputs(im.inputs) + (pm ? '<div>Options price about <b>' + apct(pm.impliedPct) + '</b> through ' + esc(pm.expiry) + ' (ATM straddle ' + usd(pm.straddle) + ').</div>' : '') + '</div>'
+      + (e.plays || []).map(playHtml).join('')
+      + (Array.isArray(e.hedgeIdeas) && e.hedgeIdeas.length ? '<div class="play"><b>Hedge &amp; Income planner</b>' + e.hedgeIdeas.map((i) => '<div>' + esc(i.name || i.title || i.kind || '') + (i.summary ? ': ' + esc(i.summary) : '') + '</div>').join('') + '</div>' : '')
+      + '<div class="note">Source: ' + esc(e.source.form) + ' filed ' + esc(e.source.filed) + ' · <a class="chart" href="' + esc(e.source.url) + '" target="_blank" rel="noopener">read the release</a></div>'
+      + '</div></td></tr>';
+  }
+  window.smlCatalystsFda = function fdaHtml(st) {
+    const d = st.data.fda;
+    if (st.err.fda) return '<p class="note">' + esc(st.err.fda) + '</p>';
+    if (!d) return '<p class="note">Reading the latest FDA filings on EDGAR… (first load can take a minute)</p>';
+    if (!d.available || !d.events || !d.events.length) return '<p class="note">' + esc(d.reason === 'edgar_unavailable' ? 'EDGAR is not answering right now.' : 'No PDUFA dates found in the next ' + (d.window ? d.window.days : 60) + ' days.') + '</p>';
+    const flag = (e) => [e.flags.priorityReview ? 'priority' : null, e.flags.breakthrough ? 'breakthrough' : null, e.flags.resubmission ? 'resubmission' : null, e.flags.supplemental ? 'supplemental' : null, e.flags.adcomPlanned ? 'AdCom' : null].filter(Boolean).map((f) => '<span class="tag">' + f + '</span>').join('');
+    const rows = d.events.map((e) => { const k = 'f:' + e.symbol + ':' + e.date; const open = st.open.has(k);
+      return '<tr class="row' + (open ? ' open' : '') + '" data-key="' + esc(k) + '"><td>' + chartLink(e.symbol) + '</td><td>' + esc(e.date) + '</td><td>' + e.daysAway + 'd</td><td>' + flag(e) + '</td><td><span class="score ' + grade(e.approval.pct) + '">' + e.approval.pct + '%</span></td><td><span class="score ' + grade(e.impact.score) + '">' + e.impact.score + '</span></td><td>' + (e.implied ? apct(e.implied.impliedPct) : '—') + '</td></tr>' + (open ? fdaDetail(e) : ''); }).join('');
+    return '<table><thead><tr><th>Ticker</th><th>PDUFA</th><th>In</th><th>Review</th><th>Approval</th><th>Impact</th><th>Priced move</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + '<p class="note">' + d.total + ' decision' + (d.total === 1 ? '' : 's') + ' found through ' + esc(d.window ? d.window.end : '') + '. Click a row for the reads, the plays and the hedge for each. ' + esc(d.note || '') + '</p>';
+  };
+
   function paint() {
     const dock = document.getElementById('options-dock') || document.getElementById('options-chain');
     const title = document.querySelector('.below-title');

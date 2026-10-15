@@ -53,7 +53,9 @@ function labelOf(bias, cluster) {
   return 'quiet';
 }
 
-function createFilingsService({ fetchImpl = fetch, userAgent = 'StockMarketLoop Academy (stockmarketloop.com)', now = Date.now, ttlMs = 6 * 3_600_000, maxForm4 = 12, logger = () => {} } = {}) {
+/* EDGAR's archive host refuses a User-Agent without a contact address (403); data.sec.gov does not. Keep the address form. */
+const DEFAULT_SEC_UA = 'StockMarketLoop Academy support@stockmarketloop.com';
+function createFilingsService({ fetchImpl = fetch, userAgent = DEFAULT_SEC_UA, now = Date.now, ttlMs = 6 * 3_600_000, maxForm4 = 12, logger = () => {} } = {}) {
   const cache = new Map(), inflight = new Map();
   let tickers = null, tickersAt = 0, tickersLoading = null;
   let lastReq = 0;
@@ -110,4 +112,4 @@ function createFilingsService({ fetchImpl = fetch, userAgent = 'StockMarketLoop 
   return { get };
 }
 
-module.exports = { createFilingsService, parseForm4, summarizeInsiders, labelOf };
+module.exports = { createFilingsService, parseForm4, summarizeInsiders, labelOf, DEFAULT_SEC_UA };
