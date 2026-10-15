@@ -1,4 +1,4 @@
-/* SML Design System 1.0.0
+/* SML Design System 1.0.1
    One look for every page of stockmarketloop.com. Tokens first, then the theme pages (Twenty Twenty-Two), then the shared
    components other plugins print (engagement controls, feed cards, the global header), then the Groups screen.
    Everything here refines markup that already exists; nothing is added or removed. */
@@ -56,8 +56,8 @@ body.wp-theme-twentytwentytwo h4 { font-size: 17px; }
 body.wp-theme-twentytwentytwo .wp-block-site-title, body.wp-theme-twentytwentytwo .wp-block-site-title a { font-size: 26px; text-decoration: none; }
 body.wp-theme-twentytwentytwo .entry-content p, body.wp-theme-twentytwentytwo .entry-content li { font-size: 17px; line-height: 1.68; color: var(--sml-text); }
 body.wp-theme-twentytwentytwo .entry-content p.has-large-font-size { font-size: 20px; line-height: 1.5; color: #fff; }
-body.wp-theme-twentytwentytwo .entry-content a:not(.wp-block-button__link):not(.sml-btn) { color: var(--sml-blue); text-decoration: underline; text-decoration-color: rgba(122, 230, 255, .4); text-underline-offset: 3px; }
-body.wp-theme-twentytwentytwo .entry-content a:not(.wp-block-button__link):hover { text-decoration-color: var(--sml-blue); }
+body.wp-theme-twentytwentytwo .entry-content :where(p, li, figcaption, td) > a:not(.wp-block-button__link):not(.sml-btn) { color: var(--sml-blue); text-decoration: underline; text-decoration-color: rgba(122, 230, 255, .4); text-underline-offset: 3px; }
+body.wp-theme-twentytwentytwo .entry-content :where(p, li, figcaption, td) > a:not(.wp-block-button__link):hover { text-decoration-color: var(--sml-blue); }
 body.wp-theme-twentytwentytwo .wp-block-separator { border: 0; border-top: 1px solid var(--sml-line-2); opacity: 1; width: 100%; max-width: none; margin: 28px auto; }
 body.wp-theme-twentytwentytwo .wp-block-post-date, body.wp-theme-twentytwentytwo .wp-block-post-author, body.wp-theme-twentytwentytwo .wp-block-post-terms { color: var(--sml-muted); font-size: 14px; }
 body.wp-theme-twentytwentytwo .wp-block-image img, body.wp-theme-twentytwentytwo .wp-block-post-featured-image img, body.wp-theme-twentytwentytwo .entry-content figure img { border-radius: var(--sml-radius-lg); border: 1px solid var(--sml-line); }

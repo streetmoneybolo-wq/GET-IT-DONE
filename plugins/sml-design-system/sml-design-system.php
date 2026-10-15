@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens, the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, calmer accents, and avatar fallbacks. Pure CSS and a few lines of JavaScript; it changes no content.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.0.0' );
+define( 'SML_DS_VERSION', '1.0.1' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
