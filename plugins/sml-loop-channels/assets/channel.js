@@ -159,7 +159,7 @@
   };
   var saveTimer = null, dirty = false;
   function status(msg, ok, err) { var el = $('#lcs-status'); if (el) { el.innerHTML = err ? '<span class="err">' + esc(msg) + '</span>' : ok ? '<b>' + esc(msg) + '</b>' : esc(msg); } }
-  function save() { dirty = true; status('Saving…'); window.clearTimeout(saveTimer); saveTimer = window.setTimeout(function () { api('/design', { body: D }).then(function (j) { D = j.design; C.design = D; dirty = false; status('Saved. Signed-out visitors see it within five minutes.', true); }).catch(function (e) { status(e.message, false, true); }); }, 600); }
+  function save() { dirty = true; status('Saving…'); window.clearTimeout(saveTimer); saveTimer = window.setTimeout(function () { api('/design', { body: D }).then(function (j) { D = j.design; C.design = D; dirty = false; status(j.ping && j.ping.ok ? 'Saved and resubmitted to the search engines.' : 'Saved. Signed-out visitors see it within five minutes.', true); if (j.ping) { var pn = $('#lcs-ping-note', drawer); if (pn && j.ping.at) { pn.textContent = 'Last sent ' + new Date(j.ping.at).toLocaleString(); } } }).catch(function (e) { status(e.message, false, true); }); }, 600); }
   function set(path, value, opts) { var keys = path.split('.'), o = D; for (var i = 0; i < keys.length - 1; i++) { o = o[keys[i]] = o[keys[i]] || {}; } o[keys[keys.length - 1]] = value; applyDesign(D, opts || {}); save(); }
   function get(path) { var o = D; path.split('.').forEach(function (k) { o = o == null ? undefined : o[k]; }); return o; }
 
@@ -224,11 +224,26 @@
         h += toggle('effects.pulse', 'Pulse with audio', 'When a letter or stream on the page plays sound, the layer breathes with it.');
       }
     } else {
-      h += '<div class="lcs-note">Your channel page is indexable now: it has a real title, description, canonical link, ProfilePage and VideoObject schema, and a share image. It is listed in the channels sitemap.</div>';
-      h += text('seo.title', 'Search title', C.name + ' (@' + C.handle + ') · Loop Channel', 90) + '<div class="lcs-f"><label>Description</label><textarea data-f="seo.description" rows="3" maxlength="200" placeholder="One line that says what the channel covers and for whom.">' + esc(D.seo.description || '') + '</textarea></div>' + toggle('seo.noindex', 'Hide from search engines');
+      var s = D.seo, df = C.defaults || {};
+      var t = s.title || df.title || '', dsc = s.description || df.description || '', img = (s.image && s.image.url) || df.image || '';
+      h += '<div class="lcs-serp"><div class="u">' + esc((C.url || '').replace(/^https?:\/\//, '').replace(/\/$/, '')) + '</div><div class="t">' + esc(t) + '</div><div class="d">' + esc(dsc) + '</div></div>';
+      h += '<div class="lcs-f"><label>Search title <span data-count="seo.title">' + t.length + '/70</span></label><input type="text" data-f="seo.title" value="' + esc(s.title || '') + '" placeholder="' + esc(df.title || '') + '" maxlength="90"><div class="hint">Lead with what people search for: your name, the market you cover, the tickers you are known for. Change it as the market moves; the page tells Google and Bing it changed.</div></div>';
+      h += '<div class="lcs-f"><label>Description <span data-count="seo.description">' + dsc.length + '/160</span></label><textarea data-f="seo.description" rows="3" maxlength="200" placeholder="' + esc(df.description || '') + '">' + esc(s.description || '') + '</textarea></div>';
+      h += '<div class="lcs-f"><label>Category</label><select data-select="seo.category">' + Object.keys(C.categories || {}).map(function (k) { return '<option value="' + esc(k) + '"' + (s.category === k ? ' selected' : '') + '>' + esc(C.categories[k]) + '</option>'; }).join('') + '</select></div>';
+      h += '<div class="lcs-f"><label>Topics <span>comma separated, up to 12</span></label><input type="text" data-list="seo.topics" value="' + esc((s.topics || []).join(', ')) + '" placeholder="options flow, small caps, earnings plays"><div class="hint">Become the knowsAbout entities on your Person schema and the keywords on the page.</div></div>';
+      h += '<div class="lcs-f"><label>Tickers <span>up to 15</span></label><input type="text" data-list="seo.tickers" value="' + esc((s.tickers || []).join(', ')) + '" placeholder="NVDA, TSLA, SPY"><div class="hint">Each becomes a Corporation entity the page mentions, which is how finance search and Google News connect you to a stock.</div></div>';
+      h += '<div class="lcs-row" style="display:flex;gap:8px;margin:-6px 0 16px"><button type="button" class="lcs-btn" data-act="suggest">Suggest from my content</button><span class="hint" id="lcs-suggest-note" style="align-self:center"></span></div>';
+      h += text('seo.job_title', 'Title line', 'Options trader, former WSB moderator', 60) + text('seo.keywords', 'Meta keywords (optional)', 'Leave empty to build from topics and tickers', 300);
+      h += '<div class="lcs-f"><label>Share preview</label><div class="lcs-social"><div class="lcs-social-img">' + (img ? '<img src="' + esc(img) + '" alt="">' : '<span>No share image</span>') + '</div><div class="lcs-social-txt"><small>' + esc(location.host) + '</small><b>' + esc(s.og_title || t) + '</b><span>' + esc(s.og_desc || dsc) + '</span></div></div></div>';
+      h += up('share', 'Drop a share image', 'image/*', '1200 × 630. Used by X, Discord, LinkedIn and iMessage previews. Falls back to the banner, then the avatar.') + media(s.image && s.image.url, 'share', false);
+      h += text('seo.og_title', 'Social title', t, 90) + '<div class="lcs-f"><label>Social description</label><textarea data-f="seo.og_desc" rows="2" maxlength="200" placeholder="' + esc(dsc) + '">' + esc(s.og_desc || '') + '</textarea></div>' + text('seo.twitter', 'X handle for cards', 'yourhandle', 30);
+      h += '<div class="lcs-f"><label>Structured data</label>' + toggle('seo.videos_schema', 'List latest videos as VideoObject', 'Video rich results and the Videos tab in search.') + toggle('seo.posts_schema', 'List latest posts', 'An ItemList of your newest posts.') + toggle('seo.noindex', 'Hide from search engines') + '</div>';
+      var lp = s.last_ping || {};
+      h += '<div class="lcs-f"><label>Indexing</label><div class="lcs-row" style="display:flex;gap:8px;align-items:center"><button type="button" class="lcs-btn" data-act="ping"' + (C.indexnow ? '' : ' disabled') + '>Resubmit to Bing and partners now</button><span class="hint" id="lcs-ping-note">' + esc(lp.at ? 'Last sent ' + new Date(lp.at).toLocaleString() + (lp.ok === false ? ' (not accepted)' : '') : 'Not sent yet') + '</span></div><div class="hint">' + (C.indexnow ? 'Every metadata save pings IndexNow (Bing, Yahoo, DuckDuckGo, Naver, Seznam) once per ten minutes at most. Google re-reads the page from the channels sitemap and the updated dateModified; it does not take pings.' : 'IndexNow needs the Loop Letters Studio plugin active; Google still follows the sitemap.') + '</div></div>';
     }
     body.innerHTML = h;
   }
+  function listSet(path, raw) { set(path, String(raw || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean)); }
   drawer.addEventListener('click', function (e) {
     var t = e.target, b;
     if ((b = t.closest('[data-seg] button'))) { var sp = b.parentNode.getAttribute('data-seg'); set(sp, b.getAttribute('data-v'), { preset: sp === 'preset' }); render(); return; }
@@ -238,11 +253,33 @@
     if ((b = t.closest('[data-swatch]'))) { set('accent', b.getAttribute('data-swatch')); render(); return; }
     if ((b = t.closest('[data-move]'))) { var k = b.getAttribute('data-move'), dir = +b.getAttribute('data-dir'), ord = D.layout.order.slice(), i = ord.indexOf(k); if (i > -1 && i + dir >= 0 && i + dir < ord.length) { ord.splice(i, 1); ord.splice(i + dir, 0, k); set('layout.order', ord); render(); } return; }
     if ((b = t.closest('[data-hide]'))) { var hk = b.getAttribute('data-hide'), hid = (D.layout.hidden || []).slice(), hi = hid.indexOf(hk); if (hi > -1) { hid.splice(hi, 1); } else { hid.push(hk); } set('layout.hidden', hid); render(); return; }
+    if ((b = t.closest('[data-act="suggest"]'))) {
+      b.disabled = true; var note = $('#lcs-suggest-note', drawer); note.textContent = 'Reading your videos, posts and letters…';
+      api('/suggest').then(function (j) {
+        var tk = j.tickers || [], tp = j.topics || [];
+        if (!tk.length && !tp.length) { note.textContent = 'Nothing to suggest yet: publish a few videos, posts or letters first.'; return; }
+        var merge = function (cur, add, max) { var out = (cur || []).slice(); add.forEach(function (x) { if (out.indexOf(x) === -1 && out.length < max) { out.push(x); } }); return out; };
+        D.seo.tickers = merge(D.seo.tickers, tk, 15); D.seo.topics = merge(D.seo.topics, tp, 12);
+        set('seo.tickers', D.seo.tickers); render(); $('#lcs-suggest-note', drawer).textContent = 'Added ' + tk.length + ' tickers and ' + tp.length + ' topics from your recent content. Remove any you do not want.';
+      }).catch(function (er) { note.textContent = er.message; }).then(function () { b.disabled = false; });
+      return;
+    }
+    if ((b = t.closest('[data-act="ping"]'))) {
+      b.disabled = true; var pn = $('#lcs-ping-note', drawer); pn.textContent = 'Sending…';
+      api('/ping', { body: {} }).then(function (j) { var p = j.ping || {}; D.seo.last_ping = { at: p.at, ok: p.ok }; pn.textContent = p.available ? (p.ok ? 'Sent ' + new Date(p.at).toLocaleString() + '. Bing usually recrawls within hours.' : 'Sent, but IndexNow did not accept it this time. It will try again on the next save.') : 'IndexNow is not available on this site right now.'; }).catch(function (er) { pn.textContent = er.message; }).then(function () { b.disabled = false; });
+      return;
+    }
     if ((b = t.closest('[data-remove]'))) { var kind = b.getAttribute('data-remove'); api('/media', { body: { kind: kind, remove: true } }).then(function (j) { D = j.design; C.design = D; applyDesign(D); render(); status('Removed', true); }).catch(function (er) { status(er.message, false, true); }); return; }
   });
   drawer.addEventListener('input', function (e) {
     var t = e.target;
-    if (t.matches('[data-f]')) { set(t.getAttribute('data-f'), t.value, { banner: t.getAttribute('data-f').indexOf('banner') === 0 }); return; }
+    if (t.matches('[data-f]')) {
+      var p = t.getAttribute('data-f'); set(p, t.value, { banner: p.indexOf('banner') === 0 });
+      var cnt = $('[data-count="' + p + '"]', drawer); if (cnt) { var mx = cnt.textContent.split('/')[1]; cnt.textContent = t.value.length + '/' + mx; cnt.style.color = t.value.length > +mx ? '#ffb454' : ''; }
+      if (p.indexOf('seo.') === 0) { var serp = $('.lcs-serp', drawer); if (serp) { var tt = D.seo.title || (C.defaults || {}).title || '', dd = D.seo.description || (C.defaults || {}).description || ''; serp.querySelector('.t').textContent = tt; serp.querySelector('.d').textContent = dd; var so = $('.lcs-social-txt', drawer); if (so) { so.querySelector('b').textContent = D.seo.og_title || tt; so.querySelector('span').textContent = D.seo.og_desc || dd; } } }
+      return;
+    }
+    if (t.matches('[data-list]')) { listSet(t.getAttribute('data-list'), t.value); return; }
     if (t.matches('[data-color]')) { set('accent', t.value); var ti = $('[data-f="accent"]', drawer); if (ti) { ti.value = t.value; } return; }
     if (t.matches('[data-range]')) { var p = t.getAttribute('data-range'); set(p, +t.value, { bg: false }); var lab = t.previousElementSibling && t.previousElementSibling.querySelector('span'); if (lab) { lab.textContent = t.value + (p.indexOf('blur') > -1 ? 'px' : '%'); } return; }
   });
