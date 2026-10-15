@@ -38,7 +38,9 @@ function gammaAngle(c) {
   if (pressure >= 25) { s += 25; facts.push(`Hedging pressure is ${g.pressure || 'high'}: the shares dealers would need to buy on a move equal ${Math.round(pressure)}% of an average day's volume.`); } else if (pressure >= 10) { s += 12; facts.push(`Hedge flows would absorb ${Math.round(pressure)}% of a normal day's volume.`); }
   const cw = g.callWall && num(g.callWall.strike), cwd = g.callWall && num(g.callWall.distancePct);
   if (cw && cwd != null && cwd > 0 && cwd <= 6) { s += 20; facts.push(`The call wall sits at ${px(cw)}, only ${cwd.toFixed(1)}% above: that is where the most call open interest is stacked, and the air pocket above it is where squeezes run.`); }
-  const flip = num(g.flipStrike), fd = num(g.flipDistancePct);
+  // the flip is a fact only when the service measured it and it sits within reach; an approximate or far-away flip is noise
+  const flipOk = num(g.flipStrike) > 0 && !g.flipIsApproximate && Math.abs(num(g.flipStrike) / p - 1) <= 0.25;
+  const flip = flipOk ? num(g.flipStrike) : null, fd = flipOk ? num(g.flipDistancePct, (flip / p - 1) * 100) : null;
   if (flip && fd != null) { if (p >= flip) { s += 10; facts.push(`Price is above the gamma flip at ${px(flip)}; below it, dealer hedging works against the stock.`); } else if (Math.abs(fd) <= 3) { s += 8; facts.push(`The gamma flip at ${px(flip)} is ${Math.abs(fd).toFixed(1)}% away; reclaiming it switches dealer hedging from a headwind to a tailwind.`); } }
   if (zero >= 0.3) { s += 10; facts.push(`${Math.round(zero * 100)}% of the open options are same-day expiries, the fuel that makes gamma moves violent in the final hours.`); }
   if (num(c.relVol, 1) >= 1.5) { s += 5; facts.push(`Volume is ${c.relVol.toFixed(1)}x normal today.`); }
@@ -76,16 +78,17 @@ function shortAngle(c) {
   };
 }
 function earningsAngle(c) {
-  const e = c.earnings; if (!e || num(e.daysAway) == null || e.daysAway < 0 || e.daysAway > 7) return null;
+  const e = c.earnings; if (!e || num(e.daysAway) == null || e.daysAway < 0 || e.daysAway > 7 || !e.date) return null;
   const p = num(c.price); if (!(p > 0)) return null;
   let s = 25; const facts = [];
-  facts.push(`${c.symbol} reports in ${e.daysAway === 0 ? 'hours' : e.daysAway + ' day' + (e.daysAway === 1 ? '' : 's')}${e.timing ? ' (' + e.timing + ')' : ''}.`);
+  const dateText = (() => { const d = new Date(String(e.date).slice(0, 10) + 'T12:00:00Z'); return Number.isNaN(d.valueOf()) ? String(e.date) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }); })();
+  facts.push(`${c.symbol} reports ${e.daysAway === 0 ? 'today' : e.daysAway === 1 ? 'tomorrow' : 'in ' + e.daysAway + ' days'}, ${dateText}${e.timing && e.timing !== 'UNSPECIFIED' ? ' (' + e.timing + ')' : ''}.`);
   const imp = num(e.impliedPct), hist = num(e.histAvgMovePct);
   if (imp != null) { facts.push(`The options market prices a ${imp.toFixed(1)}% move${hist != null ? `; the stock has averaged ${hist.toFixed(1)}% on its last prints` : ''}.`); if (hist != null && hist > imp * 1.3) { s += 15; facts.push(`History says the move is underpriced.`); } }
   let lean = 0;
   if (c.smc) {
     const g = (c.smc.fvgs || []).filter((x) => !x.filled)[0]; if (g) { s += 10; lean += g.dir > 0 ? 1 : -1; facts.push(`An unfilled ${g.dir > 0 ? 'bullish' : 'bearish'} imbalance sits at ${px(g.bottom)} to ${px(g.top)}: a magnet if the print disappoints${g.dir > 0 ? ' and support if it delivers' : ''}.`); }
-    if (c.smc.range) { s += 5; lean += c.smc.range.pos < 0.4 ? 1 : c.smc.range.pos > 0.7 ? -1 : 0; facts.push(`Price is in the ${c.smc.range.pos > 0.5 ? 'premium' : 'discount'} part of its range (${Math.round(clamp(c.smc.range.pos, 0, 1) * 100)}%) into the print.`); }
+    if (c.smc.range) { const pos = clamp(c.smc.range.pos, 0, 1); s += 5; lean += pos < 0.4 ? 1 : pos > 0.7 ? -1 : 0; facts.push(`Price sits ${pos > 0.55 ? 'in the premium part of' : pos < 0.45 ? 'in the discount part of' : 'in the middle of'} its range (${Math.round(pos * 100)}% up from the low) into the print.`); }
     const sw = (c.smc.sweeps || [])[0]; if (sw) { s += 10; lean += sw.kind === 'EQL' ? 1 : -1; facts.push(`The ${sw.kind === 'EQL' ? 'lows' : 'highs'} at ${px(sw.level)} were swept and reclaimed: stops were taken before the event.`); }
   }
   if (c.institutional && num(c.institutional.bias) != null) { s += 8; lean += Math.sign(c.institutional.bias); facts.push(`The tape leans ${c.institutional.label} into the event.`); }

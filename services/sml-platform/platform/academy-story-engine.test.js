@@ -6,7 +6,11 @@ const E = require('./academy-story-engine');
 
 const base = { symbol: 'ABCD', name: 'Abcd Robotics', price: 12.4, changePct: 6.2, relVol: 2.8, adv: 4_000_000, direction: { label: 'Lean bullish', bias: 28 } };
 
-test('gamma squeeze: short-gamma dealers, high hedge pressure and a close call wall make the angle', () => {
+test('gamma squeeze: short-gamma dealers, high hedge pressure and a close call wall make the angle; a far or approximate flip is not a fact', () => {
+  const far = E.gammaAngle({ ...base, price: 201, gamma: { available: true, regime: 'negative', pressurePct: 31, pressure: 'high', flipStrike: 35, flipDistancePct: -82, callWall: { strike: 220, distancePct: 9.4 }, zeroDteShare: 0.1 } });
+  assert.ok(far && !far.facts.some((f) => /gamma flip/.test(f)), far && far.facts.join(' | '));
+  const approx = E.gammaAngle({ ...base, gamma: { available: true, regime: 'negative', pressurePct: 31, pressure: 'high', flipStrike: 12, flipIsApproximate: true, callWall: { strike: 13, distancePct: 4.8 } } });
+  assert.ok(approx && !approx.facts.some((f) => /gamma flip/.test(f)));
   const a = E.gammaAngle({ ...base, gamma: { available: true, regime: 'negative', pressurePct: 31, pressure: 'high', flipStrike: 11.8, flipDistancePct: -4.8, callWall: { strike: 13, distancePct: 4.8 }, zeroDteShare: 0.35 }, short: { ratio: 0.52 } });
   assert.ok(a && a.score >= 70, JSON.stringify(a && a.score));
   assert.equal(a.pt, 13); assert.equal(a.lean, 'bullish'); assert.ok(a.facts.length >= 4); assert.match(a.scenario.target, /\$13\.00/);
@@ -20,10 +24,12 @@ test('short squeeze: FINRA short volume, days to cover and a running stock', () 
 });
 
 test('earnings speculation reads the map into the print and picks a lean', () => {
-  const a = E.earningsAngle({ ...base, earnings: { daysAway: 3, timing: 'AMC', impliedPct: 9.5, histAvgMovePct: 14 }, smc: { fvgs: [{ dir: 1, top: 12, bottom: 11.4, filled: false }], range: { pos: 0.3 }, sweeps: [{ kind: 'EQL', level: 11.1 }], vwap: { level: 11.9 } }, institutional: { bias: 40, label: 'institutional buy' } });
+  const a = E.earningsAngle({ ...base, earnings: { daysAway: 3, date: '2026-10-18', timing: 'AMC', impliedPct: 9.5, histAvgMovePct: 14 }, smc: { fvgs: [{ dir: 1, top: 12, bottom: 11.4, filled: false }], range: { pos: 0.3 }, sweeps: [{ kind: 'EQL', level: 11.1 }], vwap: { level: 11.9 } }, institutional: { bias: 40, label: 'institutional buy' } });
   assert.ok(a && a.lean === 'bullish' && a.pt > base.price);
   assert.ok(a.facts.some((f) => /underpriced/.test(f)));
-  assert.equal(E.earningsAngle({ ...base, earnings: { daysAway: 20 } }), null);
+  assert.equal(E.earningsAngle({ ...base, earnings: { daysAway: 20, date: '2026-11-05' } }), null);
+  assert.equal(E.earningsAngle({ ...base, earnings: { daysAway: 2 } }), null, 'no date, no story');
+  assert.ok(a.facts[0].includes('Oct 18') && a.facts[0].includes('in 3 days'));
 });
 
 test('unusual tape and structure stories', () => {
