@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.1' );
+define( 'SML_DS_VERSION', '1.1.2' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -41,7 +41,6 @@ function sml_ds_early_html() {
 	);
 	$hosts = array( 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://sml-platform-api.onrender.com', 'https://stockmarketloop-loop-kick.onrender.com' );
 	$out  = "\n" . '<meta id="sml-ds-early" name="sml-design-system" content="' . esc_attr( SML_DS_VERSION ) . '">' . "\n";
-	$out .= '<meta name="sml-ds-check" content="' . esc_attr( sml_ds_dashes( 'a — b' ) . '|' . (int) has_filter( 'the_content', 'sml_ds_dashes_front' ) . '|' . (int) has_filter( 'document_title_parts', 'sml_ds_dashes_title_parts' ) . '|' . preg_last_error() . '|' . PHP_VERSION ) . '">' . "\n";
 	foreach ( $hosts as $h ) { $out .= '<link rel="preconnect" href="' . esc_url( $h ) . '" crossorigin>' . "\n"; }
 	$out .= '<link rel="preload" as="style" href="' . esc_url( sml_ds_css_href() ) . '">' . "\n";
 	$out .= '<link rel="preload" as="style" href="' . esc_url( sml_ds_fonts_href() ) . '">' . "\n";
@@ -83,7 +82,9 @@ function sml_ds_inject( $html ) {
 		$body = strripos( $html, '</body>' );
 		if ( $body !== false ) { $html = substr( $html, 0, $body ) . sml_ds_footer_html() . substr( $html, $body ); }
 	}
-	return $html;
+	/* the punctuation pass over the finished page: content filters are bypassed by the way this host renders some blocks,
+	   so the whole document is treated here (text only; tags, attributes, scripts, styles and code are never touched) */
+	return sml_ds_dashes( $html );
 }
 
 /* The sign-in page (wp-login.php) wears the same canvas: the stylesheet, the fonts and the site logo. */
