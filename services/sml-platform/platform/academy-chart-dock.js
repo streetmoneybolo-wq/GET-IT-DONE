@@ -10,7 +10,15 @@
   window.__smlChartDock = true;
 
   const DOCKABLE = ['#mem-algo-panel', '#smc-card', '.academy-pro-panel', '.academy-interval-stats'];
-  const narrow = () => innerWidth < 900;
+  /* The dock takes about a third of the chart section (260 to 340 px) and only when the plot keeps at least 360 px; otherwise
+     (phones, a narrow Activity with S.I.R.E. open) the panels float as before. */
+  const SIRE_W = 332, MIN_PLOT = 360;
+  const room = () => {
+    const avail = (chart.clientWidth || innerWidth) - (document.body.classList.contains('sire-open') ? SIRE_W : 0);
+    const dockW = Math.min(340, Math.max(260, Math.round(avail * 0.36)));
+    return { dockW, ok: innerWidth >= 900 && avail - dockW >= MIN_PLOT };
+  };
+  const narrow = () => !room().ok;
   const CLEAN_KEY = 'sml-chart-clean';
   const css = document.createElement('style');
   css.textContent = 'body.dock-open main .chart{grid-template-columns:minmax(0,1fr) var(--dock-w,340px)!important}'
@@ -46,7 +54,9 @@
     el.__smlHome = null;
   }
   function sweep() {
-    if (narrow()) { [...dock.children].forEach(undock); }
+    const r = room();
+    chart.style.setProperty('--dock-w', r.dockW + 'px');
+    if (!r.ok) { [...dock.children].forEach(undock); }
     else {
       for (const sel of DOCKABLE) {
         const el = document.querySelector(sel);
