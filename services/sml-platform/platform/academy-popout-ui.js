@@ -83,9 +83,10 @@
   }
   async function popOut(id) {
     if (POP) { if (!openHere(id)) toast('Your browser blocked the new window. Allow pop-ups for this site and try again.'); return; }
+    const mod = (id === 'chart' && !coarse()) ? 'desk' : id;
     let token = await session();
     if (!token) { toast('Sign in to the Academy first, then pop the module out.'); return; }
-    const ask = (t) => fetch('/academy-activity/popout/ticket', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ module: id, symbol: symbol() }), cache: 'no-store' });
+    const ask = (t) => fetch('/academy-activity/popout/ticket', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ module: mod, symbol: symbol() }), cache: 'no-store' });
     let res = await ask(token);
     if (res.status === 401 && typeof window.smlAcademyReauth === 'function') { token = await window.smlAcademyReauth(); if (token) res = await ask(token); }
     let p = {};
@@ -391,6 +392,7 @@
 
   const ready = (fn) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn) : fn());
   ready(() => {
+    if (POP === 'desk') return; // handled by academy-desk.js
     if (POP) { void bootPopout(); return; }
     addButtons();
     new MutationObserver(queueScan).observe(document.body, { childList: true, subtree: true });

@@ -789,6 +789,9 @@ const ACADEMY_POPOUT_HEAD = (() => {
 const ACADEMY_DIRECTION = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'market-direction-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-direction-mount.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-unusual-volume.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-sml-vix.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-pt-notify.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-signal-radar-ui.js'), 'utf8') + '</script><script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-hedge-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+const ACADEMY_DESK = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-desk.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
@@ -888,7 +891,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_POPOUT_UI + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -3079,6 +3082,39 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
     }
+
+    /* Trading desk layout persistence (academy-desk.js). Stored per user in academy_state_kv. */
+    if (path === '/academy-activity/desk/layout' && academyOAuth && database.pool) {
+      const deskSession = academyOAuth.verifySession(request.headers.authorization);
+      if (!deskSession.ok) { sendJson(response, deskSession.status || 401, { ok: false, error: deskSession.code }); return; }
+      const layoutKey = 'desk:layout:' + deskSession.userId;
+      if (request.method === 'GET') {
+        try {
+          const r = await database.pool.query('SELECT value FROM academy_state_kv WHERE key = $1', [layoutKey]);
+          sendJson(response, 200, { ok: true, layout: (r && r.rows && r.rows[0]) ? r.rows[0].value : null });
+        } catch (_) { sendJson(response, 200, { ok: true, layout: null }); }
+        return;
+      }
+      if (request.method === 'PUT') {
+        if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+        const body = await readRequestBody(request, 8192);
+        if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
+        let layout;
+        try { layout = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+        if (!layout || !Array.isArray(layout.panels)) { sendJson(response, 400, { ok: false, error: 'invalid_layout' }); return; }
+        const clean = layout.panels.slice(0, 20).map(p => ({
+          id: String(p.id || '').slice(0, 24), x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 0.5, h: Number(p.h) || 0.5
+        })).filter(p => /^[a-z0-9-]{2,24}$/.test(p.id));
+        try {
+          await database.pool.query('INSERT INTO academy_state_kv (key, value, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()', [layoutKey, JSON.stringify({ panels: clean, v: 1 })]);
+          sendJson(response, 200, { ok: true });
+        } catch (_) { sendJson(response, 500, { ok: false, error: 'storage_failed' }); }
+        return;
+      }
+      sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      return;
+    }
+
     if (request.method === 'POST' && path === '/academy-activity/token') {
       if (!academyOAuth || typeof academyOAuth.completeActivity !== 'function') { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
