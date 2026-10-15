@@ -998,6 +998,9 @@ const academyStatus=document.getElementById('status');
    recovery message in the top bar (the bar wraps, so the chart shrinks rather
    than being covered) and retry only when the member asks. */
 let academySdk=null,academyAuthInflight=null;const academyInDiscord=new URLSearchParams(location.search).has('frame_id');
+/* sign-in diagnostics: one tiny beacon per step so a silent stall on a member's machine shows up in the server log */
+const academyT0=Date.now();const academyDiag=(stage,extra)=>{try{fetch('/academy-activity/diag',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({stage,inDiscord:academyInDiscord,ms:Date.now()-academyT0,hasToken:!!window.smlAcademySessionToken,ua:navigator.userAgent.slice(0,80),href:location.href.slice(0,120)},extra||{})),keepalive:true}).catch(()=>{})}catch(_){}};
+window.addEventListener('error',e=>academyDiag('page_error',{message:String(e&&e.message||'').slice(0,160)}));window.addEventListener('unhandledrejection',e=>academyDiag('page_rejection',{message:String(e&&e.reason&&(e.reason.message||e.reason)||'').slice(0,160)}));academyDiag('module_start');
 const academyNoticeText={
   academy_role_required:['ACCESS REQUIRED','Academy lessons are for Making Easy Money members. The chart and scanner stay open; your lesson progress starts saving once your membership role is active in this server.','Check again'],
   authorization_required:['SIGN-IN NEEDED','Discord sign-in did not finish, so your lesson progress cannot save yet.','Sign in again'],
@@ -1022,12 +1025,17 @@ function academyNotice(code){
 }
 async function academySignIn(){
   if(window.smlAcademyPopoutSignIn)return window.smlAcademyPopoutSignIn();
+  academyDiag('sdk_ready_start');
   if(!academySdk){academySdk=new DiscordSDK(academyAppId);await academySdk.ready()}
+  academyDiag('sdk_ready');
   const authorization=await academySdk.commands.authorize({client_id:academyAppId,response_type:'code',prompt:'none',scope:['identify','guilds.members.read']});
+  academyDiag('authorized',{code:authorization&&authorization.code?'yes':'no'});
   const response=await fetch('/academy-activity/token',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:authorization.code})});
   let payload={};try{payload=await response.json()}catch(_){}
+  academyDiag('token_response',{code:String(response.status)+':'+String(payload.error||(payload.ok?'ok':'bad'))});
   if(!response.ok||!payload.ok||!payload.access_token||!payload.sessionToken){const code=payload.error||(response.status>=500?'temporary_unavailable':'authorization_failed');throw Object.assign(new Error(code),{academyCode:code})}
   await academySdk.commands.authenticate({access_token:payload.access_token});
+  academyDiag('authenticated');
   return {sessionToken:payload.sessionToken,displayName:String(payload.displayName||'')};
 }
 function authenticateAcademyActivity(){
@@ -1050,6 +1058,7 @@ function authenticateAcademyActivity(){
       const code=error&&error.academyCode?raw:(/frame_id|instance_id|platform/i.test(raw)?'outside_discord':(/cancel|denied|5000|4002/i.test(raw)?'authorization_denied':'temporary_unavailable'));
       document.body.dataset.academyAuth=code.replace(/[^a-z0-9_-]/gi,'').slice(0,64);
       academyNotice(code);
+      academyDiag('signin_failed',{code,message:raw.slice(0,160)});
       return '';
     }finally{academyAuthInflight=null}
   })();
@@ -3169,6 +3178,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Client diagnostics: the Activity reports which sign-in step it reached (and any page error) so a silent failure on a
+       member's machine can be read from the server log. Unauthenticated by design (it fires before there is a session),
+       tiny, and it stores nothing: one stderr line per beacon. */
+    if (request.method === 'POST' && path === '/academy-activity/diag') {
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.writeHead(204); response.end(); return; }
+      const body = await readRequestBody(request, 2_048).catch(() => null);
+      let info = null; try { info = body && body.ok ? JSON.parse(body.rawBody || '{}') : null; } catch (_) { info = null; }
+      if (info && typeof info === 'object') {
+        const clean = {}; for (const k of ['stage', 'code', 'message', 'inDiscord', 'ua', 'href', 'ms', 'hasToken']) if (info[k] != null) clean[k] = String(info[k]).slice(0, 200);
+        console.error(JSON.stringify({ ts: new Date().toISOString(), level: 'warn', event: 'academy_client_diag', ...clean }));
+      }
+      response.writeHead(204, { 'cache-control': 'no-store' }); response.end(); return;
+    }
     if (request.method === 'POST' && path === '/academy-activity/token') {
       if (!academyOAuth || typeof academyOAuth.completeActivity !== 'function') { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
