@@ -53,6 +53,19 @@
     S.data = null; await load();
   }
 
+  /* the channel card: one click renders the account picture on the server and posts it; the channel id is asked for once */
+  async function share() {
+    let channelId = ''; try { channelId = localStorage.getItem('sml-challenge-channel') || ''; } catch (_) { /* ignore */ }
+    const note = window.prompt('Add a line to the post (optional):', '') ; if (note === null) return;
+    const post = async () => { const res = await fetch('/academy-activity/challenge/share', { method: 'POST', headers: auth(), body: JSON.stringify({ channelId: channelId || undefined, note }) }); return { status: res.status, j: await res.json().catch(() => ({})) }; };
+    S.msg = 'Rendering the card and posting…'; paint();
+    try {
+      let r = await post();
+      if (!r.j.ok && r.j.error === 'no_channel') { channelId = String(window.prompt('Paste the Discord channel id for the challenge posts (right-click the channel → Copy Channel ID):', '') || '').trim(); if (!/^\d{5,25}$/.test(channelId)) { S.msg = 'No channel id given.'; paint(); return; } try { localStorage.setItem('sml-challenge-channel', channelId); } catch (_) { /* ignore */ } r = await post(); }
+      S.msg = r.j.ok ? 'Posted the card to the channel.' : (r.j.message || ('Not posted: ' + (r.j.error || 'unavailable')));
+    } catch (_) { S.msg = 'The server did not answer.'; }
+    paint();
+  }
   /* owner pop-up for new ideas, polled every minute whether or not the panel is open */
   function startPoll() { if (S.pollT || !S.session) return; S.pollT = setInterval(pollIdeas, 60_000); setTimeout(pollIdeas, 4_000); }
   async function pollIdeas() {
@@ -86,7 +99,7 @@
         if (t.dataset.act === 'take') void act('take', { id: Number(t.dataset.id) });
         else if (t.dataset.act === 'skip') void act('skip', { id: Number(t.dataset.id) });
         else if (t.dataset.act === 'reset') { if (window.confirm('Reset the challenge to $1,000 and wipe its ideas and history?')) void act('reset', {}); }
-        else if (t.dataset.act === 'share') void act('share', {});
+        else if (t.dataset.act === 'share') void share();
       });
     }
     return el;
