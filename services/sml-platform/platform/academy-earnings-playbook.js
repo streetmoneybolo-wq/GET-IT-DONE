@@ -258,7 +258,9 @@ function createEarningsPlaybook({ calendar, history, chain, candles, hedge = nul
     });
   }
 
-  return { list, detail };
+  /* the calendar window alone (no chains, no candles): what the radar needs to tag a scheduled report */
+  const window = (days = 7) => memo('win:' + days, listTtlMs, async () => { const w = await calendarWindow(clamp(Math.round(num(days, 7)), 1, 45)); return w.events.map((e) => ({ symbol: e.symbol, type: 'earnings', date: e.date })); });
+  return { list, detail, window };
 }
 
 module.exports = { createEarningsPlaybook, impliedMove, reactionHistory, pastReportDates, strategiesFor, setupScore, coveringExpiry };

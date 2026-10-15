@@ -112,6 +112,20 @@
       + '<div class="note">Source: ' + esc(e.source.form) + ' filed ' + esc(e.source.filed) + ' · <a class="chart" href="' + esc(e.source.url) + '" target="_blank" rel="noopener">read the release</a></div>'
       + '</div></td></tr>';
   }
+  window.smlCatalystsRadar = function radarHtml(st) {
+    const d = st.data.radar;
+    if (st.err.radar) return '<p class="note">' + esc(st.err.radar) + '</p>';
+    if (!d) return '<p class="note">Scanning the moving names for pre-announcement fingerprints… (first load can take a minute)</p>';
+    if (!d.available || !d.rows || !d.rows.length) return '<p class="note">Nothing is showing the fingerprints right now.</p>';
+    const rows = d.rows.map((x) => { const k = 'r:' + x.symbol; const open = st.open.has(k);
+      const det = open ? '<tr><td colspan="7"><div class="detail"><div><b>' + esc(x.symbol) + '</b> · ' + usd(x.price) + ' (' + pct(x.changePct) + ' today)' + (x.relVol != null ? ' · volume ' + x.relVol + '× normal' : '') + (x.ivAtm != null && x.realizedVol != null ? ' · implied ' + Math.round(x.ivAtm) + '% vs realized ' + Math.round(x.realizedVol) + '%' : '') + '</div>'
+        + '<div class="legs">' + (x.reasons.length ? x.reasons.map((r) => esc(r.k) + ' <b>+' + r.v + '</b>').join('<br>') : 'no fingerprints') + '</div>'
+        + (x.news && x.news.drivers && x.news.drivers.length ? '<div>Latest news: ' + x.news.drivers.map((n) => esc(n.title)).join(' · ') + '</div>' : '')
+        + '<div class="note">Lean: ' + esc(x.lean) + '. ' + (x.tags.length ? x.tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('') : '') + ' Nothing here knows what the news is; it only sees the market acting as if there is some. A protective put or a collar (see the EARNINGS tab plays) is the honest way to hold through an unknown.</div></div></td></tr>' : '';
+      return '<tr class="row' + (open ? ' open' : '') + '" data-key="' + esc(k) + '"><td>' + chartLink(x.symbol) + '</td><td>' + pct(x.changePct) + '</td><td>' + (x.relVol != null ? x.relVol + '×' : '—') + '</td><td>' + esc(x.lean) + '</td><td>' + x.tags.map((t) => '<span class="tag">' + esc(t) + '</span>').join('') + '</td><td>' + x.reasons.length + '</td><td><span class="score ' + grade(x.score) + '">' + x.score + '</span></td></tr>' + det; }).join('');
+    return '<table><thead><tr><th>Ticker</th><th>Today</th><th>Rel. vol</th><th>Lean</th><th>Tags</th><th>Signs</th><th>Radar</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + '<p class="note">' + d.scanned + ' of ' + d.universe + ' moving names scanned. Click a row for the evidence. ' + esc(d.note || '') + '</p>';
+  };
   window.smlCatalystsFda = function fdaHtml(st) {
     const d = st.data.fda;
     if (st.err.fda) return '<p class="note">' + esc(st.err.fda) + '</p>';

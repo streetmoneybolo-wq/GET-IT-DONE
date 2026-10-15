@@ -47,6 +47,7 @@ const { createGammaService } = require('./academy-gamma');
 const { createInstitutionalService } = require('./academy-institutional');
 const { createFilingsService, DEFAULT_SEC_UA } = require('./academy-filings');
 const { createFdaService } = require('./academy-fda');
+const { createCatalystRadar } = require('./academy-catalyst-radar');
 const { createRedditService, mergeSocial } = require('./academy-reddit');
 const { createClassifier } = require('./academy-classifier');
 const { createEarningsPlaybook } = require('./academy-earnings-playbook');
@@ -3484,6 +3485,21 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Surprise-news radar: moving names scored on pre-announcement fingerprints (?limit). Paid tiers. */
+    if (request.method === 'GET' && path === '/academy-activity/catalyst-radar') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const svc = getCatalystRadar();
+      if (!svc) { sendJson(response, 503, { ok: false, error: 'radar_unavailable' }); return; }
+      try { sendJson(response, 200, await svc.scan({ limit: Number(new URL(request.url || '/', 'http://localhost').searchParams.get('limit')) || 20 })); }
+      catch (error) { logger('error', 'academy_catalyst_radar_failed', { error }); sendJson(response, 503, { ok: false, error: 'radar_unavailable' }); }
+      return;
+    }
+
     /* SEC filings (academy-filings.js): Academy members, paid tiers. Public EDGAR data, cached six hours per symbol. */
     if (request.method === 'GET' && path === '/academy-activity/filings') {
       if (!academyOAuth || !academyFilings) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3775,6 +3791,23 @@ async function main() {
       hedge: typeof academyHedge !== 'undefined' && academyHedge ? academyHedge : null, logger: log
     });
     return fdaService;
+  };
+  /* Surprise-news radar (academy-catalyst-radar.js): the wide scanner's moving names scored on pre-announcement fingerprints. Built on first use. */
+  let catalystRadar = null;
+  const getCatalystRadar = () => {
+    if (catalystRadar || process.env.SML_ACADEMY_RADAR === 'off') return catalystRadar;
+    catalystRadar = createCatalystRadar({
+      universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(300) : null; return w && Array.isArray(w.rows) ? w.rows : []; },
+      candles: (s, tf) => sentimentCandles(s, tf),
+      sentiment: academySentiment ? (s) => academySentiment.get(s) : null,
+      institutional: academyInstitutional ? (s) => academyInstitutional.get(s) : null,
+      filings: academyFilings ? (s) => academyFilings.get(s) : null,
+      shortData: academyAlerts && typeof academyAlerts.shortData === 'function' ? (s) => academyAlerts.shortData(s) : null,
+      chain: academyAlerts ? (s) => academyAlerts.chainFor(s) : null,
+      known: async () => { const pb = getEarningsPlaybook(), fd = getFdaService(); const [e, f] = await Promise.all([pb ? pb.window(7).catch(() => []) : [], fd ? fd.upcoming({ days: 7, limit: 40 }).catch(() => null) : null]); return (Array.isArray(e) ? e : []).concat(f && f.available ? f.events.map((x) => ({ symbol: x.symbol, type: 'FDA', date: x.date })) : []); },
+      logger: log
+    });
+    return catalystRadar;
   };
   /* Institutional flow for the Academy: moomoo order-size buckets (via the site bridge) + sweeps and blocks from the Massive tape. */
   const academyInstitutional = createInstitutionalService({
