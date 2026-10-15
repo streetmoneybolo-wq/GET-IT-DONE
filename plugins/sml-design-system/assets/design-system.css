@@ -1,4 +1,4 @@
-/* SML Design System 1.0.1
+/* SML Design System 1.0.2
    One look for every page of stockmarketloop.com. Tokens first, then the theme pages (Twenty Twenty-Two), then the shared
    components other plugins print (engagement controls, feed cards, the global header), then the Groups screen.
    Everything here refines markup that already exists; nothing is added or removed. */
@@ -215,6 +215,21 @@ body.sml-ds :where(.entry-content, .wp-site-blocks, main) :where(input, textarea
 .sml-store__screens { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
 .sml-store__screen { border-radius: var(--sml-radius-lg); overflow: hidden; border: 1px solid var(--sml-line); background: var(--sml-panel); }
 @media (max-width: 640px) { .sml-store__hero { grid-template-columns: 1fr; } .sml-store__hero-art { order: -1; } }
+
+/* ---------- the feed shell for a visitor who is not signed in ---------- */
+.sml-ds-hide { display: none !important; }
+#sml-hf-me-card.sml-ds-guest { display: inline-flex !important; align-items: center; justify-content: center; min-height: 38px; padding: 0 18px; border-radius: 999px; background: var(--sml-green); color: var(--sml-green-ink); font: 700 13.5px var(--sml-font); letter-spacing: .01em; white-space: nowrap; }
+#sml-hf-me-card.sml-ds-guest:hover { filter: brightness(1.06); }
+.sml-ds-guest-note { color: var(--sml-muted); font: 500 13px/1.45 var(--sml-font); }
+#sml-hf-tabs .hf-gm-add { font-family: var(--sml-font); }
+/* the shell's green buttons (header Sign In / LOOP-KICK, the composer's Post / Sign In): one flat green, no halo */
+html body #sml-hf-shell #sml-hf-loop-kick, html body #sml-hf-shell #sml-hf-post, html body #sml-hf-shell .hf-composer > a, html body #sml-hf-shell .hf-composer > button {
+  background: var(--sml-green) !important; color: var(--sml-green-ink) !important; border: 1px solid rgba(20, 170, 90, .7) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset !important; font-family: var(--sml-font) !important; font-weight: 700 !important;
+}
+html body #sml-hf-shell #sml-hf-loop-kick:hover, html body #sml-hf-shell #sml-hf-post:hover { filter: brightness(1.06); }
+html body #sml-hf-shell .hf-head { box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 10px 24px -16px rgba(0, 0, 0, .9) !important; }
+html body #sml-hf-shell .hf-composer > div:first-child { box-shadow: 0 0 0 2px var(--sml-panel), 0 0 0 3px rgba(56, 245, 138, .55) !important; }
 
 /* ---------- small print everywhere ---------- */
 body.sml-ds .sml-ds-note { color: var(--sml-dim); font-size: 12px; }

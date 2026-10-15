@@ -1,4 +1,4 @@
-/* SML Design System 1.0.0
+/* SML Design System 1.0.2
    Two small jobs the stylesheet cannot do on its own:
    1. The read-only counts under each feed card arrive as plain text ("Likes 0"). They become an icon and a number.
    2. An avatar whose image never arrives shows the author's initials instead of a broken picture or its alt text. */
@@ -60,7 +60,26 @@
     }
   }
 
-  function run(root) { try { counts(root); avatars(root); } catch (e) { /* never break the page */ } }
+  // a visitor who is not signed in: the profile card's "Sign In" becomes a button with one plain line under it, and the header
+  // drops its second, text-only sign-in circle (the green Sign In pill beside it does that job)
+  function guest() {
+    var card = document.getElementById('sml-hf-me-card');
+    if (card && /^\s*sign\s*in\s*$/i.test(card.textContent || '')) {
+      card.classList.add('sml-ds-guest');
+      var note = card.nextElementSibling;
+      if (note && /browse free/i.test(note.textContent || '') && note.className !== 'sml-ds-guest-note') { note.className = 'sml-ds-guest-note'; note.textContent = 'Browse free. Sign in to post, follow traders and save your watchlist.'; }
+    }
+    // the feed shell's own header: a white circle reading "Sign In" in 8px type next to the real Sign In button
+    var top = document.getElementById('sml-hf-me-top');
+    if (top && !top.querySelector('img') && /^\s*sign\s*in\s*$/i.test(top.textContent || '')) top.classList.add('sml-ds-hide');
+    var accounts = document.querySelectorAll('.sml-gh-account');
+    for (var i = 0; i < accounts.length; i++) {
+      var span = accounts[i].querySelector('span');
+      if (span && !accounts[i].querySelector('img') && (span.textContent || '').trim().length > 3) accounts[i].classList.add('sml-ds-hide');
+    }
+  }
+
+  function run(root) { try { counts(root); avatars(root); guest(); } catch (e) { /* never break the page */ } }
   function boot() {
     run(document);
     if (!window.MutationObserver) return;
