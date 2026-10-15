@@ -20,8 +20,10 @@ function sml_lls_head( $row, $letter, $data, $pub, $canonical ) {
 	$out = '';
 	$out .= '<title>' . esc_html( $title ) . ' | ' . esc_html( $pub['name'] ) . '</title>' . "\n";
 	$out .= '<meta name="description" content="' . esc_attr( $desc ) . '">' . "\n";
-	$out .= '<link rel="canonical" href="' . esc_url( $canonical ) . '">' . "\n";
-	$out .= '<meta name="robots" content="' . ( $indexable ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' : 'noindex, follow' ) . '">' . "\n";
+	$canon_tag  = '<link rel="canonical" href="' . esc_url( $canonical ) . '">' . "\n";
+	$robots_tag = '<meta name="robots" content="' . ( $indexable ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' : 'noindex, follow' ) . '">' . "\n";
+	$GLOBALS['sml_lls_final'] = array( 'robots' => $robots_tag, 'canonical' => $canon_tag );
+	$out .= $canon_tag . $robots_tag;
 	$out .= '<meta name="googlebot-news" content="' . ( $indexable ? 'index' : 'noindex' ) . '">' . "\n";
 	if ( $data['seo']['news_keywords'] ) { $out .= '<meta name="news_keywords" content="' . esc_attr( sml_lls_trim( $data['seo']['news_keywords'], 200 ) ) . '">' . "\n"; }
 	$out .= '<meta name="author" content="' . esc_attr( $pub['author_name'] ) . '">' . "\n";
@@ -210,7 +212,8 @@ function sml_lls_build_feed() {
 	return $x . "</channel>\n</rss>";
 }
 
-add_filter( 'robots_txt', 'sml_lls_robots', 30 );
+/* Registered from wp_loaded: the Google sitemaps plugin rewrites the Sitemap block at the same priority and drops lines added earlier. */
+add_action( 'wp_loaded', function () { add_filter( 'robots_txt', 'sml_lls_robots', 30 ); } );
 function sml_lls_robots( $txt ) {
 	foreach ( array( '/sml-letters-news-sitemap.xml', '/sml-letters-full-sitemap.xml' ) as $p ) {
 		if ( false === strpos( $txt, $p ) ) { $txt = rtrim( $txt ) . "\nSitemap: " . home_url( $p ) . "\n"; }
