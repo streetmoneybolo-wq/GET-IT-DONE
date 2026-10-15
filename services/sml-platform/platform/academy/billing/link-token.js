@@ -27,7 +27,7 @@ const SALT = 'sml-academy-billing';
 const BIND_TTL_MS = 30 * 60_000;
 const STATE_TTL_MS = 10 * 60_000;
 const BIND_SOURCES = Object.freeze(['web_oauth', 'activity', 'hub', 'admin']);
-const PURPOSES = Object.freeze(['buy', 'manage', 'join']);
+const PURPOSES = Object.freeze(['buy', 'manage', 'join', 'trial']);
 const SNOWFLAKE = /^[0-9]{15,24}$/;
 
 function deriveKey(secret, info) {

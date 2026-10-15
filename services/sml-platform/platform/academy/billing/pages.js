@@ -417,6 +417,7 @@ button,.button{display:inline-block;background:linear-gradient(180deg,#22ff77,#0
 button:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 .button.secondary{background:#132019;color:#e9f3ec;box-shadow:none;border:1px solid var(--line)}
 .notice{border-left:3px solid var(--gold);padding:8px 12px;background:#161408;margin:12px 0;border-radius:0 8px 8px 0}
+.steps{margin:14px 0 4px;padding:0 0 0 22px;font-size:.95rem}.steps li{margin:4px 0}.steps b{color:var(--neon);font-weight:800}
 a{color:#7fe3a9}
 .foot{display:flex;align-items:center;gap:10px;margin-top:26px;padding-top:14px;border-top:1px solid var(--line)}.foot img{height:34px}
 @media(max-width:600px){.hero .obi{display:none}.hero .inner{padding-top:28px;min-height:220px}.hero .crown{width:56px;height:56px}main{padding-bottom:40px}}
@@ -482,7 +483,7 @@ function offerGrants(desc) {
   };
 }
 
-function packageCard({ pkg, desc, config, csrf, disabled, trialUsed = false, trialUnknown = false }) {
+function packageCard({ pkg, desc, config, csrf, disabled, trialUsed = false, trialUnknown = false, cta = 'Continue to secure checkout' }) {
   const grants = offerGrants(desc);
   const terms = offerTerms(desc, { trialUsed: trialUsed || trialUnknown });
   const unknown = Boolean(trialUnknown) && terms.trialUsed;
@@ -517,9 +518,13 @@ ${desc.priceId ? `<input type="hidden" name="price" value="${esc(desc.priceId)}"
 <input type="hidden" name="disclosure_sha" value="${esc(sha)}">
 <p class="disclosure">${esc(d.text)}</p>
 <label><input type="checkbox" name="${field}" value="1" required> <span>${esc(d.checkbox)}</span></label>
-<button type="submit"${disabled ? ' disabled' : ''}>Continue to secure checkout</button>
+<button type="submit"${disabled ? ' disabled' : ''}>${esc(cta)}</button>
 </form></section>`;
 }
+
+/* Checkout is held while the preflight (Discord bot, Stripe prices) fails: a
+   setup problem on our side. Shown above the plans; every button is off. */
+const PAUSED_NOTE = 'Checkout is paused for a few minutes while we fix a setup problem on our side. Nothing to do on your part: reload this page in a little while.';
 
 /* Invite (and the optional "add me" join) for a buyer who is not in the
    Making Easy Money server. Used on /buy when ALLOW_NON_MEMBER=1 and on the
@@ -549,9 +554,11 @@ function joinCard({ config, pkg = '', inGuild = false, id = '', hidden = false, 
 ${joinLinks(config, pkg)}</section>`;
 }
 
-function buyPage({ config, nonce, userId, user, packages, memberships = [], winback = [], csrf, state, notice = '', inGuild = true, pkg = '' }) {
+function buyPage({ config, nonce, userId, user, packages, memberships = [], winback = [], csrf, state, notice = '', inGuild = true, pkg = '', paused = false }) {
   const parts = [whoLine(user, userId)];
   if (notice) parts.push(`<p class="notice">${esc(notice)}</p>`);
+  if (paused) parts.push(`<p class="notice">${esc(PAUSED_NOTE)}</p>`);
+  config = paused ? { ...config, checkoutEnabled: false } : config;
   /* Only reached for a non-member with SML_ACADEMY_BILLING_ALLOW_NON_MEMBER=1. */
   if (inGuild === false) parts.push(joinCard({ config, pkg, inGuild: false }));
   if (state.lifetime && state.lifetimeSuspended) {
@@ -623,6 +630,80 @@ function buyPage({ config, nonce, userId, user, packages, memberships = [], winb
     description: 'Real-Time Alerts · Options Alerts · Day Traders · Swing Traders · Short Sale Alerts',
     image: 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@17e4c96/img/mem-academy-link-card.gif'
   } });
+}
+
+/* The one-link free trial: /trial?plan=monthly|weekly|yearly. The plans of
+   the Elite line with a free trial, keyed by package. */
+const TRIAL_PLANS = Object.freeze(['monthly', 'weekly', 'yearly']);
+const TRIAL_TITLES = Object.freeze({ monthly: 'month', weekly: 'week', yearly: 'year' });
+
+/** The membership offer the trial link sells: the recurring membership
+ *  (academy:false) on `plan` whose price carries a free trial. */
+function trialOffer(memberships, plan) {
+  const list = Array.isArray(memberships) ? memberships : [];
+  const wanted = TRIAL_PLANS.includes(plan) ? plan : 'monthly';
+  return list.find((d) => d.key === wanted && d.academy === false && Number.isInteger(d.trialDays) && !d.winback)
+    || list.find((d) => d.academy === false && Number.isInteger(d.trialDays) && !d.winback && isRecurring(d.key)) || null;
+}
+
+/**
+ * One offer, one page: the Discord sign-in is done, the plan is chosen by the
+ * link, and the only things left are the consent box (the law needs it) and
+ * the Stripe page. Everything else on /buy stays a link away.
+ */
+function trialPage({ config, nonce, userId, user, desc, csrf, state, inGuild = true, paused = false, plan = 'monthly', others = [] }) {
+  const parts = [];
+  const days = desc && Number.isInteger(desc.trialDays) ? desc.trialDays : 7;
+  parts.push(`<h1>Your ${days}-day free trial of the Making Easy Money Discord</h1>`);
+  parts.push(whoLine(user, userId));
+  if (paused) parts.push(`<p class="notice">${esc(PAUSED_NOTE)}</p>`);
+  if (inGuild === false) parts.push(joinCard({ config, pkg: '', inGuild: false }));
+  const disabled = paused || !config.checkoutEnabled;
+  const owned = new Set((state.ownedExternal || []).map(String));
+  const blocking = new Set(state.blockingLines || []);
+  if (!desc) {
+    parts.push('<section class="card"><h2>No free trial is on sale right now</h2><p>See every plan on the plans page.</p><p><a class="button" href="/v1/academy/billing/buy">See plans</a></p></section>');
+  } else if ((desc.roles || []).every((roleId) => owned.has(String(roleId)))) {
+    parts.push(`<section class="card"><h2>${esc(desc.label || 'This membership')}: already on this Discord account</h2><p>You already have this access, so there is nothing to start. Open the Making Easy Money Discord.</p></section>`);
+  } else if (isRecurring(desc.key) && blocking.has(desc.line)) {
+    parts.push(`<section class="card"><h2>You already have this plan</h2><p>Change or cancel it in Manage billing.</p>
+<p><a class="button secondary" href="/v1/academy/billing/start?purpose=manage">Manage billing</a></p></section>`);
+  } else if (state.lifetimePending) {
+    parts.push(`<section class="card"><h2>A bank payment is still clearing</h2><p>${esc(BANK_PAYMENT_NOTE)} Nothing else can be started until it clears.</p></section>`);
+  } else {
+    const terms = offerTerms(desc, { trialUsed: Boolean(state.trialUsed) || Boolean(state.trialUnknown) });
+    const steps = terms.trialDays !== null
+      ? `<ol class="steps"><li>Discord signed in <b>done</b></li><li>Tick the box below and press the green button</li><li>Add a card on Stripe's secure page: <b>$0.00 today</b>, nothing is charged during the ${terms.trialDays} days</li><li>Your Elite role lands in Discord within seconds</li></ol>
+<p class="muted">Cancel any time before the trial ends in Manage billing and you are never charged. One free trial per Discord account.</p>`
+      : '<p class="notice">This Discord account already used its free trial, so this plan starts with a charge today. Pick it below, or go back.</p>';
+    parts.push(steps);
+    parts.push(packageCard({ pkg: desc.key, desc, config, csrf, disabled, trialUsed: Boolean(state.trialUsed), trialUnknown: Boolean(state.trialUnknown),
+      cta: terms.trialDays !== null ? `Start my ${terms.trialDays}-day free trial` : 'Continue to secure checkout' }));
+  }
+  const alternatives = others.filter((d) => !desc || d.priceId !== desc.priceId)
+    .map((d) => `<a href="/v1/academy/billing/trial?plan=${esc(d.key)}">${esc(d.label || d.key)}</a> (${esc(trialLine(d.key, d.amount, d.currency, offerTerms(d, { trialUsed: Boolean(state.trialUsed) })) || formatAmount(d.amount, d.currency))})`);
+  parts.push(`<p class="muted">Prefer a different plan? ${alternatives.length ? `${alternatives.join(' &middot; ')} &middot; ` : ''}<a href="/v1/academy/billing/buy">All plans, including the 3-day no-card trial and MEM Academy</a>.</p>`);
+  parts.push('<p class="muted">Payments are processed by Stripe. Stripe emails your receipt. You can cancel a plan online at any time.</p>');
+  parts.push(footerLinks(config));
+  return layout({ title: `${days}-day free trial: Making Easy Money`, body: parts.join('\n'), nonce, og: {
+    title: `Making Easy Money — ${days}-day free trial`,
+    description: 'Real-Time Alerts · Options Alerts · Day Traders · Swing Traders · Short Sale Alerts',
+    image: 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@17e4c96/img/mem-academy-link-card.gif'
+  } });
+}
+
+/* The sign-in step of the trial link: one button, and what happens next. */
+function trialSignInPage({ config, nonce, plan = 'monthly', days = 7 }) {
+  const href = `/v1/academy/billing/start?purpose=trial&package=${encodeURIComponent(TRIAL_PLANS.includes(plan) ? plan : 'monthly')}`;
+  return layout({ title: `${days}-day free trial: Making Easy Money`, nonce, og: {
+    title: `Making Easy Money — ${days}-day free trial`,
+    description: 'Real-Time Alerts · Options Alerts · Day Traders · Swing Traders · Short Sale Alerts',
+    image: 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@17e4c96/img/mem-academy-link-card.gif'
+  }, body: `<h1>Start your ${days}-day free trial</h1>
+<p>Three steps, about a minute: sign in with Discord${config.autoJoin ? ' (we add you to the server if you are not in it yet)' : ''}, confirm the trial, add a card on Stripe. $0.00 today; cancel any time before the trial ends and you are never charged.</p>
+<p><a class="button" href="${esc(href)}">Continue with Discord</a></p>
+<p class="muted">Already a member of the Making Easy Money Discord? Same button: your roles land on the account you sign in with.</p>
+<img class="showcase" src="${assets.assetUrl('academy-poster.webp')}" alt="Making Easy Money: real-time alerts, options alerts, day and swing traders">${footerLinks(config)}` });
 }
 
 function nonMemberPage({ config, nonce, userId, user, pkg = '' }) {
@@ -720,6 +801,11 @@ module.exports = {
   securityHeaders,
   layout,
   buyPage,
+  trialPage,
+  trialSignInPage,
+  trialOffer,
+  TRIAL_PLANS,
+  PAUSED_NOTE,
   nonMemberPage,
   signInPage,
   messagePage,

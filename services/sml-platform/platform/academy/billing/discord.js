@@ -181,10 +181,37 @@ function memberPermissions({ guildId, roles, memberRoleIds }) {
 
 const PERMISSIONS = Object.freeze({
   CREATE_INSTANT_INVITE: 1n << 0n,
+  KICK_MEMBERS: 1n << 1n,
   BAN_MEMBERS: 1n << 2n,
   ADMINISTRATOR: 1n << 3n,
+  MANAGE_CHANNELS: 1n << 4n,
+  MANAGE_GUILD: 1n << 5n,
   VIEW_AUDIT_LOG: 1n << 7n,
-  MANAGE_ROLES: 1n << 28n
+  MANAGE_MESSAGES: 1n << 13n,
+  MENTION_EVERYONE: 1n << 17n,
+  MANAGE_NICKNAMES: 1n << 27n,
+  MANAGE_ROLES: 1n << 28n,
+  MANAGE_WEBHOOKS: 1n << 29n,
+  MANAGE_GUILD_EXPRESSIONS: 1n << 30n,
+  MANAGE_EVENTS: 1n << 33n,
+  MANAGE_THREADS: 1n << 34n,
+  MODERATE_MEMBERS: 1n << 40n
 });
 
-module.exports = { createDiscordBot, DiscordError, CODES, PERMISSIONS, memberPermissions, classify, API };
+/* Permissions an engine-granted role must never carry: anything that moderates
+   or administers the server. A role with only chat-level permissions (view,
+   send, react, connect, ...) is tolerated with a warning: the owner builds
+   channel access with overwrites and some set those on the role itself. */
+const MODERATION_PERMISSIONS = PERMISSIONS.KICK_MEMBERS | PERMISSIONS.BAN_MEMBERS | PERMISSIONS.ADMINISTRATOR | PERMISSIONS.MANAGE_CHANNELS
+  | PERMISSIONS.MANAGE_GUILD | PERMISSIONS.VIEW_AUDIT_LOG | PERMISSIONS.MANAGE_MESSAGES | PERMISSIONS.MENTION_EVERYONE | PERMISSIONS.MANAGE_NICKNAMES
+  | PERMISSIONS.MANAGE_ROLES | PERMISSIONS.MANAGE_WEBHOOKS | PERMISSIONS.MANAGE_GUILD_EXPRESSIONS | PERMISSIONS.MANAGE_EVENTS
+  | PERMISSIONS.MANAGE_THREADS | PERMISSIONS.MODERATE_MEMBERS;
+
+/** true when a role permission string carries a moderation or admin bit. */
+function hasModerationPermission(permissions) {
+  let bits = 0n;
+  try { bits = BigInt(String(permissions || '0')); } catch (_) { return true; }
+  return (bits & MODERATION_PERMISSIONS) !== 0n;
+}
+
+module.exports = { createDiscordBot, DiscordError, CODES, PERMISSIONS, MODERATION_PERMISSIONS, hasModerationPermission, memberPermissions, classify, API };

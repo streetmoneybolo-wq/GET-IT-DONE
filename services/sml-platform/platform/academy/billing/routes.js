@@ -10,9 +10,12 @@
  *                         there (Stripe retries). Works while ENABLED=0 (rows
  *                         are stored 'deferred', nothing is acted on).
  *   GET  packages         public JSON of sellable packages (10 min cache)
- *   GET  start            ?h=<one-time hand-off code> | ?purpose=buy|manage|join&package=
+ *   GET  start            ?h=<one-time hand-off code> | ?purpose=buy|manage|join|trial&package=
  *   GET  oauth/callback   Discord OAuth return
  *   GET  buy              package chooser + disclosure + consent
+ *   GET  trial            ?plan=monthly|weekly|yearly  the one-link free trial:
+ *                         sign in (auto-join when AUTO_JOIN=1) -> one offer,
+ *                         consent and button -> Stripe
  *   POST checkout         guards -> Customer -> intent -> Checkout Session -> 303
  *   GET  success          idempotent settle -> status page
  *   GET  status           JSON for the success page poll (no PII)
@@ -133,8 +136,16 @@ const ERROR_TEXT = Object.freeze({
 const BANNED_TITLE = 'This Discord account cannot join the server';
 const BANNED_TEXT = 'This Discord account is banned from the Making Easy Money server, so it could never receive the roles a plan includes. Nothing was charged. Please contact support if you think this is a mistake.';
 
+/* The bot could not read the server. A dead or wrong bot token (401) and a
+   bot thrown out of the server (403) are OUR problem, so the page says so
+   instead of "busy, try again" (which sent members in circles for hours);
+   anything else (429, 5xx, a timeout) really is transient. */
+const DISCORD_SETUP_KINDS = Object.freeze(['unauthorized', 'forbidden', 'unknown_guild']);
+const DISCORD_SETUP_TITLE = 'Our Discord connection needs a fix';
+const DISCORD_SETUP_TEXT = 'The Making Easy Money bot could not read the server just now. That is a setup problem on our side, not yours, and staff have been alerted. Nothing was charged. Please try again in a little while.';
+
 function createRoutes({ config, state, events, checkout, tokens, oauth, bot, store, catalog, kick = () => {},
-  logger = () => {}, now = Date.now, onMemberSeen = () => {} } = {}) {
+  logger = () => {}, now = Date.now, onMemberSeen = () => {}, preflightOk = () => true } = {}) {
   /* A buyer who is (now) in the server: any grant that waits for them
      (awaiting_member) is due now. Never throws. */
   const memberSeen = (userId) => { try { onMemberSeen(String(userId)); } catch (_) { /* best effort */ } };
@@ -153,6 +164,16 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
     page(response, status, (nonce) => pages.messagePage({ config, nonce, title, text, links }));
   }
   const bindFrom = (request) => tokens.readBind(parseCookies(request.headers.cookie)[BIND_COOKIE]);
+
+  /* The bot's member read failed on a page: log the kind (it was silent
+     before) and answer honestly. */
+  function discordFailed(response, url, error, route) {
+    const kind = String(error && error.kind || 'error').slice(0, 40);
+    logger('error', 'academy_billing_page_discord_failed', { route, kind, status: error && error.status ? Number(error.status) : null });
+    const retry = [{ href: url.pathname + url.search, label: 'Try again' }];
+    if (DISCORD_SETUP_KINDS.includes(kind)) message(response, 503, DISCORD_SETUP_TITLE, DISCORD_SETUP_TEXT, retry);
+    else message(response, 503, 'Discord is busy', 'We could not check your server membership. Please try again shortly.', retry);
+  }
 
   /* ------------------------------ webhook ------------------------------ */
 
@@ -196,11 +217,14 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
       redirect(response, 303, `/v1/academy/billing/buy${pkg ? `?package=${pkg}` : ''}`, { 'set-cookie': cookie(BIND_COOKIE, bind, 1800) });
       return;
     }
-    let purpose = ['buy', 'manage', 'join'].includes(q.get('purpose')) ? q.get('purpose') : 'buy';
+    let purpose = ['buy', 'manage', 'join', 'trial'].includes(q.get('purpose')) ? q.get('purpose') : 'buy';
     if (purpose === 'join' && !config.autoJoin) purpose = 'buy';
     const pkg = PACKAGES.includes(q.get('package')) ? q.get('package') : '';
-    const issued = tokens.issueState({ purpose, pkg, autoJoin: purpose === 'join' });
-    redirect(response, 302, oauth.authorizeUrl({ state: issued.state, join: purpose === 'join' }), {
+    /* The trial link adds the member to the server in the same sign-in (with
+       AUTO_JOIN=1): one Discord screen, no invite hunting. */
+    const join = purpose === 'join' || (purpose === 'trial' && config.autoJoin);
+    const issued = tokens.issueState({ purpose, pkg, autoJoin: join });
+    redirect(response, 302, oauth.authorizeUrl({ state: issued.state, join }), {
       'set-cookie': cookie(STATE_COOKIE, issued.nonce, 600)
     });
   }
@@ -240,7 +264,8 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
     const purpose = st.purpose === 'manage' ? 'manage' : 'buy';
     const bind = tokens.issueBind({ userId: user.id, guildId: config.guildId, source: 'web_oauth', purpose });
     const target = purpose === 'manage' ? '/v1/academy/billing/manage'
-      : `/v1/academy/billing/buy${st.pkg ? `?package=${encodeURIComponent(st.pkg)}` : ''}`;
+      : st.purpose === 'trial' ? `/v1/academy/billing/trial${st.pkg ? `?plan=${encodeURIComponent(st.pkg)}` : ''}`
+        : `/v1/academy/billing/buy${st.pkg ? `?package=${encodeURIComponent(st.pkg)}` : ''}`;
     redirect(response, 303, target, { 'set-cookie': [cookie(BIND_COOKIE, bind, 1800), cookie(STATE_COOKIE, '', 0)] });
   }
 
@@ -250,26 +275,9 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
     const bind = bindFrom(request);
     const pkg = PACKAGES.includes(url.searchParams.get('package')) ? url.searchParams.get('package') : '';
     if (!bind) { page(response, 200, (nonce) => pages.signInPage({ config, nonce, pkg })); return; }
-    const user = await bot.getUser(bind.userId).catch(() => null);
-    let observed;
-    try { observed = await bot.getMember(bind.userId); } catch (_) {
-      message(response, 503, 'Discord is busy', 'We could not check your server membership. Please try again shortly.', [{ href: url.pathname + url.search, label: 'Try again' }]);
-      return;
-    }
-    if (!observed.inGuild && !config.allowNonMember) {
-      page(response, 200, (nonce) => pages.nonMemberPage({ config, nonce, userId: bind.userId, user, pkg }));
-      return;
-    }
-    if (!observed.inGuild && checkout && typeof checkout.banState === 'function') {
-      const ban = await checkout.banState(bind.userId);
-      if (ban === 'banned') { message(response, 403, BANNED_TITLE, BANNED_TEXT, []); return; }
-      if (ban === 'error') {
-        message(response, 503, 'Discord is busy', 'We could not check your Discord account. Please try again shortly.', [{ href: url.pathname + url.search, label: 'Try again' }]);
-        return;
-      }
-    }
-    /* "I have joined, continue": roles bought before joining land now. */
-    if (observed.inGuild) memberSeen(bind.userId);
+    const observed = await memberOrPage(request, response, url, bind, pkg, 'buy');
+    if (!observed) return;
+    const user = observed.user;
     const catalogState = await catalog.get();
     const packages = PACKAGES.filter((key) => catalogState.sellable.has(key)).map((key) => catalogState.sellable.get(key));
     const memberships = catalogState.memberships ? [...catalogState.memberships.values()]
@@ -282,10 +290,62 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
       return;
     }
     page(response, 200, (nonce) => pages.buyPage({ config, nonce, userId: bind.userId, user, packages, memberships, winback, csrf: tokens.csrfFor(bind),
-      inGuild: observed.inGuild, pkg,
-      state: { entitled: view.entitled, recurring: view.recurring, lifetime: view.lifetime, lifetimeSuspended: view.lifetimeSuspended,
-        lifetimePending: view.lifetimePending, blockingLines: [...(view.blockingLines || [])], ownedExternal: [...(view.ownedExternal || [])],
-        trialUsed: Boolean(view.trialUsed), trialUnknown: Boolean(view.trialUnknown), winbackEligible: Boolean(view.winbackEligible) } }));
+      inGuild: observed.inGuild, pkg, paused: !preflightOk(), state: viewState(view) }));
+  }
+
+  function viewState(view) {
+    return { entitled: view.entitled, recurring: view.recurring, lifetime: view.lifetime, lifetimeSuspended: view.lifetimeSuspended,
+      lifetimePending: view.lifetimePending, blockingLines: [...(view.blockingLines || [])], ownedExternal: [...(view.ownedExternal || [])],
+      trialUsed: Boolean(view.trialUsed), trialUnknown: Boolean(view.trialUnknown), winbackEligible: Boolean(view.winbackEligible) };
+  }
+
+  /* The membership read every signed-in page starts with. Returns
+     { inGuild, user } or null after answering the page itself (bot failure,
+     a non-member while ALLOW_NON_MEMBER=0, a banned account). */
+  async function memberOrPage(request, response, url, bind, pkg, route) {
+    const user = await bot.getUser(bind.userId).catch(() => null);
+    let observed;
+    try { observed = await bot.getMember(bind.userId); } catch (error) {
+      discordFailed(response, url, error, route);
+      return null;
+    }
+    if (!observed.inGuild && !config.allowNonMember) {
+      page(response, 200, (nonce) => pages.nonMemberPage({ config, nonce, userId: bind.userId, user, pkg }));
+      return null;
+    }
+    if (!observed.inGuild && checkout && typeof checkout.banState === 'function') {
+      const ban = await checkout.banState(bind.userId);
+      if (ban === 'banned') { message(response, 403, BANNED_TITLE, BANNED_TEXT, []); return null; }
+      if (ban === 'error') {
+        logger('error', 'academy_billing_page_discord_failed', { route, kind: 'ban_lookup' });
+        message(response, 503, 'Discord is busy', 'We could not check your Discord account. Please try again shortly.', [{ href: url.pathname + url.search, label: 'Try again' }]);
+        return null;
+      }
+    }
+    /* "I have joined, continue": roles bought before joining land now. */
+    if (observed.inGuild) memberSeen(bind.userId);
+    return { inGuild: observed.inGuild, user };
+  }
+
+  /* /trial?plan=: the plan is in the link, the sign-in adds the member to the
+     server, and the page holds one offer with its consent box. */
+  async function trial(request, response, url) {
+    const plan = pages.TRIAL_PLANS.includes(url.searchParams.get('plan')) ? url.searchParams.get('plan') : 'monthly';
+    const bind = bindFrom(request);
+    const catalogState = await catalog.get();
+    const memberships = catalogState.memberships ? [...catalogState.memberships.values()] : [];
+    const desc = pages.trialOffer(memberships, plan);
+    if (!bind) { page(response, 200, (nonce) => pages.trialSignInPage({ config, nonce, plan, days: desc && Number.isInteger(desc.trialDays) ? desc.trialDays : 7 })); return; }
+    const observed = await memberOrPage(request, response, url, bind, '', 'trial');
+    if (!observed) return;
+    let view;
+    try { view = await checkout.readAccess(bind.userId); } catch (_) {
+      message(response, 503, 'Payments are busy', 'We could not reach the payment provider. Please try again shortly.', [{ href: url.pathname + url.search, label: 'Try again' }]);
+      return;
+    }
+    const others = memberships.filter((d) => d.academy === false && Number.isInteger(d.trialDays) && !d.winback && pages.TRIAL_PLANS.includes(d.key));
+    page(response, 200, (nonce) => pages.trialPage({ config, nonce, userId: bind.userId, user: observed.user, desc, csrf: tokens.csrfFor(bind),
+      inGuild: observed.inGuild, paused: !preflightOk(), plan, others, state: viewState(view) }));
   }
 
   async function postCheckout(request, response) {
@@ -407,6 +467,7 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
         case 'start': await start(request, response, url); return true;
         case 'oauth/callback': await callback(request, response, url); return true;
         case 'buy': await buy(request, response, url); return true;
+        case 'trial': await trial(request, response, url); return true;
         case 'success': await success(request, response, url); return true;
         case 'status': await statusJson(request, response, url); return true;
         case 'manage': await manage(request, response); return true;

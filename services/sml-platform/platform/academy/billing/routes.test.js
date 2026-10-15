@@ -36,12 +36,14 @@ async function withApp(options, run) {
   const oauth = createBillingOAuth({ config, fetchImpl });
   const state = { enabled: options.enabled !== false, schemaReady: true };
   const events = createEvents({ config, store, stripeApi: stripe, resync: core.resync, now });
-  const routes = createRoutes({ config, state: () => state, events, checkout, tokens, oauth, bot, store, catalog, now });
+  const logs = [];
+  const routes = createRoutes({ config, state: () => state, events, checkout, tokens, oauth, bot, store, catalog, now,
+    logger: (level, event, fields) => logs.push({ level, event, fields }), preflightOk: options.preflightOk || (() => true) });
   const server = createAcademyServer({ interactions: null, checkDatabase: async () => true, academyBilling: { handle: routes.handle } });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
     const { port } = server.address();
-    await run({ base: `http://127.0.0.1:${port}`, store, stripe, bot, tokens, config, discordCalls, now });
+    await run({ base: `http://127.0.0.1:${port}`, store, stripe, bot, tokens, config, discordCalls, now, logs });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -149,6 +151,109 @@ test('/buy for a member with no bound Customer: the trial offer after a Stripe l
     assert.ok(unknown.includes(pages.esc(pages.TRIAL_UNKNOWN_NOTE)));
     assert.equal(unknown.includes('7-day free trial'), false);
     assert.equal(unknown.includes(pages.TRIAL_USED_NOTE), false);
+  });
+});
+
+test('the trial link: sign-in with auto-join, callback to /trial, one offer with its consent box and a trial button', async () => {
+  const pages = require('./pages');
+  await withApp({ members: {}, overrides: { ...k.memEnv(), SML_ACADEMY_BILLING_ALLOW_NON_MEMBER: '1', SML_ACADEMY_BILLING_AUTO_JOIN: '1' } }, async ({ base, tokens, bot }) => {
+    /* 1. the link itself, signed out: one button to Discord */
+    const landing = await (await fetch(`${base}/v1/academy/billing/trial?plan=weekly`)).text();
+    assert.ok(landing.includes('Start your 7-day free trial'));
+    assert.ok(landing.includes('/v1/academy/billing/start?purpose=trial&amp;package=weekly'));
+    /* 2. /start for the trial asks Discord for identify + guilds.join in ONE screen */
+    const start = await fetch(`${base}/v1/academy/billing/start?purpose=trial&package=weekly`, { redirect: 'manual' });
+    assert.equal(start.status, 302);
+    const location = new URL(start.headers.get('location'));
+    assert.equal(location.searchParams.get('scope'), 'identify guilds.join');
+    assert.equal(location.searchParams.get('prompt'), null);
+    const st = tokens.readState(location.searchParams.get('state'), cookieFrom(start, 'mab_state').split('=')[1]);
+    assert.deepEqual([st.purpose, st.pkg, st.autoJoin], ['trial', 'weekly', true]);
+    /* 3. the callback adds the member to the server and lands on /trial with the plan */
+    const callback = await fetch(`${base}/v1/academy/billing/oauth/callback?code=abc&state=${encodeURIComponent(location.searchParams.get('state'))}`,
+      { redirect: 'manual', headers: { cookie: cookieFrom(start, 'mab_state') } });
+    assert.equal(callback.status, 303);
+    assert.equal(callback.headers.get('location'), '/v1/academy/billing/trial?plan=weekly');
+    assert.ok(bot.state.calls.some((c) => c[0] === 'addMember' && c[1] === USER), 'auto-joined');
+    const bind = cookieFrom(callback, 'mab_bind');
+    assert.equal(tokens.readBind(bind.slice('mab_bind='.length)).purpose, 'buy');
+    /* 4. the trial page: the weekly Elite offer only, a trial CTA, the other trial plans as links */
+    const html = await (await fetch(`${base}/v1/academy/billing/trial?plan=weekly`, { headers: { cookie: bind } })).text();
+    assert.ok(html.includes('Your 7-day free trial of the Making Easy Money Discord'));
+    assert.ok(html.includes('Elite Week Seat'));
+    assert.ok(html.includes('7-day free trial, then $34.90/week; one free trial per Discord account'));
+    assert.ok(html.includes('Start my 7-day free trial'));
+    assert.ok(html.includes('name="price" value="price_eliteweek"'));
+    assert.equal((html.match(/name="price"/g) || []).length, 1, 'one offer on the page');
+    assert.ok(html.includes('name="consent_renewal"'));
+    assert.ok(html.includes('/v1/academy/billing/trial?plan=monthly'));
+    assert.ok(html.includes('/v1/academy/billing/trial?plan=yearly'));
+    assert.equal(html.includes('Elite Lifetime Access'), false);
+    assert.equal(html.includes('$0.00 today'), true);
+    /* the default plan is monthly */
+    const monthly = await (await fetch(`${base}/v1/academy/billing/trial`, { headers: { cookie: bind } })).text();
+    assert.ok(monthly.includes('name="price" value="price_elitemonth"'));
+    /* an unknown plan falls back to monthly; the page never echoes it */
+    const odd = await (await fetch(`${base}/v1/academy/billing/trial?plan=%3Cscript%3E`, { headers: { cookie: bind } })).text();
+    assert.ok(odd.includes('name="price" value="price_elitemonth"'));
+    assert.equal(odd.includes('<script>'), false);
+    assert.equal(odd.includes(pages.esc(pages.PAUSED_NOTE)), false);
+  });
+});
+
+test('/trial and /buy while the preflight fails: a paused notice and every button off', async () => {
+  const pages = require('./pages');
+  await withApp({ overrides: k.memEnv(), preflightOk: () => false }, async ({ base, tokens }) => {
+    const bind = tokens.issueBind({ userId: USER, guildId: GUILD, source: 'web_oauth' });
+    for (const path of ['trial?plan=monthly', 'buy']) {
+      const html = await (await fetch(`${base}/v1/academy/billing/${path}`, { headers: { cookie: `mab_bind=${bind}` } })).text();
+      assert.ok(html.includes(pages.esc(pages.PAUSED_NOTE)), path);
+      assert.ok(html.includes('<button type="submit" disabled>'), path);
+      assert.equal(html.includes('<button type="submit">'), false, path);
+    }
+  });
+});
+
+test('a dead bot token on /buy or /trial says the problem is ours and is logged; a transient failure still says "busy"', async () => {
+  await withApp({ overrides: k.memEnv() }, async ({ base, tokens, bot, logs }) => {
+    const bind = tokens.issueBind({ userId: USER, guildId: GUILD, source: 'web_oauth' });
+    bot.state.failMember.set('*', k.discordError('unauthorized', 401, null));
+    for (const path of ['buy', 'trial?plan=monthly']) {
+      const response = await fetch(`${base}/v1/academy/billing/${path}`, { headers: { cookie: `mab_bind=${bind}` } });
+      assert.equal(response.status, 503, path);
+      const html = await response.text();
+      assert.ok(html.includes('Our Discord connection needs a fix'), path);
+      assert.ok(html.includes('a setup problem on our side, not yours'), path);
+      assert.equal(html.includes('Discord is busy'), false, path);
+      assert.ok(html.includes(`href="/v1/academy/billing/${path.replace('&', '&amp;')}"`), path);
+    }
+    const logged = logs.filter((l) => l.event === 'academy_billing_page_discord_failed');
+    assert.deepEqual(logged.map((l) => [l.level, l.fields.route, l.fields.kind, l.fields.status]), [['error', 'buy', 'unauthorized', 401], ['error', 'trial', 'unauthorized', 401]]);
+    bot.state.failMember.set('*', k.discordError('rate_limited', 429, null));
+    const busy = await (await fetch(`${base}/v1/academy/billing/buy`, { headers: { cookie: `mab_bind=${bind}` } })).text();
+    assert.ok(busy.includes('Discord is busy'));
+    assert.equal(busy.includes('setup problem'), false);
+  });
+});
+
+test('/trial for an account whose free trial is used sells the plan with a charge today; one with the plan already running is sent to Manage billing', async () => {
+  const pages = require('./pages');
+  const CUS = 'cus_trial_used';
+  const T = Math.floor(Date.now() / 1000);
+  await withApp({ overrides: k.memEnv(), fixtures: { customers: { [CUS]: k.academyCustomer(CUS, USER) } } }, async ({ base, tokens, store, stripe }) => {
+    k.bindMember(store, USER, CUS);
+    const bind = tokens.issueBind({ userId: USER, guildId: GUILD, source: 'web_oauth' });
+    store.db.trials.set(`${USER}|false`, { discord_user_id: USER, livemode: false, first_price_id: 'price_elitemonth' });
+    const used = await (await fetch(`${base}/v1/academy/billing/trial?plan=monthly`, { headers: { cookie: `mab_bind=${bind}` } })).text();
+    assert.ok(used.includes(pages.esc(pages.TRIAL_USED_NOTE)));
+    assert.ok(used.includes('Continue to secure checkout'));
+    assert.equal(used.includes('Start my 7-day free trial'), false);
+    assert.equal(used.includes('$0.00 today'), false);
+    stripe.data.subscriptions.push(k.subscription({ id: 'sub_em', customer: CUS, price: 'price_elitemonth', created: T - 3600, periodStart: T - 3600, periodEnd: T + 29 * 86400 }));
+    const running = await (await fetch(`${base}/v1/academy/billing/trial?plan=monthly`, { headers: { cookie: `mab_bind=${bind}` } })).text();
+    assert.ok(running.includes('You already have this plan'));
+    assert.ok(running.includes('/v1/academy/billing/start?purpose=manage'));
+    assert.equal(running.includes('name="price"'), false);
   });
 });
 

@@ -48,7 +48,7 @@
  *     sits at position 17 today, so the bot role must be dragged above it.
  * ========================================================================== */
 
-const { PERMISSIONS, memberPermissions } = require('./discord');
+const { PERMISSIONS, memberPermissions, hasModerationPermission } = require('./discord');
 const audit = require('./audit');
 
 const FORBIDDEN_ENDPOINT_EVENTS = Object.freeze(['invoice.created', 'invoice.upcoming', '*']);
@@ -151,7 +151,11 @@ function createPreflight({ config, stripeApi, bot, catalog, store = null, logger
         const role = byId.get(String(id));
         if (!role) { errors.push(`${key}_role_missing`); continue; }
         if (role.managed) errors.push(`${key}_role_managed`);
-        if (String(role.permissions || '0') !== '0') errors.push(`${key}_role_has_permissions`);
+        /* A moderation or admin bit on an engine role stops every sale (a
+           purchase must never buy power over the server). Chat-level bits
+           only warn: they block nobody and the owner can clean them up. */
+        if (hasModerationPermission(role.permissions)) errors.push(`${key}_role_has_permissions`);
+        else if (String(role.permissions || '0') !== '0') warnings.push(`${key}_role_has_chat_permissions:${String(role.permissions)}`);
         if (config.protectedRoleIds.has(String(id))) errors.push(`${key}_role_protected`);
         if (!(Number(role.position) < topPosition)) errors.push(`${key}_role_not_below_bot`);
         engine[key] = { position: Number(role.position) };
