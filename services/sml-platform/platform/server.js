@@ -4414,7 +4414,12 @@ async function main() {
   }) : null;
   const getStoryDesk = () => storyDesk;
   if (storyDesk) {
-    const runStoryDesk = () => storyDesk.tick().then((r) => { if (r && !r.skipped) log('info', 'story_desk_tick', { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed, results: (r.results || []).map((x) => x.symbol + ':' + x.angle + ':' + (x.error || (x.published ? 'published' : 'draft'))) }); }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));
+    let storySkip = '';
+    const runStoryDesk = () => storyDesk.tick().then((r) => {
+      if (r && !r.skipped) { storySkip = ''; log('info', 'story_desk_tick', { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed, results: (r.results || []).map((x) => x.symbol + ':' + x.angle + ':' + (x.error || (x.published ? 'published' : 'draft'))) }); }
+      else if (r && r.skipped && r.skipped !== storySkip) { storySkip = r.skipped; log('info', 'story_desk_skipped', { why: r.skipped }); }
+      else if (!r) log('info', 'story_desk_skipped', { why: 'busy_or_failed' });
+    }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));
     setTimeout(runStoryDesk, 3 * 60_000).unref(); setInterval(runStoryDesk, 30 * 60_000).unref();
     log('info', 'story_desk_enabled', { autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', llm: String(process.env.SML_STORY_LLM || '').toLowerCase() === 'on', letters: storyPublisher.configured() });
     /* a boot-time test: SML_STORY_TEST_SYMBOLS=NVDA,TSLA writes those names once at startup and logs the whole result */
