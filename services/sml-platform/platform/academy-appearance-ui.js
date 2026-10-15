@@ -61,7 +61,8 @@
     + '#aa-panel select,#aa-panel input[type=range]{width:100%}#aa-panel select{background:#0d1720;color:#eaf5f8;border:1px solid #294554;border-radius:6px;padding:6px}'
     + '#aa-panel .row{display:flex;gap:10px;align-items:center}#aa-panel .row label{flex:1;display:flex;gap:6px;align-items:center}#aa-panel input[type=color]{width:38px;height:26px;border:0;background:none;padding:0}'
     + '#aa-panel .ft{display:flex;gap:8px;margin-top:12px}#aa-panel .ft button{flex:1;border:1px solid #2a4a58;border-radius:7px;background:#0d1a24;color:#e6eef2;padding:7px;font:800 .66rem system-ui;cursor:pointer}'
-    + '#aa-panel .note{color:#7f95a1;font-weight:500;font-size:.6rem;margin-top:8px}';
+    + '#aa-panel .note{color:#7f95a1;font-weight:500;font-size:.6rem;margin-top:8px}'
+    + '#aa-panel .bm{width:100%;border:1px solid #ffb020;border-radius:8px;background:#2a1f08;color:#ffe3b0;padding:8px;font:800 .66rem system-ui;cursor:pointer}#aa-panel .bm:hover{background:#ffb020;color:#1a1305}';
   document.head.appendChild(ui);
   const btn = document.createElement('button'); btn.id = 'aa-btn'; btn.type = 'button'; btn.textContent = 'Aa Customize'; btn.setAttribute('aria-expanded', 'false');
   const panel = document.createElement('div'); panel.id = 'aa-panel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Customize your Academy');
@@ -74,6 +75,8 @@
       + '<h6>FONT</h6><select data-k="font">' + Object.keys(FONTS).map((k) => '<option value="' + k + '"' + (state.font === k ? ' selected' : '') + '>' + esc(FONTS[k][0]) + '</option>').join('') + '</select>'
       + '<h6>TEXT SIZE · ' + (Number(state.size) || 100) + '%</h6><input type="range" min="80" max="140" step="5" data-k="size" value="' + (Number(state.size) || 100) + '">'
       + '<h6>SPACING</h6><select data-k="density"><option value="comfortable"' + (state.density === 'comfortable' ? ' selected' : '') + '>Comfortable</option><option value="compact"' + (state.density === 'compact' ? ' selected' : '') + '>Compact</option></select>'
+      + '<h6>BY MODULE</h6><button type="button" class="bm" data-bymodule="1">\u2699 Customize each module on its own</button>'
+      + '<p class="note">Colour, text size, height, width, order, hide, or float any module as a window inside the Academy. Saved to your account.</p>'
       + '<div class="ft"><button type="button" data-reset="1">Reset to default</button><button type="button" data-close="1">Done</button></div>'
       + '<p class="note">Saved in this browser. Chart candle colours are not changed.</p>';
   }
@@ -81,6 +84,7 @@
     const b = e.target.closest ? e.target.closest('button') : null; if (!b) return;
     if (b.dataset.theme) { state.theme = b.dataset.theme; state.accent = ''; state.bg = ''; save(state); apply(state); paint(); }
     else if (b.dataset.reset) { state = Object.assign({}, DEFAULTS); save(state); apply(state); paint(); }
+    else if (b.dataset.bymodule) { toggle(false); if (window.smlAcademyCustomize) window.smlAcademyCustomize.toggle(true); }
     else if (b.dataset.close) toggle(false);
   });
   panel.addEventListener('input', (e) => {

@@ -81,8 +81,14 @@
     const feat = 'popup,width=' + Math.round(w) + ',height=' + Math.round(h) + (place ? ',left=' + Math.round(place.x) + ',top=' + Math.round(place.y) : '');
     return window.open('/academy-activity/?popout=' + encodeURIComponent(id) + '&symbol=' + encodeURIComponent(symbol()), 'sml-pop-' + id + '-' + Math.random().toString(36).slice(2, 7), feat);
   }
+  /* inside the Academy the module opens as a window rendered in the Activity (academy-customize.js); the browser path
+     stays for a second screen (the arrow in that window's header) and for phones */
   async function popOut(id) {
     if (POP) { if (!openHere(id)) toast('Your browser blocked the new window. Allow pop-ups for this site and try again.'); return; }
+    if (typeof window.smlAcademyFloat === 'function' && !coarse()) { void window.smlAcademyFloat(id); return; }
+    return popBrowser(id);
+  }
+  async function popBrowser(id) {
     const mod = (id === 'chart' && !coarse()) ? 'desk' : id;
     let token = await session();
     if (!token) { toast('Sign in to the Academy first, then pop the module out.'); return; }
@@ -106,7 +112,7 @@
       if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'sml-pop-btn'; b.textContent = '⧉';
-      b.title = 'Pop out ' + m.label + ': its own window you can drag to another screen';
+      b.title = 'Open ' + m.label + ' as a window inside the Academy (the arrow in its title bar sends it to your browser for another screen)';
       b.setAttribute('aria-label', 'Pop out ' + m.label);
       b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); void popOut(m.id); });
       el.appendChild(b);
@@ -393,6 +399,12 @@
     hookNavigate();
     void startBus();
   }
+
+  /* shared with academy-customize.js (windows inside the Activity): the module list and the clicks that open a module */
+  window.smlAcademyModules = modules;
+  window.smlAcademyModuleOpen = (id) => { if (OPEN[id]) OPEN[id](); };
+  window.smlAcademyModuleReady = (id) => (READY[id] ? READY[id]() : hasContent(id));
+  window.smlAcademyPopBrowser = popBrowser;
 
   const ready = (fn) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn) : fn());
   ready(() => {

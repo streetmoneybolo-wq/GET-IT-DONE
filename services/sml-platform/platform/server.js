@@ -39,6 +39,7 @@ const { isMarketOpen, marketState } = require('./market-clock');
 const { sanitizeBars, annotateCandles } = require('./data-quality');
 const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPopoutService, validModule: validPopoutModule, validSymbol: validPopoutSymbol } = require('./academy-popout');
+const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey: academyLayoutKey } = require('./academy-layout');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
@@ -829,6 +830,10 @@ const ACADEMY_DESK = (() => {
 const ACADEMY_POPOUT_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-popout-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+/* Windows inside the Activity + per-module customization (academy-customize.js); runs after the pop-out UI it builds on. */
+const ACADEMY_CUSTOMIZE = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-customize.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_LB_UI = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-lb-ui.js'), 'utf8') + '</script>';
@@ -925,7 +930,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -3154,11 +3159,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    /* Trading desk layout persistence (academy-desk.js). Stored per user in academy_state_kv. */
+    /* Member layouts, per user in academy_state_kv (academy-layout.js): scope=desk is the Trading Desk browser window
+       (academy-desk.js), scope=activity the windows floating inside the Activity plus per-module customization
+       (academy-customize.js). */
     if (path === '/academy-activity/desk/layout' && academyOAuth && pool) {
       const deskSession = academyOAuth.verifySession(request.headers.authorization);
       if (!deskSession.ok) { sendJson(response, deskSession.status || 401, { ok: false, error: deskSession.code }); return; }
-      const layoutKey = 'desk:layout:' + deskSession.userId;
+      const layoutKey = academyLayoutKey(deskSession.userId, cleanLayoutScope(new URL(request.url || '/', 'http://localhost').searchParams.get('scope')));
       if (request.method === 'GET') {
         try {
           const r = await pool.query('SELECT value FROM academy_state_kv WHERE key = $1', [layoutKey]);
@@ -3168,16 +3175,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       if (request.method === 'PUT') {
         if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
-        const body = await readRequestBody(request, 8192);
+        const body = await readRequestBody(request, 16384);
         if (!body.ok) { sendJson(response, body.status, { ok: false, error: body.error }); return; }
-        let layout;
-        try { layout = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
-        if (!layout || !Array.isArray(layout.panels)) { sendJson(response, 400, { ok: false, error: 'invalid_layout' }); return; }
-        const clean = layout.panels.slice(0, 20).map(p => ({
-          id: String(p.id || '').slice(0, 24), x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 0.5, h: Number(p.h) || 0.5
-        })).filter(p => /^[a-z0-9-]{2,24}$/.test(p.id));
+        let parsed;
+        try { parsed = JSON.parse(body.rawBody); } catch (_) { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+        const layout = cleanAcademyLayout(parsed);
+        if (!layout) { sendJson(response, 400, { ok: false, error: 'invalid_layout' }); return; }
         try {
-          await pool.query('INSERT INTO academy_state_kv (key, value, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()', [layoutKey, JSON.stringify({ panels: clean, v: 1 })]);
+          await pool.query('INSERT INTO academy_state_kv (key, value, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()', [layoutKey, JSON.stringify(layout)]);
           sendJson(response, 200, { ok: true });
         } catch (_) { sendJson(response, 500, { ok: false, error: 'storage_failed' }); }
         return;
