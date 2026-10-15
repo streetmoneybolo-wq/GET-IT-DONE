@@ -162,17 +162,29 @@
 
   /* ---------- the song ---------- */
   function stopAudio() { if (S.audio) { try { S.audio.pause(); } catch (_) { /* fine */ } S.audio.remove(); } S.audio = null; S.analyser = null; }
-  function toggleAudio() {
+  function toggleAudio(auto) {
     const d = S.data; if (!d || !d.settings.song || d.settings.song.kind !== 'audio') return;
     const box = view.querySelector('.pv-song');
-    if (S.audio && !S.audio.paused) { S.audio.pause(); if (box) box.classList.remove('playing'); return; }
+    if (S.audio && !S.audio.paused) { if (auto) return; S.audio.pause(); if (box) box.classList.remove('playing'); return; }
     if (!S.audio) {
       const a = document.createElement('audio'); a.preload = 'auto'; a.loop = true; a.src = '/academy-activity/profiles/' + encodeURIComponent(d.userId) + '/audio?t=' + encodeURIComponent(token()); a.style.display = 'none'; view.appendChild(a); S.audio = a;
       try { S.ctx = S.ctx || new (window.AudioContext || window.webkitAudioContext)(); const src = S.ctx.createMediaElementSource(a); S.analyser = S.ctx.createAnalyser(); S.analyser.fftSize = 128; src.connect(S.analyser); S.analyser.connect(S.ctx.destination); } catch (_) { S.analyser = null; }
       a.addEventListener('error', () => { toast('That song link could not be played here. Use a direct MP3 or M4A link.'); if (box) box.classList.remove('playing'); });
     }
     if (S.ctx && S.ctx.state === 'suspended') S.ctx.resume().catch(() => {});
-    S.audio.play().then(() => { if (box) box.classList.add('playing'); }).catch(() => toast('Press play again to start the song.'));
+    S.audio.play().then(() => { if (box) box.classList.add('playing'); }).catch(() => { if (auto) armGesture(); else toast('Press play again to start the song.'); });
+  }
+  /* the song starts by itself when a profile opens; if the browser holds it back until the person touches the page, the first
+     tap, click or key press anywhere on the profile starts it */
+  function armGesture() {
+    if (S.armed) return; S.armed = true;
+    const go = () => { S.armed = false; view.removeEventListener('pointerdown', go, true); view.removeEventListener('keydown', go, true); if (S.open && S.data && S.data.settings.song && S.data.settings.song.kind === 'audio') toggleAudio(true); };
+    view.addEventListener('pointerdown', go, true); view.addEventListener('keydown', go, true);
+  }
+  function autoplay() {
+    const d = S.data; if (!d || !d.settings.song || d.settings.song.kind !== 'audio' || !S.open) return;
+    if (S.autoFor === d.userId) return; S.autoFor = d.userId;
+    toggleAudio(true);
   }
 
   /* ---------- rendering ---------- */
@@ -181,26 +193,33 @@
     const d = S.data; if (!d) return;
     const s = d.settings, t = s.theme || {}, acc = t.accent || '#00c47d', acc2 = t.accent2 || '#6c8cff', fx = t.fx || LAYOUT_FX[s.layout] || 'aurora';
     const name = s.displayName || d.discordName || 'Academy member';
-    const ava = '/academy-activity/avatar?user=' + encodeURIComponent(d.userId);
+    const ava = '/academy-activity/avatar?user=' + encodeURIComponent(d.userId) + '&t=' + encodeURIComponent(token());
     let h = '<canvas class="pv-fx"></canvas><div class="pv-top"><b>👤 ACADEMY PROFILE</b><span class="sp"></span>'
       + (d.own ? '<button type="button" class="pv-btn acc" data-pv="edit">✎ Customize my profile</button>' : '<button type="button" class="pv-btn' + (d.viewerFollows ? '' : ' acc') + '" data-pv="follow">' + (d.viewerFollows ? '✓ Following' : '+ Follow') + '</button>')
       + (POP ? '' : '<button type="button" class="pv-btn" data-pv="popout" title="This profile in its own window">⧉</button>') + '<button type="button" class="pv-btn" data-pv="close">✕</button></div>';
-    h += '<div class="pv-root pl-' + esc(s.layout) + ' f-' + esc(t.font || 'system') + '" style="--acc:' + esc(acc) + ';--acc2:' + esc(acc2) + ';--areas:' + esc(AREAS[s.layout] || AREAS.classic) + ';--cols:' + (COLS[s.layout] || 3) + '">';
+    const orbit = (t.orbit || []).filter((o) => o && o.image), DESK = window.smlProfileDesk;
+    const cols = COLS[s.layout] || 3, areas = (orbit.length && DESK ? '"' + Array(cols).fill('orb').join(' ') + '" ' : '') + (AREAS[s.layout] || AREAS.classic);
+    h += '<div class="pv-root pl-' + esc(s.layout) + ' f-' + esc(t.font || 'system') + '" style="--acc:' + esc(acc) + ';--acc2:' + esc(acc2) + ';--areas:' + esc(areas) + ';--cols:' + cols + '">';
     h += sec('head', '', '<div class="pv-head"><img class="pv-ava" alt="" src="' + ava + '" data-ava><div><div class="pv-name">' + esc(name) + '</div>' + (s.tagline ? '<div class="pv-tag">' + esc(s.tagline) + '</div>' : '') + '<span class="pv-tier">' + esc(d.tierLabel) + '</span></div></div>' + (s.bio ? '<div class="pv-bio">' + esc(s.bio) + '</div>' : ''));
+    if (orbit.length && DESK) h += sec('orb', '3D gallery', DESK.orbitHtml(orbit, token(), esc));
     h += sec('stats', 'Following', '<div class="pv-kv"><div><span>FOLLOWERS</span><b>' + (d.followers || 0) + '</b></div><div><span>FOLLOWING</span><b>' + (d.following || 0) + '</b></div><div><span>POSTS</span><b>' + (d.posts ? d.posts.length : 0) + (d.posts && d.posts.length >= 30 ? '+' : '') + '</b></div></div>', s.flags.showFollowers === false);
     h += sec('server', 'Main Discord server', d.server ? '<div class="pv-srv"><div class="ic">' + esc(String(d.server.name || 'D').slice(0, 1).toUpperCase()) + '</div><div><b>' + esc(d.server.name) + '</b><small>' + d.server.minutes + ' min in the Academy here' + (d.server.servers > 1 ? ' · ' + d.server.sharePct + '% of their time' : '') + '</small></div></div>' : '<p class="pv-empty">Shows the Discord server they use the Academy in most.</p>', s.flags.showServer === false);
     h += sec('paper', 'Paper trading account', d.paper ? '<div class="pv-kv"><div><span>ACCOUNT</span><b>' + money(d.paper.equity) + '</b></div><div><span>P&amp;L</span><b class="' + (d.paper.pnl >= 0 ? 'up' : 'dn') + '">' + money(d.paper.pnl) + '</b></div><div><span>RETURN</span><b class="' + (d.paper.returnPct >= 0 ? 'up' : 'dn') + '">' + pct(d.paper.returnPct) + '</b></div><div><span>LEADERBOARD</span><b>' + (d.paper.rank ? '#' + d.paper.rank + ' <small style="color:#7f95a1;font-size:.6rem">of ' + d.paper.of + '</small>' : 'unranked') + '</b></div></div><p class="pv-note">Simulated paper account. Not real money.</p>' : '<p class="pv-empty">No paper trades yet.</p>', s.flags.showPaper === false);
     const song = s.song;
     h += sec('song', 'Song', song ? '<div class="pv-song' + (S.audio && !S.audio.paused ? ' playing' : '') + '"><div class="disc"></div><div style="min-width:0;flex:1"><div class="ttl">' + esc(song.title || 'Profile song') + '</div><div class="sub">' + esc(song.kind === 'audio' ? 'Plays here' : song.kind.charAt(0).toUpperCase() + song.kind.slice(1) + ' · opens outside') + '</div>' + (song.kind === 'audio' ? '<div class="pv-bars">' + '<i></i>'.repeat(14) + '</div>' : '') + '</div>' + (song.kind === 'audio' ? '<button type="button" class="pv-btn acc" data-pv="play">▶ / ❚❚</button>' : '<button type="button" class="pv-btn" data-pv="open" data-url="' + esc(song.url) + '">Open ↗</button>') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add one song in Customize.' : 'No song yet.') + '</p>', !song && !d.own);
     const socials = s.socials || [];
-    h += sec('social', 'Links', socials.length ? '<div class="pv-links">' + socials.map((x) => '<button type="button" class="pv-link" data-pv="open" data-url="' + esc(x.url) + '">' + (x.card && x.card.image ? '<img alt="" loading="lazy" src="/academy-activity/profiles/link-image?u=' + encodeURIComponent(x.card.image) + '">' : '<div class="ph">' + esc(SOCIAL_ICON[x.kind] || '↗') + '</div>') + '<span class="t">' + esc(x.title || (x.card && x.card.title) || x.kind) + '<small>' + esc((x.card && x.card.site) || x.kind) + '</small></span></button>').join('') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add your social links in Customize.' : 'No links yet.') + '</p>', s.flags.showSocials === false || (!socials.length && !d.own));
+    h += sec('social', 'Links', socials.length ? '<div class="pv-links">' + socials.map((x) => '<button type="button" class="pv-link" data-pv="open" data-url="' + esc(x.url) + '">' + (x.card && x.card.image ? '<img alt="" loading="lazy" src="/academy-activity/profiles/link-image?u=' + encodeURIComponent(x.card.image) + '&t=' + encodeURIComponent(token()) + '">' : '<div class="ph">' + esc(SOCIAL_ICON[x.kind] || '↗') + '</div>') + '<span class="t">' + esc(x.title || (x.card && x.card.title) || x.kind) + '<small>' + esc((x.card && x.card.site) || x.kind) + '</small></span></button>').join('') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add your social links in Customize.' : 'No links yet.') + '</p>', s.flags.showSocials === false || (!socials.length && !d.own));
     const posts = d.posts || [];
     h += sec('feed', 'Posts in the Academy chat', posts.length ? '<div class="pv-feed">' + posts.map((p) => '<div class="pv-post"><div class="m"><i>' + esc(ROOMS[p.channel] || p.channel) + '</i><span>' + esc(ago(p.createdAt)) + '</span>' + (p.reply ? '<span>reply</span>' : '') + (p.score ? '<span>▲ ' + p.score + '</span>' : '') + '</div><p>' + esc(p.body) + '</p></div>').join('') + '</div>' : '<p class="pv-empty">No posts yet.</p>', s.flags.showFeed === false);
     h += '</div>';
     view.innerHTML = h;
+    view.style.background = '';
     view.classList.add('open');
     startFx(fx);
     if (S.audio) { S.audio.remove(); view.appendChild(S.audio); }
+    /* textures, desk, lighting, 3D orbs and the 3D gallery (academy-profile-desk.js) */
+    if (DESK) { try { DESK.apply(view, d, pulse); } catch (_) { /* the page still works without the scene */ } }
+    autoplay();
   }
 
   async function open(userId) {
@@ -212,7 +231,7 @@
     if (!r.ok) { view.innerHTML = '<div class="pv-top"><b>👤 ACADEMY PROFILE</b><span class="sp"></span><button type="button" class="pv-btn" data-pv="close">✕</button></div><p style="padding:30px;text-align:center;color:#ff9f9f">' + esc(r.error === 'not_found' ? 'That member has no Academy profile yet.' : 'The profile could not be loaded right now.') + '</p>'; return; }
     S.data = r.profile; render();
   }
-  function close() { S.open = false; view.classList.remove('open'); edit.classList.remove('open'); stopFx(); stopAudio(); S.draft = null; }
+  function close() { S.open = false; view.classList.remove('open'); edit.classList.remove('open'); stopFx(); if (window.smlProfileDesk) window.smlProfileDesk.stop(); stopAudio(); S.draft = null; S.autoFor = ''; }
 
   /* ---------- the editor (own profile) ---------- */
   const SWATCH = ['#00c47d', '#6c8cff', '#ff9f43', '#ff6b6b', '#c46bff', '#ffe600', '#19d3f3', '#ff4fa3', '#9aa7b8', '#ffffff'];
@@ -220,6 +239,23 @@
     if (!S.data || !S.data.own) return;
     S.draft = JSON.parse(JSON.stringify(S.data.settings)); S.draft.theme = { accent: '', accent2: '', fx: '', font: 'system', immersive: 'balanced', dark: true, ...S.draft.theme };
     paintEditor(); edit.classList.add('open');
+  }
+  /* the look and feel controls: texture, desk, lighting, 3D orbs and the 3D gallery (academy-profile-desk.js) */
+  function deskControls(t) {
+    const D = window.smlProfileDesk; if (!D) return '';
+    const on = (cond) => (cond ? 'on' : '');
+    const opts = (key, list, cur) => '<div class="pv-opts">' + list.map((x) => '<button type="button" data-' + key + '="' + esc(x.id) + '" class="' + on((cur || list[0].id) === x.id) + '">' + esc(x.label) + '</button>').join('') + '</div>';
+    const cur = t.texture || 'none';
+    const grid = [{ id: 'none', label: 'Plain' }].concat(D.textures).map((x) => '<button type="button" data-tex="' + esc(x.id) + '" class="' + on(cur === x.id) + '"><span class="pd-sw ' + (x.id === 'none' ? 'none' : 'tx-' + esc(x.id)) + '"><span>' + esc(x.label) + '</span></span></button>').join('');
+    const orbit = t.orbit || [];
+    const rows = orbit.map((o, i) => '<div class="pd-orow"><div class="r"><b>' + (i + 1) + '</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cfe3ea" title="' + esc(o.image) + '">' + esc(o.image) + '</span><button type="button" data-orb-rm="' + i + '">remove</button></div>'
+      + '<div class="r"><input type="url" data-orb="href" data-i="' + i + '" placeholder="Link this picture goes to (https://, optional)" value="' + esc(o.href || '') + '"></div><div class="r"><input type="text" data-orb="title" data-i="' + i + '" maxlength="60" placeholder="Caption (optional)" value="' + esc(o.title || '') + '"></div></div>').join('');
+    return '<h6>MODULE TEXTURE · ' + esc(cur === 'none' ? 'plain (or your desk dresses them)' : cur) + '</h6><div class="pd-grid">' + grid + '</div>'
+      + '<h6>DESK</h6>' + opts('desk', D.desks, t.desk || 'none') + '<p class="pv-note">The surface your modules sit on. With a desk and a plain texture, the desk dresses each module itself: paper desk = a different sheet of paper each, NYSE floor = screens and instruments.</p>'
+      + '<h6>LIGHTING</h6>' + opts('light', D.lights, t.light || 'off')
+      + '<h6>3D ORBS FLYING AROUND</h6>' + opts('orbs', D.orbs, t.orbs || 'off')
+      + '<h6>3D GALLERY (UP TO 12 PICTURES)</h6>' + rows + (orbit.length < 12 ? '<div class="pd-orow"><div class="r"><input type="url" data-orbnew="image" placeholder="Picture link (https://…)"></div><div class="r"><input type="url" data-orbnew="href" placeholder="Link it goes to (https://, optional)"></div><div class="r"><input type="text" data-orbnew="title" maxlength="60" placeholder="Caption (optional)"><button type="button" class="pv-btn acc" data-pv="addorb">Add</button></div></div>' : '')
+      + '<p class="pv-note">Pictures orbit in 3D on your page; drag to spin. A picture with a link opens that page when tapped, so you can point people to your own pages.</p>';
   }
   function paintEditor() {
     const d = S.draft, t = d.theme, lay = (S.data && S.data.layouts) || [];
@@ -234,6 +270,7 @@
       + '<h6>BACKGROUND EFFECT</h6><div class="pv-opts">' + ['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain'].map((f) => '<button type="button" data-fx="' + f + '" class="' + ((t.fx || LAYOUT_FX[d.layout]) === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
       + '<h6>IMMERSIVE</h6><div class="pv-opts">' + ['off', 'subtle', 'balanced', 'immersive'].map((f) => '<button type="button" data-imm="' + f + '" class="' + (t.immersive === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div><p class="pv-note">How hard the background moves with the song.</p>'
       + '<h6>FONT</h6><div class="pv-opts">' + ['system', 'mono', 'serif', 'display', 'rounded'].map((f) => '<button type="button" data-font="' + f + '" class="' + (t.font === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
+      + deskControls(t)
       + '<h6>SONG (ONE)</h6><input type="url" data-song="url" placeholder="https://… direct MP3/M4A, YouTube, Spotify, SoundCloud or Apple Music" value="' + esc(d.song ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"></div><p class="pv-note">A direct audio link plays on your page and drives the effect. YouTube, Spotify, SoundCloud and Apple links show as a card that opens outside the Academy.</p>'
       + '<h6>SOCIAL LINKS (UP TO 8)</h6>' + (d.socials || []).map((x, i) => '<div class="pv-soc"><span title="' + esc(x.url) + '">' + esc(SOCIAL_ICON[x.kind] || '↗') + ' ' + esc(x.title || (x.card && x.card.title) || x.url) + '</span><button type="button" data-rm="' + i + '">remove</button></div>').join('') + '<div class="pv-row"><input type="url" data-add="url" placeholder="https://x.com/you"><input type="text" data-add="title" maxlength="60" placeholder="Label (optional)" style="max-width:120px"><button type="button" class="pv-btn" data-pv="addlink">Add</button></div><p class="pv-note">Each link gets a card with the page’s own title and picture.</p>'
       + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Social links'], ['showFeed', 'My chat posts'], ['showFollowers', 'Follower counts']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
@@ -245,6 +282,7 @@
     if (el.dataset.k) S.draft[el.dataset.k] = el.value;
     if (el.dataset.song === 'url') S.draft.song = el.value.trim() ? { url: el.value.trim(), title: (S.draft.song && S.draft.song.title) || '', kind: /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i.test(el.value) ? 'audio' : 'link' } : null;
     if (el.dataset.song === 'title' && S.draft.song) S.draft.song.title = el.value;
+    if (el.dataset.orb && S.draft.theme.orbit && S.draft.theme.orbit[Number(el.dataset.i)]) { S.draft.theme.orbit[Number(el.dataset.i)][el.dataset.orb] = el.value.trim(); clearTimeout(S.pt); S.pt = setTimeout(preview, 450); return; }
     if (el.dataset.color) { S.draft.theme[el.dataset.color] = el.value; preview(); return; }
     if (el.dataset.k !== undefined || el.dataset.song !== undefined) { clearTimeout(S.pt); S.pt = setTimeout(preview, 350); }
   });
@@ -258,9 +296,25 @@
     if (b.dataset.fx) { d.theme.fx = b.dataset.fx; paintEditor(); preview(); return; }
     if (b.dataset.imm) { d.theme.immersive = b.dataset.imm; paintEditor(); preview(); return; }
     if (b.dataset.font) { d.theme.font = b.dataset.font; paintEditor(); preview(); return; }
+    if (b.dataset.tex) { d.theme.texture = b.dataset.tex; paintEditor(); preview(); return; }
+    if (b.dataset.desk) { d.theme.desk = b.dataset.desk; paintEditor(); preview(); return; }
+    if (b.dataset.light) { d.theme.light = b.dataset.light; paintEditor(); preview(); return; }
+    if (b.dataset.orbs) { d.theme.orbs = b.dataset.orbs; paintEditor(); preview(); return; }
+    if (b.dataset.orbRm !== undefined) { (d.theme.orbit || []).splice(Number(b.dataset.orbRm), 1); paintEditor(); preview(); return; }
     if (b.dataset.rm) { d.socials.splice(Number(b.dataset.rm), 1); paintEditor(); preview(); return; }
     const a = b.dataset.pv;
     if (a === 'addlink') { const u = edit.querySelector('[data-add="url"]'), t = edit.querySelector('[data-add="title"]'); const url = String(u.value || '').trim(); if (!/^https:\/\//i.test(url)) { toast('Paste a full https:// link.'); return; } if (d.socials.length >= 8) { toast('Up to 8 links.'); return; } d.socials.push({ url, title: String(t.value || '').trim(), kind: 'link', card: null }); u.value = ''; t.value = ''; paintEditor(); preview(); return; }
+    if (a === 'addorb') {
+      const g = (k) => { const el = edit.querySelector('[data-orbnew="' + k + '"]'); return el ? String(el.value || '').trim() : ''; };
+      const image = g('image'), href = g('href'), title = g('title');
+      if (!/^https:\/\//i.test(image)) { toast('Paste the picture as a full https:// link.'); return; }
+      if (href && !/^https:\/\//i.test(href)) { toast('The link a picture goes to must be a full https:// link.'); return; }
+      d.theme.orbit = d.theme.orbit || []; if (d.theme.orbit.length >= 12) { toast('Up to 12 pictures.'); return; }
+      b.disabled = true; b.textContent = 'Checking…';
+      const r = await api('/orbit-image', { method: 'POST', body: JSON.stringify({ url: image }) });
+      if (!r.ok) { b.disabled = false; b.textContent = 'Add'; toast(r.error === 'not_an_image' ? 'That link is not a picture (use a direct .jpg, .png, .webp or .gif link under 1.5 MB).' : 'That picture link could not be used.'); return; }
+      d.theme.orbit.push({ image: r.url, href, title }); paintEditor(); preview(); return;
+    }
     if (a === 'cancel') { edit.classList.remove('open'); S.draft = null; await open(S.userId); return; }
     if (a === 'save') {
       if (S.saving) return; S.saving = true; b.textContent = 'Saving…';

@@ -23,6 +23,14 @@ const LAYOUT_IDS = new Set(LAYOUTS.map(([id]) => id));
 const FX = new Set(['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain']);
 const FONTS = new Set(['system', 'mono', 'serif', 'display', 'rounded']);
 const IMMERSIVE = new Set(['off', 'subtle', 'balanced', 'immersive']);
+/* module textures (what every section looks and feels like), desks (the surface the sections sit on), the lighting in the
+ * background, the 3D orbs flying around, and the 3D orbit of up to 12 pictures that each link out. The look itself is drawn by
+ * the page (academy-profile-desk.js); the server only keeps the member's choice. */
+const TEXTURES = new Set(['none', 'legal-pad', 'graph-paper', 'manila-folder', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'index-card', 'sticky-note', 'blueprint', 'carbon-fiber', 'brushed-steel', 'leather', 'walnut', 'oak', 'marble', 'brass-plate', 'green-felt', 'cork-board', 'crt-terminal', 'parchment', 'concrete', 'slate', 'frosted-glass']);
+const DESKS = new Set(['none', 'nyse-floor', 'paper-desk', 'walnut-office', 'steel-trader', 'cork-wall', 'leather-blotter']);
+const LIGHTS = new Set(['off', 'desk-lamp', 'window-sun', 'monitor-glow', 'neon-sweep', 'golden-hour', 'spotlight']);
+const ORBS = new Set(['off', 'few', 'many']);
+const MAX_ORBIT = 12;
 const SOCIAL_KINDS = [
   ['x', /(^|\.)(x|twitter)\.com$/], ['instagram', /(^|\.)instagram\.com$/], ['tiktok', /(^|\.)tiktok\.com$/], ['youtube', /(^|\.)(youtube\.com|youtu\.be)$/],
   ['facebook', /(^|\.)facebook\.com$/], ['threads', /(^|\.)threads\.net$/], ['linkedin', /(^|\.)linkedin\.com$/], ['twitch', /(^|\.)twitch\.tv$/],
@@ -54,6 +62,20 @@ function cleanSettings(input = {}, prev = {}) {
     if (t.font !== undefined) out.font = FONTS.has(String(t.font)) ? String(t.font) : 'system';
     if (t.immersive !== undefined) out.immersive = IMMERSIVE.has(String(t.immersive)) ? String(t.immersive) : 'balanced';
     if (t.dark !== undefined) out.dark = t.dark !== false;
+    if (t.texture !== undefined) out.texture = TEXTURES.has(String(t.texture)) ? String(t.texture) : 'none';
+    if (t.desk !== undefined) out.desk = DESKS.has(String(t.desk)) ? String(t.desk) : 'none';
+    if (t.light !== undefined) out.light = LIGHTS.has(String(t.light)) ? String(t.light) : 'off';
+    if (t.orbs !== undefined) out.orbs = ORBS.has(String(t.orbs)) ? String(t.orbs) : 'off';
+    if (t.orbit !== undefined) {
+      /* up to 12 pictures; each is an https image and may link to an https page (the member's own link back) */
+      const list = Array.isArray(t.orbit) ? t.orbit : [], seen = new Set(), orbit = [];
+      for (const it of list) {
+        const image = httpsUrl(it && it.image); if (!image || seen.has(image)) continue; seen.add(image);
+        orbit.push({ image, href: httpsUrl(it && it.href), title: text(it && it.title, 60) });
+        if (orbit.length >= MAX_ORBIT) break;
+      }
+      out.orbit = orbit;
+    }
     s.theme = out;
   }
   if (input.song !== undefined) {
@@ -81,7 +103,7 @@ function cleanSettings(input = {}, prev = {}) {
   }
   return s;
 }
-const defaults = () => ({ displayName: '', tagline: '', bio: '', layout: 'classic', theme: { accent: '', accent2: '', fx: 'aurora', font: 'system', immersive: 'balanced', dark: true }, song: null, socials: [], flags: { showPaper: true, showServer: true, showSocials: true, showFeed: true, showFollowers: true } });
+const defaults = () => ({ displayName: '', tagline: '', bio: '', layout: 'classic', theme: { accent: '', accent2: '', fx: 'aurora', font: 'system', immersive: 'balanced', dark: true, texture: 'none', desk: 'none', light: 'off', orbs: 'off', orbit: [] }, song: null, socials: [], flags: { showPaper: true, showServer: true, showSocials: true, showFeed: true, showFollowers: true } });
 
 /* Open Graph title + image of a page, for the link card. Only the page's own meta tags are read. */
 function parseOg(html, url) {
@@ -114,8 +136,13 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
   const rowToSettings = (r) => cleanSettings({ displayName: r.display_name, tagline: r.tagline, bio: r.bio, layout: r.layout, theme: typeof r.theme === 'string' ? JSON.parse(r.theme) : (r.theme || {}), song: typeof r.song === 'string' ? JSON.parse(r.song) : r.song, socials: typeof r.socials === 'string' ? JSON.parse(r.socials) : (r.socials || []), flags: typeof r.flags === 'string' ? JSON.parse(r.flags) : (r.flags || {}) }, defaults());
   async function settingsOf(userId) {
     const id = String(userId);
-    if (db) { const r = await db.query('SELECT * FROM academy_profiles WHERE discord_id=$1', [id]); return r.rows[0] ? { ...defaults(), ...rowToSettings(r.rows[0]), exists: true } : { ...defaults(), exists: false }; }
-    return mem.profiles.has(id) ? { ...defaults(), ...mem.profiles.get(id), exists: true } : { ...defaults(), exists: false };
+    let out;
+    if (db) { const r = await db.query('SELECT * FROM academy_profiles WHERE discord_id=$1', [id]); out = r.rows[0] ? { ...defaults(), ...rowToSettings(r.rows[0]), exists: true } : { ...defaults(), exists: false }; }
+    else out = mem.profiles.has(id) ? { ...defaults(), ...mem.profiles.get(id), exists: true } : { ...defaults(), exists: false };
+    /* the image allow-list lives in memory: saved orbit pictures and link cards are allowed again after a restart */
+    for (const o of (out.theme && out.theme.orbit) || []) images.add(o.image);
+    for (const x of out.socials || []) if (x.card && x.card.image) images.add(x.card.image);
+    return out;
   }
   async function save(userId, input = {}) {
     const id = String(userId); if (!SNOWFLAKE.test(id)) return { ok: false, error: 'invalid_user' };
@@ -129,6 +156,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
         [id, next.displayName || '', next.tagline || '', next.bio || '', next.layout || 'classic', JSON.stringify(next.theme || {}), next.song ? JSON.stringify(next.song) : null, JSON.stringify(next.socials || []), JSON.stringify(next.flags || {})]);
     } else mem.profiles.set(id, next);
     for (const s of next.socials || []) if (s.card && s.card.image) images.add(s.card.image);
+    for (const o of (next.theme && next.theme.orbit) || []) images.add(o.image);
     return { ok: true, settings: next };
   }
 
@@ -157,6 +185,20 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
       if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return null;
       return { contentType: type, bytes };
     } catch (_) { return null; }
+  }
+  /* an orbit picture the member is adding: the server fetches it once to prove it is a real picture, then allows it. Only public
+     https hosts (never an address or an internal name), and a handful of checks a minute per member. */
+  const regs = new Map();
+  const publicHost = (h) => !!h && h.includes('.') && !h.includes(':') && !/^[0-9.]+$/.test(h) && !/(^|\.)(localhost|local|internal|localdomain|home|lan)$/.test(h);
+  async function registerImage(url, userId = '') {
+    const u = httpsUrl(url); if (!u || !publicHost(hostOf(u))) return { ok: false, error: 'invalid_url' };
+    const k = String(userId), t = now(), hits = (regs.get(k) || []).filter((x) => t - x < 60_000);
+    if (hits.length >= 20) return { ok: false, error: 'slow_down' };
+    hits.push(t); regs.set(k, hits); if (regs.size > 5000) regs.delete(regs.keys().next().value);
+    const had = images.has(u); images.add(u);
+    const img = await linkImage(u);
+    if (!img) { if (!had) images.delete(u); return { ok: false, error: 'not_an_image' }; }
+    return { ok: true, url: u };
   }
   /* a direct audio link, streamed through the Academy's origin (the page may only play media from itself) */
   async function audioStream(url, ownerId) {
@@ -282,7 +324,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     return { userId: id, own: String(viewerId) === id, displayName: s.displayName, tagline: s.tagline, accent: s.theme.accent || '', layout: s.layout, tier, tierLabel: tierLabel(tier), server, paper: rank && rank.rank ? { rank: rank.rank, of: rank.of, returnPct: rank.returnPct, equity: rank.equity } : (rank ? { rank: null, of: rank.of } : null), followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed };
   }
 
-  return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, audioStream, LAYOUTS };
+  return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, LAYOUTS };
 }
 
-module.exports = { createProfilePages, cleanSettings, parseOg, LAYOUTS };
+module.exports = { createProfilePages, cleanSettings, parseOg, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };

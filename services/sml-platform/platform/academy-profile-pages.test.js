@@ -67,3 +67,53 @@ test('link images are served only for images the server found itself; audio only
   assert.equal(await svc.audioStream('https://cdn.example.com/b.mp3', A), null);
   assert.equal(await svc.audioStream('https://cdn.example.com/a.mp3', B), null, 'another member cannot proxy it');
 });
+
+test('look and feel: texture, desk, light and orbs come from the lists; the 3D gallery keeps up to 12 https pictures with optional https links', () => {
+  const { TEXTURES, DESKS, LIGHTS, ORBS } = require('./academy-profile-pages');
+  assert.ok(TEXTURES.size >= 25, 'at least 24 textures besides none');
+  assert.ok(DESKS.has('nyse-floor') && DESKS.has('paper-desk') && LIGHTS.has('desk-lamp') && ORBS.has('many'));
+  const t = cleanSettings({ theme: { texture: 'legal-pad', desk: 'nyse-floor', light: 'golden-hour', orbs: 'few' } }).theme;
+  assert.deepEqual([t.texture, t.desk, t.light, t.orbs], ['legal-pad', 'nyse-floor', 'golden-hour', 'few']);
+  const bad = cleanSettings({ theme: { texture: 'lava', desk: 'moon', light: 'x', orbs: 'tons' } }).theme;
+  assert.deepEqual([bad.texture, bad.desk, bad.light, bad.orbs], ['none', 'none', 'off', 'off']);
+  const orbit = cleanSettings({ theme: { orbit: [
+    { image: 'https://img.example.com/a.png', href: 'https://stockmarketloop.com/me', title: 'My <b>page</b>' },
+    { image: 'https://img.example.com/a.png', href: 'https://dup.example.com/' },
+    { image: 'http://insecure.example.com/b.png' }, { image: 'javascript:alert(1)' },
+    { image: 'https://img.example.com/c.png', href: 'javascript:alert(1)' },
+    ...Array.from({ length: 20 }, (_, i) => ({ image: 'https://img.example.com/p' + i + '.png' }))
+  ] } }).theme.orbit;
+  assert.equal(orbit.length, 12);
+  assert.deepEqual(orbit[0], { image: 'https://img.example.com/a.png', href: 'https://stockmarketloop.com/me', title: 'My bpage/b' });
+  assert.equal(orbit[1].href, '', 'a link that is not https is dropped, the picture stays');
+  assert.equal(new Set(orbit.map((o) => o.image)).size, 12, 'no duplicate pictures');
+});
+
+test('orbit pictures: registered only after the server proves they are pictures; internal hosts refused; allowed again after a restart', async () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const fetchImpl = async (url) => (String(url).includes('good.example.com') ? { ok: true, headers: { get: () => 'image/png' }, arrayBuffer: async () => png } : { ok: true, headers: { get: () => 'text/html' }, arrayBuffer: async () => png });
+  const svc = createProfilePages({ fetchImpl, now: () => 1_000_000 });
+  assert.equal((await svc.registerImage('http://good.example.com/a.png', A)).error, 'invalid_url');
+  for (const u of ['https://localhost/a.png', 'https://10.0.0.1/a.png', 'https://[::1]/a.png', 'https://db.internal/a.png', 'https://printer.local/a.png']) assert.equal((await svc.registerImage(u, A)).ok, false, u);
+  assert.equal((await svc.registerImage('https://page.example.com/x.html', A)).error, 'not_an_image');
+  assert.equal(await svc.linkImage('https://page.example.com/x.html'), null, 'a refused link is not left on the allow-list');
+  const ok = await svc.registerImage('https://good.example.com/a.png', A);
+  assert.deepEqual(ok, { ok: true, url: 'https://good.example.com/a.png' });
+  assert.ok(await svc.linkImage('https://good.example.com/a.png'));
+  /* a fresh service (a restart) allows the pictures of a saved profile once the profile is read */
+  await svc.save(A, { theme: { orbit: [{ image: 'https://good.example.com/a.png', href: 'https://stockmarketloop.com/ana' }] } });
+  const again = createProfilePages({ fetchImpl, now: () => 1_000_000 });
+  assert.equal(await again.linkImage('https://good.example.com/a.png'), null, 'not before the profile is read');
+  /* throttle: 20 checks a minute per member */
+  let slow = 0; for (let i = 0; i < 25; i++) if ((await svc.registerImage('https://good.example.com/p' + i + '.png', B)).error === 'slow_down') slow += 1;
+  assert.equal(slow, 5);
+});
+
+test('the profile desk script is inlined into the Academy page: no backslash, backtick or template placeholder', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-desk.js'), 'utf8');
+  assert.equal(src.includes('\\'), false);
+  assert.equal(src.includes('`'), false);
+  assert.equal(src.includes('${'), false);
+  assert.equal(src.includes('</script'), false);
+  assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 24, 'exactly 24 textures');
+});

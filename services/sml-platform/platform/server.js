@@ -858,6 +858,9 @@ const ACADEMY_CANDLE_RECAP = (() => {
 const ACADEMY_CLIPBOARD = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-clipboard.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+const ACADEMY_PROFILE_DESK = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-profile-desk.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_PROFILE_UI = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-profile-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
@@ -957,7 +960,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_UI + ACADEMY_CLIPBOARD + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_UI + ACADEMY_CLIPBOARD + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -2547,8 +2550,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       if (!academyProfilePages) { sendJson(response, 503, { ok: false, error: 'profiles_disabled' }); return; }
       const pq = new URL(request.url || '/', 'http://localhost').searchParams;
-      // <audio> cannot send a header, so the song route takes the session token as ?t=
-      const authz = request.headers.authorization || (path.endsWith('/audio') && pq.get('t') ? 'Bearer ' + pq.get('t') : '');
+      // <audio> and <img> cannot send a header, so the song and link-image routes take the session token as ?t=
+      const authz = request.headers.authorization || ((path.endsWith('/audio') || path.endsWith('/link-image')) && pq.get('t') ? 'Bearer ' + pq.get('t') : '');
       const session = academyOAuth.verifySession(authz);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       const SNOW = /^\d{15,25}$/;
@@ -2566,6 +2569,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           sendJson(response, 200, { ok: true, card }); return;
         }
         if (request.method === 'GET' && path === '/academy-activity/profiles/leaderboard') { sendJson(response, 200, { ok: true, rows: await academyProfilePages.leaderboard(Math.min(100, Number(pq.get('limit')) || 25)) }); return; }
+        if (request.method === 'POST' && path === '/academy-activity/profiles/orbit-image') {
+          const b = await readBody(2048); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
+          const r = await academyProfilePages.registerImage(b.url, session.userId); sendJson(response, r.ok ? 200 : 400, r); return;
+        }
         if (request.method === 'PUT' && path === '/academy-activity/profiles/me') {
           const b = await readBody(32_768); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
           sendJson(response, 200, await academyProfilePages.save(session.userId, b)); return;
@@ -2600,10 +2607,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'GET' && (path === '/academy-activity/profile' || path === '/academy-activity/avatar')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
-      const session = academyOAuth.verifySession(request.headers.authorization);
+      /* the avatar is an <img>: it cannot send a header, so it may carry the session token as ?t= */
+      const avq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const session = academyOAuth.verifySession(request.headers.authorization || (path === '/academy-activity/avatar' && avq.get('t') ? 'Bearer ' + avq.get('t') : ''));
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       if (!academyProfiles) { sendJson(response, 503, { ok: false, error: 'profiles_disabled' }); return; }
-      const who = new URL(request.url || '/', 'http://localhost').searchParams.get('user') || '';
+      const who = avq.get('user') || '';
       try {
         if (path === '/academy-activity/profile') {
           const card = await academyProfiles.profile(who);
