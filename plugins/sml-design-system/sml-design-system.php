@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.6
+ * Version: 1.1.7
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.6' );
+define( 'SML_DS_VERSION', '1.1.7' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -73,7 +73,8 @@ function sml_ds_inject( $html, $phase = 0 ) {
 	   partial tag or an unfinished script, style, pre, code or textarea block is held back and joined to the next piece,
 	   so the punctuation pass never sees half a tag or the inside of a script. The head and footer tags are added only
 	   from a piece that carries the whole head, or the closing body tag. */
-	static $is_html = null, $carry = '', $seen = array( 'early' => false, 'css' => false, 'js' => false );
+	static $is_html = null, $carry = '', $seen = array( 'early' => false, 'css' => false, 'js' => false ), $pieces = 0, $lead_note = '';
+	$pieces++;
 	if ( ! is_string( $html ) ) { return $html; }
 	$final = (bool) ( $phase & PHP_OUTPUT_HANDLER_FINAL );
 	$html  = $carry . $html; $carry = '';
@@ -84,6 +85,7 @@ function sml_ds_inject( $html, $phase = 0 ) {
 		$lead = ltrim( $html, " \t\r\n\xEF\xBB\xBF" );
 		if ( $lead === '' ) { $carry = $html; return ''; }
 		$is_html = ! ( stripos( $lead, '<?xml' ) === 0 || $lead[0] === '{' || $lead[0] === '[' );
+		$lead_note = preg_replace( '/[^a-z0-9<>!\/ ._-]/i', '?', substr( $lead, 0, 24 ) );
 	}
 	if ( ! $is_html ) { return $html; }
 	foreach ( array( 'early', 'css', 'js' ) as $k ) { if ( stripos( $html, 'id="sml-ds-' . $k . '"' ) !== false ) { $seen[ $k ] = true; } }
@@ -114,7 +116,9 @@ function sml_ds_inject( $html, $phase = 0 ) {
 		}
 		if ( $cut < strlen( $html ) ) { $carry = substr( $html, $cut ); $html = substr( $html, 0, $cut ); }
 	}
-	return sml_ds_dashes( $html );
+	$html = sml_ds_dashes( $html );
+	if ( $final ) { $html .= "\n<!-- sml-ds ob pieces=" . (int) $pieces . ' phase=' . (int) $phase . ' lead=' . str_replace( '--', '- -', $lead_note ) . " -->\n"; }
+	return $html;
 }
 
 /* The sign-in page (wp-login.php) wears the same canvas: the stylesheet, the fonts and the site logo. */
