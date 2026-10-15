@@ -5,7 +5,7 @@
  * Without resvg on the machine, frames() still returns the SVG frames and gif() returns null. */
 
 const path = require('node:path');
-const { encodeGif } = require('./gif-encode');
+const { encodeGif, encodeGifAsync } = require('./gif-encode');
 
 const W = 960, H = 540;
 const FONT_DIR = path.join(__dirname, 'assets', 'fonts');
@@ -96,4 +96,14 @@ function gif(opts) {
   return { gif: encodeGif(raster, { delayMs: opts.delayMs || 140, lastHoldMs: opts.lastHoldMs || 2200 }), frames: svgs.length, firstSvg: svgs[0], lastSvg: svgs[svgs.length - 1], width: raster[0].width, height: raster[0].height };
 }
 
-module.exports = { frames, frameSvg, pathPoints, gif, available: () => !!loadResvg(), W, H };
+/* the same GIF with the event loop given a turn after every frame (rasterizing and encoding 16 frames at once pinned
+   the API's half core long enough for its health check to time out) */
+async function gifAsync(opts) {
+  const svgs = frames(opts);
+  const lib = loadResvg(); if (!lib) return { gif: null, frames: svgs.length, firstSvg: svgs[0], lastSvg: svgs[svgs.length - 1] };
+  const raster = [];
+  for (const svg of svgs) { raster.push(rasterize(svg)); await new Promise((r) => setImmediate(r)); }
+  return { gif: await encodeGifAsync(raster, { delayMs: opts.delayMs || 140, lastHoldMs: opts.lastHoldMs || 2200 }), frames: svgs.length, firstSvg: svgs[0], lastSvg: svgs[svgs.length - 1], width: raster[0].width, height: raster[0].height };
+}
+
+module.exports = { frames, frameSvg, pathPoints, gif, gifAsync, available: () => !!loadResvg(), W, H };

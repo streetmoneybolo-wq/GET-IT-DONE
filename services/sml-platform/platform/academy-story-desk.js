@@ -86,7 +86,7 @@ function createPolisher({ apiKey = '', model = 'gpt-5-mini', fetchImpl = fetch, 
 function createStoryDesk({
   universe, candles, gamma = null, shortData = null, finra = null, institutional = null, darkPool = null, smc = null, sentiment = null, earnings = null, playbook = null, direction = null, runner = null, company = null,
   heat = null, publisher = null, polisher = null, dm = null, ownerIds = [], store = null, marketState = null, now = Date.now, logger = () => {},
-  perTick = 36, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money'
+  perTick = 18, maxPerTick = 3, maxPerDay = 12, dedupeDays = 3, autopublish = false, windowFrom = 420, windowTo = 990, siteUrl = 'https://stockmarketloop.com', byline = 'Vaughn McNair', publication = 'Making Easy Money'
 } = {}) {
   let state = null, busy = false, cursor = 0;
   async function load() { if (!state) { try { state = (store && await store.read()) || null; } catch (_) { state = null; } if (!state || !state.written) state = { written: {}, log: [], day: '', count: 0 }; } return state; }
@@ -96,7 +96,7 @@ function createStoryDesk({
   async function bars1d(symbol) { const p = await timed(() => candles(symbol, '1D'), 10_000); return p && Array.isArray(p.bars) ? p.bars : []; }
 
   /* everything the engine scores for one symbol, from the Academy's services (each read raced against a timeout) */
-  async function candidate(row, { withHeat = true } = {}) {
+  async function candidate(row, { withHeat = true, withDarkPool = true } = {}) {
     const symbol = String(row.symbol).toUpperCase();
     const daily = await bars1d(symbol); if (daily.length < 30) return null;
     const last = daily[daily.length - 1];
@@ -108,7 +108,7 @@ function createStoryDesk({
       shortData ? timed(() => shortData(symbol), 8_000) : null,
       finra ? timed(() => finra.forSymbol(symbol, daily.slice(-3).map((b) => etDate(Number(b.t)))), 12_000) : null,
       institutional ? timed(() => institutional.get(symbol), 8_000) : null,
-      darkPool ? timed(() => darkPool(symbol), 12_000) : null,
+      darkPool && withDarkPool ? timed(() => darkPool(symbol), 12_000) : null,
       sentiment ? timed(() => sentiment.get(symbol), 10_000) : null,
       earnings ? timed(() => earnings(symbol), 6_000) : null,
       playbook ? timed(() => playbook(symbol), 10_000) : null,
@@ -139,7 +139,7 @@ function createStoryDesk({
     // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
     let media = null, gifInfo = null;
     try {
-      gifInfo = gifs.gif({ symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` });
+      gifInfo = await gifs.gifAsync({ symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` });
       if (gifInfo && gifInfo.gif && publisher && publisher.configured()) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
     } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
     if (media && media.url) html = `<figure class="sml-story-gif"><img src="${media.url}" alt="${c.symbol} price-action scenario to $${story.pt}" loading="eager"></figure>\n` + html;
@@ -188,9 +188,16 @@ function createStoryDesk({
          a full-universe heat check took longer than the gap between deploys and never finished */
       logger('info', 'story_desk_scan', { symbols: slice.length });
       const cands = [];
-      for (const r of slice) { const c = await candidate(r, { withHeat: false }).catch((error) => { logger('warn', 'story_candidate_failed', { symbol: r.symbol, error: String(error && error.message || error) }); return null; }); if (c) cands.push(c); }
+      // gentle on the API's half core: one symbol at a time with a pause between, the trade-record read (50k prints) and the
+      // news-heat check only for the ten strongest setups, and the loop given a turn after each
+      for (const r of slice) { const c = await candidate(r, { withHeat: false, withDarkPool: false }).catch((error) => { logger('warn', 'story_candidate_failed', { symbol: r.symbol, error: String(error && error.message || error) }); return null; }); if (c) cands.push(c); await new Promise((res) => setTimeout(res, 400)); }
       const strongest = [...new Set(engine.rankStories(cands).map((x) => x.symbol))].slice(0, 10);
-      for (const sym of strongest) { const c = cands.find((x) => x.symbol === sym); if (c && heat) { try { c.heat = await timed(() => heat.heatFor(sym, c.name), 25_000); } catch (_) { c.heat = null; } } }
+      for (const sym of strongest) {
+        const i = cands.findIndex((x) => x.symbol === sym); if (i < 0) continue;
+        const full = await candidate({ symbol: sym, price: cands[i].price, changePct: cands[i].changePct, relVol: cands[i].relVol, name: cands[i].name }, { withHeat: true, withDarkPool: true }).catch(() => null);
+        if (full) cands[i] = full;
+        await new Promise((res) => setTimeout(res, 400));
+      }
       const cutoff = t - dedupeDays * 86_400_000;
       for (const k of Object.keys(state.written)) if (state.written[k] < cutoff) delete state.written[k];
       const ranked = engine.rankStories(cands).filter((s) => !state.written[s.symbol + ':' + s.angle] && !Object.keys(state.written).some((k) => k.startsWith(s.symbol + ':') && state.written[k] > t - 86_400_000)).slice(0, Math.min(maxPerTick, maxPerDay - state.count));

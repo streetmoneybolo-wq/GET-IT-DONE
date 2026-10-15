@@ -95,4 +95,35 @@ function encodeGif(frames, { delayMs = 120, loop = 0, lastHoldMs = null } = {}) 
   return Buffer.from(bytes);
 }
 
-module.exports = { encodeGif, buildPalette, lzw };
+/* the same GIF, built a frame at a time with the event loop given a turn between frames */
+async function encodeGifAsync(frames, { delayMs = 120, loop = 0, lastHoldMs = null } = {}) {
+  if (!frames || !frames.length) throw new Error('no_frames');
+  const breathe = () => new Promise((r) => setImmediate(r));
+  const { width, height } = frames[0];
+  const pal = buildPalette(frames); await breathe();
+  const index = nearestIndexer(pal);
+  let bits = 1; while ((1 << bits) < pal.length) bits++;
+  const palSize = 1 << bits;
+  const bytes = [];
+  const u16 = (v) => bytes.push(v & 255, (v >> 8) & 255);
+  bytes.push(0x47, 0x49, 0x46, 0x38, 0x39, 0x61); u16(width); u16(height);
+  bytes.push(0x80 | ((bits - 1) << 4) | (bits - 1), 0, 0);
+  for (let i = 0; i < palSize; i++) { const c = pal[i] || [0, 0, 0]; bytes.push(c[0], c[1], c[2]); }
+  bytes.push(0x21, 0xFF, 11, ...Buffer.from('NETSCAPE2.0'), 3, 1); u16(loop); bytes.push(0);
+  const minCode = Math.max(2, bits);
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const d = Array.isArray(delayMs) ? delayMs[i] : (i === frames.length - 1 && lastHoldMs != null ? lastHoldMs : delayMs);
+    bytes.push(0x21, 0xF9, 4, 0x04, 0, 0, 0, 0);
+    const pos = bytes.length - 5; bytes[pos] = Math.round(d / 10) & 255; bytes[pos + 1] = (Math.round(d / 10) >> 8) & 255;
+    bytes.push(0x2C); u16(0); u16(0); u16(width); u16(height); bytes.push(0);
+    bytes.push(minCode);
+    const data = lzw(indexFrame(f, index), minCode);
+    for (let k = 0; k < data.length; k++) bytes.push(data[k]);
+    await breathe();
+  }
+  bytes.push(0x3B);
+  return Buffer.from(bytes);
+}
+
+module.exports = { encodeGif, encodeGifAsync, buildPalette, lzw };
