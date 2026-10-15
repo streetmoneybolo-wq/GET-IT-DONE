@@ -26,11 +26,11 @@
     + '#smc-card .opts{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;padding:7px 9px;border-bottom:1px solid #2a2547}#smc-card label{display:flex;gap:5px;align-items:center;color:#b9c8d1;font-weight:600;cursor:pointer}#smc-card input{accent-color:#8b6dff}'
     + '#smc-card ul{list-style:none;margin:0;padding:7px 9px 8px}#smc-card li{margin:0 0 6px;padding-left:9px;border-left:3px solid #4a5a66;color:#c9d6de}#smc-card li.up{border-color:#00d084}#smc-card li.down{border-color:#ff5470}#smc-card li.warn{border-color:#ffd166}'
     + '#smc-card small{display:block;padding:0 9px 8px;color:#6f8794;font-weight:500;font-size:.54rem}@media(max-width:700px){#smc-card{right:8px;top:auto;bottom:34px;max-height:44%}}';
-  css.textContent += '#smc-tip{position:fixed;z-index:2147483300;width:min(340px,calc(100vw - 16px));max-height:min(78vh,560px);overflow:hidden;pointer-events:none;background:rgba(7,12,20,.97);border:1px solid #6a4fa0;border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,.6);color:#dbe6ec;font:600 .66rem/1.42 system-ui,sans-serif;padding:0}'
-    + '#smc-tip h5{margin:0;padding:8px 11px;background:#17112a;border-bottom:1px solid #2a2547;font:800 .72rem system-ui,sans-serif;color:#e4d8ff;letter-spacing:.02em}#smc-tip .k{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:7px 11px;border-bottom:1px solid #1d2a36}#smc-tip .k span{color:#7f95a1;font-weight:600}#smc-tip .k b{color:#e6eef2;font-weight:700;text-align:right}'
-    + '#smc-tip .ev{list-style:none;margin:0;padding:6px 11px 4px}#smc-tip .ev li{margin:0 0 4px;padding-left:9px;border-left:3px solid #4a5a66;color:#c1cfd7;font-weight:500}#smc-tip .ev li.for{border-color:#00d084}#smc-tip .ev li.against{border-color:#ff5470}'
-    + '#smc-tip .cl{margin:4px 9px 8px;padding:8px 10px;border-radius:8px;background:#121a28;border:1px solid #2c3a52}#smc-tip .cl b{display:inline-block;margin-bottom:3px;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em}#smc-tip .cl.bullish b{color:#5df0b0}#smc-tip .cl.bearish b{color:#ff8ea1}#smc-tip .cl.neutral b{color:#ffd166}'
-    + '#smc-tip small{display:block;padding:0 11px 8px;color:#6f8794;font-weight:500;font-size:.54rem}@media(max-width:700px){#smc-tip{left:8px!important;right:8px;top:auto!important;bottom:8px;width:auto;max-height:46vh}}';
+  css.textContent += '#smc-card .focus{margin:6px 9px 8px;overflow:hidden;background:rgba(7,12,20,.97);border:1px solid #6a4fa0;border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,.6);color:#dbe6ec;font:600 .66rem/1.42 system-ui,sans-serif;padding:0}'
+    + '#smc-card .focus h5{margin:0;padding:8px 11px;background:#17112a;border-bottom:1px solid #2a2547;font:800 .72rem system-ui,sans-serif;color:#e4d8ff;letter-spacing:.02em}#smc-card .focus .k{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:7px 11px;border-bottom:1px solid #1d2a36}#smc-card .focus .k span{color:#7f95a1;font-weight:600}#smc-card .focus .k b{color:#e6eef2;font-weight:700;text-align:right}'
+    + '#smc-card .focus .ev{list-style:none;margin:0;padding:6px 11px 4px}#smc-card .focus .ev li{margin:0 0 4px;padding-left:9px;border-left:3px solid #4a5a66;color:#c1cfd7;font-weight:500}#smc-card .focus .ev li.for{border-color:#00d084}#smc-card .focus .ev li.against{border-color:#ff5470}'
+    + '#smc-card .focus .cl{margin:4px 9px 8px;padding:8px 10px;border-radius:8px;background:#121a28;border:1px solid #2c3a52}#smc-card .focus .cl b{display:inline-block;margin-bottom:3px;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em}#smc-card .focus .cl.bullish b{color:#5df0b0}#smc-card .focus .cl.bearish b{color:#ff8ea1}#smc-card .focus .cl.neutral b{color:#ffd166}'
+    + '#smc-card .focus small{display:block;padding:0 11px 8px;color:#6f8794;font-weight:500;font-size:.54rem}';
   css.textContent += '#smc-card .cl-overall{margin:7px 9px 0;padding:7px 9px;border-radius:8px;background:#121a28;border:1px solid #2c3a52;color:#c9d6de;font-weight:600}#smc-card .cl-overall b{font:800 .58rem ui-monospace,monospace;letter-spacing:.05em}#smc-card .cl-overall.bullish b{color:#5df0b0}#smc-card .cl-overall.bearish b{color:#ff8ea1}#smc-card .cl-overall.neutral b{color:#ffd166}';
   document.head.appendChild(css);
 
@@ -46,6 +46,7 @@
   }
   /* Expanded, the card pops up over the ticker's quote column (never over the chart); collapsed it is a small chip on the chart. Phones keep the bottom sheet. */
   function place() {
+    if (card.closest && card.closest('#chart-dock')) return; // the chart dock (academy-chart-dock.js) lays the card out beside the plot
     const reset = () => { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== stage) stage.appendChild(card); };
     if (!S.on) return;
     if (S.collapsed || window.matchMedia('(max-width:700px)').matches) { reset(); return; }
@@ -64,6 +65,7 @@
     card.innerHTML = '<header data-h="1"><b>SMART MONEY MAP</b><span>' + (S.collapsed ? 'show' : 'hide') + '</span></header>'
       + (S.collapsed ? '' : '<div class="opts">' + OPTS.map(([k, l]) => '<label><input type="checkbox" data-o="' + k + '"' + (S.o[k] ? ' checked' : '') + '>' + esc(l) + '</label>').join('') + '</div>'
         + (ov ? '<div class="cl-overall ' + esc(ov.bias) + '"><b>MAP READ: ' + esc(ov.bias.toUpperCase()) + ' · ' + esc(ov.confidence.toUpperCase()) + '</b> ' + esc(ov.purpose) + '</div>' : '')
+        + '<div class="focus">' + (S.focusHtml || '<small style="padding:8px 11px">Hover a zone on the chart (an imbalance, a block, equal highs or lows, a gap, the VWAP) and its full breakdown appears here.</small>') + '</div>'
         + '<ul>' + (lines.length ? lines.map((l) => '<li class="' + esc(l.tone) + '">' + esc(l.text) + '</li>').join('') : '<li>Not enough candles yet to read structure.</li>') + '</ul>'
         + '<small>Educational: this describes what price has done. It does not predict what it will do.</small>');
     place();
@@ -171,8 +173,9 @@
   }
 
   /* ---------- hover: the full details and a conclusion for whatever the pointer is on ---------- */
-  const tipEl = document.createElement('div'); tipEl.id = 'smc-tip'; tipEl.style.display = 'none'; document.body.appendChild(tipEl);
-  function hideTip() { if (tipEl) { tipEl.style.display = 'none'; } S.tipKey = ''; }
+  /* the details render inside the Smart-money map card (its focus box), never in a floating window over the chart */
+  function hideTip() { S.tipKey = ''; }
+  function symKey() { const M = window.smlChartModel && window.smlChartModel(); return M ? M.symbol + ':' + M.tf : ''; }
   function flow() { const L = window.smlLive, M = window.smlChartModel && window.smlChartModel(); const st = L && M && L.symbol === M.symbol ? L.stats : null; if (!st) return null; const buy = st.buy300 || st.buy60 || 0, sell = st.sell300 || st.sell60 || 0; return buy + sell > 0 ? { buy, sell } : null; }
   function tipHtml(r) {
     const facts = r.facts.map((f) => '<span>' + esc(f[0]) + '</span><b>' + esc(f[1]) + '</b>').join('');
@@ -181,17 +184,14 @@
     return '<h5>' + esc(r.title) + '</h5><div class="k">' + facts + '</div><ul class="ev">' + ev + '</ul>'
       + '<div class="cl ' + esc(c.bias) + '"><b>CONCLUSION: ' + esc(c.bias.toUpperCase()) + ' · ' + esc(c.confidence.toUpperCase()) + ' CONFIDENCE</b><br>' + esc(c.summary) + '</div><small>' + esc((r.notes[r.notes.length - 1]) || '') + '</small>';
   }
-  function showTip(hit, cx, cy) {
+  function showTip(hit) {
     const EX = window.SmlSmcExplain, M = window.smlChartModel && window.smlChartModel(); if (!EX || !M || !S.a) return;
     const key = hit.kind + ':' + hit.index + ':' + M.N;
-    if (key !== S.tipKey) {
-      const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow() }); if (!r) { hideTip(); return; }
-      tipEl.innerHTML = tipHtml(r); S.tipKey = key;
-    }
-    tipEl.style.display = 'block';
-    const vw = window.innerWidth, vh = window.innerHeight, w = tipEl.offsetWidth || 320, h = tipEl.offsetHeight || 260;
-    let x = cx + 16, y = cy + 14; if (x + w > vw - 8) x = Math.max(8, cx - w - 16); if (y + h > vh - 8) y = Math.max(8, vh - h - 8);
-    tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+    if (key === S.tipKey) return;
+    const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow() }); if (!r) { hideTip(); return; }
+    S.tipKey = key; S.focusHtml = tipHtml(r); S.focusFor = symKey();
+    if (S.collapsed) { S.collapsed = false; save(); paintCard(); return; } // a chip opens so the breakdown can be read
+    const box = card.querySelector('.focus'); if (box) box.innerHTML = S.focusHtml; else paintCard();
   }
   function hitAt(px, py) {
     let best = null;
@@ -201,12 +201,12 @@
   const onMove = (e) => {
     if (!S.on || !S.hits.length || (e.buttons && e.buttons !== 0) || (e.target && e.target.tagName !== 'CANVAS')) { if (S.tipKey) hideTip(); return; }
     const r = chartCanvas.getBoundingClientRect(), hit = hitAt(e.clientX - r.left, e.clientY - r.top);
-    if (hit) showTip(hit, e.clientX, e.clientY); else if (S.tipKey) hideTip();
+    if (hit) showTip(hit); else if (S.tipKey) hideTip();
   };
   // the chart's own interaction canvas sits on top of the base canvas inside the stage, so the stage hears the pointer
   stage.addEventListener('mousemove', onMove, { passive: true });
-  stage.addEventListener('mouseleave', hideTip, { passive: true });
-  stage.addEventListener('wheel', hideTip, { passive: true });
+  // the breakdown stays in the card after the pointer leaves (a member reads it at their own pace); a new symbol or interval clears it
+  window.addEventListener('sml-academy-market', () => { if (S.focusFor && S.focusFor !== symKey()) { S.focusHtml = ''; S.focusFor = ''; S.tipKey = ''; if (S.on) paintCard(); } });
   // touch: a tap on a zone opens its details, a tap anywhere else closes them
   let down = null;
   stage.addEventListener('pointerdown', (e) => { down = e.pointerType === 'touch' && e.target && e.target.tagName === 'CANVAS' ? { x: e.clientX, y: e.clientY, t: Date.now() } : null; }, { capture: true, passive: true });
@@ -214,9 +214,8 @@
     if (!down || !S.on) { down = null; return; } const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), quick = Date.now() - down.t < 450; down = null;
     if (moved > 8 || !quick) return;
     const r = chartCanvas.getBoundingClientRect(), hit = hitAt(e.clientX - r.left, e.clientY - r.top);
-    if (hit) { S.tipKey = ''; showTip(hit, e.clientX, e.clientY); tipEl.style.pointerEvents = 'auto'; } else hideTip();
+    if (hit) { S.tipKey = ''; showTip(hit); } else hideTip();
   }, { passive: true });
-  tipEl.addEventListener('click', hideTip);
 
   window.addEventListener('sml-chart-view', () => { if (S.on) draw(); });
   window.addEventListener('resize', () => { if (S.on) draw(); });
