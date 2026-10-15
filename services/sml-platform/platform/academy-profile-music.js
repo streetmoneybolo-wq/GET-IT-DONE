@@ -150,6 +150,7 @@
     if (!D.frame || !D.emb || e.source !== D.frame.contentWindow) return;
     let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (_) { return; } }
     if (!m || typeof m !== 'object') return;
+    D.seen = true;
     const on = () => { unblock(); if (!D.playing) setPlaying(true); if (E.mode !== 'clock') clock(D.song && D.song.bpm); };
     const off = () => { if (D.playing) setPlaying(false); idle(); };
     if (D.emb.provider === 'youtube') {
@@ -194,7 +195,7 @@
     if (D.iv) clearInterval(D.iv); D.iv = 0;
     if (D.audio) { try { D.audio.pause(); } catch (_) { /* fine */ } D.audio.remove(); }
     if (D.el) D.el.remove();
-    D.el = D.audio = D.frame = D.emb = D.song = D.bars = D.prog = null; D.playing = false; D.userPaused = false; D.ytState = -1;
+    D.el = D.audio = D.frame = D.emb = D.song = D.bars = D.prog = null; D.playing = false; D.userPaused = false; D.ytState = -1; D.seen = false;
     detach();
   }
   /* mount(song, ctx): ctx = { userId, token, accent, onState(playing) }; returns false when there is nothing the dock can play */
@@ -242,7 +243,7 @@
     } else {
       /* the embed asks to start itself (autoplay=1); YouTube and SoundCloud report back when it really plays, and only then does
          the beat clock run. If nothing plays within a few seconds the dock says so and how to start it. */
-      D.ytState = -1; idle(); setPlaying(false);
+      D.ytState = -1; D.seen = false; idle(); setPlaying(false);
       D.frame.addEventListener('load', () => {
         try {
           if (emb.provider === 'youtube') D.frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
@@ -251,7 +252,8 @@
         setTimeout(() => { if (!D.userPaused) { hostMsg(D.frame, emb.provider, 'play'); } }, 700);
         setTimeout(() => {
           if (D.playing || !D.el) return;
-          if (emb.provider === 'youtube' || emb.provider === 'soundcloud') block('▶ Tap to start the music');
+          if ((emb.provider === 'youtube' || emb.provider === 'soundcloud') && !D.seen) block('This page is not letting the ' + emb.label + ' player load (Discord blocks sites it has not allowed). Use a direct MP3 or M4A link for this song, which always plays here.');
+          else if (emb.provider === 'youtube' || emb.provider === 'soundcloud') block('▶ Tap to start the music');
           else block('Press ▶ in the ' + emb.label + ' player to start (' + emb.label + ' does not allow autoplay)');
         }, 3500);
       });
