@@ -14,7 +14,7 @@
   const GROUPS = [
     { key: 'overlays', label: 'CHART OVERLAYS', ids: ['depth-walls', 'depth-cost', 'smc-toggle'] },
     { key: 'flow', label: 'ORDER FLOW', ids: ['buysell-toggle', 'darkpool-toggle', 'shortsale-toggle'] },
-    { key: 'analysis', label: 'ANALYSIS', ids: ['mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'challenge-toggle'] },
+    { key: 'analysis', label: 'ANALYSIS', ids: ['mem-algo-toggle', 'sire-toggle', 'earnings-toggle', 'catalysts-toggle', 'challenge-toggle', 'paper-toggle'] },
   ];
   const ALL_IDS = GROUPS.flatMap((g) => g.ids);
 

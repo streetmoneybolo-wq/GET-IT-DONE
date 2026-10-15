@@ -49,6 +49,7 @@ const { createFilingsService, DEFAULT_SEC_UA } = require('./academy-filings');
 const { createFdaService } = require('./academy-fda');
 const { createCatalystRadar } = require('./academy-catalyst-radar');
 const { createChallenge } = require('./academy-challenge');
+const { createPaperService } = require('./academy-paper');
 const memAlgoEngine = require('./academy-mem-algo');
 const memSignalsLib = (() => { try { return require('./academy-mem-signals'); } catch (_) { return null; } })();
 const patternsLib = (() => { try { return require('./academy-patterns'); } catch (_) { return null; } })();
@@ -676,6 +677,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const earningsPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-panel.js'), 'utf8');
     const catalystsPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-catalysts-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const challengePanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-challenge-panel.js'), 'utf8'); } catch (_) { return ''; } })();
+    const paperPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-paper-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const sentimentPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sentiment-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const dataChip = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-data-chip.js'), 'utf8'); } catch (_) { return ''; } })();
     const toolbarNav = fs.readFileSync(pathModule.join(__dirname, 'academy-toolbar-nav.js'), 'utf8');
@@ -686,7 +688,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -3505,6 +3507,45 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Paper trading: MINE (per member) and CHALLENGE (everyone watches, the owner trades). Simulated throughout. */
+    if (path === '/academy-activity/paper' || path.startsWith('/academy-activity/paper/')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const owner = OWNER_IDS.includes(String(session.userId));
+      const pq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const sub = path.slice('/academy-activity/paper'.length);
+      const accountOf = (name) => (name === 'challenge' ? 'challenge' : 'u:' + session.userId);
+      const opts = (name) => (name === 'challenge' ? { cash: 1000, name: "Grandmaster-obi's Challenge", owner: OWNER_IDS[0] || '' } : { cash: 1000, name: 'My paper account', owner: String(session.userId) });
+      try {
+        if (request.method === 'GET' && sub === '') { const name = pq.get('account') === 'challenge' ? 'challenge' : 'me'; const snap = await academyPaper.snapshot(accountOf(name), opts(name)); sendJson(response, 200, { ...snap, account: name, me: { owner } }); return; }
+        if (request.method === 'GET' && sub === '/calendar') { const name = pq.get('account') === 'challenge' ? 'challenge' : 'me'; sendJson(response, 200, await academyPaper.month(accountOf(name), pq.get('month'))); return; }
+        if (request.method === 'GET' && sub === '/day') { const name = pq.get('account') === 'challenge' ? 'challenge' : 'me'; sendJson(response, 200, await academyPaper.day(accountOf(name), pq.get('date'))); return; }
+        if (request.method === 'GET' && sub === '/chain') {
+          if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+          const symbol = String(pq.get('symbol') || '').toUpperCase(); if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+          const rows = academyAlerts ? await academyAlerts.chainFor(symbol).catch(() => null) : null;
+          if (!Array.isArray(rows) || !rows.length) { sendJson(response, 503, { ok: false, error: 'chain_unavailable' }); return; }
+          const q = await paperQuote(symbol).catch(() => null);
+          const list = rows.map((r) => ({ expiry: String(r.expiry || r.expiration || '').slice(0, 10), strike: Number(r.strike), call: r.call ? { bid: Number(r.call.bid) || null, ask: Number(r.call.ask) || null, oi: Number(r.call.oi ?? r.call.open_interest) || 0 } : null, put: r.put ? { bid: Number(r.put.bid) || null, ask: Number(r.put.ask) || null, oi: Number(r.put.oi ?? r.put.open_interest) || 0 } : null })).filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.expiry) && r.strike > 0).sort((a, b) => a.expiry.localeCompare(b.expiry) || a.strike - b.strike);
+          sendJson(response, 200, { ok: true, symbol, spot: q && q.last ? q.last : null, expirations: [...new Set(list.map((r) => r.expiry))], rows: list }); return;
+        }
+        if (request.method === 'POST' && (sub === '/order' || sub === '/reset')) {
+          const raw = await readRequestBody(request, 4_096).catch(() => null);
+          let body = null; try { body = raw ? JSON.parse(typeof raw === 'string' ? raw : String(raw)) : null; } catch (_) { body = null; }
+          if (!body || typeof body !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
+          const name = body.account === 'challenge' ? 'challenge' : 'me';
+          if (name === 'challenge' && !owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+          if (sub === '/reset') { sendJson(response, 200, await academyPaper.reset(accountOf(name), opts(name))); return; }
+          if (body.kind === 'option' && session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required', message: 'Options paper trading is part of the full Academy.' }); return; }
+          const res = await academyPaper.order(accountOf(name), body, opts(name));
+          sendJson(response, res.ok ? 200 : 400, res); return;
+        }
+        sendJson(response, 404, { ok: false, error: 'not_found' });
+      } catch (error) { logger('error', 'academy_paper_failed', { error }); sendJson(response, 503, { ok: false, error: 'paper_unavailable' }); }
+      return;
+    }
+
     /* The challenge portfolio (simulated): any signed-in Academy session can watch it; only the owner can reset it. */
     if (request.method === 'GET' && path === '/academy-activity/challenge') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3868,6 +3909,32 @@ async function main() {
     const t0 = setTimeout(runTick, 90_000); if (t0.unref) t0.unref();
     const ti = setInterval(runTick, 5 * 60_000); if (ti.unref) ti.unref();
   }
+  /* Paper trading (academy-paper.js): SIMULATED accounts on real prices. Live quote from the Massive stream when the symbol is watched
+     (works pre/after-market), else the last 5-minute candle; option quotes from the chain the alerts desk already loads. */
+  const paperQuote = async (symbol) => {
+    const sym = String(symbol || '').toUpperCase();
+    if (academyMassive && typeof academyMassive.peek === 'function') { try { if (typeof academyMassive.watch === 'function') academyMassive.watch(sym); const p = academyMassive.peek(sym, 120_000); if (p && (p.quote || p.last > 0)) return { bid: p.quote ? p.quote.bid : null, ask: p.quote ? p.quote.ask : null, last: p.last > 0 ? p.last : null, live: true }; } catch (_) { /* fall through */ } }
+    const r = await sentimentCandles(sym, '5m').catch(() => null); const bars = r && Array.isArray(r.bars) ? r.bars : [];
+    return bars.length ? { last: Number(bars[bars.length - 1].c), live: false } : null;
+  };
+  const paperOptionQuote = async ({ symbol, expiry, strike, right }) => {
+    if (!academyAlerts) return null;
+    const rows = await academyAlerts.chainFor(String(symbol || '').toUpperCase()).catch(() => null); if (!Array.isArray(rows)) return null;
+    const row = rows.find((r) => String(r.expiry || r.expiration || '').slice(0, 10) === expiry && Math.abs(Number(r.strike) - Number(strike)) < 1e-6); if (!row) return null;
+    const leg = right === 'P' ? row.put : row.call; if (!leg) return null;
+    return { bid: Number(leg.bid) || null, ask: Number(leg.ask) || null, last: Number(leg.last) || null, oi: Number(leg.oi ?? leg.open_interest) || 0 };
+  };
+  const paperMarketDay = async (date) => {
+    const r = await sentimentCandles('SPY', '1D').catch(() => null); const bars = r && Array.isArray(r.bars) ? r.bars : [];
+    const i = bars.findIndex((b) => new Date(b.t).toISOString().slice(0, 10) === date); if (i < 1) return null;
+    const out = { ok: true, spyChangePct: Math.round((bars[i].c / bars[i - 1].c - 1) * 10000) / 100, spyClose: bars[i].c };
+    if (marketDirection && date === new Date().toISOString().slice(0, 10)) { const d = await marketDirection.get('day').catch(() => null); if (d && d.ok) { out.label = d.label; out.vix = d.vol && d.vol.level != null ? d.vol.level : null; } }
+    return out;
+  };
+  const academyPaper = createPaperService({
+    storeFor: (id) => createPgStateStore({ pool: database.pool, key: 'paper:' + id, defaultValue: () => null, logger: log }),
+    quote: paperQuote, optionQuote: paperOptionQuote, marketDay: paperMarketDay, logger: log
+  });
   /* Institutional flow for the Academy: moomoo order-size buckets (via the site bridge) + sweeps and blocks from the Massive tape. */
   const academyInstitutional = createInstitutionalService({
     capital: academyDataBridge && academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('capital', s); return r && r.ok && r.data && r.data.ok !== false ? (r.data.data || r.data) : null; } : null,
