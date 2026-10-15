@@ -294,12 +294,12 @@ function createClickAlertStore({ pool = null } = {}) {
   }
   /* this member's newest alert on a symbol (to know if its target has since been hit) */
   async function last({ userId, symbol, sinceMs, channelId = null }) {
-    const toRow = (r) => ({ side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at, messageId: r.messageId ? String(r.messageId) : '', channelId: r.channelId ? String(r.channelId) : '' });
+    const toRow = (r) => ({ side: r.side, entry: Number(r.entry), target: Number(r.target), at: r.at, messageId: r.messageId ? String(r.messageId) : '', channelId: r.channelId ? String(r.channelId) : '', guildId: r.guildId ? String(r.guildId) : '' });
     if (db) {
       const args = [userId, symbol, String(sinceMs)]; let where = 'discord_id = $1 AND symbol = $2 AND created_at > now() - ($3 || \' milliseconds\')::interval';
       if (channelId) { args.push(String(channelId)); where += ' AND channel_id = $' + args.length; }
-      const r = await db.query('SELECT side, entry, target, created_at, message_id, channel_id FROM academy_click_alerts WHERE ' + where + ' ORDER BY created_at DESC LIMIT 1', args);
-      const row = r.rows[0]; return row ? toRow({ side: row.side, entry: row.entry, target: row.target, at: new Date(row.created_at).getTime(), messageId: row.message_id, channelId: row.channel_id }) : null;
+      const r = await db.query('SELECT side, entry, target, created_at, message_id, channel_id, guild_id FROM academy_click_alerts WHERE ' + where + ' ORDER BY created_at DESC LIMIT 1', args);
+      const row = r.rows[0]; return row ? toRow({ side: row.side, entry: row.entry, target: row.target, at: new Date(row.created_at).getTime(), messageId: row.message_id, channelId: row.channel_id, guildId: row.guild_id }) : null;
     }
     const cut = Date.now() - sinceMs; let hit = null;
     for (const r of mem) if (r.userId === userId && r.symbol === symbol && r.at > cut && (!channelId || r.channelId === String(channelId)) && (!hit || r.at >= hit.at)) hit = toRow(r);
@@ -508,20 +508,23 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return { ok: true, symbol: sym, price, expirations: exps, loaded: [...new Set(rows.map((r) => r && r.expiry).filter(Boolean))].sort(), expiry: exp || null, rows: list };
   }
 
-  /* Did this member already alert this ticker, and has price since reached that alert's target? Then a higher target is a PT SMASHED update. */
+  /* Did this member already alert this ticker, and has price since reached that alert's target? Then a higher target is a PT SMASHED update.
+     The update carries where that earlier alert lives (guild, channel, message) so it can go to the same channel as a reply to it. */
   const SMASH_WINDOW_MS = 21 * 86_400_000;
+  const previousAlert = (userId, symbol) => (store.last ? store.last({ userId, symbol: String(symbol || '').toUpperCase(), sinceMs: SMASH_WINDOW_MS }).catch(() => null) : Promise.resolve(null));
+  const whereOf = (prev) => (prev ? { prevGuildId: prev.guildId || '', prevChannelId: prev.channelId || '', prevMessageId: prev.messageId || '' } : { prevGuildId: '', prevChannelId: '', prevMessageId: '' });
   async function detectSmashed(userId, analysis, mode, contract) {
     if (contract || mode === 'new') return null;
-    const prev = store.last ? await store.last({ userId, symbol: analysis.symbol, sinceMs: SMASH_WINDOW_MS }).catch(() => null) : null;
+    const prev = await previousAlert(userId, analysis.symbol);
     const long = analysis.side === 'long';
     if (prev && prev.side === analysis.side && Number.isFinite(prev.target)) {
       const further = long ? analysis.target > prev.target : analysis.target < prev.target;
       const bars = (analysis.__bars && ((analysis.__bars.m5 && analysis.__bars.m5.length ? analysis.__bars.m5 : analysis.__bars.daily) || [])) || [];
       const after = bars.filter((b) => b.t >= prev.at - 300_000);
       const touched = after.some((b) => (long ? b.h >= prev.target : b.l <= prev.target)) || (long ? analysis.entry >= prev.target : analysis.entry <= prev.target);
-      if (further && touched) return { prevTarget: prev.target, prevAt: prev.at };
+      if (further && touched) return { prevTarget: prev.target, prevAt: prev.at, ...whereOf(prev) };
     }
-    return mode === 'smashed' ? { prevTarget: prev ? prev.target : null, prevAt: prev ? prev.at : null, forced: true } : null;
+    return mode === 'smashed' ? { prevTarget: prev ? prev.target : null, prevAt: prev ? prev.at : null, forced: true, ...whereOf(prev) } : null;
   }
   /* a stop with a wide buffer for fast movers: 7% to 10% away from the live price */
   function wideStop(analysis) {
@@ -592,6 +595,12 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, channelId, mention, images: wantImages = true, asMe = true, via = '', replyTo = '' } = {}) {
     const userId = String(user.userId || '');
     if (via === 'site') return { ok: false, status: 410, code: 'site_publishing_unavailable', detail: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.' };
+    /* a PT SMASHED / new-PT update with no channel chosen goes where the member's earlier alert on the stock was posted, as a reply to it */
+    let routed = false;
+    if (!contract && mode !== 'new' && !SNOWFLAKE.test(String(channelId || ''))) {
+      const prev = await previousAlert(userId, symbol);
+      if (prev && SNOWFLAKE.test(String(prev.channelId || ''))) { channelId = prev.channelId; routed = true; if (!replyTo && prev.messageId) replyTo = prev.messageId; }
+    }
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
     const ent = await entitlement(userId);
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
@@ -608,6 +617,8 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
     analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
+    // an update posted into the channel of the earlier alert replies to that alert unless the member pointed at another post
+    if (analysis.smashed && !replyTo && analysis.smashed.prevMessageId && analysis.smashed.prevChannelId === String(channelId)) replyTo = analysis.smashed.prevMessageId;
     const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return opt.error;
     const cat = await catalystsFor(analysis, opt && opt.oa);
@@ -647,7 +658,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     }
     await store.record({ userId, guildId: where.guildId, channelId: String(channelId), messageId: posted.id, symbol: dupKey, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch((error) => logger('warn', 'click_alert_record_failed', { error: String(error.message || error) }));
     logger('info', 'click_alert_sent', { symbol: analysis.symbol, horizon: analysis.horizon, guildId: where.guildId });
-    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId, repliedTo: reply.id || null, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, catalysts: cat ? { verdict: cat.verdict, headline: cat.headline } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
+    return { ok: true, postedAs, messageId: posted.id, channelId: posted.channelId || String(channelId), guildId: where.guildId || '', routed, repliedTo: reply.id || null, imagesAttached: files.length, imagesSkipped: skipped, mentioned: ping, mentionRequestedButNotAllowed: wantPing && !ping, contract: opt ? { name: opt.oa.contract.name, price: opt.oa.contract.mid } : null, smashed: !!analysis.smashed, catalysts: cat ? { verdict: cat.verdict, headline: cat.headline } : null, analysis: { horizon: analysis.horizon, horizonLabel: analysis.horizonLabel, entry: analysis.entry, target: analysis.target, stop: analysis.stop, autoTarget: !!analysis.autoTarget, targetBasis: analysis.targetBasis || null } };
   }
 
   /* A reply to an earlier post on the same stock. A bot post carries a real Discord reply (message_reference); a webhook post cannot, so it

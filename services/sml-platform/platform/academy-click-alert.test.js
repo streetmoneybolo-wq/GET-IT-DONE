@@ -290,6 +290,25 @@ test('PT SMASHED needs the earlier target reached and a further target; the memb
   assert.ok(forced.analysis.smashed.forced); assert.match(forced.analysis.alertText, /𝐏𝐓 𝐒𝐌𝐀𝐒𝐇𝐄𝐃/);
 });
 
+test('a PT SMASHED update knows where the earlier alert lives, goes to that channel when none is chosen, and replies to it', async () => {
+  const store = CA.createClickAlertStore(), posts = [];
+  await prior(store, { messageId: '600000000000000006' });
+  const svc = smashService(store, posts);
+  const p = await svc.preview(USER, { symbol: 'TEST', target: lastClose * 1.08 });
+  assert.deepEqual([p.analysis.smashed.prevGuildId, p.analysis.smashed.prevChannelId, p.analysis.smashed.prevMessageId], [GUILD, CHAN, '600000000000000006']);
+  const out = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', target: lastClose * 1.08, mode: 'smashed' });
+  assert.equal(out.ok, true); assert.equal(out.routed, true); assert.equal(out.channelId, CHAN); assert.equal(out.repliedTo, '600000000000000006');
+  assert.deepEqual(posts[0].body.message_reference, { message_id: '600000000000000006', channel_id: CHAN, fail_if_not_exists: false });
+  // the member picked the same channel by hand: still a reply; a different channel: no reply, nothing forced
+  const out2 = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', target: lastClose * 1.1, mode: 'smashed', channelId: CHAN });
+  assert.equal(out2.routed, false); assert.equal(out2.repliedTo, out.messageId, 'replies to the newest post on the stock in that channel (the update just sent)');
+  const other = '123456789012345678';
+  const out3 = await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', target: lastClose * 1.12, mode: 'smashed', channelId: other });
+  assert.equal(out3.repliedTo, null);
+  // "always a new alert" with no channel is still an error, not a silent reroute
+  assert.equal((await svc.send({ userId: USER, displayName: 'Ana' }, { symbol: 'TEST', target: lastClose * 1.08, mode: 'new' })).code, 'invalid_channel');
+});
+
 test('the wide-stop layout matches the member\'s template and a short flips Above/Below', () => {
   const F = require('./academy-alert-format');
   const t = F.formatPtSmashed({ ticker: 'QTEX', newPt: 2.44, plus: true, mention: true, stopLow: 1.98, stopHigh: 2.05, side: 'long' });

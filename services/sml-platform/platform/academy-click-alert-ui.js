@@ -293,7 +293,9 @@
       const canAsMe = !!(ch && ch.asMe);
       html += '<select data-ca="guild"><option value="">Choose a server…</option>' + S.guilds.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === S.guildId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select>';
       html += '<select data-ca="channel"' + (S.guildId ? '' : ' disabled') + '><option value="">' + (S.guildId ? (S.channels.length ? 'Choose a channel…' : 'No channel where you and the app can post') : 'Pick a server first') + '</option>' + S.channels.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === S.channelId ? ' selected' : '') + '>#' + esc(c.name) + (c.category ? ' · ' + esc(c.category) : '') + '</option>').join('') + '</select>';
-      html += '<div class="msg ' + (d.smashed ? 'ok' : 'info') + '">' + (d.smashed ? (d.smashed.prevTarget ? 'Your earlier alert on ' + esc(d.symbol) + ' hit its $' + price(d.smashed.prevTarget) + ' target. This posts as PT SMASHED with the new target.' : 'This posts as PT SMASHED.') : 'Posts as a new alert.') + '</div>'
+      const rch = S.route ? S.channels.find((c) => c.id === S.route.channelId) : null;
+      html += '<div class="msg ' + (d.smashed ? 'ok' : 'info') + '">' + (d.smashed ? (d.smashed.prevTarget ? 'Your earlier alert on ' + esc(d.symbol) + ' hit its $' + price(d.smashed.prevTarget) + ' target. This posts as PT SMASHED with the new target.' : 'This posts as PT SMASHED.') : 'Posts as a new alert.')
+        + (S.route ? (routeOn() ? ' It goes to <b>#' + esc(rch ? rch.name : 'the same channel') + '</b>, where that alert was posted, as a reply to it. No channel hunting.' : S.route.ok ? ' You changed the channel: it posts there as a fresh message, not a reply.' : ' ' + esc(S.route.why || '')) : '') + '</div>'
         + '<select data-ca="mode" aria-label="Alert type"><option value="auto"' + (S.mode === 'auto' ? ' selected' : '') + '>Alert type: automatic</option><option value="new"' + (S.mode === 'new' ? ' selected' : '') + '>Always a new alert</option><option value="smashed"' + (S.mode === 'smashed' ? ' selected' : '') + '>PT SMASHED update</option></select>';
       html += '<label class="chk"><input type="checkbox" data-ca="ping"' + (pingOn() ? ' checked' : '') + (ch && ch.mentionEveryone ? '' : ' disabled') + '> Ping @everyone' + (ch && !ch.mentionEveryone ? ' (not allowed in this channel)' : '') + '</label>';
       if (S.scn) html += '<label class="chk"><input type="checkbox" data-ca="images"' + (S.images ? ' checked' : '') + (S.scn.pngAvailable ? '' : ' disabled') + '> Attach the two scenario charts' + (S.scn.pngAvailable ? '' : ' (picture engine unavailable)') + '</label>';
@@ -340,8 +342,25 @@
     if (!r.ok && auto) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
     if (!r.ok && S.contract && /^(contract_|options_)/.test(String(r.error || r.code || ''))) { const why = explainErr(r); S.contract = null; await reading(); S.msg = why; S.msgTone = 'err'; render(); return; }
     if (!r.ok) { S.msg = explainErr(r); S.msgTone = 'err'; if (r.entitlement) S.status = Object.assign({ ok: true }, r.entitlement, { guilds: S.guilds }); S.data = null; S.entry = null; render(); draw(); return; }
-    S.data = r.analysis; S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = ''; render(); draw();
+    S.data = r.analysis; S.scn = r.scenarios && r.scenarios.available ? r.scenarios : null; S.entry = r.analysis.entry; S.side = r.analysis.side; S.msg = '';
+    await routeToEarlier(r.analysis);
+    render(); draw();
   }
+  /* a PT SMASHED update goes where the member's earlier alert on the stock was posted, as a reply to it: the server and channel are
+     picked here so the member never hunts for the right channel (they can still change it; a different channel posts without the reply) */
+  S.route = null;
+  async function routeToEarlier(a) {
+    const sm = a && a.smashed; S.route = null;
+    if (!sm || !sm.prevChannelId) return;
+    S.route = { guildId: String(sm.prevGuildId || ''), channelId: String(sm.prevChannelId), messageId: String(sm.prevMessageId || ''), prevTarget: sm.prevTarget, ok: false, why: '' };
+    if (S.route.guildId && S.route.guildId !== S.guildId) {
+      if (!S.guilds.some((g) => g.id === S.route.guildId)) { S.route.why = 'The earlier alert was posted in a server the app no longer lists for you.'; return; }
+      S.guildId = S.route.guildId; S.channels = []; await loadChannels();
+    }
+    if (!S.channels.some((c) => c.id === S.route.channelId)) { S.route.why = 'The earlier alert’s channel is not one you and the app can post in now.'; return; }
+    S.channelId = S.route.channelId; S.route.ok = true; S.sent = false;
+  }
+  const routeOn = () => !!(S.route && S.route.ok && S.channelId === S.route.channelId);
 
   /* a click (not a drag or a pinch) on the plot sets the target */
   let down = null;
@@ -387,10 +406,10 @@
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
       const auto = !!(S.autoTarget && S.contract);
-      const r = await api('send', Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}));
+      const r = await api('send', Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId ? { replyTo: S.route.messageId } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}));
       S.busy = false;
       if (r.ok && auto && r.analysis && Number.isFinite(+r.analysis.target) && +r.analysis.target !== +S.target) { S.target = +r.analysis.target; draw(); }
-      if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
+      if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.repliedTo ? ' as a reply to your earlier alert' : '') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
       else { S.msg = explainErr(r); S.msgTone = 'err'; }
       render();
     }
