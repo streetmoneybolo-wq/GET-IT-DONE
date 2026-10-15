@@ -46,8 +46,9 @@ function readDarkPool(d, { history = [], price = null, vwap = null } = {}) {
   /* 2. versus yesterday */
   if (y && y.largest && big) {
     const r = bigVsY;
-    steps.push({ k: 'VS YESTERDAY', text: `Yesterday's biggest was ${whole(y.largest.size)} shares at ${px(y.largest.price)} (${money(y.largest.notional)}). Today's is ${r >= 1.15 || r <= 0.87 ? xText(r) + (r >= 1.15 ? ' bigger' : ' smaller') : 'about the same size'}${biggestInWindow ? ', and the largest print in the last ' + prior.length + ' sessions' : ''}. Block volume for the session is ${blocksVsY == null ? 'not comparable yet' : xText(blocksVsY) + (blocksVsY >= 1.15 ? ' more' : blocksVsY <= 0.87 ? ' less' : ' yesterday\'s')}.` });
+    steps.push({ k: 'VS YESTERDAY', text: `Yesterday's biggest was ${whole(y.largest.size)} shares at ${px(y.largest.price)} (${money(y.largest.notional)}${y.afterHours ? ', reported after the close' : ''}). Today's is ${r >= 1.15 || r <= 0.87 ? xText(r) + (r >= 1.15 ? ' bigger' : ' smaller') : 'about the same size'}${biggestInWindow ? ', and the largest print in the last ' + prior.length + ' sessions' : ''}. Block volume for the session is ${blocksVsY == null ? 'not comparable yet' : xText(blocksVsY) + (blocksVsY >= 1.15 ? ' more' : blocksVsY <= 0.87 ? ' less' : ' yesterday\'s')}.` });
   } else if (!y) steps.push({ k: 'VS YESTERDAY', text: 'No earlier session on record for this symbol yet; the comparison starts tomorrow.' });
+  else if (y.largest) steps.push({ k: 'VS YESTERDAY', text: `Yesterday's biggest was ${whole(y.largest.size)} shares at ${px(y.largest.price)} (${money(y.largest.notional)})${y.afterHours ? ', reported after the close' : ''}. Nothing of block size has printed today yet.` });
   /* 3. the price it printed at */
   if (big && ref) {
     const diff = (big.price - ref) / ref * 100;

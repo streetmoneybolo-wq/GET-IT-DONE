@@ -51,10 +51,18 @@ function createDarkPoolMemory({ store = null, logger = () => {}, now = Date.now,
     const keep = (b) => !Number.isFinite(b.t) || b.t >= sinceMs;
     const list = ((summary.blocks && summary.blocks.list) || []).filter(keep);
     const largest = (summary.largest || []).filter(keep);
-    const removed = ((summary.blocks && summary.blocks.list) || []).length - list.length + (summary.largest || []).length - largest.length;
-    if (!removed) return summary;
+    const dropped = ((summary.blocks && summary.blocks.list) || []).filter((b) => !keep(b)).concat((summary.largest || []).filter((b) => !keep(b) && !((summary.blocks && summary.blocks.list) || []).some((x) => x.t === b.t && x.size === b.size)));
+    if (!dropped.length) return summary;
+    dropped.sort((a, b) => (b.notional || 0) - (a.notional || 0));
     const volume = list.reduce((n, b) => n + (b.size || 0), 0);
-    return { ...summary, largest, blocks: { ...(summary.blocks || {}), list, count: list.length, volume, sharePct: summary.offVolume > 0 ? Math.round(volume / summary.offVolume * 1000) / 10 : null, note: "Prints reported before 4:00 AM ET today (yesterday's after-hours) are left out of today's blocks." } };
+    const afterHours = { count: dropped.length, volume: dropped.reduce((n, b) => n + (b.size || 0), 0), notional: dropped.reduce((n, b) => n + (b.notional || 0), 0), largest: dropped.slice(0, 3), note: "Reported after yesterday's close, before 4:00 AM ET: counted as yesterday's session. Large end-of-day crosses on an ETF are usually benchmark (closing-price) trades, not a bet on direction." };
+    return { ...summary, largest, afterHours, blocks: { ...(summary.blocks || {}), list, count: list.length, volume, sharePct: summary.offVolume > 0 ? Math.round(volume / summary.offVolume * 1000) / 10 : null, note: "Prints reported before 4:00 AM ET today (yesterday's after-hours) are left out of today's blocks." } };
+  }
+  /* the previous weekday as YYYY-MM-DD (after-hours prints seen in the pre-market belong to it) */
+  function prevTradingDate(date) {
+    const t = Date.parse(String(date) + 'T12:00:00Z'); if (!Number.isFinite(t)) return null;
+    let d = new Date(t - 86_400_000); while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d = new Date(d.getTime() - 86_400_000);
+    return d.toISOString().slice(0, 10);
   }
   /* remember today's footprint, then return the summary with its plain-English read against earlier sessions */
   async function annotate(symbol, summary, { date, price = null, sinceMs = null } = {}) {
@@ -63,11 +71,12 @@ function createDarkPoolMemory({ store = null, logger = () => {}, now = Date.now,
     const view = sessionView(summary, sinceMs);
     const fp = footprint(view, { date, price });
     if (fp) remember(symbol, date, fp);
+    if (view.afterHours && view.afterHours.largest[0]) { const y = prevTradingDate(date); const b = view.afterHours.largest[0]; if (y) remember(symbol, y, { date: y, offSharePct: null, offVolume: null, blockCount: view.afterHours.count, blockVolume: view.afterHours.volume, blockNotional: view.afterHours.notional, largest: { price: b.price, size: b.size, notional: b.notional, dir: b.dir }, lean: null, price: null, full: null, afterHours: true }); }
     const read = readDarkPool(view, { history: history(symbol, date), price });
     void save();
     return { ...view, read, vsYesterday: read ? read.vsYesterday : null };
   }
-  return { load, save, remember, history, annotate, snapshot: () => state };
+  return { load, save, remember, history, annotate, prevTradingDate, snapshot: () => state };
 }
 
 module.exports = { createDarkPoolMemory };

@@ -35,7 +35,12 @@ test("a block reported before 4:00 AM ET belongs to yesterday: it leaves today's
   const d = await m.annotate('SPY', sum, { date: '2026-10-15', price: 769, sinceMs: 1000 });
   assert.deepEqual(d.largest, [today]); assert.equal(d.blocks.count, 1); assert.equal(d.blocks.volume, 40_000); assert.match(d.blocks.note, /before 4:00 AM ET/);
   assert.match(d.read.headline, /\$30\.8M block at \$769\.00/);
-  assert.equal(m.history('SPY')[0].largest.size, 40_000);
+  assert.equal(m.history('SPY', '2026-10-15')[0].date, '2026-10-14', 'the dropped print is remembered as yesterday');
+  assert.deepEqual([m.history('SPY', '2026-10-15')[0].largest.size, m.history('SPY', '2026-10-15')[0].afterHours], [500_000, true]);
+  assert.equal(m.history('SPY')[1].largest.size, 40_000);
+  assert.equal(d.afterHours.count, 1); assert.equal(d.afterHours.largest[0].size, 500_000); assert.match(d.afterHours.note, /benchmark/);
+  assert.match(d.read.steps[1].text, /Yesterday's biggest was 500,000 shares at \$777\.00 \(\$389M, reported after the close\)\. Today's is under half smaller/);
+  assert.equal(m.prevTradingDate('2026-10-19'), '2026-10-16', 'Monday looks back to Friday');
   const same = await m.annotate('QQQ', { ...sum, blocks: { ...sum.blocks, list: [today] }, largest: [today] }, { date: '2026-10-15', sinceMs: 1000 });
   assert.ok(!same.blocks.note, 'nothing removed, nothing said');
 });
