@@ -208,7 +208,8 @@ function createStoryDesk({
         const built = await produce(s, c);
         const filed = await file(s, c, built);
         results.push({ ...filed, frames: built.gifFrames });
-        state.written[s.symbol + ':' + s.angle] = t; state.count += 1;
+        // a filing that failed (credential rejected, site down) is not "written": the next tick tries the name again
+        if (!filed.error) { state.written[s.symbol + ':' + s.angle] = t; state.count += 1; }
         note(`${s.symbol} ${s.angle} PT $${s.pt} rank ${s.rank}: ${filed.error || (filed.published ? 'published' : 'draft')} ${filed.url || ''}`, { symbol: s.symbol, angle: s.angle, letterId: filed.letterId });
       }
       await save();
