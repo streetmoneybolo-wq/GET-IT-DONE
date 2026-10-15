@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.8
+ * Version: 1.1.9
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.8' );
+define( 'SML_DS_VERSION', '1.1.9' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -182,6 +182,13 @@ foreach ( array( 'the_title', 'the_content', 'the_excerpt', 'get_the_excerpt', '
 	add_filter( $sml_ds_filter, 'sml_ds_dashes_front', 20 );
 }
 add_filter( 'document_title_parts', 'sml_ds_dashes_title_parts', 20 );
+add_filter( 'pre_get_document_title', 'sml_ds_dashes_front', 999 );
+/* every rendered block (block themes build the whole page from blocks: titles, content, query loops, site title) */
+add_filter( 'render_block', 'sml_ds_dashes_block', 999, 2 );
+function sml_ds_dashes_block( $html, $block ) { return is_admin() ? $html : sml_ds_dashes( $html ); }
+/* trace: which hooks are still in place when the footer prints */
+add_action( 'wp_footer', 'sml_ds_hook_trace', 9999 );
+function sml_ds_hook_trace() { if ( is_admin() ) { return; } echo "\n<!-- sml-ds hooks content=" . (int) has_filter( 'the_content', 'sml_ds_dashes_front' ) . ' block=' . (int) has_filter( 'render_block', 'sml_ds_dashes_block' ) . ' title=' . (int) has_filter( 'the_title', 'sml_ds_dashes_front' ) . ' ob=' . (int) ob_get_level() . ' obhandlers=' . esc_html( implode( ',', array_map( function ( $st ) { return isset( $st['name'] ) ? $st['name'] : '?'; }, ob_get_status( true ) ) ) ) . " -->\n"; } // phpcs:ignore
 function sml_ds_dashes_title_parts( $parts ) { foreach ( $parts as $k => $v ) { $parts[ $k ] = sml_ds_dashes( $v ); } return $parts; }
 
 /* A body class so the stylesheet can tell theme pages from app screens. */
