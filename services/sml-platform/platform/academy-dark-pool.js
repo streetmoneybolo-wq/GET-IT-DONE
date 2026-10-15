@@ -10,6 +10,7 @@
   const $ = (id) => document.getElementById(id);
   const num = (v, d = 2) => (Number.isFinite(v) ? Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '–');
   const whole = (v) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : '–');
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const sym = () => String(new URLSearchParams(location.search).get('symbol') || 'SPY').toUpperCase();
 
   const KEY = 'sml-dark-pool-v1';
@@ -27,6 +28,7 @@
     + '.academy-darkpool{margin-top:10px;border-top:1px solid #1b3540;padding-top:8px;font:600 .62rem system-ui,sans-serif;color:#c7d5dc}.academy-darkpool h4{margin:0 0 6px;font:800 .58rem ui-monospace;color:#86a2b0;letter-spacing:.06em}'
     + '.academy-darkpool .kv{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:6px 0;font:600 .6rem ui-monospace,monospace}.academy-darkpool .kv span:nth-child(odd){color:#8fa6b3}'
     + '.academy-darkpool .row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;font:.6rem ui-monospace;border-bottom:1px solid rgba(42,66,78,.35);color:#c99ee6}.academy-darkpool .row i{font-style:normal;color:#6f8794}'
+    + '.academy-darkpool .read{margin:6px 0;padding:6px 8px;border:1px solid rgba(201,158,230,.35);border-left-width:3px;border-radius:6px;background:rgba(201,158,230,.06)}.academy-darkpool .read b{display:block;font:700 .62rem ui-monospace,monospace;color:#e6d3f3;margin-bottom:4px}.academy-darkpool .read p{margin:3px 0;font:.6rem/1.35 ui-monospace,monospace;color:#c8d6de}.academy-darkpool .read p i{font-style:normal;font-weight:700;color:#c99ee6;margin-right:4px}.academy-darkpool .read.unusual{border-left-color:#ff9f43}.academy-darkpool .read.heavy{border-left-color:#c99ee6}.academy-darkpool .read.quiet{border-left-color:#6f8794}.academy-darkpool .read details{margin-top:4px}.academy-darkpool .read summary{cursor:pointer;font:600 .56rem ui-monospace,monospace;color:#8fa6b3}.academy-darkpool .read small{display:block;color:#8fa6b3;margin:2px 0}.academy-darkpool .row .tag{color:#ff9f43;margin-left:4px}'
     + '.academy-darkpool small{display:block;margin-top:5px;color:#6f8794;font-weight:500;font-size:.54rem;line-height:1.35}';
   document.head.appendChild(style);
 
@@ -116,7 +118,13 @@
       + '<span>Typical share</span><span>about ' + d.typicalSharePct + '%</span>'
       + (d.blocks && d.blocks.count ? '<span>Blocks (' + d.blocks.rule + ')</span><span>' + whole(d.blocks.count) + ' · ' + whole(d.blocks.volume) + ' sh · ' + (d.blocks.sharePct == null ? '–' : d.blocks.sharePct.toFixed(0) + '% of off-exchange') + '</span>' : '<span>Blocks (' + (d.blocks ? d.blocks.rule : '10,000+ sh') + ')</span><span>none in this window</span>')
       + (d.lean ? '<span>Lean (tick rule)</span><span>' + (d.lean.offExchange > 0.25 ? 'buy side' : d.lean.offExchange < -0.25 ? 'sell side' : 'balanced') + (d.lean.lit != null ? ' · lit ' + (d.lean.lit > 0.25 ? 'buy side' : d.lean.lit < -0.25 ? 'sell side' : 'balanced') : '') + '</span>' : '') + '</div>';
-    if (d.largest && d.largest.length) h += '<h4 style="margin-top:6px">LARGEST OFF-EXCHANGE PRINTS</h4>' + d.largest.slice(0, 5).map((b) => '<div class="row"><i>' + hhmm(b.t) + '</i><span>$' + num(b.price) + ' × ' + whole(b.size) + ' · $' + money(b.notional) + (b.dir === 'B' ? ' ▲' : b.dir === 'S' ? ' ▼' : '') + '</span></div>').join('');
+    if (d.read) {
+      h += '<div class="read ' + String(d.read.verdict || '').toLowerCase() + '"><b>' + esc(d.read.headline) + '</b>'
+        + (d.read.steps || []).map((st, i) => '<p><i>' + (i + 1) + '. ' + esc(st.k) + '</i>' + esc(st.text) + '</p>').join('')
+        + '<details><summary>HOW TO READ THESE PRINTS</summary>' + (d.read.glossary || []).map((g) => '<small>' + esc(g) + '</small>').join('') + '</details></div>';
+    }
+    const yx = d.read && d.read.vsYesterday && d.read.vsYesterday.largestRatio != null ? d.read.vsYesterday.largestRatio : null;
+    if (d.largest && d.largest.length) h += '<h4 style="margin-top:6px">LARGEST OFF-EXCHANGE PRINTS</h4>' + d.largest.slice(0, 5).map((b, i) => '<div class="row"><i>' + hhmm(b.t) + '</i><span>$' + num(b.price) + ' × ' + whole(b.size) + ' · $' + money(b.notional) + (b.dir === 'B' ? ' ▲' : b.dir === 'S' ? ' ▼' : '') + (i === 0 && yx != null && (yx >= 1.15 || yx <= 0.87) ? '<em class="tag">' + (yx >= 1.95 ? yx.toFixed(1).replace(/\.0$/, '') + 'x' : yx >= 1.15 ? '+' + Math.round((yx - 1) * 100) + '%' : '-' + Math.round((1 - yx) * 100) + '%') + ' vs yesterday\'s biggest</em>' : '') + '</span></div>').join('');
     if (d.levels && d.levels.length) h += '<h4 style="margin-top:6px">WHERE IT PRINTED</h4>' + d.levels.map((l) => '<div class="row"><i>$' + num(l.price) + '</i><span>' + whole(l.volume) + ' sh · ' + whole(l.prints) + ' prints · ' + l.lean + '</span></div>').join('');
     if (d.byHour && d.byHour.length > 1) h += '<h4 style="margin-top:6px">OFF-EXCHANGE SHARE BY HOUR</h4>' + d.byHour.map((x) => '<div class="row"><i>' + x.hour + '</i><span>' + (x.offSharePct == null ? '–' : x.offSharePct.toFixed(0) + '%') + ' of ' + whole(x.volume) + ' sh</span></div>').join('');
     h += '<small>' + d.note + ' ' + d.caveat + '</small>';

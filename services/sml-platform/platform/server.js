@@ -95,6 +95,7 @@ const { createMentionService } = require('./academy-mentions');
 const { createSignalRadar } = require('./academy-signal-radar');
 const { createDmNotifier } = require('./academy-notify-dm');
 const { sessionDarkPool } = require('./academy-dark-pool-session');
+const { createDarkPoolMemory } = require('./academy-dark-pool-memory');
 const { createDiscordDmClient } = require('./dispute-notifier');
 const { createScreenerService, HORIZONS: SCREENER_HORIZONS } = require('./academy-screener');
 const { WebSocketServer } = require('ws');
@@ -1763,7 +1764,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
-  getCandleRecap = () => null, getStoryDesk = () => null,
+  getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -2782,7 +2783,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         // today's 09:30 ET as a timestamp: the ET wall clock the market clock reports, shifted by the current ET offset
         let openMs = null;
         try { const et = String(st.et || ''); const asUtc = Date.parse(et.replace(' ', 'T') + ':00Z'); if (Number.isFinite(asUtc)) { const offset = Math.round((Date.now() - asUtc) / 60_000) * 60_000; openMs = Date.parse(et.slice(0, 10) + 'T09:30:00Z') + offset; } } catch (_) { openMs = null; }
-        const summary = sessionDarkPool(rows, { price: live && Number(live.last) > 0 ? Number(live.last) : null, now: Date.now(), sessionOpenMs: openMs });
+        let summary = sessionDarkPool(rows, { price: live && Number(live.last) > 0 ? Number(live.last) : null, now: Date.now(), sessionOpenMs: openMs });
+        // the plain-English read (academy-dark-pool-read.js) against the symbol's earlier sessions; today's footprint is remembered for tomorrow
+        if (darkPoolMemory && summary.available) { try { summary = await darkPoolMemory.annotate(sym, summary, { date: String(st.et || '').slice(0, 10), price: live && Number(live.last) > 0 ? Number(live.last) : null }); } catch (error) { logger('warn', 'academy_dark_pool_read_failed', { symbol: sym, error: String(error && error.message || error) }); } }
         const payload = { ok: true, symbol: sym, session: st.session, ...summary };
         if (!rows.length) payload.detail = st.session === 'closed' && !st.tradingDay ? 'No trades today (market closed).' : 'The trade record returned no prints for this symbol yet.';
         darkPoolCache.set(sym, { until: Date.now() + (rows.length ? 60_000 : 20_000), payload });
@@ -4109,6 +4112,9 @@ async function main() {
     if (cfg) { const base = await marketHistory.get(symbol, cfg.base); return base && base.ok && base.data && Array.isArray(base.data.bars) ? resampleBars(base.data.bars, tf) : []; }
     return [];
   };
+  /* Dark pool memory (academy-dark-pool-memory.js): per-symbol session footprints so the dark pool read can compare today
+     with yesterday. Durable in academy_state_kv under dark-pool-memory. */
+  const darkPoolMemory = createDarkPoolMemory({ store: createPgStateStore({ pool: database.pool, key: 'dark-pool-memory', defaultValue: () => ({ symbols: {} }), logger: log }), logger: log });
   const getCandleRecap = () => {
     if (candleRecap) return candleRecap;
     let smcLib = null; try { smcLib = require('./academy-smart-money'); } catch (_) { smcLib = null; }
@@ -4116,7 +4122,7 @@ async function main() {
       barsFor: candleBarsFor, fetchImpl: (u, o) => fetch(u, o), smc: smcLib, patterns: patternsLib,
       shortData: academyAlerts ? (s) => academyAlerts.shortData(s) : null,
       sentiment: academySentiment || null,
-      darkPoolToday: marketHistory && marketHistory.enabled ? async (s) => { const rows = await marketHistory.trades(s, 50_000); return sessionDarkPool(rows, { now: Date.now() }); } : null,
+      darkPoolToday: marketHistory && marketHistory.enabled ? async (s) => { const rows = await marketHistory.trades(s, 50_000); const sum = sessionDarkPool(rows, { now: Date.now() }); return sum.available ? darkPoolMemory.annotate(s, sum, { date: String(marketState().et || '').slice(0, 10) }) : sum; } : null,
       logger: log
     });
     return candleRecap;
@@ -4451,7 +4457,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,

@@ -8,6 +8,7 @@
  * signed-in WordPress account really is the byline's account. The owner gets a DM with every result. */
 
 const engine = require('./academy-story-engine');
+const { htmlToBlocks } = require('./academy-letter-blocks');
 const gifs = require('./academy-scenario-gif');
 
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -39,15 +40,23 @@ function createLettersPublisher({ siteUrl, username, appPassword, authorId, fetc
     try { await api(`/wp-json/wp/v2/media/${m.id}`, { method: 'POST', body: { title, alt_text: alt, caption } }); } catch (_) { /* the file is up; the labels are a nicety */ }
     return { id: Number(m.id), url: m.source_url };
   }
-  async function createLetter(letter) {
-    const out = await api('/wp-json/sml-letters/v1/letters', { method: 'POST', body: letter });
-    const id = Number(out && (out.id || (out.letter && out.letter.id)));
-    return { id: Number.isFinite(id) ? id : null, raw: out };
-  }
+  /* letters-api.php: POST /letters takes the title only and answers { ok, letter_id, slug } under the signed-in author;
+     everything else (subtitle, tldr, cover, tags, visibility, the blocks) goes through POST /letters/{id}. */
   const updateLetter = (id, letter) => api(`/wp-json/sml-letters/v1/letters/${id}`, { method: 'POST', body: letter });
-  const publishLetter = (id) => api(`/wp-json/sml-letters/v1/letters/${id}/publish`, { method: 'POST', body: {} });
-  async function saveSeo(id, seo) { try { return await api(`/wp-json/sml-letters-seo/v1/letter/${id}`, { method: 'POST', body: seo }); } catch (error) { logger('warn', 'story_seo_save_failed', { id, error: String(error && error.message || error) }); return null; } }
-  return { configured, identity, uploadMedia, createLetter, updateLetter, publishLetter, saveSeo, authorId: Number(authorId) || null, base };
+  async function createLetter(letter) {
+    const out = await api('/wp-json/sml-letters/v1/letters', { method: 'POST', body: { title: letter.title } });
+    const id = Number(out && (out.letter_id || out.id || (out.letter && out.letter.id)));
+    if (!Number.isFinite(id) || id <= 0) return { id: null, raw: out };
+    const patch = {};
+    for (const k of ['subtitle', 'tldr', 'cover_url', 'content_type', 'tags', 'visibility', 'blocks']) if (letter[k] !== undefined && letter[k] !== null) patch[k] = letter[k];
+    if (Object.keys(patch).length) await updateLetter(id, patch);
+    return { id, slug: out && out.slug ? String(out.slug) : '', raw: out };
+  }
+  async function getLetter(id) { const out = await api(`/wp-json/sml-letters/v1/letters/${id}`); return { id: Number(out && out.id) || Number(id), url: out && out.url ? String(out.url) : '', slug: out && out.slug ? String(out.slug) : '', status: out && out.status ? String(out.status) : '' }; }
+  async function publishLetter(id) { const out = await api(`/wp-json/sml-letters/v1/letters/${id}/publish`, { method: 'POST', body: {} }); return { ok: !!(out && out.ok), status: out && out.status, url: out && out.letter && out.letter.url ? String(out.letter.url) : '' }; }
+  /* loop-letters-seo.php keeps { seo: { meta_title, meta_desc, keyword, schema, tags, sentiment, og_title, og_desc, twitter, social_image, category } } */
+  async function saveSeo(id, seo) { try { return await api(`/wp-json/sml-letters-seo/v1/letter/${id}`, { method: 'POST', body: { seo } }); } catch (error) { logger('warn', 'story_seo_save_failed', { id, error: String(error && error.message || error) }); return null; } }
+  return { configured, identity, uploadMedia, createLetter, updateLetter, getLetter, publishLetter, saveSeo, authorId: Number(authorId) || null, base };
 }
 
 /* ---------- optional polish by the newsroom model: voice only, never new facts ---------- */
@@ -134,7 +143,8 @@ function createStoryDesk({
       if (gifInfo && gifInfo.gif && publisher && publisher.configured()) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
     } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
     if (media && media.url) html = `<figure class="sml-story-gif"><img src="${media.url}" alt="${c.symbol} price-action scenario to $${story.pt}" loading="eager"></figure>\n` + html;
-    const letter = { title: draft.title, subtitle: draft.subtitle, tldr: draft.tldr, html, content: html, body: html, content_type: 'Analysis', tags: draft.tags, tickers: [c.symbol], cover_url: media ? media.url : undefined, status: 'draft', visibility: 'public', author_id: publisher ? publisher.authorId : undefined, slug: draft.slug };
+    const blocks = htmlToBlocks(draft.html, { tickers: [c.symbol], cover: media && media.url ? { url: media.url, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' } : null, disclosure: { position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' } });
+    const letter = { title: draft.title, subtitle: draft.subtitle, tldr: draft.tldr, html, blocks, content_type: 'Analysis', tags: draft.tags, cover_url: media ? media.url : undefined, visibility: 'public', slug: draft.slug };
     return { draft, html, letter, media, gifFrames: gifInfo ? gifInfo.frames : 0 };
   }
 
@@ -147,10 +157,10 @@ function createStoryDesk({
       const created = await publisher.createLetter(built.letter);
       out.letterId = created.id; out.rawKeys = created.raw && typeof created.raw === 'object' ? Object.keys(created.raw).slice(0, 12) : null;
       if (!created.id) { out.error = 'letter_id_missing'; logger('warn', 'story_letter_create_unknown_shape', { symbol: c.symbol, raw: JSON.stringify(created.raw).slice(0, 400) }); return out; }
-      await publisher.saveSeo(created.id, { seo: { title: built.draft.title.slice(0, 65), description: built.draft.meta, slug: built.draft.slug, focusKeyword: `${c.symbol} ${engine.ANGLES[story.angle].keywords[0]}`, tags: built.draft.tags, schemaType: 'NewsArticle', sentiment: story.lean }, meta: { ogTitle: built.draft.title, ogDescription: built.draft.meta, socialImage: built.media ? built.media.url : '' } });
-      if (autopublish && out.asByline) { await publisher.publishLetter(created.id); out.published = true; }
-      const slugOf = created.raw && (created.raw.slug || (created.raw.letter && created.raw.letter.slug)) || built.draft.slug;
-      out.url = created.raw && (created.raw.url || (created.raw.letter && created.raw.letter.url)) || `${siteUrl}/n/vaughn-mcnair-grandmaster-obi/${slugOf}/`;
+      await publisher.saveSeo(created.id, { meta_title: built.draft.title.slice(0, 65), meta_desc: built.draft.meta, keyword: `${c.symbol} ${engine.ANGLES[story.angle].keywords[0]}`, schema: 'NewsArticle', category: 'Markets', tags: built.draft.tags.join(', '), sentiment: story.lean, og_title: built.draft.title, og_desc: built.draft.meta, twitter: 'summary_large_image', social_image: built.media ? built.media.url : '' });
+      if (autopublish && out.asByline) { const pub = await publisher.publishLetter(created.id); out.published = true; if (pub && pub.url) out.url = pub.url; }
+      if (!out.url) { try { const got = typeof publisher.getLetter === 'function' ? await publisher.getLetter(created.id) : null; if (got && got.url) out.url = got.url; } catch (_) { /* the id is enough */ } }
+      if (!out.url) out.url = `${siteUrl}/n/vaughn-mcnair-grandmaster-obi/${created.slug || built.draft.slug}/`;
     } catch (error) { out.error = String(error && error.message || error); logger('warn', 'story_letter_failed', { symbol: c.symbol, error: out.error, body: error && error.body ? JSON.stringify(error.body).slice(0, 300) : '' }); }
     return out;
   }
@@ -204,7 +214,7 @@ function createStoryDesk({
     if (!ranked.length) return { ok: false, error: 'no_angle', heat: c.heat };
     const built = await produce(ranked[0], c);
     const filed = await file(ranked[0], c, built);
-    if (publish && filed.letterId && publisher && !filed.published) { try { await publisher.publishLetter(filed.letterId); filed.published = true; } catch (error) { filed.error = String(error && error.message || error); } }
+    if (publish && filed.letterId && publisher && !filed.published) { try { const pub = await publisher.publishLetter(filed.letterId); filed.published = true; if (pub && pub.url) filed.url = pub.url; } catch (error) { filed.error = String(error && error.message || error); } }
     state.written[c.symbol + ':' + ranked[0].angle] = now(); await save(); await tell([filed]);
     return { ok: true, story: { ...ranked[0], facts: ranked[0].facts }, draft: { title: built.draft.title, meta: built.draft.meta, tags: built.draft.tags, wordCount: built.draft.wordCount }, filed };
   }

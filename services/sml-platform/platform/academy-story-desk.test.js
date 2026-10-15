@@ -16,8 +16,9 @@ function harness(over = {}) {
     configured: () => true, authorId: 258456581,
     identity: async () => ({ id: over.meId || 258456581, name: 'Vaughn McNair' }),
     uploadMedia: async (m) => { media.push(m); return { id: 77, url: 'https://stockmarketloop.com/wp-content/uploads/x.gif' }; },
-    createLetter: async (l) => { posts.push({ kind: 'create', l }); return { id: 123, raw: { id: 123, slug: l.slug, url: 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/' + l.slug + '/' } }; },
-    publishLetter: async (id) => { posts.push({ kind: 'publish', id }); return { ok: true }; },
+    createLetter: async (l) => { posts.push({ kind: 'create', l }); return { id: 123, slug: l.slug, raw: { ok: true, letter_id: 123, slug: l.slug } }; },
+    getLetter: async (id) => ({ id, url: 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/', slug: 'x', status: 'draft' }),
+    publishLetter: async (id) => { posts.push({ kind: 'publish', id }); return { ok: true, status: 'published', url: 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/' }; },
     saveSeo: async (id, seo) => { posts.push({ kind: 'seo', id, seo }); return { ok: true }; }
   };
   const desk = createStoryDesk({
@@ -43,12 +44,15 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   const r = await h.desk.tick();
   assert.ok(r && r.filed === 1, JSON.stringify(r && { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed }));
   const created = h.posts.find((p) => p.kind === 'create');
-  assert.equal(created.l.author_id, 258456581); assert.equal(created.l.status, 'draft'); assert.match(created.l.title, /\$ABCD/);
+  assert.equal(created.l.visibility, 'public'); assert.match(created.l.title, /\$ABCD/); assert.ok(!('author_id' in created.l), 'the signed-in account is the author');
   assert.ok(created.l.tags.includes('ABCD')); assert.match(created.l.html, /What the data says/);
-  assert.ok(h.posts.some((p) => p.kind === 'seo'), 'SEO store written');
+  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'What the data says') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
+  assert.equal(created.l.blocks[created.l.blocks.length - 1].type, 'disclosure');
+  const seo = h.posts.find((p) => p.kind === 'seo'); assert.ok(seo, 'SEO store written'); assert.equal(seo.seo.schema, 'NewsArticle'); assert.ok(seo.seo.meta_title.length <= 65); assert.equal(typeof seo.seo.tags, 'string');
+  assert.equal(r.results[0].url, 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/');
   assert.ok(!h.posts.some((p) => p.kind === 'publish'), 'draft unless autopublish');
   const gifAvailable = require('./academy-scenario-gif').available();
-  if (gifAvailable) { assert.equal(h.media.length, 1); assert.equal(h.media[0].contentType, 'image/gif'); assert.match(created.l.html, /<figure class="sml-story-gif">/); }
+  if (gifAvailable) { assert.equal(h.media.length, 1); assert.equal(h.media[0].contentType, 'image/gif'); assert.match(created.l.html, /<figure class="sml-story-gif">/); assert.equal(created.l.blocks[0].type, 'image'); assert.equal(created.l.cover_url, 'https://stockmarketloop.com/wp-content/uploads/x.gif'); }
   assert.equal(h.dms.length, 1); assert.match(h.dms[0].text, /Story desk/); assert.match(h.dms[0].text, /draft/);
   assert.ok(h.saved().written['ABCD:' + r.results[0].angle]);
   const again = await h.desk.tick();
@@ -82,14 +86,18 @@ test('the polisher refuses output that invents a number or breaks the structure'
 
 test('the letters publisher builds the right calls', async () => {
   const calls = [];
-  const fetchImpl = async (url, init) => { calls.push({ url, method: init.method, ct: init.headers['content-type'] || '', auth: init.headers.authorization.slice(0, 6) }); const body = url.endsWith('/users/me?context=edit') ? { id: 258456581, name: 'Vaughn McNair', slug: 'ben' } : url.endsWith('/media') ? { id: 5, source_url: 'https://x/y.gif' } : url.endsWith('/letters') ? { id: 9, slug: 's' } : { ok: true }; return { ok: true, text: async () => JSON.stringify(body) }; };
+  const fetchImpl = async (url, init) => { calls.push({ url, method: init.method, ct: init.headers['content-type'] || '', auth: init.headers.authorization.slice(0, 6), body: typeof init.body === 'string' ? JSON.parse(init.body) : null }); const body = url.endsWith('/users/me?context=edit') ? { id: 258456581, name: 'Vaughn McNair', slug: 'ben' } : url.endsWith('/media') ? { id: 5, source_url: 'https://x/y.gif' } : url.endsWith('/letters') ? { ok: true, letter_id: 9, slug: 's' } : url.endsWith('/letters/9') && init.method === 'GET' ? { id: 9, slug: 's', url: 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/s/', status: 'draft' } : url.endsWith('/publish') ? { ok: true, status: 'published', letter: { url: 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/s/' } } : { ok: true }; return { ok: true, text: async () => JSON.stringify(body) }; };
   const p = createLettersPublisher({ siteUrl: 'https://stockmarketloop.com/', username: 'ben', appPassword: 'pw', authorId: 258456581, fetchImpl });
   assert.equal(p.configured(), true);
   assert.deepEqual(await p.identity(), { id: 258456581, name: 'Vaughn McNair', slug: 'ben' });
   const m = await p.uploadMedia({ bytes: Buffer.from('GIF89a'), filename: 'a.gif', contentType: 'image/gif', title: 't', alt: 'a' });
   assert.equal(m.id, 5); assert.equal(calls[1].ct, 'image/gif');
-  const c = await p.createLetter({ title: 'x' }); assert.equal(c.id, 9);
-  await p.publishLetter(9);
+  const c = await p.createLetter({ title: 'x', subtitle: 'sub', tags: ['A'], visibility: 'public', blocks: [{ id: 'p1', type: 'paragraph', spans: [{ text: 'hi' }] }], html: '<p>hi</p>', slug: 'ignored' }); assert.equal(c.id, 9); assert.equal(c.slug, 's');
+  const create = calls.find((x) => x.url.endsWith('/sml-letters/v1/letters')); assert.deepEqual(create.body, { title: 'x' }, 'create takes the title only');
+  const patch = calls.find((x) => x.url.endsWith('/sml-letters/v1/letters/9') && x.method === 'POST'); assert.deepEqual(Object.keys(patch.body).sort(), ['blocks', 'subtitle', 'tags', 'visibility']);
+  assert.equal((await p.getLetter(9)).url, 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/s/');
+  const pub = await p.publishLetter(9); assert.equal(pub.status, 'published'); assert.match(pub.url, /\/s\/$/);
   assert.ok(calls.some((x) => x.url.endsWith('/sml-letters/v1/letters/9/publish') && x.method === 'POST'));
+  await p.saveSeo(9, { meta_title: 't' }); assert.deepEqual(calls[calls.length - 1].body, { seo: { meta_title: 't' } });
   assert.ok(calls.every((x) => x.auth === 'Basic '));
 });
