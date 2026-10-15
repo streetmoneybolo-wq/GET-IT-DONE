@@ -85,7 +85,7 @@ const { createClickAlertService, createClickAlertStore } = require('./academy-cl
 const { createAutoPtService } = require('./academy-auto-pt');
 const { createHedgeService } = require('./academy-hedge');
 const { createProfileService } = require('./academy-profile');
-const { createProfilePages } = require('./academy-profile-pages');
+const { createProfilePages, MAX_UPLOAD_BYTES: PROFILE_UPLOAD_MAX } = require('./academy-profile-pages');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
 const { parseTick, buildTickBars, mergeTrades } = require('./academy-tick-bars');
@@ -2579,6 +2579,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           const b = await readBody(2048); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
           const r = await academyProfilePages.registerImage(b.url, session.userId); sendJson(response, r.ok ? 200 : 400, r); return;
         }
+        if (request.method === 'POST' && path === '/academy-activity/profiles/audio-upload') {
+          /* a song file from the member's own device: raw bytes in the body, checked by its first bytes, kept for them */
+          const limit = PROFILE_UPLOAD_MAX;
+          const declared = Number(request.headers['content-length']);
+          if (Number.isFinite(declared) && declared > limit) { sendJson(response, 413, { ok: false, error: 'file_too_large' }); request.resume(); return; }
+          const chunks = []; let size = 0, tooBig = false;
+          await new Promise((resolve, reject) => {
+            request.on('data', (c) => { size += c.length; if (size > limit) { tooBig = true; request.pause(); resolve(); } else chunks.push(c); });
+            request.once('end', resolve); request.once('error', reject);
+          });
+          if (tooBig) { sendJson(response, 413, { ok: false, error: 'file_too_large' }); return; }
+          const r = await academyProfilePages.uploadAudio(session.userId, Buffer.concat(chunks), pq.get('title') || '');
+          sendJson(response, r.ok ? 200 : (r.error === 'file_too_large' ? 413 : 400), r); return;
+        }
         if (request.method === 'PUT' && path === '/academy-activity/profiles/me') {
           const b = await readBody(32_768); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
           sendJson(response, 200, await academyProfilePages.save(session.userId, b)); return;
@@ -2594,7 +2608,17 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (m[2] === 'audio') {
           const settings = await academyProfilePages.settingsOf(who);
           const stream = settings.song && settings.song.kind === 'audio' ? await academyProfilePages.audioStream(settings.song.url, who) : null;
-          if (!stream || !stream.body) { response.writeHead(404); response.end(); return; }
+          if (!stream || (!stream.body && !stream.buffer)) { response.writeHead(404); response.end(); return; }
+          if (stream.buffer) {
+            const buf = stream.buffer, total = buf.length, rg = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.range || ''));
+            const base = { 'content-type': stream.contentType, 'cache-control': 'private, max-age=3600', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff' };
+            if (rg && (rg[1] || rg[2])) {
+              let from = rg[1] === '' ? Math.max(0, total - Number(rg[2])) : Number(rg[1]), to = rg[1] === '' || rg[2] === '' ? total - 1 : Math.min(total - 1, Number(rg[2]));
+              if (from > to || from >= total) { response.writeHead(416, { 'content-range': 'bytes */' + total }); response.end(); return; }
+              response.writeHead(206, { ...base, 'content-range': 'bytes ' + from + '-' + to + '/' + total, 'content-length': to - from + 1 }); response.end(buf.subarray(from, to + 1)); return;
+            }
+            response.writeHead(200, { ...base, 'content-length': total }); response.end(buf); return;
+          }
           const headers = { 'content-type': stream.contentType, 'cache-control': 'private, max-age=3600', 'accept-ranges': 'none', 'x-content-type-options': 'nosniff' };
           if (stream.length) headers['content-length'] = stream.length;
           response.writeHead(200, headers);

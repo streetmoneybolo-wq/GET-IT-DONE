@@ -1892,3 +1892,33 @@ test('the alerts desk buttons: New PT and Sell post through the service as a rep
     assert.equal((await fetch(`${base}/academy-activity/click-alert/desk`, { method: 'POST', headers: json('sub'), body: '{}' })).status, 503, 'off without the service');
   });
 });
+
+test('Academy profile song upload: raw bytes from a signed-in member are checked by their first bytes, kept, and played back through the Academy with seeking', async () => {
+  const { createProfilePages } = require('./academy-profile-pages');
+  const ME = '123456789012345678';
+  const academyOAuth = { verifySession: (authorization) => authorization === 'Bearer academy-session' ? { ok: true, userId: ME } : { ok: false, status: 401, code: 'authorization_required' } };
+  const academyProfilePages = createProfilePages({});
+  const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(3000, 7)]);
+  await withServer({ academyOAuth, academyProfilePages }, async (base) => {
+    const post = (body, token = 'academy-session', qs = '') => fetch(`${base}/academy-activity/profiles/audio-upload${qs}`, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'audio/mpeg' }, body });
+    assert.equal((await post(mp3, 'nope')).status, 401, 'signed-in members only');
+    const bad = await post(Buffer.from('this is plain text, not a song'.repeat(80)));
+    assert.equal(bad.status, 400); assert.equal((await bad.json()).error, 'not_audio');
+    const huge = await post(Buffer.concat([Buffer.from('ID3'), Buffer.alloc(13 * 1024 * 1024)]));
+    assert.equal(huge.status, 413);
+    const ok = await post(mp3, 'academy-session', '?title=My%20Track');
+    assert.equal(ok.status, 200);
+    const body = await ok.json();
+    assert.deepEqual([body.ok, body.song.kind, body.song.upload, body.song.title], [true, 'audio', true, 'My Track']);
+    const full = await fetch(`${base}/academy-activity/profiles/${ME}/audio?t=academy-session`);
+    assert.equal(full.status, 200); assert.equal(full.headers.get('content-type'), 'audio/mpeg'); assert.equal(full.headers.get('accept-ranges'), 'bytes');
+    assert.equal(Buffer.from(await full.arrayBuffer()).length, mp3.length);
+    const part = await fetch(`${base}/academy-activity/profiles/${ME}/audio?t=academy-session`, { headers: { range: 'bytes=10-19' } });
+    assert.equal(part.status, 206); assert.equal(part.headers.get('content-range'), `bytes 10-19/${mp3.length}`); assert.equal(Buffer.from(await part.arrayBuffer()).length, 10);
+    assert.equal((await fetch(`${base}/academy-activity/profiles/${ME}/audio`)).status, 401, 'playing a song needs a session too');
+    /* replacing the song with a link removes the stored file */
+    const put = await fetch(`${base}/academy-activity/profiles/me`, { method: 'PUT', headers: { authorization: 'Bearer academy-session', 'content-type': 'application/json' }, body: JSON.stringify({ song: { url: 'https://open.spotify.com/track/abc123' } }) });
+    assert.equal(put.status, 200);
+    assert.equal((await fetch(`${base}/academy-activity/profiles/${ME}/audio?t=academy-session`)).status, 404);
+  });
+});

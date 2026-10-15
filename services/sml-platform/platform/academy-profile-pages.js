@@ -44,6 +44,7 @@ const SOCIAL_KINDS = [
 ];
 const SONG_KINDS = [['youtube', /(^|\.)(youtube\.com|youtu\.be)$/], ['spotify', /(^|\.)spotify\.com$/], ['soundcloud', /(^|\.)soundcloud\.com$/], ['apple', /(^|\.)music\.apple\.com$/]];
 const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i;
+const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 const MAX_SOCIALS = 8, MAX_CARD_HTML = 262_144, MAX_IMAGE_BYTES = 1_572_864, MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 const text = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max);
@@ -52,6 +53,19 @@ const hostOf = (url) => { try { return new URL(url).hostname.toLowerCase(); } ca
 const kindOf = (table, url, fallback) => { const h = hostOf(url); for (const [k, re] of table) if (re.test(h)) return k; return fallback; };
 const r2 = (v) => Math.round(v * 100) / 100;
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+
+/* what an uploaded file really is, read from its first bytes (the browser's label is never trusted) */
+function sniffAudio(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return '';
+  const ascii = (a, b) => buf.toString('latin1', a, b);
+  if (ascii(0, 3) === 'ID3' || (buf[0] === 0xff && (buf[1] & 0xe6) === 0xe2)) return 'audio/mpeg';
+  if (buf[0] === 0xff && (buf[1] & 0xf6) === 0xf0) return 'audio/aac';
+  if (ascii(4, 8) === 'ftyp') return 'audio/mp4';
+  if (ascii(0, 4) === 'OggS') return 'audio/ogg';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE') return 'audio/wav';
+  if (ascii(0, 4) === 'fLaC') return 'audio/flac';
+  return '';
+}
 
 /* the member's settings, cleaned: unknown keys are dropped, every value is bounded */
 function cleanSettings(input = {}, prev = {}) {
@@ -93,7 +107,8 @@ function cleanSettings(input = {}, prev = {}) {
     s.theme = out;
   }
   if (input.song !== undefined) {
-    if (!input.song || !input.song.url) s.song = null;
+    if (input.song && input.song.upload === true) { const bpm = Math.round(Number(input.song.bpm)); s.song = { url: '', title: text(input.song.title, 80), kind: 'audio', upload: true, bpm: bpm >= 60 && bpm <= 200 ? bpm : 0 }; }
+    else if (!input.song || !input.song.url) s.song = null;
     else {
       const url = httpsUrl(input.song.url);
       const bpm = Math.round(Number(input.song.bpm));
@@ -134,7 +149,7 @@ function parseOg(html, url) {
 
 function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
-  const mem = { profiles: new Map(), follows: new Set(), presence: new Map() };
+  const mem = { profiles: new Map(), follows: new Set(), presence: new Map(), audio: new Map() };
   const tiers = new Map(), cards = new Map(), images = new Set(), lastBeat = new Map();
   let lb = { at: 0, rows: [] };
 
@@ -142,6 +157,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     if (!db) return;
     try {
       await db.query('CREATE TABLE IF NOT EXISTS academy_profiles (discord_id TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT \'\', tagline TEXT NOT NULL DEFAULT \'\', bio TEXT NOT NULL DEFAULT \'\', layout TEXT NOT NULL DEFAULT \'classic\', theme JSONB NOT NULL DEFAULT \'{}\'::jsonb, song JSONB, socials JSONB NOT NULL DEFAULT \'[]\'::jsonb, flags JSONB NOT NULL DEFAULT \'{}\'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())');
+      await db.query('CREATE TABLE IF NOT EXISTS academy_profile_audio (discord_id TEXT PRIMARY KEY, content_type TEXT NOT NULL, bytes BYTEA NOT NULL, size INTEGER NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())');
       await db.query('CREATE TABLE IF NOT EXISTS academy_follows (follower_id TEXT NOT NULL, followed_id TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (follower_id, followed_id))');
       await db.query('CREATE TABLE IF NOT EXISTS academy_presence (discord_id TEXT NOT NULL, guild_id TEXT NOT NULL, minutes INTEGER NOT NULL DEFAULT 0, last_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (discord_id, guild_id))');
     } catch (error) { logger('warn', 'academy_profiles_schema_failed', { error: String(error && error.message || error) }); }
@@ -164,15 +180,37 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     const prev = await settingsOf(id);
     const next = cleanSettings(input || {}, prev);
     delete next.exists;
+    if (next.song && next.song.upload && !(await hasAudio(id))) next.song = null;
+    const dropAudio = !!(prev.song && prev.song.upload) && !(next.song && next.song.upload);
     // link cards for new social links (best effort, bounded)
     for (const s of next.socials || []) if (!s.card) s.card = await linkCard(s.url);
     if (db) {
       await db.query('INSERT INTO academy_profiles (discord_id, display_name, tagline, bio, layout, theme, song, socials, flags, updated_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb, now()) ON CONFLICT (discord_id) DO UPDATE SET display_name=EXCLUDED.display_name, tagline=EXCLUDED.tagline, bio=EXCLUDED.bio, layout=EXCLUDED.layout, theme=EXCLUDED.theme, song=EXCLUDED.song, socials=EXCLUDED.socials, flags=EXCLUDED.flags, updated_at=now()',
         [id, next.displayName || '', next.tagline || '', next.bio || '', next.layout || 'classic', JSON.stringify(next.theme || {}), next.song ? JSON.stringify(next.song) : null, JSON.stringify(next.socials || []), JSON.stringify(next.flags || {})]);
     } else mem.profiles.set(id, next);
+    if (dropAudio) await deleteAudio(id);
     for (const s of next.socials || []) if (s.card && s.card.image) images.add(s.card.image);
     for (const o of (next.theme && next.theme.orbit) || []) images.add(o.image);
     return { ok: true, settings: next };
+  }
+
+  /* ---------- an uploaded song: kept for the member, played through the Academy's own address ---------- */
+  async function hasAudio(id) { if (db) { const r = await db.query('SELECT 1 FROM academy_profile_audio WHERE discord_id=$1', [id]); return !!r.rows[0]; } return mem.audio.has(id); }
+  async function deleteAudio(id) { try { if (db) await db.query('DELETE FROM academy_profile_audio WHERE discord_id=$1', [id]); else mem.audio.delete(id); } catch (_) { /* best effort */ } }
+  async function loadAudio(id) {
+    if (db) { const r = await db.query('SELECT content_type, bytes FROM academy_profile_audio WHERE discord_id=$1', [id]); return r.rows[0] ? { contentType: r.rows[0].content_type, bytes: r.rows[0].bytes } : null; }
+    return mem.audio.get(id) || null;
+  }
+  async function uploadAudio(userId, bytes, title) {
+    const id = String(userId); if (!SNOWFLAKE.test(id)) return { ok: false, error: 'invalid_user' };
+    if (!Buffer.isBuffer(bytes) || bytes.length < 1024) return { ok: false, error: 'empty_file' };
+    if (bytes.length > MAX_UPLOAD_BYTES) return { ok: false, error: 'file_too_large' };
+    const contentType = sniffAudio(bytes); if (!contentType) return { ok: false, error: 'not_audio' };
+    if (db) await db.query('INSERT INTO academy_profile_audio (discord_id, content_type, bytes, size, updated_at) VALUES ($1,$2,$3,$4, now()) ON CONFLICT (discord_id) DO UPDATE SET content_type=EXCLUDED.content_type, bytes=EXCLUDED.bytes, size=EXCLUDED.size, updated_at=now()', [id, contentType, bytes, bytes.length]);
+    else mem.audio.set(id, { contentType, bytes });
+    const prev = await settingsOf(id);
+    const saved = await save(id, { song: { upload: true, title: text(title, 80) || (prev.song && prev.song.upload && prev.song.title) || 'My song', bpm: prev.song && prev.song.bpm } });
+    return { ok: true, song: saved.settings.song, size: bytes.length };
   }
 
   /* ---------- link cards ---------- */
@@ -217,8 +255,10 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
   }
   /* a direct audio link, streamed through the Academy's origin (the page may only play media from itself) */
   async function audioStream(url, ownerId) {
+    const own = await settingsOf(ownerId);
+    if (own.song && own.song.upload) { const row = await loadAudio(String(ownerId)); return row ? { contentType: row.contentType, buffer: row.bytes, length: row.bytes.length } : null; }
     const u = httpsUrl(url); if (!u || !AUDIO_EXT.test(u)) return null;
-    const s = await settingsOf(ownerId); if (!s.song || s.song.url !== u) return null;
+    const s = own; if (!s.song || s.song.url !== u) return null;
     try {
       const res = await fetchImpl(u, { redirect: 'follow', signal: AbortSignal.timeout(20_000) });
       if (!res.ok) return null;
@@ -339,7 +379,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     return { userId: id, own: String(viewerId) === id, displayName: s.displayName, tagline: s.tagline, accent: s.theme.accent || '', layout: s.layout, tier, tierLabel: tierLabel(tier), server, paper: rank && rank.rank ? { rank: rank.rank, of: rank.of, returnPct: rank.returnPct, equity: rank.equity } : (rank ? { rank: null, of: rank.of } : null), followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed };
   }
 
-  return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, LAYOUTS };
+  return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
 }
 
-module.exports = { createProfilePages, cleanSettings, parseOg, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };
+module.exports = { createProfilePages, cleanSettings, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };

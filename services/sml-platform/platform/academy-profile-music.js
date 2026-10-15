@@ -200,10 +200,10 @@
   }
   /* mount(song, ctx): ctx = { userId, token, accent, onState(playing) }; returns false when there is nothing the dock can play */
   function mount(song, ctx) {
-    const same = D.song && song && D.song.url === song.url && D.el;
+    const same = D.song && song && D.song.url === song.url && (D.song.rev || 0) === (song.rev || 0) && D.el;
     if (same) { D.onState = ctx.onState || null; D.el.style.setProperty('--acc', ctx.accent || '#00c47d'); D.song = song; D.el.classList.add('on'); if (D.emb && D.playing && E.bpm !== (Number(song.bpm) || 110)) clock(song.bpm); return true; }
     unmount();
-    if (!song || !song.url) return false;
+    if (!song || (!song.url && !song.upload)) return false;
     const isAudio = song.kind === 'audio', emb = isAudio ? null : embed(song);
     if (!isAudio && !emb) return false;
     D.song = song; D.emb = emb; D.onState = ctx.onState || null;

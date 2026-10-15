@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createProfilePages, cleanSettings, parseOg, LAYOUTS } = require('./academy-profile-pages');
+const { createProfilePages, cleanSettings, parseOg, sniffAudio, LAYOUTS } = require('./academy-profile-pages');
 
 const A = '100000000000000001', B = '100000000000000002', G = '900000000000000009';
 
@@ -139,4 +139,18 @@ test('the profile music script is inlined into the Academy page too, and the pag
   const server = require('node:fs').readFileSync(require('node:path').join(__dirname, 'server.js'), 'utf8');
   assert.match(server, /frame-src 'self' https:\/\/www\.youtube-nocookie\.com https:\/\/open\.spotify\.com https:\/\/w\.soundcloud\.com https:\/\/embed\.music\.apple\.com;/);
   assert.match(server, /ACADEMY_PROFILE_DESK \+ ACADEMY_PROFILE_MUSIC \+ ACADEMY_PROFILE_UI/, 'the music player loads before the profile page uses it');
+});
+
+test('uploaded songs are recognised by their first bytes, never by name or label', () => {
+  const pad = (head, at = 0) => { const b = Buffer.alloc(64); Buffer.from(head, 'latin1').copy(b, at); return b; };
+  assert.equal(sniffAudio(pad('ID3')), 'audio/mpeg');
+  assert.equal(sniffAudio(Buffer.from([0xff, 0xfb, 0x90, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0])), 'audio/mpeg');
+  assert.equal(sniffAudio(pad('ftypM4A ', 4)), 'audio/mp4');
+  assert.equal(sniffAudio(pad('OggS')), 'audio/ogg');
+  assert.equal(sniffAudio(Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(8)])), 'audio/wav');
+  assert.equal(sniffAudio(pad('fLaC')), 'audio/flac');
+  for (const bad of ['<html><body>hi</body></html>', 'MZ\u0090\u0000 an exe', '%PDF-1.7 not music']) assert.equal(sniffAudio(Buffer.from(bad.padEnd(64, ' '))), '');
+  assert.equal(sniffAudio(Buffer.alloc(4)), '');
+  const s = cleanSettings({ song: { upload: true, title: 'Mine <b>', bpm: 128 } }).song;
+  assert.deepEqual(s, { url: '', title: 'Mine b', kind: 'audio', upload: true, bpm: 128 });
 });

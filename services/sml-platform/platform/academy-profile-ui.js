@@ -179,7 +179,7 @@
     const M = window.smlProfileMusic; if (!M) return;
     const d = S.data, song = d && d.settings.song;
     if (!S.open || !d || !playable(song)) { M.unmount(); return; }
-    M.mount(song, { userId: d.userId, token: token(), accent: (d.settings.theme && d.settings.theme.accent) || '#00c47d', onState: (on) => { const box = view.querySelector('.pv-song'); if (box) box.classList.toggle('playing', on); }, onError: toast });
+    M.mount(Object.assign({}, song, { rev: S.upRev || 0 }), { userId: d.userId, token: token(), accent: (d.settings.theme && d.settings.theme.accent) || '#00c47d', onState: (on) => { const box = view.querySelector('.pv-song'); if (box) box.classList.toggle('playing', on); }, onError: toast });
   }
   function stopAudio() { const M = window.smlProfileMusic; if (M) M.unmount(); }
 
@@ -277,7 +277,7 @@
       + '<h6>IMMERSIVE</h6><div class="pv-opts">' + ['off', 'subtle', 'balanced', 'immersive'].map((f) => '<button type="button" data-imm="' + f + '" class="' + (t.immersive === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div><p class="pv-note">How hard the background moves with the song.</p>'
       + '<h6>FONT</h6><div class="pv-opts">' + ['system', 'mono', 'serif', 'display', 'rounded'].map((f) => '<button type="button" data-font="' + f + '" class="' + (t.font === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
       + deskControls(t)
-      + '<h6>SONG (ONE)</h6><input type="url" data-song="url" placeholder="https://… YouTube, Spotify, SoundCloud, Apple Music or a direct MP3/M4A" value="' + esc(d.song ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"><input type="number" data-song="bpm" min="60" max="200" placeholder="BPM" style="max-width:84px" value="' + esc(d.song && d.song.bpm ? d.song.bpm : '') + '"></div><p class="pv-note">Your song plays inside the Academy, in a music player on your page, and starts by itself when someone opens your profile. A direct MP3/M4A link is analysed live: kick, bass, vocals, snare and hi-hats each move different modules. YouTube, Spotify, SoundCloud and Apple play in their own player here, and the page moves to a beat clock at the BPM you type (110 if blank), because a website cannot listen inside another site’s player.</p>'
+      + '<h6>SONG (ONE)</h6>' + (d.song && d.song.upload ? '<div class="pv-soc"><span>🎵 Uploaded: ' + esc(d.song.title || 'My song') + '</span><button type="button" data-pv="rmsong">remove</button></div>' : '') + '<div class="pv-row"><button type="button" class="pv-btn acc" data-pv="pickaudio" style="flex:1">⬆ Upload a song from your device</button><input type="file" data-audiofile accept="audio/*,.mp3,.m4a,.aac,.ogg,.wav,.flac,.opus" style="display:none"></div><p class="pv-note" data-upnote>MP3, M4A, AAC, OGG, WAV or FLAC, up to 12 MB. Use music you made or have the rights to. It plays here without any setup, and the page moves to its kick, bass, vocals, snare and hi-hats.</p><p class="pv-note">Or paste a link:</p><input type="url" data-song="url" placeholder="https://… YouTube, Spotify, SoundCloud, Apple Music or a direct MP3/M4A" value="' + esc(d.song && !d.song.upload ? d.song.url : '') + '"><div class="pv-row"><input type="text" data-song="title" maxlength="80" placeholder="Song title" value="' + esc(d.song ? d.song.title : '') + '"><input type="number" data-song="bpm" min="60" max="200" placeholder="BPM" style="max-width:84px" value="' + esc(d.song && d.song.bpm ? d.song.bpm : '') + '"></div><p class="pv-note">Your song plays inside the Academy, in a music player on your page, and starts by itself when someone opens your profile. A direct MP3/M4A link is analysed live: kick, bass, vocals, snare and hi-hats each move different modules. YouTube, Spotify, SoundCloud and Apple play in their own player here, and the page moves to a beat clock at the BPM you type (110 if blank), because a website cannot listen inside another site’s player.</p>'
       + '<h6>SOCIAL LINKS (UP TO 8)</h6>' + (d.socials || []).map((x, i) => '<div class="pv-soc"><span title="' + esc(x.url) + '">' + esc(SOCIAL_ICON[x.kind] || '↗') + ' ' + esc(x.title || (x.card && x.card.title) || x.url) + '</span><button type="button" data-rm="' + i + '">remove</button></div>').join('') + '<div class="pv-row"><input type="url" data-add="url" placeholder="https://x.com/you"><input type="text" data-add="title" maxlength="60" placeholder="Label (optional)" style="max-width:120px"><button type="button" class="pv-btn" data-pv="addlink">Add</button></div><p class="pv-note">Each link gets a card with the page’s own title and picture.</p>'
       + '<h6>SHOW ON MY PAGE</h6>' + [['showPaper', 'Paper trading account and rank'], ['showServer', 'Main Discord server'], ['showSocials', 'Social links'], ['showFeed', 'My chat posts'], ['showFollowers', 'Follower counts']].map(([k, l]) => '<label class="pv-chk"><input type="checkbox" data-flag="' + k + '"' + (d.flags[k] === false ? '' : ' checked') + '> ' + l + '</label>').join('')
       + '<div class="pv-ft"><button type="button" class="pv-btn acc" data-pv="save">💾 Save profile</button><button type="button" class="pv-btn" data-pv="cancel">Cancel</button></div>';
@@ -293,9 +293,21 @@
     if (el.dataset.color) { S.draft.theme[el.dataset.color] = el.value; preview(); return; }
     if (el.dataset.k !== undefined || el.dataset.song !== undefined) { clearTimeout(S.pt); S.pt = setTimeout(preview, 350); }
   });
-  edit.addEventListener('change', (e) => {
+  edit.addEventListener('change', async (e) => {
     const el = e.target; if (!S.draft) return;
     if (el.dataset.flag) { S.draft.flags[el.dataset.flag] = !!el.checked; preview(); }
+    else if (el.hasAttribute('data-audiofile')) {
+      const f = el.files && el.files[0]; el.value = ''; if (!f) return;
+      const note = edit.querySelector('[data-upnote]'), say = (t) => { if (note) note.textContent = t; };
+      if (f.size > 12 * 1024 * 1024) { say('That file is ' + (f.size / 1048576).toFixed(1) + ' MB. The limit is 12 MB; export a smaller MP3 or M4A.'); return; }
+      if (f.size < 1024) { say('That file looks empty.'); return; }
+      say('Uploading ' + f.name + ' …');
+      let r = null;
+      try { const res = await fetch('/academy-activity/profiles/audio-upload?title=' + encodeURIComponent(f.name.replace(/[.][A-Za-z0-9]{2,5}$/, '').slice(0, 80)), { method: 'POST', headers: auth({ 'content-type': f.type || 'application/octet-stream' }), body: f, cache: 'no-store' }); r = await res.json().catch(() => null); if (!r) r = { ok: false, error: 'bad_response' }; } catch (_) { r = { ok: false, error: 'network' }; }
+      if (!r.ok || !S.draft) { say(r.error === 'not_audio' ? 'That is not an audio file the Academy can play. Use MP3, M4A, AAC, OGG, WAV or FLAC.' : r.error === 'file_too_large' ? 'That file is over 12 MB.' : 'The upload did not go through. Try again.'); return; }
+      S.draft.song = { url: '', title: r.song.title, kind: 'audio', upload: true, bpm: r.song.bpm || 0 };
+      S.upRev = (S.upRev || 0) + 1; toast('Song uploaded. It plays on your page now.'); paintEditor(); preview();
+    }
     else if (el.dataset.modtex) { const m = S.draft.theme.moduleTex = S.draft.theme.moduleTex || {}; if (el.value) m[el.dataset.modtex] = el.value; else delete m[el.dataset.modtex]; preview(); }
     else if (el.dataset.modrx) { const m = S.draft.theme.moduleReact = S.draft.theme.moduleReact || {}; if (el.value && el.value !== 'auto') m[el.dataset.modrx] = el.value; else delete m[el.dataset.modrx]; preview(); }
   });
@@ -336,6 +348,8 @@
       if (!r.ok) { b.disabled = false; b.textContent = 'Add'; toast(r.error === 'not_an_image' ? 'That link is not a picture (use a direct .jpg, .png, .webp or .gif link under 1.5 MB).' : 'That picture link could not be used.'); return; }
       d.theme.orbit.push({ image: r.url, href, title }); paintEditor(); preview(); return;
     }
+    if (a === 'pickaudio') { const f = edit.querySelector('[data-audiofile]'); if (f) f.click(); return; }
+    if (a === 'rmsong') { d.song = null; paintEditor(); preview(); return; }
     if (a === 'cancel') { edit.classList.remove('open'); S.draft = null; await open(S.userId); return; }
     if (a === 'save') {
       if (S.saving) return; S.saving = true; b.textContent = 'Saving…';
