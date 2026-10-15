@@ -89,6 +89,7 @@ function scoreSocial(sentiment, { baseline = null, now = Date.now() } = {}) {
   const rate = postsPerHour(posts, now);
   const velocityRatio = rate != null && baseline && baseline.ema > 0 && baseline.n >= 3 ? rate / baseline.ema : null;
   const out = { n: posts.length, tagged, bull, bear, postsPerHour: rate != null ? Math.round(rate * 10) / 10 : null, velocityRatio: velocityRatio != null ? Math.round(velocityRatio * 100) / 100 : null };
+  if (sentiment.sources && typeof sentiment.sources === 'object') out.sources = sentiment.sources;
   if (velocityRatio != null && posts.length >= 10) out.surge = velocityRatio >= 3;
   if (tagged < 3) return { ...out, available: false, reason: 'untagged_posts' };
   const score = (bull - bear) / (tagged + 2); // Laplace-smoothed so 3-0 is not a perfect score

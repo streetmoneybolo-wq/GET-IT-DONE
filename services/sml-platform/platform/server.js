@@ -46,6 +46,7 @@ const { createSentimentService, createSentimentMemory } = require('./academy-sen
 const { createGammaService } = require('./academy-gamma');
 const { createInstitutionalService } = require('./academy-institutional');
 const { createFilingsService } = require('./academy-filings');
+const { createRedditService, mergeSocial } = require('./academy-reddit');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -3686,8 +3687,16 @@ async function main() {
   /* the sentiment panel's VIX gauge: the vendor index when the plan has it, else the SML VIX (CBOE method on SPY options) */
   const vendorVix = createVixFetcher({ apiKey: config.massiveApiKey, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-indices', u, o) });
   const marketGauges = createMarketGauges({ candles: sentimentCandles, vix: async () => { const v = await vendorVix().catch(() => null); if (v) return v; if (!smlVix) return null; const s = await smlVix.get().catch(() => null); return s && s.ok ? { level: s.level, source: 'sml-vix' } : null; } });
+  /* Reddit mentions (academy-reddit.js) ride inside the social leg next to StockTwits: official OAuth when the script-app
+     credentials are set, public listing otherwise; SML_ACADEMY_REDDIT=off disables it. */
+  const academyReddit = createRedditService({
+    clientId: String(process.env.SML_REDDIT_CLIENT_ID || ''), clientSecret: String(process.env.SML_REDDIT_CLIENT_SECRET || ''),
+    userAgent: String(process.env.SML_REDDIT_USER_AGENT || 'web:stockmarketloop-academy:1.0 (by /u/stockmarketloop)'),
+    enabled: process.env.SML_ACADEMY_REDDIT !== 'off', logger: log
+  });
   const academySentiment = academyAlerts ? createSentimentService({
-    news: (s) => academyAlerts.newsFor(s), social: (s) => academyAlerts.socialFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(),
+    news: (s) => academyAlerts.newsFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(),
+    social: async (s) => { const [st, rd] = await Promise.all([academyAlerts.socialFor(s).catch(() => null), academyReddit.posts(s)]); return mergeSocial(st, rd); },
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars),
     memory: createSentimentMemory({ store: createPgStateStore({ pool: database.pool, key: 'sentiment', defaultValue: () => ({ baselines: {}, history: {} }), logger: log }), logger: log }),
     logger: log
