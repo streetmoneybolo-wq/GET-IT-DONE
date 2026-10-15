@@ -40,6 +40,7 @@
     ['scanner', 'Live scanner', 'section.academy-scanner'],
     ['scanner-intel', 'Scanner intelligence', 'section.academy-rank-lab'],
     ['chat', 'Chat', 'section.academy-chat'],
+    ['profile', 'Profile', '#academy-profile-view'],
     ['class', 'Class', '#lesson']
   ];
   const POP = window.smlAcademyPopout || '';
@@ -89,11 +90,11 @@
     if (typeof window.smlAcademyFloat === 'function' && !coarse()) { void window.smlAcademyFloat(id); return; }
     return popBrowser(id);
   }
-  async function popBrowser(id) {
+  async function popBrowser(id, extra = {}) {
     const mod = (id === 'chart' && !coarse()) ? 'desk' : id;
     let token = await session();
     if (!token) { toast('Sign in to the Academy first, then pop the module out.'); return; }
-    const ask = (t) => fetch('/academy-activity/popout/ticket', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ module: mod, symbol: symbol() }), cache: 'no-store' });
+    const ask = (t) => fetch('/academy-activity/popout/ticket', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t }, body: JSON.stringify({ module: mod, symbol: symbol(), ...(extra && typeof extra === 'object' ? extra : {}) }), cache: 'no-store' });
     let res = await ask(token);
     if (res.status === 401 && typeof window.smlAcademyReauth === 'function') { token = await window.smlAcademyReauth(); if (token) res = await ask(token); }
     let p = {};

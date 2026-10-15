@@ -166,6 +166,7 @@
     const [card, img] = await Promise.all([cardFor(id), avatarFor(id)]);
     if (cardFor_ !== id || !card || !anchor.isConnected) return;
     cardEl.innerHTML = cardHtml(card, id, img); cardEl.style.display = 'block';
+    cardEl.dataset.pvFor = id; if (typeof window.smlAcademyProfileHover === 'function') void window.smlAcademyProfileHover(id, cardEl);
     const r = anchor.getBoundingClientRect(), w = cardEl.offsetWidth || 300, h = cardEl.offsetHeight || 220;
     let x = r.left, y = r.bottom + 6; if (x + w > window.innerWidth - 8) x = window.innerWidth - w - 8; if (x < 8) x = 8; if (y + h > window.innerHeight - 8) y = Math.max(8, r.top - h - 6);
     cardEl.style.left = Math.round(x) + 'px'; cardEl.style.top = Math.round(y) + 'px';

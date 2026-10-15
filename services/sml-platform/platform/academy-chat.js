@@ -122,7 +122,16 @@ function createChatStore({ pool = null } = {}) {
     reports.push({ messageId: msg.id, reporterId });
     return 'reported';
   }
-  return { history, get, add, remove, vote, report };
+  /* one member's posts, newest first (their profile feed) */
+  async function byAuthor(discordId, limit = 30) {
+    const id = String(discordId || ''); const n = Math.max(1, Math.min(100, Number(limit) || 30));
+    if (db) {
+      const rows = (await db.query('SELECT m.*, COALESCE((SELECT SUM(value) FROM academy_chat_votes v WHERE v.message_id=m.id),0) AS score FROM academy_chat_messages m WHERE m.discord_id=$1 AND NOT m.deleted ORDER BY m.id DESC LIMIT $2', [id, n])).rows;
+      return rows.map(rowOut);
+    }
+    return mem.filter((m) => m.discordId === id && !m.deleted).slice(-n).reverse().map((m) => memOut(m, ''));
+  }
+  return { history, get, add, remove, vote, report, byAuthor };
 }
 
 /* verifySession: the same shape as academyOAuth.verifySession — (authorizationHeaderString) => { ok, userId, tier } | { ok:false, ... }
