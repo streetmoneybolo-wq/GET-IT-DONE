@@ -62,6 +62,18 @@ test('fails when an engine role is missing, managed, has permissions or sits abo
   }
 });
 
+test('an engine role with chat-level permissions only warns; any moderation bit still fails', async () => {
+  const chat = String((1n << 10n) | (1n << 11n) | (1n << 20n)); /* VIEW_CHANNEL, SEND_MESSAGES, CONNECT */
+  const warned = await setup({ roles: defaultRoles().map((r) => (r.id === ACADEMY_ROLE ? { ...r, permissions: chat } : r)) }).preflight.run();
+  assert.equal(warned.ok, true, JSON.stringify(warned.discord.errors));
+  assert.ok(warned.discord.warnings.includes(`academy_role_has_chat_permissions:${chat}`));
+  for (const bit of [1n << 1n, 1n << 13n, 1n << 17n, 1n << 28n, 1n << 40n]) {
+    const result = await setup({ roles: defaultRoles().map((r) => (r.id === ACADEMY_ROLE ? { ...r, permissions: String(bit | (1n << 10n)) } : r)) }).preflight.run();
+    assert.equal(result.ok, false, String(bit));
+    assert.ok(result.discord.errors.includes('academy_role_has_permissions'), String(bit));
+  }
+});
+
 test('fails on a Stripe account mismatch; a key without Account read falls back to prices', async () => {
   const wrong = await setup({ roles: defaultRoles(), account: { id: 'acct_other' } }).preflight.run();
   assert.equal(wrong.stripeAccountOk, false);

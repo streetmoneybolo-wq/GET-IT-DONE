@@ -238,7 +238,7 @@ function createAcademyBilling({ env = process.env, pool = null, databaseUrl = ''
   };
 
   const routes = createRoutes({ config, state: () => ({ ...state }), events, checkout, tokens, oauth, bot: discord, store, catalog, kick, logger, now,
-    onMemberSeen: (userId) => onMemberSeen(userId) });
+    onMemberSeen: (userId) => onMemberSeen(userId), preflightOk: () => preflight.ok() });
 
   function every(ms, fn) {
     let busy = false;

@@ -645,6 +645,12 @@ complete PRICES_JSON in "Packages and prices".
 1. **Discord roles** (MEM guild `938894329076940820`)
    * Create ONE plain role `Academy Student`: no role permissions, not
      hoisted, not managed, **below** the `Making Easy Money Academy` bot role.
+     Preflight refuses to sell (`academy_role_has_permissions`) while the role
+     carries any moderation or admin permission (kick, ban, administrator,
+     manage anything, mention everyone, audit log, timeout); chat-level bits
+     such as View Channels or Send Messages only warn
+     (`academy_role_has_chat_permissions:<bits>`) so a sale is never held up
+     by them. Since 2026-10-15; before that any permission bit paused checkout.
      Do not create a `MEM Lifetime` role (Lifetime grants Monarch through its
      `roles`; leave `SML_ACADEMY_BILLING_LIFETIME_ROLE_ID` unset).
    * Give `Academy Student` **Premium-level channel access** (the same
@@ -896,10 +902,11 @@ webhook keeps storing events as `deferred`; replay them with
 | --- | --- |
 | `POST stripe/webhook` | raw body <= 256 KiB, verified with the Academy secret, stored (ids only), 200 |
 | `GET packages` | `{packages, memberships}`: sellable Academy packages and membership offers from Stripe (10 min cache), each with `trial_days`, `trial_no_card` (the trial offered to an account that never had one) and `cancel_after_days` |
-| `GET start?purpose=buy\|manage\|join&package=` | Discord OAuth (identify; `join` asks `identify guilds.join` and only with `AUTO_JOIN=1`) with a signed state + nonce cookie |
+| `GET start?purpose=buy\|manage\|join\|trial&package=` | Discord OAuth (identify; `join` asks `identify guilds.join` and only with `AUTO_JOIN=1`; `trial` asks the same join scope when `AUTO_JOIN=1`, so the one link also adds the member to the server) with a signed state + nonce cookie |
+| `GET trial?plan=monthly\|weekly\|yearly` | **The one-link free trial** (stockmarketloop.com/trial, /7day, /free-trial redirect here; /trial/weekly and /trial/yearly pick those plans). Signed out: one "Continue with Discord" button. Signed in: ONE membership offer of the Elite line with a free trial on that package (monthly by default), its consent box and a "Start my 7-day free trial" button, the other trial plans as links, and a link to /buy for everything else. An account whose free trial is used sees the same plan with "starts with a charge today"; one with the plan running is sent to Manage billing. The same `POST checkout` sells it |
 | `GET start?h=<code>` | redeem a one-time hand-off code from the Activity/hub, set a buy-only cookie, 303 to /buy |
 | `GET oauth/callback` | verifies the state, binds the Discord id in an HttpOnly cookie, discards the user token; for `join` first adds the buyer to the guild (`member_auto_joined`) and makes their waiting roles due |
-| `GET buy` | "Buying for @name"; a non-member sees the invite first (strict mode) or, with `ALLOW_NON_MEMBER=1`, a join card (invite and "Add me") above the plans; Academy package cards, then "Memberships (without MEM Academy)", each with the disclosure and an unticked consent box; a bank-debit Lifetime card adds the clearing-time note, and while a Lifetime bank payment clears the page says so and sells nothing; a Lifetime paused by an open dispute is shown as paused, not "Access active". A member's visit makes their waiting roles due |
+| `GET buy` | "Buying for @name"; while the preflight fails the page carries a "checkout is paused" notice with every button off (`PAUSED_NOTE`); when the bot cannot read the server the page says "Discord is busy" for a transient failure and "Our Discord connection needs a fix" for a dead token or a bot thrown out (401/403), both logged as `academy_billing_page_discord_failed` with the kind; a non-member sees the invite first (strict mode) or, with `ALLOW_NON_MEMBER=1`, a join card (invite and "Add me") above the plans; Academy package cards, then "Memberships (without MEM Academy)", each with the disclosure and an unticked consent box; a bank-debit Lifetime card adds the clearing-time note, and while a Lifetime bank payment clears the page says so and sells nothing; a Lifetime paused by an open dispute is shown as paused, not "Access active". A member's visit makes their waiting roles due |
 | `POST checkout` | guards (per line), one-free-trial check (ledger + fresh Stripe snapshot; with no bound Customer, the Academy Customers Stripe Search finds, failing closed: a trial price answers 503 while that lookup fails), Customer, consent intent (with the trial offered), expire older open sessions, Checkout Session with the price's payment methods (and its trial), 303. An Academy offer is posted by `package`, a membership by `price` |
 | `GET success?session_id=` | idempotent settle from the session id only, then a polling status page. Anyone not known to be in the server sees the invite (and "Add me"); a member's waiting roles are made due. Reaches Stripe only for a session with a stored checkout intent (unknown ids -> 400 from the database); 60 per client address per 10 min |
 | `GET status?session_id=` | `{entitled, intent, lifetimePending, lifetime, awaitingMember, roles:[{key,state}]}`, no PII; while a role awaits the member it re-checks their membership at most once a minute and lets the role land; 600 per client address per 10 min |
