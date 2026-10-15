@@ -48,6 +48,7 @@ const { createInstitutionalService } = require('./academy-institutional');
 const { createFilingsService } = require('./academy-filings');
 const { createRedditService, mergeSocial } = require('./academy-reddit');
 const { createClassifier } = require('./academy-classifier');
+const { createEarningsPlaybook } = require('./academy-earnings-playbook');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -667,6 +668,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const darkPool = fs.readFileSync(pathModule.join(__dirname, 'academy-dark-pool.js'), 'utf8');
     const shortSale = fs.readFileSync(pathModule.join(__dirname, 'academy-short-sale.js'), 'utf8');
     const earningsPanel = fs.readFileSync(pathModule.join(__dirname, 'academy-earnings-panel.js'), 'utf8');
+    const catalystsPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-catalysts-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const sentimentPanel = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-sentiment-panel.js'), 'utf8'); } catch (_) { return ''; } })();
     const dataChip = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-data-chip.js'), 'utf8'); } catch (_) { return ''; } })();
     const toolbarNav = fs.readFileSync(pathModule.join(__dirname, 'academy-toolbar-nav.js'), 'utf8');
@@ -677,7 +679,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script><script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -3445,6 +3447,24 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Earnings playbook: the best upcoming reports with priced vs historical moves and the plays for each (?days, ?limit), or one symbol (?symbol). Paid tiers. */
+    if (request.method === 'GET' && path === '/academy-activity/earnings-playbook') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const svc = getEarningsPlaybook();
+      if (!svc) { sendJson(response, 503, { ok: false, error: 'playbook_unavailable' }); return; }
+      const pq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(pq.get('symbol') || '').toUpperCase();
+      if (symbol && !/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try { sendJson(response, 200, symbol ? await svc.detail(symbol) : await svc.list({ days: Number(pq.get('days')) || 14, limit: Number(pq.get('limit')) || 10 })); }
+      catch (error) { logger('error', 'academy_earnings_playbook_failed', { error }); sendJson(response, 503, { ok: false, error: 'playbook_unavailable' }); }
+      return;
+    }
+
     /* SEC filings (academy-filings.js): Academy members, paid tiers. Public EDGAR data, cached six hours per symbol. */
     if (request.method === 'GET' && path === '/academy-activity/filings') {
       if (!academyOAuth || !academyFilings) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -3711,6 +3731,19 @@ async function main() {
     chain: (s) => academyAlerts.chainFor(s), candles: (s, tf) => sentimentCandles(s, tf),
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars), logger: log
   }) : null;
+  /* Earnings playbook (academy-earnings-playbook.js): built on first use because it leans on the Hedge & Income planner, which is created further down. */
+  let earningsPlaybook = null;
+  const getEarningsPlaybook = () => {
+    if (earningsPlaybook || !academyDataBridge || !academyDataBridge.configured || !academyAlerts) return earningsPlaybook;
+    earningsPlaybook = createEarningsPlaybook({
+      calendar: async (month) => { const r = await academyDataBridge.get('calendar', 'US', { expiration: month + '-01' }); const d = r && r.ok && r.data ? (r.data.data || r.data) : null; return d && Array.isArray(d.events) ? d : null; },
+      history: async (s) => { const r = await academyDataBridge.get('earnings', s); return r && r.ok ? r.data : null; },
+      chain: (s) => academyAlerts.chainFor(s), candles: (s, tf) => sentimentCandles(s, tf),
+      hedge: typeof academyHedge !== 'undefined' && academyHedge ? academyHedge : null,
+      sentiment: academySentiment ? (s) => academySentiment.get(s) : null, logger: log
+    });
+    return earningsPlaybook;
+  };
   /* Institutional flow for the Academy: moomoo order-size buckets (via the site bridge) + sweeps and blocks from the Massive tape. */
   const academyInstitutional = createInstitutionalService({
     capital: academyDataBridge && academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('capital', s); return r && r.ok && r.data && r.data.ok !== false ? (r.data.data || r.data) : null; } : null,

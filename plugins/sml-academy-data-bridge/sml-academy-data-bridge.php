@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Academy Data Bridge
  * Description: Private, signed Academy access to existing Options, Earnings and Capital Flow data. It never exposes those feeds to site visitors.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Requires PHP: 7.4
  */
 
@@ -131,7 +131,7 @@ if ( ! function_exists( 'sml_academy_bridge_authorize' ) ) {
 }
 
 if ( ! function_exists( 'sml_academy_bridge_subrequest' ) ) {
-	function sml_academy_bridge_subrequest( $route, $symbol, $expiration = '' ) {
+	function sml_academy_bridge_subrequest( $route, $symbol, $expiration = '', $extra = array() ) {
 		$service_user_id = sml_academy_bridge_service_user_id();
 		if ( ! $service_user_id || ! get_user_by( 'id', $service_user_id ) ) {
 			return new WP_Error( 'sml_academy_bridge_service_user', 'Academy data bridge is not configured.', array( 'status' => 503 ) );
@@ -142,6 +142,7 @@ if ( ! function_exists( 'sml_academy_bridge_subrequest' ) ) {
 			$subrequest = new WP_REST_Request( WP_REST_Server::READABLE, $route );
 			$subrequest->set_param( 'symbol', $symbol );
 			if ( '' !== $expiration ) { $subrequest->set_param( 'expiration', $expiration ); }
+			foreach ( (array) $extra as $k => $v ) { $subrequest->set_param( $k, $v ); }
 			$response = rest_do_request( $subrequest );
 		} finally {
 			wp_set_current_user( $previous_user_id );
@@ -231,6 +232,20 @@ if ( ! function_exists( 'sml_academy_bridge_capital' ) ) {
 	}
 }
 
+/* Whole-market earnings calendar for one month (the Academy's earnings playbook). The month rides in the signed
+ * `expiration` parameter as its first day, so the request signature is unchanged; symbol is a fixed placeholder. */
+if ( ! function_exists( 'sml_academy_bridge_calendar' ) ) {
+	function sml_academy_bridge_calendar( WP_REST_Request $request ) {
+		$first = sanitize_text_field( (string) $request->get_param( 'expiration' ) );
+		$month = preg_match( '/^(\d{4}-\d{2})-\d{2}$/', $first, $m ) ? $m[1] : gmdate( 'Y-m' );
+		$data  = sml_academy_bridge_subrequest( '/sml/v1/earnings/calendar', 'US', '', array( 'month' => $month, 'market' => 'US' ) );
+		if ( is_wp_error( $data ) ) {
+			return new WP_Error( 'sml_academy_bridge_calendar', 'The earnings calendar is temporarily unavailable.', array( 'status' => 503 ) );
+		}
+		return new WP_REST_Response( array( 'ok' => true, 'month' => $month, 'data' => $data ), 200 );
+	}
+}
+
 add_action( 'rest_api_init', static function() {
 	$arguments = array(
 		'methods'             => WP_REST_Server::READABLE,
@@ -251,4 +266,5 @@ add_action( 'rest_api_init', static function() {
 	register_rest_route( 'sml-academy-bridge/v1', '/options', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_options' ) ) );
 	register_rest_route( 'sml-academy-bridge/v1', '/earnings', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_earnings' ) ) );
 	register_rest_route( 'sml-academy-bridge/v1', '/capital', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_capital' ) ) );
+	register_rest_route( 'sml-academy-bridge/v1', '/calendar', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_calendar' ) ) );
 } );
