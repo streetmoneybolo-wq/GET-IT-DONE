@@ -85,7 +85,20 @@ function planExits(state, positions, feeds, now, rules = RULES) {
   return sells;
 }
 
-function createChallenge({ store, paper, candles, analyze, ctxFor = null, universe, direction = null, nextEarnings = null, notify = null, now = Date.now, rules = RULES, logger = () => {}, scanPerTick = 40, accountId = 'challenge', accountOpts = { cash: 1000, name: "Grandmaster-obi's Challenge" } } = {}) {
+/* Everything a trade post needs, from the paper account before and after the fill: shares before and after, average price,
+   the total bought since the position opened and what it cost, the result, the plan and the account. */
+function buildTradeEvent({ symbol, side, before = null, after = null, res, reason = '', idea = null, now = Date.now() }) {
+  const posB = before && before.positions ? before.positions[symbol] : null, posA = after && after.positions ? after.positions[symbol] : null;
+  const openedAt = posB ? posB.openedAt : (posA ? posA.openedAt : now);
+  const buys = after && Array.isArray(after.trades) ? after.trades.filter((t) => t.symbol === symbol && t.kind === 'stock' && t.side === 'buy' && t.t >= openedAt) : [];
+  const totalBought = buys.reduce((s, t) => s + num(t.qty, 0), 0), totalBoughtCost = buys.reduce((s, t) => s + num(t.qty, 0) * num(t.price, 0), 0);
+  const equity = after ? r2(num(after.cash, 0) + Object.values(after.positions || {}).reduce((s, p) => s + p.qty * p.mark * (p.kind === 'option' ? 100 : 1), 0)) : null;
+  return { symbol, side, trade: res.trade, before: posB ? posB.qty : 0, after: posA ? posA.qty : 0, avgBefore: posB ? posB.avg : null, avgAfter: posA ? posA.avg : null, totalBought: r4(totalBought), totalBoughtCost: r2(totalBoughtCost), realized: num(res.realized), reason, stop: idea ? idea.stop : null, target: idea ? idea.target : null, grade: idea ? idea.grade : null, score: idea ? idea.score : null, mode: idea ? idea.mode : null, equity, cash: after ? r2(after.cash) : null, at: now };
+}
+
+function createChallenge({ store, paper, candles, analyze, ctxFor = null, universe, direction = null, nextEarnings = null, notify = null, onTrade = null, now = Date.now, rules = RULES, logger = () => {}, scanPerTick = 40, accountId = 'challenge', accountOpts = { cash: 1000, name: "Grandmaster-obi's Challenge" } } = {}) {
+  const snapshotAccount = async () => { const a = await paper.load(accountId, accountOpts); return JSON.parse(JSON.stringify({ positions: a.positions, trades: a.trades.slice(-200), cash: a.cash })); };
+  const announce = async (ev) => { if (!onTrade) return; try { await onTrade(ev); } catch (error) { logger('warn', 'challenge_trade_post_failed', { error: String(error && error.message || error) }); } };
   let state = null, busy = false, cursor = 0;
   const safe = async (label, fn, ms = 12_000) => { try { return await Promise.race([fn(), new Promise((r) => { const t = setTimeout(() => r(null), ms); if (t.unref) t.unref(); })]); } catch (error) { logger('warn', 'challenge_input_failed', { input: label, error: String(error && error.message || error) }); return null; } };
   async function load() { if (!state) { const s = await store.read(); state = s && s.version === 2 ? s : freshState(now()); } return state; }
@@ -131,9 +144,13 @@ function createChallenge({ store, paper, candles, analyze, ctxFor = null, univer
       }
       const sells = planExits(state, acct.positions, feeds, t, rules);
       for (const s of sells) {
+        const before = await snapshotAccount();
         const res = await paper.order(accountId, { kind: 'stock', symbol: s.idea.symbol, side: 'sell', qty: s.qty, note: 'MEM ALGO exit: ' + s.reason, ideaId: String(s.idea.id) }, accountOpts);
-        if (res && res.ok) { s.idea.status = 'closed'; s.idea.closedAt = t; s.idea.exitReason = s.reason; s.idea.exitPrice = res.trade.price; s.idea.realized = res.realized; note(state, t, `Sold ${s.qty} ${s.idea.symbol} @ $${res.trade.price} (${s.reason}) ${res.realized >= 0 ? '+' : ''}$${res.realized}.`, { kind: 'exit', symbol: s.idea.symbol, ideaId: s.idea.id }); }
-        else note(state, t, `Could not sell ${s.idea.symbol} (${res && (res.message || res.error)}); will retry.`, { kind: 'warn', symbol: s.idea.symbol });
+        if (res && res.ok) {
+          s.idea.status = 'closed'; s.idea.closedAt = t; s.idea.exitReason = s.reason; s.idea.exitPrice = res.trade.price; s.idea.realized = res.realized;
+          note(state, t, `Sold ${s.qty} ${s.idea.symbol} @ $${res.trade.price} (${s.reason}) ${res.realized >= 0 ? '+' : ''}$${res.realized}.`, { kind: 'exit', symbol: s.idea.symbol, ideaId: s.idea.id });
+          await announce(buildTradeEvent({ symbol: s.idea.symbol, side: 'sell', before, after: await snapshotAccount(), res, reason: s.reason, idea: s.idea, now: t }));
+        } else note(state, t, `Could not sell ${s.idea.symbol} (${res && (res.message || res.error)}); will retry.`, { kind: 'warn', symbol: s.idea.symbol });
       }
       expireIdeas(state, t);
       // then new ideas from a slice of the universe
@@ -161,11 +178,13 @@ function createChallenge({ store, paper, candles, analyze, ctxFor = null, univer
     const idea = state.ideas.find((i) => i.id === Number(id)); if (!idea) return { ok: false, error: 'not_found' };
     if (idea.status !== 'new') return { ok: false, error: 'idea_' + idea.status };
     const q = num(qty) > 0 ? r4(num(qty)) : idea.qty;
+    const before = await snapshotAccount();
     const res = await paper.order(accountId, { kind: 'stock', symbol: idea.symbol, side: 'buy', qty: q, note: `1K→100K idea #${idea.id}: ${idea.mode} grade ${idea.grade} ${idea.score}`, ideaId: String(idea.id) }, accountOpts);
     if (!res || !res.ok) return { ok: false, error: (res && res.error) || 'order_failed', message: res && res.message };
     idea.status = 'taken'; idea.takenAt = now(); idea.fill = res.trade.price; idea.qty = q; idea.ext = res.trade.price;
     note(state, now(), `Taken: bought ${q} ${idea.symbol} @ $${res.trade.price}.`, { kind: 'entry', symbol: idea.symbol, ideaId: idea.id });
     await persist();
+    await announce(buildTradeEvent({ symbol: idea.symbol, side: 'buy', before, after: await snapshotAccount(), res, reason: idea.reason, idea, now: now() }));
     return { ok: true, idea, trade: res.trade };
   }
   async function skip(id) { await load(); const idea = state.ideas.find((i) => i.id === Number(id)); if (!idea) return { ok: false, error: 'not_found' }; if (idea.status === 'new') { idea.status = 'skipped'; note(state, now(), `Skipped idea #${idea.id} ${idea.symbol}.`, { kind: 'skip', ideaId: idea.id }); await persist(); } return { ok: true, idea }; }
@@ -182,4 +201,4 @@ function createChallenge({ store, paper, candles, analyze, ctxFor = null, univer
   return { tick, take, skip, ideas, snapshot, reset, rules };
 }
 
-module.exports = { RULES, createChallenge, freshState, sizeIdea, raiseIdeas, expireIdeas, planExits, weekKey };
+module.exports = { RULES, createChallenge, freshState, sizeIdea, raiseIdeas, expireIdeas, planExits, weekKey, buildTradeEvent };

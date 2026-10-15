@@ -48,7 +48,8 @@ const { createInstitutionalService } = require('./academy-institutional');
 const { createFilingsService, DEFAULT_SEC_UA } = require('./academy-filings');
 const { createFdaService } = require('./academy-fda');
 const { createCatalystRadar } = require('./academy-catalyst-radar');
-const { createChallenge } = require('./academy-challenge');
+const { createChallenge, buildTradeEvent: buildChallengeTradeEvent } = require('./academy-challenge');
+const challengePost = require('./academy-challenge-post');
 const { createPaperService } = require('./academy-paper');
 const challengeCard = require('./academy-challenge-card');
 const memAlgoEngine = require('./academy-mem-algo');
@@ -3539,8 +3540,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (name === 'challenge' && !owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
           if (sub === '/reset') { sendJson(response, 200, await academyPaper.reset(accountOf(name), opts(name))); return; }
           if (body.kind === 'option' && session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required', message: 'Options paper trading is part of the full Academy.' }); return; }
+          const snapBefore = name === 'challenge' && body.kind !== 'option' ? await academyPaper.load('challenge', opts('challenge')).then((a) => JSON.parse(JSON.stringify({ positions: a.positions, trades: a.trades.slice(-200), cash: a.cash }))).catch(() => null) : null;
           const res = await academyPaper.order(accountOf(name), body, opts(name));
-          sendJson(response, res.ok ? 200 : 400, res); return;
+          sendJson(response, res.ok ? 200 : 400, res);
+          // a hand trade on the challenge account is announced like any other, with the same disclosure
+          if (res.ok && snapBefore) { try { const after = await academyPaper.load('challenge').then((a) => JSON.parse(JSON.stringify({ positions: a.positions, trades: a.trades.slice(-200), cash: a.cash }))); await postChallengeTrade(buildChallengeTradeEvent({ symbol: res.trade.symbol, side: res.trade.side, before: snapBefore, after, res, reason: body.note ? String(body.note).slice(0, 200) : 'by hand', now: Date.now() })); } catch (error) { logger('warn', 'challenge_hand_trade_post_failed', { error: String(error && error.message || error) }); } }
+          return;
         }
         sendJson(response, 404, { ok: false, error: 'not_found' });
       } catch (error) { logger('error', 'academy_paper_failed', { error }); sendJson(response, 503, { ok: false, error: 'paper_unavailable' }); }
@@ -3920,15 +3925,35 @@ async function main() {
       return r2.ok;
     } catch (error) { log('warn', 'challenge_dm_failed', { error: String(error && error.message || error) }); return false; }
   };
+  /* every challenge buy or sell goes to the channel: the words, the order card (logo, shares, price, total) and, on buys, the two scenario charts */
+  const challengeLogos = challengePost.createLogoLookup({ apiKey: config.massiveApiKey, logger: log });
+  const postChallengeTrade = async (ev) => {
+    const channelId = String(challengeShareChannel || process.env.SML_CHALLENGE_CHANNEL_ID || '').trim();
+    if (!/^\d{5,25}$/.test(channelId)) { log('info', 'challenge_trade_not_posted', { symbol: ev.symbol, reason: 'no_channel' }); return; }
+    const brand = await challengeLogos.lookup(ev.symbol).catch(() => null);
+    const files = [];
+    const card = challengePost.renderOrderCard(ev, { logo: brand && brand.logo, company: brand && brand.name, now: Date.now() });
+    if (card.png) files.push({ name: card.name, bytes: card.png, contentType: 'image/png', alt: card.alt });
+    if (ev.side === 'buy' && academyClickAlert && OWNER_IDS.length) {
+      try {
+        const pv = await academyClickAlert.preview(OWNER_IDS[0], { symbol: ev.symbol, target: ev.target || undefined, autoTarget: !ev.target });
+        for (const im of (pv && pv.ok && pv.scenarios ? pv.scenarios.images : []) || []) { const png = challengeCardPng(im.svg); if (png) files.push({ name: im.name, bytes: png, contentType: 'image/png', alt: im.alt }); }
+      } catch (error) { log('warn', 'challenge_scenarios_failed', { symbol: ev.symbol, error: String(error && error.message || error) }); }
+    }
+    try { await siteTierDirectory.post(channelId, { content: challengePost.composeTrade(ev), allowed_mentions: { parse: [] } }, files); }
+    catch (error) { log('warn', 'challenge_trade_post_failed', { symbol: ev.symbol, error: String(error && error.message || error) }); }
+  };
+  const challengeCardPng = (svg) => { try { return require('./academy-scenario-image').png(svg); } catch (_) { return null; } };
   const getChallenge = () => {
     if (challenge || process.env.SML_ACADEMY_CHALLENGE === 'off') return challenge;
     challenge = createChallenge({
+      onTrade: postChallengeTrade,
       store: createPgStateStore({ pool: database.pool, key: 'challenge-ideas', defaultValue: () => null, logger: log }), paper: academyPaper,
       candles: (s, tf) => sentimentCandles(s, tf), analyze: memAlgoEngine.analyze, ctxFor: challengeCtxFor,
       universe: async () => { const core = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AMD', 'AVGO', 'JPM', 'XOM', 'COST', 'NFLX', 'CRM', 'LLY', 'UNH', 'V', 'MA'].map((symbol) => ({ symbol })); const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(80).catch(() => null) : null; return core.concat(w && Array.isArray(w.rows) ? w.rows.filter((r) => Number(r.price) >= 5) : []); },
       direction: marketDirection ? () => marketDirection.get('swing') : null, nextEarnings: academyAlerts ? (s) => academyAlerts.nextEarnings(s) : null,
       notify: async (idea) => {
-        const text = `💡 1K→100K idea #${idea.id}: BUY ${idea.qty} ${idea.symbol} (${idea.mode}, grade ${idea.grade} ${idea.score}) near $${idea.entry} · stop $${idea.stop}${idea.target ? ' · target $' + idea.target : ''} · risk $${idea.riskDollars}\n${idea.reason}\nOpen the Academy → CHALLENGE → TAKE IT (expires ${new Date(idea.expiresAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ET). Simulated account; not advice.`;
+        const text = challengePost.composeIdea(idea);
         for (const uid of OWNER_IDS) await discordDm(uid, text);
         if (academyPush) { try { await academyPush.sendTo(async (u) => OWNER_IDS.includes(String(u)), { kind: 'challenge', title: `💡 1K→100K: BUY ${idea.symbol} (grade ${idea.grade} ${idea.score})`, body: `${idea.qty} shares near $${idea.entry}, stop $${idea.stop}. Open the Academy to take it.`, tag: 'sml-challenge-' + idea.id, url: '/academy-activity/' }, { topic: 'challenge' + idea.id }); } catch (_) { /* push is best effort */ } }
       },
