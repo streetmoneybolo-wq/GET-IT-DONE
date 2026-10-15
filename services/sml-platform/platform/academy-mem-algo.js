@@ -71,7 +71,7 @@ const STRATEGIES = {
     tfHint: ['15m', '30m', '1h', '2h', '4h', '1D'],
     bestTf: '1h',
     dirs: 'short',
-    params: { fast: 12, slow: 26, trend: 100, atr: 14, minSep: 0.5, maxSep: 3.5, confirm: 2, stopAtr: 1.6, targetAtr: 3.2, trail: null, maxHold: 30, costBps: 4, session: null }
+    params: { fast: 12, slow: 26, trend: 100, atr: 14, minSep: 0.5, maxSep: 3.5, confirm: 2, stopAtr: 1.6, targetAtr: 3.2, trail: null, maxHold: 30, costBps: 4, session: null, minScore: 0, htfFast: 10, htfSlow: 30, regimeLen: 200, rsLook: 60 }
   }
 };
 
@@ -173,10 +173,11 @@ function computeSignals(bars, params) {
 }
 
 
-/* ---------- Confluence (Day, Swing, Mid-Term, Long-Term) ----------
+/* ---------- Confluence (every strategy) ----------
  * A crossover on its own is one opinion. Before a signal is taken, the model asks what else agrees. Every factor is read for the trade's side
- * (a SELL wants the mirror image of what a BUY wants). Day and Swing default to no minimum (every signal is graded, nothing skipped) and the
- * member raises the minimum in Settings; the hold strategies default to 55. The first six factors use only data already on the page:
+ * (a SELL wants the mirror image of what a BUY wants, so Short Sale scores on bearish readings). Day, Swing and Short default to no minimum
+ * (every signal is graded, nothing skipped) and the member raises the minimum in Settings; the hold strategies default to 55. The first six
+ * factors use only data already on the page:
  *   higher-timeframe trend (20)  the next timeframe up is also trending up (previous COMPLETE higher-timeframe candle, so no look-ahead)
  *   volume (15)                  the signal candle traded on real volume and money has been flowing in (up-volume vs down-volume)
  *   momentum (15)                RSI in a healthy 50-70 zone (not exhausted) and MACD histogram positive and rising

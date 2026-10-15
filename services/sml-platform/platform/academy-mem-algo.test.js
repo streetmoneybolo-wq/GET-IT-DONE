@@ -283,9 +283,12 @@ test('a higher timeframe that rolls over while price is below the slow EMA exits
   assert.ok(a.confluence.exitWatch && ['clear', 'caution', 'exit'].includes(a.confluence.exitWatch.level));
 });
 
-test('short has no confluence layer; day and swing grade every signal and skip none by default', () => {
+test('every strategy grades its signals; day, swing and short skip none by default', () => {
   const bars = regimes();
-  const sh = algo.analyze(bars, 'short', {}, '1D', fullCtx(bars)); assert.equal(sh.confluence, null); assert.ok(sh.signals.every((s) => s.conf === null));
+  const sh = algo.analyze(bars, 'short', {}, '1D', fullCtx(bars));
+  assert.ok(sh.confluence && sh.confluence.minScore === 0 && sh.signals.length > 0);
+  assert.ok(sh.signals.every((s) => s.dir < 0 && s.conf && 'ABCD'.includes(s.conf.grade)), 'short sale only sells, and every sale is graded');
+  assert.equal(sh.confluence.exitWatch && sh.confluence.exitWatch.dir, -1, 'the exit watch reads for the short side');
   const inSession = bars.map((b) => ({ ...b, t: b.t + 15 * 3_600_000 })); // 10-11am New York, so the day session filter lets signals through
   for (const mode of ['day', 'swing']) {
     const a = algo.analyze(inSession, mode, {}, '1D', fullCtx(inSession));
