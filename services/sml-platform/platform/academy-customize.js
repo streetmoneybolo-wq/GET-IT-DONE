@@ -44,7 +44,7 @@
     + '.sml-wh button:hover{border-color:#00c47d;color:#7ef0bd}'
     + '.sml-wb{flex:1;min-height:0;overflow:auto;position:relative}'
     + '.sml-wb>.sml-w-mod{width:100%!important;max-width:none!important;position:relative!important;margin:0!important}'
-    + '.sml-wb>.chart{display:flex!important;flex-direction:column!important;height:100%!important}.sml-wb .academy-chart-stage{flex:1 1 auto!important;height:auto!important;min-height:160px}'
+    + '.sml-wb>.sml-w-chart{display:flex!important;flex-direction:column!important;height:100%!important}.sml-wb .academy-chart-stage{flex:1 1 auto!important;height:auto!important;min-height:160px}'
     + '.sml-wb>aside.side{width:100%!important;min-width:0!important;max-height:none!important}'
     + '.sml-wb .sml-pop-btn{display:none!important}'
     + '.sml-wr{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 55%,#2a6b50 55%);touch-action:none}'
@@ -196,7 +196,7 @@
     el.before(w.slot);
     if (getComputedStyle(el).display === 'none') el.style.setProperty('display', 'block', 'important');
     el.classList.add('sml-pop-show', 'sml-w-mod');
-    if (id === 'chart') el.classList.add('chart');
+    if (id === 'chart') el.classList.add('sml-w-chart');
     if (el.classList.contains('sml-cz-h')) { el.style.removeProperty('height'); el.style.removeProperty('max-height'); }
     w.body.appendChild(el);
     el.style.setProperty('height', '100%', 'important');
@@ -210,8 +210,7 @@
     if (w.mod && w.slot.parentElement) {
       w.slot.replaceWith(w.mod);
       w.mod.style.removeProperty('height');
-      w.mod.classList.remove('sml-pop-show', 'sml-w-mod');
-      if (id === 'chart') w.mod.classList.remove('chart');
+      w.mod.classList.remove('sml-pop-show', 'sml-w-mod', 'sml-w-chart');
       if (w.mod.dataset.smlOrdered) delete w.mod.dataset.smlOrdered;
     }
     w.el.remove();
@@ -295,7 +294,7 @@
     p.innerHTML = '<h4>▣ Windows</h4><p class="note">Open a module as a window inside the Academy. Each window remembers its place.</p><div class="opts">'
       + modules().filter((m) => m.el).map((m) => '<button type="button" data-float="' + esc(m.id) + '" class="' + (wins.has(m.id) ? 'on' : '') + '">' + esc(m.label) + '</button>').join('') + '</div>'
       + '<div class="ft"><button type="button" data-a="done" class="done">Done</button></div>';
-    p.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; const id = b.getAttribute('data-float'); if (id) { if (wins.has(id)) unfloat(id); else void float(id); b.classList.toggle('on', wins.has(id)); } else if (b.getAttribute('data-a') === 'done') closePanel(); });
+    p.addEventListener('click', (e) => { e.stopPropagation(); const b = e.target.closest('button'); if (!b) return; const id = b.getAttribute('data-float'); if (id) { if (wins.has(id)) unfloat(id); else void float(id); b.classList.toggle('on', wins.has(id)); } else if (b.getAttribute('data-a') === 'done') closePanel(); });
     document.body.appendChild(p); anchorPanel(p, anchor);
   }
   function anchorPanel(p, anchor) {
@@ -323,6 +322,7 @@
     };
     paint();
     p.addEventListener('click', (e) => {
+      e.stopPropagation(); // paint() replaces the buttons, so the outside-click check below would see a detached target
       const b = e.target.closest('button'); if (!b) return;
       const s = settingsOf(id);
       if (b.hasAttribute('data-accent')) { const v = b.getAttribute('data-accent'); if (v) s.accent = v; else delete s.accent; }

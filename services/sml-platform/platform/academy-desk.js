@@ -115,7 +115,7 @@
     + '.sml-ph .cls:hover{color:#ff6b6b}'
     + '.sml-pb{flex:1;overflow:auto;position:relative}'
     + '.sml-pb>*{width:100%!important;max-width:none!important;position:relative!important}'
-    + '.sml-pb>.chart{display:flex!important;flex-direction:column!important;height:100%!important}'
+    + '.sml-pb>.sml-dk-chart{display:flex!important;flex-direction:column!important;height:100%!important}'
     + '.sml-pb .academy-chart-stage{flex:1 1 auto!important;height:auto!important;min-height:180px}'
     + '.sml-pb>aside.side{width:100%!important;min-width:0!important;max-height:none!important}'
     + '.sml-rr{position:absolute;right:-3px;top:0;bottom:12px;width:6px;cursor:ew-resize;z-index:2}'
@@ -254,7 +254,7 @@
     bd.appendChild(el);
     el.style.setProperty('height', '100%', 'important');
     el.classList.add('sml-pop-show');
-    if (id === 'chart') el.classList.add('chart');
+    if (id === 'chart') el.classList.add('sml-dk-chart');
     setTimeout(() => dispatchEvent(new Event('resize')), 100);
     setTimeout(() => dispatchEvent(new Event('resize')), 500);
   }
@@ -265,7 +265,7 @@
     if (s.el && s.placeholder.parentElement) {
       s.placeholder.replaceWith(s.el);
       s.el.style.removeProperty('height');
-      s.el.classList.remove('sml-pop-show', 'chart');
+      s.el.classList.remove('sml-pop-show', 'sml-dk-chart');
     }
     s.pn.remove();
     panels.delete(id);
