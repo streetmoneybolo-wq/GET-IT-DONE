@@ -47,6 +47,7 @@ const { createGammaService } = require('./academy-gamma');
 const { createInstitutionalService } = require('./academy-institutional');
 const { createFilingsService } = require('./academy-filings');
 const { createRedditService, mergeSocial } = require('./academy-reddit');
+const { createClassifier } = require('./academy-classifier');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -3694,8 +3695,12 @@ async function main() {
     userAgent: String(process.env.SML_REDDIT_USER_AGENT || 'web:stockmarketloop-academy:1.0 (by /u/stockmarketloop)'),
     enabled: process.env.SML_ACADEMY_REDDIT !== 'off', logger: log
   });
+  /* Claude reads headlines and untagged posts for the sentiment composite (academy-classifier.js); off without ANTHROPIC_API_KEY or with SML_ACADEMY_AI_SENTIMENT=off. */
+  const sentimentClassifier = config.anthropicApiKey && process.env.SML_ACADEMY_AI_SENTIMENT !== 'off'
+    ? createClassifier({ apiKey: config.anthropicApiKey, model: String(process.env.SML_ACADEMY_SENTIMENT_MODEL || 'claude-haiku-5-5'), logger: log })
+    : null;
   const academySentiment = academyAlerts ? createSentimentService({
-    news: (s) => academyAlerts.newsFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(),
+    news: (s) => academyAlerts.newsFor(s), chain: (s) => academyAlerts.chainFor(s), market: () => marketGauges.get(), classifier: sentimentClassifier,
     social: async (s) => { const [st, rd] = await Promise.all([academyAlerts.socialFor(s).catch(() => null), academyReddit.posts(s)]); return mergeSocial(st, rd); },
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars),
     memory: createSentimentMemory({ store: createPgStateStore({ pool: database.pool, key: 'sentiment', defaultValue: () => ({ baselines: {}, history: {} }), logger: log }), logger: log }),

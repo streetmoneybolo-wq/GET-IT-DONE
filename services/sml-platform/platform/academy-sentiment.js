@@ -61,9 +61,10 @@ function scoreNews(items, { now = Date.now(), halfLifeH = 48, maxAgeH = 24 * 7 }
     const at = Date.parse(it.date || it.published || it.published_at || '');
     const ageH = Number.isFinite(at) ? Math.max(0, (now - at) / 3_600_000) : null;
     if (ageH != null && ageH > maxAgeH) continue;
-    const s = scoreHeadline(`${title} ${it.excerpt || ''}`);
+    const ai = Number.isFinite(Number(it.aiScore)) ? Number(it.aiScore) : null; // the model's read, when the classifier ran
+    const s = ai == null ? scoreHeadline(`${title} ${it.excerpt || ''}`) : { score: ai };
     const w = ageH == null ? 0.5 : Math.pow(0.5, ageH / halfLifeH);
-    rows.push({ title: title.slice(0, 140), url: String(it.url || ''), date: it.date || '', score: s.score, weight: w, ageH });
+    rows.push({ title: title.slice(0, 140), url: String(it.url || ''), date: it.date || '', score: s.score, weight: w, ageH, ...(ai != null ? { ai: true, event: it.aiEvent || '' } : {}) });
   }
   if (!rows.length) return { available: false, reason: 'no_recent_news', n: 0 };
   const wsum = rows.reduce((a, r) => a + r.weight, 0) || 1;
@@ -227,7 +228,23 @@ function createSentimentMemory({ store = null, now = Date.now, logger = () => {}
 }
 
 /* ------------------------------------------------------------------ service */
-function createSentimentService({ news, social, chain, market, quote, memory = createSentimentMemory(), now = Date.now, ttlMs = 60_000, logger = () => {} } = {}) {
+function createSentimentService({ news, social, chain, market, quote, classifier = null, memory = createSentimentMemory(), now = Date.now, ttlMs = 60_000, logger = () => {} } = {}) {
+  /* Claude reads the headlines and the untagged social posts before the lexicon would; whatever it does not answer keeps the word-list score. */
+  async function aiTag(symbol, newsItems, social_) {
+    if (!classifier || typeof classifier.classify !== 'function') return null;
+    const items = [];
+    const newsRows = Array.isArray(newsItems) ? newsItems : [];
+    newsRows.forEach((it, i) => { const title = String((it && it.title) || '').trim(); if (title) items.push({ id: 'n' + i, symbol, text: `${title} ${String(it.excerpt || '').slice(0, 300)}` }); });
+    const posts = social_ && Array.isArray(social_.posts) ? social_.posts : [];
+    posts.forEach((p, i) => { if (p && !/bull|bear/i.test(p.sentiment || '') && (p.title || p.body || p.text)) items.push({ id: 's' + i, symbol, text: String(p.title || p.body || p.text || '').slice(0, 400) }); });
+    if (!items.length) return null;
+    let got = null; try { got = await classifier.classify(items); } catch (_) { got = null; }
+    if (!got || !got.size) return null;
+    let used = 0;
+    newsRows.forEach((it, i) => { const v = got.get('n' + i); if (v && it) { it.aiScore = v.score; it.aiEvent = v.event; used++; } });
+    posts.forEach((p, i) => { const v = got.get('s' + i); if (v && p && v.confidence >= 0.4) { p.sentiment = v.score >= 0.15 ? 'bullish' : v.score <= -0.15 ? 'bearish' : p.sentiment || ''; p.ai = true; used++; } });
+    return { used, model: classifier.model || 'claude' };
+  }
   const cache = new Map(), inflight = new Map();
   async function safe(name, fn, fallback) {
     if (typeof fn !== 'function') return { available: false, reason: 'not_configured' };
@@ -242,6 +259,7 @@ function createSentimentService({ news, social, chain, market, quote, memory = c
     ]);
     const t = now();
     const bad = (x) => x && x.available === false && x.reason;
+    const ai = await aiTag(symbol, Array.isArray(newsItems) ? newsItems : null, social_ && Array.isArray(social_.posts) ? social_ : null);
     const underlying = num(q && (q.price ?? q.last), null);
     const socialScore = bad(social_) ? social_ : scoreSocial(social_, { baseline: memory.baseline(symbol), now: t });
     if (socialScore && socialScore.postsPerHour) memory.observeRate(symbol, socialScore.postsPerHour);
@@ -255,7 +273,7 @@ function createSentimentService({ news, social, chain, market, quote, memory = c
     const out = composite(parts, { priceChangePct: pct });
     if (out.available) memory.record(symbol, out.score);
     void memory.flush();
-    return { ok: true, symbol, asOf: t, ...out, history: memory.history(symbol), disclaimer: 'Educational context, not a trade signal.' };
+    return { ok: true, symbol, asOf: t, ...out, ai: ai || null, history: memory.history(symbol), disclaimer: 'Educational context, not a trade signal.' };
   }
   async function get(symbol) {
     const key = String(symbol || '').toUpperCase();
