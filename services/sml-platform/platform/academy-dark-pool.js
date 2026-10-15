@@ -118,6 +118,7 @@
       + '<span>Typical share</span><span>about ' + d.typicalSharePct + '%</span>'
       + (d.blocks && d.blocks.count ? '<span>Blocks (' + d.blocks.rule + ')</span><span>' + whole(d.blocks.count) + ' · ' + whole(d.blocks.volume) + ' sh · ' + (d.blocks.sharePct == null ? '–' : d.blocks.sharePct.toFixed(0) + '% of off-exchange') + '</span>' : '<span>Blocks (' + (d.blocks ? d.blocks.rule : '10,000+ sh') + ')</span><span>none in this window</span>')
       + (d.lean ? '<span>Lean (tick rule)</span><span>' + (d.lean.offExchange > 0.25 ? 'buy side' : d.lean.offExchange < -0.25 ? 'sell side' : 'balanced') + (d.lean.lit != null ? ' · lit ' + (d.lean.lit > 0.25 ? 'buy side' : d.lean.lit < -0.25 ? 'sell side' : 'balanced') : '') + '</span>' : '') + '</div>';
+    if (d.blocks && d.blocks.note) h += '<small>' + esc(d.blocks.note) + '</small>';
     if (d.read) {
       h += '<div class="read ' + String(d.read.verdict || '').toLowerCase() + '"><b>' + esc(d.read.headline) + '</b>'
         + (d.read.steps || []).map((st, i) => '<p><i>' + (i + 1) + '. ' + esc(st.k) + '</i>' + esc(st.text) + '</p>').join('')

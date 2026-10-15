@@ -44,15 +44,28 @@ function createDarkPoolMemory({ store = null, logger = () => {}, now = Date.now,
     dirty = true;
   }
   const history = (symbol, beforeDate) => (state.symbols[symbol] || []).filter((h) => !beforeDate || h.date < beforeDate);
+  /* Prints before sinceMs (4:00 AM ET: yesterday's after-hours reports sit in the same capped trade record during the
+     pre-market) are left out of today's blocks and largest prints, so "today's biggest" is today's. */
+  function sessionView(summary, sinceMs) {
+    if (!Number.isFinite(sinceMs) || !summary) return summary;
+    const keep = (b) => !Number.isFinite(b.t) || b.t >= sinceMs;
+    const list = ((summary.blocks && summary.blocks.list) || []).filter(keep);
+    const largest = (summary.largest || []).filter(keep);
+    const removed = ((summary.blocks && summary.blocks.list) || []).length - list.length + (summary.largest || []).length - largest.length;
+    if (!removed) return summary;
+    const volume = list.reduce((n, b) => n + (b.size || 0), 0);
+    return { ...summary, largest, blocks: { ...(summary.blocks || {}), list, count: list.length, volume, sharePct: summary.offVolume > 0 ? Math.round(volume / summary.offVolume * 1000) / 10 : null, note: "Prints reported before 4:00 AM ET today (yesterday's after-hours) are left out of today's blocks." } };
+  }
   /* remember today's footprint, then return the summary with its plain-English read against earlier sessions */
-  async function annotate(symbol, summary, { date, price = null } = {}) {
+  async function annotate(symbol, summary, { date, price = null, sinceMs = null } = {}) {
     await load();
     if (!summary || !summary.available) return summary;
-    const fp = footprint(summary, { date, price });
+    const view = sessionView(summary, sinceMs);
+    const fp = footprint(view, { date, price });
     if (fp) remember(symbol, date, fp);
-    const read = readDarkPool(summary, { history: history(symbol, date), price });
+    const read = readDarkPool(view, { history: history(symbol, date), price });
     void save();
-    return { ...summary, read, vsYesterday: read ? read.vsYesterday : null };
+    return { ...view, read, vsYesterday: read ? read.vsYesterday : null };
   }
   return { load, save, remember, history, annotate, snapshot: () => state };
 }

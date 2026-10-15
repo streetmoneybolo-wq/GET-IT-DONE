@@ -1733,6 +1733,10 @@ async function handleNewsWebhook(request, response, options) {
 
 let streamClients = 0;
 const darkPoolCache = new Map(); // symbol -> { until, payload } for /academy-activity/dark-pool
+/* 4:00 AM ET of the market clock's date as a timestamp: the start of today's prints (academy-dark-pool-memory.js sessionView) */
+function etDayStartMs(st) {
+  try { const et = String(st && st.et || ''); const asUtc = Date.parse(et.replace(' ', 'T') + ':00Z'); if (!Number.isFinite(asUtc)) return null; const offset = Math.round((Date.now() - asUtc) / 60_000) * 60_000; return Date.parse(et.slice(0, 10) + 'T04:00:00Z') + offset; } catch (_) { return null; }
+}
 const deskServedAt = new Map(); // userId -> last time the desk snapshot was logged for them
 /* Real-time trades and quotes from Massive replace the (minutes-old) tape and top of book whenever they are fresh; moomoo still supplies the deeper Level 2 ladder. */
 function mergeLive(base, massive, symbolRaw) {
@@ -2785,7 +2789,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         try { const et = String(st.et || ''); const asUtc = Date.parse(et.replace(' ', 'T') + ':00Z'); if (Number.isFinite(asUtc)) { const offset = Math.round((Date.now() - asUtc) / 60_000) * 60_000; openMs = Date.parse(et.slice(0, 10) + 'T09:30:00Z') + offset; } } catch (_) { openMs = null; }
         let summary = sessionDarkPool(rows, { price: live && Number(live.last) > 0 ? Number(live.last) : null, now: Date.now(), sessionOpenMs: openMs });
         // the plain-English read (academy-dark-pool-read.js) against the symbol's earlier sessions; today's footprint is remembered for tomorrow
-        if (darkPoolMemory && summary.available) { try { summary = await darkPoolMemory.annotate(sym, summary, { date: String(st.et || '').slice(0, 10), price: live && Number(live.last) > 0 ? Number(live.last) : null }); } catch (error) { logger('warn', 'academy_dark_pool_read_failed', { symbol: sym, error: String(error && error.message || error) }); } }
+        if (darkPoolMemory && summary.available) { try { summary = await darkPoolMemory.annotate(sym, summary, { date: String(st.et || '').slice(0, 10), price: live && Number(live.last) > 0 ? Number(live.last) : null, sinceMs: etDayStartMs(st) }); } catch (error) { logger('warn', 'academy_dark_pool_read_failed', { symbol: sym, error: String(error && error.message || error) }); } }
         const payload = { ok: true, symbol: sym, session: st.session, ...summary };
         if (!rows.length) payload.detail = st.session === 'closed' && !st.tradingDay ? 'No trades today (market closed).' : 'The trade record returned no prints for this symbol yet.';
         darkPoolCache.set(sym, { until: Date.now() + (rows.length ? 60_000 : 20_000), payload });
@@ -4122,7 +4126,7 @@ async function main() {
       barsFor: candleBarsFor, fetchImpl: (u, o) => fetch(u, o), smc: smcLib, patterns: patternsLib,
       shortData: academyAlerts ? (s) => academyAlerts.shortData(s) : null,
       sentiment: academySentiment || null,
-      darkPoolToday: marketHistory && marketHistory.enabled ? async (s) => { const rows = await marketHistory.trades(s, 50_000); const sum = sessionDarkPool(rows, { now: Date.now() }); return sum.available ? darkPoolMemory.annotate(s, sum, { date: String(marketState().et || '').slice(0, 10) }) : sum; } : null,
+      darkPoolToday: marketHistory && marketHistory.enabled ? async (s) => { const rows = await marketHistory.trades(s, 50_000); const sum = sessionDarkPool(rows, { now: Date.now() }); const st = marketState(); return sum.available ? darkPoolMemory.annotate(s, sum, { date: String(st.et || '').slice(0, 10), sinceMs: etDayStartMs(st) }) : sum; } : null,
       logger: log
     });
     return candleRecap;

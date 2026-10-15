@@ -27,3 +27,15 @@ test('remembers the biggest print per session, keeps ten sessions, and reads tod
   assert.ok(fresh.history('SPY').length >= 2, 'loads what was saved');
   assert.deepEqual(await m.annotate('X', { available: false }, { date: '2026-10-15' }), { available: false });
 });
+
+test("a block reported before 4:00 AM ET belongs to yesterday: it leaves today's blocks, largest prints, footprint and read", async () => {
+  const m = createDarkPoolMemory({});
+  const late = { t: 100, price: 777, size: 500_000, notional: 388_500_000, dir: 'S' }, today = { t: 5000, price: 769, size: 40_000, notional: 30_760_000, dir: 'B' };
+  const sum = { ...summary(388_500_000, 500_000, 777), offVolume: 2e6, blocks: { count: 2, volume: 540_000, sharePct: 27, rule: '10,000+ shares or $1M+', list: [late, today] }, largest: [late, today] };
+  const d = await m.annotate('SPY', sum, { date: '2026-10-15', price: 769, sinceMs: 1000 });
+  assert.deepEqual(d.largest, [today]); assert.equal(d.blocks.count, 1); assert.equal(d.blocks.volume, 40_000); assert.match(d.blocks.note, /before 4:00 AM ET/);
+  assert.match(d.read.headline, /\$30\.8M block at \$769\.00/);
+  assert.equal(m.history('SPY')[0].largest.size, 40_000);
+  const same = await m.annotate('QQQ', { ...sum, blocks: { ...sum.blocks, list: [today] }, largest: [today] }, { date: '2026-10-15', sinceMs: 1000 });
+  assert.ok(!same.blocks.note, 'nothing removed, nothing said');
+});
