@@ -384,8 +384,12 @@
     if (POP === 'alerts') watchAlerts(el);
     heartbeat(); setInterval(heartbeat, 4000);
     addEventListener('pagehide', () => { const all = store.get(WINS, {}); delete all[ME]; store.set(WINS, all); busStop = true; });
-    // keep the session fresh: 15-minute sessions, renewed (and access re-checked) every 12 minutes
-    setInterval(() => { if (typeof window.smlAcademyReauth === 'function') window.smlAcademyReauth(); }, 12 * 60 * 1000);
+    let popLastAuth = Date.now();
+    const popRenewIfStale = () => { if (typeof window.smlAcademyReauth !== 'function') return; if (Date.now() - popLastAuth > 13 * 60 * 1000) { popLastAuth = Date.now(); window.smlAcademyReauth(); } };
+    setInterval(popRenewIfStale, 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) popRenewIfStale(); });
+    window.addEventListener('focus', popRenewIfStale);
+    window.addEventListener('pageshow', popRenewIfStale);
     hookNavigate();
     void startBus();
   }

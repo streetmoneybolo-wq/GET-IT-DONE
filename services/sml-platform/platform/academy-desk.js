@@ -393,7 +393,12 @@
       await addPanel('chart');
     }
 
-    setInterval(() => { if (typeof window.smlAcademyReauth === 'function') window.smlAcademyReauth(); }, 12 * 60 * 1000);
+    let deskLastAuth = Date.now();
+    const deskRenewIfStale = () => { if (typeof window.smlAcademyReauth !== 'function') return; if (Date.now() - deskLastAuth > 13 * 60 * 1000) { deskLastAuth = Date.now(); window.smlAcademyReauth(); } };
+    setInterval(deskRenewIfStale, 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) deskRenewIfStale(); });
+    window.addEventListener('focus', deskRenewIfStale);
+    window.addEventListener('pageshow', deskRenewIfStale);
     setInterval(() => { document.title = 'Trading Desk \xb7 ' + symbol() + ' — MEM Academy'; }, 3000);
   });
 })();

@@ -113,7 +113,10 @@ test('Activity sessions survive a server restart but not tampering, expiry, or a
   assert.equal(restarted.verifySession(`Bearer ${sessionToken}x`).ok, false);
 
   time += 15 * 60_000 + 1;
-  assert.equal(restarted.verifySession(`Bearer ${sessionToken}`).code, 'authorization_required', 'short-lived: expires after 15 minutes');
+  assert.equal(restarted.verifySession(`Bearer ${sessionToken}`).ok, true, 'within 60 s grace window after TTL');
+
+  time += 60_000;
+  assert.equal(restarted.verifySession(`Bearer ${sessionToken}`).code, 'authorization_required', 'short-lived: expires after 15 minutes + 60 s grace');
 });
 
 test('an unconfigured Academy never accepts a session token', () => {

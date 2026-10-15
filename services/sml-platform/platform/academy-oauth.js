@@ -6,6 +6,7 @@ const DISCORD_AUTHORIZE = 'https://discord.com/oauth2/authorize';
 const DISCORD_TOKEN = 'https://discord.com/api/v10/oauth2/token';
 
 const SESSION_TTL_MS = 15 * 60_000;
+const SESSION_GRACE_MS = 60_000;
 const SNOWFLAKE = /^\d{15,24}$/;
 /* 'member' sessions carry no tier claim, exactly as before tiers existed, so a
    token without `t` is a member token. Only 'academy' and 'free' are written. */
@@ -56,7 +57,7 @@ function createAcademyOAuth({ clientId = '', clientSecret = '', redirectUri = ''
     if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) return null;
     let claims;
     try { claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')); } catch (_) { return null; }
-    if (!claims || !/^\d{15,24}$/.test(String(claims.u)) || !(Number(claims.e) > now())) return null;
+    if (!claims || !/^\d{15,24}$/.test(String(claims.u)) || !(Number(claims.e) + SESSION_GRACE_MS > now())) return null;
     const tier = claims.t === undefined ? 'member' : String(claims.t);
     if (!SESSION_TIERS.has(tier)) return null;
     const displayName = String(claims.d || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 80);
