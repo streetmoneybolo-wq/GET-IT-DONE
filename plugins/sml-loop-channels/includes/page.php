@@ -77,22 +77,40 @@ function sml_lc_render( $user, $handle ) {
 	$title = $design['seo']['title'] ?: ( $name . ' (@' . $handle . ') · Loop Channel' );
 	$desc  = $design['seo']['description'] ?: ( $profile['tagline'] ?: ( $profile['about'] ? wp_trim_words( $profile['about'], 28, '…' ) : ( $name . ' on Stock Market Loop: live streams, videos, market letters and community posts.' ) ) );
 	$desc  = mb_substr( trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( $desc ) ) ), 0, 160 );
-	$image = $design['banner']['mode'] === 'image' && $design['banner']['url'] ? $design['banner']['url'] : ( $profile['banner'] ?: ( $profile['backdrop'] ?: ( $profile['avatar'] ?: ( $pre[ '/sml-lb/v1/card/' . $profile_h ]['profile']['photo'] ?? '' ) ) ) );
-	$indexable = empty( $design['seo']['noindex'] );
+	$seo   = $design['seo'];
+	$image = ( $seo['image']['url'] ?? '' ) ?: ( $design['banner']['mode'] === 'image' && $design['banner']['url'] ? $design['banner']['url'] : ( $profile['banner'] ?: ( $profile['backdrop'] ?: ( $profile['avatar'] ?: ( $pre[ '/sml-lb/v1/card/' . $profile_h ]['profile']['photo'] ?? '' ) ) ) ) );
+	$indexable = empty( $seo['noindex'] );
+	$og_title  = $seo['og_title'] ?: $title;
+	$og_desc   = $seo['og_desc'] ?: $desc;
+	$topics    = array_values( array_filter( (array) ( $seo['topics'] ?? array() ) ) );
+	$tickers   = array_values( array_filter( (array) ( $seo['tickers'] ?? array() ) ) );
+	$category  = $seo['category'] ? ( sml_lc_categories()[ $seo['category'] ] ?? '' ) : '';
+	$keywords  = trim( (string) $seo['keywords'] ) ?: implode( ', ', array_merge( $topics, array_map( function ( $t ) { return '$' . $t; }, $tickers ) ) );
+	$x_handle  = $seo['twitter'] ?: ( ! empty( $profile['links']['x'] ) && ! preg_match( '#^https?://#i', $profile['links']['x'] ) ? ltrim( $profile['links']['x'], '@' ) : ( ! empty( $profile['links']['x'] ) && preg_match( '#(?:x|twitter)\.com/([A-Za-z0-9_]+)#i', $profile['links']['x'], $xm ) ? $xm[1] : '' ) );
 	$same = array();
 	foreach ( (array) ( $profile['links'] ?? array() ) as $k => $v ) { if ( ! $v ) { continue; } if ( preg_match( '#^https?://#i', $v ) ) { $same[] = $v; } elseif ( $k === 'x' ) { $same[] = 'https://x.com/' . ltrim( $v, '@' ); } elseif ( $k === 'youtube' ) { $same[] = 'https://youtube.com/@' . ltrim( $v, '@' ); } else { $same[] = 'https://' . $v; } }
 	if ( $profile_h ) { $same[] = home_url( '/' . $profile_h . '/' ); }
 	$person = array( '@type' => 'Person', '@id' => $canonical . '#creator', 'name' => $name, 'alternateName' => '@' . $handle, 'url' => $canonical, 'description' => $desc );
 	if ( $profile['avatar'] ) { $person['image'] = $profile['avatar']; }
+	if ( $seo['job_title'] ) { $person['jobTitle'] = $seo['job_title']; }
+	if ( $topics || $category ) { $person['knowsAbout'] = array_values( array_unique( array_filter( array_merge( array( $category ), $topics ) ) ) ); }
 	if ( $same ) { $person['sameAs'] = array_values( array_unique( $same ) ); }
-	$graph = array(
-		array( '@type' => 'ProfilePage', '@id' => $canonical, 'url' => $canonical, 'name' => $title, 'description' => $desc, 'mainEntity' => array( '@id' => $canonical . '#creator' ), 'dateModified' => $design['updated_at'] ?: gmdate( 'c' ), 'isPartOf' => array( '@type' => 'WebSite', 'name' => get_bloginfo( 'name' ), 'url' => home_url( '/' ) ) ),
-		$person,
-	);
-	if ( $videos ) {
+	$person['worksFor'] = array( '@type' => 'Organization', 'name' => get_bloginfo( 'name' ), 'url' => home_url( '/' ) );
+	$page = array( '@type' => 'ProfilePage', '@id' => $canonical, 'url' => $canonical, 'name' => $title, 'description' => $desc, 'mainEntity' => array( '@id' => $canonical . '#creator' ), 'dateModified' => ( $seo['updated_at'] ?: $design['updated_at'] ) ?: gmdate( 'c' ), 'inLanguage' => get_locale() === 'en_US' ? 'en-US' : str_replace( '_', '-', get_locale() ), 'isPartOf' => array( '@type' => 'WebSite', 'name' => get_bloginfo( 'name' ), 'url' => home_url( '/' ) ) );
+	if ( $keywords ) { $page['keywords'] = $keywords; }
+	if ( $image ) { $page['primaryImageOfPage'] = array( '@type' => 'ImageObject', 'url' => $image ); }
+	if ( $tickers ) { $page['mentions'] = array_map( function ( $t ) { return array( '@type' => 'Corporation', 'tickerSymbol' => $t, 'name' => $t, 'url' => home_url( '/stocks/' . strtolower( $t ) . '/' ) ); }, array_slice( $tickers, 0, 15 ) ); }
+	if ( $category ) { $page['about'] = array( '@type' => 'Thing', 'name' => $category ); }
+	$graph = array( $page, $person );
+	if ( $videos && ! empty( $seo['videos_schema'] ) ) {
 		$items = array();
 		foreach ( array_slice( $videos, 0, 12 ) as $i => $v ) { $items[] = array( '@type' => 'ListItem', 'position' => $i + 1, 'item' => array_filter( array( '@type' => 'VideoObject', 'name' => $v['title'], 'url' => $v['watch_url'], 'thumbnailUrl' => $v['thumbnail'], 'uploadDate' => $v['created_at'] ?: null, 'description' => $v['description'] ?: $v['title'] ) ) ); }
 		$graph[] = array( '@type' => 'ItemList', 'name' => 'Latest videos from ' . $name, 'itemListElement' => $items );
+	}
+	if ( $posts && ! empty( $seo['posts_schema'] ) ) {
+		$items = array();
+		foreach ( array_slice( $posts, 0, 10 ) as $i => $p ) { if ( empty( $p['url'] ) || empty( $p['title'] ) ) { continue; } $items[] = array( '@type' => 'ListItem', 'position' => count( $items ) + 1, 'url' => $p['url'], 'name' => $p['title'] ); }
+		if ( $items ) { $graph[] = array( '@type' => 'ItemList', 'name' => 'Latest posts from ' . $name, 'itemListElement' => $items ); }
 	}
 	$graph[] = array( '@type' => 'BreadcrumbList', 'itemListElement' => array( array( '@type' => 'ListItem', 'position' => 1, 'name' => get_bloginfo( 'name' ), 'item' => home_url( '/' ) ), array( '@type' => 'ListItem', 'position' => 2, 'name' => 'Loop Channels', 'item' => home_url( '/watch/' ) ), array( '@type' => 'ListItem', 'position' => 3, 'name' => $name, 'item' => $canonical ) ) );
 
@@ -113,9 +131,12 @@ function sml_lc_render( $user, $handle ) {
 	echo '<title>' . esc_html( $title ) . '</title>';
 	echo '<meta name="description" content="' . esc_attr( $desc ) . '">';
 	echo $GLOBALS['sml_lc_final']['canonical'] . $GLOBALS['sml_lc_final']['robots']; // phpcs:ignore
-	echo '<meta property="og:type" content="profile"><meta property="og:site_name" content="' . esc_attr( get_bloginfo( 'name' ) ) . '"><meta property="og:url" content="' . esc_url( $canonical ) . '"><meta property="og:title" content="' . esc_attr( $title ) . '"><meta property="og:description" content="' . esc_attr( $desc ) . '">';
-	if ( $image ) { echo '<meta property="og:image" content="' . esc_url( $image ) . '"><meta name="twitter:image" content="' . esc_url( $image ) . '">'; }
-	echo '<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="' . esc_attr( $title ) . '"><meta name="twitter:description" content="' . esc_attr( $desc ) . '">';
+	if ( $keywords ) { echo '<meta name="keywords" content="' . esc_attr( $keywords ) . '">'; }
+	echo '<meta name="author" content="' . esc_attr( $name ) . '">';
+	echo '<meta property="og:type" content="profile"><meta property="profile:username" content="' . esc_attr( $handle ) . '"><meta property="og:site_name" content="' . esc_attr( get_bloginfo( 'name' ) ) . '"><meta property="og:locale" content="' . esc_attr( get_locale() ) . '"><meta property="og:url" content="' . esc_url( $canonical ) . '"><meta property="og:title" content="' . esc_attr( $og_title ) . '"><meta property="og:description" content="' . esc_attr( $og_desc ) . '">';
+	if ( $image ) { echo '<meta property="og:image" content="' . esc_url( $image ) . '"><meta property="og:image:alt" content="' . esc_attr( $name ) . '"><meta name="twitter:image" content="' . esc_url( $image ) . '">'; }
+	echo '<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="' . esc_attr( $og_title ) . '"><meta name="twitter:description" content="' . esc_attr( $og_desc ) . '">';
+	if ( $x_handle ) { echo '<meta name="twitter:creator" content="@' . esc_attr( $x_handle ) . '">'; }
 	if ( $profile_h && function_exists( 'sml_lls_publication_url' ) && $letters ) { echo '<link rel="alternate" type="application/rss+xml" title="' . esc_attr( $name . ' letters' ) . '" href="' . esc_url( add_query_arg( 'feed', 'rss', sml_lls_publication_url( $uid ) ) ) . '">'; }
 	echo '<script type="application/ld+json">' . wp_json_encode( array( '@context' => 'https://schema.org', '@graph' => $graph ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) . '</script>';
 	echo '<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preload" as="style" href="' . esc_url( $cdn . 'css/loop-channel.css' ) . '"><link rel="preload" as="script" href="' . esc_url( $cdn . 'js/loop-channel.js' ) . '">';
@@ -175,7 +196,8 @@ function sml_lc_render( $user, $handle ) {
 	echo '<script>window.SML_CH_ADMIN=' . ( current_user_can( 'manage_options' ) ? 1 : 0 ) . ';window.SML_CH_NONCE=' . wp_json_encode( wp_create_nonce( 'wp_rest' ) ) . ';window.SML_CH_ME=' . wp_json_encode( $ME ) . ';';
 	echo 'window.SML_LC=' . wp_json_encode( array(
 		'version' => SML_LC_VERSION, 'handle' => $handle, 'uid' => $uid, 'owner' => $is_owner, 'base' => esc_url_raw( rest_url( SML_LC_NS ) ), 'nonce' => wp_create_nonce( 'wp_rest' ),
-		'design' => $design, 'presets' => sml_lc_presets(), 'fonts' => sml_lc_fonts(), 'sections' => sml_lc_sections(), 'preload' => $pre, 'name' => $name, 'accent' => $settings['accent'] ?? '#00ff88',
+		'design' => $design, 'presets' => sml_lc_presets(), 'fonts' => sml_lc_fonts(), 'sections' => sml_lc_sections(), 'categories' => sml_lc_categories(), 'preload' => $pre, 'name' => $name, 'accent' => $settings['accent'] ?? '#00ff88',
+		'url' => $canonical, 'defaults' => array( 'title' => $name . ' (@' . $handle . ') · Loop Channel', 'description' => $desc, 'image' => $image ), 'indexnow' => function_exists( 'sml_lls_indexnow' ),
 		'fx' => $fx_url, 'tickers' => array_values( array_unique( array_filter( array_map( function ( $v ) { return strtoupper( ltrim( (string) ( $v['ticker'] ?? '' ), '$' ) ); }, $videos ) ) ) ),
 	) ) . ';</script>';
 	echo '<script src="' . esc_url( sml_lc_asset( 'channel.js' ) ) . '"></script>'; /* before the app: it shims fetch with the preloaded answers */

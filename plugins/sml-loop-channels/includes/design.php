@@ -39,7 +39,11 @@ function sml_lc_defaults() {
 		'background' => array( 'mode' => 'none', 'url' => '', 'id' => 0, 'blur' => 0, 'dim' => 60, 'fixed' => true, 'pattern' => 'grid' ),
 		'layout'     => array( 'sidebar' => 'left', 'videos' => 'orbit', 'order' => array( 'hero', 'tickers', 'orbit', 'playlists', 'community', 'nl', 'about' ), 'hidden' => array() ),
 		'effects'    => array( 'level' => 'off', 'effects' => array(), 'shapes' => array(), 'objects' => array(), 'pulse' => false ),
-		'seo'        => array( 'title' => '', 'description' => '', 'noindex' => false ),
+		'seo'        => array(
+			'title' => '', 'description' => '', 'keywords' => '', 'topics' => array(), 'tickers' => array(), 'category' => '', 'job_title' => '',
+			'og_title' => '', 'og_desc' => '', 'image' => array( 'url' => '', 'id' => 0 ), 'twitter' => '',
+			'noindex' => false, 'videos_schema' => true, 'posts_schema' => true, 'last_ping' => array( 'at' => '', 'ok' => null ), 'updated_at' => '',
+		),
 		'updated_at' => '',
 	);
 }
@@ -109,8 +113,41 @@ function sml_lc_sanitize( $in ) {
 		'objects' => isset( $e['objects'] ) ? $lst( $e['objects'], array( 'cube', 'sphere', 'torus', 'pyramid', 'octa', 'bull', 'coin' ) ) : null,
 		'pulse' => isset( $e['pulse'] ) ? (bool) $e['pulse'] : null,
 	) ); }
-	if ( isset( $in['seo'] ) ) { $s = (array) $in['seo']; $out['seo'] = $keep( array( 'title' => isset( $s['title'] ) ? $txt( $s['title'], 90 ) : null, 'description' => isset( $s['description'] ) ? $txt( $s['description'], 200 ) : null, 'noindex' => isset( $s['noindex'] ) ? (bool) $s['noindex'] : null ) ); }
+	if ( isset( $in['seo'] ) ) { $s = (array) $in['seo']; $words = function ( $v, $max, $len ) { $o = array(); foreach ( is_array( $v ) ? $v : explode( ',', (string) $v ) as $x ) { $x = trim( sanitize_text_field( (string) $x ) ); if ( $x !== '' ) { $o[] = mb_substr( $x, 0, $len ); } if ( count( $o ) >= $max ) { break; } } return array_values( array_unique( $o ) ); };
+		$out['seo'] = $keep( array(
+			'title' => isset( $s['title'] ) ? $txt( $s['title'], 90 ) : null, 'description' => isset( $s['description'] ) ? $txt( $s['description'], 200 ) : null,
+			'keywords' => isset( $s['keywords'] ) ? $txt( $s['keywords'], 300 ) : null,
+			'topics' => isset( $s['topics'] ) ? $words( $s['topics'], 12, 40 ) : null,
+			'tickers' => isset( $s['tickers'] ) ? array_values( array_filter( array_map( function ( $t ) { return strtoupper( preg_replace( '/[^A-Za-z.]/', '', (string) $t ) ); }, $words( $s['tickers'], 15, 8 ) ) ) ) : null,
+			'category' => isset( $s['category'] ) ? $one( $s['category'], array_keys( sml_lc_categories() ), '' ) : null,
+			'job_title' => isset( $s['job_title'] ) ? $txt( $s['job_title'], 60 ) : null,
+			'og_title' => isset( $s['og_title'] ) ? $txt( $s['og_title'], 90 ) : null, 'og_desc' => isset( $s['og_desc'] ) ? $txt( $s['og_desc'], 200 ) : null,
+			'image' => isset( $s['image'] ) && is_array( $s['image'] ) ? array( 'url' => $url( $s['image']['url'] ?? '' ), 'id' => absint( $s['image']['id'] ?? 0 ) ) : null,
+			'twitter' => isset( $s['twitter'] ) ? ltrim( $txt( $s['twitter'], 30 ), '@' ) : null,
+			'noindex' => isset( $s['noindex'] ) ? (bool) $s['noindex'] : null, 'videos_schema' => isset( $s['videos_schema'] ) ? (bool) $s['videos_schema'] : null, 'posts_schema' => isset( $s['posts_schema'] ) ? (bool) $s['posts_schema'] : null,
+		) ); }
 	return $out;
+}
+
+function sml_lc_categories() {
+	return array( '' => 'Not set', 'day-trading' => 'Day trading', 'swing-trading' => 'Swing trading', 'options' => 'Options', 'futures' => 'Futures', 'forex' => 'Forex', 'crypto' => 'Crypto', 'penny-stocks' => 'Small caps and penny stocks', 'long-term' => 'Long-term investing', 'dividends' => 'Dividends and income', 'macro' => 'Macro and economy', 'earnings' => 'Earnings', 'technical' => 'Technical analysis', 'news' => 'Market news', 'education' => 'Trading education' );
+}
+
+/** What the creator talks about most, read from their own videos, posts and letters: suggestions for the SEO tab when trends move. */
+function sml_lc_suggest( $user_id, $videos, $posts ) {
+	$counts = array(); $words = array();
+	$bump = function ( &$arr, $k, $n = 1 ) { if ( $k === '' ) { return; } $arr[ $k ] = ( $arr[ $k ] ?? 0 ) + $n; };
+	foreach ( (array) $videos as $v ) { $bump( $counts, strtoupper( ltrim( (string) ( $v['ticker'] ?? '' ), '$' ) ), 3 ); preg_match_all( '/\$([A-Za-z]{1,6})\b/', ( $v['title'] ?? '' ) . ' ' . ( $v['description'] ?? '' ), $m ); foreach ( $m[1] as $t ) { $bump( $counts, strtoupper( $t ), 2 ); } }
+	foreach ( (array) $posts as $p ) { foreach ( (array) ( $p['tickers'] ?? array() ) as $t ) { $bump( $counts, strtoupper( ltrim( (string) $t, '$' ) ), 2 ); } preg_match_all( '/\$([A-Za-z]{1,6})\b/', ( $p['title'] ?? '' ) . ' ' . ( $p['body'] ?? '' ), $m ); foreach ( $m[1] as $t ) { $bump( $counts, strtoupper( $t ) ); } }
+	foreach ( sml_lc_letters( $user_id, 30 ) as $l ) { preg_match_all( '/\$([A-Za-z]{1,6})\b/', (string) $l['title'] . ' ' . (string) $l['subtitle'], $m ); foreach ( $m[1] as $t ) { $bump( $counts, strtoupper( $t ), 2 ); } }
+	$stop = array_flip( explode( ' ', 'the a an and or of to in on for with from by at as is are was were be been this that these those it its into over under after before new now how why what when who top best big huge big-time today tonight week month year day days stock stocks market markets trade trades trading trader traders alert alerts price shares share up down next last first one two three all more most some just about near again back off out than then there here they them you your our we us my me i so if but not no yes can will would should could may might' ) );
+	$titles = array();
+	foreach ( (array) $videos as $v ) { $titles[] = (string) ( $v['title'] ?? '' ); }
+	foreach ( (array) $posts as $p ) { $titles[] = (string) ( $p['title'] ?? '' ); }
+	foreach ( sml_lc_letters( $user_id, 30 ) as $l ) { $titles[] = (string) $l['title']; }
+	foreach ( $titles as $t ) { foreach ( preg_split( '/[^A-Za-z-]+/', strtolower( $t ) ) as $w ) { if ( strlen( $w ) < 4 || isset( $stop[ $w ] ) ) { continue; } $bump( $words, $w ); } }
+	arsort( $counts ); arsort( $words );
+	return array( 'tickers' => array_slice( array_keys( array_filter( $counts ) ), 0, 12 ), 'topics' => array_slice( array_keys( array_filter( $words, function ( $n ) { return $n >= 2; } ) ), 0, 15 ) );
 }
 
 function sml_lc_rgb( $hex ) {
