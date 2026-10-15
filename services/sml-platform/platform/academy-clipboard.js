@@ -47,7 +47,7 @@
       const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
       const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
       let clean = String(text);
-      if (el.tagName === 'INPUT') clean = clean.replace(/[\r\n]+/g, ' ').trim();
+      if (el.tagName === 'INPUT') clean = clean.split(String.fromCharCode(13)).join(' ').split(String.fromCharCode(10)).join(' ').trim();
       if (el.maxLength > 0) clean = clean.slice(0, Math.max(0, el.maxLength - (el.value.length - (end - start))));
       el.focus();
       el.setRangeText(clean, start, end, 'end');
