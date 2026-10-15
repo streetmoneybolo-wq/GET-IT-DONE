@@ -1,6 +1,7 @@
 /* CHALLENGE for the Academy Live Chart Lab: Grandmaster-obi's $1,000 -> $100,000 portfolio. MEM ALGO raises the ideas, the
- * owner takes them with one click, the paper-trading simulator holds the money, and the engine manages the exits. Everyone
- * can watch; the owner also gets a pop-up here whenever a new idea lands (and a push / Discord DM from the server). The
+ * owner takes them with one click, the paper-trading simulator holds the money, and the engine manages the exits. The tool
+ * is the owner's only: the button appears once the server confirms the owner, members follow the trades in Discord. The
+ * owner also gets a pop-up here whenever a new idea lands (and a push / Discord DM from the server). The
  * account is SIMULATED on real prices: no real money, no advice. Routes under /academy-activity/challenge. */
 (() => {
   if (window.__smlChallenge) return;
@@ -32,7 +33,8 @@
     + '#challenge-toast{position:fixed;right:14px;bottom:14px;z-index:2147483200;max-width:340px;padding:12px 14px;border:1px solid #52e6ad;border-radius:10px;background:#0b1f12;color:#e8fbee;font:600 .7rem system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)}#challenge-toast b{color:#9ff0b0;font-family:ui-monospace,monospace}#challenge-toast button{margin:8px 6px 0 0;padding:6px 12px;border-radius:6px;font:800 .64rem ui-monospace,monospace;cursor:pointer;border:1px solid #52e6ad;background:#145a2a;color:#fff}#challenge-toast button.skip{border-color:#5a1d1d;background:#2a0b0b;color:#ffb3b3}#challenge-toast button.later{border-color:#1d4a5a;background:#051a22;color:#7fd6f0}';
   document.head.appendChild(style);
 
-  const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'challenge-toggle'; btn.className = 'challenge-toggle'; btn.textContent = 'CHALLENGE'; btn.title = "Grandmaster-obi's $1,000 to $100,000 portfolio: MEM ALGO's ideas, taken by hand, paper-traded on real prices (simulated)"; toolbar.appendChild(btn);
+  const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'challenge-toggle'; btn.className = 'challenge-toggle'; btn.textContent = 'CHALLENGE'; btn.title = "Grandmaster-obi's $1,000 to $100,000 portfolio: MEM ALGO's ideas, taken by hand, paper-traded on real prices (simulated)"; btn.style.display = 'none'; toolbar.appendChild(btn);
+  const showForOwner = () => { btn.style.display = S.owner ? '' : 'none'; if (!S.owner && S.on) { S.on = false; save(); sync(); paint(); } };
   window.addEventListener('sml-academy-session', (event) => { S.session = String((event.detail && event.detail.sessionToken) || ''); S.data = null; S.err = ''; if (S.on) { void load(); paint(); } startPoll(); });
 
   async function load() {
@@ -42,7 +44,7 @@
       const res = await fetch('/academy-activity/challenge', { headers: auth(), cache: 'no-store' });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || !payload.ok) throw new Error(payload.error || 'unavailable');
-      S.data = payload; S.owner = Boolean(payload.me && payload.me.owner);
+      S.data = payload; S.owner = Boolean(payload.me && payload.me.owner); showForOwner();
     } catch (_) { S.err = 'The challenge is not available right now.'; }
     S.busy = false; paint();
   }
@@ -72,8 +74,10 @@
     if (!S.session || document.hidden) return;
     try {
       const res = await fetch('/academy-activity/challenge/ideas?since=' + S.lastIdeaT, { headers: auth(), cache: 'no-store' });
-      const j = await res.json().catch(() => ({})); if (!res.ok || !j.ok) return;
-      S.owner = Boolean(j.me && j.me.owner);
+      const j = await res.json().catch(() => ({}));
+      if (res.status === 403) { clearInterval(S.pollT); S.pollT = -1; S.owner = false; showForOwner(); return; }
+      if (!res.ok || !j.ok) return;
+      S.owner = Boolean(j.me && j.me.owner); showForOwner();
       const fresh = (j.ideas || []).filter((i) => i.status === 'new' && !S.seen.has(i.id)).sort((a, b) => a.t - b.t);
       for (const i of j.ideas || []) S.lastIdeaT = Math.max(S.lastIdeaT, i.t);
       save();

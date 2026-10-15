@@ -3545,7 +3545,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    /* Paper trading: MINE (per member) and CHALLENGE (everyone watches, the owner trades). Simulated throughout. */
+    /* Paper trading: MINE (per member) and CHALLENGE (the owner's account; owner only). Simulated throughout. */
     if (path === '/academy-activity/paper' || path.startsWith('/academy-activity/paper/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
@@ -3553,6 +3553,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const owner = OWNER_IDS.includes(String(session.userId));
       const pq = new URL(request.url || '/', 'http://localhost').searchParams;
       const sub = path.slice('/academy-activity/paper'.length);
+      if (pq.get('account') === 'challenge' && !owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
       const accountOf = (name) => (name === 'challenge' ? 'challenge' : 'u:' + session.userId);
       const opts = (name) => (name === 'challenge' ? { cash: 1000, name: "Grandmaster-obi's Challenge", owner: OWNER_IDS[0] || '' } : { cash: 1000, name: 'My paper account', owner: String(session.userId) });
       try {
@@ -3588,12 +3589,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    /* The challenge (simulated): any signed-in Academy session can watch it and see the ideas; only the owner takes, skips, shares or resets. */
+    /* The challenge (simulated) is the owner's tool: every route answers the owner only (members follow it in the Discord channel). */
     if (path === '/academy-activity/challenge' || path.startsWith('/academy-activity/challenge/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
       const owner = OWNER_IDS.includes(String(session.userId)), me = { owner };
+      if (!owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
       const c = getChallenge();
       if (!c) { sendJson(response, 503, { ok: false, error: 'challenge_off' }); return; }
       const sub = path.slice('/academy-activity/challenge'.length);
