@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Loop Letters Studio
  * Description: The reading and writing layer for Loop Letters. One public letter page that owns its search metadata (NewsArticle schema, share images in three ratios, canonical handles, news and full sitemaps, IndexNow), a 15-second intro video, a voice or YouTube audio track, an immersive motion layer, reactions, highlights, a share-card designer and a writer's studio with SEO, readability, templates and scheduling.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_LLS_VERSION', '1.0.1' );
+define( 'SML_LLS_VERSION', '1.0.2' );
 define( 'SML_LLS_FILE', __FILE__ );
 define( 'SML_LLS_DIR', __DIR__ );
 define( 'SML_LLS_NS', 'sml-letter-studio/v1' );

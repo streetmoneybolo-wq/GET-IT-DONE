@@ -213,7 +213,7 @@ function sml_lls_build_feed() {
 }
 
 /* Registered from wp_loaded: the Google sitemaps plugin rewrites the Sitemap block at the same priority and drops lines added earlier. */
-add_action( 'wp_loaded', function () { add_filter( 'robots_txt', 'sml_lls_robots', 30 ); } );
+add_action( 'wp_loaded', function () { add_filter( 'robots_txt', 'sml_lls_robots', PHP_INT_MAX ); } );
 function sml_lls_robots( $txt ) {
 	foreach ( array( '/sml-letters-news-sitemap.xml', '/sml-letters-full-sitemap.xml' ) as $p ) {
 		if ( false === strpos( $txt, $p ) ) { $txt = rtrim( $txt ) . "\nSitemap: " . home_url( $p ) . "\n"; }

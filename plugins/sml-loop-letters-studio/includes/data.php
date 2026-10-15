@@ -215,9 +215,11 @@ function sml_lls_reaction_counts( $letter_id ) {
 	foreach ( (array) $rows as $r ) { if ( isset( $out[ $r['kind'] ] ) ) { $out[ $r['kind'] ] = (int) $r['n']; } }
 	return $out;
 }
-function sml_lls_fingerprint() {
+function sml_lls_fingerprint( $client_id = '' ) {
 	$uid = get_current_user_id();
 	if ( $uid ) { return sha1( 'u' . $uid ); }
+	/* an anonymous reader carries a random id the page keeps for them; it beats an IP that changes between requests */
+	if ( preg_match( '/^[a-z0-9]{16,40}$/', (string) $client_id ) ) { return sha1( 'c' . $client_id . wp_salt( 'nonce' ) ); }
 	$ip = (string) ( $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '' );
 	$ip = trim( explode( ',', $ip )[0] );
 	return sha1( 'v' . $ip . '|' . (string) ( $_SERVER['HTTP_USER_AGENT'] ?? '' ) . '|' . wp_salt( 'nonce' ) );

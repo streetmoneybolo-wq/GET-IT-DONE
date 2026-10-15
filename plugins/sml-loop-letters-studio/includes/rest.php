@@ -235,7 +235,7 @@ function sml_lls_rest_react( $request ) {
 	if ( ! $row || $row['status'] !== 'published' ) { return new WP_Error( 'sml_lls_missing', 'Letter not found.', array( 'status' => 404 ) ); }
 	$kind = sanitize_key( (string) $request->get_param( 'kind' ) );
 	if ( ! in_array( $kind, array( 'bull', 'bear', 'fire', 'mind' ), true ) ) { return new WP_Error( 'sml_lls_kind', 'Unknown reaction.', array( 'status' => 400 ) ); }
-	$fp = sml_lls_fingerprint();
+	$fp = sml_lls_fingerprint( (string) $request->get_param( 'cid' ) );
 	$t  = sml_lls_table( 'reactions' );
 	$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id, kind FROM $t WHERE letter_id = %d AND fingerprint = %s", (int) $row['id'], $fp ), ARRAY_A );
 	$mine = $kind;
@@ -249,7 +249,7 @@ function sml_lls_rest_public( $request ) {
 	global $wpdb;
 	$row = sml_lls_letter_by_id( (int) $request['id'] );
 	if ( ! $row || $row['status'] !== 'published' ) { return new WP_Error( 'sml_lls_missing', 'Letter not found.', array( 'status' => 404 ) ); }
-	$fp   = sml_lls_fingerprint();
+	$fp   = sml_lls_fingerprint( (string) $request->get_param( 'cid' ) );
 	$mine = $wpdb->get_var( $wpdb->prepare( 'SELECT kind FROM ' . sml_lls_table( 'reactions' ) . ' WHERE letter_id = %d AND fingerprint = %s', (int) $row['id'], $fp ) );
 	return array( 'ok' => true, 'counts' => sml_lls_reaction_counts( $row['id'] ), 'mine' => (string) $mine, 'reads' => (int) $row['read_count'], 'bookmarks' => (int) $row['bookmark_count'] );
 }
