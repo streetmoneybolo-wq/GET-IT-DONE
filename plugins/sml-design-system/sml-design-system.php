@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.3
+ * Version: 1.1.4
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.3' );
+define( 'SML_DS_VERSION', '1.1.4' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -116,13 +116,29 @@ function sml_ds_dash_segment( $text, $open_label ) {
 	return $out . $rest;
 }
 function sml_ds_dashes( $html ) {
-	if ( ! is_string( $html ) || $html === '' || ( strpos( $html, '—' ) === false && strpos( $html, '–' ) === false ) ) { return $html; }
-	$parts = preg_split( '/(<(?:script|style|pre|code|textarea)\b[^>]*>.*?<\/(?:script|style|pre|code|textarea)>|<[^>]+>)/is', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
-	if ( $parts === false ) { return $html; } /* only on a regex failure; the pass is byte-based so odd encodings never stop it */
-	$out = ''; $label = false;
-	foreach ( $parts as $i => $p ) {
-		if ( $i % 2 === 1 ) { $out .= $p; $label = (bool) preg_match( '/^<\/(?:strong|b|em|i|a|span|h[1-6]|dt|th)>/i', $p ); continue; }
-		$out .= sml_ds_dash_segment( $p, $label ); if ( trim( $p ) !== '' ) { $label = false; }
+	if ( ! is_string( $html ) || $html === '' || ( strpos( $html, "\xE2\x80\x94" ) === false && strpos( $html, "\xE2\x80\x93" ) === false ) ) { return $html; }
+	/* a linear scan, no backtracking regex over the whole page: text runs are treated, tags are copied, and script, style,
+	   pre, code and textarea blocks are copied whole */
+	$out = ''; $label = false; $pos = 0; $len = strlen( $html );
+	while ( $pos < $len ) {
+		$lt = strpos( $html, '<', $pos );
+		if ( $lt === false ) { $out .= sml_ds_dash_segment( substr( $html, $pos ), $label ); break; }
+		if ( $lt > $pos ) { $text = substr( $html, $pos, $lt - $pos ); $out .= sml_ds_dash_segment( $text, $label ); if ( trim( $text ) !== '' ) { $label = false; } }
+		$gt = strpos( $html, '>', $lt );
+		if ( $gt === false ) { $out .= substr( $html, $lt ); break; }
+		$tag = substr( $html, $lt, $gt - $lt + 1 );
+		if ( preg_match( '/^<(script|style|pre|code|textarea)\b/i', $tag, $m ) ) {
+			$close = stripos( $html, '</' . $m[1], $gt );
+			$closeEnd = $close === false ? false : strpos( $html, '>', $close );
+			if ( $closeEnd === false ) { $out .= substr( $html, $lt ); break; }
+			$out .= substr( $html, $lt, $closeEnd - $lt + 1 ); $pos = $closeEnd + 1; $label = false; continue;
+		}
+		if ( substr( $tag, 0, 4 ) === '<!--' ) {
+			$ce = strpos( $html, '-->', $lt ); if ( $ce === false ) { $out .= substr( $html, $lt ); break; }
+			$out .= substr( $html, $lt, $ce - $lt + 3 ); $pos = $ce + 3; continue;
+		}
+		$out .= $tag; $pos = $gt + 1;
+		$label = (bool) preg_match( '/^<\/(?:strong|b|em|i|a|span|h[1-6]|dt|th)>$/i', $tag );
 	}
 	return $out;
 }
