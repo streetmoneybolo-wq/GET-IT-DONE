@@ -71,6 +71,8 @@
   }
   let queued = false;
   const queue = () => { if (queued) return; queued = true; setTimeout(() => { queued = false; sweep(); }, 120); };
+  /* panels with their own placement logic (MEM ALGO's place()) ask the dock first: when the dock has room it owns the panel */
+  window.smlChartDock = { room: () => room().ok, holds: (el) => !!el && el.parentElement === dock, dock };
   new MutationObserver(queue).observe(document.body, { attributes: true, attributeFilter: ['class', 'style'], childList: true, subtree: true });
   window.addEventListener('resize', queue);
 

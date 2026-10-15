@@ -225,8 +225,13 @@
   function splitRow(name, s) { return '<tr><td>' + name + '</td><td>' + s.trades + '</td><td>' + (s.winRate == null ? '–' : Math.round(s.winRate * 100) + '%') + '</td><td>' + rr(s.expectancyR) + '</td></tr>'; }
 
   /* On desktop the panel pops up over the ticker's quote column (or the alerts column when that is what sits there), never over the chart. Phones keep the bottom sheet. */
+  const CLEAR = ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'bottom', 'zIndex'];
   function place() {
     if (!(S.on && S.open)) return;
+    // the chart dock (academy-chart-dock.js) owns the panel whenever it has room: moving it over the quote column at the same
+    // time made the two fight (dock, body, dock...) and the chart jumped with every swap
+    const dk = window.smlChartDock;
+    if (dk && (dk.holds(panel) || dk.room())) { if (panel.style.position) CLEAR.forEach((k) => { panel.style[k] = ''; }); return; }
     if (window.matchMedia('(max-width:700px)').matches) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'bottom', 'zIndex'].forEach((k) => { panel.style[k] = ''; }); return; }
     const visible = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 80 && getComputedStyle(el).display !== 'none' ? r : null; };
     const r = visible(document.querySelector('.side')) || visible(document.getElementById('academy-alerts'));
