@@ -76,6 +76,7 @@
       + '<h6>TEXT SIZE · ' + (Number(state.size) || 100) + '%</h6><input type="range" min="80" max="140" step="5" data-k="size" value="' + (Number(state.size) || 100) + '">'
       + '<h6>SPACING</h6><select data-k="density"><option value="comfortable"' + (state.density === 'comfortable' ? ' selected' : '') + '>Comfortable</option><option value="compact"' + (state.density === 'compact' ? ' selected' : '') + '>Compact</option></select>'
       + '<h6>BY MODULE</h6><button type="button" class="bm" data-bymodule="1">\u2699 Customize each module on its own</button>'
+      + '<button type="button" class="bm" data-layoutout="1" style="margin-top:6px">\u29c9 Pop out my layout to its own window</button>'
       + '<p class="note">Colour, text size, height, width, order, hide, or float any module as a window inside the Academy. Saved to your account.</p>'
       + '<div class="ft"><button type="button" data-reset="1">Reset to default</button><button type="button" data-close="1">Done</button></div>'
       + '<p class="note">Saved in this browser. Chart candle colours are not changed.</p>';
@@ -85,6 +86,7 @@
     if (b.dataset.theme) { state.theme = b.dataset.theme; state.accent = ''; state.bg = ''; save(state); apply(state); paint(); }
     else if (b.dataset.reset) { state = Object.assign({}, DEFAULTS); save(state); apply(state); paint(); }
     else if (b.dataset.bymodule) { toggle(false); if (window.smlAcademyCustomize) window.smlAcademyCustomize.toggle(true); }
+    else if (b.dataset.layoutout) { toggle(false); if (window.smlAcademyCustomize && window.smlAcademyCustomize.popOutLayout) window.smlAcademyCustomize.popOutLayout(); }
     else if (b.dataset.close) toggle(false);
   });
   panel.addEventListener('input', (e) => {

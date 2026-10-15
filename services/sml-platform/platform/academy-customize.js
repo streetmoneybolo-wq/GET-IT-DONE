@@ -8,7 +8,7 @@
 (() => {
   if (window.__smlCustomize) return;
   window.__smlCustomize = 1;
-  if (window.smlAcademyPopout) return; // a browser pop-out keeps its own toolbar (academy-popout-ui.js)
+  const POP = !!window.smlAcademyPopout; // a browser pop-out keeps its own toolbar: no windows or chips there, but the member's module settings still apply
 
   const FALLBACK = [
     ['chart', 'Chart', 'section.chart'], ['direction', 'Market direction', '#academy-direction'], ['unusual-volume', 'Unusual volume', '#academy-unusual-volume'],
@@ -121,7 +121,7 @@
     const head = document.createElement('div'); head.className = 'sml-wh';
     head.innerHTML = '<span class="t">' + esc(labelOf(id)) + '</span>'
       + '<button type="button" data-a="cz" title="Customize this module">⚙</button>'
-      + (typeof window.smlAcademyPopBrowser === 'function' ? '<button type="button" data-a="browser" title="Send this module to your browser for another screen">↗</button>' : '')
+      + '<button type="button" data-a="browser" title="Its own window outside Discord: stays on top, drag it to any screen (opens in your browser where floating windows are not allowed)">↗</button>'
       + '<button type="button" data-a="max" title="Fill the Academy">▢</button>'
       + '<button type="button" data-a="close" title="Put it back on the page">×</button>';
     const body = document.createElement('div'); body.className = 'sml-wb';
@@ -137,7 +137,7 @@
       const a = b.getAttribute('data-a');
       if (a === 'close') unfloat(id);
       if (a === 'max') { w.max = !w.max; el.classList.toggle('max', w.max); b.textContent = w.max ? '❐' : '▢'; fire(); }
-      if (a === 'browser') { unfloat(id); void window.smlAcademyPopBrowser(id); }
+      if (a === 'browser') void floatOut(id);
       if (a === 'cz') { if (!cz.on) czToggle(true); openPanel(id, b); }
     });
     head.addEventListener('pointerdown', (e) => {
@@ -204,6 +204,37 @@
     if (!from) toast(labelOf(id) + ' is now a window inside the Academy. Drag its title bar, pull the corner to resize, × puts it back.');
   }
 
+  /* Out of Discord: a document picture-in-picture window is an OS window of its own (always on top, any screen). Discord's
+     Activity frame may not allow it; then the module goes to the member's browser as its own window instead. */
+  async function floatOut(id) {
+    const w = wins.get(id);
+    if (w && w.mod && 'documentPictureInPicture' in window) {
+      try {
+        const pip = await window.documentPictureInPicture.requestWindow({ width: Math.round(Math.max(320, w.geom.w)), height: Math.round(Math.max(240, w.geom.h)) });
+        document.querySelectorAll('style,link[rel="stylesheet"]').forEach((st) => pip.document.head.appendChild(st.cloneNode(true)));
+        pip.document.documentElement.className = document.documentElement.className; pip.document.body.className = document.body.className;
+        pip.document.body.style.cssText = 'margin:0;background:#080e18;overflow:auto';
+        pip.document.title = labelOf(id) + ' — MEM Academy';
+        const el = w.mod, hold = document.createElement('div'); hold.className = 'sml-wnote'; hold.textContent = labelOf(id) + ' is floating in its own window. Close that window to bring it back here.';
+        w.body.appendChild(hold); pip.document.body.appendChild(el); el.style.setProperty('height', '100%', 'important');
+        pip.addEventListener('resize', fire);
+        pip.addEventListener('pagehide', () => { hold.remove(); if (wins.has(id)) w.body.appendChild(el); else unfloatNode(id, el); fire(); }, { once: true });
+        toast(labelOf(id) + ' is its own window now: drag it to any screen, it stays on top of other apps.'); fire(); return;
+      } catch (_) { /* the frame does not allow floating windows: the browser path below */ }
+    }
+    if (typeof window.smlAcademyPopBrowser !== 'function') { toast('This window cannot leave the Academy here.'); return; }
+    if (w) unfloat(id);
+    void window.smlAcademyPopBrowser(id);
+  }
+  function unfloatNode(id, el) { const m = find(id); if (m && m.el && m.el !== el) return; const slot = document.querySelector('.sml-w-slot'); if (slot) slot.replaceWith(el); else document.body.appendChild(el); }
+  /* The whole customized layout as one window outside Discord: the Trading Desk opens in the member's browser and loads this
+     layout (windows, sizes, settings); there it can be dragged to any screen, resized and added to. */
+  async function popOutLayout() {
+    await flush();
+    if (typeof window.smlAcademyPopBrowser !== 'function') { toast('Pop-out is not available here.'); return; }
+    toast('Opening your layout as its own window. Drag it to any screen; it loads the windows and settings you saved here.');
+    void window.smlAcademyPopBrowser('desk');
+  }
   function unfloat(id) {
     const w = wins.get(id);
     if (!w) return;
@@ -274,7 +305,7 @@
     const hidden = Object.keys(state.modules).filter((id) => state.modules[id].hidden);
     b.innerHTML = '<span>⚙ CUSTOMIZE MODE — click ⚙ on any module to set that module on its own.</span>'
       + hidden.map((id) => '<button type="button" data-show="' + esc(id) + '" title="Show it again">👁 ' + esc(labelOf(id)) + '</button>').join('')
-      + '<button type="button" data-a="windows">▣ Windows</button><button type="button" data-a="reset">Reset all</button><button type="button" data-a="done" class="done">Done</button>';
+      + '<button type="button" data-a="windows">▣ Windows</button><button type="button" data-a="layout-out" title="Your whole layout as its own window outside Discord">⧉ Pop out layout</button><button type="button" data-a="reset">Reset all</button><button type="button" data-a="done" class="done">Done</button>';
   }
   function onBar(e) {
     const b = e.target.closest('button'); if (!b) return;
@@ -283,6 +314,7 @@
     const a = b.getAttribute('data-a');
     if (a === 'done') czToggle(false);
     if (a === 'windows') windowsMenu(b);
+    if (a === 'layout-out') void popOutLayout();
     if (a === 'reset') {
       const ids = Object.keys(state.modules); state.modules = {};
       for (const id of ids) applyModule(id);
@@ -363,17 +395,21 @@
   document.addEventListener('click', (e) => { const p = document.getElementById('sml-cz-panel'); if (p && !p.contains(e.target) && !e.target.closest('.sml-cz-chip,#sml-cz-bar,.sml-wh')) closePanel(); });
 
   window.smlAcademyFloat = float;
-  window.smlAcademyCustomize = { toggle: czToggle, isOn: () => cz.on, float, close: unfloat, windows: () => [...wins.keys()] };
+  window.smlAcademyCustomize = { toggle: czToggle, isOn: () => cz.on, float, close: unfloat, floatOut, popOutLayout, windows: () => [...wins.keys()] };
 
   /* ---------- boot: restore the member's windows and settings ---------- */
   const ready = (fn) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn) : fn());
   ready(async () => {
-    document.body.appendChild(layer);
+    if (!POP) document.body.appendChild(layer);
     for (let i = 0; i < 60 && !window.smlAcademySessionToken; i++) await sleep(250);
     const saved = await load();
     if (saved && typeof saved === 'object') {
       state = { v: 2, panels: Array.isArray(saved.panels) ? saved.panels : [], modules: saved.modules && typeof saved.modules === 'object' ? saved.modules : {} };
       lastSaved = JSON.stringify({ v: 2, scope: 'activity', panels: state.panels, modules: state.modules });
+    }
+    if (POP) { // a pop-out window: colours, text size and width follow the member's settings; nothing is hidden or re-ordered there
+      for (const id of Object.keys(state.modules)) { const s0 = state.modules[id]; state.modules[id] = { ...(s0.accent ? { accent: s0.accent } : {}), ...(s0.size ? { size: s0.size } : {}), ...(s0.width ? { width: s0.width } : {}) }; }
+      applyAll(); new MutationObserver(queueApply).observe(document.body, { childList: true, subtree: true }); return;
     }
     applyAll();
     new MutationObserver(queueApply).observe(document.body, { childList: true, subtree: true });

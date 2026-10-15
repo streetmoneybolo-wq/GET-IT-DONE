@@ -50,13 +50,13 @@
       const cap = Number(tk[1]), cur = V.live && V.live.t >= last.t ? V.live : Object.assign({}, last, { n: Number(last.n) || cap });
       if (cur.n >= cap) { if (cur.t > last.t) { V.liveDone = (V.liveDone || []).concat([cur]).slice(-1000); } V.live = { t: Math.max(Number(ts) || Date.now(), last.t + 1, cur.t + 1), o: price, h: price, l: price, c: price, v: Number(size) || 0, n: 1 }; }
       else { cur.c = price; if (price > cur.h) cur.h = price; if (price < cur.l) cur.l = price; cur.v = (+cur.v || 0) + (Number(size) || 0); cur.n += 1; V.live = cur; }
-      emit(); return;
+      emitLive(); return;
     }
     let t = last.t;
     if (ms) { if (ts < last.t) return; t = last.t + Math.floor((ts - last.t) / ms) * ms; }
     if (!V.live || V.live.t !== t) V.live = t === last.t ? { t, o: +last.o, h: +last.h, l: +last.l, c: +last.c, v: +last.v || 0 } : { t, o: price, h: price, l: price, c: price, v: 0 };
     const L = V.live; L.c = price; if (price > L.h) L.h = price; if (price < L.l) L.l = price; L.v += Number(size) || 0;
-    emit();
+    emitLive();
   }
 
   const V = { volPane: true, live: null, n: defaultN(), end: null, manual: null, key: '', lastN: 0, tool: 'cursor', magnet: true, crosshair: null, draft: null, selected: null, hover: null, patterns: false, patternFilter: { candles: true, charts: true, levels: true }, patternFocus: null };
@@ -138,6 +138,10 @@
 
   let raf = 0;
   /* One render pass per frame: every layer (candles, indicators, MEM ALGO, drawings) draws synchronously inside the same animation frame, so nothing trails the candles. */
+  /* Live prints can arrive many times a frame on a busy tape: coalesce them so every layer repaints at a steady ~25 fps instead of
+     bursting, which is what reads as a choppy tick chart. Pointer and view changes still use emit() directly. */
+  let liveTm = 0;
+  function emitLive() { if (liveTm) return; liveTm = setTimeout(() => { liveTm = 0; emit(); }, 40); }
   function emit() { cache = null; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const t0 = performance.now(); window.dispatchEvent(new Event('sml-chart-view')); const t1 = performance.now(); drawPro(); perfSample(t0, t1 - t0, performance.now() - t1); }); }
 
   /* ---------- frame-rate probe ----------

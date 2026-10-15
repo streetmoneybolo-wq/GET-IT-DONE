@@ -163,13 +163,15 @@
   tools.id = 'sml-desk-tools';
   tools.innerHTML = '<span class="sml-dsep"></span>'
     + '<button type="button" class="sml-db" data-a="add">＋ Window</button>'
-    + '<button type="button" class="sml-db" data-a="save">💾 Save Layout</button>';
+    + '<button type="button" class="sml-db" data-a="save">💾 Save Layout</button>'
+    + '<button type="button" class="sml-db" data-a="academy" title="Load the windows you arranged inside the Academy">⟲ Academy layout</button>';
   desk.appendChild(tools);
   tools.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-a]');
     if (!btn) return;
     if (btn.dataset.a === 'add') showPicker();
     if (btn.dataset.a === 'save') void saveLayout();
+    if (btn.dataset.a === 'academy') void loadAcademyLayout();
   });
 
   const area = document.createElement('div');
@@ -329,15 +331,27 @@
     toast('Layout saved locally — ' + panels.size + ' panel' + (panels.size === 1 ? '' : 's') + '.');
   }
 
+  async function fetchLayout(scope) {
+    const token = await session(); if (!token) return null;
+    const r = await fetch('/academy-activity/desk/layout' + (scope ? '?scope=' + scope : ''), { headers: { authorization: 'Bearer ' + token }, cache: 'no-store' });
+    if (!r.ok) return null; const d = await r.json(); return d.ok && d.layout && Array.isArray(d.layout.panels) ? d.layout : null;
+  }
+  /* the desk's own layout first; without one, the windows the member arranged inside the Academy (same fractions of the screen) */
   async function loadLayout() {
     try {
-      const token = await session();
-      if (token) {
-        const r = await fetch('/academy-activity/desk/layout', { headers: { authorization: 'Bearer ' + token }, cache: 'no-store' });
-        if (r.ok) { const d = await r.json(); if (d.ok && d.layout && Array.isArray(d.layout.panels)) return d.layout; }
-      }
+      const own = await fetchLayout('');
+      if (own && own.panels.length) return own;
+      const academy = await fetchLayout('activity');
+      if (academy && academy.panels.length) { toast('Loaded the windows from your Academy layout.'); return academy; }
     } catch (_) { /* fall through */ }
     return store.get('sml-desk-layout', null);
+  }
+  async function loadAcademyLayout() {
+    let layout = null; try { layout = await fetchLayout('activity'); } catch (_) { layout = null; }
+    if (!layout || !layout.panels.length) { toast('No Academy layout saved yet. Open windows inside the Academy first.'); return; }
+    for (const id of [...panels.keys()]) removePanel(id);
+    for (const p of layout.panels) await addPanel(p.id, p);
+    toast('Academy layout loaded: ' + layout.panels.length + ' window' + (layout.panels.length === 1 ? '' : 's') + '. Drag, resize, add, then Save Layout to keep this desk.');
   }
 
   /* --- Module picker --- */

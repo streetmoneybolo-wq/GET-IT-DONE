@@ -79,7 +79,7 @@
       let fresh = (d.tape || []).filter((t) => t.t > st.lastT).sort((a, b) => a.t - b.t);
       if (!st.lastT && fresh.length > 1) fresh = [Object.assign({}, fresh[fresh.length - 1], { size: 0 })]; // first look: take the price, don't replay history as volume
       if (window.smlChartPro && window.smlChartPro.liveTick) for (const t of fresh) window.smlChartPro.liveTick(t.price, t.size, t.t);
-      if (fresh.length) { st.lastT = fresh[fresh.length - 1].t; if (st.lastT !== fresh[0].t || fresh.length === 1) fresh.forEach(keep); }
+      if (fresh.length) { st.lastT = fresh[fresh.length - 1].t; window.smlLiveTradeAt = Date.now(); if (st.lastT !== fresh[0].t || fresh.length === 1) fresh.forEach(keep); }
       if (d.rt) st.rt = d.rt;
       if (d.book && ((d.book.bids && d.book.bids.length) || (d.book.asks && d.book.asks.length))) paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)), !!d.topOnly);
       paintTape(d.tape || []); paintQuote(d);
@@ -116,7 +116,7 @@
     const key = t.t + '|' + t.price + '|' + t.size; if (sse.seen.has(key)) return;
     sse.seen.add(key); if (sse.seen.size > 300) sse.seen.delete(sse.seen.values().next().value);
     if (window.smlChartPro && window.smlChartPro.liveTick) window.smlChartPro.liveTick(t.price, t.size, t.t);
-    st.lastT = Math.max(st.lastT, t.t); st.freshAt = Date.now();
+    st.lastT = Math.max(st.lastT, t.t); st.freshAt = Date.now(); window.smlLiveTradeAt = st.freshAt; window.smlLiveTradeAt = st.freshAt;
     sse.tape.unshift(t); if (sse.tape.length > 30) sse.tape.length = 30;
     keep(t);
     schedulePaint();
