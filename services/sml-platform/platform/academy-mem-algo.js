@@ -34,7 +34,7 @@ const STRATEGIES = {
     blurb: 'Fast EMA(9) vs slow EMA(21) inside the EMA(100) trend, on intraday candles. Skips the first 10 minutes and last 15 minutes of the regular session.',
     tfHint: INTRADAY,
     bestTf: '5m', // chart interval this mode switches to: EMA(100) spans ~1.5 sessions of 5m candles and the 10/15-minute session skips stay meaningful
-    params: { fast: 9, slow: 21, trend: 100, atr: 14, minSep: 0.35, confirm: 2, stopAtr: 1.2, targetAtr: 2.4, maxHold: 40, costBps: 2, session: { open: 570, close: 960, skipOpen: 10, skipClose: 15 } }
+    params: { fast: 9, slow: 21, trend: 100, atr: 14, minSep: 0.35, confirm: 2, stopAtr: 1.2, targetAtr: 2.4, maxHold: 40, costBps: 2, session: { open: 570, close: 960, skipOpen: 10, skipClose: 15 }, minScore: 0, htfFast: 10, htfSlow: 30, regimeLen: 200, rsLook: 60 }
   },
   swing: {
     key: 'swing',
@@ -42,7 +42,7 @@ const STRATEGIES = {
     blurb: 'Fast EMA(20) vs slow EMA(50) inside the EMA(200) trend, on hourly or daily candles. Wider ATR stops, held for days to weeks.',
     tfHint: ['1h', '2h', '4h', '1D'],
     bestTf: '1D', // held days to weeks: on daily candles maxHold 40 is about two months and EMA(200) is the classic trend filter (on 1h a trade would be capped at ~6 sessions)
-    params: { fast: 20, slow: 50, trend: 200, atr: 14, minSep: 0.5, confirm: 2, stopAtr: 2.0, targetAtr: 4.0, maxHold: 40, costBps: 2, session: null }
+    params: { fast: 20, slow: 50, trend: 200, atr: 14, minSep: 0.5, confirm: 2, stopAtr: 2.0, targetAtr: 4.0, maxHold: 40, costBps: 2, session: null, minScore: 0, htfFast: 10, htfSlow: 30, regimeLen: 200, rsLook: 60 }
   },
   mid: {
     key: 'mid',
@@ -173,8 +173,10 @@ function computeSignals(bars, params) {
 }
 
 
-/* ---------- Confluence for the hold strategies (Mid-Term / Long-Term) ----------
- * A crossover on its own is one opinion. Before a hold signal is taken, the model asks what else agrees, using only data that already exists on the page:
+/* ---------- Confluence (Day, Swing, Mid-Term, Long-Term) ----------
+ * A crossover on its own is one opinion. Before a signal is taken, the model asks what else agrees. Every factor is read for the trade's side
+ * (a SELL wants the mirror image of what a BUY wants). Day and Swing default to no minimum (every signal is graded, nothing skipped) and the
+ * member raises the minimum in Settings; the hold strategies default to 55. The first six factors use only data already on the page:
  *   higher-timeframe trend (20)  the next timeframe up is also trending up (previous COMPLETE higher-timeframe candle, so no look-ahead)
  *   volume (15)                  the signal candle traded on real volume and money has been flowing in (up-volume vs down-volume)
  *   momentum (15)                RSI in a healthy 50-70 zone (not exhausted) and MACD histogram positive and rising
@@ -235,25 +237,28 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const inData = ctx.institutional && ctx.institutional.available ? ctx.institutional : null;
   const fiData = ctx.filings && ctx.filings.available ? ctx.filings : null;
 
-  function scoreAt(i, withPatterns) {
+  /* dir: +1 scores a BUY, -1 a SELL. Every factor is read for the trade's side: for a short, a falling higher timeframe, sell-side volume,
+     RSI under 50, a benchmark below its average, lagging the benchmark, bearish structure, bearish flow and sentiment are the good readings. */
+  function scoreAt(i, withPatterns, dir = 1) {
+    const d = dir < 0 ? -1 : 1, side = d > 0 ? 'the long' : 'the short';
     const F = [];
     const add = (key, label, max, pts, detail, available = true) => F.push({ key, label, max, pts: available ? pts : 0, ok: available ? pts >= max * 0.6 : null, detail, available });
-    const hs = htfState(bars[i].t);
-    add('htf', 'Higher-timeframe trend', 20, hs === 'up' ? 20 : hs === 'flat' ? 8 : 0, hs === null ? 'no higher-timeframe data' : 'next timeframe up is ' + hs, hs !== null);
-    const vr = Number.isFinite(vAvg[i]) && vAvg[i] > 0 ? bars[i].v / vAvg[i] : null, ad = accDist(i);
+    const hs = htfState(bars[i].t), hsFor = hs === null ? null : d > 0 ? hs : (hs === 'up' ? 'down' : hs === 'down' ? 'up' : 'flat');
+    add('htf', 'Higher-timeframe trend', 20, hsFor === 'up' ? 20 : hsFor === 'flat' ? 8 : 0, hs === null ? 'no higher-timeframe data' : 'next timeframe up is ' + hs, hs !== null);
+    const vr = Number.isFinite(vAvg[i]) && vAvg[i] > 0 ? bars[i].v / vAvg[i] : null, ad = accDist(i), adFor = ad == null ? null : (d > 0 ? ad : 1 - ad);
     if (vr === null || !(bars[i].v > 0)) add('volume', 'Volume', 15, 0, 'no volume data', false);
-    else add('volume', 'Volume', 15, (vr >= 1.2 ? 10 : vr >= 0.9 ? 5 : 0) + (ad != null && ad >= 0.55 ? 5 : 0), (vr).toFixed(2) + '× average volume' + (ad != null ? ', ' + Math.round(ad * 100) + '% of recent volume on up candles' : ''));
-    const r = rs[i], h = mh[i], hPrev = mh[i - 1];
+    else add('volume', 'Volume', 15, (vr >= 1.2 ? 10 : vr >= 0.9 ? 5 : 0) + (adFor != null && adFor >= 0.55 ? 5 : 0), (vr).toFixed(2) + '× average volume' + (ad != null ? ', ' + Math.round(ad * 100) + '% of recent volume on up candles' : ''));
+    const r = rs[i], h = mh[i], hPrev = mh[i - 1], rFor = d > 0 ? r : 100 - r, hFor = h * d, hPrevFor = (hPrev || 0) * d;
     if (!Number.isFinite(r)) add('momentum', 'Momentum', 15, 0, 'warming up', false);
-    else add('momentum', 'Momentum', 15, (r >= 50 && r <= 70 ? 10 : (r >= 45 && r < 50) || (r > 70 && r <= 78) ? 5 : 0) + (Number.isFinite(h) && h > 0 && h >= (hPrev || 0) ? 5 : 0), 'RSI ' + r.toFixed(0) + (Number.isFinite(h) ? ', MACD histogram ' + (h > 0 ? 'positive' : 'negative') + (h >= (hPrev || 0) ? ' and rising' : ' and falling') : ''));
+    else add('momentum', 'Momentum', 15, (rFor >= 50 && rFor <= 70 ? 10 : (rFor >= 45 && rFor < 50) || (rFor > 70 && rFor <= 78) ? 5 : 0) + (Number.isFinite(h) && hFor > 0 && hFor >= hPrevFor ? 5 : 0), 'RSI ' + r.toFixed(0) + (Number.isFinite(h) ? ', MACD histogram ' + (h > 0 ? 'positive' : 'negative') + (h >= (hPrev || 0) ? ' and rising' : ' and falling') : ''));
     const bi = benchAt(bars[i].t);
     if (bi < 0 || ctx.benchSelf) { add('regime', 'Market regime', 15, 0, ctx.benchSelf ? 'this chart is the benchmark' : 'no benchmark data', false); add('rs', 'Relative strength', 10, 0, ctx.benchSelf ? 'this chart is the benchmark' : 'no benchmark data', false); }
     else {
       const above = Number.isFinite(bEma[bi]) ? bC[bi] > bEma[bi] : bC[bi] > sma(bC.slice(0, bi + 1), Math.min(bi + 1, 50)).pop();
-      add('regime', 'Market regime', 15, above ? 15 : 0, 'benchmark is ' + (above ? 'above' : 'below') + ' its long average');
+      add('regime', 'Market regime', 15, (d > 0 ? above : !above) ? 15 : 0, 'benchmark is ' + (above ? 'above' : 'below') + ' its long average');
       const bj = bi - lookback, ij = i - lookback;
       if (bj < 0 || ij < 0) add('rs', 'Relative strength', 10, 0, 'not enough history', false);
-      else { const mine = close[i] / close[ij] - 1, theirs = bC[bi] / bC[bj] - 1; add('rs', 'Relative strength', 10, mine > theirs ? 10 : 0, (mine * 100).toFixed(0) + '% vs benchmark ' + (theirs * 100).toFixed(0) + '% over ' + lookback + ' candles'); }
+      else { const mine = close[i] / close[ij] - 1, theirs = bC[bi] / bC[bj] - 1; add('rs', 'Relative strength', 10, (d > 0 ? mine > theirs : mine < theirs) ? 10 : 0, (mine * 100).toFixed(0) + '% vs benchmark ' + (theirs * 100).toFixed(0) + '% over ' + lookback + ' candles' + (d < 0 ? ' (weaker than the market helps ' + side + ')' : '')); }
     }
     if (!patternsFn || !withPatterns) add('structure', 'Chart structure', 25, 0, 'pattern scanner not available', false);
     else {
@@ -265,19 +270,22 @@ function buildConfluence(bars, p, ind, tf, ctx) {
         const a = ind.atr[i] > 0 ? ind.atr[i] : bars[i].c * 0.02, c0 = bars[i].c;
         const recent = (c) => c.status === 'confirmed' && Number.isFinite(c.endIdx) && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 40;
         const bullP = (res.charts || []).filter((c) => recent(c) && c.dir === 'bull'), bearP = (res.charts || []).filter((c) => recent(c) && c.dir === 'bear');
-        const above = (res.levels || []).filter((l) => l.kind === 'resistance' && l.p > c0 && l.p - c0 < a), below = (res.levels || []).filter((l) => l.kind === 'support' && l.p < c0 && c0 - l.p <= 2 * a && l.touches >= 2);
+        // levels that help the trade sit behind it (support under a long, resistance over a short); the ones that hurt sit right in front of it
+        const resNear = (res.levels || []).filter((l) => l.kind === 'resistance' && l.p > c0 && l.p - c0 < a), supNear = (res.levels || []).filter((l) => l.kind === 'support' && l.p < c0 && c0 - l.p < a);
+        const supBehind = (res.levels || []).filter((l) => l.kind === 'support' && l.p < c0 && c0 - l.p <= 2 * a && l.touches >= 2), resBehind = (res.levels || []).filter((l) => l.kind === 'resistance' && l.p > c0 && l.p - c0 <= 2 * a && l.touches >= 2);
+        const withP = d > 0 ? bullP : bearP, againstP = d > 0 ? bearP : bullP, behind = d > 0 ? supBehind : resBehind, inFront = d > 0 ? resNear : supNear;
         let pts = 12; const notes = [];
-        if (bullP.length) { pts += 8; notes.push('bullish ' + bullP[0].name.replace(/_/g, ' ')); }
-        if (below.length) { pts += 5; notes.push('support just below'); }
-        if (bearP.length) { pts -= 10; notes.push('bearish ' + bearP[0].name.replace(/_/g, ' ') + ' confirmed'); }
-        if (above.length) { pts -= 6; notes.push('resistance right overhead'); }
+        if (withP.length) { pts += 8; notes.push((d > 0 ? 'bullish ' : 'bearish ') + withP[0].name.replace(/_/g, ' ')); }
+        if (behind.length) { pts += 5; notes.push(d > 0 ? 'support just below' : 'resistance just above'); }
+        if (againstP.length) { pts -= 10; notes.push((d > 0 ? 'bearish ' : 'bullish ') + againstP[0].name.replace(/_/g, ' ') + ' confirmed'); }
+        if (inFront.length) { pts -= 6; notes.push(d > 0 ? 'resistance right overhead' : 'support right underneath'); }
         add('structure', 'Chart structure', 25, Math.max(0, Math.min(25, pts)), notes.length ? notes.join(', ') : 'nothing decisive');
       }
     }
     if (!sigVotes) add('signals', 'MEM Signals ensemble', 15, 0, 'signal models not loaded', false);
     else {
       const names = Object.keys(sigVotes); let agree = 0, total = 0;
-      for (const k of names) { const v = sigVotes[k]; if (v && i < v.length && Number.isFinite(v[i]) && Math.abs(v[i]) >= 0.15) { total++; if (v[i] > 0) agree++; } }
+      for (const k of names) { const v = sigVotes[k]; if (v && i < v.length && Number.isFinite(v[i]) && Math.abs(v[i]) >= 0.15) { total++; if (v[i] * d > 0) agree++; } }
       if (total < 3) add('signals', 'MEM Signals ensemble', 15, 0, 'not enough signal data', false);
       else { const ratio = agree / total; add('signals', 'MEM Signals ensemble', 15, ratio >= 0.75 ? 15 : ratio >= 0.6 ? 10 : ratio >= 0.45 ? 5 : 0, agree + ' of ' + total + ' models agree (' + Math.round(ratio * 100) + '%)'); }
     }
@@ -285,7 +293,8 @@ function buildConfluence(bars, p, ind, tf, ctx) {
     else {
       const bias = ofData.bias, sc = Number(ofData.score) || 0;
       const strong = Math.abs(sc) > 30;
-      add('orderflow', 'Order flow', 10, (bias === 'bullish' && sc > 10) || (bias === 'bearish' && sc < -10) ? (strong ? 10 : 5) : 0, bias + ' (score ' + sc + ')' + (strong ? ' — strong' : ''));
+      const withFlow = d > 0 ? (bias === 'bullish' && sc > 10) : (bias === 'bearish' && sc < -10);
+      add('orderflow', 'Order flow', 10, withFlow ? (strong ? 10 : 5) : 0, bias + ' (score ' + sc + ')' + (strong ? ' — strong' : ''));
     }
     if (!earnData) add('earnings', 'Earnings safety', 10, 10, 'no earnings data — assumed safe', true);
     else {
@@ -296,18 +305,18 @@ function buildConfluence(bars, p, ind, tf, ctx) {
     if (!dirData) add('direction', 'Market direction', 10, 0, 'market direction not available', false);
     else {
       const db = Number(dirData.bias) || 0;
-      add('direction', 'Market direction', 10, db > 30 ? 10 : db > 0 ? 5 : 0, dirData.label + ' (bias ' + db + ')');
+      add('direction', 'Market direction', 10, db * d > 30 ? 10 : db * d > 0 ? 5 : 0, dirData.label + ' (bias ' + db + ')');
     }
     if (!sentData) add('sentiment', 'Sentiment', 10, 0, 'sentiment not available', false);
     else {
       const ss = Number(sentData.score) || 0;
-      add('sentiment', 'Sentiment', 10, ss > 0.3 ? 10 : ss > 0 ? 5 : 0, sentData.label + ' (' + (ss * 100).toFixed(0) + '%)');
+      add('sentiment', 'Sentiment', 10, ss * d > 0.3 ? 10 : ss * d > 0 ? 5 : 0, sentData.label + ' (' + (ss * 100).toFixed(0) + '%)');
     }
     if (!dpData || !dpData.lean) add('darkpool', 'Dark pool flow', 5, 0, 'dark pool data not available', false);
     else {
       const lean = dpData.lean.label || '';
-      const bullLean = /buy|bull|accum/i.test(lean);
-      add('darkpool', 'Dark pool flow', 5, bullLean ? 5 : /neutral/i.test(lean) ? 2 : 0, lean);
+      const bullLean = /buy|bull|accum/i.test(lean), bearLean = /sell|bear|distrib/i.test(lean);
+      add('darkpool', 'Dark pool flow', 5, (d > 0 ? bullLean : bearLean) ? 5 : /neutral/i.test(lean) ? 2 : 0, lean);
     }
     if (!gxData) add('gamma', 'Gamma pressure', 15, 0, 'options positioning not available', false);
     else {
@@ -317,24 +326,26 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       const pw = gxData.putWall && Number.isFinite(Number(gxData.putWall.distancePct)) ? Number(gxData.putWall.distancePct) : null;
       let pts = dampened ? 8 : 2; const notes = [dampened ? 'dealer hedging dampens moves' : 'dealer hedging amplifies moves'];
       if (Number.isFinite(pr) && pr >= 2 && dampened) { pts += 3; notes.push('hedge flow is ' + pr.toFixed(1) + '% of daily volume'); }
-      if (pw != null && pw <= 2 * a) { pts += 4; notes.push('put wall ' + pw.toFixed(1) + '% below'); }
-      if (cw != null && cw <= a) { pts -= 4; notes.push('call wall ' + cw.toFixed(1) + '% overhead'); }
+      // the wall behind the trade is a floor or ceiling in its favour; the wall in front caps it
+      const behindW = d > 0 ? pw : cw, frontW = d > 0 ? cw : pw;
+      if (behindW != null && behindW <= 2 * a) { pts += 4; notes.push((d > 0 ? 'put wall ' : 'call wall ') + behindW.toFixed(1) + (d > 0 ? '% below' : '% above')); }
+      if (frontW != null && frontW <= a) { pts -= 4; notes.push((d > 0 ? 'call wall ' : 'put wall ') + frontW.toFixed(1) + (d > 0 ? '% overhead' : '% underneath')); }
       if (Number(gxData.zeroDteShare) >= 0.4) { pts -= 2; notes.push('mostly 0DTE, profile decays today'); }
       add('gamma', 'Gamma pressure', 15, Math.max(0, Math.min(15, pts)), notes.join(', ') + (gxData.basis === 'inferred' ? ' (dealer side inferred from prints)' : ' (standard dealer assumption)'));
     }
     if (!inData) add('institutional', 'Institutional flow', 10, 0, 'size-bucket and sweep data not available', false);
     else {
-      const ib = Number(inData.bias) || 0;
+      const ib = (Number(inData.bias) || 0) * d;
       let pts = ib >= 40 ? 10 : ib >= 15 ? 6 : ib > -15 ? 3 : 0;
-      if (inData.retailVsInstitutional === 'institutions buying what retail sells' && pts < 10) pts += 2;
+      if (inData.retailVsInstitutional === (d > 0 ? 'institutions buying what retail sells' : 'institutions selling into retail buying') && pts < 10) pts += 2;
       if (Array.isArray(inData.notes) && inData.notes.length) pts = Math.min(pts, 5);
-      add('institutional', 'Institutional flow', 10, Math.max(0, Math.min(10, pts)), inData.label + ' (bias ' + ib + ')' + (inData.retailVsInstitutional && inData.retailVsInstitutional !== 'same direction' ? ', ' + inData.retailVsInstitutional : ''));
+      add('institutional', 'Institutional flow', 10, Math.max(0, Math.min(10, pts)), inData.label + ' (bias ' + (Number(inData.bias) || 0) + ')' + (inData.retailVsInstitutional && inData.retailVsInstitutional !== 'same direction' ? ', ' + inData.retailVsInstitutional : ''));
     }
     if (!fiData) add('filings', 'Insider filings', 5, 0, 'SEC filings not available', false);
     else {
       const fb = Number(fiData.bias) || 0, ins = fiData.insiders || {}, cluster = Boolean(ins.cluster);
       const heavySell = ins.last90 && Number(ins.last90.sellValue) >= 5_000_000 && fb <= -40;
-      const pts = cluster ? 5 : fb >= 15 ? 4 : heavySell ? 0 : fb <= -15 ? 1 : 2;
+      const pts = d > 0 ? (cluster ? 5 : fb >= 15 ? 4 : heavySell ? 0 : fb <= -15 ? 1 : 2) : (cluster ? 0 : heavySell ? 5 : fb <= -15 ? 4 : fb >= 15 ? 1 : 2);
       add('filings', 'Insider filings', 5, pts, fiData.label + (fiData.activistRecent ? ', 13D filed in the last 60 days' : '') + (ins.last90 ? ' (' + ins.last90.buys + ' buys / ' + ins.last90.sells + ' sells in 90 days)' : ''));
     }
     const avail = F.filter((f) => f.available), max = avail.reduce((s, f) => s + f.max, 0), got = avail.reduce((s, f) => s + f.pts, 0);
@@ -343,27 +354,34 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   }
 
   const rawSig = ind.sig.slice(), keptSig = ind.sig.slice(), byIndex = new Map();
+  let lastDir = p.dirs === 'short' ? -1 : 1;
   for (let i = 0; i < n; i++) {
-    if (ind.sig[i] !== 1) continue;
-    const c = scoreAt(i, true); byIndex.set(i, c);
-    if (c.score < p.minScore) keptSig[i] = 0;
+    if (!ind.sig[i]) continue;
+    const c = scoreAt(i, true, ind.sig[i]); byIndex.set(i, c);
+    if (c.score < p.minScore) keptSig[i] = 0; else lastDir = ind.sig[i];
   }
-  // exit: the higher timeframe rolls over while price is under the slow average
+  // exit: the higher timeframe rolls over against the trade while price is through the slow average
   const xsig = ind.xsig.slice();
   if (htf.length) {
     let prev = null;
-    for (let i = 0; i < n; i++) { const s = htfState(bars[i].t); if (prev === 'up' && s === 'down' && close[i] < ind.slow[i]) xsig[i] = -1; if (s) prev = s; }
+    for (let i = 0; i < n; i++) {
+      const s = htfState(bars[i].t);
+      if (p.dirs !== 'short' && prev === 'up' && s === 'down' && close[i] < ind.slow[i]) xsig[i] = -1;
+      if (p.dirs !== 'long' && prev === 'down' && s === 'up' && close[i] > ind.slow[i]) xsig[i] = 1;
+      if (s) prev = s;
+    }
   }
-  // exit watch on the latest candle: warnings, not orders
+  // exit watch on the latest candle, read for the side of the most recent kept signal: warnings, not orders
   let exitWatch = null;
   if (n > 30) {
-    const i = n - 1, flags = [];
-    if (close[i] < ind.slow[i]) flags.push('Price is below the slow EMA');
-    if (htfState(bars[i].t) === 'down') flags.push('Higher-timeframe trend has turned down');
-    if (Number.isFinite(rs[i]) && rs[i] < 45 && Math.max(...rs.slice(Math.max(0, i - 30), i).filter(Number.isFinite)) > 60) flags.push('Momentum is fading (RSI fell from above 60 to below 45)');
-    const ad = accDist(i); if (ad != null && ad < 0.4) flags.push('Volume is leaning to the sell side (' + Math.round(ad * 100) + '% of recent volume on up candles)');
-    if (patternsFn) { try { const fk = 'full:' + bars[0].t + ':' + bars[i].t + ':' + bars[i].c; let r = ctx.patternCache ? ctx.patternCache.get(fk) : undefined; if (r === undefined) { r = patternsFn(bars); if (ctx.patternCache) ctx.patternCache.set(fk, r); } const bear = r && r.ok ? (r.charts || []).filter((c) => c.status === 'confirmed' && c.dir === 'bear' && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 30) : []; if (bear.length) flags.push('Bearish ' + bear[0].name.replace(/_/g, ' ') + ' confirmed'); } catch (_) { /* scanner optional */ } }
-    exitWatch = { flags, level: flags.length >= 3 ? 'exit' : flags.length >= 1 ? 'caution' : 'clear' };
+    const i = n - 1, flags = [], ld = lastDir;
+    if (ld > 0 ? close[i] < ind.slow[i] : close[i] > ind.slow[i]) flags.push('Price is ' + (ld > 0 ? 'below' : 'above') + ' the slow EMA');
+    if (htfState(bars[i].t) === (ld > 0 ? 'down' : 'up')) flags.push('Higher-timeframe trend has turned ' + (ld > 0 ? 'down' : 'up'));
+    const rsWin = rs.slice(Math.max(0, i - 30), i).filter(Number.isFinite);
+    if (Number.isFinite(rs[i]) && (ld > 0 ? rs[i] < 45 && Math.max(...rsWin) > 60 : rs[i] > 55 && Math.min(...rsWin) < 40)) flags.push(ld > 0 ? 'Momentum is fading (RSI fell from above 60 to below 45)' : 'Momentum is turning up (RSI rose from below 40 to above 55)');
+    const ad = accDist(i); if (ad != null && (ld > 0 ? ad < 0.4 : ad > 0.6)) flags.push('Volume is leaning to the ' + (ld > 0 ? 'sell' : 'buy') + ' side (' + Math.round(ad * 100) + '% of recent volume on up candles)');
+    if (patternsFn) { try { const fk = 'full:' + bars[0].t + ':' + bars[i].t + ':' + bars[i].c; let r = ctx.patternCache ? ctx.patternCache.get(fk) : undefined; if (r === undefined) { r = patternsFn(bars); if (ctx.patternCache) ctx.patternCache.set(fk, r); } const against = r && r.ok ? (r.charts || []).filter((c) => c.status === 'confirmed' && c.dir === (ld > 0 ? 'bear' : 'bull') && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 30) : []; if (against.length) flags.push((ld > 0 ? 'Bearish ' : 'Bullish ') + against[0].name.replace(/_/g, ' ') + ' confirmed'); } catch (_) { /* scanner optional */ } }
+    exitWatch = { flags, level: flags.length >= 3 ? 'exit' : flags.length >= 1 ? 'caution' : 'clear', dir: ld };
   }
   return { rawSig, keptSig, xsig, byIndex, exitWatch, htfAvailable: htf.length > 0, benchAvailable: bench.length > 0 || !!ctx.benchSelf };
 }

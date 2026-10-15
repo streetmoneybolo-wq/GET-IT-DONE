@@ -283,9 +283,38 @@ test('a higher timeframe that rolls over while price is below the slow EMA exits
   assert.ok(a.confluence.exitWatch && ['clear', 'caution', 'exit'].includes(a.confluence.exitWatch.level));
 });
 
-test('day, swing and short have no confluence layer', () => {
+test('short has no confluence layer; day and swing grade every signal and skip none by default', () => {
   const bars = regimes();
-  for (const mode of ['day', 'swing', 'short']) { const a = algo.analyze(bars, mode, {}, '1D', fullCtx(bars)); assert.equal(a.confluence, null); assert.ok(a.signals.every((s) => s.conf === null)); }
+  const sh = algo.analyze(bars, 'short', {}, '1D', fullCtx(bars)); assert.equal(sh.confluence, null); assert.ok(sh.signals.every((s) => s.conf === null));
+  const inSession = bars.map((b) => ({ ...b, t: b.t + 15 * 3_600_000 })); // 10-11am New York, so the day session filter lets signals through
+  for (const mode of ['day', 'swing']) {
+    const a = algo.analyze(inSession, mode, {}, '1D', fullCtx(inSession));
+    assert.ok(a.confluence && a.confluence.minScore === 0);
+    assert.ok(a.signals.length > 0 && a.signals.every((s) => s.conf && 'ABCD'.includes(s.conf.grade)));
+    assert.equal(a.confluence.skipped.length, 0, 'minScore 0: nothing skipped');
+    assert.equal(a.confluence.all.trades, a.confluence.kept.trades);
+    assert.ok(a.signals.some((s) => s.dir < 0) && a.signals.some((s) => s.dir > 0), 'both directions still fire');
+  }
+});
+
+test('a SELL is scored on the mirror image of a BUY: bearish context lifts shorts and sinks longs', () => {
+  const bars = regimes();
+  const bear = fullCtx(bars, {
+    orderFlow: { ready: true, bias: 'bearish', score: -45 }, direction: { ok: true, bias: -50, label: 'bearish' }, sentiment: { ok: true, score: -0.5, label: 'bearish' },
+    darkPool: { available: true, lean: { label: 'distribution' } }, institutional: { available: true, bias: -60, label: 'institutions selling', retailVsInstitutional: 'institutions selling into retail buying', notes: [] },
+    filings: { available: true, bias: -70, label: 'insiders selling', insiders: { cluster: false, last90: { buys: 0, sells: 4, sellValue: 9_000_000 } } },
+    gamma: { available: true, regime: 'positive', pressurePct: 1, basis: 'standard', callWall: { distancePct: 0.5 }, putWall: { distancePct: 9 }, zeroDteShare: 0 }
+  });
+  const a = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', bear);
+  const pick = (key) => (s) => s.conf.factors.find((f) => f.key === key).pts;
+  const sells = a.signals.filter((s) => s.dir < 0), buys = a.signals.filter((s) => s.dir > 0);
+  assert.ok(sells.length && buys.length);
+  for (const key of ['orderflow', 'direction', 'sentiment', 'darkpool', 'institutional', 'filings']) {
+    assert.ok(sells.every((s) => pick(key)(s) > 0), key + ' rewards the short'); assert.ok(buys.every((s) => pick(key)(s) === 0 || key === 'institutional'), key + ' gives the long nothing');
+  }
+  assert.ok(sells.every((s) => pick('gamma')(s) >= 12), 'a call wall just overhead is a ceiling in a short\'s favour');
+  assert.ok(buys.every((s) => pick('gamma')(s) <= 4), 'the same wall caps a long');
+  const b = sells[0].conf.factors.find((f) => f.key === 'institutional').detail; assert.ok(/bias -60/.test(b), 'detail shows the raw bias');
 });
 
 test('indicator helpers behave: RSI stays in 0-100, a steady rise pins it near 100, MACD histogram is finite', () => {

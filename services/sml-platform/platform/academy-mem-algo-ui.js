@@ -124,11 +124,14 @@
   function refreshUrl() { return '/academy-activity/market?symbol=' + encodeURIComponent(symbol()) + '&tf=' + encodeURIComponent(tf()); }
   function recompute() {
     if (!S.raw) return;
-    S.data = E.analyze(S.raw.bars, S.mode, S.params[S.mode] || {}, tf(), S.ctx || {});
+    // Day and Swing ship with no minimum in the engine (server-side scanners must not drop signals on sparse data); the panel, which has every data source, starts them at 45 until the member sets their own.
+    const ov = Object.assign({}, S.params[S.mode] || {});
+    if (ov.minScore == null && (S.mode === 'day' || S.mode === 'swing')) ov.minScore = 45;
+    S.data = E.analyze(S.raw.bars, S.mode, ov, tf(), S.ctx || {});
     S.idx = new Map(); S.raw.bars.forEach((b, i) => S.idx.set(Number(b.t), i));
   }
-  // Confluence data for the hold strategies: the next timeframe up, and the benchmark (SPY) on the same timeframe. Fetched once per symbol/timeframe.
-  const HTF = { '1D': '1W', '1W': '1M' };
+  // Confluence data: the next timeframe up, the benchmark (SPY) on the same timeframe, and the data services. Fetched once per symbol/timeframe.
+  const HTF = { '1m': '5m', '3m': '15m', '5m': '15m', '10m': '30m', '15m': '1h', '30m': '2h', '1h': '4h', '2h': '1D', '4h': '1D', '1D': '1W', '1W': '1M' };
   async function loadCtx() {
     const st = E.STRATEGIES[S.mode]; if (!st || st.params.minScore == null) { S.ctx = null; return; }
     const sym = symbol(), t = tf(), key = sym + ':' + t;
@@ -271,7 +274,7 @@
     rules.push('<li>Fast EMA(' + p.fast + ') crossing the slow EMA(' + p.slow + ') starts a setup. It must stay crossed for ' + p.confirm + ' closed candle' + (p.confirm > 1 ? 's' : '') + ' — the signal fires on the last of them, never on the cross candle.</li>');
     rules.push(st.dirs === 'long' ? '<li>Long only, and only above the trend EMA(' + p.trend + '). Bearish crosses are never traded — they are the exit.</li>' : st.dirs === 'short' ? '<li>Short only, and only below the trend EMA(' + p.trend + '). Bullish crosses are never traded — they are the exit (cover).</li>' : '<li>Longs only above the trend EMA, shorts only below it.</li>');
     rules.push('<li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.' + (p.maxSep ? ' It must also be no more than ' + p.maxSep + '× ATR away, so it does not chase a move that is already stretched.' : '') + '</li>');
-    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, and chart structure from the pattern scanner. Signals scoring under ' + p.minScore + ' are skipped. The exit also triggers if the higher timeframe rolls over while price is under the slow EMA.</li>');
+    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, chart structure, the 11-model signals ensemble, Level 2 order flow, earnings proximity, market direction, sentiment, dark pool lean, gamma pressure, institutional flow and insider filings — each read for the trade’s side (a SELL wants the mirror image of a BUY). Signals scoring under ' + (p.minScore || (S.mode === 'day' || S.mode === 'swing' ? 45 : 0)) + ' are skipped. The exit also triggers if the higher timeframe rolls over against the trade while price is through the slow EMA.</li>');
     rules.push(p.trail ? '<li>Starting stop ' + p.stopAtr + '× ATR from the entry, then a trailing stop ' + p.trail + '× ATR behind the best price (it only moves in your favour). No fixed target: the trade is held until the stop is hit or the crossover turns against it.</li>' : '<li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>');
     if (p.session) rules.push('<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>');
     if (st.dirs === 'short') rules.push('<li>A short can lose more than 100% of what you put in, pays borrow fees, and can be forced closed in a squeeze. The backtest cannot model those — treat its results as optimistic.</li>');
