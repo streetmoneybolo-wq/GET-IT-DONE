@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.2' );
+define( 'SML_DS_VERSION', '1.1.3' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -102,13 +102,13 @@ function sml_ds_login_headertext() { return 'Stock Market Loop'; }
    The same rule runs in the browser for content other scripts render (the feed, the store, the landing page). */
 function sml_ds_dash_segment( $text, $open_label ) {
 	$out = ''; $rest = $text;
-	while ( preg_match( '/[ \x{00A0}]*(?:—|–(?=[ \x{00A0}]))[ \x{00A0}]*/u', $rest, $m, PREG_OFFSET_CAPTURE ) ) {
+	while ( preg_match( '/(?: |\xC2\xA0)*(?:\xE2\x80\x94|\xE2\x80\x93(?= |\xC2\xA0))(?: |\xC2\xA0)*/', $rest, $m, PREG_OFFSET_CAPTURE ) ) {
 		$at = $m[0][1]; $before = substr( $rest, 0, $at ); $after = substr( $rest, $at + strlen( $m[0][0] ) );
 		$lead = trim( $out . $before ); $here = trim( $before );
-		$tail = preg_split( '/[.!?:;]\s+/u', $lead ); $tail = end( $tail );
-		$words = $tail === '' ? 0 : count( preg_split( '/\s+/u', trim( $tail ) ) );
-		$conj = (bool) preg_match( '/^(?:and|or|but|so|nor|yet|not|which|because|while|then|plus|as|if|unless|though|although|even)\b/iu', ltrim( $after ) );
-		$label = ! $conj && ( ( $here === '' && $open_label ) || ( $here !== '' && $words > 0 && $words <= 4 && $tail === $lead && ! preg_match( '/[,.!?:;]/u', $lead ) ) );
+		$tail = preg_split( '/[.!?:;]\s+/', $lead ); $tail = end( $tail );
+		$words = $tail === '' ? 0 : count( preg_split( '/\s+/', trim( $tail ) ) );
+		$conj = (bool) preg_match( '/^(?:and|or|but|so|nor|yet|not|which|because|while|then|plus|as|if|unless|though|although|even)\b/i', ltrim( $after ) );
+		$label = ! $conj && ( ( $here === '' && $open_label ) || ( $here !== '' && $words > 0 && $words <= 4 && $tail === $lead && ! preg_match( '/[,.!?:;]/', $lead ) ) );
 		$sep = $label ? ': ' : ', ';
 		if ( $here === '' && ! $open_label ) { $sep = ' '; }
 		$out .= rtrim( $before ) . $sep; $rest = ltrim( $after ); $open_label = false;
@@ -117,8 +117,8 @@ function sml_ds_dash_segment( $text, $open_label ) {
 }
 function sml_ds_dashes( $html ) {
 	if ( ! is_string( $html ) || $html === '' || ( strpos( $html, '—' ) === false && strpos( $html, '–' ) === false ) ) { return $html; }
-	$parts = preg_split( '/(<(?:script|style|pre|code|textarea)\b[^>]*>.*?<\/(?:script|style|pre|code|textarea)>|<[^>]+>)/isu', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
-	if ( $parts === false ) { return $html; }
+	$parts = preg_split( '/(<(?:script|style|pre|code|textarea)\b[^>]*>.*?<\/(?:script|style|pre|code|textarea)>|<[^>]+>)/is', $html, -1, PREG_SPLIT_DELIM_CAPTURE );
+	if ( $parts === false ) { return $html; } /* only on a regex failure; the pass is byte-based so odd encodings never stop it */
 	$out = ''; $label = false;
 	foreach ( $parts as $i => $p ) {
 		if ( $i % 2 === 1 ) { $out .= $p; $label = (bool) preg_match( '/^<\/(?:strong|b|em|i|a|span|h[1-6]|dt|th)>/i', $p ); continue; }
