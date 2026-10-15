@@ -133,12 +133,38 @@
     const st = E.STRATEGIES[S.mode]; if (!st || st.params.minScore == null) { S.ctx = null; return; }
     const sym = symbol(), t = tf(), key = sym + ':' + t;
     if (S.ctx && S.ctx.key === key) return;
-    const ctx = { key, htf: null, bench: null, benchSelf: sym === 'SPY', patterns: window.SmlPatterns && window.SmlPatterns.detect ? (b) => window.SmlPatterns.detect(b) : null, patternCache: new Map() };
+    const ctx = { key, htf: null, bench: null, benchSelf: sym === 'SPY', patterns: window.SmlPatterns && window.SmlPatterns.detect ? (b) => window.SmlPatterns.detect(b) : null, patternCache: new Map(),
+      signals: null, orderFlow: null, earnings: null, direction: null, sentiment: null, darkPool: null };
     S.ctx = ctx;
     const get = async (s2, tt) => { try { const r = await fetch('/academy-activity/market?symbol=' + encodeURIComponent(s2) + '&tf=' + encodeURIComponent(tt), { cache: 'no-store' }); const j = await r.json(); return r.ok && Array.isArray(j.bars) ? j.bars : null; } catch (_) { return null; } };
-    const [h, b] = await Promise.all([HTF[t] ? get(sym, HTF[t]) : null, ctx.benchSelf ? null : get('SPY', t)]);
+    const token = window.smlAcademySessionToken || '';
+    const authGet = async (url) => { try { const r = await fetch(url, { cache: 'no-store', headers: token ? { authorization: 'Bearer ' + token } : {} }); return r.ok ? await r.json() : null; } catch (_) { return null; } };
+    const mode = S.mode === 'swing' || S.mode === 'long' ? 'swing' : 'day';
+    const [h, b, earn, dir, sent, dp] = await Promise.all([
+      HTF[t] ? get(sym, HTF[t]) : null,
+      ctx.benchSelf ? null : get('SPY', t),
+      authGet('/academy-activity/data/earnings?symbol=' + encodeURIComponent(sym)),
+      authGet('/academy-activity/direction?mode=' + mode),
+      authGet('/academy-activity/sentiment?symbol=' + encodeURIComponent(sym)),
+      authGet('/academy-activity/dark-pool?symbol=' + encodeURIComponent(sym))
+    ]);
     if (S.ctx !== ctx) return;
-    ctx.htf = h; ctx.bench = b; recompute(); paint(); draw();
+    ctx.htf = h; ctx.bench = b;
+    if (window.SmlMemSignals && S.raw && S.raw.bars) try { ctx.signals = window.SmlMemSignals.allVotes(S.raw.bars); } catch (_) { /* signals optional */ }
+    if (S.of && S.of.ready !== false) ctx.orderFlow = S.of;
+    if (earn && earn.ok && earn.data) {
+      const DK = ['date', 'reportDate', 'fiscalDateEnding', 'period', 'reportedDate'];
+      const AK = ['epsActual', 'actualEPS', 'eps_actual', 'actual'];
+      const dates = []; const wk = (n, d) => { if (d > 5 || !n || dates.length > 20) return; if (Array.isArray(n)) { n.forEach((x) => wk(x, d + 1)); return; } if (typeof n !== 'object') return; const dk = DK.find((k) => typeof n[k] === 'string' && /^\d{4}-\d{2}-\d{2}/.test(n[k])); if (dk) { dates.push({ d: n[dk].slice(0, 10), actual: AK.some((k) => n[k] != null && n[k] !== '') }); return; } Object.values(n).forEach((v) => wk(v, d + 1)); };
+      wk(earn.data, 0);
+      const today = new Date().toISOString().slice(0, 10), todayMs = Date.parse(today + 'T00:00:00Z');
+      const upcoming = dates.filter((r) => r.d >= today && !r.actual).sort((a, b) => a.d.localeCompare(b.d));
+      if (upcoming.length) ctx.earnings = { daysAway: Math.max(0, Math.round((Date.parse(upcoming[0].d + 'T00:00:00Z') - todayMs) / 86400000)) };
+    }
+    if (dir && dir.ok) ctx.direction = dir;
+    if (sent && sent.ok) ctx.sentiment = sent;
+    if (dp && dp.ok) ctx.darkPool = dp;
+    recompute(); paint(); draw();
   }
   async function refresh(force) {
     if (!S.on || S.loading) return;

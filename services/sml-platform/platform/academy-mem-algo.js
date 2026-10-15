@@ -225,6 +225,12 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const lookback = p.rsLook || 90;
   const patternsFn = typeof ctx.patterns === 'function' ? ctx.patterns : null;
   const accDist = (i) => { let up = 0, dn = 0; for (let k = Math.max(1, i - 19); k <= i; k++) { if (close[k] >= close[k - 1]) up += vol[k]; else dn += vol[k]; } return up + dn > 0 ? up / (up + dn) : null; };
+  const sigVotes = ctx.signals || null;
+  const ofData = ctx.orderFlow && ctx.orderFlow.ready ? ctx.orderFlow : null;
+  const earnData = ctx.earnings || null;
+  const dirData = ctx.direction && ctx.direction.ok ? ctx.direction : null;
+  const sentData = ctx.sentiment && ctx.sentiment.ok ? ctx.sentiment : null;
+  const dpData = ctx.darkPool && ctx.darkPool.available ? ctx.darkPool : null;
 
   function scoreAt(i, withPatterns) {
     const F = [];
@@ -264,6 +270,41 @@ function buildConfluence(bars, p, ind, tf, ctx) {
         if (above.length) { pts -= 6; notes.push('resistance right overhead'); }
         add('structure', 'Chart structure', 25, Math.max(0, Math.min(25, pts)), notes.length ? notes.join(', ') : 'nothing decisive');
       }
+    }
+    if (!sigVotes) add('signals', 'MEM Signals ensemble', 15, 0, 'signal models not loaded', false);
+    else {
+      const names = Object.keys(sigVotes); let agree = 0, total = 0;
+      for (const k of names) { const v = sigVotes[k]; if (v && i < v.length && Number.isFinite(v[i]) && Math.abs(v[i]) >= 0.15) { total++; if (v[i] > 0) agree++; } }
+      if (total < 3) add('signals', 'MEM Signals ensemble', 15, 0, 'not enough signal data', false);
+      else { const ratio = agree / total; add('signals', 'MEM Signals ensemble', 15, ratio >= 0.75 ? 15 : ratio >= 0.6 ? 10 : ratio >= 0.45 ? 5 : 0, agree + ' of ' + total + ' models agree (' + Math.round(ratio * 100) + '%)'); }
+    }
+    if (!ofData) add('orderflow', 'Order flow', 10, 0, 'order flow not available', false);
+    else {
+      const bias = ofData.bias, sc = Number(ofData.score) || 0;
+      const strong = Math.abs(sc) > 30;
+      add('orderflow', 'Order flow', 10, (bias === 'bullish' && sc > 10) || (bias === 'bearish' && sc < -10) ? (strong ? 10 : 5) : 0, bias + ' (score ' + sc + ')' + (strong ? ' — strong' : ''));
+    }
+    if (!earnData) add('earnings', 'Earnings safety', 10, 10, 'no earnings data — assumed safe', true);
+    else {
+      const d = Number(earnData.daysAway);
+      if (!Number.isFinite(d)) add('earnings', 'Earnings safety', 10, 10, 'no upcoming earnings found', true);
+      else add('earnings', 'Earnings safety', 10, d <= 3 ? 0 : d <= 7 ? 3 : d <= 14 ? 7 : 10, 'earnings in ' + d + ' day' + (d === 1 ? '' : 's') + (d <= 3 ? ' — high risk' : d <= 7 ? ' — elevated risk' : ''));
+    }
+    if (!dirData) add('direction', 'Market direction', 10, 0, 'market direction not available', false);
+    else {
+      const db = Number(dirData.bias) || 0;
+      add('direction', 'Market direction', 10, db > 30 ? 10 : db > 0 ? 5 : 0, dirData.label + ' (bias ' + db + ')');
+    }
+    if (!sentData) add('sentiment', 'Sentiment', 10, 0, 'sentiment not available', false);
+    else {
+      const ss = Number(sentData.score) || 0;
+      add('sentiment', 'Sentiment', 10, ss > 0.3 ? 10 : ss > 0 ? 5 : 0, sentData.label + ' (' + (ss * 100).toFixed(0) + '%)');
+    }
+    if (!dpData || !dpData.lean) add('darkpool', 'Dark pool flow', 5, 0, 'dark pool data not available', false);
+    else {
+      const lean = dpData.lean.label || '';
+      const bullLean = /buy|bull|accum/i.test(lean);
+      add('darkpool', 'Dark pool flow', 5, bullLean ? 5 : /neutral/i.test(lean) ? 2 : 0, lean);
     }
     const avail = F.filter((f) => f.available), max = avail.reduce((s, f) => s + f.max, 0), got = avail.reduce((s, f) => s + f.pts, 0);
     const score = max > 0 ? Math.round((got / max) * 100) : 0;

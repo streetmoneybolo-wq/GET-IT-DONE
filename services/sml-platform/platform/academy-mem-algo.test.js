@@ -195,16 +195,25 @@ function weekly(bars) { // fold daily candles into 7-day candles (start-of-week 
   const out = []; for (let i = 0; i < bars.length; i += 5) { const g = bars.slice(i, i + 5); out.push({ t: g[0].t, o: g[0].o, h: Math.max(...g.map((b) => b.h)), l: Math.min(...g.map((b) => b.l)), c: g[g.length - 1].c, v: g.reduce((s, b) => s + b.v, 0) }); }
   return out;
 }
+const memSignals = require('./academy-mem-signals');
 const fullCtx = (bars, extra = {}) => ({ htf: weekly(bars), bench: regimes(bars.length, 9, 0.06, 2.0), patterns: (b) => patternsLib.detect(b), patternCache: new Map(), ...extra });
+const richCtx = (bars) => fullCtx(bars, {
+  signals: memSignals.allVotes(bars),
+  orderFlow: { ready: true, bias: 'bullish', score: 40, grades: { long: { grade: 'confirms', reason: 'test' }, short: { grade: 'disagrees', reason: 'test' } } },
+  earnings: { daysAway: 30 },
+  direction: { ok: true, bias: 45, label: 'bullish' },
+  sentiment: { ok: true, score: 0.4, label: 'positive' },
+  darkPool: { available: true, lean: { label: 'accumulation' } }
+});
 
 test('every hold signal carries a 0-100 conviction score with a factor breakdown that adds up', () => {
   const bars = regimes(); const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars));
   assert.ok(a.signals.length >= 1 && a.confluence);
   for (const s of a.signals) {
     assert.ok(s.conf.score >= 0 && s.conf.score <= 100 && 'ABCD'.includes(s.conf.grade));
-    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure');
+    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,earnings,direction,sentiment,darkpool');
     const avail = s.conf.factors.filter((f) => f.available), max = avail.reduce((t, f) => t + f.max, 0), got = avail.reduce((t, f) => t + f.pts, 0);
-    assert.equal(max, 100, 'all six factors available => 100 points');
+    assert.equal(max, 110, 'original six factors + earnings safety (assumed safe) => 110 points');
     assert.equal(s.conf.score, Math.round((got / max) * 100));
   }
 });
@@ -239,9 +248,27 @@ test('factors without data are left out and the score scales over what is availa
   const bars = regimes(); const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', { patterns: null });
   const c = a.signals[0].conf; const off = c.factors.filter((f) => !f.available).map((f) => f.key);
   assert.ok(off.includes('htf') && off.includes('regime') && off.includes('rs') && off.includes('structure'));
+  assert.ok(off.includes('signals') && off.includes('orderflow') && off.includes('direction') && off.includes('sentiment') && off.includes('darkpool'));
   assert.ok(c.available >= 2 && c.score >= 0 && c.score <= 100);
   const self = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', { ...fullCtx(bars), benchSelf: true, bench: null }).signals[0].conf;
   assert.ok(!self.factors.find((f) => f.key === 'regime').available && !self.factors.find((f) => f.key === 'rs').available);
+});
+
+test('all supplementary data sources contribute to the confluence score when provided', () => {
+  const bars = regimes(); const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', richCtx(bars));
+  const s = a.signals[0]; assert.ok(s, 'have a signal');
+  const keys = s.conf.factors.map((f) => f.key);
+  assert.ok(keys.includes('signals') && keys.includes('orderflow') && keys.includes('earnings') && keys.includes('direction') && keys.includes('sentiment') && keys.includes('darkpool'));
+  const avail = s.conf.factors.filter((f) => f.available);
+  assert.equal(avail.length, 12, 'all 12 factors available with full data');
+  const max = avail.reduce((t, f) => t + f.max, 0);
+  assert.equal(max, 160, '6 original (100) + 6 new (60) = 160 points');
+  assert.ok(s.conf.factors.find((f) => f.key === 'signals').pts > 0, 'signals ensemble scores on real bars');
+  assert.equal(s.conf.factors.find((f) => f.key === 'orderflow').pts, 10, 'bullish order flow with score 40 gets full 10');
+  assert.equal(s.conf.factors.find((f) => f.key === 'earnings').pts, 10, '30 days away = full safety');
+  assert.equal(s.conf.factors.find((f) => f.key === 'direction').pts, 10, 'bias 45 > 30 threshold');
+  assert.equal(s.conf.factors.find((f) => f.key === 'sentiment').pts, 10, 'score 0.4 > 0.3 threshold');
+  assert.equal(s.conf.factors.find((f) => f.key === 'darkpool').pts, 5, 'accumulation matches bullish');
 });
 
 test('a higher timeframe that rolls over while price is below the slow EMA exits the trade', () => {
