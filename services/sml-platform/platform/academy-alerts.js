@@ -15,6 +15,7 @@ const { extractNextEarnings } = require('./academy-earnings-date');
 const { parseAlertMessage } = require('./academy-alerts-parse');
 const risk = require('./academy-alert-risk');
 const algo = require('./academy-mem-algo');
+const runnerLib = (() => { try { return require('./academy-runner'); } catch (_) { return null; } })();
 const optionsCalc = require('./academy-alert-options');
 
 const DISCORD = 'https://discord.com/api/v10';
@@ -273,6 +274,13 @@ function createAlertsService({
     const ladder = ptLadder ? ptLadder('d:' + alert.id) : null;
     const working = ladder && Number(ladder.target) > 0 ? { ...alert, target: Number(ladder.target) } : alert;
     const plan = risk.planFor({ alert: working, quote: q, daily, since, risk: g, algoView: view, flow, sentiment: sent, news: nws, checklist: chk, now: now() });
+    // runner read (academy-runner.js): for a long alert that is running, the trailing stop that only rises and the exhaustion flags
+    let runnerRead = null;
+    if (runnerLib && daily && daily.length > 20 && Number(alert.entry) > 0) { try { runnerRead = runnerLib.trailFor({ daily, entry: Number(alert.entry), sinceT: alert.at, side: alert.side === 'short' || alert.direction === 'short' ? 'short' : 'long' }); } catch (_) { runnerRead = null; } }
+    if (runnerRead && Array.isArray(plan.reasons)) {
+      if (runnerRead.exit) plan.reasons.unshift('Runner trail says exit: ' + runnerRead.exitReason + '.');
+      else plan.reasons.push('Runner trail: stop ' + runnerRead.stop + (runnerRead.phase === 3 ? ' (parabolic phase: 1.5 ATR under the high)' : runnerRead.phase === 2 ? ' (2.5 ATR under the high, never under the prior day\'s low)' : ' (first night: breakeven)') + (runnerRead.noNewHigh ? '; two sessions without a new high' : '') + '.');
+    }
     // every smashed target raised the stop: the plan never works with a stop under the raised one
     if (ladder && Number(ladder.stop) > 0 && (ladder.side === 'short' ? Number(ladder.stop) < Number(plan.stop) : Number(ladder.stop) > Number(plan.stop))) { plan.stop = Number(ladder.stop); plan.reasons.unshift('Stop raised to ' + plan.stop + ' after PT ' + ladder.updates.length + ' was smashed'); }
     const last = alert.planLog[alert.planLog.length - 1];
@@ -280,7 +288,7 @@ function createAlertsService({
     let opt = null;
     if (chain && chain.length) { try { opt = optionsCalc.considerOptions({ alert, price: q ? Number(q.last) : null, atrPct: g.atrPct || (daily && risk.dailyStats(daily) ? risk.dailyStats(daily).atrPct : null), plan, algoView: view, flow, rows: chain, riskBand: g.band, now: now() }); } catch (_) { opt = null; } }
     else if (chain) opt = { verdict: 'NONE', available: false, reason: 'No listed options were found for this stock.', channel: alert.channel };
-    return { ladder, options: opt, alert, quote: q, risk: g, plan, since, after: postAlertRange(alert, intraday, daily), checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
+    return { ladder, runner: runnerRead, options: opt, alert, quote: q, risk: g, plan, since, after: postAlertRange(alert, intraday, daily), checklist: chk, sector: sq, flow, algo: view, sentiment: sent, news: nws, company: co, daily: daily ? daily.length : 0 };
   }
 
   const evaluated = new Map();

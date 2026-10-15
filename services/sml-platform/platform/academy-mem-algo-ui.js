@@ -130,6 +130,33 @@
     S.data = E.analyze(S.raw.bars, S.mode, ov, tf(), S.ctx || {});
     S.idx = new Map(); S.raw.bars.forEach((b, i) => S.idx.set(Number(b.t), i));
   }
+  /* RUNNER HOLD (academy-runner.js): late in the session, should today's long day trade be held past the close under a
+     trailing stop? Needs the daily candles, fetched once per symbol. Educational: it describes the rule, it places nothing. */
+  const RD = { key: '', daily: null, at: 0, busy: false };
+  const etKey = (ms) => { const p = {}; for (const x of new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms))) p[x.type] = x.value; return p.year + '-' + p.month + '-' + p.day; };
+  function loadDaily() {
+    const sym = symbol(); if (RD.busy || (RD.key === sym && Date.now() - RD.at < 300000)) return; RD.busy = true;
+    fetch('/academy-activity/market?symbol=' + encodeURIComponent(sym) + '&tf=1D', { cache: 'no-store' }).then((r) => r.json()).then((j) => { RD.key = sym; RD.daily = j && Array.isArray(j.bars) ? j.bars : []; RD.at = Date.now(); paint(); }).catch(() => { RD.at = Date.now(); }).finally(() => { RD.busy = false; });
+  }
+  function runnerHtml(d) {
+    const R = window.SmlRunner; if (!R || !d || !E.INTRADAY || E.INTRADAY.indexOf(tf()) < 0 || !S.raw) return '';
+    const L = d.latest, open = d.open && d.open.dir > 0 ? d.open : null;
+    const entry = open ? open.entry : (L && L.dir > 0 ? L.price : null), stop = open ? open.stop : (L ? L.stop : null);
+    if (!entry) return '';
+    if (RD.key !== symbol() || !RD.daily) { loadDaily(); return '<div class="mem-conv"><b>Runner hold</b><br><small>Loading the daily candles…</small></div>'; }
+    const now = Date.now(), today = etKey(now), bars = S.raw.bars.filter((b) => etKey(b.t) === today);
+    if (bars.length < 6) return '';
+    const hist = RD.daily.filter((b) => etKey(b.t) < today);
+    const ctx = S.ctx || {};
+    const earningsDays = ctx.earnings && ctx.earnings.daysAway != null ? Number(ctx.earnings.daysAway) : null;
+    const bias = ctx.direction && ctx.direction.bias != null ? Number(ctx.direction.bias) : null;
+    let q; try { q = R.qualify({ intraday: bars, daily: hist, entry, stop, earningsDays, marketBias: bias, minutesET: E.minutesET(now) }); } catch (_) { return ''; }
+    const mins = E.minutesET(now), inWindow = mins >= R.RULES.decideFromMinutesET && mins <= R.RULES.decideToMinutesET;
+    return '<div class="mem-conv ' + (q.hold ? '' : (inWindow ? 'warnbox' : '')) + '"><b>Runner hold · ' + (q.hold ? 'HOLD A PIECE OVERNIGHT' : (inWindow ? 'CLOSE WITH THE SESSION' : 'score ' + q.score + ' / 100 so far')) + '</b><br><small>' + esc(q.summary) + '</small><ul>'
+      + q.gates.map((g) => '<li class="no"><span>✗</span> ' + esc(g) + '</li>').join('')
+      + q.reasons.map((r) => '<li class="' + (r.pts > 0 ? 'ok' : 'no') + '"><span>' + (r.pts > 0 ? '✓' : '✗') + '</span> ' + esc(r.text) + ' <em>' + (r.pts > 0 ? '+' : '') + r.pts + '</em></li>').join('') + '</ul>'
+      + (q.plan ? '<small>The rule if held: book ' + Math.round(q.plan.sellPct * 100) + '% at the close, keep the rest with the stop at ' + q.plan.stopOvernight + ' (' + esc(q.plan.stopReason) + '). After that a trailing stop that only rises: 2.5 ATR under the high on an orderly run, 1.5 ATR once it goes parabolic, never under the prior day\'s low; two sessions without a new high lift it to the last low; a climax candle or a close below the prior day\'s low ends the hold. Educational simulation, not advice.</small>' : '') + '</div>';
+  }
   // Confluence data: the next timeframe up, the benchmark (SPY) on the same timeframe, and the data services. Fetched once per symbol/timeframe.
   const HTF = { '1m': '5m', '3m': '15m', '5m': '15m', '10m': '30m', '15m': '1h', '30m': '2h', '1h': '4h', '2h': '1D', '4h': '1D', '1D': '1W', '1W': '1M' };
   async function loadCtx() {
@@ -241,6 +268,7 @@
           const s2 = cf.skipped[cf.skipped.length - 1];
           html += '<div class="mem-conv"><b>Last raw signal was skipped</b><br><small>' + esc(fmtTime(s2.t)) + ' scored ' + s2.score + ' (grade ' + s2.grade + '), below your minimum of ' + cf.minScore + '. Lower the minimum in Settings to see it.</small></div>';
         }
+        if (S.mode === 'day') html += runnerHtml(d);
         if (cf.exitWatch) html += '<div class="mem-conv ' + (cf.exitWatch.level === 'exit' ? 'warnbox' : '') + '"><b>Exit watch · ' + (cf.exitWatch.level === 'clear' ? 'nothing flagged' : cf.exitWatch.level === 'exit' ? 'several warnings' : 'caution') + '</b>' + (cf.exitWatch.flags.length ? '<ul>' + cf.exitWatch.flags.map((f) => '<li class="no"><span>!</span> ' + esc(f) + '</li>').join('') + '</ul>' : '') + '</div>';
         if (!(cf.htf && (cf.bench || S.ctx && S.ctx.benchSelf))) html += '<div class="mem-blurb" style="margin-top:6px">' + (S.ctx && S.ctx.key ? 'Loading higher-timeframe and benchmark candles for extra confirmation…' : '') + '</div>';
       }

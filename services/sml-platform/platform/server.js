@@ -689,11 +689,13 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const scannerHover = fs.readFileSync(pathModule.join(__dirname, 'academy-scanner-hover.js'), 'utf8');
     const belowCycle = fs.readFileSync(pathModule.join(__dirname, 'academy-below-cycle.js'), 'utf8');
     const memSignals = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-mem-signals.js'), 'utf8'); } catch (_) { return ''; } })();
+    const runnerSrc = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-runner.js'), 'utf8'); } catch (_) { return ''; } })();
+    const runnerScript = runnerSrc ? '(function(){var module={exports:{}},exports=module.exports;' + runnerSrc + '\nwindow.SmlRunner=module.exports;})();' : '';
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
       tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
-      model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : ''),
+      model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
     };

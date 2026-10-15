@@ -10,6 +10,7 @@
  * Ideas that are not taken expire. Nothing is bought without the click. SIMULATED throughout; educational only. */
 
 const { marketState, etParts } = require('./market-clock');
+const runner = (() => { try { return require('./academy-runner'); } catch (_) { return null; } })();
 
 const RULES = Object.freeze({
   goal: 100000, weeklyDeposit: 250, riskPerTrade: { swing: 0.03, day: 0.015 }, maxPositions: 8, maxPositionPct: 0.35, minNotional: 25, minScore: 70,
@@ -53,7 +54,7 @@ function raiseIdeas(state, candidates, account, direction, now, rules = RULES) {
     if (openCount + pending.size >= rules.maxPositions) { note(state, now, `Passed on ${c.symbol}: the book is full (${rules.maxPositions}).`, { kind: 'skip', symbol: c.symbol }); continue; }
     const qty = sizeIdea(c, equity, cash, rules);
     if (!qty) { note(state, now, `Passed on ${c.symbol}: too small to size against the stop.`, { kind: 'skip', symbol: c.symbol }); continue; }
-    const idea = { id: state.nextId++, t: now, status: 'new', symbol: c.symbol, mode: c.mode, signalT: c.signal.t, score: c.score, grade: c.grade, entry: r4(c.entry), stop: r4(c.stop), target: c.target ? r4(c.target) : null, trail: c.trail || null, maxHold: c.maxHold || null, atr: c.atr ? r4(c.atr) : null, qty, riskDollars: r2(qty * (c.entry - c.stop)), notional: r2(qty * c.entry), reason: c.reason || '', factors: c.factors || [], expiresAt: now + (rules.ideaTtlMs[c.mode] || rules.ideaTtlMs.swing) };
+    const idea = { id: state.nextId++, t: now, status: 'new', symbol: c.symbol, mode: c.mode, signalT: c.signal.t, score: c.score, grade: c.grade, entry: r4(c.entry), stop: r4(c.stop), target: c.target ? r4(c.target) : null, trail: c.trail || null, maxHold: c.maxHold || null, atr: c.atr ? r4(c.atr) : null, qty, riskDollars: r2(qty * (c.entry - c.stop)), earningsDays: c.earningsDays == null ? null : c.earningsDays, notional: r2(qty * c.entry), reason: c.reason || '', factors: c.factors || [], expiresAt: now + (rules.ideaTtlMs[c.mode] || rules.ideaTtlMs.swing) };
     state.ideas.push(idea); pending.add(c.symbol); out.push(idea);
     note(state, now, `Idea: BUY ${qty} ${c.symbol} (${c.mode}, grade ${c.grade} ${c.score}) near $${idea.entry}, stop $${idea.stop}${idea.target ? ', target $' + idea.target : ''}.`, { kind: 'idea', symbol: c.symbol, ideaId: idea.id });
   }
@@ -76,10 +77,23 @@ function planExits(state, positions, feeds, now, rules = RULES) {
     if (b.o <= i.stop) { reason = 'stop (gap)'; price = b.o; }
     else if (b.l <= i.stop) { reason = 'stop'; price = i.stop; }
     else if (i.target && b.h >= i.target) { reason = 'target'; price = b.o >= i.target ? b.o : i.target; }
-    else if (i.mode === 'day' && minutesET(now) >= rules.dayFlatByMinutesET) reason = 'session end';
+    else if (i.mode === 'runner' && f.trail && f.trail.exit) reason = 'runner exit: ' + f.trail.exitReason;
+    else if (i.mode === 'day' && minutesET(now) >= rules.dayFlatByMinutesET) {
+      // a day trade that is running is not flattened: part of it is booked at the close, the rest stays under the runner trail (academy-runner.js)
+      const q = f.runnerQ;
+      if (q && q.hold && q.plan && q.plan.keepShares > 0) {
+        i.mode = 'runner';
+        i.runner = { since: now, score: q.score, reasons: q.reasons.map((r) => r.text), vwap: q.day ? q.day.vwap : null, days: 0, dateKey: etDate(now), phase: 1 };
+        i.stop = r4(Math.max(i.stop, q.plan.stopOvernight)); i.target = null; i.trail = null; i.maxHold = null; i.ext = Math.max(i.ext || i.entry, b.h);
+        if (q.plan.sellShares > 0) sells.push({ idea: i, qty: q.plan.sellShares, reason: 'runner: booked ' + Math.round(q.plan.sellPct * 100) + '% at the close, holding ' + q.plan.keepShares + ' under the trail', price, partial: true });
+        continue;
+      }
+      reason = 'session end';
+    }
     else if (i.maxHold && i.bars >= i.maxHold) reason = 'time';
     else if (f.exitSignal) reason = 'exit signal';
     if (reason) { sells.push({ idea: i, qty: p.qty, reason, price }); continue; }
+    if (i.mode === 'runner') { i.ext = Math.max(i.ext || i.entry, b.h); if (f.trail && f.trail.stop > i.stop) { i.stop = r4(f.trail.stop); if (i.runner) i.runner.phase = f.trail.phase; } }
     if (i.trail && i.atr > 0) { i.ext = Math.max(i.ext || i.entry, b.h); const ts = i.ext - i.trail * i.atr; if (ts > i.stop) i.stop = r4(ts); }
   }
   return sells;
@@ -140,15 +154,33 @@ function createChallenge({ store, paper, candles, analyze, ctxFor = null, univer
         const b5 = await bars5(i.symbol); if (!b5.length) continue;
         let exitSignal = false;
         try { const b = i.mode === 'day' ? b5 : (await bars1d(i.symbol)).filter((x) => etDate(x.t) < etDate(t)); if (b.length > 120) { const a = analyze(b, i.mode, { minScore: 0 }, i.mode === 'day' ? '5m' : '1D', {}); exitSignal = Boolean(a.latest && a.latest.dir < 0 && a.latest.t > i.signalT) || Boolean(a.confluence && a.confluence.exitWatch && a.confluence.exitWatch.level === 'exit'); } } catch (_) { exitSignal = false; }
-        feeds[i.symbol] = { bar: b5[b5.length - 1], atr: atrOf(b5.slice(-60)) || null, exitSignal };
+        // runner hold: late in the session a running day trade is judged for an overnight hold; a held runner gets its trail read from the closed daily candles
+        let runnerQ = null, trailRead = null;
+        if (runner && i.mode === 'day' && minutesET(t) >= runner.RULES.decideFromMinutesET && minutesET(t) <= runner.RULES.decideToMinutesET) {
+          try {
+            const today = etDate(t), d1 = (await bars1d(i.symbol)).filter((x) => etDate(x.t) < today), p = acct.positions[i.symbol];
+            runnerQ = runner.qualify({ intraday: b5.filter((x) => etDate(x.t) === today), daily: d1, entry: i.entry, stop: i.riskDollars > 0 && i.qty > 0 ? i.entry - i.riskDollars / i.qty : i.stop, qty: p ? p.qty : null, riskDollars: i.riskDollars, earningsDays: i.earningsDays == null ? null : i.earningsDays, minutesET: minutesET(t) });
+          } catch (error) { logger('warn', 'challenge_runner_qualify_failed', { symbol: i.symbol, error: String(error && error.message || error) }); }
+        }
+        if (runner && i.mode === 'runner') {
+          try {
+            const today = etDate(t), d1 = (await bars1d(i.symbol)).filter((x) => etDate(x.t) < today);
+            if (i.runner && i.runner.dateKey !== today) { i.runner.days = (i.runner.days || 0) + 1; i.runner.dateKey = today; }
+            trailRead = runner.trail({ daily: d1, entry: i.entry, ext: i.ext, daysHeld: i.runner ? i.runner.days : 0, currentStop: i.stop, vwapDay: i.runner ? i.runner.vwap : null });
+          } catch (error) { logger('warn', 'challenge_runner_trail_failed', { symbol: i.symbol, error: String(error && error.message || error) }); }
+        }
+        feeds[i.symbol] = { bar: b5[b5.length - 1], atr: atrOf(b5.slice(-60)) || null, exitSignal: i.mode === 'runner' ? false : exitSignal, runnerQ, trail: trailRead };
       }
       const sells = planExits(state, acct.positions, feeds, t, rules);
       for (const s of sells) {
         const before = await snapshotAccount();
         const res = await paper.order(accountId, { kind: 'stock', symbol: s.idea.symbol, side: 'sell', qty: s.qty, note: 'MEM ALGO exit: ' + s.reason, ideaId: String(s.idea.id) }, accountOpts);
         if (res && res.ok) {
-          s.idea.status = 'closed'; s.idea.closedAt = t; s.idea.exitReason = s.reason; s.idea.exitPrice = res.trade.price; s.idea.realized = res.realized;
-          note(state, t, `Sold ${s.qty} ${s.idea.symbol} @ $${res.trade.price} (${s.reason}) ${res.realized >= 0 ? '+' : ''}$${res.realized}.`, { kind: 'exit', symbol: s.idea.symbol, ideaId: s.idea.id });
+          if (s.partial) note(state, t, `Runner: sold ${s.qty} ${s.idea.symbol} @ $${res.trade.price} at the close ${res.realized >= 0 ? '+' : ''}$${res.realized}; holding the rest with the stop at $${s.idea.stop}. ${s.idea.runner ? s.idea.runner.reasons.slice(0, 3).join(' ') : ''}`, { kind: 'runner', symbol: s.idea.symbol, ideaId: s.idea.id });
+          else {
+            s.idea.status = 'closed'; s.idea.closedAt = t; s.idea.exitReason = s.reason; s.idea.exitPrice = res.trade.price; s.idea.realized = res.realized;
+            note(state, t, `Sold ${s.qty} ${s.idea.symbol} @ $${res.trade.price} (${s.reason}) ${res.realized >= 0 ? '+' : ''}$${res.realized}.`, { kind: 'exit', symbol: s.idea.symbol, ideaId: s.idea.id });
+          }
           await announce(buildTradeEvent({ symbol: s.idea.symbol, side: 'sell', before, after: await snapshotAccount(), res, reason: s.reason, idea: s.idea, now: t }));
         } else note(state, t, `Could not sell ${s.idea.symbol} (${res && (res.message || res.error)}); will retry.`, { kind: 'warn', symbol: s.idea.symbol });
       }
