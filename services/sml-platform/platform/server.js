@@ -3155,13 +3155,13 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Trading desk layout persistence (academy-desk.js). Stored per user in academy_state_kv. */
-    if (path === '/academy-activity/desk/layout' && academyOAuth && database.pool) {
+    if (path === '/academy-activity/desk/layout' && academyOAuth && pool) {
       const deskSession = academyOAuth.verifySession(request.headers.authorization);
       if (!deskSession.ok) { sendJson(response, deskSession.status || 401, { ok: false, error: deskSession.code }); return; }
       const layoutKey = 'desk:layout:' + deskSession.userId;
       if (request.method === 'GET') {
         try {
-          const r = await database.pool.query('SELECT value FROM academy_state_kv WHERE key = $1', [layoutKey]);
+          const r = await pool.query('SELECT value FROM academy_state_kv WHERE key = $1', [layoutKey]);
           sendJson(response, 200, { ok: true, layout: (r && r.rows && r.rows[0]) ? r.rows[0].value : null });
         } catch (_) { sendJson(response, 200, { ok: true, layout: null }); }
         return;
@@ -3177,7 +3177,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           id: String(p.id || '').slice(0, 24), x: Number(p.x) || 0, y: Number(p.y) || 0, w: Number(p.w) || 0.5, h: Number(p.h) || 0.5
         })).filter(p => /^[a-z0-9-]{2,24}$/.test(p.id));
         try {
-          await database.pool.query('INSERT INTO academy_state_kv (key, value, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()', [layoutKey, JSON.stringify({ panels: clean, v: 1 })]);
+          await pool.query('INSERT INTO academy_state_kv (key, value, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()', [layoutKey, JSON.stringify({ panels: clean, v: 1 })]);
           sendJson(response, 200, { ok: true });
         } catch (_) { sendJson(response, 500, { ok: false, error: 'storage_failed' }); }
         return;
