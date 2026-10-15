@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.4
+ * Version: 1.1.5
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.4' );
+define( 'SML_DS_VERSION', '1.1.5' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -68,22 +68,46 @@ function sml_ds_buffer() {
 	if ( strpos( $path, '/wp-json' ) === 0 || strpos( $path, '/wp-admin' ) === 0 || strpos( $path, '/wp-login' ) === 0 || preg_match( '#\.(?:js|css|png|jpe?g|gif|webp|svg|ico|json|xml|txt|webmanifest|woff2?|ttf|mp4|mp3|pdf|zip)$#i', $path ) ) { return; }
 	ob_start( 'sml_ds_inject' );
 }
-function sml_ds_inject( $html ) {
-	if ( ! is_string( $html ) || $html === '' || stripos( $html, '<html' ) === false ) { return $html; }
-	if ( stripos( $html, 'id="sml-ds-early"' ) === false ) {
-		$open = stripos( $html, '<head' );
-		if ( $open !== false ) { $close = strpos( $html, '>', $open ); if ( $close !== false ) { $html = substr( $html, 0, $close + 1 ) . sml_ds_early_html() . substr( $html, $close + 1 ); } }
+function sml_ds_inject( $html, $phase = 0 ) {
+	/* the buffer can reach here in pieces when something flushes mid-page. Each piece is treated on its own; a trailing
+	   partial tag or an unfinished script, style, pre, code or textarea block is held back and joined to the next piece,
+	   so the punctuation pass never sees half a tag or the inside of a script. The head and footer tags are added only
+	   from a piece that carries the whole head, or the closing body tag. */
+	static $is_html = null, $carry = '', $seen = array( 'early' => false, 'css' => false, 'js' => false );
+	if ( ! is_string( $html ) ) { return $html; }
+	$final = (bool) ( $phase & PHP_OUTPUT_HANDLER_FINAL );
+	$html  = $carry . $html; $carry = '';
+	if ( $html === '' ) { return $html; }
+	if ( $is_html === null ) { $is_html = stripos( $html, '<html' ) !== false || stripos( $html, '<!doctype' ) !== false; }
+	if ( ! $is_html ) { return $html; }
+	foreach ( array( 'early', 'css', 'js' ) as $k ) { if ( stripos( $html, 'id="sml-ds-' . $k . '"' ) !== false ) { $seen[ $k ] = true; } }
+	$whole_head = preg_match( '/<head[\s>]/i', $html, $hm, PREG_OFFSET_CAPTURE ) && stripos( $html, '</head>' ) !== false; /* the <head> tag itself, not <header> */
+	if ( $whole_head && ! $seen['early'] ) {
+		$o = $hm[0][1];
+		$c = strpos( $html, '>', $o ); if ( $c !== false ) { $html = substr( $html, 0, $c + 1 ) . sml_ds_early_html() . substr( $html, $c + 1 ); }
 	}
-	if ( stripos( $html, 'id="sml-ds-css"' ) === false ) {
+	if ( $whole_head && ! $seen['css'] ) {
 		$head = stripos( $html, '</head>' );
 		if ( $head !== false ) { $html = substr( $html, 0, $head ) . sml_ds_head_html() . substr( $html, $head ); }
 	}
-	if ( stripos( $html, 'id="sml-ds-js"' ) === false ) {
+	if ( ! $seen['js'] ) {
 		$body = strripos( $html, '</body>' );
 		if ( $body !== false ) { $html = substr( $html, 0, $body ) . sml_ds_footer_html() . substr( $html, $body ); }
 	}
-	/* the punctuation pass over the finished page: content filters are bypassed by the way this host renders some blocks,
-	   so the whole document is treated here (text only; tags, attributes, scripts, styles and code are never touched) */
+	if ( ! $final ) {
+		$cut = strlen( $html );
+		$lt = strrpos( $html, '<' );
+		if ( $lt !== false && strpos( $html, '>', $lt ) === false ) { $cut = $lt; }                     /* a tag cut in half */
+		if ( preg_match_all( '/<(script|style|pre|code|textarea)\b[^>]*>|<\/(script|style|pre|code|textarea)\s*>/i', substr( $html, 0, $cut ), $mm, PREG_OFFSET_CAPTURE | PREG_SET_ORDER ) ) {
+			$depth = ''; $at = 0;
+			foreach ( $mm as $m ) {
+				if ( isset( $m[1] ) && $m[1][0] !== '' ) { if ( $depth === '' ) { $depth = strtolower( $m[1][0] ); $at = $m[0][1]; } }
+				elseif ( isset( $m[2] ) && strtolower( $m[2][0] ) === $depth ) { $depth = ''; }
+			}
+			if ( $depth !== '' ) { $cut = $at; }                                                      /* a block still open */
+		}
+		if ( $cut < strlen( $html ) ) { $carry = substr( $html, $cut ); $html = substr( $html, 0, $cut ); }
+	}
 	return sml_ds_dashes( $html );
 }
 
