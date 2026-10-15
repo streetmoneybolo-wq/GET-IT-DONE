@@ -48,8 +48,12 @@ test('ranking rewards a strong setup on a name in the news with no coverage of t
   assert.ok(!ranked.some((r) => r.symbol === 'TINY'), 'illiquid names are skipped');
   const d = E.draftArticle(ranked[0], hot, { asOf: Date.UTC(2026, 9, 15, 14, 30) });
   assert.match(d.title, /\$ABCD/); assert.ok(d.title.length <= 120); assert.ok(d.meta.length <= 155); assert.match(d.slug, /^abcd-/);
-  assert.match(d.html, /What the data says/); assert.match(d.html, /The speculation/); assert.match(d.html, /The path to \$13\.00/); assert.match(d.html, /What kills it/); assert.match(d.html, /not financial advice/);
-  assert.ok(!/—/.test(d.html), 'no em dashes'); assert.ok(d.wordCount >= 250, 'words: ' + d.wordCount);
+  assert.match(d.html, /What the data says/); assert.match(d.html, /Why it matters: the mechanism/); assert.match(d.html, /The speculation/); assert.match(d.html, /The path to \$13\.00/); assert.match(d.html, /The case against/); assert.match(d.html, /What kills it/); assert.match(d.html, /not financial advice/);
+  assert.ok(!/—/.test(d.html), 'no em dashes'); assert.ok(d.wordCount >= 600, 'words: ' + d.wordCount);
+  assert.ok(d.title.length <= 95, 'headline fits a results page: ' + d.title.length);
+  assert.ok(d.dek && d.dek.length <= 160 && !/—/.test(d.dek)); assert.equal(d.subtitle, d.dek);
+  assert.equal(d.parts.kicker, 'OPTIONS POSITIONING'); assert.equal(d.parts.takeaways.length, 3); assert.equal(d.parts.ladder.length, 4); assert.deepEqual(d.parts.keyStat, { label: 'CALL WALL', value: '$13.00' });
+  assert.ok(!/\b(delve|landscape|tapestry|in conclusion)\b/i.test(d.html), 'no AI tells');
   assert.ok(d.tags.includes('ABCD') && d.tags.includes('gamma squeeze'));
   assert.ok(d.alternates.length === 2);
 });

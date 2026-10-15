@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-/* Configure the story desk on the sml-platform-api service without the credential ever leaving your machine in the open:
+/* Configure the Article Desk on the sml-platform-api service without the credential ever leaving your machine in the open:
  *
  *   RENDER_API_KEY=rnd_xxx node scripts/render-configure-story-desk.js [--service srv-da4vqlu1egvs73afb9ag] [--autopublish on|off] [--llm on|off]
  *

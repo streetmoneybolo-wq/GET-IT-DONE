@@ -3283,8 +3283,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
-    /* Story desk (academy-story-desk.js): owner only. GET = status; POST /write { symbol, publish } = one piece on demand. */
-    if (path === '/academy-activity/story' || path === '/academy-activity/story/write') {
+    /* Article Desk (academy-story-desk.js; routes /academy-activity/articles and the older /story): owner only. GET = status; POST /write { symbol, publish } = one piece on demand. */
+    if (path === '/academy-activity/story' || path === '/academy-activity/story/write' || path === '/academy-activity/articles' || path === '/academy-activity/articles/write') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
@@ -3293,7 +3293,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!desk) { sendJson(response, 503, { ok: false, error: 'story_desk_off' }); return; }
       try {
         if (request.method === 'GET') { sendJson(response, 200, { ok: true, ...(await desk.status()) }); return; }
-        if (request.method === 'POST' && path === '/academy-activity/story/write') {
+        if (request.method === 'POST' && (path === '/academy-activity/story/write' || path === '/academy-activity/articles/write')) {
           const raw = await readRequestBody(request, 2_048).catch(() => null);
           let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
           const symbol = String(body.symbol || '').toUpperCase();
@@ -4376,7 +4376,7 @@ async function main() {
       .then((r) => log('info', 'push_signal', { symbol: sig.symbol, style: sig.style, ...r }))
       .catch((error) => log('warn', 'push_signal_failed', { error }));
   };
-  /* Story desk: the Academy's reads on the names in play, turned into speculative, SEO-ready Loop Letters under the owner's
+  /* Article Desk: the Academy's reads on the names in play, turned into speculative, SEO-ready Loop Letters under the owner's
      byline, each with a GIF of the path to the price target. Drafts unless SML_STORY_AUTOPUBLISH=on and the signed-in WordPress
      account (SML_LETTERS_USERNAME / SML_LETTERS_APP_PASSWORD, else the news account) is the byline's own account. SML_STORY_DESK=off
      switches it off; SML_STORY_LLM=on lets the newsroom model polish the voice (never the numbers). */

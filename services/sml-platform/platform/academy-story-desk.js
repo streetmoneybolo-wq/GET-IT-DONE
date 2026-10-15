@@ -9,6 +9,8 @@
 
 const engine = require('./academy-story-engine');
 const { htmlToBlocks } = require('./academy-letter-blocks');
+const articleHtml = require('./academy-article-html');
+const { seoFor } = require('./academy-article-seo');
 const gifs = require('./academy-scenario-gif');
 
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -64,14 +66,16 @@ function createPolisher({ apiKey = '', model = 'gpt-5-mini', fetchImpl = fetch, 
   const enabled = !!apiKey;
   async function polish(draft, facts) {
     if (!enabled) return null;
-    const rules = 'You are an experienced retail-trading newsletter writer with a sharp, confident, slightly provocative voice. Rewrite the article HTML below for flow and punch. HARD RULES: keep every number, price, percentage, level and ticker exactly as given and add none; keep the same H2 sections in the same order; keep the labelled speculation and the closing disclosure paragraph verbatim; no em dashes; no phrases like "in conclusion", "delve", "it is important to note", "as an AI"; no guarantees; do not mention automation, models or data desks beyond what the text already says; return only the HTML.';
+    const rules = 'You are the lead writer of a markets desk read by people who studied finance and also live online. Rewrite the article HTML below to the house voice. VOICE: graduate-level analysis (name the mechanism, say what forces what and why, hedge claims honestly, use the proper term and explain it in the same breath) delivered in a modern, urban register: short punchy sentences after long analytical ones, contemporary phrasing, trader vernacular used sparingly, and at most two dry, light jokes that never target a person and never imply certainty. Confident, never breathless. HARD RULES: keep every number, price, percentage, level and ticker exactly as given and add none; keep the same H2 sections in the same order with the same headings; keep the labelled speculation sentence and the closing disclosure paragraph verbatim; keep every list; you may tighten or deepen sentences but do not drop an idea; no em dashes; no phrases like "in conclusion", "delve", "landscape", "tapestry", "it is important to note", "as an AI"; no guarantees, no "shorts are trapped", no "going to"; do not mention automation, models or data desks beyond what the text already says; return only the HTML.';
     try {
       const res = await fetchImpl('https://api.openai.com/v1/responses', { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model, store: false, reasoning: { effort: 'low' }, input: [{ role: 'system', content: rules }, { role: 'user', content: 'FACTS (the only numbers allowed):\n' + facts.join('\n') + '\n\nARTICLE HTML:\n' + draft }] }), signal: AbortSignal.timeout(90_000) });
       if (!res.ok) throw new Error('openai_' + res.status);
       const j = await res.json();
       const text = (j.output || []).flatMap((o) => o.content || []).filter((c) => c.type === 'output_text').map((c) => c.text).join('') || j.output_text || '';
       const html = String(text).replace(/^```html\s*|```\s*$/g, '').trim();
-      if (html.length < draft.length * 0.5 || !/<h2>/.test(html) || /—/.test(html)) return null;
+      if (html.length < draft.length * 0.6 || html.length > draft.length * 1.7 || !/<h2>/.test(html) || /—/.test(html)) return null;
+      const heads = (x) => (x.match(/<h2>[\s\S]*?<\/h2>/g) || []).map((h) => h.replace(/<[^>]+>/g, '').trim()).join('|');
+      if (heads(html) !== heads(draft)) return null; // the same sections, in the same order, under the same headings
       // every number in the draft must survive and nothing new may appear
       const nums = (s) => new Set((s.replace(/<[^>]+>/g, ' ').match(/\$?\d[\d,]*\.?\d*%?/g) || []).map((x) => x.replace(/,/g, '')));
       const a = nums(draft), b = nums(html);
@@ -137,15 +141,29 @@ function createStoryDesk({
     let html = draft.html;
     if (polisher && polisher.enabled) { const polished = await polisher.polish(html, story.facts); if (polished) html = polished; }
     // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
-    let media = null, gifInfo = null;
+    let media = null, gifInfo = null, posterMedia = null;
     try {
-      gifInfo = await gifs.gifAsync({ symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` });
+      const gifOpts = { symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` };
+      gifInfo = await gifs.gifAsync(gifOpts);
       if (gifInfo && gifInfo.gif && publisher && publisher.configured()) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
+      if (publisher && publisher.configured() && typeof gifs.poster === 'function') {
+        // the still the search engines and social cards use: a 1200 pixel PNG of the finished scenario
+        const poster = gifs.poster(gifOpts, 1200);
+        if (poster && poster.png) posterMedia = await publisher.uploadMedia({ bytes: poster.png, filename: `${c.symbol.toLowerCase()}-scenario-poster.png`, contentType: 'image/png', title: `$${c.symbol} scenario: the path to $${story.pt}`, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario from the Academy data desk. Not advice.' });
+      }
     } catch (error) { logger('warn', 'story_gif_failed', { symbol: c.symbol, error: String(error && error.message || error) }); }
-    if (media && media.url) html = `<figure class="sml-story-gif"><img src="${media.url}" alt="${c.symbol} price-action scenario to $${story.pt}" loading="eager"></figure>\n` + html;
-    const blocks = htmlToBlocks(draft.html, { tickers: [c.symbol], cover: media && media.url ? { url: media.url, alt: `${c.symbol} price-action scenario to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' } : null, disclosure: { position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' } });
-    const letter = { title: draft.title, subtitle: draft.subtitle, tldr: draft.tldr, html, blocks, content_type: 'Analysis', tags: draft.tags, cover_url: media ? media.url : undefined, visibility: 'public', slug: draft.slug };
-    return { draft, html, letter, media, gifFrames: gifInfo ? gifInfo.frames : 0 };
+    const symLine = `${c.symbol} price-action scenario to $${story.pt}`;
+    const card = articleHtml.card(draft.parts);
+    const body = htmlToBlocks(html, { tickers: [c.symbol], disclosure: { position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' } });
+    // the styled card leads; the animated path sits right after the opening two paragraphs
+    let at = 0, seen = 0;
+    for (let i = 0; i < body.length; i++) { if (body[i].type === 'paragraph') { seen += 1; if (seen === 2) { at = i + 1; break; } } }
+    if (media && media.url) body.splice(at, 0, { id: 'gif1', type: 'image', url: media.url, alt: symLine, caption: 'Speculative scenario: real candles, then the path the setup needs. Not a forecast.' });
+    const blocks = [{ id: 'card1', type: 'custom_code', html: card.html, css: card.css, height: card.height }, ...body];
+    const coverUrl = posterMedia && posterMedia.url ? posterMedia.url : (media && media.url ? media.url : '');
+    const seo = seoFor({ story, c, headline: draft.title, tags: draft.tags, publication, posterUrl: coverUrl, asOf: now() });
+    const letter = { title: draft.title, subtitle: draft.dek, tldr: draft.tldr, html, blocks, content_type: 'Analysis', tags: draft.tags, cover_url: coverUrl || undefined, visibility: 'public', slug: draft.slug };
+    return { draft, html, letter, media, posterMedia, seo, gifFrames: gifInfo ? gifInfo.frames : 0 };
   }
 
   async function file(story, c, built) {
@@ -157,17 +175,27 @@ function createStoryDesk({
       const created = await publisher.createLetter(built.letter);
       out.letterId = created.id; out.rawKeys = created.raw && typeof created.raw === 'object' ? Object.keys(created.raw).slice(0, 12) : null;
       if (!created.id) { out.error = 'letter_id_missing'; logger('warn', 'story_letter_create_unknown_shape', { symbol: c.symbol, raw: JSON.stringify(created.raw).slice(0, 400) }); return out; }
-      await publisher.saveSeo(created.id, { meta_title: built.draft.title.slice(0, 65), meta_desc: built.draft.meta, keyword: `${c.symbol} ${engine.ANGLES[story.angle].keywords[0]}`, schema: 'NewsArticle', category: 'Markets', tags: built.draft.tags.join(', '), sentiment: story.lean, og_title: built.draft.title, og_desc: built.draft.meta, twitter: 'summary_large_image', social_image: built.media ? built.media.url : '' });
+      await publisher.saveSeo(created.id, built.seo);
       if (autopublish && out.asByline) { const pub = await publisher.publishLetter(created.id); out.published = true; if (pub && pub.url) out.url = pub.url; }
       if (!out.url) { try { const got = typeof publisher.getLetter === 'function' ? await publisher.getLetter(created.id) : null; if (got && got.url) out.url = got.url; } catch (_) { /* the id is enough */ } }
-      if (!out.url) out.url = `${siteUrl}/n/vaughn-mcnair-grandmaster-obi/${created.slug || built.draft.slug}/`;
+      if (!out.url) out.url = `${siteUrl}/n/grandmasterobi/${created.slug || built.draft.slug}/`;
     } catch (error) { out.error = String(error && error.message || error); logger('warn', 'story_letter_failed', { symbol: c.symbol, error: out.error, body: error && error.body ? JSON.stringify(error.body).slice(0, 300) : '' }); }
     return out;
   }
 
+  /* the whole article as one self-contained HTML page with its CSS and metadata (the owner's review copy, and syndication) */
+  function documentFor(built, c, url = '') {
+    const d = built.draft;
+    return articleHtml.document({
+      headline: d.title, metaTitle: built.seo.meta_title, dek: d.dek, kicker: d.parts.kicker, bodyHtml: built.html, parts: d.parts, byline, publication, url,
+      imageUrl: built.seo.social_image, gifUrl: built.media ? built.media.url : '', datePublished: d.asOfIso, dateModified: d.asOfIso, tags: d.tags, keyword: built.seo.keyword,
+      description: built.seo.meta_desc, section: 'Markets', siteUrl, authorUrl: siteUrl + '/grandmasterobi/'
+    });
+  }
+
   async function tell(results) {
     if (!dm || !ownerIds.length || !results.length) return;
-    const lines = ['📰 **Story desk** · ' + results.length + ' piece' + (results.length === 1 ? '' : 's')];
+    const lines = ['📰 **Article Desk** · ' + results.length + ' piece' + (results.length === 1 ? '' : 's')];
     for (const r of results) lines.push(`• $${r.symbol} · ${engine.ANGLES[r.angle].label} · PT $${r.pt} (${r.ptPct >= 0 ? '+' : ''}${r.ptPct}%) · rank ${r.rank}\n  ${r.title}\n  ${r.error ? '⚠️ ' + r.error : (r.published ? '✅ published' : '📝 draft' + (r.asByline === false ? ' (signed-in account is not the byline: add the byline account\'s app password to publish)' : '')) + (r.url ? ' · ' + r.url : '')}`);
     for (const id of ownerIds) { try { await dm(id, lines.join('\n').slice(0, 1900)); } catch (_) { /* best effort */ } }
   }
@@ -229,7 +257,7 @@ function createStoryDesk({
     const filed = await file(ranked[0], c, built);
     if (publish && filed.letterId && publisher && !filed.published) { try { const pub = await publisher.publishLetter(filed.letterId); filed.published = true; if (pub && pub.url) filed.url = pub.url; } catch (error) { filed.error = String(error && error.message || error); } }
     state.written[c.symbol + ':' + ranked[0].angle] = now(); await save(); await tell([filed]);
-    return { ok: true, story: { ...ranked[0], facts: ranked[0].facts }, draft: { title: built.draft.title, meta: built.draft.meta, tags: built.draft.tags, wordCount: built.draft.wordCount }, filed };
+    return { ok: true, story: { ...ranked[0], facts: ranked[0].facts }, draft: { title: built.draft.title, dek: built.draft.dek, meta: built.seo.meta_desc, tags: built.draft.tags, wordCount: built.draft.wordCount, seo: built.seo, document: documentFor(built, c, filed.url) }, filed };
   }
   async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse() }; }
   return { tick, write, status, candidate, load };

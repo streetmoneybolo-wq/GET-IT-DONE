@@ -177,7 +177,9 @@ function headlineFor(st, c) {
     tape: [`${S} Unusual Activity: Sweeps, Blocks and a Dark Pool Tape That Says Someone Is Building`, `Market Makers Are Busy in ${S}: The Prints Point to ${pt}`, `${S}: The Tape Is Telling a Story the Chart Has Not Caught Up To`],
     structure: [`${S} Just Swept the Stops: The Smart-Money Structure Points to ${pt}`, `${S} Break of Structure: Why the Next Leg Targets ${pt}`, `${S}: Stops Taken, Structure Broken, ${pt} in View`]
   }[st.angle];
-  const title = pick(t, seed), alt = t.filter((x) => x !== title);
+  // a headline that fits (95 characters or fewer) keeps the title tag, the social card and the URL slug clean
+  const fits = t.filter((x) => x.length <= 95), pool = fits.length ? fits : t.map((x) => (x.length <= 95 ? x : x.slice(0, 95).replace(/\s+\S*$/, '').replace(/[,:\-\s]+$/, '')));
+  const title = pick(pool, seed), alt = pool.filter((x) => x !== title);
   const meta = `${c.symbol} ${ANGLES[st.angle].label.toLowerCase()} read from live options, short-volume, dark-pool and structure data: the setup, the path to ${pt}, and what kills it.`.slice(0, 155);
   return { title, alternates: alt, meta, slug: slugify(title) };
 }
@@ -197,17 +199,34 @@ function draftArticle(st, c, { asOf = Date.now(), author = 'Vaughn McNair', publ
     tape: [`The chart on ${name} looks ordinary. The prints behind it are not.`, `Someone is working ${S} off-exchange, and the size says it is not a retail account.`],
     structure: [`${name} just did the thing the smart-money crowd waits weeks for: it took the stops and reversed.`, `Price ran the obvious level in ${S}, then closed back inside. That is not noise. That is a sweep.`]
   }[st.angle];
+  const V = require('./academy-article-voice');
+  const dek = V.dek(st, c, seed);
+  const label = ANGLES[st.angle].label;
   const lines = [];
   lines.push(`<p><strong>${esc(pick(hooks, seed))}</strong></p>`);
-  lines.push(`<p>${esc(S)} is trading at ${px(p)}${num(c.changePct) != null ? ` (${pct(c.changePct)} on the day)` : ''}${num(c.relVol) != null ? ` on ${c.relVol.toFixed(1)}x its normal volume` : ''}. Here is what the Academy's data desk is measuring, and the speculative read that comes out of it.</p>`);
+  lines.push(`<p>${esc(S)} is trading at ${px(p)}${num(c.changePct) != null ? ` (${pct(c.changePct)} on the day)` : ''}${num(c.relVol) != null ? ` on ${c.relVol.toFixed(1)}x its normal volume` : ''}. What follows reads the Academy's data on the name, builds the case for ${px(st.pt)}, then tries hard to break it. If a setup cannot survive its own cross-examination, it does not deserve your attention.</p>`);
   lines.push(`<h2>What the data says</h2><ul>${st.facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>`);
   if (c.direction && c.direction.label) lines.push(`<p>Backdrop: the market read is <strong>${esc(c.direction.label)}</strong> (bias ${c.direction.bias >= 0 ? '+' : ''}${c.direction.bias}), ${c.direction.bias >= 20 ? 'a tailwind for the long case' : c.direction.bias <= -20 ? 'a headwind for any long idea' : 'neither help nor hindrance'}.</p>`);
-  lines.push(`<h2>The speculation</h2><p><em>This is the speculative part, and it is labelled that way on purpose.</em> ${esc(st.controversy)} ${esc(speculationLine(st, c, seed))}</p>`);
-  lines.push(`<h2>The path to ${px(st.pt)} (${pct(st.ptPct)})</h2><ol><li><strong>Trigger:</strong> ${esc(st.scenario.trigger)}.</li><li><strong>Confirmation:</strong> ${esc(st.scenario.confirm)}.</li><li><strong>Target:</strong> ${esc(st.scenario.target)}.</li></ol><p>The GIF above animates that exact path on the chart: the real candles, then the move the setup needs, step by step. Timeframe for the idea: ${esc(st.timeframe)}.</p>`);
-  lines.push(`<h2>What kills it</h2><p>${esc(cap(st.scenario.invalidation))}. If that happens, the story is wrong and the position should not exist anymore. No averaging down, no hoping.</p>`);
+  lines.push(`<h2>Why it matters: the mechanism</h2>${V.mechanism(st, c, seed).map((t) => `<p>${esc(t)}</p>`).join('')}`);
+  lines.push(`<h2>The speculation</h2><p><em>This is the speculative part, and it is labelled that way on purpose.</em> ${esc(st.controversy)} ${esc(speculationLine(st, c, seed))}</p><p>${esc(V.humor(st, c, seed))}</p>`);
+  lines.push(`<h2>The path to ${px(st.pt)} (${pct(st.ptPct)})</h2><ol><li><strong>Trigger:</strong> ${esc(st.scenario.trigger)}.</li><li><strong>Confirmation:</strong> ${esc(st.scenario.confirm)}.</li><li><strong>Target:</strong> ${esc(st.scenario.target)}.</li></ol><p>The animation above plays that exact path on the chart: the real candles, then the move the setup needs, step by step. Horizon for the idea: ${esc(st.timeframe)}.</p>`);
+  lines.push(`<h2>The case against</h2><p>${esc(V.counter(st, c, seed))}</p>`);
+  lines.push(`<h2>What kills it</h2><p>${esc(cap(st.scenario.invalidation))}. If that happens, the story is wrong and the position should not exist anymore. No averaging down, no hoping, no renaming the thesis after the fact.</p>`);
   lines.push(`<h2>Bottom line</h2><p>${esc(bottomLine(st, c, seed))}</p>`);
-  lines.push(`<p class="disclosure"><small>Data as of ${esc(when)} from the Making Easy Money Academy data desk (options positioning, FINRA daily short volume, the off-exchange trade record, the smart-money structure map). This is speculation and education, not financial advice; ${esc(author)} and the ${esc(publication)} publication may hold or trade positions in the names discussed.</small></p>`);
-  return { ...hl, html: lines.join('\n'), tags: tagsFor(st, c), tldr: `${S} at ${px(p)}: ${ANGLES[st.angle].label.toLowerCase()} setup, path to ${px(st.pt)} (${pct(st.ptPct)}), killed by ${st.scenario.invalidation.split(':')[0]}.`, subtitle: `${esc(st.controversy)}`, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle, wordCount: lines.join(' ').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length };
+  lines.push(`<p class="disclosure"><small>Data as of ${esc(when)} from the ${esc(publication)} Academy data desk: options positioning, FINRA daily short volume, the off-exchange trade record and the smart-money structure map. Levels are rounded, scenarios are illustrations rather than forecasts, and nothing here is a recommendation. This is speculation and education, not financial advice; ${esc(author)} and the ${esc(publication)} publication may hold or trade positions in the names discussed.</small></p>`);
+  const parts = {
+    kicker: V.KICKER[st.angle] || 'MARKETS', dek, lean: st.lean, symbol: c.symbol, symbolLine: `${S}: ${label}`, price: p,
+    changePct: num(c.changePct), relVol: num(c.relVol), pt: st.pt, ptPct: st.ptPct, stop: num(st.stop), timeframe: st.timeframe, keyStat: V.keyStat(st, c),
+    takeaways: [
+      `${S} leans ${st.lean} on a ${label.toLowerCase()} setup: scenario target ${px(st.pt)} (${pct(st.ptPct)}), horizon ${st.timeframe}.`,
+      String(st.facts[0] || '').replace(/\s+/g, ' ').trim(),
+      `Wrong if: ${st.scenario.invalidation}.`
+    ].filter(Boolean),
+    ladder: [{ label: 'Trigger', text: st.scenario.trigger }, { label: 'Confirmation', text: st.scenario.confirm }, { label: 'Target', text: st.scenario.target }, { label: 'Invalidation', text: st.scenario.invalidation }],
+    when
+  };
+  const html = lines.join('\n');
+  return { ...hl, html, parts, dek, subtitle: dek, section: 'Markets', asOfIso: new Date(asOf).toISOString(), tags: tagsFor(st, c), tldr: `${S} at ${px(p)}: ${label.toLowerCase()} setup, path to ${px(st.pt)} (${pct(st.ptPct)}), killed by ${st.scenario.invalidation.split(':')[0]}.`, lean: st.lean, pt: st.pt, ptPct: st.ptPct, angle: st.angle, wordCount: html.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length };
 }
 const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 function speculationLine(st, c, seed) {

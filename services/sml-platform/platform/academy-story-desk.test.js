@@ -47,13 +47,17 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.equal(created.l.visibility, 'public'); assert.match(created.l.title, /\$ABCD/); assert.ok(!('author_id' in created.l), 'the signed-in account is the author');
   assert.ok(created.l.tags.includes('ABCD')); assert.match(created.l.html, /What the data says/);
   assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'What the data says') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
+  assert.equal(created.l.blocks[0].type, 'custom_code', 'the styled card leads'); assert.match(created.l.blocks[0].html, /Key takeaways/); assert.match(created.l.blocks[0].css, /\.ad-t/); assert.ok(created.l.blocks[0].height >= 420);
+  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && /Why it matters/.test(b.text)) && created.l.blocks.some((b) => b.type === 'heading' && /The case against/.test(b.text)));
+  assert.ok(created.l.subtitle.length > 20 && created.l.subtitle.length <= 160);
   assert.equal(created.l.blocks[created.l.blocks.length - 1].type, 'disclosure');
-  const seo = h.posts.find((p) => p.kind === 'seo'); assert.ok(seo, 'SEO store written'); assert.equal(seo.seo.schema, 'NewsArticle'); assert.ok(seo.seo.meta_title.length <= 65); assert.equal(typeof seo.seo.tags, 'string');
+  const seo = h.posts.find((p) => p.kind === 'seo'); assert.ok(seo, 'SEO store written'); assert.equal(seo.seo.schema, 'NewsArticle'); assert.ok(seo.seo.meta_title.length <= 60, seo.seo.meta_title); assert.equal(typeof seo.seo.tags, 'string');
+  assert.ok(seo.seo.meta_desc.length >= 110 && seo.seo.meta_desc.length <= 155, 'description length ' + seo.seo.meta_desc.length); assert.match(seo.seo.keyword, /^ABCD /); assert.equal(seo.seo.twitter, 'summary_large_image'); assert.equal(seo.seo.category, 'Markets'); assert.equal(seo.seo.subject, '$ABCD');
   assert.equal(r.results[0].url, 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/');
   assert.ok(!h.posts.some((p) => p.kind === 'publish'), 'draft unless autopublish');
   const gifAvailable = require('./academy-scenario-gif').available();
-  if (gifAvailable) { assert.equal(h.media.length, 1); assert.equal(h.media[0].contentType, 'image/gif'); assert.match(created.l.html, /<figure class="sml-story-gif">/); assert.equal(created.l.blocks[0].type, 'image'); assert.equal(created.l.cover_url, 'https://stockmarketloop.com/wp-content/uploads/x.gif'); }
-  assert.equal(h.dms.length, 1); assert.match(h.dms[0].text, /Story desk/); assert.match(h.dms[0].text, /draft/);
+  if (gifAvailable) { assert.equal(h.media.length, 1); assert.equal(h.media[0].contentType, 'image/gif'); assert.match(created.l.html, /<figure class="sml-story-gif">/); assert.ok(created.l.blocks.some((b) => b.type === 'image'), 'the animated path is in the body'); assert.ok(created.l.cover_url && created.l.cover_url.startsWith('https://')); }
+  assert.equal(h.dms.length, 1); assert.match(h.dms[0].text, /Article Desk/); assert.match(h.dms[0].text, /draft/);
   assert.ok(h.saved().written['ABCD:' + r.results[0].angle]);
   const again = await h.desk.tick();
   assert.equal(again.filed, 0, 'the same symbol is not written twice in a day');
@@ -73,6 +77,7 @@ test('write(symbol) drafts one piece on demand', async () => {
   const h = harness();
   const r = await h.desk.write('ABCD');
   assert.equal(r.ok, true); assert.ok(r.story.rank > 0); assert.match(r.draft.title, /\$ABCD/); assert.equal(r.filed.letterId, 123);
+  assert.match(r.draft.document, /^<!doctype html>/); assert.match(r.draft.document, /<style>/); assert.match(r.draft.document, /"@type":"NewsArticle"/); assert.match(r.draft.document, /itemprop="articleBody"/); assert.equal((r.draft.document.match(/<script/g) || []).length, 1, 'only the JSON-LD script'); assert.ok(r.draft.seo.meta_title.length <= 60);
 });
 
 test('the polisher refuses output that invents a number or breaks the structure', async () => {

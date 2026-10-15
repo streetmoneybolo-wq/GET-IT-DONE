@@ -106,4 +106,14 @@ async function gifAsync(opts) {
   return { gif: await encodeGifAsync(raster, { delayMs: opts.delayMs || 140, lastHoldMs: opts.lastHoldMs || 2200 }), frames: svgs.length, firstSvg: svgs[0], lastSvg: svgs[svgs.length - 1], width: raster[0].width, height: raster[0].height };
 }
 
-module.exports = { frames, frameSvg, pathPoints, gif, gifAsync, available: () => !!loadResvg(), W, H };
+/* a static poster of the finished scenario (the last frame) as a PNG, 1200 pixels wide: the social and search image, since news
+   engines prefer a still of that size to an animated GIF */
+function poster(opts, width = 1200) {
+  const svgs = frames(opts); const lib = loadResvg();
+  if (!lib) return { png: null, svg: svgs[svgs.length - 1] };
+  const r = new lib.Resvg(svgs[svgs.length - 1], { fitTo: { mode: 'width', value: width }, font: { loadSystemFonts: false, fontFiles: FONTS, defaultFontFamily: FAMILY } });
+  const img = r.render();
+  return { png: Buffer.from(img.asPng()), width: img.width, height: img.height, svg: svgs[svgs.length - 1] };
+}
+
+module.exports = { frames, frameSvg, pathPoints, gif, gifAsync, poster, available: () => !!loadResvg(), W, H };
