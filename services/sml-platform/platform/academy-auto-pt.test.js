@@ -96,10 +96,33 @@ test('nothing is posted before the target is hit, after the five days, or when s
   const dry = harness({ deps: { mode: 'dry' } }); const r = await dry.svc.tick(); assert.equal(r.dry, 1); assert.equal(dry.posts.length, 0);
 });
 
-test('weak evidence holds the update and is rechecked, then given up a day after the hit', async () => {
+test('weak evidence at a reached target is a decision, not silence: the brain says take the profit', async () => {
   const h = harness({ evidence: { price: 2.3, alignment: -0.9, levels: [], volPct: 4 }, sentiment: { available: true, score: -0.7 } });
+  const r = await h.svc.tick(); assert.equal(r.posted, 1); assert.equal(h.posts.length, 1);
+  assert.equal(h.posts[0].decision.action, 'SELL'); assert.ok(h.posts[0].decision.steps.length >= 2);
+  const s = h.saved.v.alerts['c:1']; assert.equal(s.status, 'done'); assert.equal(s.updates[0].kind, 'SELL'); assert.match(s.note, /take profits/);
+  assert.equal(h.svc.forKey('c:1').closed, true);
+  const again = await h.svc.tick(); assert.equal(again.posted, 0, 'once');
+});
+
+test('no live read holds the update and is given up a day after the hit', async () => {
+  const h = harness({ deps: { evidence: async () => null } });
   const r = await h.svc.tick(); assert.equal(r.held, 1); assert.equal(h.posts.length, 0);
-  assert.match(h.saved.v.alerts['c:1'].note, /evidence_against/);
+  assert.match(h.saved.v.alerts['c:1'].note, /no live read/);
+});
+
+test('the thread: updates go under the entry alert, the post carries the thread id, and the stop is the wide momentum stop', async () => {
+  const opened = [];
+  const h = harness({ alerts: [{ key: 'c:123456789012345678', symbol: 'AIXI', side: 'long', entry: 1.8, target: 2.2, at: NOW - 2 * DAY, channelId: '444444444444444444' }],
+    evidence: { price: 2.3, alignment: 0.8, levels: [], volPct: 6, tech: { relVol: 2.4, aboveVwap: true, rsi: 64, atr: 0.12 }, reads: { day: { dir: 1 }, swing: { dir: 1 } } },
+    deps: { openThread: async (channelId, messageId, name) => { opened.push({ channelId, messageId, name }); return { id: '999999999999999999', name }; } } });
+  const r = await h.svc.tick(); assert.equal(r.posted, 1);
+  assert.deepEqual(opened, [{ channelId: '444444444444444444', messageId: '123456789012345678', name: 'AIXI · alert updates' }]);
+  assert.equal(h.posts[0].threadId, '999999999999999999');
+  assert.ok(['RAISE', 'TRIM_RAISE'].includes(h.posts[0].decision.action), h.posts[0].decision.action);
+  const u = h.saved.v.alerts['c:123456789012345678'].updates[0];
+  assert.equal(u.threadId, '999999999999999999'); assert.ok(u.decision && u.decision.steps.length >= 3);
+  assert.ok(u.stopRange.high <= 2.3 * 0.985 && u.stopRange.high >= 1.8, 'wide momentum stop: ' + JSON.stringify(u.stopRange));
 });
 
 test('a newer alert with a higher target on the same channel supersedes the automatic update', async () => {
@@ -147,8 +170,9 @@ test('no new target after a pull-back under the smashed target, and the live pri
   const { svc, posts } = harness({ alerts: [{ key: 'd:1', symbol: 'BIAF', side: 'long', entry: 7.38, target: 8.47, at: NOW - 2 * DAY, channelId: '444444444444444444', postable: true, price: 7.58 }],
     range: { high: 8.6, low: 7.3 }, evidence: { price: 8.43, alignment: 0.6, levels: [], volPct: 5 }, deps: { mode: 'desk', compose: async () => ({ text: 'x' }) } });
   await svc.tick();
-  assert.equal(svc.forKey('d:1'), null, 'held: price 7.58 is back under the 8.47 target');
-  assert.equal(posts.length, 0);
+  const lad = svc.forKey('d:1');
+  assert.ok(lad && ['SELL', 'TRIM_RAISE'].includes(lad.updates[0].kind), 'a pull-back under the smashed target is decided, not ignored: ' + JSON.stringify(lad && lad.updates[0].kind));
+  assert.equal(posts.length, 0, 'desk mode posts nothing');
 });
 
 test('old desk-only updates (before these checks) are dropped on load; posted ones stay', async () => {

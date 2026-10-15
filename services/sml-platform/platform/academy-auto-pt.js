@@ -10,6 +10,8 @@
  * Modes (ACADEMY_AUTO_PT): desk (default: decide and record the new target + its write-up for the Academy alerts desk, post nothing),
  * dry (decide and log only), on (record AND post to the alert's own channel), off. Each alert can carry its own watch window (windowMs). */
 
+const brain = require('./academy-alert-brain');
+const SNOWFLAKE_ID = /^\d{5,25}$/;
 const MIN_PCT = 12, MAX_PCT = 40;
 const WINDOW_MS = 5 * 86_400_000;
 const MAX_UPDATES = 3;
@@ -155,7 +157,10 @@ function targetReached({ side, target, range }) {
   return side === 'short' ? Number(range.low) <= Number(target) : Number(range.high) >= Number(target);
 }
 
-function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, onUpdate = null, onHit = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40 } = {}) {
+function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentiment, market, post, compose = null, onUpdate = null, onHit = null, store, now = Date.now, logger = () => {}, windowMs = WINDOW_MS, maxPerTick = 40,
+  runnerFor = null, earningsFor = null, openThread = null, postClose = null, threads = true } = {}) {
+  const timed = (fn, ms) => Promise.race([Promise.resolve().then(fn), new Promise((r) => { const t = setTimeout(() => r(null), ms); if (t.unref) t.unref(); })]).catch(() => null);
+  const channelOf = (s) => { const w = winOf(s); return w >= 30 * 86_400_000 ? 'longterm' : w <= 2 * 86_400_000 ? 'day' : 'swing'; };
   const enabled = mode === 'dry' || mode === 'on' || mode === 'desk';
   const winOf = (s) => (fin(s && s.windowMs) ? Number(s.windowMs) : windowMs);
   let state = null, running = false, view = null;
@@ -216,33 +221,56 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
           // decide on the live price when the desk has one (the evidence bars can still be yesterday's close before the open)
           const live = list.find((x) => x && x.key === key);
           if (ev && live && fin(live.price) && Number(live.price) > 0) ev.price = Number(live.price);
-          // only a target that is still being held earns a new one: after a pull-back under the smashed target, hold and look again later
-          if (ev && fin(ev.price) && (s.side === 'short' ? Number(ev.price) > target * 1.03 : Number(ev.price) < target * 0.97)) {
-            out.held++; s.note = 'no update: pulled back under the smashed target (' + roundPrice(Number(ev.price)) + ' vs ' + target + ')';
+          // without a live read there is nothing to decide on: hold and look again, give up a day after the hit
+          if (!ev || !fin(ev.price)) {
+            out.held++; s.note = 'no update: no live read for the decision';
             if (t - s.hitAt > HOLD_RECHECK_MS) { s.status = 'done'; s.note += ' (a day after the target was hit)'; }
             continue;
           }
           const sent = sentiment ? await Promise.resolve(sentiment(s.symbol)).catch(() => null) : null;
           const mk = market ? await Promise.resolve(market()).catch(() => null) : null;
-          const prop = proposeTarget({ side: s.side, price: ev && ev.price, alignment: ev && ev.alignment, sentiment: sent && sent.available !== false && fin(sent.score) ? Number(sent.score) : null, market: marketOutlook(mk), volPct: ev && ev.volPct, levels: ev && ev.levels, updates: s.updates.length });
+          const sentScore = sent && sent.available !== false && fin(sent.score) ? Number(sent.score) : null, mkScore = marketOutlook(mk);
+          const prop = proposeTarget({ side: s.side, price: ev.price, alignment: ev.alignment, sentiment: sentScore, market: mkScore, volPct: ev.volPct, levels: ev.levels, updates: s.updates.length });
           s.lastProposal = { at: t, ...prop };
-          if (!prop.post) {
-            out.held++; s.note = 'no update: ' + prop.reason;
-            if (t - s.hitAt > HOLD_RECHECK_MS) { s.status = 'done'; s.note += ' (a day after the target was hit)'; }
+          /* the brain: hold for more, bank part and hold the rest, or take it all — from momentum vs exhaustion, the runner trail,
+             the next earnings date, the market, how far it pulled back from the high since the alert, and where we are in the ladder */
+          const highSince = r && fin(s.side === 'short' ? r.low : r.high) ? Number(s.side === 'short' ? r.low : r.high) : null;
+          const runner = runnerFor ? await timed(() => runnerFor(s.symbol, s.side, s.entry, s.at), 12_000) : null;
+          const earningsDays = earningsFor ? await timed(() => earningsFor(s.symbol), 8_000) : null;
+          const prevStopLevel = cur && cur.stopRange ? (s.side === 'short' ? cur.stopRange.low : cur.stopRange.high) : (fin(s.stop0) ? Number(s.stop0) : null);
+          const decision = brain.decide({ side: s.side, symbol: s.symbol, entry: s.entry, price: ev.price, target, highSince, updates: s.updates.length, channel: channelOf(s), evidence: ev, proposal: prop, runner, sentiment: sentScore, market: mkScore, earningsDays, prevStop: prevStopLevel });
+          s.lastDecision = { at: t, action: decision.action, trimPct: decision.trimPct, headline: decision.headline, confidence: decision.confidence };
+          if (decision.action === 'HOLD') { out.held++; s.note = 'no update: ' + decision.reason; continue; }
+          if (mode === 'dry') { out.dry++; s.note = 'dry run: would ' + decision.action + (decision.newTarget ? ' to ' + decision.newTarget : ''); logger('info', 'auto_pt_dry_run', { symbol: s.symbol, action: decision.action, target: decision.newTarget, pct: decision.newPct }); s.dryTarget = decision.newTarget; continue; }
+          const willPost = mode === 'on' && s.postable !== false;
+          // the thread under the entry alert: every update to this alert lives there (the channel gets a one-line pointer)
+          if (threads && willPost && openThread && !s.threadId && s.threadId !== '' && SNOWFLAKE_ID.test(String(key.slice(2))) && SNOWFLAKE_ID.test(String(s.channelId))) {
+            try { const th = await openThread(s.channelId, key.slice(2), s.symbol + ' · alert updates'); s.threadId = th && th.id ? String(th.id) : ''; }
+            catch (error) { s.threadId = ''; logger('warn', 'auto_pt_thread_failed', { symbol: s.symbol, error: String(error && error.message || error) }); }
+          }
+          if (decision.action === 'SELL') {
+            let sentClose = null;
+            const closer = postClose || post;
+            if (willPost) sentClose = await closer({ symbol: s.symbol, side: s.side, channelId: s.channelId, threadId: s.threadId || '', decision, price: ev.price, entry: s.entry, target, n: s.updates.length + 1 });
+            const text = brain.memberText({ decision, symbol: s.symbol, side: s.side, entry: s.entry, price: ev.price, target, n: s.updates.length + 1 });
+            s.updates.push({ at: now(), kind: 'SELL', target: null, pct: 0, previous: target, price: ev.price, v: 3, text: text.slice(0, 3800), stop: null, stopRange: null, stopWas: null, why: decision.why, signals: decision.warn.map((w) => ({ text: w, tone: 'warn' })), story: decision.headline + ' ' + decision.steps.join(' '), decision: { action: decision.action, trimPct: decision.trimPct, headline: decision.headline, steps: decision.steps, confidence: decision.confidence, warn: decision.warn }, posted: willPost, messageId: sentClose && sentClose.messageId || '', threadId: s.threadId || '' });
+            s.status = 'done'; s.note = (willPost ? 'posted ' : 'set on the desk ') + 'take profits'; delete s.hitAt; out.posted++;
+            if (typeof onUpdate === 'function') { try { onUpdate({ key, symbol: s.symbol, ...view(s, s.updates[s.updates.length - 1], s.updates.length - 1) }); } catch (error) { logger('warn', 'auto_pt_notify_failed', { error }); } }
+            logger('info', willPost ? 'auto_pt_posted' : 'auto_pt_desk', { key, symbol: s.symbol, action: 'SELL', updates: s.updates.length });
             continue;
           }
-          if (mode === 'dry') { out.dry++; s.note = 'dry run: would post ' + prop.target; logger('info', 'auto_pt_dry_run', { symbol: s.symbol, target: prop.target, pct: prop.pct }); s.dryTarget = prop.target; continue; }
+          if (!prop.post || !decision.newTarget) { out.held++; s.note = 'no update: ' + (prop.reason || 'no target'); if (t - s.hitAt > HOLD_RECHECK_MS) { s.status = 'done'; s.note += ' (a day after the target was hit)'; } continue; }
           // the write-up (same PT SMASHED layout as the Discord post) is kept for the Academy alerts desk
           let written = null;
-          // every new target raises the stop; the first time it moves up from the alert's own stop (or the usual wide 7-10% buffer)
+          // the stop moves with every new target and never back: the brain's momentum stop (wide enough for a fast name), never under the one before
           const prevStop = cur && cur.stopRange ? cur.stopRange : (s.side === 'short' ? { low: fin(s.stop0) ? s.stop0 : s.entry * 1.07, high: fin(s.stop0) ? s.stop0 * 1.025 : s.entry * 1.10 } : { low: fin(s.stop0) ? s.stop0 * 0.975 : s.entry * 0.90, high: fin(s.stop0) ? s.stop0 : s.entry * 0.93 });
-          const stopRange = raisedStop({ side: s.side, price: ev && ev.price, previousTarget: target, entry: s.entry, prev: prevStop, volPct: ev && ev.volPct });
+          const stopRange = decision.stop ? { low: decision.stop.low, high: decision.stop.high } : raisedStop({ side: s.side, price: ev && ev.price, previousTarget: target, entry: s.entry, prev: prevStop, volPct: ev && ev.volPct });
           const insight = insightFor({ side: s.side, symbol: s.symbol, price: ev && ev.price, prop, updates: s.updates.length, tech: ev && ev.tech, reads: ev && ev.reads, previousTarget: target, stop: stopRange, stopWas: rangeText({ low: roundPrice(prevStop.low), high: roundPrice(prevStop.high) }) });
+          insight.decision = { action: decision.action, trimPct: decision.trimPct, headline: decision.headline, steps: decision.steps, confidence: decision.confidence, warn: decision.warn };
           if (compose) { try { written = await compose({ symbol: s.symbol, side: s.side, target: prop.target, previousTarget: target, insight }); } catch (error) { logger('warn', 'auto_pt_compose_failed', { symbol: s.symbol, error: String(error && error.message || error) }); } }
           let sent2 = null;
-          const willPost = mode === 'on' && s.postable !== false;
-          if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, target: prop.target, previousTarget: target, insight });
-          s.updates.push({ at: now(), target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 3, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: stopRange ? (s.side === 'short' ? stopRange.low : stopRange.high) : (written && written.stop || null), stopRange, stopWas: insight.stopWas, why: insight.why, signals: insight.signals, story: insight.story, tech: ev && ev.tech || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
+          if (willPost) sent2 = await post({ symbol: s.symbol, side: s.side, channelId: s.channelId, threadId: s.threadId || '', target: prop.target, previousTarget: target, insight, decision, entry: s.entry, price: ev.price, n: s.updates.length + 1 });
+          s.updates.push({ at: now(), kind: decision.action, decision: insight.decision, threadId: s.threadId || '', target: prop.target, pct: prop.pct, previous: target, price: ev && ev.price, v: 3, text: written && written.text ? String(written.text).slice(0, 3800) : '', stop: stopRange ? (s.side === 'short' ? stopRange.low : stopRange.high) : (written && written.stop || null), stopRange, stopWas: insight.stopWas, why: insight.why, signals: insight.signals, story: insight.story, tech: ev && ev.tech || null, posted: willPost, messageId: sent2 && sent2.messageId || '' });
           out.posted++;
           s.note = (willPost ? 'posted ' : 'set on the desk ') + prop.target; delete s.hitAt;
           if (typeof onUpdate === 'function') { try { onUpdate({ key, symbol: s.symbol, ...view(s, s.updates[s.updates.length - 1], s.updates.length - 1) }); } catch (error) { logger('warn', 'auto_pt_notify_failed', { error }); } }
@@ -255,8 +283,8 @@ function createAutoPtService({ mode = 'off', listAlerts, range, evidence, sentim
   }
   const status = async () => { await load(); return { mode, watching: Object.values(state.alerts).filter((s) => s.status === 'watching').length, updates: Object.values(state.alerts).reduce((n, s) => n + s.updates.length, 0) }; };
   /* the target ladder for one alert (key 'd:<alert id>'): the latest target and every update, for the alerts desk */
-  view = (s, u, i) => ({ n: i + 1, at: u.at, target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange || null, stopWas: u.stopWas || null, why: u.why || [], signals: u.signals || [], story: u.story || '', entry: s.entry, side: s.side, text: u.text, posted: !!u.posted });
-  const forKey = (key) => { const s = state && state.alerts[key]; return s && s.updates.length ? { target: s.updates[s.updates.length - 1].target, stop: s.updates[s.updates.length - 1].stop || null, side: s.side, updates: s.updates.map((u, i) => view(s, u, i)) } : null; };
+  view = (s, u, i) => ({ n: i + 1, at: u.at, kind: u.kind || 'RAISE', decision: u.decision || null, threadId: u.threadId || '', target: u.target, previous: u.previous, pct: u.pct, price: u.price, stop: u.stop, stopRange: u.stopRange || null, stopWas: u.stopWas || null, why: u.why || [], signals: u.signals || [], story: u.story || '', entry: s.entry, side: s.side, text: u.text, posted: !!u.posted });
+  const forKey = (key) => { const s = state && state.alerts[key]; if (!s || !s.updates.length) return null; const last = s.updates[s.updates.length - 1]; const lastTarget = [...s.updates].reverse().find((u) => fin(u.target)); return { target: lastTarget ? lastTarget.target : null, stop: last.stop || (lastTarget ? lastTarget.stop : null) || null, side: s.side, closed: last.kind === 'SELL', updates: s.updates.map((u, i) => view(s, u, i)) }; };
   /* a "target reached" event: the alert's own target (or its latest raised one) was touched; `suggested` is the engine's proposal when it has one */
   const hitView = (key, s, h) => ({ kind: 'hit', key, id: key.slice(2), symbol: s.symbol, n: 'hit' + h.n, at: h.at, target: h.target, price: h.price, entry: s.entry, side: s.side, owner: s.userId || '', channelId: s.channelId, suggested: s.lastProposal && fin(s.lastProposal.target) ? Number(s.lastProposal.target) : null });
   /* every new target set after `since`, and every target reached, newest first, for the Academy's notification. Desk alerts ('d:<id>') are

@@ -763,24 +763,44 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return { text: textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())), stop: analysis.stop, horizon: analysis.horizon };
   }
   /* post the update as the Academy app, to the channel the alert was posted in: PT SMASHED layout, @everyone, both scenario charts */
-  async function postAutoUpdate({ symbol, channelId, target, previousTarget, insight = null }) {
+  const brainText = (d) => { try { return require('./academy-alert-brain').memberText(d); } catch (_) { return ''; } };
+  /* the one-line pointer in the channel when the full update went into the alert's thread */
+  async function pointTo(channelId, threadId, symbol, headline) {
+    if (!threadId || threadId === channelId) return null;
+    try { return await directory.post(String(channelId), { content: '📌 **' + String(symbol).toUpperCase() + '** · ' + headline + ' → <#' + threadId + '>', allowed_mentions: { parse: [] } }, []); } catch (_) { return null; }
+  }
+  async function postAutoUpdate({ symbol, channelId, threadId = '', target, previousTarget, insight = null, decision = null, entry = null, price = null, n = 1 }) {
     if (!SNOWFLAKE.test(String(channelId))) throw new Error('invalid_channel');
     const analysis = await gather(symbol, Number(target));
     if (!analysis.ok) throw new Error('analysis_' + analysis.code);
     analysis.smashed = { auto: true, prevTarget: previousTarget || null, forced: true };
     if (insight) analysis.insight = { status: insight.status, targetNote: insight.targetNote, riskNote: insight.riskNote, why: insight.why, stopLow: insight.stopLow, stopHigh: insight.stopHigh, stopWas: insight.stopWas };
     if (insight && Number(insight.stopHigh) > 0) analysis.stop = Number(analysis.side === 'short' ? insight.stopLow : insight.stopHigh);
-    let content = textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())) + '\n-# Automatic price-target update · Making Easy Money Academy · educational, not financial advice';
+    const steps = decision && Number(entry) > 0 && Number(price) > 0 ? brainText({ decision, symbol: analysis.symbol, side: analysis.side, entry: Number(entry), price: Number(price), target: Number(previousTarget || target), n }) : '';
+    let content = (steps ? steps + '\n\n' : '') + textFor(analysis, null, true) + '\n\n' + alertTimeAndPrice(analysis, new Date(now())) + '\n-# Automatic price-target update · Making Easy Money Academy · educational, not financial advice';
+    if (content.length > 1950) content = content.slice(0, 1940) + '…';
     const files = scenariosFor(analysis, { png: true }).filter((im) => im.png).map((im) => ({ name: im.name, bytes: im.png, contentType: 'image/png', alt: im.alt }));
     const body = { content, allowed_mentions: { parse: ['everyone'] } };
+    const dest = SNOWFLAKE.test(String(threadId || '')) ? String(threadId) : String(channelId);
     let posted;
-    try { posted = await directory.post(String(channelId), body, files.length === 2 ? files : []); }
-    catch (error) { if (files.length === 2) posted = await directory.post(String(channelId), body, []); else throw error; }
+    try { posted = await directory.post(dest, body, files.length === 2 ? files : []); }
+    catch (error) { if (files.length === 2) posted = await directory.post(dest, body, []); else throw error; }
+    const pointer = await pointTo(String(channelId), dest, analysis.symbol, decision && decision.headline ? decision.headline : 'PT ' + (previousTarget ? '$' + previousTarget + ' ' : '') + 'smashed, new target $' + target);
     await store.record({ userId: 'auto', guildId: '', channelId: String(channelId), messageId: posted.id, symbol: analysis.symbol, side: analysis.side, entry: analysis.entry, target: analysis.target, stop: analysis.stop, horizon: analysis.horizon, confidence: analysis.confidence }).catch(() => {});
-    return { messageId: posted.id, images: files.length === 2 };
+    return { messageId: posted.id, images: files.length === 2, threadId: dest !== String(channelId) ? dest : '', pointerId: pointer ? pointer.id : '' };
   }
+  /* the close-out: take the profit, nothing else to chase; text only, into the thread when there is one */
+  async function postAutoClose({ symbol, side = 'long', channelId, threadId = '', decision, price, entry, target, n = 1 }) {
+    if (!SNOWFLAKE.test(String(channelId))) throw new Error('invalid_channel');
+    const content = brainText({ decision, symbol, side, entry: Number(entry), price: Number(price), target: Number(target), n }) + '\n-# Automatic alert update · Making Easy Money Academy · educational, not financial advice';
+    const dest = SNOWFLAKE.test(String(threadId || '')) ? String(threadId) : String(channelId);
+    const posted = await directory.post(dest, { content, allowed_mentions: { parse: ['everyone'] } }, []);
+    const pointer = await pointTo(String(channelId), dest, symbol, decision && decision.headline ? decision.headline : 'take profits');
+    return { messageId: posted.id, threadId: dest !== String(channelId) ? dest : '', pointerId: pointer ? pointer.id : '' };
+  }
+  const startThread = (channelId, messageId, name) => directory.startThread(String(channelId), String(messageId), name);
 
-  return { entitlement, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, composeAutoUpdate, store, limits: { ...lim } };
+  return { entitlement, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

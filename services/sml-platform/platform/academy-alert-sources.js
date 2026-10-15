@@ -194,6 +194,14 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     if (!res.ok) { const e = new Error(`discord_post_${res.status}`); e.status = res.status; throw e; }
     const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
   }
+  /* A thread hanging off the entry alert, so every update to that alert lives under it (auto-archives after three days of quiet;
+     a new post re-opens it). Needs Create Public Threads and Send Messages in Threads for the Academy app. */
+  async function startThread(channelId, messageId, name) {
+    const info = await channelInfo(channelId); const t = info && await tokenFor(info.guildId); if (!t) { const e = new Error('discord_bot_not_in_server'); e.status = 404; throw e; }
+    const res = await fetchImpl(`${DISCORD}/channels/${channelId}/messages/${messageId}/threads`, { method: 'POST', headers: { authorization: `Bot ${t.token}`, 'content-type': 'application/json', 'user-agent': 'StockMarketLoop-Academy-Alerts/1.0' }, body: JSON.stringify({ name: String(name || 'Alert updates').slice(0, 100), auto_archive_duration: 4320 }), signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) { const e = new Error(`discord_thread_${res.status}`); e.status = res.status; throw e; }
+    const out = await res.json(); return { id: String(out.id || ''), name: String(out.name || '') };
+  }
   /* Post under the member's own name and picture. Discord does not let any app post as a user account, so this uses a channel webhook (made once by the
      Academy app, which needs Manage Webhooks there) with the member's display name and avatar; Discord still marks such a message APP. */
   const hooks = new Map(); // channelId -> { id, token }
@@ -229,7 +237,7 @@ function createDiscordDirectory({ tokens = [], fetchImpl = globalThis.fetch, now
     if (!res.ok) { const e = new Error(`discord_webhook_post_${res.status}`); e.status = res.status; throw e; }
     const out = await res.json(); return { id: String(out.id || ''), channelId: String(out.channel_id || channelId) };
   }
-  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, userProfile, memberRoles, memberRolesLive, sendableChannels, postingIn, post, postAsMember };
+  return { guildsFor, readableChannels, canRead, channelInfo, guild, recent, botGuilds, userProfile, memberRoles, memberRolesLive, sendableChannels, postingIn, post, postAsMember, startThread };
 }
 
 /* Where each member's sources are kept: Postgres (academy_alert_sources) when there is a database, memory otherwise (local runs, tests). */

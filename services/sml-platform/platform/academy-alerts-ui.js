@@ -167,8 +167,10 @@
     if (!list.length) return '';
     const last = list[list.length - 1];
     const live = d.quote && Number(d.quote.last) > 0 ? Number(d.quote.last) : 0;
-    let h = '<h5>🎯 NEW PRICE TARGET · PT ' + last.n + ' SMASHED</h5>';
-    h += ptLadderSvg(last, live, list);
+    const dc = last.decision || null;
+    let h = '<h5>' + (last.kind === 'SELL' ? '✅ TAKE PROFITS · TARGET HIT' : last.kind === 'TRIM_RAISE' ? '💰 PT ' + last.n + ' SMASHED · BANK ' + (dc ? dc.trimPct : 50) + '%' : '🎯 NEW PRICE TARGET · PT ' + last.n + ' SMASHED') + '</h5>';
+    if (dc && Array.isArray(dc.steps) && dc.steps.length) h += '<div style="margin:0 0 8px;padding:8px 10px;border:1px solid #1f8a5f;border-radius:8px;background:#071a13"><b style="color:#7ef0bd">WHAT TO DO NOW</b>' + (dc.headline ? '<div style="margin:2px 0 4px;color:#e6f1f5">' + esc(dc.headline) + '</div>' : '') + '<ol style="margin:4px 0 0;padding-left:18px">' + dc.steps.map((x) => '<li style="margin:2px 0">' + esc(x) + '</li>').join('') + '</ol>' + (dc.warn && dc.warn.length ? '<div style="margin-top:4px;color:#ffb648">Watch out: ' + esc(dc.warn.join('; ')) + '.</div>' : '') + (dc.confidence ? '<div style="margin-top:3px;color:#7f97a4;font-size:.6rem">Alert brain confidence ' + dc.confidence + '%' + (last.threadId ? ' · posted in the alert\'s thread' : '') + '</div>' : '') + '</div>';
+    if (last.kind !== 'SELL') h += ptLadderSvg(last, live, list);
     if ((last.signals || []).length) h += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 6px">' + last.signals.map((x) => { const c = TONE[x.tone] || TONE.ok; return '<span class="aa-chip" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(x.text) + '</span>'; }).join('') + '</div>';
     if (last.story) h += '<p style="margin:4px 0 8px;line-height:1.5">' + esc(last.story) + '</p>';
     if (last.stopRange) h += '<p style="margin:0 0 6px"><b style="color:#ff9aa4">🚨 Stop ' + (last.side === 'short' ? 'lowered' : 'raised') + ':</b> ' + (last.side === 'short' ? 'above' : 'below') + ' $' + px(last.stopRange.low) + '–$' + px(last.stopRange.high) + (last.stopWas ? ' <span style="color:#7f97a4">(was ' + esc(last.stopWas) + ')</span>' : '') + '</p>';

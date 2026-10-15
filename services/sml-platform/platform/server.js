@@ -4235,6 +4235,9 @@ async function main() {
       return desk.concat(click.filter((c) => !deskIds.has(c.key.slice(2)))); // the desk copy of a message wins
     },
     range: academyClickAlert.rangeSince, evidence: academyClickAlert.evidenceFor, post: academyClickAlert.postAutoUpdate, compose: academyClickAlert.composeAutoUpdate,
+    postClose: academyClickAlert.postAutoClose, openThread: academyClickAlert.startThread, threads: String(process.env.ACADEMY_PT_THREADS || 'on').toLowerCase() !== 'off',
+    runnerFor: async (symbol, side, entry, at) => { const lib = require('./academy-runner'); const p = await sentimentCandles(symbol, '1D').catch(() => null); return lib.trailFor({ daily: p && Array.isArray(p.bars) ? p.bars : [], entry, sinceT: at, side }); },
+    earningsFor: academyAlerts ? async (symbol) => { const e = await academyAlerts.nextEarnings(symbol).catch(() => null); return e && e.daysAway != null ? Number(e.daysAway) : null; } : null,
     sentiment: academySentiment ? (s) => academySentiment.get(s) : null, market: () => marketGauges.get(),
     store: createPgStateStore({ pool: database.pool, key: 'auto-pt', defaultValue: () => ({ alerts: {} }), logger: log })
   }) : null;
