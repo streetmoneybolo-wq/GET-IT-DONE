@@ -1739,6 +1739,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
+  /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
+  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null,
+  getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
+  siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -3600,12 +3604,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (sub === '/skip') { sendJson(response, 200, await c.skip(body.id)); return; }
           if (sub === '/reset') { const snap = await c.reset(); delete snap.byId; sendJson(response, 200, { ...snap, me }); return; }
           if (sub === '/share') {
-            const channelId = String(body.channelId || challengeShareChannel || process.env.SML_CHALLENGE_CHANNEL_ID || '').trim();
+            const channelId = String(body.channelId || challengeShare.channelId || process.env.SML_CHALLENGE_CHANNEL_ID || '').trim();
             if (!/^\d{5,25}$/.test(channelId)) { sendJson(response, 400, { ok: false, error: 'no_channel', message: 'Paste the Discord channel id for the challenge posts once; it is remembered.' }); return; }
             const snap = await c.snapshot(); const art = challengeCard.render(snap, { now: Date.now() });
             if (!art.png) { sendJson(response, 503, { ok: false, error: 'image_unavailable', message: 'The picture engine is not available on this server.' }); return; }
             const s = snap.paper.summary, content = `**1K → 100K Challenge** · ${s.equity >= 0 ? '$' + s.equity.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''} · ${(s.returnPct >= 0 ? '+' : '') + s.returnPct}% on $${Math.round(s.deposited).toLocaleString('en-US')} put in${body.note ? '\n' + String(body.note).slice(0, 400) : ''}\n_Simulated account on real prices. Not advice._`;
-            try { const posted = await siteTierDirectory.post(channelId, { content, allowed_mentions: { parse: [] } }, [{ name: art.name, bytes: art.png, contentType: 'image/png', alt: 'Challenge account card' }]); challengeShareChannel = channelId; sendJson(response, 200, { ok: true, messageId: posted.id, channelId: posted.channelId }); }
+            try { const posted = await siteTierDirectory.post(channelId, { content, allowed_mentions: { parse: [] } }, [{ name: art.name, bytes: art.png, contentType: 'image/png', alt: 'Challenge account card' }]); challengeShare.channelId = channelId; sendJson(response, 200, { ok: true, messageId: posted.id, channelId: posted.channelId }); }
             catch (error) { logger('warn', 'challenge_share_failed', { error: String(error && error.message || error) }); sendJson(response, Number(error && error.status) === 404 ? 404 : 503, { ok: false, error: 'post_failed', message: Number(error && error.status) === 404 ? 'The Academy bot is not in that server or channel.' : 'Discord did not accept the post. Try again in a minute.' }); }
             return;
           }
@@ -3926,7 +3930,7 @@ async function main() {
   };
   /* The $1,000 -> $100,000 challenge (academy-challenge.js): MEM ALGO's own SIMULATED portfolio on real prices, ticking every five
      minutes in regular hours. Built on first tick because it grades with services declared further down. SML_ACADEMY_CHALLENGE=off stops it. */
-  let challenge = null, challengeShareChannel = '';
+  let challenge = null; const challengeShare = { channelId: '' };
   const HTF_OF = { '5m': '15m', '1D': '1W' };
   const challengeCtxFor = async (symbol, tf, bars) => {
     const get = async (fn, ms = 8_000) => { try { return await Promise.race([fn(), new Promise((r) => setTimeout(() => r(null), ms))]); } catch (_) { return null; } };
@@ -3956,7 +3960,7 @@ async function main() {
   /* every challenge buy or sell goes to the channel: the words, the order card (logo, shares, price, total) and, on buys, the two scenario charts */
   const challengeLogos = challengePost.createLogoLookup({ apiKey: config.massiveApiKey, logger: log });
   const postChallengeTrade = async (ev) => {
-    const channelId = String(challengeShareChannel || process.env.SML_CHALLENGE_CHANNEL_ID || '').trim();
+    const channelId = String(challengeShare.channelId || process.env.SML_CHALLENGE_CHANNEL_ID || '').trim();
     if (!/^\d{5,25}$/.test(channelId)) { log('info', 'challenge_trade_not_posted', { symbol: ev.symbol, reason: 'no_channel' }); return; }
     const brand = await challengeLogos.lookup(ev.symbol).catch(() => null);
     const files = [];
@@ -4291,6 +4295,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
