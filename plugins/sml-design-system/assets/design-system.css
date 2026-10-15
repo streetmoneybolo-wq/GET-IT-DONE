@@ -1,4 +1,4 @@
-/* SML Design System 1.0.2
+/* SML Design System 1.0.3
    One look for every page of stockmarketloop.com. Tokens first, then the theme pages (Twenty Twenty-Two), then the shared
    components other plugins print (engagement controls, feed cards, the global header), then the Groups screen.
    Everything here refines markup that already exists; nothing is added or removed. */
@@ -37,7 +37,7 @@ body.sml-ds, body.wp-theme-twentytwentytwo, body.sml-store-page, body.sml-signal
 }
 body.sml-ds :focus-visible { outline: none; box-shadow: var(--sml-focus); border-radius: 6px; }
 body.sml-ds ::selection { background: rgba(56, 245, 138, .28); color: #fff; }
-body.sml-ds img { max-width: 100%; height: auto; }
+body.sml-ds .wp-site-blocks img, body.sml-ds .entry-content img { max-width: 100%; height: auto; } /* content images only: the global header sizes its own logo */
 @media (prefers-reduced-motion: reduce) { body.sml-ds *, body.sml-ds *::before, body.sml-ds *::after { animation-duration: .001s !important; transition-duration: .001s !important; } }
 
 /* ---------- theme pages (Twenty Twenty-Two): the dark canvas and one type scale ---------- */
@@ -74,8 +74,95 @@ body.wp-theme-twentytwentytwo .wp-block-file, body.wp-theme-twentytwentytwo .wp-
 body.wp-theme-twentytwentytwo .wp-block-table td, body.wp-theme-twentytwentytwo .wp-block-table th { border-color: var(--sml-line-2); }
 body.wp-theme-twentytwentytwo blockquote { border-left: 3px solid var(--sml-green); color: var(--sml-muted); padding-left: 18px; }
 body.wp-theme-twentytwentytwo code, body.wp-theme-twentytwentytwo kbd { font-family: var(--sml-mono); background: var(--sml-panel-2); border-radius: 6px; padding: 2px 6px; font-size: .92em; }
-body.wp-theme-twentytwentytwo .wp-site-blocks > footer.wp-block-template-part, body.wp-theme-twentytwentytwo .wp-site-blocks > .wp-block-template-part:last-child { color: var(--sml-dim); font-size: 13px; border-top: 1px solid var(--sml-line); margin-top: 48px; padding-top: 20px; }
-body.wp-theme-twentytwentytwo .wp-site-blocks > footer.wp-block-template-part a, body.wp-theme-twentytwentytwo .wp-site-blocks > .wp-block-template-part:last-child a { color: var(--sml-muted); }
+body.wp-theme-twentytwentytwo .wp-site-blocks > footer.wp-block-template-part, body.wp-theme-twentytwentytwo .wp-site-blocks > .wp-block-template-part:last-child { display: none; } /* the theme footer ("Proudly powered by WordPress"): the site prints its own legal footer */
+body.wp-theme-twentytwentytwo .wp-site-blocks > main { padding-bottom: 56px; }
+#sml-legal-footer { font-family: var(--sml-font) !important; color: var(--sml-dim) !important; border-top-color: var(--sml-line) !important; }
+#sml-legal-footer a { text-decoration-color: rgba(147, 164, 184, .4) !important; text-underline-offset: 3px; }
+body.wp-theme-twentytwentytwo .wp-block-post-featured-image img { width: 100%; max-height: 480px; object-fit: cover; }
+body.wp-theme-twentytwentytwo .wp-block-post-featured-image { margin-bottom: 32px !important; }
+
+/* the page title the theme prints above the content: close to the content, no stray rule and spacer under it */
+body.wp-theme-twentytwentytwo .wp-site-blocks > main > .wp-block-group:first-child > .wp-block-post-title { margin: 8px 0 14px !important; }
+body.wp-theme-twentytwentytwo .wp-site-blocks > main > .wp-block-group:first-child > .wp-block-separator { display: none; }
+body.wp-theme-twentytwentytwo .wp-site-blocks > main > .wp-block-group:first-child + .wp-block-spacer { height: 8px !important; }
+/* a page whose content carries its own heading, or is an app screen with its own header, does not need the theme's copy of the title */
+body.sml-ds-own-title .wp-site-blocks > main > .wp-block-group:first-child, body.sml-ds-own-title .wp-site-blocks > main > .wp-block-group:first-child + .wp-block-spacer { display: none; }
+/* app screens inside a page (the ticker terminal, newsletter, Loop Letters, publisher pages) take the full width */
+body.sml-ds-app .wp-site-blocks > main > .entry-content.is-layout-constrained > * { max-width: none !important; margin-left: 0 !important; margin-right: 0 !important; }
+body.sml-ds-app .wp-site-blocks > main { padding-bottom: 0; }
+body.sml-ds-app .wp-site-blocks > main > .entry-content { margin-top: 0 !important; }
+
+/* archives (a category, a tag, an author): the stories as a grid of cards instead of a column of bare headlines */
+body.wp-theme-twentytwentytwo .wp-block-query-title { font-size: clamp(28px, 3.6vw, 40px) !important; margin: 8px 0 6px !important; }
+.sml-ds-archive-sub { color: var(--sml-muted); font-size: 15px; margin: 0 0 26px; }
+body.wp-theme-twentytwentytwo main.wp-block-query { padding-bottom: 56px; }
+body.wp-theme-twentytwentytwo .wp-block-post-template { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; list-style: none; padding: 0; margin: 0; }
+body.wp-theme-twentytwentytwo .wp-block-post-template > .wp-block-post { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 20px 20px 18px; background: var(--sml-panel); border: 1px solid var(--sml-line); border-radius: var(--sml-radius-lg); box-shadow: var(--sml-shadow); transition: border-color .15s, transform .15s; }
+body.wp-theme-twentytwentytwo .wp-block-post-template > .wp-block-post:hover { border-color: var(--sml-line-2); transform: translateY(-2px); }
+body.wp-theme-twentytwentytwo .wp-block-post-template > .wp-block-post > * { max-width: none !important; margin: 0 !important; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-title { font-size: 20px !important; font-weight: 700 !important; font-style: normal !important; line-height: 1.25; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-title a { color: #fff; text-decoration: none; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-title a:hover { color: var(--sml-green); }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-featured-image img { max-height: 180px; border-radius: var(--sml-radius); }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-columns { display: block; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-column { flex-basis: auto !important; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-column:empty, body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-spacer { display: none; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-excerpt__excerpt { color: var(--sml-muted); font-size: 15px; line-height: 1.55; margin: 0 0 10px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-excerpt__more-text { display: none; }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-date { font-style: normal !important; font-size: 13px !important; color: var(--sml-dim); font-family: var(--sml-mono); }
+body.wp-theme-twentytwentytwo .wp-block-post-template .wp-block-post-date a { color: inherit; text-decoration: none; }
+body.wp-theme-twentytwentytwo .wp-block-query-pagination { margin-top: 28px; gap: 10px; font-size: 14px; }
+body.wp-theme-twentytwentytwo .wp-block-query-pagination a, body.wp-theme-twentytwentytwo .wp-block-query-pagination .page-numbers { color: var(--sml-text); text-decoration: none; padding: 8px 14px; border: 1px solid var(--sml-line-2); border-radius: 999px; }
+body.wp-theme-twentytwentytwo .wp-block-query-pagination .page-numbers.current { background: var(--sml-green); color: var(--sml-green-ink); border-color: transparent; font-weight: 700; }
+.sml-ds-empty { margin: 8px 0 0; padding: 28px 22px; border: 1px dashed var(--sml-line-2); border-radius: var(--sml-radius-lg); color: var(--sml-muted); font-size: 16px; }
+.sml-ds-empty a { color: var(--sml-blue); }
+
+/* Loop Letters directory (/n/): each publication as a row card */
+.ll-pub .ll-head__name { font-family: var(--sml-display); font-weight: 700; letter-spacing: -.02em; }
+.ll-pub .ll-head__tagline { color: var(--sml-muted); }
+.ll-pub .ll-dir { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 12px; }
+.ll-pub .ll-dir__item { margin: 0; }
+.ll-pub .ll-dir__link { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--sml-panel); border: 1px solid var(--sml-line); border-radius: var(--sml-radius-lg); text-decoration: none !important; color: var(--sml-text); transition: border-color .15s, transform .15s; }
+.ll-pub .ll-dir__link:hover { border-color: var(--sml-line-2); transform: translateY(-1px); }
+.ll-pub .ll-dir__link > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ll-pub .ll-dir__name { font-weight: 700; color: #fff; font-size: 17px; }
+.ll-pub .ll-dir__by { color: var(--sml-muted); font-size: 13.5px; }
+.ll-pub .ll-dir__avatar, .ll-pub .ll-dir__link .sml-ds-avatar { width: 44px; height: 44px; border-radius: 50%; flex: none; object-fit: cover; }
+
+/* the sign-in page (wp-login.php): the same canvas, the site logo, one card */
+body.login.sml-ds { background: var(--sml-bg) !important; font-family: var(--sml-font); }
+body.login.sml-ds .screen-reader-text { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(1px, 1px, 1px, 1px); }
+body.login.sml-ds #login { width: 400px; max-width: calc(100% - 32px); margin: 0 auto; padding: 6vh 0 40px; }
+body.login.sml-ds #login h1 a, body.login.sml-ds #login .wp-login-logo a { display: block; background: url(logo.png) center / contain no-repeat; width: 220px; height: 64px; margin: 0 auto 18px; overflow: hidden; text-indent: -9999px; font-size: 0; color: transparent; text-decoration: none; }
+body.login.sml-ds form p, body.login.sml-ds form .user-pass-wrap, body.login.sml-ds form .user-email-wrap { margin: 0 0 14px; }
+body.login.sml-ds label { display: block; margin-bottom: 6px; }
+body.login.sml-ds .forgetmenot label { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+body.login.sml-ds input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--sml-green); }
+body.login.sml-ds .wp-pwd { position: relative; }
+body.login.sml-ds .button.wp-hide-pw { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; min-width: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+body.login.sml-ds .submit { display: flex; justify-content: flex-end; margin: 18px 0 0; }
+body.login.sml-ds .forgetmenot { float: none; margin-top: 12px; }
+body.login.sml-ds #jetpack-sso-wrap { margin: 0 0 14px; }
+body.login.sml-ds #jetpack-sso-wrap .button { display: block; width: 100%; box-sizing: border-box; text-align: center; text-decoration: none; }
+body.login.sml-ds #nav, body.login.sml-ds #backtoblog, body.login.sml-ds .privacy-policy-page-link { margin: 14px 0 0; font-size: 14px; }
+body.login.sml-ds #nav a + a { margin-left: 4px; }
+body.login.sml-ds #loginform, body.login.sml-ds #registerform, body.login.sml-ds #lostpasswordform, body.login.sml-ds form { background: var(--sml-panel); border: 1px solid var(--sml-line); border-radius: var(--sml-radius-lg); box-shadow: var(--sml-shadow); color: var(--sml-text); padding: 26px 24px; }
+body.login.sml-ds label, body.login.sml-ds .message, body.login.sml-ds .jetpack-sso-form-display p { color: var(--sml-text); font-size: 14px; }
+body.login.sml-ds .message, body.login.sml-ds .notice, body.login.sml-ds #login_error { background: var(--sml-panel-2); border: 1px solid var(--sml-line-2); border-left: 3px solid var(--sml-green); color: var(--sml-text); border-radius: 10px; box-shadow: none; }
+body.login.sml-ds #login_error { border-left-color: var(--sml-red); }
+body.login.sml-ds input[type="text"], body.login.sml-ds input[type="email"], body.login.sml-ds input[type="password"], body.login.sml-ds input[type="number"] { display: block; width: 100%; box-sizing: border-box; background: var(--sml-bg); color: var(--sml-text); border: 1px solid var(--sml-line-2); border-radius: 10px; padding: 10px 12px; font-size: 15px; box-shadow: none; margin: 0; }
+body.login.sml-ds .jetpack-sso-form-display input[type="number"] { display: inline-block; width: 80px; }
+body.login.sml-ds input:focus { border-color: var(--sml-blue); box-shadow: var(--sml-focus); }
+body.login.sml-ds .button-primary, body.login.sml-ds .wp-core-ui .button-primary, body.login.sml-ds #jetpack-sso-wrap .button { background: var(--sml-green) !important; color: var(--sml-green-ink) !important; border: 0 !important; border-radius: 999px !important; font-weight: 700 !important; padding: 2px 22px !important; min-height: 42px; box-shadow: 0 6px 16px -10px rgba(56, 245, 138, .6) !important; text-shadow: none !important; }
+body.login.sml-ds .button-secondary, body.login.sml-ds .button.wp-hide-pw { color: var(--sml-muted); background: transparent; border-color: var(--sml-line-2); box-shadow: none; }
+body.login.sml-ds .button.wp-hide-pw .dashicons { color: var(--sml-muted); }
+body.login.sml-ds #nav, body.login.sml-ds #backtoblog { text-align: center; }
+body.login.sml-ds #nav a, body.login.sml-ds #backtoblog a, body.login.sml-ds .privacy-policy-page-link a, body.login.sml-ds .jetpack-sso-toggle { color: var(--sml-muted) !important; text-decoration: none; }
+body.login.sml-ds #nav a:hover, body.login.sml-ds #backtoblog a:hover { color: var(--sml-text) !important; }
+body.login.sml-ds .privacy-policy-page-link { margin-top: 16px; text-align: center; }
+body.login.sml-ds #jetpack-sso-wrap__action { color: var(--sml-muted); }
+body.login.sml-ds .login-action-login .forgetmenot label { color: var(--sml-muted); }
+
 
 /* forms on theme pages and plugin screens (never inside the feed shell, which styles its own) */
 body.sml-ds :where(.entry-content, .wp-site-blocks, .sml-gex, main) :where(input[type="text"], input[type="search"], input[type="email"], input[type="number"], input[type="url"], textarea, select):not([class*="sml-hf"]) {

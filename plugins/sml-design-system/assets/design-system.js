@@ -1,7 +1,9 @@
-/* SML Design System 1.0.2
-   Two small jobs the stylesheet cannot do on its own:
+/* SML Design System 1.0.3
+   The few jobs the stylesheet cannot do on its own:
    1. The read-only counts under each feed card arrive as plain text ("Likes 0"). They become an icon and a number.
-   2. An avatar whose image never arrives shows the author's initials instead of a broken picture or its alt text. */
+   2. An avatar whose image never arrives shows the author's initials instead of a broken picture or its alt text.
+   3. A theme page whose content carries its own heading, or an app screen, drops the theme's duplicate title.
+   4. An archive page reads "Crypto", not "Category: Crypto", and says so when it has no stories yet. */
 (function () {
   'use strict';
   if (window.__smlDesignSystem) return; window.__smlDesignSystem = true;
@@ -79,7 +81,44 @@
     }
   }
 
-  function run(root) { try { counts(root); avatars(root); guest(); } catch (e) { /* never break the page */ } }
+  function norm(t) { return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+  // the theme prints the page title above the content; when the content opens with the same heading, has an <h1> of its own,
+  // or is an app screen (the ticker terminal, the newsletter, Loop Letters, a publisher page) the theme's copy goes, and an
+  // app screen takes the full width of the page
+  function titles() {
+    var body = document.body; if (!body || body.getAttribute('data-sml-ds-titles')) return;
+    var main = document.querySelector('.wp-site-blocks > main'); if (!main) return;
+    var content = main.querySelector('.entry-content'); if (!content) return;
+    body.setAttribute('data-sml-ds-titles', '1');
+    var title = main.querySelector(':scope > .wp-block-group:first-child > .wp-block-post-title');
+    var first = null, kids = content.children;
+    for (var i = 0; i < kids.length; i++) { var tag = kids[i].tagName; if (tag !== 'STYLE' && tag !== 'SCRIPT' && tag !== 'LINK') { first = kids[i]; break; } }
+    if (!first) return;
+    var app = /(^|\s)(sml-|ll-)/.test(first.className || '') || /^(sml-|ll-)/.test(first.id || '') || !!first.querySelector('[class^="sml-"], [id^="sml-"], .ll-pub');
+    var own = !!content.querySelector('h1');
+    if (title && !own && /^H[1-3]$/.test(first.tagName) && norm(first.textContent) === norm(title.textContent)) own = true;
+    if (app) body.classList.add('sml-ds-app');
+    if (own || app) body.classList.add('sml-ds-own-title');
+  }
+  function archive() {
+    var h = document.querySelector('.wp-block-query-title'); if (!h || h.getAttribute('data-sml-ds')) return;
+    h.setAttribute('data-sml-ds', '1');
+    var m = /^\s*(Category|Tag|Author|Archives?)\s*:\s*(.+?)\s*$/i.exec(h.textContent || ''), kind = m ? m[1].toLowerCase() : '', name = m ? m[2] : (h.textContent || '').trim();
+    var span = h.querySelector('span'); if (span) name = (span.textContent || '').trim() || name;
+    if (m) h.textContent = name;
+    var sub = document.createElement('p'); sub.className = 'sml-ds-archive-sub alignwide';
+    sub.textContent = kind === 'author' ? 'Stories by ' + name : kind === 'tag' ? 'Stories tagged ' + name : 'The latest stories filed under ' + name;
+    h.parentNode.insertBefore(sub, h.nextSibling);
+    var q = document.querySelector('main.wp-block-query'), list = q && q.querySelector('.wp-block-post-template');
+    if (q && (!list || !list.children.length)) {
+      var p = document.createElement('p'); p.className = 'sml-ds-empty';
+      p.textContent = 'No stories in this section yet. Check back soon or read the latest from ';
+      var a = document.createElement('a'); a.href = '/news/'; a.textContent = 'Stockmarketloop News'; p.appendChild(a); p.appendChild(document.createTextNode('.'));
+      q.appendChild(p);
+    }
+  }
+
+  function run(root) { try { counts(root); avatars(root); guest(); titles(); archive(); } catch (e) { /* never break the page */ } }
   function boot() {
     run(document);
     if (!window.MutationObserver) return;

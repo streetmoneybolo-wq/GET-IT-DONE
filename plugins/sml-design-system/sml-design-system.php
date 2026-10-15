@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens, the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, calmer accents, and avatar fallbacks. Pure CSS and a few lines of JavaScript; it changes no content.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.0.2' );
+define( 'SML_DS_VERSION', '1.0.3' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -51,6 +51,16 @@ function sml_ds_inject( $html ) {
 	}
 	return $html;
 }
+
+/* The sign-in page (wp-login.php) wears the same canvas: the stylesheet, the fonts and the site logo. */
+add_filter( 'login_body_class', 'sml_ds_login_body_class' );
+function sml_ds_login_body_class( $classes ) { $classes[] = 'sml-ds'; return $classes; }
+add_action( 'login_enqueue_scripts', 'sml_ds_login_head', 999 );
+function sml_ds_login_head() { echo sml_ds_head_html(); } // phpcs:ignore WordPress.Security.EscapeOutput
+add_filter( 'login_headerurl', 'sml_ds_login_headerurl' );
+function sml_ds_login_headerurl() { return home_url( '/' ); }
+add_filter( 'login_headertext', 'sml_ds_login_headertext' );
+function sml_ds_login_headertext() { return 'Stock Market Loop'; }
 
 /* A body class so the stylesheet can tell theme pages from app screens. */
 add_filter( 'body_class', 'sml_ds_body_class' );
