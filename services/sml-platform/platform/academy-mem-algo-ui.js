@@ -134,20 +134,21 @@
     const sym = symbol(), t = tf(), key = sym + ':' + t;
     if (S.ctx && S.ctx.key === key) return;
     const ctx = { key, htf: null, bench: null, benchSelf: sym === 'SPY', patterns: window.SmlPatterns && window.SmlPatterns.detect ? (b) => window.SmlPatterns.detect(b) : null, patternCache: new Map(),
-      signals: null, orderFlow: null, earnings: null, direction: null, sentiment: null, darkPool: null, gamma: null };
+      signals: null, orderFlow: null, earnings: null, direction: null, sentiment: null, darkPool: null, gamma: null, institutional: null };
     S.ctx = ctx;
     const get = async (s2, tt) => { try { const r = await fetch('/academy-activity/market?symbol=' + encodeURIComponent(s2) + '&tf=' + encodeURIComponent(tt), { cache: 'no-store' }); const j = await r.json(); return r.ok && Array.isArray(j.bars) ? j.bars : null; } catch (_) { return null; } };
     const token = window.smlAcademySessionToken || '';
     const authGet = async (url) => { try { const r = await fetch(url, { cache: 'no-store', headers: token ? { authorization: 'Bearer ' + token } : {} }); return r.ok ? await r.json() : null; } catch (_) { return null; } };
     const mode = S.mode === 'swing' || S.mode === 'long' ? 'swing' : 'day';
-    const [h, b, earn, dir, sent, dp, gx] = await Promise.all([
+    const [h, b, earn, dir, sent, dp, gx, inst] = await Promise.all([
       HTF[t] ? get(sym, HTF[t]) : null,
       ctx.benchSelf ? null : get('SPY', t),
       authGet('/academy-activity/data/earnings?symbol=' + encodeURIComponent(sym)),
       authGet('/academy-activity/direction?mode=' + mode),
       authGet('/academy-activity/sentiment?symbol=' + encodeURIComponent(sym)),
       authGet('/academy-activity/dark-pool?symbol=' + encodeURIComponent(sym)),
-      authGet('/academy-activity/gamma?symbol=' + encodeURIComponent(sym))
+      authGet('/academy-activity/gamma?symbol=' + encodeURIComponent(sym)),
+      authGet('/academy-activity/institutional?symbol=' + encodeURIComponent(sym))
     ]);
     if (S.ctx !== ctx) return;
     ctx.htf = h; ctx.bench = b;
@@ -166,6 +167,7 @@
     if (sent && sent.ok) ctx.sentiment = sent;
     if (dp && dp.ok) ctx.darkPool = dp;
     if (gx && gx.ok) ctx.gamma = gx;
+    if (inst && inst.ok) ctx.institutional = inst;
     recompute(); paint(); draw();
   }
   async function refresh(force) {

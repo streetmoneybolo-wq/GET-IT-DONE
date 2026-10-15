@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const ALLOWED_KINDS = new Set(['options', 'earnings']);
+const ALLOWED_KINDS = new Set(['options', 'earnings', 'capital']);
 
 function cleanSymbol(value) {
   const symbol = String(value || '').toUpperCase().replace(/[^A-Z0-9.:-]/g, '').slice(0, 12);

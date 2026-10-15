@@ -232,6 +232,7 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const sentData = ctx.sentiment && ctx.sentiment.ok ? ctx.sentiment : null;
   const dpData = ctx.darkPool && ctx.darkPool.available ? ctx.darkPool : null;
   const gxData = ctx.gamma && ctx.gamma.available ? ctx.gamma : null;
+  const inData = ctx.institutional && ctx.institutional.available ? ctx.institutional : null;
 
   function scoreAt(i, withPatterns) {
     const F = [];
@@ -319,6 +320,14 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       if (cw != null && cw <= a) { pts -= 4; notes.push('call wall ' + cw.toFixed(1) + '% overhead'); }
       if (Number(gxData.zeroDteShare) >= 0.4) { pts -= 2; notes.push('mostly 0DTE, profile decays today'); }
       add('gamma', 'Gamma pressure', 15, Math.max(0, Math.min(15, pts)), notes.join(', ') + (gxData.basis === 'inferred' ? ' (dealer side inferred from prints)' : ' (standard dealer assumption)'));
+    }
+    if (!inData) add('institutional', 'Institutional flow', 10, 0, 'size-bucket and sweep data not available', false);
+    else {
+      const ib = Number(inData.bias) || 0;
+      let pts = ib >= 40 ? 10 : ib >= 15 ? 6 : ib > -15 ? 3 : 0;
+      if (inData.retailVsInstitutional === 'institutions buying what retail sells' && pts < 10) pts += 2;
+      if (Array.isArray(inData.notes) && inData.notes.length) pts = Math.min(pts, 5);
+      add('institutional', 'Institutional flow', 10, Math.max(0, Math.min(10, pts)), inData.label + ' (bias ' + ib + ')' + (inData.retailVsInstitutional && inData.retailVsInstitutional !== 'same direction' ? ', ' + inData.retailVsInstitutional : ''));
     }
     const avail = F.filter((f) => f.available), max = avail.reduce((s, f) => s + f.max, 0), got = avail.reduce((s, f) => s + f.pts, 0);
     const score = max > 0 ? Math.round((got / max) * 100) : 0;

@@ -44,6 +44,7 @@ const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
 const { createGammaService } = require('./academy-gamma');
+const { createInstitutionalService } = require('./academy-institutional');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -3426,6 +3427,21 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Institutional flow (academy-institutional.js): Academy members, paid tiers. Estimates from public prints and broker size buckets. */
+    if (request.method === 'GET' && path === '/academy-activity/institutional') {
+      if (!academyOAuth || !academyInstitutional) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const symbol = String(new URL(request.url || '/', 'http://localhost').searchParams.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      try { sendJson(response, 200, await academyInstitutional.get(symbol)); }
+      catch (error) { logger('error', 'academy_institutional_failed', { error }); sendJson(response, 503, { ok: false, error: 'institutional_unavailable' }); }
+      return;
+    }
+
     if (request.method !== 'GET' || path !== '/health') {
       sendJson(response, 404, { ok: false, error: 'not_found' });
       return;
@@ -3665,6 +3681,12 @@ async function main() {
     chain: (s) => academyAlerts.chainFor(s), candles: (s, tf) => sentimentCandles(s, tf),
     quote: async (s) => changeFromDaily((await sentimentCandles(s, '1D')).bars), logger: log
   }) : null;
+  /* Institutional flow for the Academy: moomoo order-size buckets (via the site bridge) + sweeps and blocks from the Massive tape. */
+  const academyInstitutional = createInstitutionalService({
+    capital: academyDataBridge && academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('capital', s); return r && r.ok && r.data && r.data.ok !== false ? (r.data.data || r.data) : null; } : null,
+    tape: academyMassive && typeof academyMassive.peek === 'function' ? (s) => { if (typeof academyMassive.watch === 'function') academyMassive.watch(s); const p = academyMassive.peek(s); return p ? p.stats : null; } : null,
+    logger: log
+  });
   /* Group Pro Tools for StockMarketLoop groups (setups, absorption, dark pool, options strategies, dashboard). */
   const groupTools = process.env.GROUP_TOOLS === 'off' ? null : createGroupTools({
     candles: sentimentCandles, stream: academyMassive, orderFlow: academyOrderFlow, orderFlowStore,

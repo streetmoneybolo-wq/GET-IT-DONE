@@ -34,7 +34,29 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   }
 
   /* Session tape statistics since the symbol was first watched: lift the offer / hit the bid / neutral split, VWAP, price-by-volume, off-exchange share and the biggest prints. */
-  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, offBuy: 0, offSell: 0, pv: new Map(), big: [], times: [], recent: [], offTape: [] }; }
+  function newStats() { return { since: now(), count: 0, vol: 0, notional: 0, buy: 0, sell: 0, neu: 0, buyN: 0, sellN: 0, neuN: 0, offVol: 0, offN: 0, offBuy: 0, offSell: 0, pv: new Map(), big: [], times: [], recent: [], offTape: [], burst: [], sweeps: [], sweepBuy: 0, sweepSell: 0, sweepN: 0, blocks: [], blockBuy: 0, blockSell: 0, blockN: 0 }; }
+  /* Institutional fingerprints on the tape, no extra vendor: an Intermarket Sweep Order condition (SIP code 14), or a burst of
+     prints within 50ms across two or more exchanges in one direction (a router sweeping the book); and block prints of 10,000+
+     shares or $1M+. Both are kept as rolling lists and buy/sell share totals for the session. */
+  const SWEEP_WINDOW_MS = 50, SWEEP_MIN_LEGS = 3, BLOCK_SHARES = 10_000, BLOCK_NOTIONAL = 1_000_000;
+  function recordInstitutional(st, trade) {
+    const notional = trade.size * trade.price;
+    if (trade.size >= BLOCK_SHARES || notional >= BLOCK_NOTIONAL) {
+      st.blockN += 1; if (trade.dir === 'B') st.blockBuy += trade.size; else if (trade.dir === 'S') st.blockSell += trade.size;
+      st.blocks.push({ t: trade.t, price: trade.price, size: trade.size, dir: trade.dir, off: Boolean(trade.off) }); if (st.blocks.length > 40) st.blocks.shift();
+    }
+    st.burst.push({ t: trade.t, x: trade.x, size: trade.size, dir: trade.dir, price: trade.price });
+    while (st.burst.length && (trade.t - st.burst[0].t > SWEEP_WINDOW_MS || st.burst.length > 200)) st.burst.shift();
+    let legs = 0, size = 0; const ex = new Set();
+    for (const b of st.burst) if (b.dir === trade.dir && trade.dir !== 'N') { legs += 1; size += b.size; if (b.x) ex.add(b.x); }
+    const routed = legs >= SWEEP_MIN_LEGS && ex.size >= 2;
+    if (!trade.isw && !routed) return;
+    const last = st.sweeps[st.sweeps.length - 1];
+    let added = trade.size;
+    if (last && trade.t - last.t <= SWEEP_WINDOW_MS && last.dir === trade.dir) { last.size += trade.size; last.legs += 1; last.t = trade.t; if (trade.x) last.exchanges = Math.max(last.exchanges, ex.size); }
+    else { added = routed ? size : trade.size; st.sweeps.push({ t: trade.t, price: trade.price, size: added, dir: trade.dir, legs: routed ? legs : 1, exchanges: ex.size, isw: Boolean(trade.isw) }); if (st.sweeps.length > 40) st.sweeps.shift(); st.sweepN += 1; }
+    if (trade.dir === 'B') st.sweepBuy += added; else if (trade.dir === 'S') st.sweepSell += added;
+  }
   const pvKey = (price) => { const step = price >= 100 ? 0.5 : price >= 20 ? 0.1 : price >= 5 ? 0.05 : 0.01; return (Math.round(price / step) * step).toFixed(step < 0.05 ? 2 : step < 0.5 ? 2 : 2); };
   function record(e, trade, off) {
     const st = e.stats; st.count += 1; st.vol += trade.size; st.notional += trade.size * trade.price;
@@ -45,6 +67,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     if (st.pv.size > 400) { const small = [...st.pv.entries()].sort((a, b) => a[1] - b[1])[0]; st.pv.delete(small[0]); }
     const notional = trade.size * trade.price;
     if (trade.size >= 500 && notional >= 50_000) { st.big.push({ t: trade.t, price: trade.price, size: trade.size, dir: trade.dir, off: Boolean(off) }); st.big.sort((a, b) => b.size * b.price - a.size * a.price); if (st.big.length > 5) st.big.length = 5; }
+    recordInstitutional(st, trade);
     // Both rolling lists are trimmed by AGE, not by a fixed count: a liquid symbol prints 10-50
     // times a second, and a count cap would quietly shrink "the last five minutes" to less than one.
     // The count caps are only a memory guard against a pathological burst.
@@ -69,7 +92,9 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
     return { since: st.since, count: st.count, vol: st.vol, vwap: st.vol > 0 ? st.notional / st.vol : null, buy: st.buy, sell: st.sell, neu: st.neu, buyN: st.buyN, sellN: st.sellN, neuN: st.neuN, offVol: st.offVol, offN: st.offN, offBuy: st.offBuy, offSell: st.offSell, rate60,
       offTape: st.offTape.slice(-40).reverse(),
       buy60: w60.buy, sell60: w60.sell, neu60: w60.neu, buy300: w300.buy, sell300: w300.sell, neu300: w300.neu,
-      pv: [...st.pv.entries()].map(([price, vol]) => ({ price: Number(price), vol })).sort((a, b) => b.vol - a.vol).slice(0, 8), big: st.big.slice() };
+      pv: [...st.pv.entries()].map(([price, vol]) => ({ price: Number(price), vol })).sort((a, b) => b.vol - a.vol).slice(0, 8), big: st.big.slice(),
+      sweepBuy: st.sweepBuy, sweepSell: st.sweepSell, sweepN: st.sweepN, sweeps: st.sweeps.slice(-20).reverse(),
+      blockBuy: st.blockBuy, blockSell: st.blockSell, blockN: st.blockN, blocks: st.blocks.slice(-20).reverse() };
   }
 
   function classify(price, quote) {
@@ -105,7 +130,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
         if (!verdict.ok) continue; // bad print: it must not move last, candles, VWAP or the tape
         const cls = classifyTrade(price, { quote: e.quote, tradeT: t, lastPrice: e.last || 0, lastDir: e.lastDir || 'N' });
         e.lastDir = cls.dir;
-        const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: cls.dir, rule: cls.rule };
+        const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: cls.dir, rule: cls.rule, x: Number(m.x) || 0, isw: Array.isArray(m.c) && m.c.includes(14) };
         record(e, trade, m.x === 4 || m.trfi != null);
         e.tape.push(trade); if (e.tape.length > TAPE_MAX) e.tape.shift();
         e.ticks.push([t, price, trade.size]); if (e.ticks.length > TICKS_MAX * 1.1) e.ticks.splice(0, e.ticks.length - TICKS_MAX);

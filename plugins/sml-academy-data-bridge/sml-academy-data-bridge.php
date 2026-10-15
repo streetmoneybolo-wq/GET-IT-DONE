@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: SML Academy Data Bridge
- * Description: Private, signed Academy access to existing Options and Earnings REST data. It never exposes those feeds to site visitors.
- * Version: 0.1.3
+ * Description: Private, signed Academy access to existing Options, Earnings and Capital Flow data. It never exposes those feeds to site visitors.
+ * Version: 0.2.0
  * Requires PHP: 7.4
  */
 
@@ -198,6 +198,39 @@ if ( ! function_exists( 'sml_academy_bridge_earnings' ) ) {
 	}
 }
 
+/* Capital flow by order size (super-large / large / medium / small net inflow) straight from the moomoo OpenD bridge the
+ * other site plugins already use (option sml_moomoo_bridge + sml_moomoo_secret). Cached a minute per symbol. */
+if ( ! function_exists( 'sml_academy_bridge_capital' ) ) {
+	function sml_academy_bridge_capital( WP_REST_Request $request ) {
+		$symbol = strtoupper( preg_replace( '/[^A-Z0-9.:-]/', '', (string) $request->get_param( 'symbol' ) ) );
+		$cache_key = 'sml_acb_cap_' . md5( $symbol );
+		$cached    = get_transient( $cache_key );
+		if ( is_array( $cached ) ) {
+			return new WP_REST_Response( array( 'ok' => true, 'symbol' => $symbol, 'data' => $cached, 'cached' => true ), 200 );
+		}
+		$base = rtrim( (string) get_option( 'sml_moomoo_bridge', '' ), '/' );
+		$key  = (string) get_option( 'sml_moomoo_secret', '' );
+		if ( '' === $key || ! wp_http_validate_url( $base ) || 0 !== strpos( $base, 'https://' ) ) {
+			return new WP_Error( 'sml_academy_bridge_capital', 'Capital flow is not connected right now.', array( 'status' => 503 ) );
+		}
+		$r = wp_safe_remote_get( add_query_arg( array( 'symbol' => $symbol ), $base . '/capital-flow' ), array( 'timeout' => 15, 'redirection' => 0, 'limit_response_size' => 300000, 'headers' => array( 'X-SML-Key' => $key ) ) );
+		if ( is_wp_error( $r ) || 200 !== wp_remote_retrieve_response_code( $r ) ) {
+			return new WP_Error( 'sml_academy_bridge_capital', 'Capital flow is temporarily unavailable.', array( 'status' => 503 ) );
+		}
+		$d = json_decode( wp_remote_retrieve_body( $r ), true );
+		if ( ! is_array( $d ) || empty( $d['available'] ) ) {
+			return new WP_Error( 'sml_academy_bridge_capital', 'No capital flow for this symbol.', array( 'status' => 503 ) );
+		}
+		$data = array(
+			'rows'         => isset( $d['rows'] ) && is_array( $d['rows'] ) ? array_slice( $d['rows'], -100 ) : array(),
+			'distribution' => isset( $d['distribution'] ) && is_array( $d['distribution'] ) ? $d['distribution'] : array(),
+			'asof'         => isset( $d['asof'] ) ? (int) $d['asof'] : time(),
+		);
+		set_transient( $cache_key, $data, 60 );
+		return new WP_REST_Response( array( 'ok' => true, 'symbol' => $symbol, 'data' => $data ), 200 );
+	}
+}
+
 add_action( 'rest_api_init', static function() {
 	$arguments = array(
 		'methods'             => WP_REST_Server::READABLE,
@@ -217,4 +250,5 @@ add_action( 'rest_api_init', static function() {
 	);
 	register_rest_route( 'sml-academy-bridge/v1', '/options', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_options' ) ) );
 	register_rest_route( 'sml-academy-bridge/v1', '/earnings', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_earnings' ) ) );
+	register_rest_route( 'sml-academy-bridge/v1', '/capital', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_capital' ) ) );
 } );
