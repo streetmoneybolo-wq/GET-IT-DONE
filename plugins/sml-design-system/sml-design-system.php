@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.9
+ * Version: 1.2.0
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.9' );
+define( 'SML_DS_VERSION', '1.2.0' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -73,21 +73,19 @@ function sml_ds_inject( $html, $phase = 0 ) {
 	   partial tag or an unfinished script, style, pre, code or textarea block is held back and joined to the next piece,
 	   so the punctuation pass never sees half a tag or the inside of a script. The head and footer tags are added only
 	   from a piece that carries the whole head, or the closing body tag. */
-	static $is_html = null, $carry = '', $seen = array( 'early' => false, 'css' => false, 'js' => false ), $pieces = 0, $lead_note = '';
-	$pieces++;
+	static $is_html = null, $carry = '', $seen = array( 'early' => false, 'css' => false, 'js' => false );
 	if ( ! is_string( $html ) ) { return $html; }
 	$final = (bool) ( $phase & PHP_OUTPUT_HANDLER_FINAL );
 	$html  = $carry . $html; $carry = '';
-	if ( $html === '' ) { return $final ? "\n<!-- sml-ds ob final-empty pieces=" . (int) $pieces . ' html=' . var_export( $is_html, true ) . ' lead=' . str_replace( '--', '- -', $lead_note ) . " -->\n" : $html; }
+	if ( $html === '' ) { return $html; }
 	if ( $is_html === null ) {
 		/* decided on the first piece that carries anything: a feed or a JSON body is left alone, everything else is a page
 		   (a piece can be as small as a newline a snippet printed early, so the decision cannot wait for the <html> tag) */
 		$lead = ltrim( $html, " \t\r\n\xEF\xBB\xBF" );
 		if ( $lead === '' ) { $carry = $html; return ''; }
 		$is_html = ! ( stripos( $lead, '<?xml' ) === 0 || $lead[0] === '{' || $lead[0] === '[' );
-		$lead_note = preg_replace( '/[^a-z0-9<>!\/ ._-]/i', '?', substr( $lead, 0, 24 ) );
 	}
-	if ( ! $is_html ) { return $html . ( $final ? "\n<!-- sml-ds ob not-html pieces=" . (int) $pieces . ' lead=' . str_replace( '--', '- -', $lead_note ) . " -->\n" : '' ); }
+	if ( ! $is_html ) { return $html; }
 	foreach ( array( 'early', 'css', 'js' ) as $k ) { if ( stripos( $html, 'id="sml-ds-' . $k . '"' ) !== false ) { $seen[ $k ] = true; } }
 	$whole_head = preg_match( '/<head[\s>]/i', $html, $hm, PREG_OFFSET_CAPTURE ) && stripos( $html, '</head>' ) !== false; /* the <head> tag itself, not <header> */
 	if ( $whole_head && ! $seen['early'] ) {
@@ -116,10 +114,7 @@ function sml_ds_inject( $html, $phase = 0 ) {
 		}
 		if ( $cut < strlen( $html ) ) { $carry = substr( $html, $cut ); $html = substr( $html, 0, $cut ); }
 	}
-	$html = sml_ds_dashes( $html );
-	if ( ! $final && $carry === '' ) { $html .= "\n<!-- sml-ds ob piece=" . (int) $pieces . ' phase=' . (int) $phase . ' len=' . strlen( $html ) . " -->\n"; }
-	if ( $final ) { $html .= "\n<!-- sml-ds ob pieces=" . (int) $pieces . ' phase=' . (int) $phase . ' lead=' . str_replace( '--', '- -', $lead_note ) . " -->\n"; }
-	return $html;
+	return sml_ds_dashes( $html );
 }
 
 /* The sign-in page (wp-login.php) wears the same canvas: the stylesheet, the fonts and the site logo. */
@@ -136,6 +131,7 @@ function sml_ds_login_headertext() { return 'Stock Market Loop'; }
    and a comma anywhere else ("Visit our Contact page, we read every message"). Ranges such as 2k–5k and anything inside code are left alone.
    The same rule runs in the browser for content other scripts render (the feed, the store, the landing page). */
 function sml_ds_dash_segment( $text, $open_label ) {
+	if ( strpos( $text, '&' ) !== false ) { $text = preg_replace( array( '/&(?:#0*8212|#x0*2014|mdash);/i', '/&(?:#0*8211|#x0*2013|ndash);/i' ), array( "\xE2\x80\x94", "\xE2\x80\x93" ), $text ); }
 	$out = ''; $rest = $text;
 	while ( preg_match( '/(?: |\xC2\xA0)*(?:\xE2\x80\x94|\xE2\x80\x93(?= |\xC2\xA0))(?: |\xC2\xA0)*/', $rest, $m, PREG_OFFSET_CAPTURE ) ) {
 		$at = $m[0][1]; $before = substr( $rest, 0, $at ); $after = substr( $rest, $at + strlen( $m[0][0] ) );
@@ -151,7 +147,8 @@ function sml_ds_dash_segment( $text, $open_label ) {
 	return $out . $rest;
 }
 function sml_ds_dashes( $html ) {
-	if ( ! is_string( $html ) || $html === '' || ( strpos( $html, "\xE2\x80\x94" ) === false && strpos( $html, "\xE2\x80\x93" ) === false ) ) { return $html; }
+	if ( ! is_string( $html ) || $html === '' ) { return $html; }
+	if ( strpos( $html, "\xE2\x80\x94" ) === false && strpos( $html, "\xE2\x80\x93" ) === false && ! preg_match( '/&(?:#0*821[12]|#x0*201[34]|mdash|ndash);/i', $html ) ) { return $html; }
 	/* a linear scan, no backtracking regex over the whole page: text runs are treated, tags are copied, and script, style,
 	   pre, code and textarea blocks are copied whole */
 	$out = ''; $label = false; $pos = 0; $len = strlen( $html );
@@ -186,9 +183,6 @@ add_filter( 'pre_get_document_title', 'sml_ds_dashes_front', 999 );
 /* every rendered block (block themes build the whole page from blocks: titles, content, query loops, site title) */
 add_filter( 'render_block', 'sml_ds_dashes_block', 999, 2 );
 function sml_ds_dashes_block( $html, $block ) { return is_admin() ? $html : sml_ds_dashes( $html ); }
-/* trace: which hooks are still in place when the footer prints */
-add_action( 'wp_footer', 'sml_ds_hook_trace', 9999 );
-function sml_ds_hook_trace() { if ( is_admin() ) { return; } echo "\n<!-- sml-ds hooks content=" . (int) has_filter( 'the_content', 'sml_ds_dashes_front' ) . ' block=' . (int) has_filter( 'render_block', 'sml_ds_dashes_block' ) . ' title=' . (int) has_filter( 'the_title', 'sml_ds_dashes_front' ) . ' ob=' . (int) ob_get_level() . ' obhandlers=' . esc_html( implode( ',', array_map( function ( $st ) { return isset( $st['name'] ) ? $st['name'] : '?'; }, ob_get_status( true ) ) ) ) . " -->\n"; } // phpcs:ignore
 function sml_ds_dashes_title_parts( $parts ) { foreach ( $parts as $k => $v ) { $parts[ $k ] = sml_ds_dashes( $v ); } return $parts; }
 
 /* A body class so the stylesheet can tell theme pages from app screens. */
