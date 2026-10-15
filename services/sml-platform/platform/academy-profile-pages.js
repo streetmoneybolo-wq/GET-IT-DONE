@@ -44,7 +44,7 @@ const SOCIAL_KINDS = [
 ];
 const SONG_KINDS = [['youtube', /(^|\.)(youtube\.com|youtu\.be)$/], ['spotify', /(^|\.)spotify\.com$/], ['soundcloud', /(^|\.)soundcloud\.com$/], ['apple', /(^|\.)music\.apple\.com$/]];
 const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i;
-const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const MAX_SOCIALS = 8, MAX_CARD_HTML = 262_144, MAX_IMAGE_BYTES = 1_572_864, MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 const text = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max);
@@ -196,9 +196,13 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
 
   /* ---------- an uploaded song: kept for the member, played through the Academy's own address ---------- */
   async function hasAudio(id) { if (db) { const r = await db.query('SELECT 1 FROM academy_profile_audio WHERE discord_id=$1', [id]); return !!r.rows[0]; } return mem.audio.has(id); }
-  async function deleteAudio(id) { try { if (db) await db.query('DELETE FROM academy_profile_audio WHERE discord_id=$1', [id]); else mem.audio.delete(id); } catch (_) { /* best effort */ } }
+  async function deleteAudio(id) { heat(id, null); try { if (db) await db.query('DELETE FROM academy_profile_audio WHERE discord_id=$1', [id]); else mem.audio.delete(id); } catch (_) { /* best effort */ } }
+  /* the last few songs played stay in memory, so seeking (many range requests) does not re-read a big file from the database each time */
+  const hot = new Map();
+  const heat = (id, row) => { hot.delete(id); if (row) { hot.set(id, row); while (hot.size > 3) hot.delete(hot.keys().next().value); } };
   async function loadAudio(id) {
-    if (db) { const r = await db.query('SELECT content_type, bytes FROM academy_profile_audio WHERE discord_id=$1', [id]); return r.rows[0] ? { contentType: r.rows[0].content_type, bytes: r.rows[0].bytes } : null; }
+    if (hot.has(id)) { const row = hot.get(id); heat(id, row); return row; }
+    if (db) { const r = await db.query('SELECT content_type, bytes FROM academy_profile_audio WHERE discord_id=$1', [id]); const row = r.rows[0] ? { contentType: r.rows[0].content_type, bytes: r.rows[0].bytes } : null; if (row) heat(id, row); return row; }
     return mem.audio.get(id) || null;
   }
   async function uploadAudio(userId, bytes, title) {
@@ -206,6 +210,7 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
     if (!Buffer.isBuffer(bytes) || bytes.length < 1024) return { ok: false, error: 'empty_file' };
     if (bytes.length > MAX_UPLOAD_BYTES) return { ok: false, error: 'file_too_large' };
     const contentType = sniffAudio(bytes); if (!contentType) return { ok: false, error: 'not_audio' };
+    heat(id, null);
     if (db) await db.query('INSERT INTO academy_profile_audio (discord_id, content_type, bytes, size, updated_at) VALUES ($1,$2,$3,$4, now()) ON CONFLICT (discord_id) DO UPDATE SET content_type=EXCLUDED.content_type, bytes=EXCLUDED.bytes, size=EXCLUDED.size, updated_at=now()', [id, contentType, bytes, bytes.length]);
     else mem.audio.set(id, { contentType, bytes });
     const prev = await settingsOf(id);

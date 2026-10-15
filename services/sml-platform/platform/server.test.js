@@ -1904,7 +1904,7 @@ test('Academy profile song upload: raw bytes from a signed-in member are checked
     assert.equal((await post(mp3, 'nope')).status, 401, 'signed-in members only');
     const bad = await post(Buffer.from('this is plain text, not a song'.repeat(80)));
     assert.equal(bad.status, 400); assert.equal((await bad.json()).error, 'not_audio');
-    const huge = await post(Buffer.concat([Buffer.from('ID3'), Buffer.alloc(13 * 1024 * 1024)]));
+    const huge = await post(Buffer.concat([Buffer.from('ID3'), Buffer.alloc(51 * 1024 * 1024)]));
     assert.equal(huge.status, 413);
     const ok = await post(mp3, 'academy-session', '?title=My%20Track');
     assert.equal(ok.status, 200);
