@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.2.1
+ * Version: 1.2.2
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.2.1' );
+define( 'SML_DS_VERSION', '1.2.2' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -130,7 +130,17 @@ function sml_ds_login_headertext() { return 'Stock Market Loop'; }
 /* Plain punctuation in everything WordPress prints: a spaced dash becomes a colon after a short lead-in ("Market news: timely coverage")
    and a comma anywhere else ("Visit our Contact page, we read every message"). Ranges such as 2k–5k and anything inside code are left alone.
    The same rule runs in the browser for content other scripts render (the feed, the store, the landing page). */
+/* a few lines of the sign-up page, reworded plainly at the source (the browser script does the same for what it renders) */
+function sml_ds_phrases( $text ) {
+	static $from = null, $to = null;
+	if ( $from === null ) {
+		$from = array( 'Take your finance newsletter to the next level.', 'Take your finance newsletter to the next level', 'Unlock platform perks', 'and unlock perks across the platform', 'FIRST &amp; ONLY OF ITS KIND', 'FIRST & ONLY OF ITS KIND', '4.9 from 12,000+ creators', "\xE2\x98\x85\xE2\x98\x85\xE2\x98\x85\xE2\x98\x85\xE2\x98\x85" );
+		$to   = array( 'Run your finance newsletter here, with market tools built in.', 'Run your finance newsletter here, with market tools built in', 'Perks across the platform', 'and they open up perks across the platform', 'BUILT FOR TRADING COMMUNITIES', 'BUILT FOR TRADING COMMUNITIES', '', '' );
+	}
+	return str_replace( $from, $to, $text );
+}
 function sml_ds_dash_segment( $text, $open_label ) {
+	$text = sml_ds_phrases( $text );
 	if ( strpos( $text, '&' ) !== false ) { $text = preg_replace( array( '/&(?:#0*8212|#x0*2014|mdash);/i', '/&(?:#0*8211|#x0*2013|ndash);/i' ), array( "\xE2\x80\x94", "\xE2\x80\x93" ), $text ); }
 	$out = ''; $rest = $text;
 	while ( preg_match( '/(?: |\xC2\xA0)*(?:\xE2\x80\x94|\xE2\x80\x93(?= |\xC2\xA0))(?: |\xC2\xA0)*/', $rest, $m, PREG_OFFSET_CAPTURE ) ) {
@@ -148,7 +158,7 @@ function sml_ds_dash_segment( $text, $open_label ) {
 }
 function sml_ds_dashes( $html ) {
 	if ( ! is_string( $html ) || $html === '' ) { return $html; }
-	if ( strpos( $html, "\xE2\x80\x94" ) === false && strpos( $html, "\xE2\x80\x93" ) === false && ! preg_match( '/&(?:#0*821[12]|#x0*201[34]|mdash|ndash);/i', $html ) ) { return $html; }
+	if ( strpos( $html, "\xE2\x80\x94" ) === false && strpos( $html, "\xE2\x80\x93" ) === false && ! preg_match( '/&(?:#0*821[12]|#x0*201[34]|mdash|ndash);/i', $html ) && strpos( $html, 'next level' ) === false && strpos( $html, 'nlock p' ) === false && strpos( $html, 'ONLY OF ITS KIND' ) === false && strpos( $html, '12,000+' ) === false && strpos( $html, "\xE2\x98\x85\xE2\x98\x85\xE2\x98\x85" ) === false ) { return $html; }
 	/* a linear scan, no backtracking regex over the whole page: text runs are treated, tags are copied, and script, style,
 	   pre, code and textarea blocks are copied whole */
 	$out = ''; $label = false; $pos = 0; $len = strlen( $html );
