@@ -150,8 +150,9 @@
     const ctx = S.ctx || {};
     const earningsDays = ctx.earnings && ctx.earnings.daysAway != null ? Number(ctx.earnings.daysAway) : null;
     const bias = ctx.direction && ctx.direction.bias != null ? Number(ctx.direction.bias) : null;
-    let q; try { q = R.qualify({ intraday: bars, daily: hist, entry, stop, earningsDays, marketBias: bias, minutesET: E.minutesET(now) }); } catch (_) { return ''; }
-    const mins = E.minutesET(now), inWindow = mins >= R.RULES.decideFromMinutesET && mins <= R.RULES.decideToMinutesET;
+    const mv = E.minutesET(now), mins = typeof mv === 'number' ? mv : Number(mv && mv.min); // the engine's helper answers { min, weekday }
+    let q; try { q = R.qualify({ intraday: bars, daily: hist, entry, stop, earningsDays, marketBias: bias, minutesET: mins }); } catch (_) { return ''; }
+    const inWindow = mins >= R.RULES.decideFromMinutesET && mins <= R.RULES.decideToMinutesET;
     return '<div class="mem-conv ' + (q.hold ? '' : (inWindow ? 'warnbox' : '')) + '"><b>Runner hold · ' + (q.hold ? 'HOLD A PIECE OVERNIGHT' : (inWindow ? 'CLOSE WITH THE SESSION' : 'score ' + q.score + ' / 100 so far')) + '</b><br><small>' + esc(q.summary) + '</small><ul>'
       + q.gates.map((g) => '<li class="no"><span>✗</span> ' + esc(g) + '</li>').join('')
       + q.reasons.map((r) => '<li class="' + (r.pts > 0 ? 'ok' : 'no') + '"><span>' + (r.pts > 0 ? '✓' : '✗') + '</span> ' + esc(r.text) + ' <em>' + (r.pts > 0 ? '+' : '') + r.pts + '</em></li>').join('') + '</ul>'
