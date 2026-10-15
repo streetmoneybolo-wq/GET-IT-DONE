@@ -4332,6 +4332,16 @@ async function main() {
     const runStoryDesk = () => storyDesk.tick().then((r) => { if (r && !r.skipped) log('info', 'story_desk_tick', { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed, results: (r.results || []).map((x) => x.symbol + ':' + x.angle + ':' + (x.error || (x.published ? 'published' : 'draft'))) }); }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));
     setTimeout(runStoryDesk, 3 * 60_000).unref(); setInterval(runStoryDesk, 30 * 60_000).unref();
     log('info', 'story_desk_enabled', { autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', llm: String(process.env.SML_STORY_LLM || '').toLowerCase() === 'on', letters: storyPublisher.configured() });
+    /* a boot-time test: SML_STORY_TEST_SYMBOLS=NVDA,TSLA writes those names once at startup and logs the whole result */
+    const storyTest = String(process.env.SML_STORY_TEST_SYMBOLS || '').split(',').map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(x)).slice(0, 6);
+    if (storyTest.length) setTimeout(async () => {
+      for (const sym of storyTest) {
+        try {
+          const r = await storyDesk.write(sym);
+          log('info', 'story_test_result', { symbol: sym, ok: r.ok, error: r.error || '', angle: r.story && r.story.angle, rank: r.story && r.story.rank, score: r.story && r.story.score, pt: r.story && r.story.pt, ptPct: r.story && r.story.ptPct, lean: r.story && r.story.lean, heat: r.story && r.story.heat, title: r.draft && r.draft.title, meta: r.draft && r.draft.meta, words: r.draft && r.draft.wordCount, facts: r.story && r.story.facts, path: r.story && r.story.path, filed: r.filed ? { error: r.filed.error, letterId: r.filed.letterId, url: r.filed.url, asByline: r.filed.asByline } : null });
+        } catch (error) { log('warn', 'story_test_failed', { symbol: sym, error: String(error && error.message || error) }); }
+      }
+    }, 20_000).unref();
   }
   const signalRadar = process.env.ACADEMY_SIGNAL_RADAR === 'off' ? null : createSignalRadar({
     universe: async () => {
