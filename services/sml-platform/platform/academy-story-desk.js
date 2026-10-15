@@ -96,7 +96,7 @@ function createStoryDesk({
   async function bars1d(symbol) { const p = await timed(() => candles(symbol, '1D'), 10_000); return p && Array.isArray(p.bars) ? p.bars : []; }
 
   /* everything the engine scores for one symbol, from the Academy's services (each read raced against a timeout) */
-  async function candidate(row) {
+  async function candidate(row, { withHeat = true } = {}) {
     const symbol = String(row.symbol).toUpperCase();
     const daily = await bars1d(symbol); if (daily.length < 30) return null;
     const last = daily[daily.length - 1];
@@ -128,7 +128,7 @@ function createStoryDesk({
     let run = null; if (runner && daily.length > 25) { try { run = runner.trailFor({ daily, entry: daily[daily.length - 21].c, sinceT: daily[daily.length - 21].t }); } catch (_) { run = null; } }
     const dir = direction ? await timed(() => direction(), 8_000) : null;
     const name = (co && (co.name || co.company_name)) || row.name || '';
-    const h = heat ? await timed(() => heat.heatFor(symbol, name), 25_000) : null;
+    const h = heat && withHeat ? await timed(() => heat.heatFor(symbol, name), 25_000) : null;
     return { symbol, name, price, changePct: num(row.changePct), relVol: relVol != null ? r2(relVol) : null, adv, marketCap: co ? num(co.market_cap) : null, daily, gamma: gx && gx.available ? gx : null, short, tape, smc: m, earnings: earningsIn, sentiment: sentIn, institutional: inst && inst.available ? { bias: num(inst.bias), label: inst.label } : null, runner: run, direction: dir && dir.ok ? { bias: dir.bias, label: dir.label } : null, heat: h || null };
   }
 
@@ -184,8 +184,13 @@ function createStoryDesk({
       rows = rows.filter((r) => r && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(String(r.symbol || '').toUpperCase()));
       if (!rows.length) return { skipped: 'no_universe' };
       const slice = []; for (let k = 0; k < Math.min(perTick, rows.length); k++) slice.push(rows[(cursor + k) % rows.length]); cursor = (cursor + perTick) % Math.max(1, rows.length);
+      /* the data read first (fast, local), the news-heat check (a dozen RSS fetches per name) only for the ten strongest setups:
+         a full-universe heat check took longer than the gap between deploys and never finished */
+      logger('info', 'story_desk_scan', { symbols: slice.length });
       const cands = [];
-      for (const r of slice) { const c = await candidate(r).catch((error) => { logger('warn', 'story_candidate_failed', { symbol: r.symbol, error: String(error && error.message || error) }); return null; }); if (c) cands.push(c); }
+      for (const r of slice) { const c = await candidate(r, { withHeat: false }).catch((error) => { logger('warn', 'story_candidate_failed', { symbol: r.symbol, error: String(error && error.message || error) }); return null; }); if (c) cands.push(c); }
+      const strongest = [...new Set(engine.rankStories(cands).map((x) => x.symbol))].slice(0, 10);
+      for (const sym of strongest) { const c = cands.find((x) => x.symbol === sym); if (c && heat) { try { c.heat = await timed(() => heat.heatFor(sym, c.name), 25_000); } catch (_) { c.heat = null; } } }
       const cutoff = t - dedupeDays * 86_400_000;
       for (const k of Object.keys(state.written)) if (state.written[k] < cutoff) delete state.written[k];
       const ranked = engine.rankStories(cands).filter((s) => !state.written[s.symbol + ':' + s.angle] && !Object.keys(state.written).some((k) => k.startsWith(s.symbol + ':') && state.written[k] > t - 86_400_000)).slice(0, Math.min(maxPerTick, maxPerDay - state.count));
