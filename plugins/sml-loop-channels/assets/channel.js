@@ -65,6 +65,12 @@
   }
   if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', watch); } else { watch(); }
   window.addEventListener('scroll', function () { document.documentElement.style.setProperty('--lc-scroll', String(window.scrollY)); }, { passive: true });
+  /* the site's global header mounts itself at the top and sticks; panels start under it */
+  (function headerOffset() {
+    var apply = function () { var gh = document.getElementById('sml-global-header'), h = 0; if (gh) { var pos = getComputedStyle(gh).position; if (pos === 'sticky' || pos === 'fixed') { h = gh.offsetHeight; } } document.documentElement.style.setProperty('--lc-gh', h + 'px'); };
+    apply(); var tries = 0, t = window.setInterval(function () { apply(); if (++tries > 40 || document.getElementById('sml-global-header')) { window.clearInterval(t); } }, 250);
+    window.addEventListener('resize', apply);
+  })();
 
   /* ---------- 3. immersive layer, borrowed from Loop Letters ---------- */
   var fxLoaded = false;
