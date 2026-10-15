@@ -314,7 +314,8 @@ function createCheckout({ config, store, stripeApi, catalog, bot, tokens, resync
     const snapshot = await takeSnapshot(member, discordId, cacheRows);
     const comps = await store.compsFor(store.pool, discordId);
     const access = computeAccess({ snapshot: { ...snapshot, comps }, now: now(), partialRefundRevokes: config.partialRefundRevokes,
-      livemode: config.livemode, stripeSuppressed: Boolean(snapshot.bindingConflict), externalRoleIds: config.externalRoleIds });
+      livemode: config.livemode, stripeSuppressed: Boolean(snapshot.bindingConflict), externalRoleIds: config.externalRoleIds,
+      trialRoleId: config.trialRoleId || null, trialRoleMode: config.trialRoleMode || 'replace' });
     const lifetimeSources = access.sources.filter((s) => s.kind === 'lifetime');
     const disputedLifetimes = access.lifetimeStates.filter((s) => s.state === 'disputed');
     /* The Academy lifetime (the Academy line); a membership lifetime only

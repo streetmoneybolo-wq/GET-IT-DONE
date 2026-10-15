@@ -446,9 +446,16 @@ test('an external role or id outside SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS is re
   await t.store.insertRoleRow(null, { discordId: USER, roleId: MONARCH, roleKey: 'external', desired: true, state: 'pending' });
   await assert.rejects(() => t.applier.runOnce(), /foreign_role_refused/);
   t.store.db.roles.clear();
-  await t.store.insertRoleRow(null, { discordId: USER, roleId: k.FREE_TRIAL, roleKey: 'external', desired: true, state: 'pending' });
+  await t.store.insertRoleRow(null, { discordId: USER, roleId: k.FREE_MEMBER, roleKey: 'external', desired: true, state: 'pending' });
   await assert.rejects(() => t.applier.runOnce(), /foreign_role_refused/);
+  /* the Free Trial role is the trial role, so it may be sent; with the trial role off it is foreign again */
+  t.store.db.roles.clear();
+  const off = setup({ overrides: { SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: PREMIUM, SML_ACADEMY_BILLING_PRICES_JSON: k.pricesJson(),
+    SML_ACADEMY_BILLING_UC_ROLE_PRODUCTS_JSON: '', SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '0' } });
+  await off.store.insertRoleRow(null, { discordId: USER, roleId: k.FREE_TRIAL, roleKey: 'external', desired: true, state: 'pending' });
+  await assert.rejects(() => off.applier.runOnce(), /foreign_role_refused/);
   assert.deepEqual(t.calls, []);
+  assert.deepEqual(off.calls, []);
 });
 
 test('Monarch above the bot (403) blocks that row only; Academy Student grants keep flowing', async () => {
@@ -478,7 +485,8 @@ test('comps: --role grants an external role, --no-academy leaves the Academy out
     resync: (id, opts) => t.engine.resync(id, opts), checkSchema: async () => true, stop: async () => {} };
   const cli = (argv) => runCli(parseArgs(argv), { engineFactory: () => eng, out: (o) => out.push(o), now: t.now });
   await assert.rejects(() => cli(['comp', 'grant', '--discord', USER, '--include-lifetime-role', '--reason', 'legacy lifetime', '--apply', '--actor', 'owner']), /LIFETIME_ROLE_ID/);
-  await assert.rejects(() => cli(['comp', 'grant', '--discord', USER, '--role', k.FREE_TRIAL, '--reason', 'nope', '--apply', '--actor', 'owner']), /EXTERNAL_ROLE_IDS/);
+  await assert.rejects(() => cli(['comp', 'grant', '--discord', USER, '--role', k.FREE_TRIAL, '--reason', 'nope', '--apply', '--actor', 'owner']), /is the trial role/);
+  await assert.rejects(() => cli(['comp', 'grant', '--discord', USER, '--role', k.FREE_MEMBER, '--reason', 'nope', '--apply', '--actor', 'owner']), /EXTERNAL_ROLE_IDS/);
   await assert.rejects(() => cli(['comp', 'grant', '--discord', USER, '--no-academy', '--reason', 'nothing', '--apply', '--actor', 'owner']), /must grant something/);
   await cli(['comp', 'grant', '--discord', USER, '--role', MONARCH, '--no-academy', '--reason', 'legacy lifetime buyer', '--apply', '--actor', 'owner']);
   const comp = t.store.db.comps[0];
@@ -907,4 +915,82 @@ test('external-review --keep settles one needs_review row as kept_external (dry 
   await t.applier.runOnce();
   assert.ok(t.held().includes(MONARCH));
   assert.equal(t.ledger().state, 'kept_external');
+});
+
+/* The free trial role (owner request 2026-10-15): a member on a free trial
+   holds the Free Trial role for exactly the trial. */
+const DAY = 86400_000;
+const eliteTrial = (status = 'trialing', extra = {}) => ({
+  subscriptions: [k.subscription({ id: 'sub_em', customer: CUS, price: 'price_elitemonth', status, created: S(T0) - 3600,
+    periodStart: S(T0) - 3600, periodEnd: S(T0 + 7 * DAY) - 3600, trialStart: S(T0) - 3600, trialEnd: S(T0 + 7 * DAY) - 3600, ...extra })]
+});
+const trialSetup = (options = {}) => setup({ uc: false, ...options, overrides: { ...k.memEnv({ uc: false }), SML_ACADEMY_BILLING_REVOKES_ENABLED: '0', ...(options.overrides || {}) } });
+
+test('free trial role: a trialing Elite membership gets Free Trial, not Elite; converting swaps them at once, with REVOKES_ENABLED=0 and no Upgrade.Chat', async () => {
+  const t = trialSetup({ fixtures: eliteTrial() });
+  const first = await t.engine.resync(USER);
+  assert.deepEqual([first.roles, first.externalRoles], [[], [k.FREE_TRIAL]]);
+  assert.ok(first.reasons.includes('free_trial_role'));
+  await t.applier.runOnce();
+  assert.deepEqual(t.held(), [k.FREE_TRIAL]);
+  assert.deepEqual(t.calls, [['PUT', USER, k.FREE_TRIAL]]);
+  assert.deepEqual([t.ledger(USER, k.FREE_TRIAL).state, t.ledger(USER, k.FREE_TRIAL).had_role_before], ['engine_granted', false]);
+  assert.equal(t.ledger(USER, k.ELITE), null, 'Elite is not granted during the trial');
+  /* the trial converts: Stripe flips the subscription to active */
+  t.now.advance(7 * DAY);
+  const sub = t.stripe.data.subscriptions.find((s) => s.id === 'sub_em');
+  sub.status = 'active'; sub.current_period_start = S(T0 + 7 * DAY) - 3600; sub.current_period_end = S(T0 + 37 * DAY) - 3600;
+  const paid = await t.engine.resync(USER);
+  assert.deepEqual(paid.externalRoles, [k.ELITE]);
+  assert.deepEqual([t.ledger(USER, k.FREE_TRIAL).state, t.ledger(USER, k.FREE_TRIAL).last_reason], ['revoked', 'trial_ended']);
+  assert.deepEqual([t.outbox(USER, k.FREE_TRIAL).desired, t.outbox(USER, k.FREE_TRIAL).state], [false, 'pending'], 'the DELETE is queued despite REVOKES_ENABLED=0');
+  await t.applier.runOnce();
+  assert.deepEqual(t.held(), [k.ELITE]);
+  assert.deepEqual(t.calls.slice(1).sort(), [['DELETE', USER, k.FREE_TRIAL], ['PUT', USER, k.ELITE]].sort());
+  assert.deepEqual(t.client.calls, [], 'Upgrade.Chat is never asked about the trial role');
+  assert.equal(t.store.db.audit.some((r) => r.action === 'role_suppressed'), false);
+  /* a Monarch-style external revoke is still held by the switch (unchanged rule) */
+  assert.equal(t.config.revokesEnabled, false);
+});
+
+test('free trial role: a trial that ends without payment loses the role; a member who held Free Trial before (Upgrade.Chat) keeps it', async () => {
+  const ended = trialSetup({ fixtures: eliteTrial() });
+  await ended.engine.resync(USER);
+  await ended.applier.runOnce();
+  assert.deepEqual(ended.held(), [k.FREE_TRIAL]);
+  ended.now.advance(7 * DAY + 3600_000);
+  ended.stripe.data.subscriptions.find((s) => s.id === 'sub_em').status = 'canceled';
+  const after = await ended.engine.resync(USER);
+  assert.deepEqual(after.externalRoles, []);
+  await ended.applier.runOnce();
+  assert.deepEqual(ended.held(), [], 'the trial role went with the trial');
+  assert.equal(ended.ledger(USER, k.FREE_TRIAL).state, 'revoked');
+
+  const held = trialSetup({ members: { [USER]: [k.FREE_TRIAL] }, fixtures: eliteTrial() });
+  await held.engine.resync(USER);
+  assert.deepEqual([held.ledger(USER, k.FREE_TRIAL).state, held.ledger(USER, k.FREE_TRIAL).had_role_before], ['held', true]);
+  await held.applier.runOnce();
+  assert.deepEqual(held.calls, [], 'nothing to send: the member already holds it');
+  held.now.advance(7 * DAY + 3600_000);
+  held.stripe.data.subscriptions.find((s) => s.id === 'sub_em').status = 'canceled';
+  await held.engine.resync(USER);
+  await held.applier.runOnce();
+  assert.deepEqual(held.held(), [k.FREE_TRIAL], 'a role the engine did not give is never removed');
+});
+
+test('free trial role: the 3-day no-card Free Trial Access and an Academy-line trial; SML_ACADEMY_BILLING_TRIAL_ROLE_MODE=add keeps the plan roles too', async () => {
+  const free = trialSetup({ fixtures: { subscriptions: [k.subscription({ id: 'sub_ft', customer: CUS, price: 'price_freetrial', status: 'trialing', created: S(T0) - 60,
+    periodStart: S(T0) - 60, periodEnd: S(T0 + 3 * DAY) - 60, trialStart: S(T0) - 60, trialEnd: S(T0 + 3 * DAY) - 60, cancelAt: S(T0 + 3 * DAY) - 660 })] } });
+  const r = await free.engine.resync(USER);
+  assert.deepEqual([r.roles, r.externalRoles], [[], [k.FREE_TRIAL]]);
+  const academy = trialSetup({ fixtures: { subscriptions: [k.subscription({ id: 'sub_m', customer: CUS, price: 'price_monthly1', status: 'trialing', created: S(T0) - 60,
+    periodStart: S(T0) - 60, periodEnd: S(T0 + 7 * DAY) - 60, trialStart: S(T0) - 60, trialEnd: S(T0 + 7 * DAY) - 60 })] } });
+  const a = await academy.engine.resync(USER);
+  assert.deepEqual([a.roles, a.externalRoles], [['academy'], [k.FREE_TRIAL]], 'an Academy trial keeps Academy Student and adds the trial role');
+  const add = trialSetup({ fixtures: eliteTrial(), overrides: { SML_ACADEMY_BILLING_TRIAL_ROLE_MODE: 'add' } });
+  const both = await add.engine.resync(USER);
+  assert.deepEqual([...both.externalRoles].sort(), [k.ELITE, k.FREE_TRIAL].sort());
+  const off = trialSetup({ fixtures: eliteTrial(), overrides: { SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '0' } });
+  const plain = await off.engine.resync(USER);
+  assert.deepEqual(plain.externalRoles, [k.ELITE], 'trial role off: a trial grants what the plan grants, as before');
 });

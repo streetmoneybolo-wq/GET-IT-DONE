@@ -341,14 +341,16 @@ test('the owner set-up: lifetime roles [Monarch] with card + bank; a Premium mem
   assert.ok(Object.isFrozen(life.roles));
   const described = describeConfig(config);
   assert.deepEqual(described.prices.find((p) => p.priceId === 'price_life1').roles, [MONARCH]);
-  assert.deepEqual(described.externalRoleIds, DEFAULT_EXTERNAL_ROLE_IDS);
+  assert.deepEqual(described.externalRoleIds, [...DEFAULT_EXTERNAL_ROLE_IDS, FREE_TRIAL], 'the trial role is the last external role');
   assert.equal(described.ucConfigured, true);
   assert.equal(JSON.stringify(described).includes('uc-secret'), false, 'the Upgrade.Chat secret is never described');
 });
 
 test('Manager, Free Trial and FREE MEMBER can never be listed in "roles"; nor an engine role or a non-external role', () => {
   const withRoles = (roles, extra = {}) => env({ SML_ACADEMY_BILLING_PRICES_JSON: JSON.stringify({ price_life1: { package: 'lifetime', roles } }), ...extra });
-  for (const id of [FREE_TRIAL, FREE_MEMBER]) assert.throws(() => parseBillingConfig(withRoles([id])), /can never be granted/, id);
+  assert.throws(() => parseBillingConfig(withRoles([FREE_TRIAL])), /is the trial role/, 'the trial role is granted by every free trial, never by a price');
+  assert.throws(() => parseBillingConfig(withRoles([FREE_TRIAL], { SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '0' })), /can never be granted/, 'with the trial role off, Free Trial is never granted at all');
+  assert.throws(() => parseBillingConfig(withRoles([FREE_MEMBER])), /can never be granted/);
   const manager = '1800000000000000009';
   assert.throws(() => parseBillingConfig(withRoles([manager], { SML_ACADEMY_MANAGER_ROLE_ID: manager })), /can never be granted/);
   assert.throws(() => parseBillingConfig(withRoles(['1800000000000000008'], { SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS: '1800000000000000008' })), /can never be granted/);
@@ -382,9 +384,11 @@ test('one sell:true price per package PER LINE: Academy Monthly and a Premium Mo
 });
 
 test('SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: default Monarch, Elite, Premium; a replacement list is validated', () => {
-  assert.deepEqual(parseBillingConfig(env()).externalRoleIds, [MONARCH, ELITE, PREMIUM]);
-  assert.deepEqual(parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: ' ' })).externalRoleIds, [MONARCH, ELITE, PREMIUM]);
-  assert.deepEqual(parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: `${MONARCH}` })).externalRoleIds, [MONARCH]);
+  /* the trial role (Free Trial by default) is always appended last */
+  assert.deepEqual(parseBillingConfig(env()).externalRoleIds, [MONARCH, ELITE, PREMIUM, FREE_TRIAL]);
+  assert.deepEqual(parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: ' ' })).externalRoleIds, [MONARCH, ELITE, PREMIUM, FREE_TRIAL]);
+  assert.deepEqual(parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: `${MONARCH}` })).externalRoleIds, [MONARCH, FREE_TRIAL]);
+  assert.deepEqual(parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: `${MONARCH}`, SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '0' })).externalRoleIds, [MONARCH]);
   for (const id of [FREE_TRIAL, FREE_MEMBER, ACADEMY_ROLE, LIFETIME_ROLE, 'nope']) {
     assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: `${MONARCH},${id}` })), /EXTERNAL_ROLE_IDS/, id);
   }
@@ -503,4 +507,30 @@ test('SML_ACADEMY_BILLING_UC_MATCH: any (default, no product map needed) | mappe
   }
   /* no Upgrade.Chat credentials: still warned in both modes */
   assert.ok(parseBillingConfig(env(ownerEnv({ uc: false, ucMatch: null }))).warnings.some((w) => /UPGRADE_CHAT_CLIENT_ID/.test(w)));
+});
+
+test('the trial role: the Free Trial role by default, last in the external list, never from the env, never in a price; 0 turns it off', () => {
+  const base = parseBillingConfig(env());
+  assert.equal(base.trialRoleId, FREE_TRIAL);
+  assert.equal(base.trialRoleMode, 'replace');
+  assert.equal(base.externalRoleIds[base.externalRoleIds.length - 1], FREE_TRIAL);
+  assert.equal(base.neverGrantRoleIds.has(FREE_TRIAL), false, 'the trial role may be granted (as the trial role only)');
+  assert.ok(base.neverGrantRoleIds.has(FREE_MEMBER));
+  assert.ok(base.protectedRoleIds.has(FREE_TRIAL), 'still never an engine role');
+  const off = parseBillingConfig(env({ SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '0' }));
+  assert.equal(off.trialRoleId, '');
+  assert.equal(off.externalRoleIds.includes(FREE_TRIAL), false);
+  assert.ok(off.neverGrantRoleIds.has(FREE_TRIAL));
+  const other = parseBillingConfig(env({ SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '1800000000000000077', SML_ACADEMY_BILLING_TRIAL_ROLE_MODE: 'add' }));
+  assert.deepEqual([other.trialRoleId, other.trialRoleMode], ['1800000000000000077', 'add']);
+  assert.ok(other.externalRoleIds.includes('1800000000000000077'));
+  assert.ok(other.neverGrantRoleIds.has(FREE_TRIAL), 'another trial role leaves Free Trial never-grant');
+  assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_TRIAL_ROLE_ID: 'abc' })), /must be a role snowflake/);
+  assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_TRIAL_ROLE_ID: MONARCH })), /cannot be the trial role/);
+  assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_TRIAL_ROLE_ID: ACADEMY_ROLE })), /cannot be the trial role/);
+  assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_TRIAL_ROLE_MODE: 'both' })), /replace or add/);
+  assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: `${MONARCH},${FREE_TRIAL}` })), /is the trial role/);
+  assert.throws(() => parseBillingConfig(env({ SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS: '1800000000000000077', SML_ACADEMY_BILLING_TRIAL_ROLE_ID: '1800000000000000077' })), /cannot be the trial role/);
+  const described = JSON.parse(JSON.stringify(describeConfig(base)));
+  assert.deepEqual([described.trialRoleId, described.trialRoleMode], [FREE_TRIAL, 'replace']);
 });

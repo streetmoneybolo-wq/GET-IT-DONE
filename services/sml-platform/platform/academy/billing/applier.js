@@ -154,7 +154,11 @@ function createApplier({ config, store, bot = null, fetchImpl = globalThis.fetch
   async function applyOne(row) {
     assertEngineRole(row);
     const pk = { discordId: String(row.discord_user_id), roleId: String(row.role_id), generation: Number(row.generation) };
-    if (!row.desired && !config.revokesEnabled) {
+    /* The trial role's DELETE goes through the revoke switch: a trial role
+       that outlives the trial is free access (resync.js decides it; the
+       ledger gate below still has to back it). */
+    const trialRole = row.role_key === 'external' && Boolean(config.trialRoleId) && pk.roleId === String(config.trialRoleId);
+    if (!row.desired && !config.revokesEnabled && !trialRole) {
       const n = await store.finishRoleRow(store.pool, { ...pk, state: 'suppressed' });
       if (n) await auditRow(row, { action: 'role_suppressed', outcome: 'suppressed', reason: 'revokes_disabled' });
       return 'suppressed';

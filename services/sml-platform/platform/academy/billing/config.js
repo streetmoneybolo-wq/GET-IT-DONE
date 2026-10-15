@@ -276,6 +276,10 @@ function parsePriceRoles(priceId, value, errors, rules) {
     const id = typeof item === 'string' ? item.trim() : '';
     if (!SNOWFLAKE.test(id)) { errors.push(`${priceId}: role ${JSON.stringify(String(item).slice(0, 30))} is not a role snowflake`); return null; }
     if (roles.includes(id)) { errors.push(`${priceId}: role ${id} is listed twice`); return null; }
+    if (rules.trialRoleId && id === rules.trialRoleId) {
+      errors.push(`${priceId}: role ${id} is the trial role (SML_ACADEMY_BILLING_TRIAL_ROLE_ID); every free trial grants it by itself, so no price lists it`);
+      return null;
+    }
     if (rules.neverGrant.has(id)) {
       errors.push(`${priceId}: role ${id} can never be granted (Manager, Free Trial, FREE MEMBER and SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS)`);
       return null;
@@ -532,19 +536,43 @@ function parseBillingConfig(env = process.env, { throwOnInvalid = true } = {}) {
   if (academyRoleId && lifetimeRoleId && academyRoleId === lifetimeRoleId) errors.push('the Academy and Lifetime engine roles must be different roles');
   const engineRoleIdSet = new Set([academyRoleId, lifetimeRoleId].filter(Boolean));
 
+  /* THE TRIAL ROLE (owner request 2026-10-15): every member on a free trial
+     holds it for exactly the trial. Default: the server's Free Trial role.
+     It is handled like an external role (ledger: granted only to a member who
+     did not hold it, removed only from one the engine gave it to), except that
+     its removal never waits for Upgrade.Chat or the revoke switch: a trial
+     role that outlives the trial is free access. `0`, `none` or `off`
+     disables it (trials then grant what the plan grants, as before). Mode
+     `replace` (default): a membership trial gives the trial role INSTEAD of
+     the membership's roles (an Academy-line trial keeps Academy Student next
+     to it); `add`: every trial gives the trial role on top of its plan. */
+  const trialRaw = text(env.SML_ACADEMY_BILLING_TRIAL_ROLE_ID);
+  let trialRoleId = trialRaw === '' ? FREE_TRIAL_ROLE_ID : (['0', 'none', 'off'].includes(trialRaw.toLowerCase()) ? '' : trialRaw);
+  if (trialRoleId && !SNOWFLAKE.test(trialRoleId)) { errors.push('SML_ACADEMY_BILLING_TRIAL_ROLE_ID must be a role snowflake, or 0 to disable the trial role'); trialRoleId = ''; }
+  if (trialRoleId && (engineRoleIdSet.has(trialRoleId) || trialRoleId === managerRoleId || csv(env.SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS).includes(trialRoleId)
+    || DEFAULT_EXTERNAL_ROLE_IDS.includes(trialRoleId) || trialRoleId === FREE_MEMBER_ROLE_ID)) {
+    errors.push(`SML_ACADEMY_BILLING_TRIAL_ROLE_ID: ${trialRoleId} cannot be the trial role (an engine role, Monarch/Elite/Premium, FREE MEMBER, the manager or a protected role)`);
+    trialRoleId = '';
+  }
+  if (trialRoleId) neverGrantRoleIds.delete(trialRoleId);
+  const trialRoleMode = text(env.SML_ACADEMY_BILLING_TRIAL_ROLE_MODE).toLowerCase() || 'replace';
+  if (!['replace', 'add'].includes(trialRoleMode)) errors.push('SML_ACADEMY_BILLING_TRIAL_ROLE_MODE must be replace or add');
+
   /* EXTERNAL roles (grant-only-unless-safe). Unset or blank = Monarch, Elite,
-     Premium. */
+     Premium. The trial role is always the last entry (never from the env). */
   const externalRaw = csv(env.SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS);
   const externalRoleIds = [];
   for (const id of externalRaw.length ? externalRaw : DEFAULT_EXTERNAL_ROLE_IDS) {
     if (!SNOWFLAKE.test(id)) { errors.push('SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS must be role snowflakes'); continue; }
+    if (id === trialRoleId) { errors.push(`SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: ${id} is the trial role (SML_ACADEMY_BILLING_TRIAL_ROLE_ID); it is granted by every free trial by itself`); continue; }
     if (neverGrantRoleIds.has(id)) { errors.push(`SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: ${id} can never be granted (Manager, Free Trial, FREE MEMBER, SML_ACADEMY_BILLING_PROTECTED_ROLE_IDS)`); continue; }
     if (engineRoleIdSet.has(id)) { errors.push(`SML_ACADEMY_BILLING_EXTERNAL_ROLE_IDS: ${id} is an engine role (Academy Student / lifetime role)`); continue; }
     if (!externalRoleIds.includes(id)) externalRoleIds.push(id);
   }
-
+  /* A price never lists the trial role itself: the rules below see it as not
+     external (the engine adds it to the external list after the prices). */
   const prices = parsePrices(env.SML_ACADEMY_BILLING_PRICES_JSON, errors, Object.freeze(paymentMethods.slice()),
-    { neverGrant: neverGrantRoleIds, engineRoleIds: engineRoleIdSet, externalRoleIds });
+    { neverGrant: neverGrantRoleIds, engineRoleIds: engineRoleIdSet, externalRoleIds: externalRoleIds.slice(), trialRoleId });
 
   /* Upgrade.Chat check for EXTERNAL revokes. The client credentials are the
      platform's existing UPGRADE_CHAT_CLIENT_ID / UPGRADE_CHAT_CLIENT_SECRET
@@ -554,6 +582,9 @@ function parseBillingConfig(env = process.env, { throwOnInvalid = true } = {}) {
   const ucClientId = text(env.UPGRADE_CHAT_CLIENT_ID);
   const ucClientSecret = text(env.UPGRADE_CHAT_CLIENT_SECRET);
   const ucRoleProducts = parseUcRoleProducts(env.SML_ACADEMY_BILLING_UC_ROLE_PRODUCTS_JSON, externalRoleIds, errors);
+  /* From here on the trial role is an external role too (ledger, applier,
+     access): always the last entry, never from the env, never in a price. */
+  if (trialRoleId) externalRoleIds.push(trialRoleId);
   const ucConfigured = Boolean(ucClientId && ucClientSecret);
   /* Default 'any': every active Upgrade.Chat upgrade of the member keeps an
      engine-granted external role (hidden products and one-time lifetime
@@ -677,6 +708,8 @@ function parseBillingConfig(env = process.env, { throwOnInvalid = true } = {}) {
     academyRoleId,
     lifetimeRoleId,
     engineRoleIds: Object.freeze({ academy: academyRoleId, mem_lifetime: lifetimeRoleId }),
+    trialRoleId,
+    trialRoleMode,
     protectedRoleIds,
     neverGrantRoleIds,
     externalRoleIds: Object.freeze(externalRoleIds),
@@ -739,6 +772,8 @@ function describeConfig(config) {
       cancelAfterDays: entry.cancelAfterDays, winback: entry.winback, introCents: entry.introCents, bonusAcademyDays: entry.bonusAcademyDays })),
     winbackIdCount: config.winbackIds ? config.winbackIds.size : 0,
     externalRoleIds: config.externalRoleIds,
+    trialRoleId: config.trialRoleId || null,
+    trialRoleMode: config.trialRoleMode,
     ucConfigured: config.ucConfigured,
     ucMatch: config.ucMatch,
     ucRoleProducts: Object.fromEntries([...config.ucRoleProducts.entries()].map(([roleId, products]) => [roleId, products.length])),

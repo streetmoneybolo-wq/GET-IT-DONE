@@ -321,3 +321,30 @@ test('lifetime bank debit returned after it succeeded (Stripe opens a dispute): 
     comps: [{ id: 1, include_lifetime_role: false, expires_at: null, revoked_at: null, livemode: true }] });
   assert.deepEqual(roles(comped), ['academy']);
 });
+
+test('the trial role: a trialing membership gives the trial role instead of its roles (replace), on top of them (add), and an Academy trial keeps Academy Student', () => {
+  const FREE_TRIAL = '1542090070553526362';
+  const ELITE = '1192450618485395466';
+  const elite = (status) => sub({ status, currentPeriodChargeId: null, trialStart: sec(NOW - 2 * 86400_000), trialEnd: sec(NOW + 5 * 86400_000),
+    price: price('monthly', { grantsAcademy: false, externalRoles: [ELITE], line: `roles:${ELITE}` }) });
+  const opts = { externalRoleIds: [MONARCH, ELITE, PREMIUM, FREE_TRIAL], trialRoleId: FREE_TRIAL };
+  const trialing = access({ subscriptions: [elite('trialing')] }, opts);
+  assert.deepEqual(roles(trialing), []);
+  assert.deepEqual([...trialing.externalRoles].sort(), [FREE_TRIAL], 'the trial role only');
+  assert.ok(trialing.reasons.includes('free_trial_role'));
+  assert.equal(trialing.sources[0].trial, true);
+  assert.equal(trialing.nextCheckAt, NOW + 5 * 86400_000 + 2 * H, 're-checked right after the trial ends');
+  const paid = access({ subscriptions: [elite('active')] }, opts);
+  assert.deepEqual([...paid.externalRoles], [ELITE], 'converted: Elite, no trial role');
+  assert.equal(paid.reasons.includes('free_trial_role'), false);
+  const add = access({ subscriptions: [elite('trialing')] }, { ...opts, trialRoleMode: 'add' });
+  assert.deepEqual([...add.externalRoles].sort(), [ELITE, FREE_TRIAL].sort());
+  const off = access({ subscriptions: [elite('trialing')] }, { externalRoleIds: [MONARCH, ELITE, PREMIUM] });
+  assert.deepEqual([...off.externalRoles], [ELITE], 'no trial role configured: as before');
+  const academyTrial = access({ subscriptions: [sub({ status: 'trialing', currentPeriodChargeId: null, trialEnd: sec(NOW + 86400_000) })] }, opts);
+  assert.deepEqual(roles(academyTrial), ['academy']);
+  assert.deepEqual([...academyTrial.externalRoles], [FREE_TRIAL]);
+  /* an open dispute suspends the trial role like every Stripe source */
+  const disputed = access({ subscriptions: [elite('trialing')], disputes: [{ id: 'du', chargeId: 'ch_x', status: 'needs_response' }] }, opts);
+  assert.deepEqual([...disputed.externalRoles], []);
+});

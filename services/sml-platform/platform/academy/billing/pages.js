@@ -138,8 +138,21 @@ function offerTerms(desc, { trialUsed = false } = {}) {
        Academy days it adds (membership win-back only) */
     introCents: desc && desc.winback && Number.isInteger(desc.introCents) && isRecurring(pkg) ? desc.introCents : null,
     bonusAcademyDays: desc && desc.winback && Number.isInteger(desc.bonusAcademyDays) ? desc.bonusAcademyDays : null,
-    winback: Boolean(desc && desc.winback)
+    winback: Boolean(desc && desc.winback),
+    /* the role held during the free trial (catalog: { name, replace }); with
+       replace, a membership's own roles come only once the trial is paid */
+    trialRole: trialDays !== null && desc && desc.trialRole && desc.trialRole.name ? { name: String(desc.trialRole.name), replace: Boolean(desc.trialRole.replace) } : null
   };
+}
+
+/* What the free trial itself gives, named in every trial disclosure. */
+function trialRoleSentences(t, gives) {
+  if (!t || !t.trialRole) return [];
+  const trialGives = `the ${t.trialRole.name} role in the Making Easy Money Discord server`;
+  if (t.trialRole.replace) {
+    return [`During the free trial it gives this Discord account ${trialGives}. ${gives ? `${gives.charAt(0).toUpperCase()}${gives.slice(1)} is added when the trial ends and the first payment goes through.` : ''}`.trim()];
+  }
+  return [`During the free trial it also gives this Discord account ${trialGives}.`];
 }
 
 const WINBACK_ONCE = 'This welcome-back price is only for former Making Easy Money monthly members and can be used once per Discord account.';
@@ -266,6 +279,7 @@ function disclosureFor({ pkg, amount, currency = 'usd', termsUrl, privacyUrl, gr
         `Free trial, then automatic renewal: the MEM Academy ${plan} starts with a ${t.trialDays}-day free trial. When the trial ends it costs ${price} (plus any applicable tax) and renews automatically every ${every} at ${price} until you cancel.${cap}`,
         ...trialSentences(t),
         `While the plan is active, the trial included, it gives this Discord account ${gives}.`,
+        ...trialRoleSentences(t, ''),
         'You can cancel online at any time in Manage billing. Access continues until the end of the trial or of the period you already paid for; an open Academy Activity can take up to about 15 minutes to update.',
         'Payments are not refunded except where the MEM Academy Terms or the law require it. A refunded or charged-back payment ends the access it paid for.',
         links
@@ -298,7 +312,10 @@ function freeTrialDisclosure({ name, short, gives, terms, links, academy }) {
     text: [
       `Free trial: ${name} is free for ${days}${terms.trialNoCard ? ' and needs no payment method' : ''}. It ends by itself after ${days}, does not renew and is never charged.`,
       'One free trial per Discord account.',
-      `While it is active it gives this Discord account ${gives}.${academy ? '' : ' It does not include MEM Academy.'}`,
+      terms.trialRole && terms.trialRole.replace
+        ? `While it is active it gives this Discord account the ${terms.trialRole.name} role in the Making Easy Money Discord server.${academy ? '' : ' It does not include MEM Academy.'}`
+        : `While it is active it gives this Discord account ${gives}.${academy ? '' : ' It does not include MEM Academy.'}`,
+      ...(terms.trialRole && !terms.trialRole.replace ? trialRoleSentences(terms, '') : []),
       links
     ].join(' ')
   };
@@ -333,7 +350,10 @@ function membershipDisclosure({ pkg, price, amount, currency, label, roleList, r
       text: [
         `Free trial, then automatic renewal: the ${name} membership starts with a ${t.trialDays}-day free trial. When the trial ends it costs ${price} (plus any applicable tax) and renews automatically every ${every} at ${price} until you cancel.${cap}`,
         ...trialSentences(t),
-        `While it is active, the trial included, it gives this Discord account ${gives}. It does not include MEM Academy.`,
+        t.trialRole && t.trialRole.replace
+          ? `${trialRoleSentences(t, gives)[0]} It does not include MEM Academy.`
+          : `While it is active, the trial included, it gives this Discord account ${gives}. It does not include MEM Academy.`,
+        ...(t.trialRole && !t.trialRole.replace ? trialRoleSentences(t, '') : []),
         'You can cancel online at any time in Manage billing. Access continues until the end of the trial or of the period you already paid for.',
         'Payments are not refunded except where the Terms or the law require it. A refunded or charged-back payment ends the access it paid for.',
         links
@@ -673,7 +693,7 @@ function trialPage({ config, nonce, userId, user, desc, csrf, state, inGuild = t
   } else {
     const terms = offerTerms(desc, { trialUsed: Boolean(state.trialUsed) || Boolean(state.trialUnknown) });
     const steps = terms.trialDays !== null
-      ? `<ol class="steps"><li>Discord signed in <b>done</b></li><li>Tick the box below and press the green button</li><li>Add a card on Stripe's secure page: <b>$0.00 today</b>, nothing is charged during the ${terms.trialDays} days</li><li>Your Elite role lands in Discord within seconds</li></ol>
+      ? `<ol class="steps"><li>Discord signed in <b>done</b></li><li>Tick the box below and press the green button</li><li>Add a card on Stripe's secure page: <b>$0.00 today</b>, nothing is charged during the ${terms.trialDays} days</li><li>Your ${esc(terms.trialRole ? terms.trialRole.name : ((desc.roleNames || [])[0] || 'membership'))} role lands in Discord within seconds${terms.trialRole && terms.trialRole.replace ? `; the ${esc((desc.roleNames || [])[0] || 'membership')} role follows when the trial ends and the first payment goes through` : ''}</li></ol>
 <p class="muted">Cancel any time before the trial ends in Manage billing and you are never charged. One free trial per Discord account.</p>`
       : '<p class="notice">This Discord account already used its free trial, so this plan starts with a charge today. Pick it below, or go back.</p>';
     parts.push(steps);
