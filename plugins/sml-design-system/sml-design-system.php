@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.1.5
+ * Version: 1.1.6
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.1.5' );
+define( 'SML_DS_VERSION', '1.1.6' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -78,7 +78,13 @@ function sml_ds_inject( $html, $phase = 0 ) {
 	$final = (bool) ( $phase & PHP_OUTPUT_HANDLER_FINAL );
 	$html  = $carry . $html; $carry = '';
 	if ( $html === '' ) { return $html; }
-	if ( $is_html === null ) { $is_html = stripos( $html, '<html' ) !== false || stripos( $html, '<!doctype' ) !== false; }
+	if ( $is_html === null ) {
+		/* decided on the first piece that carries anything: a feed or a JSON body is left alone, everything else is a page
+		   (a piece can be as small as a newline a snippet printed early, so the decision cannot wait for the <html> tag) */
+		$lead = ltrim( $html, " \t\r\n\xEF\xBB\xBF" );
+		if ( $lead === '' ) { $carry = $html; return ''; }
+		$is_html = ! ( stripos( $lead, '<?xml' ) === 0 || $lead[0] === '{' || $lead[0] === '[' );
+	}
 	if ( ! $is_html ) { return $html; }
 	foreach ( array( 'early', 'css', 'js' ) as $k ) { if ( stripos( $html, 'id="sml-ds-' . $k . '"' ) !== false ) { $seen[ $k ] = true; } }
 	$whole_head = preg_match( '/<head[\s>]/i', $html, $hm, PREG_OFFSET_CAPTURE ) && stripos( $html, '</head>' ) !== false; /* the <head> tag itself, not <header> */
