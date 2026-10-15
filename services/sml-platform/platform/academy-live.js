@@ -79,7 +79,7 @@
       let fresh = (d.tape || []).filter((t) => t.t > st.lastT).sort((a, b) => a.t - b.t);
       if (!st.lastT && fresh.length > 1) fresh = [Object.assign({}, fresh[fresh.length - 1], { size: 0 })]; // first look: take the price, don't replay history as volume
       if (window.smlChartPro && window.smlChartPro.liveTick) for (const t of fresh) window.smlChartPro.liveTick(t.price, t.size, t.t);
-      if (fresh.length) st.lastT = fresh[fresh.length - 1].t;
+      if (fresh.length) { st.lastT = fresh[fresh.length - 1].t; if (st.lastT !== fresh[0].t || fresh.length === 1) fresh.forEach(keep); }
       if (d.rt) st.rt = d.rt;
       if (d.book && ((d.book.bids && d.book.bids.length) || (d.book.asks && d.book.asks.length))) paintDepth(d.book, Math.max(0, (d.servedAt || 0) - (d.asOf || d.servedAt || 0)), !!d.topOnly);
       paintTape(d.tape || []); paintQuote(d);
@@ -88,7 +88,16 @@
     }
   }
   /* Push feed: every trade and quote as it happens (Server-Sent Events from the shared Massive connection). The polling above keeps running as the fallback and for the Level 2 ladder. */
-  const sse = { es: null, symbol: '', okAt: 0, tape: [], seen: new Set(), retryAt: 0, raf: 0 };
+  const sse = { es: null, symbol: '', okAt: 0, tape: [], hist: [], seen: new Set(), retryAt: 0, raf: 0 };
+  /* Every print this symbol has produced since the feed opened (capped), so an interval change can rebuild the forming candle
+     from real trades instead of starting it from the next print. */
+  const keep = (t) => { sse.hist.push(t); if (sse.hist.length > 2000) sse.hist.splice(0, sse.hist.length - 2000); };
+  window.smlLiveReplay = (sinceT) => {
+    const P = window.smlChartPro; if (!P || typeof P.liveTick !== 'function') return 0;
+    const list = sse.hist.filter((t) => t.t >= sinceT).sort((a, b) => a.t - b.t);
+    for (const t of list) P.liveTick(t.price, t.size, t.t);
+    return list.length;
+  };
   function closeStream() { if (sse.es) { try { sse.es.close(); } catch (_) { /* closing */ } } sse.es = null; }
   function schedulePaint() {
     if (sse.raf) return;
@@ -109,6 +118,7 @@
     if (window.smlChartPro && window.smlChartPro.liveTick) window.smlChartPro.liveTick(t.price, t.size, t.t);
     st.lastT = Math.max(st.lastT, t.t); st.freshAt = Date.now();
     sse.tape.unshift(t); if (sse.tape.length > 30) sse.tape.length = 30;
+    keep(t);
     schedulePaint();
   }
   function openStream() {
@@ -116,7 +126,7 @@
     if (sse.es && sse.symbol === symbol) return;
     if (!sse.es && Date.now() < sse.retryAt && sse.symbol === symbol) return;
     closeStream(); if (!window.EventSource) return;
-    sse.symbol = symbol; sse.tape = []; sse.seen = new Set();
+    sse.symbol = symbol; sse.tape = []; sse.hist = []; sse.seen = new Set();
     let es; try { es = new EventSource('/academy-activity/stream?symbol=' + encodeURIComponent(symbol)); } catch (_) { sse.retryAt = Date.now() + 60000; return; }
     sse.es = es;
     es.addEventListener('snapshot', (e) => { try { const d = JSON.parse(e.data); sse.okAt = Date.now(); if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });

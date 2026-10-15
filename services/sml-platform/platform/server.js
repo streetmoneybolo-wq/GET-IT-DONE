@@ -834,6 +834,10 @@ const ACADEMY_POPOUT_UI = (() => {
 const ACADEMY_CUSTOMIZE = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-customize.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+/* Chart dock + CLEAN switch (academy-chart-dock.js): tool panels beside the plot, never over it. */
+const ACADEMY_CHART_DOCK = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-chart-dock.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_LB_UI = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-lb-ui.js'), 'utf8') + '</script>';
@@ -930,7 +934,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -975,10 +979,11 @@ const usable=payload=>payload&&Array.isArray(payload.bars)&&payload.bars.length;
 const inflight=new Map();
 const get=(ticker,tf)=>{const key=ticker+':'+tf;if(inflight.has(key))return inflight.get(key);const request=(async()=>{const response=await fetch('/academy-activity/market?symbol='+encodeURIComponent(ticker)+'&tf='+encodeURIComponent(tf),{cache:'no-store'}),payload=await response.json();if(!response.ok||!usable(payload))throw new Error('market');remember(key,payload);return payload})();inflight.set(key,request);const clear=()=>{if(inflight.get(key)===request)inflight.delete(key)};request.then(clear,clear);return request};
 const commit=(ticker,tf,payload)=>{const keep=new URLSearchParams(location.search);keep.set('symbol',ticker);keep.set('tf',tf);history.replaceState(null,'',location.pathname+'?'+keep.toString());window.smlAcademyApplyMarket?.(payload);window.smlAcademyRefreshQuote?.()};
-window.smlAcademyNavigateMarket=async(value,requestedTf)=>{const ticker=clean(value),tf=String(requestedTf||currentTf()),key=ticker+':'+tf,mine=++seq,previous=String((window.smlAcademyChartState?.()||{}).symbol||'');
+window.smlAcademyNavigateMarket=async(value,requestedTf)=>{const ticker=clean(value),tf=String(requestedTf||currentTf()),key=ticker+':'+tf,mine=++seq,previous=String((window.smlAcademyChartState?.()||{}).symbol||''),tfChanged=tf!==currentTf();
 symbol.value=ticker;if(label)label.textContent='$'+ticker;status.textContent='LOADING';tfButtons(tf);
 const hit=cache.get(key);let shown=false;
-if(hit&&Date.now()-hit.at<USABLE){commit(ticker,tf,hit.payload);shown=true;status.textContent='LIVE';if(Date.now()-hit.at<FRESH)return}
+/* an interval change always fetches fresh bars: a remembered payload may paint first, but it is labelled STALE and never ends the request */
+if(hit&&Date.now()-hit.at<USABLE){commit(ticker,tf,hit.payload);shown=true;status.textContent=tfChanged?'STALE':'LIVE';if(!tfChanged&&Date.now()-hit.at<FRESH)return}
 try{const payload=await get(ticker,tf);if(mine!==seq)return;commit(ticker,tf,payload);status.textContent='LIVE'}
 catch(error){if(mine!==seq)return;if(!shown){if(previous){symbol.value=previous;if(label)label.textContent='$'+previous}tfButtons(currentTf())}status.textContent='RETRY'}};
 const prefetch=()=>{const ticker=clean(symbol.value),tf=currentTf(),key=ticker+':'+tf,hit=cache.get(key);if(ticker.length<2||!/^[A-Z][A-Z0-9.:-]*$/.test(ticker)||ticker===String((window.smlAcademyChartState?.()||{}).symbol||'')||inflight.has(key)||(hit&&Date.now()-hit.at<FRESH*3))return;get(ticker,tf).catch(()=>{})};

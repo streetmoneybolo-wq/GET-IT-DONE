@@ -52,7 +52,7 @@
     + '.sml-w-slot{display:none}'
     /* customize mode */
     + '.sml-cz-chip{position:absolute;top:5px;left:5px;z-index:31;display:none;align-items:center;gap:4px;border:1px solid #2b4b5a;border-radius:6px;background:rgba(9,17,24,.92);color:#ffd27a;font:800 11px/1 system-ui,sans-serif;padding:4px 7px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5)}'
-    + 'body.sml-cz-on .sml-cz-chip{display:inline-flex}.sml-cz-chip:hover{border-color:#ffb020;color:#fff}'
+    + 'body.sml-cz-on .sml-cz-chip{display:inline-flex}.sml-cz-chip:hover{border-color:#ffb020;color:#fff}.sml-cz-chip.inrow{position:static;height:27px}'
     + 'body.sml-cz-on .sml-cz-host{outline:1px dashed rgba(255,176,32,.55);outline-offset:-1px}'
     + '#sml-cz-bar{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:2147483250;display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:min(900px,96vw);padding:7px 10px;border:1px solid #ffb020;border-radius:10px;background:rgba(26,19,5,.97);color:#ffe3b0;font:700 12px/1.3 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.6)}'
     + '#sml-cz-bar button{border:1px solid #6b5120;border-radius:6px;background:#2a1f08;color:#ffe3b0;font:800 11px/1 system-ui,sans-serif;padding:5px 8px;cursor:pointer}#sml-cz-bar button:hover{border-color:#ffb020;color:#fff}#sml-cz-bar button.done{background:#ffb020;color:#1a1305;border-color:#ffb020}'
@@ -257,12 +257,14 @@
   const cz = { on: false, open: '' };
   function chips() {
     for (const m of modules()) {
-      const el = m.el; if (!el || el.querySelector(':scope > .sml-cz-chip')) continue;
-      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+      const el = m.el; if (!el) continue;
+      const row = m.id === 'chart' ? document.querySelector('.academy-chart-tools') : null; // the chart's chip stays off the plot
+      if (row ? row.querySelector('.sml-cz-chip[data-for="chart"]') : el.querySelector(':scope > .sml-cz-chip')) continue;
+      if (!row && getComputedStyle(el).position === 'static') el.style.position = 'relative';
       el.classList.add('sml-cz-host');
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'sml-cz-chip'; b.textContent = '⚙ ' + m.label; b.title = 'Customize ' + m.label;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'sml-cz-chip' + (row ? ' inrow' : ''); b.dataset.for = m.id; b.textContent = '⚙ ' + m.label; b.title = 'Customize ' + m.label;
       b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openPanel(m.id, b); });
-      el.appendChild(b);
+      (row || el).appendChild(b);
     }
   }
   function unchips() { document.querySelectorAll('.sml-cz-chip').forEach((b) => b.remove()); document.querySelectorAll('.sml-cz-host').forEach((el) => el.classList.remove('sml-cz-host')); }

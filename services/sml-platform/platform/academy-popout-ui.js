@@ -58,6 +58,7 @@
   const css = document.createElement('style');
   css.textContent = '.sml-pop-btn{position:absolute;top:5px;right:5px;z-index:30;width:24px;height:22px;display:grid;place-items:center;border:1px solid #2b4b5a;border-radius:6px;background:rgba(9,17,24,.88);color:#9fe8c8;font:800 13px/1 system-ui;cursor:pointer;opacity:.55;transition:opacity .15s}'
     + '.sml-pop-btn:hover,.sml-pop-btn:focus-visible{opacity:1;border-color:#00c47d;outline:none}*:hover>.sml-pop-btn{opacity:.95}'
+    + '.sml-pop-btn.inrow{position:static;height:27px;width:28px;opacity:.9;margin-left:auto}'
     + 'html.sml-popout,html.sml-popout body{overflow:hidden!important;height:100%!important}'
     + '.sml-pop-hide{display:none!important}.sml-pop-show{display:block!important}.sml-pop-path{transform:none!important;filter:none!important;contain:none!important;animation:none!important}'
     + '.sml-pop-solo{position:fixed!important;inset:0!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important;overflow:auto!important;z-index:1!important}'
@@ -108,13 +109,17 @@
     if (coarse()) return;
     for (const m of modules()) {
       const el = m.el;
-      if (!el || el.querySelector(':scope > .sml-pop-btn') || (POP && m.id === POP)) continue;
-      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+      if (!el || (POP && m.id === POP)) continue;
+      // the chart's button sits in the chart tools row so nothing covers the plot or the price axis
+      const row = m.id === 'chart' ? document.querySelector('.academy-chart-tools') : null;
+      if (row ? row.querySelector('.sml-pop-btn[data-for="chart"]') : el.querySelector(':scope > .sml-pop-btn')) continue;
+      if (!row && getComputedStyle(el).position === 'static') el.style.position = 'relative';
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'sml-pop-btn'; b.textContent = '⧉';
+      b.type = 'button'; b.className = 'sml-pop-btn'; b.textContent = '⧉'; b.dataset.for = m.id;
       b.title = 'Open ' + m.label + ' as a window inside the Academy (the arrow in its title bar sends it to your browser for another screen)';
       b.setAttribute('aria-label', 'Pop out ' + m.label);
       b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); void popOut(m.id); });
+      if (row) { b.classList.add('inrow'); row.appendChild(b); continue; }
       el.appendChild(b);
       place(b);
     }

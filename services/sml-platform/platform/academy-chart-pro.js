@@ -11,6 +11,10 @@
 
   const PAD = { l: 12, r: 64, t: 18, b: 24 };
   const DEFAULT_N = 105, MIN_N = 8;
+  /* How far the view may zoom, in pixels per candle: never wider than MAX_PX (one giant candle) and never thinner than MIN_PX
+     (sub-pixel candles). The bar counts follow from the plot width, so a phone and a desktop both get sensible limits. */
+  const MIN_PX = 2.5, MAX_PX = 48;
+  const nBounds = (N, w) => { const pw = Math.max(50, (w || 0) - PAD.l - PAD.r); const lo = Math.min(N, Math.max(MIN_N, Math.ceil(pw / MAX_PX))); const hi = Math.max(lo, Math.min(N, Math.floor(pw / MIN_PX))); return [lo, hi]; };
   const defaultN = () => (stage.clientWidth && stage.clientWidth < 560 ? 48 : DEFAULT_N); // fewer, fatter candles on a phone
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   /* Drawing resolution for every chart layer. A phone screen packs 3 device pixels into each CSS pixel; four stacked full-size layers at that density is what makes dragging heavy,
@@ -62,7 +66,15 @@
   function dtOf(bars) { const n = bars.length; if (n < 2) return 60000; const d = []; for (let i = Math.max(1, n - 60); i < n; i++) { const x = bars[i].t - bars[i - 1].t; if (x > 0) d.push(x); } d.sort((a, b) => a - b); return d.length ? d[Math.floor(d.length / 2)] : 60000; }
   function syncKey(bars) {
     const key = symNow() + ':' + tfNow();
-    if (key !== V.key) { V.key = key; V.live = null; V.liveDone = null; V.n = defaultN(); V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null; loadDrawings(); return; }
+    if (key !== V.key) {
+      /* A new symbol starts clean. A new interval on the same symbol keeps the zoom and rebuilds the forming candle from the
+         prints already seen (the live feed replays them into the new period), so the newest candle never disappears. */
+      const symChanged = !V.key || V.key.split(':')[0] !== symNow();
+      V.key = key; V.live = null; V.liveDone = null; V.end = null; V.manual = null; V.lastN = bars.length; V.selected = null; V.draft = null; V.patternFocus = null;
+      if (symChanged) { V.n = defaultN(); loadDrawings(); }
+      else if (bars.length && !/T$/.test(tfNow()) && typeof window.smlLiveReplay === 'function') { const sinceT = bars[bars.length - 1].t; setTimeout(() => { try { window.smlLiveReplay(sinceT); } catch (_) { /* the next print starts the candle */ } }, 0); }
+      return;
+    }
     if (bars.length !== V.lastN) { // live update: stay glued to the live edge if the trader was there
       if (V.end != null && V.lastN && V.end >= V.lastN) V.end += bars.length - V.lastN;
       V.lastN = bars.length;
@@ -72,9 +84,10 @@
     const bars = rawBars(), N = bars.length, w = stage.clientWidth, h = stage.clientHeight;
     if (!N || !w || !h) return null;
     syncKey(bars);
-    const n = Math.round(clamp(V.n, Math.min(MIN_N, N), N));
+    const [nLo, nHi] = nBounds(N, w);
+    const n = Math.round(clamp(V.n, nLo, nHi));
     V.n = n;
-    const maxFuture = Math.floor(n * 0.9);
+    const maxFuture = Math.floor(n * 0.35); // empty space in front of the last candle: about a third of the plot at most
     const end = Math.round(clamp(V.end == null ? N + Math.max(3, Math.round(n * 0.05)) : V.end, n, N + maxFuture));
     if (V.end != null) V.end = end;
     const start = end - n;
@@ -177,8 +190,11 @@
   /* ---------- view changes ---------- */
   const setView = (n, end) => { if (n != null) V.n = n; if (end != null) V.end = end; emit(); };
   function zoomX(factor, anchorIdx, m) {
-    const nNew = clamp(Math.round(m.slots * factor), Math.min(MIN_N, m.N), m.N);
-    if (anchorIdx == null) { setView(nNew, m.end); return; }
+    const [lo, hi] = nBounds(m.N, m.w);
+    const nNew = clamp(Math.round(m.slots * factor), lo, hi);
+    if (nNew === m.slots) return;
+    // glued to the live edge (or scrolled to it): zoom around the right edge so the chart keeps following new candles
+    if (anchorIdx == null || V.end == null || m.end >= m.N) { setView(nNew, V.end == null ? undefined : m.end); return; }
     const rel = (anchorIdx - m.start) / m.slots, startNew = anchorIdx - rel * nNew;
     setView(nNew, Math.round(startNew + nNew));
   }
@@ -302,10 +318,10 @@
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x, y });
     if (!D) { V.crosshair = { x, y }; setCursor(m, x, y, e); emitLight(); return; }
     V.crosshair = { x, y };
-    if (D.mode === 'pinch') { if (pointers.size >= 2) { const [a, b] = [...pointers.values()]; const f = D.d0 / (Math.hypot(a.x - b.x, a.y - b.y) || 1), nNew = clamp(Math.round(D.n0 * f), Math.min(MIN_N, m.N), m.N), c = D.m0.idxAt(D.cx), relp = (c - D.m0.start) / D.m0.slots; setView(nNew, Math.round(c - relp * nNew + nNew)); } return; }
+    if (D.mode === 'pinch') { if (pointers.size >= 2) { const [a, b] = [...pointers.values()]; const f = D.d0 / (Math.hypot(a.x - b.x, a.y - b.y) || 1), nNew = clamp(Math.round(D.n0 * f), ...nBounds(m.N, m.w)), c = D.m0.idxAt(D.cx), relp = (c - D.m0.start) / D.m0.slots; setView(nNew, Math.round(c - relp * nNew + nNew)); } return; }
     if (D.mode === 'pan') { const dx = x - D.x0; const end = D.end0 - dx / D.step; V.end = end; D.samples.push({ t: performance.now(), x }); if (D.samples.length > 8) D.samples.shift(); if (V.manual) { const dp = (y - D.y0) / D.ph * (D.hi0 - D.lo0); V.manual = { lo: D.lo0 + dp, hi: D.hi0 + dp }; } emit(); return; }
     if (D.mode === 'yscale') { const f = Math.exp((y - D.y0) / 220); const range = (D.hi0 - D.lo0) * f; if (range > 1e-6 && range < (D.hi0 - D.lo0) * 60) { V.manual = { lo: D.p0 - (D.p0 - D.lo0) * f, hi: D.p0 + (D.hi0 - D.p0) * f }; emit(); } return; }
-    if (D.mode === 'xscale') { const nNew = clamp(Math.round(D.n0 * Math.exp(-(x - D.x0) / 220)), Math.min(MIN_N, m.N), m.N); setView(nNew, D.end0); return; }
+    if (D.mode === 'xscale') { const nNew = clamp(Math.round(D.n0 * Math.exp(-(x - D.x0) / 220)), ...nBounds(m.N, m.w)); setView(nNew, D.end0); return; }
     if (D.mode === 'draw' && V.draft) { V.draft.pts[1] = pointAt(m, x, y, true); if (Math.hypot(x - V.draft.x0, y - V.draft.y0) > 5) V.draft.moved = true; emit(); return; }
     if (D.mode === 'anchor') { const d = drawings.find((k) => k.id === D.id); if (d) { d.pts[D.ai] = pointAt(m, x, y, true); emit(); } return; }
     if (D.mode === 'move') { const d = drawings.find((k) => k.id === D.id); if (!d) return; const now = pointAt(m, x, y, false), dt = now.t - D.last.t, dp = now.p - D.last.p; d.pts = d.pts.map((p) => ({ t: p.t + dt, p: p.p + dp })); D.last = now; D.moved = true; emit(); }
@@ -541,10 +557,11 @@
       lctx.globalAlpha = 1; lctx.font = '800 10px system-ui'; lctx.textAlign = 'left';
       const lx = clamp(m.x(p.startIdx), PAD.l + 2, m.w - PAD.r - 130), ly = clamp(m.y(Math.max(...(pts.length ? pts.map((q2) => q2.p) : [p.level || 0]))) - 12, PAD.t + 10, m.h - PAD.b - 6);
       const label = human(p.name) + ' · ' + p.status + ' ' + Math.round(p.confidence * 100) + '%', tw = lctx.measureText(label).width;
-      lctx.fillStyle = 'rgba(7,16,24,.88)'; lctx.fillRect(lx - 3, ly - 10, tw + 8, 15); lctx.fillStyle = c; lctx.fillText(label, lx + 1, ly + 1);
+      // labels only when the candles are wide enough to read them, or when the pattern is the focused one; never in CLEAN
+      if (focus || (m.step >= 6 && !(window.smlChartClean && window.smlChartClean()))) { lctx.fillStyle = 'rgba(7,16,24,.88)'; lctx.fillRect(lx - 3, ly - 10, tw + 8, 15); lctx.fillStyle = c; lctx.fillText(label, lx + 1, ly + 1); }
       lctx.restore();
     });
-    if (F.candles) {
+    if (F.candles && m.step >= 5 && !(window.smlChartClean && window.smlChartClean())) {
       lctx.save(); lctx.font = '800 8px ui-monospace,monospace'; lctx.textAlign = 'center';
       const seen = {};
       (r.candles || []).forEach((cp) => {
