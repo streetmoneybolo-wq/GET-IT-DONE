@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.2.3
+ * Version: 1.2.4
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.2.3' );
+define( 'SML_DS_VERSION', '1.2.4' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -125,6 +125,8 @@ function sml_ds_login_head() { echo sml_ds_head_html(); } // phpcs:ignore WordPr
 add_filter( 'login_headerurl', 'sml_ds_login_headerurl' );
 function sml_ds_login_headerurl() { return home_url( '/' ); }
 add_filter( 'login_headertext', 'sml_ds_login_headertext' );
+add_filter( 'login_title', 'sml_ds_login_title', 20 );
+function sml_ds_login_title( $title ) { return sml_ds_dashes( str_replace( array( ' &#8212; WordPress', ' — WordPress' ), '', (string) $title ) ); }
 function sml_ds_login_headertext() { return 'Stock Market Loop'; }
 
 /* Plain punctuation in everything WordPress prints: a spaced dash becomes a colon after a short lead-in ("Market news: timely coverage")

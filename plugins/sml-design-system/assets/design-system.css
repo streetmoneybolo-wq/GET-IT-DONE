@@ -184,6 +184,8 @@ body.login.sml-ds #nav a, body.login.sml-ds #backtoblog a, body.login.sml-ds .pr
 body.login.sml-ds #nav a:hover, body.login.sml-ds #backtoblog a:hover { color: var(--sml-text) !important; }
 body.login.sml-ds .privacy-policy-page-link { margin-top: 16px; text-align: center; }
 body.login.sml-ds #jetpack-sso-wrap__action { color: var(--sml-muted); }
+body.login.sml-ds .jetpack-sso-or:before, body.login.sml-ds .jetpack-sso-then:before { background: var(--sml-line-2); }
+body.login.sml-ds .jetpack-sso-or span, body.login.sml-ds .jetpack-sso-then span { background: var(--sml-panel); color: var(--sml-dim); font-family: var(--sml-mono); font-size: 11px; letter-spacing: .08em; }
 body.login.sml-ds .login-action-login .forgetmenot label { color: var(--sml-muted); }
 
 
