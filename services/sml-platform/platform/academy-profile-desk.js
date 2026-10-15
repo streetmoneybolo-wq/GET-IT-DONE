@@ -97,7 +97,7 @@
   const turb = (bf, oct, seed, type) => '<feTurbulence type="' + (type || 'fractalNoise') + '" baseFrequency="' + bf + '" numOctaves="' + oct + '" seed="' + seed + '" stitchTiles="stitch" result="n"/>';
   const lit = (surf, elev, az, col) => '<feDiffuseLighting in="n" surfaceScale="' + surf + '" diffuseConstant="1" lighting-color="' + (col || '#fff') + '"><feDistantLight azimuth="' + (az || 225) + '" elevation="' + elev + '"/></feDiffuseLighting>';
   const shine = (surf, elev, exp) => '<feSpecularLighting in="n" surfaceScale="' + surf + '" specularConstant="1.1" specularExponent="' + exp + '" lighting-color="#fff"><feDistantLight azimuth="225" elevation="' + elev + '"/></feSpecularLighting>';
-  const veins = (bf, seed, r, g, b, k) => turb(bf, 5, seed, 'turbulence') + '<feColorMatrix type="matrix" values="0 0 0 0 ' + r + ' 0 0 0 0 ' + g + ' 0 0 0 0 ' + b + ' ' + (-k) + ' 0 0 0 ' + (k * 0.1) + '"/>';
+  const veins = (bf, seed, r, g, b, k) => turb(bf, 4, seed) + '<feColorMatrix type="matrix" values="0 0 0 0 ' + r + ' 0 0 0 0 ' + g + ' 0 0 0 0 ' + b + ' 1 0 0 0 0"/><feComponentTransfer><feFuncA type="table" tableValues="' + k + '"/></feComponentTransfer>';
   /* [filter, blend, opacity] */
   const paperFibre = (seed, op) => [turb('0.045 0.05', 5, seed) + lit(1.6, 62, 225), 'multiply', op || 0.5];
   const GRAIN = {
@@ -111,7 +111,7 @@
     'leather': [turb('0.32', 3, 12) + lit(2.4, 30, 225), 'overlay', 0.7],
     'walnut': [turb('0.006 0.2', 5, 4) + lit(2.6, 31, 190), 'overlay', 0.9],
     'oak': [turb('0.008 0.14', 5, 7) + lit(2.6, 33, 190), 'overlay', 0.85],
-    'marble': [veins('0.005 0.008', 15, 0.2, 0.24, 0.33, 9), 'multiply', 1],
+    'marble': [veins('0.006 0.011', 15, 0.22, 0.26, 0.36, '0 0 0 0 0.2 0.8 0.2 0 0 0 0'), 'multiply', 0.7],
     'green-felt': [turb('0.9', 2, 5) + lit(1.1, 32, 225), 'overlay', 0.8],
     'cork-board': [turb('0.07', 4, 13) + lit(2.2, 31, 225), 'overlay', 0.55],
     'crt-terminal': [turb('0.9 0.5', 2, 23) + lit(0.6, 33, 225), 'overlay', 0.3],
@@ -119,6 +119,10 @@
     'slate': [turb('0.012 0.05', 5, 18) + lit(2.8, 30, 225), 'overlay', 0.85],
     'frosted-glass': [turb('0.8', 2, 20) + lit(0.5, 45, 225), 'soft-light', 0.55]
   };
+  const FILM = svgUri(turb('0.9', 2, 31) + '<feColorMatrix type="saturate" values="0"/>');
+  const GLOSS = { 'brushed-steel': 0.5, 'brass-plate': 0.5, marble: 0.42, 'frosted-glass': 0.36, 'carbon-fiber': 0.38, leather: 0.26, 'crt-terminal': 0.3, slate: 0.2, walnut: 0.2, oak: 0.14, 'green-felt': 0.04, 'cork-board': 0.05, concrete: 0.08 };
+  const PAPER = ['legal-pad', 'graph-paper', 'manila-folder', 'index-card', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'sticky-note', 'parchment'];
+  const LIGHT_ANGLE = { 'desk-lamp': 225, 'window-sun': 135, 'monitor-glow': 0, 'neon-sweep': 160, 'golden-hour': 45, spotlight: 180 };
   for (const t of TEX) {
     const sel = '.pv-sec.tx-' + t[0] + '.tx-' + t[0] + ',.pd-sw.tx-' + t[0] + '.tx-' + t[0];
     const dark = ['#f', '#e', '#6', '#a'].indexOf(t[2].slice(0, 2)) >= 0 || t[2] === 'var(--acc)';
@@ -142,10 +146,20 @@
     + '.dk-nyse-floor .pv-sec,.dk-steel-trader .pv-sec{border-radius:6px}'
     + '.pv-sec.orb{padding:10px 10px 6px;overflow:visible}.pv-sec.orb{background:transparent;border-color:transparent;box-shadow:none}'
     + '@media(min-width:900px){.pv-sec.orb{grid-area:orb}}'
+    /* realism: light from the lamp / sun / screen falls across every module (lit side, shaded side), a glare slides over glossy
+       materials as the pointer moves, the page tilts a little toward the pointer over a desk that shifts the other way (depth),
+       and a faint film grain sits over everything like a photograph */
+    + '.pv-sec[class*=tx-]:after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(var(--la,150deg),rgba(255,255,255,.22),rgba(255,255,255,0) 42%,rgba(0,0,0,.24) 100%);mix-blend-mode:soft-light;z-index:1}'
+    + '.pv-sec[class*=tx-]>*:not(.pd-d){position:relative;z-index:3}'
+    + '.pv-sec[class*=tx-]{rotate:var(--rot,0deg)}.pd-glare{inset:0;border-radius:inherit;background:radial-gradient(circle at var(--gx,30%) var(--gy,0%),rgba(255,255,255,var(--gl,.2)),rgba(255,255,255,0) 55%);mix-blend-mode:soft-light;z-index:2}'
+    + '.pd-film{position:fixed;left:-20%;top:-20%;width:140%;height:140%;pointer-events:none;z-index:6;opacity:.1;mix-blend-mode:overlay;animation:pdfilm .7s steps(6) infinite}'
+    + '@keyframes pdfilm{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-3%)}60%{transform:translate(-2%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}'
+    + '.pd-desk{filter:blur(.7px) saturate(1.06) contrast(1.04)}.pv-root.pd-tilt{will-change:transform}'
+    + '@media(prefers-reduced-motion:reduce){.pd-film{animation:none}}'
     /* modules that move with the music: each listens to one part of the sound (kick, bass, vocal, snare, hi-hats) */
     + '.pv-sec[data-rx]{will-change:scale,translate,rotate}.pd-rx{inset:-1px;border-radius:inherit;opacity:calc(var(--rx,0) * .9);box-shadow:0 0 calc(10px + var(--rx,0) * 26px) 2px var(--rxc,var(--acc,#00c47d)),inset 0 0 calc(var(--rx,0) * 18px) var(--rxc,var(--acc,#00c47d));z-index:3}'
     + '.pv-sec[data-rx=kick]{scale:calc(1 + var(--rx,0) * .034)}.pv-sec[data-rx=bass]{translate:0 calc(var(--rx,0) * -4px);scale:calc(1 + var(--rx,0) * .01)}.pv-sec[data-rx=vocal]{scale:calc(1 + var(--rx,0) * .014)}.pv-sec[data-rx=vocal] .pd-rx{--rxc:var(--acc2,#6c8cff)}'
-    + '.pv-sec[data-rx=snare]{rotate:calc(var(--rx,0) * .45deg);scale:calc(1 + var(--rx,0) * .016)}.pv-sec[data-rx=snare] .pd-rx{--rxc:#ffffff}.pv-sec[data-rx=hats]{translate:calc(var(--rx,0) * 2px) 0;scale:calc(1 + var(--rx,0) * .008)}.pv-sec[data-rx=hats] .pd-rx{--rxc:#ffe9a6}'
+    + '.pv-sec[data-rx=snare]{rotate:calc(var(--rot,0deg) + var(--rx,0) * .45deg);scale:calc(1 + var(--rx,0) * .016)}.pv-sec[data-rx=snare] .pd-rx{--rxc:#ffffff}.pv-sec[data-rx=hats]{translate:calc(var(--rx,0) * 2px) 0;scale:calc(1 + var(--rx,0) * .008)}.pv-sec[data-rx=hats] .pd-rx{--rxc:#ffe9a6}'
     /* the 3D gallery */
     + '.pd-orbit{position:relative;height:340px;perspective:1100px;overflow:hidden;cursor:grab;touch-action:pan-y;-webkit-user-select:none;user-select:none}.pd-orbit.drag{cursor:grabbing}'
     + '.pd-stage{position:absolute;inset:0;transform-style:preserve-3d}'
@@ -247,7 +261,7 @@
   };
 
   /* ---------- the running scene: lighting, orbs, gallery ---------- */
-  const R = { raf: 0, view: null, light: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
+  const R = { raf: 0, view: null, light: null, root: null, deskEl: null, glares: [], scene: false, mx: 0, my: 0, px: 0, py: 0, cx: -1, cy: -1, onMove: null, moveOn: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
   const rnd = (a, b) => a + Math.random() * (b - a);
   function shade(hex, k) {
     const m = /^#([0-9a-f]{6})$/i.exec(String(hex)); if (!m) return '#334455';
@@ -361,6 +375,12 @@
   function frame(t) {
     const p = R.pulse ? R.pulse() : { p: 0 }, lvl = p.p || 0;
     R.ch = p.ch || null;
+    if (R.scene && !R.reduce) {
+      R.px += (R.mx - R.px) * 0.07; R.py += (R.my - R.py) * 0.07;
+      if (R.root) R.root.style.transform = 'perspective(1500px) rotateX(' + f1(R.py * -1.1 * 1000) / 1000 + 'deg) rotateY(' + f1(R.px * 1.5 * 1000) / 1000 + 'deg)';
+      if (R.deskEl) R.deskEl.style.transform = 'translate(' + f1(-R.px * 14) + 'px,' + f1(-R.py * 10) + 'px) scale(1.05)';
+      if (R.cx >= 0) for (const g of R.glares) { const r = g.el.getBoundingClientRect(); if (r.width) { g.el.style.setProperty('--gx', f1((R.cx - r.left) / r.width * 100) + '%'); g.el.style.setProperty('--gy', f1((R.cy - r.top) / r.height * 100) + '%'); } }
+    }
     for (const m of R.mods) m.el.style.setProperty('--rx', R.ch ? String(Math.round(Math.max(0, Math.min(1, R.ch[m.c] || 0)) * 100) / 100) : '0');
     if (R.light) drawLight(R.light.getContext('2d'), R.w, R.h, t, lvl);
     if (R.orbs) drawOrbs(R.orbs.getContext('2d'), R.w, R.h, t, lvl);
@@ -376,6 +396,7 @@
     if (R.raf) cancelAnimationFrame(R.raf); R.raf = 0;
     if (R.resize) window.removeEventListener('resize', R.resize); R.resize = null;
     R.light = R.orbs = R.orbit = null; R.view = null; R.mods = []; R.modes = []; R.ch = null;
+    if (R.onMove && R.moveOn) R.moveOn.removeEventListener('pointermove', R.onMove); R.onMove = null; R.moveOn = null; R.root = R.deskEl = null; R.glares = []; R.scene = false;
   }
   function openLink(url) { if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } }
   function wireOrbit(box) {
@@ -413,7 +434,7 @@
     root.classList.add('dk-' + desk);
     /* layers: desk scene, light, vignette sit behind the page; orbs fly over it */
     const fx = view.querySelector('.pv-fx');
-    if (desk !== 'none') { const d = document.createElement('div'); d.className = 'pd-desk'; d.innerHTML = deskSvg(desk); view.insertBefore(d, view.firstChild); if (fx) fx.style.opacity = '.3'; view.style.background = '#05080e'; }
+    if (desk !== 'none') { const d = document.createElement('div'); d.className = 'pd-desk'; d.innerHTML = deskSvg(desk); view.insertBefore(d, view.firstChild); R.deskEl = d; if (fx) fx.style.opacity = '.3'; view.style.background = '#05080e'; }
     if (lightList.length) {
       const c = document.createElement('canvas'); c.className = 'pd-light'; view.insertBefore(c, root); R.light = c; R.modes = lightList; R.mode = lightList[0]; motes();
       const v = document.createElement('div'); v.className = 'pd-vig'; view.insertBefore(v, root);
@@ -435,13 +456,27 @@
       if (id && DECO[id]) kinds.push(DECO[id]);
       const dd = DESK_DECO[desk]; if (dd) kinds.push(dd[i % dd.length]);
       for (const kd of kinds) { const i2 = document.createElement('i'); i2.className = 'pd-d pd-' + kd; el.appendChild(i2); }
+      if (id) {
+        const gl = document.createElement('i'); gl.className = 'pd-d pd-glare'; gl.style.setProperty('--gl', String(GLOSS[id] || 0.1)); el.appendChild(gl); R.glares.push({ el: gl });
+        if (PAPER.indexOf(id) >= 0) el.style.setProperty('--rot', f1((((k * 37) % 11) - 5) * 0.12) + 'deg');
+      }
       const want = key ? (reacts[key] || DEF[key] || '') : '';
       if (M && want && want !== 'off') { el.setAttribute('data-rx', want); const g = document.createElement('i'); g.className = 'pd-d pd-rx'; el.appendChild(g); R.mods.push({ el: el, c: want }); }
     });
+    /* the scene: light direction, depth, film grain */
+    R.scene = desk !== 'none' || pool.length > 0 || lightList.length > 0 || Object.keys(byModule).length > 0;
+    if (R.scene) {
+      root.style.setProperty('--la', (lightList.length ? LIGHT_ANGLE[lightList[0]] : 150) + 'deg');
+      root.classList.add('pd-tilt'); R.root = root;
+      const film = document.createElement('div'); film.className = 'pd-film'; film.style.backgroundImage = FILM; view.appendChild(film);
+      R.mx = R.my = R.px = R.py = 0; R.cx = -1;
+      R.onMove = (e) => { R.mx = (e.clientX / Math.max(1, innerWidth) - 0.5) * 2; R.my = (e.clientY / Math.max(1, innerHeight) - 0.5) * 2; R.cx = e.clientX; R.cy = e.clientY; };
+      R.moveOn = view; view.addEventListener('pointermove', R.onMove, { passive: true });
+    }
     /* the 3D gallery */
     const box = root.querySelector('.pd-orbit');
     if (box) { R.orbit = box; wireOrbit(box); R.spin = 0.18; }
-    if (R.light || R.orbs || R.orbit || R.mods.length) {
+    if (R.light || R.orbs || R.orbit || R.mods.length || R.scene) {
       R.resize = () => size(); window.addEventListener('resize', R.resize); size();
       if (!R.reduce) R.raf = requestAnimationFrame(frame);
     }

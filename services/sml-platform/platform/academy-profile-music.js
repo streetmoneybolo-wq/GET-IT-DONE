@@ -52,8 +52,8 @@
   const hostMsg = (frame, provider, cmd) => {
     try {
       if (!frame || !frame.contentWindow) return;
-      if (provider === 'youtube') frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: cmd === 'pause' ? 'pauseVideo' : 'playVideo', args: [] }), '*');
-      else if (provider === 'soundcloud') frame.contentWindow.postMessage(JSON.stringify({ method: cmd === 'pause' ? 'pause' : 'play' }), '*');
+      if (provider === 'youtube') frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: cmd === 'pause' ? 'pauseVideo' : cmd === 'unmute' ? 'unMute' : 'playVideo', args: [] }), '*');
+      else if (provider === 'soundcloud' && cmd !== 'unmute') frame.contentWindow.postMessage(JSON.stringify({ method: cmd === 'pause' ? 'pause' : 'play' }), '*');
     } catch (_) { /* the embed is not ready yet */ }
   };
 
@@ -132,9 +132,37 @@
   const fmt = (s) => (Number.isFinite(s) ? Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0') : '0:00');
 
   function setPlaying(on) {
-    D.playing = on; if (D.el) { const b = D.el.querySelector('[data-dk=play]'); if (b) b.textContent = on ? '❚❚ Pause' : '▶ Play'; D.el.classList.toggle('blocked', false); }
+    D.playing = on; if (D.el) { const b = D.el.querySelector('[data-dk=play]'); if (b) b.textContent = on ? '❚❚ Pause' : '▶ Play'; if (on) unblock(); }
     if (D.onState) D.onState(on);
   }
+  function block(text) { if (!D.el) return; const t = D.el.querySelector('.dk-tap'); if (t && text) t.textContent = text; D.el.classList.add('blocked'); }
+  function unblock() { if (D.el) D.el.classList.remove('blocked'); }
+  /* the song is heard first; the live analysis joins in only once the browser lets the audio engine run (a suspended engine would
+     swallow the sound), and until then the page moves to a beat clock */
+  function tryAnalyse() {
+    const a = D.audio; if (!a || a.paused) return;
+    try { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; E.ctx = E.ctx || new AC(); } catch (_) { return; }
+    if (E.ctx.state === 'suspended') E.ctx.resume().catch(() => {});
+    if (E.ctx.state === 'running') { if (E.el !== a) { if (attach(a)) E.mode = 'live'; } else E.mode = 'live'; }
+    else if (E.mode !== 'clock') clock(D.song && D.song.bpm);
+  }
+  function onMsg(e) {
+    if (!D.frame || !D.emb || e.source !== D.frame.contentWindow) return;
+    let m = e.data; if (typeof m === 'string') { try { m = JSON.parse(m); } catch (_) { return; } }
+    if (!m || typeof m !== 'object') return;
+    const on = () => { unblock(); if (!D.playing) setPlaying(true); if (E.mode !== 'clock') clock(D.song && D.song.bpm); };
+    const off = () => { if (D.playing) setPlaying(false); idle(); };
+    if (D.emb.provider === 'youtube') {
+      const st = m.event === 'onStateChange' ? m.info : (m.info && typeof m.info.playerState === 'number' ? m.info.playerState : null);
+      if (typeof st === 'number') { D.ytState = st; if (st === 1) on(); else if (st === 2 || st === 0) off(); }
+      if (m.info && m.info.muted === true && D.ytState === 1 && !D.userPaused) { try { D.frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (_) { /* fine */ } }
+    } else if (D.emb.provider === 'soundcloud') {
+      if (m.method === 'play') on(); else if (m.method === 'pause' || m.method === 'finish') off();
+    }
+  }
+  window.addEventListener('message', onMsg);
+  /* Spotify and Apple Music tell the page nothing; a click inside their player moves focus into the frame */
+  window.addEventListener('blur', () => { if (D.emb && D.frame && document.activeElement === D.frame && !D.playing && (D.emb.provider === 'spotify' || D.emb.provider === 'apple')) { D.userPaused = false; unblock(); setPlaying(true); clock(D.song.bpm); } });
   function tick() {
     D.raf = requestAnimationFrame(tick);
     if (!D.el) return;
@@ -145,12 +173,12 @@
     const a = D.audio; if (!a) return;
     resume();
     const p = a.play(); if (!p || !p.then) { setPlaying(true); return; }
-    p.then(() => { E.mode = 'live'; setPlaying(true); }).catch(() => { setPlaying(false); if (auto) { D.el.classList.add('blocked'); arm(); } });
+    p.then(() => { setPlaying(true); tryAnalyse(); }).catch(() => { setPlaying(false); if (auto) { block('▶ Tap to start the music'); arm(); } });
   }
   /* browsers hold autoplay back until the person has touched the page; the first tap, click or key press anywhere starts it */
   function arm() {
     if (D.armed) return;
-    const go = () => { cancel(); if (D.userPaused) return; if (D.audio) playAudio(false); else if (D.emb) { hostMsg(D.frame, D.emb.provider, 'play'); setPlaying(true); } };
+    const go = () => { cancel(); if (D.userPaused) return; if (D.audio) { if (D.audio.paused) playAudio(false); else tryAnalyse(); } else if (D.emb) { hostMsg(D.frame, D.emb.provider, 'play'); hostMsg(D.frame, D.emb.provider, 'unmute'); } };
     const cancel = () => { for (const t of ['pointerdown', 'keydown']) window.removeEventListener(t, go, true); D.armed = null; };
     for (const t of ['pointerdown', 'keydown']) window.addEventListener(t, go, true);
     D.armed = cancel;
@@ -158,14 +186,15 @@
   function toggle() {
     if (!D.el) return;
     if (D.audio) { if (D.audio.paused) { D.userPaused = false; playAudio(false); } else { D.userPaused = true; D.audio.pause(); setPlaying(false); } return; }
-    if (D.emb) { if (D.playing) { D.userPaused = true; hostMsg(D.frame, D.emb.provider, 'pause'); setPlaying(false); idle(); } else { D.userPaused = false; hostMsg(D.frame, D.emb.provider, 'play'); setPlaying(true); clock(D.song.bpm); } }
+    if (D.emb) { if (D.playing) { D.userPaused = true; hostMsg(D.frame, D.emb.provider, 'pause'); setPlaying(false); idle(); } else { D.userPaused = false; hostMsg(D.frame, D.emb.provider, 'play'); hostMsg(D.frame, D.emb.provider, 'unmute'); } }
   }
   function unmount() {
     if (D.raf) cancelAnimationFrame(D.raf); D.raf = 0;
     if (D.armed) D.armed();
+    if (D.iv) clearInterval(D.iv); D.iv = 0;
     if (D.audio) { try { D.audio.pause(); } catch (_) { /* fine */ } D.audio.remove(); }
     if (D.el) D.el.remove();
-    D.el = D.audio = D.frame = D.emb = D.song = D.bars = D.prog = null; D.playing = false; D.userPaused = false;
+    D.el = D.audio = D.frame = D.emb = D.song = D.bars = D.prog = null; D.playing = false; D.userPaused = false; D.ytState = -1;
     detach();
   }
   /* mount(song, ctx): ctx = { userId, token, accent, onState(playing) }; returns false when there is nothing the dock can play */
@@ -190,14 +219,14 @@
         + '<p class="dk-note">' + esc(emb.label) + ' plays here. The page moves to a beat clock at ' + esc(String(song.bpm || 110)) + ' BPM (a site cannot listen inside ' + esc(emb.label) + '). Use a direct MP3 link to react to the real instruments.</p>';
     }
     el.innerHTML = '<div class="dk-h"><div class="dk-t"><b>♫ ' + esc(title) + '</b><small>' + (isAudio ? 'Academy player' : esc(emb.label) + ' · in the Academy') + '</small></div>'
-      + (isAudio ? '<button type="button" class="go" data-dk="play">▶ Play</button>' : '<button type="button" data-dk="play">❚❚ Pause</button>')
+      + (isAudio ? '<button type="button" class="go" data-dk="play">▶ Play</button>' : (emb.provider === 'youtube' || emb.provider === 'soundcloud' ? '<button type="button" class="go" data-dk="play">▶ Play</button>' : ''))
       + '<button type="button" data-dk="min" title="Minimise">▁</button></div><div class="dk-tap" data-dk="tap">▶ Tap to start the music</div><div class="dk-b">' + body + '</div>';
     document.body.appendChild(el); D.el = el;
     D.bars = [...el.querySelectorAll('.dk-ch span i')]; D.prog = el.querySelector('[data-dk=bar]'); D.time = el.querySelector('[data-dk=time]'); D.frame = el.querySelector('[data-dk=frame]');
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-dk]'); if (!b) return;
       const k = b.getAttribute('data-dk');
-      if (k === 'play') toggle(); else if (k === 'tap') { D.userPaused = false; if (D.audio) playAudio(false); else { hostMsg(D.frame, D.emb.provider, 'play'); setPlaying(true); } }
+      if (k === 'play') toggle(); else if (k === 'tap') { D.userPaused = false; if (D.audio) { playAudio(false); tryAnalyse(); } else { hostMsg(D.frame, D.emb.provider, 'play'); hostMsg(D.frame, D.emb.provider, 'unmute'); unblock(); } }
       else if (k === 'min') { el.classList.toggle('min'); b.textContent = el.classList.contains('min') ? '▢' : '▁'; }
       else if (k === 'bar' && D.audio && D.audio.duration > 0) { const r = b.getBoundingClientRect(); D.audio.currentTime = D.audio.duration * Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); }
     });
@@ -207,14 +236,25 @@
       a.src = '/academy-activity/profiles/' + encodeURIComponent(ctx.userId) + '/audio?t=' + encodeURIComponent(ctx.token);
       el.appendChild(a); D.audio = a;
       a.addEventListener('error', () => { if (ctx.onError) ctx.onError('That song link could not be played here. Use a direct MP3 or M4A link, or a YouTube / Spotify / SoundCloud link.'); setPlaying(false); });
-      a.addEventListener('pause', () => { if (!a.ended) setPlaying(false); }); a.addEventListener('playing', () => { E.mode = 'live'; setPlaying(true); });
-      if (!attach(a)) E.mode = 'clock', E.bpm = song.bpm || 110, E.t0 = performance.now();
+      a.addEventListener('pause', () => { if (!a.ended) setPlaying(false); }); a.addEventListener('playing', () => { setPlaying(true); tryAnalyse(); });
+      D.iv = setInterval(tryAnalyse, 500);
       playAudio(true);
     } else {
-      /* the embed starts itself (autoplay=1, allowed for this frame); the beat clock runs with it */
-      clock(song.bpm); setPlaying(true);
-      const first = () => { if (!D.userPaused) hostMsg(D.frame, emb.provider, 'play'); };
-      D.frame.addEventListener('load', () => { setTimeout(first, 700); });
+      /* the embed asks to start itself (autoplay=1); YouTube and SoundCloud report back when it really plays, and only then does
+         the beat clock run. If nothing plays within a few seconds the dock says so and how to start it. */
+      D.ytState = -1; idle(); setPlaying(false);
+      D.frame.addEventListener('load', () => {
+        try {
+          if (emb.provider === 'youtube') D.frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+          if (emb.provider === 'soundcloud') for (const ev of ['play', 'pause', 'finish']) D.frame.contentWindow.postMessage(JSON.stringify({ method: 'addEventListener', value: ev }), '*');
+        } catch (_) { /* fine */ }
+        setTimeout(() => { if (!D.userPaused) { hostMsg(D.frame, emb.provider, 'play'); } }, 700);
+        setTimeout(() => {
+          if (D.playing || !D.el) return;
+          if (emb.provider === 'youtube' || emb.provider === 'soundcloud') block('▶ Tap to start the music');
+          else block('Press ▶ in the ' + emb.label + ' player to start (' + emb.label + ' does not allow autoplay)');
+        }, 3500);
+      });
       arm();
     }
     D.raf = requestAnimationFrame(tick);
