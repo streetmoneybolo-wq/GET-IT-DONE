@@ -42,6 +42,8 @@ const { createPopoutService, validModule: validPopoutModule, validSymbol: validP
 const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey: academyLayoutKey } = require('./academy-layout');
 const { createCandleRecap } = require('./academy-candle-recap');
 const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
+const { createStoryDesk, createLettersPublisher, createPolisher } = require('./academy-story-desk');
+const { createNewsHeat } = require('./academy-story-engine');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
@@ -1761,7 +1763,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
-  getCandleRecap = () => null,
+  getCandleRecap = () => null, getStoryDesk = () => null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -3205,6 +3207,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Story desk (academy-story-desk.js): owner only. GET = status; POST /write { symbol, publish } = one piece on demand. */
+    if (path === '/academy-activity/story' || path === '/academy-activity/story/write') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!OWNER_IDS.includes(String(session.userId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      const desk = getStoryDesk();
+      if (!desk) { sendJson(response, 503, { ok: false, error: 'story_desk_off' }); return; }
+      try {
+        if (request.method === 'GET') { sendJson(response, 200, { ok: true, ...(await desk.status()) }); return; }
+        if (request.method === 'POST' && path === '/academy-activity/story/write') {
+          const raw = await readRequestBody(request, 2_048).catch(() => null);
+          let body = {}; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : {}; } catch (_) { body = {}; }
+          const symbol = String(body.symbol || '').toUpperCase();
+          if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+          sendJson(response, 200, await desk.write(symbol, { publish: body.publish === true }));
+          return;
+        }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      } catch (error) { logger('error', 'academy_story_failed', { error }); sendJson(response, 503, { ok: false, error: 'story_unavailable' }); }
+      return;
+    }
+
     /* Candle recap (academy-candle-recap.js): one higher-timeframe candle read in full. Any signed-in member. */
     if (request.method === 'GET' && path === '/academy-activity/candle-recap') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -4266,6 +4291,48 @@ async function main() {
       .then((r) => log('info', 'push_signal', { symbol: sig.symbol, style: sig.style, ...r }))
       .catch((error) => log('warn', 'push_signal_failed', { error }));
   };
+  /* Story desk: the Academy's reads on the names in play, turned into speculative, SEO-ready Loop Letters under the owner's
+     byline, each with a GIF of the path to the price target. Drafts unless SML_STORY_AUTOPUBLISH=on and the signed-in WordPress
+     account (SML_LETTERS_USERNAME / SML_LETTERS_APP_PASSWORD, else the news account) is the byline's own account. SML_STORY_DESK=off
+     switches it off; SML_STORY_LLM=on lets the newsroom model polish the voice (never the numbers). */
+  const STORY_DESK_ON = String(process.env.SML_STORY_DESK || 'on').toLowerCase() !== 'off';
+  const storyPublisher = createLettersPublisher({ siteUrl: config.wordpressUrl, username: process.env.SML_LETTERS_USERNAME || config.wordpressUsername, appPassword: process.env.SML_LETTERS_APP_PASSWORD || config.wordpressAppPassword, authorId: Number(process.env.SML_LETTERS_AUTHOR_ID) || 258456581, logger: log });
+  const storyDesk = STORY_DESK_ON && marketHistory && marketHistory.enabled ? createStoryDesk({
+    universe: async () => {
+      const seen = new Set(), rows = [];
+      const push = (r) => { const sym = String(r && r.symbol || '').toUpperCase(); if (!sym || seen.has(sym)) return; seen.add(sym); rows.push({ symbol: sym, price: Number(r.price) || null, changePct: Number(r.changePct) || null, volume: Number(r.volume) || null, name: r.name || '' }); };
+      if (academyWideScanner) { try { const w = await academyWideScanner.get(150); (w && w.rows || []).forEach(push); } catch (_) { /* next source */ } }
+      if (academyAlerts) { try { academyAlerts.active().forEach((a) => push({ symbol: a.symbol })); } catch (_) { /* next source */ } }
+      try { const pb = getEarningsPlaybook(); if (pb) (await pb.window(7) || []).forEach((e) => push({ symbol: e.symbol })); } catch (_) { /* next source */ }
+      try { const rd = getCatalystRadar(); if (rd) { const sc = await rd.scan({ limit: 40 }); (sc && sc.rows || []).forEach(push); } } catch (_) { /* next source */ }
+      return rows;
+    },
+    candles: (symbol, tf) => sentimentCandles(symbol, tf),
+    gamma: academyGamma || null,
+    shortData: academyAlerts ? (sym) => academyAlerts.shortData(sym) : null,
+    finra: getCandleRecap() ? getCandleRecap().finra : null,
+    institutional: academyInstitutional || null,
+    darkPool: async (sym) => { const rows = await marketHistory.trades(sym, 50_000); return sessionDarkPool(rows, { now: Date.now() }); },
+    smc: (() => { try { return require('./academy-smart-money'); } catch (_) { return null; } })(),
+    sentiment: academySentiment || null,
+    earnings: academyAlerts ? (sym) => academyAlerts.nextEarnings(sym) : null,
+    playbook: (sym) => { const pb = getEarningsPlaybook(); return pb && typeof pb.detail === 'function' ? pb.detail(sym) : null; },
+    direction: marketDirection ? () => marketDirection.get('swing') : null,
+    runner: (() => { try { return require('./academy-runner'); } catch (_) { return null; } })(),
+    company: academyAlerts && typeof academyAlerts.company === 'function' ? (sym) => academyAlerts.company(sym) : null,
+    heat: createNewsHeat({ logger: log }),
+    publisher: storyPublisher,
+    polisher: createPolisher({ apiKey: String(process.env.SML_STORY_LLM || '').toLowerCase() === 'on' ? config.openaiApiKey : '', model: config.openaiModel, logger: log }),
+    dm: discordDm, ownerIds: [...OWNER_IDS],
+    store: createPgStateStore({ pool: database.pool, key: 'story-desk', defaultValue: () => ({ written: {}, log: [], day: '', count: 0 }), logger: log }),
+    marketState: (t) => marketState(t), autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', logger: log
+  }) : null;
+  const getStoryDesk = () => storyDesk;
+  if (storyDesk) {
+    const runStoryDesk = () => storyDesk.tick().then((r) => { if (r && !r.skipped) log('info', 'story_desk_tick', { scanned: r.scanned, candidates: r.candidates, ranked: r.ranked, filed: r.filed, results: (r.results || []).map((x) => x.symbol + ':' + x.angle + ':' + (x.error || (x.published ? 'published' : 'draft'))) }); }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));
+    setTimeout(runStoryDesk, 3 * 60_000).unref(); setInterval(runStoryDesk, 30 * 60_000).unref();
+    log('info', 'story_desk_enabled', { autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', llm: String(process.env.SML_STORY_LLM || '').toLowerCase() === 'on', letters: storyPublisher.configured() });
+  }
   const signalRadar = process.env.ACADEMY_SIGNAL_RADAR === 'off' ? null : createSignalRadar({
     universe: async () => {
       const cap = Math.max(50, Math.min(500, Number(process.env.ACADEMY_SIGNAL_RADAR_UNIVERSE) || 300));
@@ -4374,7 +4441,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
