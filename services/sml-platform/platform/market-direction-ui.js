@@ -20,12 +20,61 @@
     + '.smd-check{list-style:none;margin:0;padding:0}.smd-check li{display:flex;gap:7px;padding:4px 0;color:#cfe0e7}.smd-check li::before{flex:0 0 auto;width:16px;text-align:center;font-weight:900}'
     + '.smd-check .up::before{content:"▲";color:#00c47d}.smd-check .down::before{content:"▼";color:#ff5d6c}.smd-check .ok::before{content:"✓";color:#7ad3a8}.smd-check .warn::before{content:"!";color:#ffb648}'
     + '.smd-vix{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding:8px 10px;margin-bottom:6px;border:1px solid #23404d;border-radius:8px;background:#0c161d}.smd-vix b{font:900 22px ui-monospace,monospace;color:#eaf5f8}.smd-vix .up{color:#ff5d6c}.smd-vix .dn{color:#00c47d}.smd-vix small{color:#8fa6b3;font-size:10.5px}'
-    + '.smd-flip{margin:0;padding-left:16px;color:#cfe0e7}.smd-foot{padding:8px 12px;border-top:1px solid #13262f;color:#5f7784;font-size:10.5px}.smd-empty{padding:18px 12px;color:#8fa6b3;text-align:center}';
+    + '.smd-flip{margin:0;padding-left:16px;color:#cfe0e7}.smd-foot{padding:8px 12px;border-top:1px solid #13262f;color:#5f7784;font-size:10.5px}.smd-empty{padding:18px 12px;color:#8fa6b3;text-align:center}'
+    + '.smd-tbl{width:100%;border-collapse:collapse;font:600 10.5px ui-monospace,monospace}.smd-tbl th,.smd-tbl td{padding:3px 4px;border-bottom:1px solid #12232c;text-align:right;white-space:nowrap}.smd-tbl th{color:#7b93a0;font-weight:800}.smd-tbl td:first-child,.smd-tbl th:first-child{text-align:left}.smd-tbl .up{color:#00c47d}.smd-tbl .dn{color:#ff5d6c}.smd-tbl small{color:#8fa6b3;font-weight:600}'
+    + '.smd-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:4px;margin:4px 0}.smd-kv span{display:flex;flex-direction:column;padding:4px 7px;border:1px solid #13262f;border-radius:6px;background:#0c161d}.smd-kv em{font-style:normal;color:#8fa6b3;font:700 9px ui-monospace,monospace;letter-spacing:.05em}.smd-kv strong{font:800 11px ui-monospace,monospace;color:#eaf5f8}.smd-kv strong.up{color:#00c47d}.smd-kv strong.dn{color:#ff5d6c}'
+    + '.smd-regime{display:inline-block;padding:3px 8px;border-radius:5px;background:#16232b;color:#cfe0e7;font:900 10px ui-monospace,monospace;letter-spacing:.06em}.smd-note{color:#8fa6b3;font-size:10.5px;margin:3px 0 6px}.smd-ev{list-style:none;margin:0;padding:0}.smd-ev li{display:flex;gap:6px;padding:3px 0;color:#cfe0e7;border-top:1px solid #12232c}.smd-ev li b{color:#ffb648;font:800 10px ui-monospace,monospace;min-width:52px}';
   var LEVELS = { pdh: 'Prior day high', pdl: 'Prior day low', pdc: 'Prior close', preHigh: 'Pre-market high', preLow: 'Pre-market low', open: 'Open', orHigh: 'Opening range high', orLow: 'Opening range low', vwap: 'VWAP', ema20: '20-day avg', ema50: '50-day avg', ema200: '200-day avg', high20: '20-day high', low20: '20-day low', lastWeekHigh: 'Last week high', lastWeekLow: 'Last week low' };
   var SESSION = { pre: 'PRE-MARKET', open: 'MARKET OPEN', after: 'AFTER HOURS', closed: 'MARKET CLOSED' };
   var pill = function (c) { if (!c.available) return '<span class="smd-pill na">–</span>'; var s = c.score; return '<span class="smd-pill ' + (s >= 2 ? 'p2' : s === 1 ? 'p1' : s === 0 ? 'p0' : s === -1 ? 'n1' : 'n2') + '">' + (s > 0 ? '+' + s : s) + '</span>'; };
   var color = function (b) { return b >= 20 ? '#00c47d' : b <= -20 ? '#ff5d6c' : '#cfd9de'; };
   var ago = function (t) { var s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : Math.round(s / 60) + 'm ago'; };
+
+  var pc = function (v, d) { return v == null || !isFinite(v) ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(d == null ? 2 : d) + '%'; };
+  var sgn = function (v) { return v > 0 ? 'up' : v < 0 ? 'dn' : ''; };
+  var kv = function (label, value, cls) { return '<span><em>' + label + '</em><strong class="' + (cls || '') + '">' + value + '</strong></span>'; };
+  /* the v2 sections: who is pulling SPY, internals, volatility and positioning, cross-asset, base rates, catalysts, track record */
+  function v2Html(r, mode) {
+    var v = r.v2; if (!v) return '';
+    var h = '';
+    if (v.regime && v.regime.kind && v.regime.kind !== 'unknown') h += '<div class="smd-h">REGIME</div><span class="smd-regime">' + esc(String(v.regime.kind).toUpperCase().replace('-', ' ')) + '</span><div class="smd-note">' + esc((v.regime.reasons || [])[0] || '') + (v.expectedMove && v.expectedMove.impliedDailyPct != null ? ' Options imply a ' + esc(v.expectedMove.impliedDailyPct) + '% daily move; the average true range is ' + esc(v.expectedMove.atrPct) + '%.' : '') + '</div>';
+    var c = v.constituents;
+    if (c && c.rows && c.rows.length) {
+      h += '<div class="smd-h">WHO IS PULLING SPY · ' + esc(c.leadership).toUpperCase() + '</div><div class="smd-kv">' + kv('WEIGHTED MOVE', pc(c.weightedChangePct), sgn(c.weightedChangePct)) + kv('AVERAGE NAME', pc(c.equalChangePct), sgn(c.equalChangePct)) + kv('UP / DOWN', c.advancing + ' / ' + c.declining) + kv('TOP 5 SHARE', Math.round(c.top5Share * 100) + '%') + '</div>'
+        + '<table class="smd-tbl"><thead><tr><th>Name</th><th>Weight</th><th>Move</th><th>Pull</th><th>Note</th></tr></thead><tbody>' + c.rows.slice(0, 10).map(function (x) { return '<tr><td>' + esc(x.symbol) + '</td><td>' + (x.weight * 100).toFixed(1) + '%</td><td class="' + sgn(x.changePct) + '">' + pc(x.changePct) + '</td><td>' + esc(x.pull) + '</td><td><small>' + esc(x.catalyst || (x.rvol != null ? x.rvol.toFixed(1) + 'x vol' : '') + (x.aboveVwap === false ? ' · under VWAP' : '')) + '</small></td></tr>'; }).join('') + '</tbody></table>';
+      if (c.earningsSoon && c.earningsSoon.length) h += '<div class="smd-note">Earnings inside three days: ' + esc(c.earningsSoon.map(function (x) { return x.symbol + ' (' + x.earningsDays + 'd)'; }).join(', ')) + '. Heavyweight prints move the index after hours.</div>';
+    }
+    var b = v.breadth, ro = v.rotation;
+    if (b || ro) {
+      h += '<div class="smd-h">INTERNALS</div><div class="smd-kv">';
+      if (b) h += kv('ADVANCING / DECLINING', b.advancing + ' / ' + b.declining + (b.thrust ? ' · THRUST' : b.washout ? ' · WASHOUT' : ''), sgn(b.adRatio)) + (b.volRatio != null ? kv('UP-VOLUME SHARE', Math.round((b.volRatio + 1) / 2 * 100) + '%', sgn(b.volRatio)) : '');
+      if (ro) h += kv('CYCLICALS vs DEFENSIVES', pc(ro.spreadPct), sgn(ro.spreadPct)) + (ro.equalVsCapPct != null ? kv('EQUAL vs CAP WEIGHT', pc(ro.equalVsCapPct), sgn(ro.equalVsCapPct)) : '') + (ro.smallCapsVsSpyPct != null ? kv('SMALL CAPS vs SPY', pc(ro.smallCapsVsSpyPct), sgn(ro.smallCapsVsSpyPct)) : '') + (ro.qqqVsSpyPct != null ? kv('QQQ vs SPY', pc(ro.qqqVsSpyPct), sgn(ro.qqqVsSpyPct)) : '');
+      h += '</div>';
+      if (ro && ro.sectors) h += '<div class="smd-note">' + esc(ro.sectors.map(function (x) { return x.etf + ' ' + (x.changePct >= 0 ? '+' : '') + x.changePct + '%'; }).join(' · ')) + '</div>';
+    }
+    var vo = v.volatility, g = v.gamma;
+    if (vo || g) {
+      h += '<div class="smd-h">VOLATILITY &amp; POSITIONING</div><div class="smd-kv">';
+      if (vo) h += kv('VIX', vo.level + (vo.changePct != null ? ' (' + pc(vo.changePct, 1) + ')' : ''), vo.changePct > 0 ? 'dn' : vo.changePct < 0 ? 'up' : '') + (vo.premium != null ? kv('IMPLIED − REALIZED', (vo.premium >= 0 ? '+' : '') + vo.premium + ' pts') : '');
+      if (g) h += kv('DEALER GAMMA', esc(g.regime).toUpperCase(), g.regime === 'positive' ? 'up' : g.regime === 'negative' ? 'dn' : '') + (g.flip != null ? kv('GAMMA FLIP', '$' + g.flip) : '') + (g.callWall != null ? kv('CALL WALL', '$' + g.callWall) : '') + (g.putWall != null ? kv('PUT WALL', '$' + g.putWall) : '');
+      h += '</div>' + (g && g.notes && g.notes.length ? '<div class="smd-note">' + esc(g.notes[0]) + '</div>' : '');
+    }
+    var x = v.crossAsset;
+    if (x && x.parts && x.parts.length) h += '<div class="smd-h">CROSS-ASSET RISK APPETITE</div><div class="smd-kv">' + x.parts.map(function (p) { return kv(p.label.toUpperCase(), pc(p.value) + ' · ' + p.read, sgn(p.key === 'dollar' ? -p.value : p.value)); }).join('') + '</div>';
+    var br = v.baseRates;
+    if (br) {
+      h += '<div class="smd-h">BASE RATES · WHAT SPY DID BEFORE</div><div class="smd-kv">';
+      if (br.streak && br.streak.nextUpPct != null) h += kv('AFTER ' + br.streak.length + ' ' + (br.streak.dir > 0 ? 'UP' : 'DOWN') + ' SESSION' + (br.streak.length === 1 ? '' : 'S'), 'next up ' + br.streak.nextUpPct + '% of ' + br.streak.n + (br.streak.next5MeanPct != null ? ' · 5d ' + pc(br.streak.next5MeanPct) : ''), sgn(br.streak.nextUpPct - br.anyDayUpPct));
+      if (br.gap && br.gap.followPct != null) h += kv('GAP ' + (br.gap.pct > 0 ? 'UP' : 'DOWN') + ' ' + Math.abs(br.gap.pct) + '%', 'followed ' + br.gap.followPct + '% of ' + br.gap.n);
+      if (br.position && br.position.next5UpPct != null) h += kv('AT THE ' + br.position.at.toUpperCase(), '5d up ' + br.position.next5UpPct + '% of ' + br.position.n + ' · ' + pc(br.position.next5MeanPct));
+      h += kv('ANY SESSION UP', br.anyDayUpPct + '% of ' + br.sessions) + '</div>';
+    }
+    var ca = v.calendar;
+    if (ca && ca.events && ca.events.length) h += '<div class="smd-h">CATALYSTS · NEXT 7 DAYS' + (ca.risk >= 0.6 ? ' · EVENT RISK HIGH' : '') + '</div><ul class="smd-ev">' + ca.events.slice(0, 8).map(function (e) { return '<li><b>' + (e.daysAway === 0 ? 'TODAY' : e.daysAway === 1 ? 'TOMORROW' : esc(e.date.slice(5))) + '</b><span>' + esc(e.label) + (e.impact >= 3 ? ' ·  high impact' : '') + '</span></li>'; }).join('') + '</ul>';
+    var k = r.calibration;
+    if (k && k.forecasts) { var dd = k.day || {}, sw = k.swing || {}; h += '<div class="smd-h">TRACK RECORD · THIS READ VS WHAT SPY DID</div><div class="smd-kv">' + kv('DAY CALLS', dd.calls ? dd.hitRatePct + '% right of ' + dd.calls + (dd.last30 && dd.last30.calls ? ' · last 30: ' + dd.last30.hitRatePct + '%' : '') : 'no settled calls yet') + kv('SWING CALLS', sw.calls ? sw.hitRatePct + '% right of ' + sw.calls : 'no settled calls yet') + (dd.brier != null ? kv('BRIER (DAY)', dd.brier + ' · lower is better') : '') + '</div><div class="smd-note">A call counts when the bias is at least 15 either way; it is right when SPY closed that way next session (day) or five sessions later (swing).</div>'; }
+    return h;
+  }
 
   function mount(opts) {
     if (!document.getElementById('smd-css')) { var st = document.createElement('style'); st.id = 'smd-css'; st.textContent = css; document.head.appendChild(st); }
@@ -56,6 +105,7 @@
         + '<div class="smd-h">' + (mode === 'day' ? 'PRE-MARKET / INTRADAY CHECKLIST' : 'SWING CHECKLIST') + '</div><ul class="smd-check">' + r.checklist.map(function (x) { return '<li class="' + esc(x.status) + '">' + esc(x.text) + '</li>'; }).join('') + '</ul>'
         + (lv.length ? '<div class="smd-h">KEY LEVELS · SPY</div><div class="smd-levels">' + lv.join('') + '</div>' : '')
         + (r.flips && r.flips.length ? '<div class="smd-h">WHAT WOULD CHANGE THE READ</div><ul class="smd-flip">' + r.flips.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '')
+        + v2Html(r, mode)
         + '</div></div><div class="smd-foot">' + esc(r.proxies) + ' ' + esc(r.disclaimer) + '</div>';
     }
     function load() {

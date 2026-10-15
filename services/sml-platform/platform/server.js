@@ -41,6 +41,7 @@ const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPopoutService, validModule: validPopoutModule, validSymbol: validPopoutSymbol } = require('./academy-popout');
 const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey: academyLayoutKey } = require('./academy-layout');
 const { createCandleRecap } = require('./academy-candle-recap');
+const { createMarketDirectionV2 } = require('./academy-market-direction-v2');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
@@ -3886,13 +3887,30 @@ async function main() {
     snapshots: academySharedSnapshot, base: () => getAcademyScanner(), logger: log,
     history: academySirePriceHistory, windowChange: calculateWindowChange, state: () => marketState()
   }) : null;
-  const marketDirection = academySnapshots ? createMarketDirection({
+  const marketDirectionV1 = academySnapshots ? createMarketDirection({
     volIndex: smlVix,
     snapshotAll: academySharedSnapshot.snapshotAll, snapshotTickers: academySnapshots.snapshotTickers,
     candles: getAcademyCandles,
     tape: academyMassive && academyMassive.status().enabled ? academyMassive : null,
     optionsChain: academyDataBridge.configured ? async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; } : null,
     normalizeChain: require('./academy-alert-options').normalizeChain,
+    logger: log
+  }) : null;
+  /* Market Direction v2 (academy-market-direction-v2.js) wraps the read above with the heavyweights inside SPY, breadth,
+     regime-aware scoring with base rates, dealer gamma, cross-asset appetite, the catalyst calendar and a track record.
+     Same payload fields, so the panel, MEM ALGO's direction factor, the challenge gate and the paper recap all read it as before.
+     The services it leans on (gamma, sentiment, the earnings playbook) are created further down; they are reached lazily. */
+  const marketDirection = marketDirectionV1 ? createMarketDirectionV2({
+    base: marketDirectionV1,
+    snapshotAll: academySharedSnapshot.snapshotAll, snapshotTickers: academySnapshots.snapshotTickers,
+    candles: (symbol, tf) => sentimentCandles(symbol, tf),
+    volIndex: smlVix,
+    gamma: { get: (symbol) => (typeof academyGamma !== 'undefined' && academyGamma ? academyGamma.get(symbol) : null) },
+    sentiment: { get: (symbol) => (typeof academySentiment !== 'undefined' && academySentiment ? academySentiment.get(symbol) : null) },
+    company: academyAlerts && typeof academyAlerts.company === 'function' ? (symbol) => academyAlerts.company(symbol) : null,
+    earningsWindow: (days) => { const pb = getEarningsPlaybook(); return pb && typeof pb.window === 'function' ? pb.window(days) : []; },
+    calendarExtra: process.env.SML_MACRO_EVENTS || null,
+    store: createPgStateStore({ pool: database.pool, key: 'spy-direction-calibration', defaultValue: () => ({ forecasts: {} }), logger: log }),
     logger: log
   }) : null;
   /* the sentiment panel's VIX gauge: the vendor index when the plan has it, else the SML VIX (CBOE method on SPY options) */

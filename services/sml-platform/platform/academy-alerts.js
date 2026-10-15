@@ -435,7 +435,7 @@ function createAlertsService({
 
   const channelIdFor = (key) => { const c = channels.find((x) => x.key === key); return c ? c.id : ''; };
   const setPtLadder = (fn) => { ptLadder = typeof fn === 'function' ? fn : null; };
-  return { setPtLadder, channelIdFor, start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes };
+  return { setPtLadder, channelIdFor, start, stop, poll, refresh, snapshot, detail, avatar, alerts, feed, evaluated, ingest, active, sectorFor, setChannels, sourceOf, allows, channels, shortData, nextEarnings, newsFor: news, socialFor: sentiment, chainFor, quotesFor: loadQuotes, company, fundamentals };
 }
 
 /** Channels the desk watches: the two GrandMaster streams, each with its mirror in the new server. */
