@@ -2,13 +2,13 @@
 /**
  * Plugin Name: SML Design System
  * Description: One look for every page of stockmarketloop.com: shared colour and type tokens (IBM Plex Sans, Archivo, IBM Plex Mono), the dark canvas on theme pages, consistent buttons, cards, forms and engagement controls, avatar fallbacks, plain punctuation in copy, and the loading hints that make the next page open instantly (preconnects, an early stylesheet preload, speculation rules).
- * Version: 1.2.2
+ * Version: 1.2.3
  * Author: StockMarketLoop
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'SML_DS_VERSION', '1.2.2' );
+define( 'SML_DS_VERSION', '1.2.3' );
 
 function sml_ds_url( $file ) { return plugins_url( $file, __FILE__ ); }
 function sml_ds_request_path() { return (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH ); }
@@ -179,9 +179,9 @@ function sml_ds_dashes( $html ) {
 			$ce = strpos( $html, '-->', $lt ); if ( $ce === false ) { $out .= substr( $html, $lt ); break; }
 			$out .= substr( $html, $lt, $ce - $lt + 3 ); $pos = $ce + 3; continue;
 		}
-		if ( stripos( $tag, '<img' ) === 0 || stripos( $tag, '<a ' ) === 0 || stripos( $tag, '<figure' ) === 0 ) {
-			/* the text an image carries (alt, title, the caption copy some plugins store on the tag) follows the same rule */
-			$tag = preg_replace_callback( '/\s(alt|title|data-image-caption|data-image-title|data-image-description|aria-label)="([^"]*)"/i', function ( $m ) { return ' ' . $m[1] . '="' . sml_ds_dash_segment( $m[2], false ) . '"'; }, $tag );
+		if ( stripos( $tag, '<img' ) === 0 || stripos( $tag, '<a ' ) === 0 || stripos( $tag, '<figure' ) === 0 || stripos( $tag, '<meta' ) === 0 ) {
+			/* the text a tag carries (alt, title, a share title or description, the caption copy some plugins store on the tag) follows the same rule */
+			$tag = preg_replace_callback( '/\s(alt|title|content|data-image-caption|data-image-title|data-image-description|aria-label)="([^"]*)"/i', function ( $m ) { return ' ' . $m[1] . '="' . sml_ds_dash_segment( $m[2], false ) . '"'; }, $tag );
 		}
 		$out .= $tag; $pos = $gt + 1;
 		$label = (bool) preg_match( '/^<\/(?:strong|b|em|i|a|span|h[1-6]|dt|th)>$/i', $tag );
