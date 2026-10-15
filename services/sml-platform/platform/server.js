@@ -1251,7 +1251,7 @@ function sendAcademySdkModule(response, requestPath) {
   }
   try {
     const payload = fs.readFileSync(absolute);
-    const acceptGzip = /\bgzip\b/.test(String(request.headers['accept-encoding'] || ''));
+    const acceptGzip = /\bgzip\b/.test(String((response.req && response.req.headers && response.req.headers['accept-encoding']) || ''));
     if (acceptGzip && payload.length > 256) {
       const compressed = zlib.gzipSync(payload, { level: zlib.constants.Z_BEST_SPEED });
       response.writeHead(200, {
