@@ -24,6 +24,12 @@ test('past, reported or unrecognised payloads give null (unknown), never a fake 
   assert.equal(extractNextEarnings({ date: '2026-07-01', epsActual: 3 }, NOW), null);
 });
 
+test('a bare date on a quote or a filing is not an earnings date; one under an earnings key is', () => {
+  assert.equal(extractNextEarnings({ quote: { date: '2026-06-10', last: 101.2 }, filings: [{ date: '2026-06-11', form: '8-K' }] }, NOW), null, 'the as-of date must never read as "reports today"');
+  assert.equal(extractNextEarnings({ earnings: [{ date: '2026-06-24' }] }, NOW).daysAway, 14);
+  assert.equal(extractNextEarnings({ events: [{ date: '2026-06-18', timing: 'AMC' }] }, NOW).daysAway, 8);
+});
+
 test('risk rises as the report approaches and is null when unknown', () => {
   assert.equal(earningsRisk(null), null);
   const r = (d) => earningsRisk({ daysAway: d }).r;

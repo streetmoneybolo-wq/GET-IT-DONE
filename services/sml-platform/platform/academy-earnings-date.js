@@ -8,17 +8,22 @@ const DATE_KEYS = ['date', 'reportDate', 'report_date', 'earningsDate', 'earning
 const EPS_KEYS = ['epsEstimate', 'eps_estimate', 'estimatedEPS', 'estimate', 'epsEstimated', 'revenueEstimate'];
 const ACTUAL_KEYS = ['epsActual', 'eps_actual', 'actualEPS', 'actual', 'reportedEPS'];
 
-function walk(node, out, depth = 0) {
+/* A bare `date` is an earnings date only when the record looks like one (an estimate, an actual, a period, or a parent key
+   that says earnings/report/event); a quote's as-of date or a filing date must never read as "reports today". */
+const EARNINGS_HINT = /earn|report|event|announce|calendar/i;
+const RECORD_HINT = ['period', 'quarter', 'fiscalQuarter', 'fiscal_quarter', 'fiscalYear', 'fiscal_year', 'eps', 'revenue', 'timing', 'time', 'hour'];
+function walk(node, out, depth = 0, parentKey = '') {
   if (depth > 6 || node == null) return;
-  if (Array.isArray(node)) { for (const x of node.slice(0, 200)) walk(x, out, depth + 1); return; }
+  if (Array.isArray(node)) { for (const x of node.slice(0, 200)) walk(x, out, depth + 1, parentKey); return; }
   if (typeof node !== 'object') return;
   const dk = DATE_KEYS.find((k) => typeof node[k] === 'string' && /^\d{4}-\d{2}-\d{2}/.test(node[k]));
   if (dk) {
     const hasEst = EPS_KEYS.some((k) => node[k] != null && node[k] !== '');
     const hasActual = ACTUAL_KEYS.some((k) => node[k] != null && node[k] !== '');
-    out.push({ date: String(node[dk]).slice(0, 10), hasEst, hasActual, key: dk });
+    const earningsLike = dk !== 'date' || hasEst || hasActual || RECORD_HINT.some((k) => node[k] != null && node[k] !== '') || EARNINGS_HINT.test(parentKey);
+    if (earningsLike) out.push({ date: String(node[dk]).slice(0, 10), hasEst, hasActual, key: dk });
   }
-  for (const v of Object.values(node)) if (v && typeof v === 'object') walk(v, out, depth + 1);
+  for (const [k, v] of Object.entries(node)) if (v && typeof v === 'object') walk(v, out, depth + 1, k);
 }
 
 function extractNextEarnings(payload, now = Date.now()) {
