@@ -822,6 +822,9 @@ const APP_ICON_MASKABLE_SVG = APP_ICON_SVG.replace('rx="112"', 'rx="0"');
 const appIconPng = (() => { const memo = new Map(); return (size, maskable = false) => { const key = size + (maskable ? 'm' : ''); if (memo.has(key)) return memo.get(key); let png = null; try { const { Resvg } = require('@resvg/resvg-js'); png = new Resvg(maskable ? APP_ICON_MASKABLE_SVG : APP_ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng(); } catch (_) { png = null; } memo.set(key, png); return png; }; })();
 const APP_MANIFEST = JSON.stringify({ name: 'StockMarketLoop', short_name: 'StockMarketLoop', description: 'Live scanner, watchlist, charts, news and alerts for StockMarketLoop members.', id: '/app/', start_url: '/app/', scope: '/app/', display: 'standalone', orientation: 'portrait', background_color: '#06110d', theme_color: '#06110d', categories: ['finance', 'news'],
   icons: [{ src: '/app/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/app/icon-512.png', sizes: '512x512', type: 'image/png' }, { src: '/app/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }] });
+/* The Trading Desk pop-out as an installable app window (academy-desk.js swaps the page's manifest link for this one). */
+const ACADEMY_DESK_MANIFEST = JSON.stringify({ name: 'MEM Academy Trading Desk', short_name: 'Trading Desk', description: 'Your Making Easy Money Academy modules as one desk: chart, tape, Level 2, alerts, scanner and more, arranged your way.', id: '/academy-activity/?popout=desk', start_url: '/academy-activity/?popout=desk', scope: '/academy-activity/', display: 'standalone', display_override: ['window-controls-overlay', 'standalone'], orientation: 'any', background_color: '#060a10', theme_color: '#0a1020', categories: ['finance'], launch_handler: { client_mode: 'navigate-existing' },
+  icons: [{ src: '/academy-activity/push-icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/academy-activity/push-icon-512.png', sizes: '512x512', type: 'image/png' }, { src: '/academy-activity/push-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }] });
 const ACADEMY_MANIFEST_HEAD = '<link rel="manifest" href="/academy-activity/manifest.webmanifest"><meta name="theme-color" content="#06110d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="MEM Academy"><link rel="apple-touch-icon" href="/academy-activity/push-icon-192.png">';
 /* Pop-out modules: the sign-in shim runs in <head> (only acts in a ?popout window), the UI after the page. */
 const ACADEMY_POPOUT_HEAD = (() => {
@@ -2849,6 +2852,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const png = academyIconPng(path.includes('512') ? 512 : 192);
       if (!png) { response.writeHead(404); response.end(); return; }
       response.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }); response.end(png); return;
+    }
+    if (request.method === 'GET' && path === '/academy-activity/desk.webmanifest') {
+      response.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' }); response.end(ACADEMY_DESK_MANIFEST); return;
     }
     if (request.method === 'GET' && path === '/academy-activity/manifest.webmanifest') {
       response.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' }); response.end(ACADEMY_MANIFEST); return;

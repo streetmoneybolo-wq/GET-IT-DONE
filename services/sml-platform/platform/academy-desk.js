@@ -164,7 +164,8 @@
   tools.innerHTML = '<span class="sml-dsep"></span>'
     + '<button type="button" class="sml-db" data-a="add">＋ Window</button>'
     + '<button type="button" class="sml-db" data-a="save">💾 Save Layout</button>'
-    + '<button type="button" class="sml-db" data-a="academy" title="Load the windows you arranged inside the Academy">⟲ Academy layout</button>';
+    + '<button type="button" class="sml-db" data-a="academy" title="Load the windows you arranged inside the Academy">⟲ Academy layout</button>'
+    + '<button type="button" class="sml-db app" data-a="app" title="Install the desk as its own app window: no browser bars, drag it to any screen" style="display:none">⬇ Open as app</button>';
   desk.appendChild(tools);
   tools.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-a]');
@@ -172,7 +173,64 @@
     if (btn.dataset.a === 'add') showPicker();
     if (btn.dataset.a === 'save') void saveLayout();
     if (btn.dataset.a === 'academy') void loadAcademyLayout();
+    if (btn.dataset.a === 'app') void installApp();
   });
+
+  /* --- The desk as an app window (installed web app): its own window outside Discord, no browser bars, on any screen.
+     The desk swaps the page's manifest for its own (start_url = this desk), the browser offers "Install", and from
+     then on the desk link Discord opens lands in that app window; the pop-out renewal key in this browser signs it in. --- */
+  const standalone = () => { try { return matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches || navigator.standalone === true; } catch (_) { return false; } };
+  let installPrompt = null;
+  const paintInstall = () => {
+    const b = tools.querySelector('[data-a="app"]'); if (!b) return;
+    b.style.display = standalone() ? 'none' : '';
+    b.textContent = installPrompt ? '⬇ Open as app' : '⬇ Open as app';
+    const badge = titleBar.querySelector('.app-badge');
+    if (standalone() && !badge) { const sp = document.createElement('span'); sp.className = 'link on app-badge'; sp.textContent = '▣ App window'; sp.title = 'This desk runs as its own app window'; titleBar.insertBefore(sp, titleBar.querySelector('.name')); }
+  };
+  function useDeskManifest() {
+    try {
+      let link = document.querySelector('link[rel="manifest"]');
+      if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
+      link.href = '/academy-activity/desk.webmanifest';
+      let theme = document.querySelector('meta[name="theme-color"]');
+      if (!theme) { theme = document.createElement('meta'); theme.name = 'theme-color'; document.head.appendChild(theme); }
+      theme.content = '#0a1020';
+      const t = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (t) t.content = 'Trading Desk';
+      if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration('/academy-activity/').then((r) => { if (!r) return navigator.serviceWorker.register('/academy-activity/push-sw.js', { scope: '/academy-activity/' }); }).catch(() => { /* install still works without it in current browsers */ });
+    } catch (_) { /* nothing to swap */ }
+  }
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; paintInstall(); });
+  window.addEventListener('appinstalled', () => { installPrompt = null; toast('Installed. The desk now opens as its own app window: no browser bars, drag it to any screen. Pop out the desk from the Academy and it lands there.'); paintInstall(); });
+  async function installApp() {
+    if (standalone()) { toast('This desk already runs as its own app window.'); return; }
+    if (installPrompt) {
+      const ev = installPrompt; installPrompt = null;
+      try { ev.prompt(); const r = await ev.userChoice; if (r && r.outcome !== 'accepted') { installPrompt = ev; toast('No problem. Click ⬇ Open as app whenever you want the desk as its own window.'); } }
+      catch (_) { toast('Your browser did not offer the install. Use the install icon at the right end of the address bar, or the browser menu → Install.'); }
+      return;
+    }
+    const ua = navigator.userAgent || '';
+    const how = /Edg\//.test(ua) ? 'Edge: menu (…) → Apps → Install this site as an app.' : /Chrome\//.test(ua) ? 'Chrome: click the install icon at the right end of the address bar (or menu ⋮ → Cast, save and share → Install page as app).' : /Safari/.test(ua) && !/Chrome/.test(ua) ? 'Safari: File → Add to Dock.' : 'Use your browser menu → Install (Chrome and Edge support this).';
+    toast('Make the desk its own app window. ' + how + ' After that, popping the desk out from the Academy opens it there.');
+  }
+
+  /* what the customize script (academy-customize.js) drives in desk mode */
+  const setSize = (id, { w, h } = {}) => {
+    const s = panels.get(id); if (!s) return;
+    if (Number.isFinite(w) && w > 0) { s.w = Math.max(MIN_W, Math.round(w)); s.pn.style.width = s.w + 'px'; }
+    if (Number.isFinite(h) && h > 0) { s.h = Math.max(MIN_H, Math.round(h)); s.pn.style.height = s.h + 'px'; }
+    const aw = area.clientWidth || innerWidth, ah = area.clientHeight || innerHeight;
+    if (s.x + s.w > aw) { s.x = Math.max(0, aw - s.w); s.pn.style.left = s.x + 'px'; }
+    if (s.y + s.h > ah) { s.y = Math.max(0, ah - s.h); s.pn.style.top = s.y + 'px'; }
+    focusPanel(id); dispatchEvent(new Event('resize'));
+  };
+  window.smlAcademyDesk = {
+    panels: () => [...panels.keys()], has: (id) => panels.has(id),
+    get: (id) => { const s = panels.get(id); return s ? { id, x: s.x, y: s.y, w: s.w, h: s.h, pn: s.pn, bd: s.bd, el: s.el } : null; },
+    add: (id) => addPanel(id), remove: (id) => removePanel(id), focus: (id) => focusPanel(id), setSize, area: () => ({ w: area.clientWidth || innerWidth, h: area.clientHeight || innerHeight }),
+    save: () => saveLayout(), pick: () => showPicker(), modules: () => MODULES.map(([id, label]) => ({ id, label })), labelOf, standalone, install: installApp
+  };
 
   const area = document.createElement('div');
   area.id = 'sml-desk-area';
@@ -325,7 +383,7 @@
       const token = await session();
       if (token) {
         const r = await fetch('/academy-activity/desk/layout', { method: 'PUT', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: JSON.stringify(layout), cache: 'no-store' });
-        if (r.ok) { toast('Layout saved — ' + panels.size + ' panel' + (panels.size === 1 ? '' : 's') + '.'); return; }
+        if (r.ok) { toast('Layout saved — ' + panels.size + ' panel' + (panels.size === 1 ? '' : 's') + '.' + (standalone() ? '' : ' Want it as its own app window outside Discord? Click ⬇ Open as app.')); return; }
       }
     } catch (_) { /* fall back to local */ }
     toast('Layout saved locally — ' + panels.size + ' panel' + (panels.size === 1 ? '' : 's') + '.');
@@ -396,6 +454,7 @@
   ready(async () => {
     watchAuth();
     document.body.appendChild(desk);
+    useDeskManifest(); paintInstall(); setTimeout(paintInstall, 1500);
     document.title = 'Trading Desk \xb7 ' + symbol() + ' — MEM Academy';
 
     for (let i = 0; i < 60 && !window.smlAcademySessionToken; i++) await new Promise(r => setTimeout(r, 250));

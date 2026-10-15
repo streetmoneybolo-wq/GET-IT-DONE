@@ -99,8 +99,22 @@
     let p = {};
     try { p = await res.json(); } catch (_) { /* handled below */ }
     if (!res.ok || !p.url) { toast(p.error === 'rate_limited' ? 'Too many windows at once. Wait a moment and try again.' : 'Could not open that window right now. Try again in a moment.'); return; }
+    /* the desk as a floating app-style window (Document Picture-in-Picture): no browser bars, always on top, drag it off
+       Discord onto any screen. Discord has to allow it for the Activity; when it does not, the browser path follows. */
+    if (mod === 'desk' && 'documentPictureInPicture' in window && !coarse()) {
+      try {
+        const pip = await window.documentPictureInPicture.requestWindow({ width: Math.round(Math.min((screen.availWidth || 1600) * 0.8, 1400)), height: Math.round(Math.min((screen.availHeight || 900) * 0.8, 900)) });
+        pip.document.title = 'Trading Desk · MEM Academy';
+        pip.document.body.style.cssText = 'margin:0;background:#060a10;overflow:hidden';
+        const f = pip.document.createElement('iframe'); f.src = p.url; f.allow = 'clipboard-write; autoplay'; f.style.cssText = 'border:0;width:100vw;height:100vh;display:block;background:#060a10';
+        pip.document.body.appendChild(f);
+        toast('Your desk opened as its own floating window. Drag it anywhere, even onto another screen; it stays on top and follows your ticker.');
+        startBus();
+        return;
+      } catch (_) { /* not allowed here: the browser path below */ }
+    }
     const opened = typeof window.smlAcademyOpenExternal === 'function' ? await window.smlAcademyOpenExternal(p.url) : !!window.open(p.url, '_blank', 'noopener');
-    toast(opened ? labelOf(id) + ' opens in your browser. Drag it to any screen; it stays live and follows your ticker.' : 'Discord did not open the window. Try the button again.');
+    toast(opened ? (mod === 'desk' ? 'Your desk opens in your browser. Click ⬇ Open as app there once and it becomes its own app window: no browser bars, drag it to any screen.' : labelOf(id) + ' opens in your browser. Drag it to any screen; it stays live and follows your ticker.') : 'Discord did not open the window. Try the button again.');
     startBus();
   }
 

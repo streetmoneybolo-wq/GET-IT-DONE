@@ -9,6 +9,8 @@
   if (window.__smlCustomize) return;
   window.__smlCustomize = 1;
   const POP = !!window.smlAcademyPopout; // a browser pop-out keeps its own toolbar: no windows or chips there, but the member's module settings still apply
+  const DESK = window.smlAcademyPopout === 'desk'; // the Trading Desk pop-out (academy-desk.js): the chips sit in its window title bars and size changes drive its panels
+  const desk = () => (DESK && window.smlAcademyDesk ? window.smlAcademyDesk : null);
 
   const FALLBACK = [
     ['chart', 'Chart', 'section.chart'], ['direction', 'Market direction', '#academy-direction'], ['unusual-volume', 'Unusual volume', '#academy-unusual-volume'],
@@ -52,7 +54,8 @@
     + '.sml-w-slot{display:none}'
     /* customize mode */
     + '.sml-cz-chip{position:absolute;top:5px;left:5px;z-index:31;display:none;align-items:center;gap:4px;border:1px solid #2b4b5a;border-radius:6px;background:rgba(9,17,24,.92);color:#ffd27a;font:800 11px/1 system-ui,sans-serif;padding:4px 7px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.5)}'
-    + 'body.sml-cz-on .sml-cz-chip{display:inline-flex}.sml-cz-chip:hover{border-color:#ffb020;color:#fff}.sml-cz-chip.inrow{position:static;height:27px}'
+    + 'body.sml-cz-on .sml-cz-chip{display:inline-flex}.sml-cz-chip:hover{border-color:#ffb020;color:#fff}.sml-cz-chip.inrow{position:static;height:27px}.sml-cz-chip.desk{height:20px;padding:0 6px;font-size:12px}'
+    + '#sml-cz-bar select{border:1px solid #2b4b5a;border-radius:6px;background:#0c1821;color:#ffe3b0;font:700 12px system-ui,sans-serif;padding:4px 6px;max-width:220px}'
     + 'body.sml-cz-on .sml-cz-host{outline:1px dashed rgba(255,176,32,.55);outline-offset:-1px}'
     + '#sml-cz-bar{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:2147483250;display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:min(900px,96vw);padding:7px 10px;border:1px solid #ffb020;border-radius:10px;background:rgba(26,19,5,.97);color:#ffe3b0;font:700 12px/1.3 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.6)}'
     + '#sml-cz-bar button{border:1px solid #6b5120;border-radius:6px;background:#2a1f08;color:#ffe3b0;font:800 11px/1 system-ui,sans-serif;padding:5px 8px;cursor:pointer}#sml-cz-bar button:hover{border-color:#ffb020;color:#fff}#sml-cz-bar button.done{background:#ffb020;color:#1a1305;border-color:#ffb020}'
@@ -287,6 +290,17 @@
   /* ---------- customize mode: a ⚙ on every module, one panel per module ---------- */
   const cz = { on: false, open: '' };
   function chips() {
+    if (DESK) { // the desk: a ⚙ in every window's title bar (the page underneath is hidden, so chips there would be unreachable)
+      const d = desk(); if (!d) return;
+      for (const id of d.panels()) {
+        const p = d.get(id); const head = p && p.pn ? p.pn.querySelector('.sml-ph') : null; if (!head || head.querySelector('.sml-cz-chip')) continue;
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'sml-cz-chip inrow desk'; b.dataset.for = id; b.textContent = '⚙'; b.title = 'Customize ' + labelOf(id);
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openPanel(id, b); });
+        b.addEventListener('mousedown', (e) => e.stopPropagation());
+        const cls = head.querySelector('.cls'); if (cls) head.insertBefore(b, cls); else head.appendChild(b);
+      }
+      return;
+    }
     for (const m of modules()) {
       const el = m.el; if (!el) continue;
       const row = m.id === 'chart' ? document.querySelector('.academy-chart-tools') : null; // the chart's chip stays off the plot
@@ -303,6 +317,20 @@
     let b = document.getElementById('sml-cz-bar');
     if (!b) { b = document.createElement('div'); b.id = 'sml-cz-bar'; document.body.appendChild(b); b.addEventListener('click', onBar); }
     const hidden = Object.keys(state.modules).filter((id) => state.modules[id].hidden);
+    if (DESK) {
+      const d = desk(); const on = d ? d.panels() : []; const all = d ? d.modules() : [];
+      b.innerHTML = '<span>⚙ CUSTOMIZE MODE — click ⚙ in a window’s title bar, or pick a module:</span>'
+        + '<select data-pick><option value="">Pick a module…</option>' + on.map((id) => '<option value="' + esc(id) + '">' + esc(labelOf(id)) + '</option>').join('')
+        + (all.length ? '<optgroup label="Add to the desk">' + all.filter((m) => !on.includes(m.id)).map((m) => '<option value="+' + esc(m.id) + '">＋ ' + esc(m.label) + '</option>').join('') + '</optgroup>' : '') + '</select>'
+        + '<button type="button" data-a="reset">Reset all</button><button type="button" data-a="done" class="done">Done</button>';
+      const sel = b.querySelector('select[data-pick]');
+      if (sel) sel.addEventListener('change', async () => {
+        const v = sel.value; sel.value = ''; if (!v) return;
+        if (v[0] === '+') { const id = v.slice(1); await d.add(id); chips(); bar(); openPanel(id, b.querySelector('select')); return; }
+        d.focus(v); openPanel(v, b.querySelector('select'));
+      });
+      return;
+    }
     b.innerHTML = '<span>⚙ CUSTOMIZE MODE — click ⚙ on any module to set that module on its own.</span>'
       + hidden.map((id) => '<button type="button" data-show="' + esc(id) + '" title="Show it again">👁 ' + esc(labelOf(id)) + '</button>').join('')
       + '<button type="button" data-a="windows">▣ Windows</button><button type="button" data-a="layout-out" title="Your whole layout as its own window outside Discord">⧉ Pop out layout</button><button type="button" data-a="reset">Reset all</button><button type="button" data-a="done" class="done">Done</button>';
@@ -319,7 +347,7 @@
       const ids = Object.keys(state.modules); state.modules = {};
       for (const id of ids) applyModule(id);
       for (const id of [...wins.keys()]) unfloat(id);
-      bar(); closePanel(); fire(); save(); toast('Every module is back to its default look and place.');
+      bar(); closePanel(); fire(); save(); toast(DESK ? 'Every module is back to its default colours and text size. Window sizes stay as you dragged them; 💾 Save Layout keeps them.' : 'Every module is back to its default look and place.');
     }
   }
   function windowsMenu(anchor) {
@@ -348,17 +376,23 @@
         + '<h6>ACCENT</h6><div class="sw">' + ACCENTS.map(([v, l]) => '<button type="button" data-accent="' + esc(v) + '" class="' + ((s.accent || '') === v ? 'on' : '') + '" style="' + (v ? 'background:' + v + ';color:#06110d' : '') + '">' + esc(l) + '</button>').join('') + '</div>'
         + '<div class="row"><label>Any colour <input type="color" data-k="accent" value="' + esc(s.accent || '#00c47d') + '"></label></div>'
         + '<h6>TEXT SIZE · ' + (s.size || 100) + '%</h6><input type="range" min="70" max="150" step="5" data-k="size" value="' + (s.size || 100) + '">'
-        + '<h6>HEIGHT</h6><div class="opts">' + HEIGHTS.map(([v, l]) => '<button type="button" data-height="' + v + '" class="' + ((s.height || 0) === v ? 'on' : '') + '">' + l + '</button>').join('') + '</div>'
-        + '<h6>WIDTH</h6><div class="opts"><button type="button" data-width="" class="' + (s.width ? '' : 'on') + '">Auto</button><button type="button" data-width="full" class="' + (s.width === 'full' ? 'on' : '') + '">Full row</button></div>'
-        + '<h6>PLACE</h6><div class="opts"><button type="button" data-a="up">▲ Move up</button><button type="button" data-a="down">▼ Move down</button><button type="button" data-a="float" class="' + (wins.has(id) ? 'on' : '') + '">' + (wins.has(id) ? '▣ Put back on page' : '▣ Float as window') + '</button><button type="button" data-a="hide">👁 Hide this module</button></div>'
+        + (DESK ? '<h6>WINDOW HEIGHT</h6><div class="opts">' + HEIGHTS.filter(([v]) => v).map(([v, l]) => '<button type="button" data-dh="' + v + '">' + l + '</button>').join('') + '<button type="button" data-dh="max">Full height</button></div>'
+          + '<h6>WINDOW WIDTH</h6><div class="opts"><button type="button" data-dw="0.33">Third</button><button type="button" data-dw="0.5">Half</button><button type="button" data-dw="0.66">Two thirds</button><button type="button" data-dw="1">Full width</button></div>'
+          + '<h6>WINDOW</h6><div class="opts"><button type="button" data-a="desk-remove">✕ Remove from desk</button></div>'
+          : '<h6>HEIGHT</h6><div class="opts">' + HEIGHTS.map(([v, l]) => '<button type="button" data-height="' + v + '" class="' + ((s.height || 0) === v ? 'on' : '') + '">' + l + '</button>').join('') + '</div>')
+        + (DESK ? '' : '<h6>WIDTH</h6><div class="opts"><button type="button" data-width="" class="' + (s.width ? '' : 'on') + '">Auto</button><button type="button" data-width="full" class="' + (s.width === 'full' ? 'on' : '') + '">Full row</button></div>'
+        + '<h6>PLACE</h6><div class="opts"><button type="button" data-a="up">▲ Move up</button><button type="button" data-a="down">▼ Move down</button><button type="button" data-a="float" class="' + (wins.has(id) ? 'on' : '') + '">' + (wins.has(id) ? '▣ Put back on page' : '▣ Float as window') + '</button><button type="button" data-a="hide">👁 Hide this module</button></div>')
         + '<div class="ft"><button type="button" data-a="reset">Reset this module</button><button type="button" data-a="done" class="done">Done</button></div>'
-        + '<p class="note">Only ' + esc(labelOf(id)) + ' changes. Saved to your Academy account.</p>';
+        + '<p class="note">' + (DESK ? 'Colour and text size save to your Academy account. Window size is kept when you click 💾 Save Layout.' : 'Only ' + esc(labelOf(id)) + ' changes. Saved to your Academy account.') + '</p>';
     };
     paint();
     p.addEventListener('click', (e) => {
       e.stopPropagation(); // paint() replaces the buttons, so the outside-click check below would see a detached target
       const b = e.target.closest('button'); if (!b) return;
       const s = settingsOf(id);
+      if (DESK && b.hasAttribute('data-dh')) { const d = desk(); const v = b.getAttribute('data-dh'); if (d) d.setSize(id, { h: v === 'max' ? d.area().h : Number(v) }); toast('Window height set. 💾 Save Layout keeps it.'); return; }
+      if (DESK && b.hasAttribute('data-dw')) { const d = desk(); if (d) d.setSize(id, { w: Math.round(d.area().w * Number(b.getAttribute('data-dw'))) }); toast('Window width set. 💾 Save Layout keeps it.'); return; }
+      if (DESK && b.getAttribute('data-a') === 'desk-remove') { const d = desk(); if (d) d.remove(id); closePanel(); chips(); bar(); return; }
       if (b.hasAttribute('data-accent')) { const v = b.getAttribute('data-accent'); if (v) s.accent = v; else delete s.accent; }
       else if (b.hasAttribute('data-height')) { const v = Number(b.getAttribute('data-height')); if (v) s.height = v; else delete s.height; }
       else if (b.hasAttribute('data-width')) { const v = b.getAttribute('data-width'); if (v) s.width = v; else delete s.width; }
@@ -388,11 +422,11 @@
     if (next === cz.on) { if (next) bar(); return; }
     cz.on = next;
     document.body.classList.toggle('sml-cz-on', cz.on);
-    if (cz.on) { bar(); chips(); toast('Customize mode: every module now has a ⚙. Set each one on its own.'); }
+    if (cz.on) { bar(); chips(); toast(DESK ? 'Customize mode: click ⚙ in a window’s title bar, or pick a module from the bar at the top.' : 'Customize mode: every module now has a ⚙. Set each one on its own.'); }
     else { unchips(); closePanel(); const b = document.getElementById('sml-cz-bar'); if (b) b.remove(); void flush(); }
   }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (document.getElementById('sml-cz-panel')) closePanel(); else if (cz.on) czToggle(false); } });
-  document.addEventListener('click', (e) => { const p = document.getElementById('sml-cz-panel'); if (p && !p.contains(e.target) && !e.target.closest('.sml-cz-chip,#sml-cz-bar,.sml-wh')) closePanel(); });
+  document.addEventListener('click', (e) => { const p = document.getElementById('sml-cz-panel'); if (p && !p.contains(e.target) && !e.target.closest('.sml-cz-chip,#sml-cz-bar,.sml-wh,.sml-ph')) closePanel(); });
 
   window.smlAcademyFloat = float;
   window.smlAcademyCustomize = { toggle: czToggle, isOn: () => cz.on, float, close: unfloat, floatOut, popOutLayout, windows: () => [...wins.keys()] };
