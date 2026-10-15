@@ -541,3 +541,65 @@ test('deskAction replies to the newest post on the stock in that channel: the me
   assert.equal(last.messageId, '555555555555555555'); assert.equal(last.channelId, CHAN);
   assert.equal(await store.last({ userId: USER, symbol: 'TEST', sinceMs: 60_000, channelId: '1' }), null);
 });
+
+/* ---------- speed: shared and remembered reads ---------- */
+test('speed: a second read of the same ticker is answered from memory, and warm() loads everything before the first click', async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const calls = { bars: 0, chain: 0, exp: 0, earn: 0, news: 0, role: 0 };
+  const exp = new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10), strike = Math.round(lastClose) + 2;
+  const rows = [{ expiry: exp, strike, call: { bid: 3, ask: 3.2, iv: 0.35, delta: 0.45, oi: 900, volume: 400 }, put: { bid: 2, ask: 2.2, iv: 0.35, delta: -0.45, oi: 900, volume: 400 } }];
+  const svc = CA.createClickAlertService({
+    getBars: async (s, tf) => { calls.bars += 1; await sleep(30); return { bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : intraday(200, lastClose, tf === '15m' ? 9e5 : 3e5) }; },
+    chain: async () => { calls.chain += 1; await sleep(40); return rows; },
+    expirations: async () => { calls.exp += 1; await sleep(40); return [exp]; },
+    catalysts: { earnings: async () => { calls.earn += 1; return null; }, news: async () => { calls.news += 1; return []; } },
+    directory: { memberRolesLive: async () => { calls.role += 1; return ['111111111111111111']; } }, academyGuildId: '900000000000000009', roleIds: ['111111111111111111'], logger: () => {}
+  });
+  const U = '100000000000000001', contract = { type: 'call', strike, expiry: exp };
+  /* warm first: the sources are asked once, and not again by the reads that follow */
+  assert.equal(svc.warm('TEST'), true);
+  assert.equal(svc.warm('not a ticker!'), false);
+  await sleep(120);
+  const afterWarm = { ...calls };
+  assert.deepEqual([afterWarm.bars, afterWarm.chain, afterWarm.exp, afterWarm.earn, afterWarm.news], [4, 1, 1, 1, 1]);
+  const t = Date.now();
+  const a = await svc.preview(U, { symbol: 'TEST', contract, autoTarget: true });
+  assert.equal(a.ok, true, JSON.stringify(a).slice(0, 200));
+  assert.ok(Date.now() - t < 80, 'a warmed read waits for nothing but the subscription check');
+  assert.deepEqual([calls.bars, calls.chain, calls.earn, calls.news], [4, 1, 1, 1], 'no source was asked again');
+  assert.equal(calls.role, 1);
+  /* the subscription answer is remembered for the next calls of the same member */
+  await svc.preview(U, { symbol: 'TEST', contract, autoTarget: true });
+  assert.equal(calls.role, 1);
+  /* the contract picker uses the same remembered chain and one candle series for the price */
+  const c = await svc.chainFor({ symbol: 'TEST', expiry: exp });
+  assert.equal(c.ok, true); assert.ok(c.price > 0);
+  assert.equal(calls.chain, 1); assert.equal(calls.exp, 1);
+  assert.equal(calls.bars, 5, 'the price read added one candle fetch (5m), not four');
+});
+
+test('speed: concurrent reads share one fetch, a failure is never remembered, and a slow catalyst feed cannot hold a read for more than 1.5 s', async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let chainCalls = 0, failFirst = true, earnCalls = 0;
+  const exp = new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10), strike = Math.round(lastClose) + 2;
+  const rows = [{ expiry: exp, strike, call: { bid: 3, ask: 3.2, iv: 0.35, delta: 0.45, oi: 900, volume: 400 }, put: { bid: 2, ask: 2.2 } }];
+  const svc = CA.createClickAlertService({
+    getBars: async (s, tf) => ({ bars: tf === '1D' ? D : tf === '1W' ? D.filter((_, i) => i % 5 === 4) : intraday(200, lastClose, tf === '15m' ? 9e5 : 3e5) }),
+    chain: async () => { chainCalls += 1; await sleep(30); if (failFirst) { failFirst = false; throw new Error('provider hiccup'); } return rows; },
+    catalysts: { earnings: async () => { earnCalls += 1; await sleep(5_000); return null; }, news: async () => [] },
+    directory: { memberRolesLive: async () => ['111111111111111111'] }, academyGuildId: '900000000000000009', roleIds: ['111111111111111111'], logger: () => {}
+  });
+  const U = '100000000000000001', contract = { type: 'call', strike, expiry: exp };
+  const first = await svc.chainFor({ symbol: 'TEST' });
+  assert.equal(first.ok, false, 'the failed chain read returns no chain');
+  assert.equal(chainCalls, 1);
+  const [x, y, z] = await Promise.all([svc.chainFor({ symbol: 'TEST' }), svc.chainFor({ symbol: 'TEST' }), svc.chainFor({ symbol: 'TEST' })]);
+  assert.equal(chainCalls, 2, 'the failure was not remembered, and three reads at once made ONE fetch');
+  assert.ok(x.rows.length === 1 && y.rows.length === 1 && z.rows.length === 1);
+  const t = Date.now();
+  const r = await svc.preview(U, { symbol: 'TEST', contract, autoTarget: true });
+  const took = Date.now() - t;
+  assert.equal(r.ok, true);
+  assert.ok(took < 2_500, 'the read took ' + took + ' ms: the slow earnings feed (5 s) was not waited for beyond 1.5 s');
+  assert.equal(earnCalls, 1);
+});

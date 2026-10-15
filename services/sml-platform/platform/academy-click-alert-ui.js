@@ -70,7 +70,7 @@
   async function wake() {
     if (!S.on || document.hidden) return;
     if (!token() || Date.now() - lastSessionAt > 8 * 60_000) await renew();
-    if (S.on && token()) { await loadStatus(); if (S.target != null && S.data && !S.busy && !S.sent) void reading(); }
+    if (S.on && token()) { const st = loadStatus(); if (S.target != null && S.data && !S.busy && !S.sent) void reading(); await st; }
   }
   document.addEventListener('visibilitychange', () => { void wake(); });
   window.addEventListener('focus', () => { void wake(); });
@@ -235,8 +235,9 @@
   function pickContract() {
     const P = S.pick; if (!P.type || !P.expiry || !(Number(P.strike) > 0)) return;
     S.contract = { type: P.type, strike: Number(P.strike), expiry: P.expiry }; S.autoTarget = true; S.symNote = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = '';
-    if (S.status && S.status.ok && S.status.entitled) { if (!S.busy) void reading(); else S.queued = true; }
-    else void loadStatus().then(() => { if (S.status && S.status.entitled && S.contract) void reading(); });
+    /* the read does not wait for the subscription check: the server makes that check itself, at the same moment */
+    if (!(S.status && S.status.ok && S.status.entitled)) void loadStatus();
+    if (!S.busy) void reading(); else S.queued = true;
     render(); draw();
   }
   window.addEventListener('sml-click-alert-contract', (e) => {
@@ -249,8 +250,9 @@
       S.symNote = chainSym !== chartSym ? 'The options chain shows ' + chainSym + ' while the chart shows ' + chartSym + ', so this alert is for ' + chainSym + ' (the chain).' : '';
       S.kind = 'option'; S.pick = { type: d.type, expiry: d.expiry, strike: String(d.strike) };
       S.symbol = chainSym; S.contract = { type: d.type, strike: d.strike, expiry: d.expiry }; S.autoTarget = true; S.target = null; S.entry = null; S.data = null; S.opt = null; S.msg = '';
-      if (S.status && S.status.ok && S.status.entitled) { if (!S.busy) void reading(); else S.queued = true; }
-      else void loadStatus().then(() => { if (S.status && S.status.entitled && S.autoTarget) void reading(); });
+      warm(chainSym);
+      if (!(S.status && S.status.ok && S.status.entitled)) void loadStatus();
+      if (!S.busy) void reading(); else S.queued = true;
       render(); draw(); return;
     }
     if (!S.on) { S.msg = ''; setOn(true); }
@@ -321,8 +323,8 @@
     S.status = await api('status?current=' + encodeURIComponent(S.guildId || ''));
     S.guilds = S.status && S.status.ok ? (S.status.guilds || []) : [];
     if (!S.guilds.some((g) => g.id === S.guildId)) { const cur = S.guilds.find((g) => g.current) || S.guilds[0]; S.guildId = cur ? cur.id : ''; S.channelId = ''; }
-    if (S.guildId) await loadChannels();
-    render();
+    render(); /* the panel shows at once; the channel list follows */
+    if (S.guildId) { await loadChannels(); render(); }
     if (S.status && S.status.ok !== false && !S.status.entitled && S.status.configured !== false && !S.pass) void loadPass();
   }
   async function loadChannels() {
@@ -426,9 +428,20 @@
     else if (k === 'asme') { S.asMe = !!e.target.checked; render(); }
   });
 
+  /* Speed: the moment ALERT is armed (and every 15 s while it stays armed, or when the chart moves to another ticker), the server is
+     told which ticker to get ready: candles, options chain, expirations, earnings and news are loaded before the first click, so the
+     read after the click finds them waiting instead of fetching them. */
+  let warmed = '', warmAt = 0;
+  function warm(sy) {
+    const x = String(sy || '').toUpperCase(); if (!x || !token()) return;
+    const t = Date.now(); if (warmed === x && t - warmAt < 15_000) return;
+    warmed = x; warmAt = t;
+    try { fetch('/academy-activity/click-alert/warm?symbol=' + encodeURIComponent(x), { headers: { authorization: 'Bearer ' + token() }, cache: 'no-store' }).catch(() => {}); } catch (_) { /* best effort */ }
+  }
+  setInterval(() => { if (S.on && !document.hidden) { try { warm(sym()); } catch (_) { /* chart not ready */ } } }, 3000);
   function setOn(on, { quiet = false } = {}) {
     S.on = !!on; btn.classList.toggle('on', S.on); document.body.classList.toggle('ca-armed', S.on);
-    if (S.on) { if (quiet) S.kind = 'option'; else S.kind = ''; void loadStatus(); }
+    if (S.on) { if (quiet) S.kind = 'option'; else S.kind = ''; try { warm(sym()); } catch (_) { /* chart not ready */ } void loadStatus(); }
     else { hint.style.display = 'none'; S.target = null; S.entry = null; S.data = null; S.msg = ''; S.sent = false; S.contract = null; S.opt = null; S.cat = null; S.autoTarget = false; S.optMode = false; S.symNote = ''; S.queued = false; S.kind = ''; S.pick = { type: '', expiry: '', strike: '' }; S.chainErr = ''; }
     render(); draw();
   }
@@ -442,7 +455,8 @@
     S.kind = 'stock'; S.contract = null; S.opt = null; S.autoTarget = false; S.symNote = ''; S.sent = false; S.msg = '';
     S.symbol = s; S.mode = mode === 'smashed' || mode === 'new' ? mode : 'auto';
     const t = Number(target); S.target = t > 0 ? Math.round(t * (t >= 1 ? 100 : 10000)) / (t >= 1 ? 100 : 10000) : null;
-    if (S.target != null) { if (S.status && S.status.ok && S.status.entitled) void reading(); else void loadStatus().then(() => { if (S.status && S.status.entitled) void reading(); }); }
+    warm(s);
+    if (S.target != null) { if (!(S.status && S.status.ok && S.status.entitled)) void loadStatus(); void reading(); } /* the read does not wait for the status check: the server checks the subscription itself, at the same time */
     render(); draw();
     try { panel.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
     return true;

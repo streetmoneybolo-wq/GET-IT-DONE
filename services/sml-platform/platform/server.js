@@ -506,7 +506,10 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
       /* adjusted is unknown for this feed, so it is reported as null rather than guessed */
       const payload = annotateCandles({ symbol: safeSymbol, tf: safeTimeframe, bars: clean.bars, asOf: Number(source?.asOf) || Date.now() }, { source: 'wordpress-history', adjusted: null, repaired: clean.repaired });
       if (academyMarketCache.size >= 400) academyMarketCache.delete(academyMarketCache.keys().next().value);
-      academyMarketCache.set(cacheKey, { freshUntil: Date.now() + 4_000, staleUntil: Date.now() + 1_800_000, payload });
+      /* how long a copy is served without asking again: the live minute bars stay at 4 s; slower timeframes change slowly, so the
+         daily and weekly candles (read by every Click-to-Alert and MEM ALGO read) are reused for minutes instead of fetched each time */
+      const FRESH_MS = { '1m': 4_000, '3m': 4_000, '5m': 4_000, '10m': 6_000, '15m': 8_000, '30m': 15_000, '1h': 30_000, '2h': 45_000, '4h': 60_000, '1D': 60_000, '1W': 600_000, '1M': 1_800_000, '1Q': 3_600_000, '1Y': 3_600_000 };
+      academyMarketCache.set(cacheKey, { freshUntil: Date.now() + (FRESH_MS[safeTimeframe] || 4_000), staleUntil: Date.now() + 1_800_000, payload });
       return payload;
     } catch (error) {
       /* A brief upstream slowdown should not blank or freeze an active lesson.
@@ -2748,7 +2751,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       }
       return;
     }
-    if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/chain', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
+    if (path.startsWith('/academy-activity/click-alert/') && ['/academy-activity/click-alert/warm', '/academy-activity/click-alert/status', '/academy-activity/click-alert/channels', '/academy-activity/click-alert/chain', '/academy-activity/click-alert/preview', '/academy-activity/click-alert/send'].includes(path)) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);
       if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
@@ -2756,10 +2759,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
       const fail = (out) => sendJson(response, out.status || 400, { ok: false, error: out.code, ...(out.detail ? { detail: out.detail } : {}), ...(out.entitlement ? { entitlement: out.entitlement } : {}) });
       try {
+        /* the member just picked a ticker or armed ALERT: load what the next read needs so it finds it ready (never waits for it) */
+        if (request.method === 'GET' && path === '/academy-activity/click-alert/warm') {
+          sendJson(response, 200, { ok: true, warming: academyClickAlert.warm(params.get('symbol') || '') }); return;
+        }
         if (request.method === 'GET' && path === '/academy-activity/click-alert/status') {
-          const entitlement = await academyClickAlert.entitlement(session.userId);
-          const guilds = entitlement.entitled ? await academyClickAlert.destinations(session.userId, params.get('current') || '') : [];
-          sendJson(response, 200, { ok: true, ...entitlement, guilds }); return;
+          /* the subscription check and the server list are asked at the same moment; the list is dropped for a member who is not subscribed */
+          const [entitlement, listed] = await Promise.all([academyClickAlert.entitlement(session.userId), academyClickAlert.destinations(session.userId, params.get('current') || '').catch(() => [])]);
+          sendJson(response, 200, { ok: true, ...entitlement, guilds: entitlement.entitled ? listed : [] }); return;
         }
         if (request.method === 'GET' && path === '/academy-activity/click-alert/channels') {
           const entitlement = await academyClickAlert.entitlement(session.userId);
@@ -3924,6 +3931,18 @@ async function main() {
     marketOpen: (timestamp) => isMarketOpen(timestamp)
   });
   const massiveOptions = createMassiveOptions({ apiKey: config.massiveApiKey, enabled: config.massiveOptionsEnabled, fetchImpl: (u, o) => dataHealth.guardedFetch('massive-options', u, o), maxPages: Math.max(1, Math.min(8, Number(process.env.MASSIVE_OPTIONS_MAX_PAGES) || 4)) });
+  const massiveShared = new Map(), massiveFlight = new Map();
+  const massiveOptionsShared = (symbol, params = {}) => {
+    const key = String(symbol || '').toUpperCase() + ':' + String(params.expiration || '');
+    const hit = massiveShared.get(key);
+    if (hit && Date.now() - hit.at < 8_000) return Promise.resolve(hit.v);
+    if (massiveFlight.has(key)) return massiveFlight.get(key);
+    const pr = massiveOptions.get('options', symbol, params).then((v) => {
+      if (v && v.ok) { if (massiveShared.size >= 80) massiveShared.delete(massiveShared.keys().next().value); massiveShared.set(key, { at: Date.now(), v }); }
+      return v;
+    }).finally(() => massiveFlight.delete(key));
+    massiveFlight.set(key, pr); return pr;
+  };
   const academyDataBridge = {
     configured: queuedMoomooBridge.configured || massiveOptions.configured,
     /* opts.priority 'interactive': a member is waiting on this call (the chain lab, Click-to-Alert, the hedge panel); it goes to the
@@ -3931,7 +3950,9 @@ async function main() {
     async get(kind, symbol, params = {}, opts = {}) {
       let fellBack = false;
       if (kind === 'options' && massiveOptions.configured) {
-        const preferred = await massiveOptions.get(kind, symbol, params);
+        /* the provider's snapshot is several pages: asked once for everyone who wants it in the same moment, and remembered for 8 s,
+           instead of once per caller (the chain, the expiration list and the stream each asked separately) */
+        const preferred = await massiveOptionsShared(symbol, params);
         if (preferred.ok) return tagOptionsSource(preferred, 'massive', false);
         fellBack = true;
       }

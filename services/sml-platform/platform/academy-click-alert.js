@@ -328,8 +328,37 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   const free = freeUserIds instanceof Set ? freeUserIds : new Set(freeUserIds || []);
   const configured = byRole || byPass || free.size > 0;
 
+  /* ---------- speed: one answer per question, shared and remembered briefly ----------
+     Every read used to ask Discord, the bars, the options chain, earnings and news again, one after another. Now a question already
+     asked is answered from memory for a few seconds (ttl), a question being asked right now is shared (inflight), and a failure is
+     never remembered. A value past its ttl but inside `stale` is handed back at once while a fresh one loads behind it. */
+  function memo(fn, { ttl = 5_000, stale = 0, max = 300, keyOf = (a) => String(a[0] == null ? '' : a[0]).toUpperCase() } = {}) {
+    const store = new Map(), flight = new Map();
+    const load = (key, args) => {
+      if (flight.has(key)) return flight.get(key);
+      const pr = Promise.resolve().then(() => fn(...args)).then((v) => { if (store.size >= max) store.delete(store.keys().next().value); store.set(key, { at: now(), v }); return v; }).finally(() => flight.delete(key));
+      flight.set(key, pr); return pr;
+    };
+    const run = (...args) => {
+      const key = keyOf(args), hit = store.get(key), age = hit ? now() - hit.at : Infinity;
+      if (hit && age < ttl) return Promise.resolve(hit.v);
+      if (hit && age < ttl + stale) { load(key, args).catch(() => {}); return Promise.resolve(hit.v); }
+      return load(key, args);
+    };
+    run.forget = (...args) => { store.delete(keyOf(args)); };
+    return run;
+  }
+  const chainC = chain ? memo(chain, { ttl: 8_000, stale: 22_000 }) : null;
+  const expirationsC = expirations ? memo(expirations, { ttl: 60_000, stale: 240_000 }) : null;
+  const chainExpiryC = chainExpiry ? memo(chainExpiry, { ttl: 8_000, stale: 22_000, keyOf: (a) => String(a[0]).toUpperCase() + ':' + String(a[1]) }) : null;
+  const earningsC = catalysts && catalysts.earnings ? memo(catalysts.earnings, { ttl: 600_000, stale: 3_600_000 }) : null;
+  const newsC = catalysts && catalysts.news ? memo(catalysts.news, { ttl: 90_000, stale: 600_000 }) : null;
+
   /* Is this member subscribed to the add-on right now? Asked of Discord live (no cache). */
-  async function entitlement(userId) {
+  /* a subscription is remembered for 45 s; a "no" is never remembered, so a member who has just subscribed or bought a pass is let in at once */
+  const entitledMemo = memo(async (userId) => entitlementLive(userId), { ttl: 45_000, max: 2000 });
+  const entitlement = async (userId) => { const r = await entitledMemo(userId); if (!r.entitled) entitledMemo.forget(userId); return r; };
+  async function entitlementLive(userId) {
     if (!configured) return { configured: false, entitled: false };
     if (free.has(String(userId))) return { configured: true, entitled: true, via: 'owner' };
     /* a live Loop Bucks pass is as good as the subscription role */
@@ -340,13 +369,19 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return { configured: true, entitled: !!(held && held.some((id) => roles.has(id))) };
   }
 
-  async function loadBars(symbol) {
+  const loadBars = memo(async (symbol) => {
     const sym = String(symbol || '').toUpperCase();
     const get = async (tf) => { try { return cleanBars(await getBars(sym, tf)); } catch (_) { return []; } };
     const [m5, m15, daily, weekly] = await Promise.all([get('5m'), get('15m'), get('1D'), get('1W')]);
     const last = m5.length ? m5[m5.length - 1] : daily.length ? daily[daily.length - 1] : null;
     return { sym, last, set: { m5, m15, daily, weekly, fresh: !!(last && now() - last.t < 4 * 86_400_000) } };
-  }
+  }, { ttl: 4_000, stale: 6_000, max: 60 });
+  /* the live price alone (the contract picker): one candle series, not four */
+  const loadPrice = memo(async (symbol) => {
+    const sym = String(symbol || '').toUpperCase();
+    for (const tf of ['5m', '1D']) { try { const b = cleanBars(await getBars(sym, tf)); if (b.length) return b[b.length - 1].c; } catch (_) { /* next */ } }
+    return null;
+  }, { ttl: 4_000, stale: 6_000, max: 120 });
   async function gather(symbol, target) {
     const { sym, last, set } = await loadBars(symbol);
     const analysis = classify({ symbol: sym, target, price: last ? last.c : null, bars: set });
@@ -366,16 +401,18 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const type = String(c.type || '').toLowerCase().startsWith('p') ? 'put' : String(c.type || '').toLowerCase().startsWith('c') ? 'call' : '';
     const strike = Number(c.strike), expiry = String(c.expiry || '').slice(0, 10);
     if (!type || !(strike > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return err(422, 'invalid_contract', 'Pick a call or put from the options chain.');
-    if (!chain && !(givenRows && givenRows.length)) return err(503, 'options_unavailable', 'The options chain is not available right now.');
+    if (!chainC && !(givenRows && givenRows.length)) return err(503, 'options_unavailable', 'The options chain is not available right now.');
+    // the site sends the chain it is showing (fast, and the same contracts the member double-clicked); else the Academy's own chain.
+    // The candles and the chain are asked for at the same moment, not one after the other.
+    let rows = givenRows && givenRows.length ? givenRows : null;
+    const rowsP = rows ? null : Promise.resolve().then(() => chainC(sym)).catch(() => null);
     const loaded = await loadBars(sym);
     const price = loaded.last ? loaded.last.c : null;
-    if (!(price > 0)) return err(422, 'no_live_price');
-    // the site sends the chain it is showing (fast, and the same contracts the member double-clicked); else the Academy's own chain
-    let rows = givenRows && givenRows.length ? givenRows : null;
-    if (!rows) { try { rows = await chain(sym); } catch (_) { rows = null; } }
+    if (!(price > 0)) { if (rowsP) rowsP.catch(() => {}); return err(422, 'no_live_price'); }
+    if (rowsP) rows = await rowsP;
     // the site's chain can list an expiration the default chain load left out: fetch that expiration once (site preview only)
-    if (!givenRows && anyExpiry && chainExpiry && !(rows && optionsAlert.findContract(rows, { type, strike, expiry }))) {
-      try { const raw = await chainExpiry(sym, expiry); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = (rows || []).concat(more); } catch (_) { /* keep what we have */ }
+    if (!givenRows && anyExpiry && chainExpiryC && !(rows && optionsAlert.findContract(rows, { type, strike, expiry }))) {
+      try { const raw = await chainExpiryC(sym, expiry); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = (rows || []).concat(more); } catch (_) { /* keep what we have */ }
     }
     if (!rows || !rows.length) return err(503, 'options_unavailable', await whyNoChain(sym));
     const found = optionsAlert.findContract(rows, { type, strike, expiry });
@@ -425,8 +462,8 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   /* the contract picked on the chain: priced from the live chain rows and tied to the stock idea */
   async function optionsFor(analysis, contract, given = null) {
     if (!contract) return null;
-    if (!chain && !given) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
-    let rows = given; if (!rows) { try { rows = await chain(analysis.symbol); } catch (_) { rows = null; } }
+    if (!chainC && !given) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
+    let rows = given; if (!rows) { try { rows = await chainC(analysis.symbol); } catch (_) { rows = null; } }
     if (!rows || !rows.length) return { error: { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' } };
     try { return { oa: optionsAlert.buildOptionsAlert({ analysis, rows, contract, now: now() }) }; }
     catch (error) {
@@ -454,13 +491,17 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const t = setTimeout(() => { if (!done) { done = true; resolve(null); } }, ms);
     Promise.resolve(p).then((v) => { if (!done) { done = true; clearTimeout(t); resolve(v); } }, () => { if (!done) { done = true; clearTimeout(t); resolve(null); } });
   });
-  async function catalystsFor(analysis, oa = null) {
-    if (!catalysts || (!catalysts.earnings && !catalysts.news)) return null;
+  /* earnings and news are asked for as soon as the symbol is known, while the candles and the chain load. A slow one is not
+     waited on for more than 1.5 s (the alert simply carries no catalyst note); it keeps loading and is remembered for the next read. */
+  const CATALYST_WAIT_MS = 1_500;
+  function prefetchCatalysts(sym) {
+    if (!earningsC && !newsC) return null;
+    return Promise.all([earningsC ? withTimeout(earningsC(sym), CATALYST_WAIT_MS) : null, newsC ? withTimeout(newsC(sym), CATALYST_WAIT_MS) : null]);
+  }
+  async function catalystsFor(analysis, oa = null, pre = null) {
+    if (!earningsC && !newsC) return null;
     const sym = analysis.symbol;
-    const [earnings, news] = await Promise.all([
-      catalysts.earnings ? withTimeout(catalysts.earnings(sym), 4_000) : null,
-      catalysts.news ? withTimeout(catalysts.news(sym), 4_000) : null
-    ]);
+    const [earnings, news] = await (pre || prefetchCatalysts(sym));
     let c;
     try { c = assessCatalysts({ symbol: sym, side: analysis.side, horizon: analysis.horizon, expectedDays: analysis.expectedDays, dte: oa && oa.contract ? oa.contract.dte : null, earnings, news, now: now() }); }
     catch (error) { logger('warn', 'click_alert_catalysts_failed', { error: String(error.message || error) }); return null; }
@@ -491,17 +532,23 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   async function chainFor({ symbol, expiry = '' } = {}) {
     const sym = String(symbol || '').toUpperCase();
     if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return { ok: false, status: 422, code: 'invalid_symbol' };
-    if (!chain && !chainExpiry) return { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' };
+    if (!chainC && !chainExpiryC) return { ok: false, status: 503, code: 'options_unavailable', detail: 'The options chain is not available right now.' };
     const exp = /^\d{4}-\d{2}-\d{2}$/.test(String(expiry || '')) ? String(expiry) : '';
-    let rows = []; if (chain) { try { rows = (await chain(sym)) || []; } catch (_) { rows = []; } }
-    if (exp && chainExpiry && !rows.some((r) => r && r.expiry === exp)) {
-      try { const raw = await chainExpiry(sym, exp); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = rows.concat(more); } catch (_) { /* keep what we have */ }
+    /* the chain, the expiration list and the price are asked for together (they used to be asked one after the other) */
+    const [chainRows, listedRaw, priceNow] = await Promise.all([
+      chainC ? chainC(sym).catch(() => []) : [],
+      expirationsC ? expirationsC(sym).catch(() => []) : [],
+      loadPrice(sym).catch(() => null)
+    ]);
+    let rows = chainRows || [];
+    if (exp && chainExpiryC && !rows.some((r) => r && r.expiry === exp)) {
+      try { const raw = await chainExpiryC(sym, exp); const more = raw ? normalizeAlertChain(raw) : []; if (more && more.length) rows = rows.concat(more); } catch (_) { /* keep what we have */ }
     }
-    let listed = []; if (expirations) { try { listed = (await expirations(sym)) || []; } catch (_) { listed = []; } }
+    const listed = listedRaw || [];
     const today = new Date(now()).toISOString().slice(0, 10);
     const exps = [...new Set([...rows.map((r) => r && r.expiry), ...listed].map((e) => String(e || '').slice(0, 10)).filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e) && e >= today))].sort();
     if (!rows.length && !exps.length) return { ok: false, status: 503, code: 'options_unavailable', detail: await whyNoChain(sym, 'No listed options were found for ' + sym + '.') };
-    let price = null; try { const { last } = await loadBars(sym); price = last ? last.c : null; } catch (_) { price = null; }
+    const price = priceNow == null ? null : priceNow;
     const leg = (s) => (s ? { bid: fin(Number(s.bid)) ? Number(s.bid) : null, ask: fin(Number(s.ask)) ? Number(s.ask) : null, mid: optionsAlert.mid(s), iv: fin(Number(s.iv)) ? Number(s.iv) : null, delta: fin(Number(s.delta)) ? Number(s.delta) : null, oi: fin(Number(s.oi)) ? Number(s.oi) : null, volume: fin(Number(s.volume)) ? Number(s.volume) : null } : null);
     const list = rows.filter((r) => r && (!exp || r.expiry === exp) && Number(r.strike) > 0).map((r) => ({ expiry: r.expiry, strike: Number(r.strike), call: leg(r.call), put: leg(r.put) }))
       .sort((a, b) => a.expiry.localeCompare(b.expiry) || a.strike - b.strike);
@@ -535,18 +582,22 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...Object.fromEntries(Object.entries(analysis.insight || {}).filter(([, v]) => v != null && v !== '')) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
   async function preview(userId, { symbol, target, contract = null, mode = 'auto', autoTarget = false } = {}) {
+    /* the read starts at once and runs while the subscription is checked; an unsubscribed member never receives any of it */
+    const pre = prefetchCatalysts(String(symbol || '').toUpperCase());
+    const gotP = analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
+    gotP.catch(() => {});
     const ent = await entitlement(userId);
     // the horizon read is part of the paid add-on, so an unsubscribed member never receives it
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured', entitlement: ent };
     if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required', entitlement: ent };
-    const got = await analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
+    const got = await gotP;
     if (got.error) return { ...got.error, entitlement: ent };
     const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '', entitlement: ent };
-    analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
-    const opt = await optionsFor(analysis, contract, got.rows);
+    const [smashed, opt] = await Promise.all([detectSmashed(userId, analysis, mode, contract), optionsFor(analysis, contract, got.rows)]);
+    analysis.smashed = smashed;
     if (opt && opt.error) return { ...opt.error, entitlement: ent };
-    const cat = await catalystsFor(analysis, opt && opt.oa);
+    const cat = await catalystsFor(analysis, opt && opt.oa, pre);
     const pics = scenariosFor(analysis, { options: opt && opt.oa }).map((im) => ({ which: im.which, name: im.name, alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
     return { ok: true, entitlement: ent, scenarios: { available: pics.length > 0, pngAvailable: images.available(), images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, alertText: textFor(analysis, opt, false), alertTextWithMention: textFor(analysis, opt, true) } };
@@ -560,6 +611,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   async function sitePreview({ symbol, contract, chainData = null } = {}) {
     if (!contract) return { ok: false, status: 400, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
     let givenRows = null; if (chainData) { try { givenRows = normalizeAlertChain(chainData); } catch (_) { givenRows = null; } }
+    const pre = prefetchCatalysts(String(symbol || '').toUpperCase());
     const got = await analysisFor({ symbol, contract, autoTarget: true, anyExpiry: true, givenRows });
     if (got.error) return got.error;
     const analysis = got.analysis;
@@ -567,7 +619,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     analysis.smashed = null;
     const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return opt.error;
-    const cat = await catalystsFor(analysis, opt && opt.oa);
+    const cat = await catalystsFor(analysis, opt && opt.oa, pre);
     const pics = scenariosFor(analysis, { options: opt && opt.oa, footer: SITE_FOOTER }).map((im) => ({ which: im.which, name: im.name.replace(/\.png$/, '.svg'), alt: im.alt, svg: im.svg }));
     delete analysis.__bars;
     return { ok: true, scenarios: { available: pics.length > 0, images: pics }, options: opt ? opt.oa : null, catalysts: cat, analysis: { ...analysis, disclaimer: 'Educational estimate from market data. It is not a prediction, financial advice, or a trade instruction.', alertText: textFor(analysis, opt, false) } };
@@ -582,6 +634,16 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   }
 
   /* guilds the member shares with an Academy bot, and the channels in one of them where both can post */
+  /* Called the moment a member picks a ticker (or arms the ALERT mode): loads what the next read needs (candles, options chain,
+     expirations, earnings and news) so the read itself finds it ready. Never throws, never waits for the answers. */
+  function warm(symbol) {
+    const sym = String(symbol || '').toUpperCase();
+    if (!/^[A-Z0-9.:-]{1,10}$/.test(sym)) return false;
+    for (const fn of [() => loadBars(sym), () => chainC && chainC(sym), () => expirationsC && expirationsC(sym), () => earningsC && earningsC(sym), () => newsC && newsC(sym)]) {
+      try { const r = fn(); if (r && r.catch) r.catch(() => {}); } catch (_) { /* best effort */ }
+    }
+    return true;
+  }
   async function destinations(userId, guildId = '') {
     const dir = (personas && personas[String(userId)]) || directory;
     const guilds = dir ? await dir.guildsFor(String(userId), SNOWFLAKE.test(String(guildId)) ? String(guildId) : '') : [];
@@ -602,26 +664,29 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
       if (prev && SNOWFLAKE.test(String(prev.channelId || ''))) { channelId = prev.channelId; routed = true; if (!replyTo && prev.messageId) replyTo = prev.messageId; }
     }
     if (!SNOWFLAKE.test(String(channelId))) return { ok: false, status: 400, code: 'invalid_channel' };
-    const ent = await entitlement(userId);
-    if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
-    if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
     // a member with their own bot (their name and picture) uses it for everything: which servers and channels are listed, the checks, and the post
     const pd = personas && personas[userId];
-    const where = await (pd || directory).postingIn(userId, String(channelId)).catch(() => null);
+    /* the analysis starts at once and runs while the subscription, the channel permissions and the rate limit are checked */
+    const pre = prefetchCatalysts(String(symbol || '').toUpperCase());
+    const analysisP = analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
+    analysisP.catch(() => {});
+    const [ent, where, limited] = await Promise.all([entitlement(userId), Promise.resolve().then(() => (pd || directory).postingIn(userId, String(channelId))).catch(() => null), overLimit(userId, String(channelId)).catch(() => null)]);
+    if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
+    if (!ent.entitled) return { ok: false, status: 402, code: 'click_alert_subscription_required' };
     if (!where) return { ok: false, status: 404, code: 'channel_unavailable', detail: pd ? 'Your Grandmaster-Obi bot is not in that server, or the channel could not be found.' : 'The Academy app is not installed in that server, or the channel could not be found.' };
     if (!where.userCanSend) return { ok: false, status: 403, code: 'you_cannot_post_there', detail: 'You do not have permission to send messages in that channel.' };
     if (!where.botCanSend) return { ok: false, status: 403, code: 'app_cannot_post_there', detail: 'The Academy app cannot send messages in that channel. Ask a server admin to allow it.' };
-    const limited = await overLimit(userId, String(channelId)); if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
-    const got = await analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
+    if (limited) return { ok: false, status: 429, code: 'rate_limited', detail: limited };
+    const got = await analysisP;
     if (got.error) return got.error;
     const analysis = got.analysis;
     if (!analysis.ok) return { ok: false, status: 422, code: analysis.code, detail: analysis.detail || '' };
-    analysis.smashed = await detectSmashed(userId, analysis, mode, contract);
+    const [smashed, opt] = await Promise.all([detectSmashed(userId, analysis, mode, contract), optionsFor(analysis, contract, got.rows)]);
+    analysis.smashed = smashed;
     // an update posted into the channel of the earlier alert replies to that alert unless the member pointed at another post
     if (analysis.smashed && !replyTo && analysis.smashed.prevMessageId && analysis.smashed.prevChannelId === String(channelId)) replyTo = analysis.smashed.prevMessageId;
-    const opt = await optionsFor(analysis, contract, got.rows);
     if (opt && opt.error) return opt.error;
-    const cat = await catalystsFor(analysis, opt && opt.oa);
+    const cat = await catalystsFor(analysis, opt && opt.oa, pre);
     const dupKey = opt ? analysis.symbol + ' ' + opt.oa.contract.occ : analysis.symbol;
     if (await store.count({ userId, symbol: dupKey, target: analysis.target, sinceMs: 300_000 })) return { ok: false, status: 409, code: 'duplicate_alert', detail: 'You just sent this exact alert.' };
     /* a PT SMASHED update goes to everyone unless the member said otherwise */
@@ -811,7 +876,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   }
   const startThread = (channelId, messageId, name) => directory.startThread(String(channelId), String(messageId), name);
 
-  return { entitlement, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
+  return { entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
 module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

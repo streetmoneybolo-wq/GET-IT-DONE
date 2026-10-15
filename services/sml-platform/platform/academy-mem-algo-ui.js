@@ -109,6 +109,16 @@
 .mem-ev{font-size:.7rem;color:#9fb3be;padding:3px 0}.mem-ev u{text-decoration:none;display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}.mem-ev u.bull{background:#00d084}.mem-ev u.bear{background:#ff5470}
 .mem-grade{margin-top:7px;font-size:.72rem}.mem-grade b{padding:2px 8px;border-radius:999px;font:800 .64rem ui-monospace,monospace;letter-spacing:.04em}
 .mem-grade .confirms{background:#0d3a2a;color:#3ef0a8}.mem-grade .disagrees{background:#421a24;color:#ff7a92}.mem-grade .neutral,.mem-grade .unavailable{background:#1c2b33;color:#9db4c0}
+#mem-algo-panel .mem-bd{padding:8px 12px 4px;border-bottom:1px solid #16303a}
+#mem-algo-panel .mem-bd h5{margin:0 0 6px;font:800 .62rem ui-monospace,monospace;letter-spacing:.09em;color:#7f98a6;text-transform:uppercase;display:flex;justify-content:space-between}
+#mem-algo-panel .mem-bd h5 em{font-style:normal;color:#52e6ad;letter-spacing:.04em;text-transform:none;font-weight:700}
+#mem-algo-panel .mem-bdr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;width:100%;margin:0 0 5px;padding:6px 8px;border:1px solid #17323d;border-radius:8px;background:#0a1118;color:#dbe6ec;font:inherit;text-align:left;cursor:pointer}
+#mem-algo-panel .mem-bdr:hover{border-color:#2b5c4c}#mem-algo-panel .mem-bdr.on{border-color:#00d084;background:#0d211a}
+#mem-algo-panel .mem-bdr b{font:800 .74rem system-ui;color:#fff;display:block}#mem-algo-panel .mem-bdr small{display:block;color:#7f98a6;font-size:.6rem;font-weight:600;letter-spacing:.02em}
+#mem-algo-panel .mem-bdr .mem-chip{font-size:.6rem;padding:2px 7px;justify-self:start}
+#mem-algo-panel .mem-bdr .sig{grid-column:1 / -1;font:600 .64rem/1.4 ui-monospace,monospace;color:#b8c9d3;text-align:left;border-top:1px solid #14282f;padding-top:4px}
+#mem-algo-panel .mem-bdr .sig i{font-style:normal;font-weight:800}#mem-algo-panel .mem-bdr .sig i.up{color:#3ef0a8}#mem-algo-panel .mem-bdr .sig i.dn{color:#ff7a92}
+#mem-algo-panel .mem-bdn{margin:2px 0 6px;color:#6f8794;font-size:.6rem}
 @media(max-width:700px){#mem-algo-panel{position:fixed;left:6px;right:6px;bottom:6px;top:auto;width:auto;max-height:52vh;z-index:2147483000}}`;
   document.head.appendChild(css);
 
@@ -242,6 +252,54 @@
   window.addEventListener('resize', place);
   setInterval(place, 1500); // the columns move when the alerts panel opens or closes
 
+  /* ---------- BREAKDOWN: all five models side by side for the ticker ----------
+     Day Trade, Swing Trade, Mid Term, Long Term and Short Sale, each read on the candle size it is built for (preferredTf), with
+     its bias, its open or latest signal and its own backtest numbers. The mode that is open in the panel uses the full analysis;
+     the others use the candles alone (no extra data services), so the five rows load together in about the time of one request.
+     Tap a row to open that model. */
+  const BD = { key: '', rows: {}, at: 0, busy: false, err: '' };
+  const BD_NAMES = { day: 'Day trade', swing: 'Swing trade', mid: 'Mid term', long: 'Long term', short: 'Short sale' };
+  const BD_ORDER = ['day', 'swing', 'mid', 'long', 'short'].filter((k) => E.STRATEGIES[k]);
+  async function loadBreakdown(force) {
+    const sym = symbol();
+    if (BD.busy || (!force && BD.key === sym && Date.now() - BD.at < 30000)) return;
+    BD.busy = true;
+    try {
+      const tfs = [...new Set(BD_ORDER.map((k) => preferredTf(k)))];
+      const got = await Promise.all(tfs.map(async (t) => { try { const r = await fetch('/academy-activity/market?symbol=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(t), { cache: 'no-store' }); const j = await r.json(); return [t, r.ok && Array.isArray(j.bars) && j.bars.length ? j.bars : null]; } catch (_) { return [t, null]; } }));
+      const bars = Object.fromEntries(got);
+      if (symbol() !== sym) { BD.busy = false; return; }
+      const rows = {};
+      for (const k of BD_ORDER) {
+        const t = preferredTf(k), b = bars[t];
+        if (!b) { rows[k] = { tf: t, d: null }; continue; }
+        const ov = {}; if (k === 'day' || k === 'swing' || k === 'short') ov.minScore = 45;
+        try { rows[k] = { tf: t, d: E.analyze(b, k, Object.assign(ov, S.params[k] || {}), t, {}) }; } catch (_) { rows[k] = { tf: t, d: null }; }
+      }
+      BD.rows = rows; BD.key = sym; BD.at = Date.now(); BD.err = Object.values(rows).every((r) => !r.d) ? 'The candles for the breakdown are not available right now.' : '';
+    } catch (_) { BD.err = 'The breakdown could not be loaded.'; BD.key = sym; BD.at = Date.now() - 20000; }
+    BD.busy = false; paint();
+  }
+  function breakdownHtml() {
+    if (BD.key !== symbol() && !BD.busy) void loadBreakdown(true); else if (Date.now() - BD.at > 30000 && !BD.busy) void loadBreakdown(false);
+    const chip = (b) => { const m = { long: ['long', 'LONG'], short: ['short', 'SHORT'], pullback: ['flat', 'PULLBACK'], bounce: ['flat', 'BOUNCE'], warming: ['flat', 'WARMING'] }[b] || ['flat', 'NO READ']; return '<span class="mem-chip ' + m[0] + '">' + m[1] + '</span>'; };
+    let h = '<div class="mem-bd"><h5><span>Breakdown · $' + esc(symbol()) + '</span><em>' + (BD.busy ? 'loading…' : 'all five models') + '</em></h5>';
+    for (const k of BD_ORDER) {
+      const own = S.data && k === S.mode && tf() === preferredTf(k) && BD.key === symbol();
+      const r = BD.key === symbol() ? BD.rows[k] : null, d = own ? S.data : (r && r.d), t = r ? r.tf : preferredTf(k);
+      let mid = chip(d ? d.bias : null), sig = '<span style="color:#6f8794">' + (BD.busy || !r ? 'reading…' : 'no candles') + '</span>';
+      if (d) {
+        if (!d.enoughData) sig = '<span style="color:#ffcf7a">needs more candles</span>';
+        else if (d.open) sig = '<i class="' + (d.open.dir > 0 ? 'up' : 'dn') + '">' + (d.open.dir > 0 ? 'LONG' : 'SHORT') + ' open</i> · entry ' + num(d.open.entry) + '<br>stop ' + num(d.open.stop) + (d.open.target == null ? '' : ' · tgt ' + num(d.open.target));
+        else if (d.latest) { const L = d.latest, ago = d.bars - 1 - L.i; sig = '<i class="' + (L.dir > 0 ? 'up' : 'dn') + '">' + (E.STRATEGIES[k].dirs === 'short' ? 'SHORT' : (L.dir > 0 ? 'BUY' : 'SELL')) + '</i> ' + (ago <= 0 ? 'now' : ago + ' bars ago') + ' · ' + num(L.price); }
+        else sig = 'no signal in range';
+        if (d.enoughData && d.stats) sig += '<br><span style="color:#7f98a6">' + d.stats.trades + ' trades · win ' + (d.stats.winRate == null ? '–' : Math.round(d.stats.winRate * 100) + '%') + ' · ' + rr(d.stats.expectancyR) + '</span>';
+      }
+      h += '<button type="button" class="mem-bdr' + (S.mode === k ? ' on' : '') + '" data-mem-mode="' + k + '"><span><b>' + esc(BD_NAMES[k] || E.STRATEGIES[k].label) + '</b><small>' + esc(t) + ' candles</small></span>' + mid + '<span class="sig">' + sig + '</span></button>';
+    }
+    return h + (BD.err ? '<div class="mem-warn">' + esc(BD.err) + '</div>' : '') + '<p class="mem-bdn">Each model is read on the candle size it is built for. Educational simulation, not a recommendation.</p></div>';
+  }
+
   function paint() {
     toggle.classList.toggle('on', S.on);
     panel.classList.toggle('open', S.on && S.open);
@@ -251,6 +309,7 @@
     const st = E.STRATEGIES[S.mode], d = S.data, p = E.resolveParams(S.mode, S.params[S.mode] || {}, tf());
     const tfNow = tf(), fitTf = st.tfHint.indexOf(tfNow) >= 0;
     let html = '<header><b>MEM ALGO</b><small>Educational simulation · no orders are placed</small><button type="button" data-mem="close" aria-label="Close">×</button></header>';
+    html += breakdownHtml();
     html += '<div class="mem-tabs">' + Object.keys(E.STRATEGIES).map((k) => '<button type="button" data-mem-mode="' + k + '" class="' + (S.mode === k ? 'on' : '') + '">' + esc(E.STRATEGIES[k].label) + '</button>').join('') + '</div>';
     if (S.tfNote && S.tfNote.seen && S.tfNote.tf !== tfNow) S.tfNote = null; // the member has since picked another interval
     if (S.tfNote && S.tfNote.tf === tfNow) S.tfNote.seen = true;
