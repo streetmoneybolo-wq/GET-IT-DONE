@@ -40,6 +40,7 @@ const { sanitizeBars, annotateCandles } = require('./data-quality');
 const { sseWrite, sseEvent } = require('./sse-safe');
 const { createPopoutService, validModule: validPopoutModule, validSymbol: validPopoutSymbol } = require('./academy-popout');
 const { cleanLayout: cleanAcademyLayout, cleanScope: cleanLayoutScope, layoutKey: academyLayoutKey } = require('./academy-layout');
+const { createCandleRecap } = require('./academy-candle-recap');
 const POPOUT_BASE = (() => { const u = String(process.env.SML_ACADEMY_POPOUT_URL || process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+$/i.test(u) ? u : 'https://sml-platform-api.onrender.com'; })();
 const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
@@ -838,6 +839,10 @@ const ACADEMY_CUSTOMIZE = (() => {
 const ACADEMY_CHART_DOCK = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-chart-dock.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+/* Candle recap (academy-candle-recap-ui.js): click a day/week/month/quarter/year candle for the full period read. */
+const ACADEMY_CANDLE_RECAP = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-candle-recap-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_LB_UI = (() => {
   try {
     return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-lb-ui.js'), 'utf8') + '</script>';
@@ -934,7 +939,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -1753,6 +1758,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
+  getCandleRecap = () => null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -3196,6 +3202,22 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Candle recap (academy-candle-recap.js): one higher-timeframe candle read in full. Any signed-in member. */
+    if (request.method === 'GET' && path === '/academy-activity/candle-recap') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const svc = getCandleRecap();
+      if (!svc) { sendJson(response, 503, { ok: false, error: 'recap_unavailable' }); return; }
+      const rq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const bar = ['o', 'h', 'l', 'c', 'v'].every((k) => Number.isFinite(Number(rq.get(k)))) ? { o: Number(rq.get('o')), h: Number(rq.get('h')), l: Number(rq.get('l')), c: Number(rq.get('c')), v: Number(rq.get('v')) } : null;
+      try {
+        const out = await svc.recap({ symbol: rq.get('symbol'), tf: rq.get('tf'), t: rq.get('t'), bar });
+        sendJson(response, out.ok ? 200 : (out.error === 'invalid_request' ? 400 : 503), out);
+      } catch (error) { logger('error', 'academy_candle_recap_failed', { error }); sendJson(response, 503, { ok: false, error: 'recap_unavailable' }); }
+      return;
+    }
+
     /* Client diagnostics: the Activity reports which sign-in step it reached (and any page error) so a silent failure on a
        member's machine can be read from the server log. Unauthenticated by design (it fires before there is a session),
        tiny, and it stores nothing: one stderr line per beacon. */
@@ -4032,6 +4054,28 @@ async function main() {
     if (marketDirection && date === new Date().toISOString().slice(0, 10)) { const d = await marketDirection.get('day').catch(() => null); if (d && d.ok) { out.label = d.label; out.vix = d.vol && d.vol.level != null ? d.vol.level : null; } }
     return out;
   };
+  /* Candle recap: bars for any chart timeframe (Massive direct, or derived like the market route), FINRA files, the
+     smart-money and pattern libraries, the short-data feed, today's off-exchange tape and the sentiment service. */
+  let candleRecap = null;
+  const candleBarsFor = async (symbol, tf) => {
+    if (!marketHistory || !marketHistory.enabled) return [];
+    if (Object.prototype.hasOwnProperty.call(MASSIVE_TIMEFRAMES, tf)) { const r = await marketHistory.get(symbol, tf); return r && r.ok && r.data && Array.isArray(r.data.bars) ? r.data.bars : []; }
+    const cfg = MASSIVE_DERIVED_TIMEFRAMES[tf];
+    if (cfg) { const base = await marketHistory.get(symbol, cfg.base); return base && base.ok && base.data && Array.isArray(base.data.bars) ? resampleBars(base.data.bars, tf) : []; }
+    return [];
+  };
+  const getCandleRecap = () => {
+    if (candleRecap) return candleRecap;
+    let smcLib = null; try { smcLib = require('./academy-smart-money'); } catch (_) { smcLib = null; }
+    candleRecap = createCandleRecap({
+      barsFor: candleBarsFor, fetchImpl: (u, o) => fetch(u, o), smc: smcLib, patterns: patternsLib,
+      shortData: academyAlerts ? (s) => academyAlerts.shortData(s) : null,
+      sentiment: academySentiment || null,
+      darkPoolToday: marketHistory && marketHistory.enabled ? async (s) => { const rows = await marketHistory.trades(s, 50_000); return sessionDarkPool(rows, { now: Date.now() }); } : null,
+      logger: log
+    });
+    return candleRecap;
+  };
   const academyPaper = createPaperService({
     storeFor: (id) => createPgStateStore({ pool: database.pool, key: 'paper:' + id, defaultValue: () => null, logger: log }),
     quote: paperQuote, optionQuote: paperOptionQuote, marketDay: paperMarketDay, logger: log
@@ -4307,7 +4351,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
