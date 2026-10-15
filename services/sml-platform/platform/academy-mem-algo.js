@@ -233,6 +233,7 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const dpData = ctx.darkPool && ctx.darkPool.available ? ctx.darkPool : null;
   const gxData = ctx.gamma && ctx.gamma.available ? ctx.gamma : null;
   const inData = ctx.institutional && ctx.institutional.available ? ctx.institutional : null;
+  const fiData = ctx.filings && ctx.filings.available ? ctx.filings : null;
 
   function scoreAt(i, withPatterns) {
     const F = [];
@@ -328,6 +329,13 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       if (inData.retailVsInstitutional === 'institutions buying what retail sells' && pts < 10) pts += 2;
       if (Array.isArray(inData.notes) && inData.notes.length) pts = Math.min(pts, 5);
       add('institutional', 'Institutional flow', 10, Math.max(0, Math.min(10, pts)), inData.label + ' (bias ' + ib + ')' + (inData.retailVsInstitutional && inData.retailVsInstitutional !== 'same direction' ? ', ' + inData.retailVsInstitutional : ''));
+    }
+    if (!fiData) add('filings', 'Insider filings', 5, 0, 'SEC filings not available', false);
+    else {
+      const fb = Number(fiData.bias) || 0, ins = fiData.insiders || {}, cluster = Boolean(ins.cluster);
+      const heavySell = ins.last90 && Number(ins.last90.sellValue) >= 5_000_000 && fb <= -40;
+      const pts = cluster ? 5 : fb >= 15 ? 4 : heavySell ? 0 : fb <= -15 ? 1 : 2;
+      add('filings', 'Insider filings', 5, pts, fiData.label + (fiData.activistRecent ? ', 13D filed in the last 60 days' : '') + (ins.last90 ? ' (' + ins.last90.buys + ' buys / ' + ins.last90.sells + ' sells in 90 days)' : ''));
     }
     const avail = F.filter((f) => f.available), max = avail.reduce((s, f) => s + f.max, 0), got = avail.reduce((s, f) => s + f.pts, 0);
     const score = max > 0 ? Math.round((got / max) * 100) : 0;
