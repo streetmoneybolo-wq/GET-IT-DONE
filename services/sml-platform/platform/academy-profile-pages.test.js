@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createProfilePages, cleanSettings, parseOg, sniffAudio, LAYOUTS, TEXTURES, DESKS } = require('./academy-profile-pages');
+const { createProfilePages, cleanSettings, parseOg, sniffAudio, LAYOUTS, TEXTURES, DESKS, LIGHTS } = require('./academy-profile-pages');
 
 const A = '100000000000000001', B = '100000000000000002', G = '900000000000000009';
 
@@ -69,7 +69,7 @@ test('link images are served only for images the server found itself; audio only
 });
 
 test('look and feel: texture, desk, light and orbs come from the lists; the 3D gallery keeps up to 12 https pictures with optional https links', () => {
-  const { LIGHTS, ORBS } = require('./academy-profile-pages');
+  const { ORBS } = require('./academy-profile-pages');
   assert.ok(TEXTURES.size >= 37, 'at least 36 textures besides none');
   assert.ok(DESKS.size >= 14, 'at least 13 desk scenes besides none');
   assert.ok(DESKS.has('nyse-floor') && DESKS.has('paper-desk') && LIGHTS.has('desk-lamp') && ORBS.has('many'));
@@ -162,4 +162,10 @@ test('every desk scene and texture the server accepts is one the page can draw, 
   assert.deepEqual([...drawnTex].sort(), [...TEXTURES].filter((t) => t !== 'none').sort());
   const desks = [...src.matchAll(/\['([a-z-]+)', '([A-Za-z ]+)'\]/g)].map((m) => m[1]).filter((id) => DESKS.has(id));
   for (const id of DESKS) if (id !== 'none') { assert.ok(desks.includes(id), id + ' is listed for the editor'); assert.ok(src.includes("id === '" + id + "'"), id + ' has a scene'); assert.ok(src.includes("'" + id + "': ["), id + ' dresses its modules'); }
+});
+
+test('every light the server accepts is drawn by the page and listed in the editor', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-desk.js'), 'utf8');
+  assert.ok(LIGHTS.size >= 17, 'at least 16 lights besides off');
+  for (const id of LIGHTS) if (id !== 'off') { assert.ok(src.includes("mode === '" + id + "'"), id + ' is drawn'); assert.ok(src.includes("['" + id + "', '"), id + ' is in the editor list'); }
 });

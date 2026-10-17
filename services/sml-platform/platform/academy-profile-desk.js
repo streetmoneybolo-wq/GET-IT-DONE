@@ -107,14 +107,14 @@
     'drafting-table': ['blueprint', 'graph-paper', 'canvas', 'blueprint', 'kraft-paper', 'linen', 'blueprint']
   };
   const DESKS = [['none', 'No desk'], ['nyse-floor', 'NYSE trading floor'], ['paper-desk', 'Paper desk'], ['walnut-office', 'Walnut office'], ['steel-trader', 'Steel trader desk'], ['cork-wall', 'Cork wall'], ['leather-blotter', 'Leather blotter'], ['night-skyline', 'Night skyline'], ['sunrise-office', 'Sunrise office'], ['amber-terminal', 'Amber terminal'], ['library-study', 'Library study'], ['penthouse', 'Penthouse view'], ['war-room', 'War room whiteboard'], ['drafting-table', 'Drafting table']];
-  const LIGHTS = [['off', 'Off'], ['desk-lamp', 'Desk lamp'], ['window-sun', 'Window sun'], ['monitor-glow', 'Monitor glow'], ['neon-sweep', 'Neon sweep'], ['golden-hour', 'Golden hour'], ['spotlight', 'Spotlight']];
+  const LIGHTS = [['off', 'Off'], ['desk-lamp', 'Desk lamp'], ['window-sun', 'Window sun'], ['monitor-glow', 'Monitor glow'], ['neon-sweep', 'Neon sweep'], ['golden-hour', 'Golden hour'], ['spotlight', 'Spotlight'], ['candlelight', 'Candlelight'], ['moonlight', 'Moonlight'], ['stage-beams', 'Stage beams'], ['storm-flash', 'Storm flashes'], ['aurora-ribbons', 'Aurora ribbons'], ['god-rays', 'God rays'], ['fireplace', 'Fireplace'], ['led-strip', 'LED strips'], ['fairy-lights', 'Fairy lights'], ['lava-glow', 'Lava glow']];
   const ORB_LEVELS = [['off', 'Off'], ['few', 'A few'], ['many', 'Lots']];
   /* small decorations a texture or desk adds to a module: [class] */
   const DECO = { 'manila-folder': 'tab', 'legal-pad': 'bind', leather: 'stitch', 'brass-plate': 'riv', 'cork-board': 'pin', blueprint: 'corner', 'sticky-note': 'curl' };
   const DESK_DECO = { 'paper-desk': ['tape', 'clip', 'tape', 'clip'], 'cork-wall': ['pin'], 'war-room': ['tape', 'pin'], 'drafting-table': ['corner'] };
 
   /* ---------- CSS ---------- */
-  let css = '.pd-desk,.pd-light,.pd-orbs,.pd-vig{position:fixed;inset:0;pointer-events:none}.pd-desk{z-index:0;overflow:hidden}.pd-desk svg{width:100%;height:100%;display:block}.pd-light{z-index:0;mix-blend-mode:screen;width:100%;height:100%}.pd-vig{z-index:0;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.6) 100%)}.pd-orbs{z-index:4;width:100%;height:100%}'
+  let css = '.pd-desk,.pd-light,.pd-orbs,.pd-vig{position:fixed;inset:0;pointer-events:none}.pd-desk{z-index:0;overflow:hidden}.pd-desk svg{width:100%;height:100%;display:block}.pd-light{z-index:3;mix-blend-mode:screen;opacity:.62;width:100%;height:100%}.pd-vig{z-index:0;background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.6) 100%)}.pd-orbs{z-index:4;width:100%;height:100%}'
     + '.pv-sec[class*=tx-] h6{color:var(--hd)}.pv-sec[class*=tx-]{color:var(--ink)}'
     + '.pv-sec[class*=tx-] .pv-name,.pv-sec[class*=tx-] .pv-kv b,.pv-sec[class*=tx-] .pv-post p,.pv-sec[class*=tx-] .pv-srv b,.pv-sec[class*=tx-] .pv-song .ttl,.pv-sec[class*=tx-] .pv-link .t{color:var(--ink)}'
     + '.pv-sec[class*=tx-] .pv-tag,.pv-sec[class*=tx-] .pv-bio,.pv-sec[class*=tx-] .pv-kv span,.pv-sec[class*=tx-] .pv-post .m,.pv-sec[class*=tx-] .pv-song .sub,.pv-sec[class*=tx-] .pv-srv small,.pv-sec[class*=tx-] .pv-empty,.pv-sec[class*=tx-] .pv-note,.pv-sec[class*=tx-] .pv-link .t small,.pv-sec[class*=tx-] .pv-kv b small{color:var(--mut)}'
@@ -159,7 +159,7 @@
   const FILM = svgUri(turb('0.9', 2, 31) + '<feColorMatrix type="saturate" values="0"/>');
   const GLOSS = { 'brushed-steel': 0.5, 'brass-plate': 0.5, marble: 0.42, 'frosted-glass': 0.36, 'carbon-fiber': 0.38, leather: 0.26, 'crt-terminal': 0.3, slate: 0.2, walnut: 0.2, oak: 0.14, 'green-felt': 0.04, 'cork-board': 0.05, concrete: 0.08, copper: 0.5, 'gold-leaf': 0.55, 'rusted-iron': 0.1, granite: 0.25, terrazzo: 0.3, denim: 0.04, suede: 0.04, chalkboard: 0.1 };
   const PAPER = ['canvas', 'linen', 'legal-pad', 'graph-paper', 'manila-folder', 'index-card', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'sticky-note', 'parchment'];
-  const LIGHT_ANGLE = { 'desk-lamp': 225, 'window-sun': 135, 'monitor-glow': 0, 'neon-sweep': 160, 'golden-hour': 45, spotlight: 180 };
+  const LIGHT_ANGLE = { 'desk-lamp': 225, 'window-sun': 135, 'monitor-glow': 0, 'neon-sweep': 160, 'golden-hour': 45, spotlight: 180, candlelight: 180, moonlight: 200, 'stage-beams': 180, 'storm-flash': 180, 'aurora-ribbons': 180, 'god-rays': 215, fireplace: 0, 'led-strip': 180, 'fairy-lights': 180, 'lava-glow': 0 };
   for (const t of TEX) {
     const sel = '.pv-sec.tx-' + t[0] + '.tx-' + t[0] + ',.pd-sw.tx-' + t[0] + '.tx-' + t[0];
     const dark = ['#f', '#e', '#6', '#a'].indexOf(t[2].slice(0, 2)) >= 0 || t[2] === 'var(--acc)';
@@ -375,7 +375,7 @@
   };
 
   /* ---------- the running scene: lighting, orbs, gallery ---------- */
-  const R = { raf: 0, view: null, light: null, root: null, deskEl: null, glares: [], scene: false, mx: 0, my: 0, px: 0, py: 0, cx: -1, cy: -1, onMove: null, moveOn: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
+  const R = { raf: 0, view: null, light: null, root: null, deskEl: null, glares: [], ls: {}, scene: false, mx: 0, my: 0, px: 0, py: 0, cx: -1, cy: -1, onMove: null, moveOn: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
   const rnd = (a, b) => a + Math.random() * (b - a);
   function shade(hex, k) {
     const m = /^#([0-9a-f]{6})$/i.exec(String(hex)); if (!m) return '#334455';
@@ -436,6 +436,74 @@
       const g = ctx.createLinearGradient(0, h, w, 0); g.addColorStop(0, 'rgba(255,140,60,' + (0.3 + p * 0.1) + ')'); g.addColorStop(0.55, 'rgba(255,190,110,0.1)'); g.addColorStop(1, 'rgba(255,230,180,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
       for (let i = 0; i < 5; i++) { const x = w * (0.78 - i * 0.16), y = h * (0.18 + i * 0.12) + Math.sin(t / 1800 + i) * 6, r = 20 + i * 18; const f = ctx.createRadialGradient(x, y, 0, x, y, r); f.addColorStop(0, 'rgba(255,220,160,' + (0.2 - i * 0.025) + ')'); f.addColorStop(1, 'rgba(255,220,160,0)'); ctx.fillStyle = f; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); }
       const sun = ctx.createRadialGradient(w * 0.9, h * 0.05, 4, w * 0.9, h * 0.05, big * 0.4); sun.addColorStop(0, 'rgba(255,236,190,0.55)'); sun.addColorStop(1, 'rgba(255,236,190,0)'); ctx.fillStyle = sun; ctx.fillRect(0, 0, w, h);
+    } else if (mode === 'candlelight') {
+      for (let k = 0; k < 4; k++) {
+        const fl = 0.75 + 0.25 * Math.sin(t / (130 + k * 47) + k * 2) + 0.1 * Math.sin(t / 53 + k), x = w * (0.12 + k * 0.26), y = h * (0.8 + 0.04 * Math.sin(k * 3));
+        const g = ctx.createRadialGradient(x, y, 4, x, y, big * 0.36); g.addColorStop(0, 'rgba(255,190,100,' + (0.44 * fl + p * 0.12) + ')'); g.addColorStop(0.4, 'rgba(255,140,60,' + (0.13 * fl) + ')'); g.addColorStop(1, 'rgba(255,120,40,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      }
+    } else if (mode === 'moonlight') {
+      for (let i = 0; i < 3; i++) {
+        const x0 = w * (0.52 + i * 0.15 + Math.sin(t / 9000 + i) * 0.02), g = ctx.createLinearGradient(x0, 0, x0 - w * 0.4, h); g.addColorStop(0, 'rgba(170,200,255,' + (0.17 + p * 0.08) + ')'); g.addColorStop(1, 'rgba(170,200,255,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0 + w * 0.07, 0); ctx.lineTo(x0 - w * 0.33, h); ctx.lineTo(x0 - w * 0.5, h); ctx.closePath(); ctx.fill();
+      }
+      const m = ctx.createRadialGradient(w * 0.86, 0, 6, w * 0.86, 0, big * 0.5); m.addColorStop(0, 'rgba(210,225,255,.42)'); m.addColorStop(1, 'rgba(210,225,255,0)'); ctx.fillStyle = m; ctx.fillRect(0, 0, w, h);
+    } else if (mode === 'stage-beams') {
+      const cols = [acc, acc2, '#ff3d7f', '#ffd23d', '#3dd6ff', '#9d5cff'], hat = R.ch ? R.ch.hats || 0 : 0;
+      for (let k = 0; k < 6; k++) {
+        const ox = w * (k + 0.5) / 6, ang = Math.sin(t / (1500 + k * 210) + k) * 0.55 + hat * 0.12, ex = ox + Math.tan(ang) * h;
+        const g = ctx.createLinearGradient(ox, 0, ex, h); g.addColorStop(0, rgba(cols[k], 0.34 + p * 0.34)); g.addColorStop(1, rgba(cols[k], 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(ox - 6, 0); ctx.lineTo(ox + 6, 0); ctx.lineTo(ex + h * 0.09, h); ctx.lineTo(ex - h * 0.09, h); ctx.closePath(); ctx.fill();
+        const d = ctx.createRadialGradient(ox, 0, 2, ox, 0, 46); d.addColorStop(0, rgba(cols[k], 0.8)); d.addColorStop(1, rgba(cols[k], 0)); ctx.fillStyle = d; ctx.fillRect(ox - 46, 0, 92, 46);
+      }
+    } else if (mode === 'storm-flash') {
+      const st = R.ls.storm || (R.ls.storm = { next: t + 1500, at: -99999, dur: 160, x: 0.5, bolt: [] }), kick = R.ch ? R.ch.kick || 0 : 0;
+      if (t > st.next || (R.ch && kick > 0.93 && t - st.at > 700)) {
+        st.at = t; st.dur = 110 + Math.random() * 220; st.next = t + 2800 + Math.random() * 6500; st.x = 0.1 + Math.random() * 0.8; st.bolt = [];
+        let bx = st.x, by = 0; while (by < 0.75) { st.bolt.push([bx, by]); bx += (Math.random() - 0.5) * 0.07; by += 0.04 + Math.random() * 0.05; }
+      }
+      ctx.fillStyle = 'rgba(40,60,120,.08)'; ctx.fillRect(0, 0, w, h);
+      const a = Math.max(0, 1 - (t - st.at) / st.dur);
+      if (a > 0) {
+        const f = a * (0.65 + 0.35 * Math.sin(t / 17));
+        ctx.fillStyle = 'rgba(200,215,255,' + (0.3 * f) + ')'; ctx.fillRect(0, 0, w, h);
+        const g = ctx.createRadialGradient(st.x * w, 0, 8, st.x * w, 0, big * 0.7); g.addColorStop(0, 'rgba(225,235,255,' + (0.6 * f) + ')'); g.addColorStop(1, 'rgba(225,235,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = 'rgba(235,242,255,' + (0.9 * f) + ')'; ctx.lineWidth = 2.6; ctx.beginPath(); st.bolt.forEach((q, i) => { if (i) ctx.lineTo(q[0] * w, q[1] * h); else ctx.moveTo(q[0] * w, q[1] * h); }); ctx.stroke();
+      }
+    } else if (mode === 'aurora-ribbons') {
+      const rc = ['60,255,170', '120,140,255', '200,100,255'];
+      for (let k = 0; k < 3; k++) {
+        const base = h * (0.16 + k * 0.1), top = [], g = ctx.createLinearGradient(0, base - h * 0.08, 0, base + h * 0.36); g.addColorStop(0, 'rgba(' + rc[k] + ',0)'); g.addColorStop(0.3, 'rgba(' + rc[k] + ',' + (0.3 + p * 0.22) + ')'); g.addColorStop(1, 'rgba(' + rc[k] + ',0)');
+        ctx.beginPath(); for (let x = 0; x <= w + 12; x += 12) { const y = base + Math.sin(x / (170 + k * 60) + t / (2200 + k * 500)) * h * 0.07 + Math.sin(x / 85 + t / 1500) * h * 0.02; top.push([x, y]); if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+        for (let i = top.length - 1; i >= 0; i--) ctx.lineTo(top[i][0], top[i][1] + h * 0.3); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
+      }
+    } else if (mode === 'god-rays') {
+      const sx = w * 0.78, sy = h * 0.1;
+      for (let i = 0; i < 14; i++) {
+        const ang = 1.9 + i * 0.12 + Math.sin(t / 6000 + i) * 0.02, len = big * 1.6, g = ctx.createLinearGradient(sx, sy, sx + Math.cos(ang) * len, sy + Math.sin(ang) * len); g.addColorStop(0, 'rgba(255,228,165,' + (0.2 + p * 0.1) + ')'); g.addColorStop(1, 'rgba(255,228,165,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(ang - 0.03) * len, sy + Math.sin(ang - 0.03) * len); ctx.lineTo(sx + Math.cos(ang + 0.03) * len, sy + Math.sin(ang + 0.03) * len); ctx.closePath(); ctx.fill();
+      }
+      const s2 = ctx.createRadialGradient(sx, sy, 6, sx, sy, big * 0.35); s2.addColorStop(0, 'rgba(255,240,200,.65)'); s2.addColorStop(1, 'rgba(255,240,200,0)'); ctx.fillStyle = s2; ctx.fillRect(0, 0, w, h);
+    } else if (mode === 'fireplace') {
+      const fl = 0.8 + 0.2 * Math.sin(t / 110) + 0.1 * Math.sin(t / 37), g = ctx.createRadialGradient(w * 0.5, h * 1.06, 10, w * 0.5, h * 1.06, big * 0.85);
+      g.addColorStop(0, 'rgba(255,150,50,' + (0.52 * fl + p * 0.2) + ')'); g.addColorStop(0.45, 'rgba(255,100,30,' + (0.16 * fl) + ')'); g.addColorStop(1, 'rgba(255,80,20,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      const sp = R.ls.sparks || (R.ls.sparks = Array.from({ length: 46 }, () => ({ x: Math.random(), y: 1 + Math.random(), v: 0.0004 + Math.random() * 0.0009, d: Math.random() * 6.28 })));
+      for (const q of sp) { q.y -= q.v * (1 + p * 3) * 16; q.x += Math.sin(t / 700 + q.d) * 0.0006; if (q.y < 0.1) { q.y = 1.02; q.x = 0.2 + Math.random() * 0.6; } ctx.fillStyle = 'rgba(255,' + Math.round(150 + q.y * 80) + ',70,' + Math.max(0, 0.3 + 0.5 * (1 - q.y)) + ')'; ctx.beginPath(); ctx.arc(q.x * w, q.y * h, Math.max(0.6, 1 + (1 - Math.min(1, q.y)) * 2), 0, 6.283); ctx.fill(); }
+    } else if (mode === 'led-strip') {
+      const hue = (t / 40 + (R.ch ? (R.ch.snare || 0) * 70 : 0)) % 360, a = 0.4 + p * 0.3;
+      const edge = (x0, y0, x1, y1, hh, al) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, 'hsla(' + Math.round(hh) + ',100%,58%,' + al + ')'); g.addColorStop(1, 'hsla(' + Math.round(hh) + ',100%,58%,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h); };
+      edge(0, 0, 0, h * 0.24, hue, a); edge(0, h, 0, h * 0.76, (hue + 140) % 360, a); edge(0, 0, w * 0.1, 0, (hue + 70) % 360, a * 0.55); edge(w, 0, w * 0.9, 0, (hue + 210) % 360, a * 0.55);
+    } else if (mode === 'fairy-lights') {
+      for (let k = 0; k < 3; k++) {
+        const y0 = h * (0.03 + k * 0.05), sag = h * (0.07 + k * 0.01);
+        for (let i = 0; i < 16; i++) {
+          const u = (i + 0.5) / 16, x = w * u, y = y0 + Math.sin(u * Math.PI) * sag + k * 6, tw = 0.55 + 0.45 * Math.sin(t / 420 + i * 1.7 + k * 2), col = ['255,214,140', '255,170,200', '190,225,255', '255,244,200'][(i + k) % 4];
+          const g = ctx.createRadialGradient(x, y, 0, x, y, 34); g.addColorStop(0, 'rgba(' + col + ',' + (0.8 * tw + p * 0.15) + ')'); g.addColorStop(0.3, 'rgba(' + col + ',' + (0.22 * tw) + ')'); g.addColorStop(1, 'rgba(' + col + ',0)'); ctx.fillStyle = g; ctx.fillRect(x - 34, y - 34, 68, 68);
+        }
+      }
+    } else if (mode === 'lava-glow') {
+      const bl = R.ls.blobs || (R.ls.blobs = Array.from({ length: 7 }, (_, i) => ({ x: 0.1 + i * 0.13, y: Math.random(), v: 0.00005 + Math.random() * 0.00012, r: 0.08 + Math.random() * 0.09, c: ['255,120,40', '255,60,110', '255,170,60'][i % 3], d: Math.random() * 6.28 })));
+      const base = ctx.createLinearGradient(0, h, 0, h * 0.55); base.addColorStop(0, 'rgba(255,90,30,' + (0.3 + p * 0.15) + ')'); base.addColorStop(1, 'rgba(255,90,30,0)'); ctx.fillStyle = base; ctx.fillRect(0, 0, w, h);
+      for (const q of bl) { q.y -= q.v * 16 * (1 + p * 2); if (q.y < -0.2) q.y = 1.15; const x = (q.x + Math.sin(t / 3000 + q.d) * 0.05) * w, y = q.y * h, r = q.r * big * (1 + p * 0.25), g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(' + q.c + ',.55)'); g.addColorStop(1, 'rgba(' + q.c + ',0)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
     } else if (mode === 'spotlight') {
       const sx = w * (0.5 + 0.28 * Math.sin(t / 4200)), g = ctx.createLinearGradient(sx, 0, sx, h); g.addColorStop(0, 'rgba(255,255,240,' + (0.3 + p * 0.15) + ')'); g.addColorStop(1, 'rgba(255,255,240,0.02)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(sx - 20, 0); ctx.lineTo(sx + 20, 0); ctx.lineTo(sx + w * 0.22, h); ctx.lineTo(sx - w * 0.22, h); ctx.closePath(); ctx.fill();
@@ -509,7 +577,7 @@
   function stop() {
     if (R.raf) cancelAnimationFrame(R.raf); R.raf = 0;
     if (R.resize) window.removeEventListener('resize', R.resize); R.resize = null;
-    R.light = R.orbs = R.orbit = null; R.view = null; R.mods = []; R.modes = []; R.ch = null;
+    R.light = R.orbs = R.orbit = null; R.view = null; R.mods = []; R.modes = []; R.ch = null; R.ls = {};
     if (R.onMove && R.moveOn) R.moveOn.removeEventListener('pointermove', R.onMove); R.onMove = null; R.moveOn = null; R.root = R.deskEl = null; R.glares = []; R.scene = false;
   }
   function openLink(url) { if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } }
