@@ -1203,7 +1203,7 @@ function sendHtml(response, status, body) {
     'content-length': payload.length,
     'content-encoding': 'gzip',
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'self' https://www.youtube-nocookie.com https://open.spotify.com https://w.soundcloud.com https://embed.music.apple.com; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'self'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
   response.end(payload);
@@ -2591,7 +2591,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           });
           if (tooBig) { sendJson(response, 413, { ok: false, error: 'file_too_large' }); return; }
           const r = await academyProfilePages.uploadAudio(session.userId, Buffer.concat(chunks), pq.get('title') || '');
-          sendJson(response, r.ok ? 200 : (r.error === 'file_too_large' ? 413 : 400), r); return;
+          sendJson(response, r.ok ? 200 : (r.error === 'file_too_large' ? 413 : r.error === 'storage_failed' ? 503 : 400), r); return;
         }
         if (request.method === 'PUT' && path === '/academy-activity/profiles/me') {
           const b = await readBody(32_768); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
@@ -2611,7 +2611,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!stream || (!stream.body && !stream.buffer)) { response.writeHead(404); response.end(); return; }
           if (stream.buffer) {
             const buf = stream.buffer, total = buf.length, rg = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.range || ''));
-            const base = { 'content-type': stream.contentType, 'cache-control': 'private, max-age=3600', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff' };
+            const base = { 'content-type': stream.contentType, 'cache-control': 'private, no-cache', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff' };
             if (rg && (rg[1] || rg[2])) {
               let from = rg[1] === '' ? Math.max(0, total - Number(rg[2])) : Number(rg[1]), to = rg[1] === '' || rg[2] === '' ? total - 1 : Math.min(total - 1, Number(rg[2]));
               if (from > to || from >= total) { response.writeHead(416, { 'content-range': 'bytes */' + total }); response.end(); return; }

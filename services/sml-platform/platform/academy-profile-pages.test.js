@@ -11,10 +11,10 @@ test('settings are cleaned: layouts from the list, bounded text, one song with i
   const s = cleanSettings({ displayName: 'Ana <b>', tagline: 'x'.repeat(200), layout: 'nope', theme: { accent: '#00C47D', fx: 'lasers', font: 'mono', immersive: 'immersive' }, song: { url: 'https://cdn.example.com/track.mp3', title: 'My song' }, socials: [{ url: 'https://x.com/ana' }, 'https://www.instagram.com/ana', 'http://insecure.example.com', 'https://x.com/ana', { url: 'https://stockmarketloop.com/ana/' }], flags: { showPaper: false } });
   assert.equal(s.displayName, 'Ana b'); assert.equal(s.tagline.length, 90); assert.equal(s.layout, 'classic');
   assert.deepEqual(s.theme, { accent: '#00c47d', fx: 'aurora', fxs: ['aurora'], font: 'mono', immersive: 'immersive' });
-  assert.deepEqual(s.song, { url: 'https://cdn.example.com/track.mp3', title: 'My song', kind: 'audio', bpm: 0 });
+  assert.deepEqual(s.song, { url: 'https://cdn.example.com/track.mp3', title: 'My song', kind: 'audio' });
   assert.deepEqual(s.socials.map((x) => x.kind), ['x', 'instagram', 'stockmarketloop']);
   assert.equal(s.flags.showPaper, false);
-  assert.equal(cleanSettings({ song: { url: 'https://www.youtube.com/watch?v=abc' } }).song.kind, 'youtube');
+  for (const link of ['https://www.youtube.com/watch?v=abc', 'https://open.spotify.com/track/abc123', 'https://soundcloud.com/a/b', 'https://music.apple.com/us/album/x/1']) assert.equal(cleanSettings({ song: { url: link } }).song, null, 'links to other sites are not accepted as a song: ' + link);
   assert.equal(cleanSettings({ song: { url: 'javascript:alert(1)' } }).song, null);
   assert.equal(cleanSettings({ socials: Array.from({ length: 12 }, (_, i) => 'https://site' + i + '.example.com/') }).socials.length, 8);
 });
@@ -90,7 +90,7 @@ test('look and feel: texture, desk, light and orbs come from the lists; the 3D g
   assert.equal(new Set(orbit.map((o) => o.image)).size, 12, 'no duplicate pictures');
 });
 
-test('effects stack: several textures, lights and background effects; a texture and a part of the song per module; a BPM for embedded songs', () => {
+test('effects stack: several textures, lights and background effects; a texture and a part of the song per module', () => {
   const t = cleanSettings({ theme: { textures: ['leather', 'marble', 'lava', 'leather', 'none', 'oak', 'walnut', 'slate', 'concrete', 'cork-board'], lights: ['desk-lamp', 'neon-sweep', 'off', 'x'], fxs: ['grid', 'stars', 'none', 'nope'], moduleTex: { head: 'brass-plate', feed: 'lava', bogus: 'oak' }, moduleReact: { stats: 'kick', head: 'vocal', feed: 'auto', paper: 'drums' } } }).theme;
   assert.deepEqual(t.textures, ['leather', 'marble', 'oak', 'walnut', 'slate', 'concrete'], 'six at most, no repeats, no unknown ids, "none" skipped');
   assert.equal(t.texture, 'leather');
@@ -101,8 +101,6 @@ test('effects stack: several textures, lights and background effects; a texture 
   const old = cleanSettings({ theme: { texture: 'oak', light: 'spotlight' } }).theme;
   assert.deepEqual([old.textures, old.lights], [['oak'], ['spotlight']], 'a single older choice still works');
   assert.deepEqual(cleanSettings({ theme: { textures: [] } }).theme.textures, []);
-  assert.equal(cleanSettings({ song: { url: 'https://open.spotify.com/track/abc123', bpm: 128.4 } }).song.bpm, 128);
-  assert.equal(cleanSettings({ song: { url: 'https://open.spotify.com/track/abc123', bpm: 9000 } }).song.bpm, 0);
 });
 
 test('orbit pictures: registered only after the server proves they are pictures; internal hosts refused; allowed again after a restart', async () => {
@@ -134,11 +132,13 @@ test('the profile desk script is inlined into the Academy page: no backslash, ba
   assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 72, 'exactly 72 textures');
 });
 
-test('the profile music script is inlined into the Academy page too, and the page may frame only the four music players', () => {
+test('the profile music script is inlined into the Academy page, plays only the Academy\'s own audio, and the page frames nothing from other sites', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-music.js'), 'utf8');
   for (const bad of ['\\', '`', '${', '</script']) assert.equal(src.includes(bad), false, 'no ' + bad);
+  assert.equal(/iframe|youtube|spotify|soundcloud|embed\.music/i.test(src.replace(/\(Embedded players[^)]*\)/, '')), false, 'no embedded players from other sites');
   const server = require('node:fs').readFileSync(require('node:path').join(__dirname, 'server.js'), 'utf8');
-  assert.match(server, /frame-src 'self' https:\/\/www\.youtube-nocookie\.com https:\/\/open\.spotify\.com https:\/\/w\.soundcloud\.com https:\/\/embed\.music\.apple\.com;/);
+  assert.match(server, /img-src 'self' data:; frame-src 'self'; frame-ancestors/);
+  assert.doesNotMatch(server, /youtube-nocookie/);
   assert.match(server, /ACADEMY_PROFILE_DESK \+ ACADEMY_PROFILE_MUSIC \+ ACADEMY_PROFILE_UI/, 'the music player loads before the profile page uses it');
 });
 
@@ -152,8 +152,8 @@ test('uploaded songs are recognised by their first bytes, never by name or label
   assert.equal(sniffAudio(pad('fLaC')), 'audio/flac');
   for (const bad of ['<html><body>hi</body></html>', 'MZ\u0090\u0000 an exe', '%PDF-1.7 not music']) assert.equal(sniffAudio(Buffer.from(bad.padEnd(64, ' '))), '');
   assert.equal(sniffAudio(Buffer.alloc(4)), '');
-  const s = cleanSettings({ song: { upload: true, title: 'Mine <b>', bpm: 128 } }).song;
-  assert.deepEqual(s, { url: '', title: 'Mine b', kind: 'audio', upload: true, bpm: 128 });
+  const s = cleanSettings({ song: { upload: true, title: 'Mine <b>' } }).song;
+  assert.deepEqual(s, { url: '', title: 'Mine b', kind: 'audio', upload: true });
 });
 
 test('every desk scene and texture the server accepts is one the page can draw, and the other way round', () => {
@@ -168,4 +168,40 @@ test('every light the server accepts is drawn by the page and listed in the edit
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-desk.js'), 'utf8');
   assert.ok(LIGHTS.size >= 37, 'at least 36 lights besides off');
   for (const id of LIGHTS) if (id !== 'off') { assert.ok(src.includes("mode === '" + id + "'"), id + ' is drawn'); assert.ok(src.includes("['" + id + "', '"), id + ' is in the editor list'); }
+});
+
+test('a song is stored in small pieces and survives a dropped database connection', async () => {
+  const meta = new Map(), chunks = [], profiles = new Map(); let failOnce = true, statements = 0, biggest = 0;
+  const pool = { query: async (sql, p = []) => {
+    statements += 1; for (const x of p) if (Buffer.isBuffer(x)) biggest = Math.max(biggest, x.length);
+    if (/INSERT INTO academy_profile_audio_chunks/.test(sql) && failOnce) { failOnce = false; throw new Error('Connection terminated unexpectedly'); }
+    if (/^CREATE TABLE|^ALTER TABLE/.test(sql)) return { rows: [] };
+    if (/INSERT INTO academy_profile_audio_chunks/.test(sql)) { chunks.push({ id: p[0], version: p[1], idx: p[2], bytes: p[3] }); return { rows: [] }; }
+    if (/INSERT INTO academy_profile_audio \(/.test(sql)) { meta.set(p[0], { content_type: p[1], size: p[2], version: p[3] }); return { rows: [] }; }
+    if (/DELETE FROM academy_profile_audio_chunks WHERE discord_id=\$1 AND version<>\$2/.test(sql)) { for (let i = chunks.length - 1; i >= 0; i--) if (chunks[i].id === p[0] && chunks[i].version !== p[1]) chunks.splice(i, 1); return { rows: [] }; }
+    if (/DELETE FROM academy_profile_audio_chunks WHERE discord_id=\$1 AND version=\$2/.test(sql)) { for (let i = chunks.length - 1; i >= 0; i--) if (chunks[i].id === p[0] && chunks[i].version === p[1]) chunks.splice(i, 1); return { rows: [] }; }
+    if (/DELETE FROM academy_profile_audio_chunks/.test(sql)) { for (let i = chunks.length - 1; i >= 0; i--) if (chunks[i].id === p[0]) chunks.splice(i, 1); return { rows: [] }; }
+    if (/DELETE FROM academy_profile_audio /.test(sql)) { meta.delete(p[0]); return { rows: [] }; }
+    if (/SELECT 1 FROM academy_profile_audio /.test(sql)) return { rows: meta.has(p[0]) ? [{}] : [] };
+    if (/SELECT content_type, version FROM academy_profile_audio /.test(sql)) return { rows: meta.has(p[0]) ? [meta.get(p[0])] : [] };
+    if (/SELECT bytes FROM academy_profile_audio_chunks/.test(sql)) return { rows: chunks.filter((c) => c.id === p[0] && c.version === p[1]).sort((a, b) => a.idx - b.idx).map((c) => ({ bytes: c.bytes })) };
+    if (/SELECT \* FROM academy_profiles/.test(sql)) return { rows: profiles.has(p[0]) ? [profiles.get(p[0])] : [] };
+    if (/INSERT INTO academy_profiles/.test(sql)) { profiles.set(p[0], { discord_id: p[0], display_name: p[1], tagline: p[2], bio: p[3], layout: p[4], theme: p[5], song: p[6], socials: p[7], flags: p[8] }); return { rows: [] }; }
+    return { rows: [] };
+  } };
+  const svc = createProfilePages({ pool, logger: () => {} });
+  const song = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(700 * 1024, 5)]);
+  const r = await svc.uploadAudio(A, song, 'Big one');
+  assert.equal(r.ok, true, 'one dropped connection is retried');
+  assert.ok(biggest <= 256 * 1024, 'no database statement carries more than 256 KB, got ' + biggest);
+  assert.equal(chunks.length, 3, 'a 700 KB song is three pieces');
+  const back = await svc.audioStream('', A);
+  assert.equal(back.contentType, 'audio/mpeg'); assert.equal(Buffer.compare(back.buffer, song), 0, 'the song comes back byte for byte');
+  /* a new upload replaces the old pieces */
+  await svc.uploadAudio(A, Buffer.concat([Buffer.from('ID3'), Buffer.alloc(300 * 1024, 9)]), 'Second');
+  assert.equal(new Set(chunks.map((c) => c.version)).size, 1, 'only the newest version stays');
+  /* a database that keeps failing gives a clear refusal, and leaves no half-stored song behind */
+  const dead = createProfilePages({ pool: { query: async (sql) => { if (/INSERT INTO academy_profile_audio_chunks/.test(sql)) throw new Error('Connection terminated unexpectedly'); return { rows: [] }; } }, logger: () => {} });
+  const bad = await dead.uploadAudio(B, song, 'Nope');
+  assert.deepEqual([bad.ok, bad.error], [false, 'storage_failed']);
 });
