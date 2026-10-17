@@ -175,7 +175,7 @@ function computeSignals(bars, params) {
 
 /* ---------- Confluence (every strategy) ----------
  * A crossover on its own is one opinion. Before a signal is taken, the model asks what else agrees. Every factor is read for the trade's side
- * (a SELL wants the mirror image of what a BUY wants, so Short Sale scores on bearish readings). Day, Swing and Short default to no minimum
+ * (a SELL wants the mirror image of what a BUY wants, so the short model scores on bearish readings). Day, Swing and Short default to no minimum
  * (every signal is graded, nothing skipped) and the member raises the minimum in Settings; the hold strategies default to 55. The first six
  * factors use only data already on the page:
  *   higher-timeframe trend (20)  the next timeframe up is also trending up (previous COMPLETE higher-timeframe candle, so no look-ahead)

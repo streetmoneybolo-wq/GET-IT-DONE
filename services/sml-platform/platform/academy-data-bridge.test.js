@@ -57,3 +57,18 @@ test('academy data bridge gives the site long enough for a cold moomoo chain and
   assert.equal(createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'd'.repeat(32), timeoutMs: 'nope' }).timeoutMs, 25_000);
   assert.equal(createAcademyDataBridge({ baseUrl: 'https://stockmarketloop.com', secret: 'd'.repeat(32), timeoutMs: 10 }).timeoutMs, 1_000);
 });
+
+test('data bridge shares one in-flight request per symbol and remembers a failure for a few seconds', async () => {
+  const { createAcademyDataBridge } = require('./academy-data-bridge');
+  let calls = 0; let t = 1_000_000;
+  const bridge = createAcademyDataBridge({
+    baseUrl: 'https://example.com', secret: 'x'.repeat(40), now: () => t,
+    fetchImpl: async () => { calls += 1; await new Promise((r) => setTimeout(r, 5)); return { ok: false, status: 503, json: async () => ({ message: 'cooling down' }) }; }
+  });
+  const [a, b] = await Promise.all([bridge.get('options', 'XHG'), bridge.get('options', 'XHG')]);
+  assert.equal(calls, 1);
+  assert.equal(a.ok, false); assert.equal(b.detail, 'cooling down');
+  await bridge.get('options', 'XHG'); assert.equal(calls, 1, 'remembered');
+  await bridge.get('earnings', 'XHG'); assert.equal(calls, 2, 'other kinds are unaffected');
+  t += 16_000; await bridge.get('options', 'XHG'); assert.equal(calls, 3, 'retried after the memory window');
+});

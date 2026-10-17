@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 const { lessonParts, lessonPartsInfo } = require('./academy/lesson-parts');
 
 const DEFAULT_MODEL = 'claude-sonnet-5';
+const FALLBACK_MODEL = 'claude-sonnet-5-5';
+const FAILURE_MEMORY_MS = 600_000;
 const REQUESTS_PER_MINUTE = 6;
 /* One entry per lesson in the curriculum, so a full pass never evicts a design
  * the learner is about to come back to. Written out rather than read from
@@ -72,6 +74,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
   const lessonMap = new Map(lessons.map((lesson) => [lesson.moduleId + ':' + lesson.lessonId, lesson]));
   const cache = new Map();
   const inflight = new Map();
+  const failures = new Map();
   const rate = new Map();
   const configured = Boolean(apiKey && model && typeof fetchImpl === 'function');
 
@@ -104,37 +107,50 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       workedExample: example ? { partIndex: exampleIndex, title: example.title, say: example.say } : null,
       simulation: lesson.simulation
     };
-    const response = await fetchImpl('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
+    const system = 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use the simplest accurate explanation first. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent prices, market events, performance claims, guarantees, or financial advice. Do not change the lesson facts or answer the knowledge check.';
+    const jsonOnly = ' Reply with one JSON object and nothing else, shaped as {"slides":[{"heading":string,"visual":string,"callout":string,"visualKind":string}]} where visualKind is one of ' + JSON.stringify(VISUAL_KINDS) + '.';
+    async function call(useModel, structured) {
+      const body = {
+        model: useModel,
         max_tokens: 4000,
-        system: 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use the simplest accurate explanation first. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent prices, market events, performance claims, guarantees, or financial advice. Do not change the lesson facts or answer the knowledge check.',
-        messages: [{ role: 'user', content: JSON.stringify(source) }],
-        output_config: { format: { type: 'json_schema', schema: DESIGN_SCHEMA } }
-      }),
-      signal: AbortSignal.timeout(60_000)
-    });
-    const payload = await response.json().catch(() => ({}));
+        system: structured ? system : system + jsonOnly,
+        messages: [{ role: 'user', content: JSON.stringify(source) }]
+      };
+      if (structured) body.output_config = { format: { type: 'json_schema', schema: DESIGN_SCHEMA } };
+      const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60_000)
+      });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    }
+    /* a 400 means this request shape is refused (not that the provider is down): retry
+     * without structured output, then on the fallback model, and keep the reason */
+    const attempts = [[model, true], [model, false]];
+    if (model !== FALLBACK_MODEL) attempts.push([FALLBACK_MODEL, false]);
+    let response; let payload; let usedModel = model; let lastBad = '';
+    for (const [useModel, structured] of attempts) {
+      ({ res: response, data: payload } = await call(useModel, structured));
+      usedModel = useModel;
+      if (response.status !== 400) break;
+      lastBad = String((payload && payload.error && payload.error.message) || '').replace(/\s+/g, ' ').slice(0, 300);
+    }
     if (!response.ok) {
-      const error = new Error('Anthropic returned ' + response.status);
+      const error = new Error('Anthropic returned ' + response.status + (lastBad ? ': ' + lastBad : ''));
       error.code = response.status === 429 ? 'provider_rate_limited' : 'provider_unavailable';
       error.status = response.status;
       throw error;
     }
     const text = (payload.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('');
     let parsed;
-    try { parsed = JSON.parse(text); } catch (_) {
+    try { parsed = JSON.parse(String(text).replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')); } catch (_) {
       throw Object.assign(new Error('Claude returned invalid JSON'), { code: 'invalid_design' });
     }
     const result = Object.freeze({
       provider: 'claude',
-      model,
+      model: usedModel,
       slides: validateDesign(parsed, parts.length)
     });
     put(digest, result);
@@ -149,7 +165,17 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     const digest = crypto.createHash('sha256')
       .update(model + '\0' + JSON.stringify(lesson)).digest('hex');
     if (cache.has(digest)) return { design: cache.get(digest), cached: true };
-    if (!inflight.has(digest)) inflight.set(digest, generate(lesson, digest).finally(() => inflight.delete(digest)));
+    const bad = failures.get(digest);
+    if (bad && now() - bad.at < FAILURE_MEMORY_MS) throw bad.error;
+    if (!inflight.has(digest)) {
+      inflight.set(digest, generate(lesson, digest).catch((error) => {
+        if (error && /^provider_/.test(error.code || '')) {
+          failures.set(digest, { at: now(), error });
+          if (failures.size > 100) failures.delete(failures.keys().next().value);
+        }
+        throw error;
+      }).finally(() => inflight.delete(digest)));
+    }
     return { design: await inflight.get(digest), cached: false };
   }
 

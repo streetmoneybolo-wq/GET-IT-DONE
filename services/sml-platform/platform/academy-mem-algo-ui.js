@@ -253,7 +253,7 @@
   setInterval(place, 1500); // the columns move when the alerts panel opens or closes
 
   /* ---------- BREAKDOWN: all five models side by side for the ticker ----------
-     Day Trade, Swing Trade, Mid Term, Long Term and Short Sale, each read on the candle size it is built for (preferredTf), with
+     Day Trade, Swing Trade, Mid Term, Long Term and the short model, each read on the candle size it is built for (preferredTf), with
      its bias, its open or latest signal and its own backtest numbers. The mode that is open in the panel uses the full analysis;
      the others use the candles alone (no extra data services), so the five rows load together in about the time of one request.
      Tap a row to open that model. */

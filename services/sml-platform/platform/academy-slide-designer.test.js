@@ -127,3 +127,36 @@ test('Claude Academy designer adds one slide for the whiteboard example and send
   assert.deepEqual(source.workedExample, { partIndex: 1, title: example.title, say: example.say });
   assert.equal(JSON.stringify(source).includes('"facts"'), false, 'only the spoken sentences are sent, not the renderer data');
 });
+
+test('Claude Academy designer retries a refused request without structured output, then on the fallback model, and remembers a provider failure', async () => {
+  const calls = [];
+  const seeds = [];
+  const designer = createAcademySlideDesigner({
+    apiKey: 'key',
+    lessons: [lesson],
+    fetchImpl: async (url, options) => {
+      const body = JSON.parse(options.body);
+      calls.push(body);
+      const parts = partsFor(lesson);
+      const slides = parts.map((text, index) => ({ heading: 'S' + index, visual: 'V ' + text.slice(0, 40), callout: 'Remember.', visualKind: 'auction' }));
+      if (body.output_config) return { ok: false, status: 400, json: async () => ({ error: { message: 'output_config not supported' } }) };
+      return { ok: true, status: 200, json: async () => ({ content: [{ type: 'text', text: '```json\n' + JSON.stringify({ slides }) + '\n```' }] }) };
+    }
+  });
+  const result = await designer.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member-2' });
+  assert.equal(calls.length, 2);
+  assert.equal(Boolean(calls[1].output_config), false);
+  assert.match(calls[1].system, /one JSON object/);
+  assert.equal(result.design.slides.length, partsFor(lesson).length);
+  void seeds;
+
+  let hits = 0;
+  const down = createAcademySlideDesigner({
+    apiKey: 'key', lessons: [lesson],
+    fetchImpl: async () => { hits += 1; return { ok: false, status: 503, json: async () => ({}) }; }
+  });
+  await assert.rejects(() => down.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' }), { code: 'provider_unavailable' });
+  const first = hits;
+  await assert.rejects(() => down.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' }), { code: 'provider_unavailable' });
+  assert.equal(hits, first, 'a provider failure is not hammered on the next load');
+});

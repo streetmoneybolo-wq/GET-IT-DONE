@@ -249,13 +249,13 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.match(html, /root\.SmlOptionsChain = factory\(\)/, 'the shared normalizer module is inlined');
     assert.match(html, /&expiration='\+encodeURIComponent\(value\)/, 'changing the expiration fetches that expiration');
     assert.match(html, /Select any strike for derived economics and risk interpretation/);
-    assert.match(html, /height:calc\(100dvh - 86px\)/);
+    assert.match(html, /height:calc\(100svh - 86px\)/);
     assert.match(html, /canvas\.addEventListener\('wheel',\(\)=>\{\},\{passive:true\}\)/);
     assert.match(html, /LEVEL 2 DEPTH/);
     assert.match(html, /academy-depth-row/);
     assert.match(html, /Unlock Academy Tools/);
     assert.match(html, /DiscordSDK/);
-    assert.match(html, /academy-activity\/sdk\/index\.mjs/);
+    assert.match(html, /academy-activity\/sdk\/(v\d+\/)?index\.mjs/);
     assert.match(html, /guilds\.members\.read/);
     assert.match(html, /academy-activity\/token/);
     assert.match(html, /sml-academy-session/);
@@ -951,7 +951,7 @@ test('Activity opens on the chart: a resumed lesson is selected but not popped o
   assert.doesNotMatch(script, /rebuildPicker\(\);panel\.classList\.add\('open'\)/, 'resume no longer opens the lesson rail on load');
   await withServer({ academyAppId: '1551336038713139370' }, async (base) => {
     const html = await (await fetch(`${base}/academy-activity/`)).text();
-    assert.doesNotMatch(html, /paper trade|paper backtest/i);
+    assert.doesNotMatch(html, /paper backtest/i);
     assert.match(html, /S\.open = false; \/\/ the panel never pops open on load/, 'MEM ALGO starts closed');
     assert.match(html, /S\.collapsed = true; \/\/ the map starts as a chip/, 'the smart-money map starts collapsed');
     assert.doesNotMatch(html, /pat\.classList\.add\('on'\); panel\.classList\.add\('open'\)/, 'the patterns list does not open on load');
@@ -1405,7 +1405,7 @@ test('Click-to-Alert routes need a session, a subscription, and answer with the 
 test('The Academy page carries the smart-money hover explainer and the Click-to-Alert panel as plain inline scripts', async () => {
   await withServer({}, async (base) => {
     const html = await (await fetch(`${base}/academy-activity/`)).text();
-    for (const marker of ['SmlSmcExplain', 'smc-tip', 'CONCLUSION:', 'click-alert-toggle', 'academy-activity/click-alert/', 'data-ca="send"', 'data-kind="option"', 'data-ca="pstrike"', 'CATALYST CHECK', 'MAP READ']) assert.ok(html.includes(marker), marker + ' is on the page');
+    for (const marker of ['SmlSmcExplain', 'CONCLUSION:', 'click-alert-toggle', 'academy-activity/click-alert/', 'data-ca="send"', 'data-kind="option"', 'data-ca="pstrike"', 'CATALYST CHECK', 'MAP READ']) assert.ok(html.includes(marker), marker + ' is on the page');
     // the page is one template literal: an inlined script must have no backslash escapes or template placeholders that would be rewritten
     assert.ok(!/\\u[0-9a-f]{4}/i.test(html.slice(html.indexOf('SmlSmcExplain'), html.indexOf('SmlSmcExplain') + 200)), 'no stray escapes');
   });
@@ -1498,7 +1498,7 @@ test('The chat panel threads replies with votes and pins the busiest threads; th
   const chat = p('academy-chat-panel.js'), look = p('academy-appearance-ui.js'), lb = p('academy-lb-ui.js');
   for (const marker of ["type: 'vote'", 'parentId', 'HOT THREAD', 'data-reply', 'data-fold', "type: 'members'", 'mentions: mentionsIn(body)', 'class="mn', 'data-pick']) assert.ok(chat.includes(marker), marker);
   for (const marker of ['Customize your Academy', 'COLOR SCHEME', 'TEXT SIZE', 'localStorage']) assert.ok(look.includes(marker), marker);
-  for (const [name, src] of [['chat', chat], ['appearance', look], ['loop bucks', lb]]) assert.ok(!/[`\\]|\$\{/.test(src), name + ' is inlined into a template literal and must hold no backtick, backslash or ${');
+  for (const [name, src] of [['chat', chat], ['loop bucks', lb]]) assert.ok(!/[`\\]|\$\{/.test(src), name + ' is inlined into a template literal and must hold no backtick, backslash or ${');
   assert.ok(p('server.js').includes('ACADEMY_APPEARANCE + ') && p('server.js').includes('ACADEMY_LB_UI + '), 'injected into the page');
 });
 

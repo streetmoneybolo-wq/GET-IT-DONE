@@ -43,7 +43,32 @@ function createAcademyDataBridge({ baseUrl = '', secret = '', fetchImpl = fetch,
   const configured = /^https:\/\//i.test(root) && String(secret).length >= 32;
   const timeout = Math.max(1_000, Math.min(120_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS));
 
-  async function get(kind, symbol, params = {}) {
+  /* one request per kind/symbol at a time, and a failed one is remembered briefly so a
+   * thin ticker (or a site that is cooling down) is not hit again by every viewer */
+  const inflight = new Map();
+  const failed = new Map();
+  const FAILURE_MEMORY_MS = 15_000;
+
+  function get(kind, symbol, params = {}) {
+    let key;
+    try {
+      key = kind + ':' + cleanSymbol(symbol) + ':' + ((kind === 'options' || kind === 'calendar') ? cleanExpiration(params.expiration) : '');
+    } catch (_) { return fetchOnce(kind, symbol, params); }
+    const bad = failed.get(key);
+    if (bad && now() - bad.at < FAILURE_MEMORY_MS) return Promise.resolve(bad.result);
+    if (inflight.has(key)) return inflight.get(key);
+    const run = fetchOnce(kind, symbol, params).then((result) => {
+      if (result.ok) failed.delete(key); else if (result.code === 'academy_data_unavailable') {
+        failed.set(key, { at: now(), result });
+        if (failed.size > 200) failed.delete(failed.keys().next().value);
+      }
+      return result;
+    }).finally(() => inflight.delete(key));
+    inflight.set(key, run);
+    return run;
+  }
+
+  async function fetchOnce(kind, symbol, params = {}) {
     if (!configured) return { ok: false, status: 503, code: 'academy_data_unconfigured' };
     if (!ALLOWED_KINDS.has(kind)) return { ok: false, status: 404, code: 'not_found' };
     const safeSymbol = cleanSymbol(symbol);

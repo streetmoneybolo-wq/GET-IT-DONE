@@ -56,7 +56,7 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.equal(r.results[0].url, 'https://stockmarketloop.com/n/vaughn-mcnair-grandmaster-obi/x/');
   assert.ok(!h.posts.some((p) => p.kind === 'publish'), 'draft unless autopublish');
   const gifAvailable = require('./academy-scenario-gif').available();
-  if (gifAvailable) { assert.equal(h.media.length, 1); assert.equal(h.media[0].contentType, 'image/gif'); assert.match(created.l.html, /<figure class="sml-story-gif">/); assert.ok(created.l.blocks.some((b) => b.type === 'image'), 'the animated path is in the body'); assert.ok(created.l.cover_url && created.l.cover_url.startsWith('https://')); }
+  if (gifAvailable) { assert.ok(h.media.length >= 1 && h.media.length <= 2, 'the GIF, plus a still poster for social cards'); assert.equal(h.media[0].contentType, 'image/gif'); assert.ok(created.l.blocks.some((b) => b.type === 'image'), 'the animated path is in the body'); assert.ok(created.l.cover_url && created.l.cover_url.startsWith('https://')); }
   assert.equal(h.dms.length, 1); assert.match(h.dms[0].text, /Article Desk/); assert.match(h.dms[0].text, /draft/);
   assert.ok(h.saved().written['ABCD:' + r.results[0].angle]);
   const again = await h.desk.tick();

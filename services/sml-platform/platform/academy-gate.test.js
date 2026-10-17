@@ -151,7 +151,7 @@ test('content gate on: anonymous and free callers get the free preview; paid ses
     for (const token of ['Bearer member', 'Bearer academy', 'Bearer legacy']) {
       const full = await get(base, '/academy-activity/curriculum', token);
       assert.equal(full.headers.get('x-academy-access'), 'full', token);
-      assert.equal(full.headers.get('cache-control'), 'private, no-store', token);
+      assert.equal(full.headers.get('cache-control'), 'private, max-age=300, stale-while-revalidate=3600', token);
       const body = await full.json();
       assert.equal(body.lessons.filter((lesson) => lesson.locked).length, 0, token);
       assert.equal(body.lessons.length, SEED_LESSONS.length);
@@ -517,6 +517,7 @@ function bootGateClient({ gate: gateOptions = { contentGate: true, links: false 
   if (storage) sandbox.sessionStorage = storage;
   sandbox.window = sandbox;
   sandbox.addEventListener = (type, fn) => { (listeners.window[type] ||= []).push(fn); };
+  sandbox.removeEventListener = (type, fn) => { listeners.window[type] = (listeners.window[type] || []).filter((item) => item !== fn); };
   sandbox.smlAcademyReauth = async () => 'v1.paid';
   sandbox.smlAcademyOpenExternal = async (url) => { opened.push(url); return true; };
   vm.createContext(sandbox);

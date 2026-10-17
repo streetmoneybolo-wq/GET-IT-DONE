@@ -78,7 +78,7 @@ test('the standalone activity page authenticates with the Connect app and ships 
   // relative on purpose: the Connect app's root mapping targets .../loop-kick-activity
   assert.match(html, /fetch\('token'/);
   assert.match(html, /sessionRoute:'session-bridge'/);
-  assert.match(html, /from '\.\/sdk\/index\.mjs'/);
+  assert.match(html, /from '\.\/sdk\/(v\d+\/)?index\.mjs'/);
   assert.doesNotMatch(html, /'\/loop-kick-activity\//);
   assert.match(html, /standalone:true/);
   assert.match(html, /academy-lk-panel/);

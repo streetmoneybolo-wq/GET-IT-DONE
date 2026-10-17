@@ -33,7 +33,7 @@ function createClassifier({ apiKey = '', model = 'claude-haiku-5-5', fetchImpl =
     const lines = batch.map((b) => ({ id: b.id, symbol: b.symbol, text: b.text }));
     const response = await fetchImpl('https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: 60 * batch.length + 100, temperature: 0, system: SYSTEM, messages: [{ role: 'user', content: JSON.stringify(lines) }] }),
+      body: JSON.stringify({ model, max_tokens: 60 * batch.length + 100, system: SYSTEM, messages: [{ role: 'user', content: JSON.stringify(lines) }] }),
       signal: AbortSignal.timeout(timeoutMs)
     });
     if (!response.ok) throw new Error(`anthropic_${response.status}`);

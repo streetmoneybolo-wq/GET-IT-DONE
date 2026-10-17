@@ -18,7 +18,7 @@ test('off without a key; batches, caches by text, clamps scores', async () => {
   const c = createClassifier({ apiKey: 'k', fetchImpl, now: () => NOW, maxBatch: 2 });
   const r = await c.classify([{ id: '1', symbol: 'ABC', text: 'ABC beat' }, { id: '2', symbol: 'ABC', text: 'ABC miss' }, { id: '3', symbol: 'ABC', text: 'ABC guide' }]);
   assert.equal(r.get('1').score, 1, 'clamped to +1'); assert.equal(r.get('2').score, -0.4); assert.equal(r.get('3').event, 'earnings');
-  assert.equal(bodies.length, 2, 'three items, batch size two => two calls'); assert.equal(bodies[0].temperature, 0); assert.ok(bodies[0].system.includes('ONLY a JSON array'));
+  assert.equal(bodies.length, 2, 'three items, batch size two => two calls'); assert.equal('temperature' in bodies[0], false, 'Claude 5 models reject a custom temperature'); assert.ok(bodies[0].system.includes('ONLY a JSON array'));
   const again = await c.classify([{ id: '9', symbol: 'ABC', text: 'ABC beat' }]);
   assert.equal(again.get('9').score, 1); assert.equal(bodies.length, 2, 'cached by symbol+text, no new call');
 });
