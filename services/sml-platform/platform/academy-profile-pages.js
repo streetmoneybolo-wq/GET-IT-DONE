@@ -23,11 +23,11 @@ const LAYOUT_IDS = new Set(LAYOUTS.map(([id]) => id));
 const FX = new Set(['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain']);
 const FONTS = new Set(['system', 'mono', 'serif', 'display', 'rounded']);
 const IMMERSIVE = new Set(['off', 'subtle', 'balanced', 'immersive']);
-/* module textures (what every section looks and feels like), desks (the surface the sections sit on), the lighting in the
+/* module textures (what every section looks and feels like), desks (the surface or the room the sections sit in), the lighting in the
  * background, the 3D orbs flying around, and the 3D orbit of up to 12 pictures that each link out. The look itself is drawn by
  * the page (academy-profile-desk.js); the server only keeps the member's choice. */
-const TEXTURES = new Set(['none', 'legal-pad', 'graph-paper', 'manila-folder', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'index-card', 'sticky-note', 'blueprint', 'carbon-fiber', 'brushed-steel', 'leather', 'walnut', 'oak', 'marble', 'brass-plate', 'green-felt', 'cork-board', 'crt-terminal', 'parchment', 'concrete', 'slate', 'frosted-glass']);
-const DESKS = new Set(['none', 'nyse-floor', 'paper-desk', 'walnut-office', 'steel-trader', 'cork-wall', 'leather-blotter']);
+const TEXTURES = new Set(['none', 'legal-pad', 'graph-paper', 'manila-folder', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'index-card', 'sticky-note', 'blueprint', 'carbon-fiber', 'brushed-steel', 'leather', 'walnut', 'oak', 'marble', 'brass-plate', 'green-felt', 'cork-board', 'crt-terminal', 'parchment', 'concrete', 'slate', 'frosted-glass', 'canvas', 'linen', 'denim', 'suede', 'granite', 'terrazzo', 'copper', 'gold-leaf', 'rusted-iron', 'bamboo', 'chalkboard', 'pegboard']);
+const DESKS = new Set(['none', 'nyse-floor', 'paper-desk', 'walnut-office', 'steel-trader', 'cork-wall', 'leather-blotter', 'night-skyline', 'sunrise-office', 'amber-terminal', 'library-study', 'penthouse', 'war-room', 'drafting-table']);
 const LIGHTS = new Set(['off', 'desk-lamp', 'window-sun', 'monitor-glow', 'neon-sweep', 'golden-hour', 'spotlight']);
 const ORBS = new Set(['off', 'few', 'many']);
 /* effects can be stacked: several textures (handed out across the modules), several lights and several background effects at

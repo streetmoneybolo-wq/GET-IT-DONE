@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createProfilePages, cleanSettings, parseOg, sniffAudio, LAYOUTS } = require('./academy-profile-pages');
+const { createProfilePages, cleanSettings, parseOg, sniffAudio, LAYOUTS, TEXTURES, DESKS } = require('./academy-profile-pages');
 
 const A = '100000000000000001', B = '100000000000000002', G = '900000000000000009';
 
@@ -69,8 +69,9 @@ test('link images are served only for images the server found itself; audio only
 });
 
 test('look and feel: texture, desk, light and orbs come from the lists; the 3D gallery keeps up to 12 https pictures with optional https links', () => {
-  const { TEXTURES, DESKS, LIGHTS, ORBS } = require('./academy-profile-pages');
-  assert.ok(TEXTURES.size >= 25, 'at least 24 textures besides none');
+  const { LIGHTS, ORBS } = require('./academy-profile-pages');
+  assert.ok(TEXTURES.size >= 37, 'at least 36 textures besides none');
+  assert.ok(DESKS.size >= 14, 'at least 13 desk scenes besides none');
   assert.ok(DESKS.has('nyse-floor') && DESKS.has('paper-desk') && LIGHTS.has('desk-lamp') && ORBS.has('many'));
   const t = cleanSettings({ theme: { texture: 'legal-pad', desk: 'nyse-floor', light: 'golden-hour', orbs: 'few' } }).theme;
   assert.deepEqual([t.texture, t.desk, t.light, t.orbs], ['legal-pad', 'nyse-floor', 'golden-hour', 'few']);
@@ -130,7 +131,7 @@ test('the profile desk script is inlined into the Academy page: no backslash, ba
   assert.equal(src.includes('`'), false);
   assert.equal(src.includes('${'), false);
   assert.equal(src.includes('</script'), false);
-  assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 24, 'exactly 24 textures');
+  assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 36, 'exactly 36 textures');
 });
 
 test('the profile music script is inlined into the Academy page too, and the page may frame only the four music players', () => {
@@ -153,4 +154,12 @@ test('uploaded songs are recognised by their first bytes, never by name or label
   assert.equal(sniffAudio(Buffer.alloc(4)), '');
   const s = cleanSettings({ song: { upload: true, title: 'Mine <b>', bpm: 128 } }).song;
   assert.deepEqual(s, { url: '', title: 'Mine b', kind: 'audio', upload: true, bpm: 128 });
+});
+
+test('every desk scene and texture the server accepts is one the page can draw, and the other way round', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-desk.js'), 'utf8');
+  const drawnTex = [...src.matchAll(/\n    \['([a-z-]+)', '[A-Za-z ]+', '(?:#[0-9a-f]+|var\(--acc\))'/g)].map((m) => m[1]);
+  assert.deepEqual([...drawnTex].sort(), [...TEXTURES].filter((t) => t !== 'none').sort());
+  const desks = [...src.matchAll(/\['([a-z-]+)', '([A-Za-z ]+)'\]/g)].map((m) => m[1]).filter((id) => DESKS.has(id));
+  for (const id of DESKS) if (id !== 'none') { assert.ok(desks.includes(id), id + ' is listed for the editor'); assert.ok(src.includes("id === '" + id + "'"), id + ' has a scene'); assert.ok(src.includes("'" + id + "': ["), id + ' dresses its modules'); }
 });
