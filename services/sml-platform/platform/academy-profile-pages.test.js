@@ -166,6 +166,6 @@ test('every desk scene and texture the server accepts is one the page can draw, 
 
 test('every light the server accepts is drawn by the page and listed in the editor', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-desk.js'), 'utf8');
-  assert.ok(LIGHTS.size >= 27, 'at least 26 lights besides off');
+  assert.ok(LIGHTS.size >= 37, 'at least 36 lights besides off');
   for (const id of LIGHTS) if (id !== 'off') { assert.ok(src.includes("mode === '" + id + "'"), id + ' is drawn'); assert.ok(src.includes("['" + id + "', '"), id + ' is in the editor list'); }
 });
