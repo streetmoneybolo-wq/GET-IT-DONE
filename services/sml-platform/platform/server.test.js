@@ -1922,3 +1922,17 @@ test('Academy profile song upload: raw bytes from a signed-in member are checked
     assert.equal((await fetch(`${base}/academy-activity/profiles/${ME}/audio?t=academy-session`)).status, 404);
   });
 });
+
+test('mobile scanner stays put: phone columns are built directly, live refreshes patch cells in place and only re-sort when idle, the page height never follows the browser toolbar', async () => {
+  await withServer({}, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/`)).text();
+    assert.match(html, /function phoneCols\(c\)\{return phoneMQ\.matches\?c\.filter/, 'phone columns are chosen while rendering, not hidden afterwards');
+    assert.match(html, /const cols=phoneCols\(columns\[preset\]\|\|columns\.full\)/);
+    assert.match(html, /function softRender\(\)\{const quiet=Date\.now\(\)-\(window\.__smlScanTouch\|\|0\)>5000&&Date\.now\(\)-lastSort>20000/, 'a refresh re-sorts only after 5 s without touch and 20 s since the last sort');
+    assert.match(html, /rows=payload\.rows;overlayLive\(\);softRender\(\)/, 'the 4 s refresh no longer rebuilds the table');
+    assert.doesNotMatch(html, /main\{height:calc\(100dvh - 86px\)/, 'the page frame uses the small viewport height so it does not resize while the toolbar slides');
+    assert.match(html, /height:calc\(100svh - 86px\)/);
+    assert.match(html, /table-layout:fixed;font-size:\.62rem;font-variant-numeric:tabular-nums/, 'phone table has fixed columns and equal-width digits');
+    assert.match(html, /records\.every\(\(r\) => \{ const t = r\.target/, 'live cell ticks do not trigger the compact-layout pass');
+  });
+});

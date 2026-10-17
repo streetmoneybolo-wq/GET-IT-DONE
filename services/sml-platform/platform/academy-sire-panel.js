@@ -22,7 +22,7 @@
     ['rvol', 'RVOL', (r) => num(r.rvol) != null ? num(r.rvol) : num(r.volumeRatio), false],
     ['day', 'DAY %', (r) => num(r.changePct), true]
   ];
-  const S = { open: false, sort: 'sire', dir: -1, rows: new Map(), shown: new Map(), timer: 0, busy: false, mode: 'idle', unsubscribe: null, sortAt: 0, sortTimer: 0, frame: 0, dirty: new Set() };
+  const S = { open: false, sort: 'sire', dir: -1, rows: new Map(), shown: new Map(), timer: 0, busy: false, mode: 'idle', unsubscribe: null, sortAt: 0, sortTimer: 0, frame: 0, dirty: new Set(), touchAt: 0 };
   try { S.open = localStorage.getItem(KEY) === '1'; } catch (_) { /* storage can be blocked inside Discord */ }
   function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
   const fmt = (key, v) => {
@@ -102,6 +102,9 @@
       if (open) { placeRows(); render(true); listen(); tick(); } else { clearRows(); if (S.unsubscribe) { S.unsubscribe(); S.unsubscribe = null; } }
       window.dispatchEvent(new Event('resize')); // the chart re-measures its narrower column
     }
+    const touched = () => { S.touchAt = Date.now(); };
+    ['pointerdown', 'touchstart', 'touchmove', 'wheel'].forEach((ev) => panel.addEventListener(ev, touched, { passive: true }));
+    panel.addEventListener('scroll', touched, { passive: true });
     btn.addEventListener('click', () => setOpen(!S.open));
     panel.querySelector('thead').addEventListener('click', (e) => {
       const th = e.target.closest('th'); if (!th) return;
@@ -192,10 +195,12 @@
         paint(tr, r, S.shown.get(s), false);
       }
       S.dirty.clear();
-      /* Re-rank at most once a second and only when the order can have changed, so rows glide instead of jitter. */
-      const since = Date.now() - S.sortAt;
-      if (needsRank || since > 1000) render(false);
-      else if (!S.sortTimer) S.sortTimer = setTimeout(() => { S.sortTimer = 0; if (S.open) render(false); }, 1000 - since);
+      /* Re-rank rarely: once a second on a desktop, every 4 s on a phone, and never while a finger or wheel is on the page, so rows
+         stay under the thumb instead of sliding away. Cells still tick in place the whole time. */
+      const gap = window.matchMedia('(max-width:720px)').matches ? 4000 : 1000, since = Date.now() - S.sortAt, idle = Date.now() - S.touchAt;
+      const wait = Math.max(gap - since, idle < 2500 ? 2500 - idle : 0);
+      if (wait <= 0 && (needsRank || since >= gap)) render(false);
+      else if (!S.sortTimer) S.sortTimer = setTimeout(() => { S.sortTimer = 0; if (S.open) schedule(); }, Math.max(250, wait));
     }
     function schedule() { if (!S.frame) S.frame = requestAnimationFrame(patchFrame); }
 

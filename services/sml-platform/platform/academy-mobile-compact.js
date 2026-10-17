@@ -30,7 +30,7 @@
   const style = document.createElement('style');
   style.id = 'academy-mobile-compact';
   style.textContent = 'html.academy-discord-mobile body main .bar{padding-top:calc(48px + env(safe-area-inset-top,0px))}'
-    + 'html.academy-discord-mobile body main{height:calc(100dvh - 78px - 48px - env(safe-area-inset-top,0px))}'
+    + 'html.academy-discord-mobile body main{height:calc(100vh - 78px - 48px - env(safe-area-inset-top,0px));height:calc(100svh - 78px - 48px - env(safe-area-inset-top,0px))}'
     + '@media ' + MQ + '{'
     /* the chart canvas must not swallow vertical swipes: pan-y lets a finger scroll the page past the chart while horizontal drags, taps and pinches still reach the chart */
     + 'body main .chart canvas#chart,body main .chart .academy-chart-stage,body main .chart .academy-chart-stage canvas{touch-action:pan-y!important}'
@@ -44,7 +44,7 @@
     + 'body main .bar #academy-alerts-fab{position:static;padding:5px 8px;font-size:.66rem;border-radius:6px;box-shadow:none;gap:5px}body main .bar #academy-alerts-fab i{width:7px;height:7px}'
     + 'body main .bar #academy-auth-notice{order:99;padding:.15rem 0 0;font-size:.66rem;line-height:1.3;gap:.4rem}'
     /* the chart stage: every pixel saved above goes to the candles */
-    + 'body main{height:calc(100dvh - 64px)}body main .chart{padding:4px}body main .chart canvas#chart{min-height:260px}'
+    + 'body main{height:calc(100vh - 64px);height:calc(100svh - 64px)}body main .chart{padding:4px}body main .chart canvas#chart{min-height:260px}'
     /* no Load button on a phone: Enter / Go on the keyboard, or leaving the ticker box, loads the symbol */
     + 'body main .toolbar{gap:4px 5px;padding:5px 6px}body main .toolbar input#symbol{width:74px;padding:5px 6px;font-size:.78rem}body main .toolbar #load{display:none}'
     + 'body main .toolbar .quote-chip{font-size:.6rem}body main .toolbar #company{display:none}'
@@ -58,7 +58,7 @@
     + 'body main .toolbar .academy-brokers{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px;min-width:0}'
     + 'body main .toolbar button.academy-broker-buy{flex:1 1 30%;justify-content:center;min-width:0;padding:4px 6px;font-size:.62rem}'
     /* the chart stage gets a fixed share of the screen so it can never spill over the intervals row beneath it */
-    + 'body main{height:auto!important;min-height:0}body main .shell{overflow:visible}body main .chart .academy-chart-stage{height:clamp(240px,50dvh,470px);min-height:0}body main .chart>canvas#chart{height:clamp(240px,50dvh,470px);min-height:0}'
+    + 'body main{height:auto!important;min-height:0}body main .shell{overflow:visible}body main .chart .academy-chart-stage{height:clamp(240px,50vh,470px);height:clamp(240px,50svh,470px);min-height:0}body main .chart>canvas#chart{height:clamp(240px,50vh,470px);height:clamp(240px,50svh,470px);min-height:0}'
     + 'body main .chart .academy-chart-tools{flex-wrap:nowrap;overflow-x:auto;gap:4px;padding:4px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body main .chart .academy-chart-tools::-webkit-scrollbar{display:none}'
     + 'body main .chart .academy-chart-tools label,body main .chart .academy-chart-tools span{display:none}'
     + 'body main .chart .academy-chart-tools select,body main .chart .academy-chart-tools button{flex:none;height:26px;padding:2px 7px;font-size:.6rem;white-space:nowrap}'
@@ -96,6 +96,8 @@
     + 'body .academy-below .academy-scan-tools{flex-wrap:nowrap;overflow-x:auto;gap:5px;padding:6px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch}body .academy-below .academy-scan-tools::-webkit-scrollbar{display:none}'
     + 'body .academy-below .academy-scan-tools input{min-width:130px;flex:1 1 130px;height:28px}body .academy-below .academy-scan-tools select{flex:none;height:28px}'
     + 'body .academy-below .academy-monitor{grid-template-columns:repeat(3,minmax(0,1fr))}body .academy-below .academy-monitor span{padding:6px 8px;font-size:.54rem}body .academy-below .academy-monitor b{font-size:.68rem}'
+    + 'body #academy-profile-btn,body #aa-btn{font-size:0!important;width:36px;height:36px;padding:0!important;border-radius:50%!important;opacity:.88}body #academy-profile-btn:before{content:"\\1F464";font-size:16px;line-height:36px}body #aa-btn:before{content:"Aa";font-size:12px;font-weight:900;line-height:36px}'
+    + 'body .academy-below .academy-scan-table{min-width:0;width:100%;table-layout:fixed;font-size:.62rem;font-variant-numeric:tabular-nums}body .academy-below .academy-scan-table th[data-sort=symbol]{width:25%}body .academy-below .academy-scan-table th[data-sort=price],body .academy-below .academy-scan-table th[data-sort=changePct],body .academy-below .academy-scan-table th[data-sort=volume]{width:25%}body .academy-below .academy-scan-table td{overflow:hidden;text-overflow:clip}body .academy-below{padding-bottom:92px}'
     + 'body .academy-below .academy-scan-table{min-width:0;font-size:.62rem}body .academy-below .academy-scan-table th,body .academy-below .academy-scan-table td{padding:6px 5px}'
     + 'body .academy-below .academy-scan-table .academy-mobile-hide{display:none}'
     + 'body .academy-below .academy-scan-foot{padding:7px 8px;font-size:.58rem}body .academy-below .academy-pro-note{padding:5px 8px;font-size:.56rem}'
@@ -200,7 +202,8 @@
   const schedule = () => { clearTimeout(apply.t); apply.t = setTimeout(apply, 60); };
   apply();
   /* the Alerts and LOOP-KICK buttons, the scanner and its rows are all created or re-rendered by other modules after load */
-  const observer = new MutationObserver(schedule);
+  /* live ticks rewrite scanner and SIRE cells many times a second; those never change the layout this file manages, so they must not trigger a pass */
+  const observer = new MutationObserver((records) => { if (records.every((r) => { const t = r.target && (r.target.nodeType === 1 ? r.target : r.target.parentElement); return t && t.closest && t.closest('.academy-scan-table, #sire-panel, .academy-scan-pages, #academy-scan-count'); })) return; schedule(); });
   observer.observe(document.body, { childList: true, subtree: true });
   if (typeof mq.addEventListener === 'function') mq.addEventListener('change', schedule); else mq.addListener(schedule);
   window.addEventListener('resize', () => { clearTimeout(apply.r); apply.r = setTimeout(apply, 120); });
