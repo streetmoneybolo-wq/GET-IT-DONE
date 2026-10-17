@@ -87,7 +87,31 @@
     ['chalkboard', 'Chalkboard', '#f4f4ea', '#bcc3b8', '#ffe08a',
       'background:radial-gradient(ellipse at 30% 25%,rgba(255,255,255,.12),transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(255,255,255,.08),transparent 45%),linear-gradient(160deg,#2b3731,#1f2924);border:8px solid #8a6a43;border-radius:4px;box-shadow:0 12px 28px rgba(0,0,0,.6),inset 0 0 24px rgba(0,0,0,.55)'],
     ['pegboard', 'Pegboard', '#2b2310', '#665a36', '#8a3b12',
-      'background:radial-gradient(circle,#5a4a28 2.2px,rgba(0,0,0,.25) 3.2px,transparent 3.8px) 0 0/22px 22px,linear-gradient(180deg,#dccda7,#cdbd94);border:0;border-radius:3px;box-shadow:0 12px 26px rgba(0,0,0,.45)']
+      'background:radial-gradient(circle,#5a4a28 2.2px,rgba(0,0,0,.25) 3.2px,transparent 3.8px) 0 0/22px 22px,linear-gradient(180deg,#dccda7,#cdbd94);border:0;border-radius:3px;box-shadow:0 12px 26px rgba(0,0,0,.45)'],
+    ['velvet', 'Velvet', '#ffe9ee', '#e0a6b4', '#ffd479',
+      'background:radial-gradient(ellipse at 28% 18%,rgba(255,130,150,.4),transparent 55%),radial-gradient(ellipse at 80% 90%,rgba(0,0,0,.4),transparent 60%),linear-gradient(160deg,#82143a,#4a0a1e);border:0;border-radius:12px;box-shadow:0 14px 30px rgba(0,0,0,.6),inset 0 0 44px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,170,190,.25)'],
+    ['tweed', 'Tweed', '#fff6e8', '#dccbb0', '#ffd479',
+      'background:radial-gradient(#d9c9a8 1px,transparent 1.6px) 0 0/5px 5px,radial-gradient(#3a2f26 1px,transparent 1.6px) 2px 3px/6px 6px,radial-gradient(#a8573a 1px,transparent 1.6px) 4px 1px/9px 9px,repeating-linear-gradient(45deg,rgba(255,255,255,.07) 0,rgba(255,255,255,.07) 2px,transparent 2px,transparent 5px),linear-gradient(160deg,#7b6a58,#5e5042);border:0;border-radius:6px;box-shadow:0 12px 26px rgba(0,0,0,.55)'],
+    ['cardboard', 'Cardboard', '#2b1a08', '#6b4a22', '#8a3b12',
+      'background:repeating-linear-gradient(90deg,rgba(90,55,20,.22) 0,rgba(90,55,20,.22) 2px,transparent 2px,transparent 6px),linear-gradient(180deg,rgba(255,255,255,.14),transparent 40%),linear-gradient(160deg,#c9a06a,#b48850);border:0;border-radius:3px;box-shadow:0 12px 24px rgba(0,0,0,.5)'],
+    ['brick', 'Brick wall', '#fbf3ea', '#ddc9b8', '#ffd479',
+      'background-color:#a64a32;background-image:BRICKIMG;border:0;border-radius:3px;box-shadow:0 12px 28px rgba(0,0,0,.6),inset 0 0 30px rgba(0,0,0,.35)'],
+    ['subway-tile', 'Subway tile', '#1d2330', '#566074', '#1a6b8a',
+      'background-color:#f4f6f7;background-image:SUBWAYIMG;border:0;border-radius:4px;box-shadow:0 12px 26px rgba(0,0,0,.45),inset 0 1px 0 #fff'],
+    ['croc-leather', 'Croc leather', '#eef3e6', '#a9bba0', '#ffd479',
+      'background-color:#243022;background-image:CROCIMG,linear-gradient(160deg,rgba(255,255,255,.1),transparent 50%);border:1px solid #101810;border-radius:10px;box-shadow:0 14px 30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1)'],
+    ['holographic', 'Holographic foil', '#14142a', '#4b4b72', '#5b2a9a',
+      'background:repeating-linear-gradient(115deg,rgba(255,255,255,.18) 0,rgba(255,255,255,.18) 2px,transparent 2px,transparent 9px),linear-gradient(115deg,#ff9ad5,#ffd59a 18%,#b4ff9a 36%,#9ae6ff 54%,#b49aff 72%,#ff9ad5 90%);border:1px solid rgba(255,255,255,.6);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.9)'],
+    ['titanium', 'Titanium', '#f1f4f8', '#aab3c2', '#9fd8ff',
+      'background:repeating-linear-gradient(90deg,rgba(255,255,255,.07) 0,rgba(255,255,255,.07) 1px,rgba(0,0,0,.08) 1px,rgba(0,0,0,.08) 2px),linear-gradient(105deg,#3d4452 0%,#8a93a4 22%,#4f5766 42%,#9aa3b4 62%,#454c5a 82%,#7b8496 100%);border:1px solid #2d3340;border-radius:8px;box-shadow:0 12px 30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 0 rgba(0,0,0,.3)'],
+    ['jade', 'Jade', '#effff6', '#a9d9bd', '#ffe08a',
+      'background:radial-gradient(ellipse at 28% 24%,rgba(255,255,255,.3),transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(0,40,20,.35),transparent 55%),linear-gradient(135deg,#34805f,#1e5a42 50%,#42996f);border:1px solid #14402e;border-radius:14px;box-shadow:0 14px 30px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.35),inset 0 0 30px rgba(0,60,30,.35)'],
+    ['mahogany', 'Mahogany', '#fbe6d8', '#d4a98e', '#ffc98a',
+      'background:repeating-linear-gradient(92deg,rgba(0,0,0,.22) 0,rgba(0,0,0,.22) 2px,transparent 2px,transparent 8px,rgba(255,150,110,.07) 8px,rgba(255,150,110,.07) 9px,transparent 9px,transparent 16px),radial-gradient(ellipse at 22% 30%,rgba(255,150,110,.16),transparent 55%),linear-gradient(180deg,#6a2a1a,#4a1c10);border:1px solid #2a0f08;border-radius:6px;box-shadow:0 14px 30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,190,150,.2)'],
+    ['driftwood', 'Driftwood', '#26221c', '#625b4e', '#6b3a14',
+      'background:repeating-linear-gradient(89deg,rgba(60,50,38,.25) 0,rgba(60,50,38,.25) 1px,transparent 1px,transparent 7px,rgba(255,255,255,.14) 7px,rgba(255,255,255,.14) 8px,transparent 8px,transparent 15px),linear-gradient(180deg,#c8bfae,#aea492);border:1px solid #8a8070;border-radius:4px;box-shadow:0 12px 26px rgba(0,0,0,.5)'],
+    ['sand', 'Beach sand', '#3a2f1a', '#7a6a48', '#8a4a12',
+      'background:repeating-linear-gradient(8deg,rgba(150,115,60,.13) 0,rgba(150,115,60,.13) 2px,transparent 2px,transparent 11px),radial-gradient(rgba(120,90,40,.3) 1px,transparent 1.6px) 0 0/6px 6px,radial-gradient(rgba(255,255,255,.4) 1px,transparent 1.6px) 3px 2px/8px 8px,linear-gradient(180deg,#e8d5a3,#d8c28a);border:0;border-radius:8px;box-shadow:0 12px 26px rgba(0,0,0,.45)']
   ];
   const TEX_IDS = TEX.map((t) => t[0]);
   /* what a desk dresses its modules in when the member picked no single texture */
@@ -104,9 +128,15 @@
     'library-study': ['leather', 'walnut', 'parchment', 'brass-plate', 'leather', 'ledger-green', 'gold-leaf'],
     'penthouse': ['marble', 'frosted-glass', 'gold-leaf', 'granite', 'frosted-glass', 'copper', 'terrazzo'],
     'war-room': ['chalkboard', 'pegboard', 'sticky-note', 'chalkboard', 'index-card', 'pegboard', 'graph-paper'],
-    'drafting-table': ['blueprint', 'graph-paper', 'canvas', 'blueprint', 'kraft-paper', 'linen', 'blueprint']
+    'drafting-table': ['blueprint', 'graph-paper', 'canvas', 'blueprint', 'kraft-paper', 'linen', 'blueprint'],
+    'rooftop-terrace': ['driftwood', 'slate', 'canvas', 'rusted-iron', 'driftwood', 'denim', 'frosted-glass'],
+    'beach-office': ['sand', 'driftwood', 'bamboo', 'linen', 'sand', 'canvas', 'frosted-glass'],
+    'space-station': ['titanium', 'carbon-fiber', 'crt-terminal', 'holographic', 'titanium', 'frosted-glass', 'crt-terminal'],
+    'cafe-table': ['marble', 'mahogany', 'linen', 'velvet', 'brick', 'canvas', 'terrazzo'],
+    'vault-room': ['titanium', 'gold-leaf', 'brushed-steel', 'rusted-iron', 'gold-leaf', 'concrete', 'copper'],
+    'music-studio': ['velvet', 'carbon-fiber', 'tweed', 'crt-terminal', 'velvet', 'titanium', 'jade']
   };
-  const DESKS = [['none', 'No desk'], ['nyse-floor', 'NYSE trading floor'], ['paper-desk', 'Paper desk'], ['walnut-office', 'Walnut office'], ['steel-trader', 'Steel trader desk'], ['cork-wall', 'Cork wall'], ['leather-blotter', 'Leather blotter'], ['night-skyline', 'Night skyline'], ['sunrise-office', 'Sunrise office'], ['amber-terminal', 'Amber terminal'], ['library-study', 'Library study'], ['penthouse', 'Penthouse view'], ['war-room', 'War room whiteboard'], ['drafting-table', 'Drafting table']];
+  const DESKS = [['none', 'No desk'], ['nyse-floor', 'NYSE trading floor'], ['paper-desk', 'Paper desk'], ['walnut-office', 'Walnut office'], ['steel-trader', 'Steel trader desk'], ['cork-wall', 'Cork wall'], ['leather-blotter', 'Leather blotter'], ['night-skyline', 'Night skyline'], ['sunrise-office', 'Sunrise office'], ['amber-terminal', 'Amber terminal'], ['library-study', 'Library study'], ['penthouse', 'Penthouse view'], ['war-room', 'War room whiteboard'], ['drafting-table', 'Drafting table'], ['rooftop-terrace', 'Rooftop terrace'], ['beach-office', 'Beach office'], ['space-station', 'Space station'], ['cafe-table', 'Cafe table'], ['vault-room', 'Vault room'], ['music-studio', 'Music studio']];
   const LIGHTS = [['off', 'Off'], ['desk-lamp', 'Desk lamp'], ['window-sun', 'Window sun'], ['monitor-glow', 'Monitor glow'], ['neon-sweep', 'Neon sweep'], ['golden-hour', 'Golden hour'], ['spotlight', 'Spotlight'], ['candlelight', 'Candlelight'], ['moonlight', 'Moonlight'], ['stage-beams', 'Stage beams'], ['storm-flash', 'Storm flashes'], ['aurora-ribbons', 'Aurora ribbons'], ['god-rays', 'God rays'], ['fireplace', 'Fireplace'], ['led-strip', 'LED strips'], ['fairy-lights', 'Fairy lights'], ['lava-glow', 'Lava glow']];
   const ORB_LEVELS = [['off', 'Off'], ['few', 'A few'], ['many', 'Lots']];
   /* small decorations a texture or desk adds to a module: [class] */
@@ -125,6 +155,10 @@
   /* real surfaces: a generated relief (SVG noise lit like a light raking across the material) printed over each texture, so
    * paper has fibres, wood has grain, leather is pebbled, steel is brushed, concrete is pitted and marble is veined */
   const svgUri = (inner) => 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><filter id="f" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">' + inner + '</filter><rect width="100%" height="100%" filter="url(#f)"/></svg>') + '")';
+  const tile = (w, h, inner) => 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' + inner + '</svg>') + '")';
+  const BRICK = tile(64, 56, '<rect width="64" height="56" fill="#cfc6b6"/><rect x="2" y="2" width="60" height="24" rx="2" fill="#a64a32"/><rect x="-30" y="30" width="60" height="24" rx="2" fill="#9a412c"/><rect x="34" y="30" width="60" height="24" rx="2" fill="#b0523a"/><rect x="2" y="2" width="60" height="6" fill="rgba(255,255,255,.12)"/><rect x="34" y="30" width="60" height="6" fill="rgba(255,255,255,.12)"/><rect x="-30" y="30" width="60" height="6" fill="rgba(255,255,255,.1)"/>');
+  const SUBWAY = tile(60, 30, '<rect width="60" height="30" fill="#9aa1a8"/><rect x="1.5" y="1.5" width="57" height="27" rx="3" fill="#f4f6f7"/><rect x="1.5" y="1.5" width="57" height="9" rx="3" fill="rgba(255,255,255,.7)"/><rect x="1.5" y="22" width="57" height="6" rx="3" fill="rgba(120,130,140,.18)"/>');
+  const CROC = tile(46, 34, '<rect width="46" height="34" fill="#243022"/><ellipse cx="23" cy="17" rx="19" ry="13" fill="#34452f" stroke="#141c13" stroke-width="2"/><ellipse cx="23" cy="12" rx="12" ry="6" fill="rgba(255,255,255,.16)"/><circle cx="23" cy="19" r="2" fill="rgba(0,0,0,.35)"/><ellipse cx="0" cy="0" rx="19" ry="13" fill="#34452f" stroke="#141c13" stroke-width="2"/><ellipse cx="46" cy="0" rx="19" ry="13" fill="#34452f" stroke="#141c13" stroke-width="2"/><ellipse cx="0" cy="34" rx="19" ry="13" fill="#34452f" stroke="#141c13" stroke-width="2"/><ellipse cx="46" cy="34" rx="19" ry="13" fill="#34452f" stroke="#141c13" stroke-width="2"/>');
   const turb = (bf, oct, seed, type) => '<feTurbulence type="' + (type || 'fractalNoise') + '" baseFrequency="' + bf + '" numOctaves="' + oct + '" seed="' + seed + '" stitchTiles="stitch" result="n"/>';
   const lit = (surf, elev, az, col) => '<feDiffuseLighting in="n" surfaceScale="' + surf + '" diffuseConstant="1" lighting-color="' + (col || '#fff') + '"><feDistantLight azimuth="' + (az || 225) + '" elevation="' + elev + '"/></feDiffuseLighting>';
   const shine = (surf, elev, exp) => '<feSpecularLighting in="n" surfaceScale="' + surf + '" specularConstant="1.1" specularExponent="' + exp + '" lighting-color="#fff"><feDistantLight azimuth="225" elevation="' + elev + '"/></feSpecularLighting>';
@@ -154,15 +188,22 @@
     'granite': [turb('0.2', 4, 28) + lit(1.6, 36, 225), 'overlay', 0.5], 'terrazzo': [turb('0.06', 4, 29) + lit(1.4, 60, 225), 'multiply', 0.4],
     'copper': [turb('0.002 0.8', 3, 30) + lit(1.6, 34, 200), 'overlay', 0.85], 'gold-leaf': [turb('0.035', 5, 32) + lit(3.4, 34, 225), 'overlay', 0.95],
     'rusted-iron': [turb('0.05', 5, 33) + lit(3.2, 33, 225), 'overlay', 0.9], 'bamboo': [turb('0.01 0.3', 4, 34) + lit(1.8, 36, 190), 'overlay', 0.6],
-    'chalkboard': [turb('0.6', 3, 35) + lit(0.8, 32, 225), 'soft-light', 0.8], 'pegboard': [turb('0.5', 3, 36) + lit(1.2, 55, 225), 'multiply', 0.4]
+    'chalkboard': [turb('0.6', 3, 35) + lit(0.8, 32, 225), 'soft-light', 0.8], 'pegboard': [turb('0.5', 3, 36) + lit(1.2, 55, 225), 'multiply', 0.4],
+    'velvet': [turb('0.9', 2, 37) + lit(0.9, 30, 225), 'soft-light', 0.9], 'tweed': [turb('0.3', 4, 38) + lit(1.6, 34, 225), 'overlay', 0.7],
+    'cardboard': [turb('0.02 0.3', 4, 39) + lit(2.2, 58, 225), 'multiply', 0.7], 'brick': [turb('0.09', 4, 40) + lit(3, 40, 225), 'multiply', 0.55],
+    'subway-tile': [turb('0.6', 2, 41) + lit(0.5, 60, 225), 'multiply', 0.25], 'croc-leather': [turb('0.5', 3, 42) + lit(1.2, 32, 225), 'overlay', 0.5],
+    'holographic': [turb('0.02 0.4', 3, 43) + lit(1.4, 40, 225), 'soft-light', 0.8], 'titanium': [turb('0.0015 0.9', 3, 44) + lit(1.4, 34, 200), 'overlay', 0.85],
+    'jade': [turb('0.02', 4, 45) + lit(1.6, 38, 225), 'soft-light', 0.9], 'mahogany': [turb('0.007 0.2', 5, 46) + lit(2.4, 31, 190), 'overlay', 0.85],
+    'driftwood': [turb('0.006 0.16', 5, 47) + lit(2.8, 33, 190), 'multiply', 0.55], 'sand': [turb('0.7', 3, 48) + lit(1.2, 60, 225), 'multiply', 0.45]
   };
   const FILM = svgUri(turb('0.9', 2, 31) + '<feColorMatrix type="saturate" values="0"/>');
-  const GLOSS = { 'brushed-steel': 0.5, 'brass-plate': 0.5, marble: 0.42, 'frosted-glass': 0.36, 'carbon-fiber': 0.38, leather: 0.26, 'crt-terminal': 0.3, slate: 0.2, walnut: 0.2, oak: 0.14, 'green-felt': 0.04, 'cork-board': 0.05, concrete: 0.08, copper: 0.5, 'gold-leaf': 0.55, 'rusted-iron': 0.1, granite: 0.25, terrazzo: 0.3, denim: 0.04, suede: 0.04, chalkboard: 0.1 };
-  const PAPER = ['canvas', 'linen', 'legal-pad', 'graph-paper', 'manila-folder', 'index-card', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'sticky-note', 'parchment'];
+  const GLOSS = { 'brushed-steel': 0.5, 'brass-plate': 0.5, marble: 0.42, 'frosted-glass': 0.36, 'carbon-fiber': 0.38, leather: 0.26, 'crt-terminal': 0.3, slate: 0.2, walnut: 0.2, oak: 0.14, 'green-felt': 0.04, 'cork-board': 0.05, concrete: 0.08, copper: 0.5, 'gold-leaf': 0.55, holographic: 0.55, titanium: 0.45, jade: 0.35, 'subway-tile': 0.35, 'croc-leather': 0.3, mahogany: 0.22, velvet: 0.08, 'rusted-iron': 0.1, granite: 0.25, terrazzo: 0.3, denim: 0.04, suede: 0.04, chalkboard: 0.1 };
+  const PAPER = ['cardboard', 'canvas', 'linen', 'legal-pad', 'graph-paper', 'manila-folder', 'index-card', 'kraft-paper', 'newsprint', 'ledger-green', 'ticker-tape', 'sticky-note', 'parchment'];
   const LIGHT_ANGLE = { 'desk-lamp': 225, 'window-sun': 135, 'monitor-glow': 0, 'neon-sweep': 160, 'golden-hour': 45, spotlight: 180, candlelight: 180, moonlight: 200, 'stage-beams': 180, 'storm-flash': 180, 'aurora-ribbons': 180, 'god-rays': 215, fireplace: 0, 'led-strip': 180, 'fairy-lights': 180, 'lava-glow': 0 };
   for (const t of TEX) {
     const sel = '.pv-sec.tx-' + t[0] + '.tx-' + t[0] + ',.pd-sw.tx-' + t[0] + '.tx-' + t[0];
     const dark = ['#f', '#e', '#6', '#a'].indexOf(t[2].slice(0, 2)) >= 0 || t[2] === 'var(--acc)';
+    t[5] = t[5].replace('BRICKIMG', BRICK).replace('SUBWAYIMG', SUBWAY).replace('CROCIMG', CROC);
     css += sel + '{--ink:' + t[2] + ';--mut:' + t[3] + ';--hd:' + t[4] + ';--soft:' + (dark ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)') + ';' + t[5] + '}';
     const g = GRAIN[t[0]];
     if (g) css += '.pv-sec.tx-' + t[0] + '.tx-' + t[0] + ':before,.pd-sw.tx-' + t[0] + '.tx-' + t[0] + ':before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:' + svgUri(g[0]) + ';mix-blend-mode:' + g[1] + ';opacity:' + g[2] + '}';
@@ -370,6 +411,67 @@
       b += '<g transform="translate(120 760) rotate(-4)"><rect x="6" y="8" width="1300" height="46" fill="rgba(0,0,0,.4)" filter="url(#blur6)"/><rect width="1300" height="40" rx="3" fill="rgba(240,230,160,.85)" stroke="#a89a50"/>';
       for (let i = 0; i < 65; i++) b += '<line x1="' + (10 + i * 20) + '" y1="0" x2="' + (10 + i * 20) + '" y2="' + (i % 5 ? 12 : 22) + '" stroke="rgba(60,50,10,.8)"/>';
       b += '</g><g transform="translate(1280 600) rotate(20)"><path d="M0 0 l30 120 M60 0 l-30 120" stroke="#cfd5db" stroke-width="10" stroke-linecap="round"/><circle cx="30" cy="-6" r="14" fill="#9aa3ab" stroke="#6b7480"/><path d="M30 120 l-4 18 l8 0z" fill="#222"/></g>' + pen(1030, 820, -16, '#c9a23a') + pen(1070, 850, 4, '#222222');
+
+    } else if (id === 'rooftop-terrace') {
+      b += '<defs><linearGradient id="rsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a1030"/><stop offset=".7" stop-color="#3a2f6a"/><stop offset="1" stop-color="#d9784a"/></linearGradient></defs><rect width="1600" height="900" fill="url(#rsky)"/>';
+      for (let i = 0; i < 70; i++) b += '<circle cx="' + ((i * 233) % 1600) + '" cy="' + ((i * 71) % 300) + '" r="' + (0.6 + (i % 3) * 0.4) + '" fill="rgba(255,255,255,' + (0.3 + (i % 3) * 0.2) + ')"/>';
+      for (let i = 0; i < 40; i++) { const x = i * 42 - 10, h = 100 + ((i * 59) % 260); b += '<rect x="' + x + '" y="' + (600 - h) + '" width="' + (36 + (i % 3) * 6) + '" height="' + h + '" fill="rgba(14,10,36,' + (0.7 + (i % 3) * 0.1) + ')"/>'; for (let r = 0; r < Math.floor(h / 24); r++) if ((i * 3 + r * 5) % 4 === 0) b += '<rect x="' + (x + 7 + (r % 3) * 11) + '" y="' + (600 - h + 9 + r * 24) + '" width="6" height="9" fill="rgba(255,214,130,.8)"/>'; }
+      b += '<path d="M0 90 Q400 230 800 110 T1600 130" fill="none" stroke="#1a1410" stroke-width="3"/><path d="M0 160 Q500 300 900 190 T1600 210" fill="none" stroke="#1a1410" stroke-width="3"/>';
+      for (let i = 0; i < 30; i++) { const u = i / 29, x = u * 1600, y = 90 + Math.sin(u * 3.2) * 70 + 60 * Math.sin(u * Math.PI * 2) * 0.1 + 40; b += '<circle cx="' + f1(x) + '" cy="' + f1(y) + '" r="30" fill="url(#warm)"/><circle cx="' + f1(x) + '" cy="' + f1(y) + '" r="5" fill="#fff0c0"/>'; }
+      b += '<rect y="600" width="1600" height="300" fill="#3a2a1c"/>';
+      for (let i = 0; i < 20; i++) b += '<rect x="0" y="' + (600 + i * 15 + i * i * 0.35) + '" width="1600" height="' + (13 + i * 0.35) + '" fill="' + (i % 2 ? '#4a3524' : '#3f2d1d') + '" stroke="rgba(0,0,0,.4)"/>';
+      b += '<rect y="596" width="1600" height="8" fill="#241a12"/><g transform="translate(1320 470)"><ellipse cx="60" cy="150" rx="70" ry="12" fill="rgba(0,0,0,.4)"/><path d="M20 150 q-10 -60 40 -80 q50 20 40 80z" fill="#6a4a2a" stroke="#3a2614"/><path d="M60 70 q-50 -30 -40 -70 q36 10 40 70 M60 70 q50 -30 40 -70 q-36 10 -40 70 M60 70 q0 -60 0 -80" fill="#3c8a46" stroke="#1f5a2a"/></g>';
+      b += '<g transform="translate(560 740)"><rect x="8" y="14" width="440" height="100" rx="8" fill="rgba(0,0,0,.4)" filter="url(#blur6)"/><rect width="440" height="92" rx="8" fill="#1b1d23" stroke="#3a4048"/><rect x="14" y="10" width="412" height="72" rx="4" fill="#07121e"/></g>' + cup(1180, 760) + '<ellipse cx="700" cy="640" rx="560" ry="100" fill="url(#warm)"/>';
+    } else if (id === 'beach-office') {
+      b += '<defs><linearGradient id="bsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fc4f0"/><stop offset="1" stop-color="#ffe2c0"/></linearGradient><linearGradient id="bsea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f9fbf"/><stop offset="1" stop-color="#7fe0e0"/></linearGradient></defs><rect width="1600" height="900" fill="url(#bsky)"/><circle cx="1180" cy="220" r="150" fill="url(#warm)"/><circle cx="1180" cy="220" r="52" fill="#fff6d0"/>';
+      for (let i = 0; i < 4; i++) b += '<ellipse cx="' + (240 + i * 380) + '" cy="' + (140 + (i % 2) * 40) + '" rx="150" ry="26" fill="rgba(255,255,255,.7)"/><ellipse cx="' + (300 + i * 380) + '" cy="' + (120 + (i % 2) * 40) + '" rx="90" ry="24" fill="rgba(255,255,255,.7)"/>';
+      b += '<rect y="430" width="1600" height="220" fill="url(#bsea)"/>';
+      for (let i = 0; i < 18; i++) b += '<path d="M' + ((i * 97) % 1500) + ' ' + (450 + (i * 23) % 190) + ' q30 -14 60 0 t60 0" fill="none" stroke="rgba(255,255,255,' + (0.3 + (i % 3) * 0.15) + ')" stroke-width="3"/>';
+      b += '<path d="M0 650 C300 610 700 670 1100 630 S1500 650 1600 640 V700 H0z" fill="#fff5dc"/><rect y="640" width="1600" height="260" fill="#e8d5a3"/>';
+      for (let i = 0; i < 600; i++) b += '<circle cx="' + ((i * 197) % 1600) + '" cy="' + (650 + (i * 89) % 250) + '" r="' + (1 + (i % 3)) + '" fill="' + (i % 2 ? 'rgba(150,115,60,.3)' : 'rgba(255,255,255,.4)') + '"/>';
+      b += '<g transform="translate(90 120)"><path d="M120 560 Q150 360 90 140" fill="none" stroke="#6a4a2a" stroke-width="22" stroke-linecap="round"/><path d="M90 140 q-80 -30 -110 20 M90 140 q-10 -80 -90 -80 M90 140 q60 -60 130 -30 M90 140 q80 0 120 70 M90 140 q-60 20 -90 90" fill="none" stroke="#2f8a3c" stroke-width="18" stroke-linecap="round"/></g>';
+      b += '<g transform="translate(560 700)"><rect x="8" y="12" width="500" height="26" rx="6" fill="rgba(0,0,0,.35)" filter="url(#blur6)"/><rect width="500" height="24" rx="6" fill="#a8764a" stroke="#6b4a2a"/><rect x="40" y="24" width="14" height="90" fill="#8a5e38"/><rect x="446" y="24" width="14" height="90" fill="#8a5e38"/></g>' + cup(1100, 640);
+    } else if (id === 'space-station') {
+      b += '<rect width="1600" height="900" fill="#02040c"/>';
+      for (let i = 0; i < 260; i++) b += '<circle cx="' + ((i * 311) % 1600) + '" cy="' + ((i * 127) % 640) + '" r="' + (0.5 + (i % 4) * 0.45) + '" fill="rgba(255,255,255,' + (0.25 + (i % 5) * 0.14) + ')"/>';
+      b += '<defs><radialGradient id="planet" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#7fd0ff"/><stop offset=".5" stop-color="#2a6ab0"/><stop offset="1" stop-color="#06142e"/></radialGradient><radialGradient id="atmo" cx=".5" cy=".5" r=".5"><stop offset=".9" stop-color="rgba(120,200,255,.5)"/><stop offset="1" stop-color="rgba(120,200,255,0)"/></radialGradient></defs>';
+      b += '<circle cx="380" cy="1100" r="640" fill="url(#atmo)"/><circle cx="380" cy="1100" r="600" fill="url(#planet)"/><path d="M-100 700 q200 -40 420 -10 q-150 -30 -250 20z M300 560 q160 -20 260 20 q-120 -10 -200 30z" fill="rgba(255,255,255,.5)"/>';
+      b += '<circle cx="1300" cy="150" r="50" fill="#e8d9b0"/><circle cx="1288" cy="140" r="10" fill="rgba(0,0,0,.18)"/><circle cx="1316" cy="164" r="7" fill="rgba(0,0,0,.18)"/>';
+      b += '<path d="M0 620 H1600 V900 H0z" fill="#2a303a"/><rect y="610" width="1600" height="16" fill="#4a5262"/><rect y="610" width="1600" height="3" fill="rgba(255,255,255,.3)"/>';
+      for (let i = 0; i < 16; i++) b += '<circle cx="' + (40 + i * 104) + '" cy="632" r="4" fill="#6a7284"/>';
+      b += '<g stroke="#4a5262" stroke-width="14" fill="none"><line x1="0" y1="0" x2="0" y2="620"/><line x1="1600" y1="0" x2="1600" y2="620"/><line x1="800" y1="0" x2="800" y2="620"/><line x1="0" y1="0" x2="1600" y2="0"/></g>';
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 22; c++) { const col = ['#35e6a0', '#ff6b7f', '#ffd166', '#5ab8ff'][(r * 7 + c * 3) % 4]; b += '<rect x="' + (60 + c * 68) + '" y="' + (700 + r * 54) + '" width="46" height="26" rx="5" fill="#161b24" stroke="#343c4a"/><rect x="' + (66 + c * 68) + '" y="' + (706 + r * 54) + '" width="34" height="14" rx="3" fill="' + col + '" opacity="' + (0.35 + ((c * 5 + r * 3) % 4) * 0.2) + '"><animate attributeName="opacity" values="' + (0.25 + (c % 3) * 0.1) + ';0.95;' + (0.25 + (c % 3) * 0.1) + '" dur="' + (2 + (c + r) % 4) + 's" repeatCount="indefinite"/></rect>'; }
+    } else if (id === 'cafe-table') {
+      b += '<rect width="1600" height="900" fill="#2a1a12"/>';
+      const bk = ['rgba(255,190,100,.55)', 'rgba(255,140,80,.45)', 'rgba(255,230,160,.5)', 'rgba(255,170,120,.4)'];
+      for (let i = 0; i < 46; i++) b += '<circle cx="' + ((i * 241) % 1600) + '" cy="' + ((i * 113) % 520) + '" r="' + (18 + (i % 5) * 14) + '" fill="' + bk[i % 4] + '" filter="url(#blur6)"/>';
+      b += '<rect x="120" y="60" width="1360" height="520" fill="rgba(20,30,50,.35)"/><g stroke="rgba(255,255,255,.12)" stroke-width="2">';
+      for (let i = 0; i < 90; i++) b += '<line x1="' + ((i * 53) % 1480 + 120) + '" y1="' + ((i * 37) % 480 + 60) + '" x2="' + ((i * 53) % 1480 + 112) + '" y2="' + ((i * 37) % 480 + 130) + '"/>';
+      b += '</g><g fill="none" stroke="#1a110c" stroke-width="22"><rect x="120" y="60" width="1360" height="520"/><line x1="800" y1="60" x2="800" y2="580"/></g>';
+      b += '<rect y="580" width="1600" height="320" fill="#3a2418"/><ellipse cx="800" cy="720" rx="640" ry="190" fill="rgba(0,0,0,.4)" filter="url(#blur24)"/><ellipse cx="800" cy="700" rx="620" ry="180" fill="#e9e7e2" stroke="#b9b6ae" stroke-width="4"/><ellipse cx="800" cy="694" rx="600" ry="170" fill="rgba(255,255,255,.5)"/>';
+      b += '<path d="M300 700 q120 -60 260 -20 M900 760 q200 -50 380 -10 M520 640 q100 30 210 10" fill="none" stroke="rgba(90,100,115,.35)" stroke-width="3"/>' + cup(540, 650) + paper(980, 640, 240, 170, 8, 8, '#fffdf3') + pen(1010, 830, -8, '#1a3a8a');
+      b += '<g transform="translate(300 740) rotate(-12)"><rect width="90" height="170" rx="14" fill="#15181d" stroke="#3a4048"/><rect x="6" y="10" width="78" height="140" rx="6" fill="#0a2038"/><rect x="14" y="20" width="62" height="10" rx="3" fill="rgba(255,255,255,.4)"/></g><ellipse cx="740" cy="760" rx="60" ry="26" fill="#e8b66a" stroke="#a87a30"/><path d="M700 760 q40 -34 80 0" fill="none" stroke="#a87a30" stroke-width="3"/>';
+    } else if (id === 'vault-room') {
+      b += '<rect width="1600" height="900" fill="#4a4f57"/>';
+      for (let i = 0; i < 90; i++) b += '<line x1="0" y1="' + (i * 10) + '" x2="1600" y2="' + (i * 10 + (i % 3)) + '" stroke="' + (i % 2 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.06)') + '"/>';
+      b += '<defs><radialGradient id="vdoor" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#cfd5dc"/><stop offset=".6" stop-color="#7a828c"/><stop offset="1" stop-color="#3a4048"/></radialGradient></defs>';
+      b += '<circle cx="800" cy="400" r="330" fill="rgba(0,0,0,.5)" filter="url(#blur24)"/><circle cx="800" cy="400" r="320" fill="url(#vdoor)" stroke="#2a2f36" stroke-width="10"/><circle cx="800" cy="400" r="270" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="8"/><circle cx="800" cy="400" r="270" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="2"/>';
+      for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283; b += '<circle cx="' + f1(800 + Math.cos(a) * 296) + '" cy="' + f1(400 + Math.sin(a) * 296) + '" r="11" fill="#9aa3ad" stroke="#2a2f36" stroke-width="3"/>'; }
+      b += '<circle cx="800" cy="400" r="86" fill="#2a2f36" stroke="#9aa3ad" stroke-width="8"/>';
+      for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + 0.3; b += '<line x1="800" y1="400" x2="' + f1(800 + Math.cos(a) * 200) + '" y2="' + f1(400 + Math.sin(a) * 200) + '" stroke="#b8c0c9" stroke-width="18" stroke-linecap="round"/><circle cx="' + f1(800 + Math.cos(a) * 200) + '" cy="' + f1(400 + Math.sin(a) * 200) + '" r="22" fill="#d0d6dd" stroke="#2a2f36" stroke-width="3"/>'; }
+      b += '<circle cx="800" cy="400" r="34" fill="#c9a23a" stroke="#7d5a14" stroke-width="4"/>';
+      b += '<rect y="740" width="1600" height="160" fill="#2a2d33"/><rect y="740" width="1600" height="160" fill="url(#deskTop)"/>';
+      const stack = (x, y, n) => { let t = ''; for (let i = 0; i < n; i++) for (let j = 0; j < n - i; j++) t += '<polygon points="' + (x + j * 74 + i * 37) + ',' + (y - i * 26) + ' ' + (x + j * 74 + i * 37 + 66) + ',' + (y - i * 26) + ' ' + (x + j * 74 + i * 37 + 56) + ',' + (y - i * 26 - 22) + ' ' + (x + j * 74 + i * 37 + 10) + ',' + (y - i * 26 - 22) + '" fill="#d9aa30" stroke="#8a640c"/><polygon points="' + (x + j * 74 + i * 37 + 10) + ',' + (y - i * 26 - 22) + ' ' + (x + j * 74 + i * 37 + 56) + ',' + (y - i * 26 - 22) + ' ' + (x + j * 74 + i * 37 + 50) + ',' + (y - i * 26 - 26) + ' ' + (x + j * 74 + i * 37 + 16) + ',' + (y - i * 26 - 26) + '" fill="#f6dd7c"/>'; return t; };
+      b += stack(70, 880, 4) + stack(1190, 880, 4) + '<ellipse cx="800" cy="520" rx="640" ry="160" fill="url(#warm)" opacity=".5"/>';
+    } else if (id === 'music-studio') {
+      b += '<rect width="1600" height="900" fill="#150f12"/>';
+      for (let r = 0; r < 12; r++) for (let c = 0; c < 26; c++) { const x = c * 64, y = r * 52; b += '<polygon points="' + x + ',' + (y + 52) + ' ' + (x + 32) + ',' + y + ' ' + (x + 64) + ',' + (y + 52) + '" fill="' + ((r + c) % 2 ? '#241a1f' : '#1b1317') + '" stroke="rgba(0,0,0,.5)"/><polygon points="' + (x + 32) + ',' + y + ' ' + (x + 64) + ',' + (y + 52) + ' ' + (x + 32) + ',' + (y + 52) + '" fill="rgba(255,255,255,.04)"/>'; }
+      b += '<rect x="620" y="40" width="360" height="90" rx="14" fill="#2a0a0a" stroke="#4a1010" stroke-width="4"/><rect x="632" y="52" width="336" height="66" rx="8" fill="#ff2a2a" opacity=".9"><animate attributeName="opacity" values=".55;1;.55" dur="2.4s" repeatCount="indefinite"/></rect><text x="800" y="102" text-anchor="middle" font-family="Impact,Arial Black,sans-serif" font-size="52" fill="#ffe8e8">ON AIR</text><circle cx="800" cy="85" r="190" fill="rgba(255,40,40,.18)" filter="url(#blur24)"/>';
+      const spk = (x) => '<g transform="translate(' + x + ' 190)"><rect x="8" y="12" width="230" height="380" rx="14" fill="rgba(0,0,0,.45)" filter="url(#blur6)"/><rect width="230" height="380" rx="12" fill="#1b1d23" stroke="#3a4048"/><circle cx="115" cy="110" r="46" fill="#0d0f13" stroke="#444b56" stroke-width="5"/><circle cx="115" cy="110" r="20" fill="#2a2f38"/><circle cx="115" cy="270" r="86" fill="#0d0f13" stroke="#444b56" stroke-width="6"/><circle cx="115" cy="270" r="52" fill="#171a20" stroke="#2f343e" stroke-width="3"/><circle cx="115" cy="270" r="20" fill="#2a2f38"/></g>';
+      b += spk(130) + spk(1240);
+      b += '<rect y="640" width="1600" height="260" fill="#1a1316"/><g transform="translate(260 610)"><rect x="8" y="14" width="1080" height="250" rx="16" fill="rgba(0,0,0,.5)" filter="url(#blur6)"/><path d="M0 40 q0 -26 26 -26 h1028 q26 0 26 26 v200 h-1080z" fill="#262a32" stroke="#444b56"/>';
+      for (let i = 0; i < 24; i++) { const x = 40 + i * 43, lv = 40 + ((i * 37) % 110); b += '<rect x="' + (x + 12) + '" y="60" width="6" height="150" rx="3" fill="#0d0f13"/><rect x="' + x + '" y="' + (60 + lv) + '" width="30" height="16" rx="3" fill="#d8dce2" stroke="#6a7280"><animate attributeName="y" values="' + (60 + lv) + ';' + (60 + ((lv + 40) % 120) + 10) + ';' + (60 + lv) + '" dur="' + (3 + i % 5) + 's" repeatCount="indefinite"/></rect><circle cx="' + (x + 15) + '" cy="42" r="8" fill="' + ['#ff6b7f', '#ffd166', '#35e6a0', '#5ab8ff'][i % 4] + '"/>'; }
+      b += '</g>' + keyboard(560, 840, 480);
     }
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">' + defs + b + '</svg>';
   };
