@@ -46,7 +46,7 @@ export async function processAlertMessage(message, eventType = 'created') {
   const parsed = parseAlertMessage(message.content, timestamp, monitor.marketTimezone || 'America/New_York');
   if (!parsed) {
     // A short excerpt makes the log enough to see which alert shapes the parser still misses.
-    const excerpt = String(message.content).replace(/\s+/g, ' ').trim().slice(0, 160);
+    const excerpt = Array.from(String(message.content).replace(/\s+/g, ' ').trim()).slice(0, 160).join('');
     console.warn(`Unparsed message in monitored alert channel: ${message.id} ${JSON.stringify(excerpt)}`);
     return true;
   }

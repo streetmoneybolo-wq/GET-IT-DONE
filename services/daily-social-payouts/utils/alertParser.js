@@ -47,7 +47,7 @@ const NOT_TICKERS = new Set([
 
 /* Exit, trim and management posts reuse the alert words but are not new alerts. The wider patterns refuse them;
    the original two patterns keep their exact behaviour. */
-const MANAGEMENT = /\b(?:stc|sold|selling|closed?|closing|exit(?:ed|ing)?|out\s+(?:at|of|for|here|now)|trim(?:med|ming)?|took\s+profits?|taking\s+profits?|stopped(?:\s+out)?|runners?|cut(?:ting)?\s+(?:it|loss|losses))\b/i;
+const MANAGEMENT = /\b(?:stc|sold|closed?|closing|exit(?:ed|ing)?|out\s+(?:at|of|for|here|now)|trim(?:med|ming)?|took\s+profits?|taking\s+profits?|consider\s+pro?fits|stopped(?:\s+out)?|runners?|cut(?:ting)?\s+(?:it|loss|losses)|smashed|mashed|pt\s+hit|new\s+(?:pt|target|ot)\s+set|in\s+the\s+money|getting\s+risky|re-?enter|to\s+be\s+sold)\b/i;
 
 /* The symbol must be typed as a ticker: upper case in the original message, or prefixed with "$". */
 function tickerAt(original, index, length) {
@@ -64,20 +64,51 @@ function premiumAfter(normalized, from) {
   return m ? Number(m[1]) : null;
 }
 
+
+/* Alerts arrive dressed up: Unicode bold letters and digits (𝐒𝐏𝐘 𝐂𝐀𝐋𝐋𝐒 $𝟓𝟖𝟎), markdown **bold**, @everyone,
+   "|" and dash separators, labels such as STRIKE / EXP / ALERT, and dates written 10.02.26. Fold all of that
+   to plain text first; the original message is still kept in `raw` for the audit trail. */
+function foldAlertText(text) {
+  return String(text || '')
+    .normalize('NFKC')                                   // 𝐒𝐏𝐘 -> SPY, 𝟓𝟖𝟎 -> 580, full-width -> ASCII
+    .replace(/[*_~`]+/g, ' ')                            // markdown emphasis
+    .replace(/@(?:everyone|here)\b/gi, ' ')
+    .replace(/[|\\—–→]+/g, ' ')                          // field separators and arrows
+    .replace(/\b(0?[1-9]|1[0-2])\.(0?[1-9]|[12]\d|3[01])\.(\d{2}|\d{4})\b/g, '$1/$2/$3') // 10.02.26 -> 10/02/26
+    .replace(/\b(?:strike|exp|expiry|expiration|alert)\b:?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const SHORT_SALE = /\bshort(?:\s+sale|\s+play|\s+setup|\s+trade)?\b|&\s*lower\b|\bor\s+lower\b/i;
+
+function finishEquity(result, folded) {
+  const short = SHORT_SALE.test(folded);
+  if (short) result.direction = 'short';
+  // A long alert whose target sits under its entry is either a short or a typo: hold it for review either way.
+  if (short || (Number.isFinite(result.targetPrice) && result.targetPrice < result.entryPrice)) result.needsReview = true;
+  return result;
+}
+
 export function parseAlertMessage(content, timestamp = new Date().toISOString(), timeZone = 'America/New_York') {
   const text = String(content || '').replace(/\s+/g, ' ').trim();
+  const folded = foldAlertText(text);                       // keeps "(DAILY)" and "(SHORT SALE)" for the expiry and direction checks
+  const flat = folded.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim(); // "(pre split)" must not sit between the fields
   // Discord alerts commonly express sub-dollar prices as "40CENTS" or
   // "40 cents". Normalize those tokens for parsing while retaining the
   // original message in `raw` for the audit trail.
-  const normalized = text
+  const normalized = flat
     .replace(/\b(\d+(?:\.\d+)?)\s*cents?\b/gi, (_, cents) => String(Number(cents) / 100))
     .replace(/(\d),(\d{1,4})(?=\s|$)/g, '$1.$2');
   const pricePattern = PRICE;
 
+  /* Exits, trims, target updates and status posts reuse the alert words but are not new alerts. */
+  if (MANAGEMENT.test(folded)) return null;
+
   /* 1. Original formats, unchanged: "SPY CALLS 580" and "AAPL entry 230 pt 245". */
   const option = normalized.match(new RegExp(String.raw`(?:^|\s)\$?([A-Z]{1,6})\s+(CALLS?|PUTS?)\s+\$?(${pricePattern})(?=\s|$)`, 'i'));
   if (option) {
-    const expiry = resolveOptionExpiration(text, timestamp, timeZone);
+    const expiry = resolveOptionExpiration(folded, timestamp, timeZone);
     return {
       kind: 'option',
       symbol: option[1].toUpperCase(),
@@ -89,10 +120,10 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
       raw: text,
     };
   }
-  const entryWordPattern = String.raw`(?:entry|entnry|entery|enrty|etry)`;
+  const entryWordPattern = String.raw`(?:entry|entnry|entery|enrty|etry|enter(?:ed|ing)?)`;
   const equity = normalized.match(new RegExp(String.raw`(?:^|\s)\$?([A-Z]{1,6})\s+${entryWordPattern}\s+\$?(${pricePattern})\s+(?:pt|target)\s+\$?(${pricePattern})(?:\s*(plus|\+))?`, 'i'));
   if (equity) {
-    return {
+    return finishEquity({
       kind: 'equity',
       symbol: equity[1].toUpperCase(),
       entryPrice: Number(equity[2]),
@@ -100,11 +131,10 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
       targetIsMinimum: Boolean(equity[4]),
       needsReview: false,
       raw: text,
-    };
+    }, folded);
   }
 
-  /* 2. Wider formats. Management posts (exits, trims, stops) are never new alerts. */
-  if (MANAGEMENT.test(normalized)) return null;
+  /* 2. Wider formats. */
 
   /* Options with the strike before the type: "SPY 580C", "SPY 580 C", "$SPY $580 call", "BTO SPY 10/17 580C @ 1.20",
      "SPY 580 CALLS 10/17", "NVDA 120.5p 0DTE". */
@@ -113,7 +143,7 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
     const start = m.index + (m[0].length - m[0].trimStart().length) + (m[0].trimStart().startsWith('$') ? 1 : 0);
     const symbol = tickerAt(normalized, start, m[1].length);
     if (!symbol) continue;
-    const expiry = resolveOptionExpiration(text, timestamp, timeZone);
+    const expiry = resolveOptionExpiration(folded, timestamp, timeZone);
     const premium = premiumAfter(normalized, m.index + m[0].length);
     return {
       kind: 'option',
@@ -134,7 +164,7 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
     const start = m.index + (m[0].length - m[0].trimStart().length) + (m[0].trimStart().startsWith('$') ? 1 : 0);
     const symbol = tickerAt(normalized, start, m[1].length);
     if (!symbol) continue;
-    return {
+    return finishEquity({
       kind: 'equity',
       symbol,
       entryPrice: Number(m[2]),
@@ -142,7 +172,7 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
       targetIsMinimum: Boolean(m[4]),
       needsReview: false,
       raw: text,
-    };
+    }, folded);
   }
 
   /* A stock entry with no target: "AAPL entry 230", "$AAPL @ 230". Captured, but held for review. */
@@ -151,7 +181,7 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
     const start = m.index + (m[0].length - m[0].trimStart().length) + (m[0].trimStart().startsWith('$') ? 1 : 0);
     const symbol = tickerAt(normalized, start, m[1].length);
     if (!symbol) continue;
-    return {
+    return finishEquity({
       kind: 'equity',
       symbol,
       entryPrice: Number(m[2]),
@@ -159,7 +189,7 @@ export function parseAlertMessage(content, timestamp = new Date().toISOString(),
       targetIsMinimum: false,
       needsReview: true,
       raw: text,
-    };
+    }, folded);
   }
   return null;
 }
