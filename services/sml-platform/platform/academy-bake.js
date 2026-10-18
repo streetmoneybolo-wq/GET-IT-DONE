@@ -8,7 +8,8 @@
  *   npm run academy:bake -- design  decks only (Claude)
  *   npm run academy:bake -- voice   narration only (ElevenLabs)
  *
- * or set SML_ACADEMY_BAKE=1 on the service and it runs in the background after start-up (then remove the flag). */
+ * or set SML_ACADEMY_BAKE=all (or voice / design) on the service and it runs in the background after start-up
+ * (then set the flag back to 0). */
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 

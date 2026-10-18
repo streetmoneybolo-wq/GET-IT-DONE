@@ -136,9 +136,10 @@ services:
         sync: false
       - key: SML_ACADEMY_ELEVENLABS_MODEL
         value: eleven_multilingual_v2
-      # One-time bake: set to "1" (with ANTHROPIC_API_KEY and ELEVENLABS_API_KEY valid) and the service
-      # generates every lesson deck and narration once into academy_media, then set back to "0".
-      # Baked media is served for good, with or without the provider keys; keep the voice id set.
+      # One-time bake: set to "all" ("voice" or "design" for one kind) with ANTHROPIC_API_KEY and
+      # ELEVENLABS_API_KEY valid, and the service generates every missing lesson deck and narration
+      # into academy_media after start-up; then set back to "0". Baked media is served for good, with
+      # or without the provider keys; keep the voice id set.
       - key: SML_ACADEMY_BAKE
         value: "0"
       - key: SML_ACADEMY_GUILD_ID

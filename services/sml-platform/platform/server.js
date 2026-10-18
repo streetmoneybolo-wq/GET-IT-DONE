@@ -4673,7 +4673,8 @@ async function main() {
     /* SML_ACADEMY_BAKE=1: generate every missing lesson deck and narration once, in the background, into academy_media */
     if (config.academyBake) {
       const bake = createAcademyBake({ lessons: SEED_LESSONS, designer: academySlideDesigner, voice: academyVoice, store: academyMedia, logger: log });
-      setTimeout(() => { bake.run().catch((error) => log('error', 'academy_bake_failed', { error })); }, 15_000).unref();
+      const which = { design: config.academyBake !== 'voice', voice: config.academyBake !== 'design' };
+      setTimeout(() => { bake.run(which).catch((error) => log('error', 'academy_bake_failed', { error })); }, 15_000).unref();
     }
     if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
