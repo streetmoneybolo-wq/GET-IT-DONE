@@ -24,8 +24,10 @@
     + '.opt-calc .oc-out{margin-top:12px;padding:10px;border:1px solid #1d3a48;border-radius:8px;background:#07121b}.opt-calc .oc-big{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.opt-calc .oc-big b{font:800 1.5rem ui-monospace,monospace;color:#fff}.opt-calc .oc-big span{color:#8fa6b3}'
     + '.opt-calc dl{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin:8px 0 0}.opt-calc dt{color:#8fa6b3}.opt-calc dd{margin:0;text-align:right;font-family:ui-monospace,monospace;color:#eaf5f8}'
     + '.opt-calc table{width:100%;border-collapse:collapse;margin-top:8px;font:600 .62rem ui-monospace,monospace}.opt-calc th,.opt-calc td{padding:3px 4px;text-align:right;border-bottom:1px solid rgba(42,66,78,.5)}.opt-calc th{color:#8fa6b3;font-weight:700}.opt-calc td.pos{color:#52e6ad}.opt-calc td.neg{color:#ff778b}.opt-calc tr.now td{background:rgba(66,245,179,.08)}'
-    + '.opt-calc .oc-note{margin-top:8px;color:#7f97a4;font-size:.58rem;line-height:1.4;font-weight:500}.opt-calc .oc-hint{color:#ffd166;margin-top:6px;font-size:.6rem}#options-grid tr{cursor:pointer}#options-grid tr:hover td{background:rgba(66,245,179,.06)}'
-    + '@media(max-width:1000px){.options-dock{grid-template-columns:1fr}.opt-calc{position:static}}';
+    + '.opt-calc .oc-more{margin-top:8px}.opt-calc .oc-more summary{cursor:pointer;color:#7f97a4;font-size:.6rem;font-weight:700;list-style:none}.opt-calc .oc-more summary::before{content:"▸ "}.opt-calc .oc-more[open] summary::before{content:"▾ "}.opt-calc .oc-note{margin-top:8px;color:#7f97a4;font-size:.58rem;line-height:1.4;font-weight:500}.opt-calc .oc-hint{color:#ffd166;margin-top:6px;font-size:.6rem}#options-grid tr{cursor:pointer}#options-grid tr:hover td{background:rgba(66,245,179,.06)}'
+    /* no chain on screen (signed out, or nothing loaded yet): one column, the calculator laid out side by side, so the lab is not a tall box beside an empty one */
+    + '.options-dock.no-chain{grid-template-columns:1fr}.options-dock.no-chain .opt-calc{position:static;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:4px 18px;align-items:start}.options-dock.no-chain .opt-calc>*{grid-column:1;min-width:0}.options-dock.no-chain .opt-calc .oc-out{grid-column:2;grid-row:1/span 6;margin-top:0;align-self:stretch}.options-dock.no-chain .opt-calc .oc-hint,.options-dock.no-chain .opt-calc .oc-more{grid-column:2}'
+    + '@media(max-width:1000px){.options-dock{grid-template-columns:1fr}.opt-calc{position:static}.options-dock.no-chain .opt-calc{display:block}}';
   document.head.appendChild(style);
 
   const dock = document.createElement('div'); dock.className = 'options-dock'; dock.id = 'options-dock';
@@ -39,13 +41,18 @@
     + '<div class="oc-row" style="margin-top:8px"><label>Market price paid / quoted (optional)<input id="oc-mkt" inputmode="decimal" autocomplete="off" placeholder="e.g. 3.20"></label><button type="button" class="oc-mini" id="oc-solve">Solve IV</button></div>'
     + '<div class="oc-out" id="oc-out" aria-live="polite"></div>'
     + '<div class="oc-hint" id="oc-hint">Click any row in the chain to load that contract here.</div>'
-    + '<div class="oc-note">Black-Scholes model value for a European option. Real equity options can be American-style and trade at their own bid/ask, so treat this as a learning estimate, not a quote. Not investment advice.</div>';
+    + '<details class="oc-more"><summary>About this estimate</summary><div class="oc-note">Black-Scholes model value for a European option. Real equity options can be American-style and trade at their own bid/ask, so treat this as a learning estimate, not a quote. Not investment advice.</div></details>';
   const first = below.querySelector('.below-title');
   if (first) first.after(dock); else below.prepend(dock);
   dock.appendChild(chain); dock.appendChild(card);
   const title = below.querySelector('.below-title'); if (title) title.textContent = 'OPTIONS CHAIN + PRICE CALCULATOR · SCANNER';
 
   const S = { side: 'call', touchedSpot: false };
+  /* follow the chain: the dock is two columns only while a chain table is on screen */
+  const chainWrap = document.getElementById('options-table-wrap');
+  const syncMode = () => { const body = document.getElementById('options-grid'); dock.classList.toggle('no-chain', !chainWrap || chainWrap.hidden || !body || !body.querySelector('tr')); };
+  syncMode();
+  if (chainWrap && typeof MutationObserver === 'function') { let t = 0; new MutationObserver(() => { clearTimeout(t); t = setTimeout(syncMode, 60); }).observe(chainWrap, { attributes: true, attributeFilter: ['hidden'], childList: true, subtree: true }); }
   const el = { spot: $('oc-spot'), strike: $('oc-strike'), days: $('oc-days'), iv: $('oc-iv'), qty: $('oc-qty'), rate: $('oc-rate'), div: $('oc-div'), mkt: $('oc-mkt'), out: $('oc-out') };
   el.qty.value = '1'; el.rate.value = '4.3'; el.div.value = '0'; el.iv.value = '25'; el.days.value = '30';
 

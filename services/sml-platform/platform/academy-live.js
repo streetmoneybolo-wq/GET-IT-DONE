@@ -22,7 +22,7 @@
     const panel = document.querySelector('.academy-depth'); if (!panel || !book) return;
     let grid = panel.querySelector('.academy-depth-grid');
     if (!grid) { const empty = panel.querySelector('.academy-depth-empty'); if (empty) empty.remove(); grid = document.createElement('div'); grid.className = 'academy-depth-grid'; panel.appendChild(grid); }
-    const rows = 7;
+    const rows = 10; // the side column gives Level 2 the room it has left; ten a side fills it on a desktop
     const col = (name, cls, levels, prev, key) => {
       const head = '<b class="' + cls + '">' + name + '</b>';
       const body = levels.slice(0, rows).map((l, i) => {

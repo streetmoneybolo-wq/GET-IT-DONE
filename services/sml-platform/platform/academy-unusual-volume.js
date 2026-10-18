@@ -10,7 +10,7 @@
     + '.auv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;padding:10px 12px}'
     + '.auv-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:baseline;padding:7px 9px;border:1px solid #13262f;border-radius:8px;background:#0c161d;cursor:pointer;text-align:left;color:inherit;font:inherit}.auv-row:hover,.auv-row:focus-visible{border-color:#00c47d;outline:none}'
     + '.auv-row strong{font:900 13px ui-monospace,monospace;color:#eaf5f8}.auv-row em{font-style:normal;font:900 14px ui-monospace,monospace;color:#ffd166}.auv-row small{color:#8fa6b3;font-size:10.5px}.auv-row .up{color:#00c47d}.auv-row .dn{color:#ff5d6c}'
-    + '.auv-foot{padding:7px 12px;border-top:1px solid #13262f;color:#5f7784;font-size:10.5px}.auv-empty{padding:16px 12px;color:#8fa6b3;text-align:center}';
+    + '.auv-foot{padding:7px 12px;border-top:1px solid #13262f;color:#5f7784;font-size:10.5px}.auv-empty{padding:9px 12px;color:#8fa6b3;font-size:11.5px}';
   document.head.appendChild(css);
   const compact = (v) => (Number.isFinite(v) ? Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(v) : '–');
   const ago = (t) => { const s = Math.max(0, (Date.now() - t) / 1000); return s < 60 ? 'just now' : Math.round(s / 60) + 'm ago'; };

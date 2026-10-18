@@ -14,7 +14,7 @@
     + '.avx-level{font:900 34px ui-monospace,monospace;line-height:1}.avx-zone{font:800 12px system-ui;margin-top:4px}.avx-chg{font:800 12px ui-monospace,monospace;margin-top:6px}.avx-terms{margin-top:8px;color:#8fa6b3;font-size:11px}'
     + '.avx canvas{width:100%;height:120px;display:block;border:1px solid #13262f;border-radius:8px;background:#0c161d}'
     + '.avx-scale{display:flex;gap:4px;margin-top:6px;font:700 10px ui-monospace,monospace}.avx-scale span{flex:1;padding:3px 0;text-align:center;border-radius:4px}'
-    + '.avx-foot{padding:7px 12px;border-top:1px solid #13262f;color:#5f7784;font-size:10.5px}.avx-empty{padding:16px 12px;color:#8fa6b3;text-align:center}';
+    + '.avx-foot{padding:7px 12px;border-top:1px solid #13262f;color:#5f7784;font-size:10.5px}.avx-empty{padding:9px 12px;color:#8fa6b3;font-size:11.5px}';
   document.head.appendChild(css);
   let chip = null, root = null, body = null, data = null, message = 'Loading…', timer = 0;
 

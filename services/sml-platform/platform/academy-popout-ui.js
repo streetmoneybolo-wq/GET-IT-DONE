@@ -199,7 +199,11 @@
       if (!token) { await new Promise((r) => setTimeout(r, 5000)); continue; }
       try {
         const res = await fetch('/academy-activity/popout/bus', { headers: { authorization: 'Bearer ' + token, accept: 'text/event-stream' }, cache: 'no-store' });
-        if (res.status === 401 && typeof window.smlAcademyReauth === 'function') { await window.smlAcademyReauth(); continue; }
+        if (res.status === 401) {
+          /* one silent renewal, then wait: a renewal that fails must not spin this loop (and the server log) at full speed */
+          const fresh = typeof window.smlAcademyReauth === 'function' ? await window.smlAcademyReauth().catch(() => '') : '';
+          await new Promise((r) => setTimeout(r, fresh ? wait : 15000)); wait = Math.min(wait * 2, 30000); continue;
+        }
         if (!res.ok || !res.body) throw new Error('bus ' + res.status);
         wait = 1000;
         const reader = res.body.getReader(), dec = new TextDecoder();

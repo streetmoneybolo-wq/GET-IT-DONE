@@ -21,8 +21,12 @@
 
   const S = { alerts: [], feed: {}, tab: 'all', hidden: false, open: null, detail: null, session: '', asOf: 0, error: '', loading: false, sheet: false, perMember: false, sourceCount: 0, teaser: null, pick: null, me: null, arm: null, busy: '', note: {} };
   const KEY = 'sml-alerts-desk-v1';
-  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; if (saved && saved.hidden === true) S.hidden = true; } catch (_) { /* storage can be blocked */ }
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, hidden: S.hidden })); } catch (_) { /* ignore */ } };
+  let chosen = false;
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved && ['all', 'swings', 'longterm'].includes(saved.tab)) S.tab = saved.tab; if (saved && typeof saved.hidden === 'boolean' && !saved.auto) { S.hidden = saved.hidden; chosen = true; } } catch (_) { /* storage can be blocked */ }
+  /* a signed-out viewer only sees an unlock button here: the desk opens by itself once a session arrives (until the member chooses) */
+  S.auto = !chosen && !window.smlAcademySessionToken && !window.matchMedia('(max-width:720px)').matches;
+  if (S.auto) S.hidden = true;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ tab: S.tab, hidden: S.hidden, auto: !!S.auto })); } catch (_) { /* ignore */ } };
 
   const style = document.createElement('style');
   style.textContent = '#academy-alerts{display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#0a1118;border-left:1px solid #1b3540;color:#dcebf4;font:600 .68rem system-ui,sans-serif}'
@@ -71,7 +75,7 @@
   shell.insertBefore(panel, side);
   const fab = document.createElement('button'); fab.id = 'academy-alerts-fab'; fab.type = 'button'; document.body.appendChild(fab);
 
-  function setHidden(v) { S.hidden = v; document.body.classList.toggle('alerts-hidden', v); if (!v) document.body.classList.remove('alerts-quote'); save(); paint(); window.dispatchEvent(new Event('resize')); }
+  function setHidden(v, auto) { S.hidden = v; S.auto = !!auto; document.body.classList.toggle('alerts-hidden', v); if (!v) document.body.classList.remove('alerts-quote'); save(); paint(); window.dispatchEvent(new Event('resize')); }
   document.body.classList.toggle('alerts-hidden', S.hidden);
   const filtered = () => S.alerts.filter((a) => S.tab === 'all' || a.channel === S.tab);
   const chartSymbol = () => String(new URLSearchParams(location.search).get('symbol') || '').toUpperCase();
@@ -405,7 +409,7 @@
   back.addEventListener('click', () => { document.body.classList.remove('alerts-quote'); syncBack(); });
   new MutationObserver(syncBack).observe(document.body, { attributes: true, attributeFilter: ['class'] }); window.addEventListener('resize', syncBack);
 
-  window.addEventListener('sml-academy-session', (e) => { const t = String((e.detail && e.detail.sessionToken) || ''); if (t) { S.session = t; load(); } });
+  window.addEventListener('sml-academy-session', (e) => { const t = String((e.detail && e.detail.sessionToken) || ''); if (t) { S.session = t; if (S.auto && S.hidden) setHidden(false, true); load(); } });
   window.addEventListener('popstate', paint);
   setInterval(() => { if (window.smlChartGesture) return; load(); }, 15000);
   setInterval(() => { if (!window.smlChartGesture && !S.pick) paint(); }, 30000); // keeps the "ago" labels honest and the highlighted row on the chart symbol
