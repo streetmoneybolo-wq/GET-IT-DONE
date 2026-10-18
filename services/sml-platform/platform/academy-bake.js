@@ -33,7 +33,7 @@ function createAcademyBake({ lessons = [], designer = null, voice = null, store 
     }
   }
   /* worth a wait and another try: the provider's rate limit, or a connection that dropped mid-request */
-  const transient = (result) => !result.ok && /rate_limited|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up|network/i.test((result.error || '') + ' ' + (result.detail || ''));
+  const transient = (result) => !result.ok && /rate_limited|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up|network|aborted due to timeout|TimeoutError|overloaded|529/i.test((result.error || '') + ' ' + (result.detail || ''));
 
   /** Run the bake. Returns { design: {done, skipped, failed, stopped}, voice: {...}, errors: [...] }. */
   async function run({ design = true, voice: doVoice = true } = {}) {

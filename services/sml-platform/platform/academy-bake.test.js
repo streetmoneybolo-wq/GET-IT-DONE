@@ -71,3 +71,11 @@ test('a dropped connection is retried like a rate limit, not counted as a failur
   const report = await createAcademyBake({ lessons: lessons.slice(0, 1), voice, store, wait: async () => {} }).run({ design: false });
   assert.deepEqual([report.voice.done, report.voice.failed, report.voice.waits], [1, 0, 1]);
 });
+
+
+test('a request that timed out or an overloaded provider is retried like a rate limit', async () => {
+  let calls = 0;
+  const designer = { configured: true, getLessonDesign: async () => { calls += 1; if (calls === 1) return { cached: true, fallback: true, design: {}, reason: 'provider_failed', detail: '23 The operation was aborted due to timeout' }; if (calls === 2) { const e = new Error('Anthropic returned 529: overloaded'); e.code = 'provider_unavailable'; e.status = 529; throw e; } return { cached: false, design: {} }; } };
+  const report = await createAcademyBake({ lessons: lessons.slice(0, 1), designer, store, wait: async () => {} }).run({ voice: false });
+  assert.deepEqual([report.design.done, report.design.failed, report.design.waits], [1, 0, 2]);
+});

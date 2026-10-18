@@ -294,7 +294,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
         method: 'POST',
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60_000)
+        signal: AbortSignal.timeout(180_000) /* a deck with scenes is long; a minute was cutting lessons off */
       });
       const data = await res.json().catch(() => ({}));
       return { res, data };
