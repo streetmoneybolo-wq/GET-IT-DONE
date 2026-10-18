@@ -1228,7 +1228,7 @@
     /* effects stack: the member can have several textures, several lights at once (older single choices still work) */
     const pool = (Array.isArray(t.textures) && t.textures.length ? t.textures : (t.texture && t.texture !== 'none' ? [t.texture] : [])).filter((id) => TEX_IDS.indexOf(id) >= 0);
     const lightList = (Array.isArray(t.lights) && t.lights.length ? t.lights : (t.light && t.light !== 'off' ? [t.light] : [])).filter((id) => id !== 'off' && LIGHTS.some((d) => d[0] === id));
-    const orbs = ORB_LEVELS.some((d) => d[0] === t.orbs) ? t.orbs : 'off';
+    const orbs = 'off'; /* the flying glass orbs were replaced by the reactive screen effects (academy-profile-fx.js) */
     const byModule = t.moduleTex && typeof t.moduleTex === 'object' ? t.moduleTex : {}, reacts = t.moduleReact && typeof t.moduleReact === 'object' ? t.moduleReact : {};
     const M = window.smlProfileMusic, DEF = (M && M.DEFAULT_REACT) || {};
     root.classList.add('dk-' + desk);

@@ -20,7 +20,16 @@ const LAYOUTS = [
   ['orbit', 'Orbit'], ['stack', 'Stack'], ['compact', 'Compact'], ['cinema', 'Cinema'], ['gradient', 'Gradient']
 ];
 const LAYOUT_IDS = new Set(LAYOUTS.map(([id]) => id));
-const FX = new Set(['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain']);
+/* the reactive screen effects live in academy-profile-fx.js; its catalogue is the one list of ids */
+const FX = (() => {
+  const ids = ['none'];
+  try {
+    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'academy-profile-fx.js'), 'utf8');
+    for (const m of src.matchAll(/^\s*\['([a-z0-9-]+)', '[^']+', '[A-Za-z]+', '[a-z]+',/gm)) ids.push(m[1]);
+  } catch (_) { /* fall back to the original effects */ }
+  if (ids.length < 8) ids.push('aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain');
+  return new Set(ids);
+})();
 const FONTS = new Set(['system', 'mono', 'serif', 'display', 'rounded']);
 const IMMERSIVE = new Set(['off', 'subtle', 'balanced', 'immersive']);
 /* module textures (what every section looks and feels like), desks (the surface or the room the sections sit in), the lighting in the
@@ -34,7 +43,7 @@ const ORBS = new Set(['off', 'few', 'many']);
  * once; each module can also be given its own texture and told which part of the music it moves to */
 const MODULES = ['head', 'stats', 'server', 'paper', 'song', 'social', 'feed'];
 const REACTS = new Set(['auto', 'off', 'kick', 'bass', 'vocal', 'snare', 'hats']);
-const MAX_TEXTURES = 6, MAX_LIGHTS = 4, MAX_FXS = 4;
+const MAX_TEXTURES = 6, MAX_LIGHTS = 4, MAX_FXS = 5;
 const pickSet = (list, allowed, max, skip) => { const out = []; for (const v of Array.isArray(list) ? list : []) { const id = String(v); if (id !== skip && allowed.has(id) && !out.includes(id)) out.push(id); if (out.length >= max) break; } return out; };
 const MAX_ORBIT = 12;
 const SOCIAL_KINDS = [
@@ -416,4 +425,4 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
   return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
 }
 
-module.exports = { createProfilePages, cleanSettings, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };
+module.exports = { createProfilePages, cleanSettings, FX, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };

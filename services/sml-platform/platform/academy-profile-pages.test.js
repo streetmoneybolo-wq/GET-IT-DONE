@@ -139,7 +139,7 @@ test('the profile music script is inlined into the Academy page, plays only the 
   const server = require('node:fs').readFileSync(require('node:path').join(__dirname, 'server.js'), 'utf8');
   assert.match(server, /img-src 'self' data:; frame-src 'self'; frame-ancestors/);
   assert.doesNotMatch(server, /youtube-nocookie/);
-  assert.match(server, /ACADEMY_PROFILE_DESK \+ ACADEMY_PROFILE_MUSIC \+ ACADEMY_PROFILE_UI/, 'the music player loads before the profile page uses it');
+  assert.match(server, /ACADEMY_PROFILE_DESK \+ ACADEMY_PROFILE_MUSIC \+ ACADEMY_PROFILE_FX \+ ACADEMY_PROFILE_UI/, 'the music player loads before the profile page uses it');
 });
 
 test('uploaded songs are recognised by their first bytes, never by name or label', () => {
@@ -204,4 +204,22 @@ test('a song is stored in small pieces and survives a dropped database connectio
   const dead = createProfilePages({ pool: { query: async (sql) => { if (/INSERT INTO academy_profile_audio_chunks/.test(sql)) throw new Error('Connection terminated unexpectedly'); return { rows: [] }; } }, logger: () => {} });
   const bad = await dead.uploadAudio(B, song, 'Nope');
   assert.deepEqual([bad.ok, bad.error], [false, 'storage_failed']);
+});
+
+test('the reactive screen effects: inlined safely, every effect is saveable, and the asked-for names exist', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, 'academy-profile-fx.js'), 'utf8');
+  for (const bad of ['\\', '`', '${', '</script']) assert.equal(src.includes(bad), false, 'no ' + bad);
+  const { FX } = require('./academy-profile-pages');
+  const rows = [...src.matchAll(/^\s*\['([a-z0-9-]+)', '([^']+)', '[A-Za-z]+', '([a-z]+)',/gm)];
+  assert.ok(rows.length >= 115, 'at least 115 effects, found ' + rows.length);
+  for (const r of rows) assert.ok(FX.has(r[1]), r[1] + ' can be saved');
+  const motions = new Set([...src.matchAll(/^    ([a-z]+)\(inst, ctx, F\) \{/gm)].map((m) => m[1]));
+  for (const r of rows) assert.ok(motions.has(r[3]), r[1] + ' has a working motion (' + r[3] + ')');
+  const labels = new Set(rows.map((r) => r[2].toLowerCase()));
+  const asked = ['Rain', 'Waves', 'Quantum', 'Fog', 'Snow', 'Dust', 'Embers', 'Lightning', 'Glitch', 'Energy', 'Money rain', 'Bull run', 'Bear drop', 'Confetti', 'Fireflies', 'Bubbles', 'Meteors', 'Hearts', 'Starfield', 'Notes', 'Candle storm', 'Coin shower', 'Rockets', 'Euro rain', 'Bitcoin rain', 'Pound & yen', 'Percent shower', 'Green candles', 'Red candles', 'Ticker tape', 'Arrow storm', 'To the moon', 'Diamond hands', 'Money bags', 'Bull stampede', 'Bear market', 'Fire', 'Chart rally', 'Hundred club', 'Coin flip', 'Orbiting coins', 'Cherry blossom', 'Autumn leaves', 'Petals', 'Clover luck', 'Blizzard', 'Soft snow', 'Heavy rain', 'Thunder bugs', 'Sunbeams', 'Ocean waves', 'Rainbow drops', 'Leaves drift', 'Warp speed', 'Hyperspace', 'Spiral galaxy', 'Vortex', 'Orbit rings', 'Planets', 'UFO sighting', 'Aliens', 'Comet tails', 'Satellites', 'Matrix code', 'Binary rain', 'Dollar matrix', 'Cyber grid', 'Robots', 'Fireworks', 'Gold confetti', 'Neon confetti', 'Party poppers', 'Balloons', 'Lanterns', 'Sparklers', 'Fountain', 'Champagne', 'Cake day', 'Stars falling', 'Purple hearts', 'Heartbeat', 'Thumbs up', 'Clap track', 'Bokeh', 'Plasma orbs', 'Smoke', 'Aurora ribbons', 'Sea anemone', 'Dust motes', 'Sonar', 'Neon rings', 'Grid pulse', 'Hex swarm', 'DNA strand', 'Sine field', 'Pixel rain', 'Glitch squares', 'Ghosts', 'Skull drift', 'Dice roll', 'Card shower', 'Chess rain', 'Music storm', 'Vinyl spin', 'Eyes on you', 'Nova Dust', 'Lunar Glow', 'Amber Tide', 'Jade Spark', 'Velvet Drift', 'Frost Wave'];
+  const missing = asked.filter((n) => !labels.has(n.toLowerCase()));
+  assert.deepEqual(missing, [], 'every asked-for effect exists');
+  const t = cleanSettings({ theme: { fxs: ['rain', 'bitcoin-rain', 'nope', 'fireworks', 'ghosts', 'vortex', 'snow'] } }).theme;
+  assert.deepEqual(t.fxs, ['rain', 'bitcoin-rain', 'fireworks', 'ghosts', 'vortex'], 'up to five, unknown ones dropped');
 });

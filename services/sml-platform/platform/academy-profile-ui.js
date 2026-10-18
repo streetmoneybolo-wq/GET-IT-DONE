@@ -51,7 +51,7 @@
   const css = document.createElement('style');
   css.textContent = '#academy-profile-view{position:fixed;inset:0;z-index:2147482500;display:none;background:#05080e;color:#e6eef2;overflow:auto;font:500 .78rem/1.45 system-ui,-apple-system,sans-serif}'
     + '#academy-profile-view.open{display:block}'
-    + '.pv-fx{position:fixed;inset:0;z-index:0;pointer-events:none}'
+    + '.pv-fx{position:fixed;inset:0;z-index:0;pointer-events:none}.pv-fx3{position:fixed;inset:0;z-index:4;pointer-events:none}'
     + '.pv-top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(5,8,14,.72);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}'
     + '.pv-top b{font:800 .72rem ui-monospace,monospace;letter-spacing:.08em;color:var(--acc,#00c47d)}.pv-top .sp{flex:1}'
     + '.pv-btn{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.04);color:#e6eef2;padding:6px 10px;font:800 .66rem system-ui,sans-serif;cursor:pointer}.pv-btn:hover{border-color:var(--acc,#00c47d);color:#fff}.pv-btn.acc{background:var(--acc,#00c47d);color:#04140d;border-color:transparent}'
@@ -96,6 +96,7 @@
     + '#pv-edit{position:fixed;right:0;top:0;bottom:0;z-index:2147482600;width:min(380px,100vw);background:#0a1118;border-left:1px solid #1f3a4a;box-shadow:-12px 0 40px rgba(0,0,0,.6);overflow:auto;padding:14px;display:none;color:#e6eef2;font:600 .7rem/1.4 system-ui,sans-serif}#pv-edit.open{display:block}'
     + '#pv-edit h4{margin:0 0 10px;font:900 .9rem system-ui,sans-serif;color:#fff}#pv-edit h6{margin:12px 0 6px;font:800 .56rem ui-monospace,monospace;letter-spacing:.12em;color:#8fa5b1}'
     + '#pv-edit input[type=text],#pv-edit input[type=url],#pv-edit textarea,#pv-edit select{width:100%;box-sizing:border-box;border:1px solid #23404d;border-radius:7px;background:#0c1821;color:#e6eef2;padding:7px 8px;font:600 .7rem system-ui,sans-serif}#pv-edit textarea{min-height:70px;resize:vertical}'
+    + '.pv-fxbox{max-height:260px;overflow:auto;border:1px solid #1d3744;border-radius:8px;padding:6px 8px;background:#0b141c}.pv-fxg b{display:block;margin:6px 0 3px;font:800 .56rem ui-monospace,monospace;letter-spacing:.1em;color:#7ef0bd;text-transform:uppercase}.pv-fxg .pv-opts button{font-size:.62rem;padding:4px 7px}'
     + '.pv-lay{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.pv-lay button{border:1px solid #23404d;border-radius:8px;background:#0c1821;color:#cfe3ea;padding:5px 4px 4px;cursor:pointer;font:700 .52rem system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:4px}.pv-lay button.on{border-color:var(--acc,#00c47d);color:#fff;background:#0e1f1a}.pv-lay .mini{width:54px;height:36px;display:grid;gap:2px;grid-template-columns:repeat(var(--c,3),1fr);grid-template-areas:var(--a)}.pv-lay .mini i{display:block;background:#2a4a58;border-radius:2px;min-height:4px}.pv-lay .mini i.h{background:var(--acc,#00c47d);grid-area:head}.pv-lay .mini i.f{grid-area:feed;background:#3a5d6e}.pv-lay .mini i.s{grid-area:song}.pv-lay .mini i.p{grid-area:paper}.pv-lay .mini i.v{grid-area:server}.pv-lay .mini i.o{grid-area:social}.pv-lay .mini i.t{grid-area:stats}'
     + '.pv-sw{display:flex;flex-wrap:wrap;gap:5px}.pv-sw button{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer}.pv-sw button.on{border-color:#fff}.pv-opts{display:flex;flex-wrap:wrap;gap:5px}.pv-opts button{border:1px solid #23404d;border-radius:6px;background:#0c1821;color:#cfe3ea;padding:5px 8px;font:700 .62rem system-ui,sans-serif;cursor:pointer}.pv-opts button.on{border-color:var(--acc,#00c47d);color:#fff}'
     + '.pv-soc{display:flex;gap:6px;align-items:center;margin-top:5px}.pv-soc span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cfe3ea}.pv-soc button{border:1px solid #3a2a2a;border-radius:6px;background:#1a0e0e;color:#ff9f9f;padding:3px 7px;cursor:pointer;font:800 .6rem system-ui}'
@@ -128,50 +129,27 @@
   }
   function startFx(modes) {
     stopFx();
-    const canvas = view.querySelector('.pv-fx'); if (!canvas || !modes || !modes.length) return;
-    const ctx = canvas.getContext('2d'); let w = 0, h = 0;
+    const back = view.querySelector('.pv-fx'), front = view.querySelector('.pv-fx3'), FXE = window.smlProfileFx;
+    if (!back || !front || !FXE || !modes || !modes.length) return;
+    const bc = back.getContext('2d'), fc = front.getContext('2d'); let w = 0, h = 0;
     const acc = (S.data && S.data.settings.theme.accent) || '#00c47d', acc2 = (S.data && S.data.settings.theme.accent2) || '#6c8cff';
-    const size = () => { w = canvas.width = innerWidth; h = canvas.height = innerHeight; };
+    const size = () => { w = back.width = front.width = innerWidth; h = back.height = front.height = innerHeight; if (S.fxEng) S.fxEng.resize(w, h); };
     size();
-    const partsBy = {};
-    for (const mode of modes) {
-      const N = mode === 'rain' ? 160 : mode === 'stars' ? 140 : mode === 'embers' ? 90 : 70, list = [];
-      for (let i = 0; i < N; i++) list.push({ x: Math.random() * w, y: Math.random() * h, r: 1 + Math.random() * 2.5, s: .3 + Math.random() * 1.2, a: Math.random() * Math.PI * 2 });
-      partsBy[mode] = list;
-    }
+    S.fxEng = FXE.make(modes, { acc: acc, acc2: acc2, w: w, h: h, mobile: innerWidth < 700 });
     const bars = () => { const b = view.querySelector('.pv-bars'); return b ? [...b.children] : []; };
-    const one = (mode, parts, p) => {
-      if (mode === 'aurora') {
-        const g = ctx.createRadialGradient(w * (0.3 + 0.1 * Math.sin(Date.now() / 4000)), h * 0.2, 20, w * 0.3, h * 0.2, w * (0.6 + p * 0.3)); g.addColorStop(0, acc + '55'); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-        const g2 = ctx.createRadialGradient(w * 0.75, h * (0.7 + 0.1 * Math.cos(Date.now() / 5000)), 20, w * 0.75, h * 0.7, w * (0.5 + p * 0.3)); g2.addColorStop(0, acc2 + '44'); g2.addColorStop(1, 'transparent'); ctx.fillStyle = g2; ctx.fillRect(0, 0, w, h);
-      } else if (mode === 'grid') {
-        ctx.strokeStyle = acc + Math.round(40 + p * 120).toString(16).padStart(2, '0'); ctx.lineWidth = 1; const step = 48 + p * 10; const off = (Date.now() / 40) % step;
-        for (let x = -step; x < w + step; x += step) { ctx.beginPath(); ctx.moveTo(x + off, 0); ctx.lineTo(x + off, h); ctx.stroke(); }
-        for (let y = -step; y < h + step; y += step) { ctx.beginPath(); ctx.moveTo(0, y + off); ctx.lineTo(w, y + off); ctx.stroke(); }
-      } else if (mode === 'waves') {
-        for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.strokeStyle = (k % 2 ? acc2 : acc) + '66'; ctx.lineWidth = 2 + p * 4; for (let x = 0; x <= w; x += 8) { const y = h * (0.55 + k * 0.12) + Math.sin(x / (90 + k * 30) + Date.now() / (700 + k * 200)) * (18 + p * 60); if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); }
-      } else {
-        for (const q of parts) {
-          if (mode === 'rain') { q.y += q.s * 9; if (q.y > h) { q.y = -10; q.x = Math.random() * w; } ctx.strokeStyle = acc + '55'; ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.x, q.y + 12 + p * 20); ctx.stroke(); continue; }
-          if (mode === 'embers') { q.y -= q.s * (1 + p * 2); q.x += Math.sin(q.a += 0.02) * 0.6; if (q.y < -10) { q.y = h + 10; q.x = Math.random() * w; } }
-          else if (mode === 'particles') { q.x += Math.cos(q.a) * q.s * (0.5 + p); q.y += Math.sin(q.a) * q.s * (0.5 + p); q.a += 0.003; if (q.x < 0) q.x = w; if (q.x > w) q.x = 0; if (q.y < 0) q.y = h; if (q.y > h) q.y = 0; }
-          else if (mode === 'stars') { q.a += 0.02; }
-          const rr = q.r * (1 + p * 1.5) * (mode === 'stars' ? (0.6 + 0.4 * Math.sin(q.a * 3)) : 1);
-          ctx.fillStyle = (mode === 'embers' ? '#ff9f43' : (Math.random() < 0.5 ? acc : acc2)) + (mode === 'stars' ? 'cc' : '88'); ctx.beginPath(); ctx.arc(q.x, q.y, rr, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    };
-    const frame = () => {
+    let last = performance.now();
+    const frame = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const { p, arr, ch } = pulse();
-      ctx.clearRect(0, 0, w, h);
-      for (const mode of modes) one(mode, partsBy[mode], p);
+      bc.clearRect(0, 0, w, h); fc.clearRect(0, 0, w, h);
+      S.fxEng.draw(bc, fc, w, h, { p: p, ch: ch, arr: arr, t: now / 1000, dt: dt });
       const bs = bars(); if (bs.length) { for (let i = 0; i < bs.length; i++) { const v = arr ? arr[i * 3] / 255 : (ch ? Math.min(1, ch[CHN[i % 5]] * .9 + .08) : (0.15 + 0.1 * Math.sin(Date.now() / 300 + i))); bs[i].style.height = Math.max(3, Math.round(v * 22)) + 'px'; } }
       S.fx = requestAnimationFrame(frame);
     };
     S.fx = requestAnimationFrame(frame);
     S.fxResize = size; window.addEventListener('resize', size);
   }
-  function stopFx() { if (S.fx) cancelAnimationFrame(S.fx); S.fx = null; if (S.fxResize) window.removeEventListener('resize', S.fxResize); S.fxResize = null; }
+  function stopFx() { if (S.fx) cancelAnimationFrame(S.fx); S.fx = null; S.fxEng = null; if (S.fxResize) window.removeEventListener('resize', S.fxResize); S.fxResize = null; }
 
   /* ---------- the song: plays in the Academy music dock (academy-profile-music.js), starts by itself when the page opens ---------- */
   function playable(song) { return !!(song && window.smlProfileMusic && song.kind === 'audio'); }
@@ -190,7 +168,7 @@
     const s = d.settings, t = s.theme || {}, acc = t.accent || '#00c47d', acc2 = t.accent2 || '#6c8cff', fx = t.fx || LAYOUT_FX[s.layout] || 'aurora';
     const name = s.displayName || d.discordName || 'Academy member';
     const ava = '/academy-activity/avatar?user=' + encodeURIComponent(d.userId) + '&t=' + encodeURIComponent(token());
-    let h = '<canvas class="pv-fx"></canvas><div class="pv-top"><b>👤 ACADEMY PROFILE</b><span class="sp"></span>'
+    let h = '<canvas class="pv-fx"></canvas><canvas class="pv-fx3"></canvas><div class="pv-top"><b>👤 ACADEMY PROFILE</b><span class="sp"></span>'
       + (d.own ? '<button type="button" class="pv-btn acc" data-pv="edit">✎ Customize my profile</button>' : '<button type="button" class="pv-btn' + (d.viewerFollows ? '' : ' acc') + '" data-pv="follow">' + (d.viewerFollows ? '✓ Following' : '+ Follow') + '</button>')
       + (POP ? '' : '<button type="button" class="pv-btn" data-pv="popout" title="This profile in its own window">⧉</button>') + '<button type="button" class="pv-btn" data-pv="close">✕</button></div>';
     const orbit = (t.orbit || []).filter((o) => o && o.image), DESK = window.smlProfileDesk;
@@ -260,9 +238,19 @@
       + '<h6>EACH MODULE: ITS OWN TEXTURE AND WHAT IT MOVES TO</h6>' + mods + '<p class="pv-note">Every module listens to one part of the song: the kick punches, the bass lifts, vocals glow, the snare flashes, hi-hats shimmer. Leave it on auto, or point a module at the part you want.</p>'
       + '<h6>DESK</h6>' + opts('desk', D.desks, t.desk || 'none') + '<p class="pv-note">The surface your modules sit on. With a desk and a plain texture, the desk dresses each module itself: paper desk = a different sheet of paper each, NYSE floor = screens and instruments.</p>'
       + '<h6>LIGHTING · ' + (lights.length ? lights.length + ' on' : 'off') + '</h6><div class="pv-opts">' + light + '</div><p class="pv-note">Turn on several lights at once.</p>'
-      + '<h6>3D ORBS FLYING AROUND</h6>' + opts('orbs', D.orbs, t.orbs || 'off')
       + '<h6>3D GALLERY (UP TO 12 PICTURES)</h6>' + rows + (orbit.length < 12 ? '<div class="pd-orow"><div class="r"><input type="url" data-orbnew="image" placeholder="Picture link (https://…)"></div><div class="r"><input type="url" data-orbnew="href" placeholder="Link it goes to (https://, optional)"></div><div class="r"><input type="text" data-orbnew="title" maxlength="60" placeholder="Caption (optional)"><button type="button" class="pv-btn acc" data-pv="addorb">Add</button></div></div>' : '')
       + '<p class="pv-note">Pictures orbit in 3D on your page; drag to spin. A picture with a link opens that page when tapped, so you can point people to your own pages.</p>';
+  }
+  /* the reactive screen effects (academy-profile-fx.js): every one moves to the song; stack up to 5, search by name */
+  function fxControls(t) {
+    const FXE = window.smlProfileFx, on = t.fxs || [];
+    if (!FXE) return '';
+    const groups = []; FXE.list.forEach((e) => { let g = groups.find((x) => x.name === e.group); if (!g) { g = { name: e.group, items: [] }; groups.push(g); } g.items.push(e); });
+    const label = (id) => (FXE.list.find((e) => e.id === id) || { label: id }).label;
+    return '<h6>REACTIVE SCREEN EFFECTS · ' + (on.length ? on.map(label).join(', ') : 'none') + '</h6>'
+      + '<div class="pv-row"><input type="search" data-fxq placeholder="Search effects: rain, coins, bulls, fireworks"><button type="button" class="pv-btn" data-fx="none">Clear</button></div>'
+      + '<div class="pv-fxbox">' + groups.map((g) => '<div class="pv-fxg" data-fxg><b>' + esc(g.name) + '</b><div class="pv-opts">' + g.items.map((e) => '<button type="button" data-fx="' + e.id + '" data-fxn="' + esc(e.label.toLowerCase()) + '" class="' + (on.indexOf(e.id) >= 0 ? 'on' : '') + '">' + esc(e.label) + '</button>').join('') + '</div></div>').join('') + '</div>'
+      + '<p class="pv-note">Flying objects, weather and light that react to your song: the kick, bass, vocals, snare and hi-hats make them swell, speed up, burst and flash. Stack up to 5.</p>';
   }
   function paintEditor() {
     const d = S.draft, t = d.theme, lay = (S.data && S.data.layouts) || [];
@@ -274,7 +262,7 @@
       + '<h6>LAYOUT · ' + esc((lay.find((l) => l.id === d.layout) || {}).name || d.layout) + '</h6><div class="pv-lay">' + lay.map((l) => '<button type="button" data-layout="' + esc(l.id) + '" class="' + (l.id === d.layout ? 'on' : '') + '">' + mini(l.id) + esc(l.name) + '</button>').join('') + '</div>'
       + '<h6>ACCENT</h6><div class="pv-sw">' + SWATCH.map((c) => '<button type="button" data-accent="' + c + '" class="' + (t.accent === c ? 'on' : '') + '" style="background:' + c + '"></button>').join('') + '</div><div class="pv-row"><label style="color:#cfe3ea">Any colour <input type="color" data-color="accent" value="' + esc(t.accent || '#00c47d') + '"></label></div>'
       + '<h6>SECOND COLOUR</h6><div class="pv-sw">' + SWATCH.map((c) => '<button type="button" data-accent2="' + c + '" class="' + (t.accent2 === c ? 'on' : '') + '" style="background:' + c + '"></button>').join('') + '</div><div class="pv-row"><label style="color:#cfe3ea">Any colour <input type="color" data-color="accent2" value="' + esc(t.accent2 || '#6c8cff') + '"></label></div>'
-      + '<h6>BACKGROUND EFFECTS · stack up to 4</h6><div class="pv-opts">' + ['none', 'aurora', 'particles', 'grid', 'waves', 'stars', 'embers', 'rain'].map((f) => '<button type="button" data-fx="' + f + '" class="' + ((f === 'none' ? !(t.fxs || []).length : (t.fxs || []).indexOf(f) >= 0) ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
+      + fxControls(t)
       + '<h6>IMMERSIVE</h6><div class="pv-opts">' + ['off', 'subtle', 'balanced', 'immersive'].map((f) => '<button type="button" data-imm="' + f + '" class="' + (t.immersive === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div><p class="pv-note">How hard the background moves with the song.</p>'
       + '<h6>FONT</h6><div class="pv-opts">' + ['system', 'mono', 'serif', 'display', 'rounded'].map((f) => '<button type="button" data-font="' + f + '" class="' + (t.font === f ? 'on' : '') + '">' + f + '</button>').join('') + '</div>'
       + deskControls(t)
@@ -287,6 +275,7 @@
   edit.addEventListener('input', (e) => {
     const el = e.target; if (!S.draft) return;
     if (el.dataset.k) S.draft[el.dataset.k] = el.value;
+    if (el.dataset.fxq !== undefined) { const q = el.value.trim().toLowerCase(); edit.querySelectorAll('[data-fxn]').forEach((b) => { b.style.display = !q || b.dataset.fxn.indexOf(q) >= 0 ? '' : 'none'; }); edit.querySelectorAll('[data-fxg]').forEach((g) => { g.style.display = [...g.querySelectorAll('[data-fxn]')].some((b) => b.style.display !== 'none') ? '' : 'none'; }); return; }
     if (el.dataset.song === 'url') {
       const v = el.value.trim(), isAudio = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i.test(v), note = edit.querySelector('[data-upnote]');
       if (v && !isAudio) { S.draft.song = null; if (note) note.textContent = 'Only an uploaded song or a direct link to an MP3/M4A file can play here. Links to YouTube, Spotify and other sites are not supported.'; }
@@ -322,7 +311,7 @@
     if (b.dataset.accent) { d.theme.accent = b.dataset.accent; paintEditor(); preview(); return; }
     if (b.dataset.accent2) { d.theme.accent2 = b.dataset.accent2; paintEditor(); preview(); return; }
     if (b.dataset.fx) {
-      if (b.dataset.fx === 'none') { d.theme.fxs = []; d.theme.fx = 'none'; } else { if (!toggleIn(d.theme.fxs, b.dataset.fx, 4)) toast('Up to 4 background effects at once.'); d.theme.fx = d.theme.fxs[0] || 'none'; }
+      if (b.dataset.fx === 'none') { d.theme.fxs = []; d.theme.fx = 'none'; } else { if (!toggleIn(d.theme.fxs, b.dataset.fx, 5)) toast('Up to 5 effects at once. Tap one that is on to remove it.'); d.theme.fx = d.theme.fxs[0] || 'none'; }
       paintEditor(); preview(); return;
     }
     if (b.dataset.imm) { d.theme.immersive = b.dataset.imm; paintEditor(); preview(); return; }
