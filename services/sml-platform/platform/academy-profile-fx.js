@@ -18,6 +18,9 @@
   const RAINBOW = ['#ff5a5a', '#ff9a3a', '#ffd23d', '#3dff8a', '#3ac8ff', '#b44dff'];
   const CAT = [
     /* lighting: real light that moves to the song (beams with haze, sweeping fixtures, flares, flicker) */
+    ['lightning', 'Lightning', 'Lighting', 'bolt', null, { c: ['#cfe6ff'], ch: 'snare', layer: 'front' }],
+    ['thunderstorm', 'Thunderstorm', 'Lighting', 'bolt', null, { c: ['#cfe6ff'], clouds: 1, ch: 'bass', also: ['heavy-rain'], layer: 'front' }],
+    ['sheet-lightning', 'Sheet lightning', 'Lighting', 'bolt', null, { c: ['#dfe8ff'], sheet: 1, clouds: 1, ch: 'snare', layer: 'front' }],
     ['volumetric-rays', 'Volumetric rays', 'Lighting', 'shafts', null, { ox: 0.12, n: 9, c: ['#fff0c0'], ch: 'vocal', layer: 'front' }],
     ['moonbeam', 'Moonbeam', 'Lighting', 'shafts', null, { ox: 0.88, n: 6, spread: 0.8, c: ['#b8ccff'], ch: 'vocal', also: ['lunar-glow'], layer: 'front' }],
     ['searchlights', 'Searchlights', 'Lighting', 'searchlights', null, { c: ['#fff4d0'], ch: 'bass', layer: 'front' }],
@@ -43,7 +46,6 @@
     ['fog', 'Fog', 'Weather', 'blobs', null, { n: 9, c: ['#ffffff'], a: 0.07, big: 1.1, ch: 'bass', layer: 'back' }],
     ['smoke', 'Smoke', 'Weather', 'smoke', null, { n: 14, c: ['#b8bcc8'], a: 0.12, ch: 'bass', layer: 'front' }],
     ['dust', 'Dust', 'Weather', 'drift', 'soft', { n: 80, s: 3, c: ['#ffe8b0'], ch: 'hats', layer: 'front' }],
-    ['lightning', 'Lightning', 'Weather', 'bolt', null, { c: ['#cfe6ff'], ch: 'snare', layer: 'front' }],
     ['thunder-bugs', 'Thunder bugs', 'Weather', 'drift', 'soft', { n: 60, s: 4, c: ['#2a2a30', '#556'], ch: 'snare', also: ['lightning'], layer: 'front' }],
     ['sunbeams', 'Sunbeams', 'Weather', 'beams', null, { c: ['#fff0b0'], ch: 'vocal', layer: 'back' }],
     ['dust-motes', 'Dust motes', 'Weather', 'drift', 'soft', { n: 70, s: 3.5, c: ['#fff4d0'], v: 0.5, ch: 'hats', also: ['sunbeams'], layer: 'front' }],
@@ -608,16 +610,38 @@
       ctx.restore();
     },
     bolt(inst, ctx, F) {
-      inst.timer = (inst.timer || 0) - F.dt;
-      if (F.beat || inst.timer <= 0) {
-        if (F.beat || Math.random() < 0.5) { inst.timer = rnd(1.8, 5); const pts = []; let x = rnd(F.w * 0.1, F.w * 0.9), y = 0; pts.push([x, y]); while (y < F.h * rnd(0.55, 0.95)) { y += rnd(24, 60); x += rnd(-48, 48); pts.push([x, y]); } inst.bolts.push({ pts: pts, a: 1, br: Math.random() < 0.6 ? pts.slice(Math.floor(pts.length / 2)).map((p, i) => [p[0] + i * rnd(10, 26), p[1] + i * rnd(8, 18)]) : null }); inst.flash = 0.35; }
-        else inst.timer = rnd(0.5, 2);
+      const o = inst.e.o, calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      inst.timer = (inst.timer || 0) - F.dt; inst.gap = (inst.gap || 0) - F.dt;
+      if ((F.beat || inst.timer <= 0) && inst.gap <= 0) {
+        if (F.beat || Math.random() < 0.6) {
+          inst.timer = rnd(2.2, 6); inst.gap = 1.1; const x0 = rnd(F.w * 0.1, F.w * 0.9), x1 = x0 + rnd(-F.w * 0.18, F.w * 0.18), y1 = F.h * rnd(0.55, 1.02);
+          const strike = { t: 0, ox: x0, segs: [] };
+          if (!o.sheet) {
+            const jag = (ax, ay, bx, by, d, w, out) => { if (d === 0) { out.push([ax, ay, bx, by, w]); return; } const mx = (ax + bx) / 2 + rnd(-1, 1) * Math.hypot(bx - ax, by - ay) * 0.22, my = (ay + by) / 2 + rnd(-0.4, 0.4) * Math.hypot(bx - ax, by - ay) * 0.1; jag(ax, ay, mx, my, d - 1, w, out); jag(mx, my, bx, by, d - 1, w, out); };
+            jag(x0, -10, x1, y1, 6, 1, strike.segs);
+            const n = 2 + Math.floor(Math.random() * 3);
+            for (let k = 0; k < n; k++) { const sg = strike.segs[Math.floor(rnd(strike.segs.length * 0.15, strike.segs.length * 0.85))]; if (!sg) continue; const bl = rnd(F.h * 0.12, F.h * 0.38), dir = Math.random() < 0.5 ? -1 : 1; jag(sg[2], sg[3], sg[2] + dir * rnd(F.w * 0.04, F.w * 0.16), sg[3] + bl, 4, 0.45, strike.segs); }
+          }
+          inst.strikes.push(strike); inst.flash = calm ? 0.05 : 0.18; inst.fx = x0; if (inst.strikes.length > 3) inst.strikes.shift();
+        } else inst.timer = rnd(0.6, 2);
       }
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      if (inst.flash > 0.01) { ctx.globalAlpha = inst.flash; ctx.fillStyle = '#cfe0ff'; ctx.fillRect(0, 0, F.w, F.h); inst.flash *= Math.pow(0.002, F.dt); }
-      for (let i = inst.bolts.length - 1; i >= 0; i--) {
-        const b = inst.bolts[i]; b.a -= F.dt * 3.2; if (b.a <= 0) { inst.bolts.splice(i, 1); continue; }
-        for (const path of [b.pts, b.br]) { if (!path) continue; ctx.strokeStyle = '#eaf4ff'; ctx.shadowColor = '#7fb8ff'; ctx.shadowBlur = 22; ctx.lineWidth = path === b.pts ? 3 : 1.6; ctx.globalAlpha = b.a; ctx.beginPath(); path.forEach((p, k) => { if (k) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); }); ctx.stroke(); }
+      ctx.save();
+      if (o.clouds) {
+        if (!inst.cl) { inst.cl = []; for (let i = 0; i < 9; i++) inst.cl.push({ x: rnd(0, F.w), y: rnd(-F.h * 0.02, F.h * 0.2), r: rnd(F.w * 0.18, F.w * 0.34), a: rnd(0, TAU) }); }
+        for (const c of inst.cl) { c.a += F.dt * 0.1; const cx = c.x + Math.sin(c.a) * 30, g = ctx.createRadialGradient(cx, c.y, 0, cx, c.y, c.r), lit = clamp((inst.flash || 0) * 3.2 * (1 - Math.abs(cx - (inst.fx || F.w / 2)) / F.w), 0, 0.8); g.addColorStop(0, 'rgba(' + Math.round(34 + lit * 200) + ',' + Math.round(38 + lit * 205) + ',' + Math.round(52 + lit * 190) + ',.55)'); g.addColorStop(1, 'rgba(20,24,34,0)'); ctx.fillStyle = g; ctx.fillRect(cx - c.r, c.y - c.r, c.r * 2, c.r * 2); }
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      if ((inst.flash || 0) > 0.008) { const fx = inst.fx || F.w / 2, g = ctx.createRadialGradient(fx, 0, 0, fx, 0, Math.max(F.w, F.h)); g.addColorStop(0, 'rgba(200,220,255,' + inst.flash + ')'); g.addColorStop(1, 'rgba(120,150,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, F.w, F.h); inst.flash *= Math.pow(0.004, F.dt); }
+      for (let i = inst.strikes.length - 1; i >= 0; i--) {
+        const k = inst.strikes[i]; k.t += F.dt; if (k.t > 0.55) { inst.strikes.splice(i, 1); continue; }
+        const f = k.t < 0.06 ? 1 : k.t < 0.13 ? 0.25 : k.t < 0.2 ? 0.95 : Math.max(0, 0.7 - (k.t - 0.2) * 2); if (f <= 0.01) continue;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        for (const pass of [[16, 0.1, '#6a8cff'], [7, 0.28, '#9fbcff'], [2.4, 1, '#ffffff']]) {
+          ctx.strokeStyle = pass[2]; ctx.globalAlpha = pass[1] * f; ctx.beginPath();
+          for (const sg of k.segs) { ctx.moveTo(sg[0], sg[1]); ctx.lineTo(sg[2], sg[3]); }
+          ctx.lineWidth = pass[0] * (0.7 + F.v * 0.5); ctx.stroke();
+        }
+        ctx.globalAlpha = 0.5 * f; const gx = k.segs.length ? k.segs[0][0] : F.w / 2; ctx.drawImage(glow('#aac4ff'), gx - 90, -60, 180, 140);
       }
       ctx.restore();
     },
@@ -745,7 +769,7 @@
 
   /* ---------- building an effect instance ---------- */
   function build(e, env, w, h) {
-    const o = e.o, inst = { e: e, c: resolve(o.c, env), ps: [], rs: [], sp: [], rk: [], bolts: [], es: [], splash: [], flash: 0, v: 0, prev: 0, kind: null, glyphs: null };
+    const o = e.o, inst = { e: e, c: resolve(o.c, env), ps: [], rs: [], sp: [], rk: [], bolts: [], strikes: [], es: [], splash: [], flash: 0, v: 0, prev: 0, kind: null, glyphs: null };
     const sh = e.shape;
     if (Array.isArray(sh)) { inst.kind = 'emoji'; inst.glyphs = sh; }
     else if (typeof sh === 'string' && sh.charCodeAt(0) > 127) { inst.kind = 'emoji'; inst.glyphs = [sh]; }
