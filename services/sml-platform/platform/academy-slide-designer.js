@@ -186,6 +186,15 @@ function designLocally(lesson) {
   return Object.freeze({ provider: 'academy', model: 'built-in', slides: validateDesign({ slides }, parts.length) });
 }
 
+function repairSlides(value, expected, lesson) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.slides)) return value;
+  const got = value.slides.length;
+  if (got === expected || got === 0 || got < Math.ceil(expected / 2)) return value;
+  const local = designLocally(lesson).slides;
+  const slides = value.slides.slice(0, expected);
+  while (slides.length < expected) slides.push(local[slides.length]);
+  return { ...value, slides };
+}
 function validText(value, max) {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 }
@@ -266,11 +275,12 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       title: lesson.title,
       description: lesson.description,
       level: lesson.level,
+      narrationPartCount: parts.length,
       narrationParts: parts,
       workedExample: example ? { partIndex: exampleIndex, title: example.title, say: example.say } : null,
       simulation: lesson.simulation
     };
-    const system = 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use the simplest accurate explanation first. Every slide teaches with a picture: pick the visualKind that makes the sentence visible (a price path, candles, the order book, the tape, a risk bar, a worked formula, two columns, a timeline, a checklist, a flow, an option payoff) and fill its scene so a learner can see the idea without reading. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent market events, performance claims, guarantees, or financial advice; illustrative numbers are allowed only inside a scene and must be marked in its note. Do not change the lesson facts or answer the knowledge check. ' + SCENE_GUIDE;
+    const system = 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order: narrationParts has ' + parts.length + ' entries, so the slides array must have exactly ' + parts.length + ' slides, the first for the lesson title, the last for the knowledge check. Use the simplest accurate explanation first. Every slide teaches with a picture: pick the visualKind that makes the sentence visible (a price path, candles, the order book, the tape, a risk bar, a worked formula, two columns, a timeline, a checklist, a flow, an option payoff) and fill its scene so a learner can see the idea without reading. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent market events, performance claims, guarantees, or financial advice; illustrative numbers are allowed only inside a scene and must be marked in its note. Do not change the lesson facts or answer the knowledge check. ' + SCENE_GUIDE;
     const jsonOnly = ' Reply with one JSON object and nothing else, shaped as {"slides":[{"heading":string,"visual":string,"callout":string,"visualKind":string,"scene":{"title":string,"labels":string[],"values":number[],"steps":string[],"note":string}}]} where visualKind is one of ' + JSON.stringify(VISUAL_KINDS) + '.';
     async function call(useModel, structured) {
       const body = {
@@ -311,10 +321,14 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     try { parsed = JSON.parse(String(text).replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')); } catch (_) {
       throw Object.assign(new Error('Claude returned invalid JSON'), { code: 'invalid_design' });
     }
+    /* a deck one or two slides off is repaired, not thrown away: extras are dropped, a missing slide comes from the
+     * built-in deck for that part; a deck that is mostly missing is still refused */
+    const repaired = repairSlides(parsed, parts.length, lesson);
     const result = Object.freeze({
       provider: 'claude',
       model: usedModel,
-      slides: validateDesign(parsed, parts.length)
+      slides: validateDesign(repaired, parts.length),
+      repaired: repaired !== parsed
     });
     put(digest, result);
     await remember(digest, lesson, result);

@@ -117,10 +117,13 @@ test('Claude Academy designer adds one slide for the whiteboard example and send
       return responseFor(calls.length === 1 ? slides.slice(0, 4) : slides);
     }
   });
-  // Four slides no longer match the five narration parts.
-  await assert.rejects(() => designer.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member-1' }), { code: 'invalid_design' });
-  const result = await designer.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member-1' });
-  assert.equal(result.design.slides.length, 5);
+  // Four slides for five narration parts: the deck is repaired (the missing knowledge check comes from the built-in deck), not refused.
+  const first = await designer.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member-1' });
+  assert.equal(first.design.slides.length, 5); assert.equal(first.design.repaired, true);
+  assert.equal(first.design.slides[4].heading, 'Knowledge check'); assert.equal(first.design.slides[4].visualKind, 'question');
+  const fresh = createAcademySlideDesigner({ apiKey: 'key', lessons: [withExample], localFallback: false, fetchImpl: async (url, options) => { calls.push(JSON.parse(options.body)); return responseFor(slides); } });
+  const result = await fresh.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member-1' });
+  assert.equal(result.design.slides.length, 5); assert.equal(result.design.repaired, false);
   assert.equal(result.design.slides[1].heading, example.title);
   const source = JSON.parse(calls[1].messages[0].content);
   assert.deepEqual(source.narrationParts, parts);
@@ -235,4 +238,23 @@ test('a designed slide carries a drawable scene: Claude scenes are kept and trim
   assert.deepEqual(local.slides[1].scene.labels, ['Entry', 'Stop', 'Target']);
   assert.ok(local.slides[1].scene.steps.length >= 1);
   assert.equal(local.slides[local.slides.length - 1].scene, undefined);
+});
+
+
+test('a deck one slide short or long is repaired from the built-in deck; one mostly missing is refused', async () => {
+  const parts = partsFor(lesson);
+  const mk = (n) => Array.from({ length: n }, (_, i) => ({ heading: 'C' + i, visual: 'V', callout: 'C', visualKind: i === n - 1 ? 'question' : 'auction', scene: { title: '', labels: [], values: [], steps: ['s'], note: '' } }));
+  let slides = mk(parts.length - 1), calls = 0;
+  const d = createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], localFallback: false, fetchImpl: async (u, o) => { calls += 1; const body = JSON.parse(o.body); assert.match(body.system, new RegExp('exactly ' + parts.length + ' slides')); assert.equal(JSON.parse(body.messages[0].content).narrationPartCount, parts.length); return responseFor(slides); } });
+  const short = await d.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'a' });
+  assert.equal(short.design.slides.length, parts.length); assert.equal(short.design.repaired, true);
+  assert.equal(short.design.slides[0].heading, 'C0'); assert.equal(short.design.slides[parts.length - 1].heading, 'Knowledge check', 'the missing last slide comes from the built-in deck');
+  slides = mk(parts.length + 2);
+  const long = await createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], localFallback: false, fetchImpl: async () => responseFor(slides) }).getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'b' });
+  assert.equal(long.design.slides.length, parts.length); assert.equal(long.design.repaired, true);
+  slides = mk(1);
+  await assert.rejects(() => createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], localFallback: false, fetchImpl: async () => responseFor(slides) }).getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'c' }), /wrong slide count/);
+  slides = mk(parts.length);
+  const exact = await createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], localFallback: false, fetchImpl: async () => responseFor(slides) }).getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'd' });
+  assert.equal(exact.design.repaired, false);
 });
