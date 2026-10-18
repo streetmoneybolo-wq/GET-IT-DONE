@@ -88,7 +88,7 @@
     }
   }
   /* Push feed: every trade and quote as it happens (Server-Sent Events from the shared Massive connection). The polling above keeps running as the fallback and for the Level 2 ladder. */
-  const sse = { es: null, symbol: '', okAt: 0, tape: [], hist: [], seen: new Set(), retryAt: 0, raf: 0 };
+  const sse = { es: null, symbol: '', okAt: 0, tape: [], hist: [], seen: new Set(), retryAt: 0, raf: 0, fails: 0 };
   /* Every print this symbol has produced since the feed opened (capped), so an interval change can rebuild the forming candle
      from real trades instead of starting it from the next print. */
   const keep = (t) => { sse.hist.push(t); if (sse.hist.length > 2000) sse.hist.splice(0, sse.hist.length - 2000); };
@@ -129,10 +129,11 @@
     sse.symbol = symbol; sse.tape = []; sse.hist = []; sse.seen = new Set();
     let es; try { es = new EventSource('/academy-activity/stream?symbol=' + encodeURIComponent(symbol)); } catch (_) { sse.retryAt = Date.now() + 60000; return; }
     sse.es = es;
-    es.addEventListener('snapshot', (e) => { try { const d = JSON.parse(e.data); sse.okAt = Date.now(); if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });
+    es.addEventListener('snapshot', (e) => { try { const d = JSON.parse(e.data); sse.okAt = Date.now(); sse.fails = 0; if (d && d.rt) st.rt = d.rt; if (d && d.tape && d.tape.length) sse.tape = d.tape.slice(0, 30); } catch (_) { /* ignore */ } });
     es.addEventListener('trade', (e) => { try { onTrade(JSON.parse(e.data)); } catch (_) { /* ignore */ } });
     es.addEventListener('quote', (e) => { try { const q = JSON.parse(e.data); sse.okAt = Date.now(); st.rt = { bid: q.bid, ask: q.ask, bs: q.bs, as: q.as, t: q.t, fresh: true }; if (!window.smlChartGesture) schedulePaint(); } catch (_) { /* ignore */ } });
-    es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.retryAt = Date.now() + 300000; } };
+    // a dropped stream comes back quickly at first (3 s, 6 s, 12 s ...) and only after repeated drops waits the full five minutes
+    es.onerror = () => { if (es.readyState === 2) { if (sse.es === es) sse.es = null; sse.fails = Math.min(sse.fails + 1, 7); sse.retryAt = Date.now() + Math.min(300000, 3000 * 2 ** (sse.fails - 1)); } };
   }
   (function loop() { if (st.deferred && !window.smlChartGesture) { const d = st.deferred; st.deferred = null; apply(d); } if (!document.hidden) openStream(); const pushing = sse.es && Date.now() - sse.okAt < 5000; const wait = document.hidden ? 4000 : st.failures ? Math.min(8000, 1500 * st.failures) : pushing ? 2500 : 700; once().finally(() => setTimeout(loop, wait)); })();
 })();
