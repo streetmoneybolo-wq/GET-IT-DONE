@@ -10,7 +10,8 @@
   const style = document.createElement('style');
   style.textContent = '.bar-rail{display:none}'
     + '@media(min-width:721px){.bar-rail{display:flex;gap:5px;align-items:center;margin-left:2px;flex-wrap:nowrap}'
-    + '.bar-rail>button{position:static!important;padding:4px 9px!important;font-size:.63rem!important;line-height:1.2!important;box-shadow:none!important;border-radius:7px!important;margin:0!important;white-space:nowrap}'
+    /* a flex item keeps its z-index even when static: without auto the docked pills would float above the full-screen profile */
+    + '.bar-rail>button{position:static!important;z-index:auto!important;padding:4px 9px!important;font-size:.63rem!important;line-height:1.2!important;box-shadow:none!important;border-radius:7px!important;margin:0!important;white-space:nowrap}'
     + '.bar-rail>button#academy-alerts-fab i{width:7px;height:7px}'
     /* the panels those buttons open hang under the bar instead of rising from a corner */
     + '#aa-panel,#lb-panel,#sml-sig{top:50px!important;bottom:auto!important;left:auto!important;right:10px!important;max-height:calc(100dvh - 64px)!important}}';

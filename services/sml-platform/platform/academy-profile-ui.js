@@ -51,7 +51,8 @@
   const css = document.createElement('style');
   css.textContent = '#academy-profile-view{position:fixed;inset:0;z-index:2147482500;display:none;background:#05080e;color:#e6eef2;overflow:auto;font:500 .78rem/1.45 system-ui,-apple-system,sans-serif}'
     + '#academy-profile-view.open{display:block}'
-    + '.pv-fx{position:fixed;inset:0;z-index:0;pointer-events:none}.pv-fx3{position:fixed;inset:0;z-index:4;pointer-events:none}'
+    /* the page styles every canvas with the chart's dark gradient; the effect layers must stay see-through or the front one hides the whole profile */
+    + '#academy-profile-view canvas{background:none!important;border:0!important;border-radius:0!important}.pv-fx{position:fixed;inset:0;z-index:0;pointer-events:none}.pv-fx3{position:fixed;inset:0;z-index:4;pointer-events:none}'
     + '.pv-top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(5,8,14,.72);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06)}'
     + '.pv-top b{font:800 .72rem ui-monospace,monospace;letter-spacing:.08em;color:var(--acc,#00c47d)}.pv-top .sp{flex:1}'
     + '.pv-btn{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.04);color:#e6eef2;padding:6px 10px;font:800 .66rem system-ui,sans-serif;cursor:pointer}.pv-btn:hover{border-color:var(--acc,#00c47d);color:#fff}.pv-btn.acc{background:var(--acc,#00c47d);color:#04140d;border-color:transparent}'
