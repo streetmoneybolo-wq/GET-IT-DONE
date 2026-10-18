@@ -179,3 +179,18 @@ test('parts are generated a few at a time and a rate-limited part is retried onc
   assert.ok(peak >= 2 && peak <= 3, 'peak concurrency ' + peak);
   assert.equal(throttled, true);
 });
+
+test('a rejected ElevenLabs key is remembered for ten minutes: later lessons fail fast from memory instead of a new round trip', async () => {
+  let calls = 0, clock = 1_000_000;
+  const service = createAcademyVoice({
+    apiKey: 'dead-key', voiceId: 'voice-123', lessons: [lesson], now: () => clock,
+    fetchImpl: async () => { calls += 1; return new Response('nope', { status: 401 }); }
+  });
+  await assert.rejects(() => service.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'm1' }), (e) => e.status === 401 && !e.cached);
+  const first = calls;
+  await assert.rejects(() => service.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'm2' }), (e) => e.status === 401 && e.cached === true);
+  assert.equal(calls, first, 'no new request while the key is known to be rejected');
+  clock += 11 * 60_000;
+  await assert.rejects(() => service.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'm3' }), (e) => e.status === 401 && !e.cached);
+  assert.ok(calls > first, 'tried again after the cool-off');
+});

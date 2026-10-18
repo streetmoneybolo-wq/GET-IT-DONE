@@ -1936,3 +1936,12 @@ test('mobile scanner stays put: phone columns are built directly, live refreshes
     assert.match(html, /records\.every\(\(r\) => \{ const t = r\.target/, 'live cell ticks do not trigger the compact-layout pass');
   });
 });
+
+test('Academy sign-in: a silent renewal survives the SDK saying "Already authenticated", diagnostics do not flood, and the Lessons button closes the rail it opened', () => {
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  const script = (html.match(/<script type="module">([\s\S]*?)<\/script>/) || [])[1] || '';
+  assert.match(script, /already authenticated/i, 'the SDK accepts authenticate once per Activity; the second time is not a failure');
+  assert.match(script, /__academySdkAuthed/, 'authenticate is not sent again once it has succeeded');
+  assert.match(script, /academyDiagSeen/, 'each diagnostic stage beacons a bounded number of times');
+  assert.match(html, /lesson-toggle'\)\.onclick=\(\)=>\{if\(lesson\.classList\.contains\('open'\)\)\{lesson\.classList\.remove\('open'\)/, 'Lessons toggles closed as well as open');
+});

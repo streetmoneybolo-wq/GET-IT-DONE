@@ -59,6 +59,9 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
   const rate = new Map();
   let cacheBytes = 0;
   const configured = Boolean(apiKey && voiceId && typeof fetchImpl === 'function');
+  /* a rejected key (401/403) is not retried for ten minutes: every lesson load was paying a full round trip to be told the same thing */
+  const KEY_REJECTED_MS = 10 * 60_000;
+  let keyRejected = null;
 
   function consume(userId) {
     const time = now();
@@ -90,6 +93,11 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     const payload = { text, model_id: modelId, voice_settings: settings };
     // neighbouring text keeps the intonation continuous across separately generated parts (not supported by v3 models)
     if (!/v3/i.test(modelId)) { if (context.previous) payload.previous_text = String(context.previous).slice(-400); if (context.next) payload.next_text = String(context.next).slice(0, 400); }
+    if (keyRejected && now() - keyRejected.at < KEY_REJECTED_MS) {
+      const error = new Error(`ElevenLabs returned ${keyRejected.status}`);
+      error.code = 'provider_unavailable'; error.status = keyRejected.status; error.cached = true;
+      throw error;
+    }
     let response = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       response = await fetchImpl(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`, {
@@ -101,11 +109,13 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
       await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
     }
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) keyRejected = { at: now(), status: response.status };
       const error = new Error(`ElevenLabs returned ${response.status}`);
       error.code = response.status === 429 ? 'provider_rate_limited' : 'provider_unavailable';
       error.status = response.status;
       throw error;
     }
+    keyRejected = null;
     const audio = Buffer.from(await response.arrayBuffer());
     if (!audio.length || audio.length > 12 * 1024 * 1024) {
       const error = new Error('invalid ElevenLabs audio response');

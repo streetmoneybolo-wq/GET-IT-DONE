@@ -166,7 +166,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       .update(model + '\0' + JSON.stringify(lesson)).digest('hex');
     if (cache.has(digest)) return { design: cache.get(digest), cached: true };
     const bad = failures.get(digest);
-    if (bad && now() - bad.at < FAILURE_MEMORY_MS) throw bad.error;
+    if (bad && now() - bad.at < FAILURE_MEMORY_MS) { bad.error.cached = true; throw bad.error; }
     if (!inflight.has(digest)) {
       inflight.set(digest, generate(lesson, digest).catch((error) => {
         if (error && /^provider_/.test(error.code || '')) {
