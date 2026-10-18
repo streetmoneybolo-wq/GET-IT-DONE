@@ -215,3 +215,14 @@ test('Academy voice pays for a part once: it is written to the durable store, th
   for (let i = 0; i < 12; i += 1) await limited.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'same' });
   await assert.rejects(() => limited.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'same' }), /rate limit/);
 });
+
+
+test('an ElevenLabs refusal keeps the reason from its body, and the remembered rejection repeats it', async () => {
+  let calls = 0;
+  const t0 = 1_000_000; let t = t0;
+  const v = createAcademyVoice({ apiKey: 'k', voiceId: 'v', lessons: [lesson], now: () => t, fetchImpl: async () => { calls += 1; return new Response(JSON.stringify({ detail: { status: 'quota_exceeded', message: 'This request exceeds your quota of 30000.' } }), { status: 401 }); } });
+  await assert.rejects(() => v.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'o' }), /ElevenLabs returned 401 \(quota_exceeded: This request exceeds your quota of 30000\.\)/);
+  const after = calls; t += 1000;
+  await assert.rejects(() => v.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'o' }), (e) => e.cached === true && /quota_exceeded/.test(e.message));
+  assert.equal(calls, after, 'the remembered rejection costs no request');
+});

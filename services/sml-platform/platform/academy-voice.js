@@ -105,7 +105,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     // neighbouring text keeps the intonation continuous across separately generated parts (not supported by v3 models)
     if (!/v3/i.test(modelId)) { if (context.previous) payload.previous_text = String(context.previous).slice(-400); if (context.next) payload.next_text = String(context.next).slice(0, 400); }
     if (keyRejected && now() - keyRejected.at < KEY_REJECTED_MS) {
-      const error = new Error(`ElevenLabs returned ${keyRejected.status}`);
+      const error = new Error(`ElevenLabs returned ${keyRejected.status}` + (keyRejected.why ? ' (' + keyRejected.why + ')' : ''));
       error.code = 'provider_unavailable'; error.status = keyRejected.status; error.cached = true;
       throw error;
     }
@@ -120,8 +120,11 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
       await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
     }
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) keyRejected = { at: now(), status: response.status };
-      const error = new Error(`ElevenLabs returned ${response.status}`);
+      /* ElevenLabs says why in the body (detail.status: quota_exceeded, invalid_api_key, ...): keep it, it decides what the owner does next */
+      let why = '';
+      try { const j = await response.json(); const d = j && j.detail; why = typeof d === 'string' ? d : d && (d.status || d.message) ? String(d.status || '') + (d.message ? ': ' + String(d.message) : '') : ''; } catch (_) { why = ''; }
+      if (response.status === 401 || response.status === 403) keyRejected = { at: now(), status: response.status, why: why.replace(/\s+/g, ' ').slice(0, 120) };
+      const error = new Error(`ElevenLabs returned ${response.status}` + (why ? ' (' + why.replace(/\s+/g, ' ').slice(0, 200) + ')' : ''));
       error.code = response.status === 429 ? 'provider_rate_limited' : 'provider_unavailable';
       error.status = response.status;
       throw error;
