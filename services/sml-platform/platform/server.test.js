@@ -1961,3 +1961,27 @@ test('Academy sign-in: a silent renewal survives the SDK saying "Already authent
   assert.match(script, /academyDiagSeen/, 'each diagnostic stage beacons a bounded number of times');
   assert.match(html, /lesson-toggle'\)\.onclick=\(\)=>\{if\(lesson\.classList\.contains\('open'\)\)\{lesson\.classList\.remove\('open'\)/, 'Lessons toggles closed as well as open');
 });
+
+test('Ask Obi is the owner\'s only: members get 403, the owner gets the answer, nobody anonymous gets in', async () => {
+  const academyAsk = { configured: true, owners: new Set(['100000000000000001']), ask: async ({ question, userId }) => ({ answer: 'Here is the thing about ' + question + ', ' + userId + '.', sources: [{ source: '0.1', title: 'What a Share Actually Is' }], model: 'm', passages: 3 }) };
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer owner' ? { ok: true, userId: '100000000000000001', tier: 'member' } : a === 'Bearer member' ? { ok: true, userId: '100000000000000002', tier: 'academy' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  await withServer({ academyAsk, academyOAuth }, async (base) => {
+    const anon = await fetch(`${base}/academy-activity/ask`); assert.equal(anon.status, 401);
+    const who = await fetch(`${base}/academy-activity/ask`, { headers: { authorization: 'Bearer member' } });
+    assert.deepEqual(await who.json(), { ok: true, owner: false, configured: false });
+    const denied = await fetch(`${base}/academy-activity/ask`, { method: 'POST', headers: { authorization: 'Bearer member', 'content-type': 'application/json' }, body: JSON.stringify({ question: 'what is a share' }) });
+    assert.equal(denied.status, 403); assert.equal((await denied.json()).error, 'owner_only');
+    const me = await fetch(`${base}/academy-activity/ask`, { headers: { authorization: 'Bearer owner' } });
+    assert.deepEqual(await me.json(), { ok: true, owner: true, configured: true });
+    const empty = await fetch(`${base}/academy-activity/ask`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ question: '  ' }) });
+    assert.equal(empty.status, 400);
+    const ok = await fetch(`${base}/academy-activity/ask`, { method: 'POST', headers: { authorization: 'Bearer owner', 'content-type': 'application/json' }, body: JSON.stringify({ question: 'what is a share' }) });
+    assert.equal(ok.status, 200);
+    const j = await ok.json();
+    assert.match(j.answer, /what is a share, 100000000000000001/); assert.equal(j.sources[0].source, '0.1');
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
+  assert.match(html, /academy-ask-btn/, 'the Ask Obi script ships with the page');
+  assert.match(html, /'academy-ask-btn', 'academy-profile-btn'/, 'and its button docks in the top-bar rail');
+});

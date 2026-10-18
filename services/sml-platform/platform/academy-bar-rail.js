@@ -5,7 +5,7 @@
 (() => {
   if (window.__smlBarRail) return;
   window.__smlBarRail = true;
-  const IDS = ['academy-alerts-fab', 'sml-sig-fab', 'lb-btn', 'academy-profile-btn', 'aa-btn'];
+  const IDS = ['academy-alerts-fab', 'sml-sig-fab', 'lb-btn', 'academy-ask-btn', 'academy-profile-btn', 'aa-btn'];
   const wide = () => window.matchMedia('(min-width:721px)').matches;
   const style = document.createElement('style');
   style.textContent = '.bar-rail{display:none}'
@@ -14,7 +14,7 @@
     + '.bar-rail>button{position:static!important;z-index:auto!important;padding:4px 9px!important;font-size:.63rem!important;line-height:1.2!important;box-shadow:none!important;border-radius:7px!important;margin:0!important;white-space:nowrap}'
     + '.bar-rail>button#academy-alerts-fab i{width:7px;height:7px}'
     /* the panels those buttons open hang under the bar instead of rising from a corner */
-    + '#aa-panel,#lb-panel,#sml-sig{top:50px!important;bottom:auto!important;left:auto!important;right:10px!important;max-height:calc(100dvh - 64px)!important}}';
+    + '#aa-panel,#lb-panel,#sml-sig,#academy-ask{top:50px!important;bottom:auto!important;left:auto!important;right:10px!important;max-height:calc(100dvh - 64px)!important}}';
   document.head.appendChild(style);
   let rail = null;
   function home() {

@@ -106,6 +106,7 @@ const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { createAcademyMediaStore } = require('./academy-media-store');
+const { createAcademyAsk } = require('./academy-ask');
 const { createAcademyBake } = require('./academy-bake');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
@@ -873,6 +874,10 @@ const ACADEMY_PROFILE_MUSIC = (() => {
 const ACADEMY_PROFILE_FX = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-profile-fx.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
+/* Ask Obi, the owner's question desk (academy-ask-ui.js): the button shows only once the server confirms the owner. */
+const ACADEMY_ASK_UI = (() => {
+  try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-ask-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
+})();
 const ACADEMY_BAR_RAIL = (() => {
   try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-bar-rail.js'), 'utf8') + '</script>'; } catch (_) { return ''; }
 })();
@@ -975,7 +980,7 @@ function academyActivityHtml(initialMarket = {}, options = {}) {
      the page is byte-for-byte the ungated one. */
   const gate = options.gate && typeof options.gate === 'object' ? options.gate : null;
   const memAlgo = gate && gate.contentGate && ACADEMY_MEM_ALGO_PARTS ? ACADEMY_MEM_ALGO_PARTS.tools + ACADEMY_MEM_ALGO_LOADER : ACADEMY_MEM_ALGO;
-  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
+  const html = academyActivityHtmlBase(initialMarket, options).replace(/<\/body>\s*<\/html>\s*$/i, () => ACADEMY_CHART_GUARD + memAlgo + ACADEMY_MOOMOO_BUY + ACADEMY_LOOP_KICK + ACADEMY_MOBILE_COMPACT + ACADEMY_CHAT_PANEL + ACADEMY_APPEARANCE + ACADEMY_LB_UI + ACADEMY_TICK_UI + ACADEMY_DIRECTION + ACADEMY_DESK + ACADEMY_POPOUT_UI + ACADEMY_CUSTOMIZE + ACADEMY_CHART_DOCK + ACADEMY_CANDLE_RECAP + ACADEMY_PROFILE_DESK + ACADEMY_PROFILE_MUSIC + ACADEMY_PROFILE_FX + ACADEMY_PROFILE_UI + ACADEMY_ASK_UI + ACADEMY_BAR_RAIL + ACADEMY_CLIPBOARD + '</body></html>');
   const withPopout = html.replace('</head>', () => ACADEMY_MANIFEST_HEAD + ACADEMY_POPOUT_HEAD + '</head>');
   return gate ? withPopout.replace('</head>', () => academyGateClientScript(gate) + '</head>') : withPopout;
 }
@@ -1792,7 +1797,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null, academySignals = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
-  academySlideDesigner = null, academyAppId = '', academyGate = null,
+  academySlideDesigner = null, academyAsk = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
@@ -3548,6 +3553,31 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* Ask Obi: owner only. GET says whether the signed-in account may use it (the client shows the button on yes);
+       POST { question } answers from the Academy's own material in Obi's voice. Nobody else gets past the owner check. */
+    if (path === '/academy-activity/ask') {
+      const session = academyOAuth && academyOAuth.verifySession(request.headers.authorization);
+      if (!session || !session.ok) { sendJson(response, session?.status || 401, { ok: false, error: session?.code || 'authorization_required' }); return; }
+      const owner = Boolean(academyAsk && academyAsk.owners && academyAsk.owners.has(String(session.userId)));
+      if (request.method === 'GET') { sendJson(response, 200, { ok: true, owner, configured: Boolean(owner && academyAsk && academyAsk.configured) }); return; }
+      if (request.method !== 'POST') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
+      if (!owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      if (!academyAsk.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const raw = await readRequestBody(request, 16_384).catch(() => null);
+      let body = null; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { body = null; }
+      if (!body || typeof body.question !== 'string' || !body.question.trim()) { sendJson(response, 400, { ok: false, error: 'empty_question' }); return; }
+      try {
+        const result = await academyAsk.ask({ question: body.question, userId: session.userId });
+        sendJson(response, 200, { ok: true, ...result });
+      } catch (error) {
+        const invalid = error instanceof TypeError;
+        const limited = error && (error.code === 'rate_limited' || error.code === 'provider_rate_limited');
+        logger(invalid ? 'warn' : 'error', 'academy_ask_failed', { error, userId: session.userId });
+        sendJson(response, invalid ? 400 : (limited ? 429 : 503), { ok: false, error: invalid ? 'empty_question' : (limited ? (error.code === 'rate_limited' ? 'rate_limited' : 'provider_rate_limited') : (error.code || 'ask_failed')), detail: invalid || !error.status ? '' : 'Claude answered ' + error.status });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/slide-design') {
       /* the designer answers with a built-in deck when Claude is not configured, so only a missing designer is a 503 */
       if (!academySlideDesigner) {
@@ -4564,6 +4594,8 @@ async function main() {
   const academySlideDesigner = createAcademySlideDesigner({
     apiKey: config.anthropicApiKey, model: config.academyClaudeModel, lessons: SEED_LESSONS, store: academyMedia
   });
+  /* Ask Obi: the owner's question desk, grounded in every lesson and discipline episode */
+  const academyAsk = Object.assign(createAcademyAsk({ apiKey: config.anthropicApiKey, model: config.academyAskModel, lessons: SEED_LESSONS, episodes: require('./academy/discipline-content').EPISODES, logger: log }), { owners: config.academyAskUserIds });
   log('info', 'academy_media_runtime', { durable: academyMedia.durable, voice: academyVoice.configured ? 'live' : (academyVoice.stored ? 'baked' : 'off'), designer: academySlideDesigner.configured ? 'live' : 'built-in', bake: !!config.academyBake });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });
@@ -4627,7 +4659,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyAsk, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

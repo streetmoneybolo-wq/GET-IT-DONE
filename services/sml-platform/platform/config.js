@@ -181,6 +181,9 @@ function getConfig(env = process.env) {
     academyVoiceId: String(env.SML_ACADEMY_ELEVENLABS_VOICE_ID || '').trim(),
     academyVoiceModel: String(env.SML_ACADEMY_ELEVENLABS_MODEL || 'eleven_multilingual_v2').trim(),
     academyClaudeModel: String(env.SML_ACADEMY_CLAUDE_MODEL || env.SML_AI_ANTHROPIC_MODEL || 'claude-sonnet-5').trim(),
+    // Ask Obi (owner only): the model that writes answers, and who may use it (the owner by default)
+    academyAskModel: String(env.SML_ACADEMY_ASK_MODEL || 'claude-sonnet-5-5').trim(),
+    academyAskUserIds: new Set([...require('./academy-free-users').OWNER_IDS, ...snowflakeList(env.SML_ACADEMY_ASK_USER_IDS)]),
     // one-time background bake of every lesson deck and narration into academy_media (remove the flag once it has run)
     academyBake: (String(env.SML_ACADEMY_BAKE || '').trim().toLowerCase().match(/^(1|all|voice|design)$/) || [''])[0].replace('1', 'all'),
     dailySocialPayoutsEnabled: String(env.SML_DSP_ENABLED || '').trim() === '1',
