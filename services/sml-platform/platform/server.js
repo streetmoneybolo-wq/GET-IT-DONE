@@ -104,6 +104,8 @@ const { createOptionsStream } = require('./academy-options-stream');
 const { createAcademyVoice } = require('./academy-voice');
 const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
+const { createAcademyMediaStore } = require('./academy-media-store');
+const { createAcademyBake } = require('./academy-bake');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
 const ACADEMY_BANNER_PATH = pathModule.join(__dirname, 'assets', 'mem-academy-banner.gif');
@@ -2058,7 +2060,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
     if (request.method === 'GET' && path === '/academy-discipline/speech') {
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
-      if (!academyVoice?.configured || !academyDiscipline?.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      if (!(academyVoice?.configured || academyVoice?.stored) || !academyDiscipline?.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       let claims = null;
       try {
         claims = await academyDiscipline.resolveToken(params.get('token'));
@@ -3497,7 +3499,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     if (request.method === 'GET' && path === '/academy-activity/speech') {
-      if (!academyVoice || !academyVoice.configured) {
+      /* a baked store answers with no key configured: the recordings were paid for once */
+      if (!academyVoice || !(academyVoice.configured || academyVoice.stored)) {
         sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
         return;
       }
@@ -4550,14 +4553,17 @@ async function main() {
     } : null,
     ptLadder: academyAutoPt ? (key) => academyAutoPt.forKey(key) : null
   }) : null;
+  /* generated lesson media (Claude decks, ElevenLabs narration) is paid for once and kept in academy_media (schema 046) */
+  const academyMedia = createAcademyMediaStore({ pool: database.pool, logger: log });
   const academyVoice = createAcademyVoice({
     apiKey: config.elevenLabsApiKey, voiceId: config.academyVoiceId,
-    modelId: config.academyVoiceModel, lessons: SEED_LESSONS
+    modelId: config.academyVoiceModel, lessons: SEED_LESSONS, store: academyMedia
   });
   const academyDiscipline = createDisciplineProgress({ pool: database.pool });
   const academySlideDesigner = createAcademySlideDesigner({
-    apiKey: config.anthropicApiKey, model: config.academyClaudeModel, lessons: SEED_LESSONS
+    apiKey: config.anthropicApiKey, model: config.academyClaudeModel, lessons: SEED_LESSONS, store: academyMedia
   });
+  log('info', 'academy_media_runtime', { durable: academyMedia.durable, voice: academyVoice.configured ? 'live' : (academyVoice.stored ? 'baked' : 'off'), designer: academySlideDesigner.configured ? 'live' : 'built-in', bake: !!config.academyBake });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });
   const { createCorporateRuntime, CONFLICT_CODES } = require('./corporate-runtime');
@@ -4664,6 +4670,11 @@ async function main() {
     if (academyAlertSources) academyAlertSources.start();
     if (academyMassive) academyMassive.start();
     if (academyScreener) academyScreener.start();
+    /* SML_ACADEMY_BAKE=1: generate every missing lesson deck and narration once, in the background, into academy_media */
+    if (config.academyBake) {
+      const bake = createAcademyBake({ lessons: SEED_LESSONS, designer: academySlideDesigner, voice: academyVoice, store: academyMedia, logger: log });
+      setTimeout(() => { bake.run().catch((error) => log('error', 'academy_bake_failed', { error })); }, 15_000).unref();
+    }
     if (academyOrderFlow) {
       const pruneTimer = setInterval(() => { orderFlowStore.prune(90).catch(() => {}); }, 24 * 3_600_000);
       if (pruneTimer.unref) pruneTimer.unref();

@@ -1151,6 +1151,20 @@ test('lesson narration reports the real length of every part so slides change wh
   assert.match(script, /measured\?duration\*exact\[index\]\/measuredTotal/);
 });
 
+test('baked narration is served with no ElevenLabs key configured; an empty store with no key is still a 503', async () => {
+  const baked = { configured: false, stored: true, getLessonAudio: async () => ({ audio: Buffer.from('mp3'), cached: true, partMs: [900] }) };
+  await withServer({ academyVoice: baked }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-academy-voice-cache'), 'hit');
+  });
+  const off = { configured: false, stored: false, getLessonAudio: async () => { throw new Error('must not be called'); } };
+  await withServer({ academyVoice: off }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/speech?moduleId=1&lessonId=1`);
+    assert.equal(res.status, 503);
+  });
+});
+
 test('a lesson shows its written text once: no duplicate slide visual or filler callout, and chart panels stay out of the lesson', () => {
   const { academyActivityHtml } = require('./server');
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});

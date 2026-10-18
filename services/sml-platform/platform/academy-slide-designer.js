@@ -135,13 +135,32 @@ function validateDesign(value, expectedSlides) {
 }
 
 function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lessons = [],
-  fetchImpl = globalThis.fetch, now = Date.now, localFallback = true } = {}) {
+  fetchImpl = globalThis.fetch, now = Date.now, localFallback = true, store = null } = {}) {
   const lessonMap = new Map(lessons.map((lesson) => [lesson.moduleId + ':' + lesson.lessonId, lesson]));
   const cache = new Map();
   const inflight = new Map();
   const failures = new Map();
   const rate = new Map();
   const configured = Boolean(apiKey && model && typeof fetchImpl === 'function');
+  /* the durable media store (academy_media): a Claude design is paid for once per lesson text and then served from
+   * here on every instance, after every deploy, and with no key configured at all */
+  const stored = Boolean(store && store.durable);
+  async function fromStore(digest, lesson) {
+    if (!stored) return null;
+    const hit = await store.get('design:' + digest);
+    if (!hit || !hit.bytes) return null;
+    try {
+      const parsed = JSON.parse(hit.bytes.toString('utf8'));
+      const design = Object.freeze({ provider: 'claude', model: String(parsed.model || ''), slides: validateDesign(parsed, lessonPartsInfo(lesson).parts.length) });
+      put(digest, design);
+      return design;
+    } catch (_) { return null; }
+  }
+  async function remember(digest, lesson, design) {
+    if (!stored) return false;
+    const body = JSON.stringify({ key: lesson.moduleId + ':' + lesson.lessonId, model: design.model, slides: design.slides });
+    return store.put('design:' + digest, Buffer.from(body, 'utf8'), { kind: 'design', contentType: 'application/json', meta: { moduleId: lesson.moduleId, lessonId: lesson.lessonId, model: design.model, slides: design.slides.length } });
+  }
 
   function consume(userId) {
     const time = now();
@@ -219,6 +238,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       slides: validateDesign(parsed, parts.length)
     });
     put(digest, result);
+    await remember(digest, lesson, result);
     return result;
   }
 
@@ -228,18 +248,21 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     return localCache.get(keyText);
   }
 
-  async function getLessonDesign({ moduleId, lessonId, userId }) {
+  /* The design is keyed by the lesson's exact text (not the model): a deck made once stays valid until the lesson
+   * changes, whichever Claude model is configured later. `internal` is the bake and skips the per-user rate limit. */
+  async function getLessonDesign({ moduleId, lessonId, userId, internal = false }) {
     const lesson = lessonMap.get(Number(moduleId) + ':' + Number(lessonId));
     if (!lesson) throw new TypeError('invalid lesson');
     const keyText = lesson.moduleId + ':' + lesson.lessonId;
+    const digest = crypto.createHash('sha256').update(JSON.stringify(lesson)).digest('hex');
+    if (cache.has(digest)) return { design: cache.get(digest), cached: true };
+    const baked = await fromStore(digest, lesson);
+    if (baked) return { design: baked, cached: true };
     if (!configured) {
       if (localFallback) return { design: local(lesson, keyText), cached: true, fallback: true };
       throw Object.assign(new Error('Claude is not configured'), { code: 'integration_unconfigured' });
     }
-    consume(String(userId || 'unknown'));
-    const digest = crypto.createHash('sha256')
-      .update(model + '\0' + JSON.stringify(lesson)).digest('hex');
-    if (cache.has(digest)) return { design: cache.get(digest), cached: true };
+    if (internal !== true) consume(String(userId || 'unknown'));
     const bad = failures.get(digest);
     if (bad && now() - bad.at < FAILURE_MEMORY_MS) {
       bad.error.cached = true;
@@ -264,7 +287,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     }
   }
 
-  return { configured, getLessonDesign, designLocally };
+  return { configured, stored, getLessonDesign, designLocally };
 }
 
 module.exports = { createAcademySlideDesigner, designLocally, partsFor, validateDesign, DESIGN_SCHEMA, MAX_CACHE_ITEMS };

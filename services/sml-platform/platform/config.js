@@ -181,6 +181,8 @@ function getConfig(env = process.env) {
     academyVoiceId: String(env.SML_ACADEMY_ELEVENLABS_VOICE_ID || '').trim(),
     academyVoiceModel: String(env.SML_ACADEMY_ELEVENLABS_MODEL || 'eleven_multilingual_v2').trim(),
     academyClaudeModel: String(env.SML_ACADEMY_CLAUDE_MODEL || env.SML_AI_ANTHROPIC_MODEL || 'claude-sonnet-5').trim(),
+    // one-time background bake of every lesson deck and narration into academy_media (remove the flag once it has run)
+    academyBake: String(env.SML_ACADEMY_BAKE || '').trim() === '1',
     dailySocialPayoutsEnabled: String(env.SML_DSP_ENABLED || '').trim() === '1',
     dailySocialPayoutsPublicKey: String(env.SML_DSP_DISCORD_PUBLIC_KEY || '').trim(),
     dailySocialPayoutsAppId: String(env.SML_DSP_DISCORD_APP_ID || '').trim(),

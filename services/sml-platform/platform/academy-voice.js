@@ -52,13 +52,24 @@ function mp3DurationMs(input) {
 }
 
 function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL,
-  lessons = [], fetchImpl = globalThis.fetch, now = Date.now } = {}) {
+  lessons = [], fetchImpl = globalThis.fetch, now = Date.now, store = null } = {}) {
   const lessonMap = new Map(lessons.map((lesson) => [`${lesson.moduleId}:${lesson.lessonId}`, lesson]));
   const cache = new Map();
   const inflight = new Map();
   const rate = new Map();
   let cacheBytes = 0;
   const configured = Boolean(apiKey && voiceId && typeof fetchImpl === 'function');
+  /* the durable media store (academy_media): a part is paid for once, then served from here on every instance, after
+   * every deploy, and even with no key configured; the voice id still has to be known so the right recording is found */
+  const stored = Boolean(store && store.durable && voiceId);
+  const remember = (key, audio, text, kind) => (store && store.durable ? store.put(key, audio, { kind: 'voice', contentType: 'audio/mpeg', meta: { voiceId, modelId, part: kind, chars: text.length } }) : Promise.resolve(false));
+  async function fromStore(key) {
+    if (!stored) return null;
+    const hit = await store.get(key);
+    if (!hit || !hit.bytes || !hit.bytes.length) return null;
+    put(key, hit.bytes);
+    return hit.bytes;
+  }
   /* a rejected key (401/403) is not retried for ten minutes: every lesson load was paying a full round trip to be told the same thing */
   const KEY_REJECTED_MS = 10 * 60_000;
   let keyRejected = null;
@@ -130,19 +141,33 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
   async function partAudio(text, context) {
     const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0part\0${text}`).digest('hex');
     if (cache.has(digest)) return { audio: cache.get(digest), cached: true };
-    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest, context).finally(() => inflight.delete(digest)));
-    return { audio: await inflight.get(digest), cached: false };
+    if (!inflight.has(digest)) {
+      inflight.set(digest, (async () => {
+        const baked = await fromStore(digest);
+        if (baked) return { audio: baked, cached: true };
+        if (!configured) {
+          const error = new Error('academy voice is not configured');
+          error.code = 'integration_unconfigured';
+          throw error;
+        }
+        const audio = await generateText(text, digest, context);
+        await remember(digest, audio, text, 'lesson');
+        return { audio, cached: false };
+      })().finally(() => inflight.delete(digest)));
+    }
+    return inflight.get(digest);
   }
 
-  async function getLessonAudio({ moduleId, lessonId, userId }) {
-    if (!configured) {
+  /** `internal` is the bake (and nothing a request can set): no per-user rate limit while it fills the store. */
+  async function getLessonAudio({ moduleId, lessonId, userId, internal = false }) {
+    if (!configured && !stored) {
       const error = new Error('academy voice is not configured');
       error.code = 'integration_unconfigured';
       throw error;
     }
     const lesson = lessonMap.get(`${Number(moduleId)}:${Number(lessonId)}`);
     if (!lesson) throw new TypeError('invalid lesson');
-    consume(String(userId || 'unknown'));
+    if (internal !== true) consume(String(userId || 'unknown'));
     const parts = lessonParts(lesson);
     const results = new Array(parts.length);
     let next = 0;
@@ -160,7 +185,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
   }
 
   async function getDisciplineAudio({ episodeId, partIndex, userId }) {
-    if (!configured) {
+    if (!configured && !stored) {
       const error = new Error('academy voice is not configured');
       error.code = 'integration_unconfigured';
       throw error;
@@ -173,7 +198,14 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     const text = parts[index];
     const digest = crypto.createHash('sha256').update(`${voiceId}\0${modelId}\0discipline\0${episode.id}\0${index}\0${text}`).digest('hex');
     if (cache.has(digest)) return { audio: cache.get(digest), cached: true, partCount: parts.length };
-    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest).finally(() => inflight.delete(digest)));
+    const baked = await fromStore(digest);
+    if (baked) return { audio: baked, cached: true, partCount: parts.length };
+    if (!configured) {
+      const error = new Error('academy voice is not configured');
+      error.code = 'integration_unconfigured';
+      throw error;
+    }
+    if (!inflight.has(digest)) inflight.set(digest, generateText(text, digest).then(async (audio) => { await remember(digest, audio, text, 'discipline'); return audio; }).finally(() => inflight.delete(digest)));
     return { audio: await inflight.get(digest), cached: false, partCount: parts.length };
   }
 
@@ -197,7 +229,7 @@ function createAcademyVoice({ apiKey = '', voiceId = '', modelId = DEFAULT_MODEL
     return { audio, cached: allCached, partCount };
   }
 
-  return { configured, getLessonAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
+  return { configured, stored, getLessonAudio, getDisciplineAudio, getDisciplineEpisodeAudio };
 }
 
 module.exports = { createAcademyVoice, narrationFor, mp3DurationMs, stripId3 };

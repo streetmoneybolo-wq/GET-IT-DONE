@@ -194,3 +194,24 @@ test('a rejected ElevenLabs key is remembered for ten minutes: later lessons fai
   await assert.rejects(() => service.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'm3' }), (e) => e.status === 401 && !e.cached);
   assert.ok(calls > first, 'tried again after the cool-off');
 });
+
+test('Academy voice pays for a part once: it is written to the durable store, then served from it with no key at all', async () => {
+  const rows = new Map();
+  const store = { durable: true, get: async (k) => (rows.has(k) ? { bytes: rows.get(k) } : null), put: async (k, bytes) => { rows.set(k, bytes); return true; } };
+  let calls = 0;
+  const paying = createAcademyVoice({ apiKey: 'key', voiceId: 'voice-1', lessons: [lesson], store, fetchImpl: async () => { calls += 1; return new Response(Buffer.from('mp3-' + calls), { status: 200 }); } });
+  const first = await paying.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'bake', internal: true });
+  assert.equal(calls, 4); assert.equal(rows.size, 4); assert.equal(first.cached, false);
+  // a fresh instance with no ElevenLabs key: every part comes from the store, nothing is fetched
+  const free = createAcademyVoice({ voiceId: 'voice-1', lessons: [lesson], store, fetchImpl: async () => { throw new Error('must not fetch'); } });
+  assert.equal(free.configured, false); assert.equal(free.stored, true);
+  const baked = await free.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'member' });
+  assert.equal(baked.cached, true); assert.equal(baked.audio.length, first.audio.length); assert.deepEqual(baked.partMs, first.partMs);
+  // a different voice id has no recordings yet: unconfigured, honestly
+  const other = createAcademyVoice({ voiceId: 'voice-2', lessons: [lesson], store });
+  await assert.rejects(() => other.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'member' }), /not configured/);
+  // the rate limit still applies to real viewers, only the bake is exempt
+  const limited = createAcademyVoice({ voiceId: 'voice-1', lessons: [lesson], store });
+  for (let i = 0; i < 12; i += 1) await limited.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'same' });
+  await assert.rejects(() => limited.getLessonAudio({ moduleId: 1, lessonId: 1, userId: 'same' }), /rate limit/);
+});

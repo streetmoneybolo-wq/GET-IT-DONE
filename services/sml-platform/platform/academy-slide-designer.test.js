@@ -183,3 +183,27 @@ test('without Claude (no key, no credits, a refused request) every lesson still 
   const b = await broke.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' });
   assert.equal(b.design.provider, 'academy'); assert.equal(calls, n, 'the refusal is remembered; no second call');
 });
+
+test('a Claude deck is paid for once: stored by lesson text, then served with no key and preferred over the built-in deck', async () => {
+  const rows = new Map();
+  const store = { durable: true, get: async (k) => (rows.has(k) ? { bytes: rows.get(k) } : null), put: async (k, bytes) => { rows.set(k, bytes); return true; } };
+  const slides = partsFor(lesson).map((text, index) => ({ heading: 'Claude ' + index, visual: 'V ' + text, callout: 'C', visualKind: index === 3 ? 'question' : 'auction' }));
+  let calls = 0;
+  const paying = createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], store, fetchImpl: async () => { calls += 1; return responseFor(slides); } });
+  const first = await paying.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'bake', internal: true });
+  assert.equal(first.cached, false); assert.equal(calls, 1); assert.equal(rows.size, 1);
+  assert.ok([...rows.keys()][0].startsWith('design:'));
+  // no key at all: the stored Claude deck wins over the built-in one
+  const free = createAcademySlideDesigner({ lessons: [lesson], store, fetchImpl: async () => { throw new Error('must not fetch'); } });
+  assert.equal(free.configured, false); assert.equal(free.stored, true);
+  const baked = await free.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member' });
+  assert.equal(baked.cached, true); assert.equal(baked.fallback, undefined);
+  assert.equal(baked.design.provider, 'claude'); assert.equal(baked.design.slides[0].heading, 'Claude 0');
+  // a key configured for a different model does not pay again for an unchanged lesson
+  const other = createAcademySlideDesigner({ apiKey: 'k', model: 'claude-opus-5-5', lessons: [lesson], store, fetchImpl: async () => { throw new Error('must not fetch'); } });
+  assert.equal((await other.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member' })).design.slides[1].heading, 'Claude 1');
+  // an edited lesson is a different key: the stored deck is not reused for it
+  const edited = { ...lesson, steps: ['Changed step.', lesson.steps[1]] };
+  const fresh = createAcademySlideDesigner({ lessons: [edited], store });
+  assert.equal((await fresh.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member' })).design.provider, 'academy');
+});
