@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createAcademySlideDesigner, partsFor } = require('./academy-slide-designer');
+const { createAcademySlideDesigner, designLocally, partsFor } = require('./academy-slide-designer');
 const { lessonParts } = require('./academy/lesson-parts');
 const { builders } = require('./academy/examples');
 
@@ -80,11 +80,11 @@ test('Claude Academy designer uses structured output, validates every narration 
 });
 
 test('Claude Academy designer fails closed for missing credentials, invalid lessons, and malformed designs', async () => {
-  const unconfigured = createAcademySlideDesigner({ lessons: [lesson] });
+  const unconfigured = createAcademySlideDesigner({ lessons: [lesson], localFallback: false });
   await assert.rejects(() => unconfigured.getLessonDesign({ moduleId: 1, lessonId: 1, userId: '1' }), { code: 'integration_unconfigured' });
   const configured = createAcademySlideDesigner({
     apiKey: 'key',
-    lessons: [lesson],
+    lessons: [lesson], localFallback: false,
     fetchImpl: async () => responseFor([{ heading: 'Too few', visual: 'x', callout: 'y', visualKind: 'chart' }])
   });
   await assert.rejects(() => configured.getLessonDesign({ moduleId: 9, lessonId: 9, userId: '1' }), TypeError);
@@ -111,7 +111,7 @@ test('Claude Academy designer adds one slide for the whiteboard example and send
   }));
   const designer = createAcademySlideDesigner({
     apiKey: 'key',
-    lessons: [withExample],
+    lessons: [withExample], localFallback: false,
     fetchImpl: async (url, options) => {
       calls.push(JSON.parse(options.body));
       return responseFor(calls.length === 1 ? slides.slice(0, 4) : slides);
@@ -152,11 +152,34 @@ test('Claude Academy designer retries a refused request without structured outpu
 
   let hits = 0;
   const down = createAcademySlideDesigner({
-    apiKey: 'key', lessons: [lesson],
+    apiKey: 'key', lessons: [lesson], localFallback: false,
     fetchImpl: async () => { hits += 1; return { ok: false, status: 503, json: async () => ({}) }; }
   });
   await assert.rejects(() => down.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' }), { code: 'provider_unavailable' });
   const first = hits;
   await assert.rejects(() => down.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' }), { code: 'provider_unavailable' });
   assert.equal(hits, first, 'a provider failure is not hammered on the next load');
+});
+
+test('without Claude (no key, no credits, a refused request) every lesson still gets a deck from its own text, for free', async () => {
+  const { SEED_LESSONS } = require('./academy/curriculum');
+  const { VISUAL } = { VISUAL: ['auction', 'candles', 'flow', 'comparison', 'timeline', 'formula', 'checklist', 'options', 'risk', 'tape', 'chart', 'question'] };
+  for (const seed of SEED_LESSONS) {
+    const d = designLocally(seed);
+    assert.equal(d.provider, 'academy');
+    assert.equal(d.slides.length, partsFor(seed).length, seed.moduleId + '.' + seed.lessonId);
+    assert.ok(d.slides.every((x) => VISUAL.includes(x.visualKind) && x.heading && x.visual && x.callout));
+    assert.equal(d.slides[d.slides.length - 1].visualKind, 'question');
+  }
+  const free = createAcademySlideDesigner({ lessons: [lesson] });
+  assert.equal(free.configured, false);
+  const got = await free.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'anyone' });
+  assert.equal(got.design.provider, 'academy'); assert.equal(got.fallback, true);
+  let calls = 0;
+  const broke = createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], fetchImpl: async () => { calls += 1; return { ok: false, status: 400, json: async () => ({ error: { message: 'Your credit balance is too low' } }) }; } });
+  const a = await broke.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' });
+  assert.equal(a.design.provider, 'academy'); assert.equal(a.reason, 'provider_unavailable');
+  const n = calls;
+  const b = await broke.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' });
+  assert.equal(b.design.provider, 'academy'); assert.equal(calls, n, 'the refusal is remembered; no second call');
 });

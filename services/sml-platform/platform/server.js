@@ -3545,7 +3545,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     if (request.method === 'GET' && path === '/academy-activity/slide-design') {
-      if (!academySlideDesigner || !academySlideDesigner.configured) {
+      /* the designer answers with a built-in deck when Claude is not configured, so only a missing designer is a 503 */
+      if (!academySlideDesigner) {
         sendJson(response, 503, { ok: false, error: 'integration_unconfigured' });
         return;
       }
