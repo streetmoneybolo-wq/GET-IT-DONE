@@ -285,7 +285,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     async function call(useModel, structured) {
       const body = {
         model: useModel,
-        max_tokens: 4000,
+        max_tokens: 8000,
         system: structured ? system : system + jsonOnly,
         messages: [{ role: 'user', content: JSON.stringify(source) }]
       };
@@ -319,7 +319,8 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     const text = (payload.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('');
     let parsed;
     try { parsed = JSON.parse(String(text).replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '')); } catch (_) {
-      throw Object.assign(new Error('Claude returned invalid JSON'), { code: 'invalid_design' });
+      /* a deck cut off at the token limit is not "bad JSON": say so, it is the one failure a bigger limit fixes */
+      throw Object.assign(new Error(payload.stop_reason === 'max_tokens' ? 'Claude ran out of room (max_tokens) at ' + String(text).length + ' chars' : 'Claude returned invalid JSON'), { code: 'invalid_design' });
     }
     /* a deck one or two slides off is repaired, not thrown away: extras are dropped, a missing slide comes from the
      * built-in deck for that part; a deck that is mostly missing is still refused */

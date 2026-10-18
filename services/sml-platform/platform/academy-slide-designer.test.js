@@ -68,7 +68,7 @@ test('Claude Academy designer uses structured output, validates every narration 
   const body = JSON.parse(calls[0].options.body);
   assert.equal(body.model, 'claude-sonnet-5');
   assert.equal(body.output_config.format.type, 'json_schema');
-  assert.equal(body.max_tokens, 4000);
+  assert.equal(body.max_tokens, 8000);
   const source = JSON.parse(body.messages[0].content);
   assert.deepEqual(source.narrationParts, partsFor(lesson));
   assert.equal(source.workedExample, null);
@@ -257,4 +257,12 @@ test('a deck one slide short or long is repaired from the built-in deck; one mos
   slides = mk(parts.length);
   const exact = await createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], localFallback: false, fetchImpl: async () => responseFor(slides) }).getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'd' });
   assert.equal(exact.design.repaired, false);
+});
+
+
+test('the designer asks for room enough for a deck with scenes and names a token cut-off for what it is', async () => {
+  let body = null;
+  const cut = createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], localFallback: false, fetchImpl: async (u, o) => { body = JSON.parse(o.body); return { ok: true, status: 200, json: async () => ({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"slides":[{"heading":"H","visual":"V' }] }) }; } });
+  await assert.rejects(() => cut.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'a' }), /ran out of room \(max_tokens\)/);
+  assert.equal(body.max_tokens, 8000);
 });
