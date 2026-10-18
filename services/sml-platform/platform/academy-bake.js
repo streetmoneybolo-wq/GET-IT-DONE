@@ -25,11 +25,15 @@ function createAcademyBake({ lessons = [], designer = null, voice = null, store 
   async function one(kind, lesson, call) {
     try {
       const result = await call();
-      return { ok: true, cached: Boolean(result && result.cached), fallback: Boolean(result && result.fallback) };
+      /* a built-in fallback deck is not a baked deck: carry the provider's reason so the log says why */
+      if (result && result.fallback) return { ok: false, error: 'built_in_fallback', detail: [result.reason, result.status, result.detail, result.remembered ? '(remembered)' : ''].filter(Boolean).join(' ') };
+      return { ok: true, cached: Boolean(result && result.cached) };
     } catch (error) {
-      return { ok: false, error: String((error && (error.code || error.message)) || error) };
+      return { ok: false, error: String((error && (error.code || error.message)) || error), detail: [error && error.status, error && error.message].filter(Boolean).join(' ').slice(0, 200) };
     }
   }
+  /* worth a wait and another try: the provider's rate limit, or a connection that dropped mid-request */
+  const transient = (result) => !result.ok && /rate_limited|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up|network/i.test((result.error || '') + ' ' + (result.detail || ''));
 
   /** Run the bake. Returns { design: {done, skipped, failed, stopped}, voice: {...}, errors: [...] }. */
   async function run({ design = true, voice: doVoice = true } = {}) {
@@ -48,19 +52,18 @@ function createAcademyBake({ lessons = [], designer = null, voice = null, store 
         for (const lesson of ordered) {
           const id = lesson.moduleId + '.' + lesson.lessonId;
           let result = await one(kind, lesson, () => call(lesson));
-          for (let attempt = 0; !result.ok && /rate_limited/.test(result.error || '') && attempt < RATE_LIMIT_WAITS.length; attempt += 1) {
+          for (let attempt = 0; transient(result) && attempt < RATE_LIMIT_WAITS.length; attempt += 1) {
             tally.waits = (tally.waits || 0) + 1;
             logger('info', 'academy_bake_waiting', { kind, lesson: id, waitMs: RATE_LIMIT_WAITS[attempt], attempt: attempt + 1 });
             await wait(RATE_LIMIT_WAITS[attempt]);
             result = await one(kind, lesson, () => call(lesson));
           }
-          if (result.ok && result.fallback) { result.ok = false; result.error = 'built_in_fallback'; }
           if (result.ok) { if (result.cached) tally.skipped += 1; else tally.done += 1; streak = 0; }
           else {
             tally.failed += 1; streak += 1;
-            if (report.errors.length < 40) report.errors.push({ kind, lesson: id, error: result.error });
-            logger('warn', 'academy_bake_lesson_failed', { kind, lesson: id, error: result.error });
-            if (streak >= MAX_CONSECUTIVE_FAILURES) { tally.stopped = result.error; logger('error', 'academy_bake_stopped', { kind, after: id, error: result.error }); break; }
+            if (report.errors.length < 40) report.errors.push({ kind, lesson: id, error: result.error, detail: result.detail || '' });
+            logger('warn', 'academy_bake_lesson_failed', { kind, lesson: id, error: result.error, detail: result.detail || '' });
+            if (streak >= MAX_CONSECUTIVE_FAILURES) { tally.stopped = result.error; logger('error', 'academy_bake_stopped', { kind, after: id, error: result.error, detail: result.detail || '' }); break; }
           }
           if ((tally.done + tally.skipped + tally.failed) % 10 === 0) logger('info', 'academy_bake_progress', { kind, ...tally, of: ordered.length });
           if (result.ok && !result.cached) await wait(BETWEEN_LESSONS_MS);

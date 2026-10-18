@@ -345,7 +345,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     const bad = failures.get(digest);
     if (bad && now() - bad.at < FAILURE_MEMORY_MS) {
       bad.error.cached = true;
-      if (localFallback) return { design: local(lesson, keyText), cached: true, fallback: true };
+      if (localFallback) return { design: local(lesson, keyText), cached: true, fallback: true, reason: bad.error.code || 'provider_failed', detail: String(bad.error.message || '').slice(0, 200), status: bad.error.status || 0, remembered: true };
       throw bad.error;
     }
     if (!inflight.has(digest)) {
@@ -362,7 +362,7 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
     } catch (error) {
       /* the provider refused (out of credits, a 4xx, a bad design): the lesson still gets a deck, from its own text */
       if (!localFallback || error instanceof TypeError) throw error;
-      return { design: local(lesson, keyText), cached: true, fallback: true, reason: error.code || 'provider_failed' };
+      return { design: local(lesson, keyText), cached: true, fallback: true, reason: error.code || 'provider_failed', detail: String(error.message || '').slice(0, 200), status: error.status || 0 };
     }
   }
 

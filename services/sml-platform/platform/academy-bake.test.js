@@ -25,14 +25,16 @@ test('the bake visits every lesson once for decks and narration, skipping what t
 
 test('the bake stops a kind after repeated provider failures instead of paying for 151 refusals, and a built-in fallback deck is not counted as baked', async () => {
   let calls = 0;
-  const designer = { configured: true, getLessonDesign: async () => { calls += 1; return { cached: true, fallback: true, design: {} }; } };
+  const designer = { configured: true, getLessonDesign: async () => { calls += 1; return { cached: true, fallback: true, design: {}, reason: 'provider_unavailable', status: 400, detail: 'Anthropic returned 400: Your credit balance is too low' }; } };
   const voice = { configured: true, getLessonAudio: async () => { const e = new Error('ElevenLabs returned 401'); e.code = 'provider_unavailable'; throw e; } };
   const bake = createAcademyBake({ lessons, designer, voice, store, wait: async () => {} });
   const report = await bake.run();
   assert.equal(calls, MAX_CONSECUTIVE_FAILURES);
   assert.equal(report.design.stopped, 'built_in_fallback'); assert.equal(report.design.failed, MAX_CONSECUTIVE_FAILURES);
+  assert.equal(report.errors.find((e) => e.kind === 'voice').detail, 'ElevenLabs returned 401', 'the provider message travels with the failure');
   assert.equal(report.voice.stopped, 'provider_unavailable');
   assert.ok(report.errors.length >= 2 * MAX_CONSECUTIVE_FAILURES);
+  assert.match(report.errors.find((e) => e.kind === 'design').detail, /provider_unavailable 400 Anthropic returned 400: Your credit balance/);
 });
 
 test('the bake refuses to spend without a durable store or a configured provider', async () => {
@@ -60,4 +62,12 @@ test('a provider rate limit is waited out with backoff and the same lesson retri
   const stuck = { configured: true, getLessonAudio: async () => { n += 1; const e = new Error('429'); e.code = 'provider_rate_limited'; throw e; } };
   const r2 = await createAcademyBake({ lessons: lessons.slice(0, 1), voice: stuck, store, wait: async () => {} }).run({ design: false });
   assert.equal(n, 1 + RATE_LIMIT_WAITS.length); assert.equal(r2.voice.failed, 1);
+});
+
+
+test('a dropped connection is retried like a rate limit, not counted as a failure', async () => {
+  let calls = 0;
+  const voice = { configured: true, getLessonAudio: async () => { calls += 1; if (calls === 1) throw new TypeError('fetch failed'); return { cached: false, audio: Buffer.alloc(1) }; } };
+  const report = await createAcademyBake({ lessons: lessons.slice(0, 1), voice, store, wait: async () => {} }).run({ design: false });
+  assert.deepEqual([report.voice.done, report.voice.failed, report.voice.waits], [1, 0, 1]);
 });
