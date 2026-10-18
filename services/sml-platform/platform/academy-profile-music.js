@@ -76,6 +76,7 @@
   css.textContent = '#pv-dock{position:fixed;left:12px;bottom:12px;z-index:2147482550;width:min(380px,calc(100vw - 24px));border:1px solid rgba(255,255,255,.16);border-radius:14px;background:rgba(7,12,20,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 18px 50px rgba(0,0,0,.65);color:#e6eef2;font:600 .72rem system-ui,sans-serif;overflow:hidden;display:none}'
     + '#pv-dock.on{display:block}#pv-dock .dk-h{display:flex;align-items:center;gap:8px;padding:8px 10px}#pv-dock .dk-t{flex:1;min-width:0}#pv-dock .dk-t b{display:block;color:#fff;font:800 .76rem system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#pv-dock .dk-t small{display:block;color:#8fa5b1;font-size:.6rem}'
     + '#pv-dock button{border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(255,255,255,.05);color:#e6eef2;padding:5px 9px;font:800 .66rem system-ui,sans-serif;cursor:pointer}#pv-dock button.go{background:var(--acc,#00c47d);color:#041b12;border-color:transparent}'
+    + '#pv-dock.inl{position:static;width:auto;margin-top:10px;box-shadow:none;background:rgba(255,255,255,.04);z-index:auto}#pv-dock.inl [data-dk=min]{display:none}'
     + '#pv-dock .dk-b{padding:0 10px 10px}#pv-dock.min .dk-b{display:none}'
     + '#pv-dock .dk-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;cursor:pointer;margin:2px 0 8px}#pv-dock .dk-bar i{display:block;height:100%;width:0;background:var(--acc,#00c47d)}'
     + '#pv-dock .dk-row{display:flex;align-items:center;gap:8px;color:#8fa5b1;font-size:.6rem}#pv-dock input[type=range]{flex:1;accent-color:var(--acc,#00c47d)}'
@@ -147,7 +148,7 @@
     el.innerHTML = '<div class="dk-h"><div class="dk-t"><b>♫ ' + esc(song.title || 'Profile song') + '</b><small>Academy player</small></div><button type="button" class="go" data-dk="play">▶ Play</button><button type="button" data-dk="min" title="Minimise">▁</button></div>'
       + '<div class="dk-tap" data-dk="tap">▶ Tap to start the music</div><div class="dk-b"><div class="dk-bar" data-dk="bar"><i></i></div><div class="dk-row"><span data-dk="time">0:00 / 0:00</span><span style="flex:1"></span>🔊<input type="range" data-dk="vol" min="0" max="100" value="80" aria-label="Volume"></div>'
       + '<div class="dk-ch">' + CH.map((c) => '<div><span><i></i></span>' + LABEL[c] + '</div>').join('') + '</div><p class="dk-note">The page moves to the kick, bass, vocals, snare and hi-hats in this song.</p></div>';
-    document.body.appendChild(el); D.el = el;
+    D.el = el;
     D.bars = [...el.querySelectorAll('.dk-ch span i')]; D.prog = el.querySelector('[data-dk=bar]'); D.time = el.querySelector('[data-dk=time]');
     el.addEventListener('click', (e) => {
       const b = e.target.closest('[data-dk]'); if (!b) return;
@@ -167,13 +168,20 @@
     D.iv = setInterval(tryAnalyse, 500);
     playAudio(true);
     D.raf = requestAnimationFrame(tick);
+    dockInto(ctx.slot ? ctx.slot() : null);
     return true;
+  }
+  /* the player lives inside the profile's Song module; only when that module is not on the page does it float at the corner */
+  function dockInto(slot) {
+    const el = D.el; if (!el) return;
+    if (slot) { el.classList.add('inl'); el.classList.remove('min'); if (el.parentNode !== slot) slot.appendChild(el); }
+    else { el.classList.remove('inl'); if (el.parentNode !== document.body) document.body.appendChild(el); }
   }
   function setAccent(c) { if (D.el) D.el.style.setProperty('--acc', c || '#00c47d'); }
   function show(on) { if (D.el) D.el.classList.toggle('on', !!on); }
 
   window.smlProfileMusic = {
-    CH, LABEL, DEFAULT_REACT, mount, unmount, toggle, read, frequency, setAccent, show,
+    CH, LABEL, DEFAULT_REACT, mount, unmount, dockInto, toggle, read, frequency, setAccent, show,
     isPlaying: () => D.playing, active: () => !!D.el, mode: () => E.mode
   };
 })();

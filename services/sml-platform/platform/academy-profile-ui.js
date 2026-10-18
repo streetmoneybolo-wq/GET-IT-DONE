@@ -179,7 +179,7 @@
     const M = window.smlProfileMusic; if (!M) return;
     const d = S.data, song = d && d.settings.song;
     if (!S.open || !d || !playable(song)) { M.unmount(); return; }
-    M.mount(Object.assign({}, song, { rev: S.upRev || 0 }), { userId: d.userId, token: token(), accent: (d.settings.theme && d.settings.theme.accent) || '#00c47d', onState: (on) => { const box = view.querySelector('.pv-song'); if (box) box.classList.toggle('playing', on); }, onError: toast });
+    M.mount(Object.assign({}, song, { rev: S.upRev || 0 }), { userId: d.userId, token: token(), accent: (d.settings.theme && d.settings.theme.accent) || '#00c47d', onState: (on) => { const box = view.querySelector('.pv-song'); if (box) box.classList.toggle('playing', on); }, onError: toast, slot: () => view.querySelector('.pv-slot') });
   }
   function stopAudio() { const M = window.smlProfileMusic; if (M) M.unmount(); }
 
@@ -203,13 +203,14 @@
     h += sec('paper', 'Paper trading account', d.paper ? '<div class="pv-kv"><div><span>ACCOUNT</span><b>' + money(d.paper.equity) + '</b></div><div><span>P&amp;L</span><b class="' + (d.paper.pnl >= 0 ? 'up' : 'dn') + '">' + money(d.paper.pnl) + '</b></div><div><span>RETURN</span><b class="' + (d.paper.returnPct >= 0 ? 'up' : 'dn') + '">' + pct(d.paper.returnPct) + '</b></div><div><span>LEADERBOARD</span><b>' + (d.paper.rank ? '#' + d.paper.rank + ' <small style="color:#7f95a1;font-size:.6rem">of ' + d.paper.of + '</small>' : 'unranked') + '</b></div></div><p class="pv-note">Simulated paper account. Not real money.</p>' : '<p class="pv-empty">No paper trades yet.</p>', s.flags.showPaper === false);
     const song = s.song;
     const canPlay = playable(song), MU = window.smlProfileMusic;
-    h += sec('song', 'Song', song ? '<div class="pv-song' + (MU && MU.isPlaying() ? ' playing' : '') + '"><div class="disc"></div><div style="min-width:0;flex:1"><div class="ttl">' + esc(song.title || 'Profile song') + '</div><div class="sub">' + esc('Plays in the Academy music player') + '</div>' + (canPlay ? '<div class="pv-bars">' + '<i></i>'.repeat(14) + '</div>' : '') + '</div>' + (canPlay ? '<button type="button" class="pv-btn acc" data-pv="play">▶ / ❚❚</button>' : '') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add one song in Customize.' : 'No song yet.') + '</p>', !song && !d.own);
+    h += sec('song', 'Song', song ? '<div class="pv-song' + (MU && MU.isPlaying() ? ' playing' : '') + '"><div class="disc"></div><div style="min-width:0;flex:1"><div class="ttl">' + esc(song.title || 'Profile song') + '</div><div class="sub">' + esc('Plays in the Academy music player') + '</div>' + (canPlay ? '<div class="pv-bars">' + '<i></i>'.repeat(14) + '</div>' : '') + '</div></div>' + (canPlay ? '<div class="pv-slot"></div>' : '') : '<p class="pv-empty">' + (d.own ? 'Add one song in Customize.' : 'No song yet.') + '</p>', !song && !d.own);
     const socials = s.socials || [];
     h += sec('social', 'Links', socials.length ? '<div class="pv-links">' + socials.map((x) => '<button type="button" class="pv-link" data-pv="open" data-url="' + esc(x.url) + '">' + (x.card && x.card.image ? '<img alt="" loading="lazy" src="/academy-activity/profiles/link-image?u=' + encodeURIComponent(x.card.image) + '&t=' + encodeURIComponent(token()) + '">' : '<div class="ph">' + esc(SOCIAL_ICON[x.kind] || '↗') + '</div>') + '<span class="t">' + esc(x.title || (x.card && x.card.title) || x.kind) + '<small>' + esc((x.card && x.card.site) || x.kind) + '</small></span></button>').join('') + '</div>' : '<p class="pv-empty">' + (d.own ? 'Add your social links in Customize.' : 'No links yet.') + '</p>', s.flags.showSocials === false || (!socials.length && !d.own));
     const posts = d.posts || [];
     h += sec('feed', 'Posts in the Academy chat', posts.length ? '<div class="pv-feed">' + posts.map((p) => '<div class="pv-post"><div class="m"><i>' + esc(ROOMS[p.channel] || p.channel) + '</i><span>' + esc(ago(p.createdAt)) + '</span>' + (p.reply ? '<span>reply</span>' : '') + (p.score ? '<span>▲ ' + p.score + '</span>' : '') + '</div><p>' + esc(p.body) + '</p></div>').join('') + '</div>' : '<p class="pv-empty">No posts yet.</p>', s.flags.showFeed === false);
     h += '</div>';
     view.innerHTML = h;
+    if (window.smlProfileMusic && window.smlProfileMusic.active()) window.smlProfileMusic.dockInto(view.querySelector('.pv-slot'));
     view.style.background = '';
     view.classList.add('open');
     startFx((Array.isArray(t.fxs) && t.fxs.length ? t.fxs : [fx]).filter((x) => x && x !== 'none'));
