@@ -32,6 +32,9 @@ const { academyQuoteStatisticsScript } = require('./academy-quote-statistics');
 const { createAcademyProgress } = require('./academy-progress');
 const { createOrderFlowService } = require('./academy-order-flow-service');
 const { createOrderFlowStore } = require('./academy-order-flow-store');
+const { createDepthStore } = require('./academy-depth-store');
+const { createDepthRecorder, parseSymbols: parseDepthSymbols } = require('./academy-depth-recorder');
+const { replayDepth, dayBoundsNewYork } = require('./academy-depth-replay');
 const { createMassiveStream } = require('./academy-massive-stream');
 const { createSireFeed } = require('./academy-sire-feed');
 const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSymbol: cleanBrokerSymbol } = require('./academy-brokers');
@@ -3120,6 +3123,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Level 2 reading (pulling & stacking, absorption, bid/ask flip) for the MEM ALGO panel. Read-only, public like the chart, never cached. */
+    /* Owner research endpoints for the full-depth recordings: what has been recorded, and a replay of one symbol's day through the
+       Level 2 reader at ten levels and at the full book. */
+    if (request.method === 'GET' && (path === '/academy-activity/depth/status' || path === '/academy-activity/depth/replay')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (!OWNER_IDS.includes(String(session.userId))) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      try {
+        if (path === '/academy-activity/depth/status') {
+          sendJson(response, 200, { ok: true, recorder: academyDepthRecorder ? academyDepthRecorder.status() : { running: false, disabled: true }, stored: await depthStore.status() });
+          return;
+        }
+        const symbol = String(params.get('symbol') || 'SPY').toUpperCase(), date = String(params.get('date') || ''), end = String(params.get('end') || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (end && !/^\d{4}-\d{2}-\d{2}$/.test(end))) { sendJson(response, 400, { ok: false, error: 'date_required' }); return; }
+        const { fromMs, toMs } = dayBoundsNewYork(date, end || undefined);
+        sendJson(response, 200, { ok: true, symbol, date, end: end || date, ...(await replayDepth(depthStore.read(symbol, fromMs, toMs))) });
+      } catch (error) {
+        sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' });
+      }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/orderflow') {
       if (!academyOrderFlow) { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
       const params = new URL(request.url || '/', 'http://localhost').searchParams;
@@ -4043,6 +4069,17 @@ async function main() {
   const academyProgress = createAcademyProgress({ pool: database.pool, guildId: config.academyGuildId });
   const orderFlowStore = createOrderFlowStore({ pool: database.pool });
   const academyOrderFlow = process.env.ACADEMY_ORDERFLOW === 'off' ? null : createOrderFlowService({ origin: REDDIT_HUB_ORIGIN, store: orderFlowStore, logger: log, fetchImpl: (u, o) => dataHealth.guardedFetch('wordpress-orderflow', u, o) });
+  /* Research desk: the full order book (up to 60 levels a side) for SPY and QQQ, recorded to academy_depth_snapshots during market hours so the
+     Level 2 signals can be replayed and measured. ACADEMY_DEPTH_RECORDER=off disables it; see academy-depth-recorder.js for the other settings. */
+  const depthStore = createDepthStore({ pool: database.pool });
+  const academyDepthRecorder = process.env.ACADEMY_DEPTH_RECORDER === 'off' ? null : createDepthRecorder({
+    origin: REDDIT_HUB_ORIGIN, store: depthStore, logger: log, isMarketOpen,
+    symbols: parseDepthSymbols(process.env.ACADEMY_DEPTH_RECORD_SYMBOLS),
+    pollMs: Math.max(1000, Math.min(60_000, Number(process.env.ACADEMY_DEPTH_RECORD_POLL_MS) || 2500)),
+    levels: Math.max(10, Math.min(60, Number(process.env.ACADEMY_DEPTH_RECORD_LEVELS) || 60)),
+    retentionDays: Math.max(1, Math.min(365, Number(process.env.ACADEMY_DEPTH_RETENTION_DAYS) || 30)),
+    fetchImpl: (u, o) => dataHealth.guardedFetch('wordpress-depth', u, o)
+  });
   const alertTokens = [['alerts', config.alertsBotToken], ['connect', config.discordConnectBotToken], ['discord', config.discordBotToken], ['academy', config.academyBotToken]].filter(([, t]) => t).map(([label, token]) => ({ label, token }));
   const academyMassive = process.env.ACADEMY_MASSIVE_STREAM === 'off' ? null : createMassiveStream({ apiKey: config.massiveApiKey, logger: log });
   /* The Indicator Engine screener sweeps the scanner's symbols (ACADEMY_SCREENER_SYMBOLS, default 40) every ten minutes, reading each from the same cached candles the chart uses. */
@@ -4678,6 +4715,7 @@ async function main() {
     shuttingDown = true;
     log('info', 'shutdown_started', { signal });
     if (academyOrderFlow) academyOrderFlow.stop();
+    if (academyDepthRecorder) academyDepthRecorder.stop();
     if (academyAlerts) academyAlerts.stop();
     if (academyAlertSources) academyAlertSources.stop();
     if (academyMassive) academyMassive.stop();
@@ -4699,6 +4737,7 @@ async function main() {
     if (academyOrderFlow) {
       academyOrderFlow.start();
     }
+    if (academyDepthRecorder) academyDepthRecorder.start();
     if (academyAlerts) academyAlerts.start();
     if (academyAlertSources) academyAlertSources.start();
     if (academyMassive) academyMassive.start();
