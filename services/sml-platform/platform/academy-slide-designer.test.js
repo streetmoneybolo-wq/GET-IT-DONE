@@ -207,3 +207,32 @@ test('a Claude deck is paid for once: stored by lesson text, then served with no
   const fresh = createAcademySlideDesigner({ lessons: [edited], store });
   assert.equal((await fresh.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'member' })).design.provider, 'academy');
 });
+
+test('a designed slide carries a drawable scene: Claude scenes are kept and trimmed, built-in decks make their own, the knowledge check has none', async () => {
+  const { cleanScene, SCENE_GUIDE } = require('./academy-slide-designer');
+  assert.match(SCENE_GUIDE, /chart = values are a price path/);
+  const slides = partsFor(lesson).map((text, index) => ({
+    heading: 'S' + index, visual: 'V', callout: 'C', visualKind: index === 3 ? 'question' : 'risk',
+    scene: { title: 'Risk bar', labels: ['Entry', 'Stop', 'Target'], values: [100, 98, 106], steps: [], note: 'Example numbers' }
+  }));
+  let body = null;
+  const designer = createAcademySlideDesigner({ apiKey: 'k', lessons: [lesson], fetchImpl: async (url, options) => { body = JSON.parse(options.body); return responseFor(slides); } });
+  const { design } = await designer.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'm' });
+  assert.match(body.system, /scene the Academy draws/);
+  assert.deepEqual(body.output_config.format.schema.properties.slides.items.required, ['heading', 'visual', 'callout', 'visualKind', 'scene']);
+  assert.deepEqual(design.slides[0].scene, { title: 'Risk bar', labels: ['Entry', 'Stop', 'Target'], values: [100, 98, 106], steps: [], note: 'Example numbers' });
+  assert.equal(design.slides[3].scene, undefined, 'the knowledge check keeps no scene');
+  // an oversized or odd scene is trimmed, never refused; an empty one is dropped
+  const trimmed = cleanScene({ title: 'x'.repeat(90), labels: Array(12).fill('long label '.repeat(8)), values: [1, 'nope', 2, null, 3, 4, 5, 6, 7, 8, 9], steps: ['a'.repeat(200)], note: 7 });
+  assert.equal(trimmed.title.length, 60); assert.equal(trimmed.labels.length, 8); assert.equal(trimmed.labels[0].length, 40);
+  assert.deepEqual(trimmed.values, [1, 2, 3, 4, 5, 6, 7, 8]); assert.equal(trimmed.steps[0].length, 90); assert.equal(trimmed.note, '');
+  assert.equal(cleanScene({ labels: ['', ''], values: [], steps: [] }), null);
+  assert.equal(cleanScene('nope'), null);
+  // built-in decks: the overview is a flow of the lesson's ideas, each step draws from its own words and numbers
+  const local = designLocally({ ...lesson, steps: ['Risk 1 to make 3: entry 100, stop 98, target 106.', 'A completed trade records agreement.'] });
+  assert.equal(local.slides[0].visualKind, 'flow'); assert.equal(local.slides[0].scene.steps.length, 2);
+  assert.deepEqual(local.slides[1].scene.values, [100, 98, 106], 'named levels win over the bare numbers');
+  assert.deepEqual(local.slides[1].scene.labels, ['Entry', 'Stop', 'Target']);
+  assert.ok(local.slides[1].scene.steps.length >= 1);
+  assert.equal(local.slides[local.slides.length - 1].scene, undefined);
+});

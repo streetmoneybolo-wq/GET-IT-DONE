@@ -168,7 +168,9 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     const whiteboardAt = html.indexOf(whiteboardScript);
     assert.ok(curriculumAt > 0, 'curriculum client is served verbatim');
     assert.equal(whiteboardAt, curriculumAt + curriculumScript.length, 'whiteboard renderer follows the curriculum client verbatim');
-    assert.equal(html.indexOf(academyVisualLabScript()), whiteboardAt + whiteboardScript.length, 'visual lab follows the whiteboard renderer');
+    const sceneScript = require('./academy-scene-visuals').academySceneVisualsScript();
+    assert.equal(html.indexOf(sceneScript), whiteboardAt + whiteboardScript.length, 'scene renderer follows the whiteboard renderer');
+    assert.equal(html.indexOf(academyVisualLabScript()), whiteboardAt + whiteboardScript.length + sceneScript.length, 'visual lab follows the scene renderer');
     assert.doesNotMatch(html, /ORIGINAL ACADEMY VISUAL|cartoon-put|\$45 STRIKE/);
     assert.match(html, /win\.addEventListener\('sml-academy-slide-sync', onSync\)/);
     assert.match(html, /win\.addEventListener\('sml-academy-slide-progress', onProgress\)/);
@@ -310,7 +312,7 @@ test('Academy Activity serves the read-only live chart host for Discord', async 
     assert.equal(parsed.modules, 1, 'the Discord SDK bootstrap is the only module script');
     // Whole page and each injected Academy script, any letter case.
     assert.doesNotMatch(html, PAGE_BANNED);
-    for (const script of [curriculumScript, whiteboardScript, academyVisualLabScript()]) assert.doesNotMatch(script, PAGE_BANNED);
+    for (const script of [curriculumScript, whiteboardScript, require('./academy-scene-visuals').academySceneVisualsScript(), academyVisualLabScript()]) assert.doesNotMatch(script, PAGE_BANNED);
   });
 });
 
@@ -1169,7 +1171,7 @@ test('a lesson shows its written text once: no duplicate slide visual or filler 
   const { academyActivityHtml } = require('./server');
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
   assert.match(html, /\.academy-live-deck \.academy-slide-visual:not\(:has\(svg\)\)\{display:none\}/);
-  assert.match(html, /\.academy-live-deck:not\(:has\(\.wb-svg\)\) \.academy-slide-callout\{display:none\}/);
+  assert.match(html, /\.academy-live-deck:not\(:has\(\.wb-svg,\.sc-svg\)\) \.academy-slide-callout\{display:none\}/);
   assert.match(html, /body\.academy-lesson-open #mem-algo-panel/);
 });
 

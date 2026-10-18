@@ -29,17 +29,59 @@ const DESIGN_SCHEMA = Object.freeze({
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['heading', 'visual', 'callout', 'visualKind'],
+        required: ['heading', 'visual', 'callout', 'visualKind', 'scene'],
         properties: {
           heading: { type: 'string' },
           visual: { type: 'string' },
           callout: { type: 'string' },
-          visualKind: { type: 'string', enum: VISUAL_KINDS }
+          visualKind: { type: 'string', enum: VISUAL_KINDS },
+          /* what the Academy draws for the slide (academy-scene-visuals.js): short labels, the numbers behind them,
+           * ordered steps and one note; each visualKind reads them its own way (see SCENE_GUIDE) */
+          scene: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['title', 'labels', 'values', 'steps', 'note'],
+            properties: {
+              title: { type: 'string' },
+              labels: { type: 'array', items: { type: 'string' } },
+              values: { type: 'array', items: { type: 'number' } },
+              steps: { type: 'array', items: { type: 'string' } },
+              note: { type: 'string' }
+            }
+          }
         }
       }
     }
   }
 });
+
+/* How each visualKind reads its scene. Sent to Claude word for word and mirrored by the renderer. */
+const SCENE_GUIDE = 'Each slide also carries a scene the Academy draws as an interactive diagram: title (short caption), labels (short strings, max 8, max 40 chars), values (numbers, max 8), steps (short sentences, max 6, max 90 chars), note (one line, max 120 chars; say "Example numbers" when the numbers are illustrative). Per visualKind: '
+  + 'chart = values are a price path in order (4-8 points), labels annotate points by index (empty string for none); '
+  + 'candles = values are closing prices in order (5-8), labels annotate candles by index; '
+  + 'auction = values are prices in the book and labels say "Bid" or "Ask" (or a short tag) for each, include the spread; '
+  + 'tape = steps are time and sales prints like "10:01 BUY 500 @ 20.02" (4-6), values are the sizes; '
+  + 'risk = values are [entry, stop, target] (or [risk, reward] units), labels name them; '
+  + 'formula = labels are the equation tokens in order (terms and operators like "=", "+", "-", "x", "/"), values are the worked numbers for each term in order; '
+  + 'comparison = labels are the two column headers, steps alternate left item, right item, left, right (4-8); '
+  + 'timeline = labels are the events in order (3-6), values optional positions; '
+  + 'checklist = steps are the items to tick (3-6); '
+  + 'flow = steps are the stages in order (3-6); '
+  + 'options = values are [strike, premium], note says call or put; '
+  + 'question = empty scene. Use the lesson\'s own numbers when it has them; otherwise small round illustrative numbers that teach the point, never presented as real market data.';
+
+const SCENE_LIMITS = Object.freeze({ title: 60, labels: 8, label: 40, values: 8, steps: 6, step: 90, note: 120 });
+/* A scene is cleaned, never refused: a slide with an odd scene still gets its deck, with the scene trimmed to what the renderer draws. */
+function cleanScene(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const labels = (Array.isArray(raw.labels) ? raw.labels : []).map((v) => str(v, SCENE_LIMITS.label)).slice(0, SCENE_LIMITS.labels);
+  const values = (Array.isArray(raw.values) ? raw.values : []).filter((v) => typeof v === 'number' && Number.isFinite(v)).slice(0, SCENE_LIMITS.values);
+  const steps = (Array.isArray(raw.steps) ? raw.steps : []).map((v) => str(v, SCENE_LIMITS.step)).filter(Boolean).slice(0, SCENE_LIMITS.steps);
+  const title = str(raw.title, SCENE_LIMITS.title), note = str(raw.note, SCENE_LIMITS.note);
+  if (!labels.some(Boolean) && !values.length && !steps.length) return null;
+  return Object.freeze({ title, labels: Object.freeze(labels), values: Object.freeze(values), steps: Object.freeze(steps), note });
+}
 
 /* One slide per narration part. The parts come from the same shared builder
  * the voice and the Activity client use (academy/lesson-parts.js). */
@@ -90,13 +132,46 @@ function calloutFrom(step) {
   const strong = list.find((x) => /\b(never|always|that is why|this is why|the rule|remember|the point|which is why|only)\b/i.test(x));
   return clip(strong || list[list.length - 1] || step, 220);
 }
+/* The numbers a step mentions ("$95", "9%", "1,000 shares"), as the renderer's labels and values. */
+function numbersIn(text) {
+  const found = [];
+  for (const m of String(text || '').matchAll(/(\$?)(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?(%?)/g)) {
+    const value = Number((m[2] + (m[3] || '')).replace(/,/g, ''));
+    if (!Number.isFinite(value)) continue;
+    found.push({ label: m[0], value });
+    if (found.length === 8) break;
+  }
+  return found;
+}
+/* The scene a built-in slide draws: the step's own sentences as the ordered items, its numbers as the labelled values,
+ * and for a chart or candles with no numbers an illustrative path that leans the way the words do. */
+function sceneFor(kind, text, title) {
+  const list = sentences(text).map((x) => clip(x, SCENE_LIMITS.step)).slice(0, SCENE_LIMITS.steps);
+  const nums = numbersIn(text);
+  const scene = { title: clip(title || '', SCENE_LIMITS.title), labels: nums.map((n) => n.label), values: nums.map((n) => n.value), steps: list, note: '' };
+  if ((kind === 'chart' || kind === 'candles') && nums.length < 2) { scene.values = []; scene.labels = []; scene.note = 'Example path, not market data'; }
+  if (kind === 'risk') {
+    /* "entry 100, stop 98, target 106" names its levels; two bare numbers are risk and reward; anything else is the 1:3 example */
+    const named = ['entry', 'stop', 'target'].map((w) => { const m = new RegExp(w + '[^\\d$]{0,16}\\$?(\\d[\\d,]*(?:\\.\\d+)?)', 'i').exec(text); return m ? Number(m[1].replace(/,/g, '')) : null; });
+    if (named.every((v) => Number.isFinite(v))) { scene.values = named; scene.labels = ['Entry', 'Stop', 'Target']; }
+    else if (nums.length === 2) { scene.labels = ['Entry', 'Stop', 'Target']; }
+    else { scene.values = [1, 3]; scene.labels = ['Entry', 'Stop', 'Target']; scene.note = 'Example numbers'; }
+  }
+  if (kind === 'options' && nums.length < 2) { scene.values = [100, 5]; scene.labels = []; scene.note = 'Example call: strike 100, premium 5'; }
+  if (kind === 'comparison') scene.labels = ['The idea', 'In practice'];
+  if (kind === 'timeline') { scene.labels = list.map((x) => clip(x, SCENE_LIMITS.label)); scene.values = []; }
+  if (kind === 'formula' && nums.length < 2) { scene.labels = list.slice(0, 1).map((x) => clip(x, SCENE_LIMITS.label)); }
+  return scene;
+}
 function designLocally(lesson) {
   const { parts, exampleIndex, example } = lessonPartsInfo(lesson);
   const last = parts.length - 1;
   let step = 0;
   const slides = parts.map((part, index) => {
     if (index === 0) {
-      return { heading: clip(lesson.title, 100), visual: clip(lesson.description || part, 700), callout: clip(lesson.level ? lesson.level + ' lesson · ' + (lesson.duration || 'a few minutes') : 'Lesson overview', 220), visualKind: kindFor(lesson.title + ' ' + (lesson.description || ''), 'chart') };
+      const kind = kindFor(lesson.title + ' ' + (lesson.description || ''), 'chart');
+      const outline = (lesson.steps || []).slice(0, SCENE_LIMITS.steps).map((x, i) => clip(headingFrom(x, i + 1), SCENE_LIMITS.step));
+      return { heading: clip(lesson.title, 100), visual: clip(lesson.description || part, 700), callout: clip(lesson.level ? lesson.level + ' lesson · ' + (lesson.duration || 'a few minutes') : 'Lesson overview', 220), visualKind: 'flow', scene: { title: 'What this lesson covers', labels: [], values: [], steps: outline.length ? outline : [clip(lesson.title, SCENE_LIMITS.step)], note: kind === 'flow' ? '' : '' } };
     }
     if (index === exampleIndex && example) {
       return { heading: clip(example.title || 'The simple version', 100), visual: clip((example.say || []).join(' ') || part, 700), callout: 'A worked example with made-up numbers, so the idea is clear before the real market is.', visualKind: kindFor((example.title || '') + ' ' + (example.say || []).join(' '), 'flow') };
@@ -105,7 +180,8 @@ function designLocally(lesson) {
       return { heading: 'Knowledge check', visual: clip(lesson.question.prompt, 700), callout: 'Pick the best answer. The explanation follows whichever you choose.', visualKind: 'question' };
     }
     step += 1;
-    return { heading: headingFrom(part, step), visual: clip(part, 700), callout: calloutFrom(part), visualKind: kindFor(part, 'chart') };
+    const kind = kindFor(part, 'chart');
+    return { heading: headingFrom(part, step), visual: clip(part, 700), callout: calloutFrom(part), visualKind: kind, scene: sceneFor(kind, part, headingFrom(part, step)) };
   });
   return Object.freeze({ provider: 'academy', model: 'built-in', slides: validateDesign({ slides }, parts.length) });
 }
@@ -124,12 +200,15 @@ function validateDesign(value, expectedSlides) {
         !validText(slide.callout, 220) || !VISUAL_KINDS.includes(slide.visualKind)) {
       throw Object.assign(new Error('Claude returned an invalid slide'), { code: 'invalid_design' });
     }
-    return {
+    const out = {
       heading: slide.heading.trim(),
       visual: slide.visual.trim(),
       callout: slide.callout.trim(),
       visualKind: slide.visualKind
     };
+    const scene = slide.visualKind === 'question' ? null : cleanScene(slide.scene);
+    if (scene) out.scene = scene;
+    return Object.freeze(out);
   });
   return Object.freeze(slides);
 }
@@ -191,8 +270,8 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
       workedExample: example ? { partIndex: exampleIndex, title: example.title, say: example.say } : null,
       simulation: lesson.simulation
     };
-    const system = 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use the simplest accurate explanation first. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent prices, market events, performance claims, guarantees, or financial advice. Do not change the lesson facts or answer the knowledge check.';
-    const jsonOnly = ' Reply with one JSON object and nothing else, shaped as {"slides":[{"heading":string,"visual":string,"callout":string,"visualKind":string}]} where visualKind is one of ' + JSON.stringify(VISUAL_KINDS) + '.';
+    const system = 'You are the visual lesson designer for Making Easy Money Academy. Convert only the supplied verified curriculum into a concise, professional 16:9 teaching deck. Return exactly one slide per narration part, in the same order. Use the simplest accurate explanation first. Every slide teaches with a picture: pick the visualKind that makes the sentence visible (a price path, candles, the order book, the tape, a risk bar, a worked formula, two columns, a timeline, a checklist, a flow, an option payoff) and fill its scene so a learner can see the idea without reading. Describe an original hand-drawn cartoon or diagram that the Academy renderer can build; never imitate, trace, or reproduce another creator’s frames or branding. Use only concrete examples present in the source. Never invent market events, performance claims, guarantees, or financial advice; illustrative numbers are allowed only inside a scene and must be marked in its note. Do not change the lesson facts or answer the knowledge check. ' + SCENE_GUIDE;
+    const jsonOnly = ' Reply with one JSON object and nothing else, shaped as {"slides":[{"heading":string,"visual":string,"callout":string,"visualKind":string,"scene":{"title":string,"labels":string[],"values":number[],"steps":string[],"note":string}}]} where visualKind is one of ' + JSON.stringify(VISUAL_KINDS) + '.';
     async function call(useModel, structured) {
       const body = {
         model: useModel,
@@ -290,4 +369,4 @@ function createAcademySlideDesigner({ apiKey = '', model = DEFAULT_MODEL, lesson
   return { configured, stored, getLessonDesign, designLocally };
 }
 
-module.exports = { createAcademySlideDesigner, designLocally, partsFor, validateDesign, DESIGN_SCHEMA, MAX_CACHE_ITEMS };
+module.exports = { createAcademySlideDesigner, designLocally, partsFor, validateDesign, cleanScene, sceneFor, DESIGN_SCHEMA, SCENE_GUIDE, MAX_CACHE_ITEMS };
