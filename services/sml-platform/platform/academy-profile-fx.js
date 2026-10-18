@@ -17,6 +17,23 @@
   const NEON = ['#ff2d95', '#2de2ff', '#b44dff', '#ffd23d', '#3dff8a'];
   const RAINBOW = ['#ff5a5a', '#ff9a3a', '#ffd23d', '#3dff8a', '#3ac8ff', '#b44dff'];
   const CAT = [
+    /* lighting: real light that moves to the song (beams with haze, sweeping fixtures, flares, flicker) */
+    ['volumetric-rays', 'Volumetric rays', 'Lighting', 'shafts', null, { ox: 0.12, n: 9, c: ['#fff0c0'], ch: 'vocal', layer: 'front' }],
+    ['moonbeam', 'Moonbeam', 'Lighting', 'shafts', null, { ox: 0.88, n: 6, spread: 0.8, c: ['#b8ccff'], ch: 'vocal', also: ['lunar-glow'], layer: 'front' }],
+    ['searchlights', 'Searchlights', 'Lighting', 'searchlights', null, { c: ['#fff4d0'], ch: 'bass', layer: 'front' }],
+    ['stage-wash', 'Stage wash', 'Lighting', 'stagewash', null, { c: ['#ff2d95', '#2de2ff', '#ffd23d', '#b44dff'], ch: 'kick', layer: 'front' }],
+    ['disco-ball', 'Disco ball', 'Lighting', 'discoball', null, { c: ['#ff2d95', '#2de2ff', '#ffd23d', '#b44dff', '#ffffff'], ch: 'kick', layer: 'front' }],
+    ['laser-show', 'Laser show', 'Lighting', 'lasers', null, { c: ['#3dff8a', '#ff2d95', '#2de2ff'], ch: 'hats', layer: 'front' }],
+    ['strobe', 'Strobe', 'Lighting', 'strobe', null, { c: ['#ffffff'], ch: 'kick', layer: 'front' }],
+    ['lens-flare', 'Lens flare', 'Lighting', 'lensflare', null, { c: ['#ffd890'], ch: 'vocal', layer: 'front' }],
+    ['fireplace-glow', 'Fireplace glow', 'Lighting', 'firelight', null, { c: ['#ff8a2a'], ch: 'bass', layer: 'front' }],
+    ['candle-flicker', 'Candle flicker', 'Lighting', 'firelight', null, { c: ['#ffb050'], small: 1, ch: 'vocal', layer: 'front' }],
+    ['neon-flicker', 'Neon flicker', 'Lighting', 'neonflicker', null, { c: ['#ff2d95', '#2de2ff'], ch: 'snare', layer: 'front' }],
+    ['police-lights', 'Police lights', 'Lighting', 'police', null, { c: ['#ff2a2a', '#2a5aff'], ch: 'kick', layer: 'front' }],
+    ['water-caustics', 'Water caustics', 'Lighting', 'caustics', null, { c: ['#bfefff'], ch: 'bass', layer: 'front' }],
+    ['light-leak', 'Film light leak', 'Lighting', 'lightleak', null, { c: ['#ff7a3a', '#ff4a8a', '#ffc04a'], ch: 'bass', layer: 'front' }],
+    ['headlights', 'Headlights', 'Lighting', 'headlights', null, { c: ['#fff6d0'], ch: 'bass', layer: 'front' }],
+    ['sunset-glow', 'Sunset glow', 'Lighting', 'sunset', null, { c: ['#ff7a3a', '#ffb050'], ch: 'vocal', layer: 'front' }],
     /* weather */
     ['rain', 'Rain', 'Weather', 'rain', null, { n: 150, c: ['#a9d4ff'], ch: 'hats', layer: 'front' }],
     ['heavy-rain', 'Heavy rain', 'Weather', 'rain', null, { n: 280, c: ['#8fc0f0'], ch: 'bass', v: 1.7, layer: 'front' }],
@@ -475,6 +492,110 @@
         for (let x = F.w; x >= 0; x -= 14) { const y = base + bh + Math.sin(x * 0.004 + F.t * 0.5 + ph + 0.7) * amp * 1.1; ctx.lineTo(x, y); }
         ctx.closePath(); const g = ctx.createLinearGradient(0, base - amp, 0, base + bh + amp); g.addColorStop(0, col + '00'); g.addColorStop(0.45, col + '55'); g.addColorStop(1, col + '00'); ctx.fillStyle = g; ctx.globalAlpha = 0.65 + F.v * 0.35; ctx.fill();
       }
+      ctx.restore();
+    },
+    shafts(inst, ctx, F) {
+      const o = inst.e.o, left = (o.ox === undefined ? 0.15 : o.ox) < 0.5, ox = F.w * (o.ox === undefined ? 0.15 : o.ox), oy = -F.h * 0.1, n = o.n || 8, col = hex6(inst.c[0]), len = Math.hypot(F.w, F.h) * 1.35, base = left ? 1.0 : Math.PI - 1.0;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < n; i++) {
+        const a = base + (i - (n - 1) / 2) * 0.1 * (o.spread || 1) * (left ? 1 : -1) + Math.sin(F.t * 0.18 + i * 1.3) * 0.035, wd = 0.026 + (i % 3) * 0.02, g = ctx.createLinearGradient(ox, oy, ox + Math.cos(a) * len, oy + Math.sin(a) * len);
+        g.addColorStop(0, col + 'dd'); g.addColorStop(0.55, col + '44'); g.addColorStop(1, col + '00'); ctx.fillStyle = g; ctx.globalAlpha = (0.06 + (i % 2) * 0.03) * (1 + F.v * 1.3) * (0.8 + 0.2 * Math.sin(F.t * 0.7 + i));
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(a - wd) * len, oy + Math.sin(a - wd) * len); ctx.lineTo(ox + Math.cos(a + wd) * len, oy + Math.sin(a + wd) * len); ctx.closePath(); ctx.fill();
+      }
+      const R = Math.min(F.w, F.h) * (0.5 + F.v * 0.15); ctx.globalAlpha = 0.5; ctx.drawImage(glow(col), ox - R, oy - R, R * 2, R * 2); ctx.restore();
+    },
+    searchlights(inst, ctx, F) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const col = hex6(inst.c[0]), len = F.h * 1.5;
+      for (let i = 0; i < 3; i++) {
+        const bx = F.w * (0.2 + i * 0.3), a = -Math.PI / 2 + Math.sin(F.t * (0.45 + i * 0.12) * (1 + F.v * 0.8) + i * 2.1) * 0.62, wd = 0.045 + F.v * 0.03, g = ctx.createLinearGradient(bx, F.h, bx + Math.cos(a) * len, F.h + Math.sin(a) * len);
+        g.addColorStop(0, col + 'ee'); g.addColorStop(0.6, col + '30'); g.addColorStop(1, col + '00'); ctx.fillStyle = g; ctx.globalAlpha = 0.2 + F.v * 0.25;
+        ctx.beginPath(); ctx.moveTo(bx, F.h); ctx.lineTo(bx + Math.cos(a - wd) * len, F.h + Math.sin(a - wd) * len); ctx.lineTo(bx + Math.cos(a + wd) * len, F.h + Math.sin(a + wd) * len); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 0.55; ctx.drawImage(glow(col), bx - 60, F.h - 40, 120, 80);
+      }
+      ctx.restore();
+    },
+    stagewash(inst, ctx, F) {
+      inst.bc = (inst.bc || 0) + (F.beat ? 1 : 0); ctx.save(); ctx.globalCompositeOperation = 'lighter'; const len = F.h * 1.25;
+      for (let i = 0; i < 4; i++) {
+        const ox = F.w * (0.14 + i * 0.24), a = Math.PI / 2 + Math.sin(F.t * 0.7 + i * 1.4) * 0.55 * (1 + F.v * 0.5), col = hex6(inst.c[(i + inst.bc) % inst.c.length]), wd = 0.1, g = ctx.createLinearGradient(ox, 0, ox + Math.cos(a) * len, Math.sin(a) * len);
+        g.addColorStop(0, col + 'dd'); g.addColorStop(0.7, col + '38'); g.addColorStop(1, col + '00'); ctx.fillStyle = g; ctx.globalAlpha = 0.24 + F.v * 0.3;
+        ctx.beginPath(); ctx.moveTo(ox, -6); ctx.lineTo(ox + Math.cos(a - wd) * len, Math.sin(a - wd) * len); ctx.lineTo(ox + Math.cos(a + wd) * len, Math.sin(a + wd) * len); ctx.closePath(); ctx.fill();
+        const fx = ox + Math.cos(a) * (F.h / Math.sin(a)); ctx.globalAlpha = 0.5 + F.v * 0.3; ctx.drawImage(glow(col), fx - F.w * 0.12, F.h - F.h * 0.06, F.w * 0.24, F.h * 0.12); ctx.globalAlpha = 0.9; ctx.drawImage(glow('#ffffff'), ox - 14, -10, 28, 28);
+      }
+      ctx.restore();
+    },
+    discoball(inst, ctx, F) {
+      const r = Math.min(F.w, F.h) * 0.085 * (1 + F.v * 0.07), cx = F.w / 2, cy = F.h * 0.11; ctx.save();
+      ctx.strokeStyle = 'rgba(200,200,210,.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, cy - r); ctx.stroke();
+      const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.1, cx, cy, r); g.addColorStop(0, '#f4f4fa'); g.addColorStop(0.5, '#8a8a96'); g.addColorStop(1, '#2a2a34'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
+      for (let k = 0; k < 70; k++) { const lat = Math.asin(((k * 0.6180339) % 1) * 2 - 1), lon = k * 2.399963 + F.t * 0.8, nz = Math.cos(lat) * Math.cos(lon); if (nz < 0.05) continue; const x = cx + Math.cos(lat) * Math.sin(lon) * r, y = cy + Math.sin(lat) * r, b = 0.35 + 0.65 * Math.abs(Math.sin(F.t * 2 + k)); ctx.globalAlpha = b * nz; ctx.fillStyle = '#ffffff'; ctx.fillRect(x - r * 0.05, y - r * 0.05, r * 0.1, r * 0.1); }
+      ctx.globalCompositeOperation = 'lighter'; const n = F.mobile ? 22 : 38;
+      for (let i = 0; i < n; i++) { const lon = i * 0.37 + F.t * 0.35, lat = (i % 6) / 6, x = F.w / 2 + Math.sin(lon) * F.w * 0.56, y = F.h * 0.16 + lat * F.h * 0.78 + Math.sin(F.t * 0.6 + i) * 10, s = (16 + (i % 4) * 5) * (1 + F.v * 1.1); ctx.globalAlpha = (0.35 + 0.4 * Math.abs(Math.cos(lon))) * (0.7 + F.v * 0.5); ctx.drawImage(glow(hex6(inst.c[i % inst.c.length])), x - s, y - s, s * 2, s * 2); }
+      ctx.restore();
+    },
+    lasers(inst, ctx, F) {
+      inst.bc = (inst.bc || 0) + (F.beat ? 1 : 0); ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; const len = Math.hypot(F.w, F.h) * 1.2;
+      for (const side of [0.18, 0.82]) for (let i = 0; i < 7; i++) {
+        const a = Math.PI / 2 + (i - 3) * 0.2 + Math.sin(F.t * (0.7 + i * 0.08) + inst.bc * 0.4) * 0.35, col = inst.c[(i + inst.bc) % inst.c.length], ox = F.w * side;
+        ctx.strokeStyle = col; ctx.globalAlpha = 0.16 + F.v * 0.2; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox + Math.cos(a) * len, Math.sin(a) * len); ctx.stroke();
+        ctx.globalAlpha = 0.6 + F.v * 0.4; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox + Math.cos(a) * len, Math.sin(a) * len); ctx.stroke();
+      }
+      ctx.restore();
+    },
+    strobe(inst, ctx, F) {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      inst.cool = (inst.cool || 0) - F.dt; if (F.beat && inst.cool <= 0) { inst.fl = 0.22; inst.cool = 0.4; }
+      if ((inst.fl || 0) > 0.01) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = inst.fl; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, F.w, F.h); ctx.restore(); inst.fl *= Math.pow(0.0008, F.dt); }
+    },
+    lensflare(inst, ctx, F) {
+      const sx = F.w * (0.8 + 0.07 * Math.sin(F.t * 0.12)), sy = F.h * (0.12 + 0.03 * Math.sin(F.t * 0.17)), R = Math.min(F.w, F.h) * (0.32 + F.v * 0.1), col = hex6(inst.c[0]); ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.85; ctx.drawImage(glow(col), sx - R, sy - R, R * 2, R * 2); ctx.globalAlpha = 1; ctx.drawImage(glow('#ffffff'), sx - R * 0.25, sy - R * 0.25, R * 0.5, R * 0.5);
+      const sg = ctx.createLinearGradient(sx - F.w * 0.5, sy, sx + F.w * 0.5, sy); sg.addColorStop(0, col + '00'); sg.addColorStop(0.5, col + 'bb'); sg.addColorStop(1, col + '00'); ctx.fillStyle = sg; ctx.globalAlpha = 0.45 + F.v * 0.3; ctx.fillRect(sx - F.w * 0.5, sy - 2.5, F.w, 5);
+      const cx = F.w / 2, cy = F.h / 2, hues = ['#ff9a5a', '#5aff9a', '#5a9aff', '#ff5ad0', '#ffe05a'];
+      for (let k = 0; k < 5; k++) { const t = 0.35 + k * 0.28, x = sx + (cx - sx) * t * 1.6, y = sy + (cy - sy) * t * 1.6, rr = (18 + k * 14) * (1 + F.v * 0.3); ctx.globalAlpha = 0.2; ctx.strokeStyle = hues[k]; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.stroke(); ctx.globalAlpha = 0.07; ctx.fillStyle = hues[k]; ctx.fill(); }
+      ctx.restore();
+    },
+    firelight(inst, ctx, F) {
+      const small = inst.e.o.small, fl = 0.72 + 0.28 * (Math.sin(F.t * 13) * 0.5 + Math.sin(F.t * 7.3 + 1) * 0.3 + Math.sin(F.t * 23.1) * 0.2) + F.v * 0.45, cx = F.w * (small ? 0.1 : 0.5) + Math.sin(F.t * 3.1) * F.w * 0.012, cy = F.h * 1.04, R = F.h * (small ? 0.55 : 0.95) * (0.9 + F.v * 0.15), col = hex6(inst.c[0]);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; let g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R); g.addColorStop(0, col + 'aa'); g.addColorStop(0.45, col + '33'); g.addColorStop(1, col + '00'); ctx.globalAlpha = clamp(0.5 * fl, 0, 0.85); ctx.fillStyle = g; ctx.fillRect(0, 0, F.w, F.h);
+      g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.4); g.addColorStop(0, '#ffe8a0cc'); g.addColorStop(1, '#ffe8a000'); ctx.globalAlpha = clamp(0.4 * fl, 0, 0.7); ctx.fillStyle = g; ctx.fillRect(0, 0, F.w, F.h); ctx.restore();
+    },
+    neonflicker(inst, ctx, F) {
+      inst.ft = (inst.ft || 0) - F.dt; if (inst.ft <= 0 && Math.random() < 0.02) inst.ft = rnd(0.08, 0.25); const dim = inst.ft > 0 ? (Math.random() < 0.5 ? 0.25 : 0.7) : 1;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const hh = F.h * 0.3;
+      let g = ctx.createLinearGradient(0, 0, 0, hh); g.addColorStop(0, hex6(inst.c[0]) + 'aa'); g.addColorStop(1, hex6(inst.c[0]) + '00'); ctx.fillStyle = g; ctx.globalAlpha = clamp((0.32 + F.v * 0.4) * dim, 0, 0.8); ctx.fillRect(0, 0, F.w, hh);
+      g = ctx.createLinearGradient(0, F.h, 0, F.h - hh); g.addColorStop(0, hex6(inst.c[1] || inst.c[0]) + 'aa'); g.addColorStop(1, hex6(inst.c[1] || inst.c[0]) + '00'); ctx.fillStyle = g; ctx.globalAlpha = clamp((0.32 + F.v * 0.4) * dim, 0, 0.8); ctx.fillRect(0, F.h - hh, F.w, hh);
+      ctx.restore();
+    },
+    police(inst, ctx, F) {
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const ph = Math.sin(F.t * 7 * (1 + F.v * 0.2)), ctxA = ctx; ctxA.save(); ctxA.globalCompositeOperation = 'lighter';
+      for (const side of [0, 1]) { const on = side ? clamp(-ph, 0, 1) : clamp(ph, 0, 1), col = hex6(inst.c[side]), x0 = side ? F.w : 0, g = ctxA.createLinearGradient(x0, 0, side ? F.w * 0.45 : F.w * 0.55, 0); g.addColorStop(0, col + 'cc'); g.addColorStop(1, col + '00'); ctxA.fillStyle = g; ctxA.globalAlpha = on * (0.3 + F.v * 0.25); ctxA.fillRect(0, 0, F.w, F.h); }
+      ctxA.restore();
+    },
+    caustics(inst, ctx, F) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = hex6(inst.c[0]); ctx.lineWidth = 3; const n = F.mobile ? 16 : 26, amp = 1 + F.v * 1.4;
+      for (let i = 0; i < n; i++) { ctx.globalAlpha = 0.05 + F.v * 0.04; ctx.beginPath(); for (let x = 0; x <= F.w; x += 16) { const y = F.h * (i / n) * 1.1 + Math.sin(x * 0.012 + F.t * 0.9 + i) * 18 * amp + Math.sin(x * 0.027 - F.t * 1.2 + i * 2) * 10 * amp; if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y); } ctx.stroke(); }
+      for (let j = 0; j < n * 0.8; j++) { ctx.globalAlpha = 0.045 + F.v * 0.04; ctx.beginPath(); for (let y = 0; y <= F.h; y += 16) { const x = F.w * (j / (n * 0.8)) * 1.1 + Math.sin(y * 0.013 - F.t * 0.8 + j) * 20 * amp + Math.sin(y * 0.03 + F.t * 1.1 + j * 2) * 9 * amp; if (y) ctx.lineTo(x, y); else ctx.moveTo(x, y); } ctx.stroke(); }
+      ctx.restore();
+    },
+    lightleak(inst, ctx, F) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const R = F.h * 0.75 * (1 + F.v * 0.25), spots = [[0.05, 0.25 + Math.sin(F.t * 0.2) * 0.1], [0.95, 0.8 + Math.sin(F.t * 0.17) * 0.08], [0.5 + Math.sin(F.t * 0.13) * 0.15, -0.1]];
+      for (let i = 0; i < 3; i++) { const x = F.w * spots[i][0], y = F.h * spots[i][1], c = hex6(inst.c[i % inst.c.length]), g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, c + 'cc'); g.addColorStop(0.5, c + '44'); g.addColorStop(1, c + '00'); ctx.globalAlpha = 0.28 + F.v * 0.25; ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2); }
+      ctx.restore();
+    },
+    headlights(inst, ctx, F) {
+      inst.wait = (inst.wait === undefined ? 1 : inst.wait) - F.dt; if (inst.wait <= 0 && !inst.car) { inst.car = { x: F.w + 120, y: F.h * rnd(0.74, 0.88), sp: rnd(280, 430) }; inst.wait = rnd(5, 11); }
+      const car = inst.car; if (!car) return; car.x -= car.sp * F.dt * (1 + F.v * 0.8); if (car.x < -F.w * 0.7) { inst.car = null; return; }
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const len = F.w * 0.7;
+      for (const dy of [-16, 16]) { const g = ctx.createLinearGradient(car.x, car.y + dy, car.x - len, car.y + dy * 2.2); g.addColorStop(0, '#fff6d0cc'); g.addColorStop(1, '#fff6d000'); ctx.fillStyle = g; ctx.globalAlpha = 0.34 + F.v * 0.2; ctx.beginPath(); ctx.moveTo(car.x, car.y + dy); ctx.lineTo(car.x - len, car.y + dy * 2.2 - 90); ctx.lineTo(car.x - len, car.y + dy * 2.2 + 90); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 0.9; ctx.drawImage(glow('#fff6d0'), car.x - 38, car.y + dy - 38, 76, 76); }
+      ctx.restore();
+    },
+    sunset(inst, ctx, F) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const c0 = hex6(inst.c[0]), c1 = hex6(inst.c[1] || inst.c[0]);
+      let g = ctx.createLinearGradient(0, F.h, 0, F.h * 0.4); g.addColorStop(0, c0 + 'bb'); g.addColorStop(0.5, c1 + '44'); g.addColorStop(1, c1 + '00'); ctx.globalAlpha = 0.55 + F.v * 0.25; ctx.fillStyle = g; ctx.fillRect(0, F.h * 0.4, F.w, F.h * 0.6);
+      const r = F.h * 0.16 * (1 + F.v * 0.08), cx = F.w * 0.5, cy = F.h * 1.0; ctx.globalAlpha = 0.9; ctx.drawImage(glow(c1), cx - r * 3, cy - r * 3, r * 6, r * 6); ctx.fillStyle = '#fff0c0'; ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, TAU); ctx.fill();
+      ctx.globalAlpha = 0.12; ctx.fillStyle = c1; for (let k = 0; k < 5; k++) ctx.fillRect(0, F.h * (0.62 + k * 0.07) + Math.sin(F.t * 0.4 + k) * 4, F.w, 2 + k);
       ctx.restore();
     },
     beams(inst, ctx, F) {

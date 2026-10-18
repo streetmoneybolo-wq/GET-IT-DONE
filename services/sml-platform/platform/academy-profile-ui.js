@@ -237,7 +237,7 @@
     return '<h6>MODULE TEXTURES · ' + (picked.length ? picked.length + ' picked' : 'plain (or your desk dresses them)') + '</h6><p class="pv-note">Pick as many as you like (up to 6). They are handed out across your modules in turn, so a page can be legal pad, leather, marble and brushed steel all at once.</p><div class="pd-grid">' + grid + '</div>'
       + '<h6>EACH MODULE: ITS OWN TEXTURE AND WHAT IT MOVES TO</h6>' + mods + '<p class="pv-note">Every module listens to one part of the song: the kick punches, the bass lifts, vocals glow, the snare flashes, hi-hats shimmer. Leave it on auto, or point a module at the part you want.</p>'
       + '<h6>DESK</h6>' + opts('desk', D.desks, t.desk || 'none') + '<p class="pv-note">The surface your modules sit on. With a desk and a plain texture, the desk dresses each module itself: paper desk = a different sheet of paper each, NYSE floor = screens and instruments.</p>'
-      + '<h6>LIGHTING · ' + (lights.length ? lights.length + ' on' : 'off') + '</h6><div class="pv-opts">' + light + '</div><p class="pv-note">Turn on several lights at once.</p>'
+      + '<h6>LIGHT ON MY MODULES · ' + (lights.length ? lights.length + ' on' : 'off') + '</h6><div class="pv-opts">' + light + '</div><p class="pv-note">Turn on several lights at once.</p>'
       + '<h6>3D GALLERY (UP TO 12 PICTURES)</h6>' + rows + (orbit.length < 12 ? '<div class="pd-orow"><div class="r"><input type="url" data-orbnew="image" placeholder="Picture link (https://…)"></div><div class="r"><input type="url" data-orbnew="href" placeholder="Link it goes to (https://, optional)"></div><div class="r"><input type="text" data-orbnew="title" maxlength="60" placeholder="Caption (optional)"><button type="button" class="pv-btn acc" data-pv="addorb">Add</button></div></div>' : '')
       + '<p class="pv-note">Pictures orbit in 3D on your page; drag to spin. A picture with a link opens that page when tapped, so you can point people to your own pages.</p>';
   }
@@ -247,10 +247,10 @@
     if (!FXE) return '';
     const groups = []; FXE.list.forEach((e) => { let g = groups.find((x) => x.name === e.group); if (!g) { g = { name: e.group, items: [] }; groups.push(g); } g.items.push(e); });
     const label = (id) => (FXE.list.find((e) => e.id === id) || { label: id }).label;
-    return '<h6>REACTIVE SCREEN EFFECTS · ' + (on.length ? on.map(label).join(', ') : 'none') + '</h6>'
+    return '<h6>BACKGROUND EFFECTS &amp; REALISTIC LIGHTING · ' + (on.length ? on.map(label).join(', ') : 'none') + '</h6>'
       + '<div class="pv-row"><input type="search" data-fxq placeholder="Search effects: rain, coins, bulls, fireworks"><button type="button" class="pv-btn" data-fx="none">Clear</button></div>'
       + '<div class="pv-fxbox">' + groups.map((g) => '<div class="pv-fxg" data-fxg><b>' + esc(g.name) + '</b><div class="pv-opts">' + g.items.map((e) => '<button type="button" data-fx="' + e.id + '" data-fxn="' + esc(e.label.toLowerCase()) + '" class="' + (on.indexOf(e.id) >= 0 ? 'on' : '') + '">' + esc(e.label) + '</button>').join('') + '</div></div>').join('') + '</div>'
-      + '<p class="pv-note">Flying objects, weather and light that react to your song: the kick, bass, vocals, snare and hi-hats make them swell, speed up, burst and flash. Stack up to 5.</p>';
+      + '<p class="pv-note">Realistic lighting (rays, searchlights, disco ball, lasers, lens flare, fireplace glow), flying objects and weather that react to your song: the kick, bass, vocals, snare and hi-hats make them swell, speed up, burst and flash. Stack up to 5.</p>';
   }
   function paintEditor() {
     const d = S.draft, t = d.theme, lay = (S.data && S.data.layouts) || [];
