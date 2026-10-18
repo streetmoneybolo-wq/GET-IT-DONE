@@ -245,12 +245,15 @@
   function fxControls(t) {
     const FXE = window.smlProfileFx, on = t.fxs || [];
     if (!FXE) return '';
-    const groups = []; FXE.list.forEach((e) => { let g = groups.find((x) => x.name === e.group); if (!g) { g = { name: e.group, items: [] }; groups.push(g); } g.items.push(e); });
+    const chip = (e) => '<button type="button" data-fx="' + e.id + '" data-fxn="' + esc(e.label.toLowerCase()) + '" class="' + (on.indexOf(e.id) >= 0 ? 'on' : '') + '">' + esc(e.label) + '</button>';
+    const light = FXE.list.filter((e) => e.group === 'Lighting'), rest = FXE.list.filter((e) => e.group !== 'Lighting'), groups = [];
+    rest.forEach((e) => { let g = groups.find((x) => x.name === e.group); if (!g) { g = { name: e.group, items: [] }; groups.push(g); } g.items.push(e); });
     const label = (id) => (FXE.list.find((e) => e.id === id) || { label: id }).label;
-    return '<h6>BACKGROUND EFFECTS &amp; REALISTIC LIGHTING · ' + (on.length ? on.map(label).join(', ') : 'none') + '</h6>'
-      + '<div class="pv-row"><input type="search" data-fxq placeholder="Search effects: rain, coins, bulls, fireworks"><button type="button" class="pv-btn" data-fx="none">Clear</button></div>'
-      + '<div class="pv-fxbox">' + groups.map((g) => '<div class="pv-fxg" data-fxg><b>' + esc(g.name) + '</b><div class="pv-opts">' + g.items.map((e) => '<button type="button" data-fx="' + e.id + '" data-fxn="' + esc(e.label.toLowerCase()) + '" class="' + (on.indexOf(e.id) >= 0 ? 'on' : '') + '">' + esc(e.label) + '</button>').join('') + '</div></div>').join('') + '</div>'
-      + '<p class="pv-note">Realistic lighting (rays, searchlights, disco ball, lasers, lens flare, fireplace glow), flying objects and weather that react to your song: the kick, bass, vocals, snare and hi-hats make them swell, speed up, burst and flash. Stack up to 5.</p>';
+    return '<h6>LIGHTING · STROBE, SEARCHLIGHTS, LASERS, DISCO BALL</h6><div class="pv-opts">' + light.map(chip).join('') + '</div><p class="pv-note">Realistic background lighting that moves to your song. Strobe flashes on the kick (a gentle, limited flash, and it stays off if your device asks for reduced motion).</p>'
+      + '<h6>BACKGROUND EFFECTS · ' + (on.length ? on.map(label).join(', ') : 'none picked') + '</h6>'
+      + '<div class="pv-row"><input type="search" data-fxq placeholder="Search effects: rain, coins, bulls, fireworks"><button type="button" class="pv-btn" data-fx="none">Clear all</button></div>'
+      + '<div class="pv-fxbox">' + groups.map((g) => '<div class="pv-fxg" data-fxg><b>' + esc(g.name) + '</b><div class="pv-opts">' + g.items.map(chip).join('') + '</div></div>').join('') + '</div>'
+      + '<p class="pv-note">Flying objects and weather that react to your song: the kick, bass, vocals, snare and hi-hats make them swell, speed up, burst and flash. Lighting and effects share the same 5 slots.</p>';
   }
   function paintEditor() {
     const d = S.draft, t = d.theme, lay = (S.data && S.data.layouts) || [];
