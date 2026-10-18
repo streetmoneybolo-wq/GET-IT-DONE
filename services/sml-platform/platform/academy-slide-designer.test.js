@@ -266,3 +266,16 @@ test('the designer asks for room enough for a deck with scenes and names a token
   await assert.rejects(() => cut.getLessonDesign({ moduleId: 1, lessonId: 1, userId: 'a' }), /ran out of room \(max_tokens\)/);
   assert.equal(body.max_tokens, 8000);
 });
+
+
+test('a slide that runs long is clipped and an odd kind is read as a chart; a slide with no words is refused', () => {
+  const { validateDesign } = require('./academy-slide-designer');
+  const ok = validateDesign({ slides: [
+    { heading: 'H'.repeat(160), visual: 'v '.repeat(600), callout: 'c'.repeat(400), visualKind: 'hologram', scene: { labels: ['a'], values: [], steps: [], note: '' } },
+    { heading: 'Q', visual: 'V', callout: '', visualKind: 'nope' }
+  ] }, 2);
+  assert.ok(ok[0].heading.length <= 100 && ok[0].visual.length <= 700 && ok[0].callout.length <= 220);
+  assert.equal(ok[0].visualKind, 'chart'); assert.ok(ok[0].scene);
+  assert.equal(ok[1].visualKind, 'question'); assert.equal(ok[1].callout, 'Pick the best answer.');
+  assert.throws(() => validateDesign({ slides: [{ heading: '', visual: 'V', callout: 'C', visualKind: 'chart' }] }, 1), /invalid slide/);
+});

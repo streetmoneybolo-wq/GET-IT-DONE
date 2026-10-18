@@ -203,17 +203,16 @@ function validateDesign(value, expectedSlides) {
   if (!value || typeof value !== 'object' || !Array.isArray(value.slides) || value.slides.length !== expectedSlides) {
     throw Object.assign(new Error('Claude returned the wrong slide count'), { code: 'invalid_design' });
   }
-  const slides = value.slides.map((slide) => {
-    if (!slide || typeof slide !== 'object' ||
-        !validText(slide.heading, 100) || !validText(slide.visual, 700) ||
-        !validText(slide.callout, 220) || !VISUAL_KINDS.includes(slide.visualKind)) {
+  const slides = value.slides.map((slide, index) => {
+    /* a slide that runs long is clipped and an unknown kind is read as a chart; only a slide with no heading or no visual at all is refused */
+    if (!slide || typeof slide !== 'object' || !validText(slide.heading, Infinity) || !validText(slide.visual, Infinity)) {
       throw Object.assign(new Error('Claude returned an invalid slide'), { code: 'invalid_design' });
     }
     const out = {
-      heading: slide.heading.trim(),
-      visual: slide.visual.trim(),
-      callout: slide.callout.trim(),
-      visualKind: slide.visualKind
+      heading: clip(slide.heading.trim(), 100),
+      visual: clip(slide.visual.trim(), 700),
+      callout: clip(validText(slide.callout, Infinity) ? slide.callout.trim() : (index === expectedSlides - 1 ? 'Pick the best answer.' : 'Keep this one in mind.'), 220),
+      visualKind: VISUAL_KINDS.includes(slide.visualKind) ? slide.visualKind : (index === expectedSlides - 1 ? 'question' : 'chart')
     };
     const scene = slide.visualKind === 'question' ? null : cleanScene(slide.scene);
     if (scene) out.scene = scene;
