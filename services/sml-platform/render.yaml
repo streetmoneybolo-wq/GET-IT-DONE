@@ -141,7 +141,7 @@ services:
       # into academy_media after start-up; then set back to "0". Baked media is served for good, with
       # or without the provider keys; keep the voice id set.
       - key: SML_ACADEMY_BAKE
-        value: "0"
+        sync: false
       - key: SML_ACADEMY_GUILD_ID
         sync: false
       - key: SML_ACADEMY_MANAGER_ROLE_ID
