@@ -19,6 +19,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   const listeners = new Map(); // SYM -> Set<fn>
   let badQuotes = 0;
   let ws = null, authed = false, stopped = true, retry = 0, reconnectTimer = null, sweepTimer = null, connectedAt = 0, lastMessageAt = 0, failedAuth = false;
+  let maxConnAt = 0, maxConnLoggedAt = 0; // the provider allows one socket: during a deploy overlap the second instance waits instead of knocking every few seconds
   const enabled = Boolean(apiKey && WebSocketImpl);
 
   const send = (obj) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch (_) { /* reconnect handles it */ } };
@@ -112,9 +113,9 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
       if (!m) continue;
       if (m.ev === 'status') {
         if (m.status === 'connected') send({ action: 'auth', params: apiKey });
-        else if (m.status === 'auth_success') { authed = true; failedAuth = false; retry = 0; for (const e of symbols.values()) e.subscribed = false; subscribeAll(); logger('info', 'massive_stream_ready', { symbols: symbols.size }); }
+        else if (m.status === 'auth_success') { authed = true; failedAuth = false; retry = 0; maxConnAt = 0; for (const e of symbols.values()) e.subscribed = false; subscribeAll(); logger('info', 'massive_stream_ready', { symbols: symbols.size }); }
         else if (m.status === 'auth_failed') { failedAuth = true; authed = false; logger('warn', 'massive_stream_auth_failed', { message: String(m.message || '').slice(0, 80) }); }
-        else if (m.status === 'max_connections') { logger('warn', 'massive_stream_max_connections', {}); }
+        else if (m.status === 'max_connections') { maxConnAt = now(); if (now() - maxConnLoggedAt > 60_000) { maxConnLoggedAt = now(); logger('warn', 'massive_stream_max_connections', {}); } }
         continue;
       }
       const sym = String(m.sym || '').toUpperCase(); const e = symbols.get(sym); if (!e) continue;
@@ -154,7 +155,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
   function schedule() {
     if (stopped || reconnectTimer) return;
     retry += 1;
-    const wait = failedAuth ? 60_000 : Math.min(30_000, 500 * 2 ** Math.min(retry, 6));
+    const wait = failedAuth ? 60_000 : (maxConnAt && now() - maxConnAt < 120_000) ? 45_000 : Math.min(30_000, 500 * 2 ** Math.min(retry, 6));
     reconnectTimer = timers.setTimeout(() => { reconnectTimer = null; connect(); }, wait); if (reconnectTimer && reconnectTimer.unref) reconnectTimer.unref();
   }
 

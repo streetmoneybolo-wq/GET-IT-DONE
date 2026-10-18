@@ -4063,7 +4063,19 @@ async function main() {
     snapshotAll: academySharedSnapshot.snapshotAll, snapshotTickers: academySnapshots.snapshotTickers,
     candles: getAcademyCandles,
     tape: academyMassive && academyMassive.status().enabled ? academyMassive : null,
-    optionsChain: academyDataBridge.configured ? async (symbol) => { const r = await academyDataBridge.get('options', symbol); return r && r.ok ? r.data : null; } : null,
+    /* the desk's background sweep: a ticker the provider lists no options for (thin names from the alert channels) is remembered for
+       six hours, so the sweep stops asking the site for it every pass and tripping the site's rate limit for everyone else */
+    optionsChain: academyDataBridge.configured ? (() => {
+      const noChain = new Map(); const NO_CHAIN_MS = 6 * 3_600_000;
+      return async (symbol) => {
+        const key = String(symbol || '').toUpperCase(); const seen = noChain.get(key);
+        if (seen && Date.now() - seen < NO_CHAIN_MS) return null;
+        const r = await academyDataBridge.get('options', symbol);
+        if (r && r.ok) { noChain.delete(key); return r.data; }
+        if (r && /unusable response|no options|not optionable|no contracts/i.test(String(r.detail || ''))) { if (noChain.size >= 500) noChain.delete(noChain.keys().next().value); noChain.set(key, Date.now()); }
+        return null;
+      };
+    })() : null,
     normalizeChain: require('./academy-alert-options').normalizeChain,
     logger: log
   }) : null;
