@@ -32,6 +32,8 @@ const FX = (() => {
 })();
 const FONTS = new Set(['system', 'mono', 'serif', 'display', 'rounded']);
 const IMMERSIVE = new Set(['off', 'subtle', 'balanced', 'immersive']);
+/* module shape: extruded 3D modules with tilt, rings and stacks (default) or flat cards */
+const MODULE_SHAPES = new Set(['3d', 'flat']);
 /* module textures (what every section looks and feels like), desks (the surface or the room the sections sit in), the lighting in the
  * background, the 3D orbs flying around, and the 3D orbit of up to 12 pictures that each link out. The look itself is drawn by
  * the page (academy-profile-desk.js); the server only keeps the member's choice. */
@@ -90,6 +92,7 @@ function cleanSettings(input = {}, prev = {}) {
     if (t.font !== undefined) out.font = FONTS.has(String(t.font)) ? String(t.font) : 'system';
     if (t.immersive !== undefined) out.immersive = IMMERSIVE.has(String(t.immersive)) ? String(t.immersive) : 'balanced';
     if (t.dark !== undefined) out.dark = t.dark !== false;
+    if (t.modules !== undefined) out.modules = MODULE_SHAPES.has(String(t.modules)) ? String(t.modules) : '3d';
     if (t.texture !== undefined) out.texture = TEXTURES.has(String(t.texture)) ? String(t.texture) : 'none';
     if (t.textures !== undefined) { out.textures = pickSet(t.textures, TEXTURES, MAX_TEXTURES, 'none'); out.texture = out.textures[0] || 'none'; }
     else if (t.texture !== undefined) out.textures = out.texture === 'none' ? [] : [out.texture];
@@ -140,7 +143,7 @@ function cleanSettings(input = {}, prev = {}) {
   }
   return s;
 }
-const defaults = () => ({ displayName: '', tagline: '', bio: '', layout: 'classic', theme: { accent: '', accent2: '', fx: 'aurora', font: 'system', immersive: 'balanced', dark: true, texture: 'none', textures: [], desk: 'none', light: 'off', lights: [], fxs: [], moduleTex: {}, moduleReact: {}, orbs: 'off', orbit: [] }, song: null, socials: [], flags: { showPaper: true, showServer: true, showSocials: true, showFeed: true, showFollowers: true } });
+const defaults = () => ({ displayName: '', tagline: '', bio: '', layout: 'classic', theme: { accent: '', accent2: '', fx: 'aurora', font: 'system', immersive: 'balanced', dark: true, modules: '3d', texture: 'none', textures: [], desk: 'none', light: 'off', lights: [], fxs: [], moduleTex: {}, moduleReact: {}, orbs: 'off', orbit: [] }, song: null, socials: [], flags: { showPaper: true, showServer: true, showSocials: true, showFeed: true, showFollowers: true } });
 
 /* Open Graph title + image of a page, for the link card. Only the page's own meta tags are read. */
 function parseOg(html, url) {

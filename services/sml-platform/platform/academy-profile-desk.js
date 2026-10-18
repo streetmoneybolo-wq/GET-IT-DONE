@@ -398,6 +398,18 @@
     + '.pd-film{position:fixed;left:-20%;top:-20%;width:140%;height:140%;pointer-events:none;z-index:6;opacity:.1;mix-blend-mode:overlay;animation:pdfilm .7s steps(6) infinite}'
     + '@keyframes pdfilm{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-3%)}60%{transform:translate(-2%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}'
     + '.pd-desk{filter:blur(.7px) saturate(1.06) contrast(1.04)}.pv-root.pd-tilt{will-change:transform}'
+    /* 3D modules (theme.modules = '3d'): extruded cards that tilt toward the pointer, a ring of links, a stack of posts, a coin, a turntable, a halo */
+    + '.pv-root.pd-3d .pv-sec:not(.orb){transform:perspective(900px) rotateX(var(--tx,0deg)) rotateY(var(--ty,0deg));transition:transform .18s ease-out;box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 0 #0b131b,0 2px 0 #0b131b,0 3px 0 #0a1219,0 4px 0 #0a1219,0 5px 0 #091118,0 6px 0 #091118,0 7px 0 #081017,0 8px 0 #081017,0 24px 44px rgba(0,0,0,.55)}'
+    + '.pv-root.pd-3d .pd-gl{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;opacity:var(--go,0);transition:opacity .25s;background:radial-gradient(circle at var(--gx,50%) var(--gy,30%),rgba(255,255,255,.16),rgba(255,255,255,.04) 30%,transparent 58%)}'
+    + '.pv-root.pd-3d .pv-name{text-shadow:0 1px 0 rgba(0,0,0,.45),0 2px 0 rgba(0,0,0,.35),0 3px 0 rgba(0,0,0,.25),0 8px 14px rgba(0,0,0,.45)}'
+    + '.pv-root.pd-3d .pv-kv>div{box-shadow:0 3px 0 rgba(0,0,0,.35),0 4px 0 rgba(255,255,255,.03),0 12px 18px rgba(0,0,0,.4);transform:translateY(-2px)}.pv-root.pd-3d .pv-kv b{text-shadow:0 1px 0 rgba(0,0,0,.5),0 2px 0 rgba(0,0,0,.3),0 5px 10px rgba(0,0,0,.4)}'
+    + '.pv-root.pd-3d .pv-srv .ic.p3-coin{animation:p3coin 7s linear infinite;box-shadow:0 0 0 2px rgba(255,255,255,.12),0 10px 18px rgba(0,0,0,.5),inset -8px 0 14px rgba(0,0,0,.35)}@keyframes p3coin{0%{transform:perspective(200px) rotateY(0)}50%{transform:perspective(200px) rotateY(180deg)}100%{transform:perspective(200px) rotateY(360deg)}}'
+    + '.pv-root.pd-3d .p3-turn{perspective:260px;flex:none;filter:drop-shadow(0 12px 10px rgba(0,0,0,.55))}.pv-root.pd-3d .p3-turn .disc{transform:rotateX(56deg);animation-name:p3vinyl;background:repeating-radial-gradient(circle,#141414 0 1.5px,#232323 1.5px 3.5px)}.pv-root.pd-3d .p3-turn .disc:after{content:"";position:absolute;inset:34%;border-radius:50%;background:radial-gradient(circle,#05080e 0 18%,var(--acc,#00c47d) 19% 100%)}@keyframes p3vinyl{to{transform:rotateX(56deg) rotate(360deg)}}'
+    + '.pv-root.pd-3d .p3-halo{position:relative;flex:none;perspective:400px}.pv-root.pd-3d .p3-halo:before{content:"";position:absolute;left:50%;top:58%;width:150%;height:150%;margin:-75% 0 0 -75%;border-radius:50%;border:2px solid transparent;background:conic-gradient(from 0deg,var(--acc,#00c47d),transparent 30%,var(--acc2,#6c8cff) 55%,transparent 80%,var(--acc,#00c47d)) border-box;-webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;transform:rotateX(72deg);animation:p3halo 9s linear infinite;pointer-events:none;opacity:.9}.pv-root.pd-3d .p3-halo .pv-ava{position:relative;z-index:1}@keyframes p3halo{to{transform:rotateX(72deg) rotate(360deg)}}'
+    + '.pv-root.pd-3d .pv-links.p3-ring{display:block;position:relative;height:190px;perspective:900px;overflow:hidden;cursor:grab;touch-action:pan-y;-webkit-user-select:none;user-select:none}.pv-root.pd-3d .pv-links.p3-ring.drag{cursor:grabbing}.pv-root.pd-3d .p3-ring .p3-stage{position:absolute;inset:0;transform-style:preserve-3d}.pv-root.pd-3d .p3-ring .pv-link{position:absolute;left:50%;top:50%;width:150px;height:140px;margin:-70px 0 0 -75px;will-change:transform;box-shadow:0 14px 26px rgba(0,0,0,.5)}.pv-root.pd-3d .p3-ring .pv-link img,.pv-root.pd-3d .p3-ring .pv-link .ph{height:84px}'
+    + '.pv-root.pd-3d .pv-feed.p3-stack{display:block;position:relative;column-count:auto;overflow:visible;padding:0 0 6px;perspective:1000px}.pv-root.pd-3d .p3-stack .pv-post{position:absolute;left:0;right:0;top:0;min-width:0;max-width:none;margin:0;transform-origin:50% 0;transition:transform .55s cubic-bezier(.2,.8,.2,1),opacity .55s;box-shadow:0 10px 24px rgba(0,0,0,.45);background:rgba(16,24,36,.96);color:#e6eef2;cursor:pointer}.pv-root.pd-3d .p3-stack .pv-post.p3-hide{opacity:0;pointer-events:none}'
+    + '.pv-root.pd-3d .p3-nav{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px;font:800 .66rem ui-monospace,monospace;color:#9fb6c2;letter-spacing:.06em}.pv-root.pd-3d .p3-nav button{border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(255,255,255,.05);color:#e6eef2;width:26px;height:26px;cursor:pointer;font:800 .9rem system-ui}.pv-root.pd-3d .p3-nav button:hover{border-color:var(--acc,#00c47d)}'
+    + '@media(prefers-reduced-motion:reduce){.pv-root.pd-3d .pv-sec:not(.orb){transform:none!important;transition:none}.pv-root.pd-3d .p3-coin,.pv-root.pd-3d .p3-halo:before,.pv-root.pd-3d .p3-turn .disc{animation:none!important}}'
     + '@media(prefers-reduced-motion:reduce){.pd-film{animation:none}}'
     /* modules that move with the music: each listens to one part of the sound (kick, bass, vocal, snare, hi-hats) */
     + '.pv-sec[data-rx]{will-change:scale,translate,rotate}.pd-rx{inset:-1px;border-radius:inherit;opacity:calc(var(--rx,0) * .9);box-shadow:0 0 calc(10px + var(--rx,0) * 26px) 2px var(--rxc,var(--acc,#00c47d)),inset 0 0 calc(var(--rx,0) * 18px) var(--rxc,var(--acc,#00c47d));z-index:3}'
@@ -881,7 +893,7 @@
   };
 
   /* ---------- the running scene: lighting, orbs, gallery ---------- */
-  const R = { raf: 0, view: null, light: null, root: null, deskEl: null, glares: [], ls: {}, scene: false, mx: 0, my: 0, px: 0, py: 0, cx: -1, cy: -1, onMove: null, moveOn: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false };
+  const R = { raf: 0, view: null, light: null, root: null, deskEl: null, glares: [], ls: {}, scene: false, mx: 0, my: 0, px: 0, py: 0, cx: -1, cy: -1, onMove: null, moveOn: null, orbs: null, orbit: null, mode: 'off', modes: [], mods: [], ch: null, orbMode: 'off', pulse: null, acc: '#00c47d', acc2: '#6c8cff', motes: [], orbList: [], w: 0, h: 0, ang: 0, spin: 0.18, drag: null, resize: null, reduce: false, d3: null, ring: null, stack: null };
   const rnd = (a, b) => a + Math.random() * (b - a);
   function shade(hex, k) {
     const m = /^#([0-9a-f]{6})$/i.exec(String(hex)); if (!m) return '#334455';
@@ -1185,18 +1197,111 @@
     if (R.light) drawLight(R.light.getContext('2d'), R.w, R.h, t, lvl);
     if (R.orbs) drawOrbs(R.orbs.getContext('2d'), R.w, R.h, t, lvl);
     if (R.orbit) { if (!R.drag) R.ang += (R.spin + lvl * 0.5) * 0.017; layOrbit(t); }
+    if (R.d3) tilt3d();
+    if (R.ring) { if (!R.ring.drag) R.ring.ang += (R.ring.spin + lvl * 0.4) * 0.017; layRing(t); }
     R.raf = requestAnimationFrame(frame);
   }
   function size() {
     R.w = innerWidth; R.h = innerHeight;
     for (const c of [R.light, R.orbs]) if (c) { c.width = R.w; c.height = R.h; }
-    if (R.reduce) { const p = { p: 0 }; if (R.light) drawLight(R.light.getContext('2d'), R.w, R.h, 1000, p.p); if (R.orbs) drawOrbs(R.orbs.getContext('2d'), R.w, R.h, 1000, p.p); layOrbit(1000); }
+    if (R.d3) R.d3.rects = null;
+    if (R.stack) layStack();
+    if (R.reduce) { const p = { p: 0 }; if (R.light) drawLight(R.light.getContext('2d'), R.w, R.h, 1000, p.p); if (R.orbs) drawOrbs(R.orbs.getContext('2d'), R.w, R.h, 1000, p.p); layOrbit(1000); layRing(1000); }
   }
   function stop() {
     if (R.raf) cancelAnimationFrame(R.raf); R.raf = 0;
     if (R.resize) window.removeEventListener('resize', R.resize); R.resize = null;
     R.light = R.orbs = R.orbit = null; R.view = null; R.mods = []; R.modes = []; R.ch = null; R.ls = {};
     if (R.onMove && R.moveOn) R.moveOn.removeEventListener('pointermove', R.onMove); R.onMove = null; R.moveOn = null; R.root = R.deskEl = null; R.glares = []; R.scene = false;
+    if (R.stack && R.stack.timer) clearInterval(R.stack.timer); R.stack = null; R.ring = null; R.d3 = null;
+  }
+  /* ---------- 3D modules ---------- */
+  /* every module tilts toward the pointer (up to 7deg), nearer ones more, with a highlight that follows; rects are re-read a few times a second */
+  function tilt3d() {
+    const d = R.d3; if (!d) return;
+    if (!d.rects || (d.tick++ % 20) === 0) d.rects = d.els.map((el) => el.getBoundingClientRect());
+    for (let i = 0; i < d.els.length; i++) {
+      const el = d.els[i], r = d.rects[i]; if (!r || !r.width) continue;
+      let tx = 0, ty = 0, go = 0;
+      if (R.cx >= 0) {
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2, dx = (R.cx - cx) / Math.max(1, r.width), dy = (R.cy - cy) / Math.max(1, r.height);
+        const dist = Math.hypot(R.cx - cx, R.cy - cy), k = Math.max(0, 1 - dist / 620);
+        tx = Math.max(-1, Math.min(1, -dy)) * 7 * k; ty = Math.max(-1, Math.min(1, dx)) * 7 * k; go = k;
+      }
+      el.style.setProperty('--tx', tx.toFixed(2) + 'deg'); el.style.setProperty('--ty', ty.toFixed(2) + 'deg'); el.style.setProperty('--go', go.toFixed(2));
+    }
+  }
+  /* the links ring: cards on a carousel in real perspective, drifting, drag to spin, tap opens */
+  function layRing(t) {
+    const g = R.ring; if (!g || !g.box.isConnected) return;
+    const items = g.items, n = items.length; if (!n) return;
+    const W = g.box.clientWidth || 600, Rad = Math.max(110, Math.min(W * 0.4, 90 + n * 30));
+    for (let i = 0; i < n; i++) {
+      const th = (i / n) * 6.2832 + g.ang, cz = Math.cos(th), sx = Math.sin(th);
+      const x = sx * Rad * 1.3, z = cz * Rad, y = -cz * 10 + Math.sin(t / 1500 + i) * 3;
+      const cv = (R.ch && R.ch[CHN[i % 5]]) || 0, sc = (0.66 + 0.34 * (cz + 1) / 2) * (1 + cv * 0.1);
+      const el = items[i];
+      el.style.transform = 'translate3d(' + f1(x) + 'px,' + f1(y) + 'px,' + f1(z) + 'px) scale(' + f1(sc * 100) / 100 + ')';
+      el.style.opacity = String(f1((0.45 + 0.55 * (cz + 1) / 2) * 100) / 100);
+      el.style.zIndex = String(Math.round(cz * 100 + 100));
+      el.style.filter = cz < 0 ? 'brightness(' + f1((0.6 + 0.4 * (cz + 1)) * 100) / 100 + ')' : 'none';
+    }
+  }
+  function wireRing(box, g) {
+    let last = 0, moved = 0, vel = 0, id = null;
+    box.addEventListener('pointerdown', (e) => { id = e.pointerId; last = e.clientX; moved = 0; vel = 0; g.drag = true; box.classList.add('drag'); try { box.setPointerCapture(e.pointerId); } catch (_) { /* fine */ } });
+    box.addEventListener('pointermove', (e) => { if (!g.drag || e.pointerId !== id) return; const dx = e.clientX - last; last = e.clientX; moved += Math.abs(dx); vel = dx; g.ang += dx * 0.012; if (R.reduce) layRing(1000); });
+    const end = (e) => { if (e.pointerId !== id) return; g.drag = false; id = null; box.classList.remove('drag'); g.spin = Math.max(-0.9, Math.min(0.9, vel * 0.07)) || 0.25; if (Math.abs(g.spin) < 0.12) g.spin = g.spin < 0 ? -0.25 : 0.25; g.moved = moved; };
+    box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+    /* a drag is not a tap: the link does not open when the ring was spun */
+    box.addEventListener('click', (e) => { if (g.moved > 7) { e.stopPropagation(); e.preventDefault(); g.moved = 0; } }, true);
+  }
+  /* the posts stack: the newest in front, the rest receding behind it; tap, the arrows, or time brings the next forward */
+  function layStack() {
+    const st = R.stack; if (!st || !st.box.isConnected) return;
+    const n = st.posts.length; let h = 0;
+    for (let k = 0; k < n; k++) {
+      const el = st.posts[(st.i + k) % n], depth = Math.min(k, 4);
+      el.classList.toggle('p3-hide', k > 3);
+      el.style.transform = 'translate3d(0,' + depth * 11 + 'px,' + -depth * 56 + 'px) scale(' + (1 - depth * 0.045) + ')';
+      el.style.zIndex = String(10 - k);
+      el.style.opacity = k > 3 ? '0' : String(1 - depth * 0.16);
+      if (k === 0) h = el.offsetHeight;
+    }
+    st.box.style.height = (h + 40) + 'px';
+    if (st.count) st.count.textContent = (st.i + 1) + ' / ' + n;
+  }
+  function stackGo(step) { const st = R.stack; if (!st) return; st.i = (st.i + step + st.posts.length) % st.posts.length; st.idle = Date.now(); layStack(); }
+  function apply3d(root, view) {
+    root.classList.add('pd-3d');
+    const els = Array.prototype.filter.call(root.querySelectorAll('.pv-sec'), (el) => !el.classList.contains('orb'));
+    for (const el of els) { const g = document.createElement('i'); g.className = 'pd-d pd-gl'; el.appendChild(g); R.glares.push({ el: g }); }
+    R.d3 = { els: els, rects: null, tick: 0 };
+    const ava = root.querySelector('.pv-ava'); if (ava && ava.parentNode) { const halo = document.createElement('span'); halo.className = 'p3-halo'; ava.parentNode.insertBefore(halo, ava); halo.appendChild(ava); }
+    const ic = root.querySelector('.pv-srv .ic'); if (ic) ic.classList.add('p3-coin');
+    const disc = root.querySelector('.pv-song .disc'); if (disc && disc.parentNode) { const turn = document.createElement('span'); turn.className = 'p3-turn'; disc.parentNode.insertBefore(turn, disc); turn.appendChild(disc); }
+    const links = root.querySelector('.pv-links');
+    if (links && links.children.length >= 3) {
+      const stage = document.createElement('div'); stage.className = 'p3-stage';
+      const items = Array.prototype.slice.call(links.children);
+      for (const it of items) stage.appendChild(it);
+      links.appendChild(stage); links.classList.add('p3-ring');
+      R.ring = { box: links, items: items, ang: 0, spin: 0.25, drag: false, moved: 0 };
+      wireRing(links, R.ring); layRing(1000);
+    }
+    const feed = root.querySelector('.pv-feed');
+    if (feed && feed.children.length >= 2) {
+      const posts = Array.prototype.slice.call(feed.children);
+      feed.classList.add('p3-stack');
+      const nav = document.createElement('div'); nav.className = 'p3-nav';
+      nav.innerHTML = '<button type="button" data-p3="prev" aria-label="Previous post">‹</button><span></span><button type="button" data-p3="next" aria-label="Next post">›</button>';
+      feed.parentNode.insertBefore(nav, feed.nextSibling);
+      R.stack = { box: feed, posts: posts, i: 0, count: nav.querySelector('span'), idle: Date.now(), timer: 0 };
+      nav.addEventListener('click', (e) => { const b = e.target.closest('[data-p3]'); if (b) stackGo(b.dataset.p3 === 'prev' ? -1 : 1); });
+      feed.addEventListener('click', (e) => { if (e.target.closest('.pv-post')) stackGo(1); });
+      if (!R.reduce) R.stack.timer = setInterval(() => { if (R.stack && Date.now() - R.stack.idle > 5500) stackGo(1); }, 6000);
+      layStack(); setTimeout(layStack, 400);
+    }
   }
   function openLink(url) { if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url); else { try { window.open(url, '_blank', 'noopener'); } catch (_) { /* ignore */ } } }
   function wireOrbit(box) {
@@ -1263,8 +1368,11 @@
       const want = key ? (reacts[key] || DEF[key] || '') : '';
       if (M && want && want !== 'off') { el.setAttribute('data-rx', want); const g = document.createElement('i'); g.className = 'pd-d pd-rx'; el.appendChild(g); R.mods.push({ el: el, c: want }); }
     });
+    /* 3D modules unless the member chose flat */
+    const threeD = (t.modules || '3d') !== 'flat';
+    if (threeD) apply3d(root, view);
     /* the scene: light direction, depth, film grain */
-    R.scene = desk !== 'none' || pool.length > 0 || lightList.length > 0 || Object.keys(byModule).length > 0;
+    R.scene = desk !== 'none' || pool.length > 0 || lightList.length > 0 || Object.keys(byModule).length > 0 || threeD;
     if (R.scene) {
       root.style.setProperty('--la', (lightList.length ? LIGHT_ANGLE[lightList[0]] : 150) + 'deg');
       root.classList.add('pd-tilt'); R.root = root;

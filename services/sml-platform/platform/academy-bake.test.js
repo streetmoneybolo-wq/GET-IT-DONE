@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createAcademyBake, MAX_CONSECUTIVE_FAILURES } = require('./academy-bake');
+const { createAcademyBake, MAX_CONSECUTIVE_FAILURES, RATE_LIMIT_WAITS } = require('./academy-bake');
 
 const lessons = Array.from({ length: 6 }, (_, i) => ({ moduleId: 1, lessonId: i + 1, title: 'L' + (i + 1) }));
 const store = { durable: true, stats: async () => ({ voice: { items: 9, bytes: 90 } }) };
@@ -12,7 +12,7 @@ test('the bake visits every lesson once for decks and narration, skipping what t
   const designer = { configured: true, getLessonDesign: async (q) => { seen.design.push(q); return { cached: q.lessonId <= 2, design: {} }; } };
   const voice = { configured: true, getLessonAudio: async (q) => { seen.voice.push(q); return { cached: false, audio: Buffer.alloc(1) }; } };
   const logs = [];
-  const bake = createAcademyBake({ lessons, designer, voice, store, logger: (level, event, data) => logs.push({ level, event, data }) });
+  const bake = createAcademyBake({ lessons, designer, voice, store, logger: (level, event, data) => logs.push({ level, event, data }), wait: async () => {} });
   const report = await bake.run();
   assert.deepEqual(report.design, { done: 4, skipped: 2, failed: 0, stopped: '' });
   assert.deepEqual(report.voice, { done: 6, skipped: 0, failed: 0, stopped: '' });
@@ -27,7 +27,7 @@ test('the bake stops a kind after repeated provider failures instead of paying f
   let calls = 0;
   const designer = { configured: true, getLessonDesign: async () => { calls += 1; return { cached: true, fallback: true, design: {} }; } };
   const voice = { configured: true, getLessonAudio: async () => { const e = new Error('ElevenLabs returned 401'); e.code = 'provider_unavailable'; throw e; } };
-  const bake = createAcademyBake({ lessons, designer, voice, store });
+  const bake = createAcademyBake({ lessons, designer, voice, store, wait: async () => {} });
   const report = await bake.run();
   assert.equal(calls, MAX_CONSECUTIVE_FAILURES);
   assert.equal(report.design.stopped, 'built_in_fallback'); assert.equal(report.design.failed, MAX_CONSECUTIVE_FAILURES);
@@ -42,4 +42,22 @@ test('the bake refuses to spend without a durable store or a configured provider
   assert.equal(noStore.design.stopped, 'no_store'); assert.equal(noStore.voice.stopped, 'no_store');
   const unconfigured = await createAcademyBake({ lessons, designer, voice: { configured: false }, store }).run({ voice: false });
   assert.equal(unconfigured.design.stopped, 'provider_unconfigured'); assert.equal(unconfigured.voice, null);
+});
+
+
+test('a provider rate limit is waited out with backoff and the same lesson retried; it never counts toward the stop', async () => {
+  const waits = [];
+  let calls = 0;
+  const voice = { configured: true, getLessonAudio: async () => { calls += 1; if (calls % 3 !== 0) { const e = new Error('ElevenLabs returned 429'); e.code = 'provider_rate_limited'; throw e; } return { cached: false, audio: Buffer.alloc(1) }; } };
+  const bake = createAcademyBake({ lessons: lessons.slice(0, 3), designer: null, voice, store, wait: async (ms) => { waits.push(ms); } });
+  const report = await bake.run({ design: false });
+  assert.deepEqual({ done: report.voice.done, failed: report.voice.failed, stopped: report.voice.stopped }, { done: 3, failed: 0, stopped: '' });
+  assert.equal(report.voice.waits, 6, 'two waits per lesson');
+  assert.equal(waits.filter((ms) => ms === RATE_LIMIT_WAITS[0]).length, 3);
+  assert.equal(waits.filter((ms) => ms === RATE_LIMIT_WAITS[1]).length, 3);
+  // a lesson that stays rate limited past every wait is one failure, and the run moves on
+  let n = 0;
+  const stuck = { configured: true, getLessonAudio: async () => { n += 1; const e = new Error('429'); e.code = 'provider_rate_limited'; throw e; } };
+  const r2 = await createAcademyBake({ lessons: lessons.slice(0, 1), voice: stuck, store, wait: async () => {} }).run({ design: false });
+  assert.equal(n, 1 + RATE_LIMIT_WAITS.length); assert.equal(r2.voice.failed, 1);
 });

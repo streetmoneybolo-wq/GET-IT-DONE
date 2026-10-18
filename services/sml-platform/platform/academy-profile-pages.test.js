@@ -223,3 +223,18 @@ test('the reactive screen effects: inlined safely, every effect is saveable, and
   const t = cleanSettings({ theme: { fxs: ['rain', 'bitcoin-rain', 'nope', 'fireworks', 'ghosts', 'vortex', 'snow'] } }).theme;
   assert.deepEqual(t.fxs, ['rain', 'bitcoin-rain', 'fireworks', 'ghosts', 'vortex'], 'up to five, unknown ones dropped');
 });
+
+
+test('module shape: 3D by default, flat on request, anything else back to 3D', () => {
+  const { cleanSettings } = require('./academy-profile-pages');
+  const src = require('node:fs').readFileSync(require.resolve('./academy-profile-pages.js'), 'utf8');
+  assert.match(src, /modules: '3d', texture: 'none'/, 'a new profile starts with 3D modules');
+  const flat = cleanSettings({ theme: { modules: 'flat' } }, {});
+  assert.equal(flat.theme.modules, 'flat');
+  assert.equal(cleanSettings({ theme: { modules: 'cube' } }, flat).theme.modules, '3d');
+  assert.equal(cleanSettings({ theme: { accent: '#00c47d' } }, flat).theme.modules, 'flat', 'an untouched choice is kept');
+  const desk = require('node:fs').readFileSync(require.resolve('./academy-profile-desk.js'), 'utf8');
+  for (const bit of ['pd-3d', 'p3-ring', 'p3-stack', 'p3-coin', 'p3-turn', 'p3-halo', 'prefers-reduced-motion']) assert.ok(desk.includes(bit), bit);
+  const ui = require('node:fs').readFileSync(require.resolve('./academy-profile-ui.js'), 'utf8');
+  assert.ok(ui.includes("data-shape") || ui.includes("opts('shape'"), 'the Customize editor offers the module shape');
+});

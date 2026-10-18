@@ -235,7 +235,8 @@
     const orbit = t.orbit || [];
     const rows = orbit.map((o, i) => '<div class="pd-orow"><div class="r"><b>' + (i + 1) + '</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cfe3ea" title="' + esc(o.image) + '">' + esc(o.image) + '</span><button type="button" data-orb-rm="' + i + '">remove</button></div>'
       + '<div class="r"><input type="url" data-orb="href" data-i="' + i + '" placeholder="Link this picture goes to (https://, optional)" value="' + esc(o.href || '') + '"></div><div class="r"><input type="text" data-orb="title" data-i="' + i + '" maxlength="60" placeholder="Caption (optional)" value="' + esc(o.title || '') + '"></div></div>').join('');
-    return '<h6>MODULE TEXTURES · ' + (picked.length ? picked.length + ' picked' : 'plain (or your desk dresses them)') + '</h6><p class="pv-note">Pick as many as you like (up to 6). They are handed out across your modules in turn, so a page can be legal pad, leather, marble and brushed steel all at once.</p><div class="pd-grid">' + grid + '</div>'
+    return '<h6>MODULE SHAPE</h6>' + opts('shape', [{ id: '3d', label: '3D' }, { id: 'flat', label: 'Flat' }], t.modules || '3d') + '<p class="pv-note">3D: every module is an extruded card that tilts toward the pointer with a moving highlight; links spin on a ring, posts are a stack of cards you flip through, the server badge is a coin, the song is a turntable, the avatar sits on a ring of light.</p>'
+      + '<h6>MODULE TEXTURES · ' + (picked.length ? picked.length + ' picked' : 'plain (or your desk dresses them)') + '</h6><p class="pv-note">Pick as many as you like (up to 6). They are handed out across your modules in turn, so a page can be legal pad, leather, marble and brushed steel all at once.</p><div class="pd-grid">' + grid + '</div>'
       + '<h6>EACH MODULE: ITS OWN TEXTURE AND WHAT IT MOVES TO</h6>' + mods + '<p class="pv-note">Every module listens to one part of the song: the kick punches, the bass lifts, vocals glow, the snare flashes, hi-hats shimmer. Leave it on auto, or point a module at the part you want.</p>'
       + '<h6>DESK</h6>' + opts('desk', D.desks, t.desk || 'none') + '<p class="pv-note">The surface your modules sit on. With a desk and a plain texture, the desk dresses each module itself: paper desk = a different sheet of paper each, NYSE floor = screens and instruments.</p>'
       + '<h6>LIGHT ON MY MODULES · ' + (lights.length ? lights.length + ' on' : 'off') + '</h6><div class="pv-opts">' + light + '</div><p class="pv-note">Turn on several lights at once.</p>'
@@ -324,6 +325,7 @@
       if (b.dataset.tex === 'none') d.theme.textures = []; else if (!toggleIn(d.theme.textures, b.dataset.tex, 6)) toast('Up to 6 textures at once. Tap one to remove it first.');
       d.theme.texture = d.theme.textures[0] || 'none'; paintEditor(); preview(); return;
     }
+    if (b.dataset.shape) { d.theme.modules = b.dataset.shape; paintEditor(); preview(); return; }
     if (b.dataset.desk) { d.theme.desk = b.dataset.desk; paintEditor(); preview(); return; }
     if (b.dataset.light) {
       if (b.dataset.light === 'off') d.theme.lights = []; else if (!toggleIn(d.theme.lights, b.dataset.light, 4)) toast('Up to 4 lights at once.');
