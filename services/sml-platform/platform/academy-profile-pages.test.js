@@ -70,8 +70,8 @@ test('link images are served only for images the server found itself; audio only
 
 test('look and feel: texture, desk, light and orbs come from the lists; the 3D gallery keeps up to 12 https pictures with optional https links', () => {
   const { ORBS } = require('./academy-profile-pages');
-  assert.ok(TEXTURES.size >= 73, 'at least 72 textures besides none');
-  assert.ok(DESKS.size >= 32, 'at least 31 desk scenes besides none');
+  assert.ok(TEXTURES.size >= 85, 'at least 84 textures besides none');
+  assert.ok(DESKS.size >= 38, 'at least 37 desk scenes besides none');
   assert.ok(DESKS.has('nyse-floor') && DESKS.has('paper-desk') && LIGHTS.has('desk-lamp') && ORBS.has('many'));
   const t = cleanSettings({ theme: { texture: 'legal-pad', desk: 'nyse-floor', light: 'golden-hour', orbs: 'few' } }).theme;
   assert.deepEqual([t.texture, t.desk, t.light, t.orbs], ['legal-pad', 'nyse-floor', 'golden-hour', 'few']);
@@ -129,7 +129,7 @@ test('the profile desk script is inlined into the Academy page: no backslash, ba
   assert.equal(src.includes('`'), false);
   assert.equal(src.includes('${'), false);
   assert.equal(src.includes('</script'), false);
-  assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 72, 'exactly 72 textures');
+  assert.equal((src.match(/\['[a-z-]+', '[A-Za-z ]+', '#|\['[a-z-]+', '[A-Za-z ]+', 'var/g) || []).length, 84, 'exactly 84 textures');
 });
 
 test('the profile music script is inlined into the Academy page, plays only the Academy\'s own audio, and the page frames nothing from other sites', () => {
