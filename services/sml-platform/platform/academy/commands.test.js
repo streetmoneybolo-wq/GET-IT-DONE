@@ -512,3 +512,18 @@ test('with a pool, hub buy links are minted in process (one handoff row, only it
   assert.deepEqual(fallback.response.data.components, [], 'an unconfigured minter gives the note without a link');
   assert.equal(inserts.length, 1);
 });
+
+test('a launch is answered at once, before any access check: the Entry Point command and the launcher button', async () => {
+  let gateCalls = 0;
+  const academy = createAcademyCommands({ pool: pool(), guildId: GUILD, enabled: true, userInstallEntitled: async () => { gateCalls += 1; await new Promise((r) => setTimeout(r, 50)); return false; } });
+  const entry = { type: 2, user: { id: USER }, authorizing_integration_owners: { 1: USER }, data: { name: 'launch', type: 4 } };
+  assert.equal(academy.canHandle(entry), true, 'the Entry Point command is ours');
+  const t0 = Date.now();
+  assert.deepEqual(await academy.handle(entry), { response: { type: 12 } });
+  const button = { type: 3, guild_id: 'another-guild', member: { user: { id: USER }, roles: [] }, data: { custom_id: 'academy:launch' } };
+  assert.deepEqual(await academy.handle(button), { response: { type: 12 } });
+  assert.ok(Date.now() - t0 < 40, 'no waiting on the gate');
+  assert.equal(gateCalls, 0, 'the gate is not consulted for a launch; the Activity checks access itself');
+  const off = createAcademyCommands({ pool: pool(), guildId: GUILD, enabled: false });
+  assert.deepEqual(await off.handle(entry), { response: { type: 12 } }, 'even a disabled command suite launches: the Activity decides');
+});

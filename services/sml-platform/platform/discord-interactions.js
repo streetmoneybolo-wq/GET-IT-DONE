@@ -78,11 +78,14 @@ function toBodyBuffer(rawBody) {
   return null;
 }
 
+const DEFAULT_REPLY_BUDGET_MS = 2_400;
+
 function createDiscordInteractions(deps = {}) {
   const { config = {}, pool, graph, disputeService, store } = deps;
   const fetchImpl = deps.fetchImpl || globalThis.fetch;
   const sleep = deps.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = deps.now || Date.now;
+  const REPLY_BUDGET_MS = Number(deps.replyBudgetMs) > 0 ? Number(deps.replyBudgetMs) : DEFAULT_REPLY_BUDGET_MS;
 
   const publicKeyValue = deps.publicKey == null ? config.discordConnectPublicKey : deps.publicKey;
   const appIdValue = deps.appId == null ? config.discordConnectAppId : deps.appId;
@@ -119,6 +122,18 @@ function createDiscordInteractions(deps = {}) {
 
   /* 429-aware follow-up sender. The webhook URL embeds the interaction token,
    * so neither the URL nor any error detail is ever logged. */
+  /* After a deferred reply the real answer replaces the "thinking" placeholder (PATCH @original); a follow-up is the fallback. */
+  async function editOriginal(interaction, payload) {
+    if (!appId || typeof fetchImpl !== 'function') return null;
+    const webhookToken = interaction && typeof interaction.token === 'string' ? interaction.token : '';
+    if (!WEBHOOK_TOKEN_RE.test(webhookToken)) return null;
+    const body = JSON.stringify(Object.assign({}, payload, { flags: EPHEMERAL }));
+    try {
+      const res = await fetchImpl(`https://discord.com/api/v10/webhooks/${appId}/${webhookToken}/messages/@original`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(8_000) });
+      if (res && res.ok) return true;
+    } catch (_) { /* fall through to a follow-up */ }
+    return sendFollowUp(interaction, payload);
+  }
   async function sendFollowUp(interaction, payload) {
     if (!appId || typeof fetchImpl !== 'function') return null;
     const webhookToken = interaction && typeof interaction.token === 'string' ? interaction.token : '';
@@ -215,20 +230,38 @@ function createDiscordInteractions(deps = {}) {
       return;
     }
 
-    let result;
-    try {
-      result = academy && typeof academy.canHandle === 'function' && academy.canHandle(interaction)
-        ? await academy.handle(interaction)
-        : interaction.type === 3 && typeof commands.handleComponent === 'function'
-          ? await commands.handleComponent(interaction)
-        : await commands.handleCommand(interaction);
-    } catch (_) {
-      respond(response, 200, {
-        type: 4,
-        data: { content: 'The command could not be completed. Please try again later.', flags: EPHEMERAL }
-      });
+    /* Discord waits three seconds for the first answer and then shows "The application did not respond". The handler gets a
+       budget inside that; a slower one is acknowledged with a deferred ephemeral reply and its real answer edited in when it
+       lands (a launch cannot be deferred, so launches are answered before any slow check and never reach this path). */
+    const FAILED = { type: 4, data: { content: 'The command could not be completed. Please try again later.', flags: EPHEMERAL } };
+    const work = (async () => {
+      try {
+        const result = academy && typeof academy.canHandle === 'function' && academy.canHandle(interaction)
+          ? await academy.handle(interaction)
+          : interaction.type === 3 && typeof commands.handleComponent === 'function'
+            ? await commands.handleComponent(interaction)
+          : await commands.handleCommand(interaction);
+        return { result };
+      } catch (error) { return { error }; }
+    })();
+    let timer = null;
+    const late = new Promise((resolve) => { timer = setTimeout(() => resolve({ late: true }), REPLY_BUDGET_MS); });
+    const first = await Promise.race([work, late]);
+    if (timer) clearTimeout(timer);
+    if (first.late) {
+      respond(response, 200, { type: 5, data: { flags: EPHEMERAL } });
+      work.then(async (done) => {
+        const r = done.result;
+        const payload = done.error || !r || !r.response ? FAILED.data
+          : r.response.type === 12 ? { content: 'The Academy launcher was slow to answer. Press it once more, or open the Academy from the Apps (rocket) button.' }
+          : r.response.type === 4 ? r.response.data : null;
+        if (payload) await editOriginal(interaction, payload);
+        if (r && typeof r.followUp === 'function') { try { const extra = await r.followUp(); if (extra) await sendFollowUp(interaction, extra); } catch (_) { /* the token stays out of logs */ } }
+      }).catch(() => {});
       return;
     }
+    if (first.error) { respond(response, 200, FAILED); return; }
+    const result = first.result;
 
     respond(response, 200, result.response);
 
@@ -243,7 +276,7 @@ function createDiscordInteractions(deps = {}) {
     }
   }
 
-  return { handleRequest, sendFollowUp };
+  return { handleRequest, sendFollowUp, editOriginal };
 }
 
 module.exports = {

@@ -317,3 +317,24 @@ test('an injected commands fake isolates the transport layer', async () => {
   assert.equal(seen.data.name, 'payments');
   assert.equal(response.json().data.content, 'ok');
 });
+
+test('an answer slower than the budget is acknowledged in time and edited in afterwards; a fast one is unchanged', async () => {
+  const slowAcademy = { canHandle: () => true, handle: async () => { await new Promise((r) => setTimeout(r, 120)); return { response: { type: 4, data: { content: 'finally', flags: 64 } } }; } };
+  const { handler, fetched } = build({ deps: { academy: slowAcademy, replyBudgetMs: 30 } });
+  const body = componentInteraction('academy:lesson:start');
+  const response = fakeResponse();
+  const t0 = Date.now();
+  await handler.handleRequest(fakeRequest(body), response, body);
+  assert.ok(Date.now() - t0 < 110, 'the deferred acknowledgement does not wait for the handler');
+  assert.deepEqual(response.json(), { type: 5, data: { flags: 64 } });
+  await new Promise((r) => setTimeout(r, 200));
+  const patch = fetched.calls.find((c) => /\/messages\/@original$/.test(c.url) && c.options.method === 'PATCH');
+  assert.ok(patch, 'the real answer replaces the placeholder');
+  assert.equal(JSON.parse(patch.options.body).content, 'finally');
+  assert.ok(!fetched.calls.some((c) => /follow-up-token-xyz/.test(c.url) && c.options.method === 'POST'), 'no extra follow-up when the edit went through');
+  const fastAcademy = { canHandle: () => true, handle: async () => ({ response: { type: 12 } }) };
+  const quick = build({ deps: { academy: fastAcademy, replyBudgetMs: 30 } });
+  const r2 = fakeResponse();
+  await quick.handler.handleRequest(fakeRequest(body), r2, body);
+  assert.deepEqual(r2.json(), { type: 12 });
+});

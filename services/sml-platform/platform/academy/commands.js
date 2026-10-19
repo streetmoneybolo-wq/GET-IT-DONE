@@ -242,10 +242,14 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
     if (!hubRoleGate || hasAccess(interaction) || freeLessons.isFreeLesson(lesson.moduleId, lesson.lessonId)) return null;
     return unlockResponse(interaction);
   }
+  /* Discord gives an interaction three seconds. A launch (the app's Entry Point command, or a launcher button) is answered at once,
+     before any role, pass or database check: the Activity does its own sign-in and access check the moment it opens. */
+  const isLaunch = (interaction) => (interaction?.type === 2 && Number(interaction?.data?.type) === 4)
+    || (interaction?.type === 3 && [LAUNCH_ID, 'academy:hub:lesson'].includes(String(interaction?.data?.custom_id || '')));
   function canHandle(interaction) {
     const name = String(interaction?.data?.name || '').toLowerCase();
     const customId = String(interaction?.data?.custom_id || '');
-    return (interaction?.type === 2 && ACADEMY_COMMANDS.has(name)) || (interaction?.type === 3 && customId.startsWith('academy:'));
+    return isLaunch(interaction) || (interaction?.type === 2 && ACADEMY_COMMANDS.has(name)) || (interaction?.type === 3 && customId.startsWith('academy:'));
   }
   async function allowed(interaction) {
     if (!enabled) return false;
@@ -299,6 +303,10 @@ function createAcademyCommands({ pool, guildId, monarchRoleId = '', enabled = fa
       footer: { text: 'Educational content · Not financial advice' } };
   }
   async function handle(interaction) {
+    if (isLaunch(interaction)) {
+      if (typeof onMemberSeen === 'function') { try { Promise.resolve(onMemberSeen(userId(interaction))).catch(() => {}); } catch (_) { /* never delays the reply */ } }
+      return { response: LAUNCH_ACTIVITY };
+    }
     if (!(await allowed(interaction))) {
       if (isUserInstall(interaction)) return unlockResponse(interaction,
         'Your personal Academy install is ready. Link it to an active Making Easy Money Academy membership to unlock your private lessons, progress, quizzes, and tools.');
