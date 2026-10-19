@@ -138,8 +138,10 @@ test('the shared trial link unfurls with the banner, a headline and what is insi
   const res = fakeResponse(); await trial.handle(req('/academy-activity/trial'), res, '/academy-activity/trial', new URL('https://academy.example/academy-activity/trial?via=site'));
   assert.equal(res.status, 200);
   assert.match(res.body, /<meta property="og:image" content="https:\/\/academy\.example\/academy-activity\/trial\/banner\.jpg">/);
-  assert.match(res.body, /<meta property="og:title" content="Free 15-Day Trial: the Master Trading Tool for Discord">/);
-  assert.match(res.body, /og:description" content="Level 3 market data\. Dark pool prints\./);
+  assert.match(res.body, /<meta property="og:title" content="See What the Big Money Sees\. Live, Inside Discord\.">/);
+  assert.match(res.body, /og:description" content="Level 3 data\. Dark pool prints\./);
+  const tags = res.body.match(/<meta [^>]*(og|twitter):(title|description)[^>]*>/g).join(' ');
+  assert.doesNotMatch(tags, /MEM ALGO|trial|card/i, 'the preview never names MEM ALGO, the trial or a card');
   assert.match(res.body, /twitter:card" content="summary_large_image"/); assert.match(res.body, /og:url" content="https:\/\/academy\.example\/academy-activity\/trial"/);
   const img = { status: 0, headers: {}, body: null, writeHead(s, h) { img.status = s; img.headers = h; }, end(b) { img.body = b; } };
   await trial.handle(req('/academy-activity/trial/banner.jpg'), img, '/academy-activity/trial/banner.jpg', new URL('https://academy.example/academy-activity/trial/banner.jpg'));

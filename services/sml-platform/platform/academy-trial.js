@@ -111,8 +111,8 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     + (invite ? '<small>Want the community too? <a href="' + esc(invite) + '">Join the ' + esc(appName) + ' Discord server</a> (optional; the Academy works without it).</small>' : '');
   /* the link preview Discord, X and the rest unfurl for the shared trial link: the banner, a headline and what is inside */
   const bannerPath = '/academy-activity/trial/banner.jpg', bannerUrl = origin + bannerPath;
-  const previewTitle = 'Free ' + trialDays + '-Day Trial: the Master Trading Tool for Discord';
-  const previewText = 'Level 3 market data. Dark pool prints. Live order flow, order-book heat maps, a scanner and MEM ALGO, all inside Discord. See where the big money is moving. ' + trialDays + ' days free, no card.';
+  const previewTitle = 'See What the Big Money Sees. Live, Inside Discord.';
+  const previewText = 'Level 3 data. Dark pool prints. Live order flow and heat maps that show where the big players are hiding their size. Pro-level market data, one click away in Discord. Free to open. Most traders never see this.';
   const previewTags = (via) => '<meta name="description" content="' + esc(previewText) + '">'
     + '<meta property="og:type" content="website"><meta property="og:site_name" content="' + esc(appName) + '"><meta property="og:title" content="' + esc(previewTitle) + '">'
     + '<meta property="og:description" content="' + esc(previewText) + '"><meta property="og:url" content="' + esc(link) + '"><meta property="og:image" content="' + esc(bannerUrl) + '">'
