@@ -75,21 +75,29 @@ test('the head carries the title, description, canonical, social tags and NewsAr
   assert.equal(a.slug.length > 10, true); assert.equal(a.seo.meta_title.length <= 60, true);
 });
 
-test('the Loop Letters blocks carry the prose as reader blocks and each module as sanitizer-safe custom code with the stylesheet', () => {
+test('the Loop Letters blocks keep dead space out: one tight frame for the figures, native blocks for the chart and the lists, a frame only where nothing native fits', () => {
   const a = compose();
   const types = a.blocks.map((b) => b.type);
-  assert.equal(types[0], 'custom_code'); assert.ok(types.filter((t) => t === 'custom_code').length === a.modules.length);
+  assert.equal(types[0], 'custom_code'); assert.equal(a.blocks[0].id, 'mod-glance', 'the figures lead');
+  assert.deepEqual(a.blocks.filter((b) => b.type === 'custom_code').map((b) => b.id), ['mod-glance'], 'one frame in a plain letter: every frame is at least 320 px tall and cannot resize, so small modules share one');
+  const glance = a.blocks[0];
+  assert.match(glance.html, /class="mem-board"/); assert.match(glance.html, /class="mem-count"/); assert.match(glance.html, /class="mem-track/); assert.ok(!/data-live-endpoint|<script/.test(glance.html));
+  assert.match(glance.css, /\.mem-track-bar i\{left:[\d.]+%\}/); assert.ok(glance.css.startsWith(a.css)); assert.match(glance.css, /\.mem-glance \.mem-board\{grid-template-columns:repeat\(3,1fr\)/);
+  assert.equal(glance.height, 131 + 67 + 161 + 16, 'board + countdown + tracker + their gaps, measured at the phone width');
+  const thinGlance = compose({ story: story() }); assert.ok(thinGlance.blocks[0].height >= 300);
   assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'Bottom line')); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.level === 2 && b.text === a.sections[0]));
   for (const b of a.blocks.filter((x) => x.type === 'custom_code')) assert.ok(!/<svg|<iframe|<script|<input|<details|style="/.test(b.html), b.id + ' is sanitizer-safe');
-  const chartBlock = a.blocks.find((b) => b.id === 'mod-chart'); assert.match(chartBlock.html, /<img src="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/p\.png"/); assert.match(chartBlock.html, /CHART · AS OF PUBLICATION/); assert.ok(chartBlock.css.startsWith(a.css)); assert.ok(chartBlock.height >= 400);
-  const track = a.blocks.find((b) => b.id === 'mod-tracker'); assert.match(track.css, /\.mem-track-bar i\{left:[\d.]+%\}/); assert.ok(!/data-live/.test(track.html));
-  const kill = a.blocks.find((b) => b.id === 'mod-killswitch'); assert.match(kill.html, /class="mem-check"/);
-  const poll = a.blocks.find((b) => b.id === 'mod-poll'); assert.match(poll.html, /href="https:\/\/discord\.gg\/makingeasymoney"/);
+  const chart = a.blocks.find((b) => b.id === 'img-chart'); assert.equal(chart.type, 'image'); assert.equal(chart.url, 'https://stockmarketloop.com/wp-content/uploads/p.png'); assert.match(chart.caption, /at publication/); assert.match(chart.alt, /daily chart/);
+  const headings = a.blocks.filter((b) => b.type === 'heading' && b.level === 3).map((b) => b.text);
+  assert.deepEqual(headings, ['The bull case', 'The bear case', 'Kill switch'], 'the cases and the kill switch are plain headings and lists');
+  assert.ok(a.blocks.filter((b) => b.type === 'list').length >= 3, 'lists, not frames');
+  assert.ok(a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => s.mark === 'link' && s.href === 'https://discord.gg/makingeasymoney')), 'the poll becomes one line that points at the Discord');
   assert.ok(!a.blocks.some((b) => b.id === 'mod-meters' || b.id === 'mod-tabs'));
   const rich = compose({ rich: true }); const meters = rich.blocks.find((b) => b.id === 'mod-meters'); assert.match(meters.html, /class="mem-ring r0"/); assert.match(meters.css, /\.mem-ring\.r0\{background:conic-gradient\(#ffb04a 64%/); assert.match(rich.blocks.find((b) => b.id === 'mod-tabs').html, /class="mem-strip"/);
   assert.ok(a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => s.mark === 'link' && /sec\.gov/.test(s.href))), 'links survive into spans');
   assert.ok(!a.blocks.some((b) => b.type === 'paragraph' && b.spans.some((s) => /<|>/.test(s.text))), 'no tag soup in spans');
   assert.match(a.bodyHtml, /<iframe class="mem-chart-embed" [^>]*src="https:\/\/sml-platform-api\.onrender\.com\/academy-activity\/article-chart-embed\?symbol=ABCD"/, 'the page keeps the embed, at the right path');
+  for (const name of ['mem-poll', 'mem-kill', 'mem-vs', 'mem-tabs']) assert.ok(a.bodyHtml.includes(name) || name === 'mem-tabs', 'the standalone page keeps ' + name);
 });
 
 test('a thin dossier still composes: the modules that have data, a topic headline, and no chart block without a poster', () => {
@@ -98,7 +106,7 @@ test('a thin dossier still composes: the modules that have data, a topic headlin
   const a = D.composeArticle({ story: st, c: thin, dossier: {}, asOf: Date.UTC(2026, 9, 19, 14, 30), topic: 'crude oil' });
   assert.match(a.title, /^Crude oil through \$ABCD: /); assert.equal(a.sections.length, 4);
   assert.deepEqual(a.modules, ['board', 'chart', 'bullbear', 'tracker', 'killswitch', 'poll']); assert.ok(a.wordCount >= 500, String(a.wordCount));
-  assert.ok(!a.blocks.some((b) => b.id === 'mod-chart'), 'no poster, no chart block in the letter'); assert.ok(a.blocks.some((b) => b.id === 'mod-bullbear'));
+  assert.ok(!a.blocks.some((b) => b.id === 'img-chart'), 'no poster, no chart block in the letter'); assert.ok(a.blocks.some((b) => b.type === 'heading' && b.text === 'The bull case'));
   assert.match(a.bodyHtml, /<figure class="mem-chartbox" data-symbol="ABCD">/, 'no endpoint, no live polling attribute');
   const b = D.bullBear(st, thin, {}, 1); assert.ok(b.bull.length >= 1 && b.bear.length >= 1);
 });

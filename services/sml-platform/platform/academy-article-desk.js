@@ -356,6 +356,12 @@ function modPoll(st, c, id, discordUrl = '') {
   return { html: `<div class="mem-poll" data-key="mem-poll-${esc(c.symbol)}" aria-label="Bull or bear poll"><h3>YOUR CALL ON $${esc(c.symbol)}</h3><p>The desk leans <b>${esc(st.lean)}</b>. Where do you land?</p><div class="mem-poll-row"><input type="radio" name="${name}" id="${name}-bull" value="bull"><label for="${name}-bull">BULL</label><input type="radio" name="${name}" id="${name}-bear" value="bear"><label for="${name}-bear">BEAR</label></div><p class="mem-poll-after" data-after="bull">Noted. You and the desk ${st.lean === 'bullish' ? 'agree; the kill switch above is what keeps agreement from becoming a bag' : 'disagree; the bear case above is what the desk would need to be wrong about'}.</p><p class="mem-poll-after" data-after="bear">Noted. You and the desk ${st.lean === 'bearish' ? 'agree; the invalidation level is still the line' : 'disagree; the bull case above is what you would need to be wrong about'}.</p></div>`, height: 170,
     letter: `<div class="mem-poll" aria-label="Bull or bear"><h3>YOUR CALL ON $${esc(c.symbol)}</h3><p>The desk leans <b>${esc(st.lean)}</b>. ${discordUrl ? `Bull or bear, say so in <a href="${esc(discordUrl)}" rel="noopener" target="_blank">the Making Easy Money Discord</a>, where the alerts land first.` : 'Bull or bear, the kill switch above is what keeps either call honest.'}</p></div>`, letterHeight: 120 };
 }
+/* the letter's one frame: the figures in a fixed three-column grid (so it wraps the same at every reader width), the
+   countdown as a single row. Heights are measured in a browser at the phone width
+   of 328 px (the tallest case; a desktop frame is up to 80 px roomier), so the frame never clips. */
+const GLANCE_CSS = '.mem-glance>*{margin:0 0 8px!important}.mem-glance>*:last-child{margin-bottom:0!important}.mem-glance .mem-board{grid-template-columns:repeat(3,1fr);gap:6px}.mem-glance .mem-board>div{padding:8px 10px}.mem-glance .mem-board span{font-size:9px;letter-spacing:.08em}.mem-glance .mem-board b{margin-top:5px;font-size:15px;line-height:1.15}.mem-glance .mem-count{flex-direction:row;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 12px}.mem-glance .mem-count b{font-size:18px}.mem-glance .mem-track{padding:10px 12px}.mem-glance .mem-track p{margin-top:6px;font-size:12px}';
+const GLANCE_H = { board: 131, countdown: 67, tracker: 161 };
+const glanceHeight = (names) => names.reduce((sum, n) => sum + (GLANCE_H[n] || 0) + 8, 0) - 8;
 function modShare(url, title) {
   const u = encodeURIComponent(url || ''), t = encodeURIComponent(title || '');
   return `<div class="mem-share" aria-label="Share"><span>SHARE THIS READ</span><a href="https://twitter.com/intent/tweet?text=${t}&amp;url=${u}" rel="noopener" target="_blank">X</a><a href="https://www.reddit.com/submit?url=${u}&amp;title=${t}" rel="noopener" target="_blank">Reddit</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${u}" rel="noopener" target="_blank">LinkedIn</a><button type="button" data-copy="${esc(url || '')}">Copy link</button></div>`;
@@ -506,13 +512,32 @@ function composeArticle({ story: st, c, dossier = {}, asOf = Date.now(), author 
   const seo = seoFor({ story: st, c, headline: title, tags: draft.tags, publication, posterUrl: imageUrl, asOf });
   const headHtml = headFor({ seo, draft: { ...draft, title, dek: n.dek || draft.dek, wordCount }, url, siteUrl, authorUrl: authorUrl || siteUrl + '/n/grandmasterobi/', publication, byline: author, c, faq: [], imageUrl, asOfIso: draft.asOfIso, logoUrl });
   const document = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n${headHtml}\n<style>${CSS}</style></head><body style="margin:0;background:#0b1119">\n${bodyHtml}\n</body></html>`;
-  /* Loop Letters blocks: the prose as reader blocks, each module as custom code with the stylesheet */
+  /* Loop Letters blocks. The reader draws a custom-code block in a sandboxed frame of one fixed height (never under 320 px), and
+     nothing inside it can run script, so a small module in its own frame is mostly empty space. So the letter carries the
+     figures, the countdown and the path tracker in ONE tight frame, and everything that is only words or a picture as native
+     blocks that size themselves: the chart as an image, the bull and bear cases and the kill switch as lists. The standalone
+     page (bodyHtml, document) keeps every module, live and interactive. */
   const blocks = [];
+  const byName = (n) => chunks.find((ch) => ch.kind === 'module' && ch.name === n && ch.letter);
+  const glanceParts = ['board', 'countdown', 'tracker'].map(byName).filter(Boolean);
+  const ul = (items) => `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
+  const native = (html) => htmlToBlocks(html, { tickers: [c.symbol] });
   for (const ch of chunks) {
-    /* the letter variant of each module: the letters sanitizer keeps markup but drops svg, iframe, script, input and details,
-       so each module ships a version that needs none of them (a module with nothing safe to show is left out) */
-    if (ch.kind === 'module') { if (ch.letter) blocks.push({ id: 'mod-' + ch.name, type: 'custom_code', html: `<div class="mem-article mem-letter" data-theme="dark">${ch.letter}</div>`, css: CSS + (ch.css ? '\n' + ch.css : ''), height: ch.letterHeight }); }
-    else blocks.push(...htmlToBlocks(ch.html.replace(/<(aside|div)[^>]*>|<\/(aside|div)>/g, ''), { tickers: [c.symbol] }));
+    if (ch.kind !== 'module') { blocks.push(...htmlToBlocks(ch.html.replace(/<(aside|div)[^>]*>|<\/(aside|div)>/g, ''), { tickers: [c.symbol] })); continue; }
+    if (ch.name === 'countdown' || ch.name === 'tracker') continue;
+    if (ch.name === 'board') {
+      if (glanceParts.length) blocks.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${glanceParts.map((m) => m.letter).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + glanceParts.map((m) => m.css || '').join(''), height: glanceHeight(glanceParts.map((m) => m.name)) });
+      continue;
+    }
+    if (ch.name === 'chart') {
+      if (imageUrl) blocks.push({ id: 'img-chart', type: 'image', url: imageUrl, alt: `$${c.symbol} daily chart with the scenario path to ${px(st.pt)}`, caption: `$${c.symbol} ${px(c.price)}${num(c.changePct) != null ? ' (' + pct(c.changePct) + ')' : ''} at publication. The candles, the levels that matter and the scenario path to ${px(st.pt)}.` });
+      continue;
+    }
+    if (ch.name === 'bullbear') { blocks.push(...native(`<h3>The bull case</h3>${ul(bb.bull.length ? bb.bull : ['Thin. The data does not make a strong long case here.'])}<h3>The bear case</h3>${ul(bb.bear.length ? bb.bear : ['Thin. The data does not make a strong short case here.'])}`)); continue; }
+    if (ch.name === 'killswitch') { blocks.push(...native(`<h3>Kill switch</h3><p>Any one of these and the thesis is over, no averaging down, no renaming it.</p>${ul(killItems)}`)); continue; }
+    if (ch.name === 'poll') { blocks.push(...native(`<p>The desk leans <strong>${esc(st.lean)}</strong>. ${discordUrl ? `Bull or bear, say so in <a href="${esc(discordUrl)}">the Making Easy Money Discord</a>, where the alerts land first.` : 'Bull or bear, the kill switch above is what keeps either call honest.'}</p>`)); continue; }
+    /* the rest (the meters and the data strip, only on request) have no native form: a custom-code block sized to its content */
+    blocks.push({ id: 'mod-' + ch.name, type: 'custom_code', html: `<div class="mem-article mem-letter" data-theme="dark">${ch.letter}</div>`, css: CSS + (ch.css ? '\n' + ch.css : ''), height: ch.letterHeight });
   }
   const links = [...bodyInner.matchAll(/href="([^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&')).filter((h) => /^https?:/.test(h));
   return {
