@@ -22,32 +22,32 @@
         "authorIds": []
       },
       {
-        "guildId": "",
+        "guildId": "938894329076940820",
         "channelId": "1554397302259580958",
         "authorIds": []
       },
       {
-        "guildId": "",
+        "guildId": "938894329076940820",
         "channelId": "1553577896503681054",
         "authorIds": []
       },
       {
-        "guildId": "",
+        "guildId": "938894329076940820",
         "channelId": "1554397420127916092",
         "authorIds": []
       },
       {
-        "guildId": "",
+        "guildId": "938894329076940820",
         "channelId": "1552995048570753165",
         "authorIds": []
       },
       {
-        "guildId": "",
+        "guildId": "938894329076940820",
         "channelId": "1553574228391895061",
         "authorIds": []
       },
       {
-        "guildId": "",
+        "guildId": "938894329076940820",
         "channelId": "1553574447305461901",
         "authorIds": []
       }
@@ -90,11 +90,11 @@
     "alertVisuals": {
       "enabled": true,
       "required": true,
-      "directory": "C:\\Users\\Memob\\Documents\\Codex\\2026-08-04\\cla\\work\\sml-discord-share-bot\\data\\alert-visuals"
+      "directory": "/var/data/alert-visuals"
     },
     "featuredImages": {
-      "enabled": true,
-      "directory": "C:\\Users\\Memob\\OneDrive\\Desktop\\New folder\\SML\\Article Feature Images",
+      "enabled": false,
+      "directory": "/var/data/article-feature-images",
       "avoidRecent": 3
     }
   },
