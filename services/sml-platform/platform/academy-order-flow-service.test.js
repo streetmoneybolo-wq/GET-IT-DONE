@@ -125,6 +125,30 @@ test('the full book is asked for (60 levels) and the depth reading rides along w
   h.svc.stop();
 });
 
+test('the heat map keeps one column of the book every five seconds, capped, and answers only what a viewer is missing', async () => {
+  const { HEAT_EVERY_MS, HEAT_COLUMNS } = require('./academy-order-flow-service');
+  const h = harness(); h.svc.start(); h.svc.touch('SPY');
+  h.setResponder(() => ({ ok: true, json: async () => bookJson(h.now(), {}) }));
+  assert.equal(h.svc.heatmap('SPY').ready, false);
+  for (let i = 0; i < 12; i++) { h.advance(1050); await h.svc.tick(); } // fast polls, about one a second
+  const hm = h.svc.heatmap('SPY');
+  assert.equal(hm.ready, true); assert.equal(hm.everyMs, HEAT_EVERY_MS); assert.equal(hm.tick, 0.01);
+  assert.ok(hm.columns.length >= 2 && hm.columns.length <= 4, 'about one column per five seconds, got ' + hm.columns.length);
+  assert.ok(hm.columns.every((c, i, a) => !i || c.t - a[i - 1].t >= HEAT_EVERY_MS), 'columns are at least five seconds apart');
+  assert.deepEqual(hm.columns[0].b[0], [100, 500]); assert.deepEqual(hm.columns[0].a[0], [100.01, 500]);
+  const since = hm.columns[hm.columns.length - 1].t;
+  assert.equal(h.svc.heatmap('SPY', since).columns.length, 0, 'nothing newer yet');
+  for (let i = 0; i < 6; i++) { h.advance(1050); await h.svc.tick(); }
+  const more = h.svc.heatmap('SPY', since);
+  assert.ok(more.columns.length >= 1 && more.columns.every((c) => c.t > since), 'only the new columns');
+  // the ring is capped
+  const e = h.svc.engines.get('SPY');
+  for (let i = 0; i < HEAT_COLUMNS + 20; i++) { h.advance(HEAT_EVERY_MS + 100); await h.svc.tick(); }
+  assert.equal(e.heat.length, HEAT_COLUMNS);
+  assert.throws(() => h.svc.heatmap('../x'), /invalid_symbol/);
+  h.svc.stop();
+});
+
 test('a slow origin is polled less often: the next poll waits at least 1.5x the last answer time', async () => {
   const h = harness(); h.svc.start();
   h.setResponder(() => { h.advance(9000); return { ok: true, json: async () => bookJson(h.now(), { ticks: [] }) }; });

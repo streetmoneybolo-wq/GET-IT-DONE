@@ -7,6 +7,8 @@ const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
 /* the full book (moomoo's ceiling for US stocks is 60 levels a side) is kept for the depth insights: the last two dozen snapshots and the
    last fifteen minutes of prints a symbol, a few hundred kilobytes for the eight symbols at most */
 const DEEP_SNAPSHOTS = 24, PRINTS_MAX = 2000, PRINTS_MS = 15 * 60_000, INSIGHTS_MEMO_MS = 2000;
+/* the order-book heat map: one column of resting size per side every five seconds, twenty minutes deep, thirty levels a side as [price, size] */
+const HEAT_EVERY_MS = 5000, HEAT_COLUMNS = 240, HEAT_LEVELS = 30;
 
 /*
  * Keeps a rolling Level 2 history per symbol on the server, so a member who opens the Activity late still sees the last ten minutes of order flow,
@@ -30,7 +32,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
         if (!victim) throw new TypeError('too_many_symbols');
         engines.delete(victim[0]);
       }
-      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0, deep: [], prints: [], insights: null, insightsAt: 0 };
+      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0, deep: [], prints: [], insights: null, insightsAt: 0, heat: [], heatAt: 0 };
       engines.set(symbol, e);
     }
     e.lastTouch = now();
@@ -96,6 +98,11 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     if (e.tape.length > 60) e.tape = e.tape.slice(-60);
     /* the full book and the longer tape feed the depth insights (academy-depth-insights.js) */
     e.deep.push({ t: data.t, bids: data.bids, asks: data.asks }); if (e.deep.length > DEEP_SNAPSHOTS) e.deep.shift();
+    if (data.t - e.heatAt >= HEAT_EVERY_MS) {
+      const side = (levels, desc) => levels.map((l) => [Number(l.price), Number(l.size)]).filter((l) => Number.isFinite(l[0]) && l[0] > 0 && Number.isFinite(l[1]) && l[1] >= 0).sort((p, q) => (desc ? q[0] - p[0] : p[0] - q[0])).slice(0, HEAT_LEVELS);
+      e.heat.push({ t: data.t, b: side(data.bids, true), a: side(data.asks, false) }); e.heatAt = data.t;
+      if (e.heat.length > HEAT_COLUMNS) e.heat.shift();
+    }
     const cutoff = now() - PRINTS_MS;
     if (e.prints.length > PRINTS_MAX || (e.prints.length && e.prints[0].t < cutoff)) { e.prints.sort((a, b) => a.t - b.t); e.prints = e.prints.filter((p) => p.t >= cutoff).slice(-PRINTS_MAX); }
     e.insights = null;
@@ -172,6 +179,18 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return { symbol, ready: true, asOf: d.t, seq: e.seq, book: { bids: d.bids.slice(0, 10), asks: d.asks.slice(0, 10) }, tape, last: tape.length ? tape[0].price : null, depth: insightsFor(e), closed: e.closed, failing: e.failures >= 3, servedAt: now() };
   }
 
+  /** The heat map's columns for a symbol (touching it keeps it polled), only those after `sinceT` so a viewer can ask for what it is missing. */
+  function heatmap(symbolRaw, sinceT = 0) {
+    const symbol = String(symbolRaw || '').toUpperCase();
+    const e = touch(symbol);
+    const since = Number(sinceT) || 0;
+    const columns = since ? e.heat.filter((c) => c.t > since) : e.heat;
+    let tick = 0.01;
+    const last = e.heat[e.heat.length - 1];
+    if (last) { let g = Infinity; for (const s of [last.b, last.a]) for (let i = 1; i < s.length; i++) { const d = Math.abs(s[i][0] - s[i - 1][0]); if (d > 1e-6 && d < g) g = d; } if (Number.isFinite(g)) tick = Math.round(g * 1e4) / 1e4; }
+    return { symbol, ready: e.heat.length > 0, everyMs: HEAT_EVERY_MS, maxColumns: HEAT_COLUMNS, levels: HEAT_LEVELS, tick, columns, total: e.heat.length, asOf: last ? last.t : null, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
+  }
+
   /** Order flow for a symbol that is already being tracked (a member has it on the chart); never starts tracking a new one. */
   function peek(symbolRaw) {
     const symbol = String(symbolRaw || '').toUpperCase();
@@ -181,7 +200,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return a && a.ready ? { ready: true, bias: a.bias, score: a.score } : null;
   }
 
-  return { start, stop, touch, get, live, peek, insights, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
+  return { start, stop, touch, get, live, peek, insights, heatmap, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
 }
 
-module.exports = { createOrderFlowService };
+module.exports = { createOrderFlowService, HEAT_EVERY_MS, HEAT_COLUMNS, HEAT_LEVELS };

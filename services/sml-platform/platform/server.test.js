@@ -1049,6 +1049,21 @@ test('the order flow route validates symbols, reports disabled, and serves the r
   });
 });
 
+test('the heat map route serves the order-flow service\'s book columns, gated like order flow', async () => {
+  await withServer({}, async (base) => { assert.equal((await fetch(`${base}/academy-activity/heatmap?symbol=SPY`)).status, 503); });
+  const academyOrderFlow = { get: () => ({}), heatmap: (s, since) => { if (!/^[A-Z]+$/i.test(String(s))) throw new TypeError('invalid_symbol'); return { symbol: String(s).toUpperCase(), ready: true, since, columns: [{ t: 10, b: [[100, 5]], a: [[100.01, 6]] }] }; } };
+  await withServer({ academyOrderFlow }, async (base) => {
+    const ok = await fetch(`${base}/academy-activity/heatmap?symbol=spy&since=4`);
+    assert.equal(ok.status, 200);
+    const body = await ok.json(); assert.equal(body.symbol, 'SPY'); assert.equal(body.since, 4); assert.equal(body.columns.length, 1);
+    assert.equal((await fetch(`${base}/academy-activity/heatmap?symbol=../x`)).status, 400);
+  });
+  const { academyActivityHtml } = require('./server');
+  const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
+  assert.match(html, /id = 'heat-toggle'/, 'the HEAT toggle script is on the page');
+  assert.match(html, /academy-activity\/heatmap\?symbol=/);
+});
+
 test('the activity page carries the order flow panel', () => {
   const { academyActivityHtml } = require('./server');
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, {});
