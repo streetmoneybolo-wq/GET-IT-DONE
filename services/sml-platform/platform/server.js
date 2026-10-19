@@ -112,6 +112,7 @@ const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { createAcademyMediaStore } = require('./academy-media-store');
 const { createAcademyAsk } = require('./academy-ask');
+const { createAskLog } = require('./academy-ask-log');
 const { createAcademyTrial } = require('./academy-trial');
 const { createAcademyBake } = require('./academy-bake');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
@@ -710,7 +711,9 @@ function academyMemAlgoDayOnlyModel(engine) {
 const ACADEMY_MEM_ALGO_PARTS = (() => {
   try {
     const engine = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo.js'), 'utf8');
-    const ui = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8');
+    const ui = fs.readFileSync(pathModule.join(__dirname, 'academy-mem-algo-ui.js'), 'utf8')
+      /* the five scenarios per trade type: engine (window.SmlMemScenarios) + the panel section and chart layer, loaded right after the panel */
+      + '\n' + (() => { try { return '(function(){var module={exports:{}},exports=module.exports;' + fs.readFileSync(pathModule.join(__dirname, 'academy-mem-scenarios.js'), 'utf8') + '\nwindow.SmlMemScenarios=module.exports;})();\n' + fs.readFileSync(pathModule.join(__dirname, 'academy-mem-scenarios-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const patterns = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-patterns.js'), 'utf8'); } catch (_) { return ''; } })();
     const pro = fs.readFileSync(pathModule.join(__dirname, 'academy-chart-pro.js'), 'utf8');
     const liveFeed = fs.readFileSync(pathModule.join(__dirname, 'academy-live.js'), 'utf8');
@@ -3706,6 +3709,29 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (await academyTrial.handle(request, response, path, new URL(request.url || '/', 'http://localhost'))) return;
     }
 
+    /* Ask Obi's log, for backtesting: every question and answer with the call it made. Owner only. */
+    if (path === '/academy-activity/ask/log' || path === '/academy-activity/ask/stats' || /^\/academy-activity\/ask\/log\/\d+\/score$/.test(path)) {
+      const session = academyOAuth && academyOAuth.verifySession(request.headers.authorization);
+      if (!session || !session.ok) { sendJson(response, session?.status || 401, { ok: false, error: session?.code || 'authorization_required' }); return; }
+      const owner = Boolean(academyAsk && academyAsk.owners && academyAsk.owners.has(String(session.userId)));
+      if (!owner) { sendJson(response, 403, { ok: false, error: 'owner_only' }); return; }
+      const store = academyAsk.log;
+      if (!store) { sendJson(response, 503, { ok: false, error: 'log_unavailable' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (request.method === 'GET' && path === '/academy-activity/ask/stats') { sendJson(response, 200, { ok: true, ...(await store.stats()) }); return; }
+      if (request.method === 'GET' && path === '/academy-activity/ask/log') { sendJson(response, 200, { ok: true, stored: store.configured, rows: await store.list({ limit: Number(params.get('limit')) || 100, directionOnly: params.get('direction') === '1', unscored: params.get('unscored') === '1' }) }); return; }
+      if (request.method === 'POST' && path !== '/academy-activity/ask/log' && path !== '/academy-activity/ask/stats') {
+        const raw = await readRequestBody(request, 4096).catch(() => null);
+        let body = null; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { body = null; }
+        const id = path.split('/')[4];
+        const r = await store.score(id, { outcome: body && body.outcome, note: body && body.note });
+        sendJson(response, r.ok ? 200 : (r.error === 'not_found' ? 404 : 400), r);
+        return;
+      }
+      sendJson(response, 405, { ok: false, error: 'method_not_allowed' });
+      return;
+    }
+
     /* Ask Obi: owner only. GET says whether the signed-in account may use it (the client shows the button on yes);
        POST { question } answers from the Academy's own material in Obi's voice. Nobody else gets past the owner check. */
     if (path === '/academy-activity/ask') {
@@ -4782,7 +4808,41 @@ async function main() {
     apiKey: config.anthropicApiKey, model: config.academyClaudeModel, lessons: SEED_LESSONS, store: academyMedia
   });
   /* Ask Obi: the owner's question desk, grounded in every lesson and discipline episode */
-  const academyAsk = Object.assign(createAcademyAsk({ apiKey: config.anthropicApiKey, model: config.academyAskModel, lessons: SEED_LESSONS, episodes: require('./academy/discipline-content').EPISODES, logger: log }), { owners: config.academyAskUserIds });
+  /* Ask Obi keeps every question and answer (academy_ask_log, migration 050) so its direction calls can be backtested, and a
+     direction question carries the desk's live market read (Market Direction, SML VIX, SPY) so the call is today's read. */
+  const askLog = createAskLog({ pool: database.pool, logger: log });
+  askLog.ensureSchema().catch(() => {});
+  const askContext = async ({ subject, horizon }) => {
+    const lines = [];
+    const px2 = (v) => (Number.isFinite(v) ? (v >= 1 ? v.toFixed(2) : v.toFixed(4)) : '–');
+    try {
+      if (marketDirection) {
+        const d = await marketDirection.get(horizon === 'week' || horizon === 'month' || horizon === 'longer' ? 'swing' : 'day');
+        if (d && d.ok) {
+          lines.push('Market Direction (' + d.mode + ' read, ' + (d.session || '') + '): ' + d.label + ', bias ' + d.bias + ', confidence ' + d.confidence + '/100.');
+          const v2 = d.v2 || {};
+          if (v2.regime && v2.regime.label) lines.push('Regime: ' + v2.regime.label + '.');
+          if (v2.day && v2.swing) lines.push('Day bias ' + v2.day.bias + ' (' + v2.day.confidence + ') · swing bias ' + v2.swing.bias + ' (' + v2.swing.confidence + ').');
+          if (v2.breadth && Number.isFinite(v2.breadth.advancing)) lines.push('Breadth: ' + v2.breadth.advancing + ' of ' + (v2.breadth.total || '?') + ' stocks advancing.');
+          if (v2.expectedMove && Number.isFinite(v2.expectedMove.pct)) lines.push('Options expected move: ±' + v2.expectedMove.pct.toFixed(2) + '%.');
+          const spy = v2.constituents && v2.constituents.quotes ? v2.constituents.quotes.SPY : null;
+          if (d.levels && (d.levels.support || d.levels.resistance)) lines.push('SPY levels: support ' + px2(Number(d.levels.support)) + ', resistance ' + px2(Number(d.levels.resistance)) + '.');
+          if (spy && Number.isFinite(spy.last)) lines.push('SPY ' + px2(spy.last) + (Number.isFinite(spy.changePct) ? ' (' + (spy.changePct >= 0 ? '+' : '') + spy.changePct.toFixed(2) + '% today)' : '') + '.');
+          for (const c of (d.components || []).slice(0, 6)) lines.push('- ' + c.label + ': ' + (c.score > 0 ? '+' : '') + c.score + (c.reasons && c.reasons[0] ? ' (' + String(c.reasons[0]).slice(0, 120) + ')' : ''));
+          const ev = v2.calendar && v2.calendar.events ? v2.calendar.events.slice(0, 4).map((e) => e.label || e.name || e.title).filter(Boolean) : [];
+          if (ev.length) lines.push('Catalysts ahead: ' + ev.join('; ') + '.');
+          if (d.calibration && d.calibration.hitRate != null) lines.push('This read\'s own track record: ' + d.calibration.hitRate + '% of past calls right.');
+        }
+      }
+      if (smlVix && typeof smlVix.get === 'function') { const v = await smlVix.get().catch(() => null); if (v && v.ok && Number.isFinite(v.level)) lines.push('SML VIX ' + v.level.toFixed(1) + '.'); }
+      if (subject && subject !== 'market' && typeof getAcademyCandles === 'function') {
+        const p = await getAcademyCandles(subject, '1D').catch(() => null); const b = p && Array.isArray(p.bars) ? p.bars : [];
+        if (b.length >= 2) { const l = b[b.length - 1], q = b[b.length - 2]; lines.push(subject + ' last ' + px2(+l.c) + ' (' + ((l.c / q.c - 1) * 100 >= 0 ? '+' : '') + ((l.c / q.c - 1) * 100).toFixed(2) + '% on the day), 20-day range ' + px2(Math.min(...b.slice(-20).map((x) => +x.l))) + ' to ' + px2(Math.max(...b.slice(-20).map((x) => +x.h))) + '.'); }
+      }
+    } catch (error) { log('warn', 'academy_ask_context_failed', { error: String(error && error.message || error) }); }
+    return lines.join('\n');
+  };
+  const academyAsk = Object.assign(createAcademyAsk({ apiKey: config.anthropicApiKey, model: config.academyAskModel, lessons: SEED_LESSONS, episodes: require('./academy/discipline-content').EPISODES, logger: log, context: askContext, log: askLog }), { owners: config.academyAskUserIds, log: askLog });
   log('info', 'academy_media_runtime', { durable: academyMedia.durable, voice: academyVoice.configured ? 'live' : (academyVoice.stored ? 'baked' : 'off'), designer: academySlideDesigner.configured ? 'live' : 'built-in', bake: !!config.academyBake });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });

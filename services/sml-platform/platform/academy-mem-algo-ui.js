@@ -52,7 +52,7 @@
       if (open) levels = { dir: open.dir, entry: open.entry, stop: open.stop, target: open.target };
       else if (d.latest && d.bars - 1 - d.latest.i <= 30) levels = { dir: d.latest.dir, entry: d.latest.price, stop: d.latest.stop, target: d.latest.target };
     }
-    return { on: S.on, open: S.open, mode: S.mode, label: st.label || S.mode, preferredTf: preferredTf(S.mode), chartTf: tf(), symbol: symbol(), bias: d ? d.bias : null, dir, strength: Math.round(strength), levels };
+    return { on: S.on, open: S.open, mode: S.mode, label: st.label || S.mode, preferredTf: preferredTf(S.mode), chartTf: tf(), symbol: symbol(), bias: d ? d.bias : null, dir, strength: Math.round(strength), levels, data: d };
   }
   window.smlMemAlgoState = readState;
   let lastStateKey = '';
@@ -315,6 +315,8 @@
     if (S.tfNote && S.tfNote.tf === tfNow) S.tfNote.seen = true;
     const note = S.tfNote && S.tfNote.mode === S.mode && S.tfNote.tf === tfNow ?'<div class="mem-tfnote">Chart set to ' + esc(tfNow) + ' — the interval ' + esc(st.label) + ' is built for.</div>' : '';
     html += '<div class="mem-sec">' + note + '<p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p><button type="button" class="mem-btn mem-hedge-btn" data-mem="hedge" title="Ways to protect this position or earn income on it with options">Hedge &amp; income ideas →</button>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide. <button type="button" class="mem-btn" data-mem-tf="' + esc(st.bestTf || st.tfHint[0]) + '" style="margin-top:6px">Switch chart to ' + esc(st.bestTf || st.tfHint[0]) + '</button></div>') + '</div>';
+    /* the five scenarios for this trade type (academy-mem-scenarios-ui.js), right under the model's own read */
+    if (window.smlMemScenarios && d) { try { html += window.smlMemScenarios.sectionHtml(); } catch (_) { /* the chart is not ready yet */ } }
     html += '<div class="mem-sec" id="mem-of"></div>';
     if (S.error) html += '<div class="mem-sec"><div class="mem-warn">' + esc(S.error) + '</div></div>';
     if (!d) { html += '<div class="mem-sec">Loading candles for $' + esc(symbol()) + '…</div>'; }
@@ -523,7 +525,8 @@
   });
   panel.addEventListener('click', (e) => {
     // the "Switch chart to <interval>" button carries data-mem-tf only, so the selector must name it or the click matches nothing
-    const t = e.target.closest('[data-mem],[data-mem-mode],[data-mem-tf]'); if (!t) return;
+    const t = e.target.closest('[data-mem],[data-mem-mode],[data-mem-tf],[data-mem-scn]'); if (!t) return;
+    if (t.dataset.memScn) { if (window.smlMemScenarios && window.smlMemScenarios.onClick(t.dataset.memScn)) { paint(); } return; }
     if (t.dataset.memTf) {
       const sy = symbol(), target = t.dataset.memTf;
       t.disabled = true; t.textContent = 'Switching to ' + target + '…';
@@ -534,7 +537,7 @@
     if (t.dataset.mem === 'close') { S.open = false; paint(); return; }
     if (t.dataset.mem === 'hedge') { if (window.smlHedgePanel && window.smlHedgePanel.open) window.smlHedgePanel.open(readState()); return; }
     if (t.dataset.mem === 'reset') { S.params[S.mode] = {}; save(); recompute(); paint(); draw(); return; }
-    if (t.dataset.memMode) { S.mode = t.dataset.memMode; autoTf(); save(); recompute(); loadCtx(); paint(); draw(); }
+    if (t.dataset.memMode) { S.mode = t.dataset.memMode; if (window.smlMemScenarios) window.smlMemScenarios.clear(); autoTf(); save(); recompute(); loadCtx(); paint(); draw(); }
   });
   panel.addEventListener('change', (e) => {
     const ov = e.target.closest('[data-mem-ov]'), pr = e.target.closest('[data-mem-p]');
