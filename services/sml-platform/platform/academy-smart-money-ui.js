@@ -33,6 +33,8 @@
     + '#smc-card .focus .cl{margin:4px 9px 8px;padding:8px 10px;border-radius:8px;background:#121a28;border:1px solid #2c3a52}#smc-card .focus .cl b{display:inline-block;margin-bottom:3px;font:800 .6rem ui-monospace,monospace;letter-spacing:.06em}#smc-card .focus .cl.bullish b{color:#5df0b0}#smc-card .focus .cl.bearish b{color:#ff8ea1}#smc-card .focus .cl.neutral b{color:#ffd166}'
     + '#smc-card .focus small{display:block;padding:0 11px 8px;color:#6f8794;font-weight:500;font-size:.54rem}';
   css.textContent += '#smc-card .cl-overall{margin:7px 9px 0;padding:7px 9px;border-radius:8px;background:#121a28;border:1px solid #2c3a52;color:#c9d6de;font-weight:600}#smc-card .cl-overall b{font:800 .58rem ui-monospace,monospace;letter-spacing:.05em}#smc-card .cl-overall.bullish b{color:#5df0b0}#smc-card .cl-overall.bearish b{color:#ff8ea1}#smc-card .cl-overall.neutral b{color:#ffd166}';
+  css.textContent += '#smc-card .ms-tabs{display:none}body.sml-ms #smc-card .ms-tabs{display:flex;gap:4px;padding:6px 9px 2px;position:sticky;top:0;background:rgba(9,15,24,.97);z-index:2}body.sml-ms #smc-card .ms-tabs button{flex:1 1 0;padding:6px 4px;border:1px solid #3a3160;border-radius:7px;background:#120d22;color:#b9a7e6;font:800 .6rem ui-monospace,monospace;letter-spacing:.05em}body.sml-ms #smc-card .ms-tabs button.on{background:#6a4fd0;border-color:#a58bff;color:#fff}'
+    + 'body.sml-ms #smc-card:not([data-tab]) [data-t]:not([data-t=read]),body.sml-ms #smc-card[data-tab=read] [data-t]:not([data-t=read]),body.sml-ms #smc-card[data-tab=detail] [data-t]:not([data-t=detail]),body.sml-ms #smc-card[data-tab=add] [data-t]:not([data-t=add]){display:none}';
   document.head.appendChild(css);
 
   const btn = document.createElement('button'); btn.type = 'button'; btn.id = 'smc-toggle'; btn.textContent = 'SMC'; btn.title = 'Smart-money map: gaps, structure, order blocks, liquidity, VWAP and more'; toolbar.appendChild(btn);
@@ -48,6 +50,9 @@
   /* Expanded, the card pops up over the ticker's quote column (never over the chart); collapsed it is a small chip on the chart. Phones keep the bottom sheet. */
   function place() {
     if (card.closest && card.closest('#chart-dock')) return; // the chart dock (academy-chart-dock.js) lays the card out beside the plot
+    /* the phone workspace (academy-mobile-shell.js) gives the card a slot under the chart, so its breakdown never covers the candles */
+    const slot = document.body.classList.contains('sml-ms') ? document.getElementById('ms-slot-smc') : null;
+    if (slot) { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== slot) slot.appendChild(card); return; }
     const reset = () => { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== stage) stage.appendChild(card); };
     if (!S.on) return;
     if (S.min || window.matchMedia('(max-width:700px)').matches) { reset(); return; }
@@ -64,16 +69,19 @@
     const lines = S.a ? SM.read(S.a) : [];
     const EXm = window.SmlSmcExplain, Mm = window.smlChartModel && window.smlChartModel(), ov = EXm && S.a && Mm ? EXm.overall(S.a, Mm.bars, { flow: flow(), htf: htfLean(Mm.bars) }) : null;
     /* "hide options" folds only the add-on checkboxes away (the map read, the breakdown and the lines stay); the dash minimises the card to a chip */
+    const tab = card.dataset.tab || 'read';
     card.innerHTML = '<header><b>SMART MONEY MAP</b>' + (S.min ? '<span data-min="1" title="Open the map">open</span>'
       : '<span data-h="1" title="' + (S.collapsed ? 'Show the add-on options' : 'Hide the add-on options') + '">' + (S.collapsed ? 'show options' : 'hide options') + '</span><span data-min="1" title="Minimise to a chip">&#8211;</span>') + '</header>'
-      + (S.min ? '' : (S.collapsed ? '' : '<div class="opts">' + OPTS.map(([k, l]) => '<label><input type="checkbox" data-o="' + k + '"' + (S.o[k] ? ' checked' : '') + '>' + esc(l) + '</label>').join('') + '</div>')
-        + (ov ? '<div class="cl-overall ' + esc(ov.bias) + '"><b>MAP READ: ' + esc(ov.bias.toUpperCase()) + ' · ' + esc(ov.confidence.toUpperCase()) + '</b> ' + esc(ov.purpose) + '</div>' : '')
-        + '<div class="focus">' + (S.focusHtml || '<small style="padding:8px 11px">Hover a zone on the chart (an imbalance, a block, equal highs or lows, a gap, the VWAP) and its full breakdown appears here.</small>') + '</div>'
-        + '<ul>' + (lines.length ? lines.map((l) => '<li class="' + esc(l.tone) + '">' + esc(l.text) + '</li>').join('') : '<li>Not enough candles yet to read structure.</li>') + '</ul>'
+      + (S.min ? '' : '<nav class="ms-tabs"><button type="button" data-tab="read" class="' + (tab === 'read' ? 'on' : '') + '">MAP READ</button><button type="button" data-tab="detail" class="' + (tab === 'detail' ? 'on' : '') + '">ZONE DETAIL</button><button type="button" data-tab="add" class="' + (tab === 'add' ? 'on' : '') + '">ADD-ONS</button></nav>')
+      + (S.min ? '' : (S.collapsed ? '' : '<div class="opts" data-t="add">' + OPTS.map(([k, l]) => '<label><input type="checkbox" data-o="' + k + '"' + (S.o[k] ? ' checked' : '') + '>' + esc(l) + '</label>').join('') + '</div>')
+        + (ov ? '<div class="cl-overall ' + esc(ov.bias) + '" data-t="read"><b>MAP READ: ' + esc(ov.bias.toUpperCase()) + ' · ' + esc(ov.confidence.toUpperCase()) + '</b> ' + esc(ov.purpose) + '</div>' : '')
+        + '<div class="focus" data-t="detail">' + (S.focusHtml || '<small style="padding:8px 11px">Hover a zone on the chart (an imbalance, a block, equal highs or lows, a gap, the VWAP) and its full breakdown appears here.</small>') + '</div>'
+        + '<ul data-t="read">' + (lines.length ? lines.map((l) => '<li class="' + esc(l.tone) + '">' + esc(l.text) + '</li>').join('') : '<li>Not enough candles yet to read structure.</li>') + '</ul>'
         + '<small>Educational: this describes what price has done. It does not predict what it will do.</small>');
     place();
   }
   card.addEventListener('click', (e) => {
+    const tb = e.target.closest('[data-tab]'); if (tb) { card.dataset.tab = tb.dataset.tab; card.querySelectorAll('.ms-tabs button').forEach((b) => b.classList.toggle('on', b === tb)); return; }
     if (e.target.closest('[data-h]')) { S.collapsed = !S.collapsed; save(); paintCard(); return; }
     if (e.target.closest('[data-min]') || (S.min && e.target.closest('header'))) { S.min = !S.min; paintCard(); }
   });
@@ -206,6 +214,7 @@
     if (key === S.tipKey) return;
     const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow(), htf: htfLean(M.bars) }); if (!r) { hideTip(); return; }
     S.tipKey = key; S.focusHtml = tipHtml(r); S.focusFor = symKey();
+    if (document.body.classList.contains('sml-ms')) { card.dataset.tab = 'detail'; card.querySelectorAll('.ms-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'detail')); }
     if (S.min) { S.min = false; paintCard(); return; } // a chip opens so the breakdown can be read
     const box = card.querySelector('.focus'); if (box) box.innerHTML = S.focusHtml; else paintCard();
   }
