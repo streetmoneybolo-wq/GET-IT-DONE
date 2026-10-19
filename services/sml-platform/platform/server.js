@@ -4828,7 +4828,7 @@ async function main() {
     clientId: config.academyAppId, clientSecret: config.academyClientSecret, publicUrl: config.academyTrialPublicUrl, store: academyPassStore,
     days: config.academyTrialDays, enabled: config.academyTrialEnabled, logger: log,
     buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/buy' : '', botToken: config.academyBotToken,
-    /* the server invite leads the launch steps: the Academy only launches from inside the server (a DM launch is refused as age-restricted) */
+    /* the server invite is an optional extra on the launch steps: the Academy runs anywhere in Discord once the Connect bot and the Academy are on the account */
     inviteUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || '')
   });
   log('info', 'academy_trial_runtime', { configured: academyTrial.configured, days: academyTrial.days, link: academyTrial.configured ? academyTrial.link : '', redirectUri: academyTrial.configured ? academyTrial.redirectUri : '' });
