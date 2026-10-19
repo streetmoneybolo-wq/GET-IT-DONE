@@ -105,7 +105,7 @@ test('a direction question gets a real call: the prompt forbids dodging, the des
   assert.match(body.system, /Every call you make is logged and scored later/);
   assert.match(body.messages[0].content, /MARKET READ RIGHT NOW[\s\S]*Lean bullish 62\/100/);
   assert.match(body.messages[0].content, /Answer with a call: UP, DOWN or FLAT first/);
-  assert.deepEqual(r.call, { direction: 'up', subject: 'market', horizon: 'tomorrow' });
+  assert.deepEqual(r.call, { direction: 'up', subject: 'market', horizon: 'tomorrow', kind: 'direction' });
   assert.equal(r.logId, '42');
   assert.equal(logged.length, 1); assert.equal(logged[0].userId, 'owner'); assert.match(logged[0].context, /Lean bullish/); assert.match(logged[0].answer, /^Up tomorrow/);
   // a lesson question never fetches the market read and carries no call
@@ -113,4 +113,25 @@ test('a direction question gets a real call: the prompt forbids dodging, the des
   assert.equal(r2.call, null);
   assert.doesNotMatch(calls[1].body.messages[0].content, /MARKET READ/);
   assert.equal(logged.length, 2, 'every answer is logged, lesson questions included');
+});
+
+test('an entry question ("is hubc worth it to enter still") gets the stock\'s desk read and an answer with prices, never a lecture', async () => {
+  const calls = [], seen = [];
+  const ask = createAcademyAsk({
+    apiKey: 'k', lessons: SEED_LESSONS, episodes: EPISODES, isSymbol: (w) => w === 'HUBC',
+    context: async ({ subject, horizon, kind }) => { seen.push({ subject, horizon, kind }); return 'THE STOCK ASKED ABOUT (HUBC):\nHUBC last 4.10 (+22.0% on the day). Extension: 5.1 ATRs above the 10-day low.'; },
+    fetchImpl: async (url, options) => { calls.push(JSON.parse(options.body)); return { ok: true, status: 200, json: async () => ({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'No, not at 4.10: it is five ATRs above the 10-day low. Yes at 3.40 if it holds, stop 3.05, first target 4.60, about 2.5 to 1.' }] }) }; }
+  });
+  const r = await ask.ask({ question: 'is hubc worth it to enter still ?', userId: 'owner', symbol: 'SPY' });
+  assert.deepEqual(seen, [{ subject: 'HUBC', horizon: null, kind: 'entry' }], 'the stock in the words wins over the chart on screen');
+  const body = calls[0];
+  assert.match(body.system, /Entry questions \(is X worth entering, still worth it/);
+  assert.match(body.system, /YES at a price, or NO and the price that turns it into a yes/);
+  assert.doesNotMatch(body.system, /Do not tell the reader to buy or sell/);
+  assert.match(body.messages[0].content, /MARKET READ RIGHT NOW[\s\S]*HUBC last 4\.10/);
+  assert.match(body.messages[0].content, /Answer with an entry call: YES at a price or NO and the price that makes it a yes/);
+  assert.deepEqual(r.call, { direction: 'down', subject: 'HUBC', horizon: null, kind: 'entry' });
+  // the chart on screen is the subject when the words name none
+  await ask.ask({ question: 'still worth entering here?', userId: 'owner', symbol: 'hubc' });
+  assert.equal(seen[1].subject, 'HUBC'); assert.equal(seen[1].kind, 'entry');
 });

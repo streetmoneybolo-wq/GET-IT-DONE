@@ -146,8 +146,9 @@ function systemPrompt(samples) {
     'Voice rules: first person, plain words, contractions. Talk to one person like you are answering them in the chat, not writing an article. Answer in the first sentence; the rest only backs it up. Be certain: say what you do and what you would do, no "it depends", no "generally", no "may want to consider", no list of caveats, no "there are a few things". One concrete example with simple round numbers at most, and only when it makes the point land. Humor is dry and brief. Open with the point itself or a hard truth; never with "Great question", never with a restatement of the question.',
     'Never use headings, markdown, bullet lists, numbered lists, emojis, or em dashes. If steps are needed, write them as sentences ("First... Then... Last..."). No sign-off lines like "Stay disciplined!" unless it reads natural. Never mention being an AI, a model, a system, a prompt, or "the material provided". Never say "as an educator" or "it\'s important to note".',
     'Ground the answer in the Academy passages supplied with the question; they are your own lessons, so speak from them as your own knowledge (never cite them by number, never quote them verbatim as a block). If the passages do not cover the question, say plainly that the Academy does not have a lesson on that exact thing yet, then still answer from sound trading knowledge in the same voice, keeping it consistent with how the Academy teaches: risk first, position size before conviction, no guarantees, no hype.',
-    'Never invent performance numbers, win rates, or promises of returns. Do not tell the reader to buy or sell a specific stock now; teach the decision instead.',
-    'Length: short. Two to five sentences, 30 to 90 words, one paragraph. A yes/no question gets the yes or no first and one reason. Only a question with several distinct parts may run to two short paragraphs, never more than 140 words. Stop as soon as the point is made; do not summarise, do not add a closing line, do not repeat yourself.',
+    'Never invent performance numbers, win rates, or promises of returns; the only numbers you use are the ones in the desk read.',
+    'Entry questions (is X worth entering, still worth it, should I buy / add / hold / sell, am I chasing): give a straight answer with prices, never a lecture about how to decide. First sentence: YES at a price, or NO and the price that turns it into a yes (a pullback level, a reclaim, a break). Then, in the same breath: the stop where you are wrong, the first target, and the risk-to-reward in one number. Say how extended the move is with the desk read\'s numbers (ATRs above the 10-day low, percent from the 20-day average, distance from the high of day) so "chasing" is a measurement, not an accusation. "Still" means they are late: say exactly how late in numbers and give the entry you would take instead. When the desk read has no data for the stock, say that in one clause and still give the plan from the levels you can see. This is your read, not advice; say that in four words at most, once, if at all.',
+    'Length: short. Two to five sentences, 30 to 90 words, one paragraph (an entry call may take six sentences and 120 words, because the prices have to be there). A yes/no question gets the yes or no first and one reason. Only a question with several distinct parts may run to two short paragraphs, never more than 140 words. Stop as soon as the point is made; do not summarise, do not add a closing line, do not repeat yourself.',
     'Opinions and predictions: when someone asks which way a market or a stock is going (tomorrow, this week, into earnings, whatever the horizon), give a real call. Say UP, DOWN or FLAT in the first sentence, name the level or the thing that would prove you wrong, and give the one reason you lean that way. Use the MARKET READ block when one is supplied; it is your own desk\'s read. You are allowed to be wrong and you say so once at most ("if I\'m wrong, it\'s because..."), but you never dodge: no "nobody knows", no "I can\'t predict", no "it could go either way", no "do your own research", no list of both cases without picking one. Every call you make is logged and scored later, so make it a call.',
     'Output the answer text only.'
   ].join('\n\n');
@@ -155,7 +156,7 @@ function systemPrompt(samples) {
 
 const { readCall } = require('./academy-ask-log');
 
-function createAcademyAsk({ apiKey = '', model = DEFAULT_MODEL, lessons = [], episodes = [], fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, context = null, log = null } = {}) {
+function createAcademyAsk({ apiKey = '', model = DEFAULT_MODEL, lessons = [], episodes = [], fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, context = null, log = null, isSymbol = null } = {}) {
   const configured = Boolean(apiKey && typeof fetchImpl === 'function');
   const corpus = buildCorpus({ lessons, episodes });
   const samples = voiceSamples(episodes);
@@ -176,7 +177,7 @@ function createAcademyAsk({ apiKey = '', model = DEFAULT_MODEL, lessons = [], ep
     return q.slice(0, MAX_QUESTION);
   }
 
-  async function ask({ question, userId }) {
+  async function ask({ question, userId, symbol = '' }) {
     const q = clean(question);
     if (!configured) throw Object.assign(new Error('Ask is not configured'), { code: 'integration_unconfigured' });
     consume(String(userId || 'unknown'));
@@ -185,19 +186,19 @@ function createAcademyAsk({ apiKey = '', model = DEFAULT_MODEL, lessons = [], ep
       ? passages.map((p, i) => '[' + (i + 1) + '] Lesson ' + p.source + ' "' + p.title + '" (' + p.kind + '): ' + p.text).join('\n\n')
       : '(no Academy passage matched this question)';
     /* a direction question gets the desk's live market read, so the call is Obi's read of today and not a guess from a lesson */
-    const call = readCall(q, '');
+    const call = readCall(q, '', { symbol: String(symbol || '').toUpperCase().slice(0, 10), isSymbol: typeof isSymbol === 'function' ? isSymbol : null });
     let read = '';
     if (call.asksDirection && typeof context === 'function') {
-      try { read = String(await context({ question: q, subject: call.subject, horizon: call.horizon }) || '').trim().slice(0, 4000); } catch (error) { logger('warn', 'academy_ask_context_failed', { error: String(error && error.message || error) }); read = ''; }
+      try { read = String(await context({ question: q, subject: call.subject, horizon: call.horizon, kind: call.kind }) || '').trim().slice(0, 7000); } catch (error) { logger('warn', 'academy_ask_context_failed', { error: String(error && error.message || error) }); read = ''; }
     }
     const user = 'QUESTION FROM A MEMBER:\n' + q + '\n\n' + (read ? 'MARKET READ RIGHT NOW (your own desk\'s data; use it, do not quote it as a source):\n' + read + '\n\n' : '')
-      + (call.asksDirection ? 'This question asks for a direction. Answer with a call: UP, DOWN or FLAT first, then the reason and what proves you wrong.\n\n' : '')
+      + (call.asksDirection && call.kind === 'entry' ? 'This question asks whether to enter (or stay in, add to, or get out of) ' + call.subject + '. Answer with an entry call: YES at a price or NO and the price that makes it a yes, first; then the stop, the first target, the risk-to-reward, and how extended it is, all from the desk read.\n\n' : call.asksDirection ? 'This question asks for a direction. Answer with a call: UP, DOWN or FLAT first, then the reason and what proves you wrong.\n\n' : '')
       + 'ACADEMY PASSAGES (your own lessons, most relevant first):\n' + lessonsText;
     const started = now();
     const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: 400, system, messages: [{ role: 'user', content: user }] }),
+      body: JSON.stringify({ model, max_tokens: 450, system, messages: [{ role: 'user', content: user }] }),
       signal: AbortSignal.timeout(75_000)
     });
     const data = await res.json().catch(() => ({}));
@@ -214,10 +215,10 @@ function createAcademyAsk({ apiKey = '', model = DEFAULT_MODEL, lessons = [], ep
     logger('info', 'academy_ask_answered', { userId, chars: q.length, passages: passages.length, model: data.model || model, ms: now() - started, id: crypto.createHash('sha1').update(q).digest('hex').slice(0, 10), direction: call.asksDirection ? readCall(q, answer).direction : null });
     let logged = null;
     if (log && typeof log.record === 'function') {
-      try { logged = await log.record({ userId, question: q, answer, model: data.model || model, context: read }); } catch (error) { logger('warn', 'academy_ask_log_failed', { error: String(error && error.message || error) }); }
+      try { logged = await log.record({ userId, question: q, answer, model: data.model || model, context: read, symbol: String(symbol || '').toUpperCase().slice(0, 10) }); } catch (error) { logger('warn', 'academy_ask_log_failed', { error: String(error && error.message || error) }); }
     }
-    const made = readCall(q, answer);
-    return { answer, sources: sources.slice(0, 8), model: data.model || model, passages: passages.length, call: made.asksDirection ? { direction: made.direction, subject: made.subject, horizon: made.horizon } : null, logId: logged ? logged.id : null };
+    const made = readCall(q, answer, { symbol: String(symbol || '').toUpperCase().slice(0, 10), isSymbol: typeof isSymbol === 'function' ? isSymbol : null });
+    return { answer, sources: sources.slice(0, 8), model: data.model || model, passages: passages.length, call: made.asksDirection ? { direction: made.direction, subject: made.subject, horizon: made.horizon, kind: made.kind } : null, logId: logged ? logged.id : null };
   }
 
   return { configured, model, ask, rank: (q, top) => rank(corpus, q, top), corpusSize: corpus.docs.length, system };

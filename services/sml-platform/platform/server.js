@@ -133,6 +133,7 @@ const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { createAcademyMediaStore } = require('./academy-media-store');
 const { createAcademyAsk } = require('./academy-ask');
+const { createAskDesk } = require('./academy-ask-desk');
 const { createAskLog } = require('./academy-ask-log');
 const { createTickerTalk } = require('./academy-ticker-talk');
 const { createAcademyTrial } = require('./academy-trial');
@@ -4152,7 +4153,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       let body = null; try { body = raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { body = null; }
       if (!body || typeof body.question !== 'string' || !body.question.trim()) { sendJson(response, 400, { ok: false, error: 'empty_question' }); return; }
       try {
-        const result = await academyAsk.ask({ question: body.question, userId: session.userId });
+        const result = await academyAsk.ask({ question: body.question, userId: session.userId, symbol: typeof body.symbol === 'string' ? body.symbol : '' });
         sendJson(response, 200, { ok: true, ...result });
       } catch (error) {
         const invalid = error instanceof TypeError;
@@ -5630,37 +5631,35 @@ async function main() {
     return '';
   } });
   if (academySocialNotify) academySocialNotify.ensureSchema().catch(() => {});
-  const askContext = async ({ subject, horizon }) => {
-    const lines = [];
-    const px2 = (v) => (Number.isFinite(v) ? (v >= 1 ? v.toFixed(2) : v.toFixed(4)) : '–');
-    try {
-      if (marketDirection) {
-        const d = await marketDirection.get(horizon === 'week' || horizon === 'month' || horizon === 'longer' ? 'swing' : 'day');
-        if (d && d.ok) {
-          lines.push('Market Direction (' + d.mode + ' read, ' + (d.session || '') + '): ' + d.label + ', bias ' + d.bias + ', confidence ' + d.confidence + '/100.');
-          const v2 = d.v2 || {};
-          if (v2.regime && v2.regime.label) lines.push('Regime: ' + v2.regime.label + '.');
-          if (v2.day && v2.swing) lines.push('Day bias ' + v2.day.bias + ' (' + v2.day.confidence + ') · swing bias ' + v2.swing.bias + ' (' + v2.swing.confidence + ').');
-          if (v2.breadth && Number.isFinite(v2.breadth.advancing)) lines.push('Breadth: ' + v2.breadth.advancing + ' of ' + (v2.breadth.total || '?') + ' stocks advancing.');
-          if (v2.expectedMove && Number.isFinite(v2.expectedMove.pct)) lines.push('Options expected move: ±' + v2.expectedMove.pct.toFixed(2) + '%.');
-          const spy = v2.constituents && v2.constituents.quotes ? v2.constituents.quotes.SPY : null;
-          if (d.levels && (d.levels.support || d.levels.resistance)) lines.push('SPY levels: support ' + px2(Number(d.levels.support)) + ', resistance ' + px2(Number(d.levels.resistance)) + '.');
-          if (spy && Number.isFinite(spy.last)) lines.push('SPY ' + px2(spy.last) + (Number.isFinite(spy.changePct) ? ' (' + (spy.changePct >= 0 ? '+' : '') + spy.changePct.toFixed(2) + '% today)' : '') + '.');
-          for (const c of (d.components || []).slice(0, 6)) lines.push('- ' + c.label + ': ' + (c.score > 0 ? '+' : '') + c.score + (c.reasons && c.reasons[0] ? ' (' + String(c.reasons[0]).slice(0, 120) + ')' : ''));
-          const ev = v2.calendar && v2.calendar.events ? v2.calendar.events.slice(0, 4).map((e) => e.label || e.name || e.title).filter(Boolean) : [];
-          if (ev.length) lines.push('Catalysts ahead: ' + ev.join('; ') + '.');
-          if (d.calibration && d.calibration.hitRate != null) lines.push('This read\'s own track record: ' + d.calibration.hitRate + '% of past calls right.');
-        }
-      }
-      if (smlVix && typeof smlVix.get === 'function') { const v = await smlVix.get().catch(() => null); if (v && v.ok && Number.isFinite(v.level)) lines.push('SML VIX ' + v.level.toFixed(1) + '.'); }
-      if (subject && subject !== 'market' && typeof getAcademyCandles === 'function') {
-        const p = await getAcademyCandles(subject, '1D').catch(() => null); const b = p && Array.isArray(p.bars) ? p.bars : [];
-        if (b.length >= 2) { const l = b[b.length - 1], q = b[b.length - 2]; lines.push(subject + ' last ' + px2(+l.c) + ' (' + ((l.c / q.c - 1) * 100 >= 0 ? '+' : '') + ((l.c / q.c - 1) * 100).toFixed(2) + '% on the day), 20-day range ' + px2(Math.min(...b.slice(-20).map((x) => +x.l))) + ' to ' + px2(Math.max(...b.slice(-20).map((x) => +x.h))) + '.'); }
-      }
-    } catch (error) { log('warn', 'academy_ask_context_failed', { error: String(error && error.message || error) }); }
-    return lines.join('\n');
+  /* the desk read that rides with a question about a stock or the market (academy-ask-desk.js): the daily tape, extension in ATRs,
+     MEM ALGO's bias and latest signal, the smart-money map, today's VWAP and range, patterns, float and short picture, sentiment, earnings */
+  const askScannerRow = async (sym) => {
+    const pick = (rows) => (Array.isArray(rows) ? rows.find((r) => String(r && r.symbol || '').toUpperCase() === sym) : null);
+    let row = null;
+    try { if (academyWideScanner) { const w = await academyWideScanner.get(400); row = pick(w && w.rows) || null; } } catch (_) { row = null; }
+    if (!row) { try { const sc = await getAcademyScanner(); row = pick(sc && sc.rows) || null; } catch (_) { row = null; } }
+    return row;
   };
-  const academyAsk = Object.assign(createAcademyAsk({ apiKey: config.anthropicApiKey, model: config.academyAskModel, lessons: SEED_LESSONS, episodes: require('./academy/discipline-content').EPISODES, logger: log, context: askContext, log: askLog }), { owners: config.academyAskUserIds, log: askLog });
+  const askDesk = createAskDesk({
+    candles: (s, tf) => getAcademyCandles(s, tf), memAlgo: require('./academy-mem-algo'), smartMoney: require('./academy-smart-money'), patterns: require('./academy-patterns'),
+    scannerRow: askScannerRow,
+    shortQuick: (s) => { const si = getShortInsight(); return si && typeof si.quick === 'function' ? si.quick(s) : null; },
+    sentiment: academySentiment ? (s) => academySentiment.get(s) : null,
+    earnings: academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('earnings', s); return r && r.ok ? r.data : null; } : null,
+    marketDirection, smlVix, logger: log
+  });
+  const askContext = ({ subject, horizon, question }) => askDesk.read({ subject, horizon, question });
+  /* a lower-case word is a ticker when the scanners know it (so "hubc" is HUBC and "worth" stays a word) */
+  const askKnownSymbols = { at: 0, set: new Set() };
+  const askIsSymbol = (w) => {
+    if (Date.now() - askKnownSymbols.at > 120_000) {
+      askKnownSymbols.at = Date.now();
+      (async () => { const next = new Set(); try { if (academyWideScanner) for (const r of ((await academyWideScanner.get(400)) || {}).rows || []) next.add(String(r.symbol || '').toUpperCase()); } catch (_) { /* keep */ } try { for (const r of ((await getAcademyScanner()) || {}).rows || []) next.add(String(r.symbol || '').toUpperCase()); } catch (_) { /* keep */ } if (next.size) askKnownSymbols.set = next; })().catch(() => {});
+    }
+    /* unknown to the scanners is not "not a ticker": thin names live outside them, so only a scanner hit says yes early and a miss defers to the shape */
+    return askKnownSymbols.set.has(String(w).toUpperCase()) || /^[A-Z]{3,5}$/.test(String(w));
+  };
+  const academyAsk = Object.assign(createAcademyAsk({ apiKey: config.anthropicApiKey, model: config.academyAskModel, lessons: SEED_LESSONS, episodes: require('./academy/discipline-content').EPISODES, logger: log, context: askContext, log: askLog, isSymbol: askIsSymbol }), { owners: config.academyAskUserIds, log: askLog });
   log('info', 'academy_media_runtime', { durable: academyMedia.durable, voice: academyVoice.configured ? 'live' : (academyVoice.stored ? 'baked' : 'off'), designer: academySlideDesigner.configured ? 'live' : 'built-in', bake: !!config.academyBake });
   log('info', 'dispute_evidence_runtime', { enabled: disputes.enabled, reason: disputes.reason,
     paypal: !!disputes.paypalClient, connectBot: !!connectInteractions });

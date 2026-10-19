@@ -65,7 +65,7 @@
     if (S.busy) return;
     S.busy = true; go.disabled = true; out.innerHTML = '<div class="ak-wait"><i></i>Reading the lessons and writing it the way you would say it…</div>';
     try {
-      const res = await fetch('/academy-activity/ask', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token() }, body: JSON.stringify({ question: text }), cache: 'no-store' });
+      const res = await fetch('/academy-activity/ask', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token() }, body: JSON.stringify({ question: text, symbol: (() => { try { const st = window.smlAcademyChartState && window.smlAcademyChartState(); return st && st.symbol ? String(st.symbol) : ''; } catch (_) { return ''; } })() }), cache: 'no-store' });
       const j = await res.json().catch(() => null);
       if (!res.ok || !j || !j.ok) { showError(j && j.error, j && j.detail); return; }
       const item = { q: text, answer: j.answer, sources: j.sources || [], at: Date.now() };
