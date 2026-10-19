@@ -10,13 +10,15 @@
  *               tape, sweeps bought, full-depth pressure and bid walls, CVD divergence, absorption on the bid, dark-pool buying (DIX),
  *               a worked buy order on the tape (persistence), hidden bids (icebergs), pulled asks (spoofs), toxic one-sided flow
  *               (VPIN), the flow ledger, relative volume, social chatter, a dated catalyst inside the cover window
- *   ACCELERANT  what makes a move run once it starts: negative dealer gamma, a call wall close above, 0DTE share, hedge pressure
+ *   GAMMA       the gamma squeeze: negative dealer gamma, calls stacked within 10% above spot, a call wall close above, call buyers
+ *               today, the gamma flip within reach, hedge pressure against normal volume, 0DTE share (kept under the key
+ *               `accelerant` too, for the older readers)
  *   TRAP        the counter-evidence: shorts pressing successfully (heavy short volume on down days), ask walls refilling, negative
  *               CVD, large prints sold, shorts added into weakness, the 20-day low gone, high price impact on sell flow
  *
- *   squeeze     0..100 = 100 * (0.35 F + 0.35 S + 0.10 A + 0.20 sqrt(F S)) * (1 - 0.5 T) * (0.6 + 0.4 coverage)
- *               fuel alone or spark alone tops out near 35; both together is where the score lives; the trap halves it; a thin read
- *               (few sources) is discounted and says so
+ *   squeeze     0..100 = 100 * (0.30 F + 0.30 S + 0.12 G + 0.18 sqrt(F S) + 0.10 sqrt(S G)) * (1 - 0.5 T) * (0.6 + 0.4 coverage)
+ *               fuel alone or spark alone tops out near 30; both together is where the score lives; the gamma ramp reinforces the
+ *               spark; the trap halves it; a thin read (few sources) is discounted and says so
  *   qstate      the "Q-STATE": a probabilistic state read over four regimes {squeeze, press, chop, trap}. Every piece of evidence is
  *               a log-likelihood nudge on the regime it speaks for (a Bayesian log-odds ensemble), with one interference term for
  *               fuel x spark (they reinforce each other, they do not add). Softmax gives the probabilities, entropy (0..1) says how
@@ -128,17 +130,39 @@ function spark({ svp, bars, depth, l2, tape, flowDays, intent, scanner, sentimen
   return { ...settle(S), hi20: r2(hi20), lo20: r2(lo20), close: r2(close) };
 }
 
-function accelerant({ gamma }) {
-  const A = block('accelerant');
-  if (!gamma || !gamma.available) { A.add('gex', 'Dealer gamma', 15, 0, 'no chain', false); A.add('callWall', 'Call wall above', 10, 0, 'no chain', false); A.add('zeroDte', '0DTE share', 5, 0, 'no chain', false); A.add('hedge', 'Hedge pressure', 5, 0, 'no chain', false); return settle(A); }
+/* GAMMA SQUEEZE: the options-driven half of a squeeze. When dealers are short the calls stacked just above price, every tick
+ * higher forces them to buy stock to stay hedged, which pushes price into the next strike, which forces more buying: the
+ * gamma ramp. It needs negative dealer gamma (hedging amplifies), calls stacked within reach above spot (the ladder), a call
+ * wall close enough to be a magnet, call buyers today (call volume over put volume), hedge flow that is large against the
+ * stock's normal volume, the gamma flip within reach, and short-dated open interest (0DTE) that makes the hedging twitchy.
+ * It is scored on its own, then reinforces the spark in the squeeze score: a short squeeze and a gamma squeeze feed each other. */
+function accelerant({ gamma, chain }) {
+  const A = block('gamma');
+  const unknown = (why) => { A.add('gex', 'Dealer gamma', 15, 0, why, false); A.add('ladder', 'Calls stacked above price', 12, 0, why, false); A.add('callWall', 'Call wall above', 10, 0, why, false); A.add('callFlow', 'Call buyers today', 10, 0, why, false); A.add('flip', 'Gamma flip within reach', 10, 0, why, false); A.add('hedge', 'Hedge pressure', 8, 0, why, false); A.add('zeroDte', '0DTE share', 5, 0, why, false); return { ...settle(A), callWall: null, flipStrike: null, flipDistancePct: null, putCallVol: null, regime: null, band: 'unknown' }; };
+  if (!gamma || !gamma.available) return unknown('no chain');
+  const S = num(gamma.price);
   A.add('gex', 'Dealer gamma', 15, gamma.regime === 'negative' ? 15 : 3, gamma.regime === 'negative' ? 'negative net gamma: dealers buy as it rises, moves run' : 'positive net gamma: dealers sell into strength, moves dampen');
+  const rows = Array.isArray(gamma.byStrike) ? gamma.byStrike : [];
+  if (S > 0 && rows.length) {
+    const win = rows.filter((r) => num(r.strike) > 0), tot = win.reduce((s, r) => s + num(r.callOi, 0) + num(r.putOi, 0), 0);
+    const above = win.filter((r) => r.strike > S && r.strike <= S * 1.10).reduce((s, r) => s + num(r.callOi, 0), 0);
+    const share = tot > 0 ? above / tot : 0;
+    A.add('ladder', 'Calls stacked above price', 12, share >= 0.4 ? 12 : share >= 0.25 ? 8 : share >= 0.15 ? 4 : 0, Math.round(share * 100) + '% of nearby open interest is calls within 10% above spot' + (share >= 0.25 ? ': a ladder dealers must buy into as it climbs' : ''));
+  } else A.add('ladder', 'Calls stacked above price', 12, 0, 'no strike map', false);
   const cw = gamma.callWall && num(gamma.callWall.distancePct);
   A.add('callWall', 'Call wall above', 10, cw != null ? (cw >= 0 && cw <= 3 ? 10 : cw > 3 && cw <= 7 ? 6 : cw < 0 ? 8 : 2) : 0, cw != null ? 'call wall at ' + gamma.callWall.strike + ' (' + (cw >= 0 ? '+' : '') + cw + '%)' + (cw >= 0 && cw <= 3 ? ': a magnet within reach' : cw < 0 ? ': already above it, dealers chasing' : '') : 'no call wall', cw != null);
+  const pcv = chain && num(chain.putCallVol);
+  if (pcv != null) A.add('callFlow', 'Call buyers today', 10, pcv <= 0.5 ? 10 : pcv <= 0.7 ? 6 : pcv <= 1 ? 2 : 0, 'put/call volume ' + pcv + (pcv <= 0.5 ? ': calls are being bought two to one or more' : pcv <= 0.7 ? ': call-heavy tape' : pcv > 1.3 ? ': puts dominate today' : ''));
+  else if (chain && num(chain.callVol) != null && num(chain.putVol) != null && num(chain.callVol) > 0) { const r = num(chain.putVol) / num(chain.callVol); A.add('callFlow', 'Call buyers today', 10, r <= 0.5 ? 10 : r <= 0.7 ? 6 : r <= 1 ? 2 : 0, 'put/call volume ' + r2(r)); }
+  else A.add('callFlow', 'Call buyers today', 10, 0, 'no option volume', false);
+  const fd = num(gamma.flipDistancePct);
+  A.add('flip', 'Gamma flip within reach', 10, fd != null ? (fd > 0 && fd <= 2 ? 10 : fd > 2 && fd <= 5 ? 6 : fd <= 0 && fd >= -3 ? 4 : 0) : 0, fd != null ? 'the flip is at ' + gamma.flipStrike + ' (' + (fd >= 0 ? '+' : '') + fd + '%)' + (fd > 0 && fd <= 5 ? ': crossing it turns dealers into buyers of strength' : fd <= 0 && fd >= -3 ? ': just crossed, hedging now chases' : '') : 'no flip estimate', fd != null);
+  const hp = num(gamma.pressurePct);
+  A.add('hedge', 'Hedge pressure', 8, hp != null ? (hp >= 20 ? 8 : hp >= 10 ? 5 : hp >= 5 ? 2 : 0) : 0, hp != null ? 'dealer hedge shares are ' + hp + '% of average volume' + (hp >= 20 ? ': the hedge alone moves the stock' : '') : 'unknown', hp != null);
   const z = num(gamma.zeroDteShare);
   A.add('zeroDte', '0DTE share', 5, z != null ? (z >= 0.3 ? 5 : z >= 0.15 ? 3 : 0) : 0, z != null ? Math.round(z * 100) + '% of open interest expires today' : 'unknown', z != null);
-  const hp = num(gamma.pressurePct);
-  A.add('hedge', 'Hedge pressure', 5, hp != null ? (hp >= 20 ? 5 : hp >= 10 ? 3 : hp >= 5 ? 1 : 0) : 0, hp != null ? 'dealer hedge shares are ' + hp + '% of average volume' : 'unknown', hp != null);
-  return settle(A);
+  const out = settle(A);
+  return { ...out, callWall: gamma.callWall || null, flipStrike: num(gamma.flipStrike), flipDistancePct: fd, putCallVol: pcv, regime: gamma.regime || null, band: out.score == null ? 'unknown' : out.score >= 65 ? 'gamma squeeze loaded' : out.score >= 45 ? 'gamma helps' : out.score >= 25 ? 'some gamma' : 'no gamma ramp' };
 }
 
 function trap({ svp, it, depth, tape, intent, bars }) {
@@ -170,7 +194,7 @@ function qstate({ F, S, A, T, coverage }) {
   /* squeeze needs BOTH fuel and spark (the product), the accelerant adds, the trap subtracts; press is the trap winning;
      chop is a two-sided tape with nothing loaded; trap is buying with no short fuel behind it, which gets sold into */
   const logit = {
-    squeeze: 5.0 * f * s + 0.8 * a - 2.0 * t - 0.9,
+    squeeze: 5.0 * f * s + 1.5 * a * s + 0.5 * a - 2.0 * t - 0.9,
     press: 3.0 * t + 0.6 * (1 - s) - 0.6,
     chop: 1.0 * (1 - Math.abs(s - 0.5) * 2) + 0.6 * (1 - t) - 0.5 * a,
     trap: 2.0 * s * (1 - f) + 1.5 * t * s - 0.5
@@ -191,33 +215,39 @@ function computeSqueeze(inputs = {}) {
   const F = fuel(inputs), S = spark(inputs), A = accelerant(inputs), T = trap(inputs);
   const blocks = [F, S, A, T], coverage = r2(blocks.reduce((s, b) => s + (b.coverage || 0), 0) / blocks.length);
   const f = (F.score ?? 0) / 100, s = (S.score ?? 0) / 100, a = (A.score ?? 0) / 100, t = (T.score ?? 0) / 100;
-  const raw = 100 * (0.35 * f + 0.35 * s + 0.10 * a + 0.20 * Math.sqrt(f * s));
+  /* the gamma ramp reinforces the spark (sqrt(spark x gamma)): calls stacked above a stock that is already being bought is
+     where a short squeeze and a gamma squeeze feed each other */
+  /* with no chain at all the gamma terms are absent, not zero: the rest of the formula is scaled back up to a full weight */
+  const gw = A.score == null ? 0 : 1;
+  const raw = 100 * (0.30 * f + 0.30 * s + 0.12 * a * gw + 0.18 * Math.sqrt(f * s) + 0.10 * Math.sqrt(s * a) * gw) / (gw ? 1 : 0.78);
   const score = F.score == null && S.score == null ? null : Math.round(clamp(raw * (1 - 0.5 * t) * (0.6 + 0.4 * coverage), 0, 100));
   const q = qstate({ F, S, A, T, coverage });
   const band = score == null ? 'unknown' : score >= 70 ? 'squeeze candidate' : score >= 50 ? 'loaded' : score >= 35 ? 'some fuel' : 'ordinary';
   const missing = [];
   if ((F.score ?? 0) >= 55 && (S.score ?? 0) < 45) missing.push('the spark: fuel is there, buying is not yet');
   if ((S.score ?? 0) >= 55 && (F.score ?? 0) < 40) missing.push('the fuel: buying is there, the short position is ordinary');
+  if ((A.score ?? 0) >= 55 && (S.score ?? 0) < 45) missing.push('the push into the call ladder: gamma is loaded, the buying has not started');
   if ((T.score ?? 0) >= 50) missing.push('a clean tape: shorts are still winning on the down days');
   const lines = [];
-  lines.push(score == null ? 'Not enough data to score a squeeze.' : 'SQUEEZE RISK ' + score + ' (' + band + '): fuel ' + (F.score ?? '–') + ', spark ' + (S.score ?? '–') + ', accelerant ' + (A.score ?? '–') + ', trap ' + (T.score ?? '–') + '.');
+  lines.push(score == null ? 'Not enough data to score a squeeze.' : 'SQUEEZE RISK ' + score + ' (' + band + '): fuel ' + (F.score ?? '–') + ', spark ' + (S.score ?? '–') + ', gamma ' + (A.score ?? '–') + ', trap ' + (T.score ?? '–') + '.');
+  if (A.score != null && A.score >= 45) lines.push('GAMMA SQUEEZE ' + A.score + ' (' + A.band + ')' + (A.callWall && A.callWall.strike != null ? ': call wall ' + A.callWall.strike : '') + (A.putCallVol != null ? ', put/call volume ' + A.putCallVol : '') + '.');
   if (F.pctFloat != null) lines.push(F.pctFloat + '% of the ' + F.floatKind + ' is short' + (F.burn != null ? ' and today\'s volume is ' + F.burn + 'x the whole position' : '') + '.');
   if (F.floatShares != null) lines.push('Supply: ' + big(F.floatShares) + ' shares (' + F.floatBand + ')' + (F.coverRatio != null ? ', ' + F.coverRatio + ' owed per free share' : '') + (F.floatTurn != null ? ', the ' + F.floatKind + ' turned ' + F.floatTurn + 'x today' : '') + '.');
   if (missing.length) lines.push('What is missing: ' + missing.join('; ') + '.');
   lines.push('Q-STATE: ' + q.dominant.toUpperCase() + ' ' + Math.round(q.probs[q.dominant] * 100) + '% (squeeze ' + Math.round(q.probs.squeeze * 100) + '%, press ' + Math.round(q.probs.press * 100) + '%, chop ' + Math.round(q.probs.chop * 100) + '%, trap ' + Math.round(q.probs.trap * 100) + '%), entropy ' + q.entropy + '. ' + q.collapse);
   const top = (b) => b.components.filter((c) => c.known && c.pts > 0).sort((x, y) => y.pts - x.pts).slice(0, 3).map((c) => c.label + ': ' + c.detail);
-  return { score, band, coverage, fuel: F, spark: S, accelerant: A, trap: T, qstate: q, missing, read: lines.join(' '), why: { fuel: top(F), spark: top(S), accelerant: top(A), trap: top(T) },
-    formula: 'squeeze = 100 x (0.35 fuel + 0.35 spark + 0.10 accelerant + 0.20 sqrt(fuel x spark)) x (1 - 0.5 trap) x (0.6 + 0.4 coverage)' };
+  return { score, band, coverage, fuel: F, spark: S, accelerant: A, gamma: A, trap: T, qstate: q, missing, read: lines.join(' '), why: { fuel: top(F), spark: top(S), accelerant: top(A), gamma: top(A), trap: top(T) },
+    formula: 'squeeze = 100 x (0.30 fuel + 0.30 spark + 0.12 gamma + 0.18 sqrt(fuel x spark) + 0.10 sqrt(spark x gamma)) x (1 - 0.5 trap) x (0.6 + 0.4 coverage)' };
 }
 
 /* ---- the AI brief: a short read written only from these numbers ---- */
 const AI_SYSTEM = 'You are the short-squeeze analyst of the Making Easy Money Academy, writing for retail traders. Use ONLY the figures given; never invent numbers, names, catalysts or events. '
-  + 'Explain what the positioning and the flow set up, in plain English, like a desk head talking to a junior: fuel, spark, accelerant, trap. Do not predict; say what would prove the squeeze case and what would kill it. '
+  + 'Explain what the positioning and the flow set up, in plain English, like a desk head talking to a junior: fuel (the short position against the float), spark (the buying), the gamma squeeze (dealers forced to buy into the call ladder), trap. Do not predict; say what would prove the squeeze case and what would kill it. '
   + 'Answer with one JSON object only, no prose around it: headline (one sentence), read (3 to 5 short sentences), proves (2 to 3 observables that would confirm the squeeze), kills (2 to 3 observables that would end it), plan (2 sentences on how a long would manage it and how a short should treat it), confidence (low, medium or high, with a short reason).';
 function aiPrompt(symbol, m, extra = {}) {
   const c = (b) => b.components.filter((x) => x.known).map((x) => x.label + ' = ' + x.pts + '/' + x.max + ' (' + x.detail + ')').join('; ');
   return 'SYMBOL: ' + symbol + '\nSQUEEZE RISK ' + m.score + ' (' + m.band + '); coverage ' + Math.round(m.coverage * 100) + '% of sources present' + (extra.price != null ? '; price ' + extra.price : '')
-    + '\nFUEL ' + m.fuel.score + ': ' + c(m.fuel) + '\nSPARK ' + m.spark.score + ': ' + c(m.spark) + '\nACCELERANT ' + m.accelerant.score + ': ' + c(m.accelerant) + '\nTRAP ' + m.trap.score + ': ' + c(m.trap)
+    + '\nFUEL ' + m.fuel.score + ': ' + c(m.fuel) + '\nSPARK ' + m.spark.score + ': ' + c(m.spark) + '\nGAMMA SQUEEZE ' + m.accelerant.score + ' (' + m.accelerant.band + '): ' + c(m.accelerant) + '\nTRAP ' + m.trap.score + ': ' + c(m.trap)
     + '\nQ-STATE probabilities: squeeze ' + m.qstate.probs.squeeze + ', press ' + m.qstate.probs.press + ', chop ' + m.qstate.probs.chop + ', trap ' + m.qstate.probs.trap + '; entropy ' + m.qstate.entropy
     + (extra.hi20 != null ? '\n20-day high ' + extra.hi20 + ', 20-day low ' + extra.lo20 : '') + (extra.marketOpen === false ? '\nThe market is closed; the tape figures are from the last session.' : '');
 }

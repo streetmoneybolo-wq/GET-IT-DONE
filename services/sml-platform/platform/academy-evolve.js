@@ -31,8 +31,8 @@ const PROPOSAL_STATES = new Set(['proposed', 'approved', 'dismissed', 'building'
 /* the knobs the system may turn, with their rails; `value` is the live setting, `pinned` means the owner set it */
 const KNOBS = {
   livePollMs: { min: 2_000, max: 8_000, step: 500, value: 2_500, unit: 'ms', about: 'how often the page polls the live quote and book' },
-  squeezeConcurrency: { min: 1, max: 3, step: 1, value: 3, unit: 'workers', about: 'how many names the squeeze sweep reads at once' },
-  squeezeMaxSymbols: { min: 30, max: 80, step: 10, value: 80, unit: 'names', about: 'how wide the squeeze sweep goes' },
+  squeezeConcurrency: { min: 1, max: 6, step: 1, value: 4, unit: 'workers', about: 'how many names the squeeze sweep reads in full at once' },
+  squeezeMaxSymbols: { min: 60, max: 200, step: 20, value: 120, unit: 'names', about: 'how many pre-screened names the squeeze sweep reads in full' },
   sentimentTtlMs: { min: 60_000, max: 600_000, step: 60_000, value: 60_000, unit: 'ms', about: 'how long a sentiment read is kept before it is rebuilt' }
 };
 

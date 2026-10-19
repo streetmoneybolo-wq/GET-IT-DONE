@@ -65,6 +65,13 @@ test('the chain summary and the service: inputs gathered in parallel, missing on
   assert.ok(out.squeeze.score > out.pressing.score); assert.equal(out.interest.daysToCover, 6); assert.equal(out.chain.putCallOi, 1.47); assert.equal(out.tape.buy, 5e5); assert.equal(out.mem, null, 'the short model needs 220 daily bars');
   await svc.insight('ACME'); assert.equal(calls, 1, 'cached'); clock += 61_000; await svc.insight('ACME'); assert.equal(calls, 2);
   assert.equal((await svc.insight('bad!')).error, 'invalid_symbol');
+  /* the QUICK read: the fuel block from the short feed and the float alone, cached ten times longer */
+  const before = calls;
+  const q = await svc.quick('acme');
+  assert.equal(q.ok, true); assert.equal(q.available, true); assert.equal(q.symbol, 'ACME'); assert.ok(Number.isFinite(q.fuel), 'fuel ' + q.fuel); assert.equal(q.daysToCover, 6); assert.equal(q.shortInterest, 6e6); assert.equal(q.floatShares, null, 'no float source here');
+  assert.ok(calls >= before, 'the short feed is read'); const c2 = calls; await svc.quick('ACME'); assert.equal(calls, c2, 'cached');
+  assert.equal((await svc.quick('bad!')).error, 'invalid_symbol');
+  assert.equal((await S.createShortInsight({ shortData: async () => null, logger: () => {} }).quick('ZZZZ')).available, false);
   const none = S.createShortInsight({ shortData: async () => null, logger: () => {} });
   assert.equal((await none.insight('ZZZZ')).available, false);
 });

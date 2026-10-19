@@ -5082,9 +5082,16 @@ async function main() {
   const getSqueezeList = () => {
     if (squeezeList) return squeezeList;
     const si = getShortInsight(); if (!si) return null;
-    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), insight: (s) => si.insight(s), universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(400) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
+    /* two phases: the cheap fuel read screens the whole wide ranking plus the low-float lane, the top names get the full read;
+       the last list lives in academy_state_kv so the button answers at once after a restart */
+    squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), limit: 100, quickConcurrency: Number(process.env.SML_ACADEMY_SQUEEZE_QUICK_WORKERS) || 8,
+      insight: (s) => si.insight(s), quick: typeof si.quick === 'function' ? (s) => si.quick(s) : null,
+      store: createPgStateStore({ pool: database.pool, key: 'squeeze-list', defaultValue: () => ({ rows: [], at: 0 }), logger: log }),
+      universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(400) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
     return squeezeList;
   };
+  /* the list is pre-built shortly after boot so the first press of SQUEEZE is served, not started; ACADEMY_SQUEEZE_PREWARM=off skips it */
+  if (process.env.ACADEMY_SQUEEZE_PREWARM !== 'off') { const pre = setTimeout(() => { try { const l = getSqueezeList(); if (l) l.list({ touch: false }); } catch (error) { log('warn', 'squeeze_list_prewarm_failed', { error: String(error && error.message || error) }); } }, 90_000); if (pre.unref) pre.unref(); }
   const getFdaService = () => {
     if (fdaService || process.env.SML_ACADEMY_FDA === 'off') return fdaService;
     fdaService = createFdaService({

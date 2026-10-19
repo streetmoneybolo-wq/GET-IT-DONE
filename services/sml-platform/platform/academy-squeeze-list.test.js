@@ -40,6 +40,41 @@ test('the low-float lane: names below the active cut with a small float are read
   assert.match(out.note, /cover ratio = shares owed per free share/); assert.match(out.note, /low-float lane \(floats under 50M\)/);
 });
 
+test('two phases: the quick fuel read screens the whole universe, the top names get the full read, the store serves the last list first', async () => {
+  let clock = 1_800_000_000_000;
+  const universe = Array.from({ length: 40 }, (_, i) => ({ symbol: 'Q' + i, volume: 1e6 * (40 - i), sharesFloat: i === 38 ? 9e6 : i === 39 ? 20e6 : null }));
+  const quickSeen = [], fullSeen = [];
+  const saved = { rows: [{ symbol: 'OLD', squeeze: 55, rank: 1 }], at: clock - 60_000, total: 9, lowFloat: 1 };
+  const store = { read: async () => saved, writes: [], write: async (v) => { store.writes.push(v); } };
+  /* quick fuel: Q0..Q39 score 80 - i, except the low-float Q38 (fuel 50) and Q39 (fuel 10: too little to earn a full read) */
+  const svc = createSqueezeList({ universe: async () => universe, store, maxSymbols: 10, lowFloatMax: 50e6, lowFloatExtra: 5, concurrency: 4, quickConcurrency: 8, now: () => clock, logger: () => {},
+    quick: async (s) => { quickSeen.push(s); const i = Number(s.slice(1)); if (i === 7) return { ok: true, available: false }; return { ok: true, available: true, fuel: i === 38 ? 50 : i === 39 ? 10 : 80 - i, coverRatio: 0.3 }; },
+    insight: async (s) => { fullSeen.push(s); await new Promise((r) => setTimeout(r, 3)); return fake(s, 90 - Number(s.slice(1)), { model: { fuel: { score: 70, floatShares: 9e6 }, spark: { score: 60 }, gamma: { score: 77, band: 'gamma squeeze loaded', callWall: { strike: 12, distancePct: 1.5 }, putCallVol: 0.5 }, trap: { score: 5 }, qstate: { dominant: 'squeeze', probs: { squeeze: 0.6 }, entropy: 0.4 }, band: 'squeeze candidate', coverage: 0.9, why: { fuel: ['a'], spark: ['b'], gamma: ['dealers short the ladder'] } } }); } });
+  const until = async (fn) => { for (let i = 0; i < 1000 && !fn(); i++) await new Promise((r) => setTimeout(r, 10)); };
+  const first = svc.list();
+  assert.equal(first.building, true); assert.equal(first.phase, 'quick');
+  await svc.restore();
+  const early = svc.list();
+  assert.equal(early.fromStore, true); assert.deepEqual(early.rows.map((r) => r.symbol), ['OLD'], 'the last list is served while the sweep runs');
+  await until(() => !svc.state.building);
+  const done = svc.list();
+  assert.equal(done.building, false); assert.equal(done.fromStore, false); assert.equal(done.quickTotal, 40); assert.equal(done.quickDone, 40);
+  assert.equal(quickSeen.length, 40, 'every name is pre-screened');
+  assert.equal(done.total, 11, 'the top 10 by fuel plus the low-float name with real fuel'); assert.equal(done.lowFloat, 2);
+  assert.deepEqual(fullSeen.slice().sort(), ['Q0', 'Q1', 'Q10', 'Q2', 'Q3', 'Q38', 'Q4', 'Q5', 'Q6', 'Q8', 'Q9'], 'Q7 had no short data, Q39 had no fuel');
+  assert.equal(done.rows[0].symbol, 'Q0'); assert.equal(done.rows[0].gamma, 77); assert.equal(done.rows[0].gammaBand, 'gamma squeeze loaded'); assert.equal(done.rows[0].callWall.strike, 12); assert.equal(done.rows[0].putCallVol, 0.5);
+  assert.ok(done.rows[0].modelWhy.includes('dealers short the ladder'));
+  assert.equal(done.rows.find((r) => r.symbol === 'Q38').lane, 'low-float');
+  assert.equal(store.writes.length, 1); assert.equal(store.writes[0].rows.length, 11); assert.ok(done.lastMs >= 0);
+  assert.match(done.note, /GAMMA SQUEEZE/); assert.match(done.note, /pre-screens the whole active market/);
+  /* keep warm: looked at recently, the list rebuilds by itself once stale */
+  clock += 11 * 60_000;
+  const again = svc.list({ touch: false });
+  assert.equal(again.building, true, 'stale: a new sweep starts and the old rows are still served'); assert.equal(again.rows.length, 11);
+  await until(() => !svc.state.building);
+  assert.equal(quickSeen.length, 80, 'the whole universe is pre-screened again');
+});
+
 test('an empty or broken universe is reported, not thrown; a slow symbol is skipped', async () => {
   const empty = createSqueezeList({ universe: async () => { throw new Error('down'); }, insight: async () => fake('X', 50), logger: () => {} });
   empty.list(); await new Promise((r) => setTimeout(r, 30));

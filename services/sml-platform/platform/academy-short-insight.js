@@ -201,7 +201,27 @@ function createShortInsight({ shortData, candles = null, orderFlow = null, tape 
     const p = build(symbol).then((v) => { cache.set(symbol, { at: now(), v }); if (cache.size > 300) cache.delete(cache.keys().next().value); return v; }).catch((error) => { logger('error', 'short_insight_failed', { symbol, error: String(error && error.message || error) }); return { ok: false, status: 503, error: 'insight_unavailable' }; }).finally(() => inflight.delete(symbol));
     inflight.set(symbol, p); return p;
   }
-  return { insight };
+  /* QUICK: the fuel block alone from the two cheap, long-cached inputs (the short feed and the scanner row with the float), so a
+     wide sweep can rank hundreds of names in seconds and spend the full read (book, tape, chain, gamma, intent) on the top ones */
+  const quickCache = new Map(), quickInflight = new Map();
+  function quick(symbolRaw) {
+    const symbol = String(symbolRaw || '').toUpperCase();
+    if (!SYMBOL.test(symbol)) return Promise.resolve({ ok: false, status: 400, error: 'invalid_symbol' });
+    const hit = quickCache.get(symbol); if (hit && now() - hit.at < 10 * ttlMs) return Promise.resolve(hit.v);
+    if (quickInflight.has(symbol)) return quickInflight.get(symbol);
+    const p = (async () => {
+      const [sd, fl] = await Promise.all([safe('short', () => shortData(symbol), 6_000), float ? safe('float', () => float(symbol), 4_000) : null]);
+      const volumeRows = sd && Array.isArray(sd.volume) ? sd.volume : [], interestRows = sd && Array.isArray(sd.interest) ? sd.interest : [];
+      if (!volumeRows.length && !interestRows.length) return { ok: true, available: false, reason: 'no_short_data', symbol };
+      const svp = shortVsPrice(volumeRows, []), it = interestTrend(interestRows, []);
+      const F = squeezeModel.fuel({ it, svp, float: fl || null, scanner: fl || null, chain: null });
+      return { ok: true, available: true, symbol, fuel: F.score, coverage: F.coverage, pctFloat: F.pctFloat, coverRatio: F.coverRatio, floatShares: F.floatShares, floatBand: F.floatBand, floatKey: F.floatKey, floatTurn: F.floatTurn, daysToCover: it ? it.daysToCover : null, shortInterest: it ? it.shortInterest : null, siChangePct: it ? it.siChangePct : null, shortRatio: svp ? svp.avgRatio : null };
+    })().then((v) => { quickCache.set(symbol, { at: now(), v }); if (quickCache.size > 1500) quickCache.delete(quickCache.keys().next().value); return v; })
+      .catch((error) => { logger('warn', 'short_insight_quick_failed', { symbol, error: String(error && error.message || error) }); return { ok: false, status: 503, error: 'insight_unavailable' }; })
+      .finally(() => quickInflight.delete(symbol));
+    quickInflight.set(symbol, p); return p;
+  }
+  return { insight, quick };
 }
 
 module.exports = { createShortInsight, shortVsPrice, interestTrend, scores, chainSummary, verdicts };

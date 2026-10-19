@@ -9,14 +9,15 @@ const loaded = {
   it: { shortInterest: 4e6, daysToCover: 8, tone: 'up', label: 'shorts added into a rising price: fighting the tape (squeeze fuel)' },
   svp: { avgRatio: 56, tone: 'up', label: 'absorbed', downOnHigh: 0, upOnHigh: 4 },
   float: { sharesFloat: 12e6 }, scanner: { volume: 24e6, rvol: 3.2, price: 20 },
-  chain: { putCallOi: 1.5, putSkewPts: 3 },
+  chain: { putCallOi: 1.5, putSkewPts: 3, putCallVol: 0.4 },
   bars: bars(40, (i) => (i >= 30 ? 0.03 : 0.001)),
   depth: { ready: true, pressure: { score: 60, label: 'strong buying pressure' }, walls: [{ side: 'bid' }, { side: 'bid' }], flow: { divergence: 'bullish' } },
   l2: { ready: true, absorption: { state: 'bull', strength: 0.8 } },
   tape: { count: 500, buy: 7e6, sell: 3e6, sweepN: 6, sweepBuy: 5, sweepSell: 1 },
   flowDays: { available: true, days: 4, score: 55, label: 'bullish week', deltaRatioAvg: 0.2 },
   intent: { formulas: { darkPool: { ok: true, dix: 0.62, heavy: true }, persistence: { ok: true, side: 'buy', band: 'worked order', acf: 0.3 }, iceberg: { ok: true, side: 'buyer', levels: [{ price: 21.5 }] }, spoof: { ok: true, intent: 'fake ceiling (buyer)' }, vpin: { ok: true, vpin: 0.55, band: 'informed' }, footprint: { ok: true, side: 'buy' }, lambda: { ok: true, band: 'normal', lambda: 2 } } },
-  gamma: { available: true, regime: 'negative', callWall: { strike: 23, distancePct: 2.1 }, zeroDteShare: 0.32, pressurePct: 22 },
+  gamma: { available: true, regime: 'negative', price: 22.5, callWall: { strike: 23, distancePct: 2.1 }, flipStrike: 23, flipDistancePct: 2.2, zeroDteShare: 0.32, pressurePct: 22,
+    byStrike: [{ strike: 20, callOi: 500, putOi: 4000 }, { strike: 22, callOi: 1500, putOi: 2000 }, { strike: 23, callOi: 9000, putOi: 800 }, { strike: 24, callOi: 7000, putOi: 400 }, { strike: 25, callOi: 3000, putOi: 300 }] },
   sentiment: { social: { available: true, postsPerHour: 40, baseline: 8 } }, earnings: { daysUntil: 3 }, marketOpen: true
 };
 
@@ -72,9 +73,36 @@ test('a pressed name scores press: shorts winning on down days, ask walls, the 2
 test('spark without fuel reads as a trap or chop, never a squeeze candidate', () => {
   const m = Q.computeSqueeze({ ...loaded, it: { shortInterest: 2e6, daysToCover: 0.8, tone: 'neutral', label: 'short interest steady' }, svp: { avgRatio: 35, tone: 'neutral', label: 'ordinary' }, float: { sharesFloat: 500e6 }, scanner: { volume: 24e6, rvol: 3.2, price: 40 }, chain: { putCallOi: 0.7 } });
   assert.ok(m.fuel.score <= 15, 'fuel ' + m.fuel.score); assert.ok(m.spark.score >= 75);
-  assert.ok(m.score < 50, 'score ' + m.score); assert.notEqual(m.band, 'squeeze candidate');
+  assert.ok(m.score < 60, 'score ' + m.score + ' (the gamma ramp alone lifts it, the short fuel is missing)'); assert.notEqual(m.band, 'squeeze candidate');
   assert.ok(m.missing.some((x) => /the fuel/.test(x)));
   assert.ok(['trap', 'chop', 'press'].includes(m.qstate.dominant), m.qstate.dominant);
+});
+
+test('the gamma squeeze: dealers short the call ladder above spot, call buyers today, the flip within reach; without a chain it is unknown, not zero', () => {
+  const m = Q.computeSqueeze(loaded);
+  const g = m.gamma;
+  assert.equal(g, m.accelerant, 'kept under both keys');
+  assert.ok(g.score >= 90, 'gamma ' + g.score); assert.equal(g.band, 'gamma squeeze loaded');
+  const c = (k) => g.components.find((x) => x.key === k);
+  assert.equal(c('ladder').pts, 12); assert.match(c('ladder').detail, /56% of nearby open interest is calls within 10% above spot: a ladder/);
+  assert.equal(c('callFlow').pts, 10); assert.match(c('callFlow').detail, /two to one/);
+  assert.equal(c('flip').pts, 6); assert.match(c('flip').detail, /turns dealers into buyers/);
+  assert.equal(c('hedge').pts, 8); assert.equal(c('gex').pts, 15); assert.equal(c('callWall').pts, 10);
+  assert.equal(g.callWall.strike, 23); assert.equal(g.putCallVol, 0.4); assert.equal(g.regime, 'negative');
+  assert.match(m.read, /GAMMA SQUEEZE \d+ \(gamma squeeze loaded\): call wall 23, put\/call volume 0\.4/);
+  assert.match(m.formula, /0\.10 sqrt\(spark x gamma\)/);
+  assert.ok(m.why.gamma.length === 3);
+  /* the ramp reinforces a lit spark: the same name without the gamma ramp scores lower */
+  const flat = Q.computeSqueeze({ ...loaded, gamma: { available: true, regime: 'positive', price: 22.5, callWall: { strike: 30, distancePct: 33 }, flipDistancePct: -20, flipStrike: 18, zeroDteShare: 0.05, pressurePct: 1, byStrike: [{ strike: 20, callOi: 100, putOi: 9000 }, { strike: 25, callOi: 100, putOi: 500 }] }, chain: { putCallOi: 1.5, putSkewPts: 3, putCallVol: 1.6 } });
+  assert.ok(flat.gamma.score <= 15, 'flat gamma ' + flat.gamma.score); assert.equal(flat.gamma.band, 'no gamma ramp');
+  assert.ok(m.score - flat.score >= 10, 'squeeze ' + m.score + ' vs ' + flat.score);
+  assert.ok(m.qstate.probs.squeeze > flat.qstate.probs.squeeze);
+  /* gamma loaded, buying not started: the read names the missing push */
+  const quiet = Q.computeSqueeze({ it: loaded.it, svp: loaded.svp, float: loaded.float, scanner: { volume: 1e6, price: 20 }, chain: loaded.chain, gamma: loaded.gamma, bars: bars(40, () => 0), tape: { count: 300, buy: 1e6, sell: 1e6 }, marketOpen: true });
+  assert.ok(quiet.missing.some((x) => /call ladder/.test(x)), JSON.stringify(quiet.missing));
+  const none = Q.computeSqueeze({ ...loaded, gamma: null });
+  assert.equal(none.gamma.score, null); assert.ok(none.gamma.components.every((x) => x.known === false)); assert.equal(none.gamma.band, 'unknown');
+  assert.match(Q.aiPrompt('ABC', m, { price: 22 }), /GAMMA SQUEEZE \d+ \(gamma squeeze loaded\): Dealer gamma/);
 });
 
 test('a thin read is discounted and says what it lacked; nothing at all scores null', () => {
