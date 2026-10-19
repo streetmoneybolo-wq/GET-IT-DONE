@@ -46,7 +46,10 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
     const current = now();
     const cached = cache.get(key);
     if (cached && cached.freshUntil > current) return { ok: true, status: 200, data: cached.data, cached: true };
-    if (inflight.has(key)) return inflight.get(key);
+    /* a copy that is past fresh but still recent is served at once (marked stale) while one refresh runs behind it:
+       a timeframe switch never waits on the provider when the bars are already here */
+    const serveStale = cached && cached.staleUntil > current && current - (cached.data.asOf || 0) < 10 * 60_000;
+    if (inflight.has(key)) return serveStale ? { ok: true, status: 200, data: { ...cached.data, stale: true }, cached: true } : inflight.get(key);
 
     const pending = (async () => {
       const from = new Date(current - config.lookbackMs).toISOString().slice(0, 10);
@@ -74,6 +77,7 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
       }
     })();
     inflight.set(key, pending);
+    if (serveStale) { pending.catch(() => {}); return { ok: true, status: 200, data: { ...cached.data, stale: true }, cached: true }; }
     return pending;
   }
 
