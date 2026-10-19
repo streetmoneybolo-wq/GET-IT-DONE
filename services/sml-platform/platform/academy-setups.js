@@ -31,7 +31,9 @@ function levelsBeyond(a, entry, side) {
   for (const p of (up ? a.pivots.highs : a.pivots.lows) || []) add(p.price, up ? 'prior swing high' : 'prior swing low');
   for (const l of a.liquidity || []) if (l.takenAt == null && (up ? l.kind === 'EQH' : l.kind === 'EQL')) add(l.level, up ? 'equal highs (liquidity)' : 'equal lows (liquidity)');
   for (const o of (a.structure && a.structure.orderBlocks) || []) if (o.invalidAt == null && (up ? o.dir < 0 : o.dir > 0)) add(up ? o.bottom : o.top, up ? 'supply block' : 'demand block');
-  if (a.vwap && fin(a.vwap.upper1) && up) add(a.vwap.upper1, 'VWAP upper band');
+  const vwLast = a.vwap && Array.isArray(a.vwap) ? a.vwap[a.vwap.length - 1] : a.vwap;
+  if (vwLast && fin(vwLast.upper1) && up) add(vwLast.upper1, 'VWAP upper band');
+  if (vwLast && fin(vwLast.lower1) && !up) add(vwLast.lower1, 'VWAP lower band');
   return out.sort((x, y) => (up ? x.price - y.price : y.price - x.price));
 }
 
@@ -56,11 +58,12 @@ function buildOne({ horizon, symbol, price, bars, ctx }) {
   if (read.pattern) ev('Chart pattern', (read.pattern.dir === 'bull') === (side === 'long') && side !== 'neutral' ? 'for' : 'against', `${read.pattern.name} (${read.pattern.status || 'forming'})`);
   if (a && a.structure) {
     const last = (a.structure.events || []).slice(-1)[0];
-    if (last) { const bullEvt = last.dir > 0; ev('Structure', side === 'neutral' ? 'neutral' : (bullEvt === (side === 'long') ? 'for' : 'against'), `last ${last.kind || 'break'} was ${bullEvt ? 'bullish' : 'bearish'}`); }
+    if (last) { const bullEvt = last.dir > 0; ev('Structure', side === 'neutral' ? 'neutral' : (bullEvt === (side === 'long') ? 'for' : 'against'), `last ${last.type || last.kind || 'break'} was ${bullEvt ? 'bullish' : 'bearish'}`); }
     if (a.structure.trend) ev('Trend structure', side === 'neutral' ? 'neutral' : ((a.structure.trend > 0) === (side === 'long') ? 'for' : 'against'), a.structure.trend > 0 ? 'higher highs and higher lows' : a.structure.trend < 0 ? 'lower highs and lower lows' : 'sideways');
   }
-  if (horizon === 'day' && a && a.vwap && fin(a.vwap.value ?? a.vwap.vwap)) {
-    const v = a.vwap.value ?? a.vwap.vwap; const above = entry >= v;
+  const vwNow = a && a.vwap ? (Array.isArray(a.vwap) ? a.vwap[a.vwap.length - 1] : a.vwap) : null;
+  if (horizon === 'day' && vwNow && fin(vwNow.value ?? vwNow.vwap)) {
+    const v = vwNow.value ?? vwNow.vwap; const above = entry >= v;
     ev('Session VWAP', side === 'neutral' ? 'neutral' : (above === (side === 'long') ? 'for' : 'against'), `price is ${above ? 'above' : 'below'} VWAP ${r2(v)}`);
   }
   if (ctx.flow && ctx.flow.ready && (horizon === 'day' || horizon === 'swing')) {
