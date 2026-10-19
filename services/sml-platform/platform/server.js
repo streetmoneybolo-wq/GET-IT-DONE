@@ -110,6 +110,7 @@ const { createDisciplineProgress } = require('./academy/discipline-progress');
 const { createAcademySlideDesigner } = require('./academy-slide-designer');
 const { createAcademyMediaStore } = require('./academy-media-store');
 const { createAcademyAsk } = require('./academy-ask');
+const { createAcademyTrial } = require('./academy-trial');
 const { createAcademyBake } = require('./academy-bake');
 const ACADEMY_SDK_ROOT = pathModule.join(pathModule.dirname(require.resolve('@discord/embedded-app-sdk/package.json')), 'output');
 const ACADEMY_INTRO_PATH = pathModule.join(__dirname, 'assets', 'making-easy-money-academy-intro.mp4');
@@ -1842,7 +1843,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyAccess = null, academyOAuth = null, academyDataBridge = null, academyProgress = null, academyVoice = null, academyOrderFlow = null, academyAlerts = null, academySentiment = null, groupTools = null, academyAlertSources = null, academyOptionsStream = null, academyClickAlert = null, academyProfiles = null, academySnapshot = null, academyMemLab = null, academyPasses = null, academyClickAlertPasses = null, academyMassive = null, academySireFeed = null, academyScreener = null, academyPopout = null, academyTierLive = null, academyFreeSessions = false, marketDirection = null, academySmlVix = null, academyAutoPt = null, academyHedge = null, academyPush = null, academyWideScanner = null, academyMentions = null, academySignals = null,
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
-  academySlideDesigner = null, academyAsk = null, academyAppId = '', academyGate = null,
+  academySlideDesigner = null, academyAsk = null, academyTrial = null, academyAppId = '', academyGate = null,
   loopKickBridge = null, connectOAuth = null, connectAppId = '',
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
@@ -3622,6 +3623,11 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* The free trial link (academy-trial.js): public pages, Discord sign-in, a pass on the account; no session needed */
+    if (academyTrial && path.startsWith('/academy-activity/trial')) {
+      if (await academyTrial.handle(request, response, path, new URL(request.url || '/', 'http://localhost'))) return;
+    }
+
     /* Ask Obi: owner only. GET says whether the signed-in account may use it (the client shows the button on yes);
        POST { question } answers from the Academy's own material in Obi's voice. Nobody else gets past the owner check. */
     if (path === '/academy-activity/ask') {
@@ -4007,10 +4013,18 @@ async function main() {
     ...config.academyMemberRoleIds, config.academyLifetimeRoleId].filter(Boolean);
   const academyGateFlags = config.academyContentGateEnabled || config.academyFreeSessions || config.academyAlertsTiering || config.academyBillingInDiscordLinks;
   /* Loop Bucks passes: a member who has loaded Loop Bucks on stockmarketloop.com can buy Academy access in the app. Off until SML_ACADEMY_LB_PRICES is set; ACADEMY_LB_PASSES=off removes it. */
+  /* one pass store for bought passes and the free trial, so a trial is recognised by the same access path */
+  const academyPassStore = createPassStore({ pool: database.pool });
   const academyPasses = process.env.ACADEMY_LB_PASSES === 'off' ? null : createPassService({
-    store: createPassStore({ pool: database.pool }), wallet: createWalletClient({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret }),
+    store: academyPassStore, wallet: createWalletClient({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret }),
     prices: parsePassPrices(process.env.SML_ACADEMY_LB_PRICES), logger: log
   });
+  const academyTrial = createAcademyTrial({
+    clientId: config.academyAppId, clientSecret: config.academyClientSecret, publicUrl: config.academyTrialPublicUrl, store: academyPassStore,
+    days: config.academyTrialDays, enabled: config.academyTrialEnabled, logger: log,
+    buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/start?purpose=buy' : ''
+  });
+  log('info', 'academy_trial_runtime', { configured: academyTrial.configured, days: academyTrial.days, link: academyTrial.configured ? academyTrial.link : '', redirectUri: academyTrial.configured ? academyTrial.redirectUri : '' });
   /* Click-to-Alert paid with Loop Bucks: its own prices (SML_CLICK_ALERT_LB_PRICES), the same wallet. SML_CLICK_ALERT_SUBSCRIBE_URL adds a "subscribe with a card" button. */
   const academyClickAlertPasses = process.env.ACADEMY_LB_PASSES === 'off' ? null : createPassService({
     store: createPassStore({ pool: database.pool }), wallet: createWalletClient({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret }),
@@ -4739,7 +4753,7 @@ async function main() {
     alertRouterSecret: config.alertRouterSecret,
     corporate,
     corporateConflictCodes: CONFLICT_CODES,
-    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyAsk, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
+    academyAccess, academyOAuth, academyDataBridge, academyProgress, academyVoice, academySlideDesigner, academyAsk, academyTrial, academyOrderFlow, academyAlerts, academySentiment, groupTools, academyAlertSources, academyOptionsStream, academyClickAlert, academyProfiles, academySnapshot, academyMemLab, academyPasses, academyClickAlertPasses, academyMassive, academyScreener, academyPopout, academyTierLive, academyFreeSessions: !!config.academyFreeSessions, marketDirection, academySmlVix: smlVix, academyAutoPt, academyHedge, academyWideScanner, academyPush, academyMentions, academySignals,
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,

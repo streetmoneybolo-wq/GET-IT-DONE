@@ -181,6 +181,10 @@ function getConfig(env = process.env) {
     academyVoiceId: String(env.SML_ACADEMY_ELEVENLABS_VOICE_ID || '').trim(),
     academyVoiceModel: String(env.SML_ACADEMY_ELEVENLABS_MODEL || 'eleven_multilingual_v2').trim(),
     academyClaudeModel: String(env.SML_ACADEMY_CLAUDE_MODEL || env.SML_AI_ANTHROPIC_MODEL || 'claude-sonnet-5').trim(),
+    // the free trial link: on by default once the Academy app id/secret are set; SML_ACADEMY_TRIAL=0 turns it off
+    academyTrialEnabled: String(env.SML_ACADEMY_TRIAL ?? '1').trim() !== '0',
+    academyTrialDays: integer(env.SML_ACADEMY_TRIAL_DAYS, 15, 1),
+    academyTrialPublicUrl: httpsOrigin(env.SML_ACADEMY_TRIAL_PUBLIC_URL) || httpsOrigin(env.RENDER_EXTERNAL_URL) || httpsOrigin(env.SML_ACADEMY_BILLING_PUBLIC_URL),
     // Ask Obi (owner only): the model that writes answers, and who may use it (the owner by default)
     academyAskModel: String(env.SML_ACADEMY_ASK_MODEL || 'claude-sonnet-5-5').trim(),
     academyAskUserIds: new Set([...require('./academy-free-users').OWNER_IDS, ...snowflakeList(env.SML_ACADEMY_ASK_USER_IDS)]),

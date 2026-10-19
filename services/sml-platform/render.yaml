@@ -142,6 +142,12 @@ services:
       # or without the provider keys; keep the voice id set.
       - key: SML_ACADEMY_BAKE
         sync: false
+      # The free trial link (<service url>/academy-activity/trial): 15 days of Academy access on a Discord account, in any
+      # server. Needs <service url>/academy-activity/trial/callback registered as an OAuth2 redirect on the Academy app.
+      - key: SML_ACADEMY_TRIAL
+        value: "1"
+      - key: SML_ACADEMY_TRIAL_DAYS
+        value: "15"
       - key: SML_ACADEMY_GUILD_ID
         sync: false
       - key: SML_ACADEMY_MANAGER_ROLE_ID

@@ -1985,3 +1985,22 @@ test('Ask Obi is the owner\'s only: members get 403, the owner gets the answer, 
   assert.match(html, /academy-ask-btn/, 'the Ask Obi script ships with the page');
   assert.match(html, /'academy-ask-btn', 'academy-profile-btn'/, 'and its button docks in the top-bar rail');
 });
+
+
+test('the free trial pages are served without a session and send the visitor to Discord', async () => {
+  const { createAcademyTrial } = require('./academy-trial');
+  const { createPassStore } = require('./academy-passes');
+  const academyTrial = createAcademyTrial({ clientId: '1551336038713139370', clientSecret: 's', publicUrl: 'https://academy.example', store: createPassStore() });
+  await withServer({ academyTrial }, async (base) => {
+    const landing = await fetch(`${base}/academy-activity/trial?via=x`);
+    assert.equal(landing.status, 200); assert.match(await landing.text(), /FREE TRIAL · 15 DAYS/);
+    const start = await fetch(`${base}/academy-activity/trial/start`, { redirect: 'manual' });
+    assert.equal(start.status, 302); assert.match(start.headers.get('location'), /^https:\/\/discord\.com\/oauth2\/authorize\?/);
+    const bad = await fetch(`${base}/academy-activity/trial/callback?code=x&state=bad`);
+    assert.equal(bad.status, 400);
+  });
+  await withServer({}, async (base) => {
+    const none = await fetch(`${base}/academy-activity/trial`);
+    assert.notEqual(none.status, 200, 'without the trial module the path is not a trial page');
+  });
+});

@@ -129,7 +129,8 @@ function withPasses(base, passes) {
   return {
     async verify(authorization) {
       const r = await base.verify(authorization);
-      if (r.ok || r.code !== 'academy_role_required' || !r.userId || !passes || !passes.configured) return r;
+      /* bought passes need the wallet to sell; a pass already held (bought earlier, or the free trial) only needs the store */
+      if (r.ok || r.code !== 'academy_role_required' || !r.userId || !passes || typeof passes.hasActive !== 'function') return r;
       if (await passes.hasActive(r.userId)) return { ok: true, userId: r.userId, tier: 'academy' };
       return r;
     }
