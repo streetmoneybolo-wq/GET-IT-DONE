@@ -34,7 +34,7 @@ function factSheet({ story: st, c, dossier = {}, record = null } = {}) {
   const lines = [];
   const add = (k, text) => { if (text) lines.push({ k, text: plain(text) }); };
   add('price', `${S} trades at ${px(c.price)}${num(c.changePct) != null ? `, ${pct(c.changePct)} on the session` : ''}${num(c.relVol) != null ? `, volume ${Number(c.relVol).toFixed(1)}x normal` : ''}.`);
-  if (num(c.marketCap) != null) add('cap', `Market cap about $${big(c.marketCap)}.`);
+  if (num(c.marketCap) != null && c.marketCap >= 5e6) add('cap', `Market cap about $${big(c.marketCap)}.`); // a company record under $5M is more often a stale or mis-scaled field than a fact
   for (const f of (st.facts || []).slice(0, 6)) add('fact', f);
   add('scenario', `Scenario target ${px(st.pt)} (${pct(st.ptPct)}) over ${st.timeframe}; the idea is wrong at ${num(st.stop) != null ? px(st.stop) : 'the invalidation level'}.`);
   add('trigger', `Trigger: ${st.scenario.trigger}.`); add('confirm', `Confirmation: ${st.scenario.confirm}.`); add('target', `Target: ${st.scenario.target}.`); add('kill', `Invalidation: ${st.scenario.invalidation}.`);

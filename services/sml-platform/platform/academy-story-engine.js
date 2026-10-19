@@ -73,7 +73,7 @@ function shortAngle(c) {
   return {
     score: clamp(s, 0, 100), facts, lean: 'bullish', pt, ptPct: r2((pt / p - 1) * 100), timeframe: dtc != null && dtc >= 5 ? '1 to 3 weeks' : 'days',
     path: [{ label: 'TRIGGER', price: r2(hi && hi > p && hi < pt ? hi : p * 1.04) }, { label: 'CONFIRM', price: r2(p + (pt - p) * 0.6) }], stop: r2(p * 0.9),
-    scenario: { trigger: `a close above ${hi && hi > p ? px(hi) + ', the swing high shorts are leaning on' : 'the recent high on rising volume'}`, confirm: `a second day of ${Math.round((ratio || 0.5) * 100)}%-plus short volume with price refusing to fall: shorts pressing into strength`, target: `${px(pt)}, where the covering runs out of sellers to meet`, invalidation: `a close back under the 20-day average with short volume drying up: the shorts were right` },
+    scenario: { trigger: `a close above ${hi && hi > p && hi < pt ? px(hi) + ', the swing high shorts are leaning on' : 'the recent high on rising volume'}`, confirm: `a second day of ${Math.round((ratio || 0.5) * 100)}%-plus short volume with price refusing to fall: shorts pressing into strength`, target: `${px(pt)}, where the covering runs out of sellers to meet`, invalidation: `a close back under the 20-day average with short volume drying up: the shorts were right` },
     controversy: `The shorts are not scared yet. That is exactly why the squeeze is still available.`
   };
 }
