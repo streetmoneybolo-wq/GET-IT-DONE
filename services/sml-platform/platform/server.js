@@ -5492,7 +5492,9 @@ async function main() {
      account (SML_LETTERS_USERNAME / SML_LETTERS_APP_PASSWORD, else the news account) is the byline's own account. SML_STORY_DESK=off
      switches it off; SML_STORY_LLM=on lets the newsroom model polish the voice (never the numbers). */
   const STORY_DESK_ON = String(process.env.SML_STORY_DESK || 'on').toLowerCase() !== 'off';
-  const storyPublisher = createLettersPublisher({ siteUrl: config.wordpressUrl, username: process.env.SML_LETTERS_USERNAME || config.wordpressUsername, appPassword: process.env.SML_LETTERS_APP_PASSWORD || config.wordpressAppPassword, authorId: Number(process.env.SML_LETTERS_AUTHOR_ID) || 258456581, logger: log });
+  const storyPublisher = createLettersPublisher({ siteUrl: config.wordpressUrl, username: process.env.SML_LETTERS_USERNAME || config.wordpressUsername, appPassword: process.env.SML_LETTERS_APP_PASSWORD || config.wordpressAppPassword, authorId: Number(process.env.SML_LETTERS_AUTHOR_ID) || 258456581,
+    /* the signed service request the data bridge plugin accepts (the site ignores Basic auth on its REST API) */
+    secret: config.academyBridgeSecret, serviceUserId: Number(process.env.SML_LETTERS_SERVICE_USER_ID) || Number(process.env.SML_LETTERS_AUTHOR_ID) || 258456581, logger: log });
   const storyDesk = STORY_DESK_ON && marketHistory && marketHistory.enabled ? createStoryDesk({
     universe: async () => {
       const seen = new Set(), rows = [];

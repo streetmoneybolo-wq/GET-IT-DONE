@@ -22,14 +22,31 @@ const timed = (fn, ms) => Promise.race([Promise.resolve().then(fn), new Promise(
 const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 
 /* ---------- WordPress: media upload, Loop Letters, identity ---------- */
-function createLettersPublisher({ siteUrl, username, appPassword, authorId, fetchImpl = fetch, logger = () => {} } = {}) {
+/* Two ways in: an application password (Basic auth), and the signed service request the Academy data bridge plugin
+   (0.4.0) accepts, because the site ignores Basic auth on its REST API. The signature binds the clock, the exact path and
+   a hash of the exact body to the shared bridge secret (SML_ACADEMY_BRIDGE_SECRET), and names the site user to act as
+   (the byline); the plugin allows only the byline and the service user, and only on the letters, SEO, media and
+   users/me routes. When both are configured both are sent; whichever the site honours signs the request in. */
+function createLettersPublisher({ siteUrl, username, appPassword, authorId, secret = '', serviceUserId = null, fetchImpl = fetch, logger = () => {}, now = Date.now } = {}) {
   const base = String(siteUrl || 'https://stockmarketloop.com').replace(/\/$/, '');
+  const crypto = require('node:crypto');
   const auth = () => 'Basic ' + Buffer.from(`${username}:${appPassword}`).toString('base64');
-  const configured = () => !!(username && appPassword);
+  const signed = () => !!(secret && String(secret).length >= 32 && (Number(serviceUserId) || Number(authorId)));
+  const configured = () => !!(username && appPassword) || signed();
+  function signHeaders(path, payload) {
+    if (!signed()) return {};
+    const ts = String(Math.floor(now() / 1000)), user = String(Number(serviceUserId) || Number(authorId));
+    const pathname = path.split('?')[0];
+    const bodyHash = crypto.createHash('sha256').update(payload == null ? '' : payload).digest('hex');
+    const sig = crypto.createHmac('sha256', String(secret)).update(`${ts}.${pathname}.${bodyHash}`).digest('hex');
+    return { 'x-sml-letters-timestamp': ts, 'x-sml-letters-user': user, 'x-sml-letters-signature': `sha256=${sig}` };
+  }
   async function api(path, { method = 'GET', body = null, raw = null, headers = {} } = {}) {
-    const h = { authorization: auth(), accept: 'application/json', ...headers };
     let payload = null;
+    const h = { accept: 'application/json', ...headers };
+    if (username && appPassword) h.authorization = auth();
     if (raw) payload = raw; else if (body) { payload = JSON.stringify(body); h['content-type'] = 'application/json'; }
+    Object.assign(h, signHeaders(path, payload));
     const res = await fetchImpl(base + path, { method, headers: h, body: payload, signal: AbortSignal.timeout(30_000) });
     const text = await res.text(); let json = null; try { json = JSON.parse(text); } catch (_) { json = null; }
     if (!res.ok) { const e = new Error(`wp_${res.status}`); e.status = res.status; e.body = json || text.slice(0, 300); throw e; }
@@ -58,7 +75,7 @@ function createLettersPublisher({ siteUrl, username, appPassword, authorId, fetc
   async function publishLetter(id) { const out = await api(`/wp-json/sml-letters/v1/letters/${id}/publish`, { method: 'POST', body: {} }); return { ok: !!(out && out.ok), status: out && out.status, url: out && out.letter && out.letter.url ? String(out.letter.url) : '' }; }
   /* loop-letters-seo.php keeps { seo: { meta_title, meta_desc, keyword, schema, tags, sentiment, og_title, og_desc, twitter, social_image, category } } */
   async function saveSeo(id, seo) { try { return await api(`/wp-json/sml-letters-seo/v1/letter/${id}`, { method: 'POST', body: { seo } }); } catch (error) { logger('warn', 'story_seo_save_failed', { id, error: String(error && error.message || error) }); return null; } }
-  return { configured, identity, uploadMedia, createLetter, updateLetter, getLetter, publishLetter, saveSeo, authorId: Number(authorId) || null, base };
+  return { configured, signed, identity, uploadMedia, createLetter, updateLetter, getLetter, publishLetter, saveSeo, authorId: Number(authorId) || null, base };
 }
 
 /* ---------- optional polish by the newsroom model: voice only, never new facts ---------- */

@@ -161,3 +161,23 @@ test('scheduled slots fire once per ET day in the hour after their time and file
   const again = await h.desk.tick(); assert.equal((again.scheduled || []).length, 0, 'a slot fires once a day');
   assert.ok(h.posts.filter((p) => p.kind === 'create').length >= 1);
 });
+
+test('the letters publisher signs every request for the bridge plugin: clock, exact path (no query) and a hash of the exact body, as the byline', async () => {
+  const crypto = require('node:crypto');
+  const calls = [];
+  const fetchImpl = async (url, init) => { calls.push({ url, h: init.headers, body: init.body }); return { ok: true, text: async () => JSON.stringify(url.endsWith('/users/me?context=edit') ? { id: 258456581, name: 'V', slug: 'v' } : { ok: true, letter_id: 4, slug: 's' }) }; };
+  const secret = 'x'.repeat(40);
+  const p = createLettersPublisher({ siteUrl: 'https://stockmarketloop.com', secret, serviceUserId: 258456581, authorId: 258456581, fetchImpl, now: () => 1_760_000_000_000 });
+  assert.equal(p.configured(), true); assert.equal(p.signed(), true);
+  await p.identity();
+  const me = calls[0]; assert.equal(me.h['x-sml-letters-user'], '258456581'); assert.equal(me.h['x-sml-letters-timestamp'], '1760000000'); assert.equal('authorization' in me.h, false, 'no Basic auth without a password');
+  const expect = (path, body) => 'sha256=' + crypto.createHmac('sha256', secret).update('1760000000.' + path + '.' + crypto.createHash('sha256').update(body == null ? '' : body).digest('hex')).digest('hex');
+  assert.equal(me.h['x-sml-letters-signature'], expect('/wp-json/wp/v2/users/me', null), 'the query string is not part of the signed path');
+  await p.createLetter({ title: 'hello' });
+  const create = calls.find((c) => c.url.endsWith('/sml-letters/v1/letters')); assert.equal(create.h['x-sml-letters-signature'], expect('/wp-json/sml-letters/v1/letters', JSON.stringify({ title: 'hello' })));
+  const bytes = Buffer.from('GIF89a'); await p.uploadMedia({ bytes, filename: 'a.gif', contentType: 'image/gif' });
+  const media = calls.find((c) => c.url.endsWith('/wp/v2/media')); assert.equal(media.h['x-sml-letters-signature'], expect('/wp-json/wp/v2/media', bytes));
+  const both = createLettersPublisher({ username: 'u', appPassword: 'pw', secret, authorId: 1, fetchImpl }); await both.identity();
+  const last = calls[calls.length - 1]; assert.ok(last.h.authorization.startsWith('Basic ') && last.h['x-sml-letters-signature'], 'both ways in when both are configured');
+  assert.equal(createLettersPublisher({ secret: 'short', authorId: 1 }).configured(), false);
+});

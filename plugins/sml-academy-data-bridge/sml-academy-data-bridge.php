@@ -2,7 +2,7 @@
 /**
  * Plugin Name: SML Academy Data Bridge
  * Description: Private, signed Academy access to existing Options, Earnings and Capital Flow data. It never exposes those feeds to site visitors.
- * Version: 0.3.0
+ * Version: 0.4.0
  * Requires PHP: 7.4
  */
 
@@ -268,3 +268,42 @@ add_action( 'rest_api_init', static function() {
 	register_rest_route( 'sml-academy-bridge/v1', '/capital', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_capital' ) ) );
 	register_rest_route( 'sml-academy-bridge/v1', '/calendar', array_merge( $arguments, array( 'callback' => 'sml_academy_bridge_calendar' ) ) );
 } );
+
+/**
+ * Signed service requests for the Article Desk (0.4.0). The site does not accept application passwords on its REST API
+ * (a Basic Authorization header is ignored and every private route answers "not logged in"), so the Academy's desk files
+ * its Loop Letters with the same shared secret this bridge already trusts. A request that carries
+ *   x-sml-letters-timestamp   unix seconds, within two minutes of the site clock
+ *   x-sml-letters-user        the site user the request acts as (only the byline and the service user are allowed)
+ *   x-sml-letters-signature   "sha256=" . HMAC-SHA256( timestamp . "." . request path . "." . SHA256( raw body ), secret )
+ * is run as that user, and only on the letters, letters-SEO, media and users/me routes. Anything else is untouched.
+ * The body hash binds the signature to the exact payload, so a captured signature cannot be replayed with a different
+ * letter, and the timestamp window ends the replay of the same one. No cookie is involved, so no nonce is required.
+ */
+if ( ! function_exists( 'sml_academy_bridge_letters_users' ) ) {
+	function sml_academy_bridge_letters_users() {
+		$raw = defined( 'SML_ACADEMY_LETTERS_USERS' ) ? (string) SML_ACADEMY_LETTERS_USERS : (string) get_option( 'sml_academy_bridge_letters_users', '258456581,258456587' );
+		$ids = array_values( array_filter( array_map( 'absint', explode( ',', $raw ) ) ) );
+		return apply_filters( 'sml_academy_bridge_letters_users', $ids );
+	}
+}
+if ( ! function_exists( 'sml_academy_bridge_signed_user' ) ) {
+	function sml_academy_bridge_signed_user( $user_id ) {
+		if ( ! empty( $user_id ) ) { return $user_id; }
+		$signature = isset( $_SERVER['HTTP_X_SML_LETTERS_SIGNATURE'] ) ? (string) $_SERVER['HTTP_X_SML_LETTERS_SIGNATURE'] : '';
+		if ( '' === $signature ) { return $user_id; }
+		$timestamp = isset( $_SERVER['HTTP_X_SML_LETTERS_TIMESTAMP'] ) ? (string) $_SERVER['HTTP_X_SML_LETTERS_TIMESTAMP'] : '';
+		$as_user   = isset( $_SERVER['HTTP_X_SML_LETTERS_USER'] ) ? absint( $_SERVER['HTTP_X_SML_LETTERS_USER'] ) : 0;
+		$secret    = sml_academy_bridge_secret();
+		if ( strlen( $secret ) < 32 || ! preg_match( '/^\d{10,12}$/', $timestamp ) || abs( time() - (int) $timestamp ) > 120 || ! $as_user ) { return $user_id; }
+		if ( ! in_array( $as_user, sml_academy_bridge_letters_users(), true ) ) { return $user_id; }
+		$path = (string) wp_parse_url( isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH );
+		if ( ! preg_match( '#^/wp-json/(sml-letters/v1/|sml-letters-seo/v1/|wp/v2/media(/|$)|wp/v2/users/me$)#', $path ) ) { return $user_id; }
+		$body     = (string) file_get_contents( 'php://input' );
+		$expected = 'sha256=' . hash_hmac( 'sha256', $timestamp . '.' . $path . '.' . hash( 'sha256', $body ), $secret );
+		if ( ! hash_equals( $expected, $signature ) ) { return $user_id; }
+		$user = get_user_by( 'id', $as_user );
+		return $user ? (int) $user->ID : $user_id;
+	}
+	add_filter( 'determine_current_user', 'sml_academy_bridge_signed_user', 30 );
+}
