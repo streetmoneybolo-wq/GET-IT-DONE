@@ -146,6 +146,11 @@ function createDisputeRuntime({
   const verifyGate = config.connectBotEnabled
     ? createVerifyGate({ pool, botToken: config.discordConnectBotToken, secret: signalSecret, fetchImpl, now, logger })
     : null;
+  if (verifyGate) {
+    verifyGate.refreshEntrance().then((result) => {
+      if (result.status && !result.updated) logger('warn', 'verify_entrance_refresh_failed', { status: result.status });
+    }).catch(() => logger('warn', 'verify_entrance_refresh_failed', {}));
+  }
   if (linkTracker && config.discordConnectAppId && config.discordConnectBotToken) {
     linkTracker.registerCommands({ appId: config.discordConnectAppId, botToken: config.discordConnectBotToken, fetchImpl, logger,
       definitions: [...LINK_COMMAND_DEFINITIONS, ...VERIFY_COMMAND_DEFINITIONS] })

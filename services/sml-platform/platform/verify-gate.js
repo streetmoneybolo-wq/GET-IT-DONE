@@ -28,6 +28,8 @@
  */
 
 const crypto = require('node:crypto');
+const entranceGif = require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', 'mem-verification.gif'));
+const { MEM_GUILD, MEM_CHANNEL, MEM_MESSAGE, MEM_URL, entrancePanel, entranceHtml } = require('./verify-entrance');
 
 const EPHEMERAL = 64;
 const MANAGE_GUILD = '32';
@@ -144,7 +146,12 @@ function requestSignals(request) {
   return { ip, ua, country, countryRaw };
 }
 
-function pageHtml({ state, token, guildName }) {
+function pageHtml(input) {
+  if (input.guildId === MEM_GUILD) return entranceHtml({ ...input, rules: RULES_QUIZ, retentionDays: RETENTION_DAYS });
+  return legacyPageHtml(input);
+}
+
+function legacyPageHtml({ state, token, guildName }) {
   const body = state === 'form'
     ? `<h1>Verify to post${guildName ? ' in ' + esc(guildName) : ''}</h1>
 <p>Answer these five questions about the server rules.</p>
@@ -200,6 +207,30 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
 
   async function config(guildId) {
     return (await pool.query('SELECT * FROM discord_verify_config WHERE guild_id=$1', [guildId])).rows[0] || null;
+  }
+
+  // Never grant roles or change verification policy when refreshing the entrance.
+  // PATCH is idempotent and preserves the original message ID and Verify handler.
+  async function refreshEntrance() {
+    if (!botToken) return { updated: false, reason: 'missing_bot_token' };
+    const cfg = await config(MEM_GUILD);
+    if (!cfg || !cfg.enabled) return { updated: false, reason: 'disabled' };
+    const result = await discord('PATCH', `/channels/${MEM_CHANNEL}/messages/${MEM_MESSAGE}`, entrancePanel(root));
+    return { updated: result.status >= 200 && result.status < 300, status: result.status };
+  }
+
+  async function requireVerified(interaction) {
+    if (!interaction || interaction.guild_id !== MEM_GUILD || !interaction.member) return null;
+    if (hasPerm(interaction, PERM_MANAGE_GUILD)) return null;
+    const cfg = await config(MEM_GUILD);
+    if (!cfg || !cfg.enabled) return null;
+    const roles = Array.isArray(interaction.member.roles) ? interaction.member.roles : [];
+    if (roles.includes(cfg.verified_role_id)) return null;
+    const panel = entrancePanel(root);
+    panel.embeds[0].title = '🔐 One last step before you continue';
+    panel.embeds[0].description = 'Complete your one-time verification to use the Connect bot here. Tap **Verify & Continue**, then open your private link.\n\nAlready started? Finish that check or contact a moderator if it is waiting for review.';
+    panel.components[0].components.push({ type: 2, style: 5, label: 'View verification message', url: MEM_URL });
+    return ephemeral('', panel);
   }
 
   function logEmbed(row, cfg) {
@@ -403,6 +434,13 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
 
   /* Returns true when the request was a verification page request. */
   async function handleHttp(request, response, path, readBody) {
+    if (path === '/verify/assets/mem-verification.gif') {
+      const read = request.method === 'GET' || request.method === 'HEAD';
+      response.writeHead(read ? 200 : 405, { 'content-type': read ? 'image/gif' : 'text/plain',
+        'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' });
+      response.end(request.method === 'GET' ? entranceGif : undefined);
+      return true;
+    }
     const m = path.match(/^\/verify\/([A-Za-z0-9_-]{20,64})$/);
     if (!m) return false;
     const send = (status, type, body) => {
@@ -413,7 +451,8 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
     const live = row && row.status === 'pending' && new Date(row.token_expires_at).getTime() > now();
     if (request.method === 'GET') {
       const state = live ? 'form' : (row && row.status === 'passed') ? 'passed' : (row && row.status === 'held') ? 'held' : 'expired';
-      send(200, 'text/html; charset=utf-8', pageHtml({ state, token: live ? m[1] : '' }));
+      send(200, 'text/html; charset=utf-8', pageHtml({ state, token: live ? m[1] : '', guildId: row && row.guild_id,
+        guildName: row && row.guild_id === MEM_GUILD ? 'Making Easy Money' : '' }));
       return true;
     }
     if (request.method === 'POST') {
@@ -457,7 +496,7 @@ function createVerifyGate({ pool, botToken = '', secret = '', baseUrl = 'https:/
     return { verifications: rows, config: await config(guildId) };
   }
 
-  return { handleCommand, handleComponent, handleHttp, report, pageHtml };
+  return { handleCommand, handleComponent, handleHttp, report, pageHtml, refreshEntrance, requireVerified };
 }
 
 /* Same shape as withLinkTracker: verification commands/buttons first, the rest pass through. */
@@ -467,6 +506,10 @@ function withVerifyGate(commands, gate) {
     async handleCommand(interaction) {
       const name = interaction && interaction.data && interaction.data.name;
       if (VERIFY_COMMAND_NAMES.includes(name)) return gate.handleCommand(interaction);
+      if (gate.requireVerified) {
+        const prompt = await gate.requireVerified(interaction);
+        if (prompt) return prompt;
+      }
       return commands.handleCommand(interaction);
     },
     async handleComponent(interaction) {
@@ -474,6 +517,10 @@ function withVerifyGate(commands, gate) {
       if (id.startsWith('sml_verify:')) {
         const out = await gate.handleComponent(interaction);
         if (out) return out;
+      }
+      if (gate.requireVerified) {
+        const prompt = await gate.requireVerified(interaction);
+        if (prompt) return prompt;
       }
       return commands.handleComponent(interaction);
     }

@@ -96,7 +96,7 @@ test('a clean visit passes: the role is granted, the mod log gets a summary, no 
   assert.equal(out.response.data.flags, 64);
   const token = tokenFrom(out);
   const page = await visit(gate, token, { method: 'GET' });
-  assert.match(page.body, /Verify me/);
+  assert.match(page.body, /Verify & Continue/);
   assert.match(page.body, /scrambled fingerprint/);
   const res = await visit(gate, token);
   assert.deepEqual(JSON.parse(res.body), { ok: true, status: 'passed' });
@@ -224,4 +224,58 @@ test('a missing answer counts as wrong; right answers after a miss still pass', 
   assert.equal(miss.ok, false);
   const ok = JSON.parse((await visit(gate, token, { signals: { answers: RIGHT, deviceId: 'dev-m' } })).body);
   assert.equal(ok.status, 'passed');
+});
+
+test('MEM entrance gates Connect interactions until Verified, while managers and other servers pass through', async () => {
+  const pool = fakePool(); const gate = createVerifyGate({ pool, now: () => NOW });
+  await gate.handleCommand(setupCmd());
+  const seen = [];
+  const base = { handleCommand: async () => { seen.push('command'); return 'command'; }, handleComponent: async () => { seen.push('component'); return 'component'; } };
+  const combined = withVerifyGate(base, gate);
+  const command = { guild_id: GUILD, member: memberOf(OLD_USER), data: { name: 'track-link' } };
+  const prompt = await combined.handleCommand(command);
+  assert.equal(prompt.response.data.flags, 64);
+  assert.equal(prompt.response.data.components[0].components[0].custom_id, 'sml_verify:start');
+  assert.match(prompt.response.data.components[0].components[1].url, /1553706793778020454$/);
+  assert.deepEqual(seen, []);
+  const component = { ...command, data: { custom_id: 'sml_link:c:1' } };
+  assert.equal((await combined.handleComponent(component)).response.data.flags, 64);
+  const verified = { ...memberOf(OLD_USER), roles: [ROLE] };
+  assert.equal(await combined.handleCommand({ ...command, member: verified }), 'command');
+  assert.equal(await combined.handleComponent({ ...component, member: verified }), 'component');
+  assert.equal(await combined.handleCommand({ ...command, member: admin }), 'command');
+  assert.equal(await combined.handleCommand({ ...command, guild_id: '777777777777777777' }), 'command');
+  assert.equal(await combined.handleCommand({ data: { name: 'track-link' } }), 'command');
+  const start = await combined.handleComponent(verifyTap(memberOf(OLD_USER)));
+  assert.match(start.response.data.components[0].components[0].url, /\/verify\//);
+});
+
+test('entrance refresh only edits the original message when verification is enabled', async () => {
+  const pool = fakePool(); const d = discordFake();
+  const gate = createVerifyGate({ pool, botToken: 't', fetchImpl: d.fetchImpl });
+  assert.equal((await gate.refreshEntrance()).updated, false);
+  assert.equal(d.calls.length, 0);
+  await gate.handleCommand(setupCmd());
+  assert.equal((await gate.refreshEntrance()).updated, true);
+  assert.equal(d.calls.length, 1);
+  assert.equal(d.calls[0].method, 'PATCH');
+  assert.match(d.calls[0].url, /\/channels\/945508558382960670\/messages\/1553706793778020454$/);
+  assert.deepEqual(d.calls[0].body.allowed_mentions, { parse: [] });
+  assert.equal(d.calls[0].body.components[0].components[0].custom_id, 'sml_verify:start');
+  assert.equal((await createVerifyGate({ pool }).refreshEntrance()).reason, 'missing_bot_token');
+});
+
+test('MEM page retains rules and disclosure, supports reduced motion, and escapes displayed inputs', () => {
+  const gate = createVerifyGate({ pool: fakePool() });
+  const page = gate.pageHtml({ state: 'form', guildId: GUILD, guildName: '<script>bad</script>', token: '\" onmouseover=\"bad' });
+  assert.equal((page.match(/type="radio"/g) || []).length, 10);
+  assert.match(page, /prefers-reduced-motion:reduce/);
+  assert.match(page, /What this private check uses/);
+  assert.match(page, /Records|records are deleted after 180 days/);
+  assert.ok(!page.includes('<script>bad</script>'));
+  assert.ok(page.includes('&lt;script&gt;bad&lt;/script&gt;'));
+  assert.match(page, /data-token="&quot; onmouseover=&quot;bad"/);
+  const passed = gate.pageHtml({ state: 'passed', guildId: GUILD });
+  assert.match(passed, /You are verified ✓/);
+  assert.match(passed, /https:\/\/discord.com\/channels\/938894329076940820/);
 });
