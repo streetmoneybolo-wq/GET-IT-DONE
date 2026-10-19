@@ -437,7 +437,7 @@
     lctx.setTransform(dpr, 0, 0, dpr, 0, 0); lctx.clearRect(0, 0, w, h);
     if (!m) return;
     lctx.save(); lctx.beginPath(); lctx.rect(PAD.l, PAD.t, m.pw, m.ph); lctx.clip();
-    if (V.patterns) drawPatterns(m);
+    if (V.patterns) drawPatterns(m); else pills = [];
     drawDrawings(m);
     lctx.restore();
     drawAxisTags(m);
@@ -557,7 +557,9 @@
     lctx.fillStyle = color; lctx.textAlign = 'left'; lctx.textBaseline = 'middle'; lctx.fillText(text, x + 5, y + 0.5); lctx.textBaseline = 'alphabetic';
     return tw;
   }
+  let pills = [];
   function drawPatterns(m) {
+    pills = [];
     const r = runPatterns(m); if (!r || !r.ok) return;
     const F = V.patternFilter, clean = !!(window.smlChartClean && window.smlChartClean());
     if (F.levels) (r.levels || []).forEach((lv) => {
@@ -599,7 +601,8 @@
       if (!clean) {
         const arrow = p.dir === 'bull' ? '▲ ' : p.dir === 'bear' ? '▼ ' : '◆ ';
         const full = arrow + human(p.name) + ' · ' + p.status.toUpperCase() + ' ' + Math.round(p.confidence * 100) + '%';
-        labelPill(lx, ly, focus || m.step >= 4 ? full : arrow + abbr(human(p.name)) + ' ' + Math.round(p.confidence * 100) + '%', c, focus ? 10.5 : 9.5);
+        const pw = labelPill(lx, ly, focus || m.step >= 4 ? full : arrow + abbr(human(p.name)) + ' ' + Math.round(p.confidence * 100) + '%', c, focus ? 10.5 : 9.5);
+        pills.push({ id: 'c' + k, x: lx, y: ly, w: pw, type: p.type, name: p.name, dir: p.dir, status: p.status, confidence: p.confidence, color: c });
       }
       lctx.restore();
     });
@@ -684,6 +687,6 @@
   new ResizeObserver(() => emit()).observe(stage);
   window.addEventListener('resize', emit);
   setInterval(() => { if (!document.hidden && !D) emitLight(); }, 1000); // the bar-close countdown under the last price
-  window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, setView, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); } };
+  window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, setView, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); }, patterns: () => (V.patterns ? found : null), patternPills: () => pills.slice() };
   emit();
 })(0);
