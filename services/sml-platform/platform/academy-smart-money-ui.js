@@ -13,16 +13,17 @@
 
   const KEY = 'sml-smc-v1';
   const OPTS = [['fvg', 'Imbalances (FVG)'], ['struct', 'Structure (BOS / CHoCH)'], ['ob', 'Order blocks'], ['liq', 'Liquidity (equal highs / lows)'], ['gaps', 'Opening gaps'], ['vwap', 'VWAP + bands'], ['pd', 'Premium / discount'], ['profile', 'Volume profile'], ['flags', 'Absorption']];
-  const S = { on: false, collapsed: window.innerWidth < 720, o: { fvg: true, struct: true, ob: true, liq: true, gaps: true, vwap: true, pd: false, profile: false, flags: true }, a: null, key: '', at: 0, hits: [], tip: null, tipKey: '' };
-  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; Object.assign(S.o, v.o || {}); } } catch (_) { /* storage can be blocked */ }
-  S.collapsed = true; // the map starts as a chip on the chart; expanding it over the quote column is a deliberate click each session
+  /* collapsed: the clickable options (the add-on checkboxes) are hidden, the map read, the breakdown and the lines stay; min: the whole card is a chip */
+  const S = { on: false, min: true, collapsed: false, o: { fvg: true, struct: true, ob: true, liq: true, gaps: true, vwap: true, pd: false, profile: false, flags: true }, a: null, key: '', at: 0, hits: [], tip: null, tipKey: '' };
+  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { S.on = v.on === true; S.collapsed = v.collapsed === true; Object.assign(S.o, v.o || {}); } } catch (_) { /* storage can be blocked */ }
+  S.min = true; // the map starts as a chip on the chart; expanding it over the quote column is a deliberate click each session
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ on: S.on, collapsed: S.collapsed, o: S.o })); } catch (_) { /* ignore */ } };
 
   const css = document.createElement('style');
   css.textContent = '#smc-layer{position:absolute;pointer-events:none;z-index:4;background:transparent;border:0;border-radius:0;min-height:0;max-width:none}'
     + '#smc-toggle{margin-left:4px;padding:5px 9px;border:1px solid #6a4fa0;border-radius:7px;background:#17112a;color:#cdb6ff;font:800 .64rem ui-monospace,monospace;letter-spacing:.06em;cursor:pointer}#smc-toggle.on{background:#6a4fd0;border-color:#a58bff;color:#fff}'
     + '#smc-card{position:absolute;right:74px;top:26px;z-index:9;width:min(270px,calc(100% - 96px));max-height:calc(100% - 60px);overflow:auto;background:rgba(9,15,24,.94);border:1px solid #3a3160;border-radius:10px;color:#dbe6ec;font:600 .64rem/1.4 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)}'
-    + '#smc-card header{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid #2a2547;cursor:pointer}#smc-card header b{font:800 .66rem ui-monospace,monospace;color:#cdb6ff;letter-spacing:.06em}#smc-card header span{margin-left:auto;color:#8fa6b3}'
+    + '#smc-card header{display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid #2a2547;cursor:pointer}#smc-card header b{font:800 .66rem ui-monospace,monospace;color:#cdb6ff;letter-spacing:.06em}#smc-card header span{color:#8fa6b3;padding:0 2px}#smc-card header b+span{margin-left:auto}#smc-card header span:hover{color:#e4d8ff}#smc-card header span[data-min]{font-weight:800;padding:0 6px}'
     + '#smc-card .opts{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;padding:7px 9px;border-bottom:1px solid #2a2547}#smc-card label{display:flex;gap:5px;align-items:center;color:#b9c8d1;font-weight:600;cursor:pointer}#smc-card input{accent-color:#8b6dff}'
     + '#smc-card ul{list-style:none;margin:0;padding:7px 9px 8px}#smc-card li{margin:0 0 6px;padding-left:9px;border-left:3px solid #4a5a66;color:#c9d6de}#smc-card li.up{border-color:#00d084}#smc-card li.down{border-color:#ff5470}#smc-card li.warn{border-color:#ffd166}'
     + '#smc-card small{display:block;padding:0 9px 8px;color:#6f8794;font-weight:500;font-size:.54rem}@media(max-width:700px){#smc-card{right:8px;top:auto;bottom:34px;max-height:44%}}';
@@ -49,7 +50,7 @@
     if (card.closest && card.closest('#chart-dock')) return; // the chart dock (academy-chart-dock.js) lays the card out beside the plot
     const reset = () => { ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'zIndex'].forEach((k) => { card.style[k] = ''; }); if (card.parentElement !== stage) stage.appendChild(card); };
     if (!S.on) return;
-    if (S.collapsed || window.matchMedia('(max-width:700px)').matches) { reset(); return; }
+    if (S.min || window.matchMedia('(max-width:700px)').matches) { reset(); return; }
     const vis = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 80 && getComputedStyle(el).display !== 'none' ? r : null; };
     const r = vis(document.querySelector('.side')) || vis(document.getElementById('academy-alerts'));
     if (!r) { reset(); return; }
@@ -62,15 +63,20 @@
     card.style.display = 'block';
     const lines = S.a ? SM.read(S.a) : [];
     const EXm = window.SmlSmcExplain, Mm = window.smlChartModel && window.smlChartModel(), ov = EXm && S.a && Mm ? EXm.overall(S.a, Mm.bars, { flow: flow() }) : null;
-    card.innerHTML = '<header data-h="1"><b>SMART MONEY MAP</b><span>' + (S.collapsed ? 'show' : 'hide') + '</span></header>'
-      + (S.collapsed ? '' : '<div class="opts">' + OPTS.map(([k, l]) => '<label><input type="checkbox" data-o="' + k + '"' + (S.o[k] ? ' checked' : '') + '>' + esc(l) + '</label>').join('') + '</div>'
+    /* "hide options" folds only the add-on checkboxes away (the map read, the breakdown and the lines stay); the dash minimises the card to a chip */
+    card.innerHTML = '<header><b>SMART MONEY MAP</b>' + (S.min ? '<span data-min="1" title="Open the map">open</span>'
+      : '<span data-h="1" title="' + (S.collapsed ? 'Show the add-on options' : 'Hide the add-on options') + '">' + (S.collapsed ? 'show options' : 'hide options') + '</span><span data-min="1" title="Minimise to a chip">&#8211;</span>') + '</header>'
+      + (S.min ? '' : (S.collapsed ? '' : '<div class="opts">' + OPTS.map(([k, l]) => '<label><input type="checkbox" data-o="' + k + '"' + (S.o[k] ? ' checked' : '') + '>' + esc(l) + '</label>').join('') + '</div>')
         + (ov ? '<div class="cl-overall ' + esc(ov.bias) + '"><b>MAP READ: ' + esc(ov.bias.toUpperCase()) + ' · ' + esc(ov.confidence.toUpperCase()) + '</b> ' + esc(ov.purpose) + '</div>' : '')
         + '<div class="focus">' + (S.focusHtml || '<small style="padding:8px 11px">Hover a zone on the chart (an imbalance, a block, equal highs or lows, a gap, the VWAP) and its full breakdown appears here.</small>') + '</div>'
         + '<ul>' + (lines.length ? lines.map((l) => '<li class="' + esc(l.tone) + '">' + esc(l.text) + '</li>').join('') : '<li>Not enough candles yet to read structure.</li>') + '</ul>'
         + '<small>Educational: this describes what price has done. It does not predict what it will do.</small>');
     place();
   }
-  card.addEventListener('click', (e) => { if (e.target.closest('[data-h]')) { S.collapsed = !S.collapsed; save(); paintCard(); } });
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('[data-h]')) { S.collapsed = !S.collapsed; save(); paintCard(); return; }
+    if (e.target.closest('[data-min]') || (S.min && e.target.closest('header'))) { S.min = !S.min; paintCard(); }
+  });
   card.addEventListener('change', (e) => { const k = e.target && e.target.dataset && e.target.dataset.o; if (k) { S.o[k] = e.target.checked; save(); draw(); } });
   btn.addEventListener('click', () => { S.on = !S.on; save(); btn.classList.toggle('on', S.on); S.key = ''; paintCard(); draw(); });
   btn.classList.toggle('on', S.on);
@@ -190,7 +196,7 @@
     if (key === S.tipKey) return;
     const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow() }); if (!r) { hideTip(); return; }
     S.tipKey = key; S.focusHtml = tipHtml(r); S.focusFor = symKey();
-    if (S.collapsed) { S.collapsed = false; save(); paintCard(); return; } // a chip opens so the breakdown can be read
+    if (S.min) { S.min = false; paintCard(); return; } // a chip opens so the breakdown can be read
     const box = card.querySelector('.focus'); if (box) box.innerHTML = S.focusHtml; else paintCard();
   }
   function hitAt(px, py) {

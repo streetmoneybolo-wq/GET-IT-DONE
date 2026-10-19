@@ -958,7 +958,8 @@ test('Activity opens on the chart: a resumed lesson is selected but not popped o
     const html = await (await fetch(`${base}/academy-activity/`)).text();
     assert.doesNotMatch(html, /paper backtest/i);
     assert.match(html, /S\.open = false; \/\/ the panel never pops open on load/, 'MEM ALGO starts closed');
-    assert.match(html, /S\.collapsed = true; \/\/ the map starts as a chip/, 'the smart-money map starts collapsed');
+    assert.match(html, /S\.min = true; \/\/ the map starts as a chip/, 'the smart-money map starts as a chip');
+    assert.match(html, /hide options/, 'the map\'s hide control folds the add-on options only');
     assert.doesNotMatch(html, /pat\.classList\.add\('on'\); panel\.classList\.add\('open'\)/, 'the patterns list does not open on load');
   });
 });
