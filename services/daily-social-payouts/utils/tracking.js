@@ -158,6 +158,22 @@ export async function recentUnreturnedOutboundIntent({ userId, platform, withinH
   return latest;
 }
 
+// Legacy article cards used Discord link buttons, which do not create an
+// interaction event for the bot to record. Permit a fallback only when there
+// is exactly one eligible recent article; never guess between multiple cards.
+export async function uniqueRecentUnreturnedPost({ userId, platform, withinHours = 6 }) {
+  const cutoff = Date.now() - Math.max(1, Number(withinHours) || 6) * 3_600_000;
+  const candidates = (await readJson(paths.posts, []))
+    .filter((post) => (
+      Date.parse(post.timestamp) >= cutoff
+      && post.discordMessageId
+      && post.deliveryStatus === 'delivered'
+      && !(post.externalPosts || []).some((entry) => entry.userId === userId && entry.platform === platform)
+    ))
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 export async function recordExternalPostLink({ postID, userId, userName, platform, url }) {
   let result = null;
   await mutateJson(paths.posts, [], (posts) => {

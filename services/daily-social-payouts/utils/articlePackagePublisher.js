@@ -1,7 +1,7 @@
 import { fetchNewsArticle } from './fetchNews.js';
 import { commentIdeas, discussionAngles, generateShareCopy } from './randomizer.js';
 import { buildShareUrls } from './shareUrls.js';
-import { directShareComponents, engagementComponents, engagementEmbed, shareEmbed } from './discordPresentation.js';
+import { engagementComponents, engagementEmbed, shareComponents, shareEmbed } from './discordPresentation.js';
 import { bindDiscordMessage, bindEngagementMessage, createTrackedPost, failTrackedPost, recentPostByLink } from './tracking.js';
 
 async function textChannel(client, id) {
@@ -36,7 +36,7 @@ export async function publishArticlePackage(client, rawUrl, settings) {
     }));
     shareMessage = await sharingChannel.send({
       content: `${settings.engagementEveryonePing ? '@everyone\n' : ''}## 📤 New article ready to post\nChoose a platform below. These buttons open the posting page directly, then submit your finished public-post link when done.`,
-      embeds: [shareEmbed(post, angles)], components: directShareComponents(platformUrls),
+      embeds: [shareEmbed(post, angles)], components: shareComponents(post.postID, Object.keys(platformUrls)),
       allowedMentions: { parse: settings.engagementEveryonePing ? ['everyone'] : [] },
     });
     await bindDiscordMessage(post.postID, shareMessage);

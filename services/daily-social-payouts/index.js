@@ -13,7 +13,7 @@ import { buildShareUrls } from './utils/shareUrls.js';
 import { packagedFacebookCaption } from './utils/facebookCopy.js';
 import { stocktwitsPackages } from './utils/stocktwitsCopy.js';
 import { blueskyIntentUrl, blueskyPackage, blueskyResharePackage } from './utils/blueskyCopy.js';
-import { postById, postByMessage, recentUnreturnedOutboundIntent, recordEngagement, recordOutboundIntent } from './utils/tracking.js';
+import { postById, postByMessage, recentUnreturnedOutboundIntent, uniqueRecentUnreturnedPost, recordEngagement, recordOutboundIntent } from './utils/tracking.js';
 import { isShareButton, parseShareButton } from './utils/trackedRedirect.js';
 import { detectExternalPostPlatform, validateExternalPostUrl } from './utils/externalPosts.js';
 import { readSettings } from './utils/storage.js';
@@ -1143,7 +1143,7 @@ client.on('interactionCreate', async (interaction) => {
       const platformUrls = buildShareUrls(post);
       if (parsed.platform === 'x') {
         const socialCopy = await generateSocialCopy(post, 'x');
-        if (socialCopy.hashtags.length !== 5) throw new Error('The X package could not produce five unique hashtags.');
+        if (socialCopy.hashtags.length > 1) throw new Error('The X package could not produce a compliant hashtag set.');
         platformUrls.x = socialShareUrl({ platform: 'x', copy: socialCopy, url: post.link, post });
       }
       const selectedPlatformLabel = platformInfo[parsed.platform]?.label || parsed.platform;
@@ -1265,7 +1265,8 @@ client.on('messageCreate', async (message) => {
     try {
       const url = validateExternalPostUrl(rawUrl, platform);
       const intent = await recentUnreturnedOutboundIntent({ userId: message.author.id, platform, withinHours: 6 });
-      if (!intent) {
+      const fallbackPost = intent ? null : await uniqueRecentUnreturnedPost({ userId: message.author.id, platform, withinHours: 6 });
+      if (!intent && !fallbackPost) {
         await message.reply(`I could not safely match this ${platformLabels[platform] || platform} link to one of your share actions from the last 6 hours. Open the article's platform button first, then return the finished post link here—or use its **Submit Post Link** button.`).catch(() => {});
         return;
       }
@@ -1274,7 +1275,7 @@ client.on('messageCreate', async (message) => {
         user: message.author,
         fallbackChannelId: message.channelId,
         engagementChannelId: returnWorkflow.engagementChannelId,
-        postID: intent.postID,
+        postID: intent?.postID || fallbackPost.postID,
         platform,
         url,
       });
