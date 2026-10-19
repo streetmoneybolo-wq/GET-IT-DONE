@@ -603,3 +603,20 @@ test('speed: concurrent reads share one fetch, a failure is never remembered, an
   assert.ok(took < 2_500, 'the read took ' + took + ' ms: the slow earnings feed (5 s) was not waited for beyond 1.5 s');
   assert.equal(earnCalls, 1);
 });
+
+test('stockTargetForPremium: a premium clicked on the contract chart becomes the stock price that contract needs', () => {
+  const up = CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 6, iv: 0.3, dte: 30 });
+  assert.equal(up.ok, true); assert.ok(up.target > 100, 'call premium up means stock up: ' + up.target); assert.equal(up.direction, 'with'); assert.equal(up.basis, 'premium');
+  assert.match(up.targetBasis, /contract chart/);
+  const dn = CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 1.5, iv: 0.3, dte: 30 });
+  assert.equal(dn.ok, true); assert.ok(dn.target < 100); assert.equal(dn.direction, 'against');
+  const put = CA.stockTargetForPremium({ type: 'put', price: 100, strike: 100, premium: 3, premiumTarget: 6, iv: 0.3, dte: 30 });
+  assert.equal(put.ok, true); assert.ok(put.target < 100, 'put premium up means stock down: ' + put.target); assert.equal(put.direction, 'with');
+  // round trip: pricing the call at the solved stock price gives the clicked premium back
+  const calc = require('./academy-options-calc');
+  assert.ok(Math.abs(calc.price('call', up.target, 100, 30 / 365, 0.043, 0, 0.3).price - 6) < 0.02);
+  assert.equal(CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 3.05, iv: 0.3, dte: 30 }).code, 'premium_target_too_close');
+  assert.equal(CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 5000, iv: 0.3, dte: 30 }).code, 'premium_target_unreachable');
+  assert.equal(CA.stockTargetForPremium({ type: 'call', price: 100, strike: 100, premium: 3, premiumTarget: 6, iv: 0.3, dte: 0 }).code, 'contract_expired');
+  assert.equal(CA.stockTargetForPremium({ type: 'x', price: 100, strike: 100, premium: 3, premiumTarget: 6, iv: 0.3, dte: 30 }).code, 'invalid_contract');
+});
