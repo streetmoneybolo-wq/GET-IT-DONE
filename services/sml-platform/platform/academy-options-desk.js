@@ -34,7 +34,7 @@
     + '#opt-mini .nm{padding:7px 9px 0;color:#fff;font:800 .74rem system-ui}#opt-mini .nm code{display:block;color:#ffd166;font:700 .6rem ui-monospace,monospace;margin-top:2px}'
     + '#opt-mini .px{display:flex;align-items:baseline;gap:8px;padding:4px 9px 0}#opt-mini .px b{font:800 1.25rem ui-monospace,monospace;color:#fff}#opt-mini .px i{font-style:normal;font:800 .66rem ui-monospace,monospace}#opt-mini .px i.up{color:#52e6ad}#opt-mini .px i.down{color:#ff778b}#opt-mini .px small{color:#7f97a4;font-weight:600}'
     + '#opt-mini .tfs{display:flex;gap:4px;padding:6px 9px 0}#opt-mini .tfs button{border:1px solid #2b5362;border-radius:5px;background:#0d1a24;color:#9ed3e6;font:800 .58rem ui-monospace,monospace;padding:3px 7px;cursor:pointer}#opt-mini .tfs button.on{background:#12405a;border-color:#4dc3ff;color:#fff}#opt-mini .tfs small{margin-left:auto;color:#6f8794;font-weight:600;align-self:center}'
-    + '#opt-mini canvas{display:block;width:calc(100% - 18px);height:150px;margin:6px 9px 0;border:1px solid #13262f;border-radius:7px;background:#07111a}'
+    + '#opt-mini canvas{display:block;width:calc(100% - 18px);height:150px;margin:6px 9px 0;border:1px solid #13262f;border-radius:7px;background:#07111a;cursor:crosshair}'
     + '#opt-mini .msg{padding:8px 9px 0;color:#8fa6b3;font-weight:500}#opt-mini .kv{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 6px;padding:7px 9px 0}#opt-mini .kv span{color:#7f97a4;font-size:.56rem;display:block}#opt-mini .kv b{font:800 .64rem ui-monospace,monospace;color:#eaf3f6}'
     + '#opt-mini .om-trade{padding:8px 9px 0}#opt-mini .om-trade h6{margin:0 0 4px;font:800 .56rem ui-monospace,monospace;letter-spacing:.08em;color:#7f97a4}#opt-mini .om-trade .om-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px}'
     + '#opt-mini .om-trade button{border:1px solid;border-radius:6px;font:800 .62rem system-ui;padding:6px 9px;cursor:pointer;white-space:nowrap;flex:1 1 auto}#opt-mini .om-trade button.sell{filter:saturate(.7) brightness(.92)}'
@@ -80,13 +80,13 @@
   /* ---------- MINI: one contract's own chart ---------- */
   const TFS = ['1m', '5m', '15m', '1h', '1D'];
   const card = document.createElement('aside'); card.id = 'opt-mini'; card.setAttribute('aria-label', 'Options contract chart'); stage.appendChild(card);
-  const M = { c: null, row: null, tf: '5m', bars: [], asOf: 0, msg: '', busy: false, timer: 0, hover: null, hint: '', hintOk: false, stale: false };
+  const M = { c: null, row: null, tf: '5m', bars: [], asOf: 0, msg: '', busy: false, timer: 0, hover: null, hint: '', hintOk: false, stale: false, geo: null, target: null };
   try { const t = localStorage.getItem('sml-opt-mini-tf'); if (TFS.includes(t)) M.tf = t; } catch (_) { /* ignore */ }
   const openCard = () => card.classList.add('open');
   /* where the card lives when neither the dock nor the quote column has it: the stage, or the top of the chain while the chain has the stage */
   const home = () => (CH.on ? chainStage : stage);
   function rehome() { const h = home(); if (card.parentElement === h) return; if (h === chainStage) back.after(card); else stage.appendChild(card); }
-  function closeCard() { card.classList.remove('open'); clearTimeout(M.timer); M.c = null; CLEAR.forEach((k) => { card.style[k] = ''; }); if (!(window.smlChartDock && window.smlChartDock.holds(card))) rehome(); }
+  function closeCard() { card.classList.remove('open'); clearTimeout(M.timer); M.c = null; M.target = null; M.geo = null; CLEAR.forEach((k) => { card.style[k] = ''; }); if (!(window.smlChartDock && window.smlChartDock.holds(card))) rehome(); }
   /* same placement as MEM ALGO: the chart dock owns the card when it has room; otherwise it pops over the quote column; phones keep the sheet */
   const CLEAR = ['position', 'left', 'top', 'width', 'height', 'maxHeight', 'right', 'bottom', 'zIndex'];
   function place() {
@@ -106,7 +106,7 @@
     if (!contract) return;
     const same = M.c && OC.occSymbol(M.c) === OC.occSymbol(contract);
     M.c = contract; M.row = row || M.row || null;
-    if (!same) { M.bars = []; M.asOf = 0; M.msg = 'Loading the contract’s candles…'; M.hint = ''; M.stale = false; }
+    if (!same) { M.bars = []; M.asOf = 0; M.msg = 'Loading the contract’s candles…'; M.hint = ''; M.stale = false; M.target = null; M.geo = null; }
     openCard(); paint(); place();
     if (!same || Date.now() - M.asOf > 15000) void load();
   }
@@ -146,12 +146,12 @@
       + '<div class="nm">' + esc(OC.describe(c)) + '<code>' + esc(OC.occSymbol(c)) + '</code></div>'
       + '<div class="px"><b>' + esc(money(lastPx)) + '</b>' + (chg != null ? '<i class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + (chg * 100).toFixed(1) + '%</i>' : '') + '<small>' + (last ? 'last trade · ' + esc(money(last.c * 100, 0)) + ' per contract' : r.mid != null ? 'mid from the chain' : '') + (M.stale ? ' · stale' : '') + '</small></div>'
       + '<div class="tfs">' + TFS.map((t) => '<button type="button" data-tf="' + t + '" class="' + (t === M.tf ? 'on' : '') + '">' + t + '</button>').join('') + '<small>' + (bars.length ? bars.length + ' candles' : '') + '</small></div>'
-      + '<canvas width="10" height="10" aria-label="Candles of the contract’s price"></canvas>'
+      + '<canvas width="10" height="10" aria-label="Candles of the contract’s price. Click a premium to set a Click-to-Alert target for this contract." title="Click a premium to alert this contract at that price"></canvas>'
       + (M.msg ? '<div class="msg">' + esc(M.msg) + '</div>' : '')
       + '<div class="kv"><div><span>Bid</span><b>' + esc(money(r.bid)) + '</b></div><div><span>Ask</span><b>' + esc(money(r.ask)) + '</b></div><div><span>Mid</span><b>' + esc(money(r.mid)) + '</b></div><div><span>Spread</span><b>' + (r.bid != null && r.ask != null ? esc(money(r.ask - r.bid)) : '—') + '</b></div>'
       + '<div><span>Volume</span><b>' + esc(r.volume == null ? '—' : r.volume) + '</b></div><div><span>Open int.</span><b>' + esc(r.oi == null ? '—' : r.oi) + '</b></div><div><span>IV</span><b>' + esc(r.iv == null ? '—' : r.iv) + '</b></div><div><span>Delta</span><b>' + esc(r.delta == null ? '—' : r.delta) + '</b></div></div>'
       + '<div class="om-trade">' + trade + '<div class="om-row" style="margin-top:4px"><button type="button" class="alert" data-alert="1">🔔 Alert this contract</button><button type="button" data-copy="1" style="border-color:#3a6fb0;background:#0d1f33;color:#9cc8ff">Copy symbol</button></div></div>'
-      + '<div class="hint' + (M.hintOk ? ' ok' : '') + '">' + esc(M.hint || 'Buy and Sell open your broker on this contract’s stock (or its chain) and copy the contract symbol; paste it into the broker’s search and place the order there. Nothing is traded from the Academy.') + '</div>';
+      + '<div class="hint' + (M.hintOk ? ' ok' : '') + '">' + esc(M.hint || 'Click a premium on the chart to set a Click-to-Alert target for this contract. Buy and Sell open your broker on this contract’s stock (or its chain) and copy the contract symbol; nothing is traded from the Academy.') + '</div>';
     drawChart();
   }
   function drawChart() {
@@ -166,6 +166,7 @@
     const span = hi - lo; lo -= span * 0.05; hi += span * 0.05;
     const step = pw / bars.length, bw = Math.max(1, Math.min(9, step * 0.68));
     const x = (i) => padL + i * step + step / 2, y = (p) => padT + (hi - p) / (hi - lo) * ph;
+    M.geo = { padL, padR, padT, pw, ph, lo, hi };
     ctx.strokeStyle = 'rgba(66,120,150,.18)'; ctx.lineWidth = 1;
     for (let k = 0; k <= 4; k++) { const p = lo + (hi - lo) * k / 4, yy = y(p); ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(padL + pw, yy); ctx.stroke(); ctx.fillStyle = '#7f97a4'; ctx.font = '700 9px ui-monospace,monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(p.toFixed(p >= 100 ? 1 : 2), padL + pw + 4, yy); }
     bars.forEach((b, i) => {
@@ -174,6 +175,12 @@
       ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(xx, y(b.h)); ctx.lineTo(xx, y(b.l)); ctx.stroke();
       ctx.fillStyle = col; const yo = y(b.o), yc = y(b.c); ctx.fillRect(xx - bw / 2, Math.min(yo, yc), bw, Math.max(1, Math.abs(yc - yo)));
     });
+    /* the alert target the member clicked on this chart: green above the last premium, red below */
+    if (M.target != null && M.target >= lo && M.target <= hi) {
+      const lastC = bars[bars.length - 1].c, col = M.target >= lastC ? '#35e6a0' : '#ff6b86', ty = y(M.target);
+      ctx.save(); ctx.setLineDash([6, 4]); ctx.lineWidth = 1.6; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(padL, ty); ctx.lineTo(padL + pw, ty); ctx.stroke(); ctx.restore();
+      ctx.font = '800 9px ui-monospace,monospace'; const tt = 'ALERT ' + M.target.toFixed(2), tw = ctx.measureText(tt).width + 8; ctx.fillStyle = col; ctx.fillRect(padL + 4, ty - 8, tw, 15); ctx.fillStyle = '#031a10'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(tt, padL + 8, ty);
+    }
     const last = bars[bars.length - 1]; ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#ffd166'; ctx.beginPath(); ctx.moveTo(padL, y(last.c)); ctx.lineTo(padL + pw, y(last.c)); ctx.stroke(); ctx.restore();
     ctx.fillStyle = '#ffd166'; ctx.fillRect(padL + pw + 1, y(last.c) - 7, padR - 2, 14); ctx.fillStyle = '#1a1305'; ctx.font = '800 9px ui-monospace,monospace'; ctx.textAlign = 'left'; ctx.fillText(last.c.toFixed(2), padL + pw + 4, y(last.c));
     const tfmt = (t) => { const d = new Date(t); return M.tf === '1D' ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
@@ -184,6 +191,17 @@
   card.addEventListener('mousemove', (e) => { const cv = e.target.closest && e.target.closest('canvas'); if (!cv) { if (M.hover != null) { M.hover = null; drawChart(); } return; } const bars = M.bars.slice(-120); if (!bars.length) return; const r = cv.getBoundingClientRect(), pw = r.width - 50; const i = Math.max(0, Math.min(bars.length - 1, Math.floor((e.clientX - r.left - 4) / (pw / bars.length)))); if (i !== M.hover) { M.hover = i; drawChart(); } });
   card.addEventListener('mouseleave', () => { if (M.hover != null) { M.hover = null; drawChart(); } });
   const say = (text, ok) => { M.hint = text; M.hintOk = !!ok; const h = card.querySelector('.hint'); if (h) { h.textContent = text; h.className = 'hint' + (ok ? ' ok' : ''); } };
+  /* click a premium on the contract chart: that premium becomes the alert target; Click-to-Alert reads the contract and turns it into the stock target */
+  const expiryOf = (c) => c.year + '-' + String(c.month).padStart(2, '0') + '-' + String(c.day).padStart(2, '0');
+  card.addEventListener('click', (e) => {
+    const cv = e.target.closest && e.target.closest('canvas'); if (!cv || !M.c || !M.geo || !M.bars.length) return;
+    const r = cv.getBoundingClientRect(), g = M.geo, yy = e.clientY - r.top;
+    if (yy < g.padT - 4 || yy > g.padT + g.ph + 4) return;
+    const premium = Math.max(0.01, Math.round((g.hi - (yy - g.padT) / g.ph * (g.hi - g.lo)) * 100) / 100);
+    M.target = premium; drawChart();
+    window.dispatchEvent(new CustomEvent('sml-click-alert-contract', { detail: { type: M.c.side, strike: M.c.strike, expiry: expiryOf(M.c), symbol: M.c.symbol, premiumTarget: premium } }));
+    say('Alert target: this contract at ' + money(premium) + '. Click-to-Alert is turning that into the stock target and the horizon.', true);
+  });
   card.addEventListener('click', async (e) => {
     const t = e.target.closest ? e.target.closest('[data-x],[data-tf],[data-go],[data-alert],[data-copy]') : null; if (!t || !M.c) return;
     if (t.dataset.x) { closeCard(); return; }

@@ -182,6 +182,34 @@ function autoTargetForContract({ type, side, price, strike, premium, iv, dte, le
 }
 
 /* The pure heart: everything it needs is passed in, so it can be tested and re-run exactly. */
+/* Click on the CONTRACT chart: the member clicked a premium, so the stock target is the price the stock has to reach for that contract to be
+ * worth that premium, with the contract's own volatility and the time it has left (Black-Scholes, inverted by bisection; a call's value rises with the
+ * stock and a put's falls, so the solution is unique). Pure, so it can be tested on its own. */
+function stockTargetForPremium({ type, price, strike, premium, premiumTarget, iv, dte, rate = 0.043 } = {}) {
+  const call = String(type || '').toLowerCase().startsWith('c'), put = String(type || '').toLowerCase().startsWith('p');
+  if (!call && !put) return { ok: false, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
+  const S = Number(price), K = Number(strike), prem = Number(premium), want = Number(premiumTarget), days = Number(dte), vol = Number(iv);
+  if (!(S > 0)) return { ok: false, code: 'no_live_price' };
+  if (!(K > 0)) return { ok: false, code: 'invalid_contract', detail: 'Pick a call or put from the options chain.' };
+  if (!(want > 0)) return { ok: false, code: 'invalid_premium_target', detail: 'Click a premium above zero on the contract chart.' };
+  if (!(days > 0)) return { ok: false, code: 'contract_expired', detail: 'That contract expires today or has expired.' };
+  if (!(vol > 0 && vol < 6)) return { ok: false, code: 'contract_not_priced', detail: 'The volatility for that contract could not be read, so the click could not be turned into a stock target.' };
+  if (prem > 0 && Math.abs(want - prem) / prem < 0.03) return { ok: false, code: 'premium_target_too_close', detail: 'That premium is within 3% of where the contract trades now. Click higher or lower on the contract chart.' };
+  const T = days / 365, f = (x) => { const r = optionsCalc.price(type, x, K, T, rate, 0, vol); const v = r && typeof r === 'object' ? r.price : r; return Number.isFinite(v) ? v : null; };
+  let lo = S * 0.02, hi = S * 8, flo = f(lo), fhi = f(hi);
+  if (!(flo != null && fhi != null)) return { ok: false, code: 'contract_not_priced' };
+  // the premium must be reachable at all between a near-zero stock and an 8x stock
+  const minP = Math.min(flo, fhi), maxP = Math.max(flo, fhi);
+  if (want < minP || want > maxP) return { ok: false, code: 'premium_target_unreachable', detail: 'No stock price gives that contract a premium of $' + want.toFixed(2) + ' before it expires.' };
+  for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2, fm = f(mid); if (fm == null) break; if ((fm < want) === call) lo = mid; else hi = mid; if (hi - lo < S * 1e-6) break; }
+  const target = (lo + hi) / 2;
+  const px = (v) => Math.round(v * (v >= 1 ? 100 : 10000)) / (v >= 1 ? 100 : 10000);
+  const up = want > prem; // a higher premium is the stock moving the contract's way, for a call and for a put alike
+  const withContract = up;
+  return { ok: true, target: px(target), premiumNow: prem > 0 ? px(prem) : null, premiumTarget: px(want), direction: withContract ? 'with' : 'against', basis: 'premium',
+    targetBasis: 'your click on the contract chart: the ' + type + ' at $' + px(want).toFixed(2) + (prem > 0 ? ' (now $' + px(prem).toFixed(2) + ')' : '') + ', which needs the stock at about $' + px(target).toFixed(px(target) >= 1 ? 2 : 4) + ' with ' + Math.round(days) + ' day' + (Math.round(days) === 1 ? '' : 's') + ' left' + (withContract ? '' : '; a lower premium means the stock moving against this contract, so this reads as a sell') };
+}
+
 function classify({ symbol, target, price, bars }) {
   const sym = String(symbol || '').toUpperCase();
   const entry = Number(price), tgt = Number(target);
@@ -391,8 +419,9 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
 
   /* The stock analysis behind an alert. With a contract and no chart target (or autoTarget), the target is derived from the contract
      (autoTargetForContract) and everything after that runs exactly as for a clicked target. Returns { analysis, rows } or { error }. */
-  async function analysisFor({ symbol, target, contract, autoTarget, anyExpiry = false, givenRows = null }) {
-    const auto = !!contract && (autoTarget === true || !(Number(target) > 0));
+  async function analysisFor({ symbol, target, contract, autoTarget, premiumTarget = null, anyExpiry = false, givenRows = null }) {
+    const fromPremium = !!contract && Number(premiumTarget) > 0;
+    const auto = !!contract && (autoTarget === true || fromPremium || !(Number(target) > 0));
     if (!auto) return { analysis: await gather(symbol, Number(target)) };
     const err = (status, code, detail = '') => { logger('warn', 'click_alert_rejected', { symbol: String(symbol || '').toUpperCase(), code, detail, contract: contract ? { type: contract.type, strike: contract.strike, expiry: contract.expiry } : null }); return { error: { ok: false, status, code, ...(detail ? { detail } : {}) } }; };
     const sym = String(symbol || '').toUpperCase();
@@ -434,16 +463,16 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
       let a = null; try { a = bars && bars.length >= 30 ? SM.analyze(bars) : null; } catch (_) { a = null; }
       if (a) levels.push(...levelsInTheWay(a, price, type === 'call' ? price * 4 : price * 0.01, 40));
     }
-    const pick = autoTargetForContract({ type, price, strike, premium, iv, dte, levels });
+    const pick = fromPremium ? stockTargetForPremium({ type, price, strike, premium, premiumTarget: Number(premiumTarget), iv, dte }) : autoTargetForContract({ type, price, strike, premium, iv, dte, levels });
     if (!pick.ok) return err(422, pick.code, pick.detail || '');
     const analysis = classify({ symbol: sym, target: pick.target, price, bars: loaded.set });
     analysis.__bars = loaded.set;
     if (analysis.ok) {
       analysis.autoTarget = true;
       analysis.targetBasis = pick.targetBasis;
-      analysis.targetPick = { basis: pick.basis, level: pick.level, breakeven: pick.breakeven, expectedMove: pick.expectedMove, capped: !!pick.capped };
-      analysis.rationale.unshift('Target set from the ' + expiry + ' ' + strike + ' ' + type + ': ' + pick.targetBasis + ', past its $' + Number(pick.breakeven).toFixed(pick.breakeven >= 1 ? 2 : 4) + ' breakeven and reachable before expiry.');
-      analysis.alert.targetNote = 'Target from the contract: ' + pick.targetBasis + '.';
+      analysis.targetPick = fromPremium ? { basis: 'premium', premiumTarget: pick.premiumTarget, premiumNow: pick.premiumNow, direction: pick.direction } : { basis: pick.basis, level: pick.level, breakeven: pick.breakeven, expectedMove: pick.expectedMove, capped: !!pick.capped };
+      if (fromPremium) { analysis.premiumTarget = pick.premiumTarget; analysis.rationale.unshift('Target set from ' + pick.targetBasis + '.'); analysis.alert.targetNote = 'Target from the contract chart: the ' + expiry + ' ' + strike + ' ' + type + ' at $' + pick.premiumTarget.toFixed(2) + '.'; }
+      else { analysis.rationale.unshift('Target set from the ' + expiry + ' ' + strike + ' ' + type + ': ' + pick.targetBasis + ', past its $' + Number(pick.breakeven).toFixed(pick.breakeven >= 1 ? 2 : 4) + ' breakeven and reachable before expiry.'); analysis.alert.targetNote = 'Target from the contract: ' + pick.targetBasis + '.'; }
     }
     return { analysis, rows };
   }
@@ -581,10 +610,10 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   }
   const textFor = (analysis, opt, mention) => (analysis.smashed && !(opt && opt.oa) ? format.formatPtSmashed({ ticker: analysis.symbol, newPt: analysis.target, plus: true, side: analysis.side, mention, ...wideStop(analysis), ...Object.fromEntries(Object.entries(analysis.insight || {}).filter(([, v]) => v != null && v !== '')) }) : opt && opt.oa ? format.formatOptionsContractAlert({ ...analysis.alert, mention, contract: opt.oa.contract, estimates: opt.oa.estimates, risk: opt.oa.risk }) : format.formatEntryAlert({ ...analysis.alert, mention }));
 
-  async function preview(userId, { symbol, target, contract = null, mode = 'auto', autoTarget = false } = {}) {
+  async function preview(userId, { symbol, target, contract = null, mode = 'auto', autoTarget = false, premiumTarget = null } = {}) {
     /* the read starts at once and runs while the subscription is checked; an unsubscribed member never receives any of it */
     const pre = prefetchCatalysts(String(symbol || '').toUpperCase());
-    const gotP = analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
+    const gotP = analysisFor({ symbol, target, contract, autoTarget, premiumTarget, anyExpiry: true });
     gotP.catch(() => {});
     const ent = await entitlement(userId);
     // the horizon read is part of the paid add-on, so an unsubscribed member never receives it
@@ -654,7 +683,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     return ((personas && personas[String(userId)]) || directory).sendableChannels(String(guildId), String(userId));
   }
 
-  async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, channelId, mention, images: wantImages = true, asMe = true, via = '', replyTo = '' } = {}) {
+  async function send(user, { symbol, target, contract = null, mode = 'auto', autoTarget = false, premiumTarget = null, channelId, mention, images: wantImages = true, asMe = true, via = '', replyTo = '' } = {}) {
     const userId = String(user.userId || '');
     if (via === 'site') return { ok: false, status: 410, code: 'site_publishing_unavailable', detail: 'StockMarketLoop group publishing is unavailable. Choose a Discord channel instead.' };
     /* a PT SMASHED / new-PT update with no channel chosen goes where the member's earlier alert on the stock was posted, as a reply to it */
@@ -668,7 +697,7 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
     const pd = personas && personas[userId];
     /* the analysis starts at once and runs while the subscription, the channel permissions and the rate limit are checked */
     const pre = prefetchCatalysts(String(symbol || '').toUpperCase());
-    const analysisP = analysisFor({ symbol, target, contract, autoTarget, anyExpiry: true });
+    const analysisP = analysisFor({ symbol, target, contract, autoTarget, premiumTarget, anyExpiry: true });
     analysisP.catch(() => {});
     const [ent, where, limited] = await Promise.all([entitlement(userId), Promise.resolve().then(() => (pd || directory).postingIn(userId, String(channelId))).catch(() => null), overLimit(userId, String(channelId)).catch(() => null)]);
     if (!ent.configured) return { ok: false, status: 503, code: 'click_alert_not_configured' };
@@ -879,4 +908,4 @@ function createClickAlertService({ getBars, chain = null, chainExpiry = null, ex
   return { entitlement, warm, preview, sitePreview, send, takeProfits, deskAction, destinations, channels, chainFor, configured, rangeSince, evidenceFor, postAutoUpdate, postAutoClose, startThread, composeAutoUpdate, store, limits: { ...lim } };
 }
 
-module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };
+module.exports = { createClickAlertService, createClickAlertStore, classify, autoTargetForContract, stockTargetForPremium, technicalsFrom, horizonForDays, levelsInTheWay, chooseStop, riskFor, dailyVolatility, HORIZON_TEXT, DISCLAIMER, alertTimeAndPrice };

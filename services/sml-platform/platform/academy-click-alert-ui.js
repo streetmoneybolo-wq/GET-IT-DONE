@@ -234,7 +234,7 @@
   }
   function pickContract() {
     const P = S.pick; if (!P.type || !P.expiry || !(Number(P.strike) > 0)) return;
-    S.contract = { type: P.type, strike: Number(P.strike), expiry: P.expiry }; S.autoTarget = true; S.symNote = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = '';
+    S.contract = { type: P.type, strike: Number(P.strike), expiry: P.expiry }; S.autoTarget = true; S.premiumTarget = null; S.symNote = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = '';
     /* the read does not wait for the subscription check: the server makes that check itself, at the same moment */
     if (!(S.status && S.status.ok && S.status.entitled)) void loadStatus();
     if (!S.busy) void reading(); else S.queued = true;
@@ -243,13 +243,13 @@
   window.addEventListener('sml-click-alert-contract', (e) => {
     const d = e.detail || {};
     /* options ALERT mode (the chain's 🔔 ALERT button): no chart click needed, the server derives the stock target from the contract */
-    if (d.autoTarget) {
+    if (d.autoTarget || Number(d.premiumTarget) > 0) {
       if (!S.on) { S.msg = ''; setOn(true, { quiet: true }); }
       S.optMode = true;
       const chartSym = sym(), chainSym = String(d.symbol || chartSym).toUpperCase();
       S.symNote = chainSym !== chartSym ? 'The options chain shows ' + chainSym + ' while the chart shows ' + chartSym + ', so this alert is for ' + chainSym + ' (the chain).' : '';
       S.kind = 'option'; S.pick = { type: d.type, expiry: d.expiry, strike: String(d.strike) };
-      S.symbol = chainSym; S.contract = { type: d.type, strike: d.strike, expiry: d.expiry }; S.autoTarget = true; S.target = null; S.entry = null; S.data = null; S.opt = null; S.msg = '';
+      S.symbol = chainSym; S.contract = { type: d.type, strike: d.strike, expiry: d.expiry }; S.autoTarget = true; S.premiumTarget = Number(d.premiumTarget) > 0 ? Number(d.premiumTarget) : null; S.target = null; S.entry = null; S.data = null; S.opt = null; S.msg = '';
       warm(chainSym);
       if (!(S.status && S.status.ok && S.status.entitled)) void loadStatus();
       if (!S.busy) void reading(); else S.queued = true;
@@ -284,7 +284,7 @@
     if (S.symNote && S.contract) html += '<div class="msg info">' + esc(S.symNote) + '</div>';
     const d = S.data;
     if (d) {
-      html += row('Symbol', esc(d.symbol) + ' · ' + (d.side === 'short' ? 'SHORT' : 'LONG')) + row('Entry (live price, locked)', '$' + price(d.entry)) + row(d.autoTarget ? 'Target (from the contract)' : 'Target (your click)', '$' + price(d.target) + ' (' + (d.movePct >= 0 ? '+' : '') + d.movePct + '%)');
+      html += row('Symbol', esc(d.symbol) + ' · ' + (d.side === 'short' ? 'SHORT' : 'LONG')) + row('Entry (live price, locked)', '$' + price(d.entry)) + row(d.targetPick && d.targetPick.basis === 'premium' ? 'Target (your click on the contract chart: $' + Number(d.premiumTarget).toFixed(2) + ' premium)' : d.autoTarget ? 'Target (from the contract)' : 'Target (your click)', '$' + price(d.target) + ' (' + (d.movePct >= 0 ? '+' : '') + d.movePct + '%)');
       if (d.autoTarget && d.targetBasis) html += row('Why this target', esc(d.targetBasis)) + '<div class="msg info">Click a price on the chart to use your own target for this contract instead.</div>';
       html += '<div class="hz"><b>' + esc(d.horizonLabel.toUpperCase()) + '</b><span>' + esc(d.horizonSpan) + ' · ' + esc(d.confidence) + ' confidence · about ' + (d.expectedDays.mid < 1 ? 'under a day' : (d.expectedDays.mid < 10 ? d.expectedDays.mid.toFixed(1) : Math.round(d.expectedDays.mid)) + ' trading days') + '</span></div>';
       html += row('Stop (suggested)', '$' + price(d.stop) + ' · ' + esc(d.stopBasis)) + row('Risk', esc(String(d.risk).toUpperCase()));
@@ -337,7 +337,7 @@
   async function reading() {
     S.busy = true; S.data = null; S.scn = null; S.msg = ''; S.sent = false; render();
     const auto = !!(S.autoTarget && S.contract);
-    const r = await api('preview', Object.assign({ symbol: S.symbol, mode: S.mode }, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}));
+    const r = await api('preview', Object.assign({ symbol: S.symbol, mode: S.mode }, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {}));
     S.busy = false; S.opt = r.ok ? (r.options || null) : null; S.cat = r.ok ? (r.catalysts || null) : null;
     if (S.queued) { S.queued = false; void reading(); return; } // a newer contract was double-clicked while this one was being read
     if (auto && r.ok && r.analysis) S.target = r.analysis.target;
@@ -376,7 +376,7 @@
     if (x < M.pad.l || x > M.pad.l + M.pw || y < M.pad.t || y > M.pad.t + (M.priceH || M.ph)) return;
     const p = M.hi - (y - M.pad.t) / M.ph * (M.hi - M.lo); if (!(p > 0)) return;
     // a contract picked in options ALERT mode stays: the click only replaces the target derived from it (same symbol only)
-    if (S.autoTarget && S.contract && S.symbol === M.symbol) { S.autoTarget = false; S.symNote = ''; } else { S.contract = null; S.opt = null; S.autoTarget = false; S.symNote = ''; S.kind = 'stock'; }
+    if (S.autoTarget && S.contract && S.symbol === M.symbol) { S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; } else { S.contract = null; S.opt = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.kind = 'stock'; }
     S.symbol = M.symbol; S.target = Math.round(p * (p >= 1 ? 100 : 10000)) / (p >= 1 ? 100 : 10000);
     if (S.status && S.status.ok && S.status.entitled) { void reading(); } else { void loadStatus().then(() => { if (S.status && S.status.entitled) void reading(); }); }
     render(); draw();
@@ -392,23 +392,23 @@
       if (S.guildId && S.channelId) openOut('https://discord.com/channels/' + S.guildId + '/' + S.channelId);
       return;
     }
-    if (k === 'nocontract') { S.contract = null; S.autoTarget = false; S.symNote = ''; S.kind = 'stock'; if (S.target != null) void reading(); else { S.data = null; S.opt = null; S.cat = null; render(); draw(); } return; }
+    if (k === 'nocontract') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.kind = 'stock'; if (S.target != null) void reading(); else { S.data = null; S.opt = null; S.cat = null; render(); draw(); } return; }
     if (k === 'kind') {
       const kind = a.dataset.kind === 'option' ? 'option' : 'stock';
       S.kind = kind; S.msg = '';
-      if (kind === 'stock') { S.contract = null; S.autoTarget = false; S.symNote = ''; S.pick = { type: '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; } if (hint.parentElement !== stage) stage.appendChild(hint); hint.style.display = 'block'; setTimeout(() => { hint.style.display = 'none'; }, 6000); if (S.target != null) void reading(); }
+      if (kind === 'stock') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.pick = { type: '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; } if (hint.parentElement !== stage) stage.appendChild(hint); hint.style.display = 'block'; setTimeout(() => { hint.style.display = 'none'; }, 6000); if (S.target != null) void reading(); }
       else { hint.style.display = 'none'; S.symbol = sym(); S.pick = { type: S.pick.type || '', expiry: '', strike: '' }; if (S.target == null) { S.data = null; S.opt = null; S.cat = null; } void loadChain(); }
       render(); draw(); return;
     }
     if (k === 'ptype') { S.pick.type = a.dataset.type === 'put' ? 'put' : 'call'; S.pick.strike = ''; render(); return; }
-    if (k === 'repick') { S.contract = null; S.autoTarget = false; S.kind = 'option'; S.pick.strike = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = ''; S.sent = false; render(); draw(); void loadChain(S.pick.expiry || ''); return; }
+    if (k === 'repick') { S.contract = null; S.autoTarget = false; S.premiumTarget = null; S.kind = 'option'; S.pick.strike = ''; S.target = null; S.entry = null; S.data = null; S.opt = null; S.cat = null; S.msg = ''; S.sent = false; render(); draw(); void loadChain(S.pick.expiry || ''); return; }
     if (k === 'out') { if (a.dataset.url) openOut(a.dataset.url); return; }
     if (k === 'buy') { void buyPass(a.dataset.plan); return; }
     if (k === 'send') {
       if (S.busy || !S.channelId || !S.data) return;
       S.busy = true; S.msg = ''; render();
       const auto = !!(S.autoTarget && S.contract);
-      const r = await api('send', Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId ? { replyTo: S.route.messageId } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}));
+      const r = await api('send', Object.assign({ symbol: S.symbol, mode: S.mode, channelId: S.channelId, mention: !!pingOn(), images: !!S.images, asMe: !!S.asMe }, routeOn() && S.route.messageId ? { replyTo: S.route.messageId } : {}, auto ? { autoTarget: true } : { target: S.target }, S.contract ? { contract: S.contract } : {}, auto && S.premiumTarget > 0 ? { premiumTarget: S.premiumTarget } : {}));
       S.busy = false;
       if (r.ok && auto && r.analysis && Number.isFinite(+r.analysis.target) && +r.analysis.target !== +S.target) { S.target = +r.analysis.target; draw(); }
       if (r.ok) { S.sent = true; S.msg = (r.postedAs === 'member' ? 'Posted under your name' : 'Posted to Discord as the Academy app') + (r.repliedTo ? ' as a reply to your earlier alert' : '') + (r.mentioned ? ' with @everyone' : r.mentionRequestedButNotAllowed ? ' (without @everyone: not allowed in that channel)' : '') + (r.imagesAttached ? ', with the 2 scenario charts.' : r.imagesSkipped === 'no_permission' ? '. The charts were left off: you or the app cannot attach files in that channel.' : r.imagesSkipped === 'unavailable' ? '. The charts could not be made this time.' : '.'); S.msgTone = 'ok'; save(); }
@@ -442,7 +442,7 @@
   function setOn(on, { quiet = false } = {}) {
     S.on = !!on; btn.classList.toggle('on', S.on); document.body.classList.toggle('ca-armed', S.on);
     if (S.on) { if (quiet) S.kind = 'option'; else S.kind = ''; try { warm(sym()); } catch (_) { /* chart not ready */ } void loadStatus(); }
-    else { hint.style.display = 'none'; S.target = null; S.entry = null; S.data = null; S.msg = ''; S.sent = false; S.contract = null; S.opt = null; S.cat = null; S.autoTarget = false; S.optMode = false; S.symNote = ''; S.queued = false; S.kind = ''; S.pick = { type: '', expiry: '', strike: '' }; S.chainErr = ''; }
+    else { hint.style.display = 'none'; S.target = null; S.entry = null; S.data = null; S.msg = ''; S.sent = false; S.contract = null; S.opt = null; S.cat = null; S.autoTarget = false; S.premiumTarget = null; S.optMode = false; S.symNote = ''; S.queued = false; S.kind = ''; S.pick = { type: '', expiry: '', strike: '' }; S.chainErr = ''; }
     render(); draw();
   }
   btn.addEventListener('click', () => setOn(!S.on));
@@ -452,7 +452,7 @@
     const s = String(symbol || '').toUpperCase(); if (!s) return false;
     if (typeof window.smlAcademyNavigateMarket === 'function') { try { window.smlAcademyNavigateMarket(s); } catch (_) { /* keep going */ } }
     if (!S.on) setOn(true);
-    S.kind = 'stock'; S.contract = null; S.opt = null; S.autoTarget = false; S.symNote = ''; S.sent = false; S.msg = '';
+    S.kind = 'stock'; S.contract = null; S.opt = null; S.autoTarget = false; S.premiumTarget = null; S.symNote = ''; S.sent = false; S.msg = '';
     S.symbol = s; S.mode = mode === 'smashed' || mode === 'new' ? mode : 'auto';
     const t = Number(target); S.target = t > 0 ? Math.round(t * (t >= 1 ? 100 : 10000)) / (t >= 1 ? 100 : 10000) : null;
     warm(s);
