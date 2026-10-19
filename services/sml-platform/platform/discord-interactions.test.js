@@ -194,7 +194,7 @@ test('an unknown command answers with an ephemeral error', async () => {
   const parsed = response.json();
   assert.equal(parsed.type, 4);
   assert.equal(parsed.data.flags, 64);
-  assert.equal(parsed.data.content, 'Unknown command.');
+  assert.match(parsed.data.content, /not available here.*LOOP-KICK/);
 });
 
 test('a cheap command answers type 4 with flags 64 and sends no follow-up', async () => {

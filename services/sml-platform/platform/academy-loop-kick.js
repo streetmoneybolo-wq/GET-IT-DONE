@@ -5,8 +5,10 @@
    full screen. The phone iframe loads through Discord's URL mapping at
    /.proxy/loop-kick/ and receives its short-lived site session by postMessage after
    it announces sml-loop-kick:ready; the session silently re-mints before expiry.
-   Members without a linked+verified stockmarketloop.com account get a card that
-   sends them to connect (external browser) — nothing else works until then.
+   Members without a linked stockmarketloop.com account connect right here: they sign
+   in with their site password (the platform checks it with the site and stores the
+   link), or take a signed link that finishes on the site after they register.
+   An unverified email still sends them to the site — nothing else works until then.
    This module never writes to Discord: no DMs, no channel posts. */
 (function () {
   if (window.__smlLoopKickModule) return;
@@ -15,6 +17,10 @@
   var CFG = window.SML_LOOP_KICK_ACTIVITY || {};
   var STANDALONE = !!CFG.standalone;
   var SESSION_ROUTE = CFG.sessionRoute || '/academy-activity/loop-kick/session';
+  /* one-tap connection (site password sign-in here, or a signed link that finishes on the site) */
+  var CONNECT_ROUTE = CFG.connectRoute || '/academy-activity/loop-kick/connect';
+  var CONNECT_LINK_ROUTE = CFG.connectLinkRoute || '/academy-activity/loop-kick/connect-link';
+  var SITE_CONNECT_URL = 'https://stockmarketloop.com/connect-discord/';
   var FRAME_PATH = '/.proxy/loop-kick/?embed=1&peer=loop&peerName=Loop';
   var EXTERNAL_OK = /^https:\/\/(stockmarketloop-loop-kick\.onrender\.com\/enable-alerts\.html|stockmarketloop\.com\/)/;
 
@@ -121,8 +127,7 @@
       /* the phone cannot leave Discord's sandbox itself (e.g. phone-alert setup) */
       var url = String(d.url || '');
       if (!EXTERNAL_OK.test(url)) return;
-      if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url);
-      else { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
+      openExternal(url);
     }
   });
 
@@ -143,6 +148,14 @@
     '#academy-lk-card{padding:26px 20px;color:#cfdbe8;font:400 13px/1.6 system-ui,sans-serif;text-align:center}' +
     '#academy-lk-card b{display:block;font-size:14px;margin-bottom:8px;color:#fff}' +
     '#academy-lk-card button{margin-top:14px;background:#22d97a;color:#04170d;border:0;border-radius:9px;padding:11px 18px;font:700 12px/1 system-ui,sans-serif;cursor:pointer}' +
+    '#academy-lk-card button[disabled]{opacity:.55;cursor:default}' +
+    '#academy-lk-connect{display:block;max-width:300px;margin:16px auto 0;text-align:left}' +
+    '#academy-lk-connect input{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px 12px;border-radius:9px;border:1px solid #243245;background:#0b1119;color:#fff;font:400 13px/1.2 system-ui,sans-serif}' +
+    '#academy-lk-connect input:focus{outline:none;border-color:#22d97a}' +
+    '#academy-lk-connect button{width:100%;margin-top:4px}' +
+    '#academy-lk-connect .lk-msg{min-height:18px;margin:10px 0 0;font-size:12px;color:#ffb3bd;text-align:center}' +
+    '#academy-lk-connect .lk-msg.ok{color:#9fe8c0}' +
+    '#academy-lk-connect .lk-alt{display:block;margin:14px 0 0;background:none;border:0;padding:0;color:#7fb4ff;font:400 12px/1.4 system-ui,sans-serif;text-decoration:underline;cursor:pointer;width:auto;margin-left:auto;margin-right:auto}' +
     '#academy-lk-btn{position:relative}' +
     '#academy-lk-badge{position:absolute;top:-6px;right:-8px;background:#ff566e;color:#fff;border-radius:999px;font:700 9px/1 system-ui,sans-serif;padding:3px 5px;display:none}' +
     (STANDALONE
@@ -178,11 +191,99 @@
       go.textContent = buttonLabel;
       go.onclick = function () {
         if (url === '#') { S.lastCard = ''; openPanel(); return; }
-        if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url);
-        else { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
+        openExternal(url);
       };
       S.lastCard = key;
     }
+  }
+
+  function openExternal(url) {
+    if (typeof window.smlAcademyOpenExternal === 'function') void window.smlAcademyOpenExternal(url);
+    else { try { window.open(url, '_blank', 'noopener'); } catch (e) {} }
+  }
+
+  /* "Connect your account": sign in with the stockmarketloop.com password right here. The platform checks it with the
+     site and stores Discord ↔ member; the phone then loads on the next mint. Members without an account take the signed
+     link, which finishes the connection on the site after they register. No link code, no slash command. */
+  function showConnect(j) {
+    var panel = buildPanel();
+    var card = panel.querySelector('#academy-lk-card');
+    card.style.display = '';
+    if (S.frame) S.frame.style.display = 'none';
+    if (S.lastCard === 'connect') return;
+    S.lastCard = 'connect';
+    var siteUrl = (j && j.connect_url) || SITE_CONNECT_URL;
+    card.innerHTML =
+      '<b>Connect your stockmarketloop.com account</b>' +
+      '<span>LOOP-KICK runs on your stockmarketloop.com account. Sign in once and it is connected to this Discord. No code to copy, nothing to type in Discord.</span>' +
+      '<form id="academy-lk-connect" autocomplete="on">' +
+        '<input name="login" placeholder="Username or email" autocomplete="username" maxlength="120" required>' +
+        '<input name="password" type="password" placeholder="Password" autocomplete="current-password" maxlength="512" required>' +
+        '<input name="code" placeholder="Two-step code" autocomplete="one-time-code" inputmode="numeric" maxlength="32" style="display:none">' +
+        '<button type="submit">Connect</button>' +
+        '<p class="lk-msg"></p>' +
+        '<button type="button" class="lk-alt">No account yet? Create one on stockmarketloop.com</button>' +
+      '</form>';
+    var form = card.querySelector('#academy-lk-connect');
+    var msg = form.querySelector('.lk-msg');
+    var codeInput = form.querySelector('input[name=code]');
+    var submit = form.querySelector('button[type=submit]');
+    function say(text, ok) { msg.textContent = text || ''; msg.className = 'lk-msg' + (ok ? ' ok' : ''); }
+    function fallback(text) {
+      /* the site cannot take the sign-in right now: keep the classic page one tap away */
+      say(text || 'Sign-in is unavailable right now. You can connect on stockmarketloop.com instead.');
+      submit.textContent = 'Connect on stockmarketloop.com';
+      submit.type = 'button';
+      submit.onclick = function () { openExternal(siteUrl); };
+    }
+    form.onsubmit = function (ev) {
+      ev.preventDefault();
+      var login = String(form.login.value || '').trim();
+      var password = String(form.password.value || '');
+      var code = String(codeInput.value || '').trim();
+      if (!login || !password) { say('Enter your stockmarketloop.com username and password.'); return; }
+      submit.disabled = true; say('Connecting…', true);
+      fetch(CONNECT_ROUTE, { method: 'POST', headers: { authorization: 'Bearer ' + activitySession(), 'content-type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ login: login, password: password, code: code }) })
+        .then(function (r) { return r.json().then(function (b) { return { status: r.status, j: b || {} }; }, function () { return { status: r.status, j: {} }; }); })
+        .then(function (res) {
+          submit.disabled = false;
+          var b = res.j;
+          if (b.ok) {
+            form.password.value = ''; codeInput.value = '';
+            say('Connected' + (b.user && b.user.handle ? ' as @' + b.user.handle : '') + '. Opening LOOP-KICK…', true);
+            S.lastCard = '';
+            setTimeout(function () { openPanel(); }, 600);
+            return;
+          }
+          switch (b.error) {
+            case 'two_step_required':
+              codeInput.style.display = ''; codeInput.focus();
+              say(b.method === 'email' ? 'Enter the sign-in code we just emailed to ' + (b.hint || 'your address') + '.' : 'Enter the code from your authenticator app.');
+              break;
+            case 'two_step_invalid': codeInput.style.display = ''; codeInput.focus(); say('That code did not match. Try again.'); break;
+            case 'invalid_credentials': say('Wrong username or password.'); break;
+            case 'rate_limited': say('Too many tries. Wait ' + Math.max(1, Math.ceil((Number(b.retryAfterSec) || 900) / 60)) + ' minutes and try again.'); break;
+            case 'account_blocked': say('This stockmarketloop.com account cannot sign in right now.'); break;
+            case 'discord_already_linked': say('This Discord account is already connected to a different stockmarketloop.com account. Disconnect it on the site first.'); break;
+            case 'authorization_required': say('Your Academy session lapsed. Close and reopen LOOP-KICK.'); break;
+            case 'academy_access_required': say('LOOP-KICK is part of the paid Academy.'); break;
+            case 'invalid_request': say('Enter your stockmarketloop.com username and password.'); break;
+            default: fallback();
+          }
+        })
+        .catch(function () { submit.disabled = false; fallback(); });
+    };
+    form.querySelector('.lk-alt').onclick = function () {
+      say('Opening stockmarketloop.com…', true);
+      fetch(CONNECT_LINK_ROUTE, { headers: { authorization: 'Bearer ' + activitySession() }, cache: 'no-store' })
+        .then(function (r) { return r.json(); }, function () { return null; })
+        .then(function (b) {
+          openExternal(b && b.ok && /^https:\/\/stockmarketloop\.com\//.test(String(b.url || '')) ? b.url : siteUrl);
+          say('Finish on stockmarketloop.com, then come back and tap LOOP-KICK again.', true);
+        });
+    };
+    setTimeout(function () { try { form.login.focus(); } catch (e) {} }, 50);
   }
 
   function showPhone() {
@@ -253,7 +354,7 @@
         scheduleRefresh();
         showPhone();
       } else if (j.error === 'not_linked') {
-        showCard('Connect your account', 'LOOP-KICK runs on your stockmarketloop.com account. Create one (free) and connect your Discord to use it here.', 'Connect on stockmarketloop.com', j.connect_url || 'https://stockmarketloop.com/connect-discord/');
+        showConnect(j);
       } else if (j.error === 'not_verified') {
         showCard('Verify your email', 'Your stockmarketloop.com account still needs its email code. Verify it, then come back.', 'Verify now', j.verify_url || 'https://stockmarketloop.com/register/');
       } else {

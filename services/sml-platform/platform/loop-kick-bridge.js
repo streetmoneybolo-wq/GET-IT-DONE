@@ -84,7 +84,34 @@ function createLoopKickBridge({ baseUrl = '', secret = '', appUrl = '', fetchImp
     return { ok: true, linked: payload.linked === true, card: payload.linked === true && payload.card && typeof payload.card === 'object' ? payload.card : null };
   }
 
-  return { configured, session, profile };
+  /* Store Discord id ↔ WordPress user (the member proved the account through the site's app identity sign-in first).
+     Signed route POST /wp-json/sml-loop-kick/v1/discord-link; 409 when the Discord account already belongs to another member. */
+  async function link({ discordUserId = '', wpUserId = 0, discordTag = '' } = {}) {
+    if (!configured) return { ok: false, status: 503, error: 'loop_kick_unconfigured' };
+    const cleanId = String(discordUserId || '').replace(/\D/g, '');
+    const userId = Number(wpUserId);
+    if (!/^\d{15,24}$/.test(cleanId)) return { ok: false, status: 400, error: 'invalid_discord_user' };
+    if (!Number.isInteger(userId) || userId <= 0) return { ok: false, status: 400, error: 'invalid_site_user' };
+    const path = '/wp-json/sml-loop-kick/v1/discord-link';
+    const body = JSON.stringify({ discord_user_id: cleanId, wp_user_id: userId, discord_tag: String(discordTag || '').slice(0, 190) });
+    const timestamp = String(Math.floor(now() / 1000));
+    const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
+    const signature = crypto.createHmac('sha256', String(secret)).update(`${timestamp}.${path}.${bodyHash}`).digest('hex');
+    let response;
+    try {
+      response = await fetchImpl(`${root}${path}`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'x-sml-lk-timestamp': timestamp, 'x-sml-lk-signature': `sha256=${signature}` }, body, signal: AbortSignal.timeout(8_000) });
+    } catch (error) { return { ok: false, status: 503, error: 'loop_kick_unavailable' }; }
+    let payload = null; try { payload = await response.json(); } catch (error) { payload = null; }
+    if (response.status === 404 && payload && payload.code === 'rest_no_route') {
+      // the site still runs the bridge without the link route: the panel falls back to the site page
+      return { ok: false, status: 503, error: 'connect_unconfigured' };
+    }
+    if (response.status === 409) return { ok: false, status: 409, error: 'discord_already_linked' };
+    if (!response.ok || !payload || payload.ok !== true) return { ok: false, status: 503, error: 'loop_kick_unavailable' };
+    return { ok: true, status: 200, linked: payload.linked === true, userId: Number(payload.user_id) || userId, verified: payload.verified !== false };
+  }
+
+  return { configured, session, profile, link };
 }
 
 module.exports = { createLoopKickBridge };

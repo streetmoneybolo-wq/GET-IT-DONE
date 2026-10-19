@@ -253,7 +253,7 @@ test('a missing authorize callback fails closed', async () => {
 test('unknown commands get an ephemeral error and an audit row', async () => {
   const { deps, audits } = fakes();
   const result = await createConnectCommands(deps).handleCommand(interaction('self-destruct'));
-  assert.equal(result.response.data.content, 'Unknown command.');
+  assert.match(result.response.data.content, /not available here.*LOOP-KICK/);
   assert.equal(result.response.data.flags, 64);
   assert.equal(audits.at(-1).fields.detail.outcome, 'unknown_command');
 });
@@ -283,7 +283,7 @@ test('the Connect bot scope lets /loop-kick through to the launcher', async () =
   const launched = await scoped.handleCommand(interaction('loop-kick', [], { data: { name: 'loop-kick', type: 4 } }));
   assert.deepEqual(launched.response, { type: 12 });
   const blocked = await scoped.handleCommand(interaction('disputes'));
-  assert.equal(blocked.response.data.content, 'Unknown command.');
+  assert.match(blocked.response.data.content, /not available here.*LOOP-KICK/);
 });
 
 test('no reply string ever contains planted PII, and every reply is ephemeral', async () => {
