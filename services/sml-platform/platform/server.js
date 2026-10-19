@@ -109,6 +109,7 @@ const PAPER_START_CASH = require('./academy-paper').RULES.startCash;
 const { createProfileService } = require('./academy-profile');
 const { createTraderAlerts } = require('./academy-trader-alerts');
 const { createCommunity } = require('./academy-community');
+const { createSocialNotify } = require('./academy-social-notify');
 const { createProfilePages, MAX_UPLOAD_BYTES: PROFILE_UPLOAD_MAX } = require('./academy-profile-pages');
 const { createSnapshotService } = require('./academy-snapshot');
 const { createMemLab, fileStore: memLabFileStore } = require('./academy-mem-lab-service');
@@ -877,7 +878,8 @@ btn.onclick=async()=>{try{await navigator.clipboard.writeText(SYM);btn.textConte
    (panel mode) and the Connect app's standalone Activity (full screen). */
 const ACADEMY_LOOP_KICK = (() => {
   try {
-    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-loop-kick.js'), 'utf8') + '</script>';
+    const ui = (() => { try { return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-social-notify-ui.js'), 'utf8') + '</script>'; } catch (_) { return ''; } })();
+    return '<script>' + fs.readFileSync(pathModule.join(__dirname, 'academy-loop-kick.js'), 'utf8') + '</script>' + ui;
   } catch (_) { return ''; }
 })();
 
@@ -1943,8 +1945,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null, academySignalOutcomes = null, optionBars = null, tickerTalk = null,
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
-  getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
-  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null,
+  getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null, academyProfileWall = null,
+  pageAssets = null, routeBudgetMs = ACADEMY_ROUTE_BUDGET_MS, academyEvolve = null, traderAlerts = null, traderAlertsCheckout = null, academyCommunity = null, academySocialNotify = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -2790,6 +2792,34 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     /* Chat profile cards: a member's Discord avatar and profile, and their linked StockMarketLoop profile / channel / group (public fields only).
        Any signed-in Academy session may look at another member's card. The avatar comes back as bytes because the Activity page can only load images from its own origin. */
     /* Member profile pages (academy-profile-pages.js): the page, the hover card, follows, presence, link-card images, the song. */
+    /* Social notifications for LOOP-KICK (academy-social-notify.js): new followers, Trading Wall comments, posts by the members
+       a member follows, likes on and replies to their comments; and the likes themselves (Ticker Talk and Trading Wall comments). */
+    if (path === '/academy-activity/notify' || path === '/academy-activity/notify/read' || path === '/academy-activity/likes') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      if (!academySocialNotify) { sendJson(response, 503, { ok: false, error: 'notify_disabled' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      const me = String(session.userId);
+      const nq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const readJson = async (max = 8192) => { const raw = await readRequestBody(request, max).catch(() => null); try { return raw && raw.ok ? JSON.parse(raw.rawBody || '{}') : null; } catch (_) { return null; } };
+      try {
+        if (request.method === 'GET' && path === '/academy-activity/notify') { sendJson(response, 200, await academySocialNotify.list(me, { limit: nq.get('limit') || 30, before: nq.get('before') || '' })); return; }
+        if (request.method === 'POST' && path === '/academy-activity/notify/read') {
+          const b = (await readJson()) || {};
+          sendJson(response, 200, await academySocialNotify.markRead(me, { ids: Array.isArray(b.ids) ? b.ids : null, all: b.all === true })); return;
+        }
+        if (request.method === 'GET' && path === '/academy-activity/likes') {
+          const kind = String(nq.get('kind') || ''), ids = String(nq.get('ids') || '').split(',').map((v) => v.trim()).filter(Boolean);
+          sendJson(response, 200, { ok: true, kind, likes: await academySocialNotify.likesFor(kind, ids, me) }); return;
+        }
+        if (request.method === 'POST' && path === '/academy-activity/likes') {
+          const b = await readJson(1024); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
+          const r = await academySocialNotify.like(String(b.kind || ''), String(b.id || ''), { id: me, name: session.displayName || '' }, b.on !== false);
+          sendJson(response, r.ok ? 200 : (r.error === 'not_found' ? 404 : r.error === 'storage_unavailable' ? 503 : 400), r); return;
+        }
+        sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return;
+      } catch (error) { logger('error', 'academy_social_notify_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
+    }
     /* the engagement layer (academy-community.js): traders to follow, the Following stream, the inbox, one Follow that does both follows */
     if (path === '/academy-activity/community' || path.startsWith('/academy-activity/community/')) {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -2806,7 +2836,9 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
           const raw = await readRequestBody(request, 1024); let b = null; try { b = raw.ok ? JSON.parse(raw.rawBody) : null; } catch (_) { b = null; }
           if (!b || !/^\d{15,25}$/.test(String(b.user || ''))) { sendJson(response, 400, { ok: false, error: 'invalid_user' }); return; }
-          const r = await academyCommunity.follow(me, String(b.user), b.on !== false); sendJson(response, r.ok ? 200 : 400, r); return;
+          const r = await academyCommunity.follow(me, String(b.user), b.on !== false);
+          if (r.ok && b.on !== false && academySocialNotify) academySocialNotify.follow(me, String(b.user), session.displayName || '').catch(() => {});
+          sendJson(response, r.ok ? 200 : 400, r); return;
         }
         sendJson(response, 404, { ok: false, error: 'not_found' }); return;
       } catch (error) { logger('error', 'academy_community_failed', { error: String((error && error.message) || error) }); sendJson(response, 503, { ok: false, error: 'temporary_unavailable' }); return; }
@@ -2910,6 +2942,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         const who = m[1];
         if (m[2] === 'wall') {
           /* Trading Wall: read it, post on it, or remove a comment (its author, the wall's owner, or an Academy owner) */
+          if (!academyProfileWall) { sendJson(response, 503, { ok: false, error: 'wall_disabled' }); return; }
           if (request.method === 'GET' && !m[3]) { sendJson(response, 200, { ok: true, ...(await academyProfileWall.list(who, { limit: pq.get('limit') || 20, before: pq.get('before') || '' })) }); return; }
           if (request.method === 'POST' && !m[3]) {
             const b = await readBody(4096); if (!b || typeof b !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_body' }); return; }
@@ -2919,6 +2952,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
             let name = mine.displayName || '';
             if (!name && academyProfiles) { try { const c = await academyProfiles.profile(session.userId); name = c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } catch (_) { name = ''; } }
             const r = await academyProfileWall.post(who, session.userId, name, b.body);
+            if (r.ok && r.item && !r.duplicate && academySocialNotify) academySocialNotify.wallComment(who, r.item).catch(() => {});
             sendJson(response, r.ok ? 200 : (r.error === 'slow_down' || r.error === 'too_many_today' ? 429 : 400), r); return;
           }
           if (request.method === 'DELETE' && m[3]) {
@@ -2931,6 +2965,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (m[2] === 'follow') {
           if (request.method !== 'POST' && request.method !== 'DELETE') { sendJson(response, 405, { ok: false, error: 'method_not_allowed' }); return; }
           const r = await academyProfilePages.follow(session.userId, who, request.method === 'POST');
+          if (r.ok && request.method === 'POST' && academySocialNotify) academySocialNotify.follow(String(session.userId), who, session.displayName || '').catch(() => {});
           sendJson(response, r.ok ? 200 : 400, r); return;
         }
         if (m[2] === 'audio') {
@@ -3987,6 +4022,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         if (request.method === 'GET' && m[2] === 'count') { const n = await tickerTalk.count(symbol); sendJson(response, 200, { ok: true, symbol: String(symbol).toUpperCase(), count: n }); return; }
         if (request.method === 'GET' && !m[2]) {
           const r = await tickerTalk.list(symbol, { limit: tq.get('limit') || 20, before: tq.get('before') || '' });
+          if (r.ok && academySocialNotify && Array.isArray(r.comments) && r.comments.length) {
+            // like counts ride along with the page (academy-social-notify.js); a missing count is zero, never an error
+            try {
+              const all = r.comments.flatMap((c) => [c, ...(c.replies || [])]);
+              const likes = await academySocialNotify.likesFor('talk', all.map((c) => c.id), me);
+              for (const c of all) { const l = likes[String(c.id)]; c.likes = l ? l.likes : 0; c.liked = !!(l && l.liked); }
+            } catch (_) { /* the page still shows */ }
+          }
           sendJson(response, r.ok ? 200 : 400, { ...r, viewer: { id: me, elevated } }); return;
         }
         if (request.method === 'POST' && !m[2]) {
@@ -3998,6 +4041,12 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
           if (!name && academyProfiles) { try { const c = await academyProfiles.profile(me); name = c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } catch (_) { name = ''; } }
           if (!name) name = session.displayName || 'Member';
           const r = await tickerTalk.post(symbol, { id: me, name }, { body: b.body, parentId: b.parentId, imageIds: b.imageIds, mentions: b.mentions });
+          if (r.ok && r.comment && academySocialNotify) {
+            // followers hear about a new comment on a ticker; the parent's author hears about a reply (LOOP-KICK, academy-social-notify.js)
+            const c = r.comment;
+            if (c.parentId == null) academySocialNotify.followedPost({ id: me, name }, { source: 'talk', id: c.id, symbol: c.symbol, body: c.body }).catch(() => {});
+            else tickerTalk.get(c.parentId).then((p) => (p ? academySocialNotify.reply(p.authorId, c) : null)).catch(() => {});
+          }
           if (r.ok && academyMentions && r.comment && Array.isArray(r.comment.mentions) && r.comment.mentions.length) {
             academyMentions.notify({ sender: { userId: me, displayName: name }, mentions: r.comment.mentions, message: { id: r.comment.id, body: r.comment.body }, channel: 'Ticker Talk $' + r.comment.symbol }).catch(() => {});
           }
@@ -4696,8 +4745,11 @@ async function main() {
     dm: academyDmClient,
     hasAccess: (userId) => academyTierLive(userId).then((tier) => tier !== 'none')
   });
+  let academySocialNotify = null; // built below, once the follow / talk / wall stores exist; the chat hub reaches it late
   const academyChatHub = process.env.ACADEMY_CHAT === 'off' ? null : createChatHub({
-    store: createChatStore({ pool: database.pool }), verifySession: (auth) => academyOAuth.verifySession(auth), logger: log, mentions: academyMentions
+    store: createChatStore({ pool: database.pool }), verifySession: (auth) => academyOAuth.verifySession(auth), logger: log, mentions: academyMentions,
+    /* a root message in a live chat room is a post: the author's followers hear about it in LOOP-KICK */
+    onPost: (row, who) => (academySocialNotify && row && row.parentId == null ? academySocialNotify.followedPost({ id: who.userId, name: who.displayName }, { source: 'chat', id: row.id, room: who.channel, body: row.body }) : null)
   });
   const academyGate = academyGateFlags ? Object.freeze({
     ...createAcademyContentGate({ enabled: config.academyContentGateEnabled, freePreview: config.academyFreePreview,
@@ -5443,6 +5495,13 @@ async function main() {
     return '';
   } });
   tickerTalk.ensureSchema().catch(() => {});
+  /* Social notifications for LOOP-KICK (academy_notifications + academy_likes, migration 055). ACADEMY_SOCIAL_NOTIFY=off removes them. */
+  academySocialNotify = process.env.ACADEMY_SOCIAL_NOTIFY === 'off' ? null : createSocialNotify({ pool: database.pool, profiles: academyProfilePages, talk: tickerTalk, wall: academyProfileWall, logger: log, names: async (id) => {
+    try { if (academyProfilePages) { const s = await academyProfilePages.settingsOf(id); if (s && s.displayName) return s.displayName; } } catch (_) { /* fall through */ }
+    try { if (academyProfiles) { const c = await academyProfiles.profile(id); return c && c.discord ? (c.discord.name || c.discord.username || '') : ''; } } catch (_) { /* fall through */ }
+    return '';
+  } });
+  if (academySocialNotify) academySocialNotify.ensureSchema().catch(() => {});
   const askContext = async ({ subject, horizon }) => {
     const lines = [];
     const px2 = (v) => (Number.isFinite(v) ? (v >= 1 ? v.toFixed(2) : v.toFixed(4)) : '–');
@@ -5543,7 +5602,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, academyProfileWall, pageAssets: createPageAssets({ logger: log }), academyEvolve, traderAlerts, academyCommunity, academySocialNotify,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

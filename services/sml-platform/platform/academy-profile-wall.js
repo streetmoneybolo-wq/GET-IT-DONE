@@ -106,7 +106,17 @@ function createProfileWall({ pool = null, now = Date.now, logger = () => {}, per
     return { ok: true };
   }
 
-  return { ensureSchema, post, list, remove, MAX_BODY };
+  /* one live comment by id (likes and notifications look the author up) */
+  async function get(id) {
+    const cid = String(id || ''); if (!/^\d+$/.test(cid)) return null;
+    if (db) {
+      const r = await db.query('SELECT id, profile_id, author_id, author_name, body, created_at FROM academy_profile_wall WHERE id=$1 AND deleted_at IS NULL', [cid]);
+      return r.rows[0] ? out(r.rows[0]) : null;
+    }
+    const m = mem.find((x) => x.id === cid && !x.deletedAt);
+    return m ? memOut(m) : null;
+  }
+  return { ensureSchema, post, list, get, remove, MAX_BODY };
 }
 
 module.exports = { createProfileWall, cleanBody, MAX_BODY };
