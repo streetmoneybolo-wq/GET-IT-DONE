@@ -99,3 +99,22 @@ test('the Discord check reads the app with its bot token and says whether the ca
   const none = await createAcademyTrial({ clientId: APP, clientSecret: 's', publicUrl: 'https://academy.example', store }).inspect();
   assert.deepEqual(none, { checked: false });
 });
+
+test('statusFor: the countdown reads the trial pass (days left), trial over once it expires, a paid pass is not a trial, nothing without a pass', async () => {
+  const { createPassStore } = require('./academy-passes');
+  const store = createPassStore();
+  let t = Date.UTC(2026, 9, 19, 12, 0, 0);
+  const trial = createAcademyTrial({ clientId: '1000000000000000000', clientSecret: 's', publicUrl: 'https://academy.example', store, now: () => t, buyUrl: 'https://billing.example/v1/academy/billing/start?purpose=buy' });
+  const user = '200000000000000001';
+  assert.deepEqual(await trial.statusFor(user), { ok: true, trial: false, member: false, buyUrl: 'https://billing.example/v1/academy/billing/start?purpose=buy' });
+  const g = await trial.grant(user, 'discord'); assert.equal(g.code, 'started');
+  const s1 = await trial.statusFor(user);
+  assert.equal(s1.trial, true); assert.equal(s1.active, true); assert.equal(s1.days, 15); assert.equal(s1.msLeft, 15 * 86_400_000); assert.equal(s1.endsAt, new Date(t + 15 * 86_400_000).toISOString());
+  t += 14 * 86_400_000 + 3_600_000;
+  const s2 = await trial.statusFor(user); assert.equal(s2.active, true); assert.equal(s2.msLeft, 86_400_000 - 3_600_000);
+  t += 2 * 86_400_000;
+  const s3 = await trial.statusFor(user); assert.equal(s3.trial, true); assert.equal(s3.active, false); assert.equal(s3.ended, true); assert.equal(s3.msLeft, 0);
+  await store.add({ discordId: user, plan: 'monthly', amount: 10, ref: 'paid:1', startsAt: new Date(t).toISOString(), expiresAt: new Date(t + 30 * 86_400_000).toISOString(), product: 'academy' });
+  const s4 = await trial.statusFor(user); assert.equal(s4.trial, false); assert.equal(s4.member, true); assert.equal(s4.plan, 'monthly');
+  assert.equal((await trial.statusFor('nope')).ok, false);
+});

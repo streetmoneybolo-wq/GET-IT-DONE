@@ -145,6 +145,17 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
 
   /* Ground truth from Discord about the app's own setup (its bot token may read the application): is the callback registered, is user
      install on. Logged at start so a trial that cannot work says why before anyone clicks. */
+  /* what the Activity shows the member: on a trial (how long is left), trial over, paid member, or no pass */
+  async function statusFor(discordId) {
+    const id = String(discordId || ''), t = now();
+    if (!SNOWFLAKE.test(id)) return { ok: false, code: 'invalid_user' };
+    const [current, used] = await Promise.all([store.active ? store.active(id, new Date(t), 'academy').catch(() => null) : null, store.byRef('acad-trial:' + id).catch(() => null)]);
+    if (current && current.plan === 'trial' && current.expiresAt) { const ends = new Date(current.expiresAt).getTime(); return { ok: true, trial: true, active: ends > t, startsAt: current.startsAt || null, endsAt: current.expiresAt, msLeft: Math.max(0, ends - t), days: trialDays, buyUrl: buyUrl || '' }; }
+    if (current) return { ok: true, trial: false, member: true, plan: String(current.plan || ''), endsAt: current.expiresAt || null, buyUrl: buyUrl || '' };
+    if (used) return { ok: true, trial: true, active: false, ended: true, endsAt: used.expiresAt || null, msLeft: 0, days: trialDays, buyUrl: buyUrl || '' };
+    return { ok: true, trial: false, member: false, buyUrl: buyUrl || '' };
+  }
+
   async function inspect() {
     if (!botToken || typeof fetchImpl !== 'function') return { checked: false };
     try {
@@ -158,7 +169,7 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     } catch (error) { return { checked: false, error: String(error && error.message || error) }; }
   }
 
-  return { configured, days: trialDays, link, redirectUri, activityUrl, authorizeUrl, grant, handle, inspect, openState: open, signState: sign };
+  return { configured, days: trialDays, link, redirectUri, activityUrl, authorizeUrl, grant, handle, inspect, statusFor, openState: open, signState: sign };
 }
 
 module.exports = { createAcademyTrial };
