@@ -1,8 +1,10 @@
 /* LOOP-KICK inside Discord.
-   Academy mode: a LOOP-KICK button in the header bar opens the real hosted phone
-   in a panel pinned over the quote column (never the chart), phone-width becomes a
-   bottom sheet. Standalone mode (the Connect app's /loop-kick Activity) renders it
-   full screen. The phone iframe loads through Discord's URL mapping at
+   Academy mode: a pulsing LOOP-KICK button in the header bar opens the real hosted
+   phone as a floating device, exactly like the launcher on stockmarketloop.com: no
+   box around it, a transparent window behind it (the chart stays clickable around
+   the phone), and a grip above the screen to drag it anywhere; the spot is
+   remembered. Phone-width keeps it docked at the bottom. Standalone mode (the
+   Connect app's /loop-kick Activity) renders it full screen. The phone iframe loads through Discord's URL mapping at
    /.proxy/loop-kick/ and receives its short-lived site session by postMessage after
    it announces sml-loop-kick:ready; the session silently re-mints before expiry.
    Members without a linked stockmarketloop.com account connect right here: they sign
@@ -22,13 +24,16 @@
   var CONNECT_LINK_ROUTE = CFG.connectLinkRoute || '/academy-activity/loop-kick/connect-link';
   var SITE_CONNECT_URL = 'https://stockmarketloop.com/connect-discord/';
   var FRAME_PATH = '/.proxy/loop-kick/?embed=1&peer=loop&peerName=Loop';
-  var EXTERNAL_OK = /^https:\/\/(stockmarketloop-loop-kick\.onrender\.com\/enable-alerts\.html|stockmarketloop\.com\/)/;
+  var EXTERNAL_OK = /^https:\/\/(stockmarketloop-loop-kick\.onrender\.com\/enable-alerts\.html|stockmarketloop\.com\/|www\.youtube\.com\/watch\?v=[\w-]{8,14}$|youtu\.be\/[\w-]{8,14}$)/;
 
   var S = {
     open: false, frame: null, panel: null, badge: null, button: null,
     token: '', expiresAt: 0, refreshTimer: null, frameReady: false,
-    lastCard: '', minting: false
+    lastCard: '', minting: false,
+    grip: null, surface: '', surfaceBox: null, pos: null, dragging: null
   };
+  var POS_KEY = 'academy-lk-pos';
+  var PHONE_W = 430, PHONE_H = 790;
 
   function el(q) { return document.querySelector(q); }
 
@@ -119,8 +124,14 @@
       /* the phone starts folded and only unfolds on 'open'. It never sends a ready message, so the first surface report is the
          cue: if the member opened the panel and the phone is still folded, hand it the session and tell it to open. */
       S.frameReady = true;
-      if (S.open && d.surface !== 'expanded' && S.token && (S.unfoldTries || 0) < 6) { S.unfoldTries = (S.unfoldTries || 0) + 1; sendAuth(); tellFrame('open'); }
+      S.surface = String(d.surface || '');
+      fitSurfaces(d.surfaces);
+      if (S.open && d.surface !== 'expanded' && d.surface !== 'closed' && S.token && (S.unfoldTries || 0) < 6) { S.unfoldTries = (S.unfoldTries || 0) + 1; sendAuth(); tellFrame('open'); }
       if (d.surface === 'expanded') S.unfoldTries = 0;
+      if (d.surface === 'expanded' || d.surface === 'folded') S.sawOpen = true;
+      /* the member closed the phone with its own ✕ (or Escape): hide the whole device, like the site does; the header button
+         reopens it. The phone also reports 'closed' once while booting, before it has ever unfolded — that one is not a close. */
+      if (d.surface === 'closed' && S.sawOpen && S.open && !STANDALONE && S.frame && S.frame.style.display !== 'none') closePanel();
     } else if (d.type === 'sml-loop-kick:notifications') {
       paintBadge(Number(d.unread) || 0);
     } else if (d.type === 'sml-loop-kick:external') {
@@ -137,18 +148,25 @@
     S.badge.style.display = unread > 0 ? '' : 'none';
   }
 
-  /* ---- panel ---- */
+  /* ---- panel: a transparent floating window; only the phone's own surfaces catch the pointer ---- */
   var css = document.createElement('style');
   css.textContent =
-    '#academy-lk-panel{display:none;flex-direction:column;background:#070b12;border:1px solid #1b2837;border-radius:14px;overflow:hidden;box-shadow:0 18px 48px rgba(0,0,0,.55)}' +
-    '#academy-lk-panel.on{display:flex}' +
-    '#academy-lk-panel iframe{flex:1;width:100%;border:0;background:transparent}' +
-    '#academy-lk-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#0b1119;border-bottom:1px solid #16202d;font:700 11px/1 system-ui,sans-serif;color:#9fe8c0;letter-spacing:.8px}' +
-    '#academy-lk-head button{background:none;border:0;color:#7e92a8;font-size:15px;cursor:pointer;padding:2px 6px}' +
-    '#academy-lk-card{padding:26px 20px;color:#cfdbe8;font:400 13px/1.6 system-ui,sans-serif;text-align:center}' +
+    '@keyframes academyLkPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,.55)}50%{box-shadow:0 0 0 10px rgba(0,255,136,0)}}' +
+    '@keyframes academyLkSweep{0%{transform:translateX(-130%) skewX(-18deg)}100%{transform:translateX(230%) skewX(-18deg)}}' +
+    '#academy-lk-panel{display:none;position:fixed;z-index:2147483100;width:min(' + PHONE_W + 'px,100vw);height:min(' + PHONE_H + 'px,100dvh);background:none;border:0;box-shadow:none;overflow:visible;pointer-events:none}' +
+    '#academy-lk-panel.on{display:block}' +
+    '#academy-lk-panel iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;pointer-events:auto;color-scheme:dark}' +
+    '#academy-lk-grip{position:absolute;left:0;right:0;top:0;height:26px;display:none;align-items:center;justify-content:space-between;gap:8px;padding:0 6px 0 10px;border-radius:999px;background:rgba(8,14,20,.86);border:1px solid rgba(0,255,136,.28);box-shadow:0 8px 24px rgba(0,0,0,.45);backdrop-filter:blur(6px);font:800 10px/1 system-ui,sans-serif;letter-spacing:1px;color:#9fe8c0;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;pointer-events:auto}' +
+    '#academy-lk-panel.on.phone #academy-lk-grip{display:flex}' +
+    '#academy-lk-grip.dragging{cursor:grabbing}' +
+    '#academy-lk-grip i{font-style:normal;color:#4f6b7a;letter-spacing:-1px;margin-right:6px}' +
+    '#academy-lk-grip button{background:none;border:0;color:#7e92a8;font-size:14px;line-height:1;cursor:pointer;padding:3px 6px}' +
+    '#academy-lk-grip button:hover{color:#fff}' +
+    '#academy-lk-card{position:absolute;left:0;right:0;bottom:0;padding:26px 20px;color:#cfdbe8;font:400 13px/1.6 system-ui,sans-serif;text-align:center;background:#070b12;border:1px solid #1b2837;border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.55);pointer-events:auto}' +
     '#academy-lk-card b{display:block;font-size:14px;margin-bottom:8px;color:#fff}' +
     '#academy-lk-card button{margin-top:14px;background:#22d97a;color:#04170d;border:0;border-radius:9px;padding:11px 18px;font:700 12px/1 system-ui,sans-serif;cursor:pointer}' +
     '#academy-lk-card button[disabled]{opacity:.55;cursor:default}' +
+    '#academy-lk-card .lk-card-x{position:absolute;right:8px;top:6px;margin:0;background:none;color:#7e92a8;font-size:15px;padding:4px 7px}' +
     '#academy-lk-connect{display:block;max-width:300px;margin:16px auto 0;text-align:left}' +
     '#academy-lk-connect input{display:block;width:100%;box-sizing:border-box;margin:0 0 8px;padding:11px 12px;border-radius:9px;border:1px solid #243245;background:#0b1119;color:#fff;font:400 13px/1.2 system-ui,sans-serif}' +
     '#academy-lk-connect input:focus{outline:none;border-color:#22d97a}' +
@@ -156,11 +174,16 @@
     '#academy-lk-connect .lk-msg{min-height:18px;margin:10px 0 0;font-size:12px;color:#ffb3bd;text-align:center}' +
     '#academy-lk-connect .lk-msg.ok{color:#9fe8c0}' +
     '#academy-lk-connect .lk-alt{display:block;margin:14px 0 0;background:none;border:0;padding:0;color:#7fb4ff;font:400 12px/1.4 system-ui,sans-serif;text-decoration:underline;cursor:pointer;width:auto;margin-left:auto;margin-right:auto}' +
-    '#academy-lk-btn{position:relative}' +
-    '#academy-lk-badge{position:absolute;top:-6px;right:-8px;background:#ff566e;color:#fff;border-radius:999px;font:700 9px/1 system-ui,sans-serif;padding:3px 5px;display:none}' +
+    /* the header button loops like the launcher on stockmarketloop.com: a green ring that keeps breathing and a light sweep */
+    '#academy-lk-btn{position:relative;overflow:hidden;isolation:isolate;border:1px solid #22d97a;border-radius:999px;background:linear-gradient(140deg,#00e07a,#009c55);color:#04170d;font-weight:900;animation:academyLkPulse 2.6s ease-in-out infinite}' +
+    '#academy-lk-btn::after{content:"";position:absolute;top:-40%;bottom:-40%;left:0;width:38%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.55),rgba(255,255,255,0));animation:academyLkSweep 2.6s linear infinite;pointer-events:none;z-index:-1}' +
+    '#academy-lk-btn.on{background:#0b2d1f;color:#9fe8c0;animation:none}' +
+    '#academy-lk-btn.on::after{display:none}' +
+    '@media (prefers-reduced-motion:reduce){#academy-lk-btn,#academy-lk-btn::after{animation:none}}' +
+    '#academy-lk-badge{position:absolute;top:-6px;right:-8px;background:#ff566e;color:#fff;border-radius:999px;font:700 9px/1 system-ui,sans-serif;padding:3px 5px;display:none;z-index:1}' +
     (STANDALONE
-      ? '#academy-lk-panel{position:fixed;inset:0;border-radius:0;border:0;z-index:2147483100}'
-      : '@media (max-width:700px){#academy-lk-panel.on{position:fixed;left:0;right:0;bottom:0;top:18vh;border-radius:16px 16px 0 0;z-index:2147483100}}');
+      ? '#academy-lk-panel{inset:0;width:auto;height:auto}#academy-lk-card{left:16px;right:16px;top:50%;bottom:auto;transform:translateY(-50%)}'
+      : '@media (max-width:700px){#academy-lk-panel.on{left:0!important;right:0!important;bottom:0!important;top:auto!important;width:100vw;height:min(' + PHONE_H + 'px,100dvh)}#academy-lk-grip{cursor:default}}');
   document.head.appendChild(css);
 
   function buildPanel() {
@@ -168,12 +191,15 @@
     var panel = document.createElement('div');
     panel.id = 'academy-lk-panel';
     panel.innerHTML =
-      '<div id="academy-lk-head"><span>LOOP-KICK</span>' + (STANDALONE ? '<span></span>' : '<button id="academy-lk-close" title="Close">✕</button>') + '</div>' +
+      (STANDALONE ? '' : '<div id="academy-lk-grip" title="Drag to move"><span><i>⋮⋮</i>LOOP-KICK</span><button type="button" id="academy-lk-close" title="Close">✕</button></div>') +
       '<div id="academy-lk-card" style="display:none"></div>';
     document.body.appendChild(panel);
     S.panel = panel;
+    S.grip = panel.querySelector('#academy-lk-grip');
     var close = panel.querySelector('#academy-lk-close');
-    if (close) close.onclick = function () { closePanel(); };
+    if (close) close.onclick = function (ev) { ev.stopPropagation(); closePanel(); };
+    if (S.grip) makeDraggable(S.grip);
+    restorePosition();
     return panel;
   }
 
@@ -181,10 +207,12 @@
     var panel = buildPanel();
     var card = panel.querySelector('#academy-lk-card');
     card.style.display = '';
+    panel.classList.remove('phone');
     if (S.frame) S.frame.style.display = 'none';
     var key = title + '|' + url;
     if (S.lastCard !== key) {
-      card.innerHTML = '<b></b><span></span><div><button></button></div>';
+      card.innerHTML = '<b></b><span></span><div><button></button></div>' + cardCloseHtml();
+      wireCardClose(card);
       card.querySelector('b').textContent = title;
       card.querySelector('span').textContent = message;
       var go = card.querySelector('button');
@@ -209,11 +237,13 @@
     var panel = buildPanel();
     var card = panel.querySelector('#academy-lk-card');
     card.style.display = '';
+    panel.classList.remove('phone');
     if (S.frame) S.frame.style.display = 'none';
     if (S.lastCard === 'connect') return;
     S.lastCard = 'connect';
     var siteUrl = (j && j.connect_url) || SITE_CONNECT_URL;
     card.innerHTML =
+      cardCloseHtml() +
       '<b>Connect your stockmarketloop.com account</b>' +
       '<span>LOOP-KICK runs on your stockmarketloop.com account. Sign in once and it is connected to this Discord. No code to copy, nothing to type in Discord.</span>' +
       '<form id="academy-lk-connect" autocomplete="on">' +
@@ -224,6 +254,7 @@
         '<p class="lk-msg"></p>' +
         '<button type="button" class="lk-alt">No account yet? Create one on stockmarketloop.com</button>' +
       '</form>';
+    wireCardClose(card);
     var form = card.querySelector('#academy-lk-connect');
     var msg = form.querySelector('.lk-msg');
     var codeInput = form.querySelector('input[name=code]');
@@ -289,11 +320,14 @@
   function showPhone() {
     var panel = buildPanel();
     panel.querySelector('#academy-lk-card').style.display = 'none';
+    panel.classList.add('phone');
     S.lastCard = '';
     if (!S.frame) {
       var frame = document.createElement('iframe');
       frame.id = 'academy-lk-frame';
       frame.setAttribute('allow', 'microphone; camera; autoplay');
+      frame.setAttribute('allowtransparency', 'true');
+      frame.setAttribute('title', 'LOOP-KICK');
       frame.setAttribute('src', FRAME_PATH);
       frame.addEventListener('load', function () { kick(); });
       panel.appendChild(frame);
@@ -308,44 +342,113 @@
       }, 12000);
     }
     S.frame.style.display = '';
+    fitSurfaces(S.surfaceBox ? [S.surfaceBox] : null);
     if (S.frameReady && S.token) { sendAuth(); tellFrame('open'); }
   }
 
-  /* pin over the quote column like the MEM ALGO panel; never the chart */
-  function place() {
-    if (STANDALONE || !S.panel || !S.open) return;
-    if (window.matchMedia('(max-width:700px)').matches) {
-      ['position', 'left', 'top', 'width', 'height', 'right', 'bottom', 'zIndex'].forEach(function (k) { S.panel.style[k] = ''; });
-      return;
-    }
-    function visible(node) {
-      if (!node) return null;
-      var r = node.getBoundingClientRect();
-      return r.width > 40 && r.height > 80 ? r : null;
-    }
-    var r = visible(document.querySelector('.side')) || visible(document.getElementById('academy-alerts'));
-    if (!r) return;
-    if (S.panel.parentElement !== document.body) document.body.appendChild(S.panel);
-    S.panel.style.position = 'fixed';
-    S.panel.style.left = Math.round(r.x) + 'px';
-    S.panel.style.top = Math.round(r.y) + 'px';
-    S.panel.style.width = Math.round(r.width) + 'px';
-    S.panel.style.height = Math.round(r.height) + 'px';
-    S.panel.style.zIndex = '2147483100';
+  function cardCloseHtml() { return STANDALONE ? '' : '<button type="button" class="lk-card-x" title="Close">✕</button>'; }
+  function wireCardClose(card) {
+    var x = card.querySelector('.lk-card-x');
+    if (x) x.onclick = function (ev) { ev.stopPropagation(); closePanel(); };
   }
-  window.addEventListener('resize', place);
-  setInterval(place, 1500);
+
+  /* The phone reports the rectangles of its screen and deck (and of its dock pill when closed). The frame is clipped to
+     their union, so everything around the device stays transparent AND clickable, and the grip sits just above the screen. */
+  function fitSurfaces(list) {
+    if (!S.frame || STANDALONE) return;
+    var rects = (list || []).filter(function (r) { return r && r.width > 0 && r.height > 0; });
+    if (!rects.length) { S.frame.style.clipPath = ''; S.surfaceBox = null; placeGrip(null); return; }
+    var x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, radius = 30;
+    rects.forEach(function (r) {
+      x1 = Math.min(x1, r.x); y1 = Math.min(y1, r.y); x2 = Math.max(x2, r.x + r.width); y2 = Math.max(y2, r.y + r.height);
+      radius = Math.min(radius, Number(r.radius) || 16);
+    });
+    var box = { x: Math.max(0, Math.floor(x1) - 1), y: Math.max(0, Math.floor(y1) - 1), width: Math.ceil(x2 - x1) + 2, height: Math.ceil(y2 - y1) + 2, radius: radius };
+    S.surfaceBox = box;
+    var w = S.frame.clientWidth || PHONE_W, h = S.frame.clientHeight || PHONE_H;
+    S.frame.style.clipPath = 'inset(' + box.y + 'px ' + Math.max(0, w - box.x - box.width) + 'px ' + Math.max(0, h - box.y - box.height) + 'px ' + box.x + 'px round ' + radius + 'px)';
+    placeGrip(box);
+  }
+
+  function placeGrip(box) {
+    if (!S.grip) return;
+    if (!box) { S.grip.style.left = ''; S.grip.style.right = ''; S.grip.style.top = ''; return; }
+    var panelW = S.panel ? S.panel.clientWidth : PHONE_W;
+    S.grip.style.left = box.x + 'px';
+    S.grip.style.right = Math.max(0, panelW - box.x - box.width) + 'px';
+    S.grip.style.top = Math.max(0, box.y - 30) + 'px';
+  }
+
+  /* ---- floating position: bottom-right like the site, draggable by the grip, remembered per browser ---- */
+  function isNarrow() { return window.matchMedia('(max-width:700px)').matches; }
+
+  function applyPosition() {
+    if (!S.panel || STANDALONE) return;
+    var st = S.panel.style;
+    if (isNarrow() || !S.pos) { st.left = ''; st.top = ''; st.right = '26px'; st.bottom = '26px'; if (isNarrow()) { st.right = ''; st.bottom = ''; } return; }
+    var w = S.panel.offsetWidth || PHONE_W, h = S.panel.offsetHeight || PHONE_H;
+    var x = Math.min(Math.max(0, S.pos.x), Math.max(0, window.innerWidth - w));
+    var y = Math.min(Math.max(0, S.pos.y), Math.max(0, window.innerHeight - h));
+    st.right = ''; st.bottom = ''; st.left = Math.round(x) + 'px'; st.top = Math.round(y) + 'px';
+  }
+
+  function restorePosition() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+      if (saved && isFinite(saved.x) && isFinite(saved.y)) S.pos = { x: Number(saved.x), y: Number(saved.y) };
+    } catch (e) { S.pos = null; }
+    applyPosition();
+  }
+
+  function savePosition() {
+    try { if (S.pos) localStorage.setItem(POS_KEY, JSON.stringify(S.pos)); } catch (e) { /* private mode */ }
+  }
+
+  function makeDraggable(grip) {
+    grip.addEventListener('pointerdown', function (ev) {
+      if (ev.button !== 0 && ev.pointerType === 'mouse') return;
+      if (ev.target && ev.target.closest && ev.target.closest('button')) return;
+      if (isNarrow()) return;
+      var r = S.panel.getBoundingClientRect();
+      S.dragging = { id: ev.pointerId, dx: ev.clientX - r.left, dy: ev.clientY - r.top };
+      grip.classList.add('dragging');
+      try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+      /* the iframe would swallow the pointer the moment it crosses it */
+      if (S.frame) S.frame.style.pointerEvents = 'none';
+      ev.preventDefault();
+    });
+    grip.addEventListener('pointermove', function (ev) {
+      if (!S.dragging || ev.pointerId !== S.dragging.id) return;
+      S.pos = { x: ev.clientX - S.dragging.dx, y: ev.clientY - S.dragging.dy };
+      applyPosition();
+    });
+    function end(ev) {
+      if (!S.dragging || (ev && ev.pointerId !== S.dragging.id)) return;
+      S.dragging = null;
+      grip.classList.remove('dragging');
+      if (S.frame) S.frame.style.pointerEvents = '';
+      savePosition();
+    }
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+    grip.addEventListener('lostpointercapture', end);
+  }
+
+  window.addEventListener('resize', function () { applyPosition(); fitSurfaces(S.surfaceBox ? [S.surfaceBox] : null); });
 
   function closePanel() {
     S.open = false;
     if (S.panel) S.panel.classList.remove('on');
+    if (S.button) { S.button.classList.remove('on'); S.button.setAttribute('aria-expanded', 'false'); }
     tellFrame('close');
   }
 
   function openPanel() {
     S.open = true;
+    S.sawOpen = false;
     buildPanel().classList.add('on');
-    place();
+    if (S.button) { S.button.classList.add('on'); S.button.setAttribute('aria-expanded', 'true'); }
+    applyPosition();
     mint(false).then(function (res) {
       if (!res || !res.j) { showCard('LOOP-KICK is unavailable', 'The connection could not be made. Try again in a moment.', 'Retry', '#'); return; }
       var j = res.j;
@@ -383,6 +486,7 @@
       btn.type = 'button';
       btn.textContent = 'LOOP-KICK';
       btn.title = 'Your stockmarketloop.com messages and alerts';
+      btn.setAttribute('aria-expanded', 'false');
       var ref = bar.querySelector('#status');
       bar.insertBefore(btn, ref || null);
       var badge = document.createElement('span');
