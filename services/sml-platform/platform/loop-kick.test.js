@@ -65,6 +65,57 @@ test('loop-kick session route returns the mint on success', async () => {
   });
 });
 
+test('the one-tap connect routes sit behind the activity session and hand the member sign-in to the connect service', async () => {
+  const calls = [];
+  const loopKickConnect = {
+    configured: true,
+    connect: async (args) => { calls.push(['connect', args]); return args.password === 'right' ? { ok: true, status: 200, user: { id: 42, handle: 'obi' }, verified: true } : { ok: false, status: 403, error: 'two_step_required', method: 'email', hint: 'o•••@x' }; },
+    connectUrl: (args) => { calls.push(['link', args]); return { ok: true, status: 200, url: 'https://stockmarketloop.com/connect-discord/?lk=v1.p.s', expires_at: 9 }; }
+  };
+  const oauth = { verifySession: (auth) => auth === 'Bearer good' ? { ok: true, userId: '123456789012345678', displayName: 'Obi' } : auth === 'Bearer free' ? { ok: true, userId: '123456789012345679', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' } };
+  await withServer({ academyOAuth: oauth, connectOAuth: oauth, loopKickConnect }, async (base) => {
+    const post = (path, auth, body, type = 'application/json') => fetch(`${base}${path}`, { method: 'POST', headers: { ...(auth ? { authorization: auth } : {}), 'content-type': type }, body });
+    assert.equal((await post('/academy-activity/loop-kick/connect', '', '{}')).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/loop-kick/connect-link`)).status, 401);
+    assert.equal((await post('/academy-activity/loop-kick/connect', 'Bearer free', '{}')).status, 403);
+    assert.equal((await post('/academy-activity/loop-kick/connect', 'Bearer good', 'login=x', 'text/plain')).status, 415);
+    assert.equal((await post('/academy-activity/loop-kick/connect', 'Bearer good', '{bad')).status, 400);
+    const stepped = await post('/academy-activity/loop-kick/connect', 'Bearer good', JSON.stringify({ login: 'obi', password: 'wrong' }));
+    assert.equal(stepped.status, 403);
+    assert.deepEqual(await stepped.json(), { ok: false, error: 'two_step_required', method: 'email', hint: 'o•••@x' });
+    const done = await post('/academy-activity/loop-kick/connect', 'Bearer good', JSON.stringify({ login: 'obi', password: 'right', code: '123456' }));
+    assert.equal(done.status, 200);
+    assert.deepEqual(await done.json(), { ok: true, user: { id: 42, handle: 'obi' }, verified: true });
+    assert.deepEqual(calls.at(-1), ['connect', { discordUserId: '123456789012345678', discordTag: 'Obi', login: 'obi', password: 'right', code: '123456', ip: '127.0.0.1' }]);
+    const link = await fetch(`${base}/academy-activity/loop-kick/connect-link`, { headers: { authorization: 'Bearer good' } });
+    assert.equal(link.status, 200);
+    assert.deepEqual(await link.json(), { ok: true, url: 'https://stockmarketloop.com/connect-discord/?lk=v1.p.s', expires_at: 9 });
+    assert.deepEqual(calls.at(-1), ['link', { discordUserId: '123456789012345678', discordTag: 'Obi' }]);
+    // the Connect app's standalone Activity gets the same two routes, relative to /loop-kick-activity/
+    assert.equal((await post('/loop-kick-activity/connect', '', '{}')).status, 401);
+    const standalone = await post('/loop-kick-activity/connect', 'Bearer good', JSON.stringify({ login: 'obi', password: 'right' }));
+    assert.equal(standalone.status, 200);
+    assert.equal((await fetch(`${base}/loop-kick-activity/connect-link`, { headers: { authorization: 'Bearer good' } })).status, 200);
+  });
+  await withServer({ academyOAuth: oauth }, async (base) => {
+    const r = await fetch(`${base}/academy-activity/loop-kick/connect`, { method: 'POST', headers: { authorization: 'Bearer good', 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error, 'connect_unconfigured');
+  });
+});
+
+test('the panel signs the member in from the "Connect your account" card instead of sending them to copy a code', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'academy-loop-kick.js'), 'utf8');
+  assert.match(source, /showConnect\(j\)/);
+  assert.match(source, /autocomplete="current-password"/);
+  assert.match(source, /two_step_required/);
+  assert.match(source, /discord_already_linked/);
+  assert.match(source, /connect-link/);
+  assert.doesNotMatch(source, /link-sml/);
+  const html = loopKickActivityHtml({ appId: '1400000000000000000' });
+  assert.match(html, /connectRoute:'connect',connectLinkRoute:'connect-link'/);
+});
+
 test('the academy page ships the LOOP-KICK module and button wiring', () => {
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, { appId: '1551336038713139370' });
   assert.match(html, /academy-lk-btn/);

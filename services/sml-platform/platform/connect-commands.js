@@ -131,7 +131,10 @@ function checklistCounts(list) {
 const MSG_UNLINKED = 'This Discord account is not linked to a verified StockMarketLoop account. Link your account first, then try again.';
 const MSG_UNAUTHORIZED = 'This account is not authorized for merchant dispute tools in this server.';
 const MSG_RATE_LIMITED = 'You are sending commands too quickly. Please slow down and try again in a minute.';
-const MSG_UNKNOWN = 'Unknown command.';
+/* Members reach this bot's commands from Discord's shared slash-command picker, usually while trying to connect
+ * their stockmarketloop.com (LOOP-KICK) account. A bare "Unknown command." sent them nowhere; point them at the
+ * one-tap connection inside the Academy instead. */
+const MSG_UNKNOWN = 'That command is not available here. To connect your StockMarketLoop (LOOP-KICK) account to the Academy: open the Academy, tap LOOP-KICK, then Connect and sign in with your stockmarketloop.com password. There is no code to copy and nothing else to type.';
 const MSG_FAILED = 'The command could not be completed. Please try again later.';
 const SAFE_ERROR_RE = /^[A-Za-z0-9 _.,:'-]{1,140}$/;
 

@@ -21,6 +21,7 @@ const dailySocialPayoutsModule = require('./dsp-interactions');
 const connectMigration = require('./connect-migration');
 const { createAcademyAccess, createIdentityAccess, createAcademyContentGate } = require('./academy-access');
 const { createLoopKickBridge } = require('./loop-kick-bridge');
+const { createLoopKickConnect } = require('./loop-kick-connect');
 const { createAcademyOAuth, createBillingHandoff } = require('./academy-oauth');
 const { SEED_LESSONS } = require('./academy/curriculum');
 const { academyCurriculumScript, academyCurriculumVersion } = require('./academy-activity-curriculum');
@@ -943,7 +944,7 @@ function loopKickActivityHtml(options = {}) {
 #lk-status{position:fixed;top:14px;left:50%;transform:translateX(-50%);font:700 10px/1 system-ui,sans-serif;letter-spacing:1.2px;color:#5d7085;z-index:5}</style>
 </head><body>
 <div id="lk-status">CONNECTING</div>
-<script>window.SML_LOOP_KICK_ACTIVITY={standalone:true,sessionRoute:'session-bridge'};</script>
+<script>window.SML_LOOP_KICK_ACTIVITY={standalone:true,sessionRoute:'session-bridge',connectRoute:'connect',connectLinkRoute:'connect-link'};</script>
 <script type="module">
 import { DiscordSDK } from './sdk/v20261015/index.mjs';
 const appId=${appId};
@@ -1845,7 +1846,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   marketHistory = null, publicMarketDataEnabled = false, brokerLinks = createBrokerLinks(),
   academyDiscipline = null,
   academySlideDesigner = null, academyAsk = null, academyTrial = null, academyAppId = '', academyGate = null,
-  loopKickBridge = null, connectOAuth = null, connectAppId = '',
+  loopKickBridge = null, loopKickConnect = null, connectOAuth = null, connectAppId = '',
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
@@ -1857,6 +1858,34 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
   const requestIp = (request) => String(request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+
+  /* Shared by the Academy and the standalone LOOP-KICK Activity once the caller's Discord session is verified. */
+  async function handleLoopKickConnect(request, response, session) {
+    if (!loopKickConnect) { sendJson(response, 503, { ok: false, error: 'connect_unconfigured' }); return; }
+    const who = { discordUserId: session.userId, discordTag: String(session.displayName || '') };
+    if (request.method === 'GET') {
+      const link = loopKickConnect.connectUrl(who);
+      const { status, ...body } = link;
+      sendJson(response, status || (link.ok ? 200 : 503), body);
+      return;
+    }
+    if (!loopKickConnect.configured) { sendJson(response, 503, { ok: false, error: 'connect_unconfigured' }); return; }
+    if (!contentTypeIsJson(request)) { sendJson(response, 415, { ok: false, error: 'content_type_required' }); return; }
+    const raw = await readRequestBody(request, 4096);
+    if (!raw.ok) { sendJson(response, raw.status, { ok: false, error: raw.error }); return; }
+    let input = null;
+    try { input = JSON.parse(raw.rawBody); } catch (_) { input = null; }
+    if (!input || typeof input !== 'object') { sendJson(response, 400, { ok: false, error: 'invalid_json' }); return; }
+    const result = await loopKickConnect.connect({
+      ...who,
+      login: typeof input.login === 'string' ? input.login : '',
+      password: typeof input.password === 'string' ? input.password : '',
+      code: typeof input.code === 'string' ? input.code : '',
+      ip: requestIp(request)
+    });
+    const { status, ...body } = result;
+    sendJson(response, status || (result.ok ? 200 : 503), body);
+  }
   const corsHeaders = (origin) => ({
     ...(origin ? { 'access-control-allow-origin': origin, vary: 'Origin' } : {}),
     'access-control-allow-methods': 'GET, OPTIONS',
@@ -2408,6 +2437,18 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* One-tap LOOP-KICK connection from inside the Academy: the member signs in with their stockmarketloop.com
+       password here (POST connect), or takes a signed single-use link to finish on the site (GET connect-link).
+       No code to copy, nothing to type in Discord. */
+    if ((request.method === 'POST' && path === '/academy-activity/loop-kick/connect') || (request.method === 'GET' && path === '/academy-activity/loop-kick/connect-link')) {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      await handleLoopKickConnect(request, response, session);
+      return;
+    }
+
     if (request.method === 'GET' && path.startsWith('/loop-kick-activity/sdk/')) {
       sendAcademySdkModule(response, '/academy-activity/sdk/' + path.slice('/loop-kick-activity/sdk/'.length));
       return;
@@ -2440,6 +2481,14 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
       sendJson(response, status || (minted.ok ? 200 : 503), body);
+      return;
+    }
+
+    if ((request.method === 'POST' && path === '/loop-kick-activity/connect') || (request.method === 'GET' && path === '/loop-kick-activity/connect-link')) {
+      if (!connectOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = connectOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      await handleLoopKickConnect(request, response, session);
       return;
     }
 
@@ -4728,6 +4777,8 @@ async function main() {
   /* The phone app's API (/v1/app). Sign-in is the member's stockmarketloop.com account, checked by the site's app identity
      plugin over the LOOP-KICK bridge channel; sessions live in app_sessions (schema 042). Off with SML_APP_API=0. */
   const appIdentity = createAppIdentity({ baseUrl: config.loopKickBridgeUrl, secret: config.loopKickBridgeSecret, fetchImpl: (u, o) => dataHealth.guardedFetch('app-identity', u, o) });
+  /* LOOP-KICK ↔ Discord connection from inside the Academy: site password sign-in over the app identity bridge, then the signed link route. */
+  const loopKickConnect = createLoopKickConnect({ bridge: loopKickBridge, identity: appIdentity, secret: config.loopKickBridgeSecret, siteBase: config.loopKickBridgeUrl || REDDIT_HUB_ORIGIN, logger: log });
   const appAuth = createAppAuth({ store: createAppSessionStore({ pool: database.pool }), identity: appIdentity, secret: config.appTokenSecret, logger: log });
   /* one SIRE feed shared by the Academy's SIRE panel and the app's scanner stream (idle until the first viewer) */
   const appSireFeed = createSireFeed({ scanner: getAcademyScanner, massive: academyMassive, logger: log });
@@ -4785,7 +4836,7 @@ async function main() {
     academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
-    loopKickBridge, connectOAuth, connectAppId: config.discordConnectAppId,
+    loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,
     memberEmail,
     appApi, academySireFeed: appSireFeed
   });
