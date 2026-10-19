@@ -47,11 +47,12 @@ test('a tick scans the universe, writes the strongest uncovered angle as a draft
   assert.equal(created.l.visibility, 'public'); assert.match(created.l.title, /\$ABCD/); assert.ok(!('author_id' in created.l), 'the signed-in account is the author');
   assert.ok(created.l.tags.includes('ABCD')); assert.match(created.l.html, /<h2>Bottom line<\/h2>/);
   assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'Bottom line') && created.l.blocks.some((b) => b.type === 'paragraph'), 'reader blocks');
-  assert.equal(created.l.blocks[0].type, 'custom_code', 'the styled card leads'); assert.match(created.l.blocks[0].html, /Key takeaways/); assert.match(created.l.blocks[0].css, /\.ad-t/); assert.ok(created.l.blocks[0].height >= 420);
+  assert.equal(created.l.blocks[0].type, 'custom_code', 'the figures lead, in one frame'); assert.equal(created.l.blocks[0].id, 'mod-glance'); assert.match(created.l.blocks[0].html, /class="mem-board"/); assert.match(created.l.blocks[0].css, /\.mem-glance/); assert.ok(created.l.blocks[0].height >= 200);
+  assert.equal(created.l.blocks.filter((b) => b.type === 'custom_code').length, 1, 'no second card repeating the figures, no frame for what a list can show');
   assert.ok(created.l.blocks.filter((b) => b.type === 'heading' && b.level === 2).length >= 4 && created.l.blocks.filter((b) => b.type === 'heading' && b.level === 2).length <= 6, 'four to six sections');
   /* the letter's chart block is the uploaded poster (an img: the letters sanitizer drops svg); without the GIF rasterizer there is no poster and no chart block */
-  if (require('./academy-scenario-gif').available()) assert.ok(created.l.blocks.some((b) => b.id === 'mod-chart' && b.type === 'custom_code' && /<img src="https:\/\/stockmarketloop\.com\/wp-content\/uploads\/x\.gif"/.test(b.html)), 'the chart block carries the poster image');
-  assert.ok(created.l.blocks.some((b) => b.id === 'mod-tracker') && created.l.blocks.some((b) => b.id === 'mod-bullbear'), 'the module blocks are the letter-safe variants');
+  if (require('./academy-scenario-gif').available()) assert.ok(created.l.blocks.some((b) => b.id === 'gif1' && b.type === 'image') && !created.l.blocks.some((b) => b.id === 'img-chart'), 'the animated path stands in for the still chart');
+  assert.ok(created.l.blocks.some((b) => b.type === 'heading' && b.text === 'The bull case') && created.l.blocks.some((b) => b.type === 'heading' && b.text === 'Kill switch'), 'the cases and the kill switch are native blocks');
   assert.ok(created.l.blocks.filter((b) => b.type === 'custom_code').every((b) => !/<svg|<iframe|<script|<input|<details/.test(b.html)), 'nothing the letters sanitizer would drop');
   assert.match(created.l.html, /class="mem-article"/); assert.match(created.l.html, /sec\.gov/);
   assert.ok(created.l.subtitle.length > 20 && created.l.subtitle.length <= 160);

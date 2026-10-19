@@ -8,7 +8,6 @@
  * signed-in WordPress account really is the byline's account. The owner gets a DM with every result. */
 
 const engine = require('./academy-story-engine');
-const articleHtml = require('./academy-article-html');
 const gifs = require('./academy-scenario-gif');
 const desk2 = require('./academy-article-desk');
 const outcomes = require('./academy-article-outcomes');
@@ -239,13 +238,13 @@ function createStoryDesk({
     const guess = compose('');
     const pkg = file ? compose(`${siteUrl}${authorPath}${guess.slug}/`) : guess;
     const symLine = `${c.symbol} price-action scenario to $${story.pt}`;
-    const card = articleHtml.card(pkg.parts);
-    const body = [...pkg.blocks, { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
-    // the styled card leads; the animated path sits right after the opening paragraphs
+    /* the figures lead as the composer's one tight frame (no second card repeating them), and the animated path replaces the still chart */
+    const body = [...pkg.blocks.filter((b) => !(media && media.url && b.id === 'img-chart')), { id: 'd1', type: 'disclosure', position: 'educational scenario from the Academy data desk; the author may hold or trade positions in the names discussed' }];
+    // the animated path sits right after the opening paragraphs
     let at = 0, seen = 0;
     for (let i = 0; i < body.length; i++) { if (body[i].type === 'paragraph') { seen += 1; if (seen === 2) { at = i + 1; break; } } }
     if (media && media.url) body.splice(at, 0, { id: 'gif1', type: 'image', url: media.url, alt: symLine, caption: 'Speculative scenario: real candles, then the path the setup needs. Not a forecast.' });
-    const blocks = [{ id: 'card1', type: 'custom_code', html: card.html, css: card.css, height: card.height }, ...body];
+    const blocks = body;
     const letter = { title: pkg.title, subtitle: pkg.dek, tldr: pkg.tldr, html: pkg.bodyHtml, blocks, content_type: 'Analysis', tags: pkg.tags, cover_url: coverUrl || undefined, visibility: 'public', slug: pkg.slug };
     return { draft: { ...pkg, html: pkg.bodyHtml, parts: pkg.parts, asOfIso: pkg.asOfIso }, pkg, compose, html: pkg.bodyHtml, letter, media, posterMedia, seo: pkg.seo, dossier, gifFrames: gifInfo ? gifInfo.frames : 0 };
   }
