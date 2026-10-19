@@ -48,19 +48,37 @@ const REACTS = new Set(['auto', 'off', 'kick', 'bass', 'vocal', 'snare', 'hats']
 const MAX_TEXTURES = 6, MAX_LIGHTS = 4, MAX_FXS = 5;
 const pickSet = (list, allowed, max, skip) => { const out = []; for (const v of Array.isArray(list) ? list : []) { const id = String(v); if (id !== skip && allowed.has(id) && !out.includes(id)) out.push(id); if (out.length >= max) break; } return out; };
 const MAX_ORBIT = 12;
-const SOCIAL_KINDS = [
-  ['x', /(^|\.)(x|twitter)\.com$/], ['instagram', /(^|\.)instagram\.com$/], ['tiktok', /(^|\.)tiktok\.com$/], ['youtube', /(^|\.)(youtube\.com|youtu\.be)$/],
-  ['facebook', /(^|\.)facebook\.com$/], ['threads', /(^|\.)threads\.net$/], ['linkedin', /(^|\.)linkedin\.com$/], ['twitch', /(^|\.)twitch\.tv$/],
-  ['discord', /(^|\.)(discord\.gg|discord\.com)$/], ['stocktwits', /(^|\.)stocktwits\.com$/], ['substack', /(^|\.)substack\.com$/], ['stockmarketloop', /(^|\.)stockmarketloop\.com$/]
+/* The links a member can put on their page: one of each. A kind is chosen by the member; the address must belong to that kind's site.
+   The three StockMarketLoop kinds are told apart by their path when the member does not say which one it is. */
+const LINK_KINDS = [
+  { id: 'reddit', label: 'Reddit', host: /(^|\.)reddit\.com$/ },
+  { id: 'discord', label: 'Discord', host: /(^|\.)(discord\.gg|discord\.com)$/ },
+  { id: 'x', label: 'Twitter / X', host: /(^|\.)(x|twitter)\.com$/ },
+  { id: 'facebook', label: 'Facebook', host: /(^|\.)(facebook|fb)\.com$/ },
+  { id: 'bluesky', label: 'Bluesky', host: /(^|\.)(bsky\.app|bsky\.social)$/ },
+  { id: 'threads', label: 'Threads', host: /(^|\.)threads\.(net|com)$/ },
+  { id: 'loop-channel', label: 'StockMarketLoop.com Loop channel', host: /(^|\.)stockmarketloop\.com$/, path: /^\/channel\// },
+  { id: 'loop-letter', label: 'StockMarketLoop.com Loop Letter publication', host: /(^|\.)stockmarketloop\.com$/, path: /^\/n\// },
+  { id: 'loop-profile', label: 'StockMarketLoop.com profile page', host: /(^|\.)stockmarketloop\.com$/, path: /^\/members\// },
+  { id: 'youtube', label: 'YouTube', host: /(^|\.)(youtube\.com|youtu\.be)$/ }
 ];
-const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i;
+const LINK_BY_ID = new Map(LINK_KINDS.map((k) => [k.id, k]));
+const pathOf = (url) => { try { return new URL(url).pathname; } catch (_) { return ''; } };
+/* the kind a link belongs to: the one the member chose when its site matches, otherwise the first kind whose site (and path, when it has one) matches */
+function linkKind(url, chosen) {
+  const h = hostOf(url), p = pathOf(url);
+  const pick = LINK_BY_ID.get(String(chosen || ''));
+  if (pick && pick.host.test(h)) return pick.id;
+  for (const k of LINK_KINDS) if (k.host.test(h) && (!k.path || k.path.test(p))) return k.id;
+  const site = LINK_KINDS.filter((k) => k.host.test(h));
+  return site.length ? (site.find((k) => k.id === 'loop-profile') || site[0]).id : ''; // a StockMarketLoop address with an unknown path reads as the profile page
+}const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|wav|flac|opus)(\?|#|$)/i;
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-const MAX_SOCIALS = 8, MAX_CARD_HTML = 262_144, MAX_IMAGE_BYTES = 1_572_864, MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_SOCIALS = LINK_KINDS.length, MAX_CARD_HTML = 262_144, MAX_IMAGE_BYTES = 1_572_864, MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 const text = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max);
 const httpsUrl = (v) => { try { const u = new URL(String(v || '').trim()); if (u.protocol !== 'https:' || !u.hostname.includes('.')) return ''; u.hash = ''; return u.toString().slice(0, 500); } catch (_) { return ''; } };
 const hostOf = (url) => { try { return new URL(url).hostname.toLowerCase(); } catch (_) { return ''; } };
-const kindOf = (table, url, fallback) => { const h = hostOf(url); for (const [k, re] of table) if (re.test(h)) return k; return fallback; };
 const r2 = (v) => Math.round(v * 100) / 100;
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
@@ -129,16 +147,18 @@ function cleanSettings(input = {}, prev = {}) {
     const list = Array.isArray(input.socials) ? input.socials : [];
     const seen = new Set(), out = [];
     for (const it of list) {
-      const url = httpsUrl(it && (it.url || it)); if (!url || seen.has(url)) continue; seen.add(url);
+      const url = httpsUrl(it && (it.url || it)); if (!url || seen.has(url)) continue;
+      const kind = linkKind(url, it && it.kind); if (!kind || seen.has('kind:' + kind)) continue; // one link per kind, only the kinds on the list
+      seen.add(url); seen.add('kind:' + kind);
       const old = (prev.socials || []).find((p) => p.url === url) || {};
-      out.push({ url, kind: kindOf(SOCIAL_KINDS, url, 'link'), title: text(it && it.title, 60) || old.title || '', card: old.card || null });
+      out.push({ url, kind, title: text(it && it.title, 60) || old.title || '', card: old.card || null });
       if (out.length >= MAX_SOCIALS) break;
     }
     s.socials = out;
   }
   if (input.flags !== undefined && input.flags && typeof input.flags === 'object') {
     const f = { ...(prev.flags || {}) };
-    for (const k of ['showPaper', 'showServer', 'showSocials', 'showFeed', 'showFollowers']) if (input.flags[k] !== undefined) f[k] = input.flags[k] !== false;
+    for (const k of ['showPaper', 'showServer', 'showSocials', 'showFeed', 'showFollowers', 'showWall']) if (input.flags[k] !== undefined) f[k] = input.flags[k] !== false;
     s.flags = f;
   }
   return s;
@@ -157,7 +177,7 @@ function parseOg(html, url) {
   return { title: text(title, 120), image, site: text(decode(meta('og:site_name')), 60) || hostOf(url) };
 }
 
-function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
+function createProfilePages({ pool = null, chat = null, paper = null, paperStore = null, tierLive = null, directory = null, wall = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {} } = {}) {
   const db = pool && typeof pool.query === 'function' ? pool : null;
   const mem = { profiles: new Map(), follows: new Set(), presence: new Map(), audio: new Map() };
   const tiers = new Map(), cards = new Map(), images = new Set(), lastBeat = new Map();
@@ -411,11 +431,12 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
   async function page(userId, viewerId = '') {
     const id = String(userId); if (!SNOWFLAKE.test(id)) return null;
     const s = await settingsOf(id);
-    const [tier, server, pap, rank, counts, feed] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : paperSummary(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 30)]);
+    const wallOn = s.flags.showWall !== false && !!wall;
+    const [tier, server, pap, rank, counts, feed, wallPage] = await Promise.all([tierOf(id), s.flags.showServer === false ? null : mainServer(id), s.flags.showPaper === false ? null : paperSummary(id), s.flags.showPaper === false ? null : rankOf(id), followCounts(id, viewerId), s.flags.showFeed === false ? [] : posts(id, 30), wallOn ? wall.list(id, { limit: 20 }).catch(() => ({ items: [], count: 0, more: false })) : null]);
     return {
-      userId: id, own: String(viewerId) === id, settings: s, layouts: LAYOUTS.map(([lid, name]) => ({ id: lid, name })),
+      userId: id, own: String(viewerId) === id, settings: s, layouts: LAYOUTS.map(([lid, name]) => ({ id: lid, name })), linkKinds: LINK_KINDS.map((k) => ({ id: k.id, label: k.label })),
       tier, tierLabel: tierLabel(tier), server, paper: pap ? { ...pap, rank: rank && rank.rank, of: rank && rank.of } : null,
-      followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, asOf: now()
+      followers: counts.followers, following: counts.following, viewerFollows: counts.viewerFollows, posts: feed, wall: wallPage, asOf: now()
     };
   }
   async function card(userId, viewerId = '') {
@@ -428,4 +449,4 @@ function createProfilePages({ pool = null, chat = null, paper = null, paperStore
   return { ensureSchema, settingsOf, save, page, card, follow, followCounts, followers, beat, mainServer, leaderboard, rankOf, linkCard, linkImage, registerImage, audioStream, uploadAudio, LAYOUTS };
 }
 
-module.exports = { createProfilePages, cleanSettings, FX, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };
+module.exports = { createProfilePages, cleanSettings, linkKind, LINK_KINDS, FX, parseOg, sniffAudio, MAX_UPLOAD_BYTES, LAYOUTS, TEXTURES, DESKS, LIGHTS, ORBS };
