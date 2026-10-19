@@ -52,5 +52,8 @@ test('a bad token never completes the upgrade', async () => {
     const ws = new WebSocket(url + '?token=bad');
     const outcome = await new Promise((resolve) => { ws.once('open', () => resolve('open')); ws.once('error', () => resolve('refused')); ws.once('close', () => resolve('refused')); });
     assert.equal(outcome, 'refused');
+    /* and the refusal is a real 401, not a dropped socket (which the host logs as a 500) */
+    const res = await fetch(url.replace(/^ws/, 'http') + '?token=bad', { headers: { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' } }).catch(() => null);
+    if (res) { assert.equal(res.status, 401); assert.deepEqual(await res.json(), { ok: false, error: 'authorization_required' }); }
   });
 });

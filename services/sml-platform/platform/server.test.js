@@ -2005,6 +2005,51 @@ test('Academy sign-in: a silent renewal survives the SDK saying "Already authent
   assert.match(script, /__academySdkAuthed/, 'authenticate is not sent again once it has succeeded');
   assert.match(script, /academyDiagSeen/, 'each diagnostic stage beacons a bounded number of times');
   assert.match(html, /lesson-toggle'\)\.onclick=\(\)=>\{if\(lesson\.classList\.contains\('open'\)\)\{lesson\.classList\.remove\('open'\)/, 'Lessons toggles closed as well as open');
+  /* the SDK refuses a second authorize too ("Already authenticated"), so a renewal never calls the SDK: the signed key from sign-in goes to /academy-activity/renew */
+  assert.match(script, /if\(window\.smlAcademyRenewKey\)return academyRenew\(\)/, 'a renewal uses the key, not the SDK');
+  assert.match(script, /fetch\('\/academy-activity\/renew'/);
+  assert.match(script, /if\(payload\.renew\)window\.smlAcademyRenewKey=payload\.renew/, 'the token response hands over the renewal key');
+  assert.match(script, /academyReloadForSignIn/, 'with no key left, an authorize refused as already authenticated reloads the page once a minute');
+  assert.match(script, /payload\.error==='access_ended'\?'academy_role_required'/, 'a refused renewal shows the access notice, not the pop-out one');
+  const gated = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370', gate: { contentGate: true, links: true } });
+  assert.match(gated, /path==='\/academy-activity\/token'\|\|path==='\/academy-activity\/renew'/, 'the gate client reads the tier from a renewal too');
+  const intent = fs.readFileSync(path.join(__dirname, 'academy-smart-intent-ui.js'), 'utf8');
+  assert.match(intent, /res\.status === 401 && typeof window\.smlAcademyReauth === 'function'/, 'INTENT renews an expired session and reads again');
+});
+
+test('Activity renewal: the token response carries a renewal key; /academy-activity/renew re-checks access and issues a new session without the SDK', async () => {
+  const { createAcademyOAuth } = require('./academy-oauth');
+  const U = '420000000000000042';
+  const oauth = createAcademyOAuth({ clientId: 'c', clientSecret: 's', academyAccess: { verify: async () => ({ ok: true, userId: U, tier: 'member' }) },
+    fetchImpl: async (url) => (String(url).includes('/oauth2/token') ? new Response(JSON.stringify({ access_token: 'discord-access' }), { status: 200, headers: { 'content-type': 'application/json' } }) : new Response(JSON.stringify({ global_name: 'Obi' }), { status: 200, headers: { 'content-type': 'application/json' } })) });
+  let tierNow = 'member';
+  const post = (base, path, body) => fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  await withServer({ academyOAuth: oauth, academyTierLive: async () => tierNow }, async (base) => {
+    const signedIn = await (await post(base, '/academy-activity/token', { code: 'discord-code' })).json();
+    assert.equal(signedIn.ok, true);
+    assert.match(signedIn.renew, /^p1\./, 'the renewal key rides in the token response body');
+    assert.equal(oauth.verifySession('Bearer ' + signedIn.renew).ok, false, 'the key is never a session');
+    const renewed = await post(base, '/academy-activity/renew', { renew: signedIn.renew });
+    assert.equal(renewed.status, 200);
+    const r = await renewed.json();
+    assert.equal(r.ok, true); assert.equal(r.tier, 'member'); assert.equal(r.displayName, 'Obi');
+    assert.deepEqual(oauth.verifySession('Bearer ' + r.sessionToken), { ok: true, userId: U, tier: 'member', displayName: 'Obi' }, 'a renewed session is an ordinary session');
+    assert.match(r.renew, /^p1\./, 'and a fresh key comes with it');
+    tierNow = 'academy';
+    assert.equal((await (await post(base, '/academy-activity/renew', { renew: r.renew })).json()).tier, 'academy', 'the renewal takes the access level as it is now');
+    tierNow = 'none';
+    const ended = await post(base, '/academy-activity/renew', { renew: r.renew });
+    assert.equal(ended.status, 403); assert.equal((await ended.json()).error, 'access_ended');
+    tierNow = 'free';
+    assert.equal((await post(base, '/academy-activity/renew', { renew: r.renew })).status, 403, 'free sessions off: a free member gets no session');
+    assert.equal((await post(base, '/academy-activity/renew', { renew: 'p1.bogus.sig' })).status, 401);
+    assert.equal((await post(base, '/academy-activity/renew', { renew: r.sessionToken })).status, 401, 'a session is not a renewal key');
+    assert.equal((await post(base, '/academy-activity/renew', {})).status, 401);
+    assert.equal((await fetch(base + '/academy-activity/renew', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'x' })).status, 415);
+  });
+  await withServer({ academyOAuth: { verifySession: () => ({ ok: false, status: 401, code: 'authorization_required' }) } }, async (base) => {
+    assert.equal((await post(base, '/academy-activity/renew', { renew: 'x' })).status, 503, 'no renewal keys configured: fails closed');
+  });
 });
 
 test('Ask Obi is the owner\'s only: members get 403, the owner gets the answer, nobody anonymous gets in', async () => {

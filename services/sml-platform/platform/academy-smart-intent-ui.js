@@ -47,8 +47,11 @@
     const sym = symbolNow(), tf = tfNow(), key = sym + '|' + tf;
     if (S.busy) return; S.busy = true; S.key = key;
     try {
-      const t = token(); if (!t) { S.err = 'Unlock the Academy tools to read smart-money intent.'; S.data = null; return; }
-      const res = await fetch('/academy-activity/intent?symbol=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(tf), { headers: { authorization: 'Bearer ' + t }, cache: 'no-store' });
+      let t = token(); if (!t) { S.err = 'Unlock the Academy tools to read smart-money intent.'; S.data = null; return; }
+      const read = (tok) => fetch('/academy-activity/intent?symbol=' + encodeURIComponent(sym) + '&tf=' + encodeURIComponent(tf), { headers: { authorization: 'Bearer ' + tok }, cache: 'no-store' });
+      let res = await read(t);
+      /* sessions last 15 minutes: a 401 renews the session once (silently) and reads again */
+      if (res.status === 401 && typeof window.smlAcademyReauth === 'function') { const fresh = await Promise.resolve(window.smlAcademyReauth()).catch(() => ''); if (fresh) { t = fresh; res = await read(t); } }
       const j = await res.json().catch(() => null);
       if (key !== S.key) return;
       if (!res.ok || !j || !j.ok) { S.err = j && j.error === 'academy_access_required' ? 'Intent is an Academy member tool.' : 'Could not read intent right now' + (j && j.error ? ' (' + j.error + ')' : '') + '.'; return; }

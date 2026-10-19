@@ -265,7 +265,8 @@ function attachChatServer(httpServer, hub, { path = '/academy-activity/chat', We
     let url; try { url = new URL(request.url || '/', 'http://localhost'); } catch (_) { socket.destroy(); return; }
     if (url.pathname !== path) return; // not ours: leave the socket for another upgrade listener, if any
     const identity = hub.authenticate(url.searchParams.get('token') || '');
-    if (!identity) { socket.destroy(); return; }
+    /* an expired or forged session is refused with a real 401 (not a dropped socket the logs show as a 500); the panel reconnects once the session renews */
+    if (!identity) { try { socket.write('HTTP/1.1 401 Unauthorized\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: 45\r\n\r\n{"ok":false,"error":"authorization_required"}'); } catch (_) {} socket.destroy(); return; }
     identity.authorName = url.searchParams.get('name') || ''; // fallback only: hub.open prefers the session's verified displayName
     wss.handleUpgrade(request, socket, head, (ws) => {
       const conn = { send: (s) => ws.send(s) };
