@@ -4732,11 +4732,33 @@ async function main() {
   const getShortInsight = () => {
     if (shortInsight || process.env.SML_ACADEMY_SHORT_INSIGHT === 'off' || !academyAlerts) return shortInsight;
     const memAlgo = require('./academy-mem-algo');
+    /* the scanner row for a symbol: float, shares outstanding, today's volume and relative volume (the wide scanner first, then the hub scanner) */
+    const scannerRow = async (sym) => {
+      const pick = (rows) => (Array.isArray(rows) ? rows.find((r) => String(r && r.symbol || '').toUpperCase() === sym) : null);
+      try { if (typeof academyWideScanner !== 'undefined' && academyWideScanner) { const w = await academyWideScanner.get(400); const r = pick(w && w.rows); if (r) return r; } } catch (_) { /* fall through */ }
+      try { const sc = await getAcademyScanner(); return pick(sc && sc.rows) || null; } catch (_) { return null; }
+    };
+    /* the smart-money intent read for the squeeze model (academy-smart-intent.js over the signed tape, the full book, the gamma walls and the volume profile) */
+    const smartIntentFor = async (sym) => {
+      if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(sym);
+      const [barsP, gammaP] = await Promise.all([settleWithin(getAcademyCandles(sym, '5m'), 2_500).catch(() => null), academyGamma ? settleWithin(academyGamma.get(sym), 2_000).catch(() => null) : Promise.resolve(null)]);
+      const bars = barsP && Array.isArray(barsP.bars) ? barsP.bars : [];
+      const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(sym) : null;
+      const ticks = academyMassive && typeof academyMassive.ticks === 'function' ? academyMassive.ticks(sym, 6000) : [];
+      const deep = academyOrderFlow && typeof academyOrderFlow.deep === 'function' ? academyOrderFlow.deep(sym) : null;
+      const price = peek && Number(peek.last) > 0 ? Number(peek.last) : (bars.length ? Number(bars[bars.length - 1].c) : null);
+      let smc = null; try { smc = bars.length >= 20 ? require('./academy-smart-money').analyze(bars) : null; } catch (_) { smc = null; }
+      let darkPool = null; if (peek && peek.stats) { try { const sum = liveDarkPoolSummary(peek.stats, { price }); darkPool = sum && sum.available ? sum : null; } catch (_) { darkPool = null; } }
+      return analyzeSmartIntent({ symbol: sym, ticks, prints: deep ? deep.prints : [], snaps: deep ? deep.snaps : [], bars, smc, darkPool, gamma: gammaP && gammaP.available ? gammaP : null, stats: peek ? peek.stats : null, price, tick: price && price < 1 ? 0.0001 : 0.01, now: Date.now() });
+    };
     shortInsight = createShortInsight({
       shortData: (s) => academyAlerts.shortData(s), candles: (s, tf) => sentimentCandles(s, tf),
       orderFlow: academyOrderFlow ? (s) => academyOrderFlow.get(s) : null, tape: academyMassive ? (s) => academyMassive.peek(s) : null,
       flowDays: academyFlowDaily && academyFlowDaily.configured ? (s, d) => academyFlowDaily.summary(s, d) : null,
-      chain: (s) => academyAlerts.chainFor(s), memAlgo: (bars) => memAlgo.analyze(bars, 'short', {}, '1D', {}), logger: log
+      chain: (s) => academyAlerts.chainFor(s), memAlgo: (bars) => memAlgo.analyze(bars, 'short', {}, '1D', {}),
+      float: scannerRow, gamma: academyGamma ? (s) => academyGamma.get(s) : null, sentiment: academySentiment ? (s) => academySentiment.get(s) : null,
+      intent: smartIntentFor, earnings: (s) => academyAlerts.nextEarnings(s), marketOpen: () => { try { return marketState().session === 'open'; } catch (_) { return null; } },
+      ai: config.anthropicApiKey && process.env.SML_ACADEMY_SQUEEZE_AI !== 'off' ? { apiKey: config.anthropicApiKey, model: config.academyAskModel } : null, logger: log
     });
     return shortInsight;
   };

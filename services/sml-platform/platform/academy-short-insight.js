@@ -151,14 +151,18 @@ function verdicts(s, extra) {
 }
 
 /* ------------------------------------------------------------------ the service */
-function createShortInsight({ shortData, candles = null, orderFlow = null, tape = null, flowDays = null, chain = null, memAlgo = null, now = Date.now, logger = () => {}, ttlMs = 60_000 } = {}) {
+function createShortInsight({ shortData, candles = null, orderFlow = null, tape = null, flowDays = null, chain = null, memAlgo = null, float = null, gamma = null, sentiment = null, intent = null, earnings = null, marketOpen = null, ai = null, fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, ttlMs = 60_000 } = {}) {
   const cache = new Map(), inflight = new Map();
+  const squeezeModel = require('./academy-squeeze-model');
+  const briefs = squeezeModel.createSqueezeBrief({ ai, fetchImpl, now, logger });
   const safe = async (name, fn, ms = 12_000) => { try { return await Promise.race([Promise.resolve(fn()), new Promise((r) => { const t = setTimeout(() => r(null), ms); if (t.unref) t.unref(); })]); } catch (error) { logger('warn', 'short_insight_input_failed', { name, error: String(error && error.message || error) }); return null; } };
   async function build(symbol) {
     const t = now();
-    const [sd, daily, of, tp, fd, ch] = await Promise.all([
+    const [sd, daily, of, tp, fd, ch, fl, gm, se, inn, er] = await Promise.all([
       safe('short', () => shortData(symbol)), candles ? safe('candles', () => candles(symbol, '1D')) : null, orderFlow ? safe('orderflow', () => orderFlow(symbol), 4_000) : null,
-      tape ? safe('tape', () => tape(symbol), 2_000) : null, flowDays ? safe('flowdays', () => flowDays(symbol, 7), 6_000) : null, chain ? safe('chain', () => chain(symbol), 10_000) : null
+      tape ? safe('tape', () => tape(symbol), 2_000) : null, flowDays ? safe('flowdays', () => flowDays(symbol, 7), 6_000) : null, chain ? safe('chain', () => chain(symbol), 10_000) : null,
+      float ? safe('float', () => float(symbol), 4_000) : null, gamma ? safe('gamma', () => gamma(symbol), 8_000) : null, sentiment ? safe('sentiment', () => sentiment(symbol), 8_000) : null,
+      intent ? safe('intent', () => intent(symbol), 6_000) : null, earnings ? safe('earnings', () => earnings(symbol), 5_000) : null
     ]);
     const bars = daily && Array.isArray(daily.bars) ? daily.bars : Array.isArray(daily) ? daily : [];
     const volumeRows = sd && Array.isArray(sd.volume) ? sd.volume : [], interestRows = sd && Array.isArray(sd.interest) ? sd.interest : [];
@@ -172,8 +176,21 @@ function createShortInsight({ shortData, candles = null, orderFlow = null, tape 
     if (memAlgo && bars.length > 220) { try { const a = memAlgo(bars); mem = a ? { mode: 'short', bias: a.bias, latest: a.latest ? { dir: a.latest.dir, t: a.latest.t, conf: a.latest.conf ? { score: a.latest.conf.score, grade: a.latest.conf.grade } : null } : null } : null; } catch (_) { mem = null; } }
     const s = scores({ svp, it, bars, depth, l2, tape: tapeStats, flowDays: week, chain: chainS });
     const v = verdicts(s, { it, mem });
-    const sources = { short: !!(volumeRows.length || interestRows.length), candles: bars.length > 0, level3: !!depth, level2: !!l2, tape: !!tapeStats, flowDays: !!week, chain: !!chainS };
-    return { ok: true, available: true, symbol, asOf: t, shortVsPrice: svp, interest: it, pressing: s.pressing, squeeze: s.squeeze, price: s.price, chain: chainS, tape: tapeStats ? { buy: tapeStats.buy, sell: tapeStats.sell, offVol: tapeStats.offVol, vol: tapeStats.vol, sweepBuy: tapeStats.sweepBuy, sweepSell: tapeStats.sweepSell, blockBuy: tapeStats.blockBuy, blockSell: tapeStats.blockSell } : null, depth: depth ? { pressure: depth.pressure, walls: depth.walls, divergence: depth.flow ? depth.flow.divergence : null } : null, week: week ? { days: week.days, score: week.score, label: week.label, cvd: week.cvd } : null, mem, verdict: v, sources,
+    /* the rebuilt SQUEEZE RISK (academy-squeeze-model.js): fuel, spark, accelerant, trap, the Q-STATE, and the AI brief when a key is set */
+    let open = null; try { open = typeof marketOpen === 'function' ? !!marketOpen() : null; } catch (_) { open = null; }
+    const model = squeezeModel.computeSqueeze({ svp, it, bars, depth, l2, tape: tapeStats, flowDays: week, chain: chainS, float: fl || null, scanner: fl || null, gamma: gm && gm.available ? gm : null, sentiment: se && se.ok ? se : null, intent: inn && inn.ok ? inn : null, earnings: er || null, marketOpen: open });
+    const sqOut = model.score != null ? { ...s.squeeze, score: model.score, legacyScore: s.squeeze.score } : s.squeeze;
+    if (model.score != null) {
+      const long = v.long;
+      if (model.score >= 70) { long.call = 'squeeze candidate: fuel ' + model.fuel.score + ', spark ' + model.spark.score + (model.accelerant.score >= 50 ? ', accelerant ' + model.accelerant.score : '') + ': manage it like a momentum long with a stop under the breakout'; long.tone = 'up'; }
+      else if (model.score >= 50) { long.call = 'loaded: ' + (model.missing[0] ? 'missing ' + model.missing[0] : 'fuel and spark are both partial') + '; wait for the 20-day high to go or the book to flip'; long.tone = 'flat'; }
+      else if (model.trap.score >= 50) { long.call = 'not a squeeze: shorts are pressing a weak tape (trap ' + model.trap.score + '); do not buy because it is "heavily shorted"'; long.tone = 'down'; }
+      else { long.call = 'no squeeze set-up: ' + (model.missing[0] || 'short positioning is ordinary'); long.tone = 'neutral'; }
+      long.reasons = [...model.why.fuel.slice(0, 2), ...model.why.spark.slice(0, 2)];
+    }
+    const aiBrief = await briefs.brief(symbol, model, { price: s.price.close, hi20: s.price.hi20, lo20: s.price.lo20, marketOpen: open });
+    const sources = { short: !!(volumeRows.length || interestRows.length), candles: bars.length > 0, level3: !!depth, level2: !!l2, tape: !!tapeStats, flowDays: !!week, chain: !!chainS, float: !!(fl && (fl.sharesFloat || fl.sharesOutstanding)), gamma: !!(gm && gm.available), sentiment: !!(se && se.ok), intent: !!(inn && inn.ok), earnings: !!er };
+    return { ok: true, available: true, symbol, asOf: t, shortVsPrice: svp, interest: it, pressing: s.pressing, squeeze: sqOut, model, brief: aiBrief, price: s.price, chain: chainS, tape: tapeStats ? { buy: tapeStats.buy, sell: tapeStats.sell, offVol: tapeStats.offVol, vol: tapeStats.vol, sweepBuy: tapeStats.sweepBuy, sweepSell: tapeStats.sweepSell, blockBuy: tapeStats.blockBuy, blockSell: tapeStats.blockSell } : null, depth: depth ? { pressure: depth.pressure, walls: depth.walls, divergence: depth.flow ? depth.flow.divergence : null } : null, week: week ? { days: week.days, score: week.score, label: week.label, cvd: week.cvd } : null, mem, verdict: v, sources,
       note: 'Short volume = shares sold short that day ÷ total volume (FINRA daily). Short interest settles twice a month. The book, the tape and the ledger are live. The two scores describe positioning and flow, not direction. Educational only.' };
   }
   function insight(symbolRaw) {
