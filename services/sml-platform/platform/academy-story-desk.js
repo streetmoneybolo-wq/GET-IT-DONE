@@ -11,6 +11,7 @@ const engine = require('./academy-story-engine');
 const gifs = require('./academy-scenario-gif');
 const desk2 = require('./academy-article-desk');
 const outcomes = require('./academy-article-outcomes');
+const { compactLetterBlocks } = desk2;
 
 const num = (v, d = null) => { if (v == null || v === '') return d; const n = Number(v); return Number.isFinite(n) ? n : d; };
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -85,10 +86,13 @@ function createLettersPublisher({ siteUrl, username, appPassword, authorId, secr
     return { id, slug: out && out.slug ? String(out.slug) : '', raw: out };
   }
   async function getLetter(id) { const out = await api(`/wp-json/sml-letters/v1/letters/${id}`); return { id: Number(out && out.id) || Number(id), url: out && out.url ? String(out.url) : '', slug: out && out.slug ? String(out.slug) : '', status: out && out.status ? String(out.status) : '' }; }
+  /* the whole letter as the site stores it (blocks included), and the public feed of recent letters (ids only are used) */
+  const readLetter = (id) => api(`/wp-json/sml-letters/v1/letters/${id}`);
+  async function feed() { const out = await api('/wp-json/sml-letters/v1/feed'); return Array.isArray(out && out.letters) ? out.letters.map((l) => Number(l.id)).filter((n) => Number.isFinite(n) && n > 0) : []; }
   async function publishLetter(id) { const out = await api(`/wp-json/sml-letters/v1/letters/${id}/publish`, { method: 'POST', body: {} }); return { ok: !!(out && out.ok), status: out && out.status, url: out && out.letter && out.letter.url ? String(out.letter.url) : '' }; }
   /* loop-letters-seo.php keeps { seo: { meta_title, meta_desc, keyword, schema, tags, sentiment, og_title, og_desc, twitter, social_image, category } } */
   async function saveSeo(id, seo) { try { return await api(`/wp-json/sml-letters-seo/v1/letter/${id}`, { method: 'POST', body: { seo } }); } catch (error) { logger('warn', 'story_seo_save_failed', { id, error: String(error && error.message || error) }); return null; } }
-  return { configured, signed, identity, uploadMedia, createLetter, updateLetter, getLetter, publishLetter, saveSeo, authorId: Number(authorId) || null, base };
+  return { configured, signed, identity, uploadMedia, createLetter, updateLetter, getLetter, readLetter, feed, publishLetter, saveSeo, authorId: Number(authorId) || null, base };
 }
 
 /* ---------- optional polish by the newsroom model: voice only, never new facts ---------- */
@@ -357,8 +361,39 @@ function createStoryDesk({
       draft: { title: article.title, dek: article.dek, meta: article.seo.meta_desc, tags: article.tags, wordCount: article.wordCount, readMinutes: article.readMinutes, seo: article.seo, document: article.document, modules: article.modules, sections: article.sections, links: article.links },
       article, filed };
   }
+  /* The old letters, rebuilt in the compact layout: a few per call, each once (state.rebuilt), and only letters that carry the
+     desk's own modules (a hand-written letter has none and is never touched). The letter must still have the status it had
+     before the update, or the run stops and says so. */
+  async function rebuildOld({ limit = 2 } = {}) {
+    await load();
+    if (!publisher || !publisher.configured() || typeof publisher.readLetter !== 'function' || state.rebuildHalt) return { ok: false, skipped: state.rebuildHalt ? 'halted' : 'unconfigured' };
+    if (!state.rebuilt) state.rebuilt = {};
+    const done = { rebuilt: 0, skipped: 0, failed: 0 };
+    let ids = [];
+    try { ids = await publisher.feed(); } catch (error) { logger('warn', 'story_rebuild_feed_failed', { error: String(error && error.message || error) }); return { ok: false, ...done }; }
+    for (const id of ids) {
+      if (state.rebuilt[id] || done.rebuilt >= limit) continue;
+      try {
+        const letter = await publisher.readLetter(id);
+        const blocks = letter && (letter.blocks || (letter.letter && letter.letter.blocks));
+        if (!Array.isArray(blocks)) { logger('warn', 'story_rebuild_no_blocks', { id, keys: letter && typeof letter === 'object' ? Object.keys(letter).slice(0, 14) : null }); state.rebuildHalt = 'no_blocks'; await save(); return { ok: false, ...done, halted: 'no_blocks' }; }
+        const next = compactLetterBlocks(blocks);
+        state.rebuilt[id] = now();
+        if (!next) { done.skipped += 1; continue; }
+        const before = String(letter.status || (letter.letter && letter.letter.status) || '');
+        await publisher.updateLetter(id, { blocks: next });
+        const after = await publisher.getLetter(id);
+        if (before && after.status && after.status !== before) { state.rebuildHalt = 'status_changed'; logger('warn', 'story_rebuild_status_changed', { id, before, after: after.status }); await save(); return { ok: false, ...done, halted: 'status_changed' }; }
+        done.rebuilt += 1; note(`rebuilt letter ${id} in the compact layout (${blocks.length} blocks to ${next.length})`, { letterId: id });
+        logger('info', 'story_rebuilt_letter', { id, from: blocks.length, to: next.length });
+      } catch (error) { done.failed += 1; state.rebuilt[id] = now(); logger('warn', 'story_rebuild_failed', { id, error: String(error && error.message || error) }); }
+    }
+    for (const k of Object.keys(state.rebuilt)) if (Object.keys(state.rebuilt).length > 400 && state.rebuilt[k] < now() - 30 * 86_400_000) delete state.rebuilt[k];
+    if (done.rebuilt || done.failed || done.skipped) await save();
+    return { ok: true, ...done, remaining: ids.filter((id) => !state.rebuilt[id]).length };
+  }
   async function status() { await load(); return { day: state.day, count: state.count, written: Object.keys(state.written).length, log: state.log.slice(-20).reverse(), record: recordNow(), schedule: schedule.map((s) => ({ at: s.at, subjects: s.subjects, done: !!state.sched[`${state.day}:${s.at}`] })) }; }
-  return { tick, write, status, candidate, load, settle, record: recordNow };
+  return { tick, write, status, candidate, load, settle, rebuildOld, record: recordNow };
 }
 
 module.exports = { createStoryDesk, createLettersPublisher, createPolisher };

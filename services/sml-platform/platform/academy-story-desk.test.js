@@ -205,3 +205,27 @@ test('a tick writes nothing while memory has no room, and a scheduled slot waits
   assert.equal(r.filed, 0); assert.equal(h.posts.length, 0); assert.ok(logs.includes('story_desk_memory_pause'));
   const st = await h.desk.status(); assert.equal(st.schedule.filter((s) => s.done).length, 0, 'no slot is marked done while paused');
 });
+
+test('rebuildOld rewrites each old desk letter once, leaves hand-written letters alone, and stops if an update changes a letter\'s status', async () => {
+  const { createStoryDesk } = require('./academy-story-desk');
+  const wrap = (h) => `<div class="mem-article mem-letter" data-theme="dark">${h}</div>`;
+  const deskLetter = () => [{ id: 'card1', type: 'custom_code', html: '<div>c</div>', css: '', height: 498 }, { id: 'mod-board', type: 'custom_code', html: wrap('<div class="mem-board"><div><span>PRICE</span><b>$1.00</b></div></div>'), css: '', height: 170 }, { id: 'p1', type: 'paragraph', spans: [{ text: 'x' }] }];
+  const letters = { 3: { id: 3, status: 'publish', blocks: deskLetter() }, 2: { id: 2, status: 'publish', blocks: [{ id: 'p1', type: 'paragraph', spans: [{ text: 'mine' }] }] }, 1: { id: 1, status: 'publish', blocks: deskLetter() } };
+  const updates = []; let flip = false;
+  const publisher = { configured: () => true, feed: async () => [3, 2, 1], readLetter: async (id) => letters[id], updateLetter: async (id, patch) => { updates.push([id, patch.blocks.map((b) => b.id)]); if (flip) letters[id].status = 'draft'; }, getLetter: async (id) => ({ id, status: letters[id].status }) };
+  const logs = [];
+  const desk = createStoryDesk({ publisher, logger: (l, e, f) => logs.push([e, f]) });
+  const r1 = await desk.rebuildOld({ limit: 1 });
+  assert.equal(r1.rebuilt, 1); assert.deepEqual(updates, [[3, ['mod-glance', 'p1']]], 'the first desk letter, in the compact layout'); assert.equal(r1.remaining, 2);
+  const r2 = await desk.rebuildOld({ limit: 5 });
+  assert.equal(r2.rebuilt, 1); assert.equal(r2.skipped, 1, 'the hand-written letter is skipped, and never updated'); assert.deepEqual(updates.map((u) => u[0]), [3, 1]); assert.equal(r2.remaining, 0);
+  const r3 = await desk.rebuildOld({ limit: 5 }); assert.equal(r3.rebuilt, 0); assert.equal(updates.length, 2, 'each letter once');
+  /* a letter whose status changes after the update stops the run */
+  letters[4] = { id: 4, status: 'publish', blocks: deskLetter() }; letters[5] = { id: 5, status: 'publish', blocks: deskLetter() }; flip = true; publisher.feed = async () => [5, 4];
+  const r4 = await desk.rebuildOld({ limit: 5 });
+  assert.equal(r4.halted, 'status_changed'); assert.equal(updates.filter((u) => u[0] === 5 || u[0] === 4).length, 1, 'nothing after the letter that changed');
+  assert.equal((await desk.rebuildOld({ limit: 5 })).skipped, 'halted');
+  /* a response with no blocks halts too, and says what it did get */
+  const desk2 = createStoryDesk({ publisher: { configured: () => true, feed: async () => [9], readLetter: async () => ({ id: 9, title: 't' }), updateLetter: async () => { throw new Error('no'); }, getLetter: async () => ({}) }, logger: (l, e, f) => logs.push([e, f]) });
+  assert.equal((await desk2.rebuildOld()).halted, 'no_blocks'); assert.ok(logs.some((x) => x[0] === 'story_rebuild_no_blocks' && x[1].keys.includes('title')));
+});

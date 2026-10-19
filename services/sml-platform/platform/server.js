@@ -5609,6 +5609,14 @@ async function main() {
       else if (!r) log('info', 'story_desk_skipped', { why: 'busy_or_failed' });
     }).catch((error) => log('warn', 'story_desk_tick_failed', { error }));
     setTimeout(runStoryDesk, 3 * 60_000).unref(); setInterval(runStoryDesk, 30 * 60_000).unref();
+    /* the old letters, rebuilt in the compact layout: two every four minutes until none is left (SML_STORY_REBUILD=off skips it) */
+    if (String(process.env.SML_STORY_REBUILD || 'on').toLowerCase() !== 'off') {
+      const rebuildTimer = setInterval(() => storyDesk.rebuildOld({ limit: 2 }).then((r) => {
+        if (r && (r.rebuilt || r.failed || r.halted)) log('info', 'story_rebuild_run', r);
+        if (r && (r.halted || (r.ok && r.remaining === 0) || r.skipped === 'halted')) clearInterval(rebuildTimer);
+      }).catch((error) => log('warn', 'story_rebuild_run_failed', { error })), 4 * 60_000);
+      rebuildTimer.unref(); setTimeout(() => storyDesk.rebuildOld({ limit: 2 }).catch(() => {}), 90_000).unref();
+    }
     log('info', 'story_desk_enabled', { autopublish: String(process.env.SML_STORY_AUTOPUBLISH || '').toLowerCase() === 'on', llm: String(process.env.SML_STORY_LLM || '').toLowerCase() === 'on', letters: storyPublisher.configured() });
     /* a boot-time test: SML_STORY_TEST_SYMBOLS=NVDA,TSLA writes those names once at startup and logs the whole result */
     const storyTest = String(process.env.SML_STORY_TEST_SYMBOLS || '').split(',').map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(x)).slice(0, 6);
