@@ -2123,6 +2123,8 @@ test('the option-bars route serves one contract\'s candles to members only, with
   assert.match(html, /#intent-layer\{[^}]*background:none/, 'the intent layer must not inherit the opaque canvas gradient that would cover the candles');
   assert.match(html, /window\.smlChartLock = \{/, 'the chart lock (nothing moves or shrinks the live chart) ships with the chart page');
   assert.match(html, /window\.smlLoopKick = \{/, 'LOOP-KICK exposes its panel, grip and badge to the Academy notifications feed');
+  assert.match(html, /window\.smlViz = \{/, 'the chart kit (one look for every graph, bar, meter and pie) ships with the page');
+  assert.ok(html.indexOf('window.smlViz = {') < html.indexOf('paper-donut') && html.indexOf('window.smlViz = {') < html.indexOf('earnings-insight'), 'and loads before the modules that draw with it');
   assert.match(html, /window\.smlAcademyNotify = \{/, 'the Academy notifications feed (followers, wall comments, posts by followed traders, likes) ships inside LOOP-KICK');
   assert.ok(html.indexOf('window.smlLoopKick = {') < html.indexOf('window.__smlSocialNotifyUi'), 'the feed loads after the LOOP-KICK module it attaches to');
   assert.match(html, /LK\.send\('academy-notifications'/, 'the feed hands its items to the phone, which shows them in its own Alerts tab');
