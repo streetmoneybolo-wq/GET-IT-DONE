@@ -367,6 +367,8 @@ function createStoryDesk({
   async function rebuildOld({ limit = 2 } = {}) {
     await load();
     if (!publisher || !publisher.configured() || typeof publisher.readLetter !== 'function' || state.rebuildHalt) return { ok: false, skipped: state.rebuildHalt ? 'halted' : 'unconfigured' };
+    /* version 2: letters rebuilt before the always-dark and unwrap fixes are looked at again (a letter that is already right is skipped) */
+    if (state.rebuildV !== 2) { state.rebuilt = {}; state.rebuildV = 2; }
     if (!state.rebuilt) state.rebuilt = {};
     const done = { rebuilt: 0, skipped: 0, failed: 0 };
     let ids = [];
