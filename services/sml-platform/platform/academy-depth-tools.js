@@ -163,11 +163,14 @@
     let box = document.querySelector('.academy-stats');
     if (!box) { box = document.createElement('div'); box.className = 'academy-stats'; const tape = document.querySelector('.academy-tape'); (tape || panel).after(box); }
     const st = L && L.symbol === sym() ? L.stats : null;
-    if (!st || !st.count) { box.innerHTML = '<h4>TRADE STATISTICS · LIVE</h4><small>Collecting trades. The lift / hit split, VWAP and volume by price fill in as prints arrive.</small>'; return; }
+    /* the full-book read (Level 3) comes with the live view: pressure and its two most useful lines, above the tape statistics */
+    const D = L && L.symbol === sym() ? L.depth : null;
+    const depthBlock = D && D.ready ? '<h4>BOOK READ · ' + esc(D.book.levels.bid + '×' + D.book.levels.ask) + ' LEVELS</h4><div class="kv"><span>Pressure</span><span class="' + (D.pressure.score >= 25 ? 'up' : D.pressure.score <= -25 ? 'dn' : 'nu') + '">' + (D.pressure.score > 0 ? '+' : '') + D.pressure.score + ' · ' + esc(D.pressure.label) + '</span><span>Microprice</span><span>' + (D.book.microTilt > 0 ? '+' : '') + D.book.microTilt + ' ticks</span><span>Weighted imbalance</span><span>' + Math.round(D.book.imbalance.weighted * 100) + '%</span>' + (D.flow.divergence ? '<span>CVD</span><span class="' + (D.flow.divergence === 'bullish' ? 'up' : 'dn') + '">' + esc(D.flow.divergence) + ' divergence</span>' : '') + '</div>' + D.read.lines.slice(2, 4).map((l) => '<small>' + esc(l.text) + '</small>').join('') : '';
+    if (!st || !st.count) { box.innerHTML = depthBlock + '<h4>TRADE STATISTICS · LIVE</h4><small>Collecting trades. The lift / hit split, VWAP and volume by price fill in as prints arrive.</small>'; return; }
     const tot = Math.max(1, st.buy + st.sell + st.neu), pb = st.buy / tot * 100, ps = st.sell / tot * 100, pn = 100 - pb - ps;
     const maxPv = Math.max(...st.pv.map((p) => p.vol), 1);
     const since = new Date(st.since).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    box.innerHTML = '<h4>TRADE STATISTICS · LIVE SINCE ' + esc(since) + '</h4>'
+    box.innerHTML = depthBlock + '<h4>TRADE STATISTICS · LIVE SINCE ' + esc(since) + '</h4>'
       + '<div class="cols"><span class="up">↑ LIFT ' + compact(st.buy) + '</span><span class="nu">◆ ' + compact(st.neu) + '</span><span class="dn">↓ HIT ' + compact(st.sell) + '</span></div>'
       + '<div class="flow"><i style="width:' + pb.toFixed(1) + '%;background:#00d084"></i><i style="width:' + pn.toFixed(1) + '%;background:#6f8794"></i><i style="width:' + ps.toFixed(1) + '%;background:#ff5470"></i></div>'
       + '<div class="kv"><span>Buying vs selling</span><span class="' + (pb >= ps ? 'up' : 'dn') + '">' + pb.toFixed(0) + '% lift · ' + ps.toFixed(0) + '% hit</span>'

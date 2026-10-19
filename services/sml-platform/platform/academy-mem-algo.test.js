@@ -214,7 +214,7 @@ test('every hold signal carries a 0-100 conviction score with a factor breakdown
   assert.ok(a.signals.length >= 1 && a.confluence);
   for (const s of a.signals) {
     assert.ok(s.conf.score >= 0 && s.conf.score <= 100 && 'ABCD'.includes(s.conf.grade));
-    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,earnings,direction,sentiment,darkpool,gamma,institutional,filings');
+    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,depth,earnings,direction,sentiment,darkpool,gamma,institutional,filings');
     const avail = s.conf.factors.filter((f) => f.available), max = avail.reduce((t, f) => t + f.max, 0), got = avail.reduce((t, f) => t + f.pts, 0);
     assert.equal(max, 110, 'original six factors + earnings safety (assumed safe) => 110 points');
     assert.equal(s.conf.score, Math.round((got / max) * 100));
@@ -275,6 +275,29 @@ test('all supplementary data sources contribute to the confluence score when pro
   assert.equal(s.conf.factors.find((f) => f.key === 'direction').pts, 10, 'bias 45 > 30 threshold');
   assert.equal(s.conf.factors.find((f) => f.key === 'sentiment').pts, 10, 'score 0.4 > 0.3 threshold');
   assert.equal(s.conf.factors.find((f) => f.key === 'darkpool').pts, 5, 'accumulation matches bullish');
+});
+
+test('the full-depth reading scores for the trade side, costs a wall in front, flags the exit watch, and the same book is the mirror for a short', () => {
+  const bars = regimes();
+  const depth = { ready: true, pressure: { score: 55, label: 'strong buying pressure' }, flow: { divergence: 'bullish' }, walls: [] };
+  const a = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars, { orderFlow: { ready: true, bias: 'bullish', score: 40, depth } }));
+  const f = a.signals[0].conf.factors.find((x) => x.key === 'depth');
+  assert.equal(f.available, true); assert.equal(f.pts, 10, 'pressure with the long + the dip being bought = full marks'); assert.match(f.detail, /dip is being bought/);
+  assert.equal(a.confluence.depth, true);
+  const bearish = { ready: true, pressure: { score: -55, label: 'strong selling pressure' }, flow: { divergence: 'bearish' }, walls: [] };
+  const b = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars, { depth: bearish }));
+  assert.equal(b.signals[0].conf.factors.find((x) => x.key === 'depth').pts, 0, 'everything against the long = nothing');
+  assert.ok(b.confluence.exitWatch.flags.some((x) => /full-depth book and tape are against/.test(x)) && b.confluence.exitWatch.flags.some((x) => /lift is being sold into/.test(x)));
+  const sh = algo.analyze(bars, 'short', { minScore: 0 }, '1D', fullCtx(bars, { depth: bearish }));
+  const sf = sh.signals.length ? sh.signals[0].conf.factors.find((x) => x.key === 'depth') : null;
+  if (sf) assert.equal(sf.pts, 10, 'the bearish book is full marks for a short');
+  // a wall right in front costs two points: price near the signal candle's close
+  const close = bars[bars.length - 1].c;
+  const walled = { ready: true, pressure: { score: 55, label: 'strong buying pressure' }, flow: { divergence: null }, walls: [{ kind: 'ask', price: close * 1.0005, size: 9000 }] };
+  const w = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars, { depth: walled }));
+  const last = w.signals[w.signals.length - 1];
+  const wf = last.conf.factors.find((x) => x.key === 'depth');
+  assert.ok(wf.pts <= 7, 'the wall in front costs points: ' + wf.pts + ' ' + wf.detail);
 });
 
 test('a higher timeframe that rolls over while price is below the slow EMA exits the trade', () => {

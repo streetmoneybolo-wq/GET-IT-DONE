@@ -230,6 +230,8 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const accDist = (i) => { let up = 0, dn = 0; for (let k = Math.max(1, i - 19); k <= i; k++) { if (close[k] >= close[k - 1]) up += vol[k]; else dn += vol[k]; } return up + dn > 0 ? up / (up + dn) : null; };
   const sigVotes = ctx.signals || null;
   const ofData = ctx.orderFlow && ctx.orderFlow.ready ? ctx.orderFlow : null;
+  /* the full-depth reading (academy-depth-insights.js): passed on its own or riding on the order-flow answer */
+  const deepData = ctx.depth && ctx.depth.ready ? ctx.depth : (ctx.orderFlow && ctx.orderFlow.depth && ctx.orderFlow.depth.ready ? ctx.orderFlow.depth : null);
   const earnData = ctx.earnings || null;
   const dirData = ctx.direction && ctx.direction.ok ? ctx.direction : null;
   const sentData = ctx.sentiment && ctx.sentiment.ok ? ctx.sentiment : null;
@@ -296,6 +298,18 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       const strong = Math.abs(sc) > 30;
       const withFlow = d > 0 ? (bias === 'bullish' && sc > 10) : (bias === 'bearish' && sc < -10);
       add('orderflow', 'Order flow', 10, withFlow ? (strong ? 10 : 5) : 0, bias + ' (score ' + sc + ')' + (strong ? ' — strong' : ''));
+    }
+    /* full-depth book and tape: pressure for the trade's side, a CVD divergence for or against it, and a wall right in front of it */
+    if (!deepData) add('depth', 'Full-depth book & tape', 10, 0, 'full order book not available', false);
+    else {
+      const sc = Number(deepData.pressure && deepData.pressure.score) || 0, ps = sc * d;
+      let pts = ps >= 40 ? 7 : ps >= 20 ? 5 : ps > -20 ? 3 : 0; const notes = [(deepData.pressure && deepData.pressure.label) || 'balanced', '(' + (sc > 0 ? '+' : '') + sc + ')'];
+      const div = deepData.flow && deepData.flow.divergence;
+      if (div) { const withDiv = d > 0 ? div === 'bullish' : div === 'bearish'; pts += withDiv ? 3 : -3; notes.push(withDiv ? (d > 0 ? 'the dip is being bought' : 'the lift is being sold into') : (d > 0 ? 'the lift is being sold into' : 'the dip is being bought')); }
+      const a = ind.atr[i] > 0 ? ind.atr[i] : bars[i].c * 0.005, c0 = bars[i].c;
+      const front = (deepData.walls || []).find((w) => (d > 0 ? w.kind === 'ask' && w.price > c0 && w.price - c0 <= 0.5 * a : w.kind === 'bid' && w.price < c0 && c0 - w.price <= 0.5 * a));
+      if (front) { pts -= 2; notes.push((d > 0 ? 'ask' : 'bid') + ' wall ' + Math.round(front.size).toLocaleString() + ' right in front'); }
+      add('depth', 'Full-depth book & tape', 10, Math.max(0, Math.min(10, pts)), notes.join(' '));
     }
     if (!earnData) add('earnings', 'Earnings safety', 10, 10, 'no earnings data — assumed safe', true);
     else {
@@ -381,10 +395,16 @@ function buildConfluence(bars, p, ind, tf, ctx) {
     const rsWin = rs.slice(Math.max(0, i - 30), i).filter(Number.isFinite);
     if (Number.isFinite(rs[i]) && (ld > 0 ? rs[i] < 45 && Math.max(...rsWin) > 60 : rs[i] > 55 && Math.min(...rsWin) < 40)) flags.push(ld > 0 ? 'Momentum is fading (RSI fell from above 60 to below 45)' : 'Momentum is turning up (RSI rose from below 40 to above 55)');
     const ad = accDist(i); if (ad != null && (ld > 0 ? ad < 0.4 : ad > 0.6)) flags.push('Volume is leaning to the ' + (ld > 0 ? 'sell' : 'buy') + ' side (' + Math.round(ad * 100) + '% of recent volume on up candles)');
+    if (deepData) {
+      const sc = Number(deepData.pressure && deepData.pressure.score) || 0;
+      if (sc * ld <= -40) flags.push('The full-depth book and tape are against the position (pressure ' + (sc > 0 ? '+' : '') + sc + ')');
+      const div = deepData.flow && deepData.flow.divergence;
+      if (div && (ld > 0 ? div === 'bearish' : div === 'bullish')) flags.push(ld > 0 ? 'CVD divergence: the lift is being sold into' : 'CVD divergence: the dip is being bought');
+    }
     if (patternsFn) { try { const fk = 'full:' + bars[0].t + ':' + bars[i].t + ':' + bars[i].c; let r = ctx.patternCache ? ctx.patternCache.get(fk) : undefined; if (r === undefined) { r = patternsFn(bars); if (ctx.patternCache) ctx.patternCache.set(fk, r); } const against = r && r.ok ? (r.charts || []).filter((c) => c.status === 'confirmed' && c.dir === (ld > 0 ? 'bear' : 'bull') && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 30) : []; if (against.length) flags.push((ld > 0 ? 'Bearish ' : 'Bullish ') + against[0].name.replace(/_/g, ' ') + ' confirmed'); } catch (_) { /* scanner optional */ } }
     exitWatch = { flags, level: flags.length >= 3 ? 'exit' : flags.length >= 1 ? 'caution' : 'clear', dir: ld };
   }
-  return { rawSig, keptSig, xsig, byIndex, exitWatch, htfAvailable: htf.length > 0, benchAvailable: bench.length > 0 || !!ctx.benchSelf };
+  return { rawSig, keptSig, xsig, byIndex, exitWatch, htfAvailable: htf.length > 0, benchAvailable: bench.length > 0 || !!ctx.benchSelf, depthAvailable: Boolean(deepData) };
 }
 
 function emptyStats() { return { trades: 0, wins: 0, losses: 0, winRate: null, avgWinR: null, avgLossR: null, expectancyR: null, profitFactor: null, totalR: 0, returnPct: 0, maxDrawdownPct: 0, avgBars: null, longs: 0, shorts: 0, compoundPct: null, avgTradePct: null }; }
@@ -516,7 +536,7 @@ function analyze(rawBars, mode = 'day', overrides = {}, tf = '', ctx = {}) {
     confluence: conf ? (() => {
       const bucket = (g) => summarize((allTrades || []).filter((t) => t.score != null && gradeOf(t.score) === g));
       const skipped = [...conf.byIndex.entries()].filter(([, c]) => c.score < params.minScore).map(([i, c]) => ({ i, t: bars[i].t, score: c.score, grade: c.grade }));
-      return { minScore: params.minScore, all: summarize(allTrades || []), kept: summarize(trades), buckets: { A: bucket('A'), B: bucket('B'), C: bucket('C'), D: bucket('D') }, skipped, exitWatch: conf.exitWatch, htf: conf.htfAvailable, bench: conf.benchAvailable };
+      return { minScore: params.minScore, all: summarize(allTrades || []), kept: summarize(trades), buckets: { A: bucket('A'), B: bucket('B'), C: bucket('C'), D: bucket('D') }, skipped, exitWatch: conf.exitWatch, htf: conf.htfAvailable, bench: conf.benchAvailable, depth: conf.depthAvailable };
     })() : null
   };
 }

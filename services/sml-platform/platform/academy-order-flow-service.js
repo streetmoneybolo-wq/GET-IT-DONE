@@ -1,8 +1,12 @@
 'use strict';
 
 const { createOrderFlow } = require('./academy-order-flow');
+const { depthInsights } = require('./academy-depth-insights');
 
 const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
+/* the full book (moomoo's ceiling for US stocks is 60 levels a side) is kept for the depth insights: the last two dozen snapshots and the
+   last fifteen minutes of prints a symbol, a few hundred kilobytes for the eight symbols at most */
+const DEEP_SNAPSHOTS = 24, PRINTS_MAX = 2000, PRINTS_MS = 15 * 60_000, INSIGHTS_MEMO_MS = 2000;
 
 /*
  * Keeps a rolling Level 2 history per symbol on the server, so a member who opens the Activity late still sees the last ten minutes of order flow,
@@ -10,7 +14,7 @@ const SYMBOL = /^[A-Z0-9.:-]{1,10}$/;
  * WordPress sees a steady trickle instead of a burst. Symbols nobody looks at for two minutes are dropped; SPY and QQQ stay warm.
  * Every event is stored with its price so a job can record the 5-minute outcome, which is how the signals get measured before anyone leans on them.
  */
-function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timeoutMs = 15000, timers = { setTimeout, clearTimeout } } = {}) {
+function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logger = () => {}, now = Date.now, pollMs = 2500, idleMs = 120000, closedPollMs = 30000, alwaysOn = ['SPY', 'QQQ'], maxSymbols = 8, outcomeMs = 300000, fastPollMs = 1000, fastWindowMs = 15000, timeoutMs = 15000, depthLevels = 60, timers = { setTimeout, clearTimeout } } = {}) {
   const engines = new Map();   // symbol -> { flow, lastTouch, nextAt, failures, closed, lastError, lastOk }
   const pending = [];          // { id, symbol, price0, side, dueAt }
   let running = false, timer = null, warnedAt = 0;
@@ -26,7 +30,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
         if (!victim) throw new TypeError('too_many_symbols');
         engines.delete(victim[0]);
       }
-      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0 };
+      e = { flow: createOrderFlow(), lastTouch: now(), nextAt: 0, failures: 0, closed: false, lastError: '', lastOk: 0, lastPush: 0, latest: null, tape: [], seen: new Set(), seq: 0, deep: [], prints: [], insights: null, insightsAt: 0 };
       engines.set(symbol, e);
     }
     e.lastTouch = now();
@@ -34,7 +38,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
   }
 
   async function fetchOne(symbol) {
-    const url = `${origin}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(symbol)}&depth=10&ticks=40`;
+    const url = `${origin}/wp-json/sml-scanner/v1/market-v2?symbol=${encodeURIComponent(symbol)}&depth=${depthLevels}&ticks=40`;
     const res = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'StockMarketLoop-Academy-Activity/1.0' }, signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) throw new Error(`orderflow_${res.status}`);
     const j = await res.json();
@@ -84,11 +88,26 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
       if (!id || e.seen.has(id)) continue;
       const price = Number(k.price), size = Number(k.size), t = Number(k.timestamp_ms);
       if (!Number.isFinite(price) || !Number.isFinite(size) || !Number.isFinite(t)) continue;
-      e.seen.add(id); e.tape.push({ t, price, size, dir: String(k.direction || '').toUpperCase() === 'BUY' ? 'B' : String(k.direction || '').toUpperCase() === 'SELL' ? 'S' : 'N' });
+      const row = { t, price, size, dir: String(k.direction || '').toUpperCase() === 'BUY' ? 'B' : String(k.direction || '').toUpperCase() === 'SELL' ? 'S' : 'N' };
+      e.seen.add(id); e.tape.push(row); e.prints.push(row);
     }
     if (e.seen.size > 600) e.seen = new Set([...e.seen].slice(-300));
     e.tape.sort((a, b) => a.t - b.t);
     if (e.tape.length > 60) e.tape = e.tape.slice(-60);
+    /* the full book and the longer tape feed the depth insights (academy-depth-insights.js) */
+    e.deep.push({ t: data.t, bids: data.bids, asks: data.asks }); if (e.deep.length > DEEP_SNAPSHOTS) e.deep.shift();
+    const cutoff = now() - PRINTS_MS;
+    if (e.prints.length > PRINTS_MAX || (e.prints.length && e.prints[0].t < cutoff)) { e.prints.sort((a, b) => a.t - b.t); e.prints = e.prints.filter((p) => p.t >= cutoff).slice(-PRINTS_MAX); }
+    e.insights = null;
+  }
+
+  /** The depth reading for a tracked symbol, computed at most every two seconds. */
+  function insightsFor(e) {
+    if (!e || !e.deep.length) return { ready: false, reason: e && e.closed ? 'closed' : 'warming' };
+    if (e.insights && now() - e.insightsAt < INSIGHTS_MEMO_MS) return e.insights;
+    try { e.insights = depthInsights({ snaps: e.deep, prints: e.prints, now: now() }); } catch (error) { e.insights = { ready: false, reason: 'error', detail: String(error && error.message || error).slice(0, 120) }; }
+    e.insightsAt = now();
+    return e.insights;
   }
 
   async function settleOutcomes() {
@@ -133,7 +152,14 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     const e = touch(symbol);
     const a = e.flow.analyze(now());
     const grades = a.ready ? { long: e.flow.grade(1, now()), short: e.flow.grade(-1, now()) } : null;
-    return { symbol, ...a, grades, closed: e.closed, failing: e.failures >= 3, error: e.failures >= 3 ? e.lastError : '', servedAt: now() };
+    return { symbol, ...a, grades, depth: insightsFor(e), closed: e.closed, failing: e.failures >= 3, error: e.failures >= 3 ? e.lastError : '', servedAt: now() };
+  }
+
+  /** The depth reading alone (what MEM ALGO's confluence and the chart panels read). */
+  function insights(symbolRaw) {
+    const symbol = String(symbolRaw || '').toUpperCase();
+    const e = engines.get(symbol);
+    return e ? insightsFor(e) : { ready: false, reason: 'not_tracked' };
   }
 
   /** Fast path for the live view: newest book levels + individual prints, straight from memory. */
@@ -143,7 +169,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     const d = e.latest;
     if (!d) return { symbol, ready: false, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
     const tape = e.tape.slice(-30).reverse();
-    return { symbol, ready: true, asOf: d.t, seq: e.seq, book: { bids: d.bids.slice(0, 10), asks: d.asks.slice(0, 10) }, tape, last: tape.length ? tape[0].price : null, closed: e.closed, failing: e.failures >= 3, servedAt: now() };
+    return { symbol, ready: true, asOf: d.t, seq: e.seq, book: { bids: d.bids.slice(0, 10), asks: d.asks.slice(0, 10) }, tape, last: tape.length ? tape[0].price : null, depth: insightsFor(e), closed: e.closed, failing: e.failures >= 3, servedAt: now() };
   }
 
   /** Order flow for a symbol that is already being tracked (a member has it on the chart); never starts tracking a new one. */
@@ -155,7 +181,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return a && a.ready ? { ready: true, bias: a.bias, score: a.score } : null;
   }
 
-  return { start, stop, touch, get, live, peek, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
+  return { start, stop, touch, get, live, peek, insights, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
 }
 
 module.exports = { createOrderFlowService };

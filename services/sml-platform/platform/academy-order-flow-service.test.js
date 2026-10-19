@@ -108,6 +108,23 @@ test('live view: fast polling for a watched symbol, de-duplicated prints, model 
   h.svc.stop();
 });
 
+test('the full book is asked for (60 levels) and the depth reading rides along with the order flow and the live view', async () => {
+  const urls = [];
+  const h = harness({ fetchImpl: async (url) => { urls.push(url); return { ok: true, json: async () => bookJson(h.now(), { ticks: [{ id: 'p' + urls.length, timestamp_ms: h.now() - 100, price: 100.01, size: 300, direction: 'BUY' }] }) }; } });
+  h.svc.start(); h.svc.get('SPY');
+  assert.equal(h.svc.get('SPY').depth.ready, false, 'nothing to read before the first book');
+  for (let i = 0; i < 5; i++) { h.advance(2600); await h.svc.tick(); }
+  assert.ok(urls.length >= 5 && urls.every((u) => /depth=60&ticks=40/.test(u)), 'every poll asks for the full book');
+  const r = h.svc.get('SPY');
+  assert.equal(r.depth.ready, true);
+  assert.ok(Number.isFinite(r.depth.pressure.score) && r.depth.book.spreadTicks >= 1 && Array.isArray(r.depth.read.lines));
+  assert.ok(r.depth.flow.delta300.buy > 0, 'the prints feed the tape read');
+  assert.equal(h.svc.live('SPY').depth.ready, true, 'the live view carries the same reading');
+  assert.equal(h.svc.insights('SPY'), r.depth, 'memoised between polls');
+  assert.equal(h.svc.insights('NOPE').ready, false);
+  h.svc.stop();
+});
+
 test('a slow origin is polled less often: the next poll waits at least 1.5x the last answer time', async () => {
   const h = harness(); h.svc.start();
   h.setResponder(() => { h.advance(9000); return { ok: true, json: async () => bookJson(h.now(), { ticks: [] }) }; });

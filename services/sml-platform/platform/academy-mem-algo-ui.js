@@ -367,7 +367,7 @@
     rules.push('<li>Fast EMA(' + p.fast + ') crossing the slow EMA(' + p.slow + ') starts a setup. It must stay crossed for ' + p.confirm + ' closed candle' + (p.confirm > 1 ? 's' : '') + ' — the signal fires on the last of them, never on the cross candle.</li>');
     rules.push(st.dirs === 'long' ? '<li>Long only, and only above the trend EMA(' + p.trend + '). Bearish crosses are never traded — they are the exit.</li>' : st.dirs === 'short' ? '<li>Short only, and only below the trend EMA(' + p.trend + '). Bullish crosses are never traded — they are the exit (cover).</li>' : '<li>Longs only above the trend EMA, shorts only below it.</li>');
     rules.push('<li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.' + (p.maxSep ? ' It must also be no more than ' + p.maxSep + '× ATR away, so it does not chase a move that is already stretched.' : '') + '</li>');
-    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, chart structure, the 11-model signals ensemble, Level 2 order flow, earnings proximity, market direction, sentiment, dark pool lean, gamma pressure, institutional flow and insider filings — each read for the trade’s side (a SELL wants the mirror image of a BUY). Signals scoring under ' + (p.minScore || (S.mode === 'day' || S.mode === 'swing' || S.mode === 'short' ? 45 : 0)) + ' are skipped. The exit also triggers if the higher timeframe rolls over against the trade while price is through the slow EMA.</li>');
+    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, chart structure, the 11-model signals ensemble, Level 2 order flow, the full-depth book and tape (Level 3: weighted imbalance, microprice, aggressor delta, CVD divergence, large prints, replenishment, walls), earnings proximity, market direction, sentiment, dark pool lean, gamma pressure, institutional flow and insider filings — each read for the trade’s side (a SELL wants the mirror image of a BUY). Signals scoring under ' + (p.minScore || (S.mode === 'day' || S.mode === 'swing' || S.mode === 'short' ? 45 : 0)) + ' are skipped. The exit also triggers if the higher timeframe rolls over against the trade while price is through the slow EMA.</li>');
     rules.push(p.trail ? '<li>Starting stop ' + p.stopAtr + '× ATR from the entry, then a trailing stop ' + p.trail + '× ATR behind the best price (it only moves in your favour). No fixed target: the trade is held until the stop is hit or the crossover turns against it.</li>' : '<li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>');
     if (p.session) rules.push('<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>');
     if (st.dirs === 'short') rules.push('<li>A short can lose more than 100% of what you put in, pays borrow fees, and can be forced closed in a squeeze. The backtest cannot model those — treat its results as optimistic.</li>');
@@ -409,6 +409,7 @@
         + '<div>' + o.book.bids.map((x) => '<div class="b"><i style="width:' + Math.round(x.size / maxSz * 100) + '%"></i><span>' + x.price.toFixed(2) + '</span><span>' + x.size.toLocaleString() + '</span></div>').join('') + '</div>'
         + '<div>' + o.book.asks.map((x) => '<div class="a"><i style="width:' + Math.round(x.size / maxSz * 100) + '%"></i><span>' + x.price.toFixed(2) + '</span><span>' + x.size.toLocaleString() + '</span></div>').join('') + '</div></div>';
       if ((o.events || []).length) h += '<div style="margin-top:8px">' + o.events.slice(0, 5).map((e) => '<div class="mem-ev"><u class="' + e.side + '"></u>' + esc(new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })) + ' · ' + esc(e.note) + '</div>').join('') + '</div>';
+      h += depthHtml(o.depth);
       h += '<p class="mem-blurb">Level 2 is a reading of what buyers and sellers are doing, not a prediction. Every signal is being recorded with what price did next, so it can be measured before anyone relies on it.</p>';
     }
     if (h !== S.lastOfHtml) {
@@ -420,6 +421,32 @@
     }
     const g = panel.querySelector('#mem-grade');
     if (g) { const dir = Number(g.dataset.dir), gr = o && o.grades ? (dir > 0 ? o.grades.long : o.grades.short) : null; g.innerHTML = gr ? 'Level 2 vs this ' + (dir > 0 ? 'BUY' : 'SELL') + ': <b class="' + gr.grade + '">' + gradeText[gr.grade] + '</b> <span class="mem-blurb">' + esc(gr.reason) + '</span>' : ''; }
+  }
+  /* ---- Level 3: the full book (up to 60 levels with the orders behind each) and the tape, read by academy-depth-insights.js ----
+     Pressure with its components, the walls and air pockets, then the hold / add / trim / exit read for the mode that is open and the
+     direction of its open or latest signal, and the options timing for that side. */
+  const VERDICT = { hold: ['flat', 'HOLD'], add: ['bull', 'ADD'], trim: ['bear', 'TRIM'], exit: ['bear', 'EXIT'], wait: ['flat', 'WAIT'], none: ['flat', 'NO READ'] };
+  function depthHtml(D) {
+    if (!D) return '';
+    if (!D.ready) return '<div class="mem-of-row"><b>Level 3 · full book &amp; tape</b> · <span class="mem-blurb">' + esc(D.reason === 'closed' ? 'no book while the market is closed' : D.reason === 'warming' || D.reason === 'not_tracked' ? 'collecting the full book…' : 'not readable right now (' + (D.reason || '') + ')') + '</span></div>';
+    const P = D.pressure, pcls = P.score >= 25 ? 'bull' : P.score <= -25 ? 'bear' : 'flat';
+    let h = '<div class="mem-of-row"><b>Level 3 · full book &amp; tape</b> · <span class="mem-of-chip ' + pcls + '">' + esc(P.label.toUpperCase()) + '</span> <span class="mem-blurb">' + (P.score > 0 ? '+' : '') + P.score + ' (−100 to +100) · ' + D.book.levels.bid + '×' + D.book.levels.ask + ' levels</span>' + bar(P.score);
+    h += P.components.map((c) => '<div class="mem-ev"><u class="' + (c.pts >= 0 ? 'bull' : 'bear') + '"></u>' + esc(c.label) + ' <b>' + (c.pts > 0 ? '+' : '') + c.pts + '</b> · ' + esc(c.detail) + '</div>').join('');
+    h += D.read.lines.slice(1).map((l) => '<div class="mem-ev" style="color:' + (l.tone === 'up' ? '#9ff0cf' : l.tone === 'down' ? '#ffb3c0' : l.tone === 'warn' ? '#ffd166' : '#9fb3be') + '">' + esc(l.text) + '</div>').join('');
+    h += '</div>';
+    const DI = window.SmlDepthInsights, d = S.data;
+    const dirNow = d ? (d.open ? d.open.dir : (d.latest && d.bars - 1 - d.latest.i <= 30 ? d.latest.dir : 0)) : 0;
+    if (DI && d && dirNow) {
+      const atr = d.ind && d.ind.atr ? d.ind.atr[d.bars - 1] : null;
+      const hr = DI.holdRead(S.mode, dirNow, D, { price: D.book.mid, atr });
+      const v = VERDICT[hr.verdict] || VERDICT.none, what = d.open ? 'the open ' + (dirNow > 0 ? 'LONG' : 'SHORT') : 'the last ' + (dirNow > 0 ? 'BUY' : 'SELL') + ' signal';
+      h += '<div class="mem-conv' + (hr.verdict === 'exit' || hr.verdict === 'trim' ? ' warnbox' : '') + '"><b>Book says · <span class="mem-of-chip ' + v[0] + '">' + v[1] + '</span> ' + esc((E.STRATEGIES[S.mode] || {}).label || S.mode) + ' · ' + esc(what) + '</b>'
+        + (hr.reasons.length ? '<ul>' + hr.reasons.map((r) => '<li class="' + (r.tone === 'for' ? 'ok' : 'no') + '"><span>' + (r.tone === 'for' ? '✓' : '✗') + '</span> ' + esc(r.text) + '</li>').join('') + '</ul>' : '<br><small>Nothing in the book or the tape argues with the position right now.</small>')
+        + '<small>' + esc(hr.note) + '</small></div>';
+      const op = DI.optionsRead(D, dirNow);
+      h += '<div class="mem-conv"><b>Options timing · ' + (dirNow > 0 ? 'calls' : 'puts') + ' · <span class="mem-of-chip ' + (op.timing === 'good' ? 'bull' : op.timing === 'poor' ? 'bear' : 'flat') + '">' + esc(op.timing.toUpperCase()) + '</span></b><ul>' + op.why.map((w) => '<li class="na"><span>·</span> ' + esc(w) + '</li>').join('') + '</ul><small>Timing on the underlying\'s book only: strike, expiry and the Greeks are in Hedge &amp; income ideas.</small></div>';
+    }
+    return h;
   }
   async function pollOF() {
     if (!S.on || S.ofBusy || (document.hidden && S.of)) return;
