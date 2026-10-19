@@ -13,10 +13,12 @@
   /* The dock takes about a third of the chart section (260 to 340 px) and only when the plot keeps at least 360 px; otherwise
      (phones, a narrow Activity with S.I.R.E. open) the panels float as before. */
   const SIRE_W = 332, MIN_PLOT = 360;
+  /* CHART LOCK (academy-chart-lock.js): under the strict rule nothing may shrink the plot, so there is never room to dock */
+  const locked = () => !!(window.smlChartLock && typeof window.smlChartLock.on === 'function' && window.smlChartLock.on());
   const room = () => {
     const avail = (chart.clientWidth || innerWidth) - (document.body.classList.contains('sire-open') ? SIRE_W : 0);
     const dockW = Math.min(340, Math.max(260, Math.round(avail * 0.36)));
-    return { dockW, ok: innerWidth >= 900 && avail - dockW >= MIN_PLOT };
+    return { dockW, ok: !locked() && innerWidth >= 900 && avail - dockW >= MIN_PLOT };
   };
   const narrow = () => !room().ok;
   const CLEAN_KEY = 'sml-chart-clean';
