@@ -72,7 +72,25 @@ test('two phases: the quick fuel read screens the whole universe, the top names 
   const again = svc.list({ touch: false });
   assert.equal(again.building, true, 'stale: a new sweep starts and the old rows are still served'); assert.equal(again.rows.length, 11);
   await until(() => !svc.state.building);
-  assert.equal(quickSeen.length, 80, 'the whole universe is pre-screened again');
+  assert.equal(quickSeen.length, 40, 'the pre-screen results are remembered for hours: no new quick reads'); assert.equal(svc.state.quickCached, 40);
+});
+
+test('the quick memo: pre-screen results are kept for hours and survive a restart through the quick store', async () => {
+  let clock = 1_800_000_000_000;
+  const universe = Array.from({ length: 6 }, (_, i) => ({ symbol: 'M' + i, volume: 1e6 }));
+  const saved = { items: { M0: { at: clock - 3_600_000, v: { ok: true, available: true, fuel: 90, coverRatio: 1 } }, M1: { at: clock - 7 * 3_600_000, v: { ok: true, available: true, fuel: 95 } } }, at: clock - 3_600_000 };
+  const quickStore = { read: async () => saved, writes: [], write: async (v) => { quickStore.writes.push(v); } };
+  const quickSeen = [];
+  const svc = createSqueezeList({ universe: async () => universe, quickStore, maxSymbols: 10, now: () => clock, logger: () => {},
+    quick: async (s) => { quickSeen.push(s); return { ok: true, available: true, fuel: 50 }; }, insight: async (s) => fake(s, 60) });
+  const until = async (fn) => { for (let i = 0; i < 1000 && !fn(); i++) await new Promise((r) => setTimeout(r, 10)); };
+  svc.list(); await until(() => !svc.state.building);
+  assert.deepEqual(quickSeen.sort(), ['M1', 'M2', 'M3', 'M4', 'M5'], 'M0 came from the store (an hour old); M1 was too old (7 hours)');
+  assert.equal(svc.state.quickCached, 1);
+  await until(() => quickStore.writes.length > 0);
+  const w = quickStore.writes[0]; assert.ok(w.items.M0 && w.items.M2, 'the memo is written back'); assert.equal(w.items.M1.at, clock, 'M1 was re-read');
+  clock += 11 * 60_000; svc.list(); await until(() => !svc.state.building);
+  assert.equal(quickSeen.length, 5, 'the second sweep needed no quick reads at all'); assert.equal(svc.state.quickCached, 6);
 });
 
 test('an empty or broken universe is reported, not thrown; a slow symbol is skipped', async () => {

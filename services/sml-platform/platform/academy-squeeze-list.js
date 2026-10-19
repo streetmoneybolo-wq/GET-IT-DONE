@@ -18,10 +18,28 @@ const num = (v, d = null) => { if (v == null || v === '') return d; const n = Nu
 /* a row's float when the scanner knows it (site rows carry the hub's float; Massive-only rows do not) */
 const floatOf = (row) => (row ? (num(row.sharesFloat) > 0 ? num(row.sharesFloat) : num(row.sharesOutstanding) > 0 ? num(row.sharesOutstanding) : null) : null);
 
-function createSqueezeList({ insight, quick = null, universe, store = null, now = Date.now, logger = () => {}, ttlMs = 10 * 60_000, concurrency = 3, quickConcurrency = 8, maxSymbols = 80, limit = 20, perSymbolMs = 20_000, quickMs = 8_000, lowFloatMax = 50e6, lowFloatExtra = 30, keepWarmMs = 60 * 60_000 } = {}) {
+function createSqueezeList({ insight, quick = null, universe, store = null, quickStore = null, quickTtlMs = 6 * 3_600_000, now = Date.now, logger = () => {}, ttlMs = 10 * 60_000, concurrency = 3, quickConcurrency = 8, maxSymbols = 80, limit = 20, perSymbolMs = 20_000, quickMs = 8_000, lowFloatMax = 50e6, lowFloatExtra = 30, keepWarmMs = 60 * 60_000 } = {}) {
   if (typeof insight !== 'function') throw new TypeError('insight_required');
-  const state = { at: 0, startedAt: 0, rows: [], done: 0, total: 0, building: false, error: '', lowFloat: 0, phase: '', quickDone: 0, quickTotal: 0, fromStore: false, lastMs: 0 };
+  const state = { at: 0, startedAt: 0, rows: [], done: 0, total: 0, building: false, error: '', lowFloat: 0, phase: '', quickDone: 0, quickTotal: 0, quickCached: 0, fromStore: false, lastMs: 0 };
   let run = null, lastLookAt = 0, warmTimer = null, restored = null;
+  /* the quick reads are kept (in memory, and in the quick store across restarts) for quickTtlMs: the short feed settles twice a
+     month and the float barely moves, so a name screened an hour ago needs no new site call */
+  let quickMemo = null;
+  async function loadQuickMemo() {
+    if (quickMemo) return quickMemo;
+    quickMemo = new Map();
+    if (quickStore && typeof quickStore.read === 'function') {
+      try { const v = await quickStore.read(); const items = v && v.items && typeof v.items === 'object' ? v.items : {}; for (const [k, e] of Object.entries(items)) if (e && num(e.at) > 0 && now() - num(e.at) < quickTtlMs) quickMemo.set(k, { at: num(e.at), v: e.v }); }
+      catch (error) { logger('warn', 'squeeze_quick_store_read_failed', { error: String(error && error.message || error) }); }
+    }
+    return quickMemo;
+  }
+  async function saveQuickMemo() {
+    if (!quickStore || typeof quickStore.write !== 'function' || !quickMemo) return;
+    const items = {}; const fresh = [...quickMemo.entries()].filter(([, e]) => now() - e.at < quickTtlMs).sort((a, b) => b[1].at - a[1].at).slice(0, 1500);
+    for (const [k, e] of fresh) items[k] = { at: e.at, v: e.v };
+    try { await quickStore.write({ items, at: now() }); } catch (error) { logger('warn', 'squeeze_quick_store_write_failed', { error: String(error && error.message || error) }); }
+  }
 
   function rowOf(symbol, meta, r) {
     const sq = r.squeeze || {}, pr = r.pressing || {}, it = r.interest || {}, svp = r.shortVsPrice || {}, px = r.price || {}, v = r.verdict && r.verdict.long ? r.verdict.long : {};
@@ -68,19 +86,25 @@ function createSqueezeList({ insight, quick = null, universe, store = null, now 
     }
     let symbols = [...metas.keys()];
     state.building = true; state.startedAt = t; state.lowFloat = lowFloat; state.error = symbols.length ? '' : 'no_universe';
-    state.phase = quick ? 'quick' : 'full'; state.quickTotal = quick ? symbols.length : 0; state.quickDone = 0; state.total = quick ? 0 : symbols.length; state.done = 0;
+    state.phase = quick ? 'quick' : 'full'; state.quickTotal = quick ? symbols.length : 0; state.quickDone = 0; state.quickCached = 0; state.total = quick ? 0 : symbols.length; state.done = 0;
     if (quick && symbols.length) {
-      const scored = [];
+      const scored = [], memo = await loadQuickMemo();
       await pool(symbols, quickConcurrency, async (s) => {
-        try { const q = await within(quick(s), quickMs); if (q && q.ok && q.available && q.fuel != null) scored.push({ s, fuel: q.fuel, cover: num(q.coverRatio, 0), lane: metas.get(s).__lane || 'active' }); }
-        catch (error) { logger('warn', 'squeeze_list_quick_failed', { symbol: s, error: String(error && error.message || error) }); }
+        try {
+          const had = memo.get(s);
+          let q = had && now() - had.at < quickTtlMs ? had.v : null;
+          if (q) state.quickCached += 1;
+          else { q = await within(quick(s), quickMs); if (q && q.ok) memo.set(s, { at: now(), v: q }); }
+          if (q && q.ok && q.available && q.fuel != null) scored.push({ s, fuel: q.fuel, cover: num(q.coverRatio, 0), lane: metas.get(s).__lane || 'active' });
+        } catch (error) { logger('warn', 'squeeze_list_quick_failed', { symbol: s, error: String(error && error.message || error) }); }
         state.quickDone += 1;
       });
+      void saveQuickMemo();
       scored.sort((a, b) => (b.fuel - a.fuel) || (b.cover - a.cover));
       const keep = new Set(scored.slice(0, maxSymbols).map((x) => x.s));
       for (const x of scored) if (x.lane === 'low-float' && x.fuel >= 35) keep.add(x.s); // a small float with real fuel is always worth the full read
       symbols = scored.filter((x) => keep.has(x.s)).map((x) => x.s);
-      logger('info', 'squeeze_list_quick', { screened: state.quickTotal, withFuel: scored.length, fullReads: symbols.length, ms: now() - t });
+      logger('info', 'squeeze_list_quick', { screened: state.quickTotal, cached: state.quickCached, withFuel: scored.length, fullReads: symbols.length, ms: now() - t });
     }
     state.phase = 'full'; state.total = symbols.length; state.done = 0;
     const found = [];
@@ -129,7 +153,7 @@ function createSqueezeList({ insight, quick = null, universe, store = null, now 
     void restore();
     const stale = !state.at || now() - state.at > ttlMs || state.fromStore;
     if ((stale || refresh) && !run) start(); else if (touch) arm();
-    return { ok: true, rows: state.rows, building: state.building, phase: state.phase, done: state.done, total: state.total, quickDone: state.quickDone, quickTotal: state.quickTotal, lowFloat: state.lowFloat, fromStore: state.fromStore, lastMs: state.lastMs, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
+    return { ok: true, rows: state.rows, building: state.building, phase: state.phase, done: state.done, total: state.total, quickDone: state.quickDone, quickTotal: state.quickTotal, quickCached: state.quickCached, lowFloat: state.lowFloat, fromStore: state.fromStore, lastMs: state.lastMs, asOf: state.at || null, startedAt: state.startedAt || null, error: state.error || '', limit,
       note: 'SQUEEZE RISK 0-100 = fuel (short % of float, the float\'s size, the cover ratio = shares owed per free share, float turnover, dollar float, days to cover, burn rate, short volume, short interest vs price, synthetic shorts) x spark (the 20-day high, the Massive tape, sweeps, the Level 3 book, dark pool DIX, worked orders, icebergs, pulled orders, VPIN, the flow ledger, relative volume, chatter, a dated catalyst) + the GAMMA SQUEEZE (negative dealer gamma, calls stacked above spot, the call wall, call buyers today, the gamma flip, hedge pressure, 0DTE) - trap (shorts winning). The scan pre-screens the whole active market plus a low-float lane (floats under ' + Math.round(lowFloatMax / 1e6) + 'M) on fuel, then reads the top names in full. Q = the probabilistic state read. Fuel, a spark and the gamma ramp, not a prediction. Educational only.' };
   }
   return { list, build, start, restore, state };
