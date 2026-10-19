@@ -232,6 +232,8 @@ function buildConfluence(bars, p, ind, tf, ctx) {
   const ofData = ctx.orderFlow && ctx.orderFlow.ready ? ctx.orderFlow : null;
   /* the full-depth reading (academy-depth-insights.js): passed on its own or riding on the order-flow answer */
   const deepData = ctx.depth && ctx.depth.ready ? ctx.depth : (ctx.orderFlow && ctx.orderFlow.depth && ctx.orderFlow.depth.ready ? ctx.orderFlow.depth : null);
+  /* the week: the daily flow ledger read as a window (academy-flow-read.js); two trading days at least */
+  const weekData = ctx.flowDays && ctx.flowDays.ok && ctx.flowDays.window && ctx.flowDays.window.available && ctx.flowDays.window.days >= 2 ? ctx.flowDays.window : null;
   const earnData = ctx.earnings || null;
   const dirData = ctx.direction && ctx.direction.ok ? ctx.direction : null;
   const sentData = ctx.sentiment && ctx.sentiment.ok ? ctx.sentiment : null;
@@ -310,6 +312,15 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       const front = (deepData.walls || []).find((w) => (d > 0 ? w.kind === 'ask' && w.price > c0 && w.price - c0 <= 0.5 * a : w.kind === 'bid' && w.price < c0 && c0 - w.price <= 0.5 * a));
       if (front) { pts -= 2; notes.push((d > 0 ? 'ask' : 'bid') + ' wall ' + Math.round(front.size).toLocaleString() + ' right in front'); }
       add('depth', 'Full-depth book & tape', 10, Math.max(0, Math.min(10, pts)), notes.join(' '));
+    }
+    /* multi-day flow: the week's accumulation / distribution score for the trade's side, and a multi-day CVD divergence */
+    if (!weekData) add('flowdays', 'Multi-day flow', 10, 0, 'daily flow ledger not available', false);
+    else {
+      const sc = Number(weekData.score) || 0, ws = sc * d;
+      let pts = ws >= 40 ? 7 : ws >= 20 ? 5 : ws > -20 ? 3 : 0; const notes = [weekData.label + ' over ' + weekData.days + ' day' + (weekData.days === 1 ? '' : 's') + ' (' + (sc > 0 ? '+' : '') + sc + ')'];
+      const dv = weekData.divergence;
+      if (dv) { const withDiv = d > 0 ? dv === 'bullish' : dv === 'bearish'; pts += withDiv ? 3 : -3; notes.push(withDiv ? (d > 0 ? 'the drop is being accumulated' : 'the rise is being distributed') : (d > 0 ? 'the rise is being distributed' : 'the drop is being accumulated')); }
+      add('flowdays', 'Multi-day flow', 10, Math.max(0, Math.min(10, pts)), notes.join(', '));
     }
     if (!earnData) add('earnings', 'Earnings safety', 10, 10, 'no earnings data — assumed safe', true);
     else {
@@ -401,10 +412,16 @@ function buildConfluence(bars, p, ind, tf, ctx) {
       const div = deepData.flow && deepData.flow.divergence;
       if (div && (ld > 0 ? div === 'bearish' : div === 'bullish')) flags.push(ld > 0 ? 'CVD divergence: the lift is being sold into' : 'CVD divergence: the dip is being bought');
     }
+    if (weekData) {
+      const sc = Number(weekData.score) || 0;
+      if (sc * ld <= -40) flags.push('The week is against the position: ' + weekData.label + ' over ' + weekData.days + ' days (' + (sc > 0 ? '+' : '') + sc + ')');
+      const dv = weekData.divergence;
+      if (dv && (ld > 0 ? dv === 'bearish' : dv === 'bullish')) flags.push(ld > 0 ? 'Multi-day divergence: the rise is being sold into' : 'Multi-day divergence: the drop is being bought');
+    }
     if (patternsFn) { try { const fk = 'full:' + bars[0].t + ':' + bars[i].t + ':' + bars[i].c; let r = ctx.patternCache ? ctx.patternCache.get(fk) : undefined; if (r === undefined) { r = patternsFn(bars); if (ctx.patternCache) ctx.patternCache.set(fk, r); } const against = r && r.ok ? (r.charts || []).filter((c) => c.status === 'confirmed' && c.dir === (ld > 0 ? 'bear' : 'bull') && i - (Number.isFinite(c.breakIdx) ? c.breakIdx : c.endIdx) <= 30) : []; if (against.length) flags.push((ld > 0 ? 'Bearish ' : 'Bullish ') + against[0].name.replace(/_/g, ' ') + ' confirmed'); } catch (_) { /* scanner optional */ } }
     exitWatch = { flags, level: flags.length >= 3 ? 'exit' : flags.length >= 1 ? 'caution' : 'clear', dir: ld };
   }
-  return { rawSig, keptSig, xsig, byIndex, exitWatch, htfAvailable: htf.length > 0, benchAvailable: bench.length > 0 || !!ctx.benchSelf, depthAvailable: Boolean(deepData) };
+  return { rawSig, keptSig, xsig, byIndex, exitWatch, htfAvailable: htf.length > 0, benchAvailable: bench.length > 0 || !!ctx.benchSelf, depthAvailable: Boolean(deepData), flowDaysAvailable: Boolean(weekData) };
 }
 
 function emptyStats() { return { trades: 0, wins: 0, losses: 0, winRate: null, avgWinR: null, avgLossR: null, expectancyR: null, profitFactor: null, totalR: 0, returnPct: 0, maxDrawdownPct: 0, avgBars: null, longs: 0, shorts: 0, compoundPct: null, avgTradePct: null }; }
@@ -536,7 +553,7 @@ function analyze(rawBars, mode = 'day', overrides = {}, tf = '', ctx = {}) {
     confluence: conf ? (() => {
       const bucket = (g) => summarize((allTrades || []).filter((t) => t.score != null && gradeOf(t.score) === g));
       const skipped = [...conf.byIndex.entries()].filter(([, c]) => c.score < params.minScore).map(([i, c]) => ({ i, t: bars[i].t, score: c.score, grade: c.grade }));
-      return { minScore: params.minScore, all: summarize(allTrades || []), kept: summarize(trades), buckets: { A: bucket('A'), B: bucket('B'), C: bucket('C'), D: bucket('D') }, skipped, exitWatch: conf.exitWatch, htf: conf.htfAvailable, bench: conf.benchAvailable, depth: conf.depthAvailable };
+      return { minScore: params.minScore, all: summarize(allTrades || []), kept: summarize(trades), buckets: { A: bucket('A'), B: bucket('B'), C: bucket('C'), D: bucket('D') }, skipped, exitWatch: conf.exitWatch, htf: conf.htfAvailable, bench: conf.benchAvailable, depth: conf.depthAvailable, flowDays: conf.flowDaysAvailable };
     })() : null
   };
 }

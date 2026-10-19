@@ -175,13 +175,13 @@
     const sym = symbol(), t = tf(), key = sym + ':' + t;
     if (S.ctx && S.ctx.key === key) return;
     const ctx = { key, htf: null, bench: null, benchSelf: sym === 'SPY', patterns: window.SmlPatterns && window.SmlPatterns.detect ? (b) => window.SmlPatterns.detect(b) : null, patternCache: new Map(),
-      signals: null, orderFlow: null, earnings: null, direction: null, sentiment: null, darkPool: null, gamma: null, institutional: null, filings: null };
+      signals: null, orderFlow: null, earnings: null, direction: null, sentiment: null, darkPool: null, gamma: null, institutional: null, filings: null, flowDays: null };
     S.ctx = ctx;
     const get = async (s2, tt) => { try { const r = await fetch('/academy-activity/market?symbol=' + encodeURIComponent(s2) + '&tf=' + encodeURIComponent(tt), { cache: 'no-store' }); const j = await r.json(); return r.ok && Array.isArray(j.bars) ? j.bars : null; } catch (_) { return null; } };
     const token = window.smlAcademySessionToken || '';
     const authGet = async (url) => { try { const r = await fetch(url, { cache: 'no-store', headers: token ? { authorization: 'Bearer ' + token } : {} }); return r.ok ? await r.json() : null; } catch (_) { return null; } };
     const mode = S.mode === 'swing' || S.mode === 'long' ? 'swing' : 'day';
-    const [h, b, earn, dir, sent, dp, gx, inst, fil] = await Promise.all([
+    const [h, b, earn, dir, sent, dp, gx, inst, fil, fdw] = await Promise.all([
       HTF[t] ? get(sym, HTF[t]) : null,
       ctx.benchSelf ? null : get('SPY', t),
       authGet('/academy-activity/data/earnings?symbol=' + encodeURIComponent(sym)),
@@ -190,7 +190,8 @@
       authGet('/academy-activity/dark-pool?symbol=' + encodeURIComponent(sym)),
       authGet('/academy-activity/gamma?symbol=' + encodeURIComponent(sym)),
       authGet('/academy-activity/institutional?symbol=' + encodeURIComponent(sym)),
-      authGet('/academy-activity/filings?symbol=' + encodeURIComponent(sym))
+      authGet('/academy-activity/filings?symbol=' + encodeURIComponent(sym)),
+      authGet('/academy-activity/flow-days?symbol=' + encodeURIComponent(sym) + '&days=10')
     ]);
     if (S.ctx !== ctx) return;
     ctx.htf = h; ctx.bench = b;
@@ -211,6 +212,7 @@
     if (gx && gx.ok) ctx.gamma = gx;
     if (inst && inst.ok) ctx.institutional = inst;
     if (fil && fil.ok) ctx.filings = fil;
+    if (fdw && fdw.ok) ctx.flowDays = fdw;
     recompute(); paint(); draw();
   }
   async function refresh(force) {
@@ -316,6 +318,7 @@
     const note = S.tfNote && S.tfNote.mode === S.mode && S.tfNote.tf === tfNow ?'<div class="mem-tfnote">Chart set to ' + esc(tfNow) + ' — the interval ' + esc(st.label) + ' is built for.</div>' : '';
     html += '<div class="mem-sec">' + note + '<p class="mem-blurb" style="margin-top:0">' + esc(st.blurb) + '</p><button type="button" class="mem-btn mem-hedge-btn" data-mem="hedge" title="Ways to protect this position or earn income on it with options">Hedge &amp; income ideas →</button>' + (fitTf ? '' : '<div class="mem-warn" style="margin-top:8px">' + esc(st.label) + ' is built for ' + esc(st.tfHint[0]) + '–' + esc(st.tfHint[st.tfHint.length - 1]) + ' candles. You are on ' + esc(tfNow) + ', so treat these numbers as a rough guide. <button type="button" class="mem-btn" data-mem-tf="' + esc(st.bestTf || st.tfHint[0]) + '" style="margin-top:6px">Switch chart to ' + esc(st.bestTf || st.tfHint[0]) + '</button></div>') + '</div>';
     html += '<div class="mem-sec" id="mem-of"></div>';
+    html += weekHtml();
     if (S.error) html += '<div class="mem-sec"><div class="mem-warn">' + esc(S.error) + '</div></div>';
     if (!d) { html += '<div class="mem-sec">Loading candles for $' + esc(symbol()) + '…</div>'; }
     else {
@@ -367,7 +370,7 @@
     rules.push('<li>Fast EMA(' + p.fast + ') crossing the slow EMA(' + p.slow + ') starts a setup. It must stay crossed for ' + p.confirm + ' closed candle' + (p.confirm > 1 ? 's' : '') + ' — the signal fires on the last of them, never on the cross candle.</li>');
     rules.push(st.dirs === 'long' ? '<li>Long only, and only above the trend EMA(' + p.trend + '). Bearish crosses are never traded — they are the exit.</li>' : st.dirs === 'short' ? '<li>Short only, and only below the trend EMA(' + p.trend + '). Bullish crosses are never traded — they are the exit (cover).</li>' : '<li>Longs only above the trend EMA, shorts only below it.</li>');
     rules.push('<li>Price must be at least ' + p.minSep + '× ATR away from the slow EMA, so flat, choppy crossovers are ignored.' + (p.maxSep ? ' It must also be no more than ' + p.maxSep + '× ATR away, so it does not chase a move that is already stretched.' : '') + '</li>');
-    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, chart structure, the 11-model signals ensemble, Level 2 order flow, the full-depth book and tape (Level 3: weighted imbalance, microprice, aggressor delta, CVD divergence, large prints, replenishment, walls), earnings proximity, market direction, sentiment, dark pool lean, gamma pressure, institutional flow and insider filings — each read for the trade’s side (a SELL wants the mirror image of a BUY). Signals scoring under ' + (p.minScore || (S.mode === 'day' || S.mode === 'swing' || S.mode === 'short' ? 45 : 0)) + ' are skipped. The exit also triggers if the higher timeframe rolls over against the trade while price is through the slow EMA.</li>');
+    if (p.minScore != null) rules.push('<li>Confluence: before a signal is taken it is scored 0–100 on the higher-timeframe trend, volume, momentum, the market (SPY) trend, strength versus SPY, chart structure, the 11-model signals ensemble, Level 2 order flow, the full-depth book and tape (Level 3: weighted imbalance, microprice, aggressor delta, CVD divergence, large prints, replenishment, walls), the week\'s daily flow ledger (net delta by day, running CVD against price, large prints, sweeps and blocks, institutional net, daily book pressure), earnings proximity, market direction, sentiment, dark pool lean, gamma pressure, institutional flow and insider filings — each read for the trade’s side (a SELL wants the mirror image of a BUY). Signals scoring under ' + (p.minScore || (S.mode === 'day' || S.mode === 'swing' || S.mode === 'short' ? 45 : 0)) + ' are skipped. The exit also triggers if the higher timeframe rolls over against the trade while price is through the slow EMA.</li>');
     rules.push(p.trail ? '<li>Starting stop ' + p.stopAtr + '× ATR from the entry, then a trailing stop ' + p.trail + '× ATR behind the best price (it only moves in your favour). No fixed target: the trade is held until the stop is hit or the crossover turns against it.</li>' : '<li>Stop ' + p.stopAtr + '× ATR, target ' + p.targetAtr + '× ATR from the entry.</li>');
     if (p.session) rules.push('<li>Ignores the first ' + p.session.skipOpen + ' and last ' + p.session.skipClose + ' minutes of the regular session and all off-hours candles.</li>');
     if (st.dirs === 'short') rules.push('<li>A short can lose more than 100% of what you put in, pays borrow fees, and can be forced closed in a squeeze. The backtest cannot model those — treat its results as optimistic.</li>');
@@ -421,6 +424,32 @@
     }
     const g = panel.querySelector('#mem-grade');
     if (g) { const dir = Number(g.dataset.dir), gr = o && o.grades ? (dir > 0 ? o.grades.long : o.grades.short) : null; g.innerHTML = gr ? 'Level 2 vs this ' + (dir > 0 ? 'BUY' : 'SELL') + ': <b class="' + gr.grade + '">' + gradeText[gr.grade] + '</b> <span class="mem-blurb">' + esc(gr.reason) + '</span>' : ''; }
+  }
+  /* ---- The week: the daily flow ledger (academy-flow-daily.js) read by academy-flow-read.js ----
+     One bar per trading day (the day's delta ratio, buying up and selling down), the running CVD against price, the large-print,
+     sweep and block leans, moomoo's institutional net, the book's daily pressure, then the week-says verdict for the open mode. */
+  function weekHtml() {
+    const W = S.ctx && S.ctx.flowDays, FRd = window.SmlFlowRead, d = S.data;
+    if (!W || !W.ok || !W.window) return '';
+    const w = W.window;
+    let h = '<div class="mem-sec"><h5>The week · daily flow · $' + esc(symbol()) + '</h5>';
+    if (!w.available || !W.days.length) return h + '<div class="mem-blurb" style="margin-top:0">No daily flow recorded for this ticker yet. The ledger fills in while members have it on the chart during market hours; SPY and QQQ are always recorded.</div></div>';
+    const cls = w.score >= 25 ? 'bull' : w.score <= -25 ? 'bear' : 'flat';
+    h += '<span class="mem-of-chip ' + cls + '">' + esc(w.label.toUpperCase()) + '</span> <span class="mem-blurb">' + (w.score > 0 ? '+' : '') + w.score + ' over ' + w.days + ' day' + (w.days === 1 ? '' : 's') + (w.partial ? ' (today still filling)' : '') + '</span>' + bar(w.score);
+    const maxAbs = Math.max(0.2, ...W.days.map((x) => Math.abs(x.deltaRatio || 0)));
+    h += '<div style="display:flex;gap:3px;align-items:flex-end;height:46px;margin:8px 0 2px;border-bottom:1px solid #1b3540">' + W.days.map((x) => { const r = x.deltaRatio || 0, hgt = Math.max(2, Math.round(Math.abs(r) / maxAbs * 40)); return '<div title="' + esc(x.day + ': delta ' + Math.round(r * 100) + '%, ' + (x.buy + x.sell).toLocaleString() + ' tagged shares' + (x.pressure != null ? ', pressure ' + x.pressure : '') + (x.partial ? ' (partial)' : '')) + '" style="flex:1;height:' + hgt + 'px;border-radius:2px 2px 0 0;background:' + (r >= 0 ? '#00d084' : '#ff5470') + (x.partial ? ';opacity:.55' : '') + '"></div>'; }).join('') + '</div>';
+    h += '<div style="display:flex;justify-content:space-between;font:.56rem ui-monospace,monospace;color:#6f8794;margin-bottom:6px"><span>' + esc(W.days[0].day.slice(5)) + '</span><span>net ' + (w.cvd >= 0 ? 'bought ' : 'sold ') + esc(FRd ? FRd.fmtShares(Math.abs(w.cvd)) : String(Math.abs(w.cvd))) + '</span><span>' + esc(W.days[W.days.length - 1].day.slice(5)) + '</span></div>';
+    h += (w.components || []).map((c) => '<div class="mem-ev"><u class="' + (c.pts >= 0 ? 'bull' : 'bear') + '"></u>' + esc(c.label) + ' <b>' + (c.pts > 0 ? '+' : '') + c.pts + '</b> · ' + esc(c.detail) + '</div>').join('');
+    h += (w.lines || []).slice(0, 3).map((l) => '<div class="mem-ev" style="color:#9fb3be">' + esc(l) + '</div>').join('');
+    const dirNow = d ? (d.open ? d.open.dir : (d.latest && d.bars - 1 - d.latest.i <= 30 ? d.latest.dir : 0)) : 0;
+    if (FRd && dirNow) {
+      const wr = FRd.weekRead(S.mode, dirNow, W), v = VERDICT[wr.verdict] || VERDICT.none;
+      const what = d.open ? 'the open ' + (dirNow > 0 ? 'LONG' : 'SHORT') : 'the last ' + (dirNow > 0 ? 'BUY' : 'SELL') + ' signal';
+      h += '<div class="mem-conv' + (wr.verdict === 'exit' || wr.verdict === 'trim' ? ' warnbox' : '') + '"><b>Week says · <span class="mem-of-chip ' + v[0] + '">' + v[1] + '</span> ' + esc((E.STRATEGIES[S.mode] || {}).label || S.mode) + ' · ' + esc(what) + '</b>'
+        + (wr.reasons.length ? '<ul>' + wr.reasons.map((r) => '<li class="' + (r.tone === 'for' ? 'ok' : 'no') + '"><span>' + (r.tone === 'for' ? '✓' : '✗') + '</span> ' + esc(r.text) + '</li>').join('') + '</ul>' : '<br><small>Nothing in the week argues with the position.</small>')
+        + '<small>' + esc(wr.note) + '</small></div>';
+    }
+    return h + '<p class="mem-bdn" style="margin:6px 0 0">Folded once a minute from the tape (Massive when watched, otherwise moomoo prints), the full-depth pressure, the Level 2 events and moomoo\'s size buckets. Educational, not a recommendation.</p></div>';
   }
   /* ---- Level 3: the full book (up to 60 levels with the orders behind each) and the tape, read by academy-depth-insights.js ----
      Pressure with its components, the walls and air pockets, then the hold / add / trim / exit read for the mode that is open and the

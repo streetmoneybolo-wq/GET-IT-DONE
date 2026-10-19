@@ -214,7 +214,7 @@ test('every hold signal carries a 0-100 conviction score with a factor breakdown
   assert.ok(a.signals.length >= 1 && a.confluence);
   for (const s of a.signals) {
     assert.ok(s.conf.score >= 0 && s.conf.score <= 100 && 'ABCD'.includes(s.conf.grade));
-    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,depth,earnings,direction,sentiment,darkpool,gamma,institutional,filings');
+    assert.equal(s.conf.factors.map((f) => f.key).join(), 'htf,volume,momentum,regime,rs,structure,signals,orderflow,depth,flowdays,earnings,direction,sentiment,darkpool,gamma,institutional,filings');
     const avail = s.conf.factors.filter((f) => f.available), max = avail.reduce((t, f) => t + f.max, 0), got = avail.reduce((t, f) => t + f.pts, 0);
     assert.equal(max, 110, 'original six factors + earnings safety (assumed safe) => 110 points');
     assert.equal(s.conf.score, Math.round((got / max) * 100));
@@ -298,6 +298,21 @@ test('the full-depth reading scores for the trade side, costs a wall in front, f
   const last = w.signals[w.signals.length - 1];
   const wf = last.conf.factors.find((x) => x.key === 'depth');
   assert.ok(wf.pts <= 7, 'the wall in front costs points: ' + wf.pts + ' ' + wf.detail);
+});
+
+test('the week (daily flow ledger) scores for the trade side with its divergence, flags the exit watch, and needs two days before it counts', () => {
+  const bars = regimes();
+  const week = (score, divergence, days = 5) => ({ ok: true, window: { available: true, days, score, label: score >= 25 ? 'accumulation' : score <= -25 ? 'distribution' : 'balanced', divergence } });
+  const a = algo.analyze(bars, 'swing', { minScore: 0 }, '1D', fullCtx(bars, { flowDays: week(55, 'bullish') }));
+  const s = a.signals.find((x) => x.dir > 0) || a.signals[0]; const f = s.conf.factors.find((x) => x.key === 'flowdays');
+  assert.equal(f.available, true); assert.equal(s.dir > 0 ? f.pts : 10 - f.pts, 10, 'accumulation + the drop being bought = full marks for a long'); assert.match(f.detail, /accumulation over 5 days/);
+  assert.equal(a.confluence.flowDays, true);
+  const b = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars, { flowDays: week(-60, 'bearish') }));
+  assert.equal(b.signals[0].conf.factors.find((x) => x.key === 'flowdays').pts, 0);
+  assert.ok(b.confluence.exitWatch.flags.some((x) => /week is against the position/.test(x)) && b.confluence.exitWatch.flags.some((x) => /Multi-day divergence/.test(x)));
+  const one = algo.analyze(bars, 'mid', { minScore: 0 }, '1D', fullCtx(bars, { flowDays: week(-60, 'bearish', 1) }));
+  assert.equal(one.signals[0].conf.factors.find((x) => x.key === 'flowdays').available, false, 'one day is not a week');
+  assert.equal(one.confluence.flowDays, false);
 });
 
 test('a higher timeframe that rolls over while price is below the slow EMA exits the trade', () => {
