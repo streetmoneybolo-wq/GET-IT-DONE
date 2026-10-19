@@ -66,6 +66,8 @@
     return { url: out.toDataURL('image/png'), symbol: sym, tf };
   }
 
+  window.smlSnapshotCapture = capture; // the MEM ALGO scenarios' "Save PNG" reuses the same picture
+
   /* ---------- posting ---------- */
   async function post(note) {
     if (!S.shot || !S.channelId) return;

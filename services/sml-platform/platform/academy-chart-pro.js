@@ -541,38 +541,78 @@
     try { found = P.detect(m.bars.map((b) => ({ t: +b.t, o: +b.o, h: +b.h, l: +b.l, c: +b.c, v: +b.v || 0 }))); } catch (_) { found = null; }
     foundKey = key; patternsDirty = false; renderPatternPanel(m); return found;
   }
-  const human = (n) => String(n || '').replace(/_/g, ' ').replace(/[a-z]/g, (c) => c.toUpperCase());
+  const human = (n) => String(n || '').replace(/_/g, ' ').replace(/[a-z]/g, (c) => c.toUpperCase());
   const COL = { bull: '#00d084', bear: '#ff5470', neutral: '#ffd166' };
+  /* Every pattern family gets its own colour, so two shapes on one chart never read as one; the arrow in the label and the chip in the
+     list carry the direction. Reversals are warm (violet, orange, pink), continuations are cool (sky, amber, mint), ranges are periwinkle. */
+  const FAMILY = [[/head_and_shoulders/, '#c084fc'], [/double_/, '#ff9f43'], [/triple_/, '#f472b6'], [/triangle/, '#38bdf8'], [/wedge/, '#fbbf24'], [/flag|pennant/, '#34d399'], [/rectangle/, '#a3a3ff']];
+  const familyColor = (type) => { for (const [re, c] of FAMILY) if (re.test(String(type || ''))) return c; return COL.neutral; };
   const abbr = (name) => { const w = String(name || '').replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean); if (w.length === 1) return w[0].slice(0, 3); return w.map((x) => (/^three$/i.test(x) ? '3' : /^bullish$|^bearish$/i.test(x) ? '' : x[0].toUpperCase())).join('').slice(0, 4) || 'P'; };
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
+  function labelPill(x, y, text, color, size) {
+    lctx.font = '800 ' + size + 'px system-ui,sans-serif';
+    const tw = lctx.measureText(text).width + 10, th = size + 8;
+    lctx.fillStyle = 'rgba(7,16,24,.92)'; lctx.beginPath(); if (lctx.roundRect) lctx.roundRect(x, y - th / 2, tw, th, 4); else lctx.rect(x, y - th / 2, tw, th); lctx.fill();
+    lctx.strokeStyle = color; lctx.lineWidth = 1; lctx.stroke();
+    lctx.fillStyle = color; lctx.textAlign = 'left'; lctx.textBaseline = 'middle'; lctx.fillText(text, x + 5, y + 0.5); lctx.textBaseline = 'alphabetic';
+    return tw;
+  }
   function drawPatterns(m) {
     const r = runPatterns(m); if (!r || !r.ok) return;
-    const F = V.patternFilter;
-    if (F.levels) (r.levels || []).forEach((lv) => { const y = m.y(lv.p); if (y < PAD.t || y > m.h - PAD.b) return; const c = lv.kind === 'support' ? '0,208,132' : '255,84,112'; lctx.save(); lctx.strokeStyle = 'rgba(' + c + ',.5)'; lctx.setLineDash([2, 5]); lctx.lineWidth = 1; lctx.beginPath(); lctx.moveTo(Math.max(PAD.l, m.x(lv.firstIdx)), y); lctx.lineTo(m.w - PAD.r, y); lctx.stroke(); lctx.fillStyle = 'rgba(' + c + ',.9)'; lctx.font = '700 8px ui-monospace,monospace'; lctx.textAlign = 'right'; lctx.fillText((lv.kind === 'support' ? 'S ' : 'R ') + fmt(lv.p) + ' ×' + lv.touches, m.w - PAD.r - 4, y - 2); lctx.restore(); });
+    const F = V.patternFilter, clean = !!(window.smlChartClean && window.smlChartClean());
+    if (F.levels) (r.levels || []).forEach((lv) => {
+      const y = m.y(lv.p); if (y < PAD.t || y > m.h - PAD.b) return; const c = lv.kind === 'support' ? COL.bull : COL.bear;
+      lctx.save(); lctx.strokeStyle = rgba(c, 0.55); lctx.setLineDash([2, 5]); lctx.lineWidth = 1.2; lctx.beginPath(); lctx.moveTo(Math.max(PAD.l, m.x(lv.firstIdx)), y); lctx.lineTo(m.w - PAD.r, y); lctx.stroke(); lctx.restore();
+      if (!clean && m.step >= 3) { lctx.save(); labelPill(Math.max(PAD.l + 2, m.x(lv.firstIdx)), y, (lv.kind === 'support' ? 'S ' : 'R ') + fmt(lv.p) + ' ×' + lv.touches, c, 8); lctx.restore(); }
+    });
     if (F.charts) (r.charts || []).forEach((p, k) => {
       if (p.endIdx < m.start - 40 && p.status !== 'confirmed') return;
-      const c = COL[p.dir] || COL.neutral, focus = V.patternFocus === 'c' + k;
-      lctx.save(); lctx.strokeStyle = c; lctx.fillStyle = c; lctx.lineWidth = focus ? 2.6 : 1.5; lctx.globalAlpha = focus ? 1 : 0.85;
-      (p.lines || []).forEach((l) => { lctx.setLineDash(l.role === 'target' || l.role === 'projection' ? [2, 4] : l.role === 'neckline' ? [7, 4] : []); lctx.beginPath(); lctx.moveTo(m.x(l.i1), m.y(l.p1)); lctx.lineTo(m.x(l.i2), m.y(l.p2)); lctx.stroke(); });
-      lctx.setLineDash([]);
-      const pts = p.points || [];
-      if (pts.length > 1 && !(p.lines && p.lines.length > 2)) { lctx.globalAlpha = 0.5; lctx.beginPath(); pts.forEach((q2, j) => { const x = m.x(q2.i), y = m.y(q2.p); j ? lctx.lineTo(x, y) : lctx.moveTo(x, y); }); lctx.stroke(); lctx.globalAlpha = focus ? 1 : 0.85; }
-      pts.forEach((q2) => { const x = m.x(q2.i), y = m.y(q2.p); lctx.beginPath(); lctx.arc(x, y, 3, 0, 6.3); lctx.fill(); if (q2.label) { lctx.font = '700 8px ui-monospace,monospace'; lctx.textAlign = 'center'; lctx.fillText(q2.label, x, y + (q2.label === 'H' || /top|head|shoulder|peak|high/i.test(q2.label) ? -7 : 12)); } });
-      if (fin(p.target)) { const ty = m.y(p.target); lctx.setLineDash([3, 5]); lctx.globalAlpha = 0.6; lctx.beginPath(); lctx.moveTo(m.x(p.endIdx), ty); lctx.lineTo(m.w - PAD.r, ty); lctx.stroke(); lctx.setLineDash([]); lctx.font = '700 8px ui-monospace,monospace'; lctx.textAlign = 'right'; lctx.fillText('TARGET ' + fmt(p.target), m.w - PAD.r - 4, ty - 2); }
-      lctx.globalAlpha = 1; lctx.font = '800 10px system-ui'; lctx.textAlign = 'left';
-      const lx = clamp(m.x(p.startIdx), PAD.l + 2, m.w - PAD.r - 130), ly = clamp(m.y(Math.max(...(pts.length ? pts.map((q2) => q2.p) : [p.level || 0]))) - 12, PAD.t + 10, m.h - PAD.b - 6);
-      const label = human(p.name) + ' · ' + p.status + ' ' + Math.round(p.confidence * 100) + '%', tw = lctx.measureText(label).width;
-      // labels only when the candles are wide enough to read them, or when the pattern is the focused one; never in CLEAN
-      if (focus || (m.step >= 6 && !(window.smlChartClean && window.smlChartClean()))) { lctx.fillStyle = 'rgba(7,16,24,.88)'; lctx.fillRect(lx - 3, ly - 10, tw + 8, 15); lctx.fillStyle = c; lctx.fillText(label, lx + 1, ly + 1); }
+      const c = familyColor(p.type), dc = COL[p.dir] || COL.neutral, focus = V.patternFocus === 'c' + k, failed = p.status === 'failed';
+      const pts = p.points || [], lines = p.lines || [];
+      lctx.save(); lctx.globalAlpha = failed ? 0.45 : (focus ? 1 : 0.9); lctx.lineJoin = 'round'; lctx.lineCap = 'round';
+      /* 1. the shape itself, tinted: between the two boundary lines when there are two, else the outline of the pivots closed by the neckline */
+      const upper = lines.find((l) => l.role === 'upper'), lower = lines.find((l) => l.role === 'lower'), neck = lines.find((l) => l.role === 'neckline');
+      lctx.fillStyle = rgba(c, focus ? 0.22 : 0.13);
+      if (upper && lower) { lctx.beginPath(); lctx.moveTo(m.x(upper.i1), m.y(upper.p1)); lctx.lineTo(m.x(upper.i2), m.y(upper.p2)); lctx.lineTo(m.x(lower.i2), m.y(lower.p2)); lctx.lineTo(m.x(lower.i1), m.y(lower.p1)); lctx.closePath(); lctx.fill(); }
+      else if (pts.length > 1 && neck) { lctx.beginPath(); pts.forEach((q, j) => (j ? lctx.lineTo(m.x(q.i), m.y(q.p)) : lctx.moveTo(m.x(q.i), m.y(q.p)))); lctx.lineTo(m.x(pts[pts.length - 1].i), m.y(neck.p2)); lctx.lineTo(m.x(pts[0].i), m.y(neck.p1)); lctx.closePath(); lctx.fill(); }
+      /* 2. the lines, each over a dark halo so they stay readable across candles */
+      const stroke = (dash, width) => { lctx.setLineDash([]); lctx.strokeStyle = 'rgba(0,0,0,.6)'; lctx.lineWidth = width + 2.5; lctx.stroke(); lctx.setLineDash(dash); lctx.strokeStyle = c; lctx.lineWidth = width; lctx.stroke(); lctx.setLineDash([]); };
+      lines.forEach((l) => { lctx.beginPath(); lctx.moveTo(m.x(l.i1), m.y(l.p1)); lctx.lineTo(m.x(l.i2), m.y(l.p2)); stroke(l.role === 'target' || l.role === 'projection' ? [3, 5] : l.role === 'neckline' ? [8, 5] : [], l.role === 'neckline' ? 2.2 : (focus ? 2.8 : 2.1)); });
+      if (pts.length > 1 && !(upper && lower)) { lctx.beginPath(); pts.forEach((q, j) => (j ? lctx.lineTo(m.x(q.i), m.y(q.p)) : lctx.moveTo(m.x(q.i), m.y(q.p)))); lctx.globalAlpha *= 0.55; stroke([], 1.6); lctx.globalAlpha = failed ? 0.45 : (focus ? 1 : 0.9); }
+      /* 3. the pivots: a ringed dot and, when there is room, the role (Head, Neck 1, Peak 2...) */
+      pts.forEach((q) => { const x = m.x(q.i), y = m.y(q.p); lctx.beginPath(); lctx.arc(x, y, focus ? 5.5 : 4.5, 0, 6.3); lctx.fillStyle = c; lctx.fill(); lctx.strokeStyle = 'rgba(0,0,0,.75)'; lctx.lineWidth = 2; lctx.stroke();
+        if (q.label && !clean && (focus || m.step >= 5)) { lctx.font = '800 8.5px system-ui,sans-serif'; lctx.textAlign = 'center'; const up = /top|head|shoulder|peak|high/i.test(q.label); lctx.fillStyle = 'rgba(7,16,24,.85)'; const tw = lctx.measureText(q.label).width; lctx.fillRect(x - tw / 2 - 3, y + (up ? -18 : 9), tw + 6, 11); lctx.fillStyle = '#eaf3f6'; lctx.fillText(q.label, x, y + (up ? -9.5 : 17.5)); } });
+      /* 4. the break bar and the measured target, drawn as an arrow from the break to the target */
+      if (fin(p.breakIdx) && p.breakIdx >= 0 && p.breakIdx < m.N) { const bx = m.x(p.breakIdx), by = m.y(fin(p.neckline) ? p.neckline : (fin(p.level) ? p.level : +m.bars[p.breakIdx].c)); lctx.fillStyle = dc; lctx.beginPath(); lctx.moveTo(bx, by - 7); lctx.lineTo(bx + 6, by); lctx.lineTo(bx, by + 7); lctx.lineTo(bx - 6, by); lctx.closePath(); lctx.fill(); lctx.strokeStyle = 'rgba(0,0,0,.75)'; lctx.lineWidth = 1.5; lctx.stroke(); }
+      if (fin(p.target) && !failed) {
+        const fromI = fin(p.breakIdx) && p.breakIdx >= 0 ? p.breakIdx : p.endIdx, fx = m.x(fromI), fy = m.y(fin(p.neckline) ? p.neckline : (fin(p.level) ? p.level : pts.length ? pts[pts.length - 1].p : p.target)), ty = m.y(p.target);
+        const ax = Math.min(m.w - PAD.r - 8, fx + Math.max(18, m.step * 6));
+        lctx.beginPath(); lctx.moveTo(fx, fy); lctx.lineTo(ax, fy); lctx.lineTo(ax, ty); stroke([4, 4], 1.8);
+        lctx.fillStyle = dc; lctx.beginPath(); const d = ty < fy ? -1 : 1; lctx.moveTo(ax, ty); lctx.lineTo(ax - 5, ty - d * 9); lctx.lineTo(ax + 5, ty - d * 9); lctx.closePath(); lctx.fill();
+        lctx.setLineDash([3, 5]); lctx.strokeStyle = rgba(dc, 0.7); lctx.lineWidth = 1.2; lctx.beginPath(); lctx.moveTo(ax, ty); lctx.lineTo(m.w - PAD.r, ty); lctx.stroke(); lctx.setLineDash([]);
+        if (!clean) labelPill(Math.min(ax + 8, m.w - PAD.r - 96), ty, 'TARGET ' + fmt(p.target), dc, 8.5);
+      }
+      if (fin(p.invalidation) && !failed && (focus || m.step >= 4) && !clean) { const iy = m.y(p.invalidation); lctx.setLineDash([2, 4]); lctx.strokeStyle = rgba(COL.bear, 0.75); lctx.lineWidth = 1.2; lctx.beginPath(); lctx.moveTo(m.x(p.startIdx), iy); lctx.lineTo(m.w - PAD.r, iy); lctx.stroke(); lctx.setLineDash([]); labelPill(Math.max(PAD.l + 2, m.x(p.startIdx)), iy, 'INVALID ' + fmt(p.invalidation), COL.bear, 8); }
+      /* 5. the title: always on (abbreviated when the candles are narrow), with the direction arrow, status and fit */
+      lctx.globalAlpha = 1;
+      const topP = pts.length ? Math.max(...pts.map((q) => q.p)) : (p.level || 0), lx = clamp(m.x(p.startIdx), PAD.l + 2, m.w - PAD.r - 150), ly = clamp(m.y(topP) - 16, PAD.t + 12, m.h - PAD.b - 8);
+      if (!clean) {
+        const arrow = p.dir === 'bull' ? '▲ ' : p.dir === 'bear' ? '▼ ' : '◆ ';
+        const full = arrow + human(p.name) + ' · ' + p.status.toUpperCase() + ' ' + Math.round(p.confidence * 100) + '%';
+        labelPill(lx, ly, focus || m.step >= 4 ? full : arrow + abbr(human(p.name)) + ' ' + Math.round(p.confidence * 100) + '%', c, focus ? 10.5 : 9.5);
+      }
       lctx.restore();
     });
-    if (F.candles && m.step >= 5 && !(window.smlChartClean && window.smlChartClean())) {
-      lctx.save(); lctx.font = '800 8px ui-monospace,monospace'; lctx.textAlign = 'center';
+    if (F.candles && m.step >= 5 && !clean) {
+      lctx.save(); lctx.font = '800 9px ui-monospace,monospace'; lctx.textAlign = 'center';
       const seen = {};
       (r.candles || []).forEach((cp) => {
         const j = cp.i, x = m.x(j); if (x < PAD.l || x > m.w - PAD.r) return;
         const bar = m.bars[j]; if (!bar) return;
-        const up = cp.dir === 'bull', c = COL[cp.dir] || COL.neutral, y = up ? m.y(+bar.l) + 12 + (seen[j] || 0) : m.y(+bar.h) - 6 - (seen[j] || 0);
-        seen[j] = (seen[j] || 0) + 10; lctx.fillStyle = c; lctx.fillText((up ? '▲' : cp.dir === 'bear' ? '▼' : '◆') + abbr(human(cp.name)), x, y);
+        const up = cp.dir === 'bull', c = COL[cp.dir] || COL.neutral, y = up ? m.y(+bar.l) + 13 + (seen[j] || 0) : m.y(+bar.h) - 7 - (seen[j] || 0);
+        seen[j] = (seen[j] || 0) + 12;
+        const text = (up ? '▲' : cp.dir === 'bear' ? '▼' : '◆') + abbr(human(cp.name)), tw = lctx.measureText(text).width;
+        lctx.fillStyle = 'rgba(7,16,24,.8)'; lctx.fillRect(x - tw / 2 - 3, y - 8.5, tw + 6, 11); lctx.fillStyle = c; lctx.fillText(text, x, y);
       });
       lctx.restore();
     }
@@ -644,6 +684,6 @@
   new ResizeObserver(() => emit()).observe(stage);
   window.addEventListener('resize', emit);
   setInterval(() => { if (!document.hidden && !D) emitLight(); }, 1000); // the bar-close countdown under the last price
-  window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); } };
+  window.smlChartPro = { liveTick, view: V, model, resetView, goLatest, setView, drawings: () => drawings.slice(), setTool: (t) => { V.tool = t; syncPalette(); emit(); } };
   emit();
 })(0);

@@ -89,3 +89,28 @@ test('Obi answers short and certain: the prompt asks for two to five sentences a
   assert.match(prompt, /no "it depends"/);
   assert.doesNotMatch(prompt, /120 to 350 words/);
 });
+
+test('a direction question gets a real call: the prompt forbids dodging, the desk read rides along, and the answer is logged with its call', async () => {
+  const calls = [], logged = [];
+  const ask = createAcademyAsk({
+    apiKey: 'k', lessons: SEED_LESSONS, episodes: EPISODES,
+    context: async ({ question, subject, horizon }) => { assert.equal(subject, 'market'); assert.equal(horizon, 'tomorrow'); assert.match(question, /tomorrow/); return 'SPY 580.12 (+0.4%) · Market Direction day read: Lean bullish 62/100 · SML VIX 14.2'; },
+    log: { record: async (row) => { logged.push(row); return { id: '42' }; } },
+    fetchImpl: async (url, options) => { calls.push({ url, body: JSON.parse(options.body) }); return { ok: true, status: 200, json: async () => ({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'Up tomorrow. Breadth flipped green into the close and SPY held VWAP; if I\'m wrong it\'s because 578 gives way on a close.' }] }) }; }
+  });
+  const r = await ask.ask({ question: 'So what direction do you fellas think the markets will be going tomorrow?', userId: 'owner' });
+  const body = calls[0].body;
+  assert.match(body.system, /give a real call. Say UP, DOWN or FLAT in the first sentence/);
+  assert.match(body.system, /no "nobody knows", no "I can't predict"/);
+  assert.match(body.system, /Every call you make is logged and scored later/);
+  assert.match(body.messages[0].content, /MARKET READ RIGHT NOW[\s\S]*Lean bullish 62\/100/);
+  assert.match(body.messages[0].content, /Answer with a call: UP, DOWN or FLAT first/);
+  assert.deepEqual(r.call, { direction: 'up', subject: 'market', horizon: 'tomorrow' });
+  assert.equal(r.logId, '42');
+  assert.equal(logged.length, 1); assert.equal(logged[0].userId, 'owner'); assert.match(logged[0].context, /Lean bullish/); assert.match(logged[0].answer, /^Up tomorrow/);
+  // a lesson question never fetches the market read and carries no call
+  const r2 = await ask.ask({ question: 'What does it mean to own a share?', userId: 'owner' });
+  assert.equal(r2.call, null);
+  assert.doesNotMatch(calls[1].body.messages[0].content, /MARKET READ/);
+  assert.equal(logged.length, 2, 'every answer is logged, lesson questions included');
+});

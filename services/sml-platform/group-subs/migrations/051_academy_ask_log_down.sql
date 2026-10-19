@@ -1,0 +1,3 @@
+BEGIN;
+DROP TABLE IF EXISTS academy_ask_log;
+COMMIT;
