@@ -156,7 +156,7 @@ function createShortInsight({ shortData, candles = null, orderFlow = null, tape 
   const squeezeModel = require('./academy-squeeze-model');
   const briefs = squeezeModel.createSqueezeBrief({ ai, fetchImpl, now, logger });
   const safe = async (name, fn, ms = 12_000) => { try { return await Promise.race([Promise.resolve(fn()), new Promise((r) => { const t = setTimeout(() => r(null), ms); if (t.unref) t.unref(); })]); } catch (error) { logger('warn', 'short_insight_input_failed', { name, error: String(error && error.message || error) }); return null; } };
-  async function build(symbol) {
+  async function build(symbol, { brief = true } = {}) {
     const t = now();
     const [sd, daily, of, tp, fd, ch, fl, gm, se, inn, er] = await Promise.all([
       safe('short', () => shortData(symbol)), candles ? safe('candles', () => candles(symbol, '1D')) : null, orderFlow ? safe('orderflow', () => orderFlow(symbol), 4_000) : null,
@@ -188,18 +188,22 @@ function createShortInsight({ shortData, candles = null, orderFlow = null, tape 
       else { long.call = 'no squeeze set-up: ' + (model.missing[0] || 'short positioning is ordinary'); long.tone = 'neutral'; }
       long.reasons = [...model.why.fuel.slice(0, 2), ...model.why.spark.slice(0, 2)];
     }
-    const aiBrief = await briefs.brief(symbol, model, { price: s.price.close, hi20: s.price.hi20, lo20: s.price.lo20, marketOpen: open });
+    /* the AI brief is a Claude call that can take tens of seconds; a sweep reads hundreds of names and skips it (the panel asks for it) */
+    const aiBrief = brief ? await briefs.brief(symbol, model, { price: s.price.close, hi20: s.price.hi20, lo20: s.price.lo20, marketOpen: open }) : { available: false, reason: 'skipped' };
     const sources = { short: !!(volumeRows.length || interestRows.length), candles: bars.length > 0, level3: !!depth, level2: !!l2, tape: !!tapeStats, flowDays: !!week, chain: !!chainS, float: !!(fl && (fl.sharesFloat || fl.sharesOutstanding)), gamma: !!(gm && gm.available), sentiment: !!(se && se.ok), intent: !!(inn && inn.ok), earnings: !!er };
     return { ok: true, available: true, symbol, asOf: t, shortVsPrice: svp, interest: it, pressing: s.pressing, squeeze: sqOut, model, brief: aiBrief, price: s.price, chain: chainS, tape: tapeStats ? { buy: tapeStats.buy, sell: tapeStats.sell, offVol: tapeStats.offVol, vol: tapeStats.vol, sweepBuy: tapeStats.sweepBuy, sweepSell: tapeStats.sweepSell, blockBuy: tapeStats.blockBuy, blockSell: tapeStats.blockSell } : null, depth: depth ? { pressure: depth.pressure, walls: depth.walls, divergence: depth.flow ? depth.flow.divergence : null } : null, week: week ? { days: week.days, score: week.score, label: week.label, cvd: week.cvd } : null, mem, verdict: v, sources,
       note: 'Short volume = shares sold short that day ÷ total volume (FINRA daily). Short interest settles twice a month. The book, the tape and the ledger are live. The two scores describe positioning and flow, not direction. Educational only.' };
   }
-  function insight(symbolRaw) {
+  /* insight(symbol, { brief: false }) is the sweep's read: everything but the AI brief, cached on its own key */
+  function insight(symbolRaw, opts = {}) {
     const symbol = String(symbolRaw || '').toUpperCase();
     if (!SYMBOL.test(symbol)) return Promise.resolve({ ok: false, status: 400, error: 'invalid_symbol' });
-    const hit = cache.get(symbol); if (hit && now() - hit.at < ttlMs) return Promise.resolve(hit.v);
-    if (inflight.has(symbol)) return inflight.get(symbol);
-    const p = build(symbol).then((v) => { cache.set(symbol, { at: now(), v }); if (cache.size > 300) cache.delete(cache.keys().next().value); return v; }).catch((error) => { logger('error', 'short_insight_failed', { symbol, error: String(error && error.message || error) }); return { ok: false, status: 503, error: 'insight_unavailable' }; }).finally(() => inflight.delete(symbol));
-    inflight.set(symbol, p); return p;
+    const wantBrief = !(opts && opts.brief === false), key = wantBrief ? symbol : symbol + '~';
+    const full = cache.get(symbol); if (!wantBrief && full && now() - full.at < ttlMs) return Promise.resolve(full.v); // a fresh full read serves the sweep too
+    const hit = cache.get(key); if (hit && now() - hit.at < ttlMs) return Promise.resolve(hit.v);
+    if (inflight.has(key)) return inflight.get(key);
+    const p = build(symbol, { brief: wantBrief }).then((v) => { cache.set(key, { at: now(), v }); if (cache.size > 600) cache.delete(cache.keys().next().value); return v; }).catch((error) => { logger('error', 'short_insight_failed', { symbol, error: String(error && error.message || error) }); return { ok: false, status: 503, error: 'insight_unavailable' }; }).finally(() => inflight.delete(key));
+    inflight.set(key, p); return p;
   }
   /* QUICK: the fuel block alone from the two cheap, long-cached inputs (the short feed and the scanner row with the float), so a
      wide sweep can rank hundreds of names in seconds and spend the full read (book, tape, chain, gamma, intent) on the top ones */

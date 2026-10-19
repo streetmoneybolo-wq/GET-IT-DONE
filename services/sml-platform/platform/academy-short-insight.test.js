@@ -65,6 +65,10 @@ test('the chain summary and the service: inputs gathered in parallel, missing on
   assert.ok(out.squeeze.score > out.pressing.score); assert.equal(out.interest.daysToCover, 6); assert.equal(out.chain.putCallOi, 1.47); assert.equal(out.tape.buy, 5e5); assert.equal(out.mem, null, 'the short model needs 220 daily bars');
   await svc.insight('ACME'); assert.equal(calls, 1, 'cached'); clock += 61_000; await svc.insight('ACME'); assert.equal(calls, 2);
   assert.equal((await svc.insight('bad!')).error, 'invalid_symbol');
+  /* the sweep's read skips the AI brief and is cached on its own key; a fresh full read serves it too */
+  const c3 = calls; const nb = await svc.insight('ACME', { brief: false }); assert.equal(nb.brief.available, false); assert.equal(calls, c3, 'the fresh full read is reused');
+  clock += 61_000; const nb2 = await svc.insight('ACME', { brief: false }); assert.equal(nb2.brief.reason, 'skipped'); assert.equal(calls, c3 + 1); await svc.insight('ACME', { brief: false }); assert.equal(calls, c3 + 1, 'cached');
+  const withBrief = await svc.insight('ACME'); assert.equal(calls, c3 + 2, 'the panel read is its own build'); assert.equal(withBrief.brief.available, false);
   /* the QUICK read: the fuel block from the short feed and the float alone, cached ten times longer */
   const before = calls;
   const q = await svc.quick('acme');

@@ -5085,7 +5085,7 @@ async function main() {
     /* two phases: the cheap fuel read screens the whole wide ranking plus the low-float lane, the top names get the full read;
        the last list lives in academy_state_kv so the button answers at once after a restart */
     squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), limit: 100, quickConcurrency: Number(process.env.SML_ACADEMY_SQUEEZE_QUICK_WORKERS) || 8,
-      insight: (s) => si.insight(s), quick: typeof si.quick === 'function' ? (s) => si.quick(s) : null,
+      insight: (s) => si.insight(s, { brief: false }), quick: typeof si.quick === 'function' ? (s) => si.quick(s) : null,
       store: createPgStateStore({ pool: database.pool, key: 'squeeze-list', defaultValue: () => ({ rows: [], at: 0 }), logger: log }),
       universe: async () => { const w = typeof academyWideScanner !== 'undefined' && academyWideScanner ? await academyWideScanner.get(400) : await getAcademyScanner(); return w && Array.isArray(w.rows) ? w.rows : []; }, logger: log });
     return squeezeList;
