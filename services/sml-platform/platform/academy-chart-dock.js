@@ -9,7 +9,7 @@
   if (!chart || !stage) { if (tries < 120) setTimeout(() => boot(tries + 1), 150); return; }
   window.__smlChartDock = true;
 
-  const DOCKABLE = ['#mem-algo-panel', '#smc-card', '.academy-pro-panel', '.academy-interval-stats', '#talk-panel'];
+  const DOCKABLE = ['#mem-algo-panel', '#smc-card', '.academy-pro-panel', '.academy-interval-stats'];
   /* The dock takes about a third of the chart section (260 to 340 px) and only when the plot keeps at least 360 px; otherwise
      (phones, a narrow Activity with S.I.R.E. open) the panels float as before. */
   const SIRE_W = 332, MIN_PLOT = 360;
