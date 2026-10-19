@@ -2576,6 +2576,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!loopKickBridge || !loopKickBridge.configured) { sendJson(response, 503, { ok: false, error: 'loop_kick_unconfigured' }); return; }
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
+      /* a member without a site account can make one with their Discord in one step (the trial sign-in does it) */
+      if (!minted.ok && minted.error === 'not_linked' && academyTrial && academyTrial.configured) body.register_url = academyTrial.link + '?via=loopkick';
       sendJson(response, status || (minted.ok ? 200 : 503), body);
       return;
     }
@@ -2623,6 +2625,8 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       if (!loopKickBridge || !loopKickBridge.configured) { sendJson(response, 503, { ok: false, error: 'loop_kick_unconfigured' }); return; }
       const minted = await loopKickBridge.session(session.userId);
       const { status, ...body } = minted;
+      /* a member without a site account can make one with their Discord in one step (the trial sign-in does it) */
+      if (!minted.ok && minted.error === 'not_linked' && academyTrial && academyTrial.configured) body.register_url = academyTrial.link + '?via=loopkick';
       sendJson(response, status || (minted.ok ? 200 : 503), body);
       return;
     }
@@ -4829,7 +4833,9 @@ async function main() {
     days: config.academyTrialDays, enabled: config.academyTrialEnabled, logger: log,
     buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/buy' : '', botToken: config.academyBotToken,
     /* the server invite is an optional extra on the launch steps: the Academy runs anywhere in Discord once the Connect bot and the Academy are on the account */
-    inviteUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || '')
+    inviteUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),
+    /* sign up with Discord: the site account is made or matched during the trial sign-in (loop-kick-bridge register; built below, so late-bound) */
+    bridge: () => loopKickBridge
   });
   log('info', 'academy_trial_runtime', { configured: academyTrial.configured, days: academyTrial.days, link: academyTrial.configured ? academyTrial.link : '', redirectUri: academyTrial.configured ? academyTrial.redirectUri : '' });
   if (academyTrial.configured) academyTrial.inspect().then((d) => log(d.checked && (!d.redirectRegistered || !d.userInstall) ? 'warn' : 'info', 'academy_trial_discord_check', d)).catch(() => {});

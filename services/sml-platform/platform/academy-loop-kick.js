@@ -266,6 +266,7 @@
         '<input name="code" placeholder="Two-step code" autocomplete="one-time-code" inputmode="numeric" maxlength="32" style="display:none">' +
         '<button type="submit">Connect</button>' +
         '<p class="lk-msg"></p>' +
+        (j && j.register_url ? '<button type="button" class="lk-alt lk-reg">No account yet? Create one with your Discord (one tap, no password)</button>' : '') +
         '<button type="button" class="lk-alt">No account yet? Create one on stockmarketloop.com</button>' +
       '</form>';
     wireCardClose(card);
@@ -319,7 +320,9 @@
         })
         .catch(function () { submit.disabled = false; fallback(); });
     };
-    form.querySelector('.lk-alt').onclick = function () {
+    var reg = form.querySelector('.lk-reg');
+    if (reg) reg.onclick = function () { say('Opening the Discord sign-up… come back and tap LOOP-KICK when it is done.', true); openExternal(String(j.register_url)); };
+    form.querySelector('.lk-alt:not(.lk-reg)').onclick = function () {
       say('Opening stockmarketloop.com…', true);
       fetch(CONNECT_LINK_ROUTE, { headers: { authorization: 'Bearer ' + activitySession() }, cache: 'no-store' })
         .then(function (r) { return r.json(); }, function () { return null; })

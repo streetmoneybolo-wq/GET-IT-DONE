@@ -79,3 +79,22 @@ test('activity: the linked member\'s recent site activity, signed like profile()
   const off = await bridgeWith(async () => { throw new Error('nope'); }, { secret: '' }).activity('123456789012345678');
   assert.equal(off.error, 'loop_kick_unconfigured');
 });
+
+test('register: sign up with Discord is signed like the other routes, maps the site\'s answers, and says when the site cannot do it', async () => {
+  const seen = [];
+  const bridge = bridgeWith(async (url, options) => { seen.push({ url, options }); return { ok: true, status: 200, json: async () => ({ ok: true, created: true, matched: false, verified: true, user_id: 77, handle: 'ana', login_url: 'https://site.example/?sml_lkc_login=abc', profile_url: 'https://site.example/members/77/' }) }; });
+  const r = await bridge.register({ discordUserId: '420000000000000042', discordTag: 'ana#0', email: 'ana@example.com', emailVerified: true, name: 'Ana' });
+  assert.deepEqual(r, { ok: true, status: 200, created: true, matched: false, verified: true, userId: 77, handle: 'ana', loginUrl: 'https://site.example/?sml_lkc_login=abc', profileUrl: 'https://site.example/members/77/' });
+  assert.equal(seen[0].url, 'https://site.example/wp-json/sml-loop-kick/v1/discord-register');
+  const body = JSON.parse(seen[0].options.body);
+  assert.deepEqual(body, { discord_user_id: '420000000000000042', discord_tag: 'ana#0', email: 'ana@example.com', email_verified: true, name: 'Ana', return_to: '' });
+  const ts = seen[0].options.headers['x-sml-lk-timestamp'];
+  const expected = crypto.createHmac('sha256', SECRET).update(ts + './wp-json/sml-loop-kick/v1/discord-register.' + crypto.createHash('sha256').update(seen[0].options.body).digest('hex')).digest('hex');
+  assert.equal(seen[0].options.headers['x-sml-lk-signature'], 'sha256=' + expected);
+  assert.equal((await bridgeWith(async () => ({ ok: false, status: 409, json: async () => ({ code: 'sml_lkc_email_unverified' }) })).register({ discordUserId: '420000000000000042', email: 'x@y.z' })).error, 'email_unverified_existing');
+  assert.equal((await bridgeWith(async () => ({ ok: false, status: 409, json: async () => ({ code: 'sml_lkd_discord_already_linked' }) })).register({ discordUserId: '420000000000000042' })).error, 'discord_already_linked');
+  assert.equal((await bridgeWith(async () => ({ ok: false, status: 400, json: async () => ({ code: 'sml_lkc_email_required' }) })).register({ discordUserId: '420000000000000042' })).error, 'email_required');
+  assert.equal((await bridgeWith(async () => ({ ok: false, status: 404, json: async () => ({ code: 'rest_no_route' }) })).register({ discordUserId: '420000000000000042' })).error, 'register_unconfigured');
+  assert.equal((await bridge.register({ discordUserId: 'nope' })).error, 'invalid_discord_user');
+  assert.equal((await createLoopKickBridge({}).register({ discordUserId: '420000000000000042' })).error, 'loop_kick_unconfigured');
+});

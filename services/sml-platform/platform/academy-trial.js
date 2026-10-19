@@ -18,7 +18,9 @@ const SNOWFLAKE = /^\d{15,25}$/;
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', store = null, days = 15, enabled = true, appName = 'Making Easy Money Academy',
-  fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, buyUrl = '', botToken = '', inviteUrl = '' } = {}) {
+  fetchImpl = globalThis.fetch, now = Date.now, logger = () => {}, buyUrl = '', botToken = '', inviteUrl = '', bridge = null } = {}) {
+  /* the site bridge (loop-kick-bridge.js register) may be built after this service: resolve it late */
+  const siteBridge = () => { const b = typeof bridge === 'function' ? bridge() : bridge; return b && typeof b.register === 'function' ? b : null; };
   const invite = /^https:\/\/(discord\.gg|discord\.com\/invite)\//i.test(String(inviteUrl || '')) ? String(inviteUrl).trim() : '';
   const siteRegisterUrl = 'https://stockmarketloop.com/register/', siteConnectUrl = 'https://stockmarketloop.com/connect-discord/';
   const origin = String(publicUrl || '').replace(/\/+$/, '');
@@ -41,7 +43,7 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
 
   function authorizeUrl(via = '') {
     const u = new URL(DISCORD + '/oauth2/authorize');
-    u.searchParams.set('client_id', clientId); u.searchParams.set('response_type', 'code'); u.searchParams.set('scope', 'identify');
+    u.searchParams.set('client_id', clientId); u.searchParams.set('response_type', 'code'); u.searchParams.set('scope', 'identify email');
     u.searchParams.set('redirect_uri', redirectUri); u.searchParams.set('state', sign({ t: now(), via: String(via || '').slice(0, 40) }));
     return u.toString();
   }
@@ -77,7 +79,7 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     const me = await fetchImpl(DISCORD + '/api/users/@me', { headers: { authorization: 'Bearer ' + tok.access_token, accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
     if (!me.ok) throw Object.assign(new Error('discord_me_' + me.status), { code: 'discord_identify_failed', status: me.status });
     const user = await me.json();
-    return { id: String(user && user.id || ''), name: String(user && (user.global_name || user.username) || '') };
+    return { id: String(user && user.id || ''), name: String(user && (user.global_name || user.username) || ''), tag: String(user && user.username || ''), email: String(user && user.email || '').trim(), emailVerified: Boolean(user && user.verified === true && user.email) };
   }
 
   /* ---------- pages ---------- */
@@ -92,12 +94,16 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
     + '.lk{display:block;width:100%;box-sizing:border-box;margin:10px 0 4px;padding:11px 12px;border:1px solid #2b4b5a;border-radius:10px;background:#07111a;color:#aef5d5;font:700 .92rem ui-monospace,monospace}h3{margin:18px 0 6px;font-size:1rem}</style></head><body><main><div class="card">' + body + '</div></main></body></html>';
   /* how an Activity actually opens: from inside Discord. The link becomes a Play card when pasted into any chat or DM; the
      App Launcher is the other door; the user-install link puts the Academy on the account for servers that never added it. */
-  /* How the Academy opens, anywhere in Discord: a free stockmarketloop.com account, the Stock Market Loop Connect bot connected
-     to the member's Discord account (the site prompts for it), the Academy added to that account, then Apps -> Launch in any
-     chat or DM. No server membership is needed. */
-  const launch = () => '<h3>Open the Academy anywhere in Discord</h3><ol>'
-    + '<li><b>Create your free stockmarketloop.com account</b> (or sign in). <a href="' + esc(siteRegisterUrl) + '">Create account</a></li>'
-    + '<li><b>Connect your Discord.</b> The site prompts you to connect the <b>Stock Market Loop Connect</b> bot to your Discord account; accept it. <a href="' + esc(siteConnectUrl) + '">Connect Discord</a></li>'
+  /* How the Academy opens, anywhere in Discord. With sign-up by Discord the site account is made (or matched) and its Discord
+     connected during the sign-in, so the member only adds the Academy to their Discord account and launches. Without it (the site
+     did not answer, or Discord shared no email) the steps start at the account. No server membership is needed either way. */
+  const siteStep = (site) => {
+    if (site && site.ok) return '<li><b>Your stockmarketloop.com account is ' + (site.created ? 'ready' : 'connected') + '.</b> ' + (site.created ? 'It was created from your Discord sign-in' : 'Your Discord is linked to it') + (site.verified ? ', email verified by Discord' : '') + ', and the Stock Market Loop Connect bot is connected. ' + (site.loginUrl ? '<a href="' + esc(site.loginUrl) + '">Open my account</a> (signed in, link good for 10 minutes).' : '') + '</li>';
+    return '<li><b>Create your free stockmarketloop.com account</b> (or sign in). <a href="' + esc(siteRegisterUrl) + '">Create account</a>' + (site && site.error === 'email_unverified_existing' ? ' An account with your Discord email already exists: sign in to it with your password, then connect Discord.' : '') + '</li>'
+      + '<li><b>Connect your Discord.</b> The site prompts you to connect the <b>Stock Market Loop Connect</b> bot to your Discord account; accept it. <a href="' + esc(siteConnectUrl) + '">Connect Discord</a></li>';
+  };
+  const launch = (site) => '<h3>Open the Academy anywhere in Discord</h3><ol>'
+    + siteStep(site)
     + '<li><b>Add the Academy to your Discord account</b>, so it launches in any server or DM: <a href="' + installUrl + '">Add the Academy</a></li>'
     + '<li><b>Launch it.</b> In any Discord chat or DM, tap the <b>Apps</b> (rocket) button, find <b>' + esc(appName) + '</b> and press <b>Launch</b>. Or paste this link into a chat and press <b>Play</b> on the card. Sign in when it asks; your trial is on your Discord account.</li></ol>'
     + '<input class="lk" readonly value="' + esc(activityUrl) + '" onfocus="this.select()" aria-label="Academy activity link">'
@@ -106,14 +112,14 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
   const landing = (via) => page(appName + ' · free trial', '<p class="k">FREE TRIAL · ' + trialDays + ' DAYS</p><h1>' + esc(appName) + '</h1>'
     + '<p>The live chart lab, every lesson with narration, the scanner, options, Level 2, alerts desk and member profiles. Free for ' + trialDays + ' days on your Discord account, in any Discord server where the Academy runs. No card.</p>'
     + '<a class="btn" href="/academy-activity/trial/start' + (via ? '?via=' + encodeURIComponent(via) : '') + '">Continue with Discord</a>'
-    + '<small>Discord only tells us who you are (your id and name). One trial per Discord account. Educational content, not financial advice.</small>');
-  const started = (name, pass) => page('Your Academy trial is on', '<p class="k">TRIAL STARTED</p><h1>You’re in' + (name ? ', ' + esc(name) : '') + '.</h1>'
+    + '<small>Discord tells us who you are (your id, name and email) so your stockmarketloop.com account is made and connected in the same step; no password, no code to type. One trial per Discord account. Educational content, not financial advice.</small>');
+  const started = (name, pass, site) => page('Your Academy trial is on', '<p class="k">TRIAL STARTED</p><h1>You’re in' + (name ? ', ' + esc(name) : '') + '.</h1>'
     + '<p>Your ' + trialDays + '-day Academy pass is on your Discord account until <b>' + esc(new Date(pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>. It works wherever you open the Academy.</p>'
-    + launch() + '<small>Enjoy the trial. When it ends, the Academy tells you how to keep access.</small>');
-  const used = (name, info) => page('Trial already used', '<p class="k">ONE TRIAL PER ACCOUNT</p><h1>' + (info.active ? 'Your trial is already running' : 'This account has had its trial') + (name ? ', ' + esc(name) : '') + '.</h1>'
-    + (info.active ? '<p>It runs until <b>' + esc(new Date(info.pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>.</p>' + launch()
+    + launch(site) + '<small>Enjoy the trial. When it ends, the Academy tells you how to keep access.</small>');
+  const used = (name, info, site) => page('Trial already used', '<p class="k">ONE TRIAL PER ACCOUNT</p><h1>' + (info.active ? 'Your trial is already running' : 'This account has had its trial') + (name ? ', ' + esc(name) : '') + '.</h1>'
+    + (info.active ? '<p>It runs until <b>' + esc(new Date(info.pass.expiresAt).toUTCString().replace(/:\d\d GMT$/, ' UTC')) + '</b>.</p>' + launch(site)
       : '<p>The free trial on this Discord account ended on ' + esc(new Date(info.pass.expiresAt).toUTCString().slice(0, 16)) + '. Academy access is available to members' + (buyUrl ? ':' : '.') + '</p>' + (buyUrl ? '<a class="btn" href="' + esc(buyUrl) + '">Get Academy access</a>' : '')));
-  const member = (name) => page('You already have access', '<p class="k">MEMBER</p><h1>You already have Academy access' + (name ? ', ' + esc(name) : '') + '.</h1><p>No trial needed.</p>' + launch());
+  const member = (name, site) => page('You already have access', '<p class="k">MEMBER</p><h1>You already have Academy access' + (name ? ', ' + esc(name) : '') + '.</h1><p>No trial needed.</p>' + launch(site));
   const failed = (why) => page('Could not start the trial', '<p class="k">NOT YET</p><h1>That did not go through.</h1><p>' + esc(why) + '</p><a class="btn" href="' + link + '">Try again</a>');
 
   const send = (response, status, html) => { response.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' }); response.end(html); };
@@ -135,10 +141,18 @@ function createAcademyTrial({ clientId = '', clientSecret = '', publicUrl = '', 
       try {
         const who = await exchange(q.get('code'));
         const r = await grant(who.id, state.via);
+        /* the site account, made or matched from the Discord sign-in (the email Discord shared, verified by Discord); a site that cannot answer leaves the manual steps */
+        let site = null;
+        const b = siteBridge();
+        if (b) {
+          try { site = await b.register({ discordUserId: who.id, discordTag: who.tag, email: who.email, emailVerified: who.emailVerified, name: who.name }); }
+          catch (error) { site = { ok: false, error: 'register_failed' }; }
+          logger(site && site.ok ? 'info' : 'warn', 'academy_trial_site_account', { userId: who.id, ok: !!(site && site.ok), created: !!(site && site.created), matched: !!(site && site.matched), verified: !!(site && site.verified), error: site && site.error, emailShared: !!who.email });
+        }
         logger('info', 'academy_trial_callback', { userId: who.id, outcome: r.code, via: state.via });
-        if (r.ok && r.code === 'started') { send(response, 200, started(who.name, r.pass)); return true; }
-        if (r.ok && r.code === 'already_member') { send(response, 200, member(who.name)); return true; }
-        if (r.code === 'trial_used') { send(response, 200, used(who.name, r)); return true; }
+        if (r.ok && r.code === 'started') { send(response, 200, started(who.name, r.pass, site)); return true; }
+        if (r.ok && r.code === 'already_member') { send(response, 200, member(who.name, site)); return true; }
+        if (r.code === 'trial_used') { send(response, 200, used(who.name, r, site)); return true; }
         send(response, 400, failed('That Discord account could not be read.'));
       } catch (error) {
         logger('warn', 'academy_trial_failed', { error, code: error && error.code });
