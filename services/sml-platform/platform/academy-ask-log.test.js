@@ -5,13 +5,28 @@ const { createAskLog, readCall } = require('./academy-ask-log');
 
 test('readCall tells a direction question from a lesson question and reads the call out of the answer', () => {
   const q = 'So what direction do you fellas think the markets will be going tomorrow?';
-  assert.deepEqual(readCall(q, 'Up. SPY holds 580 and squeezes toward 586; wrong if it loses 578 on a close.'), { direction: 'up', subject: 'market', horizon: 'tomorrow', asksDirection: true });
+  assert.deepEqual(readCall(q, 'Up. SPY holds 580 and squeezes toward 586; wrong if it loses 578 on a close.'), { direction: 'up', subject: 'market', horizon: 'tomorrow', asksDirection: true, kind: 'direction' });
   assert.equal(readCall(q, 'Down tomorrow. The tape rolled over at the close.').direction, 'down');
   assert.equal(readCall(q, 'Flat. Chop between 578 and 584 until the Fed.').direction, 'flat');
   assert.equal(readCall('Where is $NVDA going this week?', 'Higher. It reclaimed the 20-day.').subject, 'NVDA');
   assert.equal(readCall('Where is $NVDA going this week?', 'Higher.').horizon, 'week');
   assert.equal(readCall('What does it mean to own a share?', 'A slice of a real business.').asksDirection, false);
   assert.equal(readCall('What does it mean to own a share?', 'A slice of a real business.').direction, null);
+});
+
+test('an entry question is a call too: any ticker is found, lower-case included, the chart symbol stands in, and the yes or no is read', () => {
+  const r = readCall('is hubc worth it to enter still ?', 'Yes at 3.40, not at 4.10: it is five ATRs above the 10-day low. Stop 3.05, first target 4.60, about 2.5 to 1.');
+  assert.deepEqual(r, { direction: 'up', subject: 'HUBC', horizon: null, asksDirection: true, kind: 'entry' });
+  assert.equal(readCall('should I buy the dip on $amd this week?', 'No, not here. Wait for 150 to hold.').direction, 'down');
+  assert.equal(readCall('should I buy the dip on $amd this week?', '').subject, 'AMD');
+  assert.equal(readCall('should I buy the dip on $amd this week?', '').horizon, 'week');
+  assert.equal(readCall('Is NVDA worth a swing here?', 'Yes.').subject, 'NVDA');
+  assert.equal(readCall('is it still worth entering?', 'Yes at the reclaim.', { symbol: 'hubc' }).subject, 'HUBC', 'no ticker in the words: the chart on screen is the subject');
+  assert.equal(readCall('is it still worth entering?', '').asksDirection, false, 'with nothing on screen either, there is nothing to call');
+  assert.equal(readCall('What is a buy limit order?', 'An order that fills at your price or better.').asksDirection, false, 'a lesson question that says buy is still a lesson question');
+  assert.equal(readCall('is worth worth buying?', '', { isSymbol: (w) => w === 'WRTH' }).asksDirection, false, 'an English word is not a ticker');
+  assert.equal(readCall('is tsla worth holding into earnings?', '', { isSymbol: (w) => w === 'TSLA' }).subject, 'TSLA');
+  assert.equal(readCall('should I sell the market here?', 'Yes.').kind, 'direction', 'the market is a direction question, not an entry');
 });
 
 test('the log records every answer with its call, lists newest first, scores outcomes and sums a track record', async () => {
