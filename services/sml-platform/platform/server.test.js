@@ -2121,6 +2121,8 @@ test('the option-bars route serves one contract\'s candles to members only, with
   assert.match(html, /data-leg-trade=/, 'hedge legs carry Buy / Sell buttons');
   assert.match(html, /'#opt-mini'\]/, 'the chart dock can hold the mini chart');
   assert.match(html, /#intent-layer\{[^}]*background:none/, 'the intent layer must not inherit the opaque canvas gradient that would cover the candles');
+  assert.match(html, /window\.smlChartLock = \{/, 'the chart lock (nothing moves or shrinks the live chart) ships with the chart page');
+  assert.ok(html.indexOf('window.smlChartLock = {') < html.indexOf('const DOCKABLE = ['), 'the chart lock is defined before the chart dock reads it');
   assert.match(html, /Reset this paper account to ' \+ \(S\.account === 'challenge' \? '\$1,000' : '\$25,000'\)/, 'the paper trader starts members at $25,000');
   assert.doesNotMatch(html, PAGE_BANNED);
 });
