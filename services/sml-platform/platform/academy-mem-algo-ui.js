@@ -55,6 +55,8 @@
     return { on: S.on, open: S.open, mode: S.mode, label: st.label || S.mode, preferredTf: preferredTf(S.mode), chartTf: tf(), symbol: symbol(), bias: d ? d.bias : null, dir, strength: Math.round(strength), levels, data: d };
   }
   window.smlMemAlgoState = readState;
+  window.smlMemAlgoData = () => S.data; // the full analysis for the scenarios (the state event carries only the summary)
+  window.smlMemAlgoRepaint = () => { try { paint(); } catch (_) { /* not ready */ } };
   let lastStateKey = '';
   function announce() {
     const s = readState(), key = [s.on, s.mode, s.symbol, s.dir, s.strength, s.levels ? s.levels.stop : ''].join('|');

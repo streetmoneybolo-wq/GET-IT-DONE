@@ -1084,6 +1084,9 @@ test('the heat map route serves the order-flow service\'s book columns, gated li
   const { academyActivityHtml } = require('./server');
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
   assert.match(html, /id = 'heat-toggle'/, 'the HEAT toggle script is on the page');
+  assert.match(html, /mem-scn-strip/, 'the scenario insight strip lives under the candles, not over them');
+  assert.match(html, /smlSnapshotBand/, 'the snapshot carries the scenario words as a band');
+  assert.doesNotMatch(html, /extra room on top for the title and insight cards/, 'no price room is taken for an on-chart card any more');
   assert.match(html, /academy-activity\/heatmap\?symbol=/);
 });
 

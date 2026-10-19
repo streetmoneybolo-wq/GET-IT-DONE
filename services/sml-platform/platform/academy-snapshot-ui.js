@@ -50,12 +50,17 @@
     const sr = stage.getBoundingClientRect(); if (!sr.width || !sr.height) return null;
     const dpr = base.clientWidth ? base.width / base.clientWidth : (window.devicePixelRatio || 1);
     const scale = Math.min(1, 1600 / (sr.width * dpr)), f = scale * dpr, head = Math.round(46 * scale * dpr), foot = Math.round(22 * scale * dpr);
-    const out = document.createElement('canvas'); out.width = Math.max(320, Math.round(sr.width * f)); out.height = Math.max(220, Math.round(sr.height * f) + head + foot);
+    const outW = Math.max(320, Math.round(sr.width * f)), chartH = Math.round(sr.height * f);
+    /* a layer can add a band of words under the picture (the MEM ALGO scenario's route, invalidation and options), so the chart itself stays clear */
+    let band = null; try { band = typeof window.smlSnapshotBand === 'function' ? window.smlSnapshotBand(outW, scale * dpr) : null; } catch (_) { band = null; }
+    const bandH = band && band.height > 0 ? band.height : 0;
+    const out = document.createElement('canvas'); out.width = outW; out.height = Math.max(220, chartH + head + bandH + foot);
     const g = out.getContext('2d'); g.fillStyle = '#0a1118'; g.fillRect(0, 0, out.width, out.height);
     for (const c of stage.querySelectorAll('canvas')) {
       if (!visible(c)) continue; const r = c.getBoundingClientRect();
       try { g.drawImage(c, (r.left - sr.left) * f, head + (r.top - sr.top) * f, r.width * f, r.height * f); } catch (_) { /* a canvas that cannot be read is skipped */ }
     }
+    if (bandH) { try { g.drawImage(band, 0, head + chartH, outW, bandH); } catch (_) { /* no band */ } }
     const M = window.smlChartModel && window.smlChartModel(), sym = M ? M.symbol : String(($('symbol') || {}).value || 'SPY').toUpperCase(), tf = M ? M.tf : '';
     const last = M && M.bars && M.bars.length ? M.bars[M.N - 1] : null, u = scale * dpr;
     g.fillStyle = '#0b1520'; g.fillRect(0, 0, out.width, head); g.fillStyle = '#35e6a0'; g.fillRect(0, head - Math.max(2, 2 * u), out.width, Math.max(2, 2 * u));

@@ -14,7 +14,9 @@
   const KEY = 'sml-mem-scn-v1';
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const px = (v) => (Number.isFinite(v) ? (v >= 1 ? v.toFixed(2) : v.toFixed(4)) : '–');
-  const S = { key: '', result: null, shown: null, picks: {}, busy: false, error: '', openCard: null };
+  /* pin: the scenario drawn on the chart, frozen the moment it was chosen (geometry anchored to candle time, so new candles slide it
+     along instead of moving or clearing it); it stays until the member clears it or the ticker / interval changes */
+  const S = { key: '', result: null, shown: null, pin: null, picks: {}, busy: false, error: '', openCard: null };
   try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v && v.picks) S.picks = v.picks; } catch (_) { /* storage can be blocked */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ picks: S.picks })); } catch (_) { /* ignore */ } };
 
@@ -49,14 +51,43 @@
 #mem-algo-panel .scn-actions button{padding:6px 9px;border:1px solid #23495a;border-radius:7px;background:#0a1118;color:#b8c9d3;font:700 .64rem system-ui;cursor:pointer}
 #mem-algo-panel .scn-actions button.gold{border-color:#ffd166;color:#ffd166}
 #mem-algo-panel .scn-actions button.green{border-color:#00d084;color:#3ef0a8}
-#mem-algo-panel .scn-note{margin:4px 0 0;color:#6f8794;font-size:.6rem}`;
+#mem-algo-panel .scn-note{margin:4px 0 0;color:#6f8794;font-size:.6rem}
+#mem-algo-panel .scn-pinned{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:7px 9px;border:1px solid #ffd166;border-radius:9px;background:#1a1a0f;color:#ffe9a8;font:700 .66rem system-ui}
+#mem-algo-panel .scn-pinned b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff}
+#mem-algo-panel .scn-pinned button{padding:4px 8px;border:1px solid #ffd166;border-radius:6px;background:transparent;color:#ffd166;font:800 .6rem system-ui;cursor:pointer}
+/* the insight strip: the scenario's words live UNDER the chart, never over the candles; the snapshot gets the same words as a band under the picture */
+#mem-scn-strip{display:none;position:absolute;left:8px;right:8px;bottom:8px;z-index:7;padding:6px 10px 6px;border:1px solid #3a3416;border-radius:9px;background:rgba(14,13,7,.94);color:#dbe6ec;font:600 .68rem/1.45 system-ui,sans-serif;max-height:min(28%,165px);overflow:auto;scrollbar-width:thin;box-shadow:0 8px 28px rgba(0,0,0,.45)}
+#mem-scn-strip.on{display:block}#mem-scn-strip.min{max-height:none;overflow:hidden;padding-bottom:5px}#mem-scn-strip.min .cols{display:none}
+#mem-scn-strip .sh .fold{padding:3px 7px;border:1px solid #3a3416;border-radius:6px;background:transparent;color:#ffe9a8;font:800 .6rem system-ui;cursor:pointer}
+#mem-scn-strip .sh{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0 0 6px}
+#mem-scn-strip .sh b{font:900 .74rem system-ui;color:#fff}#mem-scn-strip .sh b.long{color:#35e6a0}#mem-scn-strip .sh b.short{color:#ff6b86}
+#mem-scn-strip .sh .k{font:700 .62rem ui-monospace,monospace;color:#9fb3be}#mem-scn-strip .sh .k i{font-style:normal;color:#eaf3f6}
+#mem-scn-strip .sh .pick{font:800 .56rem ui-monospace,monospace;letter-spacing:.06em;color:#1a1300;background:#ffd166;border-radius:999px;padding:2px 7px}
+#mem-scn-strip .sh .acts{margin-left:auto;display:flex;gap:5px}
+#mem-scn-strip .sh .acts button{padding:4px 8px;border:1px solid #23495a;border-radius:6px;background:#0a1118;color:#b8c9d3;font:700 .6rem system-ui;cursor:pointer}
+#mem-scn-strip .sh .acts button.gold{border-color:#ffd166;color:#ffd166}#mem-scn-strip .sh .acts button.green{border-color:#00d084;color:#3ef0a8}
+#mem-scn-strip .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:4px 16px}
+#mem-scn-strip .cols h6{margin:0 0 2px;font:800 .54rem ui-monospace,monospace;letter-spacing:.08em;color:#7f98a6;text-transform:uppercase}
+#mem-scn-strip ol{margin:0;padding-left:16px}#mem-scn-strip ol li{margin:0 0 1px}
+#mem-scn-strip .inv{color:#ffb3c0;font-weight:700}#mem-scn-strip .why{color:#9fe8c0}#mem-scn-strip .opt{color:#9cc8ff}
+@media(max-width:700px){#mem-scn-strip{max-height:150px;font-size:.66rem}}`;
   document.head.appendChild(css);
 
   const layer = document.createElement('canvas'); layer.id = 'mem-scn-layer'; host.appendChild(layer);
   const ctx = layer.getContext('2d');
+  /* the strip sits INSIDE the stage, anchored to its bottom edge: over the volume bars and the empty margin the scenario view leaves under the
+     candles (never over the candles), one line when folded, the full words when open; it is DOM, so the snapshot gets the words as a band instead */
+  const strip = document.createElement('div'); strip.id = 'mem-scn-strip'; strip.setAttribute('aria-live', 'polite'); host.appendChild(strip);
+  /* folded to one line unless the member opened it before: the chart stays clear; the words are one tap away and always in the snapshot */
+  let stripPref = 'min'; try { stripPref = localStorage.getItem('sml-mem-scn-strip') || 'min'; } catch (_) { stripPref = 'min'; }
+  if (stripPref === 'min') strip.classList.add('min');
+  strip.addEventListener('click', (e) => {
+    const f = e.target.closest('[data-scn-fold]'); if (f) { strip.classList.toggle('min'); try { localStorage.setItem('sml-mem-scn-strip', strip.classList.contains('min') ? 'min' : 'open'); } catch (_) { /* ignore */ } renderStrip(); return; }
+    const b = e.target.closest('[data-mem-scn]'); if (!b) return; onClick(b.dataset.memScn); if (window.smlMemAlgoRepaint) window.smlMemAlgoRepaint();
+  });
 
   const mode = () => { const st = window.smlMemAlgoState && window.smlMemAlgoState(); return st ? st.mode : 'day'; };
-  const memData = () => { const st = window.smlMemAlgoState && window.smlMemAlgoState(); return st && st.data ? st.data : null; };
+  const memData = () => { try { return typeof window.smlMemAlgoData === 'function' ? window.smlMemAlgoData() : null; } catch (_) { return null; } };
   const pickKey = (M) => M.symbol + ':' + mode();
 
   /* ---- compute the five scenarios for the chart's own candles; memoised on symbol, interval, mode and the last candle ---- */
@@ -75,8 +106,7 @@
       S.result.patterns = patterns; S.error = '';
     } catch (e) { S.result = null; S.error = 'The scenarios could not be built on this chart.'; }
     S.key = key;
-    /* keep the drawn scenario if its id survived the refresh, else clear it */
-    if (S.shown && !(S.result && S.result.scenarios.some((x) => x.id === S.shown))) { S.shown = null; draw(); }
+    /* the pinned drawing is never touched by a refresh: it is frozen until the member clears it or the ticker changes */
     return S.result;
   }
 
@@ -87,6 +117,7 @@
     const st = E.STRATEGIES[mode()] || {};
     let h = '<div class="mem-sec" id="mem-scn"><div class="scn-head"><h5>Scenarios · top 5</h5><em>' + esc(st.label || mode()) + (r ? ' · ' + (r.side === 'long' ? 'LONG' : 'SHORT') : '') + '</em></div>';
     h += '<p class="scn-intro">The five most likely ways a <b>' + esc(st.label || mode()) + '</b> on $' + esc(M ? M.symbol : '') + ' could play out from here, built from this chart\'s structure, zones, liquidity and patterns. Tap one to draw it on the chart, then pick the one you believe and snap it.</p>';
+    if (S.pin) h += '<div class="scn-pinned">📌 <b>' + esc(S.pin.sc.title) + '</b><span>on the chart since ' + esc(S.pin.at) + '</span><button type="button" data-mem-scn="clear">Clear</button></div>';
     if (!r || !r.ok) return h + '<div class="mem-warn">' + esc(S.error || 'Not enough candles on this interval to build scenarios yet.') + '</div></div>';
     const myPick = M ? S.picks[pickKey(M)] : null;
     for (const sc of r.scenarios) {
@@ -117,13 +148,71 @@
   function onClick(action) {
     const [what, id] = String(action || '').split(':');
     const M = window.smlChartModel && window.smlChartModel();
-    if (what === 'show') { S.shown = S.shown === id ? null : id; if (S.shown) makeRoom(); else restoreView(); draw(); return true; }
-    if (what === 'pick') { if (M) { S.picks[pickKey(M)] = S.picks[pickKey(M)] === id ? null : id; save(); draw(); } return true; }
-    if (what === 'clear') { S.shown = null; restoreView(); draw(); return true; }
+    if (what === 'show') {
+      if (S.pin && S.pin.sc.id === id) { unpin(); return true; }
+      const sc = S.result && S.result.scenarios.find((x) => x.id === id); if (!sc || !M) return true;
+      S.shown = id; S.pin = pinOf(sc, M); makeRoom(); draw(); renderStrip(); return true;
+    }
+    if (what === 'pick') { if (M) { S.picks[pickKey(M)] = S.picks[pickKey(M)] === id ? null : id; save(); draw(); renderStrip(); } return true; }
+    if (what === 'clear') { unpin(); return true; }
     if (what === 'snap') { const b = document.getElementById('snap-toggle'); if (b) b.click(); return true; }
     if (what === 'png') { savePng(); return true; }
     return false;
   }
+
+  /* Freeze a scenario for the chart. Its indices are relative to the candles at this moment; the anchor time lets draw() slide the
+     whole drawing by however many candles have arrived since, so it stays put over the same bars instead of drifting or vanishing. */
+  function pinOf(sc, M) {
+    const pat = sc.patternId && S.result && S.result.patterns && S.result.patterns.ok ? S.result.patterns.charts.find((c) => c.id === sc.patternId) : null;
+    let at = ''; try { at = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); } catch (_) { at = ''; }
+    return { sc: JSON.parse(JSON.stringify(sc)), pat: pat ? JSON.parse(JSON.stringify({ name: pat.name, lines: pat.lines || [], startIdx: pat.startIdx, points: pat.points || [], level: pat.level })) : null, anchorI: sc.window.i0, anchorT: M.timeOfIdx(sc.window.i0), symbol: M.symbol, tf: M.tf, mode: sc.mode, at };
+  }
+  function unpin() { S.pin = null; S.shown = null; restoreView(); draw(); renderStrip(); }
+  function current() { return S.pin ? S.pin.sc : null; }
+  /* how many candles the chart has moved since the pin: added to every pinned index */
+  function shiftNow(M) { if (!S.pin || !M) return 0; const i = M.idxOfTime(S.pin.anchorT); return Number.isFinite(i) ? i - S.pin.anchorI : 0; }
+
+  /* ---- the insight strip under the chart: the scenario's words, out of the candles' way ---- */
+  const wrapText = (text, max) => { const out = []; let line = ''; for (const word of String(text).split(/\s+/)) { if ((line + ' ' + word).trim().length > max && line) { out.push(line); line = word; } else line = (line + ' ' + word).trim(); } if (line) out.push(line); return out; };
+  function renderStrip() {
+    const sc = current(); if (!sc) { strip.classList.remove('on'); strip.innerHTML = ''; return; }
+    const M = window.smlChartModel && window.smlChartModel(); const st = E.STRATEGIES[sc.mode] || {};
+    const picked = M && S.picks[M.symbol + ':' + sc.mode] === sc.id;
+    strip.innerHTML = '<div class="sh"><b class="' + (sc.side === 'long' ? 'long' : 'short') + '">SCENARIO ' + sc.rank + ' · ' + esc(sc.title.toUpperCase()) + '</b>'
+      + '<span class="k">$' + esc(S.pin.symbol) + ' · ' + esc(st.label || sc.mode) + ' · ' + (sc.side === 'long' ? 'LONG' : 'SHORT') + ' · fit <i>' + sc.fit + '</i>' + (sc.rr != null ? ' · R:R <i>' + sc.rr.toFixed(1) + '</i>' : '') + ' · entry <i>' + px(sc.entry) + '</i> · stop <i>' + px(sc.stop) + '</i> · target <i>' + px(sc.target) + '</i></span>'
+      + (picked ? '<span class="pick">★ MY PICK</span>' : '') + '<span class="k">pinned ' + esc(S.pin.at) + '</span>'
+      + '<span class="acts"><button type="button" class="gold" data-mem-scn="pick:' + esc(sc.id) + '">' + (picked ? '✓ My pick' : 'Pick this one') + '</button><button type="button" class="green" data-mem-scn="snap">Snap</button><button type="button" data-mem-scn="png">PNG</button><button type="button" data-mem-scn="clear">Clear</button><button type="button" class="fold" data-scn-fold="1" title="' + (strip.classList.contains('min') ? 'Show the words' : 'Fold to one line') + '">' + (strip.classList.contains('min') ? '▴ words' : '▾ fold') + '</button></span></div>'
+      + '<div class="cols"><div><h6>The route</h6><ol>' + sc.steps.map((s2) => '<li>' + esc(s2.text) + '</li>').join('') + '</ol></div>'
+      + '<div><h6>Why this chart supports it</h6><div class="why">' + esc(sc.why) + '</div><h6 style="margin-top:4px">Invalidation</h6><div class="inv">✕ ' + esc(sc.invalidation.text) + '</div></div>'
+      + '<div><h6>Options version</h6><div class="opt">' + esc(sc.options.side) + ', ' + esc(sc.options.expiry) + '; strike ' + esc(sc.options.strike) + '.</div><h6 style="margin-top:4px">Learn from it</h6><div>' + sc.teach.slice(0, 2).map(esc).join(' ') + '</div></div></div>';
+    strip.classList.add('on');
+  }
+
+  /* the same words as a band under the snapshot picture (academy-snapshot-ui.js asks for it); width in output pixels, u = px scale */
+  window.smlSnapshotBand = function (width, u) {
+    const sc = current(); if (!sc || !(width > 0)) return null;
+    const st = E.STRATEGIES[sc.mode] || {}, picked = S.pin && S.picks[S.pin.symbol + ':' + sc.mode] === sc.id;
+    const padX = 14 * u, lineH = Math.round(15 * u), colW = width - 2 * padX;
+    const meas = document.createElement('canvas').getContext('2d'); meas.font = '600 ' + Math.round(11.5 * u) + 'px ui-monospace,monospace';
+    const wrapW = (text) => { const out = []; let line = ''; for (const word of String(text).split(/\s+/)) { const next = (line + ' ' + word).trim(); if (meas.measureText(next).width > colW && line) { out.push(line); line = word; } else line = next; } if (line) out.push(line); return out; };
+    const head1 = 'SCENARIO ' + sc.rank + ' · ' + sc.title.toUpperCase() + (picked ? '  ★ MY PICK' : '');
+    const head2 = '$' + S.pin.symbol + ' · ' + (st.label || sc.mode) + ' · ' + (sc.side === 'long' ? 'LONG' : 'SHORT') + ' · fit ' + sc.fit + '/100' + (sc.rr != null ? ' · R:R ' + sc.rr.toFixed(1) : '') + ' · entry ' + px(sc.entry) + ' · stop ' + px(sc.stop) + ' · target ' + px(sc.target);
+    const rows = [];
+    sc.steps.forEach((s2) => wrapW(s2.n + '. ' + s2.text).forEach((l) => rows.push(['#eaf3f6', l])));
+    wrapW('Why: ' + sc.why).forEach((l) => rows.push(['#9fe8c0', l]));
+    wrapW('✕ ' + sc.invalidation.text).forEach((l) => rows.push(['#ffb3c0', l]));
+    wrapW('Options: ' + sc.options.side + ', ' + sc.options.expiry + '; strike ' + sc.options.strike).forEach((l) => rows.push(['#9cc8ff', l]));
+    const h = Math.round(16 * u) + Math.round(22 * u) + Math.round(18 * u) + rows.length * lineH + Math.round(14 * u);
+    const c = document.createElement('canvas'); c.width = Math.round(width); c.height = h;
+    const g = c.getContext('2d'); g.fillStyle = '#0f0f0a'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = picked ? '#ffd166' : (sc.side === 'long' ? '#35e6a0' : '#ff6b86'); g.fillRect(0, 0, c.width, Math.max(2, 2 * u));
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    let y = Math.round(16 * u) + Math.round(14 * u);
+    g.font = '900 ' + Math.round(15 * u) + 'px system-ui,sans-serif'; g.fillStyle = picked ? '#ffd166' : (sc.side === 'long' ? '#35e6a0' : '#ff6b86'); g.fillText(head1, padX, y);
+    y += Math.round(18 * u); let hf = 11.5; g.font = '700 ' + Math.round(hf * u) + 'px ui-monospace,monospace'; while (hf > 8 && g.measureText(head2).width > colW) { hf -= 0.5; g.font = '700 ' + Math.round(hf * u) + 'px ui-monospace,monospace'; } g.fillStyle = '#dbe6ec'; g.fillText(head2, padX, y);
+    y += Math.round(6 * u); g.font = '600 ' + Math.round(11.5 * u) + 'px ui-monospace,monospace';
+    for (const [color, text] of rows) { y += lineH; g.fillStyle = color; g.fillText(text, padX, y); }
+    return c;
+  };
 
   /* Fit the chart to the scenario: enough candles before "now" to show the zones, the pattern and the structure the idea leans on,
      the whole projection to the right, and the price range set so the stop, the targets and every zone sit inside the plot with
@@ -146,7 +235,7 @@
     for (let i = firstI; i < N; i++) { const b = M.bars[i]; if (b) prices.push(+b.l, +b.h); }
     let lo = Math.min(...prices), hi = Math.max(...prices);
     if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) {
-      const pad2 = (hi - lo) * 0.14; lo -= pad2; hi += pad2 + (hi - lo) * 0.08; // extra room on top for the title and insight cards
+      const pad2 = (hi - lo) * 0.14; lo -= pad2; hi += pad2; // the words live under the chart now, so no extra room is taken from the candles
       if (pro.view) { pro.view.manual = { lo: lo - (hi - lo) * 0.16, hi }; } // the bottom slice stays clear of the volume bars
     }
     pro.setView(n, N + future);
@@ -159,7 +248,6 @@
     pro.setView(v.n, v.end == null ? undefined : v.end);
     if (v.end == null && pro.goLatest) pro.goLatest();
   }
-  function current() { const r = S.result; return r && S.shown ? r.scenarios.find((x) => x.id === S.shown) || null : null; }
 
   function savePng() {
     const cap = window.smlSnapshotCapture; if (typeof cap !== 'function') { const b = document.getElementById('snap-toggle'); if (b) b.click(); return; }
@@ -190,7 +278,8 @@
     const sc = current(); if (!sc || !w || !h) return;
     const M = window.smlChartModel && window.smlChartModel(); if (!M) return;
     const pad = M.pad, right = pad.l + M.pw, bottom = pad.t + (M.priceH || M.ph), half = M.step / 2;
-    const x = (i) => M.x(i), y = (p) => M.y(p), lo = M.lo, hi = M.hi, inY = (p) => p >= lo && p <= hi;
+    const sh = shiftNow(M); // candles that arrived since the pin
+    const x = (i) => M.x(i + sh), y = (p) => M.y(p), lo = M.lo, hi = M.hi, inY = (p) => p >= lo && p <= hi;
     const s = sc.side === 'long' ? 1 : -1, accent = s > 0 ? '#35e6a0' : '#ff6b86';
     const layout = window.SmlChartLayout;
     ctx.save(); ctx.beginPath(); ctx.rect(pad.l, pad.t, M.pw, M.priceH || M.ph); ctx.clip();
@@ -214,8 +303,8 @@
       labels.push({ x: Math.max(x1 + 4, x0 - 190), y: y(z.top) + 12, text: z.label.toUpperCase(), color: 'rgb(' + col + ')', size: 12, pill: true });
     }
     /* the pattern the idea leans on */
-    if (sc.patternId && S.result && S.result.patterns && S.result.patterns.ok) {
-      const pat = S.result.patterns.charts.find((c) => c.id === sc.patternId);
+    if (S.pin && S.pin.pat) {
+      const pat = S.pin.pat;
       if (pat) { ctx.save(); ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 3; ctx.setLineDash([]); for (const l of pat.lines || []) { ctx.beginPath(); ctx.moveTo(x(l.i1), y(l.p1)); ctx.lineTo(x(l.i2), y(l.p2)); ctx.stroke(); } ctx.restore(); labels.push({ x: x(pat.startIdx), y: y(pat.points && pat.points.length ? Math.max(...pat.points.map((q) => q.p)) : pat.level) - 14, text: pat.name.toUpperCase(), color: '#c084fc', size: 12, pill: true }); }
     }
     /* levels: entry, stop, targets and the idea's own levels */
@@ -252,45 +341,32 @@
       labels.push({ x: cx + 18, y: cy + (k % 2 ? 19 : -19), text: st.n + ' · ' + short, color: '#eaf3f6', size: 12, pill: true });
     });
     /* labels, nudged apart when the chart layout helper is present */
-    const boxes = labels.map((l) => { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; const tw = ctx.measureText(l.text).width + 12; return { x: l.align === 'right' ? l.x - tw : l.x, y: l.y - (l.size + 9) / 2, w: tw, h: l.size + 9, label: l }; });
+    const boxes = labels.map((l) => { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; const tw = ctx.measureText(l.text).width + 12; const bx = l.align === 'right' ? l.x - tw : l.x; return { x: bx + tw > right - 4 && l.align !== 'right' ? Math.max(pad.l + 2, l.x - 36 - tw) : bx, y: l.y - (l.size + 9) / 2, w: tw, h: l.size + 9, label: l }; });
     const placed = layout && layout.avoidOverlap ? layout.avoidOverlap(boxes) : boxes;
     for (const b of placed) { const l = b.label; if (l.pill || l.align === 'right') pill(b.x, b.y + b.h / 2, l.text, l.color, 'rgba(7,16,24,.92)', l.size, 'left'); else { ctx.font = '800 ' + l.size + 'px ui-monospace,monospace'; ctx.fillStyle = l.color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(l.text, b.x, b.y + b.h / 2); } }
     ctx.restore();
 
-    /* title card, top-left: what is drawn, how well the chart supports it, and the member's own call; under it the insights
-       a reader needs to understand the picture without the panel (the route in short, the invalidation, the options note) */
+    /* one compact title pill, top-left, and nothing else over the candles: the words are in the strip under the chart and in the snapshot band */
     const M2 = window.smlChartModel(); const st = E.STRATEGIES[sc.mode] || {};
     const picked = S.picks[M2.symbol + ':' + sc.mode] === sc.id;
-    const wrap = (text, max) => { const out = []; let line = ''; for (const word of String(text).split(/\s+/)) { if ((line + ' ' + word).trim().length > max && line) { out.push(line); line = word; } else line = (line + ' ' + word).trim(); } if (line) out.push(line); return out; };
-    const maxChars = Math.max(34, Math.min(78, Math.floor((M.pw - 40) / 7.4)));
-    const t1 = 'SCENARIO ' + sc.rank + ' · ' + sc.title.toUpperCase();
-    const t2 = '$' + M2.symbol + ' · ' + (st.label || sc.mode) + ' · ' + (sc.side === 'long' ? 'LONG' : 'SHORT') + ' · fit ' + sc.fit + '/100' + (sc.rr != null ? ' · R:R ' + sc.rr.toFixed(1) : '') + ' · entry ' + px(sc.entry) + ' · stop ' + px(sc.stop) + ' · target ' + px(sc.target);
-    const insight = [];
-    sc.steps.slice(0, 4).forEach((s2) => insight.push(...wrap(s2.n + '. ' + s2.text.replace(/\.$/, ''), maxChars).slice(0, 2)));
-    const invLines = wrap('✕ ' + sc.invalidation.text.replace(/ \(.*\)$/, ''), maxChars).slice(0, 2);
-    const whyLines = wrap('Why: ' + sc.why, maxChars).slice(0, 2);
-    const optLine = wrap('Options: ' + sc.options.side + ', ' + sc.options.expiry + ', strike ' + sc.options.strike, maxChars).slice(0, 2);
-    ctx.font = '900 15px system-ui,sans-serif'; const w1 = ctx.measureText(t1).width; ctx.font = '700 12px ui-monospace,monospace';
-    const allLines = [...insight, ...whyLines, ...invLines, ...optLine];
-    const w2 = Math.max(ctx.measureText(t2).width, ...allLines.map((l) => ctx.measureText(l).width));
-    const cw = Math.min(M.pw - 20, Math.max(w1, w2) + 28), lineH = 16;
-    const ch = 46 + (picked ? 20 : 0) + 10 + allLines.length * lineH + 8, cx0 = pad.l + 10, cy0 = pad.t + 10;
-    ctx.fillStyle = 'rgba(7,16,24,.94)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx0, cy0, cw, ch, 10) : ctx.rect(cx0, cy0, cw, ch); ctx.fill(); ctx.strokeStyle = picked ? '#ffd166' : accent; ctx.lineWidth = 1.6; ctx.stroke();
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.font = '900 15px system-ui,sans-serif'; ctx.fillStyle = accent; ctx.fillText(t1, cx0 + 12, cy0 + 22);
-    ctx.font = '700 12px ui-monospace,monospace'; ctx.fillStyle = '#dbe6ec'; ctx.fillText(t2, cx0 + 12, cy0 + 40);
-    let yy2 = cy0 + 40;
-    if (picked) { yy2 += 19; ctx.fillStyle = '#ffd166'; ctx.font = '900 12px ui-monospace,monospace'; ctx.fillText('★ MY PICK out of the 5 · MEM ALGO SCENARIOS', cx0 + 12, yy2); }
-    yy2 += 8; ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx0 + 12, yy2 + 2); ctx.lineTo(cx0 + cw - 12, yy2 + 2); ctx.stroke();
-    ctx.font = '700 12px ui-monospace,monospace';
-    for (const l of insight) { yy2 += lineH; ctx.fillStyle = '#eaf3f6'; ctx.fillText(l, cx0 + 12, yy2); }
-    for (const l of whyLines) { yy2 += lineH; ctx.fillStyle = '#9fe8c0'; ctx.fillText(l, cx0 + 12, yy2); }
-    for (const l of invLines) { yy2 += lineH; ctx.fillStyle = '#ffb3c0'; ctx.fillText(l, cx0 + 12, yy2); }
-    for (const l of optLine) { yy2 += lineH; ctx.fillStyle = '#9cc8ff'; ctx.fillText(l, cx0 + 12, yy2); }
+    const t1 = 'SCENARIO ' + sc.rank + ' · ' + sc.title.toUpperCase() + ' · ' + (sc.side === 'long' ? 'LONG' : 'SHORT') + ' · FIT ' + sc.fit + (picked ? ' · ★ MY PICK' : '') + ' · ' + (st.label || sc.mode).toUpperCase();
+    ctx.font = '900 12px ui-monospace,monospace';
+    const tw = Math.min(M.pw - 20, ctx.measureText(t1).width + 20);
+    ctx.fillStyle = 'rgba(7,16,24,.94)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(pad.l + 10, pad.t + 8, tw, 22, 6) : ctx.rect(pad.l + 10, pad.t + 8, tw, 22); ctx.fill();
+    ctx.strokeStyle = picked ? '#ffd166' : accent; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.save(); ctx.beginPath(); ctx.rect(pad.l + 10, pad.t + 8, tw, 22); ctx.clip();
+    ctx.fillStyle = picked ? '#ffd166' : accent; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(t1, pad.l + 20, pad.t + 19.5);
+    ctx.restore();
   }
 
   window.addEventListener('sml-chart-view', () => { try { draw(); } catch (_) { /* chart not ready */ } });
   window.addEventListener('sml-mem-algo-state', () => { const r = compute(false); if (r) draw(); });
-  window.addEventListener('sml-academy-market', () => { S.shown = null; setTimeout(() => { compute(true); draw(); }, 400); });
-  window.smlMemScenarios = { sectionHtml, onClick, compute, draw, current, clear: () => { if (S.shown) { S.shown = null; restoreView(); } draw(); } };
+  /* the market event fires on EVERY candle refresh (every few seconds), not only on a ticker change: the pin survives a refresh and is
+     cleared only when the ticker or the interval is no longer the one it was drawn on */
+  window.addEventListener('sml-academy-market', () => {
+    const M = window.smlChartModel && window.smlChartModel();
+    if (S.pin && M && (M.symbol !== S.pin.symbol || M.tf !== S.pin.tf)) { S.pin = null; S.shown = null; S.savedView = null; renderStrip(); }
+    setTimeout(() => { compute(true); draw(); }, 400);
+  });
+  window.smlMemScenarios = { sectionHtml, onClick, compute, draw, current, pinned: () => S.pin, clear: unpin };
 })();
