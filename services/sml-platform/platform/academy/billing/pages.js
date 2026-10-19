@@ -437,6 +437,7 @@ button,.button{display:inline-block;background:linear-gradient(180deg,#22ff77,#0
 button:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 .button.secondary{background:#132019;color:#e9f3ec;box-shadow:none;border:1px solid var(--line)}
 .notice{border-left:3px solid var(--gold);padding:8px 12px;background:#161408;margin:12px 0;border-radius:0 8px 8px 0}
+.pick{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.pick .next{margin:0}@media(max-width:600px){.pick .button{width:100%;text-align:center}}
 .steps{margin:14px 0 4px;padding:0 0 0 22px;font-size:.95rem}.steps li{margin:4px 0}.steps b{color:var(--neon);font-weight:800}
 a{color:#7fe3a9}
 .foot{display:flex;align-items:center;gap:10px;margin-top:26px;padding-top:14px;border-top:1px solid var(--line)}.foot img{height:34px}
@@ -733,6 +734,58 @@ ${joinLinks(config, pkg)}
 <p><a class="button secondary" href="/v1/academy/billing/buy?package=${esc(pkg)}">I have joined, continue</a></p>${footerLinks(config)}` });
 }
 
+/* THE PLANS PAGE BEFORE SIGN-IN. A visitor who is not signed in (the Academy's
+   "Keep my access" button, a shared link) sees every plan on sale with its
+   price and its trial, and picks one: that pick starts the Discord sign-in
+   with the package in the link, so after the sign-in /buy opens on that
+   plan's consent box. Nothing is sold here (no form, no consent, no CSRF):
+   the price and the trial line are read from the same catalog as /buy, and
+   the trial is shown as the price offers it (whether this account already
+   used its one free trial is only known after the sign-in, and the signed-in
+   card says so). */
+function planPreview({ pkg, desc, config }) {
+  const grants = offerGrants(desc);
+  const terms = offerTerms(desc, { trialUsed: false });
+  const every = isRecurring(pkg) ? ` / ${intervalPhrase(pkg)}` : ' once';
+  const title = grants.academy ? (LABELS[pkg] || pkg) : (desc.label || pkg);
+  const priceText = terms.charges === 0 ? 'Free' : `${formatAmount(desc.amount, desc.currency)}${every}`;
+  const trial = trialLine(pkg, desc.amount, desc.currency, terms);
+  const includes = grants.academy
+    ? `Includes MEM Academy (the Academy Student role) with its trading tools and alerts, and the paid Making Easy Money Discord access${grants.roleNames.length ? `, plus the ${listPhrase(grants.roleNames)} role${grants.roleNames.length > 1 ? 's' : ''}` : ''}.`
+    : `The ${listPhrase(grants.roleNames) || 'membership'} role${grants.roleNames.length > 1 ? 's' : ''} in the Making Easy Money Discord. Does not include MEM Academy.`;
+  const href = `/v1/academy/billing/start?purpose=buy&package=${encodeURIComponent(pkg)}`;
+  const cta = terms.trialDays !== null ? `Start my ${terms.trialDays}-day free trial` : (pkg === 'lifetime' ? 'Get lifetime access' : 'Choose this plan');
+  return `<section class="card plan">${pkg === 'lifetime' && grants.academy ? '<span class="ribbon">ONE PAYMENT · LIFETIME</span>' : ''}<h2>${esc(title)}</h2>
+<div class="price">${esc(priceText)}</div>
+${trial ? `<p class="notice">${esc(trial)}</p>` : ''}
+<p>${esc(includes)}</p>
+${pkg === 'lifetime' && grants.academy ? `<p class="muted">${esc(LIFETIME_DEFINITION)}</p>` : ''}
+${paymentMethodNote(desc) ? `<p class="muted">${esc(paymentMethodNote(desc))}</p>` : ''}
+<p class="pick"><a class="button" href="${esc(href)}">${esc(cta)}</a> <span class="muted next">Sign in with Discord on the next step</span></p></section>`;
+}
+
+function plansPage({ config, nonce, packages = [], memberships = [], pkg = '', paused = false }) {
+  const parts = ['<h1>MEM Academy plans</h1>',
+    '<p>Pick a plan. You then sign in with Discord so the access lands on the right account, confirm the renewal terms, and pay on Stripe\'s secure page. Every renewing plan can be cancelled online at any time.</p>'];
+  if (paused) parts.push(`<p class="notice">${esc(PAUSED_NOTE)}</p>`);
+  const academy = packages.filter((desc) => desc && desc.academy !== false);
+  if (academy.length) parts.push(...academy.map((desc) => planPreview({ pkg: desc.key, desc, config })));
+  else parts.push('<p class="notice">No Academy plans are on sale right now.</p>');
+  const members = memberships.filter((desc) => desc && desc.academy === false && !desc.winback);
+  if (members.length) {
+    parts.push('<h2>Memberships (without MEM Academy)</h2>', ...members.map((desc) => planPreview({ pkg: desc.key, desc, config })));
+  }
+  const back = `/v1/academy/billing/start?purpose=buy${pkg ? `&package=${encodeURIComponent(pkg)}` : ''}`;
+  parts.push(`<p class="muted">Already a member or have a plan? <a href="${esc(back)}">Sign in with Discord</a> to see your access or manage billing. Payments are processed by Stripe. Stripe emails your receipt.</p>`);
+  parts.push(`<img class="showcase" src="${assets.assetUrl('academy-poster.webp')}" alt="Making Easy Money Academy: real-time alerts, options alerts, day and swing traders">`);
+  parts.push(footerLinks(config));
+  return layout({ title: 'MEM Academy plans', body: parts.join('\n'), nonce, og: {
+    title: 'Making Easy Money — Academy plans',
+    description: 'Real-Time Alerts · Options Alerts · Day Traders · Swing Traders · Short Sale Alerts',
+    image: 'https://cdn.jsdelivr.net/gh/streetmoneybolo-wq/GET-IT-DONE@17e4c96/img/mem-academy-link-card.gif'
+  } });
+}
+
 function signInPage({ config, nonce, pkg = '', purpose = 'buy' }) {
   const href = `/v1/academy/billing/start?purpose=${encodeURIComponent(purpose)}${pkg ? `&package=${encodeURIComponent(pkg)}` : ''}`;
   return layout({ title: 'Sign in with Discord', nonce, og: {
@@ -821,6 +874,8 @@ module.exports = {
   securityHeaders,
   layout,
   buyPage,
+  plansPage,
+  planPreview,
   trialPage,
   trialSignInPage,
   trialOffer,

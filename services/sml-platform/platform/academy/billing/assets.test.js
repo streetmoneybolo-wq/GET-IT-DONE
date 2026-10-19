@@ -45,6 +45,18 @@ test('the store pages carry the brand hero, allow only their own media, and keep
   const buy = pages.buyPage({ config, nonce: 'n', userId: '1', user: { username: 'mike' }, packages: [desc], memberships: [], csrf: 'c', state: {} });
   assert.match(buy, /<section class="card"><span class="ribbon">ONE PAYMENT · LIFETIME<\/span><h2>MEM Lifetime<\/h2>/);
   assert.match(buy, /\$1,450\.90 once/); assert.match(buy, /grandmaster-obi-chibi\.gif/);
+  const month = { key: 'monthly', amount: 2999, currency: 'usd', academy: true, roleNames: [], priceId: 'price_m', label: 'Monthly', line: 'academy', roles: [], trialDays: 7 };
+  const elite = { key: 'yearly', amount: 19999, currency: 'usd', academy: false, roleNames: ['Elite Member'], priceId: 'price_e', label: 'Elite Yearly', line: 'elite', roles: ['2'], trialDays: null };
+  const plans = pages.plansPage({ config, nonce: 'n', packages: [desc, month], memberships: [elite], pkg: 'monthly' });
+  assert.match(plans, /<h1>MEM Academy plans<\/h1>/);
+  assert.match(plans, /<section class="card plan"><span class="ribbon">ONE PAYMENT · LIFETIME<\/span><h2>MEM Lifetime<\/h2>/);
+  assert.match(plans, /\$1,450\.90 once/); assert.match(plans, /\$29\.99 \/ month/); assert.match(plans, /7-day free trial, then/);
+  assert.match(plans, /href="\/v1\/academy\/billing\/start\?purpose=buy&amp;package=lifetime">Get lifetime access</);
+  assert.match(plans, /href="\/v1\/academy\/billing\/start\?purpose=buy&amp;package=monthly">Start my 7-day free trial</);
+  assert.match(plans, /Memberships \(without MEM Academy\)/); assert.match(plans, /<h2>Elite Yearly<\/h2>/); assert.match(plans, /\$199\.99 \/ year/);
+  assert.match(plans, /The Elite Member role in the Making Easy Money Discord\. Does not include MEM Academy\./);
+  assert.doesNotMatch(plans, /<form|name="csrf"|consent_/);
+  assert.doesNotMatch(plans.replace(/<meta property="og:[^>]*>/g, ''), /https?:\/\/(?!x\.test)/, 'the plans page loads only from our own origin');
   const thanks = pages.successPage({ config, nonce: 'n', sessionId: 'cs_1', paid: true, inGuild: true });
   assert.match(thanks, /id="thanks-clip" autoplay muted playsinline/); assert.match(thanks, /assets\/thank-you\.mp4/); assert.match(thanks, /Play with sound/);
   assert.match(thanks, /assets\/me-crown\.webp/); assert.doesNotMatch(thanks, /academy-hero\.mp4/, 'the thank-you page uses the slim hero');

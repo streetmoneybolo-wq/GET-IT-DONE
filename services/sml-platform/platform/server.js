@@ -4759,7 +4759,7 @@ async function main() {
   const academyTrial = createAcademyTrial({
     clientId: config.academyAppId, clientSecret: config.academyClientSecret, publicUrl: config.academyTrialPublicUrl, store: academyPassStore,
     days: config.academyTrialDays, enabled: config.academyTrialEnabled, logger: log,
-    buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/start?purpose=buy' : '', botToken: config.academyBotToken
+    buyUrl: config.academyBillingPublicUrl ? config.academyBillingPublicUrl + '/v1/academy/billing/buy' : '', botToken: config.academyBotToken
   });
   log('info', 'academy_trial_runtime', { configured: academyTrial.configured, days: academyTrial.days, link: academyTrial.configured ? academyTrial.link : '', redirectUri: academyTrial.configured ? academyTrial.redirectUri : '' });
   if (academyTrial.configured) academyTrial.inspect().then((d) => log(d.checked && (!d.redirectRegistered || !d.userInstall) ? 'warn' : 'info', 'academy_trial_discord_check', d)).catch(() => {});

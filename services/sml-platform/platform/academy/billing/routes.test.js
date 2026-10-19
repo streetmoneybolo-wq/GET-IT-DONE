@@ -257,15 +257,49 @@ test('/trial for an account whose free trial is used sells the plan with a charg
   });
 });
 
-test('/buy without a sign-in offers Discord sign-in; a non-member sees the invite first', async () => {
+test('/buy without a sign-in shows every plan with its price and a per-plan Discord sign-in link, sells nothing; a non-member sees the invite first', async () => {
   await withApp({ members: {} }, async ({ base, tokens }) => {
-    const signIn = await (await fetch(`${base}/v1/academy/billing/buy?package=monthly`)).text();
-    assert.ok(signIn.includes('/v1/academy/billing/start?purpose=buy&amp;package=monthly'));
+    const response = await fetch(`${base}/v1/academy/billing/buy?package=monthly`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const plans = await response.text();
+    assert.ok(plans.includes('<h1>MEM Academy plans</h1>'));
+    for (const price of ['$2.99', '$9.99', '$29.99', '$79.99', '$149.99', '$199.99', '$1,299.99']) assert.ok(plans.includes(price), price);
+    for (const key of ['daily', 'weekly', 'monthly', 'quarterly', 'semiannual', 'yearly', 'lifetime']) {
+      assert.ok(plans.includes(`href="/v1/academy/billing/start?purpose=buy&amp;package=${key}"`), `a sign-in link for ${key}`);
+    }
+    assert.ok(plans.includes('/v1/academy/billing/start?purpose=buy&amp;package=monthly'));
+    assert.ok(plans.includes('ONE PAYMENT · LIFETIME'));
+    assert.ok(plans.includes('Sign in with Discord on the next step'));
+    /* nothing is sold before the sign-in: no checkout form, no consent, no CSRF */
+    assert.equal(plans.includes('<form'), false);
+    assert.equal(plans.includes('consent_renewal'), false);
+    assert.equal(plans.includes('name="csrf"'), false);
+    assert.equal(/earn|profit|guarantee|income/i.test(plans.replace(/pro-rata/g, '')), false);
     const bind = tokens.issueBind({ userId: USER, guildId: GUILD, source: 'web_oauth' });
     const html = await (await fetch(`${base}/v1/academy/billing/buy`, { headers: { cookie: `mab_bind=${bind}` } })).text();
     assert.ok(html.includes('Join the server first'));
     assert.ok(html.includes('https://discord.gg/makingeasymoney'));
     assert.equal(html.includes('consent_renewal'), false);
+  });
+});
+
+test('/buy without a sign-in falls back to the sign-in page when the catalog cannot be read, and says so when checkout is paused', async () => {
+  await withApp({ members: {}, preflightOk: () => false }, async ({ base }) => {
+    const paused = await (await fetch(`${base}/v1/academy/billing/buy`)).text();
+    assert.ok(paused.includes('<h1>MEM Academy plans</h1>'));
+    assert.ok(paused.includes('Checkout is paused for a few minutes'));
+  });
+  await withApp({ members: {} }, async ({ base, stripe, logs }) => {
+    /* a fresh app: the first catalog read fails, so nothing is cached */
+    stripe.retrievePrice = async () => { throw new Error('stripe down'); };
+    const response = await fetch(`${base}/v1/academy/billing/buy?package=yearly`);
+    assert.equal(response.status, 200);
+    const fallback = await response.text();
+    assert.equal(fallback.includes('<h1>MEM Academy plans</h1>'), false);
+    assert.ok(fallback.includes('Sign in with Discord so your purchase is attached to the right account'));
+    assert.ok(fallback.includes('/v1/academy/billing/start?purpose=buy&amp;package=yearly'));
+    assert.ok(logs.some((l) => l.event === 'academy_billing_plans_catalog_failed'));
   });
 });
 

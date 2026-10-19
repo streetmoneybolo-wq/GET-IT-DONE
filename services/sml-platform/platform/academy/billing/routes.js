@@ -274,7 +274,25 @@ function createRoutes({ config, state, events, checkout, tokens, oauth, bot, sto
   async function buy(request, response, url) {
     const bind = bindFrom(request);
     const pkg = PACKAGES.includes(url.searchParams.get('package')) ? url.searchParams.get('package') : '';
-    if (!bind) { page(response, 200, (nonce) => pages.signInPage({ config, nonce, pkg })); return; }
+    if (!bind) {
+      /* Not signed in: the plans with their prices, each a link into the
+         Discord sign-in with its package. The sign-in-only page stays the
+         fallback when the catalog cannot be read. */
+      let catalogState = null;
+      try { catalogState = await catalog.get(); } catch (error) { logger('warn', 'academy_billing_plans_catalog_failed', { error: String(error && error.message || error) }); }
+      const packages = catalogState ? PACKAGES.filter((key) => catalogState.sellable.has(key)).map((key) => catalogState.sellable.get(key)) : [];
+      const memberships = catalogState && catalogState.memberships ? [...catalogState.memberships.values()]
+        .sort((a, b) => a.line.localeCompare(b.line) || PACKAGES.indexOf(a.key) - PACKAGES.indexOf(b.key)) : [];
+      /* An incomplete read with nothing in it (Stripe unreachable) must not
+         read as "nothing on sale": the sign-in page is shown instead. */
+      if (!catalogState || (!catalogState.complete && !packages.length && !memberships.length)) {
+        if (catalogState) logger('warn', 'academy_billing_plans_catalog_failed', { error: 'incomplete_empty' });
+        page(response, 200, (nonce) => pages.signInPage({ config, nonce, pkg }));
+        return;
+      }
+      page(response, 200, (nonce) => pages.plansPage({ config, nonce, packages, memberships, pkg, paused: !preflightOk() }));
+      return;
+    }
     const observed = await memberOrPage(request, response, url, bind, pkg, 'buy');
     if (!observed) return;
     const user = observed.user;
