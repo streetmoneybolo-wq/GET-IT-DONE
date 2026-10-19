@@ -26,11 +26,13 @@
     return rail;
   }
   function dock() {
-    if (!wide()) return;
     const r = home(); if (!r) return;
-    for (const id of IDS) { const b = document.getElementById(id); if (b && b.parentNode !== r) r.appendChild(b); }
+    if (wide()) { for (const id of IDS) { const b = document.getElementById(id); if (b && b.parentNode !== r) r.appendChild(b); } return; }
+    /* narrowed to a phone width: the pills go back to floating, or they would vanish inside the hidden rail */
+    for (const id of IDS) { const b = document.getElementById(id); if (b && b.parentNode === r) document.body.appendChild(b); }
   }
   dock();
   if (typeof MutationObserver === 'function') new MutationObserver(dock).observe(document.body, { childList: true });
   else setTimeout(dock, 1500);
+  window.addEventListener('resize', () => { clearTimeout(dock.t); dock.t = setTimeout(dock, 150); });
 })();
