@@ -125,7 +125,9 @@ function createStoryDesk({
   insights = {}, chartEndpoint = '', discordUrl = '', authorPath = '/n/grandmasterobi/', writer = null,
   /* scheduled pieces: [{ at: minutes into the ET day, subjects: ['the market', 'nasdaq'] }], each slot once per trading
      day in the hour after its time (the market-open and the market-close reads) */
-  schedule = [], settlePerTick = 20
+  schedule = [], settlePerTick = 20,
+  /* the process shares a 512 MB box with everything else: a piece (its dossier, its GIF, its model draft) is written only while memory has room */
+  memoryOk = () => true
 } = {}) {
   const authorUrl = siteUrl + authorPath;
   let state = null, busy = false, cursor = 0;
@@ -155,6 +157,7 @@ function createStoryDesk({
       const at = Number(slot.at); if (!Number.isFinite(at) || !Array.isArray(slot.subjects)) continue;
       const key = `${et.date}:${at}`;
       if (state.sched[key] || et.minutes < at || et.minutes > at + 60) continue;
+      if (!memoryOk()) { logger('warn', 'story_desk_memory_pause', { slot: at }); continue; } // the slot stays open for the next tick inside its hour
       state.sched[key] = t; for (const k of Object.keys(state.sched)) if (!k.startsWith(et.date)) delete state.sched[k];
       for (const subject of slot.subjects) { try { const r = await write(subject, { file: true, scheduled: true }); out.push({ subject, ok: r.ok, error: r.error || (r.filed && r.filed.error) || '', url: r.filed ? r.filed.url : '' }); } catch (error) { out.push({ subject, ok: false, error: String(error && error.message || error) }); } }
     }
@@ -213,9 +216,9 @@ function createStoryDesk({
       (async () => {
         // the GIF: the last 40 daily candles, then the path (trigger, confirmation, target)
         let media = null, gifInfo = null, posterMedia = null;
-        if (!upload) return { media, gifInfo, posterMedia };
+        if (!upload || !memoryOk()) { if (upload) logger('info', 'story_gif_skipped_memory', { symbol: c.symbol }); return { media, gifInfo, posterMedia }; }
         try {
-          const gifOpts = { symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 16, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` };
+          const gifOpts = { symbol: c.symbol, bars: c.daily.slice(-40), last: c.price, target: story.pt, stop: story.stop, levels: (c.gamma && c.gamma.callWall ? [{ label: 'Call wall', price: c.gamma.callWall.strike }] : []).concat(c.smc && c.smc.range ? [{ label: 'Range high', price: c.smc.range.hi }] : []), waypoints: story.path || [], count: 12, lean: story.lean, title: `$${c.symbol}: the path to $${story.pt}`, subtitle: `${engine.ANGLES[story.angle].label} scenario. Speculative, not advice.` };
           gifInfo = await gifs.gifAsync(gifOpts);
           if (gifInfo && gifInfo.gif) media = await publisher.uploadMedia({ bytes: gifInfo.gif, filename: `${c.symbol.toLowerCase()}-path-to-${String(story.pt).replace('.', '-')}.gif`, contentType: 'image/gif', title: `$${c.symbol} path to $${story.pt}`, alt: `${c.symbol} price-action scenario: real candles, then the move to $${story.pt}`, caption: 'Speculative scenario built from the Academy data desk. Not advice.' });
           if (typeof gifs.poster === 'function') {
@@ -314,6 +317,7 @@ function createStoryDesk({
       const results = [];
       for (const s of ranked) {
         if (s.rank < 60) continue; // a story needs a real setup; the desk would rather publish nothing
+        if (!memoryOk()) { logger('warn', 'story_desk_memory_pause', { symbol: s.symbol, written: results.length }); note(`paused for memory before ${s.symbol}`); break; }
         const c = cands.find((x) => x.symbol === s.symbol);
         const built = await produce(s, c);
         const filed = await file(s, c, built);

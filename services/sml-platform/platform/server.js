@@ -5579,7 +5579,8 @@ async function main() {
     writer: createArticleWriter({ ai: config.anthropicApiKey && String(process.env.SML_STORY_WRITER || 'on').toLowerCase() !== 'off' ? { apiKey: config.anthropicApiKey, model: config.academyAskModel } : null, logger: log }),
     discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),
     /* the scheduled reads: the market and the Nasdaq after the open (9:45 ET) and into the close (15:50 ET); SML_STORY_SCHEDULE=off skips them */
-    schedule: String(process.env.SML_STORY_SCHEDULE || 'on').toLowerCase() === 'off' ? [] : [{ at: 585, subjects: ['the market', 'nasdaq'] }, { at: 950, subjects: ['the market', 'nasdaq'] }]
+    schedule: String(process.env.SML_STORY_SCHEDULE || 'on').toLowerCase() === 'off' ? [] : [{ at: 585, subjects: ['the market', 'nasdaq'] }, { at: 950, subjects: ['the market', 'nasdaq'] }],
+    memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_STORY_PAUSE_MB) || 430) * 1024 * 1024
   }) : null;
   const getStoryDesk = () => storyDesk;
   if (storyDesk) {

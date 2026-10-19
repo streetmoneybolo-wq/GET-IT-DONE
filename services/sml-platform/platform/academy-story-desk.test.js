@@ -196,3 +196,11 @@ test('the letters publisher spaces dependent WordPress calls and retries a 429 w
   await p.identity();
   assert.equal(calls, 2); assert.deepEqual(pauses, [2000]); assert.notEqual(stamps[0], stamps[1], 'retry is signed at send time, not before the wait');
 });
+
+test('a tick writes nothing while memory has no room, and a scheduled slot waits for the next tick in its hour', async () => {
+  const logs = [];
+  const h = harness({ deps: { insights: {}, memoryOk: () => false, logger: (l, e, f) => logs.push(e), schedule: [{ at: 0, subjects: ['abcd'] }, { at: 1439, subjects: ['abcd'] }] } });
+  const r = await h.desk.tick();
+  assert.equal(r.filed, 0); assert.equal(h.posts.length, 0); assert.ok(logs.includes('story_desk_memory_pause'));
+  const st = await h.desk.status(); assert.equal(st.schedule.filter((s) => s.done).length, 0, 'no slot is marked done while paused');
+});
