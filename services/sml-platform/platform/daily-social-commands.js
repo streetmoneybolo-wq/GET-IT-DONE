@@ -8,6 +8,7 @@
  */
 
 const { createDailySocialPayouts } = require('./daily-social-payouts');
+const { handleRecruitmentComponent } = require('./dsp-recruitment');
 
 const EPHEMERAL = 64;
 const MANAGE_GUILD_PERMISSION = '32';
@@ -125,7 +126,13 @@ function createDailySocialCommands({ pool, guildId, channelId, managerRoleId, no
     }
   }
 
-  return Object.freeze({ handleCommand, handleComponent: async () => reply('This button is no longer active.') });
+  async function handleComponent(interaction) {
+    const recruitment = handleRecruitmentComponent(interaction);
+    if (recruitment) return recruitment;
+    return reply('This button is no longer active.');
+  }
+
+  return Object.freeze({ handleCommand, handleComponent });
 }
 
 module.exports = { COMMAND_DEFINITIONS, createDailySocialCommands };
