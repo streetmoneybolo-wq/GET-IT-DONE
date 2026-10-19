@@ -78,6 +78,7 @@ const { createEarningsPlaybook } = require('./academy-earnings-playbook');
 const { createEarningsInsight } = require('./academy-earnings-insight');
 const { createShortInsight } = require('./academy-short-insight');
 const { createSqueezeList } = require('./academy-squeeze-list');
+const { createPageAssets } = require('./academy-page-assets');
 const { createGroupTools, GroupToolsInputError } = require('./academy-group-tools');
 const { createMarketGauges, createVixFetcher, changeFromDaily } = require('./market-gauges');
 const { createMarketDirection, massiveSnapshots } = require('./market-direction');
@@ -1310,7 +1311,8 @@ function injectAcademyCurriculum(body) {
   return body.replace('</body></html>', `${script}</body></html>`);
 }
 
-function sendHtml(response, status, body) {
+/* The page as it is sent: the Academy document gains the intro markup and the lesson, visual and statistics scripts. */
+function academyFinalBody(body) {
   /* Academy Activity replaces the legacy canvas with the real dashboard.
      Avoid attaching its obsolete ResizeObserver during that handoff. */
   const strippedBody = typeof body === 'string'
@@ -1319,16 +1321,24 @@ function sendHtml(response, status, body) {
   /* Function replacers: a string replacement would treat `$'`, `$&`, `$$` and
      `$\`` inside the injected scripts as substitution patterns (for example
      rest.includes('$') would be served as rest.includes(')) and break them. */
-  const safeBody = typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
+  return typeof strippedBody === 'string' && strippedBody.includes('id="lesson"')
     ? strippedBody.replace('<body>', () => `<body>${academyIntroMarkup()}`).replace('</body></html>', () => `${academyCurriculumScript(SEED_LESSONS)}${academyCartoonVisualsScript()}${academySceneVisualsScript()}${academyVisualLabScript()}${academyChartIntelligenceScript()}${academyQuoteStatisticsScript()}</body></html>`)
     : strippedBody;
+}
+/* assets (optional): { pageAssets, key, canonical } moves the page's unchanging inline scripts and styles into immutable
+   external bundles (academy-page-assets.js); without it the page is sent inline, byte for byte as built. */
+function sendHtml(response, status, body, assets = null) {
+  const finalBody = academyFinalBody(body);
+  const safeBody = assets && assets.pageAssets && typeof finalBody === 'string'
+    ? assets.pageAssets.transform(finalBody, { key: assets.key, canonical: assets.canonical })
+    : finalBody;
   const payload = zlib.gzipSync(Buffer.from(safeBody), { level: zlib.constants.Z_BEST_SPEED });
   response.writeHead(status, {
     'content-type': 'text/html; charset=utf-8',
     'content-length': payload.length,
     'content-encoding': 'gzip',
     'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'self'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
+    'content-security-policy': "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-src 'self'; frame-ancestors https://discord.com https://*.discord.com https://*.discordapp.com; base-uri 'none'; form-action 'none'",
     'x-content-type-options': 'nosniff'
   });
   response.end(payload);
@@ -1919,6 +1929,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   getEarningsPlaybook = () => null, getEarningsInsight = () => null, getShortInsight = () => null, getSqueezeList = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
+  pageAssets = null,
   logger = log, now = Date.now }) {
   const publicStreamByIp = new Map();
   let publicStreamTotal = 0;
@@ -2003,6 +2014,22 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   const buyLinksOn = Boolean(academyGate && academyGate.inDiscordLinks && academyGate.handoff
     && typeof academyGate.handoff.mint === 'function' && academyGate.handoff.configured !== false && academyOAuth);
   const gateClientOptions = academyGate ? { contentGate: contentGateOn, links: buyLinksOn } : null;
+  /* The Activity page's immutable bundles (academy-page-assets.js). Which inline blocks are static is learned once per
+     page variant from two renders with different synthetic markets; the bundles are built at startup so the first
+     member's open never pays for compressing them. */
+  const academyPageOptions = () => (gateClientOptions ? { appId: academyAppId, gate: gateClientOptions } : { appId: academyAppId });
+  const academyCanonicalPages = (pageOptions) => [
+    academyFinalBody(academyActivityHtml({ symbol: 'SPY', tf: '5m', bars: [{ t: 1, o: 1, h: 2, l: 1, c: 2, v: 1 }], scanner: { rows: [] }, depth: { bids: [], asks: [] } }, pageOptions)),
+    academyFinalBody(academyActivityHtml({ symbol: 'QQQ', tf: '1h', bars: [], scanner: { rows: [{ symbol: 'QQQ', price: 1 }] }, depth: { bids: [[1, 1]], asks: [[2, 1]] } }, pageOptions))
+  ];
+  const academyPageAssetsFor = () => { if (!pageAssets) return null; const pageOptions = academyPageOptions(); return { pageAssets, key: JSON.stringify(pageOptions), canonical: () => academyCanonicalPages(pageOptions) }; };
+  if (pageAssets) {
+    const warm = setTimeout(() => {
+      try { const a = academyPageAssetsFor(); const t0 = now(); pageAssets.transform(academyCanonicalPages(academyPageOptions())[0], { key: a.key, canonical: a.canonical }); logger('info', 'academy_page_assets_warm', { ms: now() - t0, ...pageAssets.stats }); }
+      catch (error) { logger('warn', 'academy_page_assets_warm_failed', { error: String((error && error.message) || error) }); }
+    }, 1500);
+    if (warm.unref) warm.unref();
+  }
   /* At most 5 handoff codes per Discord id per 10 minutes from /academy-activity/buy. */
   const buyMints = new Map();
   const allowBuyMint = (userId) => {
@@ -2413,6 +2440,10 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       sendAcademySdkModule(response, path);
       return;
     }
+    /* the page's immutable script and style bundles (academy-page-assets.js) */
+    if ((request.method === 'GET' || request.method === 'HEAD') && pageAssets && path.startsWith(pageAssets.prefix)) {
+      if (pageAssets.serve(request, response)) return;
+    }
 
     if ((request.method === 'GET' || request.method === 'HEAD') && path === '/academy-activity/assets/making-easy-money-academy-intro.mp4') {
       sendAcademyIntro(request, response);
@@ -2475,7 +2506,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       activity.scanner = scanner.status === 'fulfilled' ? scanner.value : { rows: [] };
       if (contentGateOn) activity.scanner = gatedScanner(activity.scanner);
       activity.depth = depth.status === 'fulfilled' ? depth.value : { bids: [], asks: [] };
-      sendHtml(response, 200, academyActivityHtml(activity, gateClientOptions ? { appId: academyAppId, gate: gateClientOptions } : { appId: academyAppId }));
+      sendHtml(response, 200, academyActivityHtml(activity, academyPageOptions()), academyPageAssetsFor());
       return;
     }
 
@@ -5314,7 +5345,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, academySignalOutcomes, optionBars, tickerTalk, getEarningsPlaybook, getEarningsInsight, getShortInsight, getSqueezeList, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages, pageAssets: createPageAssets({ logger: log }),
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,

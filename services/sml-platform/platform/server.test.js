@@ -2206,3 +2206,29 @@ test('the squeeze list is the owner\'s: the probe tells the page who is the owne
   const html = academyActivityHtml({ symbol: 'SPY', tf: '5m' });
   assert.match(html, /id = 'squeeze-btn'/); assert.match(html, /academy-activity\/squeeze-list/); assert.doesNotMatch(html, PAGE_BANNED);
 });
+
+test('Activity page assets: with page assets on, the page ships its static scripts and styles as immutable bundles the server serves', async () => {
+  const { createPageAssets } = require('./academy-page-assets');
+  const pageAssets = createPageAssets();
+  await withServer({ pageAssets }, async (base) => {
+    const res = await fetch(`${base}/academy-activity/?symbol=SPY`);
+    const html = await res.text();
+    assert.match(res.headers.get('content-security-policy'), /style-src 'self' 'unsafe-inline'/, 'external stylesheets are allowed');
+    const scripts = [...html.matchAll(/<script src="(\/academy-activity\/a\/[a-f0-9]{20}\.js)"/g)].map((m) => m[1]);
+    const styles = [...html.matchAll(/<link rel="stylesheet" href="(\/academy-activity\/a\/[a-f0-9]{20}\.css)"/g)].map((m) => m[1]);
+    assert.ok(scripts.length >= 3 && styles.length >= 3, 'bundles replace the inline blocks');
+    assert.ok(html.length < 400_000, 'the shell is a fraction of the inline page: ' + html.length);
+    assert.match(html, /academy-scanner-host/, 'the request\'s own market data stays inline');
+    assert.match(html, /<script type="module">/, 'module scripts stay inline');
+    const js = await fetch(base + scripts[scripts.length - 1]);
+    assert.equal(js.status, 200); assert.match(js.headers.get('cache-control'), /immutable/); assert.match(js.headers.get('content-type'), /javascript/);
+    const css = await fetch(base + styles[0]);
+    assert.equal(css.status, 200); assert.match(css.headers.get('content-type'), /text\/css/);
+    assert.equal((await fetch(base + '/academy-activity/a/00000000000000000000.js')).status, 404);
+    /* the inline page is unchanged when assets are off */
+  });
+  await withServer({}, async (base) => {
+    const html = await (await fetch(`${base}/academy-activity/?symbol=SPY`)).text();
+    assert.doesNotMatch(html, /\/academy-activity\/a\//);
+  });
+});
