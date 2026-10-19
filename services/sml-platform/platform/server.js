@@ -37,6 +37,7 @@ const { createProfileWall } = require('./academy-profile-wall');
 const { createDepthStore } = require('./academy-depth-store');
 const { createDepthRecorder, parseSymbols: parseDepthSymbols } = require('./academy-depth-recorder');
 const { replayDepth, dayBoundsNewYork } = require('./academy-depth-replay');
+const { createFlowDaily } = require('./academy-flow-daily');
 const { createMassiveStream } = require('./academy-massive-stream');
 const { createSireFeed } = require('./academy-sire-feed');
 const { createBrokerLinks, brokerLaunchHtml, moomooQuoteUrl, webullUrl, cleanSymbol: cleanBrokerSymbol } = require('./academy-brokers');
@@ -721,6 +722,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const optionsDock = fs.readFileSync(pathModule.join(__dirname, 'academy-options-dock.js'), 'utf8');
     const chartLayout = fs.readFileSync(pathModule.join(__dirname, 'academy-chart-layout.js'), 'utf8');
     const depthTools = fs.readFileSync(pathModule.join(__dirname, 'academy-depth-tools.js'), 'utf8');
+    const heatmap = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-heatmap.js'), 'utf8'); } catch (_) { return ''; } })();
     const smartMoney = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money.js'), 'utf8');
     const smcExplain = fs.readFileSync(pathModule.join(__dirname, 'academy-smc-explain.js'), 'utf8');
     const smartMoneyUi = fs.readFileSync(pathModule.join(__dirname, 'academy-smart-money-ui.js'), 'utf8');
@@ -750,11 +752,14 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     /* the depth insights (full book and tape, academy-depth-insights.js): the panel reads hold / add / trim / exit and options timing with it */
     const depthSrc = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-depth-insights.js'), 'utf8'); } catch (_) { return ''; } })();
     const depthScript = depthSrc ? '(function(){var module={exports:{}},exports=module.exports;' + depthSrc + '\nwindow.SmlDepthInsights=module.exports;})();' : '';
+    /* the daily flow ledger's reader (academy-flow-read.js): the week's score and the week-says verdict, the same code the server runs */
+    const flowReadSrc = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-flow-read.js'), 'utf8'); } catch (_) { return ''; } })();
+    const flowReadScript = flowReadSrc ? '(function(){var module={exports:{}},exports=module.exports;' + flowReadSrc + '\nwindow.SmlFlowRead=module.exports;})();' : '';
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script><script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
-      model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : ''),
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script><script>' + optionsDock + '</script><script>' + optionsBrokers + '</script><script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script><script>' + belowCycle + '</script>',
+      model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
     };
@@ -1861,7 +1866,7 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
   memberEmail = null, siteExportSink = null, linkTracker = null, verifyGate = null,
   appApi = null,
   /* Academy data services and the challenge/paper surfaces live in main(); the handler only sees what is passed here */
-  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null,
+  academyGamma = null, academyInstitutional = null, academyFilings = null, academyPaper = null, paperQuote = async () => null, academyFlowDaily = null,
   getEarningsPlaybook = () => null, getFdaService = () => null, getCatalystRadar = () => null, getChallenge = () => null,
   siteTierDirectory = null, challengeShare = { channelId: '' }, postChallengeTrade = async () => {},
   getCandleRecap = () => null, getStoryDesk = () => null, darkPoolMemory = null, academyProfilePages = null,
@@ -3280,6 +3285,16 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* The order-book heat map (academy-heatmap.js): columns of resting size since `since`, from the order-flow service's rolling history. */
+    if (request.method === 'GET' && path === '/academy-activity/heatmap') {
+      if (!academyOrderFlow || typeof academyOrderFlow.heatmap !== 'function') { sendJson(response, 503, { ok: false, error: 'orderflow_disabled' }); return; }
+      const params = new URL(request.url || '/', 'http://localhost').searchParams;
+      if (!allowGatedSymbol(request, response, params.get('symbol'))) return;
+      try { sendJson(response, 200, academyOrderFlow.heatmap(params.get('symbol'), Number(params.get('since')) || 0)); }
+      catch (error) { sendJson(response, error instanceof TypeError ? 400 : 503, { ok: false, error: error instanceof TypeError ? 'invalid_symbol' : 'temporary_unavailable' }); }
+      return;
+    }
+
     if (request.method === 'GET' && path === '/academy-activity/scanner') {
       const scannerTier = contentGateOn ? callerTier(request) : 'member';
       if (scannerTier === null) { sendJson(response, 401, { ok: false, error: 'authorization_required' }); return; }
@@ -3895,6 +3910,20 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
       return;
     }
 
+    /* The daily flow ledger read as a window (academy-flow-daily.js + academy-flow-read.js): the week for the swing and hold models. */
+    if (request.method === 'GET' && path === '/academy-activity/flow-days') {
+      if (!academyOAuth || !academyFlowDaily || !academyFlowDaily.configured) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const symbol = String(url.searchParams.get('symbol') || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const days = Math.max(2, Math.min(30, Number(url.searchParams.get('days')) || 10));
+      try { sendJson(response, 200, await academyFlowDaily.summary(symbol, days)); }
+      catch (error) { logger('error', 'academy_flow_days_failed', { error }); sendJson(response, 503, { ok: false, error: 'flow_days_unavailable' }); }
+      return;
+    }
+
     /* Earnings playbook: the best upcoming reports with priced vs historical moves and the plays for each (?days, ?limit), or one symbol (?symbol). Paid tiers. */
     if (request.method === 'GET' && path === '/academy-activity/earnings-playbook') {
       if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
@@ -4413,19 +4442,21 @@ async function main() {
   /* The $1,000 -> $100,000 challenge (academy-challenge.js): MEM ALGO's own SIMULATED portfolio on real prices, ticking every five
      minutes in regular hours. Built on first tick because it grades with services declared further down. SML_ACADEMY_CHALLENGE=off stops it. */
   let challenge = null; const challengeShare = { channelId: '' };
+  let academyFlowDaily = null; // the daily flow ledger, built further down once the institutional service exists
   const HTF_OF = { '5m': '15m', '1D': '1W' };
   const challengeCtxFor = async (symbol, tf, bars) => {
     const get = async (fn, ms = 8_000) => { try { return await Promise.race([fn(), new Promise((r) => setTimeout(() => r(null), ms))]); } catch (_) { return null; } };
-    const [htf, bench, earn, dir, sent, gx, inst, fil] = await Promise.all([
+    const [htf, bench, earn, dir, sent, gx, inst, fil, week] = await Promise.all([
       HTF_OF[tf] ? get(() => sentimentCandles(symbol, HTF_OF[tf])) : null, symbol === 'SPY' ? null : get(() => sentimentCandles('SPY', tf)),
       academyAlerts ? get(() => academyAlerts.nextEarnings(symbol), 6_000) : null, marketDirection ? get(() => marketDirection.get(tf === '5m' ? 'day' : 'swing')) : null,
       academySentiment ? get(() => academySentiment.get(symbol), 10_000) : null, academyGamma ? get(() => academyGamma.get(symbol), 15_000) : null,
-      academyInstitutional ? get(() => academyInstitutional.get(symbol), 6_000) : null, academyFilings ? get(() => academyFilings.get(symbol), 10_000) : null
+      academyInstitutional ? get(() => academyInstitutional.get(symbol), 6_000) : null, academyFilings ? get(() => academyFilings.get(symbol), 10_000) : null,
+      academyFlowDaily && academyFlowDaily.configured ? get(() => academyFlowDaily.summary(symbol, 10), 4_000) : null
     ]);
     return { htf: htf && htf.bars ? htf.bars : null, bench: bench && bench.bars ? bench.bars : null, benchSelf: symbol === 'SPY',
       patterns: patternsLib && patternsLib.detect ? (b) => patternsLib.detect(b) : null, patternCache: new Map(),
       signals: memSignalsLib ? memSignalsLib.allVotes(bars) : null, orderFlow: academyOrderFlow ? (() => { try { return academyOrderFlow.get(symbol); } catch (_) { return null; } })() : null,
-      earnings: earn && earn.daysAway != null ? { daysAway: earn.daysAway } : null, direction: dir, sentiment: sent, darkPool: null, gamma: gx, institutional: inst, filings: fil };
+      earnings: earn && earn.daysAway != null ? { daysAway: earn.daysAway } : null, direction: dir, sentiment: sent, darkPool: null, gamma: gx, institutional: inst, filings: fil, flowDays: week && week.ok ? week : null };
   };
   /* a Discord DM to the owner from the Academy bot: open (or reuse) the DM channel, then post */
   const dmChannels = new Map();
@@ -4536,6 +4567,12 @@ async function main() {
     capital: academyDataBridge && academyDataBridge.configured ? async (s) => { const r = await academyDataBridge.get('capital', s); return r && r.ok && r.data && r.data.ok !== false ? (r.data.data || r.data) : null; } : null,
     tape: academyMassive && typeof academyMassive.peek === 'function' ? (s) => { if (typeof academyMassive.watch === 'function') academyMassive.watch(s); const p = academyMassive.peek(s); return p ? p.stats : null; } : null,
     logger: log
+  });
+  /* The daily flow ledger (academy_flow_days): the tape, the full-depth pressure, the Level 2 events and moomoo's size buckets folded once a
+     minute per tracked symbol, so the swing and hold models read the week. ACADEMY_FLOW_DAYS=off disables it. */
+  academyFlowDaily = process.env.ACADEMY_FLOW_DAYS === 'off' ? null : createFlowDaily({
+    pool: database.pool, orderFlow: academyOrderFlow, massive: academyMassive, institutional: academyInstitutional, logger: log,
+    extraSymbols: parseDepthSymbols(process.env.ACADEMY_DEPTH_RECORD_SYMBOLS)
   });
   /* SEC filings for the Academy: Form 4 insider buys/sells and 13D/13G stakes straight from EDGAR (no vendor, no key). */
   const academyFilings = process.env.SML_ACADEMY_FILINGS === 'off' ? null : createFilingsService({
@@ -4912,7 +4949,7 @@ async function main() {
     marketHistory, publicMarketDataEnabled: config.massivePublicChartsEnabled,
     brokerLinks: createBrokerLinks({ apiKey: config.massiveApiKey }),
     academyDiscipline,
-    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
+    academyGamma, academyInstitutional, academyFilings, academyPaper, paperQuote, academyFlowDaily, getEarningsPlaybook, getFdaService, getCatalystRadar, getChallenge, siteTierDirectory, challengeShare, postChallengeTrade, getCandleRecap, getStoryDesk, darkPoolMemory, academyProfilePages,
     academyAppId: config.academyAppId,
     academyGate,
     loopKickBridge, loopKickConnect, connectOAuth, connectAppId: config.discordConnectAppId,
@@ -4932,6 +4969,7 @@ async function main() {
     if (academyAlertSources) academyAlertSources.stop();
     if (academyMassive) academyMassive.stop();
     if (academyScreener) academyScreener.stop();
+    if (academyFlowDaily) academyFlowDaily.stop();
     if (academyChatWss) academyChatWss.close();
     server.close(async () => {
       await database.close();
@@ -4957,6 +4995,11 @@ async function main() {
     if (academyAlertSources) academyAlertSources.start();
     if (academyMassive) academyMassive.start();
     if (academyScreener) academyScreener.start();
+    if (academyFlowDaily && academyFlowDaily.start()) {
+      /* the days before the ledger existed, for the recorded symbols, from the full book's prints; once, shortly after start */
+      const syms = academyDepthRecorder ? academyDepthRecorder.symbols : parseDepthSymbols(process.env.ACADEMY_DEPTH_RECORD_SYMBOLS);
+      setTimeout(async () => { for (const s of syms) { try { const n = await academyFlowDaily.backfill(s, 30); if (n) log('info', 'academy_flow_days_backfilled', { symbol: s, days: n }); } catch (error) { log('warn', 'academy_flow_days_backfill_failed', { symbol: s, error: String(error && error.message || error).slice(0, 160) }); } } }, 45_000).unref();
+    }
     /* SML_ACADEMY_BAKE=1: generate every missing lesson deck and narration once, in the background, into academy_media */
     if (config.academyBake) {
       const bake = createAcademyBake({ lessons: SEED_LESSONS, designer: academySlideDesigner, voice: academyVoice, store: academyMedia, logger: log });
