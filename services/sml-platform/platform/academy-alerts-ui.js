@@ -238,9 +238,10 @@
     const closeBtn = '<button type="button" class="aa-close" data-act="close" aria-label="Close alerts">✕</button>';
     const srcBtn = S.session && S.perMember ? '<button type="button" class="aa-src" data-act="sources" title="Pick which servers, channels and traders your desk follows">' + (S.pick ? 'Done' : '＋ Sources' + (S.sourceCount ? ' · ' + S.sourceCount : '')) + '</button>' : '';
     let head = '<header><b>ALERTS DESK</b>' + srcBtn + swapBtn + closeBtn + '<small>' + (S.asOf ? 'updated ' + ago(S.asOf) + ' ago' : '') + '</small></header>'
-      + '<div class="aa-tabs">' + [['all', 'All'], ['swings', 'Swings'], ['longterm', 'Long-Term']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
+      + '<div class="aa-tabs">' + [['all', 'All'], ['swings', 'Swings'], ['longterm', 'Long-Term'], ['traders', 'Traders']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>';
     let body;
     if (S.session && S.pick) body = pickerHtml();
+    else if (S.session && S.tab === 'traders') body = '<div class="aa-traders"></div>'; /* members' own Alert Charts (academy-alert-chart-ui.js), mounted after paint */
     else if (S.session && S.perMember && !S.sourceCount && !S.loading) body = '<div class="aa-empty">Your alerts desk is empty.<br>Pick a server, then a channel or a trader, and their alerts show up here with a live risk grade and plan.<br><button type="button" data-act="sources">＋ Add alert sources</button></div>';
     else if (S.session && S.teaser && !S.alerts.length) body = '<div class="aa-empty">' + S.teaser.count + ' alert' + (S.teaser.count === 1 ? '' : 's') + ' on the desk from Making Easy Money streams.<br>Unlock the Academy to follow them live.</div>';
     else if (!S.session) body = '<div class="aa-empty">The alerts desk is for verified Academy members.<br><button type="button" data-act="unlock">Unlock Academy Tools</button></div>';
@@ -249,9 +250,14 @@
     else body = list.map(rowHtml).join('');
     const warn = S.pick ? '' : Object.keys(S.feed).filter((k) => S.feed[k] && S.feed[k].ok === false && S.feed[k].lastPollAt && (S.perMember || S.tab === 'all' || S.tab === k)).map((k) => '<div class="aa-warn">' + esc(S.feed[k].label || (k === 'swings' ? 'Swings' : k === 'longterm' ? 'Long-Term' : 'A source')) + ' feed is reconnecting' + (S.feed[k].error ? ' (' + esc(S.feed[k].error) + ')' : '') + '. What is shown may be behind.</div>').join('');
     const scrollTop = (panel.querySelector('.aa-list') || {}).scrollTop || 0;
+    /* the Traders tab keeps its own DOM across repaints (a form being typed must not be wiped by the poll) */
+    const keepTraders = S.tab === 'traders' && !S.pick ? panel.querySelector('.aa-traders') : null;
     if (S.pick) head = head.replace(/<div class="aa-tabs">[\s\S]*?<\/div>$/, '');
     panel.innerHTML = head + warn + '<div class="aa-list' + (S.pick ? ' pk' : '') + '">' + body + '</div><div class="aa-note">Educational analysis of posted alerts: risk grade, plan and checklist come from public data, MEM ALGO, order-book pressure and chatter. Not advice; nothing here places a trade.</div>';
     const l = panel.querySelector('.aa-list'); if (l) l.scrollTop = scrollTop;
+    const traders = panel.querySelector('.aa-traders');
+    if (traders && keepTraders) traders.replaceWith(keepTraders);
+    else if (traders && window.smlAlertChart) void window.smlAlertChart.mount(traders, { feed: true });
   }
 
   async function api(path, method, body) {

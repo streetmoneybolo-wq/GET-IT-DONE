@@ -2312,3 +2312,48 @@ test('Ticker Talk comments carry the author\'s Discord avatar and open the share
   assert.match(html, /function paintAvatars\(root\)/); assert.match(html, /function cardOn\(host\)/);
   assert.match(html, /cardOn\(panel\);/); assert.match(html, /shield\(m\); cardOn\(m\); \}/, 'the expanded view opens the card too');
 });
+
+test('Alert Chart routes: post, thread updates, follow with push, settings, premium lock and owner grants, the feed; the page carries the renderer, the profile section and the Traders tab', async () => {
+  const { createTraderAlerts } = require('./academy-trader-alerts');
+  const { OWNER_IDS } = require('./academy-free-users');
+  const A = OWNER_IDS[0], B = '200000000000000002';
+  const traderAlerts = createTraderAlerts({ candles: async () => ({ bars: [{ t: Date.now() - 300_000, o: 100, h: 101, l: 99, c: 100, v: 1 }, { t: Date.now() - 30_000, o: 100, h: 110, l: 99, c: 108, v: 1 }] }), logger: () => {}, names: async () => 'Ace' });
+  const academyOAuth = { verifySession: (a) => (a === 'Bearer owner' ? { ok: true, userId: A, tier: 'academy' } : a === 'Bearer member' ? { ok: true, userId: B, tier: 'academy' } : a === 'Bearer free' ? { ok: true, userId: '300000000000000003', tier: 'free' } : { ok: false, status: 401, code: 'authorization_required' }) };
+  const J = (tok, body) => ({ method: 'POST', headers: { authorization: 'Bearer ' + tok, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  await withServer({ academyOAuth, traderAlerts }, async (base) => {
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts`)).status, 401);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts`, J('free', { symbol: 'NVDA', entry: 100, targets: [110] }))).status, 403, 'free sessions read, members post');
+    const posted = await (await fetch(`${base}/academy-activity/trader-alerts`, J('owner', { symbol: 'nvda', entry: 100, targets: '110, 120', stop: 95, note: 'breakout' }))).json();
+    assert.equal(posted.ok, true); assert.equal(posted.alert.symbol, 'NVDA'); assert.equal(posted.alert.metrics.peakPct, 10);
+    const bad = await (await fetch(`${base}/academy-activity/trader-alerts`, J('owner', { symbol: 'NVDA', entry: 100, targets: [90] }))).json();
+    assert.equal(bad.error, 'targets_wrong_side');
+    const upd = await (await fetch(`${base}/academy-activity/trader-alerts/${posted.alert.id}/update`, J('owner', { kind: 'pt_hit', targetIndex: 0, price: 110.2, body: 'PT1 smashed' }))).json();
+    assert.equal(upd.ok, true);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/${posted.alert.id}/update`, J('member', { kind: 'update', body: 'hi' }))).status, 403);
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/999999/update`, J('owner', { kind: 'update', body: 'hi' }))).status, 404);
+    const fol = await (await fetch(`${base}/academy-activity/trader-alerts/follow`, J('member', { trader: A, on: true, push: true }))).json();
+    assert.deepEqual(fol, { ok: true, following: true, push: true, followers: 1 });
+    const list = await (await fetch(`${base}/academy-activity/trader-alerts?user=${A}`, { headers: { authorization: 'Bearer member' } })).json();
+    assert.equal(list.alerts[0].updates.length, 1); assert.equal(list.viewer.following, true); assert.equal(list.trader.name, 'Ace'); assert.equal(list.alerts[0].targets[0].hit, true);
+    const set = await (await fetch(`${base}/academy-activity/trader-alerts/settings`, J('owner', { channels: [{ name: 'Main' }, { name: 'VIP', premium: true }], prices: { month: 2999 } }))).json();
+    assert.equal(set.settings.premium, true);
+    const vip = await (await fetch(`${base}/academy-activity/trader-alerts`, J('owner', { symbol: 'TSLA', entry: 100, targets: [130], channel: 'vip', note: 'secret' }))).json();
+    const asMember = await (await fetch(`${base}/academy-activity/trader-alerts?user=${A}`, { headers: { authorization: 'Bearer member' } })).json();
+    const locked = asMember.alerts.find((x) => x.id === vip.alert.id);
+    assert.equal(locked.locked, true); assert.equal(locked.symbol, null); assert.equal(locked.metrics.peakPct, 10, 'the numbers tease');
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/checkout`, J('member', { trader: A, plan: 'month' }))).status, 503, 'checkout waits for the site bridge');
+    assert.equal((await fetch(`${base}/academy-activity/trader-alerts/grant`, J('member', { member: B, trader: A, plan: 'month' }))).status, 403, 'grants are the owner\'s');
+    const grant = await (await fetch(`${base}/academy-activity/trader-alerts/grant`, J('owner', { member: B, trader: A, plan: 'month' }))).json();
+    assert.equal(grant.ok, true);
+    const unlocked = await (await fetch(`${base}/academy-activity/trader-alerts?user=${A}`, { headers: { authorization: 'Bearer member' } })).json();
+    assert.equal(unlocked.alerts.find((x) => x.id === vip.alert.id).symbol, 'TSLA'); assert.equal(unlocked.viewer.access.plan, 'month');
+    const feed = await (await fetch(`${base}/academy-activity/trader-alerts/feed`, { headers: { authorization: 'Bearer member' } })).json();
+    assert.equal(feed.alerts.length, 2); assert.equal(feed.alerts[0].followed, true); assert.equal(feed.alerts[0].authorName, 'Ace');
+    const mine = await (await fetch(`${base}/academy-activity/trader-alerts/settings`, { headers: { authorization: 'Bearer owner' } })).json();
+    assert.equal(mine.stats.alerts, 2); assert.equal(mine.stats.active, true);
+  });
+  const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
+  assert.match(html, /window\.smlAlertChart = \{ mount/, 'the renderer ships with the page');
+  assert.match(html, /pv-alerts-wrap/, 'the profile page has the Alert Chart section');
+  assert.match(html, /\['traders', 'Traders'\]/, 'the Alerts desk has a Traders tab');
+});

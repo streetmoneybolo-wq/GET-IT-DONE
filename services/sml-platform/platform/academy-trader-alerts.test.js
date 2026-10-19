@@ -1,0 +1,105 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { createTraderAlerts, measure, cleanSettings, PLANS } = require('./academy-trader-alerts');
+
+const T0 = Date.UTC(2026, 9, 19, 14, 0, 0);
+const A = '100000000000000001', B = '200000000000000002', C = '300000000000000003';
+const bar = (t, o, h, l, c) => ({ t, o, h, l, c, v: 1000 });
+
+test('measure: peak and current gain since the alert, time to peak, targets hit, shorts sign-flipped, a stored peak is a floor', () => {
+  const alert = { entry: 100, side: 'long', createdAt: new Date(T0).toISOString(), targets: [105, 110, 120], stop: 95, status: 'open' };
+  const bars = [bar(T0 - 3600e3, 99, 130, 98, 99), bar(T0, 100, 101, 99, 100.5), bar(T0 + 3600e3, 100.5, 108, 100, 107), bar(T0 + 2 * 3600e3, 107, 112, 104, 104)];
+  const m = measure(alert, bars, T0 + 3 * 3600e3);
+  assert.equal(m.peakPct, 12); assert.equal(m.peakAt, T0 + 2 * 3600e3); assert.equal(m.timeToPeakMs, 2 * 3600e3);
+  assert.equal(m.currentPct, 4); assert.equal(m.stopPct, -5);
+  assert.deepEqual(m.targets.map((t) => t.hit), [true, true, false]);
+  assert.equal(m.targets[2].pct, 20);
+  const short = measure({ ...alert, side: 'short', targets: [95, 90] }, [bar(T0, 100, 101, 100, 100), bar(T0 + 3600e3, 100, 100, 91, 97)], T0 + 7200e3);
+  assert.equal(short.peakPct, 9); assert.equal(short.currentPct, 3); assert.deepEqual(short.targets.map((t) => t.hit), [true, false]);
+  const floored = measure({ ...alert, peakPct: 25, peakAt: new Date(T0 + 1000).toISOString() }, bars, T0 + 3 * 3600e3);
+  assert.equal(floored.peakPct, 25, 'history windows end; the stored peak survives');
+  const closed = measure({ ...alert, status: 'closed', closePrice: 111, closedAt: new Date(T0 + 4 * 3600e3).toISOString() }, bars, T0 + 5 * 3600e3);
+  assert.equal(closed.currentPct, 11, 'a closed alert reads its close price');
+  assert.equal(measure({ ...alert, entry: 0 }, bars, T0), null);
+});
+
+test('settings: channels, premium flag, prices in cents inside bounds', () => {
+  const s = cleanSettings({ channels: [{ name: 'Day trades', premium: true }, { name: 'Swings' }, { name: 'Day trades' }], prices: { day: 500, month: 2999, lifetime: -5, year: 'x' }, about: 'My alerts' });
+  assert.deepEqual(s.channels.map((c) => c.key), ['daytrades', 'swings']);
+  assert.equal(s.premium, true); assert.deepEqual(s.prices, { day: 500, week: 0, month: 2999, year: 0, lifetime: 0 });
+  assert.equal(cleanSettings({ channels: [] }).channels[0].key, 'main');
+  assert.deepEqual(Object.keys(PLANS), ['day', 'week', 'month', 'year', 'lifetime']);
+});
+
+test('the thread: post, target smashed, sell, close; metrics from candles; listing with stats; validation', async () => {
+  let clock = T0; const logs = [];
+  const candles = async (symbol) => ({ bars: [bar(T0, 50, 50.5, 49.8, 50.2), bar(T0 + 3600e3, 50.2, 56, 50, 55), bar(T0 + 7200e3, 55, 57.5, 53, 54)] });
+  const svc = createTraderAlerts({ candles, now: () => clock, logger: (l, e, x) => logs.push([e, x]), names: async (id) => (id === A ? 'Ace' : '') });
+  assert.equal((await svc.post(A, { symbol: 'nvda', side: 'long', entry: 50, targets: '55, 60', stop: 48, note: 'breakout' })).ok, true);
+  assert.equal((await svc.post(A, { symbol: 'NVDA', entry: 50, targets: [45] })).error, 'targets_wrong_side');
+  assert.equal((await svc.post(A, { symbol: 'NVDA', entry: 50, targets: [55], stop: 52 })).error, 'stop_wrong_side');
+  assert.equal((await svc.post(A, { symbol: 'bad!', entry: 50, targets: [55] })).error, 'invalid_symbol');
+  assert.equal((await svc.post(A, { symbol: 'NVDA', entry: 50 })).error, 'targets_required');
+  assert.equal((await svc.post('x', { symbol: 'NVDA', entry: 50, targets: [55] })).error, 'invalid_author');
+  clock = T0 + 3 * 3600e3;
+  const l1 = await svc.list(A, { viewerId: B });
+  assert.equal(l1.alerts.length, 1);
+  const a = l1.alerts[0];
+  assert.equal(a.symbol, 'NVDA'); assert.equal(a.metrics.peakPct, 15); assert.equal(a.metrics.currentPct, 8); assert.equal(a.metrics.timeToPeakMs, 7200e3);
+  assert.equal(a.metrics.targetsHit, 1); assert.equal(a.targets[0].hit, true); assert.equal(a.targets[1].hit, false);
+  assert.equal(a.authorName, 'Ace'); assert.equal(l1.trader.active, true); assert.equal(l1.viewer.following, false);
+  assert.equal((await svc.update(B, a.id, { kind: 'update', body: 'not mine' })).error, 'not_yours');
+  assert.equal((await svc.update(A, a.id, { kind: 'pt_hit', targetIndex: 5 })).error, 'invalid_target');
+  assert.equal((await svc.update(A, a.id, { kind: 'update', body: '' })).error, 'body_required');
+  assert.equal((await svc.update(A, a.id, { kind: 'pt_hit', targetIndex: 0, price: 55.1, body: 'PT1 smashed' })).ok, true);
+  assert.equal((await svc.update(A, a.id, { kind: 'sell', price: 56, body: 'sold half' })).ok, true);
+  assert.equal((await svc.update(A, a.id, { kind: 'close', price: 54 })).ok, true);
+  assert.equal((await svc.update(A, a.id, { kind: 'close', price: 54 })).error, 'already_closed');
+  const l2 = await svc.list(A, { viewerId: A });
+  const c = l2.alerts[0];
+  assert.equal(c.status, 'closed'); assert.equal(c.updates.length, 3); assert.deepEqual(c.updates.map((u) => u.kind), ['pt_hit', 'sell', 'close']);
+  assert.equal(c.metrics.currentPct, 8, 'closed at 54 against 50'); assert.equal(c.targets[0].hitAt, new Date(T0 + 3 * 3600e3).toISOString());
+  assert.equal(l2.trader.closed, 1); assert.equal(l2.trader.winRatePct, 100); assert.equal(l2.trader.avgPeakPct, 15); assert.equal(l2.viewer.own, true);
+  clock = T0 + 40 * 86_400e3;
+  assert.equal((await svc.stats(A)).active, false, 'no post in thirty days: inactive'); assert.equal((await svc.stats(A)).inactiveDays, 39);
+});
+
+test('follows with push, premium channels lock the ticker and thread but keep the numbers, paid access by plan, the feed, and the push fan-out', async () => {
+  let clock = T0; const sent = [];
+  const push = { sendTo: async (allow, message) => { const got = []; for (const u of [B, C]) if (await allow(u)) got.push(u); sent.push({ to: got, title: message.title }); return { sent: got.length }; } };
+  const svc = createTraderAlerts({ candles: async () => ({ bars: [bar(T0, 10, 12, 10, 11)] }), now: () => clock, push, names: async () => 'Ace' });
+  await svc.saveSettings(A, { channels: [{ name: 'Free', premium: false }, { name: 'VIP', premium: true }], prices: { month: 1999, lifetime: 9900 } });
+  assert.deepEqual((await svc.follow(B, A, { push: true })), { ok: true, following: true, push: true, followers: 1 });
+  assert.equal((await svc.follow(C, A)).followers, 2);
+  assert.equal((await svc.follow(A, A)).error, 'invalid_user');
+  const free = await svc.post(A, { symbol: 'AMD', entry: 10, targets: [12], channel: 'free' });
+  const vip = await svc.post(A, { symbol: 'TSLA', entry: 10, targets: [13], channel: 'vip', note: 'secret' });
+  assert.equal(free.ok && vip.ok, true);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(sent.length, 1, 'only the free alert reached anyone: B has push on but no VIP access');
+  assert.deepEqual(sent[0].to, [B]); assert.match(sent[0].title, /new long alert on \$AMD/);
+  const asB = await svc.list(A, { viewerId: B });
+  const lockedRow = asB.alerts.find((x) => x.premium);
+  assert.equal(lockedRow.locked, true); assert.equal(lockedRow.symbol, null); assert.equal(lockedRow.note, ''); assert.equal(lockedRow.metrics.peakPct, 20, 'the numbers tease');
+  assert.equal(asB.trader.settings.premium, true); assert.equal(asB.viewer.access.ok, false);
+  assert.equal((await svc.grantAccess(B, A, { plan: 'month', source: 'stockmarketloop', reference: 'order-1' })).until, new Date(T0 + 30 * 86_400e3).toISOString());
+  const asB2 = await svc.list(A, { viewerId: B });
+  assert.equal(asB2.alerts.find((x) => x.premium).symbol, 'TSLA'); assert.equal(asB2.viewer.access.plan, 'month');
+  await svc.update(A, vip.alert.id, { kind: 'pt_hit', targetIndex: 0, price: 13 });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(sent[sent.length - 1].to, [B], 'with access, the VIP update reaches B');
+  assert.match(sent[sent.length - 1].title, /target smashed on \$TSLA/);
+  clock = T0 + 31 * 86_400e3;
+  assert.equal((await svc.access(B, A)).expired, true, 'a month later the grant has run out');
+  assert.equal((await svc.grantAccess(B, A, { plan: 'lifetime' })).until, null);
+  assert.equal((await svc.access(B, A)).ok, true);
+  assert.equal((await svc.access(A, A)).own, true, 'the trader always sees their own chart');
+  assert.equal((await svc.grantAccess(B, A, { plan: 'forever' })).error, 'invalid_grant');
+  const feedC = await svc.feed(C);
+  assert.equal(feedC.alerts.length, 2); assert.equal(feedC.alerts[0].followed, true); assert.ok(feedC.alerts.some((x) => x.locked));
+  const feedNobody = await svc.feed('');
+  assert.equal(feedNobody.alerts.length, 2); assert.equal(feedNobody.alerts.every((x) => !x.followed), true);
+  await svc.revokeAccess(B, A); assert.equal((await svc.access(B, A)).ok, false);
+  assert.equal((await svc.follow(B, A, { on: false })).followers, 1);
+});

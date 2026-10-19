@@ -110,6 +110,7 @@
     + '.pv-sw{display:flex;flex-wrap:wrap;gap:5px}.pv-sw button{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer}.pv-sw button.on{border-color:#fff}.pv-opts{display:flex;flex-wrap:wrap;gap:5px}.pv-opts button{border:1px solid #23404d;border-radius:6px;background:#0c1821;color:#cfe3ea;padding:5px 8px;font:700 .62rem system-ui,sans-serif;cursor:pointer}.pv-opts button.on{border-color:var(--acc,#00c47d);color:#fff}'
     + '.pv-soc{display:flex;gap:6px;align-items:center;margin-top:5px}.pv-soc span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cfe3ea}.pv-soc button{border:1px solid #3a2a2a;border-radius:6px;background:#1a0e0e;color:#ff9f9f;padding:3px 7px;cursor:pointer;font:800 .6rem system-ui}'
     + '.pv-row{display:flex;gap:6px;margin-top:6px}.pv-row input{flex:1}.pv-chk{display:flex;align-items:center;gap:6px;margin:5px 0;color:#cfe3ea}.pv-ft{display:flex;gap:6px;margin-top:14px;position:sticky;bottom:0;background:#0a1118;padding:8px 0}.pv-note{color:#7f95a1;font-weight:500;margin-top:6px}'
+    + '.pv-alerts-wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:0 16px 14px}.pv-alerts-wrap .pv-sec{margin:0}'
     + '.pv-wall-wrap{position:relative;z-index:1;max-width:1240px;margin:0 auto;padding:0 16px 60px}.pv-wall .pv-cmp{display:flex;gap:8px;align-items:flex-end}.pv-wall textarea{flex:1;min-height:58px;max-height:160px;resize:vertical;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.04);color:#e6eef2;padding:8px 10px;font:500 .74rem/1.4 system-ui,sans-serif}'
     + '.pv-wall .pv-cnote{margin:4px 0 10px;color:#7f95a1;font:600 .6rem ui-monospace,monospace}.pv-wall-list{display:flex;flex-direction:column;gap:8px}.pv-wc{border:1px solid rgba(255,255,255,.07);border-radius:10px;background:rgba(255,255,255,.03);padding:8px 10px}'
     + '.pv-wc .m{display:flex;gap:8px;align-items:center;font:700 .58rem ui-monospace,monospace;color:#86a2b0}.pv-wc .m button.who{border:0;background:none;color:var(--acc,#00c47d);font:800 .62rem system-ui,sans-serif;cursor:pointer;padding:0}.pv-wc .m .sp{flex:1}.pv-wc .m button.del{border:1px solid #3a2a2a;border-radius:6px;background:#1a0d0d;color:#ff9f9f;font:700 .56rem system-ui,sans-serif;padding:2px 6px;cursor:pointer}'
@@ -261,8 +262,11 @@
     const act = activityBody(d);
     h += sec('feed', 'Activity', '<div class="pv-act">' + act + '</div>', !act);
     h += '</div>';
+    /* the trader's ALERT CHART (academy-alert-chart-ui.js): their alerts as threads with live gain numbers, follow with push, subscribe */
+    h += '<div class="pv-alerts-wrap"><div class="pv-sec pv-alerts"><div class="ac-host"></div></div></div>';
     h += '<div class="pv-wall-wrap">' + wallHtml(d) + '</div>';
     view.innerHTML = h;
+    if (window.smlAlertChart) void window.smlAlertChart.mount(view.querySelector('.pv-alerts .ac-host'), { traderId: d.userId });
     if (window.smlProfileMusic && window.smlProfileMusic.active()) window.smlProfileMusic.dockInto(view.querySelector('.pv-slot'));
     view.style.background = '';
     view.classList.add('open');
