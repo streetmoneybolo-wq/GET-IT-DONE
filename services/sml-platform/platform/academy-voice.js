@@ -6,7 +6,9 @@ const { lessonParts } = require('./academy/lesson-parts');
 
 const DEFAULT_MODEL = 'eleven_multilingual_v2';
 const MAX_CACHE_ITEMS = 1024;
-const MAX_CACHE_BYTES = 96 * 1024 * 1024;
+/* the in-memory copy is a short window over the durable store (academy_media holds every part; a miss here is one database read):
+   about 90 narration parts, six lessons' worth. The service runs in 512 MB, and 96 MB of audio buffers was a quarter of it. */
+const MAX_CACHE_BYTES = 24 * 1024 * 1024;
 const PART_CONCURRENCY = 3;
 const REQUESTS_PER_MINUTE = 12;
 

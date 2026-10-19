@@ -89,7 +89,7 @@ test('health returns 200 only when the database check passes', async () => {
   await withServer({ checkDatabase: async () => true }, async (base) => {
     const response = await fetch(`${base}/health`);
     assert.equal(response.status, 200);
-    const { data, ...rest } = await response.json();
+    const { data, memory, ...rest } = await response.json();
     assert.deepEqual(rest, {
       ok: true,
       service: 'sml-platform-api',
@@ -97,6 +97,9 @@ test('health returns 200 only when the database check passes', async () => {
     });
     assert.ok(data && ['ok', 'unknown', 'degraded', 'down', 'rate_limited'].includes(data.overall));
     assert.equal(typeof data.marketOpen, 'boolean');
+    /* the process's weight in MB, so the 512 MB instance limit can be watched from outside */
+    for (const k of ['rss', 'heapTotal', 'heapUsed', 'external', 'arrayBuffers', 'heapLimit', 'uptimeS']) assert.equal(typeof memory[k], 'number', k);
+    assert.ok(memory.rss > 0 && memory.heapUsed <= memory.heapTotal && memory.heapTotal <= memory.heapLimit);
   });
 });
 

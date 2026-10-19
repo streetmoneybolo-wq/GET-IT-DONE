@@ -518,7 +518,12 @@ async function getAcademyCandles(symbol, timeframe = '5m') {
       if (!clean.bars.length) throw new Error('academy_market_empty');
       /* adjusted is unknown for this feed, so it is reported as null rather than guessed */
       const payload = annotateCandles({ symbol: safeSymbol, tf: safeTimeframe, bars: clean.bars, asOf: Number(source?.asOf) || Date.now() }, { source: 'wordpress-history', adjusted: null, repaired: clean.repaired });
-      if (academyMarketCache.size >= 400) academyMarketCache.delete(academyMarketCache.keys().next().value);
+      /* 160 symbol:timeframe copies (the six warm symbols take 42); a stale copy goes before the newest ones */
+      if (academyMarketCache.size >= 160) {
+        const t = Date.now();
+        for (const [k, v] of academyMarketCache) if (v.staleUntil <= t) academyMarketCache.delete(k);
+        while (academyMarketCache.size >= 160) academyMarketCache.delete(academyMarketCache.keys().next().value);
+      }
       /* how long a copy is served without asking again: the live minute bars stay at 4 s; slower timeframes change slowly, so the
          daily and weekly candles (read by every Click-to-Alert and MEM ALGO read) are reused for minutes instead of fetched each time */
       const FRESH_MS = { '1m': 4_000, '3m': 4_000, '5m': 4_000, '10m': 6_000, '15m': 8_000, '30m': 15_000, '1h': 30_000, '2h': 45_000, '4h': 60_000, '1D': 60_000, '1W': 600_000, '1M': 1_800_000, '1Q': 3_600_000, '1Y': 3_600_000 };
@@ -4026,13 +4031,24 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
         ...(process.env.RENDER_GIT_COMMIT ? { release: process.env.RENDER_GIT_COMMIT } : {}),
         ...(schema !== undefined ? { schema } : {}),
         /* provider health never fails the probe (the database does); it makes a dead vendor visible to monitors */
-        data: dataStatusSummary()
+        data: dataStatusSummary(),
+        /* what the process weighs, in MB: the instance has 512 MB and is killed without a word when it passes that */
+        memory: memorySample()
       });
     } catch (error) {
       logger('error', 'health_database_unavailable', { error });
       sendJson(response, 503, { ok: false, service: 'sml-platform-api', database: 'unavailable' });
     }
   });
+}
+
+/** The process's memory in whole megabytes: resident set, V8 heap (total and in use), off-heap (Buffers, native) and the heap limit. */
+function memorySample() {
+  const m = process.memoryUsage();
+  const mb = (n) => Math.round(n / 1048576);
+  let heapLimit = null;
+  try { heapLimit = mb(require('v8').getHeapStatistics().heap_size_limit); } catch (_) { heapLimit = null; }
+  return { rss: mb(m.rss), heapTotal: mb(m.heapTotal), heapUsed: mb(m.heapUsed), external: mb(m.external), arrayBuffers: mb(m.arrayBuffers || 0), heapLimit, uptimeS: Math.round(process.uptime()) };
 }
 
 function dataStatusSummary() {
@@ -4865,7 +4881,10 @@ async function main() {
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
   process.once('SIGINT', () => { void shutdown('SIGINT'); });
   server.listen(config.port, () => {
-    log('info', 'api_started', { port: config.port });
+    log('info', 'api_started', { port: config.port, memory: memorySample() });
+    /* one line a minute on what the process weighs, so a climb toward the 512 MB kill line is visible in the log before it happens */
+    const memoryTimer = setInterval(() => { const m = memorySample(); log(m.rss >= 440 ? 'warn' : 'info', 'memory_sample', m); }, 60_000);
+    if (memoryTimer.unref) memoryTimer.unref();
     startAcademyChartWarmers(log, marketHistory);
     if (academyOrderFlow) {
       academyOrderFlow.start();

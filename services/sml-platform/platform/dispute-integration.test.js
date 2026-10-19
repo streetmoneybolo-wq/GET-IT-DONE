@@ -122,14 +122,15 @@ test('an enabled dispute service answers 200 with its result, 400 for TypeErrors
 
 test('health reports the applied schema version when a reader is supplied and tolerates reader failure', async () => {
   await withServer({ schemaVersion: async () => '012' }, async (base) => {
-    const { data, ...rest } = await (await fetch(`${base}/health`)).json();
+    const { data, memory, ...rest } = await (await fetch(`${base}/health`)).json();
     assert.deepEqual(rest, { ok: true, service: 'sml-platform-api', database: 'connected', schema: '012' });
     assert.ok(data && typeof data.overall === 'string', 'provider health rides along but never fails the probe');
+    assert.ok(memory && memory.rss > 0, 'the process weight rides along too');
   });
   await withServer({ schemaVersion: async () => { throw new Error('no ledger'); } }, async (base) => {
-    const { data, ...rest } = await (await fetch(`${base}/health`)).json();
+    const { data, memory, ...rest } = await (await fetch(`${base}/health`)).json();
     assert.deepEqual(rest, { ok: true, service: 'sml-platform-api', database: 'connected', schema: null });
-    assert.ok(data);
+    assert.ok(data && memory);
   });
 });
 

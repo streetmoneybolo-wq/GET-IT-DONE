@@ -32,10 +32,20 @@ function normalizeBars(results) {
   })).filter((bar) => Number.isFinite(bar.t) && [bar.o, bar.h, bar.l, bar.c].every(Number.isFinite));
 }
 
-function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, baseUrl = 'https://api.massive.com', sanitize = null } = {}) {
+/* how many symbol:timeframe histories stay in memory: each one is up to 5,000 bars (hundreds of kilobytes as objects), and the
+   service runs in 512 MB; a copy past its stale window goes first, then the least recently stored */
+const HISTORY_CACHE_MAX = 120;
+
+function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, baseUrl = 'https://api.massive.com', sanitize = null, maxEntries = HISTORY_CACHE_MAX } = {}) {
   const cache = new Map();
   const inflight = new Map();
   const enabled = Boolean(String(apiKey).trim());
+  function keep(key, entry, current) {
+    cache.delete(key); // re-inserted last, so the oldest key is the least recently refreshed
+    for (const [k, v] of cache) if (v.staleUntil <= current) cache.delete(k);
+    while (cache.size >= maxEntries) cache.delete(cache.keys().next().value);
+    cache.set(key, entry);
+  }
 
   async function get(symbolRaw, timeframeRaw = '5m') {
     if (!enabled) return { ok: false, status: 503, code: 'massive_unconfigured' };
@@ -67,7 +77,7 @@ function createMassiveHistory({ apiKey = '', fetchImpl = fetch, now = Date.now, 
         if (!bars.length) throw new Error('massive_history_empty');
         const lastBarAt = bars[bars.length - 1].t;
         const data = { symbol, tf: timeframe, bars: bars.slice(-5000), asOf: current, lastBarAt, adjusted: true, source: 'massive-rest', quality: 'authoritative', ...(repaired ? { repairedBars: repaired } : {}) };
-        cache.set(key, { freshUntil: current + config.ttlMs, staleUntil: current + 6 * 3600_000, data });
+        keep(key, { freshUntil: current + config.ttlMs, staleUntil: current + 6 * 3600_000, data }, current);
         return { ok: true, status: 200, data, cached: false };
       } catch (_) {
         if (cached && cached.staleUntil > current) return { ok: true, status: 200, data: { ...cached.data, stale: true }, cached: true };
@@ -156,13 +166,24 @@ function createMassiveOptions({ apiKey = '', enabled = false, fetchImpl = fetch,
   return { configured, get };
 }
 
+/* how many answers (options chains are the big ones, up to a megabyte each) the queued source keeps: expired copies go first */
+const QUEUED_CACHE_MAX = 160;
+
 function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout, minimumIntervalMs = 12_100,
-  optionsTtlMs = 10 * 60_000, closedOptionsTtlMs = 60 * 60_000, staleTtlMs = 2 * 60 * 60_000, backgroundRetryMs = 30 * 60_000, marketOpen = () => false } = {}) {
+  optionsTtlMs = 10 * 60_000, closedOptionsTtlMs = 60 * 60_000, staleTtlMs = 2 * 60 * 60_000, backgroundRetryMs = 30 * 60_000, marketOpen = () => false,
+  maxEntries = QUEUED_CACHE_MAX } = {}) {
   if (!source || typeof source.get !== 'function') throw new TypeError('source_required');
   const cache = new Map();
   const inflight = new Map();
   /* the last good answer per key, kept past its freshness so a provider hiccup serves a marked-stale chain instead of nothing */
   const lastGood = new Map();
+  /* neither map grows without end: the alert desk sweeps hundreds of tickers, and every chain it ever read used to stay in memory */
+  function prune(current) {
+    for (const [k, v] of cache) if (v.expiresAt <= current) cache.delete(k);
+    for (const [k, v] of lastGood) if (current - v.at > staleTtlMs) lastGood.delete(k);
+    while (cache.size >= maxEntries) cache.delete(cache.keys().next().value);
+    while (lastGood.size >= maxEntries) lastGood.delete(lastGood.keys().next().value);
+  }
   /* the last failure per key, so the route that asks next can say what actually went wrong */
   const failures = new Map();
   /* One cold options call at a time, spaced minimumIntervalMs apart. A member waiting on a click goes to the front of the
@@ -222,6 +243,8 @@ function createQueuedDataSource({ source, now = Date.now, setTimer = setTimeout,
       if (result?.ok) {
         const ttl = kind === 'options' ? (marketOpen(current) ? optionsTtlMs : closedOptionsTtlMs) : optionsTtlMs;
         const at = now();
+        cache.delete(key); lastGood.delete(key); // re-inserted last: the oldest entry is the least recently refreshed
+        prune(at);
         cache.set(key, { expiresAt: at + ttl, result });
         lastGood.set(key, { at, result });
         failures.delete(key);
@@ -283,4 +306,4 @@ function resampleBars(bars, timeframe) {
   return out;
 }
 
-module.exports = { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol, cleanTimeframe, normalizeBars, allowedPublicOrigin, resampleBars, TIMEFRAMES, DERIVED_TIMEFRAMES };
+module.exports = { createMassiveHistory, createMassiveOptions, createQueuedDataSource, cleanSymbol, cleanTimeframe, normalizeBars, allowedPublicOrigin, resampleBars, TIMEFRAMES, DERIVED_TIMEFRAMES, HISTORY_CACHE_MAX, QUEUED_CACHE_MAX };

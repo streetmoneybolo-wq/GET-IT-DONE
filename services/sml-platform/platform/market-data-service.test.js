@@ -34,6 +34,53 @@ test('Massive history returns stale cache during a provider outage', async () =>
   assert.equal(result.data.stale, true);
 });
 
+test('the history cache is bounded: a stale copy goes first, then the least recently refreshed, and nothing stays past the cap', async () => {
+  let current = 1_800_000_000_000;
+  const calls = [];
+  const history = createMassiveHistory({ apiKey: 'secret', now: () => current, maxEntries: 3, fetchImpl: async (url) => {
+    calls.push(url.match(/ticker\/([A-Z]+)\//)[1]);
+    return new Response(JSON.stringify({ results: [{ t: 1000, o: 1, h: 2, l: 1, c: 2, v: 1 }] }), { status: 200 });
+  } });
+  for (const s of ['AAA', 'BBB', 'CCC']) await history.get(s, '1D');
+  current += 1_000;
+  await history.get('AAA', '1D'); // fresh: a hit (a hit does not count as a refresh)
+  await history.get('DDD', '1D'); // a fourth key: the least recently refreshed (AAA) leaves
+  assert.deepEqual(calls, ['AAA', 'BBB', 'CCC', 'DDD']);
+  current += 1_000;
+  await history.get('CCC', '1D'); await history.get('BBB', '1D');
+  assert.equal(calls.length, 4, 'BBB and CCC were kept');
+  await history.get('AAA', '1D');
+  assert.equal(calls.length, 5, 'AAA had been evicted and is fetched again');
+  // a copy past its stale window (six hours) is dropped before a live one
+  current += 7 * 3600_000;
+  await history.get('EEE', '1D');
+  assert.deepEqual(calls.slice(-1), ['EEE']);
+  for (const s of ['AAA', 'BBB', 'DDD']) await history.get(s, '1D');
+  assert.equal(calls.length, 9, 'every stale copy was gone, so each was fetched afresh');
+});
+
+test('the queued source keeps a bounded number of answers and last-good copies', async () => {
+  let clock = 1_000_000;
+  let calls = 0;
+  const source = { configured: true, get: async (kind, symbol) => ({ ok: true, status: 200, data: { kind, symbol, call: ++calls, chain: 'x'.repeat(10) } }) };
+  const queued = createQueuedDataSource({ source, now: () => clock, minimumIntervalMs: 0, optionsTtlMs: 60_000, staleTtlMs: 300_000, maxEntries: 2, marketOpen: () => true });
+  await queued.get('options', 'AAA'); await queued.get('options', 'BBB'); await queued.get('options', 'CCC');
+  assert.equal(calls, 3);
+  assert.equal((await queued.get('options', 'CCC')).cached, true);
+  assert.equal((await queued.get('options', 'BBB')).cached, true, 'the two newest stay');
+  await queued.get('options', 'AAA');
+  assert.equal(calls, 4, 'the oldest had left the cache');
+  // an expired answer leaves ahead of a live one; a last-good copy older than its stale window leaves too
+  clock += 61_000;
+  await queued.get('options', 'DDD');
+  assert.equal(calls, 5);
+  assert.equal((await queued.get('options', 'DDD')).cached, true);
+  clock += 400_000;
+  source.get = async () => ({ ok: false, status: 503, code: 'down' });
+  const gone = await queued.get('options', 'DDD', {}, { priority: 'interactive' });
+  assert.equal(gone.ok, false, 'no last-good copy survives past the stale window');
+});
+
 test('queued options source coalesces, caches and serializes cold calls', async () => {
   let calls = 0, clock = 1000;
   const waits = [];

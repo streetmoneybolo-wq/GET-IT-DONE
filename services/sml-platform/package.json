@@ -7,7 +7,7 @@
     "node": ">=22.14.0"
   },
   "scripts": {
-    "start": "node platform/server.js",
+    "start": "node --max-old-space-size=400 platform/server.js",
     "academy": "node platform/academy/server.js",
     "worker": "node platform/worker.js",
     "test:newsroom": "node --test platform/newsroom-draft.test.js platform/news-flow.test.js",
