@@ -2435,6 +2435,7 @@ test('Alert Chart routes: post, thread updates, follow with push, settings, prem
   });
   const html = require('./server').academyActivityHtml({ symbol: 'SPY', bars: [] }, { appId: '1551336038713139370' });
   assert.match(html, /data-ac="stripe-connect"/, 'the settings form carries the Get paid with Stripe flow');
+  assert.match(html, /window\.smlLayoutEngine = \{ run/, 'the layout engine ships with the page: the market trio in one row, an empty Level 2 collapsed with the scanner top rows in its place, the calculator folded on phones');
   assert.match(html, /15% of the disputed amount/, 'the dispute fee consent is on the page');
   assert.match(html, /window\.smlAlertChart = \{ mount/, 'the renderer ships with the page');
   assert.match(html, /pv-alerts-wrap/, 'the profile page has the Alert Chart section');
