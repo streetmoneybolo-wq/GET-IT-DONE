@@ -362,6 +362,52 @@ function modPoll(st, c, id, discordUrl = '') {
 const GLANCE_CSS = '.mem-glance>*{margin:0 0 8px!important}.mem-glance>*:last-child{margin-bottom:0!important}.mem-glance .mem-board{grid-template-columns:repeat(3,1fr);gap:6px}.mem-glance .mem-board>div{padding:8px 10px}.mem-glance .mem-board span{font-size:9px;letter-spacing:.08em}.mem-glance .mem-board b{margin-top:5px;font-size:15px;line-height:1.15}.mem-glance .mem-count{flex-direction:row;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 12px}.mem-glance .mem-count b{font-size:18px}.mem-glance .mem-track{padding:10px 12px}.mem-glance .mem-track p{margin-top:6px;font-size:12px}';
 const GLANCE_H = { board: 131, countdown: 67, tracker: 161 };
 const glanceHeight = (names) => names.reduce((sum, n) => sum + (GLANCE_H[n] || 0) + 8, 0) - 8;
+/* An old letter's stored blocks, rebuilt in the compact layout: the same figures, chart, cases, kill switch and poll line the
+   composer now writes, read back out of the frames they used to sit in. Null when the blocks are not a desk letter (no board
+   module or top card: a hand-written letter is never touched) or are already compact. */
+function compactLetterBlocks(blocks) {
+  if (!Array.isArray(blocks)) return null;
+  const by = (id) => blocks.find((b) => b && b.id === id);
+  if (!by('mod-board') && !by('card1')) return null;
+  if (by('mod-glance')) return null;
+  const wrap = (h) => String(h || '').replace(/^<div class="mem-article mem-letter[^"]*" data-theme="dark">/, '').replace(/<\/div>$/, '');
+  const hasGif = blocks.some((b) => b && b.id === 'gif1' && b.type === 'image');
+  const parts = [['board', by('mod-board')], ['countdown', by('mod-countdown')], ['tracker', by('mod-tracker')]].filter(([, b]) => b && b.html);
+  const trackCss = (/\.mem-track-bar i\{left:[\d.]+%\}/.exec((by('mod-tracker') || {}).css || '') || [''])[0];
+  const native = (html) => htmlToBlocks(html, { tickers: [] });
+  const out = [];
+  let glanced = false;
+  for (const b of blocks) {
+    if (!b || b.id === 'card1' || b.id === 'mod-countdown' || b.id === 'mod-tracker') continue;
+    if (b.id === 'mod-board') {
+      if (!glanced && parts.length) out.push({ id: 'mod-glance', type: 'custom_code', html: `<div class="mem-article mem-letter mem-glance" data-theme="dark">${parts.map(([, x]) => wrap(x.html)).join('')}</div>`, css: CSS + '\n' + GLANCE_CSS + trackCss, height: glanceHeight(parts.map(([n]) => n)) });
+      glanced = true; continue;
+    }
+    if (b.id === 'mod-chart') {
+      const img = /<img src="([^"]+)" alt="([^"]*)"/.exec(b.html || '');
+      if (img && !hasGif) {
+        const sym = /^\$([A-Z][A-Z0-9.\-]*)/.exec(img[2].replace(/&amp;/g, '&')), price = /<b>([^<]+)<\/b>/.exec(b.html), chg = /<em[^>]*>([^<]*)<\/em>/.exec(b.html), cap = /<figcaption>([^<]*)<\/figcaption>/.exec(b.html);
+        const lead = sym && price ? `$${sym[1]} ${price[1]}${chg && chg[1] ? ' (' + chg[1] + ')' : ''} at publication. ` : '';
+        out.push({ id: 'img-chart', type: 'image', url: img[1].replace(/&amp;/g, '&'), alt: img[2].replace(/&amp;/g, '&'), caption: (lead + (cap ? cap[1].replace(/&amp;/g, '&') : '')).trim() });
+      }
+      continue;
+    }
+    if (b.id === 'mod-bullbear') {
+      const bull = /mem-vs-bull"><h3>[^<]*<\/h3><ul>([\s\S]*?)<\/ul>/.exec(b.html || ''), bear = /mem-vs-bear"><h3>[^<]*<\/h3><ul>([\s\S]*?)<\/ul>/.exec(b.html || '');
+      if (bull && bear) { out.push(...native(`<h3>The bull case</h3><ul>${bull[1]}</ul><h3>The bear case</h3><ul>${bear[1]}</ul>`)); continue; }
+    }
+    if (b.id === 'mod-killswitch') {
+      const items = /<ul class="mem-check">([\s\S]*?)<\/ul>/.exec(b.html || '');
+      if (items) { out.push(...native(`<h3>Kill switch</h3><p>Any one of these and the thesis is over, no averaging down, no renaming it.</p><ul>${items[1]}</ul>`)); continue; }
+    }
+    if (b.id === 'mod-poll') {
+      const ps = [...String(b.html || '').matchAll(/<p>([\s\S]*?)<\/p>/g)];
+      if (ps[0]) { out.push(...native(`<p>${ps[0][1].replace(/ (rel|target)="[^"]*"/g, '')}</p>`)); continue; }
+    }
+    out.push(b);
+  }
+  return out;
+}
 function modShare(url, title) {
   const u = encodeURIComponent(url || ''), t = encodeURIComponent(title || '');
   return `<div class="mem-share" aria-label="Share"><span>SHARE THIS READ</span><a href="https://twitter.com/intent/tweet?text=${t}&amp;url=${u}" rel="noopener" target="_blank">X</a><a href="https://www.reddit.com/submit?url=${u}&amp;title=${t}" rel="noopener" target="_blank">Reddit</a><a href="https://www.linkedin.com/sharing/share-offsite/?url=${u}" rel="noopener" target="_blank">LinkedIn</a><button type="button" data-copy="${esc(url || '')}">Copy link</button></div>`;
@@ -578,4 +624,4 @@ function bottomLine(st, c, seed) {
   return pick(L, seed + 13);
 }
 
-module.exports = { composeArticle, buildDossier, resolveSubject, sourcesFor, faqFor, bullBear, CSS, JS, TOPICS, headFor, factSheet: writer.factSheet };
+module.exports = { composeArticle, compactLetterBlocks, buildDossier, resolveSubject, sourcesFor, faqFor, bullBear, CSS, JS, TOPICS, headFor, factSheet: writer.factSheet };

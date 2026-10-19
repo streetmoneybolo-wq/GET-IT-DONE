@@ -110,3 +110,31 @@ test('a thin dossier still composes: the modules that have data, a topic headlin
   assert.match(a.bodyHtml, /<figure class="mem-chartbox" data-symbol="ABCD">/, 'no endpoint, no live polling attribute');
   const b = D.bullBear(st, thin, {}, 1); assert.ok(b.bull.length >= 1 && b.bear.length >= 1);
 });
+
+test('an old letter is rebuilt in the compact layout from its stored blocks, and anything that is not a desk letter is left alone', () => {
+  const wrap = (h) => `<div class="mem-article mem-letter" data-theme="dark">${h}</div>`;
+  const old = [
+    { id: 'card1', type: 'custom_code', html: '<div class="ad-t">Key takeaways</div>', css: '.ad-t{}', height: 498 },
+    { id: 'mod-board', type: 'custom_code', html: wrap('<div class="mem-board"><div><span>PRICE</span><b>$31.89</b></div></div>'), css: 'x', height: 170 },
+    { id: 'p1', type: 'paragraph', spans: [{ text: 'Lede.' }] },
+    { id: 'mod-chart', type: 'custom_code', html: wrap('<figure class="mem-chartbox mem-chartimg"><div class="mem-chiprow"><span class="mem-chip">CHART</span><span class="mem-chip">$ARQT <b>$31.89</b> <em class="up">+10.7%</em></span></div><img src="https://stockmarketloop.com/wp-content/uploads/p.png?a=1&amp;b=2" alt="$ARQT daily chart with the scenario path to $36.35" width="1200" height="675" loading="lazy"><figcaption>The candles as published.</figcaption></figure>'), css: 'x', height: 760 },
+    { id: 'mod-countdown', type: 'custom_code', html: wrap('<div class="mem-count"><span>EARNINGS</span><b>6 days</b></div>'), css: 'x', height: 320 },
+    { id: 'mod-bullbear', type: 'custom_code', html: wrap('<div class="mem-vs"><div class="mem-vs-col mem-vs-bull"><h3>THE BULL CASE</h3><ul><li>Shorts &amp; volume</li></ul></div><div class="mem-vs-col mem-vs-bear"><h3>THE BEAR CASE</h3><ul><li>Gamma is an inference</li></ul></div></div>'), css: 'x', height: 360 },
+    { id: 'mod-tracker', type: 'custom_code', html: wrap('<div class="mem-track"><div class="mem-track-bar"><i></i></div></div>'), css: 'BASE\n.mem-track-bar i{left:48.2%}', height: 320 },
+    { id: 'mod-killswitch', type: 'custom_code', html: wrap('<div class="mem-kill"><h3>KILL SWITCH</h3><ul class="mem-check"><li>A close under $28.70.</li><li>Sellers absorb it.</li></ul></div>'), css: 'x', height: 320 },
+    { id: 'mod-poll', type: 'custom_code', html: wrap('<div class="mem-poll"><h3>YOUR CALL ON $ARQT</h3><p>The desk leans <b>bullish</b>. Bull or bear, say so in <a href="https://discord.gg/x" rel="noopener" target="_blank">the Discord</a>, where the alerts land first.</p></div>'), css: 'x', height: 320 },
+    { id: 'd1', type: 'disclosure', position: 'p' }
+  ];
+  const out = D.compactLetterBlocks(old);
+  assert.deepEqual(out.map((b) => b.id.replace(/\d+$/, '')), ['mod-glance', 'p', 'img-chart', 'h', 'l', 'h', 'l', 'h', 'p', 'l', 'p', 'd'].map((x) => x === 'p' || x === 'h' || x === 'l' || x === 'd' ? x : x));
+  assert.equal(out[0].type, 'custom_code'); assert.match(out[0].html, /mem-glance/); assert.ok(out[0].html.includes('mem-board') && out[0].html.includes('mem-count') && out[0].html.includes('mem-track'));
+  assert.ok(out[0].css.includes('.mem-track-bar i{left:48.2%}') && out[0].css.includes('.mem-glance'), 'the marker position survives'); assert.equal(out[0].height, 131 + 67 + 161 + 16);
+  assert.equal(out[2].type, 'image'); assert.equal(out[2].url, 'https://stockmarketloop.com/wp-content/uploads/p.png?a=1&b=2'); assert.equal(out[2].caption, '$ARQT $31.89 (+10.7%) at publication. The candles as published.');
+  assert.deepEqual(out.filter((b) => b.type === 'heading').map((b) => b.text), ['The bull case', 'The bear case', 'Kill switch']);
+  assert.deepEqual(out.filter((b) => b.type === 'list').map((b) => b.items), [['Shorts & volume'], ['Gamma is an inference'], ['A close under $28.70.', 'Sellers absorb it.']]);
+  assert.ok(out.some((b) => b.type === 'paragraph' && b.spans.some((s) => s.mark === 'link' && s.href === 'https://discord.gg/x')) && !out.some((b) => b.id === 'card1' || b.id === 'mod-poll'));
+  assert.equal(out[out.length - 1].type, 'disclosure');
+  /* the animated path already shows the scenario: no still chart */
+  assert.ok(!D.compactLetterBlocks([...old.slice(0, 2), { id: 'gif1', type: 'image', url: 'u', alt: 'a', caption: '' }, ...old.slice(2)]).some((b) => b.id === 'img-chart'));
+  assert.equal(D.compactLetterBlocks(out), null, 'already compact'); assert.equal(D.compactLetterBlocks([{ id: 'p1', type: 'paragraph', spans: [] }]), null, 'a hand-written letter'); assert.equal(D.compactLetterBlocks(null), null);
+});
