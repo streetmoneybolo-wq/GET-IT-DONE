@@ -10,7 +10,7 @@ const URL_DEFAULT = 'wss://socket.massive.com/stocks';
 const MAX_SYMBOLS = 60;
 const IDLE_MS = 10 * 60_000;
 const TAPE_MAX = 60;
-const TICKS_MAX = 20_000; // compact [t, price, size] prints kept per watched symbol, for tick-bar charts
+const TICKS_MAX = 20_000; // compact [t, price, size, side] prints kept per watched symbol, for tick-bar charts
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 const { createTickFilter, classifyTrade } = require('./data-quality');
 
@@ -134,7 +134,7 @@ function createMassiveStream({ apiKey = '', url = URL_DEFAULT, WebSocketImpl = g
         const trade = { t, price, size: Number.isFinite(size) ? size : 0, dir: cls.dir, rule: cls.rule, x: Number(m.x) || 0, isw: Array.isArray(m.c) && m.c.includes(14) };
         record(e, trade, m.x === 4 || m.trfi != null);
         e.tape.push(trade); if (e.tape.length > TAPE_MAX) e.tape.shift();
-        e.ticks.push([t, price, trade.size]); if (e.ticks.length > TICKS_MAX * 1.1) e.ticks.splice(0, e.ticks.length - TICKS_MAX);
+        e.ticks.push([t, price, trade.size, trade.dir]); if (e.ticks.length > TICKS_MAX * 1.1) e.ticks.splice(0, e.ticks.length - TICKS_MAX);
         e.last = price; e.lastAt = t;
         fire(sym, { type: 'trade', trade });
       }

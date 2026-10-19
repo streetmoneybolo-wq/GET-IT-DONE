@@ -353,7 +353,7 @@ function buildConfluence(bars, p, ind, tf, ctx) {
     else {
       const lean = dpData.lean.label || '';
       const bullLean = /buy|bull|accum/i.test(lean), bearLean = /sell|bear|distrib/i.test(lean);
-      add('darkpool', 'Dark pool flow', 5, (d > 0 ? bullLean : bearLean) ? 5 : /neutral/i.test(lean) ? 2 : 0, lean);
+      add('darkpool', 'Dark pool flow', 5, (d > 0 ? bullLean : bearLean) ? 5 : /neutral|balanced|mixed/i.test(lean) ? 2 : 0, lean);
     }
     if (!gxData) add('gamma', 'Gamma pressure', 15, 0, 'options positioning not available', false);
     else {

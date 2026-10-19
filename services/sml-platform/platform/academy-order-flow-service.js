@@ -176,6 +176,12 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return { symbol, ...a, grades, depth: insightsFor(e), sweepWall: e.sw.state(now()), closed: e.closed, failing: e.failures >= 3, error: e.failures >= 3 ? e.lastError : '', servedAt: now() };
   }
 
+  /** The raw material behind the reading: the last full-book snapshots and the print window (academy-smart-intent.js). Touching keeps it polled. */
+  function deep(symbolRaw) {
+    const symbol = String(symbolRaw || '').toUpperCase();
+    const e = touch(symbol);
+    return { symbol, snaps: e.deep.slice(), prints: e.prints.slice(), closed: e.closed, failing: e.failures >= 3, asOf: e.latest ? e.latest.t : null };
+  }
   /** The depth reading alone (what MEM ALGO's confluence and the chart panels read). */
   function insights(symbolRaw) {
     const symbol = String(symbolRaw || '').toUpperCase();
@@ -215,7 +221,7 @@ function createOrderFlowService({ origin, fetchImpl = fetch, store = null, logge
     return a && a.ready ? { ready: true, bias: a.bias, score: a.score } : null;
   }
 
-  return { start, stop, touch, get, live, peek, insights, heatmap, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
+  return { start, stop, touch, get, live, peek, deep, insights, heatmap, tick, engines, pending, gradeFor: (symbol, dir) => { const e = engines.get(String(symbol || '').toUpperCase()); return e ? e.flow.grade(dir, now()) : { grade: 'unavailable', reason: 'not tracked yet' }; } };
 }
 
 module.exports = { createOrderFlowService, HEAT_EVERY_MS, HEAT_COLUMNS, HEAT_LEVELS };

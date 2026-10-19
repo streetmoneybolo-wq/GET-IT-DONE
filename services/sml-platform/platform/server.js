@@ -57,6 +57,9 @@ const { createPgStateStore } = require('./academy-state-store');
 const { createPushService } = require('./academy-push');
 const { createSentimentService, createSentimentMemory } = require('./academy-sentiment');
 const { createGammaService } = require('./academy-gamma');
+const { analyze: analyzeSmartIntent } = require('./academy-smart-intent');
+const { darkPoolSummary: liveDarkPoolSummary } = require('./academy-dark-pool-summary');
+const { averageVolume: averageDailyVolume } = require('./academy-gamma');
 const { createInstitutionalService } = require('./academy-institutional');
 const { createFilingsService, DEFAULT_SEC_UA } = require('./academy-filings');
 const { createFdaService } = require('./academy-fda');
@@ -733,6 +736,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const clickAlertUi = fs.readFileSync(pathModule.join(__dirname, 'academy-click-alert-ui.js'), 'utf8');
     const snapshotUi = fs.readFileSync(pathModule.join(__dirname, 'academy-snapshot-ui.js'), 'utf8');
     const tickerTalkUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-ticker-talk-ui.js'), 'utf8'); } catch (_) { return ''; } })();
+    const smartIntentUi = (() => { try { return fs.readFileSync(pathModule.join(__dirname, 'academy-smart-intent-ui.js'), 'utf8'); } catch (_) { return ''; } })();
     const optionContract = fs.readFileSync(pathModule.join(__dirname, 'academy-option-contract.js'), 'utf8');
     const optionsBrokers = fs.readFileSync(pathModule.join(__dirname, 'academy-options-brokers.js'), 'utf8');
     /* buy-button preferences (one button for my broker, or one per broker), the Settings button beside Customize, and the options desk: the CHAIN
@@ -769,7 +773,7 @@ const ACADEMY_MEM_ALGO_PARTS = (() => {
     const patternScript = patterns ? '<script>(function(){var module={exports:{}},exports=module.exports;' + patterns + '\nwindow.SmlPatterns=window.SmlPatterns||module.exports;})();</script>' : '';
     const signalsScript = memSignals ? '(function(){var module={exports:{}},exports=module.exports;function require(){return window.MemAlgoEngine;};' + memSignals + '\nwindow.SmlMemSignals=module.exports;})();' : '';
     return {
-      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
+      tools: patternScript + '<script>' + pro + '</script><script>' + liveFeed + '</script><script>' + chartLayout + '</script><script>' + depthTools + '</script>' + (heatmap ? '<script>' + heatmap + '</script>' : '') + '<script>' + buySellPanel + '</script><script>' + darkPool + '</script><script>' + smartMoney + '</script><script>' + smcExplain + '</script><script>' + smartMoneyUi + '</script><script>' + optionsCalc + '</script><script>' + optionContract + '</script>' + (buyPrefs ? '<script>' + buyPrefs + '</script>' : '') + (settingsUi ? '<script>' + settingsUi + '</script>' : '') + '<script>' + optionsDock + '</script><script>' + optionsBrokers + '</script>' + (optionsDesk ? '<script>' + optionsDesk + '</script>' : '') + '<script>' + earningsPanel + '</script>' + (catalystsPanel ? '<script>' + catalystsPanel + '</script>' : '') + (challengePanel ? '<script>' + challengePanel + '</script>' : '') + (paperPanel ? '<script>' + paperPanel + '</script>' : '') + '<script>' + shortSale + '</script>' + (sentimentPanel ? '<script>' + sentimentPanel + '</script>' : '') + (dataChip ? '<script>' + dataChip + '</script>' : '') + '<script>' + alertsUi + '</script>' + (liveCells ? '<script>' + liveCells + '</script>' : '') + (sirePanel ? '<script>' + sirePanel + '</script>' : '') + '<script>' + toolbarNav + '</script><script>' + screenerUi + '</script><script>' + scannerHover + '</script><script>' + clickAlertUi + '</script><script>' + snapshotUi + '</script>' + (tickerTalkUi ? '<script>' + tickerTalkUi + '</script>' : '') + (smartIntentUi ? '<script>' + smartIntentUi + '</script>' : '') + '<script>' + belowCycle + '</script>',
       model: '(function(){var module={exports:{}},exports=module.exports;' + engine + '\nwindow.MemAlgoEngine=module.exports;})();' + (signalsScript ? '\n' + signalsScript : '') + (runnerScript ? '\n' + runnerScript : '') + (depthScript ? '\n' + depthScript : '') + (flowReadScript ? '\n' + flowReadScript : ''),
       teaserModel: academyMemAlgoDayOnlyModel(engine),
       ui
@@ -1845,6 +1849,7 @@ async function handleNewsWebhook(request, response, options) {
 
 let streamClients = 0;
 const darkPoolCache = new Map(); // symbol -> { until, payload } for /academy-activity/dark-pool
+const smartIntentCache = new Map(); // symbol|tf -> { until, payload } for /academy-activity/intent
 /* 4:00 AM ET of the market clock's date as a timestamp: the start of today's prints (academy-dark-pool-memory.js sessionView) */
 function etDayStartMs(st) {
   try { const et = String(st && st.et || ''); const asUtc = Date.parse(et.replace(' ', 'T') + ':00Z'); if (!Number.isFinite(asUtc)) return null; const offset = Math.round((Date.now() - asUtc) / 60_000) * 60_000; return Date.parse(et.slice(0, 10) + 'T04:00:00Z') + offset; } catch (_) { return null; }
@@ -3984,6 +3989,45 @@ function createServer({ checkDatabase, acceptWordPressEvent, wordpressWebhookSec
     }
 
     /* Gamma pressure (academy-gamma.js): Academy members, paid tiers. Dealer side is inferred and labelled as such. */
+    /* Smart-money intent (academy-smart-intent.js): the Massive tape, the moomoo book, the dark-pool prints, the gamma walls, the SMC
+       map and the volume profile fused into one read: what the big money is doing and where it is placed. Members only; 15 s cache. */
+    if (request.method === 'GET' && path === '/academy-activity/intent') {
+      if (!academyOAuth) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
+      const session = academyOAuth.verifySession(request.headers.authorization);
+      if (!session.ok) { sendJson(response, session.status || 401, { ok: false, error: session.code }); return; }
+      if (session.tier === 'free') { sendJson(response, 403, { ok: false, error: 'academy_access_required' }); return; }
+      const gate = academyDataLimit.take(request);
+      if (!gate.ok) { response.setHeader('retry-after', String(gate.retryAfterSec)); sendJson(response, 429, { ok: false, error: 'rate_limited', retryAfterSec: gate.retryAfterSec }); return; }
+      const iq = new URL(request.url || '/', 'http://localhost').searchParams;
+      const symbol = String(iq.get('symbol') || '').toUpperCase(), tf = String(iq.get('tf') || '5m');
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(symbol)) { sendJson(response, 400, { ok: false, error: 'invalid_symbol' }); return; }
+      const ck = symbol + '|' + tf, hit = smartIntentCache.get(ck);
+      if (hit && hit.until > Date.now()) { sendJson(response, 200, hit.payload); return; }
+      try {
+        if (academyMassive && typeof academyMassive.watch === 'function') academyMassive.watch(symbol);
+        const [barsP, dailyP, gammaP] = await Promise.all([
+          settleWithin(getAcademyCandles(symbol, tf), 2_500).catch(() => null),
+          settleWithin(getAcademyCandles(symbol, '1D'), 2_500).catch(() => null),
+          academyGamma ? settleWithin(academyGamma.get(symbol), 2_000).catch(() => null) : Promise.resolve(null)
+        ]);
+        const bars = barsP && Array.isArray(barsP.bars) ? barsP.bars : [];
+        const adv = dailyP && Array.isArray(dailyP.bars) ? averageDailyVolume(dailyP.bars, 20) : null;
+        const peek = academyMassive && typeof academyMassive.peek === 'function' ? academyMassive.peek(symbol) : null;
+        const ticks = academyMassive && typeof academyMassive.ticks === 'function' ? academyMassive.ticks(symbol, 6000) : [];
+        const deep = academyOrderFlow && typeof academyOrderFlow.deep === 'function' ? academyOrderFlow.deep(symbol) : null;
+        const price = peek && Number(peek.last) > 0 ? Number(peek.last) : (deep && deep.prints.length ? Number(deep.prints[deep.prints.length - 1].price) : (bars.length ? Number(bars[bars.length - 1].c) : null));
+        let smc = null; try { const lib = require('./academy-smart-money'); smc = bars.length >= 20 ? lib.analyze(bars) : null; } catch (_) { smc = null; }
+        const dpHit = darkPoolCache.get(symbol);
+        let darkPool = dpHit && dpHit.until > Date.now() && dpHit.payload && dpHit.payload.available ? dpHit.payload : null;
+        if (!darkPool && peek && peek.stats) { try { const sum = liveDarkPoolSummary(peek.stats, { price }); darkPool = sum && sum.available ? sum : null; } catch (_) { darkPool = null; } }
+        const read = analyzeSmartIntent({ symbol, ticks, prints: deep ? deep.prints : [], snaps: deep ? deep.snaps : [], bars, smc, darkPool, gamma: gammaP && gammaP.available ? gammaP : null, stats: peek ? peek.stats : null, price, adv, tick: price && price < 1 ? 0.0001 : 0.01, now: Date.now() });
+        const payload = { ...read, tf, book: deep ? { closed: !!deep.closed, failing: !!deep.failing, asOf: deep.asOf } : null };
+        smartIntentCache.set(ck, { until: Date.now() + 15_000, payload });
+        if (smartIntentCache.size > 200) smartIntentCache.delete(smartIntentCache.keys().next().value);
+        sendJson(response, 200, payload);
+      } catch (error) { logger('warn', 'academy_intent_failed', { symbol, error: String(error && error.message || error) }); sendJson(response, 503, { ok: false, error: 'intent_unavailable' }); }
+      return;
+    }
     if (request.method === 'GET' && path === '/academy-activity/gamma') {
       if (!academyOAuth || !academyGamma) { sendJson(response, 503, { ok: false, error: 'integration_unconfigured' }); return; }
       const session = academyOAuth.verifySession(request.headers.authorization);

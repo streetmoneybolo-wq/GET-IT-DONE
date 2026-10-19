@@ -62,7 +62,7 @@
     if (!S.on) { card.style.display = 'none'; return; }
     card.style.display = 'block';
     const lines = S.a ? SM.read(S.a) : [];
-    const EXm = window.SmlSmcExplain, Mm = window.smlChartModel && window.smlChartModel(), ov = EXm && S.a && Mm ? EXm.overall(S.a, Mm.bars, { flow: flow() }) : null;
+    const EXm = window.SmlSmcExplain, Mm = window.smlChartModel && window.smlChartModel(), ov = EXm && S.a && Mm ? EXm.overall(S.a, Mm.bars, { flow: flow(), htf: htfLean(Mm.bars) }) : null;
     /* "hide options" folds only the add-on checkboxes away (the map read, the breakdown and the lines stay); the dash minimises the card to a chip */
     card.innerHTML = '<header><b>SMART MONEY MAP</b>' + (S.min ? '<span data-min="1" title="Open the map">open</span>'
       : '<span data-h="1" title="' + (S.collapsed ? 'Show the add-on options' : 'Hide the add-on options') + '">' + (S.collapsed ? 'show options' : 'hide options') + '</span><span data-min="1" title="Minimise to a chip">&#8211;</span>') + '</header>'
@@ -183,6 +183,16 @@
   function hideTip() { S.tipKey = ''; }
   function symKey() { const M = window.smlChartModel && window.smlChartModel(); return M ? M.symbol + ':' + M.tf : ''; }
   function flow() { const L = window.smlLive, M = window.smlChartModel && window.smlChartModel(); const st = L && M && L.symbol === M.symbol ? L.stats : null; if (!st) return null; const buy = st.buy300 || st.buy60 || 0, sell = st.sell300 || st.sell60 || 0; return buy + sell > 0 ? { buy, sell } : null; }
+  /* the higher timeframe's lean: the chart bars folded 4:1, close against a 10-bar EMA and its slope */
+  function htfLean(bars) {
+    const b = Array.isArray(bars) ? bars : []; if (b.length < 48) return null;
+    const closes = []; for (let i = b.length - (Math.floor(b.length / 4) * 4); i + 3 < b.length; i += 4) closes.push(b[i + 3].c);
+    if (closes.length < 12) return null;
+    let e = closes[0]; const k = 2 / 11, es = []; for (const c of closes) { e = e + k * (c - e); es.push(e); }
+    const last = closes[closes.length - 1], ema = es[es.length - 1], prev = es[es.length - 4];
+    const dir = last > ema && ema > prev ? 1 : last < ema && ema < prev ? -1 : 0;
+    return { dir };
+  }
   function tipHtml(r) {
     const facts = r.facts.map((f) => '<span>' + esc(f[0]) + '</span><b>' + esc(f[1]) + '</b>').join('');
     const ev = r.evidence.map((e) => '<li class="' + esc(e.tone) + '">' + esc(e.text) + '</li>').join('');
@@ -194,7 +204,7 @@
     const EX = window.SmlSmcExplain, M = window.smlChartModel && window.smlChartModel(); if (!EX || !M || !S.a) return;
     const key = hit.kind + ':' + hit.index + ':' + M.N;
     if (key === S.tipKey) return;
-    const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow() }); if (!r) { hideTip(); return; }
+    const r = EX.explain(S.a, M.bars, hit.kind, hit.index, { flow: flow(), htf: htfLean(M.bars) }); if (!r) { hideTip(); return; }
     S.tipKey = key; S.focusHtml = tipHtml(r); S.focusFor = symKey();
     if (S.min) { S.min = false; paintCard(); return; } // a chip opens so the breakdown can be read
     const box = card.querySelector('.focus'); if (box) box.innerHTML = S.focusHtml; else paintCard();
