@@ -5167,7 +5167,7 @@ async function main() {
     /* two phases: the cheap fuel read screens the whole wide ranking plus the low-float lane, the top names get the full read;
        the last list lives in academy_state_kv so the button answers at once after a restart */
     squeezeList = createSqueezeList({ concurrency: academyEvolve.knob('squeezeConcurrency'), maxSymbols: academyEvolve.knob('squeezeMaxSymbols'), limit: 100, quickConcurrency: Number(process.env.SML_ACADEMY_SQUEEZE_QUICK_WORKERS) || 4,
-      memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_ACADEMY_SQUEEZE_PAUSE_MB) || 445) * 1024 * 1024, // the process idles near 350 MB (heap cap 352 + buffers); the container has 512
+      memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_ACADEMY_SQUEEZE_PAUSE_MB) || 1500) * 1024 * 1024, // the API runs on the 2 GB plan with a 1536 MB heap cap; pause only when it really is short
       insight: (s) => si.insight(s, { brief: false }), quick: typeof si.quick === 'function' ? (s) => si.quick(s) : null,
       store: createPgStateStore({ pool: database.pool, key: 'squeeze-list', defaultValue: () => ({ rows: [], at: 0 }), logger: log }),
       quickStore: createPgStateStore({ pool: database.pool, key: 'squeeze-quick', defaultValue: () => ({ items: {}, at: 0 }), logger: log }),
@@ -5541,7 +5541,7 @@ async function main() {
     secret: config.academyBridgeSecret, serviceUserId: Number(process.env.SML_LETTERS_SERVICE_USER_ID) || Number(process.env.SML_LETTERS_AUTHOR_ID) || 258456581,
     /* WordPress and its edge protection throttle rapid signed uploads.  A letter has several dependent calls, so serialise
        them inside the publisher rather than making the Story Desk retry a whole article and create duplicate drafts. */
-    minIntervalMs: 1250, retryCount: 2, logger: log });
+    minIntervalMs: 1500, retryCount: 4, logger: log });
   const storyDesk = STORY_DESK_ON && marketHistory && marketHistory.enabled ? createStoryDesk({
     universe: async () => {
       const seen = new Set(), rows = [];
@@ -5598,7 +5598,7 @@ async function main() {
     discordUrl: String(process.env.SML_ACADEMY_INVITE_URL || process.env.SML_ACADEMY_BILLING_INVITE_URL || ''),
     /* the scheduled reads: the market and the Nasdaq after the open (9:45 ET) and into the close (15:50 ET); SML_STORY_SCHEDULE=off skips them */
     schedule: String(process.env.SML_STORY_SCHEDULE || 'on').toLowerCase() === 'off' ? [] : [{ at: 585, subjects: ['the market', 'nasdaq'] }, { at: 950, subjects: ['the market', 'nasdaq'] }],
-    memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_STORY_PAUSE_MB) || 430) * 1024 * 1024
+    memoryOk: () => process.memoryUsage().rss < (Number(process.env.SML_STORY_PAUSE_MB) || 1500) * 1024 * 1024
   }) : null;
   const getStoryDesk = () => storyDesk;
   if (storyDesk) {

@@ -64,3 +64,25 @@ test('the model writer: a good draft is used, a draft that invents a number is r
   const off = W.createArticleWriter({ ai: null }); assert.equal(off.enabled, false); assert.equal((await off.write(s)).checked.reasons[0], 'ai_off');
   assert.equal(W.parseJson('no json here'), null); assert.equal(W.normalize(null), null);
 });
+
+test('the model gets room to finish, a rejected draft is retried with its reasons, and a cut-off reply is logged with its stop reason', async () => {
+  const s = sheet();
+  const house = W.housePiece(s, 1);
+  const good = { ...house, title: '$ABCD: dealers are short gamma and $13.00 is the strike that matters', source: 'ai' };
+  const sent = [], logs = [];
+  let n = 0;
+  const w = W.createArticleWriter({
+    ai: { apiKey: 'k', model: 'm' }, logger: (l, e, f) => logs.push([e, f]),
+    fetchImpl: async (u, o) => {
+      const b = JSON.parse(o.body); sent.push(b); n++;
+      return { ok: true, json: async () => (n === 1 ? { stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"title":"$ABCD: cut off mid' }] } : { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(good) }] }) };
+    }
+  });
+  const out = await w.write(s);
+  assert.equal(out.source, 'ai', 'the retry succeeds');
+  assert.ok(sent[0].max_tokens >= 6000, 'room for a full piece: ' + sent[0].max_tokens);
+  assert.doesNotMatch(sent[0].messages[0].content, /rejected for/);
+  assert.match(sent[1].messages[0].content, /rejected for: not_an_object/, 'the retry is told why');
+  const rej = logs.find((x) => x[0] === 'article_writer_rejected');
+  assert.equal(rej[1].stop, 'max_tokens'); assert.ok(rej[1].chars > 0);
+});

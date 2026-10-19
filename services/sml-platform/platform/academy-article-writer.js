@@ -208,16 +208,18 @@ function normalize(n) {
   return { title: plain(n.title), dek: plain(n.dek), lede: arr(n.lede), sections: (Array.isArray(n.sections) ? n.sections : []).map((s) => ({ heading: plain(s && s.heading), paragraphs: arr(s && s.paragraphs) })).filter((s) => s.heading && s.paragraphs.length), bottom: plain(n.bottom), bull: arr(n.bull).slice(0, 4), bear: arr(n.bear).slice(0, 4), kill: arr(n.kill).slice(0, 4), source: 'ai' };
 }
 
-function createArticleWriter({ ai = null, fetchImpl = globalThis.fetch, logger = () => {}, now = Date.now, timeoutMs = 75_000, maxTokens = 2600 } = {}) {
+function createArticleWriter({ ai = null, fetchImpl = globalThis.fetch, logger = () => {}, now = Date.now, timeoutMs = 120_000, maxTokens = 6000 } = {}) {
   const enabled = !!(ai && ai.apiKey);
-  async function callModel(sheet) {
+  /* a full piece plus its JSON frame runs near 2,500 tokens, so the budget leaves wide room: a reply cut off at the limit has no
+     closing brace and reads as "not_an_object". A rejected first draft is sent back with the reasons so the retry fixes them. */
+  async function callModel(sheet, fix = '') {
     const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'x-api-key': ai.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: ai.model || 'claude-sonnet-5-5', max_tokens: maxTokens, system: SYSTEM, messages: [{ role: 'user', content: userPrompt(sheet) }] }), signal: AbortSignal.timeout(timeoutMs)
+      body: JSON.stringify({ model: ai.model || 'claude-sonnet-5-5', max_tokens: maxTokens, system: SYSTEM, messages: [{ role: 'user', content: userPrompt(sheet) + (fix ? `\n\nYour last draft was rejected for: ${fix}. Fix exactly that and return the complete JSON object only, nothing before or after it.` : '') }] }), signal: AbortSignal.timeout(timeoutMs)
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error('anthropic_' + res.status);
-    return (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+    return { text: (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''), stop: data.stop_reason || '' };
   }
   /* the model's draft, checked; a failed check gets one retry with the reasons; then the house writer */
   async function write(sheet, { attempts = 2 } = {}) {
@@ -226,11 +228,11 @@ function createArticleWriter({ ai = null, fetchImpl = globalThis.fetch, logger =
     let last = null;
     for (let i = 0; i < attempts; i++) {
       try {
-        const text = await callModel(sheet);
+        const { text, stop } = await callModel(sheet, last ? last.reasons.slice(0, 4).join(', ') : '');
         const n = normalize(parseJson(text));
         const v = validate(n, sheet);
         if (v.ok) return { ...n, checked: v };
-        last = v; logger('warn', 'article_writer_rejected', { symbol: sheet.symbol, attempt: i + 1, reasons: v.reasons.slice(0, 4) });
+        last = v; logger('warn', 'article_writer_rejected', { symbol: sheet.symbol, attempt: i + 1, reasons: v.reasons.slice(0, 4), stop, chars: String(text || '').length });
       } catch (error) { last = { ok: false, reasons: [String(error && error.message || error)] }; logger('warn', 'article_writer_failed', { symbol: sheet.symbol, attempt: i + 1, error: String(error && error.message || error) }); }
     }
     return { ...housePiece(sheet, seed), checked: { ok: true, reasons: ['house_fallback', ...(last ? last.reasons.slice(0, 3) : [])] } };
